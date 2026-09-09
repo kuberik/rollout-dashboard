@@ -3,6 +3,7 @@ import { detectStuck, detectStuckBehind, getDisplayVersion } from '$lib/utils';
 import { promotionBlock, promotionCandidates } from './promotion';
 import { shortEnvLabel } from '$lib/environment-theme';
 import { BAKE_WORD } from '$lib/bake-status';
+import { joinClauses } from './blocking-story';
 
 /**
  * RELEASE COVERAGE — the one question the revision pages exist to answer.
@@ -340,7 +341,15 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
 	// all"* — one theme over and at 26px, and it takes the SAME VALUE, so the
 	// swatch and the segment stay one encoding. Light is untouched: gray-100 on
 	// white is faint by design and has always been visible.
-	notYet: 'bg-gray-100 dark:border dark:border-gray-600 dark:bg-gray-800',
+	// ⛔ THE `dark:border dark:border-gray-600 dark:bg-gray-800` HACK IS
+	// DELETED (round 11, A.3). It existed only because `gray-800` IS `Card`'s
+	// dark ground, dE00 0.0 — an empty bar had nothing in it in dark. The
+	// BAR itself no longer uses this table at all (`WEIGHT_FILL.notReached`
+	// is `gray-700`, which already has its own edge against `gray-800`); this
+	// entry now serves only the bucket CARDS, which sit on the same ground,
+	// so the same fix applies here for the same reason and the two objects
+	// converge on one spelling instead of two.
+	notYet: 'bg-gray-100 dark:bg-gray-700',
 	// HOLLOW. An outlined cell with no fill is the one shape that says "there
 	// is a place here and no answer for it" — which is exactly what this
 	// bucket admits. It is also the rarest bucket, so the busiest treatment
@@ -400,6 +409,87 @@ export const COVERAGE_SWATCH: Record<CoverageKey, string> = {
 	// segment does not use is a second encoding to keep in sync.
 	notYet: 'bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600',
 	unplaceable: 'bg-transparent border-gray-400 dark:border-gray-500'
+};
+
+/**
+ * ⭐ ROUND 11 RULING A — THE BAR COMES BACK, AND IT ALWAYS DRAWS.
+ *
+ * `CoverageKey` is six buckets because the bucket CARDS on the build page
+ * need all six named separately (`Failing` is not `Running it now`, even
+ * though both mean "the build is here"). The BAR never had that need — its
+ * whole argument (`CoverageBar.svelte`'s own doc comment) is "how far has
+ * this build reached", which is a THREE-WAY question — here / moved past /
+ * not yet — plus the one admission (`unplaceable`) that no comparison could
+ * be made. Drawing those as four separate colours (the pre-round-11 shape)
+ * put a red or a blue segment back on this object, which the human had
+ * already ruled out (`COVERAGE_FILL`'s own comment, "red never enters the
+ * bar"/"blue never enters it"). So `live`/`failing`/`deploying` collapse to
+ * ONE WEIGHT, `here`: the bar's hue answers "is the build here", never "is
+ * it healthy" — the chip beside the count already carries that.
+ *
+ * `CoverageWeight` is a SECOND, SMALLER vocabulary than `CoverageKey`, used
+ * only by the bar — never a fork of the bucket-card words, which are
+ * untouched (see `COVERAGE_FILL`/`COVERAGE_SWATCH` above, and A.3).
+ */
+export type CoverageWeight = 'here' | 'movedOn' | 'notReached' | 'unplaceable';
+
+/** Bar order, left to right — `here` first because it is the fact the page
+ *  exists to answer, the admission last, same convention as `COVERAGE_ORDER`. */
+export const WEIGHT_ORDER: CoverageWeight[] = ['here', 'movedOn', 'notReached', 'unplaceable'];
+
+/** `live`/`failing`/`deploying` → `here` (the build is on this place right
+ *  now, healthy or not, settled or not); `ahead` → `movedOn`; `notYet` →
+ *  `notReached`; `unplaceable` is its own weight both ways. */
+export function coverageWeight(key: CoverageKey): CoverageWeight {
+	switch (key) {
+		case 'live':
+		case 'failing':
+		case 'deploying':
+			return 'here';
+		case 'ahead':
+			return 'movedOn';
+		case 'notYet':
+			return 'notReached';
+		case 'unplaceable':
+			return 'unplaceable';
+	}
+}
+
+/**
+ * ⭐ THE FILL TABLE — A.3. ONE HUE, THREE WEIGHTS. `here` is
+ * `COVERAGE_FILL.live`'s exact pair — zero new values there. `movedOn` is
+ * the SAME hue one weight down, `green-300`/`dark:green-800` — the only new
+ * colour value this round adds. `notReached` is the pair every painted
+ * track on the two revision pages already uses (`.single-bar`/
+ * `.bld-fill-track`/`.rev-build-bar`), so the bar converges on one spelling
+ * with them instead of keeping its own. `unplaceable` is unchanged —
+ * hollow, the one shape that says "no comparison exists".
+ *
+ * ⛔ RED NEVER ENTERS THE BAR (a `failing` place is running this build, so
+ * it takes `here`; `Chip role="adverse"` beside the count carries the
+ * adversity) AND BLUE NEVER ENTERS IT (a `deploying` place also takes
+ * `here`; the word carries it) — both unchanged from `COVERAGE_FILL`'s own
+ * ruling, restated here because this is the table that could reintroduce
+ * them by accident.
+ */
+export const WEIGHT_FILL: Record<CoverageWeight, string> = {
+	here: 'bg-green-700 dark:bg-green-600',
+	movedOn: 'bg-green-300 dark:bg-green-800',
+	notReached: 'bg-gray-200 dark:bg-gray-700',
+	unplaceable: 'bg-transparent border border-gray-400 dark:border-gray-500'
+};
+
+export function weightFill(weight: CoverageWeight): string {
+	return WEIGHT_FILL[weight];
+}
+
+/** The per-group tooltip word for each weight — `CoverageBar` prints
+ *  `"{count} {title.toLowerCase()}"`, e.g. `4 running this build`. */
+const WEIGHT_TITLE: Record<CoverageWeight, string> = {
+	here: 'Running this build',
+	movedOn: 'Have moved past this build',
+	notReached: 'Not reached yet',
+	unplaceable: 'On a different release line'
 };
 
 const DOT: Record<string, string> = {
@@ -683,10 +773,13 @@ export function revisionCoverage(row: RevisionRow, refNow: Date = new Date()): R
  * green `live` fill, whichever release it is on.
  */
 export type CoverageSegment = {
-	key: CoverageKey;
+	/** ⭐ A.5 — `CoverageWeight`, NOT `CoverageKey`. The bar draws weights,
+	 *  not buckets; see `coverageWeight`'s own doc comment for why the two
+	 *  vocabularies are deliberately different sizes. */
+	key: CoverageWeight;
 	count: number;
 	title: string;
-	/** Carried per segment so the bar needs no second prop; see `coverageFill`. */
+	/** Carried per segment so the bar needs no second prop; see `weightFill`. */
 	reachable: boolean;
 };
 
@@ -939,17 +1032,136 @@ export function releaseSplit(coverage: RevisionCoverage): ReleaseSplitLine[] {
 	}));
 }
 
-export function coverageSegments(coverage: RevisionCoverage): CoverageSegment[] {
-	// ⛔ NO PER-BUCKET SPECIAL CASE. (2026-09-03, direct from the human —
-	// see this function's own type doc.) Every bucket, `live` included,
-	// draws as ONE segment at its own fill. A `live` slot on an older
-	// release still paints plain `live` green; the fact that a newer
-	// release is held lives in the WORD (`buildState()`), not in a second
-	// colour carved out of this segment.
-	return coverage.buckets.map((b) => ({
-		key: b.key,
-		count: b.slots.length,
-		title: b.title,
+/**
+ * ⭐ A.5 — THE BAR'S OWN SEGMENTS. Exactly `WEIGHT_ORDER.length` entries every
+ * time, zero counts included: unlike the old bucket-based `coverageSegments`
+ * (which dropped an empty bucket entirely), the bar's four groups are a
+ * fixed partition of the SAME total every time, so a caller — and
+ * `CoverageBar`'s own `{#each}` — can rely on `segments[i].key ===
+ * WEIGHT_ORDER[i]` without a find. `Σ count === coverage.totalCount`
+ * because `coverageWeight` is total over `CoverageKey` and every slot is
+ * classified into exactly one bucket in `revisionCoverage()`.
+ */
+export function coverageBarSegments(coverage: RevisionCoverage): CoverageSegment[] {
+	const counts: Record<CoverageWeight, number> = {
+		here: 0,
+		movedOn: 0,
+		notReached: 0,
+		unplaceable: 0
+	};
+	for (const bucket of coverage.buckets) {
+		counts[coverageWeight(bucket.key)] += bucket.slots.length;
+	}
+	return WEIGHT_ORDER.map((weight) => ({
+		key: weight,
+		count: counts[weight],
+		title: WEIGHT_TITLE[weight],
 		reachable: coverage.reachable
 	}));
+}
+
+/**
+ * @deprecated A.5 deletes this function outright — `coverageBarSegments` is
+ * its replacement, at the new `CoverageWeight` vocabulary `CoverageBar` now
+ * renders exclusively. Kept as a one-line forward, on the tech lead's
+ * explicit instruction for this round, so Lane 2's and Lane 3's still-live
+ * call sites (`routes/revisions/+page.svelte`,
+ * `routes/revisions/[...slug]/+page.svelte`) keep COMPILING and keep
+ * drawing a correct bar (this forwards to the real, weight-keyed segments,
+ * not the old bucket-keyed shape) until each lane migrates its own call
+ * site to `coverageBarSegments` directly and deletes this one line.
+ */
+export function coverageSegments(coverage: RevisionCoverage): CoverageSegment[] {
+	return coverageBarSegments(coverage);
+}
+
+/**
+ * ⭐ A.7 — ONE COUNT PER WEIGHT, PLUS `deploying` SPLIT BACK OUT OF `here`
+ * FOR THE WORDS. The bar's `here` FILL still merges `live`/`failing`/
+ * `deploying` (see `coverageWeight`) — that is a statement about the CELL's
+ * colour, not about what the SENTENCE is allowed to say. The sentence
+ * names `deploying` on its own, exactly as `buildState`/`RevisionCoverage
+ * .liveCount` always have.
+ */
+export function coverageCounts(coverage: RevisionCoverage): {
+	here: number;
+	deploying: number;
+	movedOn: number;
+	notReached: number;
+	unplaceable: number;
+	total: number;
+} {
+	const n = (key: CoverageKey) => coverage.buckets.find((b) => b.key === key)?.slots.length ?? 0;
+	return {
+		here: n('live') + n('failing'),
+		deploying: n('deploying'),
+		movedOn: n('ahead'),
+		notReached: n('notYet'),
+		unplaceable: n('unplaceable'),
+		total: coverage.totalCount
+	};
+}
+
+/**
+ * ⭐ A.7's DENOMINATOR CLAUSE, PLUS THE OPERATOR-WALK ADDITION IT NOW CARRIES
+ * (round 11, from the operator walk, verbatim in spirit: an un-named
+ * denominator reads as inconsistent stacked down a column — `6`, `9`, `15`
+ * — unless the sentence says what each one COUNTS. So the label never
+ * prints the bare number; it names the services that own the places, off
+ * the same slots the bar itself is drawn from, so the sentence and the
+ * shape can never disagree about what the denominator is.
+ */
+function placesClause(coverage: RevisionCoverage): string {
+	const total = coverage.totalCount;
+	const apps = [...new Set(coverage.buckets.flatMap((b) => b.slots.map((s) => s.appName)))];
+	const noun = `${total} place${total === 1 ? '' : 's'}`;
+	if (apps.length === 0) return noun;
+	const verb = apps.length === 1 ? 'deploys' : 'deploy';
+	return `the ${noun} ${joinClauses(apps)} ${verb} to`;
+}
+
+/**
+ * ⭐ A.7 — THE BAR'S ONE ARIA/TITLE SENTENCE, IDENTICAL AT BOTH SCALES. Read
+ * off `coverageCounts`, so the sentence and the cells it describes cannot
+ * disagree — the same discipline `buildState`/`BuildStateMark` already
+ * keep for the word beside it.
+ */
+export function coverageBarLabel(coverage: RevisionCoverage, short: string): string {
+	const { here, deploying, movedOn, notReached, unplaceable } = coverageCounts(coverage);
+	const denom = placesClause(coverage);
+	if (here === 0 && deploying === 0 && movedOn === 0) {
+		return `Across ${denom}: none is running ${short} yet.`;
+	}
+	const clauses: string[] = [];
+	if (here > 0) clauses.push(`${here} running ${short}`);
+	if (deploying > 0) clauses.push(`${deploying} deploying it`);
+	if (movedOn > 0) clauses.push(`${movedOn} have moved past it`);
+	if (notReached > 0) clauses.push(`${notReached} not reached yet`);
+	const sentence = `Across ${denom}: ${clauses.join(', ')}.`;
+	if (unplaceable === 0) return sentence;
+	return `${sentence.slice(0, -1)}, ${unplaceable} on a different release line.`;
+}
+
+/**
+ * ⭐ OPERATOR-WALK ADDITION (round 11) — THE HELD CLAUSE MUST NOT NAME ITSELF
+ * "A NEWER RELEASE". `releaseSplit()`'s `aheadLabel` is, by construction,
+ * always THIS row's own release (see that function's doc comment and its
+ * "deliberately asymmetric" note above) — so on the held release's own
+ * hero, a generic "held from a newer release" names ITSELF: the release
+ * being described as "a newer release" is the exact build already on
+ * screen. What is true and sayable is narrower and plainer, because
+ * `heldBehind` only ever populates this from `onRevision` slots:
+ * `aheadLabel` and `behindLabel` are the SAME COMMIT under two release
+ * labels, never two different builds. Naming both, plus WHERE, replaces
+ * both the self-reference and the bare count. Used by `RevisionLead`'s own
+ * caption; exported so `/revisions` and `/revisions/[...slug]` (this pass
+ * does not own either route) can retire their own hand-rolled "held from a
+ * newer release" strings for this one when they next touch that code.
+ */
+export function releaseHeldClause(line: ReleaseSplitLine): string {
+	const where = line.envLabels.length
+		? joinClauses(line.envLabels.map((e) => e.toLowerCase()))
+		: 'a newer release';
+	const subject = `${line.aheadLabel} is this same build under a newer label`;
+	return line.held ? `${subject} · held in ${where}` : `${subject} · has not reached ${where} yet`;
 }

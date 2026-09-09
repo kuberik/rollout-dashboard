@@ -42,9 +42,11 @@
 	import FleetSpread from '$lib/components/FleetSpread.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import {
-		coverageSegments,
+		coverageBarSegments,
+		coverageBarLabel,
 		buildState,
 		releaseSplit,
+		releaseHeldClause,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
 
@@ -89,18 +91,24 @@
 		/** Buttons and any page-specific note, under the spread. */
 		children?: Snippet;
 		/**
-		 * ⛔ CRAFT REVIEW ITEM 1 — THE BAR LIED. `CoverageBar`'s cells are
-		 * `flex: 1`, sized to fill its track whatever the count — one cell
-		 * (`1 of 9`) drew exactly as wide as nine (`9 of 9`, or `8 of 9`).
-		 * That component is right for its OWN job (comparing revisions by
-		 * shape, `/revisions`' bucketed bars), but wrong for a bar whose
-		 * whole point is a literal WIDTH = live/total. `barPercent`
-		 * (0-100, pre-rounded by the caller) switches this component off
-		 * `<CoverageBar>` entirely and onto a plain painted-track fill —
-		 * see the markup below.
+		 * @deprecated ROUND 11, A.2/A.6.2 — "THE BAR COMES BACK, AND IT ALWAYS
+		 * DRAWS." The human's own ruling this round overturns the premise
+		 * this prop existed to serve: the bar is no longer hidden at full
+		 * coverage, and it no longer needs a caller-computed percentage —
+		 * `CoverageBar` itself now draws a literal, comparable shape at every
+		 * count via `coverageBarSegments`. This component ignores the prop
+		 * entirely now; it is kept, unused, so `routes/revisions/+page.svelte`
+		 * (Lane 2, this pass does not own that file) keeps COMPILING until it
+		 * migrates off the prop and deletes this line — see this file's
+		 * report for the exact call site.
 		 */
 		barPercent?: number;
-		/** §2: "the bar draws only when it measures a shortfall". */
+		/**
+		 * @deprecated ROUND 11, A.2 — see `barPercent`'s own note immediately
+		 * above: "the bar draws on every build, always, including 0% and
+		 * 100%" is the ruling that deletes this prop's whole reason to exist.
+		 * Ignored; kept only so the same still-live call site keeps compiling.
+		 */
 		hideBar?: boolean;
 		/**
 		 * §2: a held build states its count as a chip under the figure instead
@@ -121,13 +129,24 @@
 		compact?: boolean;
 	} = $props();
 
-	const segments = $derived(coverageSegments(coverage));
+	/**
+	 * ⭐ ROUND 11, A.5 — `coverageBarSegments`, NOT THE DELETED
+	 * `coverageSegments`. Four entries, `WEIGHT_ORDER`, zero counts
+	 * included — `CoverageBar` renders these at its new `weightFill`
+	 * palette. See that function's own doc comment.
+	 */
+	const segments = $derived(coverageBarSegments(coverage));
 	const state = $derived(buildState(coverage));
 
-	const barLabel = $derived(
-		`${coverage.liveCount} of ${coverage.totalCount} places running ${short} · ` +
-			coverage.buckets.map((b) => `${b.slots.length} ${b.title.toLowerCase()}`).join(' · ')
-	);
+	/**
+	 * ⭐ ROUND 11, A.7 — `coverageBarLabel`, NOT A HAND-ROLLED SENTENCE. Also
+	 * names the DENOMINATOR (the operator-walk addition this round folds
+	 * in): a bare `6 of 9` stacked down a column of different builds reads
+	 * as inconsistent unless the sentence says what each number counts, so
+	 * `coverageBarLabel` names the services that own the places, off the
+	 * same slots the bar itself is drawn from.
+	 */
+	const barLabel = $derived(coverageBarLabel(coverage, short));
 
 	/**
 	 * ⭐ THE ROLLUP MAY NOT DISAGREE WITH THE BAR IT SITS ON. (2026-09-03,
@@ -142,54 +161,41 @@
 	const splits = $derived(releaseSplit(coverage));
 	const heldTotal = $derived(splits.reduce((sum, s) => sum + s.count, 0));
 	/**
-	 * NAMED ONLY WHEN EVERY HELD GROUP AGREES ON THE VERSION. A build that
-	 * ships as two services can have two different releases held — `2.67.0-67`
-	 * for one, a different tag for the other — and printing either alone
-	 * would be a claim about the wrong service. `null` falls back to the
-	 * honest, ungraded `a newer release`.
+	 * ⭐ OPERATOR-WALK ADDITION, ROUND 11 — REPLACES `heldLabel`. The old
+	 * aggregate named ONLY the held release (`heldLabel`, falling back to
+	 * the vague `a newer release`) and, on the held release's own hero,
+	 * that label IS the row's own name — "held on {its own name}" reads as
+	 * a build held from itself. `releaseHeldClause` states the true,
+	 * narrower fact per split line instead: this build is the SAME COMMIT
+	 * under two release labels, and names where the older one is still the
+	 * one deployed. Joined with `; ` on the rare multi-service case where
+	 * two lines disagree on the label or the places.
 	 */
-	const heldLabel = $derived.by(() => {
-		if (splits.length === 0) return null;
-		const labels = new Set(splits.map((s) => s.aheadLabel));
-		return labels.size === 1 ? [...labels][0] : null;
-	});
+	const heldClause = $derived(splits.length > 0 ? splits.map(releaseHeldClause).join('; ') : null);
 </script>
 
 <div class="lead">
 	{#if compact}
 		<!--
-			⭐ CRAFT REVIEW ITEM 7 — THE COMPACT LEAD BAND. `/revisions`' own
-			hero: id, state and figure on ONE row (the eyebrow label is gone —
-			the host `Card`'s own header, "Newest build in use", already
-			supplies that noun), the bar directly under it only when it has
-			something to say. Same header, same card; the two-line, 218px
-			`.lead-top` this branch replaces is still what the detail page
-			renders (`compact` defaults `false`).
-
-			⛔ REVISIONS-2026-09-06, ITEM 1 — NO FIGURE HERE ANY MORE, AND THE
-			STATE MARK IS CONDITIONAL. The host `Card`'s own header already
-			prints the identical `N of M places` rollup (`+page.svelte`'s
-			`heroVerdict`) — this component's own `lead-compact-figure` was the
-			SAME number a second time, 60px below it, sharing the exact same
-			`state.title`. And a hero whose bar is omitted — `hideBar`, true the
-			moment `liveCount === totalCount` — has nothing left to explain: the
-			header already said "N of N places", so the body is the identifier
-			and (via `children`) `View commit`, nothing else. `BuildStateMark`
-			only draws when there IS a shortfall left to name.
+			⭐ ROUND 11, A.6.2 — THE COMPACT LEAD BODY, REWRITTEN FOR "THE BAR
+			COMES BACK, AND IT ALWAYS DRAWS". The host `Card`'s own header
+			keeps the verdict rollup (`+page.svelte`'s `heroVerdict`) hard-right
+			and this body never restates it — that half of craft review item 7
+			survives unchanged. What changes: the bar is no longer conditional
+			(`hideBar` is deleted from this branch's logic; A.2 draws it at 0%
+			and at 100% too) and the identifier is GONE from this body —
+			"the hero body does not reprint the sha" (A.6.2) — because the host
+			`Card`'s own title is where it belongs now (a Lane 2 call-site
+			change; see this file's report). At full coverage the body is
+			nothing but the bar, which is the point: a `BuildStateMark` only
+			when there is a shortfall left to name (`state.key !== 'done'`),
+			then the bar, full width, always.
 		-->
 		<div class="lead-compact">
-			<div class="lead-compact-id min-w-0">
-				{#if href}
-					<a class="t-display-id hit-32 text-gray-900 hover:underline dark:text-white" {href}
-						>{short}</a
-					>
-				{:else}
-					<h1 class="t-display-id text-gray-900 dark:text-white">{short}</h1>
-				{/if}
-				{#if !hideBar}
-					<BuildStateMark {coverage} size="row" />
-				{/if}
-			</div>
+			{#if state.key !== 'done'}
+				<BuildStateMark {coverage} size="row" />
+			{/if}
+			<CoverageBar {segments} label={barLabel} />
 		</div>
 	{:else}
 		<div class="lead-top">
@@ -248,10 +254,10 @@
 						single space — and it rendered `RUNNING IT·2 HELD…` with none.
 						A literal space here is unambiguous at any indentation.
 					-->
-					running it{#if heldTotal > 0 && !showHeldChip}<span
+					running it{#if heldClause && !showHeldChip}<span
 							class="text-orange-950 dark:text-orange-300"
 						>
-							&nbsp;· {heldTotal} held on {heldLabel ?? 'a newer release'}</span
+							&nbsp;· {heldClause}</span
 						>{/if}
 				</div>
 			</div>
@@ -295,36 +301,29 @@
 		</div>
 	{/if}
 
-	{#if !hideBar}
-		{#if barPercent !== undefined}
-			<!--
-				⛔ CRAFT REVIEW ITEM 1 — NO MORE `<CoverageBar>` HERE, ONLY WHEN A
-				CALLER PASSES `barPercent`. Its cells are `flex: 1`, so `n`
-				cells always fill the track regardless of count: measured
-				live, "1 of 9" and "8 of 9" both drew a fully-filled 200px
-				bar. This is a plain painted track with a WIDTH, which is
-				what "one fill, width = live/total" (§2) actually requires —
-				the exact geometry `/revisions`' own list rows share (see
-				that file's CSS for the one spelling). The detail page's own
-				call site never passes `barPercent`, so it is untouched below.
-			-->
-			<div class="single-bar mt-3" role="img" aria-label={barLabel} title={barLabel}>
-				<div class="single-bar-fill" style="width: {barPercent}%"></div>
-			</div>
-		{:else}
-			<CoverageBar {segments} label={barLabel} class="mt-3" />
-		{/if}
+	<!--
+		⭐ ROUND 11, A.2/A.6.2 — THE BAR ALWAYS DRAWS NOW, NON-COMPACT TOO.
+		`hideBar`/`barPercent` are deprecated no-ops (see their prop doc
+		comments) — this is the ONE bar render for the NON-compact branch, at
+		every coverage from 0% to 100%, via `CoverageBar` and its new
+		weight-keyed segments. Gated on `!compact`: the compact branch draws
+		its OWN copy inline, above (inside `.lead-compact`, at `mt-2` instead
+		of `mt-3`, per A.6.2's body geometry) — without this guard a compact
+		render drew the bar TWICE, caught mounting the component directly.
+	-->
+	{#if !compact}
+		<CoverageBar {segments} label={barLabel} class="mt-3" />
 	{/if}
 
 	<!-- ⛔ THE TWO-SWATCH LEGEND IS GONE. (2026-09-03, direct from the human,
 	     overriding the note this comment used to carry.) It explained a bar
-	     segment that no longer exists — `coverageSegments()` paints one green
-	     `live` fill now, whatever release a place is on — and the held fact
-	     it named is not lost: the rollup two lines up already says
-	     `N held on <release>`, and `releaseSplitSentence` (the page's own
-	     caption, unowned by this component) says it again in a full
-	     sentence. Two objects were enough; a third, graphical one was the
-	     segmented-bar shape the human has now rejected twice on this page. -->
+	     segment that no longer exists — `coverageBarSegments()` paints one
+	     green `here` fill now, whatever release a place is on — and the held
+	     fact it named is not lost: the rollup two lines up already says the
+	     held clause, and `releaseSplitSentence` (the page's own caption,
+	     unowned by this component) says it again in a full sentence. Two
+	     objects were enough; a third, graphical one was the segmented-bar
+	     shape the human has now rejected twice on this page. -->
 
 	{#if spread}
 		<FleetSpread {coverage} class="mt-4" />
@@ -424,56 +423,25 @@
 	}
 
 	/*
-	 * ⭐ CRAFT REVIEW ITEM 7 — THE COMPACT LEAD BAND. id + state on the left,
-	 * baseline-aligned so the 20px glyph+word sits on the 24px sha's own
-	 * line rather than floating above or below it; the figure right,
-	 * `flex-wrap` so a narrow container (the rail width `/revisions` never
-	 * actually puts this in, but cheap insurance) stacks rather than clips.
+	 * ⭐ ROUND 11, A.6.2 — THE COMPACT LEAD BODY. No id row any more (see the
+	 * markup comment above); a column of at most two things — the state
+	 * mark, only when there is a shortfall, then the bar. `gap` rather than
+	 * a margin on the bar itself so a body with no mark (`state.key ===
+	 * 'done'`) costs nothing extra above it.
 	 */
 	.lead-compact {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 8px 16px;
+		flex-direction: column;
+		gap: 8px;
 	}
 
-	.lead-compact-id {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 4px 10px;
-		min-width: 0;
-	}
+	/* ⛔ `.lead-compact-id`/`.lead-compact-figure` REMOVED, ROUND 11/ITEM 1 —
+	   the identifier moved out of this body (A.6.2, "the hero body does not
+	   reprint the sha") and the figure duplicated the host `Card`'s own
+	   header rollup one row down; see the markup comments above. */
 
-	/* ⛔ `.lead-compact-figure` REMOVED, ITEM 1 — it duplicated the host
-	   `Card`'s own header rollup one row down; see the markup comment above. */
-
-	/*
-	 * ⭐ CRAFT REVIEW ITEM 1 — THE PAINTED TRACK, ONE FILL, EXACT WIDTH.
-	 * Height 6 / radius 4 per spec §2 — half `.cov`'s 8px-compact height,
-	 * because a bar in a 96px compact band has no room for the bucketed
-	 * bar's own scale. `overflow: hidden` is what lets the fill's own
-	 * square end clip to the track's rounded one.
-	 */
-	.single-bar {
-		height: 6px;
-		border-radius: 4px;
-		overflow: hidden;
-		background-color: var(--color-gray-200);
-	}
-
-	:global(.dark) .single-bar {
-		background-color: var(--color-gray-700);
-	}
-
-	.single-bar-fill {
-		height: 100%;
-		border-radius: inherit;
-		background-color: var(--color-green-700);
-	}
-
-	:global(.dark) .single-bar-fill {
-		background-color: var(--color-green-600);
-	}
+	/* ⛔ `.single-bar`/`.single-bar-fill` REMOVED, ROUND 11, A.2 — the
+	   painted-track fallback they drew only when a caller passed the now-
+	   deprecated `barPercent`. Every render is `<CoverageBar>` now, both
+	   branches, so this component owns no second bar geometry any more. */
 </style>

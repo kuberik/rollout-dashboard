@@ -80,13 +80,21 @@
 	 * criterion is literally "how far has this build reached across the fleet".
 	 * This is the one place in the product where the form and the meaning agree.
 	 *
-	 * COLOUR LIVES IN `revision-coverage.ts`, not here — see the `COVERAGE_FILL`
-	 * block for the whole argument, including why `live` is now the product's
-	 * health green rather than the `newest` chip's mint, and why `notYet` is
-	 * drawn HOLLOW rather than amber. This file owns no colour at all now that
-	 * the numeral is gone; it is geometry.
+	 * COLOUR LIVES IN `revision-coverage.ts`, not here — see the `WEIGHT_FILL`
+	 * block (round 11, A.3) for the whole argument, including why `here` is
+	 * the product's health green rather than the `newest` chip's mint, and
+	 * why `unplaceable` is drawn HOLLOW rather than amber. This file owns no
+	 * colour at all now that the numeral is gone; it is geometry.
+	 *
+	 * ⭐ ROUND 11, A.4 — HEIGHT 26 → 16px, THE OTHER SCALE UNCHANGED. `16 : 8`
+	 * is exactly `2 : 1` — the same object at two scales, which is this
+	 * component's founding rule. 26px was sized for a hero body (round 7.1)
+	 * that no longer exists; every other geometry constant here (radius 8,
+	 * cell-min 5px, gutter 2px for the default scale; 8px/4/3/1 compact) was
+	 * already exactly what A.4 specifies, so this is the ONE number this
+	 * round changes in this file.
 	 */
-	import { coverageFill, type CoverageSegment } from '$lib/view-models/revision-coverage';
+	import { weightFill, type CoverageSegment } from '$lib/view-models/revision-coverage';
 
 	let {
 		segments,
@@ -146,15 +154,14 @@
 		<!-- No slots at all. An empty TRACK, not a missing element: the row still
 		     has to occupy the column so the ones beside it stay comparable.
 
-		     ⛔ IT TAKES `coverageFill('notYet')`, IT DOES NOT SPELL THE TRACK.
-		     (2026-09-02.) Written out here as `bg-gray-100 dark:bg-gray-800` it
-		     was a second copy of the track's value — and it inherited that
-		     value's dark bug silently: `dark:bg-gray-800` IS `Card`'s own
-		     ground, dE00 **0.0**, so an empty bar had nothing in it at all in
-		     dark. Reading the table means the fix that gave the track its dark
-		     edge lands here too, and cannot be missed again. -->
+		     ⛔ IT TAKES `weightFill('notReached')`, IT DOES NOT SPELL THE TRACK.
+		     (2026-09-02, and round 11's rename.) Written out here it would be a
+		     second copy of the track's value — and inherit that value's dark
+		     bug silently if it ever drifted from the table again. Reading the
+		     table means the fix that gave the track its dark edge lands here
+		     too, and cannot be missed a second time. -->
 		<span class="cov-seg" style="flex-grow:1">
-			<span class="cov-cell {coverageFill('notYet')}"></span>
+			<span class="cov-cell {weightFill('notReached')}"></span>
 		</span>
 	{:else}
 		{#each segments as seg (seg.key)}
@@ -169,10 +176,10 @@
 						     construction. The GROUP is the unit of meaning; the CELL is the
 						     unit of counting. -->
 						{#each cells(seg.count) as i (i)}
-							<span class="cov-cell {coverageFill(seg.key)}"></span>
+							<span class="cov-cell {weightFill(seg.key)}"></span>
 						{/each}
 					{:else}
-						<span class="cov-cell {coverageFill(seg.key)}"></span>
+						<span class="cov-cell {weightFill(seg.key)}"></span>
 					{/if}
 				</span>
 			{/if}
@@ -196,7 +203,7 @@
 	 * `app.css`); every fill and every ink arrives as a utility class.
 	 */
 	.cov {
-		height: 26px;
+		height: 16px;
 		gap: 2px;
 		border-radius: 8px;
 		overflow: hidden;

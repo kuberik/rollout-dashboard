@@ -3,11 +3,20 @@ import { buildRevisionLedger } from './revision-ledger';
 import {
 	revisionCoverage,
 	coverageSegments,
+	coverageBarSegments,
+	coverageBarLabel,
+	coverageCounts,
+	coverageWeight,
+	releaseHeldClause,
+	WEIGHT_ORDER,
+	WEIGHT_FILL,
 	COVERAGE_ORDER,
 	buildState,
 	releaseSplit,
 	type RevisionCoverage,
-	type CoverageSlotVM
+	type CoverageSlotVM,
+	type CoverageBucket,
+	type CoverageKey
 } from './revision-coverage';
 import type { Environment, Rollout } from '../../types';
 
@@ -128,14 +137,25 @@ describe('revisionCoverage', () => {
 		expect(revisionCoverage(old, new Date()).liveCount).toBe(1);
 	});
 
-	it('emits segments in bar order and drops empty buckets', () => {
+	/**
+	 * ⭐ ROUND 11, A.5 — `coverageBarSegments` REPLACES THE OLD BUCKET-KEYED
+	 * `coverageSegments` THIS TEST USED TO PIN. The bar's segments are now
+	 * `CoverageWeight`-keyed and ALWAYS four entries, in `WEIGHT_ORDER`,
+	 * never dropping an empty one — see that function's own doc comment for
+	 * why a fixed partition is the point.
+	 */
+	it('emits exactly the four weights, in WEIGHT_ORDER, summing to the total', () => {
 		const repo = fixture();
-		const segs = coverageSegments(revisionCoverage(repo.rows[0], new Date()));
-		expect(segs.map((s) => s.key)).toEqual(['live', 'notYet']);
-		// …and bar order is always a subsequence of the declared order, so the
-		// list's miniature and the detail page's 26px bar cannot disagree.
-		const declared = COVERAGE_ORDER.filter((k) => segs.some((s) => s.key === k));
-		expect(segs.map((s) => s.key)).toEqual(declared);
+		const cov = revisionCoverage(repo.rows[0], new Date());
+		const segs = coverageBarSegments(cov);
+		expect(segs.map((s) => s.key)).toEqual(WEIGHT_ORDER);
+		expect(segs.reduce((n, s) => n + s.count, 0)).toBe(cov.totalCount);
+		// `live: 3, notYet: 1` (asserted above) collapses to `here: 3`,
+		// `notReached: 1` — the two weights this fixture's buckets map to.
+		expect(segs.find((s) => s.key === 'here')!.count).toBe(3);
+		expect(segs.find((s) => s.key === 'notReached')!.count).toBe(1);
+		expect(segs.find((s) => s.key === 'movedOn')!.count).toBe(0);
+		expect(segs.find((s) => s.key === 'unplaceable')!.count).toBe(0);
 	});
 
 	it('carries the per-service label only where it differs from the sha', () => {
@@ -249,18 +269,29 @@ describe('revisionCoverage', () => {
 	 * fixture — see the describe block below); only the bar's SEGMENTATION
 	 * reverted to one segment per bucket.
 	 */
-	describe('coverageSegments: a `live` slot held on an older release still draws as plain `live`', () => {
-		it('never draws a `held` segment on either split row', () => {
+	/**
+	 * ⭐ ROUND 11 — RETARGETS THE OLD `coverageSegments` DESCRIBE BLOCK AT
+	 * `coverageBarSegments`. The claim survives unchanged ("a live slot held
+	 * on an older release still draws as plain live, never a second colour")
+	 * — only the vocabulary does: there is no `held` KEY to check for any
+	 * more because there is no per-bucket key at all on the bar now, only
+	 * the four weights, and `live`/`failing`/`deploying` are deliberately
+	 * one weight, `here` (see `coverageWeight`'s own doc comment).
+	 */
+	describe('coverageBarSegments: a `live` slot held on an older release still draws as plain `here`', () => {
+		it('draws the whole row as `here`, whichever release each place is actually on', () => {
 			const repo = heldRevisionFixture();
 			const held = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
 			const running = repo.rows.find((r) => r.services[0].label === '1.66.0-66')!;
-			const heldSegs = coverageSegments(revisionCoverage(held, new Date()));
-			const runningSegs = coverageSegments(revisionCoverage(running, new Date()));
-			expect(heldSegs.some((s) => (s.key as string) === 'held')).toBe(false);
-			expect(runningSegs.some((s) => (s.key as string) === 'held')).toBe(false);
-			expect(runningSegs).toEqual([
-				{ key: 'live', count: 3, title: 'Running it now', reachable: true }
+			const heldSegs = coverageBarSegments(revisionCoverage(held, new Date()));
+			const runningSegs = coverageBarSegments(revisionCoverage(running, new Date()));
+			expect(heldSegs).toEqual([
+				{ key: 'here', count: 3, title: 'Running this build', reachable: true },
+				{ key: 'movedOn', count: 0, title: 'Have moved past this build', reachable: true },
+				{ key: 'notReached', count: 0, title: 'Not reached yet', reachable: true },
+				{ key: 'unplaceable', count: 0, title: 'On a different release line', reachable: true }
 			]);
+			expect(runningSegs).toEqual(heldSegs);
 		});
 
 		/**
@@ -270,17 +301,17 @@ describe('revisionCoverage', () => {
 		 *
 		 *   · On rel-67's OWN row, `dev` (on the older release of THIS commit)
 		 *     is now `live`, not `notYet` — item 1's fix. `prod` is `live` via
-		 *     plain `onIt`. Both places run the revision, so the row is `2 of 2`.
+		 *     plain `onIt`. Both places run the revision, so the row is `2 of 2`
+		 *     — all `here` on the bar.
 		 *   · On rel-66's OWN row, `prod` (on the NEWER release) is still
-		 *     `ahead` — UNCHANGED. It has genuinely moved past this row's own
-		 *     release, which is a different fact from "hasn't arrived yet", and
-		 *     item 1 only touches the `currentRank > service.rank` (not-yet-
-		 *     arrived) branch, never the `ahead` one. `dev` is `live` via
-		 *     `onIt`.
-		 *
-		 * Neither draws a `held` segment either way.
+		 *     `ahead` — UNCHANGED, so it reads `movedOn` on the bar. It has
+		 *     genuinely moved past this row's own release, which is a
+		 *     different fact from "hasn't arrived yet", and item 1 only
+		 *     touches the `currentRank > service.rank` (not-yet-arrived)
+		 *     branch, never the `ahead` one. `dev` is `live` via `onIt`, so
+		 *     `here`.
 		 */
-		it('is asymmetric: an older sibling release reads `live`, a newer one still reads `ahead`', () => {
+		it('is asymmetric: an older sibling release reads `here`, a newer one still reads `movedOn`', () => {
 			const sha = 'fffffff0000000000000000000000000000000';
 			const older = { tag: 'main-66', version: '1.66.0-66', revision: sha, created: minsAgo(120) };
 			const newer = { tag: 'main-67', version: '1.67.0-67', revision: sha, created: minsAgo(10) };
@@ -295,20 +326,260 @@ describe('revisionCoverage', () => {
 			const repo = buildRevisionLedger(rollouts, environments)[0];
 			const rel67 = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
 			const rel66 = repo.rows.find((r) => r.services[0].label === '1.66.0-66')!;
-			expect(coverageSegments(revisionCoverage(rel67, new Date()))).toEqual([
-				{ key: 'live', count: 2, title: 'Running it now', reachable: true }
+			expect(coverageBarSegments(revisionCoverage(rel67, new Date()))).toEqual([
+				{ key: 'here', count: 2, title: 'Running this build', reachable: true },
+				{ key: 'movedOn', count: 0, title: 'Have moved past this build', reachable: true },
+				{ key: 'notReached', count: 0, title: 'Not reached yet', reachable: true },
+				{ key: 'unplaceable', count: 0, title: 'On a different release line', reachable: true }
 			]);
-			expect(coverageSegments(revisionCoverage(rel66, new Date()))).toEqual([
-				{ key: 'live', count: 1, title: 'Running it now', reachable: true },
-				{ key: 'ahead', count: 1, title: 'Already moved on', reachable: true }
+			expect(coverageBarSegments(revisionCoverage(rel66, new Date()))).toEqual([
+				{ key: 'here', count: 1, title: 'Running this build', reachable: true },
+				{ key: 'movedOn', count: 1, title: 'Have moved past this build', reachable: true },
+				{ key: 'notReached', count: 0, title: 'Not reached yet', reachable: true },
+				{ key: 'unplaceable', count: 0, title: 'On a different release line', reachable: true }
 			]);
 		});
 
-		it('does not appear at all in the ordinary case — byte-identical to before', () => {
+		it('is the ordinary case, byte-equivalent to a live/notYet mix folded into here/notReached', () => {
 			const repo = fixture();
 			const cov = revisionCoverage(repo.rows[0], new Date());
-			const segs = coverageSegments(cov);
-			expect(segs.some((s) => (s.key as string) === 'held')).toBe(false);
+			const segs = coverageBarSegments(cov);
+			expect(segs.map((s) => s.key)).toEqual(WEIGHT_ORDER);
+			expect(segs.reduce((n, s) => n + s.count, 0)).toBe(cov.totalCount);
+		});
+	});
+
+	/**
+	 * ⭐ ROUND 11, LANE 1 ACCEPTANCE — `coverageBarSegments` ON A 0%, A 100%,
+	 * A MIXED, AND AN ALL-`ahead` FIXTURE. Built directly from synthetic
+	 * `RevisionCoverage` values (`coverageFrom`, a light-weight `CoverageSlotVM`
+	 * stand-in) rather than through `buildRevisionLedger`, because the claim
+	 * under test is `coverageBarSegments`'s own arithmetic — the weight
+	 * mapping and the fixed four-entry partition — not the ledger's.
+	 */
+	describe('coverageBarSegments — the four required fixtures', () => {
+		function stubSlot(key: CoverageKey, appName = 'app'): CoverageSlotVM {
+			return {
+				key,
+				appName,
+				envName: 'env',
+				envLabel: 'ENV',
+				slot: {} as CoverageSlotVM['slot'],
+				label: 'v1',
+				labelDiffers: false,
+				dotClass: '',
+				statusWord: '',
+				stuck: false,
+				inFlight: key === 'deploying',
+				runs: null,
+				currentRank: null,
+				revRank: null,
+				onOwnRelease: true,
+				gap: null,
+				blockingGates: [],
+				awaitingApprovalGates: [],
+				notPassingGates: [],
+				candidate: false,
+				promoteTag: null,
+				rolloutRef: null
+			};
+		}
+
+		function coverageFrom(specs: Array<[CoverageKey, string?]>, reachable = true): RevisionCoverage {
+			const byKey = new Map<CoverageKey, CoverageSlotVM[]>();
+			for (const [key, appName] of specs) {
+				const list = byKey.get(key) ?? [];
+				list.push(stubSlot(key, appName));
+				byKey.set(key, list);
+			}
+			const buckets: CoverageBucket[] = COVERAGE_ORDER.filter((k) => byKey.has(k)).map((k) => ({
+				key: k,
+				title: k,
+				description: '',
+				slots: byKey.get(k)!
+			}));
+			const liveCount = (byKey.get('live')?.length ?? 0) + (byKey.get('failing')?.length ?? 0);
+			return { liveCount, totalCount: specs.length, buckets, reachable };
+		}
+
+		it('0% — every place notYet, all track', () => {
+			const cov = coverageFrom([['notYet'], ['notYet'], ['notYet']]);
+			const segs = coverageBarSegments(cov);
+			expect(segs.map((s) => s.key)).toEqual(WEIGHT_ORDER);
+			expect(segs.reduce((n, s) => n + s.count, 0)).toBe(cov.totalCount);
+			expect(segs.map((s) => s.count)).toEqual([0, 0, 3, 0]);
+		});
+
+		it('100% — every place live/failing/deploying, all here', () => {
+			const cov = coverageFrom([['live'], ['live'], ['failing'], ['deploying']]);
+			const segs = coverageBarSegments(cov);
+			expect(segs.map((s) => s.key)).toEqual(WEIGHT_ORDER);
+			expect(segs.reduce((n, s) => n + s.count, 0)).toBe(cov.totalCount);
+			expect(segs.map((s) => s.count)).toEqual([4, 0, 0, 0]);
+		});
+
+		it('mixed — one of each bucket', () => {
+			const cov = coverageFrom([
+				['live'],
+				['deploying'],
+				['ahead'],
+				['ahead'],
+				['notYet'],
+				['unplaceable']
+			]);
+			const segs = coverageBarSegments(cov);
+			expect(segs.map((s) => s.key)).toEqual(WEIGHT_ORDER);
+			expect(segs.reduce((n, s) => n + s.count, 0)).toBe(cov.totalCount);
+			expect(segs.map((s) => s.count)).toEqual([2, 2, 1, 1]);
+		});
+
+		it('all-ahead — every place has moved on', () => {
+			const cov = coverageFrom([['ahead'], ['ahead'], ['ahead']]);
+			const segs = coverageBarSegments(cov);
+			expect(segs.map((s) => s.key)).toEqual(WEIGHT_ORDER);
+			expect(segs.reduce((n, s) => n + s.count, 0)).toBe(cov.totalCount);
+			expect(segs.map((s) => s.count)).toEqual([0, 3, 0, 0]);
+		});
+	});
+
+	describe('coverageBarLabel', () => {
+		function stubSlot(key: CoverageKey, appName: string): CoverageSlotVM {
+			return {
+				key,
+				appName,
+				envName: 'env',
+				envLabel: 'ENV',
+				slot: {} as CoverageSlotVM['slot'],
+				label: 'v1',
+				labelDiffers: false,
+				dotClass: '',
+				statusWord: '',
+				stuck: false,
+				inFlight: key === 'deploying',
+				runs: null,
+				currentRank: null,
+				revRank: null,
+				onOwnRelease: true,
+				gap: null,
+				blockingGates: [],
+				awaitingApprovalGates: [],
+				notPassingGates: [],
+				candidate: false,
+				promoteTag: null,
+				rolloutRef: null
+			};
+		}
+
+		function coverageFrom(specs: Array<[CoverageKey, string]>): RevisionCoverage {
+			const byKey = new Map<CoverageKey, CoverageSlotVM[]>();
+			for (const [key, appName] of specs) {
+				const list = byKey.get(key) ?? [];
+				list.push(stubSlot(key, appName));
+				byKey.set(key, list);
+			}
+			const buckets: CoverageBucket[] = COVERAGE_ORDER.filter((k) => byKey.has(k)).map((k) => ({
+				key: k,
+				title: k,
+				description: '',
+				slots: byKey.get(k)!
+			}));
+			const liveCount = (byKey.get('live')?.length ?? 0) + (byKey.get('failing')?.length ?? 0);
+			return { liveCount, totalCount: specs.length, buckets, reachable: true };
+		}
+
+		it('at 0%, names the denominator and says none is running it yet', () => {
+			const cov = coverageFrom([
+				['notYet', 'hello-api-app'],
+				['notYet', 'hello-frontend-app']
+			]);
+			expect(coverageBarLabel(cov, '9f10e49')).toBe(
+				'Across the 2 places hello-api-app and hello-frontend-app deploy to: none is running 9f10e49 yet.'
+			);
+		});
+
+		it('at 100%, names a single-app denominator with the singular verb', () => {
+			const cov = coverageFrom([
+				['live', 'hello-api-app'],
+				['live', 'hello-api-app']
+			]);
+			expect(coverageBarLabel(cov, '9f10e49')).toBe(
+				'Across the 2 places hello-api-app deploys to: 2 running 9f10e49.'
+			);
+		});
+
+		it('names `deploying` as its own clause, separate from `running`', () => {
+			const cov = coverageFrom([
+				['live', 'api'],
+				['deploying', 'api']
+			]);
+			expect(coverageBarLabel(cov, 'abc1234')).toBe(
+				'Across the 2 places api deploys to: 1 running abc1234, 1 deploying it.'
+			);
+		});
+
+		it('appends the unplaceable clause last, without a second sentence', () => {
+			const cov = coverageFrom([
+				['live', 'api'],
+				['unplaceable', 'api']
+			]);
+			const label = coverageBarLabel(cov, 'abc1234');
+			expect(label).toBe(
+				'Across the 2 places api deploys to: 1 running abc1234, 1 on a different release line.'
+			);
+			expect(label.match(/\./g)?.length).toBe(1);
+		});
+	});
+
+	it('WEIGHT_FILL never reaches blue, red, amber or yellow — adversity and status stay off the bar', () => {
+		const values = Object.values(WEIGHT_FILL).join(' ');
+		expect(values).not.toMatch(/blue-|red-|amber-|yellow-/);
+	});
+
+	it('coverageWeight maps every CoverageKey onto exactly one of the four weights', () => {
+		expect(coverageWeight('live')).toBe('here');
+		expect(coverageWeight('failing')).toBe('here');
+		expect(coverageWeight('deploying')).toBe('here');
+		expect(coverageWeight('ahead')).toBe('movedOn');
+		expect(coverageWeight('notYet')).toBe('notReached');
+		expect(coverageWeight('unplaceable')).toBe('unplaceable');
+	});
+
+	it('coverageCounts splits deploying out of `here` for the words, while the bar still merges them', () => {
+		const repo = fixture();
+		const cov = revisionCoverage(repo.rows[0], new Date());
+		const counts = coverageCounts(cov);
+		expect(counts).toEqual({ here: 3, deploying: 0, movedOn: 0, notReached: 1, unplaceable: 0, total: 4 });
+	});
+
+	/**
+	 * ⭐ OPERATOR-WALK ADDITION, ROUND 11 — `releaseHeldClause` MUST NOT SAY
+	 * "HELD FROM A NEWER RELEASE" ABOUT THE ROW'S OWN RELEASE. See that
+	 * function's own doc comment: `releaseSplit`'s `aheadLabel` is always
+	 * the row's own name, so a generic "held from a newer release" is
+	 * self-referential on this exact hero. The plain statement names both
+	 * labels as the SAME commit and says where.
+	 */
+	describe('releaseHeldClause', () => {
+		it('names the same build under a newer label and where it has not reached, with no gate evidence', () => {
+			const repo = heldRevisionFixture();
+			const held = repo.rows.find((r) => r.services[0].label === '1.67.0-67')!;
+			const cov = revisionCoverage(held, new Date());
+			const lines = releaseSplit(cov);
+			expect(lines).toHaveLength(1);
+			const clause = releaseHeldClause(lines[0]);
+			expect(clause).toBe(
+				'1.67.0-67 is this same build under a newer label · has not reached dev, staging and prod yet'
+			);
+			expect(clause).not.toMatch(/held from a newer release/);
+		});
+
+		it('says "held in", not a bare count, when there is real gate evidence', () => {
+			const repo = heldRevisionFixtureWithGate();
+			const cov = revisionCoverage(repo.rows[0], new Date());
+			const lines = releaseSplit(cov);
+			expect(lines).toHaveLength(1);
+			const clause = releaseHeldClause(lines[0]);
+			expect(clause).toBe('1.67.0-67 is this same build under a newer label · held in dev, staging and prod');
 		});
 	});
 

@@ -397,3 +397,467 @@ is remembered.
    draws; a service label equal to the sha is not printed.
 9. **One row grammar per card** on the build page: chips inline in one wrapping run, ages inline
    beside their chips when they differ.
+
+
+## Round 11 rulings (2026-09-09) — the bar comes back, one page per repository
+
+Two asks from the human, verbatim:
+
+> "we lost the bar that says on how many places the version is active / passed by"
+
+> "i think we also don't want to list all repos in detail on one page but rather have page per repo."
+
+Both are structural. **A overrules §2, Removed §3–4, round 5.7 and round 7.1/7.11's bar clauses.
+B overrules §1's disclosure, round 7.6, and the §7(a) "row is also a toggle" mechanism on the
+index.** Everything else in rounds 4–9 stands.
+
+---
+
+## A. THE BAR COMES BACK, AND IT ALWAYS DRAWS
+
+### A.1 What was actually lost, measured on the baseline
+
+`/tmp/claude/rev6/base/list-1440.png`: the page draws **zero bars**. Both hero cards are at full
+coverage (`6 of 6 places`, `9 of 9 places`) so §2 omits them; `Also still running` has 0 builds; `No
+longer running anywhere` (10 builds) and `Never deployed` (24 builds) were never given one. On the
+build page (`detail-1440.png`) the head band's `.rev-build-bar` is gated on `liveCount > 0 &&
+liveCount < totalCount`, which is false at `6 of 6`. **The bar is a conditional that is false on
+every row this fleet has.** §2's reasoning ("the count already said so") was right about
+*redundancy* and wrong about *comparability*: `REVISION-PAGES.md` criterion 2 is "how far did each
+one get — comparable down the column", and a column of nothing compares nothing.
+
+### A.2 The ruling
+
+**The bar draws on every build, always, including 0 % and 100 %.** It is `CoverageBar`, cellular,
+one cell per place. It carries ONE quantity — *places this build has reached* — in ONE hue at two
+weights, on a neutral track.
+
+| weight | cells | meaning |
+|---|---|---|
+| **here** (solid) | `live` + `failing` + `deploying` | the build is on this place right now |
+| **movedOn** (tint) | `ahead` | this place has moved past this build |
+| **notReached** (track) | `notYet` | the build has not got here |
+| **unplaceable** (hollow) | `unplaceable` | no comparison exists; counted in the denominator only |
+
+**This is not a two-tone bar and the distinction is load-bearing.** The human's rejection (three
+times, most recently 2026-09-03: *"Revisions pages bars are still split into 2"*) was of a bar
+carrying **two hues = two quantities**, read as two objects. Here there is one hue and one
+quantity; the tint is a *depth* within it, exactly as `here`'s own light/dark pair is. One
+continuous bar, one radius, one clip, the same 1–2px gutter between every cell whether or not the
+weight changes at that gutter — **no group gutter, ever** (the 8px gutter is what made the old bar
+read as two objects and it stays deleted).
+
+**Where I had to choose.** "Passed by" is not knowable from the data. `ahead` means *this place is
+running a newer build*; nothing in `RevisionSlot` records whether this build ever ran there. So the
+tint is worded **"moved past"/"moved on"** — a claim about the place — and never **"ran it
+before"** — a claim about the build. The human's own phrase ("passed by") is the place-centric one,
+so this is their reading, not a compromise. Flagged to the tech lead all the same.
+
+### A.3 The fill table — one hue, three weights
+
+Replaces `COVERAGE_FILL`'s per-bucket table **for the bar only**. `COVERAGE_SWATCH` and the six
+bucket cards on the build page are untouched.
+
+| weight | light | dark | provenance |
+|---|---|---|---|
+| `here` | `bg-green-700` | `dark:bg-green-600` | `COVERAGE_FILL.live`'s exact pair. Zero new values. |
+| `movedOn` | `bg-green-300` | `dark:bg-green-800` | same hue, one weight down. NEW pair, and the only new values in this round. |
+| `notReached` | `bg-gray-200` | `dark:bg-gray-700` | the pair the three shipped painted tracks (`.single-bar`, `.bld-fill-track`, `.rev-build-bar`) already use. |
+| `unplaceable` | `bg-transparent border border-gray-400` | `dark:border-gray-500` | unchanged. |
+
+Ordered by **contrast against the ground**, not by raw lightness, so the ladder reads the same in
+both themes: light `L_ok 0.928 → 0.871 → 0.527`, dark `0.373 → 0.448 → 0.696`. Monotonic in both.
+
+⛔ **`COVERAGE_FILL.notYet`'s `dark:border dark:border-gray-600 dark:bg-gray-800` hack is deleted.**
+It existed only because `gray-800` IS `Card`'s dark ground (dE00 0.0, measured 2026-09-02). On
+`gray-700` the cell has its own edge, so the conditional border goes and the bar and the three
+painted tracks converge on one spelling. **Red never enters the bar** (§2, unchanged): a `failing`
+place is running this build, so it takes `here`, and `Chip role="adverse" label="FAILING"` beside
+the count carries the adversity. **Blue never enters the bar** (round 7.11, unchanged): a
+`deploying` place takes `here`, and the word carries it.
+
+**The one accessibility risk, and its pre-decided fallback.** In light theme `movedOn`
+(`green-300`, `L_ok 0.871`) and `notReached` (`gray-200`, `L_ok 0.928`) separate mostly by chroma;
+under a deuteranopia simulation they fall back to 5.7 L-units. **If the implementing lane measures
+light-theme `movedOn` vs `notReached` under deuteranopia at dE00 < 3, step `movedOn` to
+`green-400`** (`L_ok 0.792`) and leave dark alone. Do not invent a third option.
+
+### A.4 Geometry
+
+`CoverageBar`'s existing two scales, one value changed:
+
+| scale | height | radius | cell min | gutter | used by |
+|---|---|---|---|---|---|
+| default (`compact={false}`) | **16px** (was 26) | 8 | 5px | 2px | list hero, build-page head band |
+| `compact` | 8px | 4 | 3px | 1px | every `.bld-row` |
+
+16 : 8 is exactly 2 : 1 — the same object at two scales, which is `CoverageBar`'s founding rule.
+26px was sized for a hero body that no longer exists (round 7.1); 16px is a spacing token, radius 8
+is a radius token, and `16 ≥ 2 × 8` so the radius still reads as a radius rather than a pill.
+`CELL_MAX = 32` and the proportional-only fallback above it are unchanged.
+
+### A.5 The segment keys — a NEW type, `CoverageKey` untouched
+
+`CoverageKey` is the **bucket-card** vocabulary on the build page and must not fork. So the answer
+to "do `'live' | 'past' | 'notYet'` map straight on" is **no** — add a second, smaller type used
+only by the bar, in `revision-coverage.ts`:
+
+```ts
+export type CoverageWeight = 'here' | 'movedOn' | 'notReached' | 'unplaceable';
+export const WEIGHT_ORDER: CoverageWeight[] = ['here', 'movedOn', 'notReached', 'unplaceable'];
+export function coverageWeight(key: CoverageKey): CoverageWeight;   // live|failing|deploying→here, ahead→movedOn, notYet→notReached, unplaceable→unplaceable
+export const WEIGHT_FILL: Record<CoverageWeight, string>;           // the A.3 table
+export function weightFill(w: CoverageWeight): string;
+export function coverageBarSegments(cov: RevisionCoverage): CoverageSegment[]; // exactly 4 entries, WEIGHT_ORDER, zero counts included
+export function coverageBarLabel(cov: RevisionCoverage, short: string): string; // A.7
+export function coverageCounts(cov: RevisionCoverage): { here; deploying; movedOn; notReached; unplaceable; total };
+```
+
+`CoverageSegment.key` becomes `CoverageWeight`; `CoverageBar` calls `weightFill(seg.key)` instead of
+`coverageFill(seg.key)`. **`coverageSegments()` is deleted** along with its two dead call sites (the
+unused `CoverageBar` import in `routes/revisions/+page.svelte`, and `RevisionLead`'s
+`barPercent === undefined` branch, which nothing reaches). `coverageFill` / `COVERAGE_FILL` /
+`COVERAGE_SWATCH` survive for the build page's bucket cards and swatches, unchanged.
+
+### A.6 Where the count sits, per composition
+
+§2's rule is "the count sits directly above the bar". Held/failing/behind stay in chips and words
+and never enter the bar.
+
+**1. `.bld-row` rollup column** (every row in *Also still running*, *No longer running anywhere*,
+*Never deployed*), line a → line b, unchanged tracks:
+
+```
+line a   {here} of {total} running · {deploying} deploying · {movedOn} moved on     t-dense, right
+line b   ▓▓▓▓▓░░░░                                                        8px bar, mt-6, right
+line c   Deployed 1d ago / Last deployed 5d ago / Built 7d ago            t-micro, right
+```
+Clauses 2 and 3 omit at zero; clause 1 always draws, including `0 of 9 running`. Below
+`@container (max-width: 560px)` line a wraps and the bar goes full width — the existing rule,
+unchanged.
+
+This is the round's biggest visible gain and it is free: the 200px `.bld-roll` column on *No longer
+running anywhere* and *Never deployed* is empty today. A never-deployed build now reads its own
+future off the bar — **all track** = "nowhere yet, and it is still a candidate"; **all tint** =
+"every place is already past it, it will never land". The page cannot say that today at all.
+
+**2. List hero (`RevisionLead`, `compact`).** The card header keeps the verdict rollup, hard-right,
+and the body never restates it (round 5.7's half that survives). The body is:
+
+```
+[BuildStateMark word]                                     t-dense, left, only when state.key !== 'done'
+[16px bar, full width, mt-2]
+```
+`p-4`. At full coverage that is a 48px body containing nothing but the bar — which is the point.
+**Round 7.1 ("a hero with no shortfall is a row") is overruled for the bar and only for the bar**:
+its complaint was that the 24px sha body was "the largest and least informative ink on the page",
+and that body stays deleted. The hero body does not reprint the sha.
+
+**3. Build-page head band.** Under the existing figure line, full width, `mt-3`, 16px bar. Replaces
+`.rev-build-bar`/`.rev-build-bar-fill` and its `liveCount > 0 && liveCount < totalCount` gate.
+
+**4. Repository page head band** (B.4): no bar. Coverage is a property of a build, not of a repo.
+
+**5. The `/revisions` index repository card: NO BAR.** Same reason. This is the obvious wrong move
+and it is ruled out here so nobody makes it.
+
+**6. `/apps`, `/apps/<name>`, `/environments`: unchanged.** Audited — `CoverageBar` has exactly two
+import sites and both are on the revision pages. `/apps/[name]`'s `ExposureBar` is a different
+object (ready pods) on shared `.prop-bar` geometry and is out of scope.
+
+### A.7 Rollup and aria copy
+
+Rollup clauses, hard-right, `t-card-rollup`, in this order, each omitted at zero:
+
+```
+{here} of {total} places · {deploying} deploying · {movedOn} moved on · {release} held
+```
+
+One aria/`title` sentence, from `coverageBarLabel()`, identical at both scales:
+
+```
+Across 9 places: 4 running 9f10e49, 1 deploying it, 2 have moved past it, 2 not reached yet.
+```
+- Every clause omits at zero; `not reached yet` is the remainder and prints whenever it is > 0.
+- `unplaceable > 0` appends `, 1 on a different release line`.
+- All of here/deploying/movedOn zero → `Across 9 places: none is running 9f10e49 yet.`
+- Per-group `title` on the cells: `4 running this build` / `2 have moved past this build` /
+  `2 not reached yet` / `1 on a different release line`.
+
+---
+
+## B. ONE PAGE PER REPOSITORY
+
+### B.1 URLs
+
+| URL | page |
+|---|---|
+| `/revisions` | **index** — one repository card per repo, no expansion |
+| `/revisions/<repoSlug>` | **repository page** — e.g. `/revisions/github.com/littlechimera/kuberik-testing` |
+| `/revisions/<repoSlug>/<key>` | **build page** — unchanged in kind |
+
+`repoSlug` is `version-utils.ts`'s existing `repoSlug(repoKey)`; nothing new is invented.
+**Resolution order in `[...slug]`: match the WHOLE slug against `repoBody(l.repoKey)` first → repo
+page; otherwise pop the last segment as the build key → build page; otherwise not-found.** Repo
+first, because a repo's last path segment is never a 12-char hex slug in practice and the order has
+to be deterministic. Mechanics are the frontend IC's; the order is not.
+
+### B.2 The index card — enough to answer "is anything held or behind here" without opening
+
+It is §1's repository card with the disclosure removed. From top:
+
+- **Header, 47px** (`px-4 py-3`, bottom hairline). The WHOLE header is an `<a href="/revisions/
+  <repoSlug>{?q}">`, hover `bg-gray-50 / dark:bg-gray-700/40` — "a region that reads as a
+  destination must BE one". Left: `CodeBranchOutline` 16px, gap 10, `repoTitle(repo.repoLabel)` at
+  `t-card-title`, `break-words`. Right, via the header's own `justify-between`: the verdict, then
+  `ChevronRightOutline` 16px `text-gray-400`.
+  - ⛔ The chevron **moves from left to right and stops meaning "expand"**. Round 7.6 (*"the
+    repository header is the toggle"*) is overruled: there is no toggle. The `36 builds ⌄` pill is
+    deleted; its figure already lives in the meta line.
+- **The verdict rollup**, `t-card-rollup`, first that applies:
+  1. held > 0 → `Chip role="alarm" label="{n} held" wide` + `{n} places held`
+  2. places behind their newest allowed build > 0 → `{n} places behind`
+  3. newer undeployed builds > 0 → `{n} newer builds`
+  4. → `Everything on its newest build`
+  This is round 7.5's "the head band is the verdict" applied to a card, and it is what makes a
+  stack of repos scannable without opening one.
+- **Body: the service ledger** (§7a), unchanged grammar — name, sha, rank chip, state chips, env
+  chips, right-aligned age. Capped at **6 rows** + the `Show N more services` snippet, **except at
+  `ledgers.length === 1`, where every row draws** (B.7).
+  - ⛔ **The ledger rows are NOT filter toggles on the index.** There is nothing on this page to
+    filter to. §7(a)'s `aria-pressed` row and the fallback pill strip both move to the repository
+    page. This deletes §1's own "a row that is also a toggle" risk from the index entirely.
+- **Footer**: hairline, then `t-micro text-gray-500` `px-4 py-2`:
+  `36 builds · 12 deployed at least once · 15 places to deploy to · across 2 release lines`,
+  with `View repository ↗` (`.nav-link`, `ArrowUpRightFromSquareOutline`, `title={repo.repoLabel}`,
+  external) hard-right on the same row. It is a separate `<a>` inside the header link's card, so it
+  sits in the FOOTER, not the header — one control per destination, no nested anchors.
+- **No held banner on the index.** The banner (cause, contract clause, rule, action) is the
+  repository page's, under its ledger card, never collapsible (round 7.3, unchanged — only its
+  address moves). The hold stays findable from the index by the header's `{n} HELD` alarm chip and
+  by the `HELD` chip on the ledger row, both inside the card link: one tap to the banner.
+- **No bar** (A.6.5), no hero, no build lists.
+
+Head band on the index is unchanged: `3` `3 held · every other place on its newest build ·
+2 repositories · live`.
+
+### B.3 What the index costs, and what it buys
+
+Repo A's expanded block is ~1500px at 390 and ~1250px at 1440. The index is head band + search +
+two cards ≈ **~700px at 390, ~640px at 1440**, against today's 2719 / 1952. Nothing an operator
+scans for on the index (held, behind, who runs what, when) leaves the card.
+
+### B.4 The repository page
+
+Order, top to bottom:
+
+1. **Breadcrumb**, y=24, `t-dense text-gray-500`: `All revisions` (`.nav-link` → `/revisions{?q}`).
+   No arrow glyph, no `.btn` — "no action-styled navigation". The build page's trail becomes
+   `All revisions › kuberik-testing`, separator `ChevronRightOutline` 12px `text-gray-400`, the
+   repo item linking to `/revisions/<repoSlug>{?q}`. The current object is never in its own trail —
+   the head band names it. At 390 the trail wraps; the repo name truncates with the full label in
+   `title`.
+2. **Head band — the verdict, with the object's name on it.** `mb-5`, first content at y=72,
+   the existing rhythm:
+   ```
+   kuberik-testing   3   places held · every other place on its newest build · live
+   ```
+   `repoTitle(repoLabel)` at `t-display` and it is the page's real `<h1>` (not `sr-only`: the
+   navbar prints the ROUTE name `Revisions`, so the repo name is not a duplicate — the rule the
+   `sr-only h1` exists for does not bite here). The figure at `t-display`, the sentence at `t-dense`
+   on its baseline. Same clause set as the index band with `· N repositories` dropped.
+   ⛔ **No repository CARD on this page.** Its header would restate the name and its rollup would
+   restate the verdict, 24px apart. The card is an INDEX object.
+3. **Search field**, `w-full` at 390 / `max-w-sm` from 640, scoped to this repo, same matcher,
+   same `placeholder="Find a build or service"`, same clear/Escape. Bound to `?q=`.
+4. **The ledger, as its own card.** `Card`, radius 8, `icon={CodeBranchOutline}`, title
+   **`What each service runs`** (the operator's question, and the sibling of the build page's
+   `What each service calls it`), rollup `5 services`. Body: the §7(a) ledger, uncapped. Footer
+   hairline + the meta line + `View repository ↗` hard-right, exactly as B.2's footer.
+   **The ledger rows ARE the multi-select filter here** (§7a's `aria-pressed` row, gray-900 /
+   gray-100 pressed fill, `aria-label="Show only {appName}"`, view state only, not remembered).
+5. **Held banner**, filled `AlertPanel`, under the ledger card, never collapsible, whenever the hold
+   exists (round 7.3, unchanged).
+6. **Hero card(s)**, one per release line, with A.6.2's body.
+7. **`.rev-cols`**: main column `Also still running` + `No longer running anywhere`, 340px rail
+   `Never deployed`. `@container (min-width: 860px)` — the product's one rail number, unchanged.
+
+### B.5 `?q=` at each level
+
+| level | behaviour |
+|---|---|
+| index | filters across every repo, as today. A repo with no match keeps its card and prints `No build matches “{q}”.` (`t-body text-gray-500`, `px-4 py-6`, flush left per round 7.7) in place of its ledger; its rollup reads `0 of 36 builds`. Under a filter every rollup reads `{n} of {m} builds` (round 5.6). `singleSearchMatch`'s direct link under the field survives. Every card header link carries `?q=` through. |
+| repository | filters within the repo; identical matcher; identical counts-follow-the-filter rule; a zero-result query keeps the verdict (round 9.6). Breadcrumb carries `?q=` back to the index. |
+| build | ignored, but carried in the breadcrumb's two links so the round trip preserves it. |
+
+### B.6 Landmark orders (pin these)
+
+`routes/revisions/page.svelte.test.ts` — index, one repo:
+```
+['Revisions', 'repo-a']
+```
+index, two repos:
+```
+['Revisions', 'repo-a', 'repo-b']
+```
+`'Revisions'` stays the `sr-only h1`. Every build-list heading leaves this file; the test comment
+must record that they moved to `/revisions/<repoSlug>` in this round.
+
+New `routes/revisions/[...slug]/repo.svelte.test.ts` — repository page:
+```
+['kuberik-testing', 'What each service runs', /^Newest build ·/, 'Also still running',
+ 'No longer running anywhere', 'Never deployed']
+```
+The repo name is now a visible `h1`. `Also still running` keeps its existing
+`lead ? … : 'Still running'` conditional.
+
+`routes/revisions/[...slug]/deploying.svelte.test.ts` — build page, unchanged.
+
+### B.7 One repository: SHOW THE CARD, do not redirect
+
+**Decision: `/revisions` always renders, even with one repository.** Three reasons, in order:
+
+1. **Navigation must be stable.** A redirect makes `/revisions` a URL that never renders — the nav
+   entry, a bookmark and every `All revisions` breadcrumb land somewhere the operator did not type.
+   And the destination would silently change the day a second repo appears, which this fleet has
+   already demonstrated once (`kuberik-testing-second`).
+2. **The index owns a verdict nobody else has.** Its head band is the FLEET verdict; redirecting
+   deletes it for exactly the installs most likely to be single-repo.
+3. It is a reduction dressed as a convenience — one click saved, one page's worth of design gone.
+
+**The concession that pays for the click:** at `ledgers.length === 1` the head band drops
+`· 1 repository` (it says nothing) and the card's ledger is **uncapped** — every service row draws,
+no `Show N more services`. A single-repo operator therefore sees their whole fleet ledger, the
+verdict and the held chip on the index without opening anything. The card is the page's only
+object, so the target is unmissable.
+
+### B.8 Skeleton shape hints (`rememberShape`, indices never keys)
+
+| page | key | shape |
+|---|---|---|
+| index | `'revisions'` | `{ repos: number, services: string }` — `services` is the comma-joined per-repo ledger row count (`"5,2"`). **`open` is deleted**: nothing expands. |
+| repository | `'revisions/repo'` | `{ services, heroes, heldBanner, running, retired, pending }` — all counts/booleans, capped at the number of rows actually reserved (`min(n, 5)`). |
+| build | unchanged | unchanged |
+
+ONE key for every repository page, not one per repo: a per-repo key would put fleet data in the
+storage key, which `skeleton-hints.ts` forbids. Across repos the hint is an approximation — that is
+what a hint is, and the flip test only requires that nothing MOVES on a repeat visit to the same
+page.
+
+**Reserve, index:** head band (28px) → search field (36px, disabled, real geometry) → `repos` cards,
+each 47px header + `services[i]` ledger rows (fallback 3) at 26px + a 53px meta bar. No hero, no
+`.rev-cols`, no banner block — the index has none of them, and reserving them was the old skeleton's
+job.
+**Reserve, repository:** breadcrumb (18px) → head band (28px) → search (36px) → ledger card
+(47 + services × 26 + 53) → `heldBanner ? BannerSkeleton(122 / 162 mobile) : nothing` →
+`heroes ×` 47px header + 48px bar body → `.rev-cols` block sized from `running` / `retired` /
+`pending`. Flip test: nothing may move.
+
+### B.9 States
+
+- **Index, empty fleet** — `Nothing built yet` + its sentence, unchanged.
+- **Index, error** — `ErrorState`, unchanged.
+- **Index, `?q=` matches nothing anywhere** — every card stays, each printing its own
+  `No build matches “{q}”.`; nothing is hidden silently.
+- **Repository page, unknown slug** — the existing not-found state, reworded for the object that is
+  missing: `No repository <code>{slug}</code> is known to this dashboard.` + the `All revisions`
+  breadcrumb. Never one glued string (the existing rule).
+- **Repository page, error** — `ErrorState` with `backHref="/revisions"`, `backLabel="All
+  revisions"`.
+- **Repository with no deployed build** — no hero, no running/retired cards; every ledger row reads
+  `Not deployed`; the rail shows `Never deployed` only; every bar on it is all-track or all-tint,
+  which is now the page's clearest statement of that state.
+- **Repository with everything deployed** — `Never deployed` still renders, `0 builds` rollup, its
+  honest empty sentence. The rail is part of the layout.
+
+### B.10 Breakpoints — container queries only, unchanged
+
+| rule | threshold | effect |
+|---|---|---|
+| `.rev-cols` | `@container (min-width: 860px)` | main + 340px rail (repository page only) |
+| `.bld-row` | `@container (max-width: 560px)` | two-band row; bar full width |
+| ledger row | `@container (max-width: 560px)` | name / sha+rank / env chips stack, 4px row gap |
+| index card header | `@container (max-width: 560px)` | rollup wraps to its own line, flush left (`Card`'s single-item rule) |
+
+---
+
+## Lanes
+
+Three lanes, split by file ownership. **No two lanes name the same file.** Order: L1 and L2 may run
+in parallel (they share no file; L2 consumes names L1 exports, pinned in A.5). L3 consumes the
+components L2 creates, so it starts once L2's component props are committed — a sequencing
+dependency, not a shared file.
+
+### Lane 1 — THE BAR (view-model + shared components)
+
+**Owns:** `frontend/src/lib/view-models/revision-coverage.ts`,
+`frontend/src/lib/components/CoverageBar.svelte`,
+`frontend/src/lib/components/RevisionLead.svelte`,
+`frontend/src/lib/view-models/revision-coverage.test.ts` (new).
+
+Implements A.2–A.7: `CoverageWeight`, `WEIGHT_ORDER`, `coverageWeight`, `WEIGHT_FILL`,
+`weightFill`, `coverageBarSegments`, `coverageBarLabel`, `coverageCounts`; deletes
+`coverageSegments` and `COVERAGE_FILL.notYet`'s dark-border hack; `CoverageBar` height 26 → 16 and
+`weightFill`; `RevisionLead`'s always-drawn bar body, `barPercent`/`hideBar` props deleted.
+
+**Acceptance**
+- `coverageBarSegments` returns 4 entries in `WEIGHT_ORDER` for every fixture, and
+  `Σ count === cov.totalCount` — assert on a 0 %, a 100 %, a mixed, and an all-`ahead` fixture.
+- `coverageBarLabel` at 0 %, at 100 %, with `deploying > 0`, with `unplaceable > 0`.
+- No `blue-`, `red-`, `amber-` or `yellow-` value reachable from `WEIGHT_FILL`.
+- `CoverageBar` renders `total` cells at `total ≤ 32` and one segment per weight above it.
+- Canvas-measured dE00 in BOTH themes, on `Card`'s own ground: `here` vs `movedOn`, `movedOn` vs
+  `notReached`, `notReached` vs ground — all ≥ 3. Plus the deuteranopia check in A.3 with its
+  named `green-400` fallback.
+- `pnpm test` green; `rg 'coverageSegments|barPercent|hideBar' frontend/src` returns nothing.
+
+### Lane 2 — THE INDEX, and the components the repository page needs
+
+**Owns:** `frontend/src/routes/revisions/+page.svelte`,
+`frontend/src/routes/revisions/page.svelte.test.ts`,
+and creates `frontend/src/lib/components/RepoLedgerCard.svelte`,
+`frontend/src/lib/components/BuildRow.svelte`,
+`frontend/src/lib/components/BuildLists.svelte` (new files, Lane 2's).
+
+Implements B.2, B.3, B.5 (index), B.6 (index landmarks), B.7, B.8 (index), B.9 (index),
+B.10 (index card header). Extracts the ledger, the `.bld-row` grammar and the three build lists +
+`.rev-cols` out of the route and into the three new components **before** deleting them from the
+route, so Lane 3 has something to import. Publishes those components' props in the PR body.
+
+**Acceptance**
+- `/revisions` at 1440 and 390, both themes: one card per repo, no hero, no build lists, no banner,
+  no bar. Height ≤ 800px at 390 with two repos.
+- Card header is one `<a>` to `/revisions/<repoSlug>`; `View repository` is a separate `<a>` in the
+  footer; no nested anchors (`rg '<a[^>]*>[^<]*<a'` and a DOM assertion).
+- Held repo: alarm chip + `{n} places held` in the header rollup; unheld repo: rule 2/3/4's string.
+- `?q=` filters across repos; a no-match repo keeps its card with `No build matches “{q}”.`; each
+  header link carries `?q=` through.
+- One repo: landmark order `['Revisions', 'repo-a']`; ledger uncapped; head band has no
+  `· 1 repository`.
+- Skeleton flip test at 1440 and 390: nothing moves between skeleton and loaded.
+- `pnpm test` green.
+
+### Lane 3 — THE REPOSITORY PAGE and the build page
+
+**Owns:** `frontend/src/routes/revisions/[...slug]/+page.svelte`,
+`frontend/src/routes/revisions/[...slug]/deploying.svelte.test.ts`,
+`frontend/src/routes/revisions/[...slug]/repo.svelte.test.ts` (new).
+
+Implements B.1 (resolution order), B.4, B.5 (repository + build), B.6 (repo landmarks), B.8
+(repository reserve), B.9 (repository states), B.10, and A.6.3 (the build-page head-band bar,
+replacing `.rev-build-bar`).
+
+**Acceptance**
+- `/revisions/github.com/littlechimera/kuberik-testing` renders head band → search → ledger card →
+  banner → heroes → `.rev-cols`, at 1440 and 390, both themes.
+- Landmark order matches B.6 exactly.
+- A slug that is a known repo resolves to the repository page; the same slug plus a build key
+  resolves to the build page; an unknown slug gets the reworded not-found.
+- Breadcrumbs: repo page `All revisions`; build page `All revisions › kuberik-testing`; both carry
+  `?q=`.
+- Every `.bld-row` in all three lists draws an 8px bar, including a never-deployed row (all track)
+  and a no-longer-running row (all tint) — screenshot both.
+- Build-page head band draws the 16px bar at `6 of 6`; `rg 'rev-build-bar' frontend/src` returns
+  nothing.
+- Skeleton flip test at 1440 and 390.
+- `pnpm test` green.
