@@ -37,7 +37,8 @@
 		type RepoLedger,
 		type RevisionSlot,
 		type ServiceLedgerGroup,
-		type ServiceLedgerLine
+		type ServiceLedgerLine,
+		type LineStateChip
 	} from '$lib/view-models/revision-ledger';
 	import { revisionCoverage, heldBehind, slotBakeStatus } from '$lib/view-models/revision-coverage';
 	import { rankLabel, rankRole, type RankVerdict } from '$lib/view-models/env-rank';
@@ -226,6 +227,31 @@
 </script>
 
 <!--
+	⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — THE ROW'S SECOND CHIP, SHARED BY
+	THE RANKED AND UNRANKED BRANCHES. A `held` state names the BLOCKED
+	CANDIDATE (`state.holdOf`) rather than repeating this row's own running
+	sha under an alarm fill — see the rank-chip branch's own comment below
+	for why that used to name the wrong build. Every other state keeps the
+	plain wide chip it always had; `deploying`/`checking` render nothing
+	here (that in-flight glyph is the rank chip's own icon slot elsewhere on
+	this row).
+-->
+{#snippet secondaryChip(state: LineStateChip | null)}
+	{#if state?.role === 'held'}
+		<Chip
+			role="alarm"
+			label="HELD"
+			value={state.holdOf?.label ?? state.holdOf?.short}
+			valueTitle={state.holdOf?.label ? state.holdOf.short : undefined}
+			title={state.title}
+			wide
+		/>
+	{:else if state && state.role !== 'deploying' && state.role !== 'checking'}
+		<Chip role={state.role} label={state.label} title={state.title} wide />
+	{/if}
+{/snippet}
+
+<!--
 	⭐ THE WHOLE HEADER IS THE ONE `<a>` — `lib/CLAUDE.md`'s own rule: "a
 	region that reads as a destination must BE one." The chevron is
 	decorative; the header itself is the tap target.
@@ -250,10 +276,15 @@
 				<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">
 					{matchCount} of {repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'}
 				</span>
+			{:else if verdict.chip}
+				<!--
+					⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — CHIP OR WORDS, NEVER BOTH.
+					`3 HELD · 3 places held ›` said the identical fact twice — the
+					chip already carries the count (`3 held`) and the full sentence
+					lives in its own `title`. The chevron stays; the words go.
+				-->
+				<Chip role={verdict.chip.role} label={verdict.chip.label} wide title={verdict.text} />
 			{:else}
-				{#if verdict.chip}
-					<Chip role={verdict.chip.role} label={verdict.chip.label} wide title={verdict.text} />
-				{/if}
 				<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">{verdict.text}</span
 				>
 			{/if}
@@ -297,31 +328,20 @@
 							{/if}
 						</span>
 						{#if line}
-							{#if state?.role === 'held'}
-								<!--
-									⭐ CRAFT REVIEW (b) — ONE HELD SPELLING. The alarm fill,
-									always paired with the held release's own version, as a
-									single joined chip — never a quiet outlined `HELD` beside
-									a separate rank chip. The repo header's own `{n} held`
-									chip (above) and the build page's chip (lane 3) converge
-									on this same spelling.
-								-->
-								<span class="svc-build">
-									<span class="svc-build-id">
-										<Chip
-											role="alarm"
-											label="HELD"
-											value={line.short}
-											valueHref={revisionPath(repo.repoKey, line.revision)}
-											valueTitle={line.revision}
-											title={state.title}
-											wide
-										/>
-									</span>
-								</span>
-							{:else if line.rank !== null}
+							{#if line.rank !== null}
 								{@const verdict2 = rankVerdictFor(line.rank)}
 								<span class="svc-build">
+									<!--
+										⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — THE ROW IS ABOUT
+										WHAT RUNS. A `held` line means THIS release cannot
+										advance to a newer one — it is still the thing running,
+										so the rank chip naming it draws FIRST, exactly as an
+										unheld line's does. The `HELD` chip follows, naming the
+										blocked CANDIDATE (`state.holdOf`) rather than repeating
+										this row's own running sha under an alarm fill — the old
+										single joined `HELD <running sha>` chip named the wrong
+										build.
+									-->
 									<span class="svc-build-id">
 										<Chip
 											role={rankRole(verdict2)}
@@ -331,9 +351,7 @@
 											valueTitle={line.revision}
 										/>
 									</span>
-									{#if state && state.role !== 'deploying' && state.role !== 'checking'}
-										<Chip role={state.role} label={state.label} title={state.title} wide />
-									{/if}
+									{@render secondaryChip(state)}
 								</span>
 							{:else}
 								<span class="svc-build">
@@ -342,9 +360,7 @@
 										href={revisionPath(repo.repoKey, line.revision)}
 										title={line.revision}>{line.short}</a
 									>
-									{#if state && state.role !== 'deploying' && state.role !== 'checking'}
-										<Chip role={state.role} label={state.label} title={state.title} wide />
-									{/if}
+									{@render secondaryChip(state)}
 								</span>
 							{/if}
 							<span class="svc-envs">
@@ -486,13 +502,49 @@
 		display: contents;
 	}
 
+	/*
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 7 — THE GAP BETWEEN RELEASE-LINE
+	 * GROUPS READS AS A GLITCH WITHOUT A MARK. 8px of bare ground between
+	 * `hello-api-app` and `hello-multi-app` (this repo's two release lines)
+	 * looked identical to a rendering bug — nothing on the row said "new
+	 * group starts here". A centred hairline draws the separation the
+	 * blank row was already reserving space for; the rhythm otherwise stays
+	 * exactly what it was (same 8px, same column span).
+	 */
 	.svc-line-gap {
 		grid-column: 1 / -1;
 		height: 8px;
+		display: flex;
+		align-items: center;
 	}
 
+	.svc-line-gap::after {
+		content: '';
+		display: block;
+		width: 100%;
+		height: 1px;
+		margin: 0 16px;
+		background-color: var(--color-gray-100);
+	}
+
+	:global(.dark) .svc-line-gap::after {
+		background-color: color-mix(in oklab, var(--color-gray-700) 60%, transparent);
+	}
+
+	/*
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 7 — THE WRAP MUST ALIGN WITH THE
+	 * FIRST LINE. `<a class="svc-name">`/`<span class="svc-name-
+	 * continuation">` are inline by default, and CSS's own rule for inline
+	 * padding is that LEFT padding applies only before the FIRST line box —
+	 * a second, wrapped line starts at the box's outer edge with none of
+	 * it, which reads as a negative indent (measured live: the wrapped
+	 * line landed 17px left of the column edge the first line started at).
+	 * `display: block` makes the padding apply to the BOX, so every
+	 * wrapped line starts at the same content edge as the first.
+	 */
 	.svc-name,
 	.svc-name-continuation {
+		display: block;
 		padding: 6px 16px 6px 16px;
 		overflow-wrap: break-word;
 	}
@@ -579,6 +631,33 @@
 			order: 3;
 			flex-basis: 100%;
 			padding: 0;
+		}
+
+		/*
+		 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 11 — THE META LINE NEVER
+		 * ELLIPSISES A COUNT. `.repo-meta-text`'s `truncate` (markup) is
+		 * right at `sm`+, where the row has `View repository` to its right
+		 * and not enough of the card's own width to wrap into — but below
+		 * 560px the two stacked and the SAME class clipped `36 builds · 12
+		 * deployed at le…`, mid-count, with `View repository` sharing the
+		 * line it had already run out of room for. Unlayered, this
+		 * Svelte-scoped rule outranks `truncate`'s own utility layer
+		 * (`lib/CLAUDE.md`'s note) — no markup change needed. `flex-col` +
+		 * `items-start` lets the sentence wrap in full above, and `View
+		 * repository` moves to its own line, right-aligned via its own
+		 * `align-self`.
+		 */
+		.repo-meta {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+		.repo-meta-text {
+			white-space: normal;
+			overflow: visible;
+			text-overflow: unset;
+		}
+		.repo-meta > .nav-link {
+			align-self: flex-end;
 		}
 	}
 </style>

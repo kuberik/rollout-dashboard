@@ -874,6 +874,44 @@ describe('lineState — round 3 §3 (state in words, right kind, right hue)', ()
 		const state = lineState(line([slot(r)]), now);
 		expect(state?.role).toBe('held');
 		expect(state?.label).toBe('held');
+		// The fixture's own candidate carries no `revision` — honest null
+		// rather than a guessed sha.
+		expect(state?.holdOf).toBeNull();
+	});
+
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — `holdOf` NAMES THE BLOCKED
+	 * CANDIDATE, NOT THE RUNNING LINE. The old row spelled a `held` line as
+	 * `HELD <this line's own running sha>` — this is the fixture proving the
+	 * candidate `promotionBlock` actually found blocked is what `holdOf`
+	 * carries, read off the SAME rollout, so the two can never name
+	 * different builds.
+	 */
+	it('holdOf names the blocked candidate — the sha AND the label when they differ', () => {
+		const r = {
+			status: {
+				history: [{ bakeStatus: 'Succeeded', version: { tag: 'v1', version: '1.0.0' } }],
+				releaseCandidates: [
+					{ tag: 'v2', version: '2.67.0-67', revision: `${'a'.repeat(40)}` }
+				],
+				gates: [{ name: 'g', passing: true, allowedVersions: [] }]
+			}
+		};
+		const state = lineState(line([slot(r)]), now);
+		expect(state?.role).toBe('held');
+		expect(state?.holdOf).toEqual({ short: 'aaaaaaa', label: '2.67.0-67' });
+	});
+
+	it('holdOf drops the label when it is the same as the sha — no redundant second value', () => {
+		const r = {
+			status: {
+				history: [{ bakeStatus: 'Succeeded', version: { tag: 'v1', version: '1.0.0' } }],
+				releaseCandidates: [{ tag: 'v2', revision: `${'b'.repeat(40)}` }],
+				gates: [{ name: 'g', passing: true, allowedVersions: [] }]
+			}
+		};
+		const state = lineState(line([slot(r)]), now);
+		expect(state?.holdOf).toEqual({ short: 'bbbbbbb', label: null });
 	});
 
 	it('draws PINNED (neutral `unranked`) — a person’s choice, never amber', () => {
@@ -885,7 +923,8 @@ describe('lineState — round 3 §3 (state in words, right kind, right hue)', ()
 		expect(state).toEqual({
 			role: 'unranked',
 			label: 'pinned',
-			title: 'Pinned to 1.2.3 — automatic deploys are paused until the pin is cleared.'
+			title: 'Pinned to 1.2.3 — automatic deploys are paused until the pin is cleared.',
+			holdOf: null
 		});
 	});
 
@@ -915,7 +954,8 @@ describe('lineState — round 3 §3 (state in words, right kind, right hue)', ()
 		expect(state).toEqual({
 			role: 'deploying',
 			label: 'deploying',
-			title: 'The new version is still going out'
+			title: 'The new version is still going out',
+			holdOf: null
 		});
 	});
 
@@ -935,7 +975,8 @@ describe('lineState — round 3 §3 (state in words, right kind, right hue)', ()
 		expect(state).toEqual({
 			role: 'checking',
 			label: 'checking',
-			title: 'The new version is live and is being watched before the deploy counts as done'
+			title: 'The new version is live and is being watched before the deploy counts as done',
+			holdOf: null
 		});
 	});
 

@@ -8,7 +8,7 @@ import {
 } from '$lib/version-utils';
 import { getDisplayVersion, detectStuck } from '$lib/utils';
 import { buildLadder, divergedFromLine, type BuildLadder } from './build-ladder';
-import { isDeployable, promotionBlock } from './promotion';
+import { isDeployable, promotionBlock, promotionCandidates } from './promotion';
 import { rankVerdicts, rankBehindBy, type RankVerdict } from './env-rank';
 import { compareEnvironmentNames } from '$lib/env-order';
 import { bakeWord, bakeTitle } from '$lib/bake-status';
@@ -881,6 +881,26 @@ export function rankSentence(service: RevisionService): { rank: string; of: stri
 }
 
 /**
+ * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 5 — THE VISIBLE DENOMINATOR, REWORDED SO
+ * IT STOPS READING AS A FRACTION. `rankSentence(...).of` ("of 4 builds") sits
+ * beside a WORD, not a numerator digit (`NEWEST` or `3 BEHIND`, never a bare
+ * "1"), so `NEWEST  of 4 builds` visually completes to "1 of 4 builds" —
+ * a fraction the row never actually draws a numerator for. This states the
+ * same fact as a position instead: `service.rank` is 0-indexed from the
+ * newest, so `rank + 1` is this build's own place on the ladder.
+ *
+ * `rankSentence`'s `.of` field is UNCHANGED and stays exported — three other
+ * strings on this row (`rank.of.replace(/^of /, '')`) compose full sentences
+ * ("the newest of the 4 builds hello-api-app can deploy") that this reword
+ * would break if it changed the shared field instead of adding a new one.
+ */
+export function ladderPositionLabel(service: RevisionService): string {
+	if (service.rank === null || service.ladderLength === 0) return '';
+	if (service.ladderLength === 1) return 'the only build this service has';
+	return `${service.rank + 1} of this service's ${service.ladderLength} builds`;
+}
+
+/**
  * Resolve a URL segment to a revision on this repo.
  *
  * REVISION FIRST, then label. A 12-char slug, a 7-char sha pasted from a
@@ -1293,6 +1313,19 @@ export type LineStateChip = {
 	role: 'failing' | 'alarm' | 'held' | 'unranked' | 'deploying' | 'checking';
 	label: string;
 	title: string;
+	/**
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — THE BLOCKED CANDIDATE ITSELF, SO
+	 * A `held` LINE CAN NAME WHAT IS ACTUALLY HELD. `role: 'held'` means
+	 * "this slot's RUNNING build cannot advance" — the line's own
+	 * `short`/`revision` are the RUNNING build, not the held one, and a row
+	 * that shows only `HELD <running sha>` names the wrong build. `holdOf`
+	 * is the newest candidate `promotionBlock` found blocked
+	 * (`promotionCandidates(rollout)[0]`), read off the SAME rollout the
+	 * `held` classification itself came from, so the two can never point at
+	 * different builds. `null` on every non-`held` result, and on a `held`
+	 * result where the candidate has no resolvable revision.
+	 */
+	holdOf: { short: string; label: string | null } | null;
 };
 
 export function lineState(
@@ -1302,6 +1335,7 @@ export function lineState(
 	let failing = false;
 	let stuck = false;
 	let held = false;
+	let holdOf: { short: string; label: string | null } | null = null;
 	let pinnedVersion: string | null = null;
 	let inFlightBake: 'Deploying' | 'InProgress' | null = null;
 	for (const slot of line.slots) {
@@ -1315,7 +1349,21 @@ export function lineState(
 		// window) slot seen earlier in the same line.
 		if (bake === 'Deploying') inFlightBake = 'Deploying';
 		else if (bake === 'InProgress' && inFlightBake === null) inFlightBake = 'InProgress';
-		if (promotionBlock(rollout).blocked) held = true;
+		if (promotionBlock(rollout).blocked) {
+			held = true;
+			if (!holdOf) {
+				const cand = promotionCandidates(rollout)[0];
+				if (cand?.revision) {
+					const short = shortRevision(cand.revision);
+					const label = getDisplayVersion({
+						version: cand.version,
+						revision: cand.revision,
+						tag: cand.tag ?? ''
+					});
+					holdOf = { short, label: label && label !== cand.revision && label !== short ? label : null };
+				}
+			}
+		}
 		if (rollout.spec?.wantedVersion && pinnedVersion === null) {
 			pinnedVersion = rollout.spec.wantedVersion;
 		}
@@ -1324,31 +1372,40 @@ export function lineState(
 		return {
 			role: 'failing',
 			label: 'failing',
-			title: 'Deployed here, but the deploy is not healthy.'
+			title: 'Deployed here, but the deploy is not healthy.',
+			holdOf: null
 		};
 	}
 	if (stuck) {
-		return { role: 'alarm', label: 'stuck', title: 'Stuck — this deploy has not moved.' };
+		return {
+			role: 'alarm',
+			label: 'stuck',
+			title: 'Stuck — this deploy has not moved.',
+			holdOf: null
+		};
 	}
 	if (inFlightBake) {
 		return {
 			role: inFlightBake === 'Deploying' ? 'deploying' : 'checking',
 			label: bakeWord(inFlightBake),
-			title: bakeTitle(inFlightBake)
+			title: bakeTitle(inFlightBake),
+			holdOf: null
 		};
 	}
 	if (held) {
 		return {
 			role: 'held',
 			label: 'held',
-			title: 'Held: a newer build exists, but no rule lets it through yet.'
+			title: 'Held: a newer build exists, but no rule lets it through yet.',
+			holdOf
 		};
 	}
 	if (pinnedVersion !== null) {
 		return {
 			role: 'unranked',
 			label: 'pinned',
-			title: `Pinned to ${pinnedVersion} — automatic deploys are paused until the pin is cleared.`
+			title: `Pinned to ${pinnedVersion} — automatic deploys are paused until the pin is cleared.`,
+			holdOf: null
 		};
 	}
 	return null;

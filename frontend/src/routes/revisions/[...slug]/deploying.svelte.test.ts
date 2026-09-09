@@ -192,10 +192,12 @@ describe('/revisions/[...slug] — in-flight is a state (REVISIONS-2026-09-06, r
 		await renderDetail();
 
 		// 1 live (dev), 1 deploying (staging) — never counted as live, and
-		// never silently dropped either. The leading figure ("1") sits in its
-		// own sibling span (`.rev-head-figure`), so this caption's own text
-		// node reads "of 2 places run this build · 1 deploying".
-		expect(screen.getByText(/of\s*2\s*places run this build\s*·\s*1\s*deploying/)).toBeInTheDocument();
+		// never silently dropped either. The leading figure ("1 of 2") sits in
+		// its own sibling span (`.rev-hero-figure`, denominator round 11
+		// revisions-pass-6 item 3), so this caption's own text node reads
+		// "places run this build · 1 deploying".
+		expect(screen.getByText(/places run this build\s*·\s*1\s*deploying/)).toBeInTheDocument();
+		expect(screen.getByText(/of\s*2/)).toBeInTheDocument();
 	});
 
 	test('item 3: "Running it now" keeps the neutral glyph while a sibling place is deploying', async () => {

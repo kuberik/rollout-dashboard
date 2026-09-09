@@ -1,32 +1,87 @@
 <svelte:options runes={true} />
 
 <script module lang="ts">
-	import type { BlockingStory } from '$lib/view-models/blocking-story';
+	import { joinClauses, type BlockingStory } from '$lib/view-models/blocking-story';
+	import { sortEnvironmentNames } from '$lib/env-order';
 
 	/**
-	 * ⭐ FINDING 3 (operator sweep, 2026-09-09) — NAME EVERY BLOCKING GATE ON
-	 * EVERY HELD PLACE, NOT JUST ONE REPRESENTATIVE SLOT.
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 — REPLACES `dedupedConsequences`.
 	 *
-	 * `hello-frontend-app` in PROD *and* STAGING both carry `allowedVersions:
-	 * []` gates, and the old banner (`heldGateReason`, `/revisions`' own
-	 * route) picked the FIRST held slot with gate evidence and stopped —
-	 * an operator reading it would not learn that shipping the dependency
-	 * does not clear every place at once. `stories` is one
-	 * `blockingStory(...)` result PER DISTINCT HELD ROLLOUT; two places
-	 * blocked by the identical contract produce the IDENTICAL `consequence`
-	 * string, so deduping by that string — not by place — is what keeps
-	 * "hello-api-app ships a newer api than 1.66.0" from repeating once per
-	 * place while still naming a SECOND, unrelated cause if one exists.
+	 * `dedupedConsequences` (finding 3, 2026-09-09) deduped by the full,
+	 * per-environment SENTENCE — which is exactly why it did not collapse
+	 * `hello-frontend-app` held in dev/staging/prod to one paragraph:
+	 * `blockingStory`'s own `consequence` appends a DIFFERENT promotion-order
+	 * tail per environment ("and dev deploys it first" / "and staging deploys
+	 * it first"), so the three sentences differ by that tail and none of them
+	 * are byte-identical. The banner printed the identical contract clause
+	 * three times with three different endings.
+	 *
+	 * The fix reads gates, not sentences: every story's `person`/`unknown`/
+	 * checks`/`clock` gates and the DEPENDENCY half of `upstream` are named
+	 * once each, deduped by their own `clause` text (worst-first, the same
+	 * order `blockingStory`'s own `consequence` builds in). The PROMOTION half
+	 * of `upstream` — "dev deploys it first", "staging deploys it first" — is
+	 * excluded here entirely; it is the SAME fact restated once per downstream
+	 * environment, and `orderClause` below turns that set into one ordered
+	 * chain instead of one clause per environment.
+	 *
+	 * ⚠️ A `clock` gate's own "in 3h" countdown is NOT reconstructed here —
+	 * that needs `now` and a timezone, which is `blockingStory`'s own job when
+	 * it builds each story's `consequence`. Naming the clock gate's bare
+	 * `clause` ("the deploy window reopens") without the countdown is the
+	 * trade for not threading a second clock through this component; a
+	 * contract hold (this fix's whole reason for existing) never carries one.
 	 */
-	export function dedupedConsequences(stories: BlockingStory[]): string[] {
+	export function dedupedClauses(stories: BlockingStory[]): string[] {
 		const seen = new Set<string>();
 		const out: string[] = [];
+		const push = (clause: string) => {
+			if (!clause || seen.has(clause)) return;
+			seen.add(clause);
+			out.push(clause);
+		};
 		for (const s of stories) {
-			if (!s.consequence || seen.has(s.consequence)) continue;
-			seen.add(s.consequence);
-			out.push(s.consequence);
+			for (const g of s.person) push(g.clause);
+			for (const g of s.unknown) push(g.clause);
+			for (const g of s.upstream) {
+				if (g.kind === 'dependency') push(g.clause);
+			}
+			for (const g of s.checks) push(g.clause);
+			for (const g of s.clock) push(g.clause);
 		}
 		return out;
+	}
+
+	/**
+	 * THE ORDER, NAMED ONCE. A `promotion`-kind gate anywhere in `stories`
+	 * means the held places are a CHAIN, not independent holds — this turns
+	 * that into `then dev → staging → prod` rather than the deleted
+	 * per-environment repeat. `heldEnvLabels` is the caller's own set (it
+	 * already knows which places these stories cover — that is how it built
+	 * `stories` in the first place); sorted here in the product's one
+	 * pipeline order so every caller draws the same chain regardless of the
+	 * order it discovered the places in.
+	 */
+	export function orderClause(stories: BlockingStory[], heldEnvLabels: string[]): string {
+		const hasPromotionGate = stories.some((s) => s.upstream.some((g) => g.kind === 'promotion'));
+		if (!hasPromotionGate || heldEnvLabels.length < 2) return '';
+		return `then ${sortEnvironmentNames(heldEnvLabels)
+			.map((e) => e.toLowerCase())
+			.join(' → ')}`;
+	}
+
+	/**
+	 * ONE CONSEQUENCE SENTENCE: the causes, once each, then the order, once.
+	 * `Nothing promotes itself until hello-api-app ships a newer api than
+	 * 1.66.0 · then dev → staging → prod.` — never the old three-times-with-
+	 * three-tails paragraph.
+	 */
+	export function heldConsequence(stories: BlockingStory[], heldEnvLabels: string[]): string {
+		const clauses = dedupedClauses(stories);
+		if (clauses.length === 0) return '';
+		const order = orderClause(stories, heldEnvLabels);
+		const body = order ? `${joinClauses(clauses)} · ${order}` : joinClauses(clauses);
+		return `Nothing promotes itself until ${body}.`;
 	}
 
 	/**
@@ -41,15 +96,30 @@
 	 * answer to that question (it already resolved the contract gate's
 	 * `have`/`need` via `classifyGate` to build `stories`); this only
 	 * changes the WORDING once told.
+	 *
+	 * ⛔ ROUND 11 REVISIONS-PASS-6, ITEM 1 — THE LEAD CLAUSE MUST NOT SURVIVE
+	 * INTO THE INDEFINITE BRANCH. The old version APPENDED the indefinite
+	 * sentence after `sentence`, which still opened with "N newer builds are
+	 * waiting." — printing "waiting" and "this is not a matter of waiting" in
+	 * the same paragraph. The lead is gated on `!indefinite` now, not merely
+	 * followed by a correction.
 	 */
-	export function heldExplanation(stories: BlockingStory[], indefinite: boolean): string {
-		const parts = dedupedConsequences(stories);
-		const sentence = parts.join(' ');
-		if (!indefinite || !sentence) return sentence;
-		return (
-			sentence +
-			' No newer build satisfying this exists anywhere yet — this is not a matter of waiting, it is held indefinitely until someone ships one.'
-		);
+	export function heldExplanation(
+		stories: BlockingStory[],
+		heldEnvLabels: string[],
+		indefinite: boolean = false
+	): string {
+		const consequence = heldConsequence(stories, heldEnvLabels);
+		if (!consequence) return '';
+		const n = stories[0]?.candidateCount ?? 0;
+		const lead =
+			!indefinite && n > 0
+				? `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} waiting. `
+				: '';
+		const tail = indefinite
+			? ' No newer build satisfying this exists anywhere yet — this is not a matter of waiting, it is held indefinitely until someone ships one.'
+			: '';
+		return `${lead}${consequence}${tail}`;
 	}
 </script>
 
@@ -77,6 +147,7 @@
 		subject,
 		releaseSplitMessage,
 		stories,
+		heldEnvLabels = [],
 		indefinite = false,
 		primaryHref = null,
 		primaryLabel = null,
@@ -88,6 +159,8 @@
 		releaseSplitMessage: string;
 		/** One `blockingStory(...)` result per DISTINCT held rollout. */
 		stories: BlockingStory[];
+		/** The environments `stories` covers — see `orderClause`'s own doc comment. */
+		heldEnvLabels?: string[];
 		/** See `heldExplanation`'s own doc comment. */
 		indefinite?: boolean;
 		/** "Open <service>" target — the provider's app page. */
@@ -97,7 +170,7 @@
 		hasSchedule?: boolean;
 	} = $props();
 
-	const explanation = $derived(heldExplanation(stories, indefinite));
+	const explanation = $derived(heldExplanation(stories, heldEnvLabels, indefinite));
 	const message = $derived(explanation ? `${releaseSplitMessage} ${explanation}` : releaseSplitMessage);
 	const HeldIcon: Component = $derived(hasSchedule ? CalendarMonthSolid : UserCircleSolid);
 </script>

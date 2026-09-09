@@ -234,7 +234,7 @@
 						in {searchSummary.repos} repositor{searchSummary.repos === 1 ? 'y' : 'ies'}
 					{/if}
 				{:else}
-					{attentionSentence(attention)}{#if orderedLedgers.length !== 1}
+					{attentionSentence(attention)}{' '}{#if orderedLedgers.length !== 1}
 						· {orderedLedgers.length}&nbsp;repositor{orderedLedgers.length === 1 ? 'y' : 'ies'}{/if}
 					{#if streamHealthy}
 						· live

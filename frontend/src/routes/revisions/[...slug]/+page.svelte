@@ -19,12 +19,14 @@
 		buildRevisionLedger,
 		findRow,
 		rankSentence,
+		ladderPositionLabel,
 		resolveRevision,
 		leadRowsFor,
 		releaseLines,
 		serviceLedger,
 		orderServiceGroups,
 		lineState,
+		type LineStateChip,
 		revisionLookup,
 		matchesRevisionText,
 		deployedRevisionCount,
@@ -75,9 +77,11 @@
 	// ⭐ THE OVERVIEW'S OWN WORDS. `GateRecord`'s `Kind` row already calls this
 	// for `RulePopover`/`BlockingStoryPanel`, so a rule labelled here cannot
 	// say something the Overview banner for the same rollout would disagree
-	// with. See the `bannerEnvSections`/`reasonsFor` notes below (finding 1,
-	// finding 4).
-	import GateRecord, { gateMark } from '$lib/components/GateRecord.svelte';
+	// with. See the `reasonsFor` notes below (finding 1, finding 4). The
+	// `GateRecord` disclosure this comment used to describe (`bannerEnvSections`)
+	// was Round 11's own dead code, deleted when `HeldBanner` replaced it — only
+	// `gateMark` survives from this import.
+	import { gateMark } from '$lib/components/GateRecord.svelte';
 	import { countLabel } from '$lib/disclosure';
 	import {
 		formatTimeAgo,
@@ -96,7 +100,6 @@
 	import { historyAtLimit } from '$lib/history-marks';
 	import { isEventStreamHealthy } from '$lib/api/events';
 	import { now } from '$lib/stores/time';
-	import { compareEnvironmentNames } from '$lib/env-order';
 	import { shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
 	import { Spinner } from 'flowbite-svelte';
 	import {
@@ -631,79 +634,6 @@
 	});
 
 	/**
-	 * ⭐ THE DISCLOSED TIER IS GROUPED BY ENVIRONMENT, AND EACH RULE CARRIES
-	 * THE RECORD `GateRecord` ALREADY DRAWS EVERYWHERE ELSE ON THIS PRODUCT.
-	 * (2026-09-03, operator-walk finding 4) The old body was one flat
-	 * `FactList` — `label: gateKindWord(g), value: g.id` pairs with no
-	 * environment named on the row at all, so a reader looking at
-	 * `ghd-p2fld` had no way to tell PROD's rule from DEV's without leaving
-	 * the popover, and the classified story's own sentence (`g.clause`,
-	 * `g.label`) never reached the screen — only the bare handle did.
-	 * Grouping by environment and handing each group's gates to `GateRecord`
-	 * (the same component the card and banner scale draw a rule with
-	 * everywhere else — `BlockingStoryLines`, `BlockingStoryPanel`) means
-	 * this disclosure can never say something about a rule that `GateRecord`
-	 * itself would draw differently.
-	 *
-	 * ⭐ FINDING 1 (coordinator sweep, 2026-09-03), preserved: THE ALLOW-LIST
-	 * BUCKET IS CLASSIFIED, THE CLOCK/CHECK BUCKET IS NOT. `g.clears !==
-	 * 'clock' && g.clears !== 'check'` is the identical structural split
-	 * `classifyGate` itself branches on (`hasAllowList`) — the same set
-	 * `awaitingApprovalGates` names, but carrying each gate's real `kind`
-	 * instead of just its id. Without `withSchedules` wired into this page's
-	 * `gateContext`, a schedule gate and a bare health check are not yet
-	 * distinguishable through `classifyGate` here (both fall through to
-	 * `check`), so running THOSE through `GateRecord`/`gateKindWord` would
-	 * mislabel a deploy window as a generic check — they keep the
-	 * established, honest "Not passing" name instead, still grouped per
-	 * environment, with that environment's own soonest `Opens` time from the
-	 * separate per-slot `windows` fetch below.
-	 */
-	type BannerEnvSection = {
-		envLabel: string;
-		theme: EnvironmentTheme | null;
-		classifiedGates: ClassifiedGate[];
-		windowGateNames: string[];
-		opensAt: string | null;
-	};
-
-	const bannerEnvSections = $derived.by<BannerEnvSection[]>(() => {
-		const byEnv = new Map<string, BannerEnvSection>();
-		const ensure = (envLabel: string, theme: EnvironmentTheme | null) => {
-			let e = byEnv.get(envLabel);
-			if (!e) {
-				e = { envLabel, theme, classifiedGates: [], windowGateNames: [], opensAt: null };
-				byEnv.set(envLabel, e);
-			}
-			return e;
-		};
-		for (const s of blockedSlots) {
-			if (s.notPassingGates.length === 0) continue;
-			const e = ensure(s.envLabel, s.slot.cell.theme);
-			for (const name of s.notPassingGates) {
-				if (!e.windowGateNames.includes(name)) e.windowGateNames.push(name);
-			}
-			const w = windows[slotKey(s)];
-			if (
-				w?.blocked &&
-				w.nextTransition &&
-				(!e.opensAt || new Date(w.nextTransition) < new Date(e.opensAt))
-			) {
-				e.opensAt = w.nextTransition;
-			}
-		}
-		for (const { slot, story } of slotStories) {
-			const gates = story.gates.filter((g) => g.clears !== 'clock' && g.clears !== 'check');
-			if (gates.length === 0) continue;
-			const e = ensure(slot.envLabel, slot.slot.cell.theme);
-			for (const g of gates) {
-				if (!e.classifiedGates.some((x) => x.id === g.id)) e.classifiedGates.push(g);
-			}
-		}
-		return [...byEnv.values()].sort((a, b) => compareEnvironmentNames(a.envLabel, b.envLabel));
-	});
-
-	/**
 	 * ⭐ ITEM 1 (2026-09-06 round-7 critique) — THE BLOCKING CAUSE, DRAWN
 	 * ONCE, LEADING THE DISCLOSURE. Measured live on `9f10e494d560`: the
 	 * head-band's `2 rules in prod · 2 in staging · 1 in dev` disclosure
@@ -748,25 +678,6 @@
 	});
 
 	/**
-	 * ⭐ EVERYTHING ELSE HOLDING A PLACE, ONCE THE PRIMARY CAUSE IS DRAWN
-	 * ABOVE. A promotion-order gate (`ghd-9qcnj`) that only refuses because
-	 * the environment controller has not observed the contract's own fix
-	 * yet CLEARS once the contract does — it is real, and it still holds
-	 * the place today, but it is not what an operator should act on first.
-	 * Filtered per-section (not a bare `bannerRuleCount`-style total) so a
-	 * section left with nothing after removing the primary gate does not
-	 * render an empty record.
-	 */
-	const secondaryEnvSections = $derived(
-		bannerEnvSections
-			.map((section) => ({
-				...section,
-				classifiedGates: section.classifiedGates.filter((g) => g.id !== primaryHold?.gateId)
-			}))
-			.filter((section) => section.classifiedGates.length > 0 || section.windowGateNames.length > 0)
-	);
-
-	/**
 	 * ⭐ ITEM 2 (2026-09-06 round-7 critique) — THE HEADLINE NAMES THE
 	 * RELEASE AND THE SERVICE WHEN THE SHA CARRIES SEVERAL. `9f10e49 is
 	 * held` was true and unhelpful the moment the sha resolved to two
@@ -807,115 +718,8 @@
 		return out;
 	});
 	const buildHasSchedule = $derived(slotStories.some(({ story }) => story.iconKind === 'clock'));
-
-	/** The SET the trigger counts: gate handles, both buckets, never the clock. */
-	const bannerRuleCount = $derived(
-		bannerEnvSections.reduce((n, s) => n + s.classifiedGates.length + s.windowGateNames.length, 0)
-	);
-
-	/**
-	 * ⭐ FINDING 2 (coordinator sweep, 2026-09-03): NEVER A SILENT UNION.
-	 *
-	 * This banner can speak for several rollouts at once (one per blocked
-	 * place), so `bannerRuleCount` above is a real total — but printing it
-	 * bare as `3 rules` reads as a claim about ONE story when it is really
-	 * `2 in prod, 1 in dev`, and comparing that bare total against a
-	 * single-rollout page (`/envs/prod`'s `2 rules`, the Dependencies tab's
-	 * own count) is what read as a contradiction. The trigger says the
-	 * breakdown instead — per environment, worst first — so a reader who
-	 * clicks through already knows which environment they are about to land
-	 * on. Past three environments it names only the worst one: a
-	 * `·`-joined clause per region is legible for dev/staging/prod and is
-	 * not for a 13-region fan-out.
-	 */
-	const ruleCountBreakdown = $derived.by<string>(() => {
-		const byEnv = new Map<string, Set<string>>();
-		for (const { slot, story } of slotStories) {
-			if (story.gates.length === 0) continue;
-			const set = byEnv.get(slot.envLabel) ?? new Set<string>();
-			for (const g of story.gates) set.add(g.id);
-			byEnv.set(slot.envLabel, set);
-		}
-		const entries = [...byEnv.entries()]
-			.filter(([, set]) => set.size > 0)
-			.sort((a, b) => b[1].size - a[1].size || a[0].localeCompare(b[0]));
-		if (entries.length === 0) return '';
-		if (entries.length === 1) return `${countLabel(entries[0][1].size, 'rule')} in ${entries[0][0]}`;
-		if (entries.length > 3) {
-			const [worstEnv, worstSet] = entries[0];
-			return `${countLabel(worstSet.size, 'rule')} in ${worstEnv} — the worst of ${entries.length} held environments`;
-		}
-		return entries
-			.map(([env, set], i) => `${i === 0 ? countLabel(set.size, 'rule') : String(set.size)} in ${env}`)
-			.join(' · ');
-	});
-
-	/**
-	 * ⭐ FINDING 1 (operator sweep, 2026-09-07) — THE ORDER, NOT A COUNT THAT
-	 * MISLEADS. `Waiting on hello-api-app · 1 rule` (the round-8 fix) said
-	 * what actually opens the hold — but read from `/revisions` alone, an
-	 * operator concluded shipping `hello-api-app` unblocks prod immediately.
-	 * It does not: `secondaryEnvSections` (below) still carries promotion-
-	 * order gates for staging ("after dev") and prod ("after staging") that
-	 * only clear once dev deploys, then staging — a sequence, not a single
-	 * gate. The `1 rule` count was also the wrong number to begin with, next
-	 * to the Overview's `2 rules for prod` and the Dependencies tab's `1
-	 * contract of 2 rules` for the identical hold — three different figures
-	 * for one fact. `promotionOrderClause` replaces the count with the
-	 * sequence itself, derived from the promotion-order gates' own "after
-	 * <env>" relationships (`ClassifiedGate.kind === 'promotion'`), the
-	 * environments printed in the product's one env-order
-	 * (`compareEnvironmentNames`). No promotion-order gate anywhere → no
-	 * "then …" clause: a bare contract hold with nothing sequenced behind it
-	 * has no order to state. No number is printed at all any more, so the
-	 * "a printed number must equal what the disclosure draws" rule holds by
-	 * construction. Falls back to the old per-environment breakdown on the
-	 * rarer page where nothing names a single provider (no dependency-type
-	 * gate found anywhere — every hold is a bare promotion-order/window
-	 * gate).
-	 */
-	const promotionOrderClause = $derived.by<string>(() => {
-		const hasPromotionGate = bannerEnvSections.some((s) =>
-			s.classifiedGates.some((g) => g.kind === 'promotion')
-		);
-		if (!hasPromotionGate) return '';
-		// `bannerEnvSections` is already sorted by `compareEnvironmentNames`.
-		return `then ${bannerEnvSections.map((s) => s.envLabel).join(' → ')}`;
-	});
-
-	/**
-	 * ⭐ FINDING 1, MOBILE RESIDUE — `AlertPanel`'s OWN disclosure trigger is
-	 * `whitespace-nowrap` ON PURPOSE (its own "F10" doc comment: a two-word
-	 * label that WRAPS mid-word, e.g. `1` / `rule` on separate lines, reads
-	 * as broken — the fix makes the row give way instead). That contract
-	 * assumed a short label. Measured live at 390 on `9f10e494d560`:
-	 * `Waiting on hello-api-app · then dev → staging → prod` (54 characters)
-	 * ran off the card with no ellipsis, no scrollbar, just gone —
-	 * `nowrap` cannot make a genuinely long sentence fit by giving a row
-	 * away, there is no sibling left to give. This is a caller-side fold
-	 * (matching `heroNarrow`'s own idiom on the list page), not a change to
-	 * the shared component: below 560px the order clause drops from the
-	 * TRIGGER and the cause alone (`Waiting on hello-api-app`, always short
-	 * enough to fit) stays — the order itself is not lost, it is exactly
-	 * what the disclosed `STAGING`/`PROD` records name once opened.
-	 */
-	let viewportNarrow = $state(false);
-	$effect(() => {
-		const onResize = () => (viewportNarrow = window.innerWidth < 560);
-		onResize();
-		window.addEventListener('resize', onResize);
-		return () => window.removeEventListener('resize', onResize);
-	});
-
-	const bannerDisclosureLabel = $derived.by<string>(() => {
-		if (primaryHold) {
-			// The order clause is the truth an operator on a phone needs most; it wraps, it is never dropped.
-			const order = promotionOrderClause;
-			const waitingOn = `Waiting on ${primaryHold.reason.subject ?? 'a service'}`;
-			return order ? `${waitingOn} · ${order}` : waitingOn;
-		}
-		return ruleCountBreakdown;
-	});
+	/** ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 — the places `distinctBuildStories` covers, for `HeldBanner`'s own `orderClause`. */
+	const buildHeldEnvLabels = $derived([...new Set(blockedSlots.map((s) => s.envLabel))]);
 
 	const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 	function numberWord(n: number): string {
@@ -2171,6 +1975,8 @@
 		return parts.join(' ');
 	});
 	const repoHasSchedule = $derived(repoHeldStories.some((story) => story.iconKind === 'clock'));
+	/** ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 — the places `repoHeldStories` covers, for `HeldBanner`'s own `orderClause`. */
+	const repoHeldEnvLabels = $derived([...new Set(repoHeldSlots.map((s) => s.envLabel))]);
 
 	/* ── THE HEAD BAND — B.4 item 2, the index's own clause set with the repository count dropped ── */
 	const repoAttention = $derived.by(() => {
@@ -2243,6 +2049,30 @@
 				: urlKey}</title
 	>
 </svelte:head>
+
+<!--
+	⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — THE LEDGER ROW'S SECOND CHIP.
+	Byte-for-byte the same rule `RepoLedgerCard.svelte`'s own `secondaryChip`
+	snippet draws (duplicated here rather than imported — this file's own
+	ledger row is a multi-select TOGGLE button, not a link, per B.4's own
+	"duplicated rather than imported" note above `.svc-ledger`'s CSS). A
+	`held` state names the blocked CANDIDATE (`state.holdOf`), never this
+	row's own running sha under an alarm fill.
+-->
+{#snippet secondaryRevChip(state: LineStateChip | null)}
+	{#if state?.role === 'held'}
+		<Chip
+			role="alarm"
+			label="HELD"
+			value={state.holdOf?.label ?? state.holdOf?.short}
+			valueTitle={state.holdOf?.label ? state.holdOf.short : undefined}
+			title={state.title}
+			wide
+		/>
+	{:else if state && state.role !== 'deploying' && state.role !== 'checking'}
+		<Chip role={state.role} label={state.label} title={state.title} wide />
+	{/if}
+{/snippet}
 
 <div class="rev-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
 	<!--
@@ -2410,37 +2240,48 @@
 			'Also still running', 'No longer running anywhere',
 			'Never deployed'].
 		-->
-		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+		<div class="mb-5">
 			<!--
 				⭐ B.4 ITEM 2 — `repoTitle(repoLabel)` IS THE PAGE'S REAL `h1` HERE,
 				not `sr-only`: the navbar prints the ROUTE name (`Revisions`), so
 				the repository's own name is not a duplicate — the rule the
 				`sr-only h1` exists for does not bite on this page.
+
+				⭐ ROUND 11 REVISIONS-PASS-6, ITEM 2 — THE NAME IS ITS OWN LINE.
+				The `h1` used to share a `flex` row with the verdict figure,
+				which put `kuberik-testing 3` on one baseline — the repo's name
+				jammed against the count as if `3` were part of it. The name is
+				a block on its own line now; the figure + sentence below it is
+				the SAME second line the index's own head band draws (just the
+				`h1` there is `sr-only`, so visually it was already only ever
+				one line).
 			-->
-			<h1 class="t-display text-gray-900 leading-[1.15] dark:text-white">
+			<h1 class="t-display block text-gray-900 leading-[1.15] dark:text-white">
 				{repoTitle(repoPageLedger.repoLabel)}
 			</h1>
-			<span class="t-display text-gray-900 tabular-nums dark:text-white"
-				>{repoAttention.total}</span
-			>
-			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-				{repoAttentionSentence(repoAttention)}
-				{#if repoStreamHealthy}
-					· live
-				{:else if query.dataUpdatedAt}
-					· updated
-					<time
-						datetime={new Date(query.dataUpdatedAt).toISOString()}
-						title="Change stream disconnected; showing data fetched at {new Date(
-							query.dataUpdatedAt
-						).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"
-						>{new Date(query.dataUpdatedAt).toLocaleTimeString([], {
-							hour: '2-digit',
-							minute: '2-digit'
-						})}</time
-					>, stream down
-				{/if}
-			</p>
+			<div class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+				<span class="t-display text-gray-900 tabular-nums dark:text-white"
+					>{repoAttention.total}</span
+				>
+				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
+					{repoAttentionSentence(repoAttention)}
+					{#if repoStreamHealthy}
+						· live
+					{:else if query.dataUpdatedAt}
+						· updated
+						<time
+							datetime={new Date(query.dataUpdatedAt).toISOString()}
+							title="Change stream disconnected; showing data fetched at {new Date(
+								query.dataUpdatedAt
+							).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"
+							>{new Date(query.dataUpdatedAt).toLocaleTimeString([], {
+								hour: '2-digit',
+								minute: '2-digit'
+							})}</time
+						>, stream down
+					{/if}
+				</p>
+			</div>
 		</div>
 
 		<RevisionSearch bind:value={repoSearchQuery} />
@@ -2511,22 +2352,17 @@
 									{/if}
 								</span>
 								{#if line}
-									{#if state?.role === 'held'}
-										<span class="svc-build">
-											<span class="svc-build-id">
-												<Chip
-													role="alarm"
-													label="HELD"
-													value={line.short}
-													valueHref={revisionPath(repoPageLedger.repoKey, line.revision)}
-													valueTitle={line.revision}
-													title={state.title}
-													wide
-												/>
-											</span>
-										</span>
-									{:else if line.rank !== null}
+									{#if line.rank !== null}
 										{@const verdict2 = repoRankVerdictFor(line.rank)}
+										<!--
+											⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — SEE
+											`RepoLedgerCard.svelte`'s IDENTICAL comment: the row is
+											about what RUNS, so the rank chip naming the running
+											release draws FIRST even when it is `held` from
+											advancing; `secondaryRevChip` names the blocked
+											CANDIDATE (`state.holdOf`) rather than repeating this
+											row's own running sha under an alarm fill.
+										-->
 										<span class="svc-build">
 											<span class="svc-build-id">
 												<Chip
@@ -2537,9 +2373,7 @@
 													valueTitle={line.revision}
 												/>
 											</span>
-											{#if state && state.role !== 'deploying' && state.role !== 'checking'}
-												<Chip role={state.role} label={state.label} title={state.title} wide />
-											{/if}
+											{@render secondaryRevChip(state)}
 										</span>
 									{:else}
 										<span class="svc-build">
@@ -2548,9 +2382,7 @@
 												href={revisionPath(repoPageLedger.repoKey, line.revision)}
 												title={line.revision}>{line.short}</a
 											>
-											{#if state && state.role !== 'deploying' && state.role !== 'checking'}
-												<Chip role={state.role} label={state.label} title={state.title} wide />
-											{/if}
+											{@render secondaryRevChip(state)}
 										</span>
 									{/if}
 									<span class="svc-envs">
@@ -2650,6 +2482,7 @@
 					subject={repoHeldSubject}
 					releaseSplitMessage={repoHeldMessage}
 					stories={repoHeldStories}
+					heldEnvLabels={repoHeldEnvLabels}
 					primaryHref={repoHeldPrimary?.appHref ?? null}
 					primaryLabel={repoHeldPrimary?.appName ?? null}
 					hasSchedule={repoHasSchedule}
@@ -2690,6 +2523,7 @@
 					eyebrow="Newest build"
 					coverage={cov}
 					spread={false}
+					showHeldChip
 					compact
 				>
 					{#if repoCommitUrlFor(leadRow.revision)}
@@ -2810,20 +2644,28 @@
 				THAN THE SHA. `REVISION-PAGES.md`'s own hero anatomy: the places
 				figure is the largest mark on the row (light weight, so its SIZE
 				— not its boldness — is what makes it lead), the sha sits beside
-				it at a smaller, heavier mono weight, and the denominator is a
-				small `/M` rather than a second `t-display` figure repeating the
-				same size. `.rev-hero-figure`/`.rev-hero-sha` are this file's own
-				scoped sizes (Svelte-scoped rules outrank a utility class per
-				`lib/CLAUDE.md`'s layering note) — `t-display`/`t-display-id` stay
-				at their product-wide 24px everywhere else this pair is used.
+				it at a smaller, heavier mono weight. `.rev-hero-figure`/
+				`.rev-hero-sha` are this file's own scoped sizes (Svelte-scoped
+				rules outrank a utility class per `lib/CLAUDE.md`'s layering note)
+				— `t-display`/`t-display-id` stay at their product-wide 24px
+				everywhere else this pair is used.
 
-				⭐ AND NEVER ORPHANED AT 390. The figure and the sha are both
-				short tokens that always fit one line together; `.rev-head-break`
-				now sits AFTER them and BEFORE the caption, so a narrow head band
-				wraps the SENTENCE onto its own line rather than stranding a bare
-				"6" alone above it (the defect this replaces — the break used to
-				sit between the sha and the figure, which is exactly what let the
-				figure end up alone).
+				⭐ ROUND 11 REVISIONS-PASS-6, ITEM 3 — THE DENOMINATOR MOVES INTO
+				THE FIGURE, AND THE SENTENCE ALWAYS WRAPS BENEATH. Measured live
+				at 1440: figure, sha and the full caption sentence all shared one
+				row with no break (`.rev-head-break` only forced a line below
+				559px), so `6 9f10e49 of 6 places run this build · 1 place rolled
+				back to it · …` ran as one 150-character line — the "jam" was
+				the caption crowding the sha, not a spacing bug between the two.
+				`.rev-hero-denom` is the smaller "of M" REVISION-PAGES.md's own
+				anatomy attaches to the numerator (`N`, smaller `/M` suffix) — so
+				the figure alone answers "how many, out of how many" as one visual
+				unit, and the caption below it no longer repeats the denominator
+				("of 6 places run this build" → "places run this build"). The
+				break is UNCONDITIONAL now, not gated to `max-width: 559px` — the
+				sentence is always the head band's own second line, capped at
+				`.rev-head-caption`'s `80ch` — and never orphans the figure alone
+				the way the break's old position (between sha and figure) could.
 
 				⭐ ITEM 2 (round-8 critique) — A RELEASE, NEVER A "BUILD". This sha
 				has exactly one build; what is held is a newer RELEASE of it,
@@ -2832,22 +2674,23 @@
 				THIS SAME COMMIT under a newer label, never a second build).
 			-->
 			<span class="rev-hero-figure text-gray-900 tabular-nums dark:text-white"
-				>{coverage.liveCount}</span
+				>{coverage.liveCount}<span class="rev-hero-denom text-gray-500 dark:text-gray-400"
+					>&nbsp;of {coverage.totalCount}</span
+				></span
 			>
 			<span class="rev-hero-sha t-display-id text-gray-900 dark:text-white">{row.short}</span>
 			<span class="rev-head-break" aria-hidden="true"></span>
 			<!--
-				⚠️ THE SENTENCE STAYS "of {N} places run this build …", BYTE FOR
-				BYTE — `deploying.svelte.test.ts` pins this exact phrase in one
-				text node (`getByText(/of\s*2\s*places run this build…/)`), and
-				it is the honest caption for the SAME figure however the figure
-				is styled or ordered above it: leading the row visually does not
-				stop the sentence naming its own denominator.
+				⚠️ THE SENTENCE STAYS "places run this build …", BYTE FOR BYTE
+				after its own "of {N}" lead — `deploying.svelte.test.ts` pins the
+				remainder in one text node. The denominator moved into the figure
+				above (this comment's own block); the caption keeps naming what
+				it is a caption OF.
 			-->
 			<span
-				class="t-body text-gray-500 dark:text-gray-400"
+				class="rev-head-caption t-body text-gray-500 dark:text-gray-400"
 				title="A place is one service in one environment."
-				>of {coverage.totalCount} places run this build{headBandDeployingCount > 0
+				>places run this build{headBandDeployingCount > 0
 					? ` · ${headBandDeployingCount} deploying`
 					: ''}{headBandRolledBackCount > 0
 					? ` · ${countLabel(headBandRolledBackCount, 'place')} rolled back to it`
@@ -2910,6 +2753,7 @@
 				subject={bannerBuildSubject}
 				releaseSplitMessage={bannerMessage}
 				stories={distinctBuildStories}
+				heldEnvLabels={buildHeldEnvLabels}
 				primaryHref={primaryHold?.appHref ?? null}
 				primaryLabel={primaryHold?.reason.subject ?? null}
 				hasSchedule={buildHasSchedule}
@@ -2957,19 +2801,28 @@
 				for anyone who cannot see the segments.
 			-->
 			<!--
-				⭐ ROUND 11 CRAFT FINDING 7 — THE ROLLUP IS BACK, AND THE CARD
-				SPANS. The header rollup and the bar both left this card the
-				same round (A.6.3 moved the bar to the head band above); with
-				neither, `This build` measured a 128px shorter body than its
-				row-mate `Where it sits`/`What each service calls it`, an
-				empty-looking hole on the FIRST row a reader hits. Two fixes,
-				not one: a rollup (the release count — a fact this card's own
-				body does not otherwise summarise in one line) so the header is
-				no longer the one on the page with nothing on its right, and
-				`.rev-card-span` so this card owns its own full-width row
-				instead of sitting ragged beside a taller neighbour.
+				⭐ ROUND 11 CRAFT FINDING 7 — THE ROLLUP IS BACK. The header
+				rollup and the bar both left this card the same round (A.6.3
+				moved the bar to the head band above); with neither, `This
+				build` measured a 128px shorter body than its row-mate `Where
+				it sits`/`What each service calls it` — a rollup (the release
+				count — a fact this card's own body does not otherwise
+				summarise in one line) so the header is no longer the one on
+				the page with nothing on its right.
+
+				⛔ `.rev-card-span` (THIS CARD SPANS BOTH TRACKS ALONE) IS GONE
+				— ROUND 11 REVISIONS-PASS-6, ITEM 4. It fixed the 128px gap by
+				giving `This build` its own full-width row, which pushed `What
+				each service calls it` onto its OWN row below it, alone at
+				half width with an empty right half — the hole moved rather
+				than closing. `.rev-card-pair` puts the two back side by side
+				in one grid row with `align-self: stretch` (the grid's own
+				`align-items: start` stays the default for every OTHER row —
+				see that rule's own comment — this is an opt-IN on exactly
+				these two cells), so both cards share the row's height and
+				neither is ragged beside the other.
 			-->
-			<div class="rev-card-span">
+			<div class="rev-card-pair">
 			<Card
 				icon={RocketOutline}
 				title="This build"
@@ -3203,7 +3056,7 @@
 					restate the buckets: the buckets say WHERE, this says WHAT EACH
 					SERVICE CALLS IT and how far down its own ladder it now sits.
 				-->
-				<div>
+				<div class="rev-card-pair">
 				<!--
 					⭐ ROUND 11 CRAFT FINDING 5 — "OF 33 / 26 / 34 BUILDS" IS
 					UNREADABLE ALONE, AND IT IS DROPPED RATHER THAN REWORDED.
@@ -3309,16 +3162,22 @@
 									</span>
 									<!-- ⭐ THE DENOMINATOR CARRIES ITS OWN DEFINITION.
 									     `newest` means different things in different corners of
-									     this product; here it is rank 0 on THIS service's ladder,
-									     and `newest of 1` beside `newest of 37` is only readable
-									     once that is said. It was said in a 3-line footer under
-									     the card (2026-09-02, cut with the page's other
-									     definitions); it is said here, on the `of N` the sentence
-									     is about. `scan.ts` reads `title`, so it stays pinned. -->
+									     this product; here it is rank 0 on THIS service's ladder.
+									     It was said in a 3-line footer under the card
+									     (2026-09-02, cut with the page's other definitions); it is
+									     said here. `scan.ts` reads `title`, so it stays pinned.
+
+									     ⛔ ROUND 11 REVISIONS-PASS-6, ITEM 5 — `rank.of` ("of 4
+									     builds") beside a WORD chip (`NEWEST`, never a numerator
+									     digit) completed to "1 of 4 builds" as if the row drew a
+									     fraction it never actually draws the top half of.
+									     `ladderPositionLabel` states this build's own POSITION
+									     on the ladder instead ("1 of this service's 4 builds") —
+									     or, at a ladder of one, that there is nothing to count. -->
 									<span
 										class="t-micro text-gray-500 dark:text-gray-400"
 										title="Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be on the newest."
-										>{rank.of}</span
+										>{ladderPositionLabel(svc)}</span
 									>
 								{:else}
 									<!-- No number at all. A `0` here would read as "newest".
@@ -3715,9 +3574,39 @@
 						{:else}
 							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 								{#each groupSlots(bucket.slots) as g (g.appName)}
+									<!--
+										⭐ ROUND 11 REVISIONS-PASS-6, ITEM 9 — THE LABEL, FOLDED
+										IN BELOW `sm` ONLY. `What each service calls it` and
+										`Running it now` restated each other at 390: both listed
+										`hello-api-app` with a chip beside it and neither said
+										anything the other did not, once the two cards were far
+										enough apart on a phone that a reader could not hold both
+										in mind. `.rev-group-label` is `display: none` above
+										560px (see its own CSS, below the `.rev-group-row` rules)
+										— at desktop width the two cards sit close enough that
+										restating it there would be the opposite defect.
+									-->
 									<li class="rev-place-row px-4 py-3">
 										{#each g.runs as rg, gi (rg.runs ?? '—')}
 											{@const sharedAge = sharedAgeFor(bucket.key, rg.slots)}
+											<!--
+												⭐ ITEM 9, CONTINUED — `rg.runs` IS THIS GROUP'S OWN
+												RUNNING LABEL, NOT `row.services.find(...)`. This
+												build's commit can resolve to TWO rows (a held sibling
+												splits one revision into a "running" row and a "held"
+												row — see `revisionLookup`'s own doc comment) — on the
+												HELD row, `row.services.find(...).label` names the
+												HELD release, and folding THAT into `Running it now`
+												would print `2.67.0-67` beside slots that are actually
+												running `2.66.0-66`, a wrong-build claim this exact
+												`<li>` disproves four lines down (`on 2.66.0-66`).
+												`rg.runs` is read off the SAME per-slot fact the group
+												was partitioned by, so it can never name a release
+												other than what these specific slots report. -->
+											{@const groupLabel =
+												bucket.key === 'live' && rg.runs && rg.runs !== row.short && rg.runs !== row.revision
+													? rg.runs
+													: null}
 											<!--
 												⭐ ITEM 3 (2026-09-06 round-7 critique) — THE LEDGER'S
 												OWN TRACKS (name / chips / age), NOT A FREE-FLOWING
@@ -3748,6 +3637,13 @@
 														aria-hidden="true"
 													/></a
 												>
+												{#if groupLabel}
+													<span
+														class="rev-group-label t-code-sm text-gray-500 dark:text-gray-400"
+														title="{g.appName} calls this {groupLabel}"
+														>{groupLabel}</span
+													>
+												{/if}
 												<div class="rev-group-chips">
 												{#each rg.slots as s (s.envName)}
 													{@const age = bucket.key === 'live' ? slotDeployedAgo(s) : null}
@@ -4075,13 +3971,40 @@
 		display: contents;
 	}
 
+	/*
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 7 — SEE `RepoLedgerCard.svelte`'S
+	 * IDENTICAL COMMENT. A centred hairline draws the release-line group
+	 * separation the blank row was already reserving space for.
+	 */
 	.svc-line-gap {
 		grid-column: 1 / -1;
 		height: 8px;
+		display: flex;
+		align-items: center;
 	}
 
+	.svc-line-gap::after {
+		content: '';
+		display: block;
+		width: 100%;
+		height: 1px;
+		margin: 0 16px;
+		background-color: var(--color-gray-100);
+	}
+
+	:global(.dark) .svc-line-gap::after {
+		background-color: color-mix(in oklab, var(--color-gray-700) 60%, transparent);
+	}
+
+	/*
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 7 — SEE `RepoLedgerCard.svelte`'S
+	 * IDENTICAL COMMENT. `display: block` makes the wrapped line start at
+	 * the box's own content edge, same as the first line — an inline box's
+	 * left padding otherwise applies only before its FIRST line.
+	 */
 	.svc-name,
 	.svc-name-continuation {
+		display: block;
 		padding: 6px 16px 6px 16px;
 		overflow-wrap: break-word;
 	}
@@ -4171,6 +4094,25 @@
 			flex-basis: 100%;
 			padding: 0;
 		}
+
+		/*
+		 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 11 — SEE `RepoLedgerCard.svelte`'S
+		 * IDENTICAL COMMENT. The meta line wraps in full below 560px, never
+		 * ellipsising a count; `View repository` drops to its own line,
+		 * right-aligned.
+		 */
+		.repo-meta {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+		.repo-meta-text {
+			white-space: normal;
+			overflow: visible;
+			text-overflow: unset;
+		}
+		.repo-meta > .nav-link {
+			align-self: flex-end;
+		}
 	}
 
 	/*
@@ -4232,11 +4174,11 @@
 	/*
 	 * ⭐ ROUND 11 CRAFT FINDING 7 — THE NUMERAL LEADS THE ROW: LARGER THAN
 	 * THE SHA, LIGHT WEIGHT (`REVISION-PAGES.md`'s own hero anatomy — sha
-	 * ~30px, numeral large and light, with the denominator carried in the
-	 * caption sentence rather than a second big figure). Both are markup
-	 * order now (`.rev-hero-figure` before `.rev-hero-sha`), so no
-	 * `margin-left` trick is needed to bind the figure to anything — it is
-	 * simply first.
+	 * ~30px, numeral large and light). Both are markup order now
+	 * (`.rev-hero-figure` before `.rev-hero-sha`), so no `margin-left` trick
+	 * is needed to bind the figure to anything — it is simply first.
+	 * ⛔ THE DENOMINATOR MOVED FROM THE CAPTION INTO THE FIGURE, ROUND 11
+	 * REVISIONS-PASS-6 ITEM 3 — see `.rev-hero-denom`, below.
 	 */
 	.rev-hero-figure {
 		font-family: var(--font-montserrat);
@@ -4245,25 +4187,43 @@
 		line-height: 1.15;
 	}
 
+	/*
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 3 — THE DENOMINATOR, ATTACHED TO THE
+	 * NUMERATOR. `REVISION-PAGES.md`'s own hero anatomy: "a very large light
+	 * numeral N with a SMALLER /M suffix". Half the figure's size and the
+	 * caption's own ink (not the figure's near-black), so `6 of 6` reads as
+	 * one figure at two weights rather than a second number competing with
+	 * the first.
+	 */
+	.rev-hero-denom {
+		font-size: 16px;
+		font-weight: 400;
+	}
+
 	.rev-hero-sha {
 		font-size: 26px;
 	}
 
 	/*
-	 * ⛔ PARTIALLY SUPERSEDED, ITEM 6 (2026-09-06 round-7 critique); THE
-	 * BREAK IS BACK (ITEM 5, round-8 critique); REPOSITIONED, ROUND 11
-	 * CRAFT FINDING 7. The break used to sit BETWEEN the sha and the figure
-	 * — forcing the figure alone onto a fresh line under 560px, exactly
-	 * the orphan this round's own finding flags ("6" alone on a line).
-	 * Markup now reads figure → sha → `.rev-head-break` → caption, so the
-	 * break instead separates the two SHORT tokens (which always share one
-	 * line, at any width) from the long caption sentence — the caption
-	 * wraps to its own line below 560px, the figure never stands alone.
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 3 — THE BREAK IS UNCONDITIONAL NOW.
+	 * (Was `@container (max-width: 559px)` only — ITEM 5/round-8 critique,
+	 * REPOSITIONED round 11 craft finding 7.) Measured live at 1440: with no
+	 * break, the figure, the sha AND the full caption sentence shared one
+	 * 150-character row — "jammed" was the caption crowding the sha, not a
+	 * spacing defect between the two. The figure and the sha are always a
+	 * short pair that fits one line together; the caption is a full
+	 * sentence that never should have shared it at any width. `.rev-head-
+	 * caption`'s own `max-width: 80ch` (below) is what "nothing orphans at
+	 * 390" needs on TOP of the break — a full-width sentence at 390 already
+	 * wraps on its own, `80ch` is what keeps it from stretching the same
+	 * sentence into one 150-character line at 1440+ instead.
 	 */
-	@container (max-width: 559px) {
-		.rev-head-break {
-			flex-basis: 100%;
-		}
+	.rev-head-break {
+		flex-basis: 100%;
+	}
+
+	.rev-head-caption {
+		max-width: 80ch;
 	}
 
 	/*
@@ -4339,20 +4299,54 @@
 			grid-column: 1 / -1;
 		}
 
-		/*
-		 * ⭐ ROUND 11 CRAFT FINDING 7 — `This build` SPANS BOTH TRACKS. It no
-		 * longer carries the bar (moved to the head band, A.6.3) or a
-		 * height-matching opt-in with its row-mate, so pairing it beside
-		 * `Where it sits`/`What each service calls it` left a measured
-		 * 128px gap the moment that card's own body ran longer — spanning is
-		 * the deterministic fix (no card beside it, so no mismatch to have).
-		 * `.rev-card-span` is on the plain wrapping `<div>` this file's own
-		 * template already had around the card, not on `<Card>`'s own root,
-		 * so it needs no `:global()` escape.
-		 */
-		.rev-buckets > .rev-card-span {
-			grid-column: 1 / -1;
-		}
+	}
+
+	/*
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 4 — `THIS BUILD` AND `WHAT EACH
+	 * SERVICE CALLS IT` SHARE ONE ROW'S HEIGHT, NEVER SPAN. Replaces round
+	 * 11 craft finding 7's `.rev-card-span` (`grid-column: 1 / -1`), which
+	 * fixed the 128px ragged-bottom gap by giving `This build` its own
+	 * full-width row — moving the hole under `What each service calls it`
+	 * instead of closing it (measured live: that card alone at half width,
+	 * an empty right track beside it). `.rev-buckets`' own `align-items:
+	 * start` (above) is unchanged for every OTHER row — a bucket card still
+	 * answers to its own content, per that rule's comment — this is an
+	 * `align-self` OPT-IN on exactly these two cells, the one row on the
+	 * page where two cards about the same subject (the build's identity)
+	 * belong side by side at equal height.
+	 *
+	 * ⛔ `display: flex` ON THE WRAPPER COLLAPSED THE CARD TO 2px WIDE AT
+	 * 390 — CAUGHT LIVE, NOT IN THE FIRST DRAFT. `Card.svelte`'s root is
+	 * `.card-cq { container-type: inline-size }` for its OWN `@container`
+	 * queries, and `contain: inline-size` (which that property sets)
+	 * REMOVES an element's content from its INLINE-axis (width) intrinsic
+	 * size contribution to its ancestors — by spec, exactly so a container
+	 * query cannot create a sizing loop. A flex ROW child with no explicit
+	 * width sizes itself from that same intrinsic contribution
+	 * (`flex-basis: auto` = content size); with the content stripped out by
+	 * containment, the browser measured it as ~0 and `flex-shrink: 1`
+	 * finished the job. `Card` is exempt from the same failure on the
+	 * BLOCK axis — `contain: inline-size` only strips the INLINE dimension
+	 * — which is why the wrapper's own HEIGHT (967px, measured) was
+	 * correct while its WIDTH (2px) was not: the two axes hit two
+	 * different CSS mechanisms and only one of them was broken.
+	 *
+	 * The fix does not put the wrapper in the flex model at all. `align-
+	 * self: stretch` on a plain block `<div>` GRID ITEM stretches its
+	 * BLOCK size (height) to the row's — a grid track's own width is fr-
+	 * distributed independently of any item's content in the first place,
+	 * so nothing here depends on `Card`'s intrinsic size for WIDTH either.
+	 * `height: 100%` on `Card`'s own root then fills that stretched
+	 * wrapper — a block child resolves a percentage height against its
+	 * parent's own (now explicit, stretched) height with no containment
+	 * interaction on the block axis to break it.
+	 */
+	.rev-buckets > .rev-card-pair {
+		align-self: stretch;
+	}
+
+	.rev-buckets > .rev-card-pair > :global(.card-cq) {
+		height: 100%;
 	}
 
 	/*
@@ -4468,6 +4462,20 @@
 	}
 
 	/*
+	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 9 — HIDDEN ABOVE 560px, A GRID ROW
+	 * OF ITS OWN BELOW IT. `display: none` here means the label item is
+	 * ALSO removed from `.rev-group-row`'s grid at desktop widths — a
+	 * hidden grid item still consumes a track otherwise, which would shift
+	 * `.rev-group-chips` into column 2 and strand `.rev-group-trail` on an
+	 * implicit new row. Un-hidden inside the `@container` block below,
+	 * where `.rev-group-row` has already collapsed to one column, so it
+	 * simply becomes its own line between the name and the chips.
+	 */
+	.rev-group-label {
+		display: none;
+	}
+
+	/*
 	 * Below 560px (the row's own rendered width — `.rev-place-row`, the
 	 * `<li>` two levels up, is the container this measures) the fixed
 	 * name column is what the phone ledger form already rejects (`lib/CLAUDE.md`'s
@@ -4477,6 +4485,10 @@
 	@container (max-width: 560px) {
 		.rev-group-row {
 			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.rev-group-label {
+			display: inline;
 		}
 
 		.rev-group-trail {

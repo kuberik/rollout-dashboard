@@ -65,7 +65,12 @@
 		type RevisionRow,
 		type RevisionSlot
 	} from '$lib/view-models/revision-ledger';
-	import { revisionCoverage } from '$lib/view-models/revision-coverage';
+	import {
+		revisionCoverage,
+		coverageBarSegments,
+		coverageBarLabel,
+		coverageCounts
+	} from '$lib/view-models/revision-coverage';
 	import { historyAtLimit } from '$lib/history-marks';
 	import { revisionPath } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
@@ -82,6 +87,7 @@
 	import Chip from './Chip.svelte';
 	import BuildRow from './BuildRow.svelte';
 	import BuildStateMark from './BuildStateMark.svelte';
+	import CoverageBar from './CoverageBar.svelte';
 
 	const FOLD = 6;
 
@@ -120,10 +126,6 @@
 	const namedPast = $derived(pastVisible.some(rowNamesBuild));
 
 	const coverageOf = (row: RevisionRow) => revisionCoverage(row, now);
-
-	function livePercent(live: number, total: number): number {
-		return total > 0 ? Math.round((live / total) * 100) : 0;
-	}
 
 	function liveEnvSlots(row: RevisionRow): RevisionSlot[] {
 		const seen = new Set<string>();
@@ -225,6 +227,49 @@
 	</div>
 {/snippet}
 
+<!--
+	⭐ ROUND 11 REVISIONS-PASS-6, ITEM 11 (+ THE UNDERLYING A.6.1 GAP THIS
+	FIXES) — EVERY `.bld-row` DRAWS ITS BAR NOW, NOT JUST "ALSO STILL
+	RUNNING"'S. The spec (`REVISIONS-2026-09-05.md`, A.6.1) asks for THREE
+	lines on every row in all three lists — the rollup sentence, an 8px
+	`CoverageBar`, then the age — and only "Also still running" had drawn
+	anything beyond the age: a hand-rolled two-tone `.bld-fill-track`, gated
+	on `liveCount < totalCount` (so a 100%-live row drew no bar at all,
+	the exact "the bar is a conditional that is false on every row" defect
+	A.2 replaced on the hero and the head band). "No longer running
+	anywhere" and "Never deployed" drew NO bar whatsoever — confirmed live
+	at 390, where neither list showed anything between the sha and the age.
+	`coverageRoll` is the ONE row-scale rollup, shared by all three:
+	`coverageBarSegments`/`coverageBarLabel`/`coverageCounts` are the same
+	round-11 functions the hero and the head band already draw from, so a
+	never-deployed row's bar reads all-track ("nowhere yet, and it is
+	still a candidate") and a no-longer-running row's reads all-tint
+	("every place is already past it") — never a hand-rolled percentage.
+-->
+{#snippet coverageRoll(
+	row: RevisionRow,
+	cov: ReturnType<typeof revisionCoverage>,
+	kind: 'live' | 'past' | 'pending'
+)}
+	{@const c = coverageCounts(cov)}
+	<span class="t-dense text-gray-700 dark:text-gray-200">
+		{c.here} of {c.total} running{c.deploying > 0
+			? ` · ${c.deploying} deploying`
+			: ''}{c.movedOn > 0 ? ` · ${c.movedOn} moved on` : ''}
+	</span>
+	<CoverageBar
+		compact
+		segments={coverageBarSegments(cov)}
+		label={coverageBarLabel(cov, row.short)}
+		class="mt-1 w-full"
+	/>
+	<time
+		class="t-micro mt-1 block text-gray-500 dark:text-gray-400"
+		datetime={ageIso(row, kind)}
+		title={ageTitle(row, kind)}>{ageOf(row, kind)}</time
+	>
+{/snippet}
+
 {#snippet names(row: RevisionRow, named: boolean)}
 	<span class="rev-names {named ? '' : 'rev-names--unnamed'}">
 		{#each row.labelGroups as g (g.label)}
@@ -308,24 +353,7 @@
 										</div>
 									{/snippet}
 									{#snippet roll()}
-										<span class="t-dense text-gray-700 dark:text-gray-200">
-											Running in {row.liveSlots} of {row.totalSlots}
-											<span class="text-gray-500 dark:text-gray-400">places</span>
-										</span>
-										{#if cov.liveCount < cov.totalCount}
-											<div
-												class="bld-fill-track"
-												role="img"
-												aria-label="running in {cov.liveCount} of {cov.totalCount} places"
-											>
-												<div class="bld-fill" style="width: {livePercent(cov.liveCount, cov.totalCount)}%"></div>
-											</div>
-										{/if}
-										<time
-											class="t-micro mt-1 block text-gray-500 dark:text-gray-400"
-											datetime={ageIso(row, 'live')}
-											title={ageTitle(row, 'live')}>{ageOf(row, 'live')}</time
-										>
+										{@render coverageRoll(row, cov, 'live')}
 									{/snippet}
 								</BuildRow>
 							{/each}
@@ -365,11 +393,7 @@
 									</div>
 								{/snippet}
 								{#snippet roll()}
-									<time
-										class="t-micro block text-gray-500 dark:text-gray-400"
-										datetime={ageIso(row, 'past')}
-										title={ageTitle(row, 'past')}>{ageOf(row, 'past')}</time
-									>
+									{@render coverageRoll(row, cov, 'past')}
 								{/snippet}
 							</BuildRow>
 						{/each}
@@ -408,6 +432,7 @@
 				{:else if pendingVisible.length > 0}
 					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 						{#each expandState.pending ? pendingVisible : pendingVisible.slice(0, FOLD) as row (row.revision)}
+							{@const cov = coverageOf(row)}
 							<BuildRow>
 								{#snippet mark()}
 									<HourglassOutline class="h-4 w-4 text-gray-400 dark:text-gray-500" aria-hidden="true" />
@@ -423,11 +448,7 @@
 									<span class="bld-svc-names t-dense block text-gray-700 dark:text-gray-200"
 										>{matchedServiceNames(row).join(' · ')}</span
 									>
-									<time
-										class="t-micro block text-gray-500 dark:text-gray-400"
-										datetime={ageIso(row, 'pending')}
-										title={ageTitle(row, 'pending')}>{ageOf(row, 'pending')}</time
-									>
+									{@render coverageRoll(row, cov, 'pending')}
 								{/snippet}
 							</BuildRow>
 						{/each}
@@ -457,25 +478,13 @@
 		}
 	}
 
-	.bld-fill-track {
-		margin-top: 4px;
-		height: 4px;
-		width: 100%;
-		border-radius: 2px;
-		background-color: var(--color-gray-200);
-	}
-
-	:global(.dark) .bld-fill-track {
-		background-color: var(--color-gray-700);
-	}
-
-	.bld-fill {
-		height: 100%;
-		border-radius: 2px;
-		background-color: var(--color-green-700);
-	}
-
-	:global(.dark) .bld-fill {
-		background-color: var(--color-green-600);
-	}
+	/*
+	 * ⛔ `.bld-fill-track`/`.bld-fill` ARE GONE, ROUND 11 REVISIONS-PASS-6,
+	 * ITEM 11. The hand-rolled two-tone painted track — gated on
+	 * `liveCount < totalCount`, so it drew nothing on a 100%-live row and
+	 * nothing at all on the other two lists — is replaced by `CoverageBar`
+	 * (compact scale) via the shared `coverageRoll` snippet above, which
+	 * draws on every row in all three lists, always. See that snippet's
+	 * own comment.
+	 */
 </style>

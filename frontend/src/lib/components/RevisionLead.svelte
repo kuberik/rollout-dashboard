@@ -163,7 +163,27 @@
 			then the bar, full width, always.
 		-->
 		<div class="lead-compact">
-			{#if state.key !== 'done'}
+			<!--
+				⭐ ROUND 11 REVISIONS-PASS-6, ITEM 8 — `held` DOES NOT CORRELATE
+				WITH THE BAR, SO IT MAY NOT BE THE BAR'S ONLY CAPTION. Every OTHER
+				`buildState()` key (`failing`/`deploying`/`notYet`/`ahead`) names a
+				SHORTFALL the bar's own cells are drawn from — the caption narrates
+				the shape directly above it. `held` is different: it fires from
+				`heldBehind`, a RELEASE-LABEL split the coverage bar cannot see (by
+				A.2's own rule, "held stays in chips and words and never enters the
+				bar") — so a build at 100% coverage (bar fully solid) rendered
+				`held in 3 places` as the one line touching it, reading as a
+				contradiction nothing on the bar explains. The count that DOES
+				match what the bar is drawn from — `{live} of {total} places` —
+				takes this slot instead; `held` moves to the chip below the bar
+				(`showHeldChip`), where a distinct control can carry a fact the
+				bar's own shape does not.
+			-->
+			{#if state.key === 'held'}
+				<div class="t-dense text-gray-700 dark:text-gray-200">
+					{coverage.liveCount} of {coverage.totalCount} place{coverage.totalCount === 1 ? '' : 's'}
+				</div>
+			{:else if state.key !== 'done'}
 				<BuildStateMark {coverage} size="row" />
 			{/if}
 			<CoverageBar {segments} label={barLabel} />
