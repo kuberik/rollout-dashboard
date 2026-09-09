@@ -61,13 +61,15 @@
 	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
+	import { buildPaletteBuildIndex, scoreBuildEntry } from '$lib/palette-index';
 	import {
 		SearchOutline,
 		GridOutline,
 		RocketOutline,
 		LayersSolid,
 		ClockOutline,
-		FolderOutline
+		FolderOutline,
+		TagOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		getEnvironmentThemeStyle,
@@ -78,7 +80,7 @@
 	import { now } from '$lib/stores/time';
 	import { inertSiblings, trapFocus, modalFocusReturn } from '$lib/a11y.svelte';
 
-	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action';
+	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action' | 'build';
 
 	let {
 		open = $bindable(false),
@@ -219,6 +221,13 @@
 			bakeStatus: string;
 			version: string | null;
 		}>;
+		/**
+		 * `build` rows only — the full git revision (never truncated) a sha
+		 * PREFIX is matched against, and every label some service ships it
+		 * under. See `palette-index.ts`'s `scoreBuildEntry`.
+		 */
+		revisionFull?: string;
+		labels?: string[];
 	};
 
 	/**
@@ -393,12 +402,21 @@
 			});
 		}
 
-		// 5. Actions (top-level pages)
+		// 5. Actions (top-level pages) — ONE ENTRY PER `Sidebar.svelte` NAV ITEM,
+		// same title and href, so typing the name printed in the sidebar is
+		// guaranteed to find its own page. (operator walk: `revisions` returned
+		// 0 results — this list had never grown a `Revisions` entry when the
+		// page shipped, and `Home` did not resolve because the row was titled
+		// `Fleet overview` instead of the word the sidebar prints.) `Dependencies`
+		// deliberately stays out: `Navbar.svelte`'s own comment records that it
+		// is reached from a rollout's Dependencies tab, not from the sidebar, and
+		// `Sidebar.svelte` has no entry for it either.
 		const actions: { title: string; href: string; subtitle?: string }[] = [
-			{ title: 'Fleet overview', subtitle: 'Everything at a glance', href: '/' },
+			{ title: 'Home', subtitle: 'Fleet overview — everything at a glance', href: '/' },
 			{ title: 'Rollouts', subtitle: 'Full inventory list', href: '/rollouts' },
 			{ title: 'Apps', subtitle: 'Apps across environments', href: '/apps' },
 			{ title: 'Environments', subtitle: 'Cross-env matrix', href: '/environments' },
+			{ title: 'Revisions', subtitle: 'One row per commit', href: '/revisions' },
 			{ title: 'Activity', subtitle: 'Recent deployments', href: '/activity' }
 		];
 		for (const a of actions) {
@@ -408,6 +426,23 @@
 				title: a.title,
 				subtitle: a.subtitle,
 				href: a.href
+			});
+		}
+
+		// 6. Builds — every revision this fleet's repos know about (deployed or
+		// pending), independent of which label any one service currently prints
+		// for it. See `palette-index.ts`'s own doc comment for the bug this
+		// closes: a sha pasted from CI used to resolve only when it happened to
+		// equal a rollout's CURRENT displayed label.
+		for (const b of buildPaletteBuildIndex(rollouts, environments)) {
+			out.push({
+				kind: 'build',
+				key: b.key,
+				title: b.short,
+				subtitle: `${b.labels.join(', ')} · ${b.repoShort}`,
+				href: b.href,
+				revisionFull: b.revision,
+				labels: b.labels
 			});
 		}
 
@@ -449,6 +484,7 @@
 	// Tied scores fall back to entity-kind priority so users see rollouts first.
 	const KIND_PRIORITY: Record<ResultKind, number> = {
 		rollout: 4,
+		build: 3.5,
 		app: 3,
 		env: 2,
 		namespace: 1,
@@ -456,6 +492,14 @@
 	};
 	function score(r: Result, q: string): number {
 		if (!q) return KIND_PRIORITY[r.kind];
+		if (r.kind === 'build') {
+			// Sha-prefix (≥7 hex chars) and label matching both run against
+			// the full revision / label set, never the generic substring
+			// haystack below — see `palette-index.ts`'s `scoreBuildEntry`,
+			// which this calls directly so the row and its own unit tests
+			// cannot disagree about what matched.
+			return scoreBuildEntry({ revision: r.revisionFull ?? '', labels: r.labels ?? [] }, q);
+		}
 		const lower = q.toLowerCase();
 		const hay = [
 			r.title,
@@ -508,6 +552,7 @@
 	type Group = { kind: ResultKind; label: string; items: { result: Result; idx: number }[] };
 	const KIND_LABEL: Record<ResultKind, string> = {
 		rollout: 'Rollouts',
+		build: 'Builds',
 		app: 'Apps',
 		env: 'Environments',
 		namespace: 'Namespaces',
@@ -515,6 +560,7 @@
 	};
 	const KIND_SINGULAR: Record<ResultKind, string> = {
 		rollout: 'rollout',
+		build: 'build',
 		app: 'app',
 		env: 'environment',
 		namespace: 'namespace',
@@ -662,6 +708,7 @@
 
 	const KIND_ICON: Record<ResultKind, typeof GridOutline> = {
 		rollout: GridOutline,
+		build: TagOutline,
 		app: RocketOutline,
 		env: LayersSolid,
 		namespace: FolderOutline,
@@ -979,6 +1026,7 @@
 					{@const kindCounts = (() => {
 						const c: Record<ResultKind, number> = {
 							rollout: 0,
+							build: 0,
 							app: 0,
 							env: 0,
 							namespace: 0,
