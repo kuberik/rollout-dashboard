@@ -57,6 +57,7 @@ lib/bake-status.ts	code	The deploy finished and passed its checks
 lib/bake-status.ts	code	The deploy was stopped before it finished
 lib/bake-status.ts	code	The new version is live and is being watched before the deploy counts as done
 lib/bake-status.ts	code	The new version is still going out
+lib/CommandPalette.svelte	text	… … merged in the last 30 days
 lib/CommandPalette.svelte	code	… app…
 lib/CommandPalette.svelte	code	… behind
 lib/CommandPalette.svelte	code	… env…
@@ -76,12 +77,11 @@ lib/CommandPalette.svelte	code	My pull requests across the repos this cluster de
 lib/CommandPalette.svelte	text	Needs you
 lib/CommandPalette.svelte	text	No matches for
 lib/CommandPalette.svelte	text	Or type to search across everything
-lib/CommandPalette.svelte	code	pull request
-lib/CommandPalette.svelte	code	Pull requests
 lib/CommandPalette.svelte	code	Recent deployments
 lib/CommandPalette.svelte	code	Repositories and their builds
 lib/CommandPalette.svelte	title	Stopped moving
 lib/CommandPalette.svelte	code	The furthest-behind environment of … can still take … newer version…
+lib/CommandPalette.svelte	text	Your changes
 lib/CommandPalette.svelte	code	Your pull requests
 lib/components/ActivityRail.svelte	text	… failed
 lib/components/ActivityRail.svelte	text	Deployments will appear here as a timeline.
@@ -351,6 +351,9 @@ lib/components/HowItsGoing.svelte	title	How it’s going
 lib/components/HowItsGoing.svelte	text	no measured trip yet
 lib/components/HowItsGoing.svelte	text	Typical deploy
 lib/components/HowItsGoing.svelte	text	Typical to prod
+lib/components/LandingMark.svelte	code	--lm-ring: …; --lm-ring-dark: …; --lm-word: …; --lm-word-dark: …;
+lib/components/LandingMark.svelte	code	not built
+lib/components/LandingMark.svelte	code	rolled back
 lib/components/LogsViewer.svelte	text	, finished … . New lines appear here as the next run writes them.
 lib/components/LogsViewer.svelte	text	… / … lines
 lib/components/LogsViewer.svelte	text	… error …
@@ -559,7 +562,7 @@ lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/history-marks.ts	code	What … replaced is unknown — it is the oldest deploy the retained history (last …) still holds.
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	aria-label	Switch rollout (⌘K)
-lib/palette-index.ts	code	Open PR #… · …/…
+lib/palette-index.ts	code	Open change … · …
 lib/pr-cell-copy.ts	code	… · … of … min
 lib/pr-cell-copy.ts	code	… of … checks failing
 lib/pr-cell-copy.ts	code	a later build that also carries this PR has since shipped
@@ -784,6 +787,7 @@ lib/view-models/health-witness.ts	code	A health check
 lib/view-models/health-witness.ts	code	Health check …
 lib/view-models/health-witness.ts	code	passing, last errored …
 lib/view-models/health-witness.ts	code	This check
+lib/view-models/landing-grid.ts	code	all … service…
 lib/view-models/my-pulls.ts	code	… · held in …
 lib/view-models/my-pulls.ts	code	… of … building
 lib/view-models/my-pulls.ts	code	closed without merging

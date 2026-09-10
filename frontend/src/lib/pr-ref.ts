@@ -85,7 +85,58 @@ export function parsePrRef(input: string): PrRef | null {
 	return null;
 }
 
-/** The `/pr/{owner}/{repo}/{number}` route, for a resolved reference. */
+/** The `/pr/{owner}/{repo}/{number}` route, for a resolved reference.
+ *  ⛔ SUPERSEDED but PERMANENT (CHANGES-2026-09-10.md §1): the human keeps
+ *  PR tabs open "for longer time", so this route 308s to `changePath`'s
+ *  address forever and is never deleted. New call sites use `changePath`. */
 export function prPath(owner: string, repo: string, number: number): string {
 	return `/pr/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${number}`;
+}
+
+/**
+ * THE `/changes` ROUTE, for a resolved owner/repo + PR number or bare sha.
+ *
+ * CHANGES-2026-09-10.md §1: `/pr/<owner>/<repo>/<n>` → `/changes/<repoSlug>/pull/<n>`,
+ * and a bare commit maps onto `/changes/<repoSlug>/<sha>` — ONE page kind,
+ * disambiguated by shape. `owner`/`repo` are joined into the same
+ * `github.com/<owner>/<repo>` slug `version-utils.ts`'s `repoSlug` produces
+ * from a `repo:` key, so a caller holding a bare owner/repo pair (the PR API
+ * response, a palette match) does not have to round-trip through a
+ * `repoKey` first. `changeRepoPath`/`changeBuildPath` (`version-utils.ts`)
+ * are the `repoKey`-keyed siblings of this function, for callers that
+ * already hold one.
+ */
+export function changePath(
+	owner: string,
+	repo: string,
+	ref: { number: number } | { sha: string }
+): string {
+	const repoSlug = ['github.com', owner, repo].map(encodeURIComponent).join('/');
+	if ('number' in ref) return `/changes/${repoSlug}/pull/${ref.number}`;
+	return `/changes/${repoSlug}/${encodeURIComponent(ref.sha)}`;
+}
+
+export type ChangeRef = { kind: 'pull'; number: number } | { kind: 'sha'; sha: string };
+
+/**
+ * Splits a `/changes/[...slug]` rest-param into the repo slug and the
+ * reference it names — CHANGES-2026-09-10.md §1's ONE disambiguation rule,
+ * evaluated first: **a slug whose last two segments are `pull/<digits>` is
+ * a change page keyed on a PR; everything else splits the last segment off
+ * as a build key**, exactly as `/revisions/[...slug]` already does for a
+ * sha. `null` when the slug is too short to name a repo at all (fewer than
+ * two segments — a repo needs at least `owner/repo` before its ref).
+ */
+export function parseChangeSlug(segments: readonly string[]): { repoSlug: string; ref: ChangeRef } | null {
+	if (segments.length < 2) return null;
+	const last = segments[segments.length - 1];
+	const secondLast = segments[segments.length - 2];
+	if (secondLast === 'pull' && /^\d+$/.test(last)) {
+		const repoSlug = segments.slice(0, -2).join('/');
+		if (!repoSlug) return null;
+		return { repoSlug, ref: { kind: 'pull', number: Number(last) } };
+	}
+	const repoSlug = segments.slice(0, -1).join('/');
+	if (!repoSlug) return null;
+	return { repoSlug, ref: { kind: 'sha', sha: last } };
 }

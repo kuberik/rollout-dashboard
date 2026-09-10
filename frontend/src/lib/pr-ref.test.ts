@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePrRef, prPath } from './pr-ref';
+import { parsePrRef, prPath, changePath, parseChangeSlug } from './pr-ref';
 
 describe('parsePrRef', () => {
 	it('parses a full GitHub PR URL', () => {
@@ -102,5 +102,60 @@ describe('prPath', () => {
 
 	it('encodes owner/repo segments', () => {
 		expect(prPath('ku berik', 'foo/bar', 1)).toBe('/pr/ku%20berik/foo%2Fbar/1');
+	});
+});
+
+describe('changePath', () => {
+	it('builds the pull-request form', () => {
+		expect(changePath('littlechimera', 'kuberik-testing', { number: 4 })).toBe(
+			'/changes/github.com/littlechimera/kuberik-testing/pull/4'
+		);
+	});
+
+	it('builds the bare-sha form', () => {
+		expect(changePath('littlechimera', 'kuberik-testing', { sha: '9f10e49abc' })).toBe(
+			'/changes/github.com/littlechimera/kuberik-testing/9f10e49abc'
+		);
+	});
+
+	it('encodes owner/repo segments', () => {
+		expect(changePath('ku berik', 'foo/bar', { number: 1 })).toBe(
+			'/changes/github.com/ku%20berik/foo%2Fbar/pull/1'
+		);
+	});
+});
+
+describe('parseChangeSlug', () => {
+	it('parses the pull-request form', () => {
+		expect(parseChangeSlug(['github.com', 'littlechimera', 'kuberik-testing', 'pull', '4'])).toEqual({
+			repoSlug: 'github.com/littlechimera/kuberik-testing',
+			ref: { kind: 'pull', number: 4 }
+		});
+	});
+
+	it('parses the bare-sha form', () => {
+		expect(parseChangeSlug(['github.com', 'littlechimera', 'kuberik-testing', '9f10e49'])).toEqual({
+			repoSlug: 'github.com/littlechimera/kuberik-testing',
+			ref: { kind: 'sha', sha: '9f10e49' }
+		});
+	});
+
+	it('parses a 12-char revision slug the same way as a short sha', () => {
+		expect(parseChangeSlug(['github.com', 'acme', 'widget', '991829b6ab3b'])).toEqual({
+			repoSlug: 'github.com/acme/widget',
+			ref: { kind: 'sha', sha: '991829b6ab3b' }
+		});
+	});
+
+	it('does not mistake a repo literally named "pull" for the PR marker without a trailing number', () => {
+		expect(parseChangeSlug(['github.com', 'acme', 'widget', 'pull', 'not-a-number'])).toEqual({
+			repoSlug: 'github.com/acme/widget/pull',
+			ref: { kind: 'sha', sha: 'not-a-number' }
+		});
+	});
+
+	it('returns null when the slug is too short to name a repo', () => {
+		expect(parseChangeSlug(['only-one-segment'])).toBeNull();
+		expect(parseChangeSlug([])).toBeNull();
 	});
 });

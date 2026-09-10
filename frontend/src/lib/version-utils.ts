@@ -179,6 +179,86 @@ export function revisionPath(repoKey: string, revision: string): string {
 	return `/revisions/${repoSlug(repoKey)}/${encodeURIComponent(revisionSlug(revision))}`;
 }
 
+// ── THE `/changes` PATH HELPERS ──────────────────────────────────────────
+//
+// CHANGES-2026-09-10.md §1: `/revisions/<repoSlug>` → `/changes/<repoSlug>`
+// (a repo's own "what runs where" page, kept — §3's "KEPT, as
+// `/changes/<repo>`") and `/revisions/<repoSlug>/<key>` → `/changes/<repoSlug>/<key>`
+// (a single build/sha's page, now unified with the PR-keyed change page —
+// §3's "the change page is ONE page kind"). These are ADDITIVE: the
+// `/revisions/*` helpers above are untouched (L3 owns the redirect wiring
+// and the old routes stay live as 308s), so nothing that already links
+// through `revisionPath`/`versionPath`/`buildPath` breaks while this lane
+// lands first.
+
+/** `/changes/<repoSlug>` — the repo's own page (§3, "KEPT, as `/changes/<repo>`"). */
+export function changeRepoPath(repoKey: string): string {
+	return `/changes/${repoSlug(repoKey)}`;
+}
+
+/**
+ * `/changes/<repoSlug>/<revisionSlug-or-version>` — the build/sha form of
+ * the change page (§3: a bare sha maps onto the same route a PR does).
+ * Mirrors `buildPath`'s own revision-first, label-fallback precedence
+ * exactly, so a caller that already resolves a revision does not have to
+ * re-derive which spelling wins.
+ */
+export function changeBuildPath(
+	repoKey: string,
+	revision: string | null | undefined,
+	version: string
+): string {
+	const key = revision ? revisionSlug(revision) : version;
+	return `/changes/${repoSlug(repoKey)}/${encodeURIComponent(key)}`;
+}
+
+// ── THE MARK'S FAMILY WORD ───────────────────────────────────────────────
+//
+// CHANGES-2026-09-10.md §2a: a `LandingMark` prints the environment's
+// FAMILY — `DEV` / `STG` / `PRD` / `TEST` — never the raw name. Live data
+// has `hello-world-staging` / `hello-world-prod` (19/16 characters), which
+// `.chip`'s real 8.5-character budget destroys into indistinguishable
+// truncated strings; three prod regions would render as the same eight
+// characters. The full environment name survives in the mark's `title`,
+// never here.
+//
+// Deliberately INDEPENDENT of `EnvironmentTheme` (which can be `null` — a
+// rollout can carry no theme/annotation/Environment at all) and of the
+// preset machinery in `environment-theme.ts`: this only ever needs the
+// environment's own NAME, and every `PrCell` always has one. Pattern order
+// matches `environment-theme.ts`'s own `ENVIRONMENT_MATCHERS` (prod checked
+// first) so an ambiguous name like `prod-test-1` resolves to the same
+// family a `.chip-env` would tint it — one rule, not two.
+type EnvFamilyKey = 'prod' | 'dev' | 'staging' | 'test';
+
+const FAMILY_PATTERNS: { key: EnvFamilyKey; pattern: RegExp }[] = [
+	{ key: 'prod', pattern: /prod|production|live/i },
+	{ key: 'dev', pattern: /dev|development/i },
+	{ key: 'staging', pattern: /stag|preprod|preview/i },
+	{ key: 'test', pattern: /test|qa|qe|integration/i }
+];
+
+const FAMILY_WORD: Record<EnvFamilyKey, string> = {
+	dev: 'DEV',
+	staging: 'STG',
+	prod: 'PRD',
+	test: 'TEST'
+};
+
+/**
+ * The mark's family word for an environment name. No preset match → the
+ * environment's own first three letters (alphabetic characters only),
+ * uppercased — still named in full in the mark's `title`, never silently
+ * dropped.
+ */
+export function envFamilyWord(envName: string): string {
+	for (const { key, pattern } of FAMILY_PATTERNS) {
+		if (pattern.test(envName)) return FAMILY_WORD[key];
+	}
+	const letters = envName.replace(/[^a-zA-Z]/g, '');
+	return (letters || envName).slice(0, 3).toUpperCase();
+}
+
 /**
  * The git revision a rollout knows this display version by, or null.
  *
