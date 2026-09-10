@@ -108,14 +108,35 @@ func UserClient(token string) (*github.Client, error) {
 	return github.NewClient(userClientOptions(token)...)
 }
 
+// testBaseURL, set only via SetBaseURLForTest, redirects every UserClient
+// built while it's non-empty at a stub server instead of api.github.com — the
+// seam that lets a handler test (main_github_pulls_test.go) exercise the real
+// production call path (handler -> UserClient -> go-github) against an
+// httptest server, the same way kubernetes.SetReadClientForTest lets handler
+// tests swap in a fake Kubernetes client.
+var testBaseURL string
+
+// SetBaseURLForTest points every UserClient built while active at baseURL
+// (must be a full URL ending in "/"). Returns a restore func; tests are
+// expected to run sequentially (this is a package-level var, not
+// goroutine-safe against concurrent tests setting it).
+func SetBaseURLForTest(baseURL string) func() {
+	testBaseURL = baseURL
+	return func() { testBaseURL = "" }
+}
+
 // userClientOptions is the option list UserClient is built from, split out so a
 // test can append `WithURLs` and exercise the REAL chain against a stub server
 // rather than a hand-rebuilt copy of it.
 func userClientOptions(token string) []github.ClientOptionsFunc {
-	return []github.ClientOptionsFunc{
+	opts := []github.ClientOptionsFunc{
 		github.WithTransport(githubcache.Shared()),
 		github.WithAuthToken(token),
 	}
+	if testBaseURL != "" {
+		opts = append(opts, github.WithURLs(&testBaseURL, &testBaseURL))
+	}
+	return opts
 }
 
 // AuthenticatedUser looks up the login + avatar for a token, used to render the

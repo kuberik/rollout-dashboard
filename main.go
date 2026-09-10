@@ -251,6 +251,13 @@ func setupRouter() *gin.Engine {
 			c.JSON(http.StatusOK, gin.H{"clusters": clusters})
 		})
 
+		// GET /api/github/pulls/:owner/:repo/:number — see
+		// handleGitHubPullRequest (main_github_pulls.go) for the full
+		// contract: merge state + the set of commit shas on the base branch
+		// since merge, scoped to repos this cluster's visible rollouts
+		// actually deploy.
+		api.GET("/github/pulls/:owner/:repo/:number", handleGitHubPullRequest)
+
 		api.GET("/rollouts", func(c *gin.Context) {
 			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
