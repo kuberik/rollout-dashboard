@@ -88,7 +88,7 @@ func handleGitHubCommitPulls(c *gin.Context) {
 	if !full {
 		commit, _, cerr := ghClient.Repositories.GetCommit(ctx, owner, repo, sha, nil)
 		if cerr != nil {
-			if respondGitHubCommonErrors(c, cerr, "sha") {
+			if respondGitHubCommitLookupErrors(c, cerr, "sha") {
 				return
 			}
 			log.Printf("Error resolving short sha %s for %s/%s: %v", sha, owner, repo, cerr)
@@ -103,7 +103,7 @@ func handleGitHubCommitPulls(c *gin.Context) {
 
 	prs, _, err := ghClient.PullRequests.ListPullRequestsWithCommit(ctx, owner, repo, resolvedSha, &github.ListOptions{PerPage: 100})
 	if err != nil {
-		if respondGitHubCommonErrors(c, err, "sha") {
+		if respondGitHubCommitLookupErrors(c, err, "sha") {
 			return
 		}
 		log.Printf("Error listing pull requests for %s/%s@%s: %v", owner, repo, resolvedSha, err)

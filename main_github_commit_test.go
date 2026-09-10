@@ -206,6 +206,56 @@ func TestGitHubCommit_ShaNotFound404ScopeSha(t *testing.T) {
 	}
 }
 
+// TestGitHubCommit_ShaUnprocessable422ScopeSha exercises the real GitHub
+// behavior behind the live 502 bug: GitHub answers an unresolvable sha with
+// 422 "No commit found for SHA", not 404, on repos/{o}/{r}/commits/{sha}.
+// respondGitHubCommitLookupErrors must treat that the same as a 404 so the
+// frontend gets a consistent scope=sha, not a raw upstream failure.
+func TestGitHubCommit_ShaUnprocessable422ScopeSha(t *testing.T) {
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+	const short = "bf5be49"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprint(w, `{"message":"No commit found for SHA: bf5be49"}`)
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/repos/octo/repo/commits/"+short, "ghu_unprocessable_token")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (body: %s)", w.Code, w.Body.String())
+	}
+	if !contains(w.Body.String(), `"scope":"sha"`) {
+		t.Fatalf("body = %s, want scope=sha", w.Body.String())
+	}
+}
+
+// TestGitHubCommit_UpstreamServerError502 confirms a genuine upstream
+// failure (as opposed to a 422/404 "sha doesn't exist") still surfaces as a
+// 502, not swallowed into the 404 reinterpretation above.
+func TestGitHubCommit_UpstreamServerError502(t *testing.T) {
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+	const fullSha = "0123456789abcdef0123456789abcdef01234567"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"message":"Internal Server Error"}`)
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/repos/octo/repo/commits/"+fullSha, "ghu_servererror_token")
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502 (body: %s)", w.Code, w.Body.String())
+	}
+}
+
 func TestGitHubCommit_TokenRevokedClearsCookie(t *testing.T) {
 	r := setupGitHubPullsTest(t, []client.Object{
 		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),

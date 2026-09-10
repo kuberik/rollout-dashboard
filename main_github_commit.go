@@ -101,7 +101,7 @@ func handleGitHubCommit(c *gin.Context) {
 	ctx := c.Request.Context()
 	commit, _, cerr := ghClient.Repositories.GetCommit(ctx, owner, repo, sha, nil)
 	if cerr != nil {
-		if respondGitHubCommonErrors(c, cerr, "sha") {
+		if respondGitHubCommitLookupErrors(c, cerr, "sha") {
 			return
 		}
 		log.Printf("Error fetching commit %s/%s@%s: %v", owner, repo, sha, cerr)

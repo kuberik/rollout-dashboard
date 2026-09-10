@@ -42,12 +42,34 @@ func isGitHubUnauthorized(err error) bool {
 // Returns true if it wrote a response; false means the caller should fall
 // through to its own generic upstream-error handling.
 func respondGitHubCommonErrors(c *gin.Context, err error, notFoundScope string) bool {
+	return respondGitHubUpstreamErrors(c, err, notFoundScope, false)
+}
+
+// respondGitHubCommitLookupErrors is respondGitHubCommonErrors plus one case
+// unique to looking a commit up by sha: GitHub's repos/{o}/{r}/commits/{sha}
+// (and .../commits/{sha}/pulls) answer a sha it cannot resolve — a short sha
+// with no match, most commonly — with 422 "No commit found for SHA", not
+// 404. Only the two commit-lookup endpoints (main_github_commit.go,
+// main_github_commit_pulls.go) call this instead of
+// respondGitHubCommonErrors: a 422 from any OTHER GitHub endpoint means
+// "your request was malformed", which must stay a real upstream failure
+// (502), not get reinterpreted as a 404.
+func respondGitHubCommitLookupErrors(c *gin.Context, err error, notFoundScope string) bool {
+	return respondGitHubUpstreamErrors(c, err, notFoundScope, true)
+}
+
+func respondGitHubUpstreamErrors(c *gin.Context, err error, notFoundScope string, treat422AsNotFound bool) bool {
 	var ghErr *github.ErrorResponse
 	if errors.As(err, &ghErr) && ghErr.Response != nil {
 		switch ghErr.Response.StatusCode {
 		case http.StatusNotFound, http.StatusForbidden:
 			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": notFoundScope})
 			return true
+		case http.StatusUnprocessableEntity:
+			if treat422AsNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": notFoundScope})
+				return true
+			}
 		case http.StatusUnauthorized:
 			c.SetCookie(githubTokenCookie, "", -1, "/", "", true, true)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "github_not_connected"})
