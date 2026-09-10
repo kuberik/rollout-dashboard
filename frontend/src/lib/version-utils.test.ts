@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayVersionForTag } from './version-utils';
+import { displayVersionForTag, repoKeyFromSource } from './version-utils';
 import type { Rollout } from '../types';
 
 // The live shape: `spec.wantedVersion` is an OCI TAG, and the name every
@@ -48,5 +48,26 @@ describe('displayVersionForTag', () => {
 	it('is empty for no tag, and safe with no rollout', () => {
 		expect(displayVersionForTag(rollout, null)).toBe('');
 		expect(displayVersionForTag(null, TAG)).toBe('main-1787999329-991829b');
+	});
+});
+
+describe('repoKeyFromSource', () => {
+	// (2026-09-10, PR-view fix pass, item 12) A `/tree/<branch>` tail names a
+	// REF inside the repo, not a different repo — `pkg/githubapp/repo.go`'s
+	// doc comment already claimed this was handled; it was not.
+	it('ignores a /tree/<branch> tail', () => {
+		expect(repoKeyFromSource('https://github.com/acme/widget/tree/release-1.2', '')).toBe(
+			repoKeyFromSource('https://github.com/acme/widget', '')
+		);
+	});
+
+	it('ignores a /blob/<branch>/path tail', () => {
+		expect(repoKeyFromSource('https://github.com/acme/widget/blob/main/README.md', '')).toBe(
+			repoKeyFromSource('https://github.com/acme/widget', '')
+		);
+	});
+
+	it('keeps dots in the repo name', () => {
+		expect(repoKeyFromSource('https://github.com/acme/foo.js', '')).toBe('repo:github.com/acme/foo.js');
 	});
 });

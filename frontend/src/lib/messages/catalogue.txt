@@ -33,7 +33,8 @@ lib/api/pulls.ts	code	Connect GitHub to see this pull request
 lib/api/pulls.ts	code	Failed to fetch pull request
 lib/api/pulls.ts	code	GitHub account not connected
 lib/api/pulls.ts	code	No response from the server
-lib/api/pulls.ts	code	No service on this cluster deploys this repository
+lib/api/pulls.ts	code	No service on this cluster deploys …/…
+lib/api/pulls.ts	code	PR #… not found in …/… (or you cannot see it)
 lib/api/schedules.ts	code	… … (… UTC)
 lib/api/schedules.ts	code	reopens …
 lib/api/schedules.ts	code	reopens in … — …
@@ -392,7 +393,9 @@ lib/components/PipelineRow.svelte	code	a promotion order
 lib/components/PipelineRow.svelte	code	a service dependency
 lib/components/PipelineRow.svelte	code	an unclassified rule
 lib/components/PipelineRow.svelte	text	Could not load this rule.
+lib/components/PipelineRow.svelte	code	opens …
 lib/components/PipelineRow.svelte	text	This rule no longer applies.
+lib/components/PipelineRow.svelte	text	Why is it held?
 lib/components/PromotionNode.svelte	text	awaiting first deploy
 lib/components/PromotionPipeline.svelte	title	… — …{s.statusDetail ? `, $…` : ''}
 lib/components/PromotionPipeline.svelte	text	… / … running
@@ -541,16 +544,18 @@ lib/palette-index.ts	code	Open PR #… · …/…
 lib/pr-cell-copy.ts	code	… · … of … min
 lib/pr-cell-copy.ts	code	a later build that also carries this PR has since shipped
 lib/pr-cell-copy.ts	code	deploying now
-lib/pr-cell-copy.ts	code	gated by …
+lib/pr-cell-copy.ts	code	held by …
+lib/pr-cell-copy.ts	code	held by a rule
 lib/pr-cell-copy.ts	code	live since …
 lib/pr-cell-copy.ts	code	not built here yet
 lib/pr-cell-copy.ts	code	not built yet
-lib/pr-cell-copy.ts	code	ready, not promoted yet
+lib/pr-cell-copy.ts	code	promoting shortly
 lib/pr-cell-copy.ts	code	retrying the bake
 lib/pr-cell-copy.ts	code	rolled back to …
 lib/pr-cell-copy.ts	code	the bake failed
 lib/pr-cell-copy.ts	code	the bake was cancelled
 lib/pr-cell-copy.ts	code	usually … min
+lib/pr-cell-copy.ts	code	waiting for … to deploy it first
 lib/pr-cell-copy.ts	code	waiting on …
 lib/rollout-cards.ts	code	… newer build… waiting.
 lib/rollout-cards.ts	code	Held: a newer build exists, but no rule lets it through yet.
@@ -759,12 +764,16 @@ lib/view-models/health-witness.ts	code	passing, last errored …
 lib/view-models/health-witness.ts	code	This check
 lib/view-models/pin-schedule-clause.ts	code	…, and … reopens ….
 lib/view-models/pr-pipeline.ts	code	… in …
+lib/view-models/pr-pipeline.ts	code	… in progress
+lib/view-models/pr-pipeline.ts	code	… of … active
+lib/view-models/pr-pipeline.ts	code	… of … live
 lib/view-models/pr-pipeline.ts	code	…… in …
 lib/view-models/pr-pipeline.ts	code	baking, no timer
-lib/view-models/pr-pipeline.ts	code	built and ready — nothing is blocking it, it just has not promoted yet
 lib/view-models/pr-pipeline.ts	code	Cancelled in …
 lib/view-models/pr-pipeline.ts	code	deploying now
 lib/view-models/pr-pipeline.ts	code	Failed in …
+lib/view-models/pr-pipeline.ts	code	Held by a rule in …
+lib/view-models/pr-pipeline.ts	code	held in …
 lib/view-models/pr-pipeline.ts	code	live (since before recorded history)
 lib/view-models/pr-pipeline.ts	code	Live everywhere
 lib/view-models/pr-pipeline.ts	code	manifest unreadable
@@ -773,16 +782,19 @@ lib/view-models/pr-pipeline.ts	code	No service on this cluster deploys this repo
 lib/view-models/pr-pipeline.ts	code	not built
 lib/view-models/pr-pipeline.ts	code	not built (unverified)
 lib/view-models/pr-pipeline.ts	code	not built here yet
+lib/view-models/pr-pipeline.ts	code	not built yet
 lib/view-models/pr-pipeline.ts	code	Not built yet
 lib/view-models/pr-pipeline.ts	code	Pinned away from it in …
 lib/view-models/pr-pipeline.ts	code	pinned to …
-lib/view-models/pr-pipeline.ts	code	Ready in …, not promoted yet
+lib/view-models/pr-pipeline.ts	code	Promoting shortly in …
 lib/view-models/pr-pipeline.ts	code	retrying the bake
 lib/view-models/pr-pipeline.ts	code	rolled back
 lib/view-models/pr-pipeline.ts	code	Rolled back in …
 lib/view-models/pr-pipeline.ts	code	rolled back to …
 lib/view-models/pr-pipeline.ts	code	the bake failed
 lib/view-models/pr-pipeline.ts	code	the bake was cancelled
+lib/view-models/pr-pipeline.ts	code	Waiting for … to deploy it first
+lib/view-models/pr-pipeline.ts	code	waiting for the next reconcile
 lib/view-models/pr-pipeline.ts	code	Waiting in … on …
 lib/view-models/regions.ts	code	… … across … builds
 lib/view-models/regions.ts	code	… … with no deploy yet
@@ -1209,6 +1221,10 @@ routes/namespaces/[name]/+page.svelte	text	Show … more rollouts ›
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
 routes/namespaces/[name]/+page.svelte	text	View all activity
 routes/pr/[owner]/[repo]/[number]/+page.svelte	text	. Once it merges, this page fills in per service.
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	. You can also press
+routes/pr/[owner]/[repo]/[number]/+page.svelte	code	… file…
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	… open … · … … … · … … head
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	· … not built anywhere
 routes/pr/[owner]/[repo]/[number]/+page.svelte	code	#… … · kuberik
 routes/pr/[owner]/[repo]/[number]/+page.svelte	code	#… · kuberik
 routes/pr/[owner]/[repo]/[number]/+page.svelte	code	closed by @…
@@ -1217,12 +1233,17 @@ routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Connect GitHub
 routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Connect GitHub to see this pull request
 routes/pr/[owner]/[repo]/[number]/+page.svelte	code	merged … by @…
 routes/pr/[owner]/[repo]/[number]/+page.svelte	text	No service on this cluster deploys … / … .
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Not built yet for … .
 routes/pr/[owner]/[repo]/[number]/+page.svelte	title	Not merged yet
 routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Not on this cluster
 routes/pr/[owner]/[repo]/[number]/+page.svelte	code	opened by @…
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	PR # … not found in … / … (or you cannot see it). Check the number, or
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	PR not found
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	search … / … 's pull requests on GitHub ↗
 routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This dashboard reads pull request details as you, through your own GitHub account — connect it to see # … on … / … .
 routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This pull request has not merged yet — it targets
 routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This pull request was closed without merging, so no build ever contained it.
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	to look it up here.
 routes/pr/[owner]/[repo]/[number]/+page.svelte	text	View on GitHub
 routes/revisions/[...slug]/+page.svelte	text	— on an older release of it
 routes/revisions/[...slug]/+page.svelte	text	, stream down …

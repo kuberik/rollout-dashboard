@@ -69,6 +69,7 @@
 	title={service.appName}
 	titleHref={`/apps/${encodeURIComponent(service.appName)}`}
 	verdict={service.furthest}
+	verdictCompact={service.furthestCompact}
 	verdictTone={tone}
 	padded={false}
 >

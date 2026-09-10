@@ -23,6 +23,8 @@ function mkCell(state: PrState, overrides: Partial<PrCell> = {}): PrCell {
 		gateHint: null,
 		gateLabel: null,
 		gateSubject: null,
+		gateSubjectKind: null,
+		gatePending: false,
 		...overrides
 	};
 }
@@ -32,17 +34,19 @@ describe('cellStateSentence', () => {
 		expect(cellStateSentence(mkCell('not-built'))).toBe('not built yet');
 	});
 
-	it('gated by a named rule', () => {
+	it('held by a named rule (never "gated by" — the noun is retired)', () => {
 		const cell = mkCell('gated', { gateLabel: 'Business Hours Only', reason: 'Outside the Business Hours Only deploy window' });
-		expect(cellStateSentence(cell)).toBe('gated by Business Hours Only');
+		expect(cellStateSentence(cell)).toBe('held by Business Hours Only');
 	});
 
-	it('gated with no gate at all (ready, not promoted)', () => {
-		const cell = mkCell('gated', {
-			gateLabel: null,
-			reason: 'built and ready — nothing is blocking it, it just has not promoted yet'
-		});
-		expect(cellStateSentence(cell)).toBe('ready, not promoted yet');
+	it('held by a rule (generic) when the label is unresolved (gatePending) — never the raw gate id', () => {
+		const cell = mkCell('gated', { gateLabel: null, gatePending: true, reason: '' });
+		expect(cellStateSentence(cell)).toBe('held by a rule');
+	});
+
+	it('promoting: nothing is blocking it, just not reconciled yet — no "gated"/"ready" wording', () => {
+		const cell = mkCell('promoting', { reason: 'waiting for the next reconcile' });
+		expect(cellStateSentence(cell)).toBe('promoting shortly');
 	});
 
 	it('pinned reuses the view-model\'s own "pinned to X" text verbatim', () => {
@@ -51,13 +55,13 @@ describe('cellStateSentence', () => {
 	});
 
 	it('waiting-upstream on a dependency names the provider', () => {
-		const cell = mkCell('waiting-upstream', { gateSubject: 'hello-api-app' });
+		const cell = mkCell('waiting-upstream', { gateSubject: 'hello-api-app', gateSubjectKind: 'service' });
 		expect(cellStateSentence(cell)).toBe('waiting on hello-api-app');
 	});
 
-	it('waiting-upstream on a promotion names the environment', () => {
-		const cell = mkCell('waiting-upstream', { gateSubject: 'dev' });
-		expect(cellStateSentence(cell)).toBe('waiting on dev');
+	it('waiting-upstream on a promotion order reads "waiting for X to deploy it first", not "waiting on"', () => {
+		const cell = mkCell('waiting-upstream', { gateSubject: 'dev', gateSubjectKind: 'environment' });
+		expect(cellStateSentence(cell)).toBe('waiting for dev to deploy it first');
 	});
 
 	it('waiting-upstream falls back when no subject resolved', () => {
@@ -182,6 +186,11 @@ describe('cellReasonText — suppresses a line that would only restate the sente
 
 	it('cancelled suppresses the plain fallback', () => {
 		expect(cellReasonText(mkCell('cancelled', { reason: 'the bake was cancelled' }))).toBeNull();
+	});
+
+	it('gated + gatePending: empty reason, nothing to show (PipelineRow renders a SkeletonBar instead)', () => {
+		const cell = mkCell('gated', { gateLabel: null, gatePending: true, reason: '' });
+		expect(cellReasonText(cell)).toBeNull();
 	});
 
 	it('gated keeps the gate clause beside the fixed sentence', () => {

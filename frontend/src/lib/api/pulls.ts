@@ -37,18 +37,38 @@ export type PullRequestInfo = {
 	 */
 	containedIn: string[];
 	/**
-	 * `true` when `containedIn` is a COMPLETE account of every commit since
-	 * the merge (fewer than the server's pagination cap). `false` means the
-	 * list was truncated and a release NOT in it is not provably absent —
-	 * `pr-pipeline.ts`'s `buildPrPipeline` falls back to comparing
-	 * `release.created` against `mergedAt` in that case, never asserting
-	 * containment it cannot back up.
+	 * ⛔ NAME IS THE BACKEND'S, READ IT LITERALLY: `true` means the since-list
+	 * was TRUNCATED at the server's 300-commit cap — i.e. `containedIn` is
+	 * NOT a complete account, and a revision absent from it is not provably
+	 * absent. Only THEN does `pr-pipeline.ts`'s `buildPrPipeline` fall back
+	 * to comparing `release.created` against `mergedAt` per release (nil
+	 * `created` → unverified, never contained).
+	 * `false` means `containedIn` IS a complete, authoritative account of
+	 * every commit since the merge: a release whose revision is not in it is
+	 * simply not built, no fallback, whatever its `created` timestamp says.
 	 */
 	containedInAll: boolean;
+	/** ISO instant the PR was opened. Present regardless of `state`. */
+	openedAt: string | null;
+	/** The head branch's own current sha — item 8's "an open PR still has a head". */
+	headSha: string | null;
+	/** File count from the same `pulls/{n}` response, no second GitHub call. */
+	changedFiles: number | null;
 };
 
 /** Distinguishable failure reasons, same shape as `github.ts`'s `CommitsError`. */
 export type PullFetchErrorReason = 'not_connected' | 'not_found' | 'error';
+
+/**
+ * ⛔ Only meaningful when `reason === 'not_found'`. Mirrors the backend's own
+ * `scope` field (`main_github_pulls.go`): `'repo'` means no service on this
+ * cluster deploys `{owner}/{repo}` at all (the cluster-scope check failed
+ * before any GitHub call); `'pr'` means the repo IS deployed here but GitHub
+ * says this PR number doesn't exist (or the viewing user can't see it) — a
+ * WRONG PR NUMBER, not a wrong/undeployed repo, and the two need different
+ * sentences (see `+page.svelte`).
+ */
+export type PullNotFoundScope = 'repo' | 'pr';
 
 /**
  * ⛔ EXTENDS `ApiError`, SAME REASON AS `FetchCommitsError`: a caller's retry
@@ -58,10 +78,20 @@ export type PullFetchErrorReason = 'not_connected' | 'not_found' | 'error';
  */
 export class FetchPullError extends ApiError {
 	reason: PullFetchErrorReason;
-	constructor(reason: PullFetchErrorReason, message: string, status = 0, detail = '', url = '') {
+	/** Set only when `reason === 'not_found'`. See `PullNotFoundScope`. */
+	scope: PullNotFoundScope | null;
+	constructor(
+		reason: PullFetchErrorReason,
+		message: string,
+		status = 0,
+		detail = '',
+		url = '',
+		scope: PullNotFoundScope | null = null
+	) {
 		super(status, message, detail || message, url);
 		this.name = 'FetchPullError';
 		this.reason = reason;
+		this.scope = scope;
 	}
 }
 
@@ -97,12 +127,16 @@ export async function fetchPull(
 			);
 		}
 		if (res.status === 404) {
+			const scope: PullNotFoundScope = body.scope === 'pr' ? 'pr' : 'repo';
 			throw new FetchPullError(
 				'not_found',
-				'No service on this cluster deploys this repository',
+				scope === 'pr'
+					? `PR #${number} not found in ${owner}/${repo} (or you cannot see it)`
+					: `No service on this cluster deploys ${owner}/${repo}`,
 				res.status,
 				body.details || body.error || '',
-				url
+				url,
+				scope
 			);
 		}
 		throw new FetchPullError(

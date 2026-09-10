@@ -1024,14 +1024,14 @@
 					role="combobox"
 					aria-label={scope
 						? `Search ${KIND_LABEL[scope].toLowerCase()}`
-						: 'Search rollouts, apps, environments and namespaces'}
+						: 'Search rollouts, apps, environments and namespaces, or paste a PR link'}
 					aria-expanded="true"
 					aria-controls="command-palette-results"
 					aria-autocomplete="list"
 					aria-activedescendant={`cp-opt-${selectedIndex}`}
 					placeholder={scope
 						? `Search ${KIND_LABEL[scope].toLowerCase()}…`
-						: 'Search rollouts, apps, environments, namespaces…'}
+						: 'Search rollouts, apps, environments, namespaces, or paste a PR link…'}
 					autocomplete="off"
 					spellcheck="false"
 					class="flex-1 border-0 bg-transparent p-0 text-base text-gray-900 placeholder-gray-500 outline-none focus:outline-none focus:ring-0 sm:text-sm dark:text-white"

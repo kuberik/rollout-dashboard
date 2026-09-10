@@ -1,6 +1,6 @@
 import type { Rollout, Environment } from '../types';
 import { buildRevisionLedger, type RevisionRow } from '$lib/view-models/revision-ledger';
-import { revisionPath } from '$lib/version-utils';
+import { revisionPath, repoKeyFromSource, repoBody } from '$lib/version-utils';
 import { parsePrRef, prPath } from '$lib/pr-ref';
 
 /**
@@ -171,17 +171,21 @@ export type PalettePrEntry = {
 	href: string;
 };
 
-// `https://github.com/owner/repo(.git)?`, `github.com/owner/repo`, or the
-// ssh form `git@github.com:owner/repo.git` — the shapes `status.source`
-// (an OCI-annotation-derived repo URL) actually arrives in. Owner/repo are
-// captured VERBATIM (display casing), never lower-cased — that is
-// `repoKeyFromSource`'s job, used here only to DEDUPE, not to print.
-const SOURCE_OWNER_REPO = /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i;
-
+// ⛔ NO SEPARATE REGEX HERE (2026-09-10, PR-view fix pass, item 12 — a
+// second, hand-rolled `SOURCE_OWNER_REPO` regex used to live here, and it
+// did not strip a `/tree/<branch>` tail the way `repoKeyFromSource` claimed
+// every caller could rely on). `repoKeyFromSource` is the ONE normalisation
+// rule every other repo-identity comparison in this product already uses
+// (`version-utils.ts`'s own doc comment); reusing it here means a fix to
+// that rule (the `/tree/` tail, dotted repo names) reaches this call site
+// for free instead of needing to be re-applied to a duplicate pattern.
 function ownerRepoFromSource(source: string): { owner: string; repo: string } | null {
-	const m = source.match(SOURCE_OWNER_REPO);
-	if (!m) return null;
-	return { owner: m[1], repo: m[2] };
+	const key = repoKeyFromSource(source, '');
+	if (!key.startsWith('repo:')) return null;
+	const body = repoBody(key); // e.g. "github.com/acme/foo.js" — lowercased, tree-tail stripped, dots kept
+	const [host, owner, ...rest] = body.split('/');
+	if (host !== 'github.com' || !owner || rest.length === 0) return null;
+	return { owner, repo: rest.join('/') };
 }
 
 function prEntry(owner: string, repo: string, number: number): PalettePrEntry {

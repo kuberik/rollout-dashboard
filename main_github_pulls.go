@@ -74,7 +74,11 @@ func handleGitHubPullRequest(c *gin.Context) {
 		return
 	}
 	if !visibleSources[githubapp.NormalizedRepoKey(owner, repo)] {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
+		// The repo itself is not one this cluster deploys — this is not a
+		// GitHub secret (the frontend's palette already lists every source
+		// repo it knows about), so it is safe to say so distinctly from "the
+		// PR/repo doesn't exist on GitHub" below.
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": "repo"})
 		return
 	}
 
@@ -95,9 +99,15 @@ func handleGitHubPullRequest(c *gin.Context) {
 		if errors.As(err, &ghErr) && ghErr.Response != nil {
 			switch ghErr.Response.StatusCode {
 			case http.StatusNotFound, http.StatusForbidden:
-				// A user with no access to the repo/PR gets the same answer
-				// as "doesn't exist" — never distinguished from it.
-				c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
+				// The repo IS one this cluster deploys (we already passed the
+				// cluster-scope check above) — GitHub itself says this PR
+				// number doesn't exist, or the viewing user can't see it. A
+				// user with no access gets the same answer as "doesn't
+				// exist", never distinguished from it, but the SCOPE is
+				// distinguished from the cluster-scope 404 above so the
+				// frontend can print "wrong PR number" instead of "wrong
+				// repo".
+				c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": "pr"})
 				return
 			case http.StatusUnauthorized:
 				// Token revoked — drop it so the UI reconnects, same as the
@@ -129,6 +139,20 @@ func handleGitHubPullRequest(c *gin.Context) {
 	base := ""
 	if pr.Base != nil {
 		base = pr.Base.GetRef()
+	}
+
+	var openedAt *string
+	if pr.CreatedAt != nil {
+		s := pr.CreatedAt.Format(time.RFC3339)
+		openedAt = &s
+	}
+	var headSha *string
+	if pr.Head != nil && pr.Head.SHA != nil {
+		headSha = pr.Head.SHA
+	}
+	var changedFiles *int
+	if pr.ChangedFiles != nil {
+		changedFiles = pr.ChangedFiles
 	}
 
 	var mergeCommitSha *string
@@ -183,6 +207,13 @@ func handleGitHubPullRequest(c *gin.Context) {
 		"base":           base,
 		"containedIn":    containedIn,
 		"containedInAll": containedInAll,
+		// Open-PR facts (item 8): "is my PR in yet" has no build-pipeline
+		// answer at all while the PR is still open, so the page prints these
+		// instead — created_at/head.sha/changed_files, straight off the same
+		// `pulls/{n}` response, no second GitHub call.
+		"openedAt":     openedAt,
+		"headSha":      headSha,
+		"changedFiles": changedFiles,
 	})
 }
 

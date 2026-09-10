@@ -22,7 +22,10 @@ const PULL = {
 	mergeCommitSha: 'abc1234',
 	base: 'main',
 	containedIn: ['abc1234'],
-	containedInAll: true
+	containedInAll: true,
+	openedAt: '2026-09-08T00:00:00Z',
+	headSha: 'abc1234def',
+	changedFiles: 4
 };
 
 describe('fetchPull', () => {
@@ -64,13 +67,39 @@ describe('fetchPull', () => {
 		});
 	});
 
-	it('throws not_found on a 404 — the repo is not deployed here or is invisible to the user', async () => {
+	it('throws not_found scope=repo on a 404 with no scope field (older backend, or the cluster-scope check itself) — the cluster sentence', async () => {
 		vi.stubGlobal(
 			'fetch',
-			vi.fn().mockResolvedValue(jsonResponse(404, { error: 'not found' }))
+			vi.fn().mockResolvedValue(jsonResponse(404, { error: 'not_found' }))
 		);
 		await expect(fetchPull('kuberik', 'rollout-dashboard', 123)).rejects.toMatchObject({
-			reason: 'not_found'
+			reason: 'not_found',
+			scope: 'repo',
+			message: 'No service on this cluster deploys kuberik/rollout-dashboard'
+		});
+	});
+
+	it('throws not_found scope=repo when the backend says scope=repo — the repo is not deployed here', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue(jsonResponse(404, { error: 'not_found', scope: 'repo' }))
+		);
+		await expect(fetchPull('kuberik', 'rollout-dashboard', 123)).rejects.toMatchObject({
+			reason: 'not_found',
+			scope: 'repo',
+			message: 'No service on this cluster deploys kuberik/rollout-dashboard'
+		});
+	});
+
+	it('throws not_found scope=pr when the backend says scope=pr — a wrong PR number, not a wrong repo', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue(jsonResponse(404, { error: 'not_found', scope: 'pr' }))
+		);
+		await expect(fetchPull('kuberik', 'rollout-dashboard', 999)).rejects.toMatchObject({
+			reason: 'not_found',
+			scope: 'pr',
+			message: 'PR #999 not found in kuberik/rollout-dashboard (or you cannot see it)'
 		});
 	});
 

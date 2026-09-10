@@ -129,10 +129,17 @@ const DENY: Array<{
 		why: 'Retired in favour of `is held`. See CLAUDE.md (a).'
 	},
 	{
-		id: 'is gated on (state)',
+		id: 'gated / is gated / gated on (state)',
 		concept: 'state',
-		re: /\bis gated\b|\bgated on\b/i,
-		why: '"gated on" is `gate` wearing a verb. Retired in favour of `depends on` / `held`. See CLAUDE.md (a, b).'
+		// ⛔ 2026-09-10 (PR-view fix pass, item 3): the noun rule below
+		// (`\bgates?\b`) does NOT match the PARTICIPLE "gated" — "gated by
+		// X" and "gated in dev" both shipped live on the PR page and slipped
+		// this guard for exactly that reason. `\bgated\b` alone already
+		// covers "is gated", "gated on", "gated by" and "gated in dev" — the
+		// three explicit alternatives before it are redundant with it but
+		// left in place as the record of what was actually seen.
+		re: /\bis gated\b|\bgated on\b|\bgated\b/i,
+		why: '"gated"/"gated on"/"gated by"/"gated in <env>" are `gate` wearing a verb. Retired in favour of `depends on` / `held`. See CLAUDE.md (a, b).'
 	},
 	{
 		id: 'gate / gates (obstacle)',

@@ -278,7 +278,7 @@ describe('buildPrPipeline', () => {
 		expect(cell.bakeLeftMs).toBeNull();
 	});
 
-	it('metadataUnresolved: gated, "manifest unreadable"', () => {
+	it('metadataUnresolved: waiting-upstream (item 9 — not `gated`, a verification failure not a rule refusing it), "manifest unreadable"', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -296,7 +296,7 @@ describe('buildPrPipeline', () => {
 		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
 		const cell = vm.services[0].cells[0];
-		expect(cell.state).toBe('gated');
+		expect(cell.state).toBe('waiting-upstream');
 		expect(cell.reason).toBe('manifest unreadable');
 	});
 
@@ -323,7 +323,17 @@ describe('buildPrPipeline', () => {
 		expect(vm.services[0].cells[0].state).toBe('live');
 	});
 
-	it('the containedInAll fallback: a release created after mergedAt counts as contained even off the truncated list', () => {
+	// ⚠️ `containedInAll` is the BACKEND'S name for "the since-list was
+	// TRUNCATED at 300" (main_github_pulls.go's `cutAt300`). `true` means the
+	// list is INCOMPLETE and the per-release `created`-vs-`mergedAt` fallback
+	// below applies; `false` means the list is a COMPLETE, AUTHORITATIVE
+	// account and a revision absent from it is simply not built — no
+	// fallback, whatever `created` says. These three tests, and the
+	// regression fixture after them, pin that meaning: get the boolean
+	// backwards here and every normal (non-truncated) PR page mis-reports
+	// ancestor builds as containing the PR.
+
+	it('the containedInAll fallback: containedInAll=true (list TRUNCATED at 300) falls back to created vs mergedAt — a release created after mergedAt counts as contained even off the truncated list', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -337,7 +347,7 @@ describe('buildPrPipeline', () => {
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(
-			meta({ containedIn: [], containedInAll: false }),
+			meta({ containedIn: [], containedInAll: true }),
 			[rollout],
 			[env],
 			{ items: [] },
@@ -349,7 +359,7 @@ describe('buildPrPipeline', () => {
 		expect(cell.revision).toBe('unlisted-later');
 	});
 
-	it('the containedInAll fallback, the other direction: a release created BEFORE mergedAt is not-contained', () => {
+	it('the containedInAll fallback, the other direction (containedInAll=true, truncated): a release created BEFORE mergedAt is not-contained', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -358,7 +368,7 @@ describe('buildPrPipeline', () => {
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(
-			meta({ containedIn: [], containedInAll: false }),
+			meta({ containedIn: [], containedInAll: true }),
 			[rollout],
 			[env],
 			{ items: [] },
@@ -367,7 +377,7 @@ describe('buildPrPipeline', () => {
 		expect(vm.services[0].cells[0].state).toBe('not-built');
 	});
 
-	it('nil `created`: not built (unverified), never claimed contained', () => {
+	it('nil `created` under the truncated fallback (containedInAll=true): not built (unverified), never claimed contained', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -376,7 +386,7 @@ describe('buildPrPipeline', () => {
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(
-			meta({ containedIn: [], containedInAll: false }),
+			meta({ containedIn: [], containedInAll: true }),
 			[rollout],
 			[env],
 			{ items: [] },
@@ -385,6 +395,36 @@ describe('buildPrPipeline', () => {
 		const cell = vm.services[0].cells[0];
 		expect(cell.state).toBe('not-built');
 		expect(cell.reason).toBe('not built (unverified)');
+	});
+
+	it('regression (PR #4 shape): containedInAll=false is authoritative — a release built AFTER mergedAt whose revision is an ancestor, absent from the set, is still not-built', () => {
+		// hello-multi-app / hello-world-app on the live cluster run f7a46ae, an
+		// ancestor of PR #4's merge commit — built well after the PR merged,
+		// but NOT the merge commit and NOT among the (complete, non-truncated)
+		// commits since the merge. `created >= mergedAt` alone must NEVER be
+		// read as containment when the set is authoritative.
+		const rollout = mkRollout({
+			name: 'hello-multi-app',
+			namespace: 'hello-dev',
+			history: [{ revision: 'f7a46ae', timestamp: '2026-09-05T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'f7a46ae', tag: 'f7a46ae', created: '2026-09-06T00:00:00Z' }
+			]
+		});
+		const env = mkEnv({ app: 'hello-multi-app', envName: 'dev', namespace: 'hello-dev' });
+		const vm = buildPrPipeline(
+			meta({
+				mergedAt: '2026-09-01T00:00:00Z',
+				mergeCommitSha: 'bf5be49',
+				containedIn: ['bf5be49'],
+				containedInAll: false
+			}),
+			[rollout],
+			[env],
+			{ items: [] },
+			NOW
+		);
+		expect(vm.services[0].cells[0].state).toBe('not-built');
 	});
 
 	it('waiting-upstream outranks gated when a dependency gate blocks the containing build', () => {
@@ -533,6 +573,51 @@ describe('buildPrPipeline', () => {
 		expect(vm.verdict).toBe('Baking in staging');
 	});
 
+	// ⭐ ITEM 11 (2026-09-10 fix pass). `furthestCompact` is the folded form
+	// `Card`'s `verdictCompact` shows below 560px instead of the clause
+	// list, which has no length bound (one clause per environment) and
+	// clipped mid-word on `hello-world-manifests` (3 environments, 535px in
+	// a 341px card at 390).
+	describe('furthestCompact', () => {
+		it('N of M live, when at least one cell is live', () => {
+			const rollout = mkRollout({
+				name: 'widget-app',
+				namespace: 'widget-dev',
+				history: [{ revision: 'c0ffee1', timestamp: '2026-09-02T00:00:00Z', bakeStatus: 'Succeeded' }]
+			});
+			const env = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+			const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+			expect(vm.services[0].furthestCompact).toBe('1 of 1 live');
+		});
+
+		it('held in N, when nothing is live but something is held', () => {
+			const rollout = mkRollout({
+				name: 'widget-app',
+				namespace: 'widget-prod',
+				history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+				availableReleases: [
+					{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+					{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+				],
+				gates: [{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }]
+			});
+			const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+			const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+			expect(vm.services[0].furthestCompact).toBe('held in 1');
+		});
+
+		it('not built yet, when every cell is not-built', () => {
+			const rollout = mkRollout({
+				name: 'widget-app',
+				namespace: 'widget-dev',
+				history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+			});
+			const env = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+			const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+			expect(vm.services[0].furthestCompact).toBe('not built yet');
+		});
+	});
+
 	it('an app whose source is a different repository is excluded entirely', () => {
 		const other = mkRollout({
 			name: 'other-app',
@@ -554,6 +639,29 @@ describe('buildPrPipeline', () => {
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
 		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+		expect(vm.verdict).toBe('Live everywhere');
+	});
+
+	// ⭐ ITEM 4 (2026-09-10 fix pass). A service with no build at all must
+	// never dominate the verdict — the PR's OWN state is decided by the
+	// services that actually have a build carrying it.
+	it('verdict: live everywhere among services WITH a build, even when another service has none at all', () => {
+		const live = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-02T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const noBuild = mkRollout({
+			name: 'widget-manifests',
+			namespace: 'widget-manifests-dev',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const envA = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const envB = mkEnv({ app: 'widget-manifests', envName: 'dev', namespace: 'widget-manifests-dev' });
+		const vm = buildPrPipeline(meta(), [live, noBuild], [envA, envB], { items: [] }, NOW);
+		expect(vm.services.find((s) => s.appName === 'widget-manifests')?.cells[0].state).toBe(
+			'not-built'
+		);
 		expect(vm.verdict).toBe('Live everywhere');
 	});
 
@@ -586,7 +694,16 @@ describe('buildPrPipeline', () => {
 		expect(vm.verdict).toBe('Waiting in prod on api-app');
 	});
 
-	it('verdict: gated names the rule, never "on [object Object]" or a raw sentence', () => {
+	// ⭐ ITEM 3 (2026-09-10 fix pass). Without `rolloutGates` (this VM never
+	// supplies them — only the per-row "why" fetch does), an `approval`/
+	// `unknown` classification carries no owner evidence and is a guess this
+	// VM cannot back up: the live bug was a CLOSED SCHEDULE gate named
+	// `schedule-gate-fk44d` printing its raw id as "gated by
+	// schedule-gate-fk44d" via exactly this path. So a gate with an
+	// allow-list and no promotion/dependency join now renders the generic,
+	// honest "held by a rule" here — never the gate's own name — until the
+	// disclosure resolves it with real evidence.
+	it('verdict: gated with no owner evidence (approval/unknown) reads "held by a rule", never the raw gate id', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -595,15 +712,19 @@ describe('buildPrPipeline', () => {
 				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
 				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
 			],
-			gates: [{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }]
+			gates: [{ name: 'schedule-gate-fk44d', passing: true, allowedVersions: [] }]
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
-		expect(vm.services[0].cells[0].state).toBe('gated');
-		expect(vm.verdict).toBe('Waiting in prod on hello-world-manual-approval');
+		const cell = vm.services[0].cells[0];
+		expect(cell.state).toBe('gated');
+		expect(cell.gateLabel).toBeNull();
+		expect(cell.gatePending).toBe(true);
+		expect(vm.verdict).not.toContain('schedule-gate-fk44d');
+		expect(vm.verdict).toBe('Held by a rule in prod');
 	});
 
-	it('verdict: gated with nothing actually blocking reads as ready, not a broken "on" clause', () => {
+	it('verdict: gated with nothing actually blocking is its own state (promoting), no HELD contradiction', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -616,7 +737,9 @@ describe('buildPrPipeline', () => {
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
-		expect(vm.services[0].cells[0].gateLabel).toBeNull();
-		expect(vm.verdict).toBe('Ready in prod, not promoted yet');
+		const cell = vm.services[0].cells[0];
+		expect(cell.state).toBe('promoting');
+		expect(cell.gateLabel).toBeNull();
+		expect(vm.verdict).toBe('Promoting shortly in prod');
 	});
 });

@@ -161,6 +161,14 @@ between pages feels jittery."* Measured at 1440 it was two separate defects.
 1280px cap, 24px gutters (16px under `sm`). Content left edge **200px** at 1440 with the
 sidebar open, **16px** at 390, on every route. **There are now NO exceptions.**
 
+- **The PR page's `w-full` (no `max-w-*`) is an APPLICATION of this same full-width principle,
+  not an exception to it.** (2026-09-10.) `/pr/[owner]/[repo]/[number]` has no natural reading
+  measure to cap (it is cards and figures, the same shape `/rollouts` and `/apps` already run
+  edge-to-edge) — the "NO exceptions" sentence above is about not inventing a narrower
+  `max-w-*` without a line-length argument, and a page with no line-length argument choosing
+  full width is that rule being followed, not broken. Don't apologise for it in the page's own
+  comment; say so in one sentence and point here.
+
 - **`w-full` is part of the recipe, not decoration.** `mx-auto` + `max-width` on a block
   parent and on a *flex* parent are not the same box: a flex item with `auto` cross-axis
   margins does not stretch, so it shrinks to its content. Dropped into the rollout layout

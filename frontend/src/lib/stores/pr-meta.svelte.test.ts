@@ -18,7 +18,10 @@ const PULL = {
 	mergeCommitSha: 'c0ffee1',
 	base: 'main',
 	containedIn: ['c0ffee1'],
-	containedInAll: true
+	containedInAll: true,
+	openedAt: '2026-08-30T00:00:00Z',
+	headSha: 'c0ffee1def',
+	changedFiles: 3
 };
 
 afterEach(() => {

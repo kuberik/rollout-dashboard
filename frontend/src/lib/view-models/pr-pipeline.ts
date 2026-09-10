@@ -22,10 +22,13 @@
  *
  * `status.availableReleases`, by contrast, can span far more history than
  * ten deploys, so a release's revision genuinely can fall outside a
- * TRUNCATED (`containedInAll: false`) set without being absent — that is
- * what `containment()` below's `release.created` vs `mergedAt` fallback is
- * for, and it applies ONLY there (rule 3/4's boundary), never to a history
- * entry.
+ * TRUNCATED (`containedInAll: true` — the backend's name for "the
+ * since-list was cut at 300") set without being absent — that is what
+ * `containment()` below's `release.created` vs `mergedAt` fallback is for,
+ * and it applies ONLY there (rule 3/4's boundary), never to a history
+ * entry. When `containedInAll` is `false` the list is COMPLETE, so absence
+ * from it is authoritative: not built, no fallback, whatever `created`
+ * says.
  *
  * ── KNOWN LIMITATION: A REVERT PR ─────────────────────────────────────────
  *
@@ -54,6 +57,7 @@ export type PrState =
 	| 'gated'
 	| 'pinned'
 	| 'waiting-upstream'
+	| 'promoting'
 	| 'deploying'
 	| 'baking'
 	| 'retrying'
@@ -130,6 +134,27 @@ export type PrCell = {
 	 * cell. This is the `<service/env>` in "waiting on <service/env>".
 	 */
 	gateSubject: string | null;
+	/**
+	 * `ClassifiedGate.subjectKind`, carried through so `pr-cell-copy.ts` can
+	 * pick the right verb: `'environment'` (a promotion order — "waiting for
+	 * dev to deploy it first") reads differently from `'service'` (a
+	 * dependency — "waiting on hello-api-app"). `null` off a `waiting-upstream`
+	 * cell.
+	 */
+	gateSubjectKind: 'service' | 'environment' | 'schedule' | null;
+	/**
+	 * ⭐ ITEM 3 (2026-09-10 fix pass). `true` when this VM cannot yet back up
+	 * a specific rule name or kind for a `gated` cell — either `classifyGate`
+	 * itself said `pending` (the schedule join has not landed), or the gate
+	 * classified as `approval`/`unknown` with NO owner evidence (this module
+	 * never supplies `rolloutGates`, so that classification is a guess it
+	 * cannot stand behind; it may really be a closed schedule). `gateLabel`
+	 * is null exactly when this is `true`. The row renders a generic "held
+	 * by a rule" sentence and a `SkeletonBar` for the reason — never the
+	 * gate's raw Kubernetes id — until the "why" disclosure's lazy fetch
+	 * (which DOES supply owner evidence and the schedule join) resolves it.
+	 */
+	gatePending: boolean;
 };
 
 export type PrService = {
@@ -139,6 +164,14 @@ export type PrService = {
 	cells: PrCell[];
 	/** The rollup sentence, e.g. "live in dev · baking in staging". */
 	furthest: string;
+	/**
+	 * ⭐ ITEM 11 (2026-09-10 fix pass). The SAME rollup, folded to a form
+	 * that fits a narrow card — "1 of 3 live", "held in 2" — for
+	 * `Card`'s `verdictCompact`, shown instead of `furthest` below a 560px
+	 * card width. See `compactFurthestSentence`'s own doc comment for the
+	 * fold order.
+	 */
+	furthestCompact: string;
 	/** This app's own dev→prod lead time, `null` with fewer than 2 samples. */
 	leadTimeMs: number | null;
 };
@@ -174,10 +207,21 @@ type Containment = 'contained' | 'not-contained' | 'unverified';
 /**
  * ⭐ THE ONE PLACE THE `containedInAll` FALLBACK IS WRITTEN. Only ever asked
  * of `availableReleases` entries (rule 3/4's boundary) — see the module doc.
+ *
+ * `containedInAll` is the BACKEND'S own name for "the since-list was
+ * TRUNCATED at 300" (`main_github_pulls.go`'s `cutAt300`) — a confusing
+ * name for a true bit, but that is its meaning: `false` means the list is a
+ * COMPLETE, AUTHORITATIVE account of every commit since the merge, so a
+ * revision absent from it is simply not built, full stop, whatever its
+ * `created` timestamp says. `true` means the list was cut short, so a
+ * revision outside it is not PROVEN absent — only then do we fall back to
+ * comparing `release.created` against `mergedAt` per release, and even that
+ * fallback refuses to call a release with no `created` timestamp
+ * "contained": nil `created` is `unverified`, never `contained`.
  */
 function containment(release: ReleaseLike, set: Set<string>, meta: PrPipelineMeta): Containment {
 	if (release.revision && set.has(release.revision)) return 'contained';
-	if (meta.containedInAll) return 'not-contained';
+	if (!meta.containedInAll) return 'not-contained';
 	if (!release.created) return 'unverified';
 	if (!meta.mergedAt) return 'not-contained';
 	const createdMs = new Date(release.created).getTime();
@@ -255,13 +299,18 @@ function cellUsuallyMs(rollout: Rollout): number | null {
 	return median(spans);
 }
 
-const NOTHING: Pick<PrCell, 'since' | 'bakeLeftMs' | 'superseded' | 'gateHint' | 'gateLabel' | 'gateSubject'> = {
+const NOTHING: Pick<
+	PrCell,
+	'since' | 'bakeLeftMs' | 'superseded' | 'gateHint' | 'gateLabel' | 'gateSubject' | 'gateSubjectKind' | 'gatePending'
+> = {
 	since: null,
 	bakeLeftMs: null,
 	superseded: false,
 	gateHint: null,
 	gateLabel: null,
-	gateSubject: null
+	gateSubject: null,
+	gateSubjectKind: null,
+	gatePending: false
 };
 
 function buildCell(
@@ -424,10 +473,13 @@ function buildCell(
 
 		// The requires-metadata this candidate would be gated on could not be
 		// read at all — say so, rather than a false "nothing is blocking it".
+		// ⭐ ITEM 9 (2026-09-10 fix pass): this is a failure to VERIFY this
+		// release's own upstream contracts, not a rule actively refusing it
+		// — `waiting-upstream`, never `gated`.
 		if (releaseMetadataUnresolved(candidate)) {
 			return cell({
 				...NOTHING,
-				state: 'gated',
+				state: 'waiting-upstream',
 				reason: 'manifest unreadable',
 				releaseLabel,
 				revision: candidate.revision ?? null
@@ -443,24 +495,48 @@ function buildCell(
 			// when one is present, even alongside an approval/check gate.
 			const upstream = classified.find((c) => c.clears === 'upstream');
 			const pick = upstream ?? classified[0];
+			// ⭐ ITEM 3 (2026-09-10 fix pass) — THE `schedule-gate-fk44d` BUG.
+			// This module never supplies `rolloutGates` to `buildGateContext`
+			// (only the single-rollout endpoint serves them, fetched lazily
+			// per row on "why"), so `classifyGate`'s `approval`/`unknown`
+			// fallback here has NO owner evidence — it is a guess this VM
+			// cannot back up. Live example: a closed schedule gate named
+			// `schedule-gate-fk44d` has no promotion/dependency join, no
+			// owner evidence, so it fell to `approval` and printed its own
+			// raw Kubernetes id as the "rule name". `promotion`/`dependency`
+			// ARE real evidence (matched directly off Environment/
+			// RolloutDependency, which this module DOES supply) and stay
+			// trustworthy; `pending` (the schedule/check branch's own
+			// honesty flag, set because `/schedules` was never asked here)
+			// is the other case `classifyGate` already tells us not to
+			// trust. Both get identical treatment: no label, no printed id.
+			const unresolvedKind = !upstream && (pick.kind === 'approval' || pick.kind === 'unknown');
+			const pending = !!pick.pending || unresolvedKind;
 			return cell({
 				...NOTHING,
 				state: upstream ? 'waiting-upstream' : 'gated',
-				reason: pick.short,
+				reason: pending ? '' : pick.short,
 				releaseLabel,
 				revision: candidate.revision ?? null,
 				gateHint: { cluster, namespace: ns, rolloutName: name, gateName: pick.id },
-				gateLabel: upstream ? null : pick.label,
-				gateSubject: upstream ? (pick.subject ?? null) : null
+				gateLabel: upstream || pending ? null : pick.label,
+				gateSubject: upstream ? (pick.subject ?? null) : null,
+				gateSubjectKind: upstream ? (pick.subjectKind ?? null) : null,
+				gatePending: pending
 			});
 		}
 
-		// A build containing the PR is deployable by every current gate and
-		// simply has not been promoted yet — a real, if usually brief, window.
+		// ⭐ ITEM 6 (2026-09-10 fix pass). Nothing is blocking this candidate
+		// — every current gate allows it — and the rollout controller
+		// simply has not reconciled the promotion yet. This is NOT a held
+		// state (no rule is refusing it), so it is its own state, never
+		// `gated`: "ready, not promoted yet" printed beside the HELD chip
+		// was a contradiction (`lib/CLAUDE.md`'s finding). No HELD chip on
+		// `promoting` (`PipelineRow.svelte`'s `HELD_STATES` excludes it).
 		return cell({
 			...NOTHING,
-			state: 'gated',
-			reason: 'built and ready — nothing is blocking it, it just has not promoted yet',
+			state: 'promoting',
+			reason: 'waiting for the next reconcile',
 			releaseLabel,
 			revision: candidate.revision ?? null
 		});
@@ -515,9 +591,10 @@ function buildLeadEnvs(cells: AppCell[]): LeadEnv[] {
 
 const STATE_VERB: Record<PrState, string> = {
 	'not-built': 'not built',
-	gated: 'gated',
+	gated: 'held',
 	pinned: 'pinned',
 	'waiting-upstream': 'waiting',
+	promoting: 'promoting',
 	deploying: 'deploying',
 	baking: 'baking',
 	retrying: 'retrying',
@@ -533,6 +610,7 @@ const STATE_PROGRESS: Record<PrState, number> = {
 	gated: 1,
 	pinned: 1,
 	'waiting-upstream': 1,
+	promoting: 1.2,
 	'rolled-back': 1.5,
 	deploying: 2,
 	failed: 2,
@@ -550,14 +628,55 @@ function furthestSentence(cells: PrCell[]): string {
 		.join(' · ');
 }
 
+/** Same set `PipelineRow.svelte`'s `HELD_STATES` draws the HELD chip for. */
+const HELD_LIKE_STATES = new Set<PrState>(['gated', 'waiting-upstream', 'pinned']);
+const ACTIVE_STATES = new Set<PrState>(['deploying', 'baking', 'retrying']);
+
+/**
+ * ⭐ ITEM 11 (2026-09-10 fix pass). `furthestSentence`'s own vocabulary as a
+ * clause LIST has no upper bound on length — one clause per environment,
+ * and a five-environment service (`hello-world-manifests`, three
+ * mismatched-tier envs) measured 535px in a 341px card at 390, clipping
+ * mid-word under `whitespace-nowrap`. This is the FOLDED form `Card`'s
+ * `verdictCompact` shows instead below 560px: a single count, in the same
+ * precedence the page's own verdict already uses (live > held > not-built >
+ * active), never a second clause list.
+ */
+function compactFurthestSentence(cells: PrCell[]): string {
+	const total = cells.length;
+	if (total === 0) return 'no environments';
+	const live = cells.filter((c) => c.state === 'live').length;
+	if (live > 0) return `${live} of ${total} live`;
+	const held = cells.filter((c) => HELD_LIKE_STATES.has(c.state)).length;
+	if (held > 0) return held === total ? `held in ${total}` : `held in ${held}`;
+	const notBuilt = cells.filter((c) => c.state === 'not-built').length;
+	if (notBuilt === total) return 'not built yet';
+	const active = cells.filter((c) => ACTIVE_STATES.has(c.state)).length;
+	if (active > 0) return `${active} of ${total} active`;
+	return `${total} in progress`;
+}
+
+/**
+ * ⭐ ITEM 4 (2026-09-10 fix pass). The verdict is the state of the PR for
+ * services that HAVE a build carrying it — a service with no build at all
+ * says nothing here (the page's own secondary line covers it, see
+ * `+page.svelte`'s `notBuiltServices`). `allCells.every('live')` for the
+ * "Live everywhere" case, and `worst`'s reduce, both used to run over EVERY
+ * cell including `not-built` ones, so one held service among four live ones
+ * still read "Not built yet" whenever some OTHER service simply had no
+ * build — the loudest cell (`not-built`, progress 0) always won the reduce.
+ */
 function buildVerdict(services: PrService[]): string {
 	const allCells = services.flatMap((s) => s.cells);
 	if (allCells.length === 0) return 'No service on this cluster deploys this repository';
-	if (allCells.every((c) => c.state === 'live')) return 'Live everywhere';
+	const withBuild = allCells.filter((c) => c.state !== 'not-built');
+	if (withBuild.length === 0) return 'Not built yet';
+	if (withBuild.every((c) => c.state === 'live')) return 'Live everywhere';
 
-	// The worst-progressed cell; ties broken toward the DEEPER environment —
-	// being blocked in prod is more news than being blocked in dev.
-	const worst = allCells.reduce((acc, c) => {
+	// The worst-progressed cell AMONG THOSE WITH A BUILD; ties broken toward
+	// the DEEPER environment — being blocked in prod is more news than being
+	// blocked in dev.
+	const worst = withBuild.reduce((acc, c) => {
 		const a = STATE_PROGRESS[acc.state];
 		const b = STATE_PROGRESS[c.state];
 		if (b < a) return c;
@@ -566,8 +685,6 @@ function buildVerdict(services: PrService[]): string {
 	});
 
 	switch (worst.state) {
-		case 'not-built':
-			return 'Not built yet';
 		case 'pinned':
 			return `Pinned away from it in ${worst.envName}`;
 		case 'waiting-upstream':
@@ -580,15 +697,23 @@ function buildVerdict(services: PrService[]): string {
 			// is exactly what `gateSubject` is (the upstream env/service name
 			// `PipelineRow`'s "waiting on <service/env>" sentence already
 			// uses), so the verdict now names the SAME thing the row does.
-			return `Waiting in ${worst.envName} on ${worst.gateSubject ?? 'its upstream'}`;
+			// A promotion-order wait (`gateSubjectKind === 'environment'`)
+			// reads "waiting for dev to deploy it first", matching the row's
+			// own verb for that kind (item 3).
+			return worst.gateSubjectKind === 'environment'
+				? `Waiting for ${worst.gateSubject ?? 'its upstream'} to deploy it first`
+				: `Waiting in ${worst.envName} on ${worst.gateSubject ?? 'its upstream'}`;
 		case 'gated':
-			// Same fix, `gateLabel` instead of `gateSubject` — except the one
-			// path with neither (`gateLabel` is null only when nothing is
-			// actually blocking, just not promoted yet), which gets its own
-			// honest phrase rather than "on null".
+			// ⭐ ITEM 3 (2026-09-10): `gateLabel` is null exactly when this VM
+			// cannot back up a specific rule name yet (`gatePending`) — the
+			// generic, honest "held by a rule" phrase, never a raw gate id.
 			return worst.gateLabel
 				? `Waiting in ${worst.envName} on ${worst.gateLabel}`
-				: `Ready in ${worst.envName}, not promoted yet`;
+				: `Held by a rule in ${worst.envName}`;
+		case 'promoting':
+			// ⭐ ITEM 6 (2026-09-10): nothing is holding this — no HELD chip,
+			// no "on <rule>" clause, a truthful self-resolving state.
+			return `Promoting shortly in ${worst.envName}`;
 		case 'failed':
 			return `Failed in ${worst.envName}`;
 		case 'cancelled':
@@ -639,6 +764,7 @@ export function buildPrPipeline(
 			sourceRepo: repoLabel(matching[0].repoKey),
 			cells,
 			furthest: furthestSentence(cells),
+			furthestCompact: compactFurthestSentence(cells),
 			leadTimeMs: leadVm?.medianMs ?? null
 		});
 	}

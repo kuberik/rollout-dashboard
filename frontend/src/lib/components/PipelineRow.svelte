@@ -12,11 +12,14 @@
 	 * the disclosure's fetch-once contract.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
+	import { ChevronDownOutline } from 'flowbite-svelte-icons';
 	import Chip from './Chip.svelte';
 	import FactList, { type Fact } from './FactList.svelte';
+	import SkeletonBar from './skeleton/SkeletonBar.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
+	import { fetchScheduleObjects, type ScheduleObject, formatAbsoluteReopen } from '$lib/api/schedules';
 	import { rolloutPath } from '$lib/source-dashboard';
-	import { buildGateContext, classifyGate } from '$lib/view-models/blocking-story';
+	import { buildGateContext, classifyGate, withSchedules, prettyNameOf } from '$lib/view-models/blocking-story';
 	import type { PrCell, PrState } from '$lib/view-models/pr-pipeline';
 	import { cellStateSentence, cellReasonText, usuallyLabel, sinceLabel } from '$lib/pr-cell-copy';
 	import type { Environment, RolloutDependency } from '../../types';
@@ -41,7 +44,11 @@
 
 	/** HELD names a build that exists somewhere but cannot land in THIS cell
 	 *  yet — the same three precedence-3/4 states `pr-pipeline.ts` groups
-	 *  together (a candidate revision resolved, something is keeping it out). */
+	 *  together (a candidate revision resolved, something is keeping it out).
+	 *  ⛔ `promoting` is deliberately EXCLUDED (item 6, 2026-09-10 fix pass):
+	 *  nothing is holding that cell, so a HELD chip beside "promoting
+	 *  shortly" would be the exact contradiction the design doc's finding
+	 *  named. */
 	const HELD_STATES: ReadonlySet<PrState> = new Set(['gated', 'waiting-upstream', 'pinned']);
 
 	const sentence = $derived(cellStateSentence(cell, now));
@@ -59,17 +66,58 @@
 	const since = $derived(cell.state === 'live' ? null : sinceLabel(cell, now));
 	const href = $derived(rolloutPath(cell.cluster || localClusterName, cell.namespace, cell.rolloutName));
 
+	/**
+	 * ⭐ ITEM 7 (2026-09-10 fix pass). The release that carries the PR in
+	 * THIS cell — label + short sha, mono — was computed by `pr-pipeline.ts`
+	 * (`releaseLabel`/`revision`) but never rendered anywhere on the row.
+	 * `''` exactly when nothing is built here (`cell.releaseLabel`), so
+	 * "when not built, no release" falls out of the same field, no extra
+	 * branch. It links to the SAME rollout `href` the row's own `.tap-zone`
+	 * already opens — a second `.tap-link` to the identical destination
+	 * would be the redundant tab stop `lib/CLAUDE.md` bans, so this is
+	 * plain text inside the zone, not a second anchor.
+	 */
+	const shortRevision = $derived(cell.revision ? cell.revision.slice(0, 7) : null);
+
 	let whyOpen = $state(false);
 
+	/**
+	 * ⭐ ITEM 3 (2026-09-10 fix pass). This row's own SkeletonBar-vs-"held by
+	 * a rule" state (`cell.gatePending`) is resolved by exactly the two
+	 * requests the design doc names: the single-rollout endpoint (owner
+	 * evidence — `rolloutGates` — so `approval`/`unknown` stop being a
+	 * guess) AND this rollout's own schedules (so a closed deploy window
+	 * gets its pretty name, description and `nextTransition` instead of
+	 * falling through to the honest-but-vague `check` classification). Both
+	 * are gated on `whyOpen`, never fetched up front, and each settles once
+	 * (`staleTime: Infinity`) — reopening the disclosure never re-fires them.
+	 */
 	const whyQuery = createQuery(() => ({
 		...rolloutQueryOptions({
 			namespace: cell.gateHint?.namespace ?? '',
 			name: cell.gateHint?.rolloutName ?? '',
 			cluster: cell.gateHint?.cluster || undefined
 		}),
-		// ⛔ NEVER UP FRONT: `enabled` is off until this row's own `<details>`
-		// opens, and once the fetch settles `staleTime: Infinity` means
-		// closing and reopening never fires it again.
+		enabled: !!cell.gateHint && whyOpen,
+		staleTime: Infinity,
+		refetchInterval: false as const,
+		refetchOnWindowFocus: false as const,
+		refetchOnReconnect: false as const
+	}));
+
+	const schedulesQuery = createQuery(() => ({
+		queryKey: [
+			'pr-pipeline-schedules',
+			cell.gateHint?.namespace ?? '',
+			cell.gateHint?.rolloutName ?? '',
+			cell.gateHint?.cluster ?? ''
+		],
+		queryFn: (): Promise<ScheduleObject[]> =>
+			fetchScheduleObjects(
+				cell.gateHint?.namespace ?? '',
+				cell.gateHint?.rolloutName ?? '',
+				cell.gateHint?.cluster || undefined
+			),
 		enabled: !!cell.gateHint && whyOpen,
 		staleTime: Infinity,
 		refetchInterval: false as const,
@@ -86,22 +134,52 @@
 		unknown: 'an unclassified rule'
 	};
 
+	const whyLoading = $derived(whyQuery.isLoading || schedulesQuery.isLoading);
+	const whyErrored = $derived(whyQuery.isError || schedulesQuery.isError);
+	const whyReady = $derived(whyQuery.data != null && schedulesQuery.data != null);
+
+	/**
+	 * The rule record the disclosure prints: its pretty name (never the raw
+	 * Kubernetes gate id), its description when the object publishes one,
+	 * and `status.nextTransition` as "opens <time>" — the literal "when can
+	 * I expect it" the design doc asks for. Both requests must have
+	 * SETTLED before this runs — `withSchedules` is only safe to call once
+	 * (see its own doc comment on `schedulesLoaded`).
+	 */
 	const gateFacts = $derived.by<Fact[] | null>(() => {
 		const hint = cell.gateHint;
 		const data = whyQuery.data;
-		if (!hint || !data) return null;
+		const schedules = schedulesQuery.data;
+		if (!hint || !data || !schedules) return null;
 		const gate = data.rollout?.status?.gates?.find((g) => g.name === hint.gateName);
 		if (!gate) return null;
-		const ctx = buildGateContext({
+		let ctx = buildGateContext({
 			environments: { items: environments },
 			rolloutDependencies,
 			rolloutGates: data.rolloutGates ?? null
 		});
+		ctx = withSchedules(ctx, hint.namespace, schedules);
 		const classified = classifyGate(gate, hint.namespace, ctx);
-		return [
+
+		const gateObj = data.rolloutGates?.items?.find((g) => g.metadata?.name === hint.gateName) ?? null;
+		const scheduleObj =
+			schedules.find((s) => (s.status?.managedGates ?? []).includes(hint.gateName)) ?? null;
+		const prettyName =
+			prettyNameOf(scheduleObj?.metadata) || prettyNameOf(gateObj?.metadata) || classified.label;
+		const description =
+			scheduleObj?.metadata?.annotations?.['gate.kuberik.com/description'] ||
+			gateObj?.metadata?.annotations?.['gate.kuberik.com/description'] ||
+			null;
+
+		const facts: Fact[] = [
 			{ label: 'Kind', value: KIND_LABEL[classified.kind] ?? classified.kind },
-			{ label: 'Rule', value: classified.label }
+			{ label: 'Rule', value: prettyName }
 		];
+		if (description) facts.push({ label: 'Description', value: description });
+		if (classified.clearsAt) {
+			facts.push({ label: 'When', value: `opens ${formatAbsoluteReopen(classified.clearsAt, classified.timezone)}` });
+		}
+		return facts;
 	});
 </script>
 
@@ -138,34 +216,69 @@
 		{/if}
 	</span>
 
-	{#if reason}
+	{#if cell.releaseLabel}
+		<span class="t-micro shrink-0 font-mono text-gray-500 dark:text-gray-400"
+			>{cell.releaseLabel}{#if shortRevision}
+				<span class="text-gray-400 dark:text-gray-500">{shortRevision}</span>
+			{/if}</span
+		>
+	{/if}
+
+	{#if cell.gatePending}
+		<!-- ⭐ ITEM 3 (2026-09-10 fix pass): the schedule/owner join has not
+		     landed, so `pr-pipeline.ts` printed no reason at all rather than
+		     a possibly-wrong finished sentence ("A check is not passing" for
+		     what may really be a closed schedule) — a SkeletonBar stands in
+		     for it, sized to roughly the eventual clause's width, until the
+		     "why" disclosure below resolves it. -->
+		<SkeletonBar width="w-40" class="basis-full sm:basis-auto" />
+	{:else if reason}
 		<span class="t-micro basis-full text-gray-500 sm:basis-auto dark:text-gray-400">{reason}</span>
 	{/if}
 
-	<span class="t-micro ml-auto shrink-0 text-gray-400 dark:text-gray-500"
-		>{usuallyLabel(cell.usuallyMs)}</span
-	>
+	{#if (cell.state === 'deploying' || cell.state === 'baking') && cell.usuallyMs != null}
+		<!-- ⭐ ITEM 5 (2026-09-10 fix pass): "usually" only where a clock
+		     answers something — a live row, a pinned row, an indefinitely
+		     held row all used to print a bare "—" here, which is not an
+		     estimate of anything. `deploying`/`baking` are the two states
+		     with an actual timer running (`bakeLeftMs`); everywhere else
+		     this slot renders nothing rather than a dash. -->
+		<span
+			class="t-micro ml-auto shrink-0 text-gray-400 dark:text-gray-500"
+			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}`}
+			>{usuallyLabel(cell.usuallyMs)}</span
+		>
+	{/if}
 
 	{#if since}
 		<time class="t-micro shrink-0 text-gray-400 dark:text-gray-500">{since}</time>
 	{/if}
 
 	{#if cell.gateHint}
-		<details class="basis-full sm:basis-auto" bind:open={whyOpen}>
+		<!-- ⭐ ITEM 3 (2026-09-10 fix pass): "why?" was a bare, unlabelled
+		     ~16px hit target — a real disclosure control now, ≥44px tall
+		     (`min-h-11`), a chevron that flips on open, and a label that
+		     names what it is a control FOR ("Why is it held?"), not an
+		     interrogative fragment. -->
+		<details class="group basis-full sm:basis-auto" bind:open={whyOpen}>
 			<summary
-				class="t-micro inline-flex cursor-pointer list-none items-center gap-1 rounded text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white [&::-webkit-details-marker]:hidden"
+				class="t-micro flex min-h-11 w-full cursor-pointer list-none items-center gap-1.5 rounded text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white [&::-webkit-details-marker]:hidden"
 			>
-				why?
+				Why is it held?
+				<ChevronDownOutline
+					class="h-3 w-3 shrink-0 transition-transform duration-150 group-open:rotate-180"
+					aria-hidden="true"
+				/>
 			</summary>
-			{#if whyQuery.isLoading}
+			{#if whyLoading}
 				<p class="t-micro mt-1 text-gray-400 dark:text-gray-500">Loading…</p>
-			{:else if whyQuery.data}
+			{:else if whyReady}
 				{#if gateFacts}
 					<FactList facts={gateFacts} class="mt-1" />
 				{:else}
 					<p class="t-micro mt-1 text-gray-400 dark:text-gray-500">This rule no longer applies.</p>
 				{/if}
-			{:else if whyQuery.isError}
+			{:else if whyErrored}
 				<p class="t-micro mt-1 text-gray-400 dark:text-gray-500">Could not load this rule.</p>
 			{/if}
 		</details>

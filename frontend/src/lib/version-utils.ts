@@ -16,6 +16,12 @@ function normalizeSource(source: string): string {
 	} else {
 		s = s.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '');
 	}
+	// A `/tree/<branch>` (or `/blob/<branch>/...`) tail names a REF inside
+	// the repo, not a different repo — `owner/repo/tree/release-1.2` and
+	// `owner/repo` must key identically. (2026-09-10, PR-view fix pass,
+	// item 12 — `pkg/githubapp/repo.go`'s doc comment already claimed this
+	// function ignores tree tails; it did not, until now.)
+	s = s.replace(/\/(tree|blob)\/.*$/, '');
 	s = s.replace(/\.git\/?$/, '').replace(/\/+$/, '');
 	return s.toLowerCase();
 }

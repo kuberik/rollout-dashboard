@@ -27,6 +27,8 @@ function mkCell(state: PrCell['state'], overrides: Partial<PrCell> = {}): PrCell
 		gateHint: null,
 		gateLabel: null,
 		gateSubject: null,
+		gateSubjectKind: null,
+		gatePending: false,
 		...overrides
 	};
 }
@@ -37,6 +39,7 @@ function mkService(cells: PrCell[], overrides: Partial<PrService> = {}): PrServi
 		sourceRepo: 'github.com/acme/widget',
 		cells,
 		furthest: 'live in dev',
+		furthestCompact: '1 of 1 live',
 		leadTimeMs: null,
 		...overrides
 	};
@@ -90,7 +93,7 @@ describe('PipelineCard', () => {
 		);
 		expect(screen.getByRole('link', { name: /STAGING rollout for widget-app/i })).toBeInTheDocument();
 		expect(screen.getByText('live since 2h ago')).toBeInTheDocument();
-		expect(screen.getByText('gated by Business Hours Only')).toBeInTheDocument();
+		expect(screen.getByText('held by Business Hours Only')).toBeInTheDocument();
 	});
 
 	test('a cluster prefix appears only when more than one cluster is present', () => {
@@ -132,13 +135,64 @@ describe('PipelineCard', () => {
 		expect(screen.queryByText('held')).not.toBeInTheDocument();
 	});
 
-	test('no "why?" disclosure when the cell names no gate', () => {
-		const service = mkService([mkCell('live')]);
+	test('item 7: the row names the release carrying the PR (label + short sha), and prints nothing when not built', () => {
+		const service = mkService([
+			mkCell('live', {
+				envName: 'dev',
+				since: '2026-09-10T10:00:00Z',
+				releaseLabel: '2.66.0-66',
+				revision: 'abc1234def5678'
+			}),
+			mkCell('not-built', { envName: 'staging', envRank: 4 })
+		]);
 		renderCard(service);
-		expect(screen.queryByText('why?')).not.toBeInTheDocument();
+		expect(screen.getByText('2.66.0-66')).toBeInTheDocument();
+		expect(screen.getByText('abc1234')).toBeInTheDocument();
 	});
 
-	test('"why?" fetches the single-rollout endpoint once, lazily, and prints the gate\'s kind', async () => {
+	test('item 5: no bare "usually" em dash on live/not-built/held rows — only deploying/baking print an estimate', () => {
+		const service = mkService([
+			mkCell('live', { envName: 'dev', since: '2026-09-10T10:00:00Z', usuallyMs: 5 * 60_000 }),
+			mkCell('not-built', { envName: 'staging', envRank: 4, usuallyMs: null }),
+			mkCell('baking', {
+				envName: 'prod',
+				envRank: 7,
+				usuallyMs: 8 * 60_000,
+				since: '2026-09-10T11:56:00Z',
+				bakeLeftMs: 6 * 60_000
+			})
+		]);
+		renderCard(service);
+		expect(screen.queryByText('—')).not.toBeInTheDocument();
+		expect(screen.getByText(/usually \d+ min/)).toBeInTheDocument();
+	});
+
+	test('no "Why is it held?" disclosure when the cell names no gate', () => {
+		const service = mkService([mkCell('live')]);
+		renderCard(service);
+		expect(screen.queryByText('Why is it held?')).not.toBeInTheDocument();
+	});
+
+	test('gatePending: a SkeletonBar stands in for the reason, "held by a rule" not the raw gate id', () => {
+		const service = mkService([
+			mkCell('gated', {
+				gateLabel: null,
+				gatePending: true,
+				reason: '',
+				gateHint: {
+					cluster: '',
+					namespace: 'widget-dev',
+					rolloutName: 'widget-app',
+					gateName: 'schedule-gate-fk44d'
+				}
+			})
+		]);
+		renderCard(service);
+		expect(screen.getByText('held by a rule')).toBeInTheDocument();
+		expect(screen.queryByText(/schedule-gate-fk44d/)).not.toBeInTheDocument();
+	});
+
+	test('"Why is it held?" fetches the single-rollout endpoint AND this rollout\'s schedules once, lazily, and prints the gate\'s kind', async () => {
 		const service = mkService([
 			mkCell('gated', {
 				gateLabel: 'hello-world-manual-approval',
@@ -159,9 +213,14 @@ describe('PipelineCard', () => {
 			rolloutGates: { items: [] }
 		};
 
-		const fetchMock = vi.fn((_url: string) =>
-			Promise.resolve(new Response(JSON.stringify(rolloutResponse), { status: 200 }))
-		);
+		const fetchMock = vi.fn((url: string) => {
+			if (url.includes('/schedules')) {
+				return Promise.resolve(
+					new Response(JSON.stringify({ rolloutSchedules: { items: [] } }), { status: 200 })
+				);
+			}
+			return Promise.resolve(new Response(JSON.stringify(rolloutResponse), { status: 200 }));
+		});
 		vi.stubGlobal('fetch', fetchMock);
 
 		renderCard(service);
@@ -169,17 +228,18 @@ describe('PipelineCard', () => {
 		// ⛔ NEVER UP FRONT — the row rendered and nothing fetched yet.
 		expect(fetchMock).not.toHaveBeenCalled();
 
-		await fireEvent.click(screen.getByText('why?'));
+		await fireEvent.click(screen.getByText('Why is it held?'));
 
-		await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-		expect(fetchMock.mock.calls[0][0]).toContain('/rollouts/widget-dev/widget-app');
+		await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+		expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/rollouts/widget-dev/widget-app') && !String(c[0]).includes('/schedules'))).toBe(true);
+		expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/rollouts/widget-dev/widget-app/schedules'))).toBe(true);
 
 		await waitFor(() => expect(screen.getByText('Kind')).toBeInTheDocument());
 		expect(screen.getByText('a manual approval')).toBeInTheDocument();
 
 		// Closing and reopening never fires a second fetch (`staleTime: Infinity`).
-		await fireEvent.click(screen.getByText('why?'));
-		await fireEvent.click(screen.getByText('why?'));
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		await fireEvent.click(screen.getByText('Why is it held?'));
+		await fireEvent.click(screen.getByText('Why is it held?'));
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 });

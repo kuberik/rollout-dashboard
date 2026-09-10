@@ -16,12 +16,11 @@
 	 * (title, `#N · owner/repo`, "View on GitHub ↗") is the page's only
 	 * orientation.
 	 *
-	 * ⛔ NO `max-w-*` ON THIS CONTAINER. (2026-09-10, human: "I would always
-	 * like to use full width of the page.") Every other route in this
-	 * product still carries the OLDER `max-w-7xl` recipe (`lib/CLAUDE.md`'s
-	 * "page container" section, 2026-09-01) — this is a NEW route and the
-	 * newer, more specific rule wins for it. Not applied retroactively to
-	 * the rest of the product here; that is a separate cleanup.
+	 * NO `max-w-*` ON THIS CONTAINER: `w-full` here is an application of the
+	 * product's full-width rule (2026-09-10, human: "I would always like to
+	 * use full width of the page."), not a deviation from `lib/CLAUDE.md`'s
+	 * page-container recipe — see that file's own reconciliation note next
+	 * to the "NO exceptions" line.
 	 */
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -98,10 +97,18 @@
 		meta ? buildPrPipeline(meta, rollouts, environments, rolloutDependencies, coarse) : null
 	);
 
-	/** Adverse services (a `failed` cell somewhere) first, then alphabetical. */
+	/**
+	 * ⭐ ITEM 4 (2026-09-10 fix pass). Services with a build carrying the PR
+	 * first (adverse — a `failed` cell somewhere — before the rest), THEN
+	 * the services with no build anywhere, each group alphabetical.
+	 */
 	const orderedServices = $derived.by(() => {
 		if (!vm) return [];
+		const hasBuild = (s: (typeof vm.services)[number]) => s.cells.some((c) => c.state !== 'not-built');
 		return [...vm.services].sort((a, b) => {
+			const aBuilt = hasBuild(a);
+			const bBuilt = hasBuild(b);
+			if (aBuilt !== bBuilt) return aBuilt ? -1 : 1;
 			const aAdverse = a.cells.some((c) => c.state === 'failed');
 			const bAdverse = b.cells.some((c) => c.state === 'failed');
 			if (aAdverse !== bAdverse) return aAdverse ? -1 : 1;
@@ -109,20 +116,66 @@
 		});
 	});
 
+	/** ⭐ ITEM 4's secondary line — services with NO build anywhere, named
+	 *  once beside the verdict rather than each earning their own headline
+	 *  claim ("Not built yet for hello-api-app, hello-world-manifests"). */
+	const notBuiltServiceNames = $derived.by(() => {
+		if (!vm) return [];
+		return vm.services
+			.filter((s) => s.cells.every((c) => c.state === 'not-built'))
+			.map((s) => s.appName)
+			.sort((a, b) => a.localeCompare(b));
+	});
+
 	// ── STREAMING: NOTIFY THE PER-TAB STORE WHEN A MATCHING APP GAINS A
 	// REVISION. `notifyRevisionSeen` is already debounced/idempotent
 	// (`stores/pr-meta.svelte.ts`); this just has to report each NEW
 	// revision once, not spam it on every 30s tick.
+	//
+	// ⭐ ITEM 10 (2026-09-10 fix pass). This used to notify for EVERY
+	// revision already on screen the first time `prData` arrived — for a
+	// service whose head is an unrelated ancestor build (never going to
+	// join `containedIn`), that still armed `notifyRevisionSeen`'s 5s
+	// debounce once, firing ONE extra `fetchPull()` (2 more upstream GitHub
+	// calls) on a page that had only just finished its own first fetch.
+	// Live measured: 4 upstream calls on first paint against the spec's
+	// ≤2. The fix is a SNAPSHOT taken the first time this PR's meta AND the
+	// rollout list have both settled — only a revision that was NOT in that
+	// snapshot (i.e. appears on a LATER poll/stream tick, a build landing
+	// while the page is open) ever calls `notifyRevisionSeen`.
 	const expectedRepoKey = $derived(repoKeyFromSource(`github.com/${owner}/${repo}`, ''));
 	const notifiedRevisions = new Set<string>();
+	let snapshotKey = '';
+	let snapshotRevisions = new Set<string>();
+	let snapshotTaken = false;
 	$effect(() => {
 		if (!prData) return;
+		if (!rolloutsQuery.data) return; // wait for the list's own first settle
 		const key = prMetaKey(owner, repo, number);
+		if (snapshotKey !== key) {
+			// A fresh PR (first load, or this tab navigated to a different
+			// PR) — reset and snapshot whatever is on screen right now
+			// before any notification is allowed to fire.
+			snapshotKey = key;
+			snapshotRevisions = new Set<string>();
+			snapshotTaken = false;
+			notifiedRevisions.clear();
+		}
+		if (!snapshotTaken) {
+			snapshotTaken = true;
+			for (const rollout of rollouts) {
+				if (repoKeyFromSource(rollout.status?.source, '') !== expectedRepoKey) continue;
+				for (const rel of rollout.status?.availableReleases ?? []) {
+					if (rel.revision) snapshotRevisions.add(rel.revision);
+				}
+			}
+			return; // first settle: only snapshot, never notify
+		}
 		for (const rollout of rollouts) {
 			if (repoKeyFromSource(rollout.status?.source, '') !== expectedRepoKey) continue;
 			for (const rel of rollout.status?.availableReleases ?? []) {
 				const rev = rel.revision;
-				if (!rev || notifiedRevisions.has(rev)) continue;
+				if (!rev || notifiedRevisions.has(rev) || snapshotRevisions.has(rev)) continue;
 				notifiedRevisions.add(rev);
 				notifyRevisionSeen(key, rev);
 			}
@@ -135,6 +188,15 @@
 
 	const mergedAgo = $derived(
 		prData?.mergedAt ? `${formatTimeAgoCompact(prData.mergedAt, coarse)} ago` : null
+	);
+
+	/** Item 8 — an open PR's own facts, straight off `pulls/{n}`, no build state. */
+	const openAge = $derived(prData?.openedAt ? formatTimeAgoCompact(prData.openedAt, coarse) : null);
+	const openHeadShort = $derived(prData?.headSha ? prData.headSha.slice(0, 7) : null);
+	const openFilesLabel = $derived(
+		prData?.changedFiles != null
+			? `${prData.changedFiles} file${prData.changedFiles === 1 ? '' : 's'}`
+			: null
 	);
 
 	/**
@@ -181,7 +243,7 @@
 			<div class="h-4 w-1/2 max-w-sm animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
 		</div>
 		<div class="space-y-4">
-			{#each Array(skelServices) as _, i (i)}
+			{#each Array.from({ length: skelServices }, (_, i) => i) as i (i)}
 				<CardSkeleton titleWidth="w-32" rollupWidth="w-40" rows={3} rowHeight={28} padded={false} />
 			{/each}
 		</div>
@@ -198,6 +260,20 @@
 			<GithubSolid aria-hidden="true" />
 			Connect GitHub
 		</button>
+	{:else if pullError?.reason === 'not_found' && pullError.scope === 'pr'}
+		<p class="t-dense mb-1 text-gray-500 dark:text-gray-400">
+			#{number} · {owner}/{repo}
+		</p>
+		<h1 class="t-display text-gray-900 dark:text-white">PR not found</h1>
+		<p class="t-body mt-2 max-w-prose text-gray-600 dark:text-gray-300">
+			PR #{number} not found in {owner}/{repo} (or you cannot see it). Check the number, or
+			<a
+				href={`https://github.com/${owner}/${repo}/pulls?q=is%3Apr`}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="nav-link">search {owner}/{repo}'s pull requests on GitHub ↗</a
+			>. You can also press <kbd class="t-code-sm">⌘K</kbd> to look it up here.
+		</p>
 	{:else if pullError?.reason === 'not_found'}
 		<p class="t-dense mb-1 text-gray-500 dark:text-gray-400">
 			#{number} · {owner}/{repo}
@@ -242,6 +318,10 @@
 					This pull request has not merged yet — it targets <code class="t-code-sm">{prData.base}</code
 					>. Once it merges, this page fills in per service.
 				</p>
+				<p class="t-dense mt-2 text-gray-500 dark:text-gray-400">
+					{#if openAge}open {openAge} · {/if}{#if openFilesLabel}{openFilesLabel} · {/if}{#if openHeadShort}head
+						<code class="t-code-sm">{openHeadShort}</code> · {/if}not built anywhere
+				</p>
 			</Card>
 		{:else if prData.state === 'closed'}
 			<Card icon={CloseCircleOutline} title="Closed without merging">
@@ -250,7 +330,16 @@
 				</p>
 			</Card>
 		{:else if vm}
-			<p class="t-headline mb-4 text-gray-900 dark:text-white">{vm.verdict}</p>
+			<!-- ⭐ ITEM 4 (2026-09-10 fix pass): a real heading, not a styled
+			     div — the page's one verdict claim. -->
+			<h2 class="t-headline mb-1 text-gray-900 dark:text-white">{vm.verdict}</h2>
+			{#if notBuiltServiceNames.length > 0 && notBuiltServiceNames.length < vm.services.length}
+				<!-- Only when it's NEW information — a page whose verdict is
+				     already "Not built yet" (every service) would restate itself. -->
+				<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">
+					Not built yet for {notBuiltServiceNames.join(', ')}.
+				</p>
+			{/if}
 			{#if orderedServices.length > 0}
 				<div class="space-y-4">
 					{#each orderedServices as service (service.appName)}

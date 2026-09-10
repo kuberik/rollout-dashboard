@@ -92,15 +92,29 @@ export function cellStateSentence(cell: PrCell, now: Date = new Date()): string 
 		case 'not-built':
 			return 'not built yet';
 		case 'gated':
-			// `gateLabel` is null on exactly one path (`pr-pipeline.ts`'s
-			// "no blocking gate at all, just not promoted" branch) — a
-			// distinct fact from "held by a named rule" and worded as one.
-			return cell.gateLabel ? `gated by ${cell.gateLabel}` : 'ready, not promoted yet';
+			// ⭐ ITEM 3 (2026-09-10 fix pass). Retired: "gated by X" (the noun
+			// `gate` is retired from user copy) and printing the raw
+			// Kubernetes gate id when `pr-pipeline.ts` could not resolve a
+			// trustworthy label (`gatePending`) — both shipped live as
+			// "gated by schedule-gate-fk44d". `gateLabel` is null exactly
+			// when the rule is unresolved (schedule join pending, or an
+			// unverified approval/unknown classification) — the honest,
+			// generic "held by a rule" until the row's "why" disclosure
+			// resolves the specific one.
+			return cell.gateLabel ? `held by ${cell.gateLabel}` : 'held by a rule';
 		case 'pinned':
 			// Already exactly "pinned to <label>" — see `pr-pipeline.ts`.
 			return cell.reason;
 		case 'waiting-upstream':
-			return `waiting on ${cell.gateSubject ?? 'its upstream'}`;
+			// A promotion-order wait (subject is an ENVIRONMENT, "dev" not
+			// "hello-api-app") reads as "waiting for dev to deploy it first";
+			// a dependency wait (subject is a SERVICE) reads "waiting on
+			// hello-api-app" — same distinction `buildVerdict` makes.
+			return cell.gateSubjectKind === 'environment'
+				? `waiting for ${cell.gateSubject ?? 'its upstream'} to deploy it first`
+				: `waiting on ${cell.gateSubject ?? 'its upstream'}`;
+		case 'promoting':
+			return 'promoting shortly';
 		case 'deploying':
 			return 'deploying';
 		case 'baking':

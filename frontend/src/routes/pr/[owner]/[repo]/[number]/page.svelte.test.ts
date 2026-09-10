@@ -53,6 +53,9 @@ function pullInfo(overrides: Partial<PullRequestInfo> = {}): PullRequestInfo {
 		base: 'main',
 		containedIn: ['c0ffee1'],
 		containedInAll: true,
+		openedAt: null,
+		headSha: null,
+		changedFiles: null,
 		...overrides
 	};
 }
@@ -91,7 +94,7 @@ function stubFetch(opts: {
 	vi.stubGlobal(
 		'fetch',
 		vi.fn((url: string) => {
-			if (url === PULL_URL) return pull();
+			if (url === PULL_URL || url.startsWith('/api/github/pulls/acme/widget/')) return pull();
 			if (url === '/api/rollouts') {
 				return jsonResponse({
 					rollouts: { items: opts.rollouts ?? [] },
@@ -139,11 +142,54 @@ describe('/pr/[owner]/[repo]/[number]', () => {
 			'https://github.com/acme/widget/pull/42'
 		);
 
-		await waitFor(() => expect(screen.getByText('Live everywhere')).toBeInTheDocument());
+		await waitFor(() =>
+			expect(screen.getByRole('heading', { level: 2, name: 'Live everywhere' })).toBeInTheDocument()
+		);
 		expect(screen.getByRole('link', { name: 'widget-app' })).toHaveAttribute(
 			'href',
 			'/apps/widget-app'
 		);
+	});
+
+	test('item 4: a service with no build does not sink the verdict, and is named in one secondary line', async () => {
+		stubFetch({
+			rollouts: [
+				rollout('widget-app', 'widget-dev', 'c0ffee1', new Date().toISOString()),
+				rollout('widget-manifests', 'widget-manifests-dev', 'unrelated-1', '2026-08-01T00:00:00Z')
+			],
+			environments: [
+				environment('widget-app', 'widget-dev', 'dev'),
+				environment('widget-manifests', 'widget-manifests-dev', 'dev')
+			]
+		});
+		renderPage();
+		await waitFor(() =>
+			expect(screen.getByRole('heading', { level: 2, name: 'Live everywhere' })).toBeInTheDocument()
+		);
+		expect(screen.getByText('Not built yet for widget-manifests.')).toBeInTheDocument();
+	});
+
+	test('item 10: a revision already on screen at first paint never re-fetches the PR (≤1 github/pulls call, even past the 5s debounce)', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		let pullCalls = 0;
+		stubFetch({
+			pull: () => {
+				pullCalls++;
+				return jsonResponse(pullInfo());
+			},
+			// This rollout's head ('ancestor-1') is NOT in `containedIn`
+			// (['c0ffee1']) — exactly the PR #4 shape (an unrelated
+			// ancestor already on screen when the PR's own meta arrives).
+			rollouts: [rollout('widget-app', 'widget-dev', 'ancestor-1', new Date().toISOString())],
+			environments: [environment('widget-app', 'widget-dev', 'dev')]
+		});
+		renderPage();
+		await vi.waitFor(() => expect(pullCalls).toBe(1));
+		// Let the rollout list's own query, and any debounce armed off the
+		// first paint, fully settle.
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(pullCalls).toBe(1);
+		vi.useRealTimers();
 	});
 
 	test('document.title leads with the PR, not the product name', async () => {
@@ -165,15 +211,34 @@ describe('/pr/[owner]/[repo]/[number]', () => {
 		expect(screen.getByRole('button', { name: /Connect GitHub/i })).toBeInTheDocument();
 	});
 
-	test('not found: names the repo, not a generic failure', async () => {
+	test('not found, scope=repo: names the repo, not a generic failure', async () => {
 		stubFetch({
 			pull: () =>
-				Promise.resolve(new Response(JSON.stringify({ error: 'not found' }), { status: 404 }))
+				Promise.resolve(new Response(JSON.stringify({ error: 'not_found', scope: 'repo' }), { status: 404 }))
 		});
 		renderPage();
 		expect(
 			await screen.findByText('No service on this cluster deploys acme/widget.')
 		).toBeInTheDocument();
+	});
+
+	test('not found, scope=pr: a wrong PR number, not a cluster/repo sentence — links to GitHub search and hints ⌘K', async () => {
+		stubFetch({
+			pull: () =>
+				Promise.resolve(new Response(JSON.stringify({ error: 'not_found', scope: 'pr' }), { status: 404 }))
+		});
+		state.page.params = { owner: 'acme', repo: 'widget', number: '999' };
+		state.page.url = new URL('http://localhost/pr/acme/widget/999');
+		renderPage();
+		expect(await screen.findByRole('heading', { name: 'PR not found' })).toBeInTheDocument();
+		expect(
+			screen.getByText(/PR #999 not found in acme\/widget \(or you cannot see it\)/)
+		).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: /search acme\/widget's pull requests on GitHub/i })).toHaveAttribute(
+			'href',
+			'https://github.com/acme/widget/pulls?q=is%3Apr'
+		);
+		expect(screen.getByText('⌘K', { exact: false })).toBeInTheDocument();
 	});
 
 	test('a transient server error renders the generic ErrorState, not a blank page', async () => {
@@ -190,6 +255,28 @@ describe('/pr/[owner]/[repo]/[number]', () => {
 		expect(await screen.findByRole('heading', { name: 'Not merged yet' })).toBeInTheDocument();
 		expect(screen.getByText(/targets/)).toBeInTheDocument();
 		expect(screen.getByText('main', { exact: false })).toBeInTheDocument();
+	});
+
+	test('open (item 8): prints age, changed files, head sha and "not built anywhere" instead of an empty card', async () => {
+		stubFetch({
+			pull: () =>
+				jsonResponse(
+					pullInfo({
+						state: 'open',
+						mergedAt: null,
+						mergeCommitSha: null,
+						openedAt: new Date(Date.now() - 3 * 24 * 3600_000).toISOString(),
+						headSha: 'abc1234def',
+						changedFiles: 4
+					})
+				)
+		});
+		renderPage();
+		await screen.findByRole('heading', { name: 'Not merged yet' });
+		expect(screen.getByText(/open \d+d/)).toBeInTheDocument();
+		expect(screen.getByText('4 files', { exact: false })).toBeInTheDocument();
+		expect(screen.getByText('abc1234', { exact: false })).toBeInTheDocument();
+		expect(screen.getByText(/not built anywhere/)).toBeInTheDocument();
 	});
 
 	test('closed: closed without merging, no cards', async () => {

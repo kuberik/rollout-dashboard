@@ -63,6 +63,37 @@ func TestGitHubPullRequest_NotInCluster404(t *testing.T) {
 	if !contains(w.Body.String(), `"error":"not_found"`) {
 		t.Fatalf("body = %s, want error=not_found", w.Body.String())
 	}
+	if !contains(w.Body.String(), `"scope":"repo"`) {
+		t.Fatalf("body = %s, want scope=repo (the repo itself is not deployed here)", w.Body.String())
+	}
+}
+
+func TestGitHubPullRequest_WrongPRNumber404ScopePR(t *testing.T) {
+	// The repo IS deployed on this cluster, but the PR number GitHub answers
+	// 404 for is wrong — the frontend must tell this apart from "wrong repo"
+	// (scope=repo above) so it can print "PR #999 not found in owner/repo",
+	// not "no service on this cluster deploys owner/repo".
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"message":"Not Found"}`)
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/pulls/octo/repo/999", "ghu_wrongpr_token")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (body: %s)", w.Code, w.Body.String())
+	}
+	if !contains(w.Body.String(), `"error":"not_found"`) {
+		t.Fatalf("body = %s, want error=not_found", w.Body.String())
+	}
+	if !contains(w.Body.String(), `"scope":"pr"`) {
+		t.Fatalf("body = %s, want scope=pr (the repo is deployed here; the PR number is wrong)", w.Body.String())
+	}
 }
 
 func TestGitHubPullRequest_NoToken401(t *testing.T) {
@@ -88,7 +119,7 @@ func TestGitHubPullRequest_Open(t *testing.T) {
 			t.Fatalf("unexpected path %s", req.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"number":42,"title":"Add feature","html_url":"https://github.com/octo/repo/pull/42","state":"open","user":{"login":"alice"}}`)
+		fmt.Fprint(w, `{"number":42,"title":"Add feature","html_url":"https://github.com/octo/repo/pull/42","state":"open","user":{"login":"alice"},"created_at":"2026-09-07T00:00:00Z","head":{"sha":"abc1234def"},"changed_files":4}`)
 	}))
 	defer ts.Close()
 	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
@@ -118,6 +149,15 @@ func TestGitHubPullRequest_Open(t *testing.T) {
 	}
 	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
 		t.Fatalf("Cache-Control = %q, want %q", got, "private, no-store")
+	}
+	if body["openedAt"] != "2026-09-07T00:00:00Z" {
+		t.Fatalf("openedAt = %v, want 2026-09-07T00:00:00Z", body["openedAt"])
+	}
+	if body["headSha"] != "abc1234def" {
+		t.Fatalf("headSha = %v, want abc1234def", body["headSha"])
+	}
+	if body["changedFiles"] != float64(4) {
+		t.Fatalf("changedFiles = %v, want 4", body["changedFiles"])
 	}
 }
 
