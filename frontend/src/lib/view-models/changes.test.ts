@@ -8,6 +8,9 @@ import {
 	filterChangeRows,
 	repoChipOptions,
 	buildLedgerChangeRows,
+	summarizeChangeRows,
+	myChangesCount,
+	orderHomeChangeRows,
 	type ChangeRowVM
 } from './changes';
 import { buildPrPipeline } from './pr-pipeline';
@@ -36,6 +39,7 @@ function mkCell(state: PrCell['state'], overrides: Partial<PrCell> = {}): PrCell
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		containmentKnown: true,
 		...overrides
 	};
 }
@@ -47,12 +51,22 @@ function mkService(appName: string, cells: PrCell[]): PrService {
 		cells,
 		furthest: '',
 		furthestCompact: '',
-		leadTimeMs: null
+		leadTimeMs: null,
+		builtElsewhere: false
 	};
 }
 
 function mkVm(services: PrService[]): PrPipelineVM {
-	return { services, verdict: '' };
+	return {
+		services,
+		verdict: '',
+		verdictWord: '',
+		verdictTone: 'not-built',
+		containmentKnown: true,
+		rolloutsTotal: 0,
+		rolloutsWithBuild: 0,
+		rolloutsLive: 0
+	};
 }
 
 const NOW = new Date('2026-09-10T12:00:00Z');
@@ -139,23 +153,28 @@ describe('buildChangeRows', () => {
 	});
 });
 
+// ⭐ RULING 3 (CHANGES-2026-09-10 fix pass, "ONE VERDICT, THE FRONTIER").
+// `changeVerdict` is now a thin wrapper over `pr-pipeline.ts`'s own
+// `buildChangeVerdict` — the FRONTIER (earliest env-rank cell not live),
+// named with the raw environment name (never the family word — that
+// abbreviation is `LandingMark`'s own budget, not the row's prose).
 describe('changeVerdict', () => {
 	it('is "live everywhere" when every cell is live', () => {
 		const vm = mkVm([mkService('a', [mkCell('live')]), mkService('b', [mkCell('live')])]);
 		expect(changeVerdict(vm)).toEqual({ word: 'live everywhere', tone: 'live' });
 	});
 
-	it('names the environment family for a held cell, worst-first', () => {
+	it('names the raw environment for a held cell, worst-first', () => {
 		const vm = mkVm([
 			mkService('a', [mkCell('live', { envName: 'dev' })]),
 			mkService('b', [mkCell('gated', { envName: 'prod' })])
 		]);
-		expect(changeVerdict(vm)).toEqual({ word: 'held in prd', tone: 'held' });
+		expect(changeVerdict(vm)).toEqual({ word: 'held in prod', tone: 'held' });
 	});
 
-	it('names the environment family for a failed cell', () => {
+	it('names the raw environment for a failed cell', () => {
 		const vm = mkVm([mkService('a', [mkCell('failed', { envName: 'staging' })])]);
-		expect(changeVerdict(vm)).toEqual({ word: 'failed in stg', tone: 'failed' });
+		expect(changeVerdict(vm)).toEqual({ word: 'failed in staging', tone: 'failed' });
 	});
 
 	it('is "not built yet" when nothing has built, but a service exists', () => {
@@ -163,14 +182,33 @@ describe('changeVerdict', () => {
 		expect(changeVerdict(vm)).toEqual({ word: 'not built yet', tone: 'not-built' });
 	});
 
-	it('is "deploying" for an in-flight cell with nothing worse', () => {
+	it('is "deploying in <env>" for an in-flight cell with nothing worse', () => {
 		const vm = mkVm([mkService('a', [mkCell('deploying')])]);
-		expect(changeVerdict(vm)).toEqual({ word: 'deploying', tone: 'active' });
+		expect(changeVerdict(vm)).toEqual({ word: 'deploying in dev', tone: 'active' });
 	});
 
 	it('is "not built here" with no matching service at all', () => {
 		const vm = mkVm([]);
 		expect(changeVerdict(vm)).toEqual({ word: 'not built here', tone: 'not-built' });
+	});
+
+	it('names the upstream service as the subject for a dependency wait', () => {
+		const vm = mkVm([
+			mkService('a', [
+				mkCell('waiting-upstream', { envName: 'prod', gateSubject: 'api-app', gateSubjectKind: 'service' })
+			])
+		]);
+		expect(changeVerdict(vm)).toEqual({ word: 'held in prod on api-app', tone: 'held' });
+	});
+
+	it('earliest env-rank wins over "worst state": a dev hold outranks a prod failure', () => {
+		const vm = mkVm([
+			mkService('a', [
+				mkCell('gated', { envName: 'dev', envRank: 0 }),
+				mkCell('failed', { envName: 'prod', envRank: 7 })
+			])
+		]);
+		expect(changeVerdict(vm)).toEqual({ word: 'held in dev', tone: 'held' });
 	});
 });
 
@@ -260,6 +298,132 @@ describe('filterChangeRows', () => {
 		});
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].notEverywhere).toBe(true);
+	});
+
+	// ⭐ RULING 5 (CHANGES-2026-09-10 fix pass, "COUNTS") — the "Pull requests" chip.
+	it('filters by kind', () => {
+		const rows = [mkRow({ kind: 'pr' }), mkRow({ kind: 'commit' })];
+		expect(filterChangeRows(rows, '', { kind: 'pr' })).toHaveLength(1);
+		expect(filterChangeRows(rows, '', { kind: 'pr' })[0].kind).toBe('pr');
+	});
+
+	it('kind unset matches everything', () => {
+		const rows = [mkRow({ kind: 'pr' }), mkRow({ kind: 'commit' })];
+		expect(filterChangeRows(rows, '', {})).toHaveLength(2);
+	});
+});
+
+describe('summarizeChangeRows (CHANGES-2026-09-10 fix pass, ruling 5 — "COUNTS")', () => {
+	function mkRow(overrides: Partial<ChangeRowVM>): ChangeRowVM {
+		return {
+			owner: 'acme',
+			repo: 'widget',
+			repoKey: 'acme/widget',
+			kind: 'pr',
+			number: 1,
+			title: 'a change',
+			sha: 'abc1234',
+			shortSha: 'abc1234',
+			href: '/changes/x',
+			htmlUrl: '',
+			author: 'octocat',
+			mergedAt: NOW.toISOString(),
+			verdictWord: 'live everywhere',
+			verdictTone: 'live',
+			grid: { services: [], allSameLabel: null, visible: [], overflow: null },
+			notEverywhere: false,
+			...overrides
+		};
+	}
+
+	it('computes count / notEverywhereCount / repoCount over whatever rows it is given', () => {
+		const rows = [
+			mkRow({ repoKey: 'a/one', notEverywhere: true }),
+			mkRow({ repoKey: 'a/one', notEverywhere: false }),
+			mkRow({ repoKey: 'a/two', notEverywhere: true })
+		];
+		expect(summarizeChangeRows(rows)).toEqual({ count: 3, notEverywhereCount: 2, repoCount: 2 });
+	});
+
+	it('reflects the FILTERED set, not some other total — the head band\'s own requirement', () => {
+		const all = [mkRow({ repoKey: 'a/one' }), mkRow({ repoKey: 'a/two' })];
+		const filtered = all.filter((r) => r.repoKey === 'a/one');
+		expect(summarizeChangeRows(filtered).repoCount).toBe(1);
+	});
+});
+
+describe('myChangesCount (ruling 5 — ONE definition of "your changes")', () => {
+	function mkRow(overrides: Partial<ChangeRowVM>): ChangeRowVM {
+		return {
+			owner: 'acme',
+			repo: 'widget',
+			repoKey: 'acme/widget',
+			kind: 'pr',
+			number: 1,
+			title: 'a change',
+			sha: 'abc1234',
+			shortSha: 'abc1234',
+			href: '/changes/x',
+			htmlUrl: '',
+			author: 'octocat',
+			mergedAt: NOW.toISOString(),
+			verdictWord: 'live everywhere',
+			verdictTone: 'live',
+			grid: { services: [], allSameLabel: null, visible: [], overflow: null },
+			notEverywhere: false,
+			...overrides
+		};
+	}
+
+	it('counts merged PRs AND bare commits authored by the user, case-insensitively', () => {
+		const rows = [
+			mkRow({ author: 'Octocat', kind: 'pr' }),
+			mkRow({ author: 'octocat', kind: 'commit' }),
+			mkRow({ author: 'someone-else', kind: 'pr' })
+		];
+		expect(myChangesCount(rows, 'octocat')).toBe(2);
+	});
+});
+
+describe('orderHomeChangeRows (ruling 5 — stuck-first, then newest)', () => {
+	function mkRow(overrides: Partial<ChangeRowVM>): ChangeRowVM {
+		return {
+			owner: 'acme',
+			repo: 'widget',
+			repoKey: 'acme/widget',
+			kind: 'pr',
+			number: 1,
+			title: 'a change',
+			sha: 'abc1234',
+			shortSha: 'abc1234',
+			href: '/changes/x',
+			htmlUrl: '',
+			author: 'octocat',
+			mergedAt: NOW.toISOString(),
+			verdictWord: 'live everywhere',
+			verdictTone: 'live',
+			grid: { services: [], allSameLabel: null, visible: [], overflow: null },
+			notEverywhere: false,
+			...overrides
+		};
+	}
+
+	it('puts every non-live-everywhere row ahead of every live-everywhere row', () => {
+		const older = new Date(NOW.getTime() - 3600_000).toISOString();
+		const rows = [
+			mkRow({ title: 'live-newer', verdictTone: 'live', mergedAt: NOW.toISOString() }),
+			mkRow({ title: 'stuck-older', verdictTone: 'held', mergedAt: older })
+		];
+		expect(orderHomeChangeRows(rows).map((r) => r.title)).toEqual(['stuck-older', 'live-newer']);
+	});
+
+	it('orders newest-first within each group', () => {
+		const older = new Date(NOW.getTime() - 3600_000).toISOString();
+		const rows = [
+			mkRow({ title: 'older', verdictTone: 'held', mergedAt: older }),
+			mkRow({ title: 'newer', verdictTone: 'held', mergedAt: NOW.toISOString() })
+		];
+		expect(orderHomeChangeRows(rows).map((r) => r.title)).toEqual(['newer', 'older']);
 	});
 });
 

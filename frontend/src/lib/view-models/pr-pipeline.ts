@@ -46,7 +46,13 @@ import { releaseMetadataUnresolved } from '$lib/../types';
 import { getDisplayVersion } from '$lib/utils';
 import { parseGoDuration } from '$lib/utils';
 import { getEnvironmentRank } from '$lib/env-order';
-import { groupRolloutsByApp, repoKeyFromSource, repoLabel, type AppCell } from '$lib/version-utils';
+import {
+	groupRolloutsByApp,
+	repoKeyFromSource,
+	repoLabel,
+	envFamilyWord,
+	type AppCell
+} from '$lib/version-utils';
 import type { EnvironmentTheme } from '$lib/environment-theme';
 import { gateAllows } from './promotion';
 import { buildGateContext, classifyGate, type GateContext } from './blocking-story';
@@ -155,6 +161,24 @@ export type PrCell = {
 	 * (which DOES supply owner evidence and the schedule join) resolves it.
 	 */
 	gatePending: boolean;
+	/**
+	 * ⭐ RULING 1 (CHANGES-2026-09-10 fix pass, "SUPERSEDED IS LIVE"). `false`
+	 * when this VM cannot yet trust a POSITIVE containment claim beyond an
+	 * exact sha match — a bare-sha `PrPipelineMeta` with an empty
+	 * `containedIn` and `containedInAll: false` (the stub shape
+	 * `{mergeCommitSha, containedIn: [], containedInAll: false}` §3
+	 * constructs before the `commits/:sha` endpoint's real ancestry list is
+	 * wired in). Same value on every cell this call produces — see
+	 * `buildPrPipeline`'s own `containmentKnown` local. When `false`,
+	 * `buildCell` refuses to report `promoting`/`waiting-upstream` off a
+	 * merely-exact-match candidate (that candidate may already be a
+	 * superseded, historical release while the real head — unprovably —
+	 * already carries the change) and reports `not-built`/"not built
+	 * (unverified)" instead, so the page can fetch real ancestry rather than
+	 * print a confident but possibly-wrong "promoting shortly"/"waiting for
+	 * staging".
+	 */
+	containmentKnown: boolean;
 };
 
 export type PrService = {
@@ -166,20 +190,54 @@ export type PrService = {
 	furthest: string;
 	/**
 	 * ⭐ ITEM 11 (2026-09-10 fix pass). The SAME rollup, folded to a form
-	 * that fits a narrow card — "1 of 3 live", "held in 2" — for
+	 * that fits a narrow card — "1 of 3 live", "held in dev · stg" — for
 	 * `Card`'s `verdictCompact`, shown instead of `furthest` below a 560px
 	 * card width. See `compactFurthestSentence`'s own doc comment for the
-	 * fold order.
+	 * fold order. ⭐ RULING 7 (2026-09-10 fix pass): the held reading names
+	 * the FAMILY WORDS of the held environments, never a bare count.
 	 */
 	furthestCompact: string;
 	/** This app's own dev→prod lead time, `null` with fewer than 2 samples. */
 	leadTimeMs: number | null;
+	/**
+	 * ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA"). `true`
+	 * when some OTHER service of this same repository has at least one cell
+	 * whose state is not `not-built` — i.e. the change HAS been built
+	 * somewhere on this cluster, just not for THIS service. Lets
+	 * `pr-cell-copy.ts` distinguish "no build of this change for this
+	 * service" (a fact about this service specifically) from "not built yet"
+	 * (nothing anywhere has built it) without inventing a second `PrState`.
+	 */
+	builtElsewhere: boolean;
 };
+
+/** THE SHORT VERDICT'S TONE — CHANGES-2026-09-10 §2b/§3. Canonical home is
+ *  here (not `changes.ts`): `buildChangeVerdict` below is the ONE frontier
+ *  verdict function the change page, the index row and the Home card all
+ *  share (ruling 3); `changes.ts`'s own `changeVerdict` re-exports this type
+ *  and thinly wraps the function so existing call sites keep working. */
+export type ChangeVerdictTone = 'live' | 'held' | 'failed' | 'active' | 'not-built';
 
 export type PrPipelineVM = {
 	services: PrService[];
-	/** The page's one verdict line, e.g. "live everywhere". */
+	/** The page's one verdict line, e.g. "live everywhere". Sentence-cased for
+	 *  head-band prose; same words `verdictWord` carries, lower-cased. */
 	verdict: string;
+	/** The SAME verdict, lower-case, undecorated — §2b's row-word spelling
+	 *  ("held in dev on hello-api-app"), for a caller that colours the word
+	 *  by `verdictTone` rather than dropping it into a capitalised sentence. */
+	verdictWord: string;
+	verdictTone: ChangeVerdictTone;
+	/** See `PrCell.containmentKnown` — one value for the whole PR/commit. */
+	containmentKnown: boolean;
+	/** ⭐ RULING 5 (COUNTS). Every rollout (cell) this change could possibly
+	 *  land in, on this cluster. */
+	rolloutsTotal: number;
+	/** Cells whose state is not `not-built` — "N of M rollouts have a build
+	 *  of this change". */
+	rolloutsWithBuild: number;
+	/** Cells whose state is `live`. */
+	rolloutsLive: number;
 };
 
 /**
@@ -201,6 +259,19 @@ export type PrPipelineMeta = {
 	mergeCommitSha: string | null;
 	containedIn: readonly string[];
 	containedInAll: boolean;
+	/**
+	 * ⭐ RULING 1 (CHANGES-2026-09-10 fix pass). Explicit override for
+	 * `buildPrPipeline`'s own "do I actually have real ancestry data" check.
+	 * Optional and additive: a caller that has verified real ancestry (a
+	 * fully-resolved PR, or a bare sha whose `commits/:sha` fetch came back
+	 * with an authoritative empty list — genuinely zero commits since) may
+	 * pass `true` even with `containedIn: []`. Omitted, the default is
+	 * `containedIn.length > 0 || containedInAll` — which reads a `{
+	 * containedIn: [], containedInAll: false }` stub (§3's bare-sha
+	 * construction, before `commits/:sha` is wired for a given caller) as
+	 * UNKNOWN, never as "verified empty".
+	 */
+	containmentKnown?: boolean;
 };
 
 type ReleaseLike = { tag: string; version?: string; revision?: string; created?: string };
@@ -331,7 +402,8 @@ function buildCell(
 	set: Set<string>,
 	meta: PrPipelineMeta,
 	gateCtx: GateContext,
-	now: Date
+	now: Date,
+	containmentKnown: boolean
 ): PrCell {
 	const status = rollout.status ?? {};
 	const history = status.history ?? [];
@@ -345,7 +417,14 @@ function buildCell(
 	const cell = (
 		partial: Omit<
 			PrCell,
-			'cluster' | 'envName' | 'envRank' | 'usuallyMs' | 'namespace' | 'rolloutName' | 'theme'
+			| 'cluster'
+			| 'envName'
+			| 'envRank'
+			| 'usuallyMs'
+			| 'namespace'
+			| 'rolloutName'
+			| 'theme'
+			| 'containmentKnown'
 		>
 	): PrCell => ({
 		cluster,
@@ -355,8 +434,21 @@ function buildCell(
 		namespace: ns,
 		rolloutName: name,
 		theme,
+		containmentKnown,
 		...partial
 	});
+
+	// ⭐ RULING 1. A cell this ambiguous still gets returned honestly — never
+	// a confident-but-unverifiable "promoting"/"waiting" — see the two call
+	// sites below.
+	const notBuiltUnverified = (): PrCell =>
+		cell({
+			...NOTHING,
+			state: 'not-built',
+			reason: 'not built (unverified)',
+			releaseLabel: '',
+			revision: null
+		});
 
 	// ── RULE 1: the currently-running build IS the PR's ────────────────────
 	if (headRevision && set.has(headRevision)) {
@@ -522,6 +614,16 @@ function buildCell(
 			// trust. Both get identical treatment: no label, no printed id.
 			const unresolvedKind = !upstream && (pick.kind === 'approval' || pick.kind === 'unknown');
 			const pending = !!pick.pending || unresolvedKind;
+			// ⭐ RULING 1 (2026-09-10 fix pass, "SUPERSEDED IS LIVE"). A
+			// `waiting-upstream` claim names a SPECIFIC upstream blocking a
+			// SPECIFIC candidate — this VM cannot stand behind that when it
+			// does not actually know whether the head has already moved past
+			// this exact-match candidate via ancestry it cannot see. `gated`
+			// is untouched: it names no upstream, only "some rule currently
+			// disallows this build", which stays true regardless.
+			if (upstream && !containmentKnown) {
+				return notBuiltUnverified();
+			}
 			return cell({
 				...NOTHING,
 				state: upstream ? 'waiting-upstream' : 'gated',
@@ -543,6 +645,12 @@ function buildCell(
 		// `gated`: "ready, not promoted yet" printed beside the HELD chip
 		// was a contradiction (`lib/CLAUDE.md`'s finding). No HELD chip on
 		// `promoting` (`PipelineRow.svelte`'s `HELD_STATES` excludes it).
+		// ⭐ RULING 1: "promoting shortly" is the loudest unverifiable claim of
+		// all — it says nothing at all is in the way — so it is the first one
+		// refused when containment is unknown.
+		if (!containmentKnown) {
+			return notBuiltUnverified();
+		}
 		return cell({
 			...NOTHING,
 			state: 'promoting',
@@ -614,22 +722,6 @@ const STATE_VERB: Record<PrState, string> = {
 	live: 'live'
 };
 
-/** How far a state has actually progressed — for "furthest" and the verdict. */
-const STATE_PROGRESS: Record<PrState, number> = {
-	'not-built': 0,
-	gated: 1,
-	pinned: 1,
-	'waiting-upstream': 1,
-	promoting: 1.2,
-	'rolled-back': 1.5,
-	deploying: 2,
-	failed: 2,
-	cancelled: 2,
-	baking: 2.5,
-	retrying: 2.5,
-	live: 3
-};
-
 function furthestSentence(cells: PrCell[]): string {
 	if (cells.length === 0) return 'no environments';
 	return [...cells]
@@ -643,22 +735,29 @@ const HELD_LIKE_STATES = new Set<PrState>(['gated', 'waiting-upstream', 'pinned'
 const ACTIVE_STATES = new Set<PrState>(['deploying', 'baking', 'retrying']);
 
 /**
- * ⭐ ITEM 11 (2026-09-10 fix pass). `furthestSentence`'s own vocabulary as a
- * clause LIST has no upper bound on length — one clause per environment,
- * and a five-environment service (`hello-world-manifests`, three
- * mismatched-tier envs) measured 535px in a 341px card at 390, clipping
- * mid-word under `whitespace-nowrap`. This is the FOLDED form `Card`'s
- * `verdictCompact` shows instead below 560px: a single count, in the same
- * precedence the page's own verdict already uses (live > held > not-built >
- * active), never a second clause list.
+ * ⭐ ITEM 11 (2026-09-10 fix pass), ⭐ RULING 7 (CHANGES-2026-09-10 fix pass,
+ * "Mobile header rollup"). `furthestSentence`'s own vocabulary as a clause
+ * LIST has no upper bound on length — one clause per environment, and a
+ * five-environment service (`hello-world-manifests`, three mismatched-tier
+ * envs) measured 535px in a 341px card at 390, clipping mid-word under
+ * `whitespace-nowrap`. This is the FOLDED form `Card`'s `verdictCompact`
+ * shows instead below 560px, in the same precedence the page's own verdict
+ * already uses (live > held > not-built > active), never a second clause
+ * list. The held reading names the FAMILY WORDS of the held environments
+ * (`held in dev · stg`), never a bare count — a count answers "how many"
+ * when the reader's question is "where", the same defect §2a's marks exist
+ * to fix.
  */
 function compactFurthestSentence(cells: PrCell[]): string {
 	const total = cells.length;
 	if (total === 0) return 'no environments';
 	const live = cells.filter((c) => c.state === 'live').length;
 	if (live > 0) return `${live} of ${total} live`;
-	const held = cells.filter((c) => HELD_LIKE_STATES.has(c.state)).length;
-	if (held > 0) return held === total ? `held in ${total}` : `held in ${held}`;
+	const held = cells.filter((c) => HELD_LIKE_STATES.has(c.state));
+	if (held.length > 0) {
+		const families = [...new Set(held.map((c) => envFamilyWord(c.envName).toLowerCase()))];
+		return `held in ${families.join(' · ')}`;
+	}
 	const notBuilt = cells.filter((c) => c.state === 'not-built').length;
 	if (notBuilt === total) return 'not built yet';
 	const active = cells.filter((c) => ACTIVE_STATES.has(c.state)).length;
@@ -666,73 +765,137 @@ function compactFurthestSentence(cells: PrCell[]): string {
 	return `${total} in progress`;
 }
 
-/**
- * ⭐ ITEM 4 (2026-09-10 fix pass). The verdict is the state of the PR for
- * services that HAVE a build carrying it — a service with no build at all
- * says nothing here (the page's own secondary line covers it, see
- * `+page.svelte`'s `notBuiltServices`). `allCells.every('live')` for the
- * "Live everywhere" case, and `worst`'s reduce, both used to run over EVERY
- * cell including `not-built` ones, so one held service among four live ones
- * still read "Not built yet" whenever some OTHER service simply had no
- * build — the loudest cell (`not-built`, progress 0) always won the reduce.
- */
-function buildVerdict(services: PrService[]): string {
-	const allCells = services.flatMap((s) => s.cells);
-	if (allCells.length === 0) return 'No service on this cluster deploys this repository';
-	const withBuild = allCells.filter((c) => c.state !== 'not-built');
-	if (withBuild.length === 0) return 'Not built yet';
-	if (withBuild.every((c) => c.state === 'live')) return 'Live everywhere';
+/** The word `buildChangeVerdict` prints for a frontier cell's state — NOT
+ *  `STATE_VERB` (which spells `waiting-upstream` as "waiting"): ruling 3's
+ *  own examples spell a dependency wait "held in dev on hello-api-app",
+ *  same word as a gate hold, because both are "something else has to move
+ *  first" from the reader's point of view. */
+const FRONTIER_VERB: Record<PrState, string> = {
+	'not-built': 'not built',
+	gated: 'held',
+	pinned: 'pinned',
+	'waiting-upstream': 'held',
+	promoting: 'promoting',
+	deploying: 'deploying',
+	baking: 'baking',
+	retrying: 'retrying',
+	failed: 'failed',
+	cancelled: 'cancelled',
+	'rolled-back': 'rolled back',
+	live: 'live'
+};
 
-	// The worst-progressed cell AMONG THOSE WITH A BUILD; ties broken toward
-	// the DEEPER environment — being blocked in prod is more news than being
-	// blocked in dev.
-	const worst = withBuild.reduce((acc, c) => {
-		const a = STATE_PROGRESS[acc.state];
-		const b = STATE_PROGRESS[c.state];
-		if (b < a) return c;
-		if (b === a && c.envRank > acc.envRank) return c;
-		return acc;
-	});
-
-	switch (worst.state) {
-		case 'pinned':
-			return `Pinned away from it in ${worst.envName}`;
-		case 'waiting-upstream':
-			// ⭐ COPY FIX, F2 (2026-09-10) — `worst.reason` IS A FULL CAPITALISED
-			// CLAUSE (`pick.short`, e.g. "Waiting for staging to deploy it
-			// first"), and plugging it after "on" produced "Waiting in prod on
-			// Waiting for staging to deploy it first" — a doubled verb, live
-			// on `/pr/littlechimera/kuberik-testing/1`. The design doc's own
-			// example is "waiting in prod on gate X", X being a NAME — this
-			// is exactly what `gateSubject` is (the upstream env/service name
-			// `PipelineRow`'s "waiting on <service/env>" sentence already
-			// uses), so the verdict now names the SAME thing the row does.
-			// A promotion-order wait (`gateSubjectKind === 'environment'`)
-			// reads "waiting for dev to deploy it first", matching the row's
-			// own verb for that kind (item 3).
-			return worst.gateSubjectKind === 'environment'
-				? `Waiting for ${worst.gateSubject ?? 'its upstream'} to deploy it first`
-				: `Waiting in ${worst.envName} on ${worst.gateSubject ?? 'its upstream'}`;
-		case 'gated':
-			// ⭐ ITEM 3 (2026-09-10): `gateLabel` is null exactly when this VM
-			// cannot back up a specific rule name yet (`gatePending`) — the
-			// generic, honest "held by a rule" phrase, never a raw gate id.
-			return worst.gateLabel
-				? `Waiting in ${worst.envName} on ${worst.gateLabel}`
-				: `Held by a rule in ${worst.envName}`;
-		case 'promoting':
-			// ⭐ ITEM 6 (2026-09-10): nothing is holding this — no HELD chip,
-			// no "on <rule>" clause, a truthful self-resolving state.
-			return `Promoting shortly in ${worst.envName}`;
+function frontierTone(state: PrState): ChangeVerdictTone {
+	switch (state) {
 		case 'failed':
-			return `Failed in ${worst.envName}`;
-		case 'cancelled':
-			return `Cancelled in ${worst.envName}`;
-		case 'rolled-back':
-			return `Rolled back in ${worst.envName}`;
+			return 'failed';
+		case 'gated':
+		case 'pinned':
+		case 'waiting-upstream':
+			return 'held';
 		default:
-			return `${STATE_VERB[worst.state][0].toUpperCase()}${STATE_VERB[worst.state].slice(1)} in ${worst.envName}`;
+			return 'active';
 	}
+}
+
+/** The subject clause, when the frontier state names one — a `gated` cell
+ *  names the RULE (`by <gateLabel>`) only once this VM can back the label up
+ *  (`gateLabel` non-null, i.e. not `gatePending`); a `waiting-upstream` cell
+ *  names the upstream SERVICE/ENVIRONMENT (`on <gateSubject>`). Every other
+ *  state — `pinned`, `deploying`, `baking`, `failed`… — carries no subject in
+ *  the verdict, even though some (`pinned`) have a target of their own; the
+ *  design doc's own examples show none. */
+function frontierSubject(cell: PrCell): string | null {
+	if (cell.state === 'gated') return cell.gateLabel ? `by ${cell.gateLabel}` : null;
+	if (cell.state === 'waiting-upstream') return `on ${cell.gateSubject ?? 'its upstream'}`;
+	return null;
+}
+
+function capitalize(word: string): string {
+	return word ? `${word[0].toUpperCase()}${word.slice(1)}` : word;
+}
+
+/**
+ * ⭐ RULING 3 (CHANGES-2026-09-10 fix pass, "ONE VERDICT, THE FRONTIER").
+ * THE ONE VERDICT FUNCTION — the change page, the index row and the Home
+ * card all read this (`changes.ts`'s own `changeVerdict` is a thin wrapper,
+ * never its own computation). Supersedes the old "worst-progressed cell"
+ * rule: the verdict now names the FRONTIER — the EARLIEST env-rank cell
+ * (lowest rank, among cells whose service actually has a build) that is not
+ * live — because a later-ranked cell is usually just waiting on the earlier
+ * one anyway, and "held in dev" is more actionable than "held in prod" when
+ * dev is where the actual block is.
+ *
+ * A service with NO build at all takes no part in this (`withBuild` filters
+ * `not-built` out first, exactly as the superseded `buildVerdict` did) —
+ * see `pr-pipeline.test.ts`'s "live everywhere among services WITH a build"
+ * regression.
+ */
+export function buildChangeVerdict(services: PrService[]): { word: string; tone: ChangeVerdictTone } {
+	const allCells = services.flatMap((s) => s.cells);
+	const withBuild = allCells.filter((c) => c.state !== 'not-built');
+	if (withBuild.length === 0) return { word: 'not built yet', tone: 'not-built' };
+	if (withBuild.every((c) => c.state === 'live')) return { word: 'live everywhere', tone: 'live' };
+
+	const candidates = withBuild
+		.filter((c) => c.state !== 'live')
+		.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
+	const frontier = candidates[0];
+	const subject = frontierSubject(frontier);
+	const word = subject
+		? `${FRONTIER_VERB[frontier.state]} in ${frontier.envName} ${subject}`
+		: `${FRONTIER_VERB[frontier.state]} in ${frontier.envName}`;
+	return { word, tone: frontierTone(frontier.state) };
+}
+
+/**
+ * ⭐ RULING 4 (CHANGES-2026-09-10 fix pass, "JOIN THE REASON"). A second pass
+ * over already-built services: a `waiting-upstream` cell whose dependency
+ * `subjectKind === 'service'` may be waiting on a service that is ITSELF one
+ * of this same change's own services — in which case the generic gate
+ * clause ("Waiting for hello-api-app to ship api ^1.67.0 — it is on
+ * 1.66.0") is replaced with the more useful fact this VM can now see across
+ * services: does the provider have a build of THIS change anywhere, and has
+ * it reached the SAME env/cluster the waiting cell is in? Runs after every
+ * service is built because it is the only point every service's cells are
+ * all in hand at once. Mutates no cell in place — returns fresh cell/service
+ * objects so nothing else that captured a reference is surprised.
+ */
+function joinDependencyReasons(services: readonly PrService[]): PrService[] {
+	const byName = new Map(services.map((s) => [s.appName, s]));
+	return services.map((svc) => ({
+		...svc,
+		cells: svc.cells.map((cell) => {
+			if (cell.state !== 'waiting-upstream' || cell.gateSubjectKind !== 'service' || !cell.gateSubject) {
+				return cell;
+			}
+			const provider = byName.get(cell.gateSubject);
+			if (!provider) return cell;
+			const providerHasAnyBuild = provider.cells.some((c) => c.state !== 'not-built');
+			if (!providerHasAnyBuild) {
+				return { ...cell, reason: `waiting on ${cell.gateSubject} — its build of this change does not exist yet` };
+			}
+			const atSameSpot = provider.cells.find(
+				(c) => c.envName === cell.envName && c.cluster === cell.cluster
+			);
+			if (!atSameSpot || atSameSpot.state !== 'live') {
+				return { ...cell, reason: `waiting on ${cell.gateSubject} to reach ${cell.envName}` };
+			}
+			return cell;
+		})
+	}));
+}
+
+/** RULING 2's `builtElsewhere` — a second cross-service pass for the same
+ *  reason `joinDependencyReasons` is one: needs every service's cells in
+ *  hand, which only exists once the whole array is built. */
+function withBuiltElsewhere(services: readonly PrService[]): PrService[] {
+	return services.map((svc, i) => ({
+		...svc,
+		builtElsewhere: services.some(
+			(other, j) => j !== i && other.cells.some((c) => c.state !== 'not-built')
+		)
+	}));
 }
 
 /**
@@ -751,20 +914,26 @@ export function buildPrPipeline(
 		environments: { items: environments },
 		rolloutDependencies
 	});
+	// ⭐ RULING 1. See `PrPipelineMeta.containmentKnown`'s own doc — the
+	// default reads an unpopulated bare-sha stub as UNKNOWN, never as
+	// "verified empty".
+	const containmentKnown = meta.containmentKnown ?? (meta.containedIn.length > 0 || meta.containedInAll);
 
 	// The PR's own repo, normalised the SAME way every rollout's own
 	// `status.source` is — so `https://github.com/o/r.git` and `o/r` agree.
 	const expectedRepoKey = repoKeyFromSource(`github.com/${meta.owner}/${meta.repo}`, '');
 
 	const groups = groupRolloutsByApp(rollouts, environments);
-	const services: PrService[] = [];
+	let services: PrService[] = [];
 
 	for (const group of groups.values()) {
 		const matching = group.cells.filter((c) => c.repoKey === expectedRepoKey);
 		if (matching.length === 0) continue;
 
 		const cells = matching
-			.map((c) => buildCell(c.rollout, c.envName, c.sourceCluster, c.theme, set, meta, gateCtx, now))
+			.map((c) =>
+				buildCell(c.rollout, c.envName, c.sourceCluster, c.theme, set, meta, gateCtx, now, containmentKnown)
+			)
 			.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
 
 		const leadVm = leadTime(buildLeadEnvs(matching));
@@ -775,9 +944,36 @@ export function buildPrPipeline(
 			cells,
 			furthest: furthestSentence(cells),
 			furthestCompact: compactFurthestSentence(cells),
-			leadTimeMs: leadVm?.medianMs ?? null
+			leadTimeMs: leadVm?.medianMs ?? null,
+			builtElsewhere: false // placeholder — `withBuiltElsewhere` fills the real value below
 		});
 	}
 
-	return { services, verdict: buildVerdict(services) };
+	services = withBuiltElsewhere(joinDependencyReasons(services));
+
+	const allCells = services.flatMap((s) => s.cells);
+	const rolloutsTotal = allCells.length;
+	const rolloutsWithBuild = allCells.filter((c) => c.state !== 'not-built').length;
+	const rolloutsLive = allCells.filter((c) => c.state === 'live').length;
+
+	// ⭐ ITEM 4 (2026-09-10 fix pass) / RULING 3. Kept as its own sentence,
+	// distinct from "not built yet": zero MATCHING services (no app on this
+	// cluster sources from this repo at all) is a different fact from "some
+	// service matched, none has built it".
+	const { word, tone } =
+		services.length === 0
+			? { word: 'not built here', tone: 'not-built' as ChangeVerdictTone }
+			: buildChangeVerdict(services);
+	const verdict = services.length === 0 ? 'No service on this cluster deploys this repository' : capitalize(word);
+
+	return {
+		services,
+		verdict,
+		verdictWord: word,
+		verdictTone: tone,
+		containmentKnown,
+		rolloutsTotal,
+		rolloutsWithBuild,
+		rolloutsLive
+	};
 }

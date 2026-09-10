@@ -4,6 +4,7 @@ import {
 	cellReasonText,
 	usuallyLabel,
 	frontierUsuallyLabel,
+	frontierUsuallyLabelForCell,
 	sinceLabel,
 	checksLine
 } from './pr-cell-copy';
@@ -33,6 +34,7 @@ function mkCell(state: PrState, overrides: Partial<PrCell> = {}): PrCell {
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		containmentKnown: true,
 		...overrides
 	};
 }
@@ -40,6 +42,26 @@ function mkCell(state: PrState, overrides: Partial<PrCell> = {}): PrCell {
 describe('cellStateSentence', () => {
 	it('not-built', () => {
 		expect(cellStateSentence(mkCell('not-built'))).toBe('not built yet');
+	});
+
+	// ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA").
+	it('not-built, builtElsewhere: true — names the fact that this SERVICE has no build, not that nothing has built', () => {
+		const cell = mkCell('not-built');
+		expect(cellStateSentence(cell, NOW, { builtElsewhere: true })).toBe(
+			'no build of this change for this service'
+		);
+	});
+
+	it('not-built, builtElsewhere omitted/false — the plain reading', () => {
+		expect(cellStateSentence(mkCell('not-built'), NOW, { builtElsewhere: false })).toBe('not built yet');
+	});
+
+	// ⭐ RULING 1 (CHANGES-2026-09-10 fix pass, "SUPERSEDED IS LIVE"). The
+	// unverified-containment reading always wins over `builtElsewhere` — "we
+	// don't know" outranks "we know it's missing here specifically".
+	it('not-built, "not built (unverified)" wins over builtElsewhere', () => {
+		const cell = mkCell('not-built', { reason: 'not built (unverified)' });
+		expect(cellStateSentence(cell, NOW, { builtElsewhere: true })).toBe('not built (unverified)');
 	});
 
 	it('held by a named rule (never "gated by" — the noun is retired)', () => {
@@ -168,10 +190,14 @@ describe('cellReasonText — suppresses a line that would only restate the sente
 		expect(cellReasonText(mkCell('not-built', { reason: 'not built here yet' }))).toBeNull();
 	});
 
-	it('not-built keeps the unverified nuance', () => {
-		expect(cellReasonText(mkCell('not-built', { reason: 'not built (unverified)' }))).toBe(
-			'not built (unverified)'
-		);
+	// ⭐ RULING 1 (2026-09-10 fix pass). `cellStateSentence` itself now prints
+	// "not built (unverified)" as the PRIMARY sentence (not just "not built
+	// yet"), so a secondary reason line repeating the exact same words is
+	// exactly the redundancy this module's own "ONE FACT, DRAWN, IS THE END
+	// OF ITS SENTENCE" rule (module doc, top of file) suppresses — same
+	// reasoning as `pinned`/`rolled-back`'s own suppression above.
+	it('not-built (unverified): the primary sentence already carries it, so the reason line is suppressed', () => {
+		expect(cellReasonText(mkCell('not-built', { reason: 'not built (unverified)' }))).toBeNull();
 	});
 
 	it('deploying suppresses its own fallback text', () => {
@@ -242,6 +268,29 @@ describe('frontierUsuallyLabel (CHANGES-2026-09-10 §7, item 1)', () => {
 
 	it('never rounds down to 0 min', () => {
 		expect(frontierUsuallyLabel(10_000)).toBe('usually 1 min once it starts');
+	});
+});
+
+describe('frontierUsuallyLabelForCell — guarded, ruling 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA")', () => {
+	it('never on not-built — a build that does not exist has no ETA', () => {
+		expect(frontierUsuallyLabelForCell(mkCell('not-built', { usuallyMs: 6 * 60_000 }))).toBeNull();
+	});
+
+	it('prints a label on every state whose service HAS a build (gated/pinned/waiting-upstream/promoting)', () => {
+		for (const state of ['gated', 'pinned', 'waiting-upstream', 'promoting'] as const) {
+			expect(frontierUsuallyLabelForCell(mkCell(state, { usuallyMs: 6 * 60_000 }))).toBe(
+				'usually 6 min once it starts'
+			);
+		}
+	});
+
+	it('null under the 2-sample guard even on a state that has a build', () => {
+		expect(frontierUsuallyLabelForCell(mkCell('gated', { usuallyMs: null }))).toBeNull();
+	});
+
+	it('never on a state already in flight (deploying/baking) — that is `usuallyLabel`\'s own job', () => {
+		expect(frontierUsuallyLabelForCell(mkCell('deploying', { usuallyMs: 6 * 60_000 }))).toBeNull();
+		expect(frontierUsuallyLabelForCell(mkCell('baking', { usuallyMs: 6 * 60_000 }))).toBeNull();
 	});
 });
 

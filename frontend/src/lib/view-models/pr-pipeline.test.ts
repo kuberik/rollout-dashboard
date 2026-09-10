@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPrPipeline, type PrPipelineMeta } from './pr-pipeline';
+import { buildPrPipeline, buildChangeVerdict, type PrPipelineMeta, type PrCell, type PrService } from './pr-pipeline';
 import type { Rollout, Environment } from '$lib/../types';
 
 const SOURCE_CLUSTER = 'rollout-dashboard.kuberik.com/source-cluster';
@@ -603,7 +603,8 @@ describe('buildPrPipeline', () => {
 			});
 			const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 			const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
-			expect(vm.services[0].furthestCompact).toBe('held in 1');
+			// ⭐ RULING 7 (2026-09-10 fix pass): family words, never a bare count.
+			expect(vm.services[0].furthestCompact).toBe('held in prd');
 		});
 
 		it('not built yet, when every cell is not-built', () => {
@@ -691,7 +692,10 @@ describe('buildPrPipeline', () => {
 			status: { gateName: 'dep-gate-1', providedVersion: '1.0.0' }
 		} as any;
 		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [dependency] }, NOW);
-		expect(vm.verdict).toBe('Waiting in prod on api-app');
+		// ⭐ RULING 3 (2026-09-10 fix pass, "ONE VERDICT, THE FRONTIER"): a
+		// dependency wait reads "held", the same word a gate hold uses — both
+		// are "something else has to move first" from the reader's seat.
+		expect(vm.verdict).toBe('Held in prod on api-app');
 	});
 
 	// ⭐ ITEM 3 (2026-09-10 fix pass). Without `rolloutGates` (this VM never
@@ -721,7 +725,9 @@ describe('buildPrPipeline', () => {
 		expect(cell.gateLabel).toBeNull();
 		expect(cell.gatePending).toBe(true);
 		expect(vm.verdict).not.toContain('schedule-gate-fk44d');
-		expect(vm.verdict).toBe('Held by a rule in prod');
+		// ⭐ RULING 3: no subject clause when `gateLabel` is unresolved — "held
+		// in prod", never a raw gate id, never a fake "by a rule" filler.
+		expect(vm.verdict).toBe('Held in prod');
 	});
 
 	it('verdict: gated with nothing actually blocking is its own state (promoting), no HELD contradiction', () => {
@@ -740,6 +746,300 @@ describe('buildPrPipeline', () => {
 		const cell = vm.services[0].cells[0];
 		expect(cell.state).toBe('promoting');
 		expect(cell.gateLabel).toBeNull();
-		expect(vm.verdict).toBe('Promoting shortly in prod');
+		// ⭐ RULING 3: the frontier verb table drops "shortly" — "promoting in
+		// prod", no subject (nothing to name; the row's own reason carries it).
+		expect(vm.verdict).toBe('Promoting in prod');
+	});
+});
+
+describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VERDICT, THE FRONTIER")', () => {
+	it('the live PR #4 shape: frontend built+held in all 3 envs, api/multi/world never built — verdict names the frontier, not the deepest symptom', () => {
+		const frontend = mkRollout({
+			name: 'frontend-app',
+			namespace: 'frontend-dev',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			],
+			gates: [{ name: 'peak-hours-protection', passing: true, allowedVersions: [] }]
+		});
+		const api = mkRollout({
+			name: 'api-app',
+			namespace: 'api-dev',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }],
+			source: 'github.com/acme/other'
+		});
+		const envFrontend = mkEnv({ app: 'frontend-app', envName: 'dev', namespace: 'frontend-dev' });
+		const envApi = mkEnv({ app: 'api-app', envName: 'dev', namespace: 'api-dev' });
+		const vm = buildPrPipeline(meta(), [frontend, api], [envFrontend, envApi], { items: [] }, NOW);
+		// api-app is a different repo entirely — excluded, never dilutes the verdict.
+		expect(vm.services.map((s) => s.appName)).toEqual(['frontend-app']);
+		expect(vm.services[0].cells[0].state).toBe('gated');
+		expect(vm.verdict).toBe('Held in dev');
+	});
+
+	// `buildPrPipeline`'s own gate context never carries schedule/rolloutGate
+	// evidence (only the per-row lazy "why" fetch does — see the module's own
+	// F2/ITEM-3 comments), so a REAL `gated` cell built through it can never
+	// carry a resolved `gateLabel`. `buildChangeVerdict` itself is tested
+	// directly, against a hand-built `PrService`, for the subject-naming
+	// case the design doc's own example names ("held in dev by Peak Hours
+	// Protection") — the same fixture style `changes.test.ts` already uses.
+	it('names the gate rule as the subject — "held in dev by <label>" — given a resolved gateLabel', () => {
+		const cell: PrCell = {
+			cluster: '',
+			envName: 'dev',
+			namespace: 'widget-dev',
+			rolloutName: 'widget-app',
+			theme: null,
+			envRank: 0,
+			state: 'gated',
+			reason: 'Outside the Peak Hours Protection deploy window',
+			since: null,
+			usuallyMs: null,
+			bakeLeftMs: null,
+			releaseLabel: 'build-42',
+			revision: 'c0ffee1',
+			superseded: false,
+			gateHint: { cluster: '', namespace: 'widget-dev', rolloutName: 'widget-app', gateName: 'peak-hours' },
+			gateLabel: 'Peak Hours Protection',
+			gateSubject: null,
+			gateSubjectKind: null,
+			gatePending: false,
+			containmentKnown: true
+		};
+		const service: PrService = {
+			appName: 'widget-app',
+			sourceRepo: 'github.com/acme/widget',
+			cells: [cell],
+			furthest: '',
+			furthestCompact: '',
+			leadTimeMs: null,
+			builtElsewhere: false
+		};
+		expect(buildChangeVerdict([service])).toEqual({ word: 'held in dev by Peak Hours Protection', tone: 'held' });
+	});
+
+	it('earliest env-rank wins over "worst progressed": a dev hold outranks a prod hold in the verdict', () => {
+		const dev = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			]
+			// no gates — "promoting", the LEAST progressed of the two non-live states below
+		});
+		const prod = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [
+				{ revision: 'c0ffee1', timestamp: '2026-09-10T11:00:00Z', bakeStatus: 'Failed', bakeStatusMessage: 'boom' }
+			]
+		});
+		const envDev = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const envProd = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const vm = buildPrPipeline(meta(), [dev, prod], [envDev, envProd], { items: [] }, NOW);
+		// dev is the FRONTIER (lowest rank, not live) even though prod's own
+		// state (`failed`) is louder — the old "worst-progressed" rule would
+		// have picked prod here.
+		expect(vm.verdict).toBe('Promoting in dev');
+	});
+});
+
+describe('containmentKnown (CHANGES-2026-09-10 fix pass, ruling 1 — "SUPERSEDED IS LIVE")', () => {
+	// The old commit shape: the head has moved on to a later commit this VM
+	// cannot prove carries the change (a bare-sha meta before `commits/:sha`
+	// is wired, or genuinely truncated data) — an exact-match candidate that
+	// is merely still sitting, unpromoted, in `availableReleases` must NOT
+	// be read as "promoting shortly"/"waiting", because the real head may
+	// already have superseded it by a route this VM cannot see.
+	function oldCommitRollout(gates: { name: string; passing?: boolean; allowedVersions?: string[] | null }[] = []) {
+		return mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			// HEAD has moved on to a commit this meta's `containedIn` (empty)
+			// cannot vouch for.
+			history: [{ revision: 'c943222', timestamp: '2026-09-10T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				// The literal merge commit itself, still sitting unpromoted.
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-08-29T00:00:00Z' }
+			],
+			gates
+		});
+	}
+
+	it('unknown containment: an unblocked exact-match candidate reads not-built (unverified), never "promoting"', () => {
+		const rollout = oldCommitRollout();
+		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const bareShaMeta = meta({ containedIn: [], containedInAll: false });
+		const vm = buildPrPipeline(bareShaMeta, [rollout], [env], { items: [] }, NOW);
+		expect(vm.containmentKnown).toBe(false);
+		const cell = vm.services[0].cells[0];
+		expect(cell.state).toBe('not-built');
+		expect(cell.reason).toBe('not built (unverified)');
+		expect(cell.containmentKnown).toBe(false);
+	});
+
+	it('unknown containment: a blocking dependency gate on the same exact-match candidate also reads not-built (unverified), never "waiting"', () => {
+		const rollout = oldCommitRollout([{ name: 'dep-gate-1', passing: true, allowedVersions: [] }]);
+		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const dependency = {
+			metadata: { name: 'widget-app-needs-api', namespace: 'widget-prod' },
+			spec: { rolloutRef: { name: 'widget-app' }, providerRef: { name: 'api-app' }, contract: 'api' },
+			status: { gateName: 'dep-gate-1', providedVersion: '1.0.0' }
+		} as any;
+		const bareShaMeta = meta({ containedIn: [], containedInAll: false });
+		const vm = buildPrPipeline(bareShaMeta, [rollout], [env], { items: [dependency] }, NOW);
+		const cell = vm.services[0].cells[0];
+		expect(cell.state).toBe('not-built');
+		expect(cell.reason).toBe('not built (unverified)');
+	});
+
+	it('`containmentKnown: true` (explicit override) restores the normal "promoting" reading even off an empty containedIn', () => {
+		const rollout = oldCommitRollout();
+		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const bareShaMeta = meta({ containedIn: [], containedInAll: false, containmentKnown: true });
+		const vm = buildPrPipeline(bareShaMeta, [rollout], [env], { items: [] }, NOW);
+		expect(vm.containmentKnown).toBe(true);
+		expect(vm.services[0].cells[0].state).toBe('promoting');
+	});
+
+	it('a `gated` cell (no upstream named) is untouched by unknown containment — it names no specific candidate\'s fate', () => {
+		const rollout = oldCommitRollout([{ name: 'schedule-gate-fk44d', passing: true, allowedVersions: [] }]);
+		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const bareShaMeta = meta({ containedIn: [], containedInAll: false });
+		const vm = buildPrPipeline(bareShaMeta, [rollout], [env], { items: [] }, NOW);
+		expect(vm.services[0].cells[0].state).toBe('gated');
+	});
+
+	it('the default meta() fixture (containedInAll: true) is known', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-02T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const env = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+		expect(vm.containmentKnown).toBe(true);
+	});
+});
+
+describe('rolloutsTotal / rolloutsWithBuild / rolloutsLive (CHANGES-2026-09-10 fix pass, ruling 5 — "COUNTS")', () => {
+	it('counts every rollout this change could land in, how many have a build, and how many are live', () => {
+		const live = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-02T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const notBuilt = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-staging',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const envDev = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const envStaging = mkEnv({ app: 'widget-app', envName: 'staging', namespace: 'widget-staging' });
+		const vm = buildPrPipeline(meta(), [live, notBuilt], [envDev, envStaging], { items: [] }, NOW);
+		expect(vm.rolloutsTotal).toBe(2);
+		expect(vm.rolloutsWithBuild).toBe(1);
+		expect(vm.rolloutsLive).toBe(1);
+	});
+});
+
+describe('builtElsewhere / joined dependency reasons (CHANGES-2026-09-10 fix pass, rulings 2 & 4)', () => {
+	function depGate(providerName = 'api-app') {
+		return {
+			metadata: { name: 'widget-app-needs-api', namespace: 'widget-dev' },
+			spec: { rolloutRef: { name: 'widget-app' }, providerRef: { name: providerName }, contract: 'api' },
+			status: { gateName: 'dep-gate-1', providedVersion: '1.0.0' }
+		} as any;
+	}
+
+	it('a service with no build of its own, while a sibling service DOES have one, is builtElsewhere: true', () => {
+		const built = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-02T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const unbuilt = mkRollout({
+			name: 'widget-manifests',
+			namespace: 'widget-manifests-dev',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const envA = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const envB = mkEnv({ app: 'widget-manifests', envName: 'dev', namespace: 'widget-manifests-dev' });
+		const vm = buildPrPipeline(meta(), [built, unbuilt], [envA, envB], { items: [] }, NOW);
+		expect(vm.services.find((s) => s.appName === 'widget-app')?.builtElsewhere).toBe(false);
+		expect(vm.services.find((s) => s.appName === 'widget-manifests')?.builtElsewhere).toBe(true);
+	});
+
+	it('joins the reason when the dependency provider is itself a service of this change and has NO build at all', () => {
+		const dependent = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			],
+			gates: [{ name: 'dep-gate-1', passing: true, allowedVersions: [] }]
+		});
+		const provider = mkRollout({
+			name: 'api-app',
+			namespace: 'api-dev',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const envDependent = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const envProvider = mkEnv({ app: 'api-app', envName: 'dev', namespace: 'api-dev' });
+		const vm = buildPrPipeline(
+			meta(),
+			[dependent, provider],
+			[envDependent, envProvider],
+			{ items: [depGate()] },
+			NOW
+		);
+		const dependentSvc = vm.services.find((s) => s.appName === 'widget-app')!;
+		expect(dependentSvc.cells[0].state).toBe('waiting-upstream');
+		expect(dependentSvc.cells[0].reason).toBe(
+			'waiting on api-app — its build of this change does not exist yet'
+		);
+	});
+
+	it('joins the reason when the dependency provider HAS a build, just not deployed to this environment yet', () => {
+		const dependent = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			],
+			gates: [{ name: 'dep-gate-1', passing: true, allowedVersions: [] }]
+		});
+		const providerDev = mkRollout({
+			name: 'api-app',
+			namespace: 'api-dev',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const providerStaging = mkRollout({
+			name: 'api-app',
+			namespace: 'api-staging',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-02T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const envDependent = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const envProviderDev = mkEnv({ app: 'api-app', envName: 'dev', namespace: 'api-dev' });
+		const envProviderStaging = mkEnv({ app: 'api-app', envName: 'staging', namespace: 'api-staging' });
+		const vm = buildPrPipeline(
+			meta(),
+			[dependent, providerDev, providerStaging],
+			[envDependent, envProviderDev, envProviderStaging],
+			{ items: [depGate()] },
+			NOW
+		);
+		const dependentSvc = vm.services.find((s) => s.appName === 'widget-app')!;
+		expect(dependentSvc.cells[0].state).toBe('waiting-upstream');
+		expect(dependentSvc.cells[0].reason).toBe('waiting on api-app to reach dev');
 	});
 });

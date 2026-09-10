@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLandingGrid } from './landing-grid';
+import { buildLandingGrid, orderByVerdict, classify, worstCell } from './landing-grid';
 import type { PrCell, PrPipelineVM, PrService, PrState } from './pr-pipeline';
 import type { EnvironmentTheme } from '../environment-theme';
 
@@ -39,23 +39,34 @@ function mkCell(overrides: Partial<PrCell> & { envName: string; state: PrState }
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		containmentKnown: true,
 		...overrides
 	};
 }
 
-function mkService(appName: string, cells: PrCell[]): PrService {
+function mkService(appName: string, cells: PrCell[], builtElsewhere = false): PrService {
 	return {
 		appName,
 		sourceRepo: 'github.com/littlechimera/kuberik-testing',
 		cells,
 		furthest: '',
 		furthestCompact: '',
-		leadTimeMs: null
+		leadTimeMs: null,
+		builtElsewhere
 	};
 }
 
 function mkVm(services: PrService[]): PrPipelineVM {
-	return { services, verdict: '' };
+	return {
+		services,
+		verdict: '',
+		verdictWord: '',
+		verdictTone: 'not-built',
+		containmentKnown: true,
+		rolloutsTotal: 0,
+		rolloutsWithBuild: 0,
+		rolloutsLive: 0
+	};
 }
 
 // Every `PrState`, once, so the state-table mapping (`classify`, the family
@@ -84,6 +95,46 @@ describe('buildLandingGrid — all 12 states', () => {
 		expect(grid.services[0].marks[0].state).toBe(state);
 		expect(grid.services[0].marks[0].family).toBe('DEV');
 		expect(grid.services[0].marks[0].count).toBe(1);
+		expect(grid.services[0].marks[0].familyOrder).toBe(0); // DEV — first tier
+	});
+
+	// ⭐ RULING 6 (CHANGES-2026-09-10 fix pass, "GRID DATA"). State-only colour:
+	// identity (family word + ring) never moves, tone is the sole state channel.
+	it('tone: held-like states are `stuck` (amber\'s one reserved meaning), never `held`', () => {
+		const cases: [PrState, string][] = [
+			['failed', 'failed'],
+			['gated', 'stuck'],
+			['pinned', 'stuck'],
+			['waiting-upstream', 'stuck'],
+			['deploying', 'active'],
+			['baking', 'active'],
+			['not-built', 'none'],
+			['live', 'live']
+		];
+		for (const [state, expectedTone] of cases) {
+			const grid = buildLandingGrid(mkVm([mkService('svc', [mkCell({ envName: 'dev', state })])]), NOW);
+			expect(grid.services[0].marks[0].tone).toBe(expectedTone);
+		}
+	});
+
+	it('familyOrder aligns DEV/TEST/STG/PRD across services, in canonical tier order', () => {
+		const cells = [
+			mkCell({ envName: 'dev', state: 'live' }),
+			mkCell({ envName: 'staging', state: 'live' }),
+			mkCell({ envName: 'prod', state: 'live' })
+		];
+		const grid = buildLandingGrid(mkVm([mkService('svc', cells)]), NOW);
+		const byFamily = new Map(grid.services[0].marks.map((m) => [m.family, m.familyOrder]));
+		expect(byFamily.get('DEV')).toBeLessThan(byFamily.get('STG')!);
+		expect(byFamily.get('STG')).toBeLessThan(byFamily.get('PRD')!);
+	});
+
+	it('an unmatched family (fallback 3-letter name) sorts after every named tier', () => {
+		const grid = buildLandingGrid(
+			mkVm([mkService('svc', [mkCell({ envName: 'canary', state: 'live' })])]),
+			NOW
+		);
+		expect(grid.services[0].marks[0].familyOrder).toBeGreaterThan(3);
 	});
 
 	it('classifies verdictWord as the closed vocabulary', () => {
@@ -108,6 +159,24 @@ describe('buildLandingGrid — all 12 states', () => {
 			);
 			expect(grid.services[0].verdictWord).toBe(expected);
 		}
+	});
+});
+
+describe('buildLandingGrid — builtElsewhere threads into the mark sentence (ruling 2)', () => {
+	it('a not-built mark on a service with builtElsewhere:true reads "no build of this change for this service"', () => {
+		const grid = buildLandingGrid(
+			mkVm([mkService('svc', [mkCell({ envName: 'dev', state: 'not-built' })], true)]),
+			NOW
+		);
+		expect(grid.services[0].marks[0].sentence).toContain('no build of this change for this service');
+	});
+
+	it('a not-built mark with builtElsewhere:false reads the plain "not built yet"', () => {
+		const grid = buildLandingGrid(
+			mkVm([mkService('svc', [mkCell({ envName: 'dev', state: 'not-built' })], false)]),
+			NOW
+		);
+		expect(grid.services[0].marks[0].sentence).toContain('not built yet');
 	});
 });
 
@@ -191,8 +260,12 @@ describe('buildLandingGrid — the all-same fold', () => {
 	});
 });
 
-describe('buildLandingGrid — the +N services cap', () => {
-	it('shows at most 3 groups worst-first and folds the rest into overflow', () => {
+// ⭐ RULING 6 (CHANGES-2026-09-10 fix pass, "GRID DATA"). VM-level truncation
+// is retired: `visible` is now EVERY service, adverse-first then
+// alphabetical, and `overflow` is always `null` — the +N fold is
+// `LandingGrid.svelte`'s own `max` prop against this ordered list now.
+describe('buildLandingGrid — services are never truncated (ruling 6)', () => {
+	it('orders every service adverse-first, then alphabetical, and never truncates', () => {
 		const services = [
 			mkService('live-svc', [mkCell({ envName: 'dev', state: 'live' })]),
 			mkService('failed-svc', [mkCell({ envName: 'dev', state: 'failed' })]),
@@ -202,18 +275,58 @@ describe('buildLandingGrid — the +N services cap', () => {
 		];
 		const grid = buildLandingGrid(mkVm(services), NOW);
 		expect(grid.allSameLabel).toBeNull();
-		expect(grid.visible.map((s) => s.appName)).toEqual(['failed-svc', 'held-svc', 'active-svc']);
-		expect(grid.overflow).toEqual({ count: 2, title: 'not-built-svc, live-svc' });
+		expect(grid.visible.map((s) => s.appName)).toEqual([
+			'failed-svc',
+			'held-svc',
+			'active-svc',
+			'not-built-svc',
+			'live-svc'
+		]);
+		expect(grid.overflow).toBeNull();
 	});
 
-	it('sets overflow to null when there are 3 or fewer services', () => {
+	it('breaks ties alphabetically within the same verdict word', () => {
+		// Different envs (so the two services' mark SIGNATURES differ and the
+		// all-same fold does not swallow the ordering this test targets) but
+		// the same worst classification (`failed`) either way.
 		const services = [
-			mkService('a', [mkCell({ envName: 'dev', state: 'failed' })]),
-			mkService('b', [mkCell({ envName: 'dev', state: 'live' })])
+			mkService('zebra', [mkCell({ envName: 'dev', state: 'failed' })]),
+			mkService('apple', [mkCell({ envName: 'prod', state: 'failed' })])
 		];
 		const grid = buildLandingGrid(mkVm(services), NOW);
-		expect(grid.overflow).toBeNull();
-		expect(grid.visible).toHaveLength(2);
+		expect(grid.visible.map((s) => s.appName)).toEqual(['apple', 'zebra']);
+	});
+});
+
+describe('orderByVerdict (ruling 6 — the SAME order function the change page\'s cards use)', () => {
+	it('sorts adverse-first, then alphabetical, over any shape with a verdictWord/name', () => {
+		const items = [
+			{ name: 'z', word: 'live' as const },
+			{ name: 'a', word: 'failed' as const },
+			{ name: 'm', word: 'held' as const }
+		];
+		const ordered = orderByVerdict(
+			items,
+			(i) => i.word,
+			(i) => i.name
+		);
+		expect(ordered.map((i) => i.name)).toEqual(['a', 'm', 'z']);
+	});
+});
+
+describe('classify / worstCell — exported for cross-module reuse (ruling 6)', () => {
+	it('classify folds every PrState to the closed vocabulary', () => {
+		expect(classify('failed')).toBe('failed');
+		expect(classify('gated')).toBe('held');
+		expect(classify('not-built')).toBe('not-built');
+		expect(classify('live')).toBe('live');
+		expect(classify('deploying')).toBe('active');
+	});
+
+	it('worstCell picks the worst-ranked cell', () => {
+		const live = mkCell({ envName: 'dev', state: 'live' });
+		const failed = mkCell({ envName: 'prod', state: 'failed' });
+		expect(worstCell([live, failed])).toBe(failed);
 	});
 });
 

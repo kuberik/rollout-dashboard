@@ -29,6 +29,7 @@ function mkCell(state: PrCell['state'], overrides: Partial<PrCell> = {}): PrCell
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		containmentKnown: true,
 		...overrides
 	};
 }
@@ -41,6 +42,7 @@ function mkService(cells: PrCell[], overrides: Partial<PrService> = {}): PrServi
 		furthest: 'live in dev',
 		furthestCompact: '1 of 1 live',
 		leadTimeMs: null,
+		builtElsewhere: false,
 		...overrides
 	};
 }

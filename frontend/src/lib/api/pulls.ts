@@ -120,6 +120,23 @@ export class FetchPullError extends ApiError {
 	}
 }
 
+/**
+ * ⭐ RULING 1 (CHANGES-2026-09-10 fix pass, "SUPERSEDED IS LIVE"). Always
+ * `true` for a genuinely resolved `pulls/{n}` response: `pr-pipeline.ts`'s
+ * `buildPrPipeline` otherwise DEFAULTS `containmentKnown` to
+ * `containedIn.length > 0 || containedInAll`, which reads an empty
+ * `containedIn` as "we never asked" (the `{containedIn: [], containedInAll:
+ * false}` bare-sha stub `changes.ts`'s module doc describes) rather than
+ * "verified: zero commits since merge". A real PR fetch never carries that
+ * ambiguity — `containedIn`/`containedInAll` here are always the backend's
+ * own authoritative computation, empty or not — so a caller building this
+ * PR's own `PrPipelineMeta` should set `containmentKnown` from this, never
+ * leave it to the default.
+ */
+export function containmentKnownFor(_pull: Pick<PullRequestInfo, 'containedIn' | 'containedInAll'>): true {
+	return true;
+}
+
 export const pullQueryKey = (owner: string, repo: string, number: number, cluster?: string) =>
 	['github-pull', owner, repo, number, cluster] as const;
 

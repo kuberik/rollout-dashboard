@@ -32,98 +32,46 @@
  * shape instead of `ChangeRowVM`, not as a lesser version of it.
  */
 import type { Rollout, Environment, RolloutDependency } from '../../types';
-import { buildPrPipeline, type PrCell, type PrPipelineMeta, type PrPipelineVM, type PrState } from './pr-pipeline';
+import {
+	buildPrPipeline,
+	buildChangeVerdict,
+	type PrPipelineMeta,
+	type PrPipelineVM,
+	type PrState,
+	type ChangeVerdictTone
+} from './pr-pipeline';
 import { buildLandingGrid, type LandingGridVM } from './landing-grid';
 import { buildRevisionLedger } from './revision-ledger';
 import { changePath } from '../pr-ref';
-import { changeBuildPath, envFamilyWord } from '../version-utils';
+import { changeBuildPath } from '../version-utils';
 import type { Change } from '../api/changes';
 
 // ── THE SHORT VERDICT WORD, §2b ───────────────────────────────────────────
 
-export type ChangeVerdictTone = 'live' | 'held' | 'failed' | 'active' | 'not-built';
-
-/** Worst-first, same precedence `landing-grid.ts`'s own `STATE_RANK` uses —
- *  restated here (not imported) because this module needs the WINNING
- *  CELL's own state/env, not just the closed word it folds to. */
-const STATE_RANK: Record<PrState, number> = {
-	failed: 0,
-	gated: 1,
-	pinned: 1,
-	'waiting-upstream': 1,
-	deploying: 2,
-	baking: 2,
-	retrying: 2,
-	cancelled: 3,
-	'rolled-back': 4,
-	promoting: 5,
-	'not-built': 6,
-	live: 7
-};
-
-function worstCellOverall(vm: PrPipelineVM): PrCell | null {
-	const all = vm.services.flatMap((s) => s.cells);
-	if (all.length === 0) return null;
-	return all.reduce((acc, c) => (STATE_RANK[c.state] < STATE_RANK[acc.state] ? c : acc));
-}
-
-function toneOf(state: PrState): ChangeVerdictTone {
-	switch (state) {
-		case 'failed':
-			return 'failed';
-		case 'gated':
-		case 'pinned':
-		case 'waiting-upstream':
-			return 'held';
-		case 'not-built':
-			return 'not-built';
-		case 'live':
-			return 'live';
-		default:
-			return 'active';
-	}
-}
-
-const ACTIVE_WORD: Record<PrState, string> = {
-	deploying: 'deploying',
-	baking: 'baking',
-	retrying: 'retrying',
-	cancelled: 'cancelled',
-	'rolled-back': 'rolled back',
-	promoting: 'promoting',
-	// unreachable for the `active` tone — listed so the map is total.
-	failed: 'failed',
-	gated: 'held',
-	pinned: 'held',
-	'waiting-upstream': 'held',
-	'not-built': 'not built',
-	live: 'live'
-};
+// ⭐ RULING 3 (CHANGES-2026-09-10 fix pass, "ONE VERDICT, THE FRONTIER"). The
+// canonical type now lives in `pr-pipeline.ts` (`buildChangeVerdict`'s own
+// return type) — re-exported here so existing call sites importing it from
+// this module (`ChangeRow.svelte`) keep working unchanged.
+export type { ChangeVerdictTone };
 
 /**
- * `PrPipelineVM.verdict` folded to ≤3 words — §2b's own examples: mint
- * `live everywhere`, orange `held in prod`, red `failed in staging`, gray
- * `not built yet`, blue `deploying`. A change with no service on this
- * cluster at all (no repo match) reads `not built here`, the same phrase
- * `mergedPullServiceSummary` (`my-pulls.ts`) already uses for that case.
+ * `PrPipelineVM.verdict`'s own word, thinly wrapped — §2b's own examples:
+ * mint `live everywhere`, orange `held in dev on hello-api-app`, red
+ * `failed in staging`, gray `not built yet`, blue `deploying in dev`. A
+ * change with no service on this cluster at all (no repo match) reads
+ * `not built here`, the same phrase `mergedPullServiceSummary`
+ * (`my-pulls.ts`) already uses for that case — the ONE thing this wrapper
+ * still decides, because it is a fact about THIS INDEX's own repo match,
+ * not something `buildChangeVerdict` (which only ever sees the services it
+ * is handed) can tell apart from "some service matched, none built it" —
+ * `vm.verdictWord`/`vm.verdictTone` (set by `buildPrPipeline`, which already
+ * ran this exact function once) would read identically either way, so this
+ * thin wrapper takes `vm.services` itself rather than trusting the VM's own
+ * cached word to have made the same call this index wants.
  */
 export function changeVerdict(vm: PrPipelineVM): { word: string; tone: ChangeVerdictTone } {
 	if (vm.services.length === 0) return { word: 'not built here', tone: 'not-built' };
-	const worst = worstCellOverall(vm);
-	if (!worst) return { word: 'not built here', tone: 'not-built' };
-	const tone = toneOf(worst.state);
-	switch (tone) {
-		case 'live':
-			return { word: 'live everywhere', tone };
-		case 'not-built':
-			return { word: 'not built yet', tone };
-		case 'held':
-			return { word: `held in ${envFamilyWord(worst.envName).toLowerCase()}`, tone };
-		case 'failed':
-			return { word: `failed in ${envFamilyWord(worst.envName).toLowerCase()}`, tone };
-		case 'active':
-			return { word: ACTIVE_WORD[worst.state], tone };
-	}
+	return buildChangeVerdict(vm.services);
 }
 
 /** Any cell held, failed or not-built — §3's own definition of the "Not yet
@@ -221,6 +169,13 @@ export type ChangesFilter = {
 	/** Repo keys (`owner/repo`, lower-cased). Multi-select, OR'd. Empty/undefined = no repo filter. */
 	repos?: readonly string[];
 	pendingOnly?: boolean;
+	/**
+	 * ⭐ RULING 5 (CHANGES-2026-09-10 fix pass). A "Pull requests" chip —
+	 * `'pr'` shows only changes that came through a pull request,
+	 * `'commit'` only bare base-branch commits. Undefined = no kind filter,
+	 * matching every other multi-select chip's "unset = everything" rule.
+	 */
+	kind?: Change['kind'];
 	q?: string;
 };
 
@@ -259,8 +214,57 @@ export function filterChangeRows(
 		if (filter.mine && r.author.toLowerCase() !== currentUser.toLowerCase()) return false;
 		if (filter.repos && filter.repos.length > 0 && !filter.repos.includes(r.repoKey)) return false;
 		if (filter.pendingOnly && !r.notEverywhere) return false;
+		if (filter.kind && r.kind !== filter.kind) return false;
 		if (q && !matchesChangeText(r, q)) return false;
 		return true;
+	});
+}
+
+/**
+ * ⭐ RULING 5 (CHANGES-2026-09-10 fix pass, "COUNTS"). The head band's own
+ * numbers — §3's `3 of the last 30 days' changes are not everywhere yet · 2
+ * repositories` — computed on the FILTERED rows, never the full feed: a
+ * reader who has narrowed to one repo via its chip should see that repo's
+ * own count, not the whole cluster's.
+ */
+export type ChangesSummary = {
+	count: number;
+	notEverywhereCount: number;
+	repoCount: number;
+};
+
+export function summarizeChangeRows(rows: readonly ChangeRowVM[]): ChangesSummary {
+	return {
+		count: rows.length,
+		notEverywhereCount: rows.filter((r) => r.notEverywhere).length,
+		repoCount: new Set(rows.map((r) => r.repoKey)).size
+	};
+}
+
+/**
+ * ⭐ RULING 5. ONE definition of "your changes" — merged PRs AND bare
+ * commits authored by `user` in whatever window `rows` already covers — so
+ * the palette's Browse tile count and the Home header's own count can never
+ * drift apart by counting differently (e.g. one PR-only, one PR+commit).
+ */
+export function myChangesCount(rows: readonly ChangeRowVM[], user: string): number {
+	const u = user.toLowerCase();
+	return rows.filter((r) => r.author.toLowerCase() === u).length;
+}
+
+/**
+ * ⭐ RULING 5. Home's own row order — stuck-first (a frontier verdict that
+ * is not `live` sorts ahead of one that is), then newest within each group.
+ * `verdictTone !== 'live'` is the exact predicate `changeVerdict` guarantees
+ * true only for "live everywhere" (§2b/§3), so this needs no second read of
+ * `grid`/`services`.
+ */
+export function orderHomeChangeRows(rows: readonly ChangeRowVM[]): ChangeRowVM[] {
+	return [...rows].sort((a, b) => {
+		const aStuck = a.verdictTone === 'live' ? 1 : 0;
+		const bStuck = b.verdictTone === 'live' ? 1 : 0;
+		if (aStuck !== bStuck) return aStuck - bStuck;
+		return new Date(b.mergedAt).getTime() - new Date(a.mergedAt).getTime();
 	});
 }
 

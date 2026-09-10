@@ -42,7 +42,7 @@
  * `baking` cell's own elapsed/total is already in the sentence. It renders
  * text only where it adds something the sentence does not carry.
  */
-import type { PrCell } from './view-models/pr-pipeline';
+import type { PrCell, PrState } from './view-models/pr-pipeline';
 import type { PrChecks } from './api/pulls';
 import { formatTimeAgoCompact } from './utils';
 
@@ -87,11 +87,26 @@ function bakingSentence(cell: PrCell, now: Date): string {
  * <label>", "waiting on <service/env>", "deploying", "baking"/"baking · N
  * of M min", "retrying", "failed", "cancelled", "rolled back to <label>",
  * "live since <T>" / "live (since before recorded history)".
+ *
+ * ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA"). `opts`
+ * is additive and optional so every existing call site keeps compiling
+ * unchanged. `opts.builtElsewhere` (`PrService.builtElsewhere`) picks
+ * between the plain reading and "no build of this change for THIS service" —
+ * one word telling the reader the change is already built somewhere on this
+ * cluster, just not here, without inventing a second `PrState`. It never
+ * overrides `cell.reason === 'not built (unverified)'` — ruling 1's own
+ * honesty flag (unknown containment) always wins, because "we don't know"
+ * outranks "we know it's missing here specifically".
  */
-export function cellStateSentence(cell: PrCell, now: Date = new Date()): string {
+export function cellStateSentence(
+	cell: PrCell,
+	now: Date = new Date(),
+	opts?: { builtElsewhere?: boolean }
+): string {
 	switch (cell.state) {
 		case 'not-built':
-			return 'not built yet';
+			if (cell.reason === 'not built (unverified)') return 'not built (unverified)';
+			return opts?.builtElsewhere ? 'no build of this change for this service' : 'not built yet';
 		case 'gated':
 			// ⭐ ITEM 3 (2026-09-10 fix pass). Retired: "gated by X" (the noun
 			// `gate` is retired from user copy) and printing the raw
@@ -179,6 +194,26 @@ export function usuallyLabel(ms: number | null): string {
 export function frontierUsuallyLabel(ms: number): string {
 	const minutes = Math.max(1, Math.round(ms / 60000));
 	return `usually ${minutes} min once it starts`;
+}
+
+/**
+ * ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA"). The
+ * guarded variant of `frontierUsuallyLabel`: `null` off any cell whose
+ * service has NOT yet produced a build of the change (`not-built`, and every
+ * other state the design doc's own list excludes) — an ETA on a build that
+ * does not exist is not an estimate, it is a guess with a number attached.
+ * Only `gated`/`pinned`/`waiting-upstream`/`promoting` — the states where a
+ * build already exists and is merely not deployed here yet — ever return a
+ * string. Prefer this over the raw `frontierUsuallyLabel` at any NEW call
+ * site; the un-guarded function stays exported for the one existing
+ * call site that already gates on state itself.
+ */
+const HAS_BUILD_STATES = new Set<PrState>(['gated', 'pinned', 'waiting-upstream', 'promoting']);
+
+export function frontierUsuallyLabelForCell(cell: PrCell): string | null {
+	if (!HAS_BUILD_STATES.has(cell.state)) return null;
+	if (cell.usuallyMs == null) return null;
+	return frontierUsuallyLabel(cell.usuallyMs);
 }
 
 /** The row's trailing "time since" column — the compact "2h ago" form, or
