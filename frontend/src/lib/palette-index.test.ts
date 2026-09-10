@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPaletteBuildIndex, buildEntryLine, scoreBuildEntry } from './palette-index';
+import { buildPaletteBuildIndex, buildEntryLine, scoreBuildEntry, buildPrPaletteResults } from './palette-index';
 import type { Environment, Rollout } from '../types';
 
 /**
@@ -188,5 +188,65 @@ describe('scoreBuildEntry — the bug, closed both directions', () => {
 		const labelScore = scoreBuildEntry(entry, '2.66.0-66');
 		expect(shaScore).toBeGreaterThan(0);
 		expect(labelScore).toBeGreaterThan(0);
+	});
+});
+
+describe('buildPrPaletteResults', () => {
+	function withSource(source: string): Rollout {
+		return { metadata: {}, spec: {}, status: { source } } as unknown as Rollout;
+	}
+
+	it('returns nothing for a query naming no PR', () => {
+		expect(buildPrPaletteResults('hello world', [])).toEqual([]);
+		expect(buildPrPaletteResults('', [])).toEqual([]);
+	});
+
+	it('resolves a full URL to exactly one result, without touching the cluster data', () => {
+		const results = buildPrPaletteResults(
+			'https://github.com/kuberik/rollout-dashboard/pull/123',
+			[]
+		);
+		expect(results).toEqual([
+			{
+				key: 'pr:kuberik/rollout-dashboard#123',
+				owner: 'kuberik',
+				repo: 'rollout-dashboard',
+				number: 123,
+				title: 'Open PR #123 · kuberik/rollout-dashboard',
+				href: '/pr/kuberik/rollout-dashboard/123'
+			}
+		]);
+	});
+
+	it('resolves owner/repo#123 to exactly one result', () => {
+		const results = buildPrPaletteResults('kuberik/rollout-dashboard#123', []);
+		expect(results).toHaveLength(1);
+		expect(results[0].title).toBe('Open PR #123 · kuberik/rollout-dashboard');
+	});
+
+	it('fans a bare #123 out to one result per distinct cluster source repo', () => {
+		const rollouts = [
+			withSource('https://github.com/acme/widget.git'),
+			// A second rollout of the SAME repo, differently formatted — must
+			// not produce a second result.
+			withSource('github.com/acme/widget'),
+			withSource('https://github.com/acme/gadget')
+		];
+		const results = buildPrPaletteResults('#7', rollouts);
+		expect(results).toHaveLength(2);
+		expect(results.map((r) => r.title)).toEqual([
+			'Open PR #7 · acme/gadget',
+			'Open PR #7 · acme/widget'
+		]);
+	});
+
+	it('ignores a rollout with no source at all', () => {
+		const rollouts = [{ metadata: {}, spec: {}, status: {} } as unknown as Rollout];
+		expect(buildPrPaletteResults('#7', rollouts)).toEqual([]);
+	});
+
+	it('produces nothing for a bare #n when no rollout has a GitHub source', () => {
+		const rollouts = [withSource('https://gitlab.com/acme/widget')];
+		expect(buildPrPaletteResults('#7', rollouts)).toEqual([]);
 	});
 });

@@ -1,6 +1,7 @@
 import type { Rollout, Environment } from '../types';
 import { buildRevisionLedger, type RevisionRow } from '$lib/view-models/revision-ledger';
 import { revisionPath } from '$lib/version-utils';
+import { parsePrRef, prPath } from '$lib/pr-ref';
 
 /**
  * ⌘K's BUILD INDEX. (operator walk, blocking: `9f10e49` returned "No matches"
@@ -151,4 +152,77 @@ export function scoreBuildEntry(
 		else if (l.includes(q)) s = Math.max(s, 28);
 	}
 	return s;
+}
+
+/**
+ * ⌘K'S PR RESULT KIND. A pasted PR URL or `owner/repo#123` names exactly one
+ * PR — one result. A bare `#123` names a number that exists in nearly every
+ * repository at once, so this fans it out to one candidate per DISTINCT
+ * repo any rollout on this cluster deploys, rather than guessing which one
+ * the reader meant. No network call: this is client-side, off the same
+ * `rollouts` list every other result kind already reads.
+ */
+export type PalettePrEntry = {
+	key: string;
+	owner: string;
+	repo: string;
+	number: number;
+	title: string;
+	href: string;
+};
+
+// `https://github.com/owner/repo(.git)?`, `github.com/owner/repo`, or the
+// ssh form `git@github.com:owner/repo.git` — the shapes `status.source`
+// (an OCI-annotation-derived repo URL) actually arrives in. Owner/repo are
+// captured VERBATIM (display casing), never lower-cased — that is
+// `repoKeyFromSource`'s job, used here only to DEDUPE, not to print.
+const SOURCE_OWNER_REPO = /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i;
+
+function ownerRepoFromSource(source: string): { owner: string; repo: string } | null {
+	const m = source.match(SOURCE_OWNER_REPO);
+	if (!m) return null;
+	return { owner: m[1], repo: m[2] };
+}
+
+function prEntry(owner: string, repo: string, number: number): PalettePrEntry {
+	return {
+		key: `pr:${owner}/${repo}#${number}`,
+		owner,
+		repo,
+		number,
+		title: `Open PR #${number} · ${owner}/${repo}`,
+		href: prPath(owner, repo, number)
+	};
+}
+
+/**
+ * Every PR result the current query produces — zero, one (a full reference),
+ * or one per distinct cluster repo (a bare `#123`). `rollouts` supplies the
+ * distinct-repo list for the bare case; unused for a full reference, which
+ * needs no cluster data to resolve.
+ */
+export function buildPrPaletteResults(query: string, rollouts: readonly Rollout[]): PalettePrEntry[] {
+	const ref = parsePrRef(query);
+	if (!ref) return [];
+
+	if (ref.kind === 'full') {
+		return [prEntry(ref.owner, ref.repo, ref.number)];
+	}
+
+	// Bare `#n` — one candidate per distinct repo, deduped by the SAME
+	// normalised identity `version-utils.ts`'s `repoKeyFromSource` uses
+	// everywhere else, so two differently-formatted sources for the same
+	// repo (`.../repo.git` vs `.../repo`) produce ONE result, not two.
+	const seen = new Map<string, { owner: string; repo: string }>();
+	for (const r of rollouts) {
+		const source = r.status?.source;
+		if (!source) continue;
+		const parsed = ownerRepoFromSource(source);
+		if (!parsed) continue;
+		const key = `${parsed.owner}/${parsed.repo}`.toLowerCase();
+		if (!seen.has(key)) seen.set(key, parsed);
+	}
+	return [...seen.values()]
+		.sort((a, b) => `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`))
+		.map(({ owner, repo }) => prEntry(owner, repo, ref.number));
 }

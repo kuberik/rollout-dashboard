@@ -61,7 +61,7 @@
 	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
-	import { buildPaletteBuildIndex, scoreBuildEntry } from '$lib/palette-index';
+	import { buildPaletteBuildIndex, scoreBuildEntry, buildPrPaletteResults } from '$lib/palette-index';
 	import {
 		SearchOutline,
 		GridOutline,
@@ -69,7 +69,8 @@
 		LayersSolid,
 		ClockOutline,
 		FolderOutline,
-		TagOutline
+		TagOutline,
+		CodePullRequestOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		getEnvironmentThemeStyle,
@@ -80,7 +81,7 @@
 	import { now } from '$lib/stores/time';
 	import { inertSiblings, trapFocus, modalFocusReturn, portal } from '$lib/a11y.svelte';
 
-	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action' | 'build';
+	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action' | 'build' | 'pr';
 
 	let {
 		open = $bindable(false),
@@ -228,6 +229,10 @@
 		 */
 		revisionFull?: string;
 		labels?: string[];
+		/** `pr` rows only — the reference this result resolves to. */
+		owner?: string;
+		repo?: string;
+		prNumber?: number;
 	};
 
 	/**
@@ -472,6 +477,29 @@
 	 * being a triage list and becomes the list you already have at `/`, and the
 	 * header prints the true total so the cap can never hide one.
 	 */
+	/**
+	 * ⭐ PR RESULTS ARE PARSED FROM THE QUERY ITSELF, NEVER SCORED AGAINST A
+	 * PRE-BUILT INDEX. Every other kind here answers "which of the fleet's
+	 * OWN objects does this query name" — a PR reference names an object
+	 * this dashboard has never seen (GitHub's, not the cluster's), so there
+	 * is nothing to index in advance. `buildPrPaletteResults` re-parses on
+	 * every keystroke (cheap: at most a few regexes and, for a bare `#n`, one
+	 * pass over `rollouts`) and is merged straight into `filtered` below,
+	 * bypassing `score()` entirely — see the design doc's ⌘K section.
+	 */
+	const prResults = $derived.by<Result[]>(() =>
+		buildPrPaletteResults(query, rollouts).map((e) => ({
+			kind: 'pr' as const,
+			key: e.key,
+			title: e.title,
+			subtitle: `${e.owner}/${e.repo}`,
+			href: e.href,
+			owner: e.owner,
+			repo: e.repo,
+			prNumber: e.number
+		}))
+	);
+
 	const ATTENTION_CAP = 6;
 	const attention = $derived.by<Result[]>(() =>
 		allResults
@@ -483,6 +511,7 @@
 	// Scoring: substring on title is best, then on subtitle/version/env, etc.
 	// Tied scores fall back to entity-kind priority so users see rollouts first.
 	const KIND_PRIORITY: Record<ResultKind, number> = {
+		pr: 5,
 		rollout: 4,
 		build: 3.5,
 		app: 3,
@@ -545,12 +574,18 @@
 			if (sev !== 0) return sev;
 			return a.r.title.localeCompare(b.r.title);
 		});
-		return scored.slice(0, 200).map((x) => x.r);
+		const ranked = scored.slice(0, 200).map((x) => x.r);
+		// PR results ride ABOVE everything else, and only in the unscoped
+		// default search — there is no `pr` picker tile to scope INTO, so a
+		// non-null `scope` is always one of the other kinds asking for its
+		// own objects only.
+		return !scope && prResults.length > 0 ? [...prResults, ...ranked] : ranked;
 	});
 
 	// Group filtered results by kind for rendering. Keeps a flat index for kb nav.
 	type Group = { kind: ResultKind; label: string; items: { result: Result; idx: number }[] };
 	const KIND_LABEL: Record<ResultKind, string> = {
+		pr: 'Pull requests',
 		rollout: 'Rollouts',
 		build: 'Builds',
 		app: 'Apps',
@@ -559,6 +594,7 @@
 		action: 'Go to'
 	};
 	const KIND_SINGULAR: Record<ResultKind, string> = {
+		pr: 'pull request',
 		rollout: 'rollout',
 		build: 'build',
 		app: 'app',
@@ -707,6 +743,7 @@
 	}
 
 	const KIND_ICON: Record<ResultKind, typeof GridOutline> = {
+		pr: CodePullRequestOutline,
 		rollout: GridOutline,
 		build: TagOutline,
 		app: RocketOutline,
@@ -1026,6 +1063,7 @@
 					<!-- Default screen: what needs a person, then the categories. -->
 					{@const kindCounts = (() => {
 						const c: Record<ResultKind, number> = {
+							pr: 0,
 							rollout: 0,
 							build: 0,
 							app: 0,

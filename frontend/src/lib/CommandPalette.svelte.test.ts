@@ -286,3 +286,74 @@ describe('top-level pages resolve by the name the sidebar prints', () => {
 		expect(goto).toHaveBeenCalledWith('/revisions');
 	});
 });
+
+/**
+ * ⭐ ⌘K'S PR RESULT KIND — see `palette-index.test.ts`'s `buildPrPaletteResults`
+ * for the unit-level coverage of the three input forms. These exercise the
+ * same fixture through the real component: the row renders, the icon slot
+ * does not crash on a kind with no bespoke branch, and Enter/click navigates
+ * to `/pr/{owner}/{repo}/{number}`.
+ */
+describe('the pr result kind', () => {
+	test('a full PR URL resolves to exactly one row, above everything else', async () => {
+		const { getByRole } = render(CommandPalette, { props: baseProps() });
+
+		await fireEvent.input(getByRole('combobox'), {
+			target: { value: 'https://github.com/kuberik/rollout-dashboard/pull/123' }
+		});
+
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
+		expect(rows).toHaveLength(1);
+		expect(rows[0].textContent).toContain('Open PR #123');
+		expect(rows[0].textContent).toContain('kuberik/rollout-dashboard');
+
+		await fireEvent.click(rows[0]);
+		expect(goto).toHaveBeenCalledWith('/pr/kuberik/rollout-dashboard/123');
+	});
+
+	test('owner/repo#123 resolves the same way', async () => {
+		const { getByRole } = render(CommandPalette, { props: baseProps() });
+
+		await fireEvent.input(getByRole('combobox'), {
+			target: { value: 'kuberik/rollout-dashboard#123' }
+		});
+
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
+		expect(rows).toHaveLength(1);
+
+		await fireEvent.click(rows[0]);
+		expect(goto).toHaveBeenCalledWith('/pr/kuberik/rollout-dashboard/123');
+	});
+
+	test('a bare #123 fans out to one row per distinct cluster source repo', async () => {
+		const rollouts = [
+			rolloutWithBuild('widget-app', 'widget-dev', 'aaaaaaa', '1.0.0'),
+			{
+				metadata: { namespace: 'gadget-dev', name: 'gadget-app' },
+				spec: {},
+				status: { source: 'https://github.com/acme/gadget.git' }
+			} as unknown as Rollout
+		];
+		const { getByRole } = render(CommandPalette, { props: { ...baseProps(), rollouts } });
+
+		await fireEvent.input(getByRole('combobox'), { target: { value: '#7' } });
+
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
+		const prRows = rows.filter((r) => r.textContent?.includes('Open PR #7'));
+		// One for `littlechimera/kuberik-testing` (rolloutWithBuild's fixed
+		// source) and one for `acme/gadget`.
+		expect(prRows).toHaveLength(2);
+
+		await fireEvent.click(prRows.find((r) => r.textContent?.includes('acme/gadget'))!);
+		expect(goto).toHaveBeenCalledWith('/pr/acme/gadget/7');
+	});
+
+	test('an unrelated query produces no pr row at all', async () => {
+		const { getByRole } = render(CommandPalette, { props: baseProps() });
+
+		await fireEvent.input(getByRole('combobox'), { target: { value: 'hello world' } });
+
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
+		expect(rows.some((r) => r.textContent?.includes('Open PR'))).toBe(false);
+	});
+});

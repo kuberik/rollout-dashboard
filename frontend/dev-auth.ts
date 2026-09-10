@@ -13,6 +13,25 @@
 // The plugin runs an http reverse proxy itself (not vite's built-in proxy)
 // so it can detect oauth2-proxy's 302→/dex/auth response, drop the cached
 // token, and retry transparently.
+//
+// ── GITHUB_DEV_TOKEN ──────────────────────────────────────────────────────
+//
+// The GitHub-backed endpoints (`/api/github/...`, `/api/rollouts/:ns/:name/
+// commits`) read the viewing user's own GitHub access token from a
+// `gh_token` cookie (`githubauth_helper.go`'s `githubTokenCookie`) — normally
+// set by the OAuth round-trip at `/api/auth/github/login`, which needs a
+// real browser redirect and a registered callback URL. That is fine in a
+// deployed dashboard and painful for a dev loop that just wants to see the
+// PR-centric view render.
+//
+// When the `GITHUB_DEV_TOKEN` env var is set (a personal access token, or a
+// GitHub App user token minted once by hand), this plugin appends
+// `gh_token=<token>` to the `Cookie` header of every proxied `/api` request
+// — never `/oauth2`, which is the OIDC login flow this file already
+// impersonates and has nothing to do with GitHub. The dashboard then reads
+// it exactly as it would a real OAuth-issued cookie, so the frontend needs
+// no code path that knows dev mode exists. Unset by default: nothing changes
+// for a `GITHUB_DEV_TOKEN`-less `npm run dev`.
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
@@ -96,6 +115,9 @@ interface ProxyOpts {
 	target: string;
 	getToken: () => Promise<string>;
 	invalidateToken: () => void;
+	/** Append `gh_token=<GITHUB_DEV_TOKEN>` to this request's `Cookie` header.
+	 *  Only ever `true` for `/api` — see the file header's own note. */
+	githubToken?: string;
 }
 
 async function proxyRequest(
@@ -114,6 +136,14 @@ async function proxyRequest(
 		const headers: http.OutgoingHttpHeaders = { ...req.headers };
 		headers.host = target.host;
 		headers.authorization = `Bearer ${token}`;
+		if (opts.githubToken) {
+			// APPEND, never overwrite — the browser's own Cookie header (an
+			// oauth2-proxy session, if one exists) still has to reach the
+			// backend unharmed; `gh_token` is one more crumb on the same jar.
+			const ghCookie = `gh_token=${opts.githubToken}`;
+			const existing = headers.cookie;
+			headers.cookie = existing ? `${existing}; ${ghCookie}` : ghCookie;
+		}
 		if (body) headers['content-length'] = body.length;
 
 		const upstream = await new Promise<IncomingMessage>((resolve, reject) => {
@@ -149,8 +179,14 @@ async function proxyRequest(
 	}
 }
 
-export function devAuthPlugin(opts: { dexTokenUrl?: string; paths?: Record<string, string> } = {}): Plugin {
+export function devAuthPlugin(
+	opts: { dexTokenUrl?: string; paths?: Record<string, string>; githubDevToken?: string } = {}
+): Plugin {
 	const dexUrl = opts.dexTokenUrl ?? process.env.DEX_TOKEN_URL ?? DEFAULT_DEX_TOKEN_URL;
+	const githubDevToken = opts.githubDevToken ?? process.env.GITHUB_DEV_TOKEN;
+	if (githubDevToken) {
+		console.log('[dev-auth] GITHUB_DEV_TOKEN set — injecting gh_token on every proxied /api request');
+	}
 	// Map of path-prefix → upstream target. Defaults match the cluster ingress.
 	const routes =
 		opts.paths ??
@@ -209,7 +245,14 @@ export function devAuthPlugin(opts: { dexTokenUrl?: string; paths?: Record<strin
 				const target = matchRoute(req.url);
 				if (!target) return next();
 				try {
-					await proxyRequest(req, res, { target, getToken, invalidateToken });
+					await proxyRequest(req, res, {
+						target,
+						getToken,
+						invalidateToken,
+						// `/oauth2` is the OIDC login flow itself — never the GitHub
+						// one — so the dev token rides only on `/api`.
+						githubToken: req.url.startsWith('/api') ? githubDevToken : undefined
+					});
 				} catch (e) {
 					console.error('[dev-auth] proxy error:', e);
 					if (!res.headersSent) {

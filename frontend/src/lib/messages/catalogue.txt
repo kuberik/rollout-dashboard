@@ -29,6 +29,11 @@ lib/api/github.ts	code	No access to this repository
 lib/api/github.ts	code	No response from the server
 lib/api/github.ts	code	You do not have access to this repository
 lib/api/logs.ts	code	Stream closed
+lib/api/pulls.ts	code	Connect GitHub to see this pull request
+lib/api/pulls.ts	code	Failed to fetch pull request
+lib/api/pulls.ts	code	GitHub account not connected
+lib/api/pulls.ts	code	No response from the server
+lib/api/pulls.ts	code	No service on this cluster deploys this repository
 lib/api/schedules.ts	code	… … (… UTC)
 lib/api/schedules.ts	code	reopens …
 lib/api/schedules.ts	code	reopens in … — …
@@ -59,6 +64,8 @@ lib/CommandPalette.svelte	code	Full inventory list
 lib/CommandPalette.svelte	text	Needs you
 lib/CommandPalette.svelte	text	No matches for
 lib/CommandPalette.svelte	text	Or type to search across everything
+lib/CommandPalette.svelte	code	pull request
+lib/CommandPalette.svelte	code	Pull requests
 lib/CommandPalette.svelte	code	Recent deployments
 lib/CommandPalette.svelte	code	Repositories and their builds
 lib/CommandPalette.svelte	title	Stopped moving
@@ -522,6 +529,7 @@ lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/history-marks.ts	code	What … replaced is unknown — it is the oldest deploy the retained history (last …) still holds.
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	aria-label	Switch rollout (⌘K)
+lib/palette-index.ts	code	Open PR #… · …/…
 lib/rollout-cards.ts	code	… newer build… waiting.
 lib/rollout-cards.ts	code	Held: a newer build exists, but no rule lets it through yet.
 lib/rollout-cards.ts	code	Not pinned, so it can move forward again.
@@ -728,6 +736,31 @@ lib/view-models/health-witness.ts	code	Health check …
 lib/view-models/health-witness.ts	code	passing, last errored …
 lib/view-models/health-witness.ts	code	This check
 lib/view-models/pin-schedule-clause.ts	code	…, and … reopens ….
+lib/view-models/pr-pipeline.ts	code	… in …
+lib/view-models/pr-pipeline.ts	code	…… in …
+lib/view-models/pr-pipeline.ts	code	baking, no timer
+lib/view-models/pr-pipeline.ts	code	built and ready — nothing is blocking it, it just has not promoted yet
+lib/view-models/pr-pipeline.ts	code	Cancelled in …
+lib/view-models/pr-pipeline.ts	code	deploying now
+lib/view-models/pr-pipeline.ts	code	Failed in …
+lib/view-models/pr-pipeline.ts	code	live (since before recorded history)
+lib/view-models/pr-pipeline.ts	code	Live everywhere
+lib/view-models/pr-pipeline.ts	code	manifest unreadable
+lib/view-models/pr-pipeline.ts	code	no environments
+lib/view-models/pr-pipeline.ts	code	No service on this cluster deploys this repository
+lib/view-models/pr-pipeline.ts	code	not built
+lib/view-models/pr-pipeline.ts	code	not built (unverified)
+lib/view-models/pr-pipeline.ts	code	not built here yet
+lib/view-models/pr-pipeline.ts	code	Not built yet
+lib/view-models/pr-pipeline.ts	code	Pinned away from it in …
+lib/view-models/pr-pipeline.ts	code	pinned to …
+lib/view-models/pr-pipeline.ts	code	retrying the bake
+lib/view-models/pr-pipeline.ts	code	rolled back
+lib/view-models/pr-pipeline.ts	code	Rolled back in …
+lib/view-models/pr-pipeline.ts	code	rolled back to …
+lib/view-models/pr-pipeline.ts	code	the bake failed
+lib/view-models/pr-pipeline.ts	code	the bake was cancelled
+lib/view-models/pr-pipeline.ts	code	Waiting in … on …
 lib/view-models/regions.ts	code	… … across … builds
 lib/view-models/regions.ts	code	… … with no deploy yet
 lib/view-models/regions.ts	code	… of … … on …
