@@ -90,10 +90,15 @@
 		cancelled: CircleMinusSolid,
 		'rolled-back': UndoOutline,
 		promoting: ArrowRightOutline,
-		// ⭐ FIX PASS ITEM 4 (2026-09-10). Same glyph as `promoting` — the SAME
-		// neutral "will move once its turn comes" semantic, no new shape
-		// mixed into the closed vocabulary.
-		queued: ArrowRightOutline,
+		// ⭐ ROUND 2, R2.5(b) (2026-09-10). Was `ArrowRightOutline` (item 4's
+		// original spelling, tied to `promoting`). The round-2 state table is
+		// explicit: "waiting its turn" gets its OWN glyph — gray `ClockSolid`,
+		// "neutral outlined" — not `promoting`'s directional arrow. A queued
+		// cell is not moving right now (that's what the arrow implies); it is
+		// idle, waiting for its turn, which a clock reads as at a glance. Ink
+		// stays `tone-mute` (gray-500/400) — already the exact value the
+		// table's own "gray-500" calls for, no change needed there.
+		queued: ClockSolid,
 		'not-built': MinusOutline
 	} as const satisfies Record<PrState, unknown>;
 

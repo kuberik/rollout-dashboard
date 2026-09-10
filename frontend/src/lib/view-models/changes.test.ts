@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { buildLandingGrid } from './landing-grid';
 import {
+	standingWords,
+	standingWordsCompact,
+	changesSummary,
+	perRepoCounts,
+	splitChangeSections,
 	buildChangeRows,
 	changeVerdict,
 	changeDayLabel,
@@ -320,6 +326,8 @@ describe('filterChangeRows', () => {
 			verdictTone: 'live',
 			grid: { services: [], allSameLabel: null, visible: [], overflow: null },
 			notEverywhere: false,
+			prodLeadMs: null,
+			frontierReason: null,
 			...overrides
 		};
 	}
@@ -391,6 +399,8 @@ describe('summarizeChangeRows (CHANGES-2026-09-10 fix pass, ruling 5 — "COUNTS
 			verdictTone: 'live',
 			grid: { services: [], allSameLabel: null, visible: [], overflow: null },
 			notEverywhere: false,
+			prodLeadMs: null,
+			frontierReason: null,
 			...overrides
 		};
 	}
@@ -430,6 +440,8 @@ describe('myChangesCount (ruling 5 — ONE definition of "your changes")', () =>
 			verdictTone: 'live',
 			grid: { services: [], allSameLabel: null, visible: [], overflow: null },
 			notEverywhere: false,
+			prodLeadMs: null,
+			frontierReason: null,
 			...overrides
 		};
 	}
@@ -463,6 +475,8 @@ describe('orderHomeChangeRows (ruling 5 — stuck-first, then newest)', () => {
 			verdictTone: 'live',
 			grid: { services: [], allSameLabel: null, visible: [], overflow: null },
 			notEverywhere: false,
+			prodLeadMs: null,
+			frontierReason: null,
 			...overrides
 		};
 	}
@@ -562,5 +576,160 @@ describe('buildLedgerChangeRows', () => {
 		// newest first
 		const times = rows.map((r) => new Date(r.createdAt).getTime());
 		expect([...times]).toEqual([...times].sort((a, b) => b - a));
+	});
+});
+
+// ── ROUND 2, R2.1/R2.7 (LA ACCEPT) — `standingWords` IS ≤4 WORDS FOR EVERY
+// ONE OF THE 12 CELL STATES. Builds a one-service, one-cell VM per `PrState`,
+// runs it through the real production pipeline (`buildLandingGrid`, the same
+// function `ChangeLine`/`ChangeCard` read), and asserts the word count — not
+// a snapshot, per the accept criterion's own wording.
+describe('standingWords — ≤4 words for every PrState', () => {
+	const ALL_STATES: PrCell['state'][] = [
+		'not-built',
+		'gated',
+		'pinned',
+		'waiting-upstream',
+		'queued',
+		'promoting',
+		'deploying',
+		'baking',
+		'retrying',
+		'failed',
+		'cancelled',
+		'rolled-back',
+		'live'
+	];
+
+	for (const state of ALL_STATES) {
+		it(`"${state}" alone`, () => {
+			const vm = mkVm([mkService('svc', [mkCell(state, { gateSubject: 'upstream-app' })])]);
+			const verdict = changeVerdict(vm);
+			const grid = buildLandingGrid(vm, new Date('2026-09-10T12:00:00Z'));
+			const word = standingWords({ verdictTone: verdict.tone, grid });
+			expect(word.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
+		});
+	}
+
+	it('reads "live everywhere" for an all-live change', () => {
+		const vm = mkVm([mkService('a', [mkCell('live')]), mkService('b', [mkCell('live')])]);
+		const grid = buildLandingGrid(vm, new Date());
+		expect(standingWords({ verdictTone: 'live', grid })).toBe('live everywhere');
+	});
+
+	it('reads "not built yet" when a service exists but nothing has built', () => {
+		const vm = mkVm([mkService('a', [mkCell('not-built')])]);
+		const grid = buildLandingGrid(vm, new Date());
+		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('not built yet');
+	});
+
+	it('reads "not built here" with no matching service at all', () => {
+		const grid = buildLandingGrid(mkVm([]), new Date());
+		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('not built here');
+	});
+
+	it('names the frontier family for a held (stuck) cell — "held in <family>"', () => {
+		const vm = mkVm([mkService('a', [mkCell('gated', { envName: 'prod' })])]);
+		const grid = buildLandingGrid(vm, new Date());
+		expect(standingWords({ verdictTone: 'held', grid })).toBe('held in prd');
+	});
+
+	it('names the frontier family for a failed cell — "failed in <family>"', () => {
+		const vm = mkVm([mkService('a', [mkCell('failed', { envName: 'dev' })])]);
+		const grid = buildLandingGrid(vm, new Date());
+		expect(standingWords({ verdictTone: 'failed', grid })).toBe('failed in dev');
+	});
+});
+
+describe('standingWordsCompact', () => {
+	it('folds to `<state> · <family>`, no separate verb tense to worry about', () => {
+		const vm = mkVm([mkService('a', [mkCell('gated', { envName: 'prod' })])]);
+		const grid = buildLandingGrid(vm, new Date());
+		expect(standingWordsCompact({ verdictTone: 'held', grid })).toBe('held · prd');
+	});
+
+	it('is "live" (not "live everywhere") for the all-live case — the compact spelling', () => {
+		const grid = buildLandingGrid(mkVm([mkService('a', [mkCell('live')])]), new Date());
+		expect(standingWordsCompact({ verdictTone: 'live', grid })).toBe('live');
+	});
+});
+
+// ── ROUND 2, R2.2 — `changesSummary`, `perRepoCounts`, `splitChangeSections` ─
+
+function mkRows(overrides: Partial<ChangeRowVM>[]): ChangeRowVM[] {
+	const base: ChangeRowVM = {
+		owner: 'acme',
+		repo: 'widget',
+		repoKey: 'acme/widget',
+		kind: 'pr',
+		number: 1,
+		title: 't',
+		sha: 'a'.repeat(40),
+		shortSha: 'aaaaaaa',
+		href: '/changes/acme/widget/pull/1',
+		htmlUrl: '',
+		author: 'octocat',
+		mergedAt: new Date('2026-09-01T00:00:00Z').toISOString(),
+		verdictWord: 'live everywhere',
+		verdictTone: 'live',
+		grid: { services: [], allSameLabel: null, visible: [], overflow: null },
+		notEverywhere: false,
+		prodLeadMs: null,
+		frontierReason: null
+	};
+	return overrides.map((o, i) => ({ ...base, number: i + 1, ...o }));
+}
+
+describe('changesSummary', () => {
+	it('counts the merged feed, held and never-built rows', () => {
+		const rows = mkRows([
+			{ verdictTone: 'live' },
+			{ verdictTone: 'held' },
+			{ verdictTone: 'held' },
+			{ verdictTone: 'not-built' }
+		]);
+		const s = changesSummary(rows);
+		expect(s.mergedCount).toBe(4);
+		expect(s.heldCount).toBe(2);
+		expect(s.neverBuiltCount).toBe(1);
+	});
+
+	it('never computes a median from fewer than 3 prod-lead samples', () => {
+		const rows = mkRows([{ prodLeadMs: 60_000 }, { prodLeadMs: 120_000 }]);
+		expect(changesSummary(rows).typicalToProdMs).toBeNull();
+	});
+
+	it('computes the median once 3+ samples exist', () => {
+		const rows = mkRows([{ prodLeadMs: 60_000 }, { prodLeadMs: 120_000 }, { prodLeadMs: 180_000 }]);
+		expect(changesSummary(rows).typicalToProdMs).toBe(120_000);
+	});
+});
+
+describe('perRepoCounts', () => {
+	it('groups by repo, alphabetically, counting held per repo', () => {
+		const rows = mkRows([
+			{ repoKey: 'acme/zeta', repo: 'zeta', verdictTone: 'held' },
+			{ repoKey: 'acme/alpha', repo: 'alpha', verdictTone: 'live' },
+			{ repoKey: 'acme/alpha', repo: 'alpha', verdictTone: 'held' }
+		]);
+		expect(perRepoCounts(rows)).toEqual([
+			{ repoKey: 'acme/alpha', label: 'alpha', count: 2, heldCount: 1 },
+			{ repoKey: 'acme/zeta', label: 'zeta', count: 1, heldCount: 1 }
+		]);
+	});
+});
+
+describe('splitChangeSections', () => {
+	it('splits into notEverywhere / liveEverywhere and orders failed-first within the first section', () => {
+		const rows = mkRows([
+			{ notEverywhere: true, verdictTone: 'not-built' },
+			{ notEverywhere: true, verdictTone: 'failed' },
+			{ notEverywhere: true, verdictTone: 'held' },
+			{ notEverywhere: false, verdictTone: 'live' }
+		]);
+		const sections = splitChangeSections(rows);
+		expect(sections.liveEverywhere).toHaveLength(1);
+		expect(sections.notEverywhere).toHaveLength(3);
+		expect(sections.notEverywhere.map((r) => r.verdictTone)).toEqual(['failed', 'held', 'not-built']);
 	});
 });

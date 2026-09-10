@@ -42,8 +42,10 @@ import {
 } from './pr-pipeline';
 import { buildLandingGrid, type LandingGridVM } from './landing-grid';
 import { buildRevisionLedger } from './revision-ledger';
+import { median } from './lead-time';
+import { cellReasonText, frontierUsuallyLabelForCell } from '../pr-cell-copy';
 import { changePath } from '../pr-ref';
-import { changeBuildPath } from '../version-utils';
+import { changeBuildPath, envFamilyWord } from '../version-utils';
 import type { Change } from '../api/changes';
 
 // ── THE SHORT VERDICT WORD, §2b ───────────────────────────────────────────
@@ -105,7 +107,87 @@ export type ChangeRowVM = {
 	verdictTone: ChangeVerdictTone;
 	grid: LandingGridVM;
 	notEverywhere: boolean;
+	/**
+	 * ⭐ ROUND 2, R2.2 ("Typical to prod"). merge → first-prod-deploy, in ms,
+	 * or `null` when unmeasurable — no service reached a PRD-family
+	 * environment yet, or its `since` was not recorded. Reads `PrCell.since`
+	 * on a `live` cell in a `PRD`-family environment (the earliest across
+	 * every service), the same instant `cellStateSentence`'s own "live
+	 * since" reads — never a second, independently-derived timestamp.
+	 * `changesSummary` folds this across the whole feed into one median;
+	 * kept per-row (not just the aggregate) so a future caller can print an
+	 * individual change's own trip without recomputing it.
+	 */
+	prodLeadMs: number | null;
+	/**
+	 * ⭐ ROUND 2, R2.2 (`ChangeCard`'s block 2, "the reason"). The FRONTIER
+	 * cell's own muted reason (`cellReasonText`) plus its "usually N min
+	 * once it starts" estimate (`frontierUsuallyLabelForCell`) where both
+	 * are known, joined ` · ` — `lib/CLAUDE.md`'s "name the FRONTIER, never
+	 * the deepest symptom" applied to the same frontier `buildChangeVerdict`
+	 * already picks (restated here rather than exposed by that function,
+	 * which returns a fused SENTENCE, not the cell itself). `null` when
+	 * nothing is blocking (live everywhere) or nothing has built yet
+	 * anywhere (the all-not-built case, which prints its own one-line fold
+	 * in block 1 and needs no elaboration under it).
+	 *
+	 * ⚠️ KNOWN GAP: the design doc's own example also shows a `· opens in
+	 * 1d 4h` clock tail for a schedule-style hold. `PrCell` carries no
+	 * `clearsAt`/reopen instant today (only `gateContract`/
+	 * `gateRequiredVersion`, both dependency-shaped) — that tail is not
+	 * renderable from this VM yet. Flagged for whichever lane next touches
+	 * `pr-pipeline.ts`'s gate fields, not silently approximated here.
+	 */
+	frontierReason: string | null;
 };
+
+/** `frontierReason`'s own computation — restates `buildChangeVerdict`'s
+ *  frontier-picking precedence (lowest env-rank cell, among cells whose
+ *  service has a build, that is not `live`) because that function returns
+ *  only the fused sentence, never the cell. Two ties break differently on
+ *  purpose elsewhere in this codebase (`landing-grid.ts`'s own module doc
+ *  makes the same call for the same reason) — restating four lines here
+ *  is cheaper than exporting a cell handle across a lane boundary for one
+ *  reader. */
+function frontierReasonFor(vm: PrPipelineVM, now: Date): string | null {
+	const withBuild = vm.services.flatMap((s) => s.cells).filter((c) => c.state !== 'not-built');
+	if (withBuild.length === 0) return null;
+	if (withBuild.every((c) => c.state === 'live')) return null;
+	const candidates = withBuild
+		.filter((c) => c.state !== 'live')
+		.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
+	const frontier = candidates[0];
+	const reason = cellReasonText(frontier, now);
+	const eta = frontierUsuallyLabelForCell(frontier);
+	if (reason && eta) return `${reason} · ${eta}`;
+	return reason ?? eta ?? null;
+}
+
+/**
+ * `prodLeadMs`'s own computation — see the field's doc comment. `null`
+ * whenever the delta cannot be trusted as a real trip: no PRD-family `live`
+ * cell with a recorded `since`, an unparseable timestamp on either end, or a
+ * non-positive delta (the same "not a lead time for this hop" guard
+ * `lead-time.ts`'s own `leadTime` applies to a build seen downstream before
+ * up).
+ */
+function firstProdLeadMs(vm: PrPipelineVM, mergedAtIso: string): number | null {
+	const mergedMs = new Date(mergedAtIso).getTime();
+	if (!Number.isFinite(mergedMs)) return null;
+	let earliestProdMs: number | null = null;
+	for (const service of vm.services) {
+		for (const cell of service.cells) {
+			if (cell.state !== 'live' || !cell.since) continue;
+			if (envFamilyWord(cell.envName) !== 'PRD') continue;
+			const ms = new Date(cell.since).getTime();
+			if (!Number.isFinite(ms)) continue;
+			if (earliestProdMs == null || ms < earliestProdMs) earliestProdMs = ms;
+		}
+	}
+	if (earliestProdMs == null) return null;
+	const delta = earliestProdMs - mergedMs;
+	return delta > 0 ? delta : null;
+}
 
 function buildChangeRow(
 	change: Change,
@@ -155,7 +237,9 @@ function buildChangeRow(
 		verdictWord: verdict.word,
 		verdictTone: verdict.tone,
 		grid: buildLandingGrid(vm, now),
-		notEverywhere: computeNotEverywhere(vm)
+		notEverywhere: computeNotEverywhere(vm),
+		prodLeadMs: firstProdLeadMs(vm, change.mergedAt),
+		frontierReason: frontierReasonFor(vm, now)
 	};
 }
 
@@ -387,4 +471,215 @@ export function buildLedgerChangeRows(rollouts: Rollout[], environments: Environ
 	}
 	rows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 	return rows;
+}
+
+// ── ROUND 2 — THE ONE-LINE ROW'S STANDING WORD, ≤4 WORDS. R2.1/§2b's own
+// examples (`live everywhere`, `held in prod`, `not built yet`, `deploying
+// to stg`, `failed in dev`, `2 of 5 live`) never carry `buildChangeVerdict`'s
+// own SUBJECT (the blocked service's name) or its "will not move on its own"
+// tail — both real, useful facts, and both already printed in full on the
+// change page and the change card's own reason line (R2.2). This is the
+// SHORTER reading for the row that only has one line: which environment,
+// not which service. It reads off `row.grid` (`landing-grid.ts`'s own
+// family-collapsed marks, already computed for the compact grid) rather
+// than re-deriving a frontier from raw `PrCell[]`, so it never disagrees
+// with what the SAME row's own landing grid draws two lines below it. ─────
+
+/** The states R2.5(b) reserves amber for — `stuck`, in the design doc's own
+ *  word. Byte-identical to `pr-pipeline.ts`'s own `HELD_LIKE_STATES`
+ *  (private there); redeclared here rather than exported/imported across a
+ *  lane boundary for one three-item set. */
+const HELD_LIKE_PR_STATES = new Set<PrState>(['gated', 'waiting-upstream', 'pinned']);
+
+/** Verb + preposition for every "something is moving, or about to" state —
+ *  the states `HELD_LIKE_PR_STATES`/`failed`/`live`/`not-built` do not
+ *  already cover. Absent from this table on purpose: those four, handled
+ *  separately below because none of them takes an "in <env>" clause the
+ *  same way (`live`/`not-built` are whole-change facts, `failed`/held are
+ *  handled by their own branches ahead of this one). */
+const STANDING_VERB: Partial<Record<PrState, { verb: string; prep: string }>> = {
+	deploying: { verb: 'deploying', prep: 'to' },
+	baking: { verb: 'baking', prep: 'in' },
+	retrying: { verb: 'retrying', prep: 'in' },
+	promoting: { verb: 'promoting', prep: 'to' },
+	queued: { verb: 'queued', prep: 'for' },
+	cancelled: { verb: 'cancelled', prep: 'in' },
+	'rolled-back': { verb: 'rolled back', prep: 'in' }
+};
+
+/** Hard floor — a defensive truncation, not the primary mechanism (every
+ *  branch below is already worded to land at ≤4 words on its own). Kept so
+ *  a future word added to a branch above cannot silently blow the budget
+ *  without a test catching it. */
+function capWords(s: string, max = 4): string {
+	const words = s.trim().split(/\s+/);
+	return words.length <= max ? s : words.slice(0, max).join(' ');
+}
+
+/**
+ * THE ≤4-WORD STANDING PHRASE. `ChangeLine`'s "where it stands" slot and
+ * `ChangeCard`'s header `verdict` both print this — one function, so the
+ * one-line row and the card can never drift on what a change's own state
+ * reads as. Takes the row (not the raw `PrPipelineVM`) because everything
+ * it needs — the frontier tone and the family-collapsed marks — is already
+ * on `row.grid`/`row.verdictTone`, computed once at `buildChangeRow` time.
+ */
+export function standingWords(row: Pick<ChangeRowVM, 'verdictTone' | 'grid'>): string {
+	if (row.verdictTone === 'live') return 'live everywhere';
+	if (row.verdictTone === 'not-built') {
+		return row.grid.services.length === 0 ? 'not built here' : 'not built yet';
+	}
+
+	const marks = row.grid.services.flatMap((s) => s.marks);
+
+	const failed = marks.filter((m) => m.state === 'failed');
+	if (failed.length > 0) {
+		const worst = [...failed].sort((a, b) => a.familyOrder - b.familyOrder)[0];
+		return capWords(`failed in ${worst.family.toLowerCase()}`);
+	}
+
+	const held = marks.filter((m) => HELD_LIKE_PR_STATES.has(m.state));
+	if (held.length > 0) {
+		const worst = [...held].sort((a, b) => a.familyOrder - b.familyOrder)[0];
+		return capWords(`held in ${worst.family.toLowerCase()}`);
+	}
+
+	const inFlight = marks.filter((m) => STANDING_VERB[m.state]);
+	if (inFlight.length > 0) {
+		const worst = [...inFlight].sort((a, b) => a.familyOrder - b.familyOrder)[0];
+		const vp = STANDING_VERB[worst.state]!;
+		return capWords(`${vp.verb} ${vp.prep} ${worst.family.toLowerCase()}`);
+	}
+
+	const live = marks.filter((m) => m.state === 'live').length;
+	const total = marks.length;
+	if (live > 0 && total > 0) return capWords(`${live} of ${total} live`);
+	return total > 0 ? capWords(`${total} in progress`) : 'not built here';
+}
+
+/**
+ * `ChangeCard`'s `verdictCompact` — `Card`'s own narrower spelling below a
+ * 560px card width (R2.2's own table: `held · prd`). Same precedence as
+ * `standingWords`, worded to the family alone: `<short state> · <family>`.
+ */
+export function standingWordsCompact(row: Pick<ChangeRowVM, 'verdictTone' | 'grid'>): string {
+	if (row.verdictTone === 'live') return 'live';
+	if (row.verdictTone === 'not-built') return 'not built';
+
+	const marks = row.grid.services.flatMap((s) => s.marks);
+
+	const failed = marks.filter((m) => m.state === 'failed');
+	if (failed.length > 0) {
+		const worst = [...failed].sort((a, b) => a.familyOrder - b.familyOrder)[0];
+		return `failed · ${worst.family.toLowerCase()}`;
+	}
+
+	const held = marks.filter((m) => HELD_LIKE_PR_STATES.has(m.state));
+	if (held.length > 0) {
+		const worst = [...held].sort((a, b) => a.familyOrder - b.familyOrder)[0];
+		return `held · ${worst.family.toLowerCase()}`;
+	}
+
+	const inFlight = marks.filter((m) => STANDING_VERB[m.state]);
+	if (inFlight.length > 0) {
+		const worst = [...inFlight].sort((a, b) => a.familyOrder - b.familyOrder)[0];
+		return `${STANDING_VERB[worst.state]!.verb} · ${worst.family.toLowerCase()}`;
+	}
+
+	const live = marks.filter((m) => m.state === 'live').length;
+	const total = marks.length;
+	if (live > 0 && total > 0) return `${live}/${total} live`;
+	return total > 0 ? `${total} moving` : 'not built';
+}
+
+// ── ROUND 2 — R2.2's RAIL CARD 1, `How your changes are going` ───────────
+
+export type ChangesRailSummary = {
+	/** `rows.length` — the feed is already the 30-day window
+	 *  (`fetchChanges(30, …)`'s own default), so this needs no separate
+	 *  date filter. */
+	mergedCount: number;
+	/** Median `prodLeadMs` over every row that reached PRD, `compactSpan`-
+	 *  ready. `null` under the same "never a median of one" floor
+	 *  `lead-time.ts`'s own module doc argues for — fewer than 3 samples
+	 *  prints the em dash + caption, never a number computed from one or
+	 *  two trips. */
+	typicalToProdMs: number | null;
+	typicalToProdSamples: number;
+	/** `verdictTone === 'held'` — R2.5(b)'s `stuck` bucket, the same
+	 *  predicate the section-1 dot's amber-vs-gray decision reads. */
+	heldCount: number;
+	neverBuiltCount: number;
+};
+
+export function changesSummary(rows: readonly ChangeRowVM[]): ChangesRailSummary {
+	const samples = rows
+		.map((r) => r.prodLeadMs)
+		.filter((ms): ms is number => ms != null);
+	return {
+		mergedCount: rows.length,
+		typicalToProdMs: samples.length >= 3 ? median(samples) : null,
+		typicalToProdSamples: samples.length,
+		heldCount: rows.filter((r) => r.verdictTone === 'held').length,
+		neverBuiltCount: rows.filter((r) => r.verdictTone === 'not-built').length
+	};
+}
+
+// ── ROUND 2 — R2.2's RAIL CARD 2, `Repositories` ──────────────────────────
+
+export type RepoChangeCount = {
+	repoKey: string;
+	label: string;
+	count: number;
+	heldCount: number;
+};
+
+/** One entry per repository seen in `rows`, alphabetical by label — the
+ *  SAME ordering `repoChipOptions` already uses, so the rail card and the
+ *  head band's own chip row never disagree on repo order. */
+export function perRepoCounts(rows: readonly ChangeRowVM[]): RepoChangeCount[] {
+	const byRepo = new Map<string, RepoChangeCount>();
+	for (const r of rows) {
+		let entry = byRepo.get(r.repoKey);
+		if (!entry) {
+			entry = { repoKey: r.repoKey, label: r.repo, count: 0, heldCount: 0 };
+			byRepo.set(r.repoKey, entry);
+		}
+		entry.count += 1;
+		if (r.verdictTone === 'held') entry.heldCount += 1;
+	}
+	return [...byRepo.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// ── ROUND 2 — R2.2's TWO SECTIONS ─────────────────────────────────────────
+
+export type ChangeSections = {
+	/** §"Not everywhere yet" — failed → held (§'s own "stuck") → in-flight →
+	 *  not-built, newest first inside each bucket. */
+	notEverywhere: ChangeRowVM[];
+	/** §"Live everywhere" — day-grouped by the caller via `groupByDay`,
+	 *  unchanged order (newest first) here. */
+	liveEverywhere: ChangeRowVM[];
+};
+
+const SECTION_RANK: Record<ChangeVerdictTone, number> = {
+	failed: 0,
+	held: 1,
+	active: 2,
+	'not-built': 3,
+	live: 4
+};
+
+/** Splits the already-newest-first feed into the index's two sections
+ *  (R2.2) — `notEverywhere` re-ordered failed-first per the section's own
+ *  ordering rule, `liveEverywhere` left in the feed's own (newest-first)
+ *  order for `groupByDay` to fold. */
+export function splitChangeSections(rows: readonly ChangeRowVM[]): ChangeSections {
+	const notEverywhere = rows
+		.filter((r) => r.notEverywhere)
+		.map((r, i) => ({ r, i }))
+		.sort((a, b) => SECTION_RANK[a.r.verdictTone] - SECTION_RANK[b.r.verdictTone] || a.i - b.i)
+		.map(({ r }) => r);
+	const liveEverywhere = rows.filter((r) => !r.notEverywhere);
+	return { notEverywhere, liveEverywhere };
 }

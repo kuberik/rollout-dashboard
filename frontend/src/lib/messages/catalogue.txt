@@ -129,6 +129,9 @@ lib/components/BuildLists.svelte	code	Last deployed …
 lib/components/BuildLists.svelte	code	No deploy on record
 lib/components/BuildLists.svelte	title	No longer running anywhere
 lib/components/BuildLists.svelte	text	Show … …
+lib/components/ChangeCard.svelte	text	… · … ago …
+lib/components/ChangeCard.svelte	text	GitHub ↗
+lib/components/ChangeCard.svelte	text	Open change ›
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	code	… commit…
 lib/components/ChangeList.svelte	code	${githubAbsenceSentence(null, { unreachable: true })} (…)
@@ -358,7 +361,7 @@ lib/components/HowItsGoing.svelte	text	no measured trip yet
 lib/components/HowItsGoing.svelte	text	Typical deploy
 lib/components/HowItsGoing.svelte	text	Typical to prod
 lib/components/LandingGrid.svelte	text	+ … service …
-lib/components/LandingGrid.svelte	code	grid-template-columns: minmax(56px, var(--lg-name-w)) repeat(…, minmax(44px, auto));
+lib/components/LandingGrid.svelte	code	grid-template-columns: minmax(56px, var(--lg-name-w)) repeat(…, max-content);
 lib/components/LandingMark.svelte	code	--lm-ring: …; --lm-ring-dark: …; --lm-word: …; --lm-word-dark: …;
 lib/components/LandingMark.svelte	code	not built
 lib/components/LandingMark.svelte	code	rolled back
@@ -733,7 +736,19 @@ lib/view-models/blocking-story.ts	code	Waiting for … to ship a newer … — i
 lib/view-models/blocking-story.ts	code	Waiting for its upstream environment to deploy this build
 lib/view-models/blocking-story.ts	code	Waiting for someone to approve it
 lib/view-models/blocking-story.ts	code	Waiting for the service it depends on to ship a newer version
+lib/view-models/changes.ts	code	… in progress
+lib/view-models/changes.ts	code	… moving
+lib/view-models/changes.ts	code	… of … live
+lib/view-models/changes.ts	code	…/… live
+lib/view-models/changes.ts	code	failed · …
+lib/view-models/changes.ts	code	failed in …
+lib/view-models/changes.ts	code	held · …
+lib/view-models/changes.ts	code	held in …
+lib/view-models/changes.ts	code	live everywhere
+lib/view-models/changes.ts	code	not built
 lib/view-models/changes.ts	code	not built here
+lib/view-models/changes.ts	code	not built yet
+lib/view-models/changes.ts	code	rolled back
 lib/view-models/dependencies.ts	code	… version… ahead
 lib/view-models/dependencies.ts	code	… version… waiting to move
 lib/view-models/dependency-graph.ts	code	, … serves …

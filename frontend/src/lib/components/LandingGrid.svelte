@@ -106,8 +106,18 @@
 		return !expanded && i >= fold;
 	}
 
+	// ⭐ ROUND 2, R2.5(a) (2026-09-10) — CONTENT-SIZED COLUMNS, NO `auto`/`1fr`.
+	// `minmax(44px, auto)`'s `auto` MAX track absorbs every pixel of free
+	// space under this element's own `justify-content: normal` default — in
+	// a full-width card body that pinned DEV/STG/PRD at x = 485/975/1470 on
+	// a 1440 screen (measured: three 18px marks spread over 1000px). Every
+	// column is `max-content` now (the mark's own natural width, nothing
+	// more) and the wrapping `.lg-grid` rule below sets
+	// `justify-content: start`, so the grid is exactly as wide as its
+	// content and left-aligned inside whatever card body holds it, at every
+	// width and every service count.
 	const gridStyle = $derived(
-		`grid-template-columns: minmax(56px, var(--lg-name-w)) repeat(${columns.length || 1}, minmax(44px, auto));`
+		`grid-template-columns: minmax(56px, var(--lg-name-w)) repeat(${columns.length || 1}, max-content);`
 	);
 </script>
 
@@ -169,6 +179,11 @@
 		column-gap: 8px;
 		row-gap: 2px;
 		align-items: center;
+		/* R2.5(a) — the grid is exactly as wide as its `max-content` columns;
+		   `start` stops the browser stretching that width to fill the
+		   parent, which is the other half of the same fix (`gridStyle`'s own
+		   comment, above). */
+		justify-content: start;
 	}
 
 	@media (max-width: 640px) {
