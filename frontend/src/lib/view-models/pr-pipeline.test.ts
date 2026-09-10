@@ -464,6 +464,44 @@ describe('buildPrPipeline', () => {
 		});
 	});
 
+	/**
+	 * ⭐ FIX PASS ITEM 4 (2026-09-10) — "QUEUED, NOT WAITING-UPSTREAM". A gate
+	 * joined to an environment-controller PROMOTION relationship
+	 * (`subjectKind: 'environment'`, `classifyGate`'s own `kind: 'promotion'`
+	 * branch) is a NORMAL promotion-order wait — "staging hasn't been given
+	 * its turn because dev hasn't deployed yet", nobody stuck, nothing
+	 * refusing anything. This used to render identically to a genuinely
+	 * stuck dependency (`waiting-upstream`, amber field/ring); `queued` is
+	 * its own state now so `LandingMark`/`PipelineRow` can draw it neutral.
+	 */
+	it('queued, not waiting-upstream: a promotion-relationship gate (subjectKind environment) is a normal order wait', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-staging',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			],
+			gates: [{ name: 'ghd-p2fld', passing: true, allowedVersions: [] }]
+		});
+		const env = {
+			metadata: { name: 'widget-app-staging', namespace: 'widget-staging' },
+			spec: {
+				environment: 'staging',
+				rolloutRef: { name: 'widget-app' },
+				relationship: { environment: 'dev', type: 'After' }
+			},
+			status: { rolloutGateRef: { name: 'ghd-p2fld' } }
+		} as unknown as Environment;
+		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+		const cell = vm.services[0].cells[0];
+		expect(cell.state).toBe('queued');
+		expect(cell.state).not.toBe('waiting-upstream');
+		expect(cell.gateSubject).toBe('dev');
+		expect(cell.gateSubjectKind).toBe('environment');
+	});
+
 	it('not-built: no release anywhere carries the PR', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
@@ -570,7 +608,7 @@ describe('buildPrPipeline', () => {
 		});
 		const vm = buildPrPipeline(meta(), [dev, staging], [envDev, envStaging], { items: [] }, NOW);
 		expect(vm.services[0].furthest).toBe('live in dev · baking in staging');
-		expect(vm.verdict).toBe('Baking in staging');
+		expect(vm.verdict).toBe('Widget-app baking in staging');
 	});
 
 	// ⭐ ITEM 11 (2026-09-10 fix pass). `furthestCompact` is the folded form
@@ -695,7 +733,7 @@ describe('buildPrPipeline', () => {
 		// ⭐ RULING 3 (2026-09-10 fix pass, "ONE VERDICT, THE FRONTIER"): a
 		// dependency wait reads "held", the same word a gate hold uses — both
 		// are "something else has to move first" from the reader's seat.
-		expect(vm.verdict).toBe('Held in prod on api-app');
+		expect(vm.verdict).toBe('Widget-app held in prod on api-app');
 	});
 
 	// ⭐ ITEM 3 (2026-09-10 fix pass). Without `rolloutGates` (this VM never
@@ -727,7 +765,7 @@ describe('buildPrPipeline', () => {
 		expect(vm.verdict).not.toContain('schedule-gate-fk44d');
 		// ⭐ RULING 3: no subject clause when `gateLabel` is unresolved — "held
 		// in prod", never a raw gate id, never a fake "by a rule" filler.
-		expect(vm.verdict).toBe('Held in prod');
+		expect(vm.verdict).toBe('Widget-app held in prod');
 	});
 
 	it('verdict: gated with nothing actually blocking is its own state (promoting), no HELD contradiction', () => {
@@ -748,7 +786,7 @@ describe('buildPrPipeline', () => {
 		expect(cell.gateLabel).toBeNull();
 		// ⭐ RULING 3: the frontier verb table drops "shortly" — "promoting in
 		// prod", no subject (nothing to name; the row's own reason carries it).
-		expect(vm.verdict).toBe('Promoting in prod');
+		expect(vm.verdict).toBe('Widget-app promoting in prod');
 	});
 });
 
@@ -776,7 +814,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 		// api-app is a different repo entirely — excluded, never dilutes the verdict.
 		expect(vm.services.map((s) => s.appName)).toEqual(['frontend-app']);
 		expect(vm.services[0].cells[0].state).toBe('gated');
-		expect(vm.verdict).toBe('Held in dev');
+		expect(vm.verdict).toBe('Frontend-app held in dev');
 	});
 
 	// `buildPrPipeline`'s own gate context never carries schedule/rolloutGate
@@ -807,6 +845,9 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 			gateSubject: null,
 			gateSubjectKind: null,
 			gatePending: false,
+			gateContract: null,
+			gateRequiredVersion: null,
+			providerHasNoBuild: false,
 			containmentKnown: true
 		};
 		const service: PrService = {
@@ -818,7 +859,14 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 			leadTimeMs: null,
 			builtElsewhere: false
 		};
-		expect(buildChangeVerdict([service])).toEqual({ word: 'held in dev by Peak Hours Protection', tone: 'held' });
+		// ⭐ FIX PASS ITEM 5 (2026-09-10) — SUBJECT FIRST. Supersedes this
+		// test's own former expectation (`'held in dev by Peak Hours
+		// Protection'`, no subject) — the verdict now names the BLOCKED
+		// SERVICE ahead of the state.
+		expect(buildChangeVerdict([service])).toEqual({
+			word: 'widget-app held in dev by Peak Hours Protection',
+			tone: 'held'
+		});
 	});
 
 	it('earliest env-rank wins over "worst progressed": a dev hold outranks a prod hold in the verdict', () => {
@@ -845,7 +893,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 		// dev is the FRONTIER (lowest rank, not live) even though prod's own
 		// state (`failed`) is louder — the old "worst-progressed" rule would
 		// have picked prod here.
-		expect(vm.verdict).toBe('Promoting in dev');
+		expect(vm.verdict).toBe('Widget-app promoting in dev');
 	});
 });
 
@@ -1004,6 +1052,53 @@ describe('builtElsewhere / joined dependency reasons (CHANGES-2026-09-10 fix pas
 		expect(dependentSvc.cells[0].state).toBe('waiting-upstream');
 		expect(dependentSvc.cells[0].reason).toBe(
 			'waiting on api-app — its build of this change does not exist yet'
+		);
+	});
+
+	/**
+	 * ⭐ FIX PASS ITEM 5 (2026-09-10) — "THE HONEST WHEN". The SAME fixture as
+	 * the test above (provider has NO build of this change at all), but this
+	 * time asserting the VERDICT itself, not just the cell's own reason: a
+	 * dependency the provider cannot possibly satisfy right now gets the
+	 * verdict's own "will not move on its own" tail, naming the exact
+	 * contract and range — `buildChangeVerdict`'s `providerHasNoBuild` read.
+	 */
+	it('verdict: "will not move on its own — needs <provider> <contract> <range>" when the provider has no build at all', () => {
+		const dependent = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			],
+			gates: [{ name: 'dep-gate-1', passing: true, allowedVersions: [] }]
+		});
+		const provider = mkRollout({
+			name: 'api-app',
+			namespace: 'api-dev',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const envDependent = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const envProvider = mkEnv({ app: 'api-app', envName: 'dev', namespace: 'api-dev' });
+		const dependency = {
+			metadata: { name: 'widget-app-needs-api', namespace: 'widget-dev' },
+			spec: { rolloutRef: { name: 'widget-app' }, providerRef: { name: 'api-app' }, contract: 'api' },
+			status: {
+				gateName: 'dep-gate-1',
+				providedVersion: '1.66.0',
+				blockedReleases: [{ requiredVersion: '^1.68.0' }]
+			}
+		} as any;
+		const vm = buildPrPipeline(
+			meta(),
+			[dependent, provider],
+			[envDependent, envProvider],
+			{ items: [dependency] },
+			NOW
+		);
+		expect(vm.verdict).toBe(
+			'Widget-app held in dev on api-app · will not move on its own — needs api-app api ^1.68.0'
 		);
 	});
 

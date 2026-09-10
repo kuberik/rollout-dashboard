@@ -1,7 +1,7 @@
 import type { Rollout, Environment } from '../types';
 import { buildRevisionLedger, type RevisionRow } from '$lib/view-models/revision-ledger';
 import { changeBuildPath, repoKeyFromSource, githubOwnerRepo } from '$lib/version-utils';
-import { parsePrRef, type PrRef } from '$lib/pr-ref';
+import { parsePrRef, changePath as changePathCanonical, type PrRef } from '$lib/pr-ref';
 import type { MyPull } from '$lib/api/my-pulls';
 
 /**
@@ -225,19 +225,24 @@ export function parseChangeRef(input: string): PrRef | { kind: 'sha'; sha: strin
 }
 
 /**
- * The `/changes/{owner}/{repo}/pull/{n}` or `/changes/{owner}/{repo}/{sha}`
- * route, for an already-resolved reference.
+ * The `/changes/github.com/{owner}/{repo}/pull/{n}` or
+ * `/changes/github.com/{owner}/{repo}/{sha}` route, for an already-resolved
+ * reference.
  *
- * TODO(lane1): switch to the `changePath` `version-utils.ts` is expected to
- * export (built on the real `repoSlug`, `github.com/owner/repo`, matching
- * `/changes/[...slug]`'s actual route shape) once it lands. This local
- * version is deliberately the simpler `/changes/<owner>/<repo>/…` shape so
- * this file does not import from a route/helper that may not exist yet on a
- * concurrently-edited branch.
+ * ⭐ FIX PASS ITEM 3 (2026-09-10). This USED to be a local, host-less
+ * `/changes/<owner>/<repo>/…` builder (the TODO(lane1) it replaces) — real
+ * bug, live: ⌘K → paste `bf5be49` → Enter landed on
+ * `/changes/littlechimera/kuberik-testing/bf5be49`, which `[...slug]`'s own
+ * `changeOwnerRepo` rejects (`parts[0] !== 'github.com'`) as "This
+ * repository does not exist". `pr-ref.ts`'s `changePath` (Lane 1, now
+ * landed) is the ONE function that builds the real `github.com/owner/repo`
+ * slug shape every change-page route expects — this thin wrapper only
+ * translates this module's own tagged-union `ChangeRef` into that
+ * function's `{number}|{sha}` shape so every existing call site in this
+ * file keeps compiling unchanged.
  */
 export function changePath(owner: string, repo: string, ref: ChangeRef): string {
-	const base = `/changes/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
-	return ref.kind === 'pull' ? `${base}/pull/${ref.number}` : `${base}/${ref.sha}`;
+	return changePathCanonical(owner, repo, ref.kind === 'pull' ? { number: ref.number } : { sha: ref.sha });
 }
 
 export type PaletteChangeEntry = {

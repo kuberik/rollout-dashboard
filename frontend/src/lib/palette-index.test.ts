@@ -241,22 +241,27 @@ describe('parseChangeRef', () => {
 	});
 });
 
+// ⭐ FIX PASS ITEM 3 (2026-09-10). The canonical `github.com/<owner>/<repo>`
+// slug shape, not the host-less form these tests used to assert (the exact
+// bug: ⌘K's own rows navigated to a host-less path the `[...slug]` route
+// rejects as "This repository does not exist" — see `changePath`'s own doc
+// comment above).
 describe('changePath', () => {
 	it('builds the pull-request path', () => {
 		expect(changePath('kuberik', 'rollout-dashboard', { kind: 'pull', number: 123 })).toBe(
-			'/changes/kuberik/rollout-dashboard/pull/123'
+			'/changes/github.com/kuberik/rollout-dashboard/pull/123'
 		);
 	});
 
 	it('builds the sha path', () => {
 		expect(changePath('kuberik', 'rollout-dashboard', { kind: 'sha', sha: 'bf5be49' })).toBe(
-			'/changes/kuberik/rollout-dashboard/bf5be49'
+			'/changes/github.com/kuberik/rollout-dashboard/bf5be49'
 		);
 	});
 
 	it('encodes owner/repo segments', () => {
 		expect(changePath('ku berik', 'foo/bar', { kind: 'pull', number: 1 })).toBe(
-			'/changes/ku%20berik/foo%2Fbar/pull/1'
+			'/changes/github.com/ku%20berik/foo%2Fbar/pull/1'
 		);
 	});
 });
@@ -283,7 +288,7 @@ describe('buildChangeRefPaletteResults', () => {
 				repo: 'rollout-dashboard',
 				ref: { kind: 'pull', number: 123 },
 				title: 'Open change #123 · rollout-dashboard',
-				href: '/changes/kuberik/rollout-dashboard/pull/123'
+				href: '/changes/github.com/kuberik/rollout-dashboard/pull/123'
 			}
 		]);
 	});
@@ -292,7 +297,7 @@ describe('buildChangeRefPaletteResults', () => {
 		const results = buildChangeRefPaletteResults('kuberik/rollout-dashboard#123', []);
 		expect(results).toHaveLength(1);
 		expect(results[0].title).toBe('Open change #123 · rollout-dashboard');
-		expect(results[0].href).toBe('/changes/kuberik/rollout-dashboard/pull/123');
+		expect(results[0].href).toBe('/changes/github.com/kuberik/rollout-dashboard/pull/123');
 	});
 
 	it('fans a bare #123 out to one result per distinct cluster source repo', () => {
@@ -310,8 +315,8 @@ describe('buildChangeRefPaletteResults', () => {
 			'Open change #7 · widget'
 		]);
 		expect(results.map((r) => r.href)).toEqual([
-			'/changes/acme/gadget/pull/7',
-			'/changes/acme/widget/pull/7'
+			'/changes/github.com/acme/gadget/pull/7',
+			'/changes/github.com/acme/widget/pull/7'
 		]);
 	});
 
@@ -343,7 +348,7 @@ describe('buildChangeRefPaletteResults', () => {
 				repo: 'widget',
 				ref: { kind: 'sha', sha: 'bf5be49' },
 				title: 'Open change bf5be49 · widget',
-				href: '/changes/acme/widget/bf5be49'
+				href: '/changes/github.com/acme/widget/bf5be49'
 			}
 		]);
 	});
@@ -358,7 +363,7 @@ describe('buildChangeRefPaletteResults', () => {
 				repo: 'widget',
 				ref: { kind: 'sha', sha: 'bf5be49' },
 				title: 'Look up bf5be49 in widget',
-				href: '/changes/acme/widget/bf5be49'
+				href: '/changes/github.com/acme/widget/bf5be49'
 			}
 		]);
 	});
@@ -404,6 +409,6 @@ describe('buildMergedChangeIndex', () => {
 	it('carries the pull title verbatim, so a free-text search matches on it', () => {
 		const entries = buildMergedChangeIndex([pull({})]);
 		expect(entries[0].title).toBe('fix(frontend): retry on 502');
-		expect(entries[0].href).toBe('/changes/kuberik/kuberik-testing/pull/4');
+		expect(entries[0].href).toBe('/changes/github.com/kuberik/kuberik-testing/pull/4');
 	});
 });

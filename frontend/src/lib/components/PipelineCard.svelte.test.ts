@@ -29,6 +29,9 @@ function mkCell(state: PrCell['state'], overrides: Partial<PrCell> = {}): PrCell
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		gateContract: null,
+		gateRequiredVersion: null,
+		providerHasNoBuild: false,
 		containmentKnown: true,
 		...overrides
 	};

@@ -378,7 +378,7 @@ describe('the change result kind — reference rows', () => {
 		expect(document.body.textContent).not.toContain('Changes');
 
 		await fireEvent.click(rows[0]);
-		expect(goto).toHaveBeenCalledWith('/changes/kuberik/rollout-dashboard/pull/123');
+		expect(goto).toHaveBeenCalledWith('/changes/github.com/kuberik/rollout-dashboard/pull/123');
 	});
 
 	test('owner/repo#123 resolves the same way', async () => {
@@ -392,7 +392,7 @@ describe('the change result kind — reference rows', () => {
 		expect(rows).toHaveLength(1);
 
 		await fireEvent.click(rows[0]);
-		expect(goto).toHaveBeenCalledWith('/changes/kuberik/rollout-dashboard/pull/123');
+		expect(goto).toHaveBeenCalledWith('/changes/github.com/kuberik/rollout-dashboard/pull/123');
 	});
 
 	test('a bare #123 fans out to one row per distinct cluster source repo', async () => {
@@ -415,7 +415,7 @@ describe('the change result kind — reference rows', () => {
 		expect(changeRows).toHaveLength(2);
 
 		await fireEvent.click(changeRows.find((r) => r.textContent?.includes('gadget'))!);
-		expect(goto).toHaveBeenCalledWith('/changes/acme/gadget/pull/7');
+		expect(goto).toHaveBeenCalledWith('/changes/github.com/acme/gadget/pull/7');
 	});
 
 	// ⛔ FIX PASS ITEM 8, 2026-09-10 — a bare sha no longer fans out
@@ -441,7 +441,7 @@ describe('the change result kind — reference rows', () => {
 		expect(changeRow!.textContent).toContain('gadget');
 
 		await fireEvent.click(changeRow!);
-		expect(goto).toHaveBeenCalledWith('/changes/acme/gadget/bf5be49');
+		expect(goto).toHaveBeenCalledWith('/changes/github.com/acme/gadget/bf5be49');
 	});
 
 	test('a bare sha a rollout\'s own history carries narrows to just that repo', async () => {

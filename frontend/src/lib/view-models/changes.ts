@@ -121,7 +121,16 @@ function buildChangeRow(
 		mergedAt: change.mergedAt,
 		mergeCommitSha: change.mergeCommitSha,
 		containedIn: change.containedIn,
-		containedInAll: change.containedInAll
+		containedInAll: change.containedInAll,
+		// ⭐ FIX PASS ITEM 1 (2026-09-10). `GET /api/github/changes` computes
+		// `containedIn`/`containedInAll` for EVERY row (the module doc above)
+		// — an empty `containedIn` here is a REAL, server-verified answer
+		// ("nothing merged after this yet"), never the bare-sha stub's
+		// ambiguity. Leaving this unset let `buildPrPipeline`'s own default
+		// (`containedIn.length > 0 || containedInAll`) read the newest change
+		// (empty `containedIn`, `containedInAll: false`) as UNKNOWN and print
+		// "not built yet" over a HELD release that genuinely exists.
+		containmentKnown: true
 	};
 	const vm = buildPrPipeline(meta, rollouts, environments, rolloutDependencies, now);
 	const verdict = changeVerdict(vm);

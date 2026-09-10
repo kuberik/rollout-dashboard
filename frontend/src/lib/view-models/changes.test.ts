@@ -39,6 +39,9 @@ function mkCell(state: PrCell['state'], overrides: Partial<PrCell> = {}): PrCell
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		gateContract: null,
+		gateRequiredVersion: null,
+		providerHasNoBuild: false,
 		containmentKnown: true,
 		...overrides
 	};
@@ -151,6 +154,53 @@ describe('buildChangeRows', () => {
 		expect(rows[0].verdictWord).toBe('not built here');
 		expect(rows[0].notEverywhere).toBe(true);
 	});
+
+	/**
+	 * ⭐ FIX PASS ITEM 1 (2026-09-10) REGRESSION — "THE NEWEST CHANGE IS NOT
+	 * UNKNOWN". The bug, live: PR #4's own release (revision === its
+	 * `mergeCommitSha`, so `containment()` matches it EXACTLY regardless of
+	 * `containedInAll`) is HELD on an upstream dependency gate — but
+	 * `buildCell`'s own `if (upstream && !containmentKnown) return
+	 * notBuiltUnverified()` guard fired anyway, because this module never
+	 * told `buildPrPipeline` that an empty `containedIn`/`containedInAll:
+	 * false` here is a REAL, server-verified answer (the feed always
+	 * computes it — see this module's own doc comment), not the bare-sha
+	 * stub's ambiguity. Without `containmentKnown: true` on the meta this
+	 * function builds, this row reads "not built yet"; a change whose own
+	 * release is a gated, blocked HELD build must never do that.
+	 */
+	it('a change with empty containedIn and a release whose revision equals mergeCommitSha reads held, never not-built', () => {
+		const rollout = {
+			metadata: { name: 'widget-app', namespace: 'widget-dev', annotations: {} },
+			spec: {},
+			status: {
+				source: SOURCE,
+				gates: [{ name: 'dep-gate-1', passing: true, allowedVersions: [] }],
+				history: [{ id: 0, timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded', version: { tag: 'old', revision: 'old-1' } }],
+				availableReleases: [{ tag: 'main-c0ffee1', revision: 'c0ffee1', created: '2026-09-10T09:00:00Z' }]
+			}
+		} as unknown as Rollout;
+		const environments = [mkEnv('dev')];
+		const dependency = {
+			metadata: { name: 'widget-app-needs-api', namespace: 'widget-dev' },
+			spec: { rolloutRef: { name: 'widget-app' }, providerRef: { name: 'api-app' }, contract: 'api' },
+			status: { gateName: 'dep-gate-1', providedVersion: '1.0.0' }
+		} as unknown;
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', containedIn: [], containedInAll: false });
+		const rows = buildChangeRows(
+			[change],
+			[rollout],
+			environments,
+			{ items: [dependency as never] },
+			NOW
+		);
+		const cell = rows[0].grid.services[0].marks[0];
+		expect(cell.state).not.toBe('not-built');
+		expect(cell.state).toBe('waiting-upstream');
+		expect(rows[0].verdictWord).not.toBe('not built yet');
+		expect(rows[0].verdictWord).toContain('held in');
+		expect(rows[0].verdictWord).toContain('api-app');
+	});
 });
 
 // ⭐ RULING 3 (CHANGES-2026-09-10 fix pass, "ONE VERDICT, THE FRONTIER").
@@ -158,33 +208,42 @@ describe('buildChangeRows', () => {
 // `buildChangeVerdict` — the FRONTIER (earliest env-rank cell not live),
 // named with the raw environment name (never the family word — that
 // abbreviation is `LandingMark`'s own budget, not the row's prose).
+// ⭐ FIX PASS ITEM 5 (2026-09-10) — "SUBJECT FIRST". Every expectation below
+// updated to lead with the BLOCKED SERVICE's own name (`buildChangeVerdict`'s
+// own doc comment) — `live everywhere` is the one exception, a whole-fleet
+// claim with no single subject.
 describe('changeVerdict', () => {
 	it('is "live everywhere" when every cell is live', () => {
 		const vm = mkVm([mkService('a', [mkCell('live')]), mkService('b', [mkCell('live')])]);
 		expect(changeVerdict(vm)).toEqual({ word: 'live everywhere', tone: 'live' });
 	});
 
-	it('names the raw environment for a held cell, worst-first', () => {
+	it('names the subject service AND the raw environment for a held cell, worst-first', () => {
 		const vm = mkVm([
 			mkService('a', [mkCell('live', { envName: 'dev' })]),
 			mkService('b', [mkCell('gated', { envName: 'prod' })])
 		]);
-		expect(changeVerdict(vm)).toEqual({ word: 'held in prod', tone: 'held' });
+		expect(changeVerdict(vm)).toEqual({ word: 'b held in prod', tone: 'held' });
 	});
 
-	it('names the raw environment for a failed cell', () => {
+	it('names the subject service and the raw environment for a failed cell', () => {
 		const vm = mkVm([mkService('a', [mkCell('failed', { envName: 'staging' })])]);
-		expect(changeVerdict(vm)).toEqual({ word: 'failed in staging', tone: 'failed' });
+		expect(changeVerdict(vm)).toEqual({ word: 'a failed in staging', tone: 'failed' });
 	});
 
+	// ⭐ FIX PASS ITEM 5 — deliberately NO subject here: "nothing has built
+	// this change anywhere yet" is a fact about the CHANGE, not about any
+	// one service in particular (see `buildChangeVerdict`'s own comment) —
+	// unlike a frontier candidate, which names the one specific service a
+	// specific cell is blocking.
 	it('is "not built yet" when nothing has built, but a service exists', () => {
 		const vm = mkVm([mkService('a', [mkCell('not-built')])]);
 		expect(changeVerdict(vm)).toEqual({ word: 'not built yet', tone: 'not-built' });
 	});
 
-	it('is "deploying in <env>" for an in-flight cell with nothing worse', () => {
+	it('is "<service> deploying in <env>" for an in-flight cell with nothing worse', () => {
 		const vm = mkVm([mkService('a', [mkCell('deploying')])]);
-		expect(changeVerdict(vm)).toEqual({ word: 'deploying in dev', tone: 'active' });
+		expect(changeVerdict(vm)).toEqual({ word: 'a deploying in dev', tone: 'active' });
 	});
 
 	it('is "not built here" with no matching service at all', () => {
@@ -192,13 +251,13 @@ describe('changeVerdict', () => {
 		expect(changeVerdict(vm)).toEqual({ word: 'not built here', tone: 'not-built' });
 	});
 
-	it('names the upstream service as the subject for a dependency wait', () => {
+	it('names the subject service, then the upstream service, for a dependency wait', () => {
 		const vm = mkVm([
 			mkService('a', [
 				mkCell('waiting-upstream', { envName: 'prod', gateSubject: 'api-app', gateSubjectKind: 'service' })
 			])
 		]);
-		expect(changeVerdict(vm)).toEqual({ word: 'held in prod on api-app', tone: 'held' });
+		expect(changeVerdict(vm)).toEqual({ word: 'a held in prod on api-app', tone: 'held' });
 	});
 
 	it('earliest env-rank wins over "worst state": a dev hold outranks a prod failure', () => {
@@ -208,7 +267,7 @@ describe('changeVerdict', () => {
 				mkCell('failed', { envName: 'prod', envRank: 7 })
 			])
 		]);
-		expect(changeVerdict(vm)).toEqual({ word: 'held in dev', tone: 'held' });
+		expect(changeVerdict(vm)).toEqual({ word: 'a held in dev', tone: 'held' });
 	});
 });
 

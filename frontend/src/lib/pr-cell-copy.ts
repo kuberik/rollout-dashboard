@@ -122,13 +122,17 @@ export function cellStateSentence(
 			// Already exactly "pinned to <label>" — see `pr-pipeline.ts`.
 			return cell.reason;
 		case 'waiting-upstream':
-			// A promotion-order wait (subject is an ENVIRONMENT, "dev" not
-			// "hello-api-app") reads as "waiting for dev to deploy it first";
-			// a dependency wait (subject is a SERVICE) reads "waiting on
-			// hello-api-app" — same distinction `buildVerdict` makes.
-			return cell.gateSubjectKind === 'environment'
-				? `waiting for ${cell.gateSubject ?? 'its upstream'} to deploy it first`
-				: `waiting on ${cell.gateSubject ?? 'its upstream'}`;
+			// ⭐ FIX PASS ITEM 4 (2026-09-10) — a `waiting-upstream` cell is now
+			// ALWAYS the service-subject dependency wait ("waiting on
+			// hello-api-app"); the environment-subject promotion-order case
+			// this used to also spell here is its own state now (`queued`,
+			// below) — see `PrState`'s own doc comment for why the two split.
+			return `waiting on ${cell.gateSubject ?? 'its upstream'}`;
+		case 'queued':
+			// The normal promotion-order wait — "dev" not "hello-api-app" — a
+			// service simply hasn't been given its turn yet, nobody blocking
+			// anything.
+			return `waiting for ${cell.gateSubject ?? 'its upstream'} to deploy it first`;
 		case 'promoting':
 			return 'promoting shortly';
 		case 'deploying':
@@ -233,13 +237,13 @@ export function frontierUsuallyLabel(ms: number): string {
  * service has NOT yet produced a build of the change (`not-built`, and every
  * other state the design doc's own list excludes) — an ETA on a build that
  * does not exist is not an estimate, it is a guess with a number attached.
- * Only `gated`/`pinned`/`waiting-upstream`/`promoting` — the states where a
- * build already exists and is merely not deployed here yet — ever return a
+ * Only `gated`/`pinned`/`waiting-upstream`/`queued`/`promoting` — the states
+ * where a build already exists and is merely not deployed here yet — ever return a
  * string. Prefer this over the raw `frontierUsuallyLabel` at any NEW call
  * site; the un-guarded function stays exported for the one existing
  * call site that already gates on state itself.
  */
-const HAS_BUILD_STATES = new Set<PrState>(['gated', 'pinned', 'waiting-upstream', 'promoting']);
+const HAS_BUILD_STATES = new Set<PrState>(['gated', 'pinned', 'waiting-upstream', 'queued', 'promoting']);
 
 export function frontierUsuallyLabelForCell(cell: PrCell): string | null {
 	if (!HAS_BUILD_STATES.has(cell.state)) return null;
@@ -267,10 +271,15 @@ export function sinceLabel(cell: PrCell, now: Date = new Date()): string | null 
  * exist. `+page.svelte` renders this ALONGSIDE the head band's existing
  * subtitle line, never inside `PipelineCard`/`PipelineRow`.
  *
- * `null` for `'none'` (no check runs at all — nothing to report) exactly as
- * the design doc's "nothing for none" says; every other state gets exactly
- * one of the three sentences, with a link to GitHub's own checks tab when
- * the backend supplied one.
+ * ⭐ FIX PASS ITEM 8 (2026-09-10) — SUPERSEDES THE DESIGN DOC'S "NOTHING FOR
+ * NONE". `'none'` now prints its own small, muted line — `'no checks
+ * reported'`, never linked — instead of nothing at all: the design doc's
+ * silence read as "the product never looked", when the truth is GitHub
+ * told this dashboard there is nothing to check. A developer staring at a
+ * change page with no checks line at all cannot tell those two apart;
+ * saying so once removes the ambiguity. `success`/`pending`/`failure`
+ * still get exactly one of their own three sentences, with a link to
+ * GitHub's own checks tab when the backend supplied one.
  */
 export type ChecksLine = { text: string; href: string | null };
 
@@ -278,7 +287,7 @@ export function checksLine(checks: PrChecks | null | undefined): ChecksLine | nu
 	if (!checks) return null;
 	switch (checks.state) {
 		case 'none':
-			return null;
+			return { text: 'no checks reported', href: null };
 		case 'success':
 			return { text: 'checks passing', href: checks.url ?? null };
 		case 'pending':

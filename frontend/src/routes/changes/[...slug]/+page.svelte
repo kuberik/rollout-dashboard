@@ -11,7 +11,7 @@
 	import { commitQueryOptions, FetchCommitError } from '$lib/api/commit';
 	import { parseChangeSlug } from '$lib/pr-ref';
 	import { connectGithub } from '$lib/api/github';
-	import { FetchPullError } from '$lib/api/pulls';
+	import { FetchPullError, containmentKnownFor } from '$lib/api/pulls';
 	import { ensurePrMeta, notifyRevisionSeen, prMetaKey } from '$lib/stores/pr-meta.svelte';
 	import { buildPrPipeline, type PrPipelineMeta, type PrCell } from '$lib/view-models/pr-pipeline';
 	import { buildLandingGrid, orderByVerdict, classify, worstCell } from '$lib/view-models/landing-grid';
@@ -2067,6 +2067,14 @@
 	 * entirely, not one that has actually converged.
 	 */
 	const repoSearchNoMatch = $derived(repoSearchActive && repoVisibleLeadRows.length === 0);
+	// ⭐ ITEM 11 (2026-09-10 fix pass). The figure beside this sentence is a
+	// bare number with no noun of its own (`repoAttention.total` — deploy
+	// SLOTS across every service/env, not a change count) — "6" read on its
+	// own, right against the next clause's own leading digit ("6 2 held").
+	// `slots` is the accurate noun for what this specific figure counts
+	// (unlike the index's head band, which counts CHANGES); it leads the
+	// sentence exactly once, the same "figure, then a noun" shape the index
+	// head band uses.
 	function repoAttentionSentence(a: {
 		held: number;
 		deploying: number;
@@ -2078,7 +2086,8 @@
 		if (a.deploying > 0) parts.push({ n: a.deploying, w: 'deploying' });
 		if (a.held > 0) parts.push({ n: a.held, w: 'held' });
 		if (a.behind > 0) parts.push({ n: a.behind, w: 'behind' });
-		const clause = parts.length === 1 ? parts[0].w : parts.map((p) => `${p.n} ${p.w}`).join(' · ');
+		const noun = `slot${a.total === 1 ? '' : 's'} — `;
+		const clause = noun + (parts.length === 1 ? parts[0].w : parts.map((p) => `${p.n} ${p.w}`).join(' · '));
 		return `${clause} · every other place on its newest build`;
 	}
 	const repoStreamHealthy = $derived(isEventStreamHealthy());
@@ -2131,6 +2140,10 @@
 	// (superseded) `/pr/…` route. A bare commit constructs the meta the design
 	// doc names verbatim: `{mergeCommitSha: sha, containedIn: [],
 	// containedInAll: false}` — exact membership, no truncation fallback.
+	// ⭐ FIX PASS ITEM 2 (2026-09-10): `shaMeta` below now fills `containedIn`/
+	// `containedInAll` from the real `commits/:sha` ancestry once it
+	// resolves (`api/commit.ts`), rather than leaving this stub's `[]`/
+	// `false` in place forever — see that constant's own doc comment.
 	// §3 also settles the "does the old build page survive" question: it does
 	// not, verbatim — "what each service calls it" IS `cell.releaseLabel` and
 	// "running it now" IS the `live` cells, both already drawn by
@@ -2250,7 +2263,12 @@
 					mergedAt: prData.mergedAt,
 					mergeCommitSha: prData.mergeCommitSha,
 					containedIn: prData.containedIn,
-					containedInAll: prData.containedInAll
+					containedInAll: prData.containedInAll,
+					// ⭐ FIX PASS ITEM 1 (2026-09-10). `fetchPull` always returns a real,
+					// server-computed containment set — never leave this to
+					// `buildPrPipeline`'s own ambiguous default (see
+					// `containmentKnownFor`'s own doc in `api/pulls.ts`).
+					containmentKnown: containmentKnownFor(prData)
 				}
 			: null
 	);
@@ -2339,6 +2357,19 @@
 		buildPulls.find((p) => p.state === 'merged') ?? buildPulls[0] ?? null
 	);
 
+	/**
+	 * ⭐ FIX PASS ITEM 2 (2026-09-10). `commitDetail` (`commitDetailQuery`
+	 * above) now carries the SAME `containedIn`/`containedInAll` ancestry a
+	 * merged PR gets from `fetchPull` — this used to be hardcoded to
+	 * `containedIn: []`, which is why every head newer than this commit
+	 * (proof it shipped) was invisible and the page fell back to reading
+	 * "rolled back in dev" for a commit that is actually live via a later
+	 * build. `containmentKnown` is `true` only once the commit fetch has
+	 * actually resolved — while it is still loading, or if it failed,
+	 * this stays the old ambiguous stub and `buildPrPipeline` degrades to
+	 * "not built (unverified)" exactly as before, never a confident wrong
+	 * answer.
+	 */
 	const shaMeta = $derived<PrPipelineMeta | null>(
 		isShaChange && shaForChange
 			? {
@@ -2346,8 +2377,9 @@
 					repo: changeRepo,
 					mergedAt: changeCommitPull?.mergedAt ?? null,
 					mergeCommitSha: shaForChange,
-					containedIn: [],
-					containedInAll: false
+					containedIn: commitDetail?.containedIn ?? [],
+					containedInAll: commitDetail?.containedInAll ?? false,
+					containmentKnown: !!commitDetail
 				}
 			: null
 	);
@@ -2630,10 +2662,15 @@
 				     (ruling 3), not the old "M rollouts would get it" framing,
 				     which only ever counted the destination and could not say
 				     how many of them actually have the change yet. -->
+				<!-- ⛔ ITEM 10 (2026-09-10 fix pass) — "change· live" (missing
+				     space). A `{#if}` block starting on its own line trims the
+				     whitespace-only text node right before it (`lib/CLAUDE.md`'s
+				     own "compose as ONE string" rule) — the tail is now a single
+				     ternary expression, same fix `+page.svelte`'s own
+				     `subtitleTail` already uses. -->
 				<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">
 					{changeRolloutsWithBuild} of {changeRolloutsTotal} rollout{changeRolloutsTotal === 1 ? '' : 's'} have a
-					build of this change{#if changeRolloutsLive > 0}
-						· live in {changeRolloutsLive}{/if}
+					build of this change{changeRolloutsLive > 0 ? ` · live in ${changeRolloutsLive}` : ''}
 				</p>
 			{/if}
 			{#if landingGrid}

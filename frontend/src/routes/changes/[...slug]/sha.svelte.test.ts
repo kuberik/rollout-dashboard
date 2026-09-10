@@ -160,6 +160,121 @@ describe('/changes/[...slug] — sha form', () => {
 		expect(screen.getByText(/committed 3d ago by @jane/)).toBeInTheDocument();
 	});
 
+	/**
+	 * ⭐ FIX PASS ITEM 2 (2026-09-10) REGRESSION — "SUPERSEDED IS LIVE, EVEN
+	 * ON THE BARE-SHA PAGE". The bug, live: `0afab6f35627` read "Rolled back
+	 * in dev" although the deployed HEAD (`f7a46ae…`) is a NEWER commit that
+	 * carries this exact change (`commits/0afab6f35627`'s own `containedIn`
+	 * includes it — confirmed live, see `api/commit.ts`'s doc comment).
+	 * `shaMeta` used to hardcode `containedIn: []`, so `buildCell`'s RULE 1
+	 * (`set.has(headRevision)`) could never see that the head descends from
+	 * this sha, and fell through to RULE 2's "an older entry has it, HEAD
+	 * does not" — a real rollback's own signature, misapplied here.
+	 */
+	test('item 2: a sha whose deployed HEAD is a newer commit containing it reads live, not rolled back', async () => {
+		const NEWER_HEAD = 'cccccccccc2222222222333333333344444444';
+		stubFetch({
+			rollouts: [
+				{
+					metadata: { name: 'web', namespace: 'team' },
+					spec: {},
+					status: {
+						source: REPO_SOURCE,
+						availableReleases: [],
+						history: [
+							{
+								version: { tag: 'main-cccccccccc', revision: NEWER_HEAD },
+								timestamp: new Date(NOW).toISOString(),
+								bakeStatus: 'Succeeded'
+							},
+							{
+								version: { tag: 'main-a1111111', revision: SHA },
+								timestamp: new Date(NOW - 60_000).toISOString(),
+								bakeStatus: 'Succeeded'
+							}
+						]
+					}
+				} as unknown as Rollout
+			],
+			environments: [environment('web', 'team', 'prod')],
+			githubConnected: true,
+			commitPulls: () => jsonResponse([]),
+			commitDetail: () =>
+				jsonResponse({
+					sha: SHA,
+					subject: 'Add patch',
+					author: 'octocat',
+					committedAt: new Date(NOW - 2 * 60_000).toISOString(),
+					htmlUrl: `https://github.com/acme/kuberik-testing/commit/${SHA}`,
+					containedIn: [NEWER_HEAD],
+					containedInAll: false
+				})
+		});
+		renderAt(`${REPO_PATH}/${SHA}`);
+
+		await screen.findByRole('heading', { level: 1 });
+		await waitFor(() =>
+			expect(screen.getByRole('heading', { level: 2, name: /^Live/ })).toBeInTheDocument()
+		);
+		expect(screen.queryByText(/Rolled back/i)).toBeNull();
+	});
+
+	/**
+	 * The other half of item 2's own regression: a sha whose HEAD really did
+	 * move to something OLDER (a genuine rollback) must keep reading
+	 * "rolled back" — wiring real `containedIn` data in must not turn every
+	 * bare-sha page into "live" by default. Mirrors the live fixture's own
+	 * `51b976affa37` case, named in the fix pass spec.
+	 */
+	test('a sha whose deployed HEAD genuinely rolled back to something older stays rolled back', async () => {
+		const OLDER_HEAD = 'eeeeeeeeee2222222222333333333344444444';
+		stubFetch({
+			rollouts: [
+				{
+					metadata: { name: 'web', namespace: 'team' },
+					spec: {},
+					status: {
+						source: REPO_SOURCE,
+						availableReleases: [],
+						history: [
+							{
+								version: { tag: 'main-eeeeeeeeee', revision: OLDER_HEAD },
+								timestamp: new Date(NOW).toISOString(),
+								bakeStatus: 'Succeeded'
+							},
+							{
+								version: { tag: 'main-a1111111', revision: SHA },
+								timestamp: new Date(NOW - 60_000).toISOString(),
+								bakeStatus: 'Succeeded'
+							}
+						]
+					}
+				} as unknown as Rollout
+			],
+			environments: [environment('web', 'team', 'prod')],
+			githubConnected: true,
+			commitPulls: () => jsonResponse([]),
+			// Real ancestry: the current (older) head is NOT in this sha's own
+			// containedIn — it never descended from it, a genuine rollback.
+			commitDetail: () =>
+				jsonResponse({
+					sha: SHA,
+					subject: 'Add patch',
+					author: 'octocat',
+					committedAt: new Date(NOW - 2 * 60_000).toISOString(),
+					htmlUrl: `https://github.com/acme/kuberik-testing/commit/${SHA}`,
+					containedIn: [],
+					containedInAll: false
+				})
+		});
+		renderAt(`${REPO_PATH}/${SHA}`);
+
+		await screen.findByRole('heading', { level: 1 });
+		await waitFor(() =>
+			expect(screen.getByRole('heading', { level: 2, name: /Rolled back/i })).toBeInTheDocument()
+		);
+	});
+
 	test('a sha this cluster has never built anywhere still renders a page — never a 404', async () => {
 		stubFetch({
 			rollouts: [rollout('web', 'team', 'somethingelse0000000000000000000000000')],

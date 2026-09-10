@@ -90,6 +90,10 @@
 		cancelled: CircleMinusSolid,
 		'rolled-back': UndoOutline,
 		promoting: ArrowRightOutline,
+		// ⭐ FIX PASS ITEM 4 (2026-09-10). Same glyph as `promoting` — the SAME
+		// neutral "will move once its turn comes" semantic, no new shape
+		// mixed into the closed vocabulary.
+		queued: ArrowRightOutline,
 		'not-built': MinusOutline
 	} as const satisfies Record<PrState, unknown>;
 
@@ -110,6 +114,10 @@
 		cancelled: 'tone-mute',
 		'rolled-back': 'tone-mute',
 		promoting: 'tone-mute',
+		// ⭐ FIX PASS ITEM 4. Neutral, same as `promoting` — never the amber
+		// `waiting-upstream`/`gated`/`pinned` ink. Amber is reserved for
+		// `stuck`; a normal promotion-order wait is not that.
+		queued: 'tone-mute',
 		'not-built': 'text-gray-400 dark:text-gray-500'
 	};
 
@@ -129,6 +137,11 @@
 		cancelled: 'bg-gray-100 dark:bg-gray-800',
 		'rolled-back': 'bg-gray-100 dark:bg-gray-800',
 		promoting: '',
+		// ⭐ FIX PASS ITEM 4. No field, same as `promoting` — the amber
+		// `bg-orange-100`/`bg-orange-950/70` field is reserved for a GENUINE
+		// stuck dependency (`waiting-upstream`/`gated`/`pinned`), never a
+		// normal, expected promotion-order wait.
+		queued: '',
 		'not-built': ''
 	};
 
@@ -144,6 +157,7 @@
 		cancelled: 'cancelled',
 		'rolled-back': 'rolled back',
 		promoting: 'promoting',
+		queued: 'queued',
 		'not-built': 'not built'
 	};
 

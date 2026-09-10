@@ -263,17 +263,25 @@
 				deployed instead.
 			</p>
 		{:else if notEverywhereCount > 0}
-			<span class="t-display text-gray-900 tabular-nums dark:text-white">{notEverywhereCount}</span>
+			<!-- ⭐ FIX PASS ITEM 6 (2026-09-10). "N changes · M not everywhere
+			     yet · R repositories" — N (`summary.count`) is the FILTERED
+			     total, M (`notEverywhereCount`) the subset of it that is not
+			     everywhere yet, both from the SAME `summarizeChangeRows`
+			     call above (never a bare "N … are not everywhere yet" whose
+			     one number is ambiguous about which count it names). -->
+			<span class="t-display text-gray-900 tabular-nums dark:text-white">{summary.count}</span>
 			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-				of the last 30 days' changes {notEverywhereCount === 1 ? 'is' : 'are'} not everywhere yet
+				change{summary.count === 1 ? '' : 's'} · {notEverywhereCount} not everywhere yet
 				· {repoCount} repositor{repoCount === 1 ? 'y' : 'ies'}
 				{#if streamHealthy}
 					· live
 				{/if}
 			</p>
 		{:else}
+			<span class="t-display text-gray-900 tabular-nums dark:text-white">{summary.count}</span>
 			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-				every change has landed everywhere · {repoCount} repositor{repoCount === 1 ? 'y' : 'ies'}
+				change{summary.count === 1 ? '' : 's'} · all landed everywhere
+				· {repoCount} repositor{repoCount === 1 ? 'y' : 'ies'}
 				{#if streamHealthy}
 					· live
 				{/if}

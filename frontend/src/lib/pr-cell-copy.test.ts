@@ -35,6 +35,9 @@ function mkCell(state: PrState, overrides: Partial<PrCell> = {}): PrCell {
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		gateContract: null,
+		gateRequiredVersion: null,
+		providerHasNoBuild: false,
 		containmentKnown: true,
 		...overrides
 	};
@@ -90,9 +93,18 @@ describe('cellStateSentence', () => {
 		expect(cellStateSentence(cell)).toBe('waiting on hello-api-app');
 	});
 
-	it('waiting-upstream on a promotion order reads "waiting for X to deploy it first", not "waiting on"', () => {
-		const cell = mkCell('waiting-upstream', { gateSubject: 'dev', gateSubjectKind: 'environment' });
+	// ⭐ FIX PASS ITEM 4 (2026-09-10) — SUPERSEDES THE ABOVE. A promotion-order
+	// wait (subject is an ENVIRONMENT) is now its own state, `queued`, never
+	// `waiting-upstream` — see `PrState`'s own doc comment for why the two
+	// split (amber is reserved for a genuinely stuck dependency).
+	it('queued (a promotion order) reads "waiting for X to deploy it first"', () => {
+		const cell = mkCell('queued', { gateSubject: 'dev', gateSubjectKind: 'environment' });
 		expect(cellStateSentence(cell)).toBe('waiting for dev to deploy it first');
+	});
+
+	it('queued falls back when no subject resolved', () => {
+		const cell = mkCell('queued', { gateSubject: null });
+		expect(cellStateSentence(cell)).toBe('waiting for its upstream to deploy it first');
 	});
 
 	it('waiting-upstream falls back when no subject resolved', () => {
@@ -277,8 +289,8 @@ describe('frontierUsuallyLabelForCell — guarded, ruling 2 (CHANGES-2026-09-10 
 		expect(frontierUsuallyLabelForCell(mkCell('not-built', { usuallyMs: 6 * 60_000 }))).toBeNull();
 	});
 
-	it('prints a label on every state whose service HAS a build (gated/pinned/waiting-upstream/promoting)', () => {
-		for (const state of ['gated', 'pinned', 'waiting-upstream', 'promoting'] as const) {
+	it('prints a label on every state whose service HAS a build (gated/pinned/waiting-upstream/queued/promoting)', () => {
+		for (const state of ['gated', 'pinned', 'waiting-upstream', 'queued', 'promoting'] as const) {
 			expect(frontierUsuallyLabelForCell(mkCell(state, { usuallyMs: 6 * 60_000 }))).toBe(
 				'usually 6 min once it starts'
 			);
@@ -346,8 +358,13 @@ describe('checksLine', () => {
 		expect(checksLine(null)).toBeNull();
 	});
 
-	it("nothing for 'none' — the design doc's own words", () => {
-		expect(checksLine(mkChecks({ state: 'none' }))).toBeNull();
+	// ⭐ FIX PASS ITEM 8 (2026-09-10) — supersedes the design doc's own
+	// "nothing for none": a muted line saying so, not silence a developer
+	// cannot tell apart from "the product never looked".
+	it("'no checks reported' for 'none', never linked", () => {
+		const line = checksLine(mkChecks({ state: 'none' }));
+		expect(line?.text).toBe('no checks reported');
+		expect(line?.href).toBeNull();
 	});
 
 	it('"checks passing" for success', () => {

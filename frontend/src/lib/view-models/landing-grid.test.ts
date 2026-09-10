@@ -39,6 +39,9 @@ function mkCell(overrides: Partial<PrCell> & { envName: string; state: PrState }
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		gateContract: null,
+		gateRequiredVersion: null,
+		providerHasNoBuild: false,
 		containmentKnown: true,
 		...overrides
 	};
@@ -70,12 +73,15 @@ function mkVm(services: PrService[]): PrPipelineVM {
 }
 
 // Every `PrState`, once, so the state-table mapping (`classify`, the family
-// collapse's worst-cell pick) is exercised for all twelve.
+// collapse's worst-cell pick) is exercised for all thirteen (`queued` added
+// by the 2026-09-10 fix pass, item 4 — a normal promotion-order wait split
+// off `waiting-upstream`).
 const ALL_STATES: PrState[] = [
 	'not-built',
 	'gated',
 	'pinned',
 	'waiting-upstream',
+	'queued',
 	'promoting',
 	'deploying',
 	'baking',
@@ -106,6 +112,11 @@ describe('buildLandingGrid — all 12 states', () => {
 			['gated', 'stuck'],
 			['pinned', 'stuck'],
 			['waiting-upstream', 'stuck'],
+			// ⭐ FIX PASS ITEM 4 (2026-09-10). `queued` (a normal promotion-order
+			// wait) is its own neutral tone — never `stuck` (amber's own
+			// reserved meaning) and never `active` (that's "something is
+			// moving right now", `deploying`/`baking`'s own claim).
+			['queued', 'queued'],
 			['deploying', 'active'],
 			['baking', 'active'],
 			['not-built', 'none'],

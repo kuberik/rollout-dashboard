@@ -63,6 +63,21 @@ export type PrState =
 	| 'gated'
 	| 'pinned'
 	| 'waiting-upstream'
+	/**
+	 * ⭐ FIX PASS ITEM 4 (2026-09-10) — "AMBER IS RESERVED FOR STUCK". Split
+	 * off `waiting-upstream` for the case its own `gateSubjectKind ===
+	 * 'environment'` names — a NORMAL promotion-order wait ("waiting for dev
+	 * to deploy it first"), nobody blocking anything, just this env's own
+	 * turn hasn't come up yet. `waiting-upstream` is now reserved for a
+	 * `'service'`-subject dependency wait, which IS something a rule is
+	 * actively refusing — the two used to share one state and one amber
+	 * field/ring, which painted the ordinary, expected "not promoted here
+	 * yet" case with the same "needs a look" colour reserved for a genuine
+	 * stuck dependency. Colour and glyph both key off this new state, never
+	 * off `gateSubjectKind` at render time (`LandingMark.svelte`,
+	 * `landing-grid.ts`).
+	 */
+	| 'queued'
 	| 'promoting'
 	| 'deploying'
 	| 'baking'
@@ -161,6 +176,26 @@ export type PrCell = {
 	 * (which DOES supply owner evidence and the schedule join) resolves it.
 	 */
 	gatePending: boolean;
+	/**
+	 * ⭐ FIX PASS ITEM 5 (2026-09-10). The dependency's own contract name
+	 * (`api`, say) and the range the gate actually evaluates (`^1.68.0`) —
+	 * `classifyGate`'s own `contract`/`need` fields, carried through so the
+	 * VERDICT can name "the honest when" (`buildChangeVerdict`'s own "will
+	 * not move on its own — needs X" tail) without re-deriving them from
+	 * `reason`'s free text. `null` off every cell except a `waiting-upstream`
+	 * one whose gate resolved to a dependency (`gateSubjectKind: 'service'`).
+	 */
+	gateContract: string | null;
+	gateRequiredVersion: string | null;
+	/**
+	 * ⭐ FIX PASS ITEM 5. Set by `joinDependencyReasons`'s own cross-service
+	 * pass (RULING 4) — `true` when the provider named by `gateSubject` has
+	 * NOT built this change AT ALL yet, meaning this cell genuinely cannot
+	 * resolve on its own no matter how long the reader waits: nothing here
+	 * is moving until the provider ships. `false` (never `true`) off every
+	 * other state.
+	 */
+	providerHasNoBuild: boolean;
 	/**
 	 * ⭐ RULING 1 (CHANGES-2026-09-10 fix pass, "SUPERSEDED IS LIVE"). `false`
 	 * when this VM cannot yet trust a POSITIVE containment claim beyond an
@@ -382,7 +417,17 @@ function cellUsuallyMs(rollout: Rollout): number | null {
 
 const NOTHING: Pick<
 	PrCell,
-	'since' | 'bakeLeftMs' | 'superseded' | 'gateHint' | 'gateLabel' | 'gateSubject' | 'gateSubjectKind' | 'gatePending'
+	| 'since'
+	| 'bakeLeftMs'
+	| 'superseded'
+	| 'gateHint'
+	| 'gateLabel'
+	| 'gateSubject'
+	| 'gateSubjectKind'
+	| 'gatePending'
+	| 'gateContract'
+	| 'gateRequiredVersion'
+	| 'providerHasNoBuild'
 > = {
 	since: null,
 	bakeLeftMs: null,
@@ -391,7 +436,10 @@ const NOTHING: Pick<
 	gateLabel: null,
 	gateSubject: null,
 	gateSubjectKind: null,
-	gatePending: false
+	gatePending: false,
+	gateContract: null,
+	gateRequiredVersion: null,
+	providerHasNoBuild: false
 };
 
 function buildCell(
@@ -624,9 +672,16 @@ function buildCell(
 			if (upstream && !containmentKnown) {
 				return notBuiltUnverified();
 			}
+			// ⭐ FIX PASS ITEM 4. `upstream.subjectKind === 'environment'` is a
+			// normal promotion-order wait ("waiting for dev to deploy it
+			// first") — `queued`, never the amber `waiting-upstream` a
+			// `'service'`-subject dependency wait still gets. See `PrState`'s
+			// own doc comment for why the two were split.
+			const upstreamState: PrState =
+				upstream?.subjectKind === 'environment' ? 'queued' : upstream ? 'waiting-upstream' : 'gated';
 			return cell({
 				...NOTHING,
-				state: upstream ? 'waiting-upstream' : 'gated',
+				state: upstreamState,
 				reason: pending ? '' : pick.short,
 				releaseLabel,
 				revision: candidate.revision ?? null,
@@ -634,7 +689,14 @@ function buildCell(
 				gateLabel: upstream || pending ? null : pick.label,
 				gateSubject: upstream ? (pick.subject ?? null) : null,
 				gateSubjectKind: upstream ? (pick.subjectKind ?? null) : null,
-				gatePending: pending
+				gatePending: pending,
+				// ⭐ FIX PASS ITEM 5. Only a `'service'`-subject dependency gate
+				// (`waiting-upstream`) ever carries these — `classifyGate`'s
+				// promotion branch never sets `contract`/`need` (its own
+				// `NOTHING_TO_DRAW` spread leaves them `null`), so this is a
+				// no-op for `queued`/`gated` even without the extra check.
+				gateContract: upstream ? (pick.contract ?? null) : null,
+				gateRequiredVersion: upstream ? (pick.need ?? null) : null
 			});
 		}
 
@@ -712,6 +774,7 @@ const STATE_VERB: Record<PrState, string> = {
 	gated: 'held',
 	pinned: 'pinned',
 	'waiting-upstream': 'waiting',
+	queued: 'queued',
 	promoting: 'promoting',
 	deploying: 'deploying',
 	baking: 'baking',
@@ -775,6 +838,10 @@ const FRONTIER_VERB: Record<PrState, string> = {
 	gated: 'held',
 	pinned: 'pinned',
 	'waiting-upstream': 'held',
+	// ⭐ FIX PASS ITEM 4/5. `queued` is the NORMAL promotion-order wait — it
+	// gets its own neutral word, never `held` (amber's one reserved
+	// meaning, per `PrState`'s own doc comment).
+	queued: 'queued',
 	promoting: 'promoting',
 	deploying: 'deploying',
 	baking: 'baking',
@@ -801,13 +868,18 @@ function frontierTone(state: PrState): ChangeVerdictTone {
 /** The subject clause, when the frontier state names one — a `gated` cell
  *  names the RULE (`by <gateLabel>`) only once this VM can back the label up
  *  (`gateLabel` non-null, i.e. not `gatePending`); a `waiting-upstream` cell
- *  names the upstream SERVICE/ENVIRONMENT (`on <gateSubject>`). Every other
- *  state — `pinned`, `deploying`, `baking`, `failed`… — carries no subject in
- *  the verdict, even though some (`pinned`) have a target of their own; the
- *  design doc's own examples show none. */
+ *  names the upstream SERVICE (`on <gateSubject>`) — the only subject kind
+ *  it can carry now that `queued` (item 4) owns the environment-subject
+ *  case, naming the environment it is waiting on in its own words ("waiting
+ *  for dev to deploy it first", not "on dev" — the ordering phrase reads
+ *  right on a normal wait where "on" would suggest an active block). Every
+ *  other state — `pinned`, `deploying`, `baking`, `failed`… — carries no
+ *  subject in the verdict, even though some (`pinned`) have a target of
+ *  their own; the design doc's own examples show none. */
 function frontierSubject(cell: PrCell): string | null {
 	if (cell.state === 'gated') return cell.gateLabel ? `by ${cell.gateLabel}` : null;
 	if (cell.state === 'waiting-upstream') return `on ${cell.gateSubject ?? 'its upstream'}`;
+	if (cell.state === 'queued') return `waiting for ${cell.gateSubject ?? 'an earlier environment'} first`;
 	return null;
 }
 
@@ -830,22 +902,47 @@ function capitalize(word: string): string {
  * `not-built` out first, exactly as the superseded `buildVerdict` did) —
  * see `pr-pipeline.test.ts`'s "live everywhere among services WITH a build"
  * regression.
+ *
+ * ⭐ FIX PASS ITEM 5 (2026-09-10) — "SUBJECT FIRST". The word now names the
+ * BLOCKED SERVICE ahead of the state — `<service> held in <env> on
+ * <blocker>` / `<service> pinned in staging` — never a bare "held in dev on
+ * hello-api-app" with no subject at all. Live bug this closes: Home's own
+ * card read "held in dev on hello-api-app" for PR #4 with no indication
+ * WHICH service was held (`hello-frontend-app`) — the one piece of
+ * information a reader scanning several rows actually needs first. `live
+ * everywhere` keeps no subject: it is a claim about the WHOLE fleet, and no
+ * one service is "the" subject of it.
  */
 export function buildChangeVerdict(services: PrService[]): { word: string; tone: ChangeVerdictTone } {
-	const allCells = services.flatMap((s) => s.cells);
-	const withBuild = allCells.filter((c) => c.state !== 'not-built');
+	const allCells = services.flatMap((s) => s.cells.map((cell) => ({ cell, appName: s.appName })));
+	const withBuild = allCells.filter((x) => x.cell.state !== 'not-built');
+	// ⭐ NO SUBJECT HERE, DELIBERATELY. Unlike a frontier CANDIDATE below
+	// (one specific cell blocking one specific service), "nothing has built
+	// this change anywhere yet" is a fact about the CHANGE, not about any
+	// one of its services in particular — every service is equally
+	// not-built, so naming one would imply it is somehow the one to watch.
 	if (withBuild.length === 0) return { word: 'not built yet', tone: 'not-built' };
-	if (withBuild.every((c) => c.state === 'live')) return { word: 'live everywhere', tone: 'live' };
+	if (withBuild.every((x) => x.cell.state === 'live')) return { word: 'live everywhere', tone: 'live' };
 
 	const candidates = withBuild
-		.filter((c) => c.state !== 'live')
-		.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
+		.filter((x) => x.cell.state !== 'live')
+		.sort((a, b) => a.cell.envRank - b.cell.envRank || a.cell.cluster.localeCompare(b.cell.cluster));
 	const frontier = candidates[0];
-	const subject = frontierSubject(frontier);
-	const word = subject
-		? `${FRONTIER_VERB[frontier.state]} in ${frontier.envName} ${subject}`
-		: `${FRONTIER_VERB[frontier.state]} in ${frontier.envName}`;
-	return { word, tone: frontierTone(frontier.state) };
+	const subject = frontierSubject(frontier.cell);
+	const base = subject
+		? `${frontier.appName} ${FRONTIER_VERB[frontier.cell.state]} in ${frontier.cell.envName} ${subject}`
+		: `${frontier.appName} ${FRONTIER_VERB[frontier.cell.state]} in ${frontier.cell.envName}`;
+	// ⭐ FIX PASS ITEM 5 — "THE HONEST WHEN". A dependency that has not built
+	// this change AT ALL cannot resolve on its own no matter how long the
+	// reader waits — `providerHasNoBuild` (`joinDependencyReasons`, ruling
+	// 4) is the one place that fact is known. Naming the exact contract and
+	// range is what makes this actionable rather than another "waiting"
+	// sentence the reader has already seen twice.
+	const needsClause =
+		frontier.cell.providerHasNoBuild && frontier.cell.gateContract && frontier.cell.gateRequiredVersion
+			? ` · will not move on its own — needs ${frontier.cell.gateSubject} ${frontier.cell.gateContract} ${frontier.cell.gateRequiredVersion}`
+			: '';
+	return { word: `${base}${needsClause}`, tone: frontierTone(frontier.cell.state) };
 }
 
 /**
@@ -873,7 +970,15 @@ function joinDependencyReasons(services: readonly PrService[]): PrService[] {
 			if (!provider) return cell;
 			const providerHasAnyBuild = provider.cells.some((c) => c.state !== 'not-built');
 			if (!providerHasAnyBuild) {
-				return { ...cell, reason: `waiting on ${cell.gateSubject} — its build of this change does not exist yet` };
+				// ⭐ FIX PASS ITEM 5. `providerHasNoBuild` is the honest "will not
+				// move on its own" signal `buildChangeVerdict` reads to add its
+				// own tail — this cell cannot resolve no matter how long the
+				// reader waits, because the thing it needs does not exist yet.
+				return {
+					...cell,
+					reason: `waiting on ${cell.gateSubject} — its build of this change does not exist yet`,
+					providerHasNoBuild: true
+				};
 			}
 			const atSameSpot = provider.cells.find(
 				(c) => c.envName === cell.envName && c.cluster === cell.cluster

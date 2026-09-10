@@ -41,8 +41,15 @@ import type { EnvironmentTheme } from '../environment-theme';
  * is the tone table it is reserved for (`gated`/`pinned`/`waiting-upstream`).
  * `none` is the quiet norm for `not-built` — a mark that carries no field at
  * all (§2a's own dashed-outline rule), not an alarm.
+ *
+ * ⭐ FIX PASS ITEM 4 (2026-09-10). `queued` is its OWN tone, not folded into
+ * `active` — a normal promotion-order wait ("waiting for dev to deploy it
+ * first") is not "something is moving right now" (`active`'s own meaning,
+ * `deploying`/`baking`/`retrying`) any more than it is `stuck`; giving it a
+ * third, neutral bucket is what keeps `stuck` meaning ONLY "amber, needs a
+ * look" everywhere this tone is read.
  */
-export type MarkTone = 'live' | 'stuck' | 'active' | 'none' | 'failed';
+export type MarkTone = 'live' | 'stuck' | 'active' | 'queued' | 'none' | 'failed';
 
 /** One collapsed mark — one family, worst state among the regions it holds. */
 export type LandingMarkVM = {
@@ -127,7 +134,11 @@ const STATE_RANK: Record<PrState, number> = {
 	retrying: 2,
 	cancelled: 3,
 	'rolled-back': 4,
+	// `queued` ties `promoting`'s own tier — both are the SAME "nothing is
+	// wrong, just not this cell's turn yet" tier, worse than `not-built`
+	// (a build exists) but never as loud as a held/failed/in-flight state.
 	promoting: 5,
+	queued: 5,
 	'not-built': 6,
 	live: 7
 };
@@ -164,8 +175,16 @@ export function classify(state: PrState): LandingVerdictWord {
 
 /** ⭐ RULING 6. State-only colour, off the same closed fold `classify` already
  *  performs — `held` becomes `stuck` (amber's one reserved meaning), never a
- *  second classification a mark and a card could disagree on. */
+ *  second classification a mark and a card could disagree on.
+ *
+ *  ⭐ FIX PASS ITEM 4. `queued` is carved out BEFORE the `classify` fold —
+ *  `classify` itself still folds it to the closed `active` verdict word
+ *  (a normal wait is not a NEW category the service-level ordering needs to
+ *  know about), but the mark's own tone must not reuse `active`'s hue,
+ *  which is `deploying`/`baking`/`retrying`'s "something is moving right
+ *  now" — a queued cell is the opposite of that. */
 function toneOf(state: PrState): MarkTone {
+	if (state === 'queued') return 'queued';
 	switch (classify(state)) {
 		case 'held':
 			return 'stuck';

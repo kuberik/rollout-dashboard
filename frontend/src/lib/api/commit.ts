@@ -25,6 +25,21 @@ export type Commit = {
 	author: string;
 	committedAt: string;
 	htmlUrl: string;
+	/**
+	 * ⭐ FIX PASS ITEM 2 (2026-09-10). The endpoint returns this alongside the
+	 * commit's own facts (confirmed live: `curl .../commits/<sha> | jq
+	 * '{n:(.containedIn|length)}'` on `0afab6f35627` returns 8, not 0) — the
+	 * SAME ancestry set `pulls.ts`'s `PullRequestInfo.containedIn` carries
+	 * for a merged PR, computed for a bare commit instead. The bare-sha
+	 * change page used to construct its own `PrPipelineMeta` with a hardcoded
+	 * `containedIn: []`, which is why a sha with EVERY head newer than it
+	 * (this one) still read "rolled back in dev" — nothing ever told the VM
+	 * about the newer builds that already contain it.
+	 */
+	containedIn: string[];
+	/** Same meaning as `PullRequestInfo.containedInAll` — `false` means
+	 *  `containedIn` above is a complete, authoritative account. */
+	containedInAll: boolean;
 };
 
 export type FetchCommitErrorReason = 'not_connected' | 'not_found' | 'error';
