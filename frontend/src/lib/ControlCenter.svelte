@@ -599,9 +599,9 @@
 			two measured heights — never the old undifferentiated 112px square.
 		-->
 		<HeadBandSkeleton leadWidth="w-6" rollupWidth="w-64" class="mb-5" />
-		<div class="cc-wrap">
-			<div class="cc-grid {changesConfigured && changesConnected ? 'cc-grid--with-changes' : ''}">
-			<div class="cc-main min-w-0">
+		<div class="rail-wrap">
+			<div class="rail-grid {changesConfigured && changesConnected ? 'cc-grid--with-changes' : ''}">
+			<div class="rail-main min-w-0">
 				{#each skelSections as s, i (s.key)}
 					<section class={i < skelSections.length - 1 ? 'mb-8' : ''}>
 						{@render skelSectionHeader()}
@@ -648,7 +648,7 @@
 				     custom-property pattern as `BannerSkeleton`, never a
 				     class override. -->
 				<div
-					class="cc-rail min-w-0 space-y-4"
+					class="rail-side min-w-0 space-y-4"
 					style="--cc-rail-min-h: {shapeHint?.railHBelow1440 ?? 0}px; --cc-rail-min-h-1440: {shapeHint?.railHAt1440 ??
 						0}px"
 					data-cc-rail-skel
@@ -758,9 +758,9 @@
 			do. Re-derive this pair if the container or the 24rem floor moves; do
 			not nudge it.
 		-->
-		<div class="cc-wrap">
-			<div class="cc-grid {changesConfigured && changesConnected ? 'cc-grid--with-changes' : ''}">
-		<div class="cc-main min-w-0">
+		<div class="rail-wrap">
+			<div class="rail-grid {changesConfigured && changesConnected ? 'cc-grid--with-changes' : ''}">
+		<div class="rail-main min-w-0">
 
 		<!-- Needs you now -->
 		{#if needsYou.length > 0}
@@ -1626,7 +1626,7 @@
 			     NOT nested inside `HomeRail` — `order` only reorders DIRECT
 			     flex/grid children, and the whole point is to move THIS card
 			     (never `Recent activity`/`How it's going`) above the fleet at
-			     `<sm`, which needs it to be a sibling of `.cc-main`, not a
+			     `<sm`, which needs it to be a sibling of `.rail-main`, not a
 			     grandchild three levels down. `order-first sm:order-none` is a
 			     plain (viewport) Tailwind breakpoint, deliberately NOT gated on
 			     the `@container` query below — see that rule's own note on why
@@ -1645,7 +1645,7 @@
 			     the rail sits on the page's own rhythm rather than on a gap of
 			     its own invention. At and above it the grid's `gap-6` owns the
 			     space and the margin goes. -->
-			<div class="cc-rail min-w-0" bind:this={railEl}>
+			<div class="rail-side min-w-0" bind:this={railEl}>
 				<HomeRail
 					{cards}
 					{rollouts}
@@ -1673,24 +1673,24 @@
 	 * width two different ways on two pages the "rail is part of the
 	 * layout" rule is supposed to make consistent.
 	 *
-	 * `.cc-wrap`/`.cc-grid`/`.cc-rail` are `.ab-wrap`/`.ab-grid`'s own
-	 * pattern, copied rather than re-derived: `container-type: inline-size`
-	 * on the wrapper, the identical `860px` container threshold, the
-	 * identical `320px` rail track and `24px` gap. Applied to BOTH the
-	 * loaded grid and its skeleton, so the flip test holds at every width —
-	 * a skeleton that switches layout at a different width than the page it
-	 * stands in for is the exact defect this file's own loading-state notes
-	 * exist to catch.
-	 */
-	.cc-wrap {
-		container-type: inline-size;
-	}
-
-	/*
-	 * ⭐ `display: flex; flex-direction: column`, NOT `display: block` — the
-	 * CHANGES-2026-09-10.md §4 "above the fleet at `<sm`" REQUIREMENT is why.
-	 * `order` only has an effect inside a flex or grid formatting context,
-	 * and `.cc-changes` (below) needs it to jump ahead of `.cc-main` under
+	 * ⭐ EXTRACTED, CHANGES-2026-09-10.md ROUND 2, §R2.2/§R2.6 ("this is the
+	 * THIRD hand-copy of that block — extract it once"). `.cc-wrap`/
+	 * `.cc-grid`/`.cc-main`/`.cc-rail` used to be typed out here; they are
+	 * now `app.css`'s shared `.rail-wrap`/`.rail-grid`/`.rail-main`/
+	 * `.rail-side` (byte-identical geometry — `container-type: inline-size`,
+	 * the `860px` container threshold, the `320px` rail track, `24px` gap
+	 * at and above it, a `2rem` flex-column gap below it). This page's own
+	 * residue is ONLY the third grid item (`.cc-changes`, Home-only — no
+	 * other page has a "your changes" rail slot) and the placement rules
+	 * below that seat it, which have no home in a class shared by pages
+	 * that never render a third item.
+	 *
+	 * ⭐ `display: flex; flex-direction: column`, NOT `display: block`, is
+	 * `.rail-grid`'s OWN base rule now (`app.css`) — restated here only
+	 * because the reason still matters for THIS page: the
+	 * CHANGES-2026-09-10.md §4 "above the fleet at `<sm`" REQUIREMENT needs
+	 * a flex/grid formatting context for `order` to have any effect at all,
+	 * and `.cc-changes` (below) needs it to jump ahead of `.rail-main` under
 	 * `sm`. `.cc-changes` itself carries NO `order` rule here — only the
 	 * Tailwind `order-first sm:order-none` utility classes on its own
 	 * element decide that, so there is no specificity fight between a
@@ -1700,57 +1700,46 @@
 	 *
 	 * ⛔ SPACING IS `gap` ON THE CONTAINER, NOT A MARGIN ON EACH CHILD.
 	 * (Caught in this lane's own 2×2 review, 390 dark: measured 0px between
-	 * `.cc-changes` and `.cc-main` — the two cards touched.) A margin
+	 * `.cc-changes` and `.rail-main` — the two cards touched.) A margin
 	 * declared on one child only ever pushes THAT child away from whatever
-	 * is BEFORE it in paint order — `.cc-rail`'s old `margin-top: 2rem`
-	 * pushed it away from `.cc-main` only because `.cc-rail` was ALWAYS
+	 * is BEFORE it in paint order — `.rail-side`'s old `margin-top: 2rem`
+	 * pushed it away from `.rail-main` only because `.rail-side` was ALWAYS
 	 * last. Once `order-first` can put `.cc-changes` first, a margin
 	 * written for one fixed visual order stops describing the others: at
-	 * `<sm` `.cc-changes` renders before `.cc-main`, so its own top margin
-	 * pushes it away from the HEAD BAND above, not from `.cc-main` below —
-	 * leaving nothing between them. `gap` spaces every pair of VISUALLY
-	 * adjacent flex items regardless of `order`, so it is correct for
-	 * whichever item ends up first.
+	 * `<sm` `.cc-changes` renders before `.rail-main`, so its own top margin
+	 * pushes it away from the HEAD BAND above, not from `.rail-main` below —
+	 * leaving nothing between them. `.rail-grid`'s `gap` (in `app.css`)
+	 * spaces every pair of VISUALLY adjacent flex items regardless of
+	 * `order`, so it is correct for whichever item ends up first.
 	 */
-	.cc-grid {
-		display: flex;
-		flex-direction: column;
-		gap: 2rem; /* mt-8's own rhythm, now as a container-level gap */
-	}
 
 	@container (min-width: 860px) {
-		.cc-grid {
-			display: grid;
-			grid-template-columns: minmax(0, 1fr) 320px;
-			align-items: start;
-			gap: 24px; /* gap-6 — the grid's own, narrower rhythm */
-		}
-
 		/*
 		 * EXPLICIT PLACEMENT, ONLY WHEN `.cc-changes` ACTUALLY RENDERS. Three
-		 * grid items (`.cc-main`, `.cc-changes`, `.cc-rail`) would otherwise
-		 * auto-place `.cc-changes` into a SECOND ROW OF COLUMN 1, under
-		 * `.cc-main` — CSS Grid fills row by row, and `order` alone cannot
-		 * rescue that once the track count is fixed. Naming the cell directly
-		 * is what keeps `.cc-changes` in column 2, row 1 — "first in the
-		 * rail" — regardless of any `order` value inherited from the
+		 * grid items (`.rail-main`, `.cc-changes`, `.rail-side`) would
+		 * otherwise auto-place `.cc-changes` into a SECOND ROW OF COLUMN 1,
+		 * under `.rail-main` — CSS Grid fills row by row, and `order` alone
+		 * cannot rescue that once the track count is fixed. Naming the cell
+		 * directly is what keeps `.cc-changes` in column 2, row 1 — "first in
+		 * the rail" — regardless of any `order` value inherited from the
 		 * viewport-scoped Tailwind classes above; an item with an explicit
 		 * `grid-row`/`grid-column` ignores auto-placement's own ordering.
 		 *
 		 * ⛔ THE PLAIN TWO-ITEM CASE (not connected, or not configured) IS
 		 * BYTE-IDENTICAL TO BEFORE THIS CHANGE — no `grid-template-rows`, no
-		 * explicit placement, `.cc-main`/`.cc-rail` auto-flow into column 1
-		 * and 2 of one implicit row exactly as they always did. Only
-		 * `.cc-grid--with-changes` (set in the markup when `changesConfigured
-		 * && changesConnected`) opts into the second row — an unconditional
-		 * `grid-row: 2` on `.cc-rail` would otherwise leave column 2's first
-		 * row permanently empty whenever the card does not render.
+		 * explicit placement, `.rail-main`/`.rail-side` auto-flow into column
+		 * 1 and 2 of one implicit row exactly as they always did (`.rail-grid`'s
+		 * own base rule, `app.css`). Only `.cc-grid--with-changes` (set in the
+		 * markup when `changesConfigured && changesConnected`) opts into the
+		 * second row — an unconditional `grid-row: 2` on `.rail-side` would
+		 * otherwise leave column 2's first row permanently empty whenever the
+		 * card does not render.
 		 */
 		.cc-grid--with-changes {
 			grid-template-rows: auto auto;
 		}
 
-		.cc-grid--with-changes .cc-main {
+		.cc-grid--with-changes .rail-main {
 			grid-column: 1;
 			grid-row: 1 / span 2;
 		}
@@ -1760,7 +1749,7 @@
 			grid-row: 1;
 		}
 
-		.cc-grid--with-changes .cc-rail {
+		.cc-grid--with-changes .rail-side {
 			grid-column: 2;
 			grid-row: 2;
 		}

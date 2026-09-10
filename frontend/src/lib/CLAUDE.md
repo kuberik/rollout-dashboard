@@ -1147,3 +1147,12 @@ slot) rendered a 69×20 chip; `.hit-32`'s own `::before` floors the TOTAL reach 
   there is no sibling row height to steal — the element's own box is the whole story.
 - `ClearPinModal` was checked and does not share this shape (a plain flowbite `Modal`, no
   step header, no `Back`) — nothing there needed the same fix.
+
+## No single-column pages; progress at a glance (2026-09-10, human)
+
+"I'd generally avoid having pages that have a single column layout. They're very boring and use
+space inefficiently." Every route at ≥ 1024 is a main column plus a rail (320px, Home's grammar)
+or a card grid — never one centred column of stacked blocks. A list row about a change shows
+"whether it is progressing and how far" with a compact per-environment-family meter (worst state
+per family, aggregated over services) plus the frontier fact and time in the current state —
+"without showing every single environment" per service.

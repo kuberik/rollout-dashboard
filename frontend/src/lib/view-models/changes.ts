@@ -37,10 +37,11 @@ import {
 	buildChangeVerdict,
 	type PrPipelineMeta,
 	type PrPipelineVM,
+	type PrCell,
 	type PrState,
 	type ChangeVerdictTone
 } from './pr-pipeline';
-import { buildLandingGrid, type LandingGridVM } from './landing-grid';
+import { buildLandingGrid, type LandingGridVM, type LandingMarkVM, type MarkTone } from './landing-grid';
 import { buildRevisionLedger } from './revision-ledger';
 import { median } from './lead-time';
 import { cellReasonText, frontierUsuallyLabelForCell } from '../pr-cell-copy';
@@ -139,24 +140,46 @@ export type ChangeRowVM = {
 	 * `pr-pipeline.ts`'s gate fields, not silently approximated here.
 	 */
 	frontierReason: string | null;
+	/**
+	 * ⭐ CHANGES-2026-09-10.md ROUND 2, HOME FEEDBACK PASS ("whether it is
+	 * progressing"). The frontier cell's OWN `since` (`PrCell.since` — the
+	 * ISO instant its CURRENT state began, populated for every state, not
+	 * just `live`) — `ChangeLine`'s age slot reads this instead of
+	 * `mergedAt` for any row that is not live everywhere, so "5h" answers
+	 * "how long has it been stuck here" rather than "how long ago did this
+	 * merge" (a fact the reader already has from the row's own history).
+	 * `null` exactly when `frontierReason` is `null` (live everywhere, or
+	 * nothing built anywhere yet) OR the frontier's own `since` could not be
+	 * determined — the same two guards, so a caller never sees one without
+	 * the other.
+	 */
+	frontierSince: string | null;
 };
 
-/** `frontierReason`'s own computation — restates `buildChangeVerdict`'s
- *  frontier-picking precedence (lowest env-rank cell, among cells whose
- *  service has a build, that is not `live`) because that function returns
- *  only the fused sentence, never the cell. Two ties break differently on
- *  purpose elsewhere in this codebase (`landing-grid.ts`'s own module doc
- *  makes the same call for the same reason) — restating four lines here
- *  is cheaper than exporting a cell handle across a lane boundary for one
- *  reader. */
-function frontierReasonFor(vm: PrPipelineVM, now: Date): string | null {
+/** THE ONE FRONTIER-PICKING PRECEDENCE, restated from `buildChangeVerdict`
+ *  (`pr-pipeline.ts`) because that function returns only the fused
+ *  sentence, never the cell itself — `frontierReasonFor` and this row's own
+ *  `frontierSince` both need the CELL, not just its words, so they share
+ *  this one selection rather than each re-deriving it (and, before this,
+ *  disagreeing were the tie-break ever to drift). Two ties break
+ *  differently on purpose elsewhere in this codebase (`landing-grid.ts`'s
+ *  own module doc makes the same call for the same reason) — restating the
+ *  four lines here is cheaper than exporting a cell handle across a lane
+ *  boundary for two readers in the same file. */
+function pickFrontierCell(vm: PrPipelineVM): PrCell | null {
 	const withBuild = vm.services.flatMap((s) => s.cells).filter((c) => c.state !== 'not-built');
 	if (withBuild.length === 0) return null;
 	if (withBuild.every((c) => c.state === 'live')) return null;
 	const candidates = withBuild
 		.filter((c) => c.state !== 'live')
 		.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
-	const frontier = candidates[0];
+	return candidates[0] ?? null;
+}
+
+/** `frontierReason`'s own computation off an already-picked frontier cell
+ *  (`pickFrontierCell`) — see that function's doc for the precedence. */
+function frontierReasonFor(frontier: PrCell | null, now: Date): string | null {
+	if (!frontier) return null;
 	const reason = cellReasonText(frontier, now);
 	const eta = frontierUsuallyLabelForCell(frontier);
 	if (reason && eta) return `${reason} · ${eta}`;
@@ -216,6 +239,7 @@ function buildChangeRow(
 	};
 	const vm = buildPrPipeline(meta, rollouts, environments, rolloutDependencies, now);
 	const verdict = changeVerdict(vm);
+	const frontier = pickFrontierCell(vm);
 	const href =
 		change.kind === 'pr' && change.number != null
 			? changePath(change.owner, change.repo, { number: change.number })
@@ -239,7 +263,8 @@ function buildChangeRow(
 		grid: buildLandingGrid(vm, now),
 		notEverywhere: computeNotEverywhere(vm),
 		prodLeadMs: firstProdLeadMs(vm, change.mergedAt),
-		frontierReason: frontierReasonFor(vm, now)
+		frontierReason: frontierReasonFor(frontier, now),
+		frontierSince: frontier?.since ?? null
 	};
 }
 
@@ -682,4 +707,86 @@ export function splitChangeSections(rows: readonly ChangeRowVM[]): ChangeSection
 		.map(({ r }) => r);
 	const liveEverywhere = rows.filter((r) => !r.notEverywhere);
 	return { notEverywhere, liveEverywhere };
+}
+
+// ── HOME FEEDBACK PASS — "whether it is progressing, how far, without
+// showing every single environment" ──────────────────────────────────────
+//
+// The human, on Home's `YourChangesCard` (2026-09-10, after round 2 shipped):
+// *"the PRs on homepage don't display enough information. I'd want to see at
+// a glance whether they're progressing, how far, and whatnot. without
+// showing every single environment."* `ChangeLine`'s one-line row already
+// refuses the full landing grid (R2.1's own cut list — "the norm drawn
+// seventy-five times inside a 320px rail"); the answer is not to bring the
+// grid back but to compress it one level further: one step per environment
+// FAMILY (`DEV`/`STG`/`PRD`, `landing-grid.ts`'s own tiers), not one mark per
+// service/env cell.
+
+/** One stage in the compact per-family progress meter — `ChangeLine`'s own
+ *  new slot. Reuses `landing-grid.ts`'s `MarkTone` (`live`/`stuck`/`active`/
+ *  `queued`/`none`/`failed`) rather than inventing a second state-colour
+ *  vocabulary, and keeps the underlying `PrState` alongside it because a
+ *  single `active` tone covers both `deploying` (blue) and
+ *  `baking`/`retrying` (yellow) — the same two-way split `ChangeLine`'s own
+ *  row icon already makes off `standingWords`' leading verb, restated here
+ *  off the real state instead of a guessed prefix match. */
+export type FamilyProgressStep = {
+	/** `DEV` / `STG` / `PRD` / `TEST`, or a 3-letter fallback. */
+	family: string;
+	familyOrder: number;
+	tone: MarkTone;
+	state: PrState;
+	/** The worst mark's own multi-region sentence, for the step's `title`. */
+	sentence: string;
+};
+
+/** Worst-first, whole-mark edition — `landing-grid.ts`'s own `STATE_RANK` is
+ *  private (it operates on raw `PrCell`s, which a `LandingMarkVM` no longer
+ *  carries once a family has collapsed), so this is a coarser, TONE-level
+ *  restatement of the same "worse sorts first" ordering: `failed` outranks
+ *  `stuck`, which outranks something actually moving (`active`), which
+ *  outranks a normal promotion-order wait (`queued`), which outranks having
+ *  no build at all yet (`none`) — `live` is the one state nothing outranks.
+ *  Good enough to pick which SERVICE's mark wins a family aggregate; the
+ *  finer `PrState`-level tie-break stays inside `landing-grid.ts`, where the
+ *  real cells still live. */
+const TONE_SEVERITY: Record<MarkTone, number> = {
+	failed: 0,
+	stuck: 1,
+	active: 2,
+	queued: 3,
+	none: 4,
+	live: 5
+};
+
+/**
+ * THE PER-FAMILY PROGRESS METER. One step per environment family this
+ * change's services actually span (typically `DEV`/`STG`/`PRD`, in that
+ * rank order), each carrying the WORST mark for that family across every
+ * service — a change held in `dev` on one service and live in `dev` on
+ * another reads as `dev: held`, never averaged or silently dropped. Reads
+ * `row.grid.services` (`landing-grid.ts`'s own family-collapsed marks,
+ * already computed once at `buildChangeRow` time), so this can never
+ * disagree with what the SAME row's own `ChangeCard` landing grid draws in
+ * full two sections down.
+ */
+export function familyProgress(row: Pick<ChangeRowVM, 'grid'>): FamilyProgressStep[] {
+	const worstByFamily = new Map<string, LandingMarkVM>();
+	for (const service of row.grid.services) {
+		for (const mark of service.marks) {
+			const existing = worstByFamily.get(mark.family);
+			if (!existing || TONE_SEVERITY[mark.tone] < TONE_SEVERITY[existing.tone]) {
+				worstByFamily.set(mark.family, mark);
+			}
+		}
+	}
+	return [...worstByFamily.values()]
+		.sort((a, b) => a.familyOrder - b.familyOrder)
+		.map((m) => ({
+			family: m.family,
+			familyOrder: m.familyOrder,
+			tone: m.tone,
+			state: m.state,
+			sentence: m.sentence
+		}));
 }

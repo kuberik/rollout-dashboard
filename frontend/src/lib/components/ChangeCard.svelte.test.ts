@@ -40,6 +40,7 @@ function mkRow(overrides: Partial<ChangeRowVM> = {}): ChangeRowVM {
 		notEverywhere: true,
 		prodLeadMs: null,
 		frontierReason: null,
+		frontierSince: null,
 		...overrides
 	};
 }

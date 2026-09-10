@@ -17,6 +17,7 @@ import {
 	summarizeChangeRows,
 	myChangesCount,
 	orderHomeChangeRows,
+	familyProgress,
 	type ChangeRowVM
 } from './changes';
 import { buildPrPipeline } from './pr-pipeline';
@@ -328,6 +329,7 @@ describe('filterChangeRows', () => {
 			notEverywhere: false,
 			prodLeadMs: null,
 			frontierReason: null,
+			frontierSince: null,
 			...overrides
 		};
 	}
@@ -401,6 +403,7 @@ describe('summarizeChangeRows (CHANGES-2026-09-10 fix pass, ruling 5 — "COUNTS
 			notEverywhere: false,
 			prodLeadMs: null,
 			frontierReason: null,
+			frontierSince: null,
 			...overrides
 		};
 	}
@@ -442,6 +445,7 @@ describe('myChangesCount (ruling 5 — ONE definition of "your changes")', () =>
 			notEverywhere: false,
 			prodLeadMs: null,
 			frontierReason: null,
+			frontierSince: null,
 			...overrides
 		};
 	}
@@ -477,6 +481,7 @@ describe('orderHomeChangeRows (ruling 5 — stuck-first, then newest)', () => {
 			notEverywhere: false,
 			prodLeadMs: null,
 			frontierReason: null,
+			frontierSince: null,
 			...overrides
 		};
 	}
@@ -675,7 +680,8 @@ function mkRows(overrides: Partial<ChangeRowVM>[]): ChangeRowVM[] {
 		grid: { services: [], allSameLabel: null, visible: [], overflow: null },
 		notEverywhere: false,
 		prodLeadMs: null,
-		frontierReason: null
+		frontierReason: null,
+		frontierSince: null
 	};
 	return overrides.map((o, i) => ({ ...base, number: i + 1, ...o }));
 }
@@ -731,5 +737,65 @@ describe('splitChangeSections', () => {
 		expect(sections.liveEverywhere).toHaveLength(1);
 		expect(sections.notEverywhere).toHaveLength(3);
 		expect(sections.notEverywhere.map((r) => r.verdictTone)).toEqual(['failed', 'held', 'not-built']);
+	});
+});
+
+// ── HOME FEEDBACK PASS — `familyProgress` ─────────────────────────────────
+//
+// The human, on `YourChangesCard`: "I'd want to see at a glance whether
+// they're progressing, how far, and whatnot. without showing every single
+// environment." One step per FAMILY (dev/staging/prod), the worst mark
+// across every service — never one mark per service/env cell.
+
+describe('familyProgress', () => {
+	it('orders steps DEV → STG → PRD and keeps the WORST mark across services for each family', () => {
+		// #4-shaped: held in dev on one service, but a SECOND service is
+		// already live in dev — the family step must read `held`, not
+		// average the two or silently prefer whichever service came first.
+		const vm = mkVm([
+			mkService('hello-frontend-app', [
+				mkCell('gated', { envName: 'dev', envRank: 0 }),
+				mkCell('not-built', { envName: 'staging', envRank: 1 }),
+				mkCell('not-built', { envName: 'prod', envRank: 2 })
+			]),
+			mkService('hello-api-app', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('not-built', { envName: 'staging', envRank: 1 }),
+				mkCell('not-built', { envName: 'prod', envRank: 2 })
+			])
+		]);
+		const grid = buildLandingGrid(vm, NOW);
+		const steps = familyProgress({ grid });
+		expect(steps.map((s) => s.family)).toEqual(['DEV', 'STG', 'PRD']);
+		expect(steps[0]).toMatchObject({ family: 'DEV', tone: 'stuck', state: 'gated' });
+		expect(steps[1]).toMatchObject({ family: 'STG', tone: 'none', state: 'not-built' });
+		expect(steps[2]).toMatchObject({ family: 'PRD', tone: 'none', state: 'not-built' });
+	});
+
+	it('#3-shaped: live in dev, held in staging — DEV reads live, STG reads stuck', () => {
+		const vm = mkVm([
+			mkService('hello-api-app', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('waiting-upstream', { envName: 'staging', envRank: 1 }),
+				mkCell('not-built', { envName: 'prod', envRank: 2 })
+			])
+		]);
+		const grid = buildLandingGrid(vm, NOW);
+		const steps = familyProgress({ grid });
+		expect(steps.map((s) => `${s.family}:${s.tone}`)).toEqual(['DEV:live', 'STG:stuck', 'PRD:none']);
+	});
+
+	it('a service actively deploying/baking keeps its own PrState so the caller can split blue vs yellow', () => {
+		const vm = mkVm([mkService('svc', [mkCell('deploying', { envName: 'dev', envRank: 0 })])]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		expect(steps).toEqual([
+			expect.objectContaining({ family: 'DEV', tone: 'active', state: 'deploying' })
+		]);
+	});
+
+	it('returns no steps for a row with no services (the ledger-fallback shape)', () => {
+		expect(familyProgress({ grid: { services: [], allSameLabel: null, visible: [], overflow: null } })).toEqual(
+			[]
+		);
 	});
 });

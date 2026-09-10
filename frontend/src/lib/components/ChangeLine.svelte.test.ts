@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { render } from '@testing-library/svelte';
 import ChangeLine from './ChangeLine.svelte';
 import type { ChangeRowVM } from '../view-models/changes';
-import type { LandingGridVM } from '../view-models/landing-grid';
+import type { LandingGridVM, LandingMarkVM } from '../view-models/landing-grid';
 
 /**
  * `ChangeLine` — CHANGES-2026-09-10.md ROUND 2, R2.1. The ONE-LINE row:
@@ -41,6 +41,7 @@ function mkRow(overrides: Partial<ChangeRowVM> = {}): ChangeRowVM {
 		notEverywhere: true,
 		prodLeadMs: null,
 		frontierReason: null,
+		frontierSince: null,
 		...overrides
 	};
 }
@@ -75,13 +76,46 @@ describe('ChangeLine', () => {
 		expect(index.container.textContent).toContain('widget');
 	});
 
-	test('the standing word slot never carries more than 4 words, for every verdict tone', () => {
-		const cases: ChangeRowVM['verdictTone'][] = ['live', 'held', 'failed', 'active', 'not-built'];
-		for (const verdictTone of cases) {
-			const { container } = render(ChangeLine, { props: { row: mkRow({ verdictTone }) } });
-			const text = container.querySelector('.cl-standing')?.textContent?.trim() ?? '';
-			expect(text.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
-		}
+	test('the standing slot caps at 4 words ONLY when live everywhere', () => {
+		const { container } = render(ChangeLine, { props: { row: mkRow({ verdictTone: 'live', verdictWord: 'live everywhere' } as Partial<ChangeRowVM>) } });
+		const text = container.querySelector('.cl-standing')?.textContent?.trim() ?? '';
+		expect(text.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
+	});
+
+	/**
+	 * HOME FEEDBACK PASS (2026-09-10, after round 2 shipped): "the standing
+	 * words shrink to the frontier fact" — every NON-live row now prints
+	 * `row.verdictWord` verbatim (the fused subject-first sentence,
+	 * `buildChangeVerdict`), which can run past 4 words on purpose.
+	 */
+	test('a non-live row prints the full `verdictWord` sentence, not the ≤4-word standing form', () => {
+		const { container } = render(ChangeLine, {
+			props: {
+				row: mkRow({
+					verdictTone: 'held',
+					verdictWord: 'hello-frontend-app held in dev on hello-api-app'
+				})
+			}
+		});
+		const text = container.querySelector('.cl-standing')?.textContent?.trim() ?? '';
+		expect(text).toBe('hello-frontend-app held in dev on hello-api-app');
+	});
+
+	test('the age answers "how long ago did this merge" when live, "how long stuck" otherwise', () => {
+		const now = new Date('2026-09-10T12:00:00Z');
+		const mergedAt = new Date(now.getTime() - 30 * 3600_000).toISOString(); // 30h ago
+		const frontierSince = new Date(now.getTime() - 5 * 3600_000).toISOString(); // 5h ago
+
+		const live = render(ChangeLine, {
+			props: { row: mkRow({ verdictTone: 'live', mergedAt, frontierSince: null }), now }
+		});
+		expect(live.container.querySelector('.cl-age')?.textContent?.trim()).toBe('1d');
+		live.unmount();
+
+		const held = render(ChangeLine, {
+			props: { row: mkRow({ verdictTone: 'held', mergedAt, frontierSince }), now }
+		});
+		expect(held.container.querySelector('.cl-age')?.textContent?.trim()).toBe('in this state for 5h');
 	});
 
 	test('the row is a single flex line box — one direct child holding every slot, not two stacked lines', () => {
@@ -91,5 +125,69 @@ describe('ChangeLine', () => {
 		// age) is a DIRECT child of it, not nested in a second line div.
 		expect(row).toBeTruthy();
 		expect(container.querySelectorAll('.cl-row').length).toBe(1);
+	});
+
+	/**
+	 * HOME FEEDBACK PASS, ITEM 1 — the compact per-family meter. Builds a
+	 * `LandingGridVM` with two services disagreeing on `dev` (one held, one
+	 * live) so the aggregate must keep the WORST mark, never average or
+	 * silently drop one service's own state.
+	 */
+	function mkMark(overrides: Partial<LandingMarkVM> = {}): LandingMarkVM {
+		return {
+			family: 'DEV',
+			familyOrder: 0,
+			count: 1,
+			state: 'live',
+			tone: 'live',
+			sentence: 'dev: live',
+			href: '/rollouts/hub/ns/name',
+			theme: null,
+			...overrides
+		};
+	}
+
+	test('the meter shows one step per family, the WORST mark across services', () => {
+		const grid: LandingGridVM = {
+			services: [
+				{
+					appName: 'hello-frontend-app',
+					marks: [
+						mkMark({ family: 'DEV', familyOrder: 0, state: 'gated', tone: 'stuck', sentence: 'dev: held' }),
+						mkMark({ family: 'STG', familyOrder: 1, state: 'not-built', tone: 'none', sentence: 'stg: not built' })
+					],
+					verdictWord: 'held',
+					landedCount: 0,
+					total: 2
+				},
+				{
+					appName: 'hello-api-app',
+					marks: [
+						mkMark({ family: 'DEV', familyOrder: 0, state: 'live', tone: 'live', sentence: 'dev: live' }),
+						mkMark({ family: 'STG', familyOrder: 1, state: 'not-built', tone: 'none', sentence: 'stg: not built' })
+					],
+					verdictWord: 'live',
+					landedCount: 1,
+					total: 2
+				}
+			],
+			allSameLabel: null,
+			visible: [],
+			overflow: null
+		};
+		const { container } = render(ChangeLine, {
+			props: { row: mkRow({ verdictTone: 'held', grid }) }
+		});
+		const meter = container.querySelector('.cl-meter') as HTMLElement;
+		expect(meter).toBeTruthy();
+		// DEV: one service held, the other live — the aggregate keeps the
+		// WORST (held), never averages the two.
+		expect(meter.getAttribute('aria-label')).toBe('0 of 2 stages');
+		expect(container.querySelectorAll('.cl-step').length).toBe(2);
+	});
+
+	test('the meter is absent for a row with no landing-grid services (the ledger fallback shape)', () => {
+		const { container } = render(ChangeLine, { props: { row: mkRow({ grid: EMPTY_GRID }) } });
+		expect(container.querySelector('.cl-meter')).toBeNull();
 	});
 });
