@@ -13,14 +13,23 @@
 	import { connectGithub } from '$lib/api/github';
 	import { FetchPullError, containmentKnownFor } from '$lib/api/pulls';
 	import { ensurePrMeta, notifyRevisionSeen, prMetaKey } from '$lib/stores/pr-meta.svelte';
-	import { buildPrPipeline, type PrPipelineMeta, type PrCell } from '$lib/view-models/pr-pipeline';
+	import {
+		buildPrPipeline,
+		buildChangeHistory,
+		changeHistoryRetentionNote,
+		type PrPipelineMeta,
+		type PrCell
+	} from '$lib/view-models/pr-pipeline';
 	import { buildLandingGrid, orderByVerdict, classify, worstCell } from '$lib/view-models/landing-grid';
 	import { checksLine, cellStateSentence, reasonTail } from '$lib/pr-cell-copy';
 	import { changesQueryOptions } from '$lib/api/changes';
-	import { buildChangeRows } from '$lib/view-models/changes';
+	import { buildChangeRows, splitChangeSections, groupByDay } from '$lib/view-models/changes';
+	import { median, compactSpan } from '$lib/view-models/lead-time';
 	import LandingGrid from '$lib/components/LandingGrid.svelte';
 	import PipelineCard from '$lib/components/PipelineCard.svelte';
-	import ChangeRow from '$lib/components/ChangeRow.svelte';
+	import ChangeCard from '$lib/components/ChangeCard.svelte';
+	import ChangeLine from '$lib/components/ChangeLine.svelte';
+	import ChangeHistoryCard from '$lib/components/ChangeHistoryCard.svelte';
 	import {
 		repoBody,
 		changeBuildPath,
@@ -130,12 +139,14 @@
 		ChevronRightOutline,
 		CheckCircleSolid,
 		ClockOutline,
+		ClockSolid,
 		CloseCircleOutline,
 		CodeBranchOutline,
 		CodePullRequestOutline,
 		ExclamationCircleSolid,
 		FolderOutline,
 		GithubSolid,
+		GridOutline,
 		HourglassOutline,
 		LayersOutline,
 		LockOpenOutline,
@@ -438,7 +449,6 @@
 		);
 		return all.filter((r) => r.repoKey === key);
 	});
-	const repoChangesShown = $derived(repoChangeRows.slice(0, 10));
 
 	// THE COVERAGE.
 	const coverage = $derived(row ? revisionCoverage(row, coarse) : null);
@@ -2402,7 +2412,16 @@
 	const changeOrderedServices = $derived.by(() => {
 		if (!changeVm) return [];
 		return orderByVerdict(
-			changeVm.services,
+			// ⛔ ROUND 2, R2.3 — "A SERVICE WITH NO BUILD OF THIS CHANGE IS A
+			// NAME IN A SENTENCE. A SERVICE WITH A BUILD GETS A PIPELINE CARD."
+			// Was every service, unfiltered — `PipelineCard`'s own item-7 fold
+			// still rendered a titled `Card` (one gray folded sentence) for a
+			// service whose every cell is `not-built`, which is exactly the
+			// "four near-empty cards" defect this round exists to delete. Those
+			// services are named ONCE, together, in `changeNotBuiltServiceNames`
+			// below (inside the grid's own card) — they get no card of their
+			// own here at all now.
+			changeVm.services.filter((s) => s.cells.some((c) => c.state !== 'not-built')),
 			(s) => (s.cells.length ? classify(worstCell(s.cells).state) : 'live'),
 			(s) => s.appName
 		);
@@ -2491,6 +2510,65 @@
 
 	const landingGrid = $derived(changeVm ? buildLandingGrid(changeVm, coarse) : null);
 
+	// ══ ROUND 2, R2.3 — THE RAIL'S OWN FACTS ═════════════════════════════════
+	// "This change" (repo, services · rollouts, merged/committed, author,
+	// first deployed, View on GitHub) reads off whichever of the two forms
+	// (pull/sha) actually resolved — one set of derived values, not two
+	// copies of the same six facts.
+
+	/** `prData.author` (pull form) or the resolved commit's own author (sha
+	 *  form: a resolved PR first, else the bare commit's own `author`). */
+	const changeAuthor = $derived(
+		isPullChange ? (prData?.author ?? null) : (changeCommitPull?.author ?? commitDetail?.author ?? null)
+	);
+
+	/** "merged 5h ago" (pull form, or a sha resolved to a merged PR) / "committed
+	 *  5h ago" (a bare commit with no PR behind it) — the verb names WHICH kind
+	 *  of record this change actually is, never guessed. */
+	const changeMergedLine = $derived.by<string | null>(() => {
+		if (isPullChange) return mergedAgo ? `merged ${mergedAgo}` : null;
+		if (changeCommitPull?.mergedAt) return `merged ${formatTimeAgoCompact(changeCommitPull.mergedAt, coarse)} ago`;
+		if (commitDetail?.committedAt) return `committed ${formatTimeAgoCompact(commitDetail.committedAt, coarse)} ago`;
+		return null;
+	});
+
+	/** The earliest `live` cell across every service/environment — "first
+	 *  deployed", a whole-change fact distinct from any one environment's own
+	 *  "live since" (which `cellStateSentence` already prints per row). */
+	const changeFirstDeployed = $derived.by<{ since: string } | null>(() => {
+		if (!changeVm) return null;
+		const lives = changeVm.services
+			.flatMap((s) => s.cells)
+			.filter((c): c is PrCell & { since: string } => c.state === 'live' && !!c.since);
+		if (lives.length === 0) return null;
+		return lives.reduce((a, b) => (new Date(a.since).getTime() < new Date(b.since).getTime() ? a : b));
+	});
+
+	/**
+	 * "How it's going"-style facts, `HowItsGoing`'s own `dl` grammar (a
+	 * glyph + `dt` label, a `dd` figure): this REPO's own typical dev→prod
+	 * trip (median of `PrService.leadTimeMs` across services — each already
+	 * ≥2-sample-guarded on its own history, `pr-pipeline.ts`'s own doc
+	 * comment) and how long this change has sat in its CURRENT state (the
+	 * frontier cell's own `since` when something is not yet live, else the
+	 * earliest environment this change went live).
+	 */
+	const changeTypicalToProdMs = $derived.by<number | null>(() => {
+		if (!changeVm) return null;
+		const samples = changeVm.services.map((s) => s.leadTimeMs).filter((x): x is number => x != null);
+		return samples.length > 0 ? median(samples) : null;
+	});
+	const changeStateSince = $derived.by<{ label: string; since: string } | null>(() => {
+		if (changeFrontier?.cell.since) return { label: 'In this state', since: changeFrontier.cell.since };
+		return changeFirstDeployed ? { label: 'Live since', since: changeFirstDeployed.since } : null;
+	});
+
+	/** `ChangeHistoryCard`'s own feed — every `status.history` entry, any
+	 *  service/environment, that carries this change; see `pr-pipeline.ts`'s
+	 *  own doc comment for the containment test it reuses. */
+	const changeHistoryRows = $derived(changeVm ? buildChangeHistory(changeVm.services, localClusterName) : []);
+	const changeHistoryRetention = $derived(changeVm ? changeHistoryRetentionNote(changeVm.services) : null);
+
 	const changePageTitle = $derived(
 		isPullChange
 			? prData
@@ -2508,6 +2586,7 @@
 	const commitHtmlUrl = $derived(
 		isShaChange && shaForChange ? `https://github.com/${changeOwner}/${changeRepo}/commit/${shaForChange}` : ''
 	);
+
 
 	/**
 	 * ⭐ ONE STRING, NOT A TEMPLATE BUILT ACROSS `{#if}` BRANCHES — same
@@ -2622,87 +2701,226 @@
 	-->
 	{#snippet changeBody()}
 		{#if changeVm}
-			{#if changeHeld && changeFrontier}
-				<!-- ⛔ FIX PASS ITEM 7, 2026-09-10 — THE BLOCKING FACT IS A
-				     `HeldBanner` (filled, icon, action), NOT AN `h2`. Replaces
-				     the plain verdict headline for exactly the held case — the
-				     banner's own title already says "{subject} is held", so
-				     printing the bare verdict word above it too would restate
-				     the same fact twice. `stories={[]}` deliberately: this VM
-				     does not carry a full `BlockingStory` (`pr-pipeline.ts`
-				     supplies `reason`/`gateSubject`/`gateLabel` per cell, not a
-				     `rolloutGates` classification this page can stand behind —
-				     see that module's own `containmentKnown` doc) — the banner
-				     degrades cleanly to just `releaseSplitMessage` with no
-				     stories, which is exactly the one sentence this page has. -->
-				<div class="mb-4">
-					<HeldBanner
-						subject={changeFrontier.appName}
-						releaseSplitMessage={changeHeldMessage}
-						stories={[]}
-						primaryHref={changeHeldPrimary?.href ?? null}
-						primaryLabel={changeHeldPrimary?.label ?? null}
-						hasSchedule={changeHeldHasSchedule}
-					/>
-				</div>
-			{:else}
-				<h2 class="t-headline mb-1 text-gray-900 dark:text-white">{changeVm.verdict}</h2>
-			{/if}
-			{#if changeNotBuiltServiceNames.length > 0 && changeNotBuiltServiceNames.length < changeVm.services.length}
-				<!-- Only when it's NEW information — a page whose verdict is
-				     already "Not built yet" (every service) would restate itself. -->
-				<p class="t-dense mb-1 text-gray-500 dark:text-gray-400">
-					Not built yet for {changeNotBuiltServiceNames.join(', ')}.
-				</p>
-			{/if}
-			{#if changeRolloutsTotal > 0}
-				<!-- ⛔ FIX PASS ITEM 7, 2026-09-10 — "N of M rollouts have a build
-				     of this change · live in K", off `pr-pipeline.ts`'s own
-				     `rolloutsWithBuild`/`rolloutsTotal`/`rolloutsLive` counts
-				     (ruling 3), not the old "M rollouts would get it" framing,
-				     which only ever counted the destination and could not say
-				     how many of them actually have the change yet. -->
-				<!-- ⛔ ITEM 10 (2026-09-10 fix pass) — "change· live" (missing
-				     space). A `{#if}` block starting on its own line trims the
-				     whitespace-only text node right before it (`lib/CLAUDE.md`'s
-				     own "compose as ONE string" rule) — the tail is now a single
-				     ternary expression, same fix `+page.svelte`'s own
-				     `subtitleTail` already uses. -->
-				<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">
-					{changeRolloutsWithBuild} of {changeRolloutsTotal} rollout{changeRolloutsTotal === 1 ? '' : 's'} have a
-					build of this change{changeRolloutsLive > 0 ? ` · live in ${changeRolloutsLive}` : ''}
-				</p>
-			{/if}
-			{#if landingGrid}
-				{#if landingGrid.allSameLabel}
-					<!-- §2b's fold rule 1: every service agrees — one label, not a
-					     grid of identical rows. -->
-					<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">{landingGrid.allSameLabel}</p>
-				{:else if landingGrid.visible.length > 0}
-					<!-- ⛔ FIX PASS ITEM 4, 2026-09-10 — `landingGrid.visible` is now
-					     `landing-grid.ts`'s FULL adverse-first list (ruling 6, no
-					     longer 3-capped); `LandingGrid` owns its own fold (a real
-					     button, ≥1024px shows every service). Passing the SAME list
-					     here as `ChangeRow` passes on the index means the row a
-					     reader clicked is a strict prefix of this page. -->
-					<div class="mb-4">
-						<LandingGrid services={landingGrid.visible} />
+			<!--
+				⭐ COORDINATOR, 2026-09-10 (after round 2 shipped) — "I'd generally
+				avoid having pages that have a single column layout." Beside
+				`/rollouts/<cluster>/<ns>/<name>` this page was ONE column even
+				after the "Every rollout"/service-card work above — the rail this
+				lane owns (`This change`/`ChangeHistoryCard`/"How it's going") was
+				still missing entirely. `.rail-wrap`/`.rail-grid`/`.rail-main`/
+				`.rail-side` are LB's own extraction (`app.css`, landed on this
+				branch already — see that file's own header comment for the
+				shape); this is the THIRD call site, not a fourth hand-copy.
+				MAIN first in document order (so it is the tab-forward/reading
+				order at every width, same as `/` and `/apps/[name]`), rail
+				second — the container query alone decides beside-vs-below.
+			-->
+			<div class="rail-wrap">
+				<div class="rail-grid">
+					<div class="rail-main">
+						{#if changeHeld && changeFrontier}
+							<!-- ⛔ FIX PASS ITEM 7, 2026-09-10 — THE BLOCKING FACT IS A
+							     `HeldBanner` (filled, icon, action), NOT AN `h2`. Replaces
+							     the plain verdict headline for exactly the held case — the
+							     banner's own title already says "{subject} is held", so
+							     printing the bare verdict word above it too would restate
+							     the same fact twice. `stories={[]}` deliberately: this VM
+							     does not carry a full `BlockingStory` (`pr-pipeline.ts`
+							     supplies `reason`/`gateSubject`/`gateLabel` per cell, not a
+							     `rolloutGates` classification this page can stand behind —
+							     see that module's own `containmentKnown` doc) — the banner
+							     degrades cleanly to just `releaseSplitMessage` with no
+							     stories, which is exactly the one sentence this page has. -->
+							<div class="mb-4">
+								<HeldBanner
+									subject={changeFrontier.appName}
+									releaseSplitMessage={changeHeldMessage}
+									stories={[]}
+									primaryHref={changeHeldPrimary?.href ?? null}
+									primaryLabel={changeHeldPrimary?.label ?? null}
+									hasSchedule={changeHeldHasSchedule}
+								/>
+							</div>
+						{:else}
+							<h2 class="t-headline mb-4 text-gray-900 dark:text-white">{changeVm.verdict}</h2>
+						{/if}
+
+						{#if changeRolloutsTotal > 0}
+							<!--
+								⭐ ROUND 2, R2.3 — "THE GRID GETS A CARD." Was two bare
+								`<p>` sentences ("N of M rollouts have a build…", "Not
+								built yet for…") floating above the grid — a titled card
+								is this product's unit for an answer, and the "3 of 15
+								have this build" figure is exactly that answer, so it is
+								the card's own `verdict` rollup now, not prose above it.
+							-->
+							<div class="mb-4">
+								<Card
+									icon={GridOutline}
+									title="Every rollout"
+									verdict={`${changeRolloutsWithBuild} of ${changeRolloutsTotal} have this build`}
+									padded={false}
+								>
+									<div class="px-4 py-3">
+										{#if landingGrid?.allSameLabel}
+											<!-- §2b's fold rule 1: every service agrees — one
+											     label, not a grid of identical rows. -->
+											<span class="t-dense text-gray-500 dark:text-gray-400">{landingGrid.allSameLabel}</span>
+										{:else if landingGrid && landingGrid.visible.length > 0}
+											<!-- ⛔ FIX PASS ITEM 4, 2026-09-10 — `landingGrid.visible`
+											     is `landing-grid.ts`'s FULL adverse-first list
+											     (ruling 6, no longer 3-capped); `LandingGrid` owns
+											     its own fold. -->
+											<LandingGrid services={landingGrid.visible} />
+										{/if}
+										{#if changeNotBuiltServiceNames.length > 0 && changeNotBuiltServiceNames.length < changeVm.services.length}
+											<!-- Only when it's NEW information — a card whose
+											     grid already says "Not built yet" for every
+											     service (the all-same fold above) would restate
+											     itself. R2.3: "That line is where the no-build
+											     services live. They do not get cards." -->
+											<p class="t-dense mt-2 text-gray-500 dark:text-gray-400">
+												Not built yet for {changeNotBuiltServiceNames.join(', ')}.
+											</p>
+										{/if}
+									</div>
+								</Card>
+							</div>
+						{/if}
+
+						{#if changeOrderedServices.length > 0}
+							<!--
+								⭐ COORDINATOR, 2026-09-10 — service cards run 2-up at
+								≥1280 of MAIN-column width (a container query, not a
+								viewport one — the rail steals 320px+24px at ≥860px of
+								PAGE width first). `minmax(min(28rem,100%),1fr)` — the
+								`min(...,100%)` guard is load-bearing: a bare `28rem`
+								floor would force a 448px track inside a narrower main
+								column (e.g. 390 viewport, ~350px of content) and
+								overflow, the exact defect `ChangeCard`'s own grid
+								(R2.2) already guards against with the identical clamp.
+							-->
+							<div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(28rem,100%),1fr))]">
+								{#each changeOrderedServices as service (service.appName)}
+									<PipelineCard
+										{service}
+										{localClusterName}
+										{environments}
+										rolloutDependencies={query.data?.rolloutDependencies ?? null}
+										now={coarse}
+									/>
+								{/each}
+							</div>
+						{/if}
 					</div>
-				{/if}
-			{/if}
-			{#if changeOrderedServices.length > 0}
-				<div class="space-y-4">
-					{#each changeOrderedServices as service (service.appName)}
-						<PipelineCard
-							{service}
-							{localClusterName}
-							{environments}
-							rolloutDependencies={query.data?.rolloutDependencies ?? null}
-							now={coarse}
-						/>
-					{/each}
+
+					<div class="rail-side flex flex-col gap-4">
+						<!--
+							⭐ ROUND 2, R2.3 — RAIL CARD 1, "This change". The round-11
+							build page's `This build` card verbatim in grammar: icon
+							rows at `t-body`. `checks` is deliberately NOT repeated
+							here — `pr-cell-copy.ts`'s own `checksLine` is HEAD-BAND
+							SCOPE ONLY ("never fold into a cell fact"), and this page's
+							head band already prints it for the pull form; a second
+							copy on the rail would be the same fact stated twice.
+						-->
+						<Card
+							icon={CodeBranchOutline}
+							title="This change"
+							verdict={`${changeVm.services.length} service${changeVm.services.length === 1 ? '' : 's'}`}
+						>
+							<ul class="space-y-2">
+								<li class="t-body flex items-start gap-2 text-gray-900 dark:text-white">
+									<FolderOutline class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+									<span class="min-w-0 truncate">{changeOwner}/{changeRepo}</span>
+								</li>
+								<li class="t-body flex items-start gap-2 text-gray-900 dark:text-white">
+									<LayersOutline class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+									<span
+										>{changeVm.services.length} service{changeVm.services.length === 1 ? '' : 's'} · {changeRolloutsTotal}
+										rollout{changeRolloutsTotal === 1 ? '' : 's'}</span
+									>
+								</li>
+								{#if changeMergedLine}
+									<li class="t-body flex items-start gap-2 text-gray-900 dark:text-white">
+										<CalendarMonthSolid
+											class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+											aria-hidden="true"
+										/>
+										<span>{changeMergedLine}</span>
+									</li>
+								{/if}
+								{#if changeAuthor}
+									<li class="t-body flex items-start gap-2 text-gray-900 dark:text-white">
+										<UserCircleSolid
+											class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+											aria-hidden="true"
+										/>
+										<span class="min-w-0 truncate">@{changeAuthor}</span>
+									</li>
+								{/if}
+								{#if changeFirstDeployed}
+									<li class="t-body flex items-start gap-2 text-gray-900 dark:text-white">
+										<ClockOutline class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+										<span>first deployed {formatTimeAgoCompact(changeFirstDeployed.since, coarse)} ago</span>
+									</li>
+								{/if}
+								<!-- ⛔ NO "View on GitHub" ROW HERE. Both forms' head band
+								     already carries it (`View on GitHub` / `View commit`) —
+								     a second link to the identical URL on the same page is
+								     the redundant tab stop `lib/CLAUDE.md`'s "one region, one
+								     tap-link" rule bans, caught live by this lane's own page
+								     test (`getMultipleElementsFoundError` on two `View on
+								     GitHub` links). -->
+							</ul>
+						</Card>
+
+						<ChangeHistoryCard rows={changeHistoryRows} retentionNote={changeHistoryRetention} now={coarse} />
+
+						<!--
+							⭐ COORDINATOR, 2026-09-10 — RAIL CARD 3, "How it's going".
+							`HowItsGoing`'s own `dl` grammar (a glyph `dt`, a `dd`
+							figure) — this REPO's own typical dev→prod trip (median
+							of `PrService.leadTimeMs`, each already ≥2-sample-guarded
+							on ITS OWN history) and how long this change has sat in
+							its CURRENT state (the frontier cell's own `since`, or —
+							once nothing is left to promote — the earliest environment
+							it went live).
+						-->
+						<Card
+							icon={HourglassOutline}
+							title="How it's going"
+							verdict={changeTypicalToProdMs != null ? `typical ${compactSpan(changeTypicalToProdMs)}` : 'no data yet'}
+						>
+							<dl class="space-y-3">
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+										<HourglassOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+										Typical to prod
+									</dt>
+									<dd class="t-figure tabular-nums text-gray-900 dark:text-white">
+										{changeTypicalToProdMs != null ? compactSpan(changeTypicalToProdMs) : '—'}
+									</dd>
+								</div>
+								{#if changeTypicalToProdMs == null}
+									<p class="t-micro -mt-2 text-gray-400 dark:text-gray-500">no measured trip yet</p>
+								{/if}
+								{#if changeStateSince}
+									<div class="flex items-baseline justify-between gap-3">
+										<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+											<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+											{changeStateSince.label}
+										</dt>
+										<dd class="t-figure tabular-nums text-gray-900 dark:text-white">
+											{compactSpan(coarse.getTime() - new Date(changeStateSince.since).getTime())}
+										</dd>
+									</div>
+								{/if}
+							</dl>
+						</Card>
+					</div>
 				</div>
-			{/if}
+			</div>
 		{/if}
 	{/snippet}
 
@@ -2901,39 +3119,80 @@
 			</div>
 		</div>
 
-		{#if repoChangesShown.length > 0}
+		{#if repoChangeRows.length > 0}
 			<!--
-				⛔ FIX PASS ITEM 9, 2026-09-10 — "CHANGES IN THIS REPOSITORY"
-				FIRST, THEN THE OPS CONTENT AS TODAY. The index's own rows
-				(`ChangeRow`, unchanged — same component, same grammar), capped
-				at 10, newest first (`buildChangeRows`' own order), so a reader
-				who landed here from a change row can keep reading forward
-				before falling into "what each service runs" below. Absent
-				entirely when GitHub is not connected or nothing has merged in
-				the window — never an empty card.
+				⭐ ROUND 2, R2.4 — "CHANGES IN THIS REPOSITORY" ADOPTS THE INDEX'S
+				OWN TWO SECTIONS, COMPACT. Supersedes the fix-pass's single
+				`Card` wrapping ten `ChangeRow`s (byte for byte the defect the
+				round's own intro names: six repeats of "held in dev on
+				hello-api-app"). `splitChangeSections`/`groupByDay` are LA's own
+				exports (`changes.ts`) — this section reads the SAME functions
+				the index runs, never a second fold of the identical feed.
+
+				Landmark order (R2.4's own pin): `<repo>` → `Not everywhere yet`
+				→ `Live everywhere` → `What each service runs` → … — this whole
+				block sits exactly where the superseded Card did, so nothing
+				below it moves.
 			-->
-			<div class="mb-5">
-				<Card icon={CodePullRequestOutline} title="Changes in this repository" padded={false}>
-					{#snippet rollup()}
-						<a
-							href={`/changes?repo=${encodeURIComponent(`${repoChangesOwnerRepo?.owner}/${repoChangesOwnerRepo?.repo}`.toLowerCase())}`}
-							class="nav-link shrink-0"
-							aria-label="All changes in {repoTitle(repoPageLedger.repoLabel)}"
-						>
-							All changes in {repoTitle(repoPageLedger.repoLabel)}
-							<ChevronRightOutline class="h-3.5 w-3.5" />
-						</a>
-					{/snippet}
-					<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
-						{#each repoChangesShown as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
-							<!-- `dense` — a bridging preview of up to 10 changes should
-							     read like Home's own card, not re-run the change page's
-							     full per-column-header grid ten times over. -->
-							<ChangeRow {row} dense now={coarse} />
+			{@const repoSections = splitChangeSections(repoChangeRows)}
+			{@const repoNotEverywhereShown = repoSections.notEverywhere.slice(0, 4)}
+			{@const repoLiveShown = repoSections.liveEverywhere.slice(0, 8)}
+			{@const repoLiveDayGroups = groupByDay(repoLiveShown, (r) => r.mergedAt, coarse)}
+			{@const repoAllChangesHref = `/changes?repo=${encodeURIComponent(`${repoChangesOwnerRepo?.owner}/${repoChangesOwnerRepo?.repo}`.toLowerCase())}`}
+			{@const repoSomeStuck = repoSections.notEverywhere.some((r) => r.verdictTone === 'held')}
+
+			{#if repoSections.notEverywhere.length > 0}
+				<section class="mb-8">
+					<div class="mb-3 flex items-center gap-2">
+						<span
+							aria-hidden="true"
+							class="h-[5px] w-[5px] rounded {repoSomeStuck ? 'bg-amber-500' : 'bg-gray-400'}"
+						></span>
+						<h2 class="text-base font-semibold text-gray-900 dark:text-white">Not everywhere yet</h2>
+						<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoSections.notEverywhere.length}</span>
+						<span class="text-xs text-gray-500 dark:text-gray-400">in this repository</span>
+					</div>
+					<div class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]">
+						{#each repoNotEverywhereShown as row (row.href)}
+							<ChangeCard {row} now={coarse} />
 						{/each}
-					</ul>
-				</Card>
-			</div>
+					</div>
+					<a href={repoAllChangesHref} class="nav-link mt-3 inline-flex items-center gap-1">
+						All {repoChangeRows.length} changes in {repoTitle(repoPageLedger.repoLabel)}
+						<ChevronRightOutline class="h-3.5 w-3.5" />
+					</a>
+				</section>
+			{/if}
+
+			{#if repoSections.liveEverywhere.length > 0}
+				<section class="mb-8">
+					<div class="mb-3 flex items-center gap-2">
+						<span aria-hidden="true" class="h-[5px] w-[5px] rounded-full bg-green-500"></span>
+						<h2 class="text-base font-semibold text-gray-900 dark:text-white">Live everywhere</h2>
+						<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoSections.liveEverywhere.length}</span>
+					</div>
+					{#each repoLiveDayGroups as group (group.label)}
+						<div class="mt-3 mb-1 flex items-center gap-2 first:mt-0">
+							{#if group.label === 'Today'}
+								<ClockSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+							{:else}
+								<CalendarMonthSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+							{/if}
+							<span class="t-label text-gray-500 dark:text-gray-400">{group.label}</span>
+							<span
+								aria-hidden="true"
+								class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"
+							></span>
+							<span class="t-code-sm text-gray-500 dark:text-gray-400">{group.rows.length}</span>
+						</div>
+						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each group.rows as row (row.href)}
+								<ChangeLine {row} now={coarse} />
+							{/each}
+						</ul>
+					{/each}
+				</section>
+			{/if}
 		{/if}
 
 		<RevisionSearch bind:value={repoSearchQuery} />

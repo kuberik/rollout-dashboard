@@ -848,7 +848,10 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 			gateContract: null,
 			gateRequiredVersion: null,
 			providerHasNoBuild: false,
-			containmentKnown: true
+			containmentKnown: true,
+			historyMatches: [],
+			historyAtLimit: false,
+			versionHistoryLimit: 10
 		};
 		const service: PrService = {
 			appName: 'widget-app',

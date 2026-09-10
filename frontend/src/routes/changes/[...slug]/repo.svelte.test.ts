@@ -171,11 +171,16 @@ describe('/changes/[...slug] — repository page resolution', () => {
 		stubFetch(rollouts, environments);
 		const revision = `a111111${'0'.repeat(40)}`.slice(0, 40);
 		await renderAt(`${REPO_PATH}/${revision}`);
-		// A `PipelineCard` per matching service is the change page's own
-		// landmark (route RESOLUTION is what this test owns — the verdict's
-		// exact wording is `pr-pipeline.test.ts`'s job).
+		// A `PipelineCard` per matching service WITH A BUILD is the change
+		// page's own landmark (route RESOLUTION is what this test owns — the
+		// verdict's exact wording is `pr-pipeline.test.ts`'s job). `web`'s own
+		// head IS this exact sha, so it gets a card; `api` has never built it
+		// (⭐ ROUND 2, R2.3 — "a service with no build of this change is a NAME
+		// IN A SENTENCE", not a card any more) and is named in the grid
+		// card's own "Not built yet for …" line instead of a link here.
 		await waitFor(() => expect(screen.getByRole('link', { name: 'web' })).toHaveAttribute('href', '/apps/web'));
-		expect(screen.getByRole('link', { name: 'api' })).toHaveAttribute('href', '/apps/api');
+		expect(screen.queryByRole('link', { name: 'api' })).toBeNull();
+		expect(screen.getByText(/Not built yet for api/)).toBeInTheDocument();
 
 		// The repository-page-only landmark is absent; this is the change page.
 		expect(screen.queryByText('What each service runs')).toBeNull();
@@ -220,5 +225,92 @@ describe('/changes/[...slug] — repository page resolution', () => {
 			)
 		).toBeInTheDocument();
 		expect(screen.queryByText(/cannot hold the revision/)).toBeNull();
+	});
+
+	// ══ ROUND 2, R2.4 — "CHANGES IN THIS REPOSITORY" ADOPTS THE INDEX'S OWN
+	// TWO SECTIONS ═══════════════════════════════════════════════════════════
+
+	function stubFetchWithChanges(rollouts: Rollout[], environments: Environment[], changes: unknown[]) {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				if (url.startsWith('/api/github/changes')) {
+					return {
+						ok: true,
+						json: async () => ({ user: 'acme', repos: [REPO_PATH], since: new Date(0).toISOString(), changes })
+					};
+				}
+				if (url === '/api/auth/github/status') {
+					return { ok: true, json: async () => ({ configured: true, connected: true }) };
+				}
+				return {
+					ok: true,
+					json: async () => ({ rollouts: { items: rollouts }, environments: { items: environments } })
+				};
+			})
+		);
+	}
+
+	test('GitHub connected: the two sections render, capped and day-grouped, above "What each service runs"', async () => {
+		const liveRel = rel('a1', 10);
+		const liveSha = liveRel.revision;
+		const web = rollout('web', 'team', [liveRel], [{ r: liveRel, minutesAgo: 10 }]);
+		const environments = [environment('web', 'team', 'prod')];
+
+		stubFetchWithChanges(
+			[web],
+			environments,
+			[
+				{
+					owner: 'acme',
+					repo: 'kuberik-testing',
+					kind: 'pr',
+					number: 4,
+					title: 'fix(frontend): retry on 502',
+					htmlUrl: 'https://github.com/acme/kuberik-testing/pull/4',
+					author: 'lskugor',
+					mergedAt: new Date(NOW - 5 * 3600_000).toISOString(),
+					mergeCommitSha: 'c0ffee1'.padEnd(40, '0'),
+					base: 'main',
+					containedIn: ['c0ffee1'.padEnd(40, '0')],
+					// ⚠️ `false`, DELIBERATELY — `true` (a truncated since-list) lets
+					// `pr-pipeline.ts`'s own `containment()` fall back to "a release
+					// CREATED after this PR's merge counts as containing it", which
+					// `web`'s single fixture release (created only 10 minutes ago)
+					// satisfied against a PR "merged" 5 hours ago — this change read
+					// as already live everywhere instead of not-built. `false` means
+					// the list is COMPLETE, so absence from it is authoritative: this
+					// service has not built the change, full stop.
+					containedInAll: false
+				},
+				{
+					owner: 'acme',
+					repo: 'kuberik-testing',
+					kind: 'commit',
+					title: 'Everywhere already',
+					htmlUrl: 'https://github.com/acme/kuberik-testing/commit/' + liveSha,
+					author: 'lskugor',
+					mergedAt: new Date(NOW - 2 * 3600_000).toISOString(),
+					mergeCommitSha: liveSha,
+					base: 'main',
+					containedIn: [liveSha],
+					containedInAll: true
+				}
+			]
+		);
+		await renderAt(REPO_PATH);
+
+		await waitFor(() => expect(screen.getByText('Not everywhere yet')).toBeInTheDocument());
+		expect(screen.getByText('Live everywhere')).toBeInTheDocument();
+		// The unmatched PR (no service on this cluster built it) is the
+		// "not everywhere yet" one; the change whose sha IS the running
+		// revision is "live everywhere".
+		expect(screen.getByText(/retry on 502/)).toBeInTheDocument();
+		expect(screen.getByText('Everywhere already')).toBeInTheDocument();
+		// Both sections precede the ops content, landmark order unchanged
+		// below them (R2.4's own pin).
+		const headings = headingTexts();
+		expect(headings.indexOf('Not everywhere yet')).toBeLessThan(headings.indexOf('What each service runs'));
+		expect(headings.indexOf('Live everywhere')).toBeLessThan(headings.indexOf('What each service runs'));
 	});
 });

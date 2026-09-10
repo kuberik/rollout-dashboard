@@ -53,6 +53,8 @@ import {
 	envFamilyWord,
 	type AppCell
 } from '$lib/version-utils';
+import { deployActs, historyAtLimit, type DeployAct } from '$lib/history-marks';
+import { rolloutPath } from '$lib/source-dashboard';
 import type { EnvironmentTheme } from '$lib/environment-theme';
 import { gateAllows } from './promotion';
 import { buildGateContext, classifyGate, type GateContext } from './blocking-story';
@@ -214,6 +216,44 @@ export type PrCell = {
 	 * staging".
 	 */
 	containmentKnown: boolean;
+	/**
+	 * ⭐ ROUND 2, R2.3 — `ChangeHistoryCard`'s OWN DATA. Every entry in THIS
+	 * rollout's `status.history` that carries the change (`set.has(revision)`
+	 * — the SAME membership test rules 1/2 above already run; no second
+	 * containment pass) — "ran here before" and "rolled back" survive as
+	 * real facts even on a cell whose CURRENT state is `not-built` (the
+	 * change shipped here once and was later superseded). Newest first,
+	 * same order as `status.history` itself. `act` is `history-marks.ts`'s
+	 * own `deployActs(rollout)[i]`, index-aligned — the identical
+	 * rollback/forward/redeploy classification the rollout detail History
+	 * tab already computes, not a second one.
+	 *
+	 * ⚠️ OPTIONAL, DELIBERATELY — three fixture files this lane does not own
+	 * (`changes.test.ts`, `landing-grid.test.ts`, both LA's) construct
+	 * `PrCell` literals directly; making these three fields REQUIRED would
+	 * force an edit to files outside this lane's ownership for a field
+	 * those tests never read. `buildCell` (the only real producer) always
+	 * sets all three; a hand-built fixture that omits them simply has none
+	 * to show, same as omitting any other optional field elsewhere in this
+	 * type.
+	 */
+	historyMatches?: PrHistoryMatch[];
+	/** `history-marks.ts`'s own `historyAtLimit` — this rollout's retained
+	 *  history may have evicted an earlier deploy of this change. */
+	historyAtLimit?: boolean;
+	/** `rollout.spec.versionHistoryLimit`, or the controller's own default —
+	 *  the number `ChangeHistoryCard`'s retention caveat names. */
+	versionHistoryLimit?: number;
+};
+
+/** One matched `status.history` entry — see `PrCell.historyMatches`. */
+export type PrHistoryMatch = {
+	revision: string | null;
+	displayVersion: string;
+	timestamp: string;
+	bakeStatus: string;
+	triggeredBy: { kind: 'User' | 'System'; name: string } | null;
+	act: DeployAct;
 };
 
 export type PrService = {
@@ -462,6 +502,28 @@ function buildCell(
 	const envRank = getEnvironmentRank(envName);
 	const usuallyMs = cellUsuallyMs(rollout);
 
+	// ⭐ ROUND 2, R2.3 — `historyMatches`, computed ONCE per cell (not per
+	// branch below): every `status.history` entry this SAME `set` (rules
+	// 1/2's own containment membership) says carries the change, newest
+	// first (the array's own order), paired with `history-marks.ts`'s own
+	// index-aligned `deployActs` so a match already knows whether it was a
+	// rollback/forward/redeploy without a second pass over the array.
+	const acts = deployActs(rollout);
+	const historyMatches: PrHistoryMatch[] = history.reduce<PrHistoryMatch[]>((out, h, i) => {
+		const rev = h.version?.revision;
+		if (rev && set.has(rev)) {
+			out.push({
+				revision: rev,
+				displayVersion: getDisplayVersion(h.version),
+				timestamp: h.timestamp,
+				bakeStatus: h.bakeStatus ?? 'None',
+				triggeredBy: h.triggeredBy ?? null,
+				act: acts[i] ?? null
+			});
+		}
+		return out;
+	}, []);
+
 	const cell = (
 		partial: Omit<
 			PrCell,
@@ -473,6 +535,9 @@ function buildCell(
 			| 'rolloutName'
 			| 'theme'
 			| 'containmentKnown'
+			| 'historyMatches'
+			| 'historyAtLimit'
+			| 'versionHistoryLimit'
 		>
 	): PrCell => ({
 		cluster,
@@ -483,6 +548,9 @@ function buildCell(
 		rolloutName: name,
 		theme,
 		containmentKnown,
+		historyMatches,
+		historyAtLimit: historyAtLimit(rollout),
+		versionHistoryLimit: rollout.spec?.versionHistoryLimit ?? 10,
 		...partial
 	});
 
@@ -1081,4 +1149,86 @@ export function buildPrPipeline(
 		rolloutsWithBuild,
 		rolloutsLive
 	};
+}
+
+// ── ROUND 2, R2.3 — `ChangeHistoryCard`'S OWN DATA ────────────────────────
+
+/**
+ * One `ChangeHistoryCard` row — a single `status.history` entry, ANY
+ * service/environment, that carries this change (`PrCell.historyMatches`,
+ * built off the SAME containment `set` rules 1/2 above already run).
+ */
+export type ChangeHistoryRow = {
+	key: string;
+	appName: string;
+	envName: string;
+	theme: EnvironmentTheme | null;
+	/** The rollout page this deploy happened on. */
+	href: string;
+	displayVersion: string;
+	shortRevision: string | null;
+	bakeStatus: string;
+	actorName: string | null;
+	actorKind: 'User' | 'System' | null;
+	timestamp: string;
+	/** `history-marks.ts`'s own classification — carries the `rolled back`/
+	 *  `forward`/`redeploy` word this card's rollback mark reads. */
+	act: DeployAct;
+};
+
+/**
+ * Flattens every service's every cell's `historyMatches` into one
+ * newest-first feed — the change page's own "everywhere this build ever
+ * ran" list, `ChangeHistoryCard`'s entire input. `localClusterName` is the
+ * same hub-local fallback every other `rolloutPath()` call site in this
+ * lane already applies to a cell's own empty `cluster`.
+ */
+export function buildChangeHistory(
+	services: readonly PrService[],
+	localClusterName: string
+): ChangeHistoryRow[] {
+	const rows: ChangeHistoryRow[] = [];
+	for (const service of services) {
+		for (const c of service.cells) {
+			for (const match of c.historyMatches ?? []) {
+				rows.push({
+					key: `${c.cluster}/${c.namespace}/${c.rolloutName}/${match.timestamp}/${match.revision ?? ''}`,
+					appName: service.appName,
+					envName: c.envName,
+					theme: c.theme,
+					href: rolloutPath(c.cluster || localClusterName, c.namespace, c.rolloutName),
+					displayVersion: match.displayVersion,
+					shortRevision: match.revision ? match.revision.slice(0, 7) : null,
+					bakeStatus: match.bakeStatus,
+					actorName: match.triggeredBy?.name ?? null,
+					actorKind: match.triggeredBy?.kind ?? null,
+					timestamp: match.timestamp,
+					act: match.act
+				});
+			}
+		}
+	}
+	rows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+	return rows;
+}
+
+/**
+ * The History tab's own retention caveat (`historyLimitNote`, the change
+ * page's now-dead `+page.svelte` helper of the identical name it
+ * supersedes) — restated here, word for word, rather than cross-imported:
+ * this lane owns `pr-pipeline.ts`, not the rollout detail route the
+ * original sentence lives in, and a second wording of the same caveat is
+ * exactly the sprawl the product's vocabulary passes exist to cut. `null`
+ * unless AT LEAST ONE matched cell's own rollout is at its retention limit.
+ */
+export function changeHistoryRetentionNote(services: readonly PrService[]): string | null {
+	for (const service of services) {
+		for (const c of service.cells) {
+			if (c.historyAtLimit) {
+				const limit = c.versionHistoryLimit ?? 10;
+				return `History keeps the last ${limit} deploys per service; a build deployed earlier is not recorded.`;
+			}
+		}
+	}
+	return null;
 }

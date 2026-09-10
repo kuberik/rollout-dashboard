@@ -12,8 +12,10 @@
 	 * the disclosure's fetch-once contract.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
-	import { ChevronDownOutline } from 'flowbite-svelte-icons';
+	import { ChevronDownOutline, ClockOutline, ClockSolid, MinusOutline } from 'flowbite-svelte-icons';
 	import Chip from './Chip.svelte';
+	import BakeStatusIcon from './BakeStatusIcon.svelte';
+	import { getStatusCircleClass } from '$lib/bake-status';
 	import FactList, { type Fact } from './FactList.svelte';
 	import SkeletonBar from './skeleton/SkeletonBar.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
@@ -38,7 +40,9 @@
 		environments,
 		rolloutDependencies,
 		now = new Date(),
-		isFrontier = false
+		isFrontier = false,
+		connectorAbove = false,
+		connectorBelow = false
 	}: {
 		cell: PrCell;
 		appName: string;
@@ -53,16 +57,109 @@
 		 *  "usually N min once it starts" estimate item 1 asks for. Every
 		 *  other row stays exactly as lazy as it already was. */
 		isFrontier?: boolean;
+		/**
+		 * ⭐ ROUND 2, R2.3 — `PipelineCard`'s own stage/production split.
+		 * `true` when a SIBLING stage row sits immediately above/below this
+		 * one in the promotion LINE (dev → staging); always `false` for a
+		 * production-set row and for the first/last stage row, so the
+		 * connector never implies an order between rows that do not have
+		 * one. Mirrors `DeploymentPipelineCard`'s own `navRow(node,
+		 * showLineAbove, showLineBelow)` — reused pattern, re-implemented
+		 * here because this is a per-cell list row, not that component's
+		 * two-pane rollout object.
+		 */
+		connectorAbove?: boolean;
+		connectorBelow?: boolean;
 	} = $props();
 
-	/** HELD names a build that exists somewhere but cannot land in THIS cell
-	 *  yet — the same three precedence-3/4 states `pr-pipeline.ts` groups
-	 *  together (a candidate revision resolved, something is keeping it out).
-	 *  ⛔ `promoting` is deliberately EXCLUDED (item 6, 2026-09-10 fix pass):
-	 *  nothing is holding that cell, so a HELD chip beside "promoting
-	 *  shortly" would be the exact contradiction the design doc's finding
-	 *  named. */
-	const HELD_STATES: ReadonlySet<PrState> = new Set(['gated', 'waiting-upstream', 'pinned']);
+	/**
+	 * ⭐ ROUND 2, R2.3 — THE 28px DISC. `getStatusCircleClass` + `BakeStatusIcon`
+	 * are the product's own list-row status atom (`Home`'s "In motion" card,
+	 * the rollout detail page, `ControlCenter` everywhere) — this table is
+	 * the one place a `PrState` (a change's OWN state relative to a cell,
+	 * `pr-pipeline.ts`'s own vocabulary) resolves to that atom's `bakeStatus`
+	 * input, so the disc never invents a THIRD status vocabulary next to
+	 * `PrState` and `BakeStatus`.
+	 *
+	 * `discState` reuses `getStatusCircleClass`/`BakeStatusIcon`'s own
+	 * `'rolled-back' | 'pinned' | 'held'` override — `pinned` keeps ITS glyph
+	 * (green `LockSolid`, unchanged hue: "pinned is UNCHANGED (green)",
+	 * `bake-status.ts`) while `gated`/`waiting-upstream` share the orange
+	 * `held` field + `PauseSolid`, matching every other held disc in the
+	 * product.
+	 *
+	 * ⛔ `queued`/`promoting` DO NOT ROUTE THROUGH `BakeStatusIcon` AT ALL —
+	 * caught live (`0afab6f35627`'s `hello-api-app`, STAGING/PROD rows).
+	 * `BakeStatusIcon`'s `'None'` case draws `PauseSolid` (its "never
+	 * deployed" glyph), which put the SAME pause mark this table already
+	 * reserves for `held` on a cell that is merely waiting its normal turn —
+	 * exactly the ambiguity R2.5(b) already fixed once for the landing
+	 * grid's own marks ("a normal promotion-order wait is not stuck; amber
+	 * is reserved for stuck"). `not-built` gets its own neutral kind too, for
+	 * the identical reason and reusing `LandingMark`'s own choice of glyph
+	 * (`MinusOutline`) rather than `BakeStatusIcon`'s pause.
+	 */
+	type DiscSpec =
+		| { kind: 'bake'; bakeStatus: string; discState: 'rolled-back' | 'pinned' | 'held' | null }
+		| { kind: 'waiting' }
+		| { kind: 'not-built' };
+	const CELL_DISC: Record<PrState, DiscSpec> = {
+		live: { kind: 'bake', bakeStatus: 'Succeeded', discState: null },
+		deploying: { kind: 'bake', bakeStatus: 'Deploying', discState: null },
+		baking: { kind: 'bake', bakeStatus: 'InProgress', discState: null },
+		retrying: { kind: 'bake', bakeStatus: 'InProgress', discState: null },
+		failed: { kind: 'bake', bakeStatus: 'Failed', discState: null },
+		cancelled: { kind: 'bake', bakeStatus: 'Cancelled', discState: null },
+		'rolled-back': { kind: 'bake', bakeStatus: 'Succeeded', discState: 'rolled-back' },
+		pinned: { kind: 'bake', bakeStatus: 'Succeeded', discState: 'pinned' },
+		gated: { kind: 'bake', bakeStatus: 'Succeeded', discState: 'held' },
+		'waiting-upstream': { kind: 'bake', bakeStatus: 'Succeeded', discState: 'held' },
+		queued: { kind: 'waiting' },
+		promoting: { kind: 'waiting' },
+		'not-built': { kind: 'not-built' }
+	};
+	const disc = $derived(CELL_DISC[cell.state]);
+
+	/**
+	 * ⭐ ROUND 2, R2.3 — THE STATE CHIP. `chip t-chip chip-wide shrink-0` +
+	 * a `pillClasses`-shaped lookup — the SAME geometry/pattern
+	 * `DeploymentPipelineCard`'s own `navRow` spends on its status pill,
+	 * reimplemented here rather than imported (`PipelineRow` is a per-cell
+	 * list row over a `PrState`, not that component's five-value
+	 * `NodeStatus` over a two-pane rollout object — see `PipelineCard`'s own
+	 * header comment). Source text stays LOWERCASE — `.t-chip` uppercases it
+	 * in CSS (`app.css`), the same convention every `Chip` label already
+	 * follows — so this table's words read as sentence fragments in tests
+	 * and as `LIVE`/`HELD`/`BAKING`/… on screen.
+	 *
+	 * `gated`/`waiting-upstream`/`pinned` all print `held` — R2.3's own
+	 * "the HELD chip is required, standing rule" — even though `pinned`'s
+	 * DISC (above) keeps its own distinct green lock: the CHIP names the
+	 * outcome ("this cell cannot take the build yet"), the disc names the
+	 * MECHANISM, and the two are allowed to disagree because they answer
+	 * different questions, same split `LandingMark`'s own `state`/`FIELD`
+	 * pair already draws for the identical three states.
+	 */
+	const STATE_CHIP: Record<PrState, { label: string; class: string }> = {
+		live: { label: 'live', class: 'border-gray-200 text-green-700 dark:border-gray-700 dark:text-green-400' },
+		deploying: { label: 'deploying', class: 'border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400' },
+		baking: { label: 'baking', class: 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400' },
+		retrying: { label: 'retrying', class: 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400' },
+		failed: { label: 'failed', class: 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400' },
+		cancelled: { label: 'cancelled', class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400' },
+		'rolled-back': { label: 'rolled back', class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400' },
+		// HELD — orange, the same ink `Chip role="held"`/`LandingMark`'s own
+		// `held` word already spend; the border stays the product's neutral
+		// hairline (`pillClasses`' own rule: "the border stays neutral and
+		// nothing fills — the alarm chip is the only fill in the product").
+		gated: { label: 'held', class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300' },
+		'waiting-upstream': { label: 'held', class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300' },
+		pinned: { label: 'held', class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300' },
+		queued: { label: 'queued', class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400' },
+		promoting: { label: 'promoting', class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400' },
+		'not-built': { label: 'not built', class: 'border-gray-200 text-gray-400 dark:border-gray-700 dark:text-gray-500' }
+	};
+	const stateChip = $derived(STATE_CHIP[cell.state]);
 
 	const sentence = $derived(cellStateSentence(cell, now));
 	const reason = $derived(cellReasonText(cell, now));
@@ -239,45 +336,98 @@
 	const frontierUsually = $derived(isFrontier ? frontierUsuallyLabelForCell(cell) : null);
 </script>
 
-<li class="pc-row tap-zone flex min-h-11 flex-wrap items-baseline gap-x-2 gap-y-1 px-4 py-2">
-	<a
-		{href}
-		class="tap-link hit-32 flex shrink-0 items-center gap-1.5"
-		aria-label={`Open the ${cell.envName.toUpperCase()} rollout for ${appName}`}
-	>
-		{#if multiCluster}
-			<span class="t-micro text-gray-400 dark:text-gray-500"
-				>{cell.cluster || localClusterName}/</span
-			>
-		{/if}
-		<Chip
-			role="env"
-			theme={cell.theme}
-			label={cell.envName}
-			wide
-			title={`${appName} in ${cell.envName.toUpperCase()}`}
-		/>
-	</a>
+<!--
+	⭐ ROUND 2, R2.3 — THE STAGE-ROW GRAMMAR. `DeploymentPipelineCard`'s own
+	`navRow`: a 28px status disc, a connector to the sibling stage row (never
+	drawn into/within the production SET — `PipelineCard`'s own
+	`connectorAbove`/`connectorBelow`), an env `Chip` (identity, untouched by
+	state), the state SENTENCE, a state CHIP (word, incl. HELD), and a time.
+	Everything the row already knew how to say (the muted reason, the
+	frontier's own "usually …"/"opens in …" clock, the "Why is it held?"
+	disclosure) survives as an indented SECOND line, `pl-10` — past the
+	disc(28px) + gap — so it reads as elaboration under the sentence, never
+	competing with the five-slot first line for width.
+-->
+<li class="relative">
+	{#if connectorAbove}
+		<div
+			aria-hidden="true"
+			class="absolute left-[29px] top-0 h-2 w-0.5 bg-gray-300 dark:bg-gray-600"
+		></div>
+	{/if}
+	{#if connectorBelow}
+		<div
+			aria-hidden="true"
+			class="absolute left-[29px] top-9 bottom-0 w-0.5 bg-gray-300 dark:bg-gray-600"
+		></div>
+	{/if}
 
-	<span class="t-body flex flex-wrap items-center gap-1.5 text-gray-900 dark:text-white">
-		{sentence}
-		{#if HELD_STATES.has(cell.state)}
-			<Chip
-				role="held"
-				label="held"
-				title={`${cell.envName.toUpperCase()} cannot take ${cell.releaseLabel || 'this build'} yet`}
-			/>
-		{:else if cell.state === 'rolled-back'}
-			<Chip role="unranked" label="rolled back" />
+	<div class="pc-row tap-zone flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2">
+		<!-- THE DISC — 28px, `getStatusCircleClass` + `BakeStatusIcon`, the
+		     product's own list-row status atom. `decorative`: the row's own
+		     SENTENCE already carries this cell's state in words, more
+		     precisely than `BakeStatusIcon`'s generic `bakeWord` sr-only
+		     label could ("held" vs. this row's own "held by Business Hours
+		     Only") — a second, vaguer announcement of the same fact is not
+		     an accessibility improvement. `queued`/`promoting`/`not-built`
+		     bypass that atom entirely — see `CELL_DISC`'s own doc comment. -->
+		{#if disc.kind === 'bake'}
+			<span
+				class="relative isolate flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+					disc.bakeStatus,
+					disc.discState
+				)}"
+			>
+				<BakeStatusIcon bakeStatus={disc.bakeStatus} state={disc.discState} size="small" decorative />
+			</span>
+		{:else if disc.kind === 'waiting'}
+			<span
+				class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700/60"
+			>
+				<ClockSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+			</span>
+		{:else}
+			<span
+				class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700/60"
+			>
+				<MinusOutline class="h-4 w-4 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+			</span>
 		{/if}
-	</span>
+
+		<a
+			{href}
+			class="tap-link hit-32 flex shrink-0 items-center gap-1.5"
+			aria-label={`Open the ${cell.envName.toUpperCase()} rollout for ${appName}`}
+		>
+			{#if multiCluster}
+				<span class="t-micro text-gray-400 dark:text-gray-500"
+					>{cell.cluster || localClusterName}/</span
+				>
+			{/if}
+			<Chip
+				role="env"
+				theme={cell.theme}
+				label={cell.envName}
+				wide
+				title={`${appName} in ${cell.envName.toUpperCase()}`}
+			/>
+		</a>
+
+		<span class="t-body min-w-32 flex-1 truncate text-gray-900 dark:text-white">{sentence}</span>
+
+		<span class="chip t-chip chip-wide shrink-0 {stateChip.class}">{stateChip.label}</span>
+
+		{#if since}
+			<time class="t-micro shrink-0 text-gray-400 dark:text-gray-500">{since}</time>
+		{/if}
+	</div>
 
 	{#if cell.releaseLabel}
-		<span class="t-micro shrink-0 font-mono text-gray-500 dark:text-gray-400"
-			>{cell.releaseLabel}{#if shortRevision}
+		<p class="pl-10 pr-4 pb-1.5 t-micro font-mono text-gray-500 dark:text-gray-400">
+			{cell.releaseLabel}{#if shortRevision}
 				<span class="text-gray-400 dark:text-gray-500">{shortRevision}</span>
-			{/if}</span
-		>
+			{/if}
+		</p>
 	{/if}
 
 	{#if cell.gatePending}
@@ -287,9 +437,11 @@
 		     what may really be a closed schedule) — a SkeletonBar stands in
 		     for it, sized to roughly the eventual clause's width, until the
 		     "why" disclosure below resolves it. -->
-		<SkeletonBar width="w-40" class="basis-full sm:basis-auto" />
+		<div class="pl-10 pr-4 pb-1.5">
+			<SkeletonBar width="w-40" />
+		</div>
 	{:else if reason}
-		<span class="t-micro basis-full text-gray-500 sm:basis-auto dark:text-gray-400">{reason}</span>
+		<p class="pl-10 pr-4 pb-1.5 t-micro text-gray-500 dark:text-gray-400">{reason}</p>
 	{/if}
 
 	{#if (cell.state === 'deploying' || cell.state === 'baking') && cell.usuallyMs != null}
@@ -299,11 +451,12 @@
 		     estimate of anything. `deploying`/`baking` are the two states
 		     with an actual timer running (`bakeLeftMs`); everywhere else
 		     this slot renders nothing rather than a dash. -->
-		<span
-			class="t-micro ml-auto shrink-0 text-gray-400 dark:text-gray-500"
+		<p
+			class="pl-10 pr-4 pb-1.5 t-micro text-gray-400 dark:text-gray-500"
 			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}`}
-			>{usuallyLabel(cell.usuallyMs)}</span
 		>
+			{usuallyLabel(cell.usuallyMs)}
+		</p>
 	{:else if frontierUsually}
 		<!-- ⭐ CHANGES-2026-09-10 §7, ITEM 1 — the FRONTIER cell's own estimate
 		     for a cell that has not started yet (held, not-built, promoting…):
@@ -315,12 +468,16 @@
 		     already guarded to the states where a build exists but has not
 		     landed here yet (`frontierUsuallyLabelForCell` — ruling 2,
 		     "NOT-BUILT HAS NO ETA"), so a `not-built`/`failed`/`retrying`
-		     frontier prints nothing here. -->
-		<span
-			class="t-micro ml-auto shrink-0 text-gray-400 dark:text-gray-500"
+		     frontier prints nothing here.
+		     ⭐ ROUND 2, R2.3 — "the frontier row and only the frontier row
+		     carries the 'usually …' / 'opens in …' second line", now with the
+		     spec's own `ClockOutline` glyph. -->
+		<p
+			class="pl-10 pr-4 pb-1.5 t-micro flex items-center gap-1 text-gray-400 dark:text-gray-500"
 			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}, once a deploy starts`}
-			>{frontierUsually}</span
 		>
+			<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />{frontierUsually}
+		</p>
 	{/if}
 
 	{#if frontierOpensLabel}
@@ -329,11 +486,9 @@
 		     disclosure below still prints the SAME fact in its absolute form
 		     (`When: opens 09:00 …`); this is the relative countdown a reader
 		     can act on without opening anything. -->
-		<span class="t-micro shrink-0 text-gray-500 dark:text-gray-400">{frontierOpensLabel}</span>
-	{/if}
-
-	{#if since}
-		<time class="t-micro shrink-0 text-gray-400 dark:text-gray-500">{since}</time>
+		<p class="pl-10 pr-4 pb-1.5 t-micro flex items-center gap-1 text-gray-500 dark:text-gray-400">
+			<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />{frontierOpensLabel}
+		</p>
 	{/if}
 
 	{#if cell.gateHint}
@@ -342,7 +497,7 @@
 		     (`min-h-11`), a chevron that flips on open, and a label that
 		     names what it is a control FOR ("Why is it held?"), not an
 		     interrogative fragment. -->
-		<details class="group basis-full sm:basis-auto" bind:open={whyOpen}>
+		<details class="group pl-10 pr-4 pb-1.5" bind:open={whyOpen}>
 			<summary
 				class="t-micro flex min-h-11 w-full cursor-pointer list-none items-center gap-1.5 rounded text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white [&::-webkit-details-marker]:hidden"
 			>

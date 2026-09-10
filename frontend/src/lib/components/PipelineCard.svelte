@@ -27,6 +27,7 @@
 	import PipelineRow from './PipelineRow.svelte';
 	import type { PrService, PrCell } from '$lib/view-models/pr-pipeline';
 	import { cellStateSentence, reasonTail } from '$lib/pr-cell-copy';
+	import { envFamilyWord } from '$lib/version-utils';
 	import type { Environment, RolloutDependency } from '../../types';
 
 	let {
@@ -112,6 +113,20 @@
 		const tail = tailAgrees && firstTail ? ` — ${firstTail}` : '';
 		return `${first} in ${envNames}${tail}`;
 	});
+
+	/**
+	 * ⭐ ROUND 2, R2.3 — THE STAGE LINE, THEN THE PRODUCTION SET.
+	 * `DESIGN-INTENT.md`'s own rule for a promotion order: dev → staging is a
+	 * LINE (one thing follows another, so a connector between them is a true
+	 * fact) and the PRD-family regions below it are a SET (three prod regions
+	 * do not promote to one another, so a connector between them would claim
+	 * an order that does not exist). `service.cells` already arrives sorted
+	 * `envRank` ascending (`pr-pipeline.ts`); this only SPLITS that one order
+	 * into the two groups `PipelineRow`'s own connector needs to tell apart —
+	 * it does not re-sort either half.
+	 */
+	const stageCells = $derived(service.cells.filter((c) => envFamilyWord(c.envName) !== 'PRD'));
+	const prodCells = $derived(service.cells.filter((c) => envFamilyWord(c.envName) === 'PRD'));
 </script>
 
 <Card
@@ -127,8 +142,12 @@
 		<!-- ⛔ FIX PASS ITEM 7 — ONE LINE, NOT A RUN OF IDENTICAL ROWS. -->
 		<p class="t-body px-4 py-2.5 text-gray-600 dark:text-gray-300">{foldedSentence}</p>
 	{:else}
-		<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-			{#each service.cells as cell (`${cell.cluster}/${cell.envName}`)}
+		<!-- R2.3: an `ol` (ordered promotion), not a `ul` — the stage rows
+		     genuinely have an order; the production rows below them are a
+		     SET, but the list element itself is one continuous document
+		     order, same as `DeploymentPipelineCard`'s own `navRow` list. -->
+		<ol class="divide-y divide-gray-100 dark:divide-gray-700/60">
+			{#each stageCells as cell, i (`${cell.cluster}/${cell.envName}`)}
 				<PipelineRow
 					{cell}
 					appName={service.appName}
@@ -138,8 +157,26 @@
 					{rolloutDependencies}
 					{now}
 					isFrontier={frontierKey === `${cell.cluster}/${cell.envName}`}
+					connectorAbove={i > 0}
+					connectorBelow={i < stageCells.length - 1}
 				/>
 			{/each}
-		</ul>
+			{#each prodCells as cell (`${cell.cluster}/${cell.envName}`)}
+				<!-- No connector into or within the production SET — see
+				     `prodCells`'s own doc comment. -->
+				<PipelineRow
+					{cell}
+					appName={service.appName}
+					{localClusterName}
+					{multiCluster}
+					{environments}
+					{rolloutDependencies}
+					{now}
+					isFrontier={frontierKey === `${cell.cluster}/${cell.envName}`}
+					connectorAbove={false}
+					connectorBelow={false}
+				/>
+			{/each}
+		</ol>
 	{/if}
 </Card>

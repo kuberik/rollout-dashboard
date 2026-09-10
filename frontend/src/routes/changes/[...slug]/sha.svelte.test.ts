@@ -299,11 +299,12 @@ describe('/changes/[...slug] — sha form', () => {
 			environments: [environment('web', 'team', 'prod'), environment('api', 'team', 'prod')]
 		});
 		renderAt(`${REPO_PATH}/${SHA}`);
-		// Fix pass item 7 — "N of M rollouts have a build of this change",
-		// off `pr-pipeline.ts`'s own rolloutsWithBuild/rolloutsTotal counts.
-		await waitFor(() =>
-			expect(screen.getByText(/2 of 2 rollouts have a build of this change/)).toBeInTheDocument()
-		);
+		// ⭐ ROUND 2, R2.3 — "the grid gets a card": the fix pass's own bare
+		// sentence ("N of M rollouts have a build of this change") is now the
+		// "Every rollout" card's `verdict` rollup — off the SAME
+		// `pr-pipeline.ts` rolloutsWithBuild/rolloutsTotal counts, just drawn
+		// in the card header instead of a `<p>` above the grid.
+		await waitFor(() => expect(screen.getByText('2 of 2 have this build')).toBeInTheDocument());
 	});
 
 	test('a build with no linked GitHub repository degrades honestly, no crash', async () => {

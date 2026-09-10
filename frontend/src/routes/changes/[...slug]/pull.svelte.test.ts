@@ -146,10 +146,11 @@ describe('/changes/[...slug] — pull form', () => {
 		await waitFor(() =>
 			expect(screen.getByRole('heading', { level: 2, name: 'Live everywhere' })).toBeInTheDocument()
 		);
-		// §2/item 3, updated by fix pass item 7 — "N of M rollouts have a
-		// build of this change", off `pr-pipeline.ts`'s own
-		// rolloutsWithBuild/rolloutsTotal/rolloutsLive counts.
-		expect(screen.getByText(/1 of 1 rollout have a build of this change/)).toBeInTheDocument();
+		// §2/item 3, updated by fix pass item 7, then again by ROUND 2 R2.3
+		// ("the grid gets a card") — off `pr-pipeline.ts`'s own
+		// rolloutsWithBuild/rolloutsTotal counts, now the "Every rollout"
+		// card's own `verdict` rollup rather than a bare sentence.
+		expect(screen.getByText('1 of 1 have this build')).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: 'widget-app' })).toHaveAttribute('href', '/apps/widget-app');
 	});
 

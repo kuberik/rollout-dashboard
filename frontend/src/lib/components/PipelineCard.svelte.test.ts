@@ -33,6 +33,9 @@ function mkCell(state: PrCell['state'], overrides: Partial<PrCell> = {}): PrCell
 		gateRequiredVersion: null,
 		providerHasNoBuild: false,
 		containmentKnown: true,
+		historyMatches: [],
+		historyAtLimit: false,
+		versionHistoryLimit: 10,
 		...overrides
 	};
 }
@@ -318,5 +321,67 @@ describe('PipelineCard', () => {
 		// The non-frontier `not-built` cell prints nothing, per item 1's own
 		// "everywhere else stays silent" — never a second estimate on this row.
 		expect(screen.queryByText(/usually 9 min/)).not.toBeInTheDocument();
+	});
+
+	// ══ ROUND 2, R2.3 — THE STAGE-ROW GRAMMAR ═══════════════════════════════
+
+	test('R2.3: every row draws a 28px status disc', () => {
+		const service = mkService([
+			mkCell('live', { envName: 'dev', since: '2026-09-10T10:00:00Z' }),
+			mkCell('gated', { envName: 'staging', envRank: 4, gateLabel: 'a-rule' })
+		]);
+		const { container } = renderCard(service);
+		const discs = container.querySelectorAll('.rounded-full.h-7.w-7, .h-7.w-7.rounded-full');
+		expect(discs.length).toBe(2);
+	});
+
+	test('R2.3: a connector joins consecutive STAGE rows only, never into or within the production SET', () => {
+		// ⚠️ Deliberately NOT four identical `live` cells — `PipelineCard`'s
+		// own item-7 fold collapses a service whose every cell prints the
+		// SAME `cellStateSentence` into one line with no rows at all, which
+		// would make this test pass for the wrong reason (no rows, so no
+		// connectors either). Four distinct states keep the per-row list
+		// rendering, which is what this test is actually about.
+		const service = mkService([
+			mkCell('live', { envName: 'dev', envRank: 1, since: '2026-09-10T10:00:00Z' }),
+			mkCell('deploying', { envName: 'staging', envRank: 4 }),
+			mkCell('live', { envName: 'prod-us', envRank: 7, since: '2026-09-10T09:00:00Z' }),
+			mkCell('baking', { envName: 'prod-eu', envRank: 7, since: '2026-09-10T11:56:00Z', bakeLeftMs: 4 * 60_000 })
+		]);
+		const { container } = renderCard(service);
+		// One connector segment sits BETWEEN the two stage rows (dev/staging);
+		// none reaches into the prod set and none joins the two prod regions.
+		const connectors = container.innerHTML.match(/left-\[29px\]/g) ?? [];
+		expect(connectors.length).toBe(2); // dev's "below" stub + staging's "above" stub
+	});
+
+	test('R2.3: a queued/promoting row draws a neutral clock disc, never the held pause icon', () => {
+		const service = mkService([
+			mkCell('live', { envName: 'dev', envRank: 1, since: '2026-09-10T10:00:00Z' }),
+			mkCell('queued', { envName: 'staging', envRank: 4, gateSubject: 'dev' }),
+			mkCell('promoting', { envName: 'prod', envRank: 7 })
+		]);
+		const { container } = renderCard(service);
+		// Caught live on `0afab6f35627`'s `hello-api-app`: the queued/promoting
+		// discs used to route through `BakeStatusIcon`'s `'None'` case, which
+		// draws the SAME `PauseSolid` glyph this table reserves for `held` —
+		// the exact "amber reserved for stuck" ambiguity R2.5(b) already
+		// fixed once for the landing grid. Neither row may render it here.
+		const pauseIcons = container.querySelectorAll('svg path[d*="M8 5a2 2 0 0 0-2 2v10"]');
+		expect(pauseIcons.length).toBe(0);
+		expect(screen.getByText('queued', { selector: '.chip' })).toBeInTheDocument();
+		expect(screen.getByText('promoting', { selector: '.chip' })).toBeInTheDocument();
+	});
+
+	test('R2.3: the state chip prints HELD for gated/waiting-upstream/pinned, and the plain state word otherwise', () => {
+		const service = mkService([
+			mkCell('gated', { envName: 'dev', envRank: 1, gateLabel: 'a-rule' }),
+			mkCell('live', { envName: 'staging', envRank: 4, since: '2026-09-10T10:00:00Z' }),
+			mkCell('failed', { envName: 'prod', envRank: 7 })
+		]);
+		renderCard(service);
+		expect(screen.getAllByText('held', { selector: '.chip' })).toHaveLength(1);
+		expect(screen.getByText('live', { selector: '.chip' })).toBeInTheDocument();
+		expect(screen.getByText('failed', { selector: '.chip' })).toBeInTheDocument();
 	});
 });
