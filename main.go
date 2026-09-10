@@ -254,9 +254,21 @@ func setupRouter() *gin.Engine {
 		// GET /api/github/pulls/:owner/:repo/:number — see
 		// handleGitHubPullRequest (main_github_pulls.go) for the full
 		// contract: merge state + the set of commit shas on the base branch
-		// since merge, scoped to repos this cluster's visible rollouts
-		// actually deploy.
+		// since merge, plus checks (check-runs summary) scoped to repos this
+		// cluster's visible rollouts actually deploy.
 		api.GET("/github/pulls/:owner/:repo/:number", handleGitHubPullRequest)
+
+		// GET /api/github/pulls/mine?days=30 — see handleGitHubPullsMine
+		// (main_github_pulls_mine.go): every PR the viewing user authored
+		// across this cluster's visible source repos, via one Search API
+		// call (batched past 20 repos).
+		api.GET("/github/pulls/mine", handleGitHubPullsMine)
+
+		// GET /api/github/repos/:owner/:repo/commits/:sha/pulls — see
+		// handleGitHubCommitPulls (main_github_commit_pulls.go): the PRs
+		// that landed a given commit, for the revisions/build page to show a
+		// PR title behind a sha.
+		api.GET("/github/repos/:owner/:repo/commits/:sha/pulls", handleGitHubCommitPulls)
 
 		api.GET("/rollouts", func(c *gin.Context) {
 			k8sClient, ok := getK8sReadClient(c)

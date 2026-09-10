@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -196,6 +197,28 @@ func handleGitHubPullRequest(c *gin.Context) {
 		containedInAll = cutAt300
 	}
 
+	// checks: one call to repos/{o}/{r}/commits/{sha}/check-runs on the merge
+	// sha (merged PRs — that's the commit that actually bakes) or the head
+	// sha otherwise (open/closed-unmerged — the PR's own latest commit). A
+	// failure to fetch check-runs is not fatal to the rest of this response
+	// — "none" is a safe, honest answer when GitHub can't tell us, logged but
+	// never turned into a 502 for facts the caller already has.
+	checkSHA := ""
+	if mergeCommitSha != nil && *mergeCommitSha != "" {
+		checkSHA = *mergeCommitSha
+	} else if headSha != nil && *headSha != "" {
+		checkSHA = *headSha
+	}
+	checks := gin.H{"state": "none", "total": 0, "failed": 0, "url": nil}
+	if checkSHA != "" {
+		runs, _, cerr := ghClient.Checks.ListCheckRunsForRef(context.Background(), owner, repo, checkSHA, nil)
+		if cerr != nil {
+			log.Printf("Error fetching check-runs for %s/%s@%s: %v", owner, repo, checkSHA, cerr)
+		} else {
+			checks = summarizeCheckRuns(runs.CheckRuns, owner, repo, checkSHA)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"number":         pr.GetNumber(),
 		"title":          pr.GetTitle(),
@@ -207,6 +230,7 @@ func handleGitHubPullRequest(c *gin.Context) {
 		"base":           base,
 		"containedIn":    containedIn,
 		"containedInAll": containedInAll,
+		"checks":         checks,
 		// Open-PR facts (item 8): "is my PR in yet" has no build-pipeline
 		// answer at all while the PR is still open, so the page prints these
 		// instead — created_at/head.sha/changed_files, straight off the same
@@ -337,4 +361,44 @@ func visibleGitHubSources(c *gin.Context, k8sClient *kubernetes.Client) (map[str
 		}
 	}
 	return sources, nil
+}
+
+// summarizeCheckRuns reduces a commit's check-runs to the one-state answer
+// the PR page prints: "none" when there are no check-runs at all (the repo
+// doesn't use them, or the sha hasn't been checked), "pending" when any run
+// hasn't completed yet (that outranks a partial failure — the final verdict
+// isn't in), "failure" when every run has completed and at least one did not
+// succeed, else "success". `url` is a synthesized deep link to GitHub's own
+// commit-checks tab — the API has no single "see all checks" URL on the
+// list response, only a per-run HTMLURL.
+func summarizeCheckRuns(runs []*github.CheckRun, owner, repo, sha string) gin.H {
+	if len(runs) == 0 {
+		return gin.H{"state": "none", "total": 0, "failed": 0, "url": nil}
+	}
+	total := len(runs)
+	failed := 0
+	pending := false
+	for _, r := range runs {
+		if r.GetStatus() != "completed" {
+			pending = true
+			continue
+		}
+		switch r.GetConclusion() {
+		case "failure", "timed_out", "cancelled", "action_required", "startup_failure":
+			failed++
+		}
+	}
+	state := "success"
+	switch {
+	case pending:
+		state = "pending"
+	case failed > 0:
+		state = "failure"
+	}
+	return gin.H{
+		"state":  state,
+		"total":  total,
+		"failed": failed,
+		"url":    fmt.Sprintf("https://github.com/%s/%s/commit/%s/checks", owner, repo, sha),
+	}
 }

@@ -115,11 +115,17 @@ func TestGitHubPullRequest_Open(t *testing.T) {
 	})
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/repos/octo/repo/pulls/42" {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/repos/octo/repo/pulls/42":
+			fmt.Fprint(w, `{"number":42,"title":"Add feature","html_url":"https://github.com/octo/repo/pull/42","state":"open","user":{"login":"alice"},"created_at":"2026-09-07T00:00:00Z","head":{"sha":"abc1234def"},"changed_files":4}`)
+		case "/repos/octo/repo/commits/abc1234def/check-runs":
+			// Open PR, no merge sha yet: checks are asked on the head sha.
+			// No check-runs at all on this repo -> state "none".
+			fmt.Fprint(w, `{"total_count":0,"check_runs":[]}`)
+		default:
 			t.Fatalf("unexpected path %s", req.URL.Path)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"number":42,"title":"Add feature","html_url":"https://github.com/octo/repo/pull/42","state":"open","user":{"login":"alice"},"created_at":"2026-09-07T00:00:00Z","head":{"sha":"abc1234def"},"changed_files":4}`)
 	}))
 	defer ts.Close()
 	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
@@ -158,6 +164,19 @@ func TestGitHubPullRequest_Open(t *testing.T) {
 	}
 	if body["changedFiles"] != float64(4) {
 		t.Fatalf("changedFiles = %v, want 4", body["changedFiles"])
+	}
+	checks, ok := body["checks"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("checks = %v, want an object", body["checks"])
+	}
+	if checks["state"] != "none" {
+		t.Fatalf("checks.state = %v, want none (no check-runs on this repo)", checks["state"])
+	}
+	if checks["total"] != float64(0) || checks["failed"] != float64(0) {
+		t.Fatalf("checks = %v, want total=0 failed=0", checks)
+	}
+	if checks["url"] != nil {
+		t.Fatalf("checks.url = %v, want null (matches frontend's PrChecks.url: string | null)", checks["url"])
 	}
 }
 
@@ -208,6 +227,13 @@ func TestGitHubPullRequest_MergedContainsCommits(t *testing.T) {
 				t.Fatalf("since query missing")
 			}
 			fmt.Fprint(w, `[{"sha":"deadbeef01"},{"sha":"cafebabe02"}]`)
+		case req.URL.Path == "/repos/octo/repo/commits/deadbeef01/check-runs":
+			// Merged PR: checks are asked on the merge sha. One passed, one
+			// failed -> overall "failure".
+			fmt.Fprint(w, `{"total_count":2,"check_runs":[
+				{"status":"completed","conclusion":"success"},
+				{"status":"completed","conclusion":"failure"}
+			]}`)
 		default:
 			t.Fatalf("unexpected path %s", req.URL.Path)
 		}
@@ -238,6 +264,64 @@ func TestGitHubPullRequest_MergedContainsCommits(t *testing.T) {
 	}
 	if body["containedInAll"] != false {
 		t.Fatalf("containedInAll = %v, want false", body["containedInAll"])
+	}
+	checks, ok := body["checks"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("checks = %v, want an object", body["checks"])
+	}
+	if checks["state"] != "failure" {
+		t.Fatalf("checks.state = %v, want failure (one of two runs failed)", checks["state"])
+	}
+	if checks["total"] != float64(2) || checks["failed"] != float64(1) {
+		t.Fatalf("checks = %v, want total=2 failed=1", checks)
+	}
+	if checks["url"] != "https://github.com/octo/repo/commit/deadbeef01/checks" {
+		t.Fatalf("checks.url = %v", checks["url"])
+	}
+}
+
+// TestGitHubPullRequest_ChecksPending covers the third checks.state: a run
+// that hasn't completed yet outranks a co-existing failure — the verdict
+// isn't in, so "pending" beats "failure" here.
+func TestGitHubPullRequest_ChecksPending(t *testing.T) {
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/repos/octo/repo/pulls/11":
+			fmt.Fprint(w, `{"number":11,"title":"WIP","html_url":"https://github.com/octo/repo/pull/11","state":"open","user":{"login":"dan"},"head":{"sha":"headsha11"}}`)
+		case "/repos/octo/repo/commits/headsha11/check-runs":
+			fmt.Fprint(w, `{"total_count":2,"check_runs":[
+				{"status":"completed","conclusion":"failure"},
+				{"status":"in_progress","conclusion":null}
+			]}`)
+		default:
+			t.Fatalf("unexpected path %s", req.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/pulls/octo/repo/11", "ghu_pending_token")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	checks, ok := body["checks"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("checks = %v, want an object", body["checks"])
+	}
+	if checks["state"] != "pending" {
+		t.Fatalf("checks.state = %v, want pending (a run is still in progress)", checks["state"])
+	}
+	if checks["total"] != float64(2) {
+		t.Fatalf("checks.total = %v, want 2", checks["total"])
 	}
 }
 
@@ -273,6 +357,8 @@ func TestGitHubPullRequest_PaginationCutAt300(t *testing.T) {
 			}
 			b, _ := json.Marshal(commits)
 			w.Write(b)
+		case "/repos/octo/repo/commits/sha-p1-000/check-runs":
+			fmt.Fprint(w, `{"total_count":0,"check_runs":[]}`)
 		default:
 			t.Fatalf("unexpected path %s", req.URL.Path)
 		}
