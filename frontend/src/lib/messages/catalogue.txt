@@ -385,6 +385,14 @@ lib/components/PartialDataNotice.svelte	code	this page
 lib/components/pin-copy.ts	code	Clear pin
 lib/components/pin-copy.ts	code	Clear the pin on … in …?
 lib/components/PipelineGlyph.svelte	title	Check window
+lib/components/PipelineRow.svelte	code	a check
+lib/components/PipelineRow.svelte	code	a deploy-window schedule
+lib/components/PipelineRow.svelte	code	a manual approval
+lib/components/PipelineRow.svelte	code	a promotion order
+lib/components/PipelineRow.svelte	code	a service dependency
+lib/components/PipelineRow.svelte	code	an unclassified rule
+lib/components/PipelineRow.svelte	text	Could not load this rule.
+lib/components/PipelineRow.svelte	text	This rule no longer applies.
 lib/components/PromotionNode.svelte	text	awaiting first deploy
 lib/components/PromotionPipeline.svelte	title	… — …{s.statusDetail ? `, $…` : ''}
 lib/components/PromotionPipeline.svelte	text	… / … running
@@ -530,6 +538,20 @@ lib/history-marks.ts	code	What … replaced is unknown — it is the oldest depl
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	aria-label	Switch rollout (⌘K)
 lib/palette-index.ts	code	Open PR #… · …/…
+lib/pr-cell-copy.ts	code	… · … of … min
+lib/pr-cell-copy.ts	code	a later build that also carries this PR has since shipped
+lib/pr-cell-copy.ts	code	deploying now
+lib/pr-cell-copy.ts	code	gated by …
+lib/pr-cell-copy.ts	code	live since …
+lib/pr-cell-copy.ts	code	not built here yet
+lib/pr-cell-copy.ts	code	not built yet
+lib/pr-cell-copy.ts	code	ready, not promoted yet
+lib/pr-cell-copy.ts	code	retrying the bake
+lib/pr-cell-copy.ts	code	rolled back to …
+lib/pr-cell-copy.ts	code	the bake failed
+lib/pr-cell-copy.ts	code	the bake was cancelled
+lib/pr-cell-copy.ts	code	usually … min
+lib/pr-cell-copy.ts	code	waiting on …
 lib/rollout-cards.ts	code	… newer build… waiting.
 lib/rollout-cards.ts	code	Held: a newer build exists, but no rule lets it through yet.
 lib/rollout-cards.ts	code	Not pinned, so it can move forward again.
@@ -754,6 +776,7 @@ lib/view-models/pr-pipeline.ts	code	not built here yet
 lib/view-models/pr-pipeline.ts	code	Not built yet
 lib/view-models/pr-pipeline.ts	code	Pinned away from it in …
 lib/view-models/pr-pipeline.ts	code	pinned to …
+lib/view-models/pr-pipeline.ts	code	Ready in …, not promoted yet
 lib/view-models/pr-pipeline.ts	code	retrying the bake
 lib/view-models/pr-pipeline.ts	code	rolled back
 lib/view-models/pr-pipeline.ts	code	Rolled back in …
@@ -1185,6 +1208,22 @@ routes/namespaces/[name]/+page.svelte	title	Recent activity
 routes/namespaces/[name]/+page.svelte	text	Show … more rollouts ›
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
 routes/namespaces/[name]/+page.svelte	text	View all activity
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	. Once it merges, this page fills in per service.
+routes/pr/[owner]/[repo]/[number]/+page.svelte	code	#… … · kuberik
+routes/pr/[owner]/[repo]/[number]/+page.svelte	code	#… · kuberik
+routes/pr/[owner]/[repo]/[number]/+page.svelte	code	closed by @…
+routes/pr/[owner]/[repo]/[number]/+page.svelte	title	Closed without merging
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Connect GitHub
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Connect GitHub to see this pull request
+routes/pr/[owner]/[repo]/[number]/+page.svelte	code	merged … by @…
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	No service on this cluster deploys … / … .
+routes/pr/[owner]/[repo]/[number]/+page.svelte	title	Not merged yet
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Not on this cluster
+routes/pr/[owner]/[repo]/[number]/+page.svelte	code	opened by @…
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This dashboard reads pull request details as you, through your own GitHub account — connect it to see # … on … / … .
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This pull request has not merged yet — it targets
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This pull request was closed without merging, so no build ever contained it.
+routes/pr/[owner]/[repo]/[number]/+page.svelte	text	View on GitHub
 routes/revisions/[...slug]/+page.svelte	text	— on an older release of it
 routes/revisions/[...slug]/+page.svelte	text	, stream down …
 routes/revisions/[...slug]/+page.svelte	text	… … … · live … · updated

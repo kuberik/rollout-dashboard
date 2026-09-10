@@ -556,4 +556,67 @@ describe('buildPrPipeline', () => {
 		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
 		expect(vm.verdict).toBe('Live everywhere');
 	});
+
+	// ⭐ COPY-DRIFT REGRESSION, F2 (2026-09-10). Live on
+	// `/pr/littlechimera/kuberik-testing/1`: the verdict plugged
+	// `worst.reason` (a full capitalised clause) after "on", producing
+	// "Waiting in prod on Waiting for staging to deploy it first" — a
+	// doubled verb. `buildVerdict` now uses `gateSubject`/`gateLabel`
+	// (the same NAME `PipelineRow`'s "waiting on <service/env>" row
+	// sentence reads), matching the design doc's own example shape
+	// ("waiting in prod on gate X").
+	it('verdict: waiting-upstream names the upstream SERVICE, not its full clause', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			],
+			gates: [{ name: 'dep-gate-1', passing: true, allowedVersions: [] }]
+		});
+		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const dependency = {
+			metadata: { name: 'widget-app-needs-api', namespace: 'widget-prod' },
+			spec: { rolloutRef: { name: 'widget-app' }, providerRef: { name: 'api-app' }, contract: 'api' },
+			status: { gateName: 'dep-gate-1', providedVersion: '1.0.0' }
+		} as any;
+		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [dependency] }, NOW);
+		expect(vm.verdict).toBe('Waiting in prod on api-app');
+	});
+
+	it('verdict: gated names the rule, never "on [object Object]" or a raw sentence', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			],
+			gates: [{ name: 'hello-world-manual-approval', passing: true, allowedVersions: [] }]
+		});
+		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+		expect(vm.services[0].cells[0].state).toBe('gated');
+		expect(vm.verdict).toBe('Waiting in prod on hello-world-manual-approval');
+	});
+
+	it('verdict: gated with nothing actually blocking reads as ready, not a broken "on" clause', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			]
+			// no gates at all — "built and ready, just not promoted"
+		});
+		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+		expect(vm.services[0].cells[0].gateLabel).toBeNull();
+		expect(vm.verdict).toBe('Ready in prod, not promoted yet');
+	});
 });

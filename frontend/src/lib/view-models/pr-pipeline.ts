@@ -44,6 +44,7 @@ import { getDisplayVersion } from '$lib/utils';
 import { parseGoDuration } from '$lib/utils';
 import { getEnvironmentRank } from '$lib/env-order';
 import { groupRolloutsByApp, repoKeyFromSource, repoLabel, type AppCell } from '$lib/version-utils';
+import type { EnvironmentTheme } from '$lib/environment-theme';
 import { gateAllows } from './promotion';
 import { buildGateContext, classifyGate, type GateContext } from './blocking-story';
 import { median, leadTime, type LeadEnv, type LeadDeploy } from './lead-time';
@@ -79,6 +80,18 @@ export type PrGateHint = {
 export type PrCell = {
 	cluster: string;
 	envName: string;
+	/**
+	 * ⭐ GAP FILLED BY F2 (`PipelineCard`/route lane): the row needs a
+	 * destination (`namespace`/`rolloutName`, alongside `cluster` above) and
+	 * an env-identity `Chip` (`theme`) — both were on F1's own `AppCell` all
+	 * along (`version-utils.ts`) and simply were not carried through
+	 * `buildCell`'s narrower return shape. Added here rather than threading
+	 * `AppCell` itself through the card, so the card's one input stays the
+	 * VM's own cell type.
+	 */
+	namespace: string;
+	rolloutName: string;
+	theme: EnvironmentTheme | null;
 	/** Promotion-order rank, `getEnvironmentRank` — dev → staging → prod. */
 	envRank: number;
 	state: PrState;
@@ -103,6 +116,20 @@ export type PrCell = {
 	superseded: boolean;
 	/** See `PrGateHint`. `null` when this cell's state names no gate. */
 	gateHint: PrGateHint | null;
+	/**
+	 * ⭐ GAP FILLED BY F2 — `ClassifiedGate.label` ("the gate in words an
+	 * operator can act on", `blocking-story.ts`'s own phrase), set ONLY on a
+	 * `gated` cell. This is the `<name>` in the card's fixed "gated by
+	 * <name>" sentence; `reason` (`pick.short`) stays the fuller muted-text
+	 * clause so the two never restate one fact twice.
+	 */
+	gateLabel: string | null;
+	/**
+	 * ⭐ GAP FILLED BY F2 — `ClassifiedGate.subject` (the upstream env or
+	 * service NAME, never a sentence), set ONLY on a `waiting-upstream`
+	 * cell. This is the `<service/env>` in "waiting on <service/env>".
+	 */
+	gateSubject: string | null;
 };
 
 export type PrService = {
@@ -228,17 +255,20 @@ function cellUsuallyMs(rollout: Rollout): number | null {
 	return median(spans);
 }
 
-const NOTHING: Pick<PrCell, 'since' | 'bakeLeftMs' | 'superseded' | 'gateHint'> = {
+const NOTHING: Pick<PrCell, 'since' | 'bakeLeftMs' | 'superseded' | 'gateHint' | 'gateLabel' | 'gateSubject'> = {
 	since: null,
 	bakeLeftMs: null,
 	superseded: false,
-	gateHint: null
+	gateHint: null,
+	gateLabel: null,
+	gateSubject: null
 };
 
 function buildCell(
 	rollout: Rollout,
 	envName: string,
 	cluster: string,
+	theme: EnvironmentTheme | null,
 	set: Set<string>,
 	meta: PrPipelineMeta,
 	gateCtx: GateContext,
@@ -253,11 +283,19 @@ function buildCell(
 	const envRank = getEnvironmentRank(envName);
 	const usuallyMs = cellUsuallyMs(rollout);
 
-	const cell = (partial: Omit<PrCell, 'cluster' | 'envName' | 'envRank' | 'usuallyMs'>): PrCell => ({
+	const cell = (
+		partial: Omit<
+			PrCell,
+			'cluster' | 'envName' | 'envRank' | 'usuallyMs' | 'namespace' | 'rolloutName' | 'theme'
+		>
+	): PrCell => ({
 		cluster,
 		envName,
 		envRank,
 		usuallyMs,
+		namespace: ns,
+		rolloutName: name,
+		theme,
 		...partial
 	});
 
@@ -411,7 +449,9 @@ function buildCell(
 				reason: pick.short,
 				releaseLabel,
 				revision: candidate.revision ?? null,
-				gateHint: { cluster, namespace: ns, rolloutName: name, gateName: pick.id }
+				gateHint: { cluster, namespace: ns, rolloutName: name, gateName: pick.id },
+				gateLabel: upstream ? null : pick.label,
+				gateSubject: upstream ? (pick.subject ?? null) : null
 			});
 		}
 
@@ -531,8 +571,24 @@ function buildVerdict(services: PrService[]): string {
 		case 'pinned':
 			return `Pinned away from it in ${worst.envName}`;
 		case 'waiting-upstream':
+			// ⭐ COPY FIX, F2 (2026-09-10) — `worst.reason` IS A FULL CAPITALISED
+			// CLAUSE (`pick.short`, e.g. "Waiting for staging to deploy it
+			// first"), and plugging it after "on" produced "Waiting in prod on
+			// Waiting for staging to deploy it first" — a doubled verb, live
+			// on `/pr/littlechimera/kuberik-testing/1`. The design doc's own
+			// example is "waiting in prod on gate X", X being a NAME — this
+			// is exactly what `gateSubject` is (the upstream env/service name
+			// `PipelineRow`'s "waiting on <service/env>" sentence already
+			// uses), so the verdict now names the SAME thing the row does.
+			return `Waiting in ${worst.envName} on ${worst.gateSubject ?? 'its upstream'}`;
 		case 'gated':
-			return `Waiting in ${worst.envName} on ${worst.reason}`;
+			// Same fix, `gateLabel` instead of `gateSubject` — except the one
+			// path with neither (`gateLabel` is null only when nothing is
+			// actually blocking, just not promoted yet), which gets its own
+			// honest phrase rather than "on null".
+			return worst.gateLabel
+				? `Waiting in ${worst.envName} on ${worst.gateLabel}`
+				: `Ready in ${worst.envName}, not promoted yet`;
 		case 'failed':
 			return `Failed in ${worst.envName}`;
 		case 'cancelled':
@@ -573,7 +629,7 @@ export function buildPrPipeline(
 		if (matching.length === 0) continue;
 
 		const cells = matching
-			.map((c) => buildCell(c.rollout, c.envName, c.sourceCluster, set, meta, gateCtx, now))
+			.map((c) => buildCell(c.rollout, c.envName, c.sourceCluster, c.theme, set, meta, gateCtx, now))
 			.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
 
 		const leadVm = leadTime(buildLeadEnvs(matching));
