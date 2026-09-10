@@ -42,7 +42,7 @@ a reason" is the operating assumption; distinguishing "CI chose not to release t
 tried and failed" is **not implemented** and is explicitly future work.
 
 A change where **zero** services have any exact-sha release anywhere on the cluster reads
-`noRelease: true` — one line, "no release for this commit yet," and no per-service cards at
+`noRelease: true` — one line, "no release for this commit," and no per-service cards at
 all. This is distinct from "no app on this cluster deploys this repository," which reads "not
 built here" (`verdictWord`) / "not deployed here" (the dense standing word) — a fact about the
 *repository*, not about *this* commit.
@@ -85,12 +85,12 @@ Words in play, none of which is ever "not built yet" any more:
 | everything affected is live | `live everywhere` |
 | a service is held on a rule or dependency | `<service> held in <env> on <subject>` |
 | a dependency that cannot resolve on its own | `… · will not move on its own — needs <provider> <contract> <range>` |
-| nothing anywhere carries this exact commit | `no release for this commit yet` (`noRelease: true`) |
+| nothing anywhere carries this exact commit | `no release for this commit` (`noRelease: true`) |
 | no app on this cluster deploys the repo at all | `not built here` |
 
 The dense "standing" word (`standingWords`/`standingWordsCompact` — Home's row, the compact
 card) is a *different*, ≤4-word vocabulary from the full verdict sentence above, and never says
-"built": `no release yet` for a `noRelease` change, `not deployed here` for the repo-mismatch
+"built": `no release` for a `noRelease` change, `not deployed here` for the repo-mismatch
 case, `held in <family>` / `failed in <family>` / `<verb> to <family>` for an in-flight one.
 
 An estimate ("usually N min once it starts") is only ever printed for a **normal order wait**

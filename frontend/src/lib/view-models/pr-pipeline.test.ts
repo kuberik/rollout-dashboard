@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildPrPipeline, buildChangeVerdict, type PrPipelineMeta, type PrCell, type PrService } from './pr-pipeline';
+import { frontierUsuallyLabelForCell } from '$lib/pr-cell-copy';
 import type { Rollout, Environment } from '$lib/../types';
 
 const SOURCE_CLUSTER = 'rollout-dashboard.kuberik.com/source-cluster';
@@ -541,6 +542,54 @@ describe('buildPrPipeline', () => {
 		expect(cell.state).not.toBe('waiting-upstream');
 		expect(cell.gateSubject).toBe('dev');
 		expect(cell.gateSubjectKind).toBe('environment');
+	});
+
+	/**
+	 * ⭐ COORDINATOR FIX (fourth operator walk, item A, 2026-09-10). The prod
+	 * row above (`queued, not waiting-upstream`) is the case where a
+	 * promotion gate is the ONLY thing blocking. A live fleet's prod row had
+	 * a SECOND gate in `blocking` at the same time — `hello-world-manual-
+	 * approval`, `allowedVersions: []`, no promotion/dependency join — and
+	 * the row still read `queued … usually 1 min once it starts`, because
+	 * the old code picked the first `clears === 'upstream'` gate it found
+	 * (the promotion one) and never looked at the rest of `blocking`. A
+	 * promotion-order wait must never outrank a gate that is actively
+	 * refusing the candidate for its own reason: `queued` is correct only
+	 * when the promotion gate is the ONE gate present.
+	 */
+	it('a promotion gate beside a manual-approval gate is gated, never queued, and carries no ETA', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			],
+			gates: [
+				{ name: 'ghd-p2fld', passing: true, allowedVersions: [] },
+				{ name: 'hello-world-manual-approval', passing: false, allowedVersions: [] }
+			]
+		});
+		const env = {
+			metadata: { name: 'widget-app-prod', namespace: 'widget-prod' },
+			spec: {
+				environment: 'prod',
+				rolloutRef: { name: 'widget-app' },
+				relationship: { environment: 'staging', type: 'After' }
+			},
+			status: { rolloutGateRef: { name: 'ghd-p2fld' } }
+		} as unknown as Environment;
+		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+		const cell = vm.services[0].cells[0];
+		expect(cell.state).toBe('gated');
+		expect(cell.state).not.toBe('queued');
+		expect(cell.state).not.toBe('waiting-upstream');
+		// `gated` never carries an ETA (`HAS_BUILD_STATES` in `pr-cell-copy.ts`
+		// is `queued`/`promoting` only) — the frontier verdict must not print
+		// "usually N min once it starts" over a hold that will not clear on a
+		// promotion tick.
+		expect(frontierUsuallyLabelForCell(cell)).toBeNull();
 	});
 
 	it('no release anywhere carries the PR: the service is unaffected, not a not-built cell (⭐ ROUND 3 ruling A)', () => {

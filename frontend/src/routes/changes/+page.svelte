@@ -72,7 +72,14 @@
 	import { tick } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { getScrollPosition, scrollMemoryKey } from '$lib/scroll-memory';
-	import { CodePullRequestOutline, GithubSolid, FolderOutline, HourglassOutline } from 'flowbite-svelte-icons';
+	import {
+		CodePullRequestOutline,
+		GithubSolid,
+		FolderOutline,
+		HourglassOutline,
+		CheckCircleSolid,
+		ChevronRightOutline
+	} from 'flowbite-svelte-icons';
 	import RevisionSearch from '$lib/components/RevisionSearch.svelte';
 	import ChangeLine from '$lib/components/ChangeLine.svelte';
 	import Card from '$lib/components/Card.svelte';
@@ -153,22 +160,50 @@
 	 * treats every non-`live` row as equally "stuck", so a commit nothing
 	 * ever built sorted right next to a genuinely held PR. `mineRows` is
 	 * split in two: `mineReleased` (has at least one affected service) is
-	 * the list that competes for the cap/pagination above, unchanged
-	 * otherwise; `mineNoRelease` is folded behind one muted footer line —
-	 * "N commits produced no release ›" — that expands IN PLACE to the same
-	 * compact rows, still newest-first among themselves (every one of them
-	 * shares the same "no release" standing, so time is the only ordering
-	 * left to make).
+	 * the list "Your changes" draws, unchanged otherwise; `mineNoRelease` is
+	 * folded behind one muted footer line — "N commits produced no release
+	 * ›" — that expands IN PLACE to the same compact rows, still
+	 * newest-first among themselves (every one of them shares the same "no
+	 * release" standing, so time is the only ordering left to make).
+	 *
+	 * ⭐ ROUND 3C, ITEM 2 (2026-09-10) — "Your changes" IS THE `Card` GRAMMAR,
+	 * AND ITS OWN LIVE ROWS FOLD. `mineReleased` is already stuck-first
+	 * (`orderHomeChangeRows`), so its `notEverywhere` rows (`deviations`) are
+	 * a contiguous PREFIX and its `live everywhere` rows (`liveRun`) are a
+	 * contiguous SUFFIX — one run, not several. Deviations always render (a
+	 * held/queued/partial row is the reason the card exists); the live run
+	 * folds behind one line, "K changes · all live everywhere ›", that
+	 * expands IN PLACE — the same disclosure `mineNoRelease` already uses
+	 * below it, so the card has one consistent "click to expand a settled
+	 * group" idiom rather than two different ones.
 	 */
-	const MINE_CAP = 20;
 	const mineRows = $derived(orderHomeChangeRows(filterChangeRows(allRows, currentUser, { mine: true, q: searchQuery })));
 	const mineReleased = $derived(mineRows.filter((r) => !r.noRelease));
 	const mineNoRelease = $derived(mineRows.filter((r) => r.noRelease));
-	let mineExpanded = $state(false);
-	const mineShown = $derived(mineExpanded ? mineReleased : mineReleased.slice(0, MINE_CAP));
-	const mineHiddenCount = $derived(mineReleased.length - mineShown.length);
-	const mineAlert = $derived(mineReleased.some((r) => r.verdictTone === 'held' || r.verdictTone === 'failed'));
+	const notEverywhereMine = $derived(mineReleased.filter((r) => r.notEverywhere).length);
+	const mineDeviations = $derived(mineReleased.filter((r) => r.notEverywhere));
+	const mineLiveRun = $derived(mineReleased.filter((r) => !r.notEverywhere));
+	// Deviations still page at the old cap — "always stay visible on top"
+	// means never hidden behind the live-run fold, not that an unusually
+	// large held/queued/partial set cannot itself paginate.
+	const MINE_CAP = 20;
+	let mineDeviationsExpanded = $state(false);
+	const mineDeviationsShown = $derived(
+		mineDeviationsExpanded ? mineDeviations : mineDeviations.slice(0, MINE_CAP)
+	);
+	const mineDeviationsHiddenCount = $derived(mineDeviations.length - mineDeviationsShown.length);
+	let mineLiveExpanded = $state(false);
 	let mineNoReleaseExpanded = $state(false);
+
+	/** The Card's own header rollup — byte-identical to Home's
+	 *  `YourChangesCard` (`See all changes` / `N of M not everywhere yet` /
+	 *  `M all live`), so the same population never reads two different
+	 *  sentences on two pages. */
+	function mineRollupText(): string {
+		if (mineReleased.length === 0) return 'See all changes';
+		if (notEverywhereMine > 0) return `${notEverywhereMine} of ${mineReleased.length} not everywhere yet`;
+		return `${mineReleased.length} all live`;
+	}
 
 	/**
 	 * ⭐ ROUND 3 RULING B, BLOCK 2 — "REPOSITORIES". One card per repo seen in
@@ -208,9 +243,20 @@
 	 */
 	const summary = $derived(summarizeChangeRows(filteredRows));
 
-	/** The rail's own summary — `changes.ts`'s `changesSummary`, read off the
-	 *  SAME filtered feed the head band and both blocks use. */
-	const railSummary = $derived(changesSummary(filteredRows));
+	/**
+	 * ⭐ COORDINATOR FIX (fourth operator walk, item 1 of the QA pass,
+	 * 2026-09-10). The rail card is titled "How YOUR changes are going"
+	 * (`HowChangesAreGoing.svelte`'s own hard-coded title) but used to read
+	 * `changesSummary(filteredRows)` — the WHOLE fleet's feed, the same
+	 * population the head band above summarizes. A live fleet's head band
+	 * read "46 changes · 4 not everywhere yet" while the rail beside it,
+	 * under a "your" header, read a completely different Merged/Typical/
+	 * Held/No-release breakdown for every change on the cluster, not the
+	 * viewer's own. Scoped to `mineReleased` — the SAME population "Your
+	 * changes" (block 1) draws — so the title and the numbers under it
+	 * finally agree with each other.
+	 */
+	const railSummary = $derived(changesSummary(mineReleased));
 
 	/* ── SKELETON SHAPE ── */
 	const SHAPE_KEY = 'changes';
@@ -329,16 +375,7 @@
 			<div class="rail-grid">
 				<div class="rail-main min-w-0">
 					<section class="mb-8" aria-hidden="true">
-						<div class="mb-3 flex items-center gap-2">
-							<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-200 dark:bg-gray-700"></span>
-							<span class="skel-block h-3.5 w-28"></span>
-							<span class="skel-block h-3 w-4"></span>
-						</div>
-						<ul class="space-y-2">
-							{#each Array(skelMine) as _, i (i)}
-								<li class="skel-block h-7 w-full rounded"></li>
-							{/each}
-						</ul>
+						<CardSkeleton titleWidth="w-28" rollupWidth="w-40" rows={skelMine} rowHeight={28} />
 					</section>
 					<section aria-hidden="true">
 						<div class="mb-3 flex items-center gap-2">
@@ -440,57 +477,90 @@
 			<div class="rail-wrap mt-5">
 				<div class="rail-grid">
 					<div class="rail-main min-w-0">
-						<!-- ── BLOCK 1 — "Your changes" ── -->
+						<!-- ── BLOCK 1 — "Your changes" — ROUND 3C ITEM 2: THE `Card`
+						     GRAMMAR. This is the PRIMARY list on the page and was the
+						     one titled section with no 47px header, no icon and no
+						     right-aligned rollup — every other titled panel in the
+						     product (Home's own `YourChangesCard`, the rail's `How
+						     your changes are going`, the `Repositories` cards below
+						     it on THIS page) is a `Card`; this was the odd one out. -->
 						<section class="mb-8">
-							<div class="mb-3 flex items-center gap-2">
-								<span
-									class="h-[5px] w-[5px] shrink-0 rounded {mineAlert ? 'bg-amber-500' : 'bg-gray-400'}"
-									aria-hidden="true"
-								></span>
-								<h2 class="text-base font-semibold text-gray-900 dark:text-white">Your changes</h2>
-								<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{mineReleased.length}</span>
-							</div>
-							{#if mineReleased.length === 0 && mineNoRelease.length === 0}
-								<p class="t-body text-gray-500 dark:text-gray-400">
-									Nothing of yours merged in the last 30 days.
-								</p>
-							{:else}
-								{#if mineReleased.length > 0}
-									<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-										{#each mineShown as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
-											<ChangeLine {row} showRepo now={$now} />
-										{/each}
-									</ul>
-									{#if !mineExpanded && mineHiddenCount > 0}
-										<button
-											type="button"
-											class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-											onclick={() => (mineExpanded = true)}>Show {mineHiddenCount} more ›</button
-										>
-									{/if}
-								{/if}
-								{#if mineNoRelease.length > 0}
-									<!-- ⭐ ROUND 3B — THE FOLD. A bare commit or PR with no
-									     release anywhere is not deployable and must not
-									     compete with the changes above; it is named once,
-									     as a count, and expands IN PLACE to the same compact
-									     rows on demand. -->
-									<button
-										type="button"
-										class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-										onclick={() => (mineNoReleaseExpanded = !mineNoReleaseExpanded)}
-									>
-										{mineNoRelease.length} commit{mineNoRelease.length === 1 ? '' : 's'} produced no release ›
-									</button>
-									{#if mineNoReleaseExpanded}
-										<ul class="mt-2 divide-y divide-gray-100 dark:divide-gray-700/60">
-											{#each mineNoRelease as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
+							<Card icon={CodePullRequestOutline} title="Your changes" verdict={mineRollupText()} padded={false}>
+								{#if mineReleased.length === 0 && mineNoRelease.length === 0}
+									<p class="t-body p-4 text-gray-500 dark:text-gray-400">
+										Nothing of yours merged in the last 30 days.
+									</p>
+								{:else}
+									<!-- Deviations (held/queued/partial/failed) always render —
+									     stuck-first ordering already puts them first; they are
+									     the reason this card exists and never fold. -->
+									{#if mineDeviations.length > 0}
+										<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+											{#each mineDeviationsShown as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
 												<ChangeLine {row} showRepo now={$now} />
 											{/each}
 										</ul>
+										{#if !mineDeviationsExpanded && mineDeviationsHiddenCount > 0}
+											<div class="px-4 py-2.5">
+												<button
+													type="button"
+													class="btn btn-secondary"
+													onclick={() => (mineDeviationsExpanded = true)}
+													>Show {mineDeviationsHiddenCount} more ›</button
+												>
+											</div>
+										{/if}
+									{/if}
+									{#if mineLiveRun.length > 0}
+										<!-- ⭐ ROUND 3C ITEM 2 — THE LIVE-RUN FOLD. Every row
+										     already `live everywhere` is one contiguous run at
+										     the tail of the stuck-first order — folded behind
+										     one line rather than repeating "live everywhere" N
+										     times, and it expands IN PLACE, the same idiom the
+										     no-release fold below already uses. -->
+										<div class="flex items-center gap-2 px-4 py-2.5">
+											<CheckCircleSolid class="tone-live h-4 w-4 shrink-0" aria-hidden="true" />
+											<button
+												type="button"
+												class="btn btn-secondary"
+												onclick={() => (mineLiveExpanded = !mineLiveExpanded)}
+											>
+												{mineLiveRun.length} change{mineLiveRun.length === 1 ? '' : 's'} · all live everywhere ›
+											</button>
+										</div>
+										{#if mineLiveExpanded}
+											<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+												{#each mineLiveRun as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
+													<ChangeLine {row} showRepo now={$now} />
+												{/each}
+											</ul>
+										{/if}
+									{/if}
+									{#if mineNoRelease.length > 0}
+										<!-- ⭐ ROUND 3B — THE FOLD. A bare commit or PR with no
+										     release anywhere is not deployable and must not
+										     compete with the changes above; it is named once,
+										     as a count, and expands IN PLACE to the same compact
+										     rows on demand. -->
+										<div class="px-4 py-2.5">
+											<button
+												type="button"
+												class="btn btn-secondary"
+												onclick={() => (mineNoReleaseExpanded = !mineNoReleaseExpanded)}
+											>
+												{mineNoRelease.length} commit{mineNoRelease.length === 1 ? '' : 's'} produced no release ›
+											</button>
+										</div>
+										{#if mineNoReleaseExpanded}
+											<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+												{#each mineNoRelease as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
+													<ChangeLine {row} showRepo now={$now} />
+												{/each}
+											</ul>
+										{/if}
 									{/if}
 								{/if}
-							{/if}
+							</Card>
 						</section>
 
 						<!-- ── BLOCK 2 — "Repositories" ── -->
@@ -507,7 +577,7 @@
 									class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
 								>
 									{#each repoList as repo (repo.repoKey)}
-										{@const recent = recentByRepoMap.get(repo.repoKey) ?? []}
+										{@const notEverywhere = recentByRepoMap.get(repo.repoKey) ?? []}
 										{@const prog = repoProgress(filteredRows, repo.repoKey)}
 										<Card
 											icon={FolderOutline}
@@ -536,12 +606,27 @@
 														</dd>
 													</dl>
 												</div>
-												{#if recent.length > 0}
+												<!-- ⭐ ROUND 3C FIX (2026-09-10) — "REPOSITORIES DUPLICATES YOUR
+												     CHANGES". A repo card's own row list is ONLY its
+												     `notEverywhere` changes (`recentByRepo` filters and orders
+												     stuck-first, capped at 5) — never the live rows "Your
+												     changes" already prints in full above, which a live fleet
+												     measured as 10 of 10 href-identical rows across two repo
+												     cards. When every one of this repo's changes is live, the
+												     card says so in one line instead of repeating any row. -->
+												{#if notEverywhere.length > 0}
 													<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-														{#each recent as row (row.href)}
+														{#each notEverywhere as row (row.href)}
 															<ChangeLine {row} now={$now} />
 														{/each}
 													</ul>
+												{:else if prog.changes > 0}
+													<div class="flex items-center gap-2 px-4 py-2.5">
+														<CheckCircleSolid class="tone-live h-4 w-4 shrink-0" aria-hidden="true" />
+														<span class="t-body text-gray-900 dark:text-white"
+															>{prog.changes} change{prog.changes === 1 ? '' : 's'} · all live everywhere</span
+														>
+													</div>
 												{/if}
 												<div class="px-4 py-2.5">
 													<a href={repoHref(repo.repoKey)} class="nav-link"
@@ -558,7 +643,7 @@
 
 					<!-- ── THE RAIL — only when GitHub is connected. -->
 					<div class="rail-side min-w-0 space-y-4">
-						<HowChangesAreGoing summary={railSummary} notEverywhereCount={summary.notEverywhereCount} />
+						<HowChangesAreGoing summary={railSummary} notEverywhereCount={notEverywhereMine} />
 					</div>
 				</div>
 			</div>

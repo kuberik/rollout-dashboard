@@ -81,8 +81,25 @@
 	 * `!configured` → nowhere; `configured && !connected` → first in
 	 * `HomeRail`'s ordinary stack (`showChangesCard`, below); `connected` →
 	 * its own `.cc-changes` grid/flex item, below, so it can move above the
-	 * fleet at `<sm` (`order-first sm:order-none`) while still landing at the
-	 * top of the rail COLUMN once the container is wide enough to show one.
+	 * fleet below the rail's own container breakpoint while still landing
+	 * at the top of the rail COLUMN once the container is wide enough to
+	 * show one.
+	 *
+	 * ⭐ ROUND 3C, ITEM 5 (2026-09-10 coordinator fix) — THE `order-first
+	 * sm:order-none` BUG. `.cc-changes` used to carry Tailwind's viewport
+	 * breakpoint utilities (`order-first`, then `sm:order-none` at a
+	 * VIEWPORT width of 640px) to "move above the fleet at `<sm`" — but
+	 * `.rail-grid`'s own two-column switch (`app.css`) is a CONTAINER query
+	 * at 860px of CONTAINER width, not a viewport breakpoint, and the
+	 * sidebar nav means a 640-1024px viewport routinely still has a
+	 * container narrower than 860px. In that gap `.rail-grid` was still
+	 * STACKED (single column) but `sm:order-none` had already fired,
+	 * reverting `.cc-changes` to plain DOM order — LAST, behind the fleet —
+	 * exactly the width band (640/768/1024) a live measurement caught it in.
+	 * Fixed below with a scoped `order` rule keyed to the SAME `860px`
+	 * container threshold `.rail-grid` itself switches on, so the two can
+	 * never disagree again — see the `style` block's own `.cc-changes`
+	 * rule.
 	 * Cache-shared with `YourChangesCard`'s own query (same `githubStatusQueryKey`)
 	 * — this is a second subscription to the same TanStack cache entry, not a
 	 * second request.
@@ -621,7 +638,7 @@
 				     rendered once `changesGithubStatus` has actually resolved to
 				     `connected` — before that this is simply absent, same as
 				     the loaded page. -->
-				<div class="cc-changes order-first sm:order-none min-w-0" aria-hidden="true">
+				<div class="cc-changes min-w-0" aria-hidden="true">
 					<div
 						class="flex flex-col rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800"
 						style="height: 190px"
@@ -1625,16 +1642,20 @@
 			     CHANGES-2026-09-10.md §4. A THIRD grid/flex item, deliberately
 			     NOT nested inside `HomeRail` — `order` only reorders DIRECT
 			     flex/grid children, and the whole point is to move THIS card
-			     (never `Recent activity`/`How it's going`) above the fleet at
-			     `<sm`, which needs it to be a sibling of `.rail-main`, not a
-			     grandchild three levels down. `order-first sm:order-none` is a
-			     plain (viewport) Tailwind breakpoint, deliberately NOT gated on
-			     the `@container` query below — see that rule's own note on why
-			     the two must stay independent. Gated ONLY on `connected` (never
-			     on the data inside it — an all-live fold or an empty state must
-			     not change WHERE the card sits, only what it says). -->
+			     (never `Recent activity`/`How it's going`) above the fleet below
+			     the rail's own container breakpoint, which needs it to be a
+			     sibling of `.rail-main`, not a grandchild three levels down.
+			     ⭐ ROUND 3C, ITEM 5 (2026-09-10): the ordering is now a scoped
+			     `order` rule gated on the SAME `860px` container query
+			     `.rail-grid` itself switches on (the `style` block's own
+			     `.cc-changes` rule) — NOT a viewport Tailwind breakpoint, which
+			     is the bug this replaces (see the query's own note above,
+			     "THE `order-first sm:order-none` BUG"). Gated ONLY on
+			     `connected` (never on the data inside it — an all-live fold or
+			     an empty state must not change WHERE the card sits, only what
+			     it says). -->
 			{#if changesConfigured && changesConnected}
-				<div class="cc-changes order-first sm:order-none min-w-0">
+				<div class="cc-changes min-w-0">
 					<YourChangesCard {rollouts} {environments} rolloutDependencies={query.data?.rolloutDependencies ?? null} />
 				</div>
 			{/if}
@@ -1688,15 +1709,28 @@
 	 * ⭐ `display: flex; flex-direction: column`, NOT `display: block`, is
 	 * `.rail-grid`'s OWN base rule now (`app.css`) — restated here only
 	 * because the reason still matters for THIS page: the
-	 * CHANGES-2026-09-10.md §4 "above the fleet at `<sm`" REQUIREMENT needs
-	 * a flex/grid formatting context for `order` to have any effect at all,
-	 * and `.cc-changes` (below) needs it to jump ahead of `.rail-main` under
-	 * `sm`. `.cc-changes` itself carries NO `order` rule here — only the
-	 * Tailwind `order-first sm:order-none` utility classes on its own
-	 * element decide that, so there is no specificity fight between a
-	 * scoped component rule and a plain one-class Tailwind utility (a
-	 * scoped `.cc-changes{order:…}` would out-specificity it and silently
-	 * pin the order at every width).
+	 * CHANGES-2026-09-10.md §4 "above the fleet below the rail" REQUIREMENT
+	 * needs a flex/grid formatting context for `order` to have any effect at
+	 * all, and `.cc-changes` (below) needs to jump ahead of `.rail-main`
+	 * while the column is stacked.
+	 *
+	 * ⭐ ROUND 3C, ITEM 5 (2026-09-10 coordinator fix). `.cc-changes` used to
+	 * carry Tailwind's `order-first sm:order-none` — a VIEWPORT breakpoint
+	 * (640px) reordering a card whose actual layout decision (`.rail-grid`'s
+	 * stacked-vs-two-column switch) is a CONTAINER query at 860px. Between a
+	 * 640px and ~1024px viewport, with the sidebar nav narrowing the
+	 * container below 860px, `sm:order-none` had already reset the order
+	 * while `.rail-grid` was STILL stacked — `.cc-changes` rendered LAST,
+	 * behind the fleet, in exactly that band. The scoped rule below reads
+	 * the SAME `860px` threshold `.rail-grid` itself switches on, so the two
+	 * can never disagree again:
+	 *
+	 *     .cc-changes { order: -9999; }
+	 *     @container (min-width: 860px) { .cc-changes { order: 0; } }
+	 *
+	 * No specificity fight: the Tailwind utility classes are gone from the
+	 * element (see the markup above), so this is the only rule deciding
+	 * `order` at any width.
 	 *
 	 * ⛔ SPACING IS `gap` ON THE CONTAINER, NOT A MARGIN ON EACH CHILD.
 	 * (Caught in this lane's own 2×2 review, 390 dark: measured 0px between
@@ -1712,6 +1746,17 @@
 	 * spaces every pair of VISUALLY adjacent flex items regardless of
 	 * `order`, so it is correct for whichever item ends up first.
 	 */
+
+	/* ⭐ ROUND 3C, ITEM 5 — THE ORDER RULE ITSELF, keyed to `.rail-grid`'s OWN
+	   `860px` container threshold (`app.css`), never a viewport breakpoint.
+	   Below it (`.rail-grid` still stacked, `display: flex; flex-direction:
+	   column`), `.cc-changes` sorts first. At and above it the `@container`
+	   block below gives it an EXPLICIT `grid-column`/`grid-row` anyway (grid
+	   auto-placement ignores `order` once a track is named directly), so
+	   `order: 0` here is just tidy, not load-bearing. */
+	.cc-changes {
+		order: -9999;
+	}
 
 	@container (min-width: 860px) {
 		/*
@@ -1747,6 +1792,7 @@
 		.cc-grid--with-changes .cc-changes {
 			grid-column: 2;
 			grid-row: 1;
+			order: 0;
 		}
 
 		.cc-grid--with-changes .rail-side {

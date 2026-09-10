@@ -129,9 +129,6 @@ lib/components/BuildLists.svelte	code	Last deployed …
 lib/components/BuildLists.svelte	code	No deploy on record
 lib/components/BuildLists.svelte	title	No longer running anywhere
 lib/components/BuildLists.svelte	text	Show … …
-lib/components/ChangeCard.svelte	text	… · … ago …
-lib/components/ChangeCard.svelte	text	GitHub ↗
-lib/components/ChangeCard.svelte	text	Open change ›
 lib/components/ChangeHistoryCard.svelte	text	Show … more ›
 lib/components/ChangeHistoryCard.svelte	text	This build has not deployed anywhere on this cluster.
 lib/components/ChangeLine.svelte	code	in this state for …
@@ -850,6 +847,7 @@ lib/view-models/pr-pipeline.ts	code	live (since before recorded history)
 lib/view-models/pr-pipeline.ts	code	live everywhere
 lib/view-models/pr-pipeline.ts	code	manifest unreadable
 lib/view-models/pr-pipeline.ts	code	no environments
+lib/view-models/pr-pipeline.ts	code	no release
 lib/view-models/pr-pipeline.ts	code	no release for this commit
 lib/view-models/pr-pipeline.ts	code	no release for this commit yet
 lib/view-models/pr-pipeline.ts	code	No service on this cluster deploys this repository
@@ -857,7 +855,6 @@ lib/view-models/pr-pipeline.ts	code	not built
 lib/view-models/pr-pipeline.ts	code	not built (unverified)
 lib/view-models/pr-pipeline.ts	code	not built here
 lib/view-models/pr-pipeline.ts	code	not built here yet
-lib/view-models/pr-pipeline.ts	code	not built yet
 lib/view-models/pr-pipeline.ts	code	not offered to … yet
 lib/view-models/pr-pipeline.ts	code	pinned to …
 lib/view-models/pr-pipeline.ts	code	retrying the bake
@@ -1243,10 +1240,14 @@ routes/changes/[...slug]/+page.svelte	text	Typical to prod
 routes/changes/[...slug]/+page.svelte	text	View commit
 routes/changes/[...slug]/+page.svelte	text	View on GitHub
 routes/changes/+page.svelte	text	… · … repositor …
+routes/changes/+page.svelte	code	… all live
+routes/changes/+page.svelte	text	… change … · all live everywhere
+routes/changes/+page.svelte	text	… change … · all live everywhere ›
 routes/changes/+page.svelte	code	… change……
 routes/changes/+page.svelte	text	… commit … produced no release ›
 routes/changes/+page.svelte	text	… not everywhere yet
 routes/changes/+page.svelte	text	… of … live
+routes/changes/+page.svelte	code	… of … not everywhere yet
 routes/changes/+page.svelte	code	· … not everywhere
 routes/changes/+page.svelte	text	A revision shows up here as soon as one of your services deploys it.
 routes/changes/+page.svelte	text	All changes in … ›
@@ -1259,10 +1260,11 @@ routes/changes/+page.svelte	text	No repository matches.
 routes/changes/+page.svelte	text	Nothing built yet
 routes/changes/+page.svelte	text	Nothing of yours merged in the last 30 days.
 routes/changes/+page.svelte	text	revision … · … GitHub is not connected — showing what this cluster has actually deployed instead. … GitHub is not configured for this dashboard — showing what this cluster has actually deployed instead. …
+routes/changes/+page.svelte	code	See all changes
 routes/changes/+page.svelte	text	Show … more ›
 routes/changes/+page.svelte	text	Try clearing the search box above.
 routes/changes/+page.svelte	text	Typical to prod
-routes/changes/+page.svelte	text	Your changes
+routes/changes/+page.svelte	title	Your changes
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
 routes/dependencies/+page.svelte	text	… holding

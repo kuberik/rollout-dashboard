@@ -750,11 +750,48 @@ function buildCell(
 		const blocking = gates.filter((g) => !gateAllows(g, candidateKey));
 		if (blocking.length > 0) {
 			const classified = blocking.map((g) => classifyGate(g, ns, gateCtx));
-			// `waiting-upstream` OUTRANKS `gated` — a dependency/promotion gate
-			// (`clears === 'upstream'`) is never described as merely "gated"
-			// when one is present, even alongside an approval/check gate.
-			const upstream = classified.find((c) => c.clears === 'upstream');
-			const pick = upstream ?? classified[0];
+			// ⭐ COORDINATOR FIX (fourth operator walk, item A, 2026-09-10). A
+			// bare PROMOTION-ORDER gate (`clears === 'upstream'`, `subjectKind
+			// === 'environment'` — "this environment's own turn hasn't come up
+			// yet") is the WEAKEST reason a candidate can be blocked: it clears
+			// on its own the moment the upstream environment deploys, and
+			// nothing else is refusing the build. The OLD code picked ANY gate
+			// with `clears === 'upstream'` first, so a promotion gate and, say,
+			// a manual-approval gate with an empty allow-list sitting in the
+			// SAME `blocking` list both matched `clears === 'upstream'`-or-not
+			// inconsistently — actually only the promotion gate matched at all,
+			// which meant the approval gate (the REAL, durable blocker) was
+			// silently discarded the instant a promotion gate also happened to
+			// be present. A live fleet's prod row had exactly this shape: a
+			// promotion gate ("wait for staging") beside `hello-world-manual-
+			// approval` (`allowedVersions: []`), and the row printed "queued …
+			// usually 1 min once it starts" over a build that was never going
+			// to move on a promotion tick.
+			//
+			// `dependencyGate` below folds in the owner-based `RolloutDependency`
+			// fallback too (`clears === 'upstream'` with no `subjectKind` set,
+			// see `blocking-story.ts`'s owner branch) — anything upstream that
+			// is NOT a bare environment-subject promotion wait is still ranked
+			// above every non-upstream gate, unchanged from before this fix.
+			const promotionGate = classified.find((c) => c.clears === 'upstream' && c.subjectKind === 'environment');
+			const dependencyGate = classified.find((c) => c.clears === 'upstream' && c !== promotionGate);
+			const otherGate = classified.find((c) => c !== promotionGate && c !== dependencyGate);
+			// `upstream` keeps its OLD meaning (a `waiting-upstream`-shaped
+			// dependency) for the two fields ONLY a dependency gate populates
+			// (`gateContract`/`gateRequiredVersion`, FIX PASS ITEM 5). `anyUpstream`
+			// covers BOTH upstream shapes (dependency OR bare promotion order) for
+			// `gateSubject`/`gateSubjectKind`/`gateLabel` — unchanged from before
+			// this fix for a promotion-only cell (still `queued`, still names its
+			// upstream environment as `gateSubject`).
+			const upstream = dependencyGate;
+			const anyUpstream = dependencyGate ?? promotionGate;
+			// Precedence: a dependency wins outright (unchanged); anything ELSE
+			// actively refusing the candidate (approval, a closed schedule, an
+			// unresolved check) outranks a bare promotion-order wait; `queued`
+			// is reported only when the promotion gate is the ONE gate in
+			// `blocking` — "queued only when the only thing between the
+			// candidate and the environment is the promotion order."
+			const pick = dependencyGate ?? otherGate ?? promotionGate ?? classified[0];
 			// ⭐ ITEM 3 (2026-09-10 fix pass) — THE `schedule-gate-fk44d` BUG.
 			// This module never supplies `rolloutGates` to `buildGateContext`
 			// (only the single-rollout endpoint serves them, fetched lazily
@@ -779,16 +816,18 @@ function buildCell(
 			// this exact-match candidate via ancestry it cannot see. `gated`
 			// is untouched: it names no upstream, only "some rule currently
 			// disallows this build", which stays true regardless.
-			if (upstream && !containmentKnown) {
+			if (!otherGate && (dependencyGate || promotionGate) && !containmentKnown) {
 				return notBuiltUnverified();
 			}
-			// ⭐ FIX PASS ITEM 4. `upstream.subjectKind === 'environment'` is a
-			// normal promotion-order wait ("waiting for dev to deploy it
-			// first") — `queued`, never the amber `waiting-upstream` a
-			// `'service'`-subject dependency wait still gets. See `PrState`'s
-			// own doc comment for why the two were split.
-			const upstreamState: PrState =
-				upstream?.subjectKind === 'environment' ? 'queued' : upstream ? 'waiting-upstream' : 'gated';
+			// ⭐ FIX PASS ITEM 4 / ITEM A (2026-09-10 coordinator fix). `queued`
+			// is reported ONLY when a bare promotion-order wait is the one and
+			// only thing in `blocking` (`otherGate` and `dependencyGate` both
+			// absent) — the normal "waiting for dev to deploy it first" case,
+			// nobody refusing anything. Any other gate present, of any kind,
+			// reads `gated` first; a `'service'`-subject dependency still
+			// outranks everything, amber `waiting-upstream`. See `PrState`'s own
+			// doc comment for why `queued`/`waiting-upstream` were split.
+			const upstreamState: PrState = dependencyGate ? 'waiting-upstream' : otherGate ? 'gated' : 'queued';
 			return cell({
 				...NOTHING,
 				state: upstreamState,
@@ -796,9 +835,9 @@ function buildCell(
 				releaseLabel,
 				revision: candidate.revision ?? null,
 				gateHint: { cluster, namespace: ns, rolloutName: name, gateName: pick.id },
-				gateLabel: upstream || pending ? null : pick.label,
-				gateSubject: upstream ? (pick.subject ?? null) : null,
-				gateSubjectKind: upstream ? (pick.subjectKind ?? null) : null,
+				gateLabel: anyUpstream || pending ? null : pick.label,
+				gateSubject: anyUpstream ? (pick.subject ?? null) : null,
+				gateSubjectKind: anyUpstream ? (pick.subjectKind ?? null) : null,
 				gatePending: pending,
 				// ⭐ FIX PASS ITEM 5. Only a `'service'`-subject dependency gate
 				// (`waiting-upstream`) ever carries these — `classifyGate`'s
@@ -989,7 +1028,16 @@ function compactFurthestSentence(cells: PrCell[]): string {
 		return `held in ${families.join(' · ')}`;
 	}
 	const notBuilt = cells.filter((c) => c.state === 'not-built').length;
-	if (notBuilt === total) return 'not built yet';
+	// ⭐ COORDINATOR FIX (fourth operator walk, item 4, 2026-09-10). "not
+	// built yet" is retired copy (⭐ ROUND 3 ruling A, "no release means not
+	// affected") — this exact shape (every cell for a service is
+	// `not-built`) is unreachable through the real pipeline today (such a
+	// service is dropped as unaffected before it ever reaches a `PrService`,
+	// see `hasBuildEvidence`), but a hand-built fixture can still call this
+	// function directly, and it must not regress to the banned word if one
+	// does. "no release" matches `standingWordsCompact`'s own word for the
+	// identical fact (`changes.ts`).
+	if (notBuilt === total) return 'no release';
 	const active = cells.filter((c) => ACTIVE_STATES.has(c.state)).length;
 	if (active > 0) return `${active} of ${total} active`;
 	return `${total} in progress`;

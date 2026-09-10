@@ -789,21 +789,45 @@ describe('repoProgress (ruling B, "Repositories" card)', () => {
 });
 
 describe('recentByRepo (ruling B, "Repositories" card)', () => {
-	it('buckets the newest-first feed by repo, capped at n per repo, preserving order', () => {
+	/**
+	 * ⭐ ROUND 3C FIX (2026-09-10, "REPOSITORIES DUPLICATES YOUR CHANGES").
+	 * `recentByRepo` used to bucket the "5 most recent changes, any
+	 * standing" — the SAME live rows "Your changes" already prints in full,
+	 * a live fleet measured 10 of 10 href-identical rows across two repo
+	 * cards. It now returns ONLY `notEverywhere` rows, capped at `n`,
+	 * ordered stuck-first (`SECTION_RANK`'s own precedence — failed → held
+	 * → active/queued → not-built) rather than merely newest-first.
+	 */
+	it('only buckets notEverywhere rows, live rows never take a slot', () => {
 		const rows = mkRows([
-			{ repoKey: 'acme/widget', title: 'w1' },
-			{ repoKey: 'acme/other', title: 'o1' },
-			{ repoKey: 'acme/widget', title: 'w2' },
-			{ repoKey: 'acme/widget', title: 'w3' },
-			{ repoKey: 'acme/other', title: 'o2' }
+			{ repoKey: 'acme/widget', title: 'w1', notEverywhere: false, verdictTone: 'live' },
+			{ repoKey: 'acme/other', title: 'o1', notEverywhere: true, verdictTone: 'held' },
+			{ repoKey: 'acme/widget', title: 'w2', notEverywhere: true, verdictTone: 'held' },
+			{ repoKey: 'acme/widget', title: 'w3', notEverywhere: false, verdictTone: 'live' },
+			{ repoKey: 'acme/other', title: 'o2', notEverywhere: true, verdictTone: 'held' }
 		]);
-		const byRepo = recentByRepo(rows, 2);
-		expect(byRepo.get('acme/widget')!.map((r) => r.title)).toEqual(['w1', 'w2']);
+		const byRepo = recentByRepo(rows, 5);
+		expect(byRepo.get('acme/widget')!.map((r) => r.title)).toEqual(['w2']);
 		expect(byRepo.get('acme/other')!.map((r) => r.title)).toEqual(['o1', 'o2']);
 	});
 
+	it('caps at n per repo, ordered stuck-first (failed before held), newest-first within a tone', () => {
+		const rows = mkRows([
+			{ repoKey: 'acme/widget', title: 'held-1', notEverywhere: true, verdictTone: 'held' },
+			{ repoKey: 'acme/widget', title: 'failed-1', notEverywhere: true, verdictTone: 'failed' },
+			{ repoKey: 'acme/widget', title: 'held-2', notEverywhere: true, verdictTone: 'held' }
+		]);
+		const byRepo = recentByRepo(rows, 2);
+		expect(byRepo.get('acme/widget')!.map((r) => r.title)).toEqual(['failed-1', 'held-1']);
+	});
+
+	it('a repo with nothing notEverywhere (all live) has no entry at all', () => {
+		const rows = mkRows([{ repoKey: 'acme/widget', notEverywhere: false, verdictTone: 'live' }]);
+		expect(recentByRepo(rows, 5).has('acme/widget')).toBe(false);
+	});
+
 	it('a repo absent from rows has no entry at all', () => {
-		const rows = mkRows([{ repoKey: 'acme/widget' }]);
+		const rows = mkRows([{ repoKey: 'acme/widget', notEverywhere: true, verdictTone: 'held' }]);
 		expect(recentByRepo(rows, 5).has('acme/nomatch')).toBe(false);
 	});
 });

@@ -81,14 +81,23 @@ export function changeVerdict(vm: PrPipelineVM): { word: string; tone: ChangeVer
 	return buildChangeVerdict(vm.services);
 }
 
-/** Any cell held, failed or not-built — §3's own definition of the "Not yet
- *  everywhere" filter. A change with no matching service at all counts too:
- *  nothing built anywhere is the furthest thing from "everywhere". */
-const NOT_EVERYWHERE_STATES = new Set<PrState>(['gated', 'pinned', 'waiting-upstream', 'failed', 'not-built']);
-
+/**
+ * ⭐ FOURTH OPERATOR WALK, ITEM B (2026-09-10 coordinator fix). "Not
+ * everywhere" is exactly "not `live everywhere`" — §3's own definition,
+ * restated to read the SAME frontier tone `buildChangeVerdict` already
+ * computed rather than re-scanning raw cell states with a hand-picked
+ * subset. The OLD `NOT_EVERYWHERE_STATES` set named `gated`/`pinned`/
+ * `waiting-upstream`/`failed`/`not-built` but not `deploying`/`baking`/
+ * `retrying`/`promoting`/`queued`/`cancelled`/`rolled-back` — so a change
+ * every service was actively DEPLOYING (nothing live yet anywhere) read as
+ * "everywhere" and dropped out of every "N not everywhere yet" count on the
+ * index, the repo card and Home's rollup, all three of which read this same
+ * field. A live fleet measured the head band at "2 not everywhere yet"
+ * against 4 rows that were plainly not live everywhere (held, queued,
+ * partial) — this is that undercount's root cause.
+ */
 function computeNotEverywhere(vm: PrPipelineVM): boolean {
-	if (vm.services.length === 0) return true;
-	return vm.services.some((s) => s.cells.some((c) => NOT_EVERYWHERE_STATES.has(c.state)));
+	return vm.verdictTone !== 'live';
 }
 
 // ── ONE ROW, GITHUB-BACKED ────────────────────────────────────────────────
@@ -864,27 +873,41 @@ export function repoProgress(rows: readonly ChangeRowVM[], repoKey: string): Rep
 }
 
 /**
- * ⭐ ROUND 3 RULING B. The "Repositories" card's own "5 most recent changes"
- * sub-list — one pass over the WHOLE (newest-first) feed, capping each
- * repo's own bucket at `n` as it goes, rather than the caller looping
- * `repoChipOptions()` and re-filtering/re-slicing the full array once per
- * repo. Preserves the feed's own newest-first order within each bucket
- * (never re-sorts) because `rows` is assumed newest-first already.
+ * ⭐ ROUND 3C FIX (2026-09-10, "REPOSITORIES DUPLICATES YOUR CHANGES"). A
+ * repo card's own row list is ONLY its `notEverywhere` changes — a live
+ * fleet measured 10 of 10 rows across two repo cards href-identical to rows
+ * already printed in "Your changes" above, because the old cut here was
+ * "5 most recent, any standing" over the SAME feed "Your changes" already
+ * shows in full. A repository card answers "what of mine (or anyone's) in
+ * this repo is NOT everywhere yet" — the live rows are already accounted
+ * for by the card's own header rollup and by `notEverywhereCount === 0`'s
+ * one-line "all live everywhere" (the caller's job, see `repoAllLive`
+ * below); this list would just be reprinting them for no new fact.
+ *
+ * Ordered stuck-first (failed → held → active/queued → not-built —
+ * `SECTION_RANK`, the same precedence `splitChangeSections` already uses),
+ * stable on the feed's own newest-first order within each tone, capped at
+ * `n` per repo.
  *
  * ⭐ ROUND 3B — a `noRelease` row is skipped outright: it has nothing to
  * show (no landing grid, no standing beyond "no release") and must not
- * spend one of the 5 "most recent" slots a released change could use.
+ * spend one of the "not everywhere" slots a released change could use.
  */
 export function recentByRepo(rows: readonly ChangeRowVM[], n: number): Map<string, ChangeRowVM[]> {
+	const byRepo = new Map<string, { r: ChangeRowVM; i: number }[]>();
+	rows.forEach((row, i) => {
+		if (row.noRelease || !row.notEverywhere) return;
+		const bucket = byRepo.get(row.repoKey);
+		if (bucket) bucket.push({ r: row, i });
+		else byRepo.set(row.repoKey, [{ r: row, i }]);
+	});
 	const out = new Map<string, ChangeRowVM[]>();
-	for (const row of rows) {
-		if (row.noRelease) continue;
-		const bucket = out.get(row.repoKey);
-		if (bucket) {
-			if (bucket.length < n) bucket.push(row);
-		} else {
-			out.set(row.repoKey, [row]);
-		}
+	for (const [repoKey, entries] of byRepo) {
+		const sorted = entries
+			.sort((a, b) => SECTION_RANK[a.r.verdictTone] - SECTION_RANK[b.r.verdictTone] || a.i - b.i)
+			.slice(0, n)
+			.map(({ r }) => r);
+		out.set(repoKey, sorted);
 	}
 	return out;
 }
