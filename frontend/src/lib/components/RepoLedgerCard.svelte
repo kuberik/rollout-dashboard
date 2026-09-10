@@ -543,9 +543,15 @@
 										aria-label={`Open the ${envDisplay.toUpperCase()} rollout for ${group.appName}${inFlight ? ` — ${bakeWord(inFlightBake)}` : ''}`}
 									>
 										{#if inFlight}
+											<!-- `size="chip"` (12px), NOT `small` (16px): the slot is a
+											     20px `.chip` with a 1px border, and `small` left it 1px
+											     of clearance — the glyph read as jammed against the box.
+											     See `BakeStatusIcon`'s note on the `chip` step; it is the
+											     size `ActivityRail`'s rollback mark already uses in this
+											     same slot. -->
 											{#snippet inFlightGlyph()}
 												<span class="mr-[3px] inline-flex shrink-0 items-center">
-													<BakeStatusIcon bakeStatus={inFlightBake} size="small" decorative />
+													<BakeStatusIcon bakeStatus={inFlightBake} size="chip" decorative />
 												</span>
 											{/snippet}
 											<Chip
