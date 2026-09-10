@@ -689,8 +689,8 @@ export function buildDatadogLogsUrl(service: string, env: string): string {
  * Datadog APM trace search filtered to spans emitted by the rollout test.
  *
  * The rollout-test image (see `tests/rollout/src/instrumentation.ts` in the
- * caffeine app repo) wraps each Playwright test + step in custom APM spans
- * tagged `@rollout.test:true`. Pairing that marker with the standard
+ * application's own repo) wraps each Playwright test + step in custom APM
+ * spans tagged `@rollout.test:true`. Pairing that marker with the standard
  * unified-service tags (`service`, `env`, `version`) narrows the result
  * to exactly the traces produced by the canary's rollout-test Job — the
  * service Deployment's regular APM traffic, which carries the same

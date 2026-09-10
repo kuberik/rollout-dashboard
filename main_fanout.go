@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -242,8 +243,37 @@ type spokeResult struct {
 	err  error
 }
 
+// spokeFetchTimeout bounds one hub→spoke /api/rollouts call.
+//
+// PERF-2026-09-10: was 10s. Ten seconds is not a timeout for a dashboard's
+// blocking render path, it is an outage — and it was reached on every single
+// request while one spoke was unroutable from inside the cluster. With the
+// breaker in front (main_fanout_breaker.go) an unreachable spoke now costs
+// this once per cooldown rather than once per request, and a spoke that
+// genuinely needs more than 2s to answer is one the SWR cache should be
+// refreshing in the background anyway, not one a user should wait for.
+const spokeFetchTimeout = 2 * time.Second
+
+// spokeNameTimeout bounds one hub→spoke /api/cluster call. Same reasoning;
+// this one only fetches a short string.
+const spokeNameTimeout = 2 * time.Second
+
 // fetchSpoke calls /api/rollouts on a remote dashboard and returns the raw JSON fields.
+// Gated by the per-spoke circuit breaker: a spoke that has been failing is
+// refused instantly instead of costing another spokeFetchTimeout.
 func fetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.RawMessage, error) {
+	if ok, brErr := breakers.allow(spokeURL); !ok {
+		return nil, brErr
+	}
+	data, err := doFetchSpoke(ctx, spokeURL, token)
+	recordSpokeOutcome(spokeURL, err)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func doFetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.RawMessage, error) {
 	reqURL := spokeURL + "/api/rollouts"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
@@ -253,10 +283,10 @@ func fetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.Ra
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set(fanoutHeader, "1")
-	c := &http.Client{Transport: fanoutTransport, Timeout: 10 * time.Second}
+	c := &http.Client{Transport: fanoutTransport, Timeout: spokeFetchTimeout}
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, &spokeTransportError{err: err}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -269,35 +299,75 @@ func fetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.Ra
 	return result, nil
 }
 
-// fetchSpokeClusterName calls /api/cluster on a spoke and returns the cluster name.
-// Returns ClusterNameFromURL(spokeURL) on failure.
-func fetchSpokeClusterName(ctx context.Context, spokeURL, token string) string {
+// fetchSpokeClusterNameErr calls /api/cluster on a spoke and returns its
+// cluster name, reporting WHY it could not be read rather than quietly
+// substituting the URL-derived fallback. The caching layer needs that
+// distinction: caching a fallback name as if it were the real answer would
+// pin a spoke's label to its hostname for a full spokeNameTTL after one
+// transient blip. cachedSpokeClusterName applies the fallback instead.
+func fetchSpokeClusterNameErr(ctx context.Context, spokeURL, token string) (string, error) {
+	// Reachability is shared state: if /api/rollouts just timed out against
+	// this host, /api/cluster is not going to answer either, and paying a
+	// second timeout to find that out is exactly the cost this breaker
+	// exists to remove.
+	if ok, brErr := breakers.allow(spokeURL); !ok {
+		return "", brErr
+	}
+	name, err := doFetchSpokeClusterName(ctx, spokeURL, token)
+	recordSpokeOutcome(spokeURL, err)
+	if err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// recordSpokeOutcome feeds one call's result to the breaker.
+//
+// Only TRANSPORT failures count against a spoke — a timeout, a refused
+// connection, a DNS miss. An HTTP response of any status, or a body that
+// fails to decode, means the host answered: it is alive, and the problem is
+// this caller's (an unauthenticated leg gets the SSO login page back, which
+// is a 200 full of HTML that decodes to nothing). Counting those would let
+// one tokenless request open a process-wide breaker and cut every
+// authenticated user off from a perfectly healthy spoke — the breaker is
+// shared precisely because reachability is not per-user, so it must only
+// ever record things that are not per-user either.
+func recordSpokeOutcome(spokeURL string, err error) {
+	var terr *spokeTransportError
+	switch {
+	case err == nil:
+		breakers.success(spokeURL)
+	case errors.As(err, &terr):
+		breakers.failure(spokeURL, err)
+	default:
+		// Reached the host; leave the breaker alone.
+	}
+}
+
+func doFetchSpokeClusterName(ctx context.Context, spokeURL, token string) (string, error) {
 	reqURL := spokeURL + "/api/cluster"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return ClusterNameFromURL(spokeURL)
+		return "", err
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set(fanoutHeader, "1")
-	c := &http.Client{Transport: fanoutTransport, Timeout: 5 * time.Second}
+	c := &http.Client{Transport: fanoutTransport, Timeout: spokeNameTimeout}
 	resp, err := c.Do(req)
 	if err != nil {
-		return ClusterNameFromURL(spokeURL)
+		return "", &spokeTransportError{err: err}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return ClusterNameFromURL(spokeURL)
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	var info ClusterInfo
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return ClusterNameFromURL(spokeURL)
+		return "", fmt.Errorf("decode: %w", err)
 	}
-	if info.Name != "" {
-		return info.Name
-	}
-	return ClusterNameFromURL(spokeURL)
+	return info.Name, nil
 }
 
 // mergedKeys are the response keys that fan-out merges across clusters. Each is a
@@ -344,27 +414,36 @@ func fanOutRollouts(
 		return localData, nil, nil
 	}
 
-	// Fan out in parallel: for each spoke, fetch rollouts + cluster name simultaneously.
+	// Fan out in parallel: for each spoke, resolve rollouts + cluster name
+	// simultaneously.
+	//
+	// PERF-2026-09-10: both go through the stale-while-revalidate caches in
+	// main_fanout_cache.go rather than straight to HTTP, so this loop is
+	// normally pure memory reads. A spoke only costs this request anything
+	// when nothing is cached for it yet, and then only spokeColdGrace — see
+	// that file for the freshness contract and for why the payload cache is
+	// keyed per identity while the name cache is not.
 	type result struct {
 		spoke spokeResult
 		name  string
 	}
 	results := make([]result, len(spokeURLs))
+	identity := identityKey(token)
 	var wg sync.WaitGroup
 	for i, su := range spokeURLs {
 		wg.Add(1)
 		go func(idx int, spokeURL string) {
 			defer wg.Done()
-			fetchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
-			defer cancel()
 
-			// Fetch cluster name and rollouts in parallel.
 			nameCh := make(chan string, 1)
 			go func() {
-				nameCh <- fetchSpokeClusterName(fetchCtx, spokeURL, token)
+				nameCh <- cachedSpokeClusterName(ctx, spokeURL, token)
 			}()
 
-			data, err := fetchSpoke(fetchCtx, spokeURL, token)
+			data, err := spokeDataCache.load(ctx, identity+"|"+spokeURL,
+				func(fctx context.Context) (map[string]json.RawMessage, error) {
+					return fetchSpoke(fctx, spokeURL, token)
+				})
 			name := <-nameCh
 
 			results[idx] = result{
@@ -381,6 +460,16 @@ func fanOutRollouts(
 	seenNames := make(map[string]bool)
 
 	for _, r := range results {
+		// A cold-start miss is not a failure — the fetch is still running
+		// and will populate the cache within a second or two, so the next
+		// request (the frontend's own safety-net poll at worst) shows this
+		// cluster. Reporting it as a clusterError would put a red banner in
+		// front of the user for a spoke that is perfectly healthy and
+		// merely slower than the grace window. Real failures — a refused
+		// connection, an open breaker, an HTTP error — still report below.
+		if errors.Is(r.spoke.err, errSpokeColdTimeout) {
+			continue
+		}
 		if r.spoke.err != nil {
 			clusterErrors = append(clusterErrors, ClusterError{
 				URL:   r.spoke.url,
@@ -406,4 +495,19 @@ func fanOutRollouts(
 	// re-discovering (list calls happen on every page via the Navbar).
 	registry.put(clusters)
 	return merged, clusters, clusterErrors
+}
+
+// cachedSpokeClusterName resolves a spoke's cluster name through the shared
+// name cache, falling back to the URL-derived name — the same fallback
+// fetchSpokeClusterName has always used when a spoke could not be asked.
+// Names are stable and not user-specific, so this cache is keyed by URL
+// alone and shared across every caller.
+func cachedSpokeClusterName(ctx context.Context, spokeURL, token string) string {
+	name, err := spokeNameCache.load(ctx, spokeURL, func(fctx context.Context) (string, error) {
+		return fetchSpokeClusterNameErr(fctx, spokeURL, token)
+	})
+	if err != nil || name == "" {
+		return ClusterNameFromURL(spokeURL)
+	}
+	return name
 }
