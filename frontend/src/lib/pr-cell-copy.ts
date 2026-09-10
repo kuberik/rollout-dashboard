@@ -132,7 +132,19 @@ export function cellStateSentence(
 			// unverified approval/unknown classification) — the honest,
 			// generic "held by a rule" until the row's "why" disclosure
 			// resolves the specific one.
-			return cell.gateLabel ? `held by ${cell.gateLabel}` : 'held by a rule';
+			//
+			// ⭐ ROUND 3, ITEM 1(e) (2026-09-10 fix pass) — "HELD FOR
+			// APPROVAL", BEFORE THE NAME RESOLVES. `gateApprovalGuess` is
+			// this VM's own best guess (see its own doc comment) — trusted
+			// enough for the GENERIC word, never for a specific rule name.
+			// `PipelineRow.svelte` appends "· <name>" once its own lazy
+			// fetch (which DOES carry `rolloutGates`) confirms the guess and
+			// resolves a pretty name.
+			return cell.gateLabel
+				? `held by ${cell.gateLabel}`
+				: cell.gateApprovalGuess
+					? 'held for approval'
+					: 'held by a rule';
 		case 'pinned':
 			// Already exactly "pinned to <label>" — see `pr-pipeline.ts`.
 			return cell.reason;
@@ -178,9 +190,7 @@ export function cellStateSentence(
 export function cellReasonText(cell: PrCell, now: Date = new Date()): string | null {
 	if (cell.state === 'baking') return null;
 	if (cell.state === 'live') {
-		return cell.superseded
-			? 'a later build that also carries this PR has since shipped'
-			: null;
+		return cell.superseded ? 'a later build that also carries this change has since shipped' : null;
 	}
 	if (!cell.reason) return null;
 	if (REDUNDANT_REASON.has(cell.reason)) return null;

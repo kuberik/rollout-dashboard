@@ -129,8 +129,8 @@ lib/components/BuildLists.svelte	code	Last deployed …
 lib/components/BuildLists.svelte	code	No deploy on record
 lib/components/BuildLists.svelte	title	No longer running anywhere
 lib/components/BuildLists.svelte	text	Show … …
+lib/components/ChangeHistoryCard.svelte	text	not deployed anywhere yet
 lib/components/ChangeHistoryCard.svelte	text	Show … more ›
-lib/components/ChangeHistoryCard.svelte	text	This build has not deployed anywhere on this cluster.
 lib/components/ChangeLine.svelte	code	in this state for …
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	code	… commit…
@@ -426,6 +426,8 @@ lib/components/PipelineRow.svelte	code	a promotion order
 lib/components/PipelineRow.svelte	code	a service dependency
 lib/components/PipelineRow.svelte	code	an unclassified rule
 lib/components/PipelineRow.svelte	text	Could not load this rule.
+lib/components/PipelineRow.svelte	code	held by a rule
+lib/components/PipelineRow.svelte	code	held for approval · …
 lib/components/PipelineRow.svelte	code	not built
 lib/components/PipelineRow.svelte	code	opens …
 lib/components/PipelineRow.svelte	code	opens in …
@@ -589,12 +591,13 @@ lib/palette-index.ts	code	Look up … in …
 lib/palette-index.ts	code	Open change … · …
 lib/pr-cell-copy.ts	code	… · … of … min
 lib/pr-cell-copy.ts	code	… of … checks failing
-lib/pr-cell-copy.ts	code	a later build that also carries this PR has since shipped
+lib/pr-cell-copy.ts	code	a later build that also carries this change has since shipped
 lib/pr-cell-copy.ts	code	checks passing
 lib/pr-cell-copy.ts	code	checks pending
 lib/pr-cell-copy.ts	code	deploying now
 lib/pr-cell-copy.ts	code	held by …
 lib/pr-cell-copy.ts	code	held by a rule
+lib/pr-cell-copy.ts	code	held for approval
 lib/pr-cell-copy.ts	code	live since …
 lib/pr-cell-copy.ts	code	no checks reported
 lib/pr-cell-copy.ts	code	no release yet
@@ -839,6 +842,7 @@ lib/view-models/pr-pipeline.ts	code	… in progress
 lib/view-models/pr-pipeline.ts	code	… of … active
 lib/view-models/pr-pipeline.ts	code	… of … live
 lib/view-models/pr-pipeline.ts	code	· will not move on its own — needs … … …
+lib/view-models/pr-pipeline.ts	code	a newer …
 lib/view-models/pr-pipeline.ts	code	baking, no timer
 lib/view-models/pr-pipeline.ts	code	deploying now
 lib/view-models/pr-pipeline.ts	code	held in …
@@ -1169,8 +1173,7 @@ routes/apps/+page.svelte	text	View all activity
 routes/changes/[...slug]/+page.svelte	text	, stream down …
 routes/changes/[...slug]/+page.svelte	text	. Once it merges, this page fills in per service.
 routes/changes/[...slug]/+page.svelte	text	. You can also press
-routes/changes/[...slug]/+page.svelte	text	… … … · live … · updated
-routes/changes/[...slug]/+page.svelte	code	… · every other place on its newest build
+routes/changes/[...slug]/+page.svelte	text	… … · typical to prod … … … · live … · updated
 routes/changes/[...slug]/+page.svelte	code	… · kuberik
 routes/changes/[...slug]/+page.svelte	code	… +… more
 routes/changes/[...slug]/+page.svelte	text	… commit … produced no release ›
@@ -1182,9 +1185,9 @@ routes/changes/[...slug]/+page.svelte	code	… services
 routes/changes/[...slug]/+page.svelte	text	· … not built anywhere
 routes/changes/[...slug]/+page.svelte	code	#… … · kuberik
 routes/changes/[...slug]/+page.svelte	code	#… · kuberik
-routes/changes/[...slug]/+page.svelte	code	A check has not passed yet — it clears on its own
 routes/changes/[...slug]/+page.svelte	text	All changes
-routes/changes/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
+routes/changes/[...slug]/+page.svelte	text	Back to changes ›
+routes/changes/[...slug]/+page.svelte	text	change … … ·
 routes/changes/[...slug]/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
 routes/changes/[...slug]/+page.svelte	text	CI did not publish a build for this commit; the dashboard cannot tell whether it failed or was skipped.
 routes/changes/[...slug]/+page.svelte	code	closed by @…
@@ -1195,13 +1198,10 @@ routes/changes/[...slug]/+page.svelte	code	committed … ago by @…
 routes/changes/[...slug]/+page.svelte	text	Connect GitHub
 routes/changes/[...slug]/+page.svelte	text	Connect GitHub to see this pull request
 routes/changes/[...slug]/+page.svelte	code	deployed to … of … rollouts
-routes/changes/[...slug]/+page.svelte	code	every place is on its newest build
 routes/changes/[...slug]/+page.svelte	title	Every rollout
 routes/changes/[...slug]/+page.svelte	placeholder	Find a build or service
 routes/changes/[...slug]/+page.svelte	text	first deployed … ago
-routes/changes/[...slug]/+page.svelte	code	Held by a deploy window
-routes/changes/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
-routes/changes/[...slug]/+page.svelte	code	Held for another …
+routes/changes/[...slug]/+page.svelte	text	GitHub is not connected — see what this cluster runs below.
 routes/changes/[...slug]/+page.svelte	title	How it's going
 routes/changes/[...slug]/+page.svelte	code	In this state
 routes/changes/[...slug]/+page.svelte	text	It looks like it belongs to
@@ -1218,18 +1218,11 @@ routes/changes/[...slug]/+page.svelte	text	Not built yet for … .
 routes/changes/[...slug]/+page.svelte	title	Not merged yet
 routes/changes/[...slug]/+page.svelte	text	Not on this cluster
 routes/changes/[...slug]/+page.svelte	code	opened by @…
-routes/changes/[...slug]/+page.svelte	code	Pinned to … — automatic deploys are paused until the pin is cleared.
 routes/changes/[...slug]/+page.svelte	text	PR # … not found in … / … (or you cannot see it). Check the number, or
 routes/changes/[...slug]/+page.svelte	text	PR not found
-routes/changes/[...slug]/+page.svelte	code	Ready to deploy — still on …
-routes/changes/[...slug]/+page.svelte	code	Ready to deploy here
-routes/changes/[...slug]/+page.svelte	code	Running … of this revision; … is held
 routes/changes/[...slug]/+page.svelte	text	search … / … 's pull requests on GitHub ↗
 routes/changes/[...slug]/+page.svelte	text	See what … runs ›
 routes/changes/[...slug]/+page.svelte	text	Show … more ›
-routes/changes/[...slug]/+page.svelte	code	Skipped — newer builds are ahead of this one
-routes/changes/[...slug]/+page.svelte	code	slot… —
-routes/changes/[...slug]/+page.svelte	code	The pinned tag: …
 routes/changes/[...slug]/+page.svelte	text	This build has no linked GitHub repository, so there is no change page for it — changes need a pull request or a commit on a GitHub-hosted repo.
 routes/changes/[...slug]/+page.svelte	title	This change
 routes/changes/[...slug]/+page.svelte	text	This dashboard reads pull request details as you, through your own GitHub account — connect it to see # … on … / … .

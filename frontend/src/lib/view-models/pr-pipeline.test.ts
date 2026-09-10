@@ -697,7 +697,7 @@ describe('buildPrPipeline', () => {
 		});
 		const vm = buildPrPipeline(meta(), [dev, staging], [envDev, envStaging], { items: [] }, NOW);
 		expect(vm.services[0].furthest).toBe('live in dev · baking in staging');
-		expect(vm.verdict).toBe('Widget-app baking in staging');
+		expect(vm.verdict).toBe('widget-app baking in staging');
 	});
 
 	// ⭐ ITEM 11 (2026-09-10 fix pass). `furthestCompact` is the folded form
@@ -830,7 +830,7 @@ describe('buildPrPipeline', () => {
 		// ⭐ RULING 3 (2026-09-10 fix pass, "ONE VERDICT, THE FRONTIER"): a
 		// dependency wait reads "held", the same word a gate hold uses — both
 		// are "something else has to move first" from the reader's seat.
-		expect(vm.verdict).toBe('Widget-app held in prod on api-app');
+		expect(vm.verdict).toBe('widget-app held in prod on api-app');
 	});
 
 	// ⭐ ITEM 3 (2026-09-10 fix pass). Without `rolloutGates` (this VM never
@@ -862,7 +862,7 @@ describe('buildPrPipeline', () => {
 		expect(vm.verdict).not.toContain('schedule-gate-fk44d');
 		// ⭐ RULING 3: no subject clause when `gateLabel` is unresolved — "held
 		// in prod", never a raw gate id, never a fake "by a rule" filler.
-		expect(vm.verdict).toBe('Widget-app held in prod');
+		expect(vm.verdict).toBe('widget-app held in prod');
 	});
 
 	it('verdict: gated with nothing actually blocking is its own state (promoting), no HELD contradiction', () => {
@@ -883,7 +883,7 @@ describe('buildPrPipeline', () => {
 		expect(cell.gateLabel).toBeNull();
 		// ⭐ RULING 3: the frontier verb table drops "shortly" — "promoting in
 		// prod", no subject (nothing to name; the row's own reason carries it).
-		expect(vm.verdict).toBe('Widget-app promoting in prod');
+		expect(vm.verdict).toBe('widget-app promoting in prod');
 	});
 });
 
@@ -911,7 +911,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 		// api-app is a different repo entirely — excluded, never dilutes the verdict.
 		expect(vm.services.map((s) => s.appName)).toEqual(['frontend-app']);
 		expect(vm.services[0].cells[0].state).toBe('gated');
-		expect(vm.verdict).toBe('Frontend-app held in dev');
+		expect(vm.verdict).toBe('frontend-app held in dev');
 	});
 
 	// `buildPrPipeline`'s own gate context never carries schedule/rolloutGate
@@ -942,6 +942,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 			gateSubject: null,
 			gateSubjectKind: null,
 			gatePending: false,
+		gateApprovalGuess: false,
 			gateContract: null,
 			gateRequiredVersion: null,
 			providerHasNoBuild: false,
@@ -993,7 +994,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 		// dev is the FRONTIER (lowest rank, not live) even though prod's own
 		// state (`failed`) is louder — the old "worst-progressed" rule would
 		// have picked prod here.
-		expect(vm.verdict).toBe('Widget-app promoting in dev');
+		expect(vm.verdict).toBe('widget-app promoting in dev');
 	});
 });
 
@@ -1211,7 +1212,7 @@ describe('builtElsewhere / joined dependency reasons (CHANGES-2026-09-10 fix pas
 			NOW
 		);
 		expect(vm.verdict).toBe(
-			'Widget-app held in dev on api-app · will not move on its own — needs api-app api ^1.68.0'
+			'widget-app held in dev on api-app · will not move on its own — needs api-app api ^1.68.0'
 		);
 	});
 

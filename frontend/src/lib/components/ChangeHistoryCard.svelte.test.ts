@@ -99,7 +99,21 @@ describe('ChangeHistoryCard', () => {
 
 	test('an empty feed states the fact rather than drawing an empty list', () => {
 		render(ChangeHistoryCard, { props: { rows: [] } });
-		expect(screen.getByText(/has not deployed anywhere on this cluster/)).toBeInTheDocument();
+		expect(screen.getByText('not deployed anywhere yet')).toBeInTheDocument();
+	});
+
+	// ⭐ ROUND 3, ITEM 1(b) (2026-09-10 fix pass) — the retention caveat names
+	// the ROLLOUT's own history buffer, a fact independent of whether this
+	// change ever ran here; pairing it with "0 deploys" read as a second,
+	// confusing claim, so it never renders alongside the empty-feed line.
+	test('the retention caveat never prints beside an empty feed', () => {
+		render(ChangeHistoryCard, {
+			props: {
+				rows: [],
+				retentionNote: 'History keeps the last 10 deploys per service; a build deployed earlier is not recorded.'
+			}
+		});
+		expect(screen.queryByText(/History keeps the last/)).not.toBeInTheDocument();
 	});
 
 	// ⭐ ROUND 3, ITEM 5 (2026-09-10)

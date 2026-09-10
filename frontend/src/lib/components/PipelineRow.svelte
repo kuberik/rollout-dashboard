@@ -21,6 +21,7 @@
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { fetchScheduleObjects, type ScheduleObject, formatAbsoluteReopen, formatTimeUntil } from '$lib/api/schedules';
 	import { rolloutPath } from '$lib/source-dashboard';
+	import { envFamilyWord } from '$lib/version-utils';
 	import { buildGateContext, classifyGate, withSchedules, prettyNameOf } from '$lib/view-models/blocking-story';
 	import type { PrCell, PrState } from '$lib/view-models/pr-pipeline';
 	import {
@@ -189,6 +190,23 @@
 	 */
 	const shortRevision = $derived(cell.revision ? cell.revision.slice(0, 7) : null);
 
+	/**
+	 * ⭐ ROUND 3, ITEM 4 (2026-09-10 fix pass) — "FAMILY WORDS IN EVERY STAGE
+	 * ROW." `cell.envName` is the environment's own display name when this
+	 * service's rollout has a matching `Environment` object, but the raw k8s
+	 * NAMESPACE when it doesn't (`groupRolloutsByApp`'s own fallback branch,
+	 * `version-utils.ts`) — measured live on `hello-world-manifests` (no
+	 * bound `Environment`), whose stage rows printed the namespace
+	 * (`hello-world-dev`) beside sibling services' clean `dev`/`staging`/
+	 * `prod`. `envFamilyWord` already normalises either shape to the SAME
+	 * closed vocabulary this page's own landing grid and meter already draw
+	 * (`DEV`/`STG`/`PRD`) — one word, every row, regardless of which path
+	 * built the cell. The full name survives in the chip's own `title`
+	 * (below), unchanged, for a genuine multi-region case to disambiguate on
+	 * hover/focus.
+	 */
+	const envLabel = $derived(envFamilyWord(cell.envName).toLowerCase());
+
 	let whyOpen = $state(false);
 
 	/**
@@ -272,6 +290,25 @@
 	});
 
 	/**
+	 * ⭐ ROUND 3, ITEM 1(e) (2026-09-10 fix pass) — the SAME "pretty name, or
+	 * the gate's own name" lookup `gateFacts`'s `Rule` fact prints, pulled
+	 * out so the row's own sentence (`displaySentence`, below — "held for
+	 * approval · <name>") and the disclosure's record can never disagree on
+	 * what this rule is called.
+	 */
+	const resolvedRuleName = $derived.by<string | null>(() => {
+		const hint = cell.gateHint;
+		const data = whyQuery.data;
+		const schedules = schedulesQuery.data;
+		const classified = classifiedGate;
+		if (!hint || !data || !schedules || !classified) return null;
+		const gateObj = data.rolloutGates?.items?.find((g) => g.metadata?.name === hint.gateName) ?? null;
+		const scheduleObj =
+			schedules.find((s) => (s.status?.managedGates ?? []).includes(hint.gateName)) ?? null;
+		return prettyNameOf(scheduleObj?.metadata) || prettyNameOf(gateObj?.metadata) || classified.label;
+	});
+
+	/**
 	 * The rule record the disclosure prints: its pretty name (never the raw
 	 * Kubernetes gate id), its description when the object publishes one,
 	 * and `status.nextTransition` as "opens <time>" — the literal "when can
@@ -287,8 +324,7 @@
 		const gateObj = data.rolloutGates?.items?.find((g) => g.metadata?.name === hint.gateName) ?? null;
 		const scheduleObj =
 			schedules.find((s) => (s.status?.managedGates ?? []).includes(hint.gateName)) ?? null;
-		const prettyName =
-			prettyNameOf(scheduleObj?.metadata) || prettyNameOf(gateObj?.metadata) || classified.label;
+		const prettyName = resolvedRuleName ?? classified.label;
 		const description =
 			scheduleObj?.metadata?.annotations?.['gate.kuberik.com/description'] ||
 			gateObj?.metadata?.annotations?.['gate.kuberik.com/description'] ||
@@ -334,6 +370,28 @@
 	 * any non-frontier cell by construction.
 	 */
 	const frontierUsually = $derived(isFrontier ? frontierUsuallyLabelForCell(cell) : null);
+
+	/**
+	 * ⭐ ROUND 3, ITEM 1(e) (2026-09-10 fix pass) — "HELD FOR APPROVAL ·
+	 * <NAME>, ONCE THE FETCH RESOLVES." `sentence` already reads "held for
+	 * approval" the instant `cell.gateApprovalGuess` is true (the VM's own
+	 * pre-fetch guess, `pr-cell-copy.ts`) — this row is the one place that
+	 * guess can be CONFIRMED (`classifiedGate`, built from the real
+	 * `rolloutGates`/schedule join the guess itself has no access to) and
+	 * given the rule's own name. Two outcomes once the fetch settles:
+	 * confirmed → append the name; reclassified as something else entirely
+	 * (the known, narrower risk `gateApprovalGuess`'s own doc names) → fall
+	 * back to the honest generic rather than keep naming "approval" for a
+	 * rule that turned out not to be one.
+	 */
+	const displaySentence = $derived.by<string>(() => {
+		if (!cell.gateApprovalGuess) return sentence;
+		if (!classifiedGate) return sentence;
+		if (classifiedGate.kind === 'approval') {
+			return resolvedRuleName ? `held for approval · ${resolvedRuleName}` : sentence;
+		}
+		return 'held by a rule';
+	});
 </script>
 
 <!--
@@ -407,13 +465,13 @@
 			<Chip
 				role="env"
 				theme={cell.theme}
-				label={cell.envName}
+				label={envLabel}
 				wide
 				title={`${appName} in ${cell.envName.toUpperCase()}`}
 			/>
 		</a>
 
-		<span class="t-body min-w-32 flex-1 truncate text-gray-900 dark:text-white">{sentence}</span>
+		<span class="t-body min-w-32 flex-1 truncate text-gray-900 dark:text-white">{displaySentence}</span>
 
 		<span class="chip t-chip chip-wide shrink-0 {stateChip.class}">{stateChip.label}</span>
 

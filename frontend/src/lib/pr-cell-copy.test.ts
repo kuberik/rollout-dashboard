@@ -35,6 +35,7 @@ function mkCell(state: PrState, overrides: Partial<PrCell> = {}): PrCell {
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		gateApprovalGuess: false,
 		gateContract: null,
 		gateRequiredVersion: null,
 		providerHasNoBuild: false,
@@ -174,7 +175,7 @@ describe('cellReasonText — suppresses a line that would only restate the sente
 	it('live superseded names the one fact the sentence cannot carry', () => {
 		const cell = mkCell('live', { since: '2026-09-10T10:00:00Z', superseded: true });
 		expect(cellReasonText(cell)).toBe(
-			'a later build that also carries this PR has since shipped'
+			'a later build that also carries this change has since shipped'
 		);
 	});
 

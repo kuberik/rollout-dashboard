@@ -39,6 +39,7 @@ function mkCell(overrides: Partial<PrCell> & { envName: string; state: PrState }
 		gateSubject: null,
 		gateSubjectKind: null,
 		gatePending: false,
+		gateApprovalGuess: false,
 		gateContract: null,
 		gateRequiredVersion: null,
 		providerHasNoBuild: false,

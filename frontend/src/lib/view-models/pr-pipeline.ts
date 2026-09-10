@@ -179,6 +179,22 @@ export type PrCell = {
 	 */
 	gatePending: boolean;
 	/**
+	 * ⭐ ROUND 3, ITEM 1(e) (2026-09-10 fix pass) — "HELD FOR APPROVAL, BEFORE
+	 * THE ROW'S OWN FETCH RESOLVES." `classifyGate`'s `approval` kind is
+	 * this module's DEFAULT guess for any allow-list gate with no
+	 * promotion/dependency/schedule join (`gatePending`'s own doc comment —
+	 * this module supplies no `rolloutGates`, so the guess cannot be trusted
+	 * enough to print a rule NAME). It is, however, still the single most
+	 * likely kind for that shape (a schedule gate misclassifying this way is
+	 * the known, narrower exception `gatePending` exists to protect
+	 * against) — trustworthy enough for the ROW's OWN generic sentence
+	 * ("held for approval" instead of the vaguer "held by a rule") while the
+	 * row's lazy "why" fetch (which DOES carry `rolloutGates` and the
+	 * schedule join) is still in flight or not yet opened. `false` unless
+	 * `gatePending` is also `true` — never overrides a resolved `gateLabel`.
+	 */
+	gateApprovalGuess: boolean;
+	/**
 	 * ⭐ FIX PASS ITEM 5 (2026-09-10). The dependency's own contract name
 	 * (`api`, say) and the range the gate actually evaluates (`^1.68.0`) —
 	 * `classifyGate`'s own `contract`/`need` fields, carried through so the
@@ -507,6 +523,7 @@ const NOTHING: Pick<
 	| 'gateSubject'
 	| 'gateSubjectKind'
 	| 'gatePending'
+	| 'gateApprovalGuess'
 	| 'gateContract'
 	| 'gateRequiredVersion'
 	| 'providerHasNoBuild'
@@ -519,6 +536,7 @@ const NOTHING: Pick<
 	gateSubject: null,
 	gateSubjectKind: null,
 	gatePending: false,
+	gateApprovalGuess: false,
 	gateContract: null,
 	gateRequiredVersion: null,
 	providerHasNoBuild: false
@@ -839,6 +857,7 @@ function buildCell(
 				gateSubject: anyUpstream ? (pick.subject ?? null) : null,
 				gateSubjectKind: anyUpstream ? (pick.subjectKind ?? null) : null,
 				gatePending: pending,
+				gateApprovalGuess: pending && pick.kind === 'approval',
 				// ⭐ FIX PASS ITEM 5. Only a `'service'`-subject dependency gate
 				// (`waiting-upstream`) ever carries these — `classifyGate`'s
 				// promotion branch never sets `contract`/`need` (its own
@@ -1098,8 +1117,24 @@ function frontierSubject(cell: PrCell): string | null {
 	return null;
 }
 
+/**
+ * ⭐ ROUND 3, ITEM 4 (2026-09-10 fix pass) — "NEVER CAPITALISE AN IDENTIFIER
+ * AT A SENTENCE START." A frontier verdict headed by a service name
+ * (`buildChangeVerdict`'s own `base`, "hello-api-app held in dev on
+ * hello-frontend-app") used to run through this unconditionally, so the
+ * page's own heading printed "Hello-api-app held in dev …" — an app name is
+ * not an English word and capitalising its first letter reads as a typo,
+ * not a sentence case. Every name on this cluster is hyphenated
+ * (`hello-api-app`); the genuine English phrases this function also
+ * capitalises ("live everywhere", "no release for this commit", "not built
+ * here") never are. `restructure`, not `capitalize`: a hyphenated leading
+ * token is left exactly as `buildChangeVerdict` built it.
+ */
 function capitalize(word: string): string {
-	return word ? `${word[0].toUpperCase()}${word.slice(1)}` : word;
+	if (!word) return word;
+	const firstToken = word.split(' ')[0];
+	if (firstToken.includes('-')) return word;
+	return `${word[0].toUpperCase()}${word.slice(1)}`;
 }
 
 /**
@@ -1232,6 +1267,68 @@ function joinDependencyReasons(
 	}));
 }
 
+/**
+ * ⭐ ROUND 3, ITEM 4 (2026-09-10 fix pass) — "THE CONSTRAINT FORM, EVERYWHERE
+ * THE RANGE IS KNOWN." `blocking-story.ts`'s dependency branch only states
+ * the required range (`ship api ^1.68.0`, `wantClause`) when THAT gate's OWN
+ * `RolloutDependency.status.blockedReleases` resolves to exactly one range —
+ * a per-environment fact, populated by the controller only once it has
+ * actually evaluated a held candidate there. Measured live on `pull/4`:
+ * DEV's own gate had a candidate to evaluate and resolved `^1.68.0`; STAGING
+ * and PROD's did not (nothing has reached them to hold), so their own join
+ * came back empty and printed the vaguer "ship a newer api" fallback —
+ * three rows of the SAME dependency, on the SAME contract, one spelling
+ * that names the range and two that don't. This VM already knows, from
+ * every OTHER cell of the SAME service waiting on the SAME provider, that
+ * the range is `^1.68.0` — it is one contract regardless of which
+ * environment's own gate object happened to have a candidate to check it
+ * against. Backfills only the STRING FRAGMENT the vaguer form differs by
+ * ("a newer api" → "api ^1.68.0"), leaving each row's own "— it is on X"
+ * aside (a fact about THAT environment's currently-served version, which
+ * genuinely can differ row to row) untouched.
+ */
+function backfillRequiredVersion(services: readonly PrService[]): PrService[] {
+	const known = new Map<string, { contract: string; need: string }>();
+	for (const svc of services) {
+		for (const cell of svc.cells) {
+			if (
+				cell.state === 'waiting-upstream' &&
+				cell.gateSubjectKind === 'service' &&
+				cell.gateSubject &&
+				cell.gateContract &&
+				cell.gateRequiredVersion &&
+				!known.has(cell.gateSubject)
+			) {
+				known.set(cell.gateSubject, { contract: cell.gateContract, need: cell.gateRequiredVersion });
+			}
+		}
+	}
+	if (known.size === 0) return [...services];
+	return services.map((svc) => ({
+		...svc,
+		cells: svc.cells.map((cell) => {
+			if (
+				cell.state !== 'waiting-upstream' ||
+				cell.gateSubjectKind !== 'service' ||
+				!cell.gateSubject ||
+				cell.gateRequiredVersion
+			) {
+				return cell;
+			}
+			const k = known.get(cell.gateSubject);
+			if (!k) return cell;
+			const vague = `a newer ${k.contract}`;
+			const constrained = `${k.contract} ${k.need}`;
+			return {
+				...cell,
+				reason: cell.reason.includes(vague) ? cell.reason.replace(vague, constrained) : cell.reason,
+				gateContract: k.contract,
+				gateRequiredVersion: k.need
+			};
+		})
+	}));
+}
+
 /** RULING 2's `builtElsewhere` — a second cross-service pass for the same
  *  reason `joinDependencyReasons` is one: needs every service's cells in
  *  hand, which only exists once the whole array is built. */
@@ -1307,7 +1404,9 @@ export function buildPrPipeline(
 		});
 	}
 
-	services = withBuiltElsewhere(joinDependencyReasons(services, new Set(unaffectedServices)));
+	services = withBuiltElsewhere(
+		backfillRequiredVersion(joinDependencyReasons(services, new Set(unaffectedServices)))
+	);
 
 	const allCells = services.flatMap((s) => s.cells);
 	const rolloutsTotal = allCells.length;

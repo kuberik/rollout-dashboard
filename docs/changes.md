@@ -93,6 +93,24 @@ card) is a *different*, ≤4-word vocabulary from the full verdict sentence abov
 "built": `no release` for a `noRelease` change, `not deployed here` for the repo-mismatch
 case, `held in <family>` / `failed in <family>` / `<verb> to <family>` for an in-flight one.
 
+### An approval hold names its rule after the lazy fetch, never before
+
+A held cell whose gate resolves to a manual approval (no promotion order, no cross-service
+dependency, no deploy-window join) reads **"held for approval"** the instant the pipeline VM
+builds it — a best-effort guess (`PrCell.gateApprovalGuess`), because this VM never fetches
+`rolloutGates` and cannot back up a specific rule NAME yet (see "Which services are affected",
+above, for the same non-guessing discipline applied to a different fact). The change page's own
+row (`PipelineRow.svelte`) is the one place that guess gets confirmed: its "Why is it held?"
+disclosure fetches the single-rollout endpoint (which DOES carry `rolloutGates`) either lazily,
+on click, or eagerly for the frontier row. Once that fetch settles and genuinely classifies the
+gate as an approval, the row upgrades to **"held for approval · `<pretty name or gate name>`"**
+— the same "pretty name, falling back to the gate's own name" lookup the disclosure's own record
+uses, so the two can never name the rule two different ways. If the fetch instead reclassifies
+the gate as something else entirely (a closed schedule, most often — the one false-positive this
+guess is known to produce), the row falls back to the honest generic "held by a rule" rather than
+keep naming an approval that was never real. No ETA is ever printed on an approval hold, before
+or after the fetch — clearing it needs a person, not a clock.
+
 An estimate ("usually N min once it starts") is only ever printed for a **normal order wait**
 (`queued`/`promoting`) — a build that exists and just hasn't reached this environment yet. It is
 never printed for `gated`/`pinned`/`waiting-upstream`: those clear on a rule, a person, or an
@@ -109,7 +127,23 @@ stuck/failed family so a service independently held three stages downstream neve
 every stage amber. A `noRelease` change (or the no-GitHub ledger fallback, which also has no
 services to draw) still shows a meter: **three neutral, dashed placeholders** — `DEV`/`STG`/
 `PRD`, no color, nothing to name — rather than an absent meter. The meter never disappears; it
-just has nothing to report.
+just has nothing to report. **No release means not affected**, so `noRelease`'s three dashed
+placeholders are not "held" or "behind" for those families — there is nothing to draw yet, which
+is a different fact from a family this change genuinely cannot reach.
+
+Each step's field/glyph is state-only, never identity, and reduces to four readings:
+
+| reading | field | meaning |
+|---|---|---|
+| solid green, check glyph | `live` | every affected service in this family has this build live |
+| green **ring**, no fill | `live` (partial) | at least one affected service is live here, at least one is not yet — "getting there", still green because nothing here is stuck |
+| **amber** (orange), filled | `stuck` | this is the frontier family and something here needs a person, a pin, or an upstream that cannot proceed on its own — the one reading a reader should stop and look at |
+| **dashed**, no fill | `none` | not reached yet — either past the frontier (normal, nothing wrong) or `noRelease`/the ledger fallback (nothing to draw at all) |
+
+A neutral gray clock (`queued`, waiting its normal turn) and a pulsing blue/yellow dot
+(`deploying`/`baking`) exist too, for a family genuinely mid-promotion — amber is reserved for
+`stuck` alone; a normal promotion-order wait is never painted the same color as a family that
+needs attention.
 
 ## The ledger fallback
 

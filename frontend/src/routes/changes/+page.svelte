@@ -69,7 +69,7 @@
 	} from '$lib/view-models/changes';
 	import { compactSpan } from '$lib/view-models/lead-time';
 	import { now } from '$lib/stores/time';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { getScrollPosition, scrollMemoryKey } from '$lib/scroll-memory';
 	import {
@@ -187,13 +187,57 @@
 	// means never hidden behind the live-run fold, not that an unusually
 	// large held/queued/partial set cannot itself paginate.
 	const MINE_CAP = 20;
-	let mineDeviationsExpanded = $state(false);
+	/**
+	 * ⭐ ROUND 3, ITEM 3 (2026-09-10 fix pass) — "SHOW N MORE"/"NO RELEASE"/
+	 * THE LIVE-RUN FOLD SURVIVE BACK, THE SAME WAY `BuildLists.svelte`'s
+	 * identical three-disclosure shape already does on the repository page
+	 * (that component's own doc comment records the reasoning: `sessionStorage`
+	 * keyed by pathname, read SYNCHRONOUSLY at component init via
+	 * `$state(untrack(() => …))` rather than in an `onMount`/`$effect` —
+	 * so the expansion is already correct on the FIRST render, before the
+	 * scroll-restore effect below ever runs (which additionally waits for
+	 * data to load) — "restore before scroll restore" falls out of the
+	 * ordering for free rather than needing an explicit sequencing flag).
+	 * This page has one stable pathname (`/changes`, no per-repo path
+	 * segment), so one fixed key covers all three flags.
+	 */
+	const CHANGES_EXPAND_KEY = 'changes:expand:/changes';
+	type ChangesExpandState = { deviations: boolean; live: boolean; noRelease: boolean };
+	function readChangesExpand(): ChangesExpandState {
+		const empty: ChangesExpandState = { deviations: false, live: false, noRelease: false };
+		if (typeof sessionStorage === 'undefined') return empty;
+		try {
+			const raw = sessionStorage.getItem(CHANGES_EXPAND_KEY);
+			if (!raw) return empty;
+			const parsed = JSON.parse(raw);
+			return { deviations: !!parsed.deviations, live: !!parsed.live, noRelease: !!parsed.noRelease };
+		} catch {
+			return empty;
+		}
+	}
+	function writeChangesExpand(state: ChangesExpandState) {
+		if (typeof sessionStorage === 'undefined') return;
+		try {
+			sessionStorage.setItem(CHANGES_EXPAND_KEY, JSON.stringify(state));
+		} catch {
+			/* storage full or disabled — expand state just does not persist */
+		}
+	}
+	const initialExpand = untrack(() => readChangesExpand());
+	let mineDeviationsExpanded = $state(initialExpand.deviations);
 	const mineDeviationsShown = $derived(
 		mineDeviationsExpanded ? mineDeviations : mineDeviations.slice(0, MINE_CAP)
 	);
 	const mineDeviationsHiddenCount = $derived(mineDeviations.length - mineDeviationsShown.length);
-	let mineLiveExpanded = $state(false);
-	let mineNoReleaseExpanded = $state(false);
+	let mineLiveExpanded = $state(initialExpand.live);
+	let mineNoReleaseExpanded = $state(initialExpand.noRelease);
+	$effect(() => {
+		writeChangesExpand({
+			deviations: mineDeviationsExpanded,
+			live: mineLiveExpanded,
+			noRelease: mineNoReleaseExpanded
+		});
+	});
 
 	/** The Card's own header rollup — byte-identical to Home's
 	 *  `YourChangesCard` (`See all changes` / `N of M not everywhere yet` /

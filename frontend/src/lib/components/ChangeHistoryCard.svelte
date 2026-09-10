@@ -67,9 +67,16 @@
 
 <Card icon={ClockOutline} title="History" verdict="{rows.length} deploy{rows.length === 1 ? '' : 's'}" padded={false}>
 	{#if rows.length === 0}
-		<p class="t-dense px-4 py-3 text-gray-500 dark:text-gray-400">
-			This build has not deployed anywhere on this cluster.
-		</p>
+		<!--
+			⭐ ROUND 3, ITEM 1(b) (2026-09-10 fix pass) — HEADER + ONE LINE, AND
+			NEVER THE RETENTION CAVEAT ALONGSIDE IT. `retentionNote` names a
+			fact about the ROLLOUT's own history buffer being full of OTHER
+			deploys — true independent of whether THIS change ever ran here,
+			so pairing it with "0 deploys" read as a second, confusing claim
+			about the very history this line just said does not exist. The
+			caveat only ever belongs beside a real feed to qualify.
+		-->
+		<p class="t-dense px-4 py-3 text-gray-500 dark:text-gray-400">not deployed anywhere yet</p>
 	{:else}
 		<ol class="divide-y divide-gray-100 dark:divide-gray-700/60">
 			{#each shown as row (row.key)}
@@ -154,7 +161,7 @@
 			</div>
 		{/if}
 	{/if}
-	{#if retentionNote}
+	{#if retentionNote && rows.length > 0}
 		<p class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-400 dark:border-gray-700/60 dark:text-gray-500">
 			{retentionNote}
 		</p>

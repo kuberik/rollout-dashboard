@@ -226,7 +226,7 @@
 									aria-hidden="true"
 								></span>
 							{/if}
-							<span class="cl-meter-label t-micro text-gray-500 dark:text-gray-400">{step.family}</span>
+							<span class="cl-meter-label text-gray-500 dark:text-gray-400">{step.family}</span>
 						</span>
 					{/each}
 				</div>
@@ -362,14 +362,26 @@
 		border-color: var(--color-green-400);
 	}
 
-	/* Family words show only once there is room to read them AND the row
-	   is not fighting them for the same line — ≥640px of THIS component's
-	   own container width. */
-	@container (max-width: 639.98px) {
-		.cl-meter-label {
-			display: none;
-		}
+	/*
+	 * ⭐ ROUND 3, ITEM 2 (2026-09-10 fix pass) — "THE METER IS LEARNABLE
+	 * WHERE THE DEVELOPER STARTS." The family words used to hide below
+	 * 640px of container width — a no-op everywhere that mattered most:
+	 * Home's own rail card is ~320px, so a developer never once saw
+	 * `DEV`/`STG`/`PRD` labelled on the meter that is their FIRST look at
+	 * this vocabulary, only three unlabelled dots. `10px/600` — the exact
+	 * type role `LandingMark.svelte`'s own `.lm-word` already uses for the
+	 * identical family word, so the meter and the landing grid teach the
+	 * same three letters in the same voice rather than two different
+	 * sizes/weights for one word. The word now renders at every container
+	 * width; only the STANDING clause (`.cl-standing`, a full ≤4-word
+	 * phrase with much less room) still needs the narrow-width fold below.
+	 */
+	.cl-meter-label {
+		font-size: 10px;
+		font-weight: 600;
+	}
 
+	@container (max-width: 639.98px) {
 		/* The status group (meter, standing, age) drops to its own second
 		   line: `flex-basis: 100%` alone forces it to be wider than any
 		   remaining space on `.cl-line1`'s line, so it starts a fresh one —
@@ -385,9 +397,6 @@
 		/* ⭐ ROUND 3, ITEM 3 (2026-09-10) — THE AGE ALWAYS RENDERS NOW. It used
 		   to hide at this same breakpoint — the one fact a reader cannot get
 		   any other way ("how long has this been in this state"), dropped on
-		   every rail card and every phone. The meter's FAMILY WORDS
-		   (`.cl-meter-label`, above) are what gives way instead: the coloured
-		   dot still says which family without the label, and the row stays
-		   at most two lines either way. */
+		   every rail card and every phone. */
 	}
 </style>
