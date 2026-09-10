@@ -68,7 +68,9 @@ function mkVm(services: PrService[]): PrPipelineVM {
 		containmentKnown: true,
 		rolloutsTotal: 0,
 		rolloutsWithBuild: 0,
-		rolloutsLive: 0
+		rolloutsLive: 0,
+		unaffectedServices: [],
+		noRelease: false
 	};
 }
 
@@ -173,21 +175,20 @@ describe('buildLandingGrid — all 12 states', () => {
 	});
 });
 
-describe('buildLandingGrid — builtElsewhere threads into the mark sentence (ruling 2)', () => {
-	it('a not-built mark on a service with builtElsewhere:true reads "no build of this change for this service"', () => {
-		const grid = buildLandingGrid(
-			mkVm([mkService('svc', [mkCell({ envName: 'dev', state: 'not-built' })], true)]),
-			NOW
-		);
-		expect(grid.services[0].marks[0].sentence).toContain('no build of this change for this service');
-	});
-
-	it('a not-built mark with builtElsewhere:false reads the plain "not built yet"', () => {
-		const grid = buildLandingGrid(
-			mkVm([mkService('svc', [mkCell({ envName: 'dev', state: 'not-built' })], false)]),
-			NOW
-		);
-		expect(grid.services[0].marks[0].sentence).toContain('not built yet');
+// ⭐ ROUND 3 (2026-09-10 ruling A). `builtElsewhere` no longer changes the
+// mark sentence — `cellStateSentence`'s own `not-built` branch reads "no
+// release yet" (or "release status unknown", the ruling-1 honesty guard)
+// regardless of the flag, since `buildPrPipeline` itself now drops a
+// service with no release evidence rather than rendering it `not-built`.
+describe('buildLandingGrid — a not-built mark (hand-built fixture; the real pipeline never produces one for an included service)', () => {
+	it('reads "no release yet" whether or not builtElsewhere is set', () => {
+		for (const builtElsewhere of [true, false]) {
+			const grid = buildLandingGrid(
+				mkVm([mkService('svc', [mkCell({ envName: 'dev', state: 'not-built' })], builtElsewhere)]),
+				NOW
+			);
+			expect(grid.services[0].marks[0].sentence).toContain('no release yet');
+		}
 	});
 });
 

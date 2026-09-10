@@ -42,6 +42,7 @@ function mkRow(overrides: Partial<ChangeRowVM> = {}): ChangeRowVM {
 		prodLeadMs: null,
 		frontierReason: null,
 		frontierSince: null,
+		noRelease: false,
 		...overrides
 	};
 }
@@ -231,9 +232,18 @@ describe('ChangeLine', () => {
 		expect(container.querySelectorAll('.cl-step').length).toBe(2);
 	});
 
-	test('the meter is absent for a row with no landing-grid services (the ledger fallback shape)', () => {
+	// ⭐ ROUND 3 (2026-09-10 ruling A). Superseded: the meter used to be
+	// absent for a row with no landing-grid services (the ledger fallback
+	// shape, and now also a real `noRelease` change) — `familyProgress` now
+	// returns three neutral DEV/STG/PRD placeholders for this exact shape
+	// ("meter = three dashed dots" for a `noRelease` row), so the meter
+	// always draws something.
+	test('the meter draws three dashed placeholders for a row with no landing-grid services (the ledger fallback shape / a noRelease change)', () => {
 		const { container } = render(ChangeLine, { props: { row: mkRow({ grid: EMPTY_GRID }) } });
-		expect(container.querySelector('.cl-meter')).toBeNull();
+		const meter = container.querySelector('.cl-meter');
+		expect(meter).not.toBeNull();
+		expect(container.querySelectorAll('.cl-step').length).toBe(3);
+		expect(container.querySelectorAll('.cl-dot--dashed').length).toBe(3);
 	});
 
 	// ⭐ THE LIVE BUG DEFECT #2 EXISTS FOR: a service held in EVERY family

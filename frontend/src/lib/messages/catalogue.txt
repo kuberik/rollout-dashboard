@@ -602,12 +602,12 @@ lib/pr-cell-copy.ts	code	deploying now
 lib/pr-cell-copy.ts	code	held by …
 lib/pr-cell-copy.ts	code	held by a rule
 lib/pr-cell-copy.ts	code	live since …
-lib/pr-cell-copy.ts	code	no build of this change for this service
 lib/pr-cell-copy.ts	code	no checks reported
+lib/pr-cell-copy.ts	code	no release yet
 lib/pr-cell-copy.ts	code	not built (unverified)
 lib/pr-cell-copy.ts	code	not built here yet
-lib/pr-cell-copy.ts	code	not built yet
 lib/pr-cell-copy.ts	code	promoting shortly
+lib/pr-cell-copy.ts	code	release status unknown
 lib/pr-cell-copy.ts	code	retrying the bake
 lib/pr-cell-copy.ts	code	rolled back to …
 lib/pr-cell-copy.ts	code	the bake failed
@@ -760,9 +760,10 @@ lib/view-models/changes.ts	code	failed in …
 lib/view-models/changes.ts	code	held · …
 lib/view-models/changes.ts	code	held in …
 lib/view-models/changes.ts	code	live everywhere
-lib/view-models/changes.ts	code	not built
+lib/view-models/changes.ts	code	no release
+lib/view-models/changes.ts	code	no release yet
 lib/view-models/changes.ts	code	not built here
-lib/view-models/changes.ts	code	not built yet
+lib/view-models/changes.ts	code	not deployed here
 lib/view-models/changes.ts	code	not yet
 lib/view-models/changes.ts	code	rolled back
 lib/view-models/dependencies.ts	code	… version… ahead
@@ -853,12 +854,14 @@ lib/view-models/pr-pipeline.ts	code	live (since before recorded history)
 lib/view-models/pr-pipeline.ts	code	live everywhere
 lib/view-models/pr-pipeline.ts	code	manifest unreadable
 lib/view-models/pr-pipeline.ts	code	no environments
+lib/view-models/pr-pipeline.ts	code	no release for this commit yet
 lib/view-models/pr-pipeline.ts	code	No service on this cluster deploys this repository
 lib/view-models/pr-pipeline.ts	code	not built
 lib/view-models/pr-pipeline.ts	code	not built (unverified)
 lib/view-models/pr-pipeline.ts	code	not built here
 lib/view-models/pr-pipeline.ts	code	not built here yet
 lib/view-models/pr-pipeline.ts	code	not built yet
+lib/view-models/pr-pipeline.ts	code	not offered to … yet
 lib/view-models/pr-pipeline.ts	code	pinned to …
 lib/view-models/pr-pipeline.ts	code	retrying the bake
 lib/view-models/pr-pipeline.ts	code	rolled back

@@ -154,7 +154,14 @@ describe('/changes/[...slug] — pull form', () => {
 		expect(screen.getByRole('link', { name: 'widget-app' })).toHaveAttribute('href', '/apps/widget-app');
 	});
 
-	test('item 4: a service with no build does not sink the verdict, and is named in one secondary line', async () => {
+	// ⭐ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED")
+	// SUPERSEDES item 4's own premise. `widget-manifests` never released this
+	// exact commit (its own only release, `unrelated-1`, is not it) — under
+	// ruling A that means the service is UNAFFECTED and `buildPrPipeline`
+	// drops it entirely (`unaffectedServices`, debug-only), rather than the
+	// page naming it in a secondary "not built yet" line. `widget-app` alone
+	// still reads live everywhere.
+	test('item 4 (⭐ ROUND 3 ruling A): a service with no release evidence is dropped, never named in a secondary line', async () => {
 		stubFetch({
 			rollouts: [
 				rollout('widget-app', 'widget-dev', 'c0ffee1', new Date().toISOString()),
@@ -169,7 +176,7 @@ describe('/changes/[...slug] — pull form', () => {
 		await waitFor(() =>
 			expect(screen.getByRole('heading', { level: 2, name: 'Live everywhere' })).toBeInTheDocument()
 		);
-		expect(screen.getByText('Not built yet for widget-manifests.')).toBeInTheDocument();
+		expect(screen.queryByText(/widget-manifests/)).not.toBeInTheDocument();
 	});
 
 	test('document.title leads with the PR, not the product name', async () => {

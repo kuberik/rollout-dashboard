@@ -60,17 +60,21 @@ export type { ChangeVerdictTone };
 /**
  * `PrPipelineVM.verdict`'s own word, thinly wrapped — §2b's own examples:
  * mint `live everywhere`, orange `held in dev on hello-api-app`, red
- * `failed in staging`, gray `not built yet`, blue `deploying in dev`. A
+ * `failed in staging`, gray `not built here`, blue `deploying in dev`. A
  * change with no service on this cluster at all (no repo match) reads
  * `not built here`, the same phrase `mergedPullServiceSummary`
- * (`my-pulls.ts`) already uses for that case — the ONE thing this wrapper
- * still decides, because it is a fact about THIS INDEX's own repo match,
- * not something `buildChangeVerdict` (which only ever sees the services it
- * is handed) can tell apart from "some service matched, none built it" —
- * `vm.verdictWord`/`vm.verdictTone` (set by `buildPrPipeline`, which already
- * ran this exact function once) would read identically either way, so this
- * thin wrapper takes `vm.services` itself rather than trusting the VM's own
- * cached word to have made the same call this index wants.
+ * (`my-pulls.ts`) already uses for that case.
+ *
+ * ⚠️ RETAINED FOR COMPATIBILITY, NO LONGER CALLED BY `buildChangeRow`
+ * (⭐ ROUND 3, 2026-09-10 ruling A). This function derives everything from
+ * `vm.services` alone, which is exactly why it CANNOT distinguish "no
+ * service on this cluster sources this repo at all" from "the repo IS
+ * deployed here, but nothing built this exact change" — `buildPrPipeline`
+ * itself now disambiguates the two via `noRelease`, a fact this function's
+ * own inputs cannot see. The real pipeline's own caller reads
+ * `vm.verdictWord`/`vm.verdictTone`/`vm.noRelease` directly instead. Kept
+ * here, unchanged, for existing callers/tests that hand it a bare,
+ * hand-built `PrPipelineVM` and expect this exact re-derivation.
  */
 export function changeVerdict(vm: PrPipelineVM): { word: string; tone: ChangeVerdictTone } {
 	if (vm.services.length === 0) return { word: 'not built here', tone: 'not-built' };
@@ -154,6 +158,17 @@ export type ChangeRowVM = {
 	 * the other.
 	 */
 	frontierSince: string | null;
+	/**
+	 * ⭐ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED"). Mirrors
+	 * `PrPipelineVM.noRelease` — `true` when this repository IS deployed on
+	 * this cluster but NONE of its services carry any release evidence for
+	 * this exact change. `grid.services` is `[]` in this case (nothing to
+	 * draw), and `standingWords`/`familyProgress` both read this flag rather
+	 * than re-deriving "no release" from an empty `grid`, which is ALSO the
+	 * shape a repo-mismatch (`vm.services.length === 0` for the OTHER reason)
+	 * produces.
+	 */
+	noRelease: boolean;
 };
 
 /** THE ONE FRONTIER-PICKING PRECEDENCE, restated from `buildChangeVerdict`
@@ -280,7 +295,17 @@ function buildChangeRow(
 		containmentKnown: true
 	};
 	const vm = buildPrPipeline(meta, rollouts, environments, rolloutDependencies, now);
-	const verdict = changeVerdict(vm);
+	// ⭐ ROUND 3 (2026-09-10 ruling A). Read `vm`'s OWN word/tone/`noRelease`
+	// directly rather than `changeVerdict(vm)` — that wrapper re-derives its
+	// verdict purely from `vm.services` (kept that way on purpose; see its
+	// own doc and the tests that hand it a bare, hand-built VM) and so
+	// CANNOT tell "no service on this cluster sources this repo at all"
+	// apart from "the repo is deployed here but nothing carries this exact
+	// change" — both read `services.length === 0` from the outside.
+	// `buildPrPipeline` itself already disambiguates the two (`noRelease`),
+	// so this is the one caller that must read its answer rather than
+	// recompute a coarser one.
+	const verdict = { word: vm.verdictWord, tone: vm.verdictTone };
 	const frontier = pickFrontierCell(vm);
 	const grid = buildLandingGrid(vm, now);
 	const href =
@@ -307,7 +332,8 @@ function buildChangeRow(
 		notEverywhere: computeNotEverywhere(vm),
 		prodLeadMs: firstProdLeadMs(vm, change.mergedAt),
 		frontierReason: frontierReasonFor(frontier, now),
-		frontierSince: frontierFamilySince(vm, grid)
+		frontierSince: frontierFamilySince(vm, grid),
+		noRelease: vm.noRelease
 	};
 }
 
@@ -325,6 +351,17 @@ export function buildChangeRows(
 
 // ── FILTERS — ALL URL-BACKED (`?mine`, `?repo=`, `?pending`, `?q=`) ───────
 
+/**
+ * ⚠️ `mine`/`pendingOnly`/`kind` ARE DEPRECATED CHIPS (⭐ ROUND 3 RULING B,
+ * 2026-09-10, "TWO VIEWS, NOT ONE LIST"): "The chips Mine/Pull
+ * requests/Not yet everywhere go." `/changes` no longer renders them — "Your
+ * changes" is simply every row authored by the current user (`author`
+ * equality, the same test `mine` already ran), and "Repositories" replaces
+ * the pending/kind chips with one card per repo. The fields stay on this
+ * type (not deleted) for a caller that still wants programmatic filtering —
+ * `repos` and `q` are the two that SURVIVE as visible UI (search stays on
+ * both pages; a repo page pre-filters via `repos`).
+ */
 export type ChangesFilter = {
 	mine?: boolean;
 	/** Repo keys (`owner/repo`, lower-cased). Multi-select, OR'd. Empty/undefined = no repo filter. */
@@ -619,10 +656,27 @@ function totalLiveBuilt(row: Pick<ChangeRowVM, 'grid'>): { live: number; built: 
  * it needs — the frontier tone and the family-collapsed marks — is already
  * on `row.grid`/`row.verdictTone`, computed once at `buildChangeRow` time.
  */
-export function standingWords(row: Pick<ChangeRowVM, 'verdictTone' | 'grid'>): string {
+export function standingWords(
+	row: Pick<ChangeRowVM, 'verdictTone' | 'grid'> & { noRelease?: boolean }
+): string {
+	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built" is retired copy — checked
+	// FIRST, ahead of `verdictTone`, so this reads correctly however the
+	// caller reached `not-built` (the real pipeline's own `noRelease`, or a
+	// hand-built fixture that never set the flag).
+	if (row.noRelease) return 'no release yet';
 	if (row.verdictTone === 'live') return 'live everywhere';
 	if (row.verdictTone === 'not-built') {
-		return row.grid.services.length === 0 ? 'not built here' : 'not built yet';
+		// `grid.services.length === 0` with `noRelease` falsy is the OTHER
+		// zero-service shape — no app on this cluster deploys this repo at
+		// all (`buildPrPipeline`'s own `verdictWord`/`vm.verdict` still say
+		// "not built here" for that fact; this is the dense STANDING word,
+		// a deliberately different vocabulary — see `pr-pipeline.ts`'s
+		// `furthestCompact` for the same split). A service that DOES exist
+		// with an actual `not-built` cell (a hand-built fixture bypassing
+		// `buildPrPipeline`, which never produces this shape for real) reads
+		// the same "no release yet" `noRelease` does, rather than a THIRD
+		// phrase for a case the real pipeline cannot produce.
+		return row.grid.services.length === 0 ? 'not deployed here' : 'no release yet';
 	}
 
 	const step = frontierStandingStep(row);
@@ -637,7 +691,7 @@ export function standingWords(row: Pick<ChangeRowVM, 'verdictTone' | 'grid'>): s
 
 	const { live, built } = totalLiveBuilt(row);
 	if (live > 0 && built > 0) return capWords(`${live} of ${built} live`);
-	return built > 0 ? capWords(`${built} in progress`) : 'not built here';
+	return built > 0 ? capWords(`${built} in progress`) : 'not deployed here';
 }
 
 /**
@@ -645,9 +699,15 @@ export function standingWords(row: Pick<ChangeRowVM, 'verdictTone' | 'grid'>): s
  * 560px card width (R2.2's own table: `held · prd`). Same precedence as
  * `standingWords`, worded to the family alone: `<short state> · <family>`.
  */
-export function standingWordsCompact(row: Pick<ChangeRowVM, 'verdictTone' | 'grid'>): string {
+export function standingWordsCompact(
+	row: Pick<ChangeRowVM, 'verdictTone' | 'grid'> & { noRelease?: boolean }
+): string {
+	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built" retired — see
+	// `standingWords`'s own doc for the full reasoning; this is its
+	// compact-card twin.
+	if (row.noRelease) return 'no release';
 	if (row.verdictTone === 'live') return 'live';
-	if (row.verdictTone === 'not-built') return 'not built';
+	if (row.verdictTone === 'not-built') return 'no release';
 
 	const step = frontierStandingStep(row);
 	if (step) {
@@ -660,7 +720,7 @@ export function standingWordsCompact(row: Pick<ChangeRowVM, 'verdictTone' | 'gri
 
 	const { live, built } = totalLiveBuilt(row);
 	if (live > 0 && built > 0) return `${live}/${built} live`;
-	return built > 0 ? `${built} moving` : 'not built';
+	return built > 0 ? `${built} moving` : 'no release';
 }
 
 // ── ROUND 2 — R2.2's RAIL CARD 1, `How your changes are going` ───────────
@@ -670,11 +730,8 @@ export type ChangesRailSummary = {
 	 *  (`fetchChanges(30, …)`'s own default), so this needs no separate
 	 *  date filter. */
 	mergedCount: number;
-	/** Median `prodLeadMs` over every row that reached PRD, `compactSpan`-
-	 *  ready. `null` under the same "never a median of one" floor
-	 *  `lead-time.ts`'s own module doc argues for — fewer than 3 samples
-	 *  prints the em dash + caption, never a number computed from one or
-	 *  two trips. */
+	/** `typicalToProdMs(rows)` — see that function's own doc for the
+	 *  definition and the 2-sample floor. */
 	typicalToProdMs: number | null;
 	typicalToProdSamples: number;
 	/** `verdictTone === 'held'` — R2.5(b)'s `stuck` bucket, the same
@@ -683,13 +740,36 @@ export type ChangesRailSummary = {
 	neverBuiltCount: number;
 };
 
+/**
+ * ⭐ ROUND 3 (2026-09-10, third operator walk) — THE ONE "TYPICAL TO PROD"
+ * DEFINITION. Before this fix, four surfaces (Home's rail, `/changes`' own
+ * rail, the change page, the app page) each derived their own median
+ * merge→first-prod-deploy span and disagreed on the SAME underlying data —
+ * 5m / 1d / 3m / "no measured trip yet" for one fleet at one instant. This
+ * is the ONE function every one of those surfaces must read VERBATIM (the
+ * route lane is responsible for migrating the three that don't yet).
+ *
+ * The median of `ChangeRowVM.prodLeadMs` (`firstProdLeadMs`'s own doc: the
+ * merge → first-PRD-family-`live` span) over `rows`, optionally narrowed to
+ * ONE repository via `repoKey` (omitted = the whole fleet). `null` under
+ * fewer than 2 samples — a "median" of one trip is not a typical anything.
+ * `rows` may be in any order and any scope the caller likes (the 30-day
+ * feed, a single repo's changes, …) — this does no date filtering of its
+ * own; the caller's own `rows` IS the window.
+ */
+export function typicalToProdMs(rows: readonly ChangeRowVM[], repoKey?: string): number | null {
+	const scoped = repoKey ? rows.filter((r) => r.repoKey === repoKey) : rows;
+	const samples = scoped.map((r) => r.prodLeadMs).filter((ms): ms is number => ms != null);
+	return samples.length >= 2 ? median(samples) : null;
+}
+
 export function changesSummary(rows: readonly ChangeRowVM[]): ChangesRailSummary {
 	const samples = rows
 		.map((r) => r.prodLeadMs)
 		.filter((ms): ms is number => ms != null);
 	return {
 		mergedCount: rows.length,
-		typicalToProdMs: samples.length >= 3 ? median(samples) : null,
+		typicalToProdMs: typicalToProdMs(rows),
 		typicalToProdSamples: samples.length,
 		heldCount: rows.filter((r) => r.verdictTone === 'held').length,
 		neverBuiltCount: rows.filter((r) => r.verdictTone === 'not-built').length
@@ -722,7 +802,76 @@ export function perRepoCounts(rows: readonly ChangeRowVM[]): RepoChangeCount[] {
 	return [...byRepo.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
+// ── ROUND 3 (2026-09-10 ruling B, "TWO VIEWS, NOT ONE LIST") ──────────────
+//
+// `/changes` stops being one mixed list with Mine/Pull requests/Not yet
+// everywhere chips (R2.2's own sections, `splitChangeSections` below, are
+// superseded by this — kept, not deleted, see its own doc). The new shape is
+// two blocks: "Your changes" (`filterChangeRows(rows, user, { mine: true })`
+// + `orderHomeChangeRows`, both unchanged, no new export needed) and
+// "Repositories" — one card per repo with a progress summary
+// (`repoProgress`) and its `recentByRepo` most-recent rows.
+
+export type RepoProgress = {
+	/** Every change in `rows` for this repo — the card's own `N changes`. */
+	changes: number;
+	/** `notEverywhere` count within this repo — "N not everywhere". */
+	notEverywhere: number;
+	/** `typicalToProdMs(rows, repoKey)` — `null` under 2 samples. */
+	typicalToProdMs: number | null;
+	/** The newest change's own `mergedAt` in this repo, or `null` when the
+	 *  repo has no rows at all. `rows` is assumed newest-first (every
+	 *  producer of `ChangeRowVM[]` in this module already guarantees it). */
+	latestMergedAt: string | null;
+};
+
+/**
+ * ⭐ ROUND 3 RULING B. The "Repositories" card's own progress line — "6
+ * changes · 2 not everywhere · typical to prod 5m". Scopes `rows` to
+ * `repoKey` itself (the caller does not need to pre-filter), so it is safe
+ * to call once per repo over the SAME full feed `recentByRepo` also reads.
+ */
+export function repoProgress(rows: readonly ChangeRowVM[], repoKey: string): RepoProgress {
+	const repoRows = rows.filter((r) => r.repoKey === repoKey);
+	return {
+		changes: repoRows.length,
+		notEverywhere: repoRows.filter((r) => r.notEverywhere).length,
+		typicalToProdMs: typicalToProdMs(repoRows),
+		latestMergedAt: repoRows[0]?.mergedAt ?? null
+	};
+}
+
+/**
+ * ⭐ ROUND 3 RULING B. The "Repositories" card's own "5 most recent changes"
+ * sub-list — one pass over the WHOLE (newest-first) feed, capping each
+ * repo's own bucket at `n` as it goes, rather than the caller looping
+ * `repoChipOptions()` and re-filtering/re-slicing the full array once per
+ * repo. Preserves the feed's own newest-first order within each bucket
+ * (never re-sorts) because `rows` is assumed newest-first already.
+ */
+export function recentByRepo(rows: readonly ChangeRowVM[], n: number): Map<string, ChangeRowVM[]> {
+	const out = new Map<string, ChangeRowVM[]>();
+	for (const row of rows) {
+		const bucket = out.get(row.repoKey);
+		if (bucket) {
+			if (bucket.length < n) bucket.push(row);
+		} else {
+			out.set(row.repoKey, [row]);
+		}
+	}
+	return out;
+}
+
 // ── ROUND 2 — R2.2's TWO SECTIONS ─────────────────────────────────────────
+//
+// ⚠️ DEPRECATED BY ROUND 3 RULING B ("TWO VIEWS, NOT ONE LIST"). `/changes`
+// no longer renders a single mixed list split into "Not everywhere yet" /
+// "Live everywhere" — see the ruling-B block above. `splitChangeSections`
+// and `ChangeSections` are KEPT (not deleted — the task's own instruction,
+// and `/changes/<repo>` may still want a similar split over one repo's own
+// rows) but are no longer the index page's own shape. Do not wire a NEW
+// call site to this without checking whether `repoProgress`/`recentByRepo`
+// already say what is needed.
 
 export type ChangeSections = {
 	/** §"Not everywhere yet" — failed → held (§'s own "stuck") → in-flight →
@@ -849,6 +998,20 @@ export function familyProgress(row: Pick<ChangeRowVM, 'grid'>): FamilyProgressSt
 			if (list) list.push(mark);
 			else byFamily.set(mark.family, [mark]);
 		}
+	}
+
+	// ⭐ ROUND 3 (2026-09-10 ruling A). `grid.services` is `[]` for BOTH
+	// zero-service shapes — a `noRelease` change and the repo-mismatch case
+	// — so the meter still draws SOMETHING rather than nothing: three
+	// neutral placeholders, `DEV`/`STG`/`PRD`, tone `none`, no service/state
+	// to name. This is the "three dashed dots" the design doc asks a
+	// `noRelease` row's meter to show.
+	if (byFamily.size === 0) {
+		return [
+			{ family: 'DEV', familyOrder: 0, tone: 'none', state: null, builtCount: 0, liveCount: 0, sentence: '' },
+			{ family: 'STG', familyOrder: 2, tone: 'none', state: null, builtCount: 0, liveCount: 0, sentence: '' },
+			{ family: 'PRD', familyOrder: 3, tone: 'none', state: null, builtCount: 0, liveCount: 0, sentence: '' }
+		];
 	}
 
 	const families = [...byFamily.entries()].sort((a, b) => a[1][0].familyOrder - b[1][0].familyOrder);

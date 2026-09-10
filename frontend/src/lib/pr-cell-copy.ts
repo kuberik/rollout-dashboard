@@ -62,6 +62,11 @@ function agoCompact(iso: string, now: Date): string {
  *  suppresses them rather than repeating the state word a second time. */
 const REDUNDANT_REASON: ReadonlySet<string> = new Set([
 	'not built here yet',
+	// ⭐ ROUND 3 (2026-09-10 ruling A). `cellStateSentence` speaks this reason
+	// as "release status unknown" now (see its own doc) — the string no
+	// longer matches literally, so it needs its own redundancy entry to stay
+	// suppressed rather than printing the raw internal reason underneath.
+	'not built (unverified)',
 	'deploying now',
 	'retrying the bake',
 	'the bake failed',
@@ -82,21 +87,20 @@ function bakingSentence(cell: PrCell, now: Date): string {
 }
 
 /**
- * The bold, fixed-vocabulary label for `cell.state`. One of the shapes the
- * PR-lane task names: "not built yet", "gated by <name>", "pinned to
- * <label>", "waiting on <service/env>", "deploying", "baking"/"baking · N
- * of M min", "retrying", "failed", "cancelled", "rolled back to <label>",
- * "live since <T>" / "live (since before recorded history)".
+ * The bold, fixed-vocabulary label for `cell.state`. One of the shapes:
+ * "held by <name>"/"held by a rule", "pinned to <label>", "waiting for
+ * <env> to deploy it first", "waiting on <service>", "promoting shortly",
+ * "deploying", "baking"/"baking · N of M min", "retrying", "failed",
+ * "cancelled", "rolled back to <label>", "live since <T>" / "live (since
+ * before recorded history)", "release status unknown"/"no release yet".
  *
- * ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA"). `opts`
- * is additive and optional so every existing call site keeps compiling
- * unchanged. `opts.builtElsewhere` (`PrService.builtElsewhere`) picks
- * between the plain reading and "no build of this change for THIS service" —
- * one word telling the reader the change is already built somewhere on this
- * cluster, just not here, without inventing a second `PrState`. It never
- * overrides `cell.reason === 'not built (unverified)'` — ruling 1's own
- * honesty flag (unknown containment) always wins, because "we don't know"
- * outranks "we know it's missing here specifically".
+ * ⚠️ `opts.builtElsewhere` IS NOW UNUSED (⭐ ROUND 3, 2026-09-10 ruling A).
+ * `PrService.builtElsewhere` has been largely superseded by
+ * `buildPrPipeline`'s own eligibility filter (a service with no release
+ * evidence never reaches `PipelineCard` at all — see `pr-pipeline.ts`'s
+ * `unaffectedServices`), so "no build of this change for THIS service" is
+ * retired copy. The parameter stays on the signature, optional, so no
+ * existing call site needs an edit; a future pass may drop it outright.
  */
 export function cellStateSentence(
 	cell: PrCell,
@@ -105,8 +109,19 @@ export function cellStateSentence(
 ): string {
 	switch (cell.state) {
 		case 'not-built':
-			if (cell.reason === 'not built (unverified)') return 'not built (unverified)';
-			return opts?.builtElsewhere ? 'no build of this change for this service' : 'not built yet';
+			// ⭐ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED").
+			// "not built yet" and "no build of this change for this service"
+			// are RETIRED copy — `buildPrPipeline` only ever keeps a service
+			// when it has release evidence, and recasts every genuine "no
+			// candidate for this env" cell to `queued` (see
+			// `pr-pipeline.ts`'s `remapForIncludedService`), so a real
+			// included service never reaches this branch with that reason any
+			// more. The one surviving `not-built` reading is ruling 1's own
+			// honesty guard — a candidate this VM found but cannot yet PROVE
+			// carries the change (`containmentKnown` false) — spoken here as
+			// "release status unknown", never a claim this service has no
+			// build at all.
+			return cell.reason === 'not built (unverified)' ? 'release status unknown' : 'no release yet';
 		case 'gated':
 			// ⭐ ITEM 3 (2026-09-10 fix pass). Retired: "gated by X" (the noun
 			// `gate` is retired from user copy) and printing the raw
@@ -232,18 +247,31 @@ export function frontierUsuallyLabel(ms: number): string {
 }
 
 /**
- * ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA"). The
- * guarded variant of `frontierUsuallyLabel`: `null` off any cell whose
- * service has NOT yet produced a build of the change (`not-built`, and every
- * other state the design doc's own list excludes) — an ETA on a build that
- * does not exist is not an estimate, it is a guess with a number attached.
- * Only `gated`/`pinned`/`waiting-upstream`/`queued`/`promoting` — the states
- * where a build already exists and is merely not deployed here yet — ever return a
- * string. Prefer this over the raw `frontierUsuallyLabel` at any NEW call
- * site; the un-guarded function stays exported for the one existing
- * call site that already gates on state itself.
+ * ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA"), NARROWED
+ * ⭐ ROUND 3 (2026-09-10, third operator walk, "NO TIMER IS COUNTING THIS
+ * DOWN"). `gated`/`pinned`/`waiting-upstream` used to print this too, which
+ * read as an ETA on a hold nothing is actually counting down — live bug:
+ * PR #4's own dependency wait on `api ^1.68.0` (a version nobody has
+ * released) printed "usually 1 min once it starts" directly beside a
+ * verdict that ALSO says "will not move on its own", a direct
+ * contradiction. Only `queued` (a normal promotion-order wait — the next
+ * env's own turn simply hasn't come up) and `promoting` (ready, waiting on
+ * the next reconcile) are honestly ESTIMATES OF WHEN; a `gated`/`pinned`/
+ * `waiting-upstream` hold clears on a rule, a human or an upstream shipping
+ * something — none of which "usually N min" describes.
+ *
+ * A schedule-held cell with a KNOWN next opening is the one real exception
+ * the design doc names ("opens in 1d 4h") — NOT implemented here, because
+ * `PrCell` carries no `clearsAt`/reopen instant yet (the same gap
+ * `changes.ts`'s own `frontierReason` doc already flags for the `·` tail).
+ * When that field lands, its own branch belongs here, not a reopened
+ * `gated` case.
+ *
+ * Prefer this over the raw `frontierUsuallyLabel` at any NEW call site; the
+ * un-guarded function stays exported for the one existing call site that
+ * already gates on state itself.
  */
-const HAS_BUILD_STATES = new Set<PrState>(['gated', 'pinned', 'waiting-upstream', 'queued', 'promoting']);
+const HAS_BUILD_STATES = new Set<PrState>(['queued', 'promoting']);
 
 export function frontierUsuallyLabelForCell(cell: PrCell): string | null {
 	if (!HAS_BUILD_STATES.has(cell.state)) return null;

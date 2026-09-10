@@ -44,28 +44,28 @@ function mkCell(state: PrState, overrides: Partial<PrCell> = {}): PrCell {
 }
 
 describe('cellStateSentence', () => {
-	it('not-built', () => {
-		expect(cellStateSentence(mkCell('not-built'))).toBe('not built yet');
+	// ⭐ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED"). "not
+	// built yet" is retired copy — `buildPrPipeline` only ever keeps a
+	// service with release evidence, so a real `not-built` cell never
+	// reaches this sentence with that reason any more. `builtElsewhere` is
+	// unused now (see the function's own doc); both cases below read "no
+	// release yet" regardless of the flag.
+	it('not-built (plain reading)', () => {
+		expect(cellStateSentence(mkCell('not-built'))).toBe('no release yet');
 	});
 
-	// ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA").
-	it('not-built, builtElsewhere: true — names the fact that this SERVICE has no build, not that nothing has built', () => {
+	it('not-built, builtElsewhere: true — no longer distinguished, "no release yet" either way', () => {
 		const cell = mkCell('not-built');
-		expect(cellStateSentence(cell, NOW, { builtElsewhere: true })).toBe(
-			'no build of this change for this service'
-		);
+		expect(cellStateSentence(cell, NOW, { builtElsewhere: true })).toBe('no release yet');
 	});
 
-	it('not-built, builtElsewhere omitted/false — the plain reading', () => {
-		expect(cellStateSentence(mkCell('not-built'), NOW, { builtElsewhere: false })).toBe('not built yet');
-	});
-
-	// ⭐ RULING 1 (CHANGES-2026-09-10 fix pass, "SUPERSEDED IS LIVE"). The
-	// unverified-containment reading always wins over `builtElsewhere` — "we
-	// don't know" outranks "we know it's missing here specifically".
-	it('not-built, "not built (unverified)" wins over builtElsewhere', () => {
+	// ⭐ RULING 1 (CHANGES-2026-09-10 fix pass, "SUPERSEDED IS LIVE"), copy
+	// renamed ⭐ ROUND 3: "not built (unverified)" is retired alongside "not
+	// built yet" — the same honesty guard now reads "release status
+	// unknown", which is true regardless of `builtElsewhere`.
+	it('not-built, "not built (unverified)" reads "release status unknown", wins over builtElsewhere', () => {
 		const cell = mkCell('not-built', { reason: 'not built (unverified)' });
-		expect(cellStateSentence(cell, NOW, { builtElsewhere: true })).toBe('not built (unverified)');
+		expect(cellStateSentence(cell, NOW, { builtElsewhere: true })).toBe('release status unknown');
 	});
 
 	it('held by a named rule (never "gated by" — the noun is retired)', () => {
@@ -289,16 +289,30 @@ describe('frontierUsuallyLabelForCell — guarded, ruling 2 (CHANGES-2026-09-10 
 		expect(frontierUsuallyLabelForCell(mkCell('not-built', { usuallyMs: 6 * 60_000 }))).toBeNull();
 	});
 
-	it('prints a label on every state whose service HAS a build (gated/pinned/waiting-upstream/queued/promoting)', () => {
-		for (const state of ['gated', 'pinned', 'waiting-upstream', 'queued', 'promoting'] as const) {
+	it('prints a label on a normal order wait (queued/promoting) — an honest estimate of WHEN', () => {
+		for (const state of ['queued', 'promoting'] as const) {
 			expect(frontierUsuallyLabelForCell(mkCell(state, { usuallyMs: 6 * 60_000 }))).toBe(
 				'usually 6 min once it starts'
 			);
 		}
 	});
 
+	/**
+	 * ⭐ ROUND 3 (2026-09-10, third operator walk, "NO TIMER IS COUNTING THIS
+	 * DOWN"). Live bug: PR #4's dependency wait on `api ^1.68.0` (nobody has
+	 * released it) printed "usually 1 min once it starts" beside a verdict
+	 * that ALSO says "will not move on its own" — a direct contradiction.
+	 * `gated`/`pinned`/`waiting-upstream` clear on a rule, a human, or an
+	 * upstream shipping something — none of which is a countdown.
+	 */
+	it('never on gated/pinned/waiting-upstream, even with samples — no timer is counting this down', () => {
+		for (const state of ['gated', 'pinned', 'waiting-upstream'] as const) {
+			expect(frontierUsuallyLabelForCell(mkCell(state, { usuallyMs: 6 * 60_000 }))).toBeNull();
+		}
+	});
+
 	it('null under the 2-sample guard even on a state that has a build', () => {
-		expect(frontierUsuallyLabelForCell(mkCell('gated', { usuallyMs: null }))).toBeNull();
+		expect(frontierUsuallyLabelForCell(mkCell('queued', { usuallyMs: null }))).toBeNull();
 	});
 
 	it('never on a state already in flight (deploying/baking) — that is `usuallyLabel`\'s own job', () => {

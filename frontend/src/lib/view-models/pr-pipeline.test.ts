@@ -133,6 +133,14 @@ describe('buildPrPipeline', () => {
 		expect(cell.since).toBe('2026-09-02T00:05:00Z');
 	});
 
+	// ⭐ ROUND 3 REGRESSION FIXTURE ("an old commit whose exact release
+	// exists → its services, live via newer where heads moved on"). The
+	// SERVICE is affected because CI DID release the exact merge commit at
+	// some point (`availableReleases` below, superseded and evicted from
+	// retained `history`) — eligibility is exact-sha only (⭐ ROUND 3
+	// refinement) — and, once affected, `buildCell`'s own descendant
+	// containment (`containedIn`) is what lets a LATER head still read
+	// `live`.
 	it('rebase merge: the build sha is a DESCENDANT of the merge commit, still live', () => {
 		// The backend's commits-since(mergedAt) list covers every commit after
 		// the merge on base, not just the merge commit itself — a later
@@ -142,7 +150,11 @@ describe('buildPrPipeline', () => {
 			namespace: 'widget-dev',
 			history: [
 				{ revision: 'deadbeef2', timestamp: '2026-09-03T00:00:00Z', bakeStatus: 'Succeeded' }
-			]
+			],
+			// CI's own build of the exact merge commit — this is what makes the
+			// service AFFECTED; it has since been superseded by `deadbeef2` and
+			// fallen out of the retained history window.
+			availableReleases: [{ revision: 'c0ffee1', tag: 'build-42', created: '2026-08-29T00:00:00Z' }]
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
 		const vm = buildPrPipeline(
@@ -152,6 +164,7 @@ describe('buildPrPipeline', () => {
 			{ items: [] },
 			NOW
 		);
+		expect(vm.unaffectedServices).toEqual([]);
 		const cell = vm.services[0].cells[0];
 		expect(cell.state).toBe('live');
 		expect(cell.revision).toBe('deadbeef2');
@@ -258,7 +271,10 @@ describe('buildPrPipeline', () => {
 		expect(new Set(cells.map((c) => c.cluster))).toEqual(new Set(['cluster-a', 'cluster-b']));
 		expect(cells.every((c) => c.envName === 'dev')).toBe(true);
 		expect(cells.find((c) => c.cluster === 'cluster-a')?.state).toBe('live');
-		expect(cells.find((c) => c.cluster === 'cluster-b')?.state).toBe('not-built');
+		// ⭐ ROUND 3: cluster-a's own cell has release evidence, so this
+		// service is INCLUDED; cluster-b's genuine "no candidate at all"
+		// cell is recast `queued`, never the retired `not-built`.
+		expect(cells.find((c) => c.cluster === 'cluster-b')?.state).toBe('queued');
 	});
 
 	it('bakeTime unset: "baking, no timer"', () => {
@@ -310,7 +326,10 @@ describe('buildPrPipeline', () => {
 			namespace: 'widget-dev',
 			history: [
 				{ revision: 'revert-9', timestamp: '2026-09-04T00:00:00Z', bakeStatus: 'Succeeded' }
-			]
+			],
+			// ⭐ ROUND 3 refinement: eligibility is exact-sha only — CI's own
+			// build of the merge commit, since superseded by the revert.
+			availableReleases: [{ revision: 'c0ffee1', tag: 'build-42', created: '2026-08-29T00:00:00Z' }]
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
 		const vm = buildPrPipeline(
@@ -333,7 +352,18 @@ describe('buildPrPipeline', () => {
 	// backwards here and every normal (non-truncated) PR page mis-reports
 	// ancestor builds as containing the PR.
 
-	it('the containedInAll fallback: containedInAll=true (list TRUNCATED at 300) falls back to created vs mergedAt — a release created after mergedAt counts as contained even off the truncated list', () => {
+	it('the containedInAll fallback: containedInAll=true (list TRUNCATED at 300) falls back to created vs mergedAt — a release created after mergedAt counts as contained even off the truncated list, once the service is otherwise affected', () => {
+		// ⭐ ROUND 3 REFINEMENT: eligibility is EXACT-SHA only now (the `dev`
+		// rollout below), never descendant/fallback containment — so this
+		// fixture adds the exact-match env that makes the SERVICE affected,
+		// then exercises the fallback on a SECOND env/cell of that same
+		// already-affected service (`buildCell`'s own rule 3/4 machinery,
+		// untouched by the eligibility refinement).
+		const affected = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-08-29T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -345,21 +375,23 @@ describe('buildPrPipeline', () => {
 				{ revision: 'unlisted-later', tag: 'unlisted-later', created: '2026-09-05T00:00:00Z' }
 			]
 		});
+		const envDev = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
 		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(
 			meta({ containedIn: [], containedInAll: true }),
-			[rollout],
-			[env],
+			[affected, rollout],
+			[envDev, env],
 			{ items: [] },
 			NOW
 		);
-		const cell = vm.services[0].cells[0];
+		expect(vm.services).toHaveLength(1);
+		const cell = vm.services[0].cells.find((c) => c.envName === 'prod')!;
 		// Contained via the fallback -> a build exists, so this is NOT not-built.
 		expect(cell.state).not.toBe('not-built');
 		expect(cell.revision).toBe('unlisted-later');
 	});
 
-	it('the containedInAll fallback, the other direction (containedInAll=true, truncated): a release created BEFORE mergedAt is not-contained', () => {
+	it('the containedInAll fallback, the other direction (containedInAll=true, truncated): a release created BEFORE mergedAt is not-contained — ⭐ ROUND 3: no evidence anywhere, so this reads noRelease, not a not-built cell', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -374,10 +406,12 @@ describe('buildPrPipeline', () => {
 			{ items: [] },
 			NOW
 		);
-		expect(vm.services[0].cells[0].state).toBe('not-built');
+		expect(vm.services).toHaveLength(0);
+		expect(vm.unaffectedServices).toEqual(['widget-app']);
+		expect(vm.noRelease).toBe(true);
 	});
 
-	it('nil `created` under the truncated fallback (containedInAll=true): not built (unverified), never claimed contained', () => {
+	it('nil `created` under the truncated fallback (containedInAll=true): never claimed contained — ⭐ ROUND 3: an `unverified` candidate is not solid evidence, so this is noRelease, not a not-built cell', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -392,17 +426,22 @@ describe('buildPrPipeline', () => {
 			{ items: [] },
 			NOW
 		);
-		const cell = vm.services[0].cells[0];
-		expect(cell.state).toBe('not-built');
-		expect(cell.reason).toBe('not built (unverified)');
+		expect(vm.services).toHaveLength(0);
+		expect(vm.noRelease).toBe(true);
 	});
 
-	it('regression (PR #4 shape): containedInAll=false is authoritative — a release built AFTER mergedAt whose revision is an ancestor, absent from the set, is still not-built', () => {
+	it('regression (PR #4 shape): containedInAll=false is authoritative — a release built AFTER mergedAt whose revision is an ancestor, absent from the set, gives this app no release evidence at all', () => {
 		// hello-multi-app / hello-world-app on the live cluster run f7a46ae, an
 		// ancestor of PR #4's merge commit — built well after the PR merged,
 		// but NOT the merge commit and NOT among the (complete, non-truncated)
 		// commits since the merge. `created >= mergedAt` alone must NEVER be
 		// read as containment when the set is authoritative.
+		//
+		// ⭐ ROUND 3 (2026-09-10 ruling A). This app has NO release evidence for
+		// the change, so it is dropped entirely (`unaffectedServices`), not
+		// rendered as a `not-built` card — see the dedicated "no release means
+		// not affected" describe block below for the full PR #4 fixture
+		// (hello-frontend-app the ONE included service, three others excluded).
 		const rollout = mkRollout({
 			name: 'hello-multi-app',
 			namespace: 'hello-dev',
@@ -424,7 +463,9 @@ describe('buildPrPipeline', () => {
 			{ items: [] },
 			NOW
 		);
-		expect(vm.services[0].cells[0].state).toBe('not-built');
+		expect(vm.services).toHaveLength(0);
+		expect(vm.unaffectedServices).toEqual(['hello-multi-app']);
+		expect(vm.noRelease).toBe(true);
 	});
 
 	it('waiting-upstream outranks gated when a dependency gate blocks the containing build', () => {
@@ -502,7 +543,7 @@ describe('buildPrPipeline', () => {
 		expect(cell.gateSubjectKind).toBe('environment');
 	});
 
-	it('not-built: no release anywhere carries the PR', () => {
+	it('no release anywhere carries the PR: the service is unaffected, not a not-built cell (⭐ ROUND 3 ruling A)', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-prod',
@@ -511,10 +552,9 @@ describe('buildPrPipeline', () => {
 		});
 		const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
-		const cell = vm.services[0].cells[0];
-		expect(cell.state).toBe('not-built');
-		expect(cell.reason).toBe('not built here yet');
-		expect(cell.revision).toBeNull();
+		expect(vm.services).toHaveLength(0);
+		expect(vm.unaffectedServices).toEqual(['widget-app']);
+		expect(vm.noRelease).toBe(true);
 	});
 
 	it('deploying: bakeLeftMs counts down against deployTimeout', () => {
@@ -645,7 +685,13 @@ describe('buildPrPipeline', () => {
 			expect(vm.services[0].furthestCompact).toBe('held in prd');
 		});
 
-		it('not built yet, when every cell is not-built', () => {
+		// ⭐ ROUND 3 (2026-09-10 ruling A): retired. A service with EVERY cell
+		// `not-built` is no longer a shape `buildPrPipeline` ever produces — it
+		// is unaffected and dropped (see `hasBuildEvidence`), reported as
+		// `noRelease` at the VM level instead of a per-service card. This
+		// exact fixture is now the canonical "no release" regression — see
+		// the dedicated describe block below.
+		it('a lone not-built cell is unaffected, not a "not built yet" card', () => {
 			const rollout = mkRollout({
 				name: 'widget-app',
 				namespace: 'widget-dev',
@@ -653,7 +699,8 @@ describe('buildPrPipeline', () => {
 			});
 			const env = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
 			const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
-			expect(vm.services[0].furthestCompact).toBe('not built yet');
+			expect(vm.services).toHaveLength(0);
+			expect(vm.noRelease).toBe(true);
 		});
 	});
 
@@ -698,9 +745,10 @@ describe('buildPrPipeline', () => {
 		const envA = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
 		const envB = mkEnv({ app: 'widget-manifests', envName: 'dev', namespace: 'widget-manifests-dev' });
 		const vm = buildPrPipeline(meta(), [live, noBuild], [envA, envB], { items: [] }, NOW);
-		expect(vm.services.find((s) => s.appName === 'widget-manifests')?.cells[0].state).toBe(
-			'not-built'
-		);
+		// ⭐ ROUND 3: `widget-manifests` has no release evidence at all, so it
+		// is dropped rather than rendered with a `not-built` cell.
+		expect(vm.services.map((s) => s.appName)).toEqual(['widget-app']);
+		expect(vm.unaffectedServices).toEqual(['widget-manifests']);
 		expect(vm.verdict).toBe('Live everywhere');
 	});
 
@@ -994,7 +1042,11 @@ describe('rolloutsTotal / rolloutsWithBuild / rolloutsLive (CHANGES-2026-09-10 f
 		const envStaging = mkEnv({ app: 'widget-app', envName: 'staging', namespace: 'widget-staging' });
 		const vm = buildPrPipeline(meta(), [live, notBuilt], [envDev, envStaging], { items: [] }, NOW);
 		expect(vm.rolloutsTotal).toBe(2);
-		expect(vm.rolloutsWithBuild).toBe(1);
+		// ⭐ ROUND 3: `rolloutsWithBuild` is now redundant with `rolloutsTotal`
+		// in the ordinary case — the service is included because `dev` has
+		// evidence, and `staging`'s genuine "no candidate at all" cell is
+		// recast `queued` (never `not-built`) rather than dropped.
+		expect(vm.rolloutsWithBuild).toBe(2);
 		expect(vm.rolloutsLive).toBe(1);
 	});
 });
@@ -1022,8 +1074,12 @@ describe('builtElsewhere / joined dependency reasons (CHANGES-2026-09-10 fix pas
 		const envA = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
 		const envB = mkEnv({ app: 'widget-manifests', envName: 'dev', namespace: 'widget-manifests-dev' });
 		const vm = buildPrPipeline(meta(), [built, unbuilt], [envA, envB], { items: [] }, NOW);
-		expect(vm.services.find((s) => s.appName === 'widget-app')?.builtElsewhere).toBe(false);
-		expect(vm.services.find((s) => s.appName === 'widget-manifests')?.builtElsewhere).toBe(true);
+		// ⭐ ROUND 3: `widget-manifests` has no release evidence anywhere, so it
+		// is dropped into `unaffectedServices` rather than kept with a
+		// `not-built` cell and `builtElsewhere: true`.
+		expect(vm.services.map((s) => s.appName)).toEqual(['widget-app']);
+		expect(vm.services[0].builtElsewhere).toBe(false);
+		expect(vm.unaffectedServices).toEqual(['widget-manifests']);
 	});
 
 	it('joins the reason when the dependency provider is itself a service of this change and has NO build at all', () => {
@@ -1139,5 +1195,167 @@ describe('builtElsewhere / joined dependency reasons (CHANGES-2026-09-10 fix pas
 		const dependentSvc = vm.services.find((s) => s.appName === 'widget-app')!;
 		expect(dependentSvc.cells[0].state).toBe('waiting-upstream');
 		expect(dependentSvc.cells[0].reason).toBe('waiting on api-app to reach dev');
+	});
+});
+
+// ── ROUND 3 (2026-09-10 ruling A, REFINED after the third operator walk) ──
+//
+// "No release means not affected", refined: a service is affected by a
+// change only when it has a release built from the change's OWN commit
+// (exact `mergeCommitSha` match) — never merely because a LATER release of
+// it happens to be a descendant that "contains" the commit in its ancestry.
+// The bug this closes, live: `hello-frontend-app`'s one held release is a
+// descendant of nearly every older merged commit on its repo, so every one
+// of those older changes read "held in dev on hello-api-app" regardless of
+// whether hello-frontend-app was ever actually built for THAT commit.
+describe('Round 3 (2026-09-10 ruling A, refined) — no release means not affected', () => {
+	const PR4_SHA = 'bf5be49';
+
+	it('PR #4 (bf5be49): only hello-frontend-app has a release built from the exact commit — the other three services on the same repo are unaffected', () => {
+		const frontendDev = mkRollout({
+			name: 'hello-frontend-app',
+			namespace: 'hello-frontend-dev',
+			history: [{ revision: PR4_SHA, timestamp: '2026-09-05T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const frontendStaging = mkRollout({
+			name: 'hello-frontend-app',
+			namespace: 'hello-frontend-staging',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: PR4_SHA, tag: 'build-4', created: '2026-09-05T00:00:00Z' }
+			]
+		});
+		const frontendProd = mkRollout({
+			name: 'hello-frontend-app',
+			namespace: 'hello-frontend-prod',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: PR4_SHA, tag: 'build-4', created: '2026-09-05T00:00:00Z' }
+			]
+		});
+		const api = mkRollout({
+			name: 'hello-api-app',
+			namespace: 'hello-api-dev',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const multi = mkRollout({
+			name: 'hello-multi-app',
+			namespace: 'hello-multi-dev',
+			// Only ever built a LATER commit — a descendant that CONTAINS
+			// bf5be49 in its ancestry, but was never itself built from
+			// bf5be49. Must NOT count as evidence.
+			history: [{ revision: 'f7a46ae', timestamp: '2026-09-06T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const world = mkRollout({
+			name: 'hello-world-app',
+			namespace: 'hello-world-dev',
+			history: [{ revision: 'unrelated-2', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const envs = [
+			mkEnv({ app: 'hello-frontend-app', envName: 'dev', namespace: 'hello-frontend-dev' }),
+			mkEnv({ app: 'hello-frontend-app', envName: 'staging', namespace: 'hello-frontend-staging' }),
+			mkEnv({ app: 'hello-frontend-app', envName: 'prod', namespace: 'hello-frontend-prod' }),
+			mkEnv({ app: 'hello-api-app', envName: 'dev', namespace: 'hello-api-dev' }),
+			mkEnv({ app: 'hello-multi-app', envName: 'dev', namespace: 'hello-multi-dev' }),
+			mkEnv({ app: 'hello-world-app', envName: 'dev', namespace: 'hello-world-dev' })
+		];
+		const vm = buildPrPipeline(
+			meta({ mergeCommitSha: PR4_SHA, containedIn: [PR4_SHA, 'f7a46ae'], containedInAll: false }),
+			[frontendDev, frontendStaging, frontendProd, api, multi, world],
+			envs,
+			{ items: [] },
+			NOW
+		);
+		expect(vm.services.map((s) => s.appName)).toEqual(['hello-frontend-app']);
+		expect(vm.rolloutsTotal).toBe(3);
+		expect(vm.unaffectedServices.slice().sort()).toEqual([
+			'hello-api-app',
+			'hello-multi-app',
+			'hello-world-app'
+		]);
+		expect(vm.noRelease).toBe(false);
+	});
+
+	it('PR #1 (c943222), the shared image: hello-world-app and hello-multi-app were built from the exact commit; hello-frontend-app only has a LATER descendant release and is excluded', () => {
+		const PR1_SHA = 'c943222';
+		const world = mkRollout({
+			name: 'hello-world-app',
+			namespace: 'hello-world-dev',
+			history: [{ revision: PR1_SHA, timestamp: '2026-08-10T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const multi = mkRollout({
+			name: 'hello-multi-app',
+			namespace: 'hello-multi-dev',
+			history: [{ revision: PR1_SHA, timestamp: '2026-08-10T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const frontend = mkRollout({
+			name: 'hello-frontend-app',
+			namespace: 'hello-frontend-dev',
+			// hello-frontend-app's ONE release is `rel-68`, a LATER commit that
+			// happens to be a descendant of (and so "contains") c943222 in the
+			// backend's own commits-since list — the exact shape the third
+			// operator walk found wrongly included every older change.
+			history: [{ revision: 'rel-68', timestamp: '2026-09-08T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const envs = [
+			mkEnv({ app: 'hello-world-app', envName: 'dev', namespace: 'hello-world-dev' }),
+			mkEnv({ app: 'hello-multi-app', envName: 'dev', namespace: 'hello-multi-dev' }),
+			mkEnv({ app: 'hello-frontend-app', envName: 'dev', namespace: 'hello-frontend-dev' })
+		];
+		const vm = buildPrPipeline(
+			meta({ mergeCommitSha: PR1_SHA, containedIn: [PR1_SHA, 'rel-68'], containedInAll: false }),
+			[world, multi, frontend],
+			envs,
+			{ items: [] },
+			NOW
+		);
+		expect(vm.services.map((s) => s.appName).sort()).toEqual(['hello-multi-app', 'hello-world-app']);
+		expect(vm.unaffectedServices).toEqual(['hello-frontend-app']);
+	});
+
+	it('an old commit whose exact release exists: its services are affected, live via the newer build once heads have moved on', () => {
+		// Same shape as the "rebase merge" fixture above, restated here as its
+		// own named Round 3 regression: CI's own build of the exact commit is
+		// what makes the service affected; the head has since moved on to a
+		// descendant, and that is what buildCell reads to call it `live`.
+		const rollout = mkRollout({
+			name: 'hello-frontend-app',
+			namespace: 'hello-frontend-dev',
+			history: [{ revision: 'newer-9', timestamp: '2026-09-08T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [{ revision: 'c0ffee1', tag: 'build-4', created: '2026-08-29T00:00:00Z' }]
+		});
+		const env = mkEnv({ app: 'hello-frontend-app', envName: 'dev', namespace: 'hello-frontend-dev' });
+		const vm = buildPrPipeline(
+			meta({ containedIn: ['c0ffee1', 'newer-9'] }),
+			[rollout],
+			[env],
+			{ items: [] },
+			NOW
+		);
+		expect(vm.services.map((s) => s.appName)).toEqual(['hello-frontend-app']);
+		const cell = vm.services[0].cells[0];
+		expect(cell.state).toBe('live');
+		expect(cell.superseded).toBe(true);
+	});
+
+	it('a change with no release anywhere reads noRelease, services: []', () => {
+		const rollout = mkRollout({
+			name: 'hello-frontend-app',
+			namespace: 'hello-frontend-dev',
+			history: [{ revision: 'unrelated-1', timestamp: '2026-08-01T00:00:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const env = mkEnv({ app: 'hello-frontend-app', envName: 'dev', namespace: 'hello-frontend-dev' });
+		const vm = buildPrPipeline(
+			meta({ mergeCommitSha: 'deadfeed', containedIn: ['deadfeed'] }),
+			[rollout],
+			[env],
+			{ items: [] },
+			NOW
+		);
+		expect(vm.services).toEqual([]);
+		expect(vm.noRelease).toBe(true);
+		expect(vm.verdict).toBe('No release for this commit yet');
 	});
 });

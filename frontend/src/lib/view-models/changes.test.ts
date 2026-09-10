@@ -19,6 +19,9 @@ import {
 	orderHomeChangeRows,
 	familyProgress,
 	familyMeterAriaLabel,
+	typicalToProdMs,
+	repoProgress,
+	recentByRepo,
 	type ChangeRowVM
 } from './changes';
 import { buildPrPipeline } from './pr-pipeline';
@@ -76,7 +79,9 @@ function mkVm(services: PrService[]): PrPipelineVM {
 		containmentKnown: true,
 		rolloutsTotal: 0,
 		rolloutsWithBuild: 0,
-		rolloutsLive: 0
+		rolloutsLive: 0,
+		unaffectedServices: [],
+		noRelease: false
 	};
 }
 
@@ -244,9 +249,11 @@ describe('changeVerdict', () => {
 	// one service in particular (see `buildChangeVerdict`'s own comment) —
 	// unlike a frontier candidate, which names the one specific service a
 	// specific cell is blocking.
-	it('is "not built yet" when nothing has built, but a service exists', () => {
+	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built yet" is retired — this
+	// branch now reads the same as `noRelease`'s own verdict word.
+	it('is "no release for this commit yet" when nothing has built, but a service exists', () => {
 		const vm = mkVm([mkService('a', [mkCell('not-built')])]);
-		expect(changeVerdict(vm)).toEqual({ word: 'not built yet', tone: 'not-built' });
+		expect(changeVerdict(vm)).toEqual({ word: 'no release for this commit yet', tone: 'not-built' });
 	});
 
 	it('is "<service> deploying in <env>" for an in-flight cell with nothing worse', () => {
@@ -331,6 +338,7 @@ describe('filterChangeRows', () => {
 			prodLeadMs: null,
 			frontierReason: null,
 			frontierSince: null,
+			noRelease: false,
 			...overrides
 		};
 	}
@@ -405,6 +413,7 @@ describe('summarizeChangeRows (CHANGES-2026-09-10 fix pass, ruling 5 — "COUNTS
 			prodLeadMs: null,
 			frontierReason: null,
 			frontierSince: null,
+			noRelease: false,
 			...overrides
 		};
 	}
@@ -447,6 +456,7 @@ describe('myChangesCount (ruling 5 — ONE definition of "your changes")', () =>
 			prodLeadMs: null,
 			frontierReason: null,
 			frontierSince: null,
+			noRelease: false,
 			...overrides
 		};
 	}
@@ -483,6 +493,7 @@ describe('orderHomeChangeRows (ruling 5 — stuck-first, then newest)', () => {
 			prodLeadMs: null,
 			frontierReason: null,
 			frontierSince: null,
+			noRelease: false,
 			...overrides
 		};
 	}
@@ -623,15 +634,20 @@ describe('standingWords — ≤4 words for every PrState', () => {
 		expect(standingWords({ verdictTone: 'live', grid })).toBe('live everywhere');
 	});
 
-	it('reads "not built yet" when a service exists but nothing has built', () => {
+	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built" is retired copy.
+	it('reads "no release yet" when a service exists but nothing has built', () => {
 		const vm = mkVm([mkService('a', [mkCell('not-built')])]);
 		const grid = buildLandingGrid(vm, new Date());
-		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('not built yet');
+		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('no release yet');
 	});
 
-	it('reads "not built here" with no matching service at all', () => {
+	// ⭐ ROUND 3 (2026-09-10 ruling A). Renamed from "not built here" — the
+	// STANDING word never says "built" any more; `buildPrPipeline`'s own
+	// full verdict sentence still does (a deliberately different
+	// vocabulary — see `standingWords`'s own doc).
+	it('reads "not deployed here" with no matching service at all', () => {
 		const grid = buildLandingGrid(mkVm([]), new Date());
-		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('not built here');
+		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('not deployed here');
 	});
 
 	it('names the frontier family for a held (stuck) cell — "held in <family>"', () => {
@@ -682,7 +698,8 @@ function mkRows(overrides: Partial<ChangeRowVM>[]): ChangeRowVM[] {
 		notEverywhere: false,
 		prodLeadMs: null,
 		frontierReason: null,
-		frontierSince: null
+		frontierSince: null,
+		noRelease: false
 	};
 	return overrides.map((o, i) => ({ ...base, number: i + 1, ...o }));
 }
@@ -701,14 +718,88 @@ describe('changesSummary', () => {
 		expect(s.neverBuiltCount).toBe(1);
 	});
 
-	it('never computes a median from fewer than 3 prod-lead samples', () => {
-		const rows = mkRows([{ prodLeadMs: 60_000 }, { prodLeadMs: 120_000 }]);
+	// ⭐ ROUND 3 (2026-09-10, third operator walk) — the floor moved from 3 to
+	// 2 samples, consolidated into the one `typicalToProdMs` export both this
+	// and `repoProgress` now read.
+	it('never computes a median from fewer than 2 prod-lead samples', () => {
+		const rows = mkRows([{ prodLeadMs: 60_000 }]);
 		expect(changesSummary(rows).typicalToProdMs).toBeNull();
 	});
 
-	it('computes the median once 3+ samples exist', () => {
+	it('computes the median once 2+ samples exist', () => {
 		const rows = mkRows([{ prodLeadMs: 60_000 }, { prodLeadMs: 120_000 }, { prodLeadMs: 180_000 }]);
 		expect(changesSummary(rows).typicalToProdMs).toBe(120_000);
+	});
+});
+
+// ⭐ ROUND 3 (2026-09-10, third operator walk) — THE ONE "TYPICAL TO PROD"
+// DEFINITION, and ruling B's "Repositories" card helpers.
+describe('typicalToProdMs — the one definition every surface must read', () => {
+	it('null under fewer than 2 samples', () => {
+		expect(typicalToProdMs(mkRows([{ prodLeadMs: 60_000 }]))).toBeNull();
+		expect(typicalToProdMs([])).toBeNull();
+	});
+
+	it('the median once 2+ samples exist', () => {
+		const rows = mkRows([{ prodLeadMs: 60_000 }, { prodLeadMs: 120_000 }, { prodLeadMs: 180_000 }]);
+		expect(typicalToProdMs(rows)).toBe(120_000);
+	});
+
+	it('scopes to one repository via repoKey, ignoring other repos entirely', () => {
+		const rows = mkRows([
+			{ repoKey: 'acme/widget', prodLeadMs: 60_000 },
+			{ repoKey: 'acme/widget', prodLeadMs: 120_000 },
+			// A different repo's samples must not leak into widget's median.
+			{ repoKey: 'acme/other', prodLeadMs: 999_999_999 }
+		]);
+		expect(typicalToProdMs(rows, 'acme/widget')).toBe(90_000);
+		// Only one sample for `acme/other` — under the 2-sample floor.
+		expect(typicalToProdMs(rows, 'acme/other')).toBeNull();
+	});
+});
+
+describe('repoProgress (ruling B, "Repositories" card)', () => {
+	it('counts changes/notEverywhere and computes typicalToProdMs, scoped to the one repo', () => {
+		const rows = mkRows([
+			{ repoKey: 'acme/widget', notEverywhere: true, prodLeadMs: 60_000 },
+			{ repoKey: 'acme/widget', notEverywhere: false, prodLeadMs: 120_000 },
+			{ repoKey: 'acme/other', notEverywhere: true, prodLeadMs: null }
+		]);
+		const progress = repoProgress(rows, 'acme/widget');
+		expect(progress.changes).toBe(2);
+		expect(progress.notEverywhere).toBe(1);
+		expect(progress.typicalToProdMs).toBe(90_000);
+		expect(progress.latestMergedAt).toBe(rows[0].mergedAt);
+	});
+
+	it('a repo with no rows at all: zero counts, null lead time, null latestMergedAt', () => {
+		const progress = repoProgress(mkRows([{ repoKey: 'acme/widget' }]), 'acme/nomatch');
+		expect(progress).toEqual({
+			changes: 0,
+			notEverywhere: 0,
+			typicalToProdMs: null,
+			latestMergedAt: null
+		});
+	});
+});
+
+describe('recentByRepo (ruling B, "Repositories" card)', () => {
+	it('buckets the newest-first feed by repo, capped at n per repo, preserving order', () => {
+		const rows = mkRows([
+			{ repoKey: 'acme/widget', title: 'w1' },
+			{ repoKey: 'acme/other', title: 'o1' },
+			{ repoKey: 'acme/widget', title: 'w2' },
+			{ repoKey: 'acme/widget', title: 'w3' },
+			{ repoKey: 'acme/other', title: 'o2' }
+		]);
+		const byRepo = recentByRepo(rows, 2);
+		expect(byRepo.get('acme/widget')!.map((r) => r.title)).toEqual(['w1', 'w2']);
+		expect(byRepo.get('acme/other')!.map((r) => r.title)).toEqual(['o1', 'o2']);
+	});
+
+	it('a repo absent from rows has no entry at all', () => {
+		const rows = mkRows([{ repoKey: 'acme/widget' }]);
+		expect(recentByRepo(rows, 5).has('acme/nomatch')).toBe(false);
 	});
 });
 
@@ -794,10 +885,16 @@ describe('familyProgress', () => {
 		]);
 	});
 
-	it('returns no steps for a row with no services (the ledger-fallback shape)', () => {
-		expect(familyProgress({ grid: { services: [], allSameLabel: null, visible: [], overflow: null } })).toEqual(
-			[]
-		);
+	// ⭐ ROUND 3 (2026-09-10 ruling A). Superseded: a row with no services
+	// (the ledger-fallback shape, and now also a real `noRelease` change)
+	// used to draw NO meter at all — now it draws three neutral
+	// placeholders, DEV/STG/PRD, tone `none`, so the meter is never simply
+	// absent ("meter = three dashed dots" for a `noRelease` row).
+	it('draws three neutral placeholders for a row with no services (the ledger-fallback shape / a noRelease change)', () => {
+		const steps = familyProgress({ grid: { services: [], allSameLabel: null, visible: [], overflow: null } });
+		expect(steps).toHaveLength(3);
+		expect(steps.map((s) => s.family)).toEqual(['DEV', 'STG', 'PRD']);
+		expect(steps.every((s) => s.tone === 'none' && s.state === null && s.builtCount === 0)).toBe(true);
 	});
 
 	// ⭐ THE LIVE BUG THIS FIX PASS EXISTS FOR. `hello-frontend-app` genuinely

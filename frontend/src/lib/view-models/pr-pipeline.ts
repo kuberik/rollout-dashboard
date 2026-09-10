@@ -278,10 +278,17 @@ export type PrService = {
 	 * ⭐ RULING 2 (CHANGES-2026-09-10 fix pass, "NOT-BUILT HAS NO ETA"). `true`
 	 * when some OTHER service of this same repository has at least one cell
 	 * whose state is not `not-built` — i.e. the change HAS been built
-	 * somewhere on this cluster, just not for THIS service. Lets
-	 * `pr-cell-copy.ts` distinguish "no build of this change for this
-	 * service" (a fact about this service specifically) from "not built yet"
-	 * (nothing anywhere has built it) without inventing a second `PrState`.
+	 * somewhere on this cluster, just not for THIS service.
+	 *
+	 * ⚠️ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED") —
+	 * LARGELY VESTIGIAL NOW. `buildPrPipeline` only ever keeps a service in
+	 * `PrPipelineVM.services` when IT ITSELF has release evidence
+	 * (`unaffectedServices` is where a service with none goes instead), so
+	 * "a service with no build of its own, while a sibling has one" is a much
+	 * rarer shape than it used to be — kept for compatibility (a hand-built
+	 * fixture, or the narrow case every cell of an otherwise-included service
+	 * reads `not built (unverified)`), but `pr-cell-copy.ts` no longer reads
+	 * it (see `cellStateSentence`'s own doc).
 	 */
 	builtElsewhere: boolean;
 };
@@ -306,13 +313,48 @@ export type PrPipelineVM = {
 	/** See `PrCell.containmentKnown` — one value for the whole PR/commit. */
 	containmentKnown: boolean;
 	/** ⭐ RULING 5 (COUNTS). Every rollout (cell) this change could possibly
-	 *  land in, on this cluster. */
+	 *  land in, on this cluster — ⭐ ROUND 3: scoped to `services` (INCLUDED
+	 *  services only; see `unaffectedServices`), never the wider set of every
+	 *  app that merely sources this repository. */
 	rolloutsTotal: number;
-	/** Cells whose state is not `not-built` — "N of M rollouts have a build
-	 *  of this change". */
+	/**
+	 * Cells whose state is not `not-built` — "N of M rollouts have a build
+	 * of this change".
+	 *
+	 * ⭐ ROUND 3 (2026-09-10 ruling A). NOW REDUNDANT, `=== rolloutsTotal` in
+	 * every ordinary case: a service is only ever kept in `services` when it
+	 * has release evidence, and every cell of a kept service that would
+	 * otherwise read `not-built` is recast `queued` (see
+	 * `remapForIncludedService`) — so there is nothing left for this filter
+	 * to exclude. Kept as its own field for callers that already read it
+	 * (rather than assuming it equals `rolloutsTotal`); the ONE case it can
+	 * still differ is the rare all-cells-`not built (unverified)` shape
+	 * (`buildCell`'s ruling-1 honesty guard), which is intentionally NOT
+	 * recast — see `remapForIncludedService`'s own doc.
+	 */
 	rolloutsWithBuild: number;
 	/** Cells whose state is `live`. */
 	rolloutsLive: number;
+	/**
+	 * ⭐ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED"). App
+	 * names this PR's own repository matches on this cluster, but which carry
+	 * NO release evidence for this exact change (no exact/descendant sha
+	 * match anywhere in history or `availableReleases`) — dropped out of
+	 * `services` entirely rather than rendered as an empty/"not built" card.
+	 * Exposed for debugging ONLY; no product surface renders this list.
+	 */
+	unaffectedServices: string[];
+	/**
+	 * ⭐ ROUND 3 (2026-09-10 ruling A). `true` when this repository DOES have
+	 * at least one app deploying it on this cluster, but NONE of them carry
+	 * any release evidence for this exact change — "assume CI didn't release
+	 * it for a reason" (the tech lead's own words). Distinct from the
+	 * `services.length === 0` case where NO app on this cluster sources this
+	 * repository at all (`verdictWord`/`verdict` stay "not built here" for
+	 * that one, unchanged). A `noRelease` VM has `services: []` and a verdict
+	 * of "no release for this commit yet" — no per-service card, one line.
+	 */
+	noRelease: boolean;
 };
 
 /**
@@ -800,6 +842,63 @@ function buildCell(
 	});
 }
 
+/**
+ * ⭐ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED"; REFINED
+ * the same day after the third operator walk). A service is AFFECTED by a
+ * change only when CI actually built THAT service from the change's OWN
+ * commit — an EXACT match against `meta.mergeCommitSha`, anywhere in
+ * `history` or `availableReleases`. This is the per-service ELIGIBILITY test
+ * `buildPrPipeline` runs BEFORE building cells — a service with no such
+ * release anywhere does not exist for this change at all (dropped into
+ * `unaffectedServices`), even when a LATER release of it happens to be a
+ * descendant that contains this commit.
+ *
+ * ⚠️ DELIBERATELY NOT `set`/`containedIn` (descendant containment) — that is
+ * `buildCell`'s own job, for an ALREADY-AFFECTED service, to decide whether
+ * an environment's head or a candidate carries the change (live via a
+ * newer build, held by a newer build, …). Using descendant containment HERE
+ * too was the bug the third walk found: `hello-frontend-app`'s one held
+ * release is a descendant of nearly every older merged commit on its repo,
+ * so every one of those OLDER changes read "held in dev on hello-api-app" —
+ * a hold that has nothing to do with that specific change. "Assume CI
+ * didn't release it for a reason" applies exactly as much to a coincidental
+ * ancestor match as to no match at all: only the commit's OWN build counts.
+ */
+function hasBuildEvidence(rollout: Rollout, meta: PrPipelineMeta): boolean {
+	if (!meta.mergeCommitSha) return false;
+	const status = rollout.status ?? {};
+	const history = status.history ?? [];
+	if (history.some((h) => h.version?.revision === meta.mergeCommitSha)) return true;
+	for (const r of status.availableReleases ?? []) {
+		if (r.revision === meta.mergeCommitSha) return true;
+	}
+	return false;
+}
+
+/**
+ * ⭐ ROUND 3 (2026-09-10 ruling A). For a service `buildPrPipeline` has
+ * already decided IS included (`hasBuildEvidence` said yes, somewhere), rule
+ * 4's genuine "nothing at all carries the change in THIS env" catch-all
+ * (`reason === 'not built here yet'`) must not surface the retired
+ * `not-built` reading — the SERVICE has a release, this one environment's
+ * rollout just has not been offered a candidate yet. Recast `queued`, the
+ * same neutral "not this cell's turn" state a normal promotion-order wait
+ * already uses, with a reason naming the actual fact.
+ *
+ * ⚠️ Deliberately NARROW — matches the literal rule-4 string only. A cell
+ * reading `'not built (unverified)'` is `notBuiltUnverified()` (ruling 1's
+ * own honesty guard for a candidate this VM cannot yet PROVE carries the
+ * change) and is left exactly as `not-built`: recasting an unverifiable
+ * claim as `queued` would assert MORE than this VM actually knows, the
+ * opposite of what ruling 1 exists to prevent. `pr-cell-copy.ts`'s
+ * `cellStateSentence` speaks that one surviving case as "release status
+ * unknown", never "not built".
+ */
+function remapForIncludedService(cell: PrCell): PrCell {
+	if (cell.state !== 'not-built' || cell.reason !== 'not built here yet') return cell;
+	return { ...cell, state: 'queued', reason: `not offered to ${cell.envName} yet` };
+}
+
 function isProdEnv(envName: string): boolean {
 	return getEnvironmentRank(envName) >= 7;
 }
@@ -989,7 +1088,14 @@ export function buildChangeVerdict(services: PrService[]): { word: string; tone:
 	// this change anywhere yet" is a fact about the CHANGE, not about any
 	// one of its services in particular — every service is equally
 	// not-built, so naming one would imply it is somehow the one to watch.
-	if (withBuild.length === 0) return { word: 'not built yet', tone: 'not-built' };
+	//
+	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built yet" is retired copy —
+	// `buildPrPipeline`'s own eligibility filter means this branch is
+	// unreachable through the real pipeline (an included service never has
+	// an all-`not-built` cell set, bar the rare all-unverified shape); kept
+	// here, worded the same as `noRelease`'s own verdict, for a caller that
+	// hands this function a hand-built `PrService[]` directly.
+	if (withBuild.length === 0) return { word: 'no release for this commit yet', tone: 'not-built' };
 	if (withBuild.every((x) => x.cell.state === 'live')) return { word: 'live everywhere', tone: 'live' };
 
 	const candidates = withBuild
@@ -1026,13 +1132,29 @@ export function buildChangeVerdict(services: PrService[]): { word: string; tone:
  * all in hand at once. Mutates no cell in place — returns fresh cell/service
  * objects so nothing else that captured a reference is surprised.
  */
-function joinDependencyReasons(services: readonly PrService[]): PrService[] {
+function joinDependencyReasons(
+	services: readonly PrService[],
+	unaffected: ReadonlySet<string>
+): PrService[] {
 	const byName = new Map(services.map((s) => [s.appName, s]));
 	return services.map((svc) => ({
 		...svc,
 		cells: svc.cells.map((cell) => {
 			if (cell.state !== 'waiting-upstream' || cell.gateSubjectKind !== 'service' || !cell.gateSubject) {
 				return cell;
+			}
+			// ⭐ ROUND 3 (2026-09-10 ruling A). A provider dropped entirely for
+			// having no release evidence at all (`buildPrPipeline`'s own
+			// `unaffectedServices`) joins exactly as if it were present with
+			// every cell `not-built` — without this, `byName.get` below returns
+			// `undefined` for it and the cell keeps its generic, less useful
+			// reason.
+			if (unaffected.has(cell.gateSubject)) {
+				return {
+					...cell,
+					reason: `waiting on ${cell.gateSubject} — its build of this change does not exist yet`,
+					providerHasNoBuild: true
+				};
 			}
 			const provider = byName.get(cell.gateSubject);
 			if (!provider) return cell;
@@ -1098,15 +1220,27 @@ export function buildPrPipeline(
 
 	const groups = groupRolloutsByApp(rollouts, environments);
 	let services: PrService[] = [];
+	// ⭐ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED"). Every
+	// app whose `status.source` matches this PR's own repository, but which
+	// carries no release evidence for THIS exact change anywhere — dropped
+	// out of `services` entirely rather than rendered with an all-`not-built`
+	// card. See `hasBuildEvidence`'s own doc for the exact test.
+	const unaffectedServices: string[] = [];
 
 	for (const group of groups.values()) {
 		const matching = group.cells.filter((c) => c.repoKey === expectedRepoKey);
 		if (matching.length === 0) continue;
 
+		if (!matching.some((c) => hasBuildEvidence(c.rollout, meta))) {
+			unaffectedServices.push(group.appName);
+			continue;
+		}
+
 		const cells = matching
 			.map((c) =>
 				buildCell(c.rollout, c.envName, c.sourceCluster, c.theme, set, meta, gateCtx, now, containmentKnown)
 			)
+			.map(remapForIncludedService)
 			.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
 
 		const leadVm = leadTime(buildLeadEnvs(matching));
@@ -1122,22 +1256,42 @@ export function buildPrPipeline(
 		});
 	}
 
-	services = withBuiltElsewhere(joinDependencyReasons(services));
+	services = withBuiltElsewhere(joinDependencyReasons(services, new Set(unaffectedServices)));
 
 	const allCells = services.flatMap((s) => s.cells);
 	const rolloutsTotal = allCells.length;
+	// ⭐ ROUND 3 — see `PrPipelineVM.rolloutsWithBuild`'s own doc: this is now
+	// redundant with `rolloutsTotal` in every ordinary case, kept as its own
+	// computation rather than aliased so the rare all-unverified shape still
+	// reads honestly.
 	const rolloutsWithBuild = allCells.filter((c) => c.state !== 'not-built').length;
 	const rolloutsLive = allCells.filter((c) => c.state === 'live').length;
 
-	// ⭐ ITEM 4 (2026-09-10 fix pass) / RULING 3. Kept as its own sentence,
-	// distinct from "not built yet": zero MATCHING services (no app on this
-	// cluster sources from this repo at all) is a different fact from "some
-	// service matched, none has built it".
-	const { word, tone } =
-		services.length === 0
-			? { word: 'not built here', tone: 'not-built' as ChangeVerdictTone }
-			: buildChangeVerdict(services);
-	const verdict = services.length === 0 ? 'No service on this cluster deploys this repository' : capitalize(word);
+	// ⭐ ITEM 4 (2026-09-10 fix pass) / RULING 3 / ROUND 3 RULING A. Three
+	// distinct facts, never conflated:
+	//  - no app on this cluster sources this repository at all → "not built
+	//    here" (unchanged from the original fix-pass wording — a DIFFERENT
+	//    fact from "no release", and not banned copy).
+	//  - the repository IS deployed here, but nothing anywhere carries this
+	//    exact change → `noRelease`, "no release for this commit yet".
+	//  - at least one included service exists → the ordinary frontier verdict.
+	const matchedAnyRepo = services.length > 0 || unaffectedServices.length > 0;
+	const noRelease = matchedAnyRepo && services.length === 0;
+	let word: string;
+	let tone: ChangeVerdictTone;
+	let verdict: string;
+	if (!matchedAnyRepo) {
+		word = 'not built here';
+		tone = 'not-built';
+		verdict = 'No service on this cluster deploys this repository';
+	} else if (noRelease) {
+		word = 'no release for this commit yet';
+		tone = 'not-built';
+		verdict = capitalize(word);
+	} else {
+		({ word, tone } = buildChangeVerdict(services));
+		verdict = capitalize(word);
+	}
 
 	return {
 		services,
@@ -1147,7 +1301,9 @@ export function buildPrPipeline(
 		containmentKnown,
 		rolloutsTotal,
 		rolloutsWithBuild,
-		rolloutsLive
+		rolloutsLive,
+		unaffectedServices,
+		noRelease
 	};
 }
 

@@ -275,6 +275,10 @@ describe('/changes/[...slug] — sha form', () => {
 		);
 	});
 
+	// ⭐ ROUND 3 (2026-09-10 ruling A, "NO RELEASE MEANS NOT AFFECTED"). This
+	// app sources the repo but never released this exact sha — `noRelease`,
+	// not the old "not built yet" — an honest answer, still not an error
+	// page.
 	test('a sha this cluster has never built anywhere still renders a page — never a 404', async () => {
 		stubFetch({
 			rollouts: [rollout('web', 'team', 'somethingelse0000000000000000000000000')],
@@ -283,12 +287,14 @@ describe('/changes/[...slug] — sha form', () => {
 		renderAt(`${REPO_PATH}/${SHA}`);
 
 		await screen.findByRole('heading', { level: 1, name: 'a111111' });
-		// buildPrPipeline's own "not built here" state — an honest answer,
-		// not an error page. (The word "not built yet" also appears on the
-		// card's own rollup and row sentence, so this asserts the VERDICT
-		// heading specifically, not a bare text match.)
+		// buildPrPipeline's own `noRelease` state — an honest answer, not an
+		// error page. (The word "no release" also appears elsewhere on the
+		// page, so this asserts the VERDICT heading specifically, not a bare
+		// text match.)
 		await waitFor(() =>
-			expect(screen.getByRole('heading', { level: 2, name: 'Not built yet' })).toBeInTheDocument()
+			expect(
+				screen.getByRole('heading', { level: 2, name: 'No release for this commit yet' })
+			).toBeInTheDocument()
 		);
 		expect(screen.queryByText('This repository does not exist')).toBeNull();
 	});

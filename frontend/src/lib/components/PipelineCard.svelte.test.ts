@@ -311,9 +311,14 @@ describe('PipelineCard', () => {
 		await waitFor(() => expect(screen.getByText(/opens in 1d 4h/)).toBeInTheDocument());
 	});
 
+	// ⭐ ROUND 3 (2026-09-10, third operator walk, "NO TIMER IS COUNTING THIS
+	// DOWN") REFINES item 1: only a NORMAL ORDER wait (`queued`/`promoting`)
+	// is an honest estimate of WHEN. The frontier cell here is `queued`
+	// (waiting its own turn), not `gated` — see the dedicated test below for
+	// why a `gated` frontier must now stay silent even with samples.
 	test('CHANGES-2026-09-10 §7, item 1: the frontier cell prints "usually N min once it starts" — every other held/not-built cell stays silent', () => {
 		const service = mkService([
-			mkCell('gated', { envName: 'dev', envRank: 1, gateLabel: 'a-rule', usuallyMs: 12 * 60_000 }),
+			mkCell('queued', { envName: 'dev', envRank: 1, gateSubject: 'staging', usuallyMs: 12 * 60_000 }),
 			mkCell('not-built', { envName: 'staging', envRank: 4, usuallyMs: 9 * 60_000 })
 		]);
 		renderCard(service);
@@ -321,6 +326,20 @@ describe('PipelineCard', () => {
 		// The non-frontier `not-built` cell prints nothing, per item 1's own
 		// "everywhere else stays silent" — never a second estimate on this row.
 		expect(screen.queryByText(/usually 9 min/)).not.toBeInTheDocument();
+	});
+
+	// ⭐ ROUND 3 (2026-09-10, third operator walk). Live bug: PR #4's own
+	// dependency wait on `api ^1.68.0` (nobody has released it) printed
+	// "usually 1 min once it starts" directly beside a verdict that ALSO
+	// says "will not move on its own" — a direct contradiction. A `gated`
+	// hold clears on a rule, not a countdown, so it must stay silent even
+	// when `usuallyMs` is set.
+	test('ROUND 3: a gated (or waiting-upstream/pinned) frontier never prints "usually N min" — no timer is counting it down', () => {
+		const service = mkService([
+			mkCell('gated', { envName: 'dev', envRank: 1, gateLabel: 'a-rule', usuallyMs: 12 * 60_000 })
+		]);
+		renderCard(service);
+		expect(screen.queryByText(/usually 12 min/)).not.toBeInTheDocument();
 	});
 
 	// ══ ROUND 2, R2.3 — THE STAGE-ROW GRAMMAR ═══════════════════════════════
