@@ -101,7 +101,6 @@ lib/components/BuildLists.svelte	code	Deployed …
 lib/components/BuildLists.svelte	text	Hide … …
 lib/components/BuildLists.svelte	code	History keeps the last … deploys per service, so a build with no deploy on record may simply predate that window — it is not necessarily one nobody has ever run.
 lib/components/BuildLists.svelte	code	Last deployed …
-lib/components/BuildLists.svelte	code	Never deployed
 lib/components/BuildLists.svelte	code	No deploy on record
 lib/components/BuildLists.svelte	title	No longer running anywhere
 lib/components/BuildLists.svelte	text	Show … …
@@ -766,7 +765,7 @@ lib/view-models/revision-coverage.ts	code	a newer release
 lib/view-models/revision-coverage.ts	code	Across …: ….
 lib/view-models/revision-coverage.ts	code	Across …: none is running … yet.
 lib/view-models/revision-coverage.ts	code	Already moved on
-lib/view-models/revision-coverage.ts	code	bg-[oklch(82%_0.07_154)] dark:bg-green-100
+lib/view-models/revision-coverage.ts	code	bg-[oklch(82%_0.07_154)] dark:bg-green-800
 lib/view-models/revision-coverage.ts	code	Deployed in … place… where the deploy is not healthy
 lib/view-models/revision-coverage.ts	code	Every place that can run this build is running it
 lib/view-models/revision-coverage.ts	code	failing in … place…
@@ -1159,16 +1158,13 @@ routes/revisions/[...slug]/+page.svelte	text	. This page covers every commit on 
 routes/revisions/[...slug]/+page.svelte	text	… … … · live … · updated
 routes/revisions/[...slug]/+page.svelte	text	… … Deploying since … Last deployed …
 routes/revisions/[...slug]/+page.svelte	code	… … held in ….
-routes/revisions/[...slug]/+page.svelte	code	… … is held
 routes/revisions/[...slug]/+page.svelte	code	… · … releases
 routes/revisions/[...slug]/+page.svelte	code	… · every other place on its newest build
 routes/revisions/[...slug]/+page.svelte	code	… +… more
 routes/revisions/[...slug]/+page.svelte	title	… calls this …
 routes/revisions/[...slug]/+page.svelte	title	… can still take … newer version…
-routes/revisions/[...slug]/+page.svelte	code	… is held
 routes/revisions/[...slug]/+page.svelte	title	… is running … right now — the newer … has not replaced it
 routes/revisions/[...slug]/+page.svelte	title	… is stuck
-routes/revisions/[...slug]/+page.svelte	text	… No repository
 routes/revisions/[...slug]/+page.svelte	text	… place …
 routes/revisions/[...slug]/+page.svelte	code	… service…
 routes/revisions/[...slug]/+page.svelte	code	… services
@@ -1184,7 +1180,6 @@ routes/revisions/[...slug]/+page.svelte	text	All revisions
 routes/revisions/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
 routes/revisions/[...slug]/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
 routes/revisions/[...slug]/+page.svelte	text	Commit message and author need GitHub. …
-routes/revisions/[...slug]/+page.svelte	text	either. … No repository
 routes/revisions/[...slug]/+page.svelte	code	every place is on its newest build
 routes/revisions/[...slug]/+page.svelte	title	Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be on the newest.
 routes/revisions/[...slug]/+page.svelte	placeholder	Find a build or service
@@ -1192,13 +1187,13 @@ routes/revisions/[...slug]/+page.svelte	code	Held by a deploy window
 routes/revisions/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
 routes/revisions/[...slug]/+page.svelte	code	Held for another …
 routes/revisions/[...slug]/+page.svelte	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
-routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard, so it cannot hold the revision
-routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard. …
+routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard.
 routes/revisions/[...slug]/+page.svelte	text	knows the revision
 routes/revisions/[...slug]/+page.svelte	text	kuberik | …
 routes/revisions/[...slug]/+page.svelte	title	Newest build … · …
 routes/revisions/[...slug]/+page.svelte	text	No build matches “ … ”.
 routes/revisions/[...slug]/+page.svelte	text	No earlier deploy on record.
+routes/revisions/[...slug]/+page.svelte	text	No repository
 routes/revisions/[...slug]/+page.svelte	text	Nothing in
 routes/revisions/[...slug]/+page.svelte	text	now on
 routes/revisions/[...slug]/+page.svelte	text	Open …

@@ -57,22 +57,46 @@ export function buildPaletteBuildIndex(
 	for (const ledger of ledgers) {
 		const repoShort = repoShortName(ledger.repoLabel);
 		const rows: RevisionRow[] = [...ledger.rows, ...ledger.pending];
-		for (const [i, row] of rows.entries()) {
+		/**
+		 * ⭐ LANE 9, ROUND 11 QA, ITEM 15 — MERGE BY `(repoKey, revision)`
+		 * BEFORE EMITTING A RESULT, NOT AFTER.
+		 *
+		 * `repoKey:revision` alone is NOT unique on `rows` — round 4a's "one
+		 * row per RELEASE" split means a rollback can produce two
+		 * `RevisionRow`s that share one revision (rel-66/rel-67 of the same
+		 * commit, under different tags/labels). This USED to push one
+		 * `PaletteBuildEntry` per row and paper over the duplicate KEY with
+		 * `:${i}` — which fixed the crash (`each_key_duplicate` froze the
+		 * whole palette's reactivity mid-keystroke) but not the DEFECT: a
+		 * search for `9f10e49` still returned two rows, both opening the
+		 * identical `href` (the row's split is release-scoped; the build
+		 * page is revision-scoped, so both rows resolve to the same URL) and
+		 * each carrying only ITS OWN partial label — `2.66.0-66` on one,
+		 * `2.67.0-67` on the other — so neither result told the reader the
+		 * commit ships under both. Grouping by revision FIRST, unioning
+		 * every row's `labelGroups` into one set, produces the one entry the
+		 * data actually supports: one build, one destination, every label it
+		 * ships under.
+		 */
+		const byRevision = new Map<string, { row: RevisionRow; labels: Set<string> }>();
+		for (const row of rows) {
+			const existing = byRevision.get(row.revision);
+			if (existing) {
+				for (const g of row.labelGroups) existing.labels.add(g.label);
+			} else {
+				byRevision.set(row.revision, { row, labels: new Set(row.labelGroups.map((g) => g.label)) });
+			}
+		}
+		for (const { row, labels } of byRevision.values()) {
 			out.push({
-				// ⛔ `repoKey:revision` alone is NOT unique — round 4a's "one row
-				// per RELEASE" split means a rollback can produce two
-				// `RevisionRow`s that share one revision (rel-66/rel-67 of the
-				// same commit, under different tags/labels). Measured live:
-				// `{#each ... (result.key)}` threw `each_key_duplicate` on
-				// `9f10e494d560...` the moment a repo with a rollback reached
-				// this index, which froze the WHOLE palette's reactivity
-				// mid-keystroke (query kept advancing in the DOM input, but
-				// every derived list downstream stopped updating). The row's
-				// own index in `rows` is always unique per repo.
-				key: `build:${ledger.repoKey}:${row.revision}:${i}`,
+				// `(repoKey, revision)` is unique by construction now — the
+				// `Map` above already merged every row that would have
+				// collided, so no `:${i}` suffix is needed to keep this key
+				// distinct.
+				key: `build:${ledger.repoKey}:${row.revision}`,
 				revision: row.revision,
 				short: row.short,
-				labels: row.labelGroups.map((g) => g.label),
+				labels: [...labels],
 				repoKey: ledger.repoKey,
 				repoLabel: ledger.repoLabel,
 				repoShort,

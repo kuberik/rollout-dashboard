@@ -443,6 +443,30 @@ describe('revisionCoverage', () => {
 			expect(segs.reduce((n, s) => n + s.count, 0)).toBe(cov.totalCount);
 			expect(segs.map((s) => s.count)).toEqual([0, 3, 0, 0]);
 		});
+
+		/**
+		 * ⭐ LANE 9, ROUND 11 QA, ITEM 4 — `neverDeployed` FOLDS `movedOn` INTO
+		 * `notReached`, AND ONLY THAT WEIGHT. A build with no deploy on record
+		 * anywhere must draw ALL TRACK, never "moved past" — the one shape
+		 * that lets a retired build (`ahead` for real reasons) and a
+		 * never-deployed one (`ahead` only because something else deployed
+		 * first) read differently on the page.
+		 */
+		it('neverDeployed — the all-ahead fixture folds into all-track', () => {
+			const cov = coverageFrom([['ahead'], ['ahead'], ['ahead']]);
+			const segs = coverageBarSegments(cov, true);
+			expect(segs.map((s) => s.key)).toEqual(WEIGHT_ORDER);
+			expect(segs.reduce((n, s) => n + s.count, 0)).toBe(cov.totalCount);
+			expect(segs.map((s) => s.count)).toEqual([0, 0, 3, 0]);
+		});
+
+		it('neverDeployed — unplaceable is untouched, only movedOn folds', () => {
+			const cov = coverageFrom([['ahead'], ['notYet'], ['unplaceable']]);
+			const segs = coverageBarSegments(cov, true);
+			expect(segs.map((s) => s.count)).toEqual([0, 0, 2, 1]);
+			// Without the flag, the same fixture keeps `ahead` as `movedOn`.
+			expect(coverageBarSegments(cov).map((s) => s.count)).toEqual([0, 1, 1, 1]);
+		});
 	});
 
 	describe('coverageBarLabel', () => {
@@ -1011,6 +1035,28 @@ describe('coverageCells', () => {
 		for (const c of cells.filter((c) => c.key === 'movedOn')) {
 			expect(c.title).toMatch(/ · moved past$/);
 		}
+	});
+
+	/**
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 4 — `neverDeployed` RENAMES `movedOn`
+	 * CELLS TO `notReached`, TITLE INCLUDED. Same fixture as
+	 * `coverageBarSegments`'s own `neverDeployed` test — the `ahead` bucket
+	 * on a build that has never actually run anywhere must read "not
+	 * reached yet", never "moved past", so the per-cell tooltip agrees with
+	 * the all-track bar it sits on.
+	 */
+	it('neverDeployed relabels every "moved past" cell as "not reached yet"', () => {
+		const repo = fixture();
+		const old = repo.rows[2];
+		const cov = revisionCoverage(old, new Date());
+		const cells = coverageCells(cov, true);
+		expect(cells.filter((c) => c.key === 'movedOn')).toHaveLength(0);
+		expect(cells.filter((c) => c.key === 'notReached')).toHaveLength(3);
+		for (const c of cells) {
+			expect(c.title).not.toMatch(/moved past/);
+		}
+		// `here` (a place genuinely still running it) is untouched.
+		expect(cells.filter((c) => c.key === 'here')).toHaveLength(1);
 	});
 });
 

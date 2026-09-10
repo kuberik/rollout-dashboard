@@ -1439,10 +1439,26 @@ export function lineState(
  * 'services'>` — satisfied by a `RevisionRow` directly, or by looking one
  * up (see `revisionLookup`, below) for a `ServiceLedgerLine`, which does not
  * carry its own labels or sibling services.
+ *
+ * ⭐ LANE 9, ROUND 11 QA, ITEM 9 — `matchServiceNames` (default `true`,
+ * every EXISTING call site is byte-identical). At the ROW/BUILD level (the
+ * index, `BuildLists`, the repository page's own `repoRowMatchesFilter`),
+ * "does this build match the query" correctly includes "because one of its
+ * services does" — a build is relevant if the reader named its sha, its
+ * label, OR a service that runs it. But `RepoLedgerCard`'s per-SERVICE
+ * ledger line is a narrower question: "does THIS service's own row match",
+ * and re-using the row-level predicate there let a query for
+ * `hello-api` — matching nothing about `hello-frontend-app` itself — still
+ * show `hello-frontend-app`'s line, because `matchesRevisionText` checked
+ * every OTHER service sharing that row's revision too. `false` restricts
+ * the check to the row's own sha/label — facts about the BUILD, still fair
+ * to share across services on one row — and drops the sibling-name clause
+ * that was leaking one service's match onto another's line.
  */
 export function matchesRevisionText(
 	target: Pick<RevisionRow, 'revision' | 'short' | 'labelGroups' | 'services'>,
-	query: string
+	query: string,
+	matchServiceNames = true
 ): boolean {
 	const q = query.trim().toLowerCase();
 	if (!q) return true;
@@ -1450,7 +1466,7 @@ export function matchesRevisionText(
 		target.revision.toLowerCase().startsWith(q) ||
 		target.short.toLowerCase().includes(q) ||
 		target.labelGroups.some((g) => g.label.toLowerCase().includes(q)) ||
-		(target.services ?? []).some((s) => s.appName.toLowerCase().includes(q))
+		(matchServiceNames && (target.services ?? []).some((s) => s.appName.toLowerCase().includes(q)))
 	);
 }
 

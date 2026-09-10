@@ -279,3 +279,19 @@
 		actions={primaryHref ? openAction : undefined}
 	/>
 </div>
+
+<style>
+	/*
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 14 — 8px, NOT 12px. `.held-banner` (above)
+	 * already asks for `rounded-lg` (8px, matching every 8px card this
+	 * banner sits in a column of), but `AlertPanel`'s own root is
+	 * `rounded-xl` (12px) — a fixed radius this component does not own —
+	 * and since it fills the wrapper edge to edge, ITS corner is what
+	 * paints. `:global(.ap-cq)`, scoped through `.held-banner` so this rule
+	 * cannot reach any OTHER `AlertPanel` on the page, overrides the one
+	 * property in conflict without forking the component.
+	 */
+	.held-banner :global(.ap-cq) {
+		border-radius: 8px;
+	}
+</style>

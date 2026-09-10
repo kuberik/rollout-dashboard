@@ -122,10 +122,18 @@ describe('buildPaletteBuildIndex — split revisions never collide', () => {
 	 * `revision-ledger.ts`'s own "one row per RELEASE" split — a rollback
 	 * re-ships a commit under a second tag, so ONE revision can resolve to
 	 * TWO `RevisionRow`s (see `revision-ledger.test.ts`'s own
-	 * "splits one row per release" case, reproduced minimally here) — and the
-	 * first cut of this index's key was `repoKey:revision` alone.
+	 * "splits one row per release" case, reproduced minimally here).
+	 *
+	 * ⛔ ⭐ LANE 9, ROUND 11 QA, ITEM 15 — SUPERSEDES THE FIRST FIX. Keying
+	 * each split row `repoKey:revision:${i}` stopped the crash but not the
+	 * actual defect a later operator walk caught: `9f10e49` still returned
+	 * TWO results, both opening the SAME `href` (the split is
+	 * release-scoped; the build page is revision-scoped) with only a
+	 * partial label each. The fix now merges by `(repoKey, revision)`
+	 * before a result is even built, so one revision is one result,
+	 * carrying every label it ships under.
 	 */
-	it('keys held and running releases of one rolled-back commit separately', () => {
+	it('merges held and running releases of one rolled-back commit into one result', () => {
 		const older = rel('eeeeeee', '2.66.0-66', 120); // rel-66, running
 		const newer = rel('eeeeeee', '2.67.0-67', 10); // rel-67, held — never deployed
 		const rollouts = [
@@ -135,11 +143,10 @@ describe('buildPaletteBuildIndex — split revisions never collide', () => {
 		const entries = buildPaletteBuildIndex(rollouts, environments);
 
 		const forRevision = entries.filter((e) => e.short === 'eeeeeee');
-		expect(forRevision).toHaveLength(2);
-		// Keys must be unique — this is the exact assertion `{#each (result.key)}`
-		// makes in the component.
-		expect(new Set(forRevision.map((e) => e.key)).size).toBe(2);
-		expect(forRevision.map((e) => e.labels[0]).sort()).toEqual(['2.66.0-66', '2.67.0-67']);
+		// ONE result now, not two — the same commit under two release
+		// labels is one build with one destination.
+		expect(forRevision).toHaveLength(1);
+		expect(forRevision[0].labels.slice().sort()).toEqual(['2.66.0-66', '2.67.0-67']);
 	});
 });
 

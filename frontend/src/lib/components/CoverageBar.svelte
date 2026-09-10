@@ -151,15 +151,26 @@
 	 * the card gave it regardless of `total`, so a 3-place bar and a 9-place
 	 * bar drew the SAME width and "how far this build reached" stopped being
 	 * legible from the shape at all. `CELL_CAP` is the per-cell ceiling
-	 * (≈32–40px, this round's own number, 36) that this fix uses ONLY at the
-	 * default scale — the compact 8px row bar was already measured cellular
-	 * at its typical ~21px/cell and stays on the untouched `flex-grow` path.
-	 * `newCellular` gates both the per-cell fixed basis below and the `.cov`
-	 * `width: fit-content` that lets the bar's own width shrink to its
-	 * content instead of stretching — see the CSS block for the other half.
+	 * (≈32–40px, this round's own number, 36).
+	 *
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 1 — AND NOW THE COMPACT SCALE TOO.
+	 * `!compact` in this gate was itself the bug this pass was asked to fix:
+	 * measured live, a compact `.bld-row` bar draws to its full ~200px
+	 * track (278px on the rail) REGARDLESS of `total`, because `flex-grow`
+	 * fills the row exactly the way it used to at the default scale — a
+	 * 9-place row's cells resolved to ~22px each and a 3-place row's to
+	 * ~67px each, both bars the SAME overall width. `CELL_CAP_COMPACT`
+	 * (22px — the width the 9-place case ALREADY measured, so that common
+	 * case is visually unchanged) applies the identical fix one scale down:
+	 * a 3-place compact bar is now `3 × 22 + 2 × 1 ≈ 68px`, a third of a
+	 * 9-place bar's `9 × 22 + 8 × 1 ≈ 206px` — exactly the "one cell width
+	 * per list, shared left edge" the finding asked for, since the constant
+	 * is the SAME number regardless of which list or which row it draws.
 	 */
-	const CELL_CAP = 36;
-	const newCellular = $derived(cellular && !compact);
+	const CELL_CAP_DEFAULT = 36;
+	const CELL_CAP_COMPACT = 22;
+	const CELL_CAP = $derived(compact ? CELL_CAP_COMPACT : CELL_CAP_DEFAULT);
+	const newCellular = $derived(cellular);
 
 	/**
 	 * ⭐ REVISIONS-PASS-6 FOLLOW-UP (round 11, r11c finding 7) — AN EXPLICIT
@@ -321,8 +332,10 @@
 	 * algorithm squeezes the (now flex-shrinkable) cells down toward their
 	 * `min-width` legibility floor instead of overflowing. Scoped to
 	 * `newCellular` bars only (a Svelte class, applied only when this specific
-	 * render needs it) — the compact row bar and the rare >32-place fallback
-	 * both keep the old full-width fill untouched.
+	 * render needs it) — only the rare >32-place fallback (either scale) now
+	 * keeps the old full-width fill untouched; see `CELL_CAP`'s own comment
+	 * (round 11 QA, item 1) for why the compact scale is no longer excluded
+	 * from this path.
 	 */
 	/*
 	 * ⛔ `width: fit-content` IS GONE (r11c finding 7) — see `capTotalWidth`'s

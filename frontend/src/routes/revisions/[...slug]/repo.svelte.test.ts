@@ -91,7 +91,7 @@ function environment(app: string, ns: string, tier: string): Environment {
  * `web`'s current head — this repo's one lead row, so its own hero renders
  * "Newest build … ". `r2` is `api`'s current build, older than the line's
  * own head — "Also still running". `r3` is known (in `availableReleases`)
- * but never deployed — "Never deployed". `r4` ran once, on `web`, and
+ * but never deployed — the rail's "No deploy on record". `r4` ran once, on `web`, and
  * nothing runs it now — "No longer running anywhere". One repo, one
  * release line, every build list non-empty — exactly what B.6's landmark
  * pin needs present at once.
@@ -159,7 +159,10 @@ describe('/revisions/[...slug] — repository page resolution (B.1)', () => {
 			'Newest build a111111 · api · web',
 			'Also still running',
 			'No longer running anywhere',
-			'Never deployed'
+			// ⭐ LANE 9, ROUND 11 QA, ITEM 13 — the rail's heading is fixed now
+			// ('No deploy on record', always); see `BuildLists.svelte`'s own
+			// `pendingTitle`.
+			'No deploy on record'
 		]);
 	});
 
@@ -213,5 +216,31 @@ describe('/revisions/[...slug] — repository page resolution (B.1)', () => {
 		const backLinks = screen.getAllByRole('link', { name: /All revisions/ });
 		expect(backLinks.length).toBeGreaterThanOrEqual(2); // breadcrumb + the not-found state's own way out
 		for (const link of backLinks) expect(link).toHaveAttribute('href', '/revisions');
+	});
+
+	/**
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 11 — A MULTI-SEGMENT BOGUS SLUG NAMES THE
+	 * WHOLE SLUG, NOT THE POPPED REMAINDER. Before this fix, B.1's "pop the
+	 * last segment and try it as a build key" fallback ran even when NEITHER
+	 * the whole slug nor the popped repo path was a real repository, so the
+	 * not-found state read "No repository github.com/littlechimera is
+	 * known … so it cannot hold the revision no-such-repo either" — a repo
+	 * path invented by the pop, holding a "revision" that was actually the
+	 * one meaningful segment of the URL the reader typed.
+	 */
+	test('an unknown, multi-segment slug names the WHOLE slug, not the popped remainder — B.9', async () => {
+		stubFetch([], []);
+		await renderAt('github.com/littlechimera/no-such-repo');
+		await waitFor(() =>
+			expect(screen.getByText('No repository', { exact: false })).toBeInTheDocument()
+		);
+		expect(
+			screen.getByText(
+				(_, node) =>
+					node?.textContent ===
+					'No repository github.com/littlechimera/no-such-repo is known to this dashboard.'
+			)
+		).toBeInTheDocument();
+		expect(screen.queryByText(/cannot hold the revision/)).toBeNull();
 	});
 });

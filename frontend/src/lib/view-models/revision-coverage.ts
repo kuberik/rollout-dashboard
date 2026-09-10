@@ -501,10 +501,28 @@ export function coverageWeight(key: CoverageKey): CoverageWeight {
  * `here`; the word carries it) — both unchanged from `COVERAGE_FILL`'s own
  * ruling, restated here because this is the table that could reintroduce
  * them by accident.
+ *
+ * ⛔ ⭐ LANE 9, ROUND 11 QA — `dark:bg-green-100` WAS THE LADDER INVERTED,
+ * NOT JUST RE-STEPPED. Measured on `Card`'s own dark ground (`gray-800`,
+ * L 0.278): `green-100` is L ~0.96 — BRIGHTER than `here` itself
+ * (`green-600`, L 0.627), so a "spent" cell read as the bar's single
+ * loudest mark. The paragraph above defended that as the trade for a
+ * visible depth split; QA measured the actual page and the trade reads
+ * backwards — a wall of `movedOn` on "No longer running anywhere" is the
+ * brightest thing on the card. Dark must be MONOTONIC like light (`here`
+ * .473 > `movedOn` .18 > `notReached`/track .072 against ground, per the
+ * craft-pass measurement): `green-800` (L 0.448) is back —
+ * ΔL(`movedOn`, ground) = 0.448 − 0.278 = 0.170, ΔL(`here`, `movedOn`) =
+ * 0.627 − 0.448 = 0.179, both inside the 0.15–0.20 / ≥0.15 floors this
+ * round's ruling sets, and both were exactly the two numbers the paragraph
+ * above once called "barely" enough. They are enough: the floor was never
+ * "as much daylight as possible", it was "a reader can see three steps",
+ * and 0.17/0.18 clears that by design, not by accident. ZERO NEW VALUES —
+ * `green-800` is `COVERAGE_FILL`'s own `ahead`-adjacent step one over.
  */
 export const WEIGHT_FILL: Record<CoverageWeight, string> = {
 	here: 'bg-green-700 dark:bg-green-600',
-	movedOn: 'bg-[oklch(82%_0.07_154)] dark:bg-green-100',
+	movedOn: 'bg-[oklch(82%_0.07_154)] dark:bg-green-800',
 	notReached: 'bg-gray-200 dark:bg-gray-700',
 	unplaceable: 'bg-transparent border border-gray-400 dark:border-gray-500'
 };
@@ -1072,7 +1090,30 @@ export function releaseSplit(coverage: RevisionCoverage): ReleaseSplitLine[] {
  * because `coverageWeight` is total over `CoverageKey` and every slot is
  * classified into exactly one bucket in `revisionCoverage()`.
  */
-export function coverageBarSegments(coverage: RevisionCoverage): CoverageSegment[] {
+/**
+ * ⭐ LANE 9, ROUND 11 QA, ITEM 4 — `neverDeployed` FORCES `movedOn` INTO
+ * `notReached`, AND ONLY THAT WEIGHT. A.6.1 promised a never-deployed
+ * build's bar reads ALL TRACK ("nowhere yet, and it is still a
+ * candidate") — but `classify()` can still file a slot `ahead` for a build
+ * that has never run anywhere: some place simply deployed something newer
+ * first. Left alone, that slot's `movedOn` tint makes a build nobody has
+ * EVER run indistinguishable from one every place has RETIRED — which is
+ * the one distinction "No deploy on record" and "No longer running
+ * anywhere" exist to draw. The caller (a `repo.pending` row, or a build
+ * page whose own `row.lastDeployMs` is 0) is the one place that knows a
+ * build was never deployed; this module has no independent way to derive
+ * it from `RevisionCoverage` alone (which only sees per-slot buckets, not
+ * the row's own deploy history), so it is a plain input, not something
+ * hidden behind data this function does not have.
+ *
+ * `unplaceable` is UNTOUCHED — a different release line is a real
+ * admission, never a claim about having "moved past" this build, so
+ * folding it in would hide a distinct fact rather than fix a wrong one.
+ */
+export function coverageBarSegments(
+	coverage: RevisionCoverage,
+	neverDeployed = false
+): CoverageSegment[] {
 	const counts: Record<CoverageWeight, number> = {
 		here: 0,
 		movedOn: 0,
@@ -1081,6 +1122,10 @@ export function coverageBarSegments(coverage: RevisionCoverage): CoverageSegment
 	};
 	for (const bucket of coverage.buckets) {
 		counts[coverageWeight(bucket.key)] += bucket.slots.length;
+	}
+	if (neverDeployed) {
+		counts.notReached += counts.movedOn;
+		counts.movedOn = 0;
 	}
 	return WEIGHT_ORDER.map((weight) => ({
 		key: weight,
@@ -1140,7 +1185,11 @@ const CELL_PHRASE: Record<CoverageWeight, string> = {
 	unplaceable: 'on a different release line'
 };
 
-export function coverageCells(coverage: RevisionCoverage): CoverageCell[] {
+/** See `coverageBarSegments`'s own doc comment — same input, same fold
+ *  (`movedOn` → `notReached`, `unplaceable` untouched), applied per cell
+ *  instead of per count so a never-deployed build's cell titles agree
+ *  with the bar's fill ("not reached yet", never "moved past"). */
+export function coverageCells(coverage: RevisionCoverage, neverDeployed = false): CoverageCell[] {
 	const all = coverage.buckets.flatMap((bucket) =>
 		bucket.slots.map((slot) => ({ slot, weight: coverageWeight(bucket.key) }))
 	);
@@ -1151,10 +1200,13 @@ export function coverageCells(coverage: RevisionCoverage): CoverageCell[] {
 		if (a.slot.envLabel !== b.slot.envLabel) return a.slot.envLabel.localeCompare(b.slot.envLabel);
 		return a.slot.appName.localeCompare(b.slot.appName);
 	});
-	return all.map(({ slot, weight }) => ({
-		key: weight,
-		title: `${slot.envLabel} · ${slot.appName} · ${CELL_PHRASE[weight]}`
-	}));
+	return all.map(({ slot, weight }) => {
+		const w = neverDeployed && weight === 'movedOn' ? 'notReached' : weight;
+		return {
+			key: w,
+			title: `${slot.envLabel} · ${slot.appName} · ${CELL_PHRASE[w]}`
+		};
+	});
 }
 
 /**

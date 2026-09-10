@@ -215,4 +215,22 @@ describe('RepoLedgerCard', () => {
 		expect(screen.queryByText('web')).toBeNull();
 		expect(screen.getByText('1 service')).toBeInTheDocument();
 	});
+
+	/**
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 9 — A `?q=` MATCH ON ONE SERVICE MUST NOT
+	 * PULL IN A SIBLING SHARING THE SAME REVISION. `twoServiceFixture`'s
+	 * `api` and `web` are two DIFFERENT services running the identical
+	 * commit (`aaaaaaa`) — exactly the live-cluster shape (`hello-api-app` /
+	 * `hello-frontend-app`) the operator walk reported: `?q=api` used to
+	 * still draw `web`'s own line, because the ledger's line filter checked
+	 * the whole ROW's `matchesRevisionText` (which matches on ANY service
+	 * sharing the row, `api` included) rather than asking whether `web`
+	 * ITSELF — name, its own row's sha/label — matches.
+	 */
+	test('a text query naming one service excludes a sibling sharing the same revision', () => {
+		const repo = twoServiceFixture();
+		render(RepoLedgerCard, { repo, now: new Date(), filterable: true, query: 'api' });
+		expect(screen.getByText('api')).toBeInTheDocument();
+		expect(screen.queryByText('web')).toBeNull();
+	});
 });

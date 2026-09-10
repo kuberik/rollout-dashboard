@@ -12,7 +12,9 @@
 	import { rolloutPath } from '$lib/source-dashboard';
 	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
 	// words — `unreleased` — and it takes it from here rather than spelling it.
-	import { rankLabel, rankRole, type RankVerdict } from '$lib/view-models/env-rank';
+	// ⛔ LANE 9, ROUND 11 QA, ITEM 10 — `rankRole`/`RankVerdict` DELETED, dead
+	// (eslint-reported, unreferenced anywhere else in this file).
+	import { rankLabel } from '$lib/view-models/env-rank';
 	import { detectRollback } from '$lib/rollout-cards';
 	import RevisionLead from '$lib/components/RevisionLead.svelte';
 	import {
@@ -34,6 +36,8 @@
 	} from '$lib/view-models/revision-ledger';
 	import {
 		revisionCoverage,
+		coverageWeight,
+		weightFill,
 		coverageSwatch,
 		releaseSplit,
 		slotBakeStatus,
@@ -41,7 +45,6 @@
 		coverageBarSegments,
 		coverageBarLabel,
 		coverageCells,
-		coverageCounts,
 		releaseHeldClause,
 		repoHeroCoverage as coverageForServices,
 		releaseSplitSentence,
@@ -67,10 +70,8 @@
 		buildGateContext,
 		blockingStory,
 		type GateContext,
-		type BlockingStory,
-		type ClassifiedGate
+		type BlockingStory
 	} from '$lib/view-models/blocking-story';
-	import { iconForStory } from '$lib/components/BlockingStoryPanel.svelte';
 	// ⭐ THE OVERVIEW'S OWN WORDS. `GateRecord`'s `Kind` row already calls this
 	// for `RulePopover`/`BlockingStoryPanel`, so a rule labelled here cannot
 	// say something the Overview banner for the same rollout would disagree
@@ -122,8 +123,10 @@
 		TagSolid,
 		UserCircleSolid
 	} from 'flowbite-svelte-icons';
-	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import FactList from '$lib/components/FactList.svelte';
+	// ⛔ LANE 9, ROUND 11 QA, ITEM 10 — `AlertPanel`/`FactList` DELETED, dead
+	// (eslint-reported): neither is rendered anywhere in this file — the
+	// blocking fact and the fact list are `HeldBanner`'s and `BuildLists`'
+	// own components now.
 	import Card from '$lib/components/Card.svelte';
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
 	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
@@ -498,28 +501,18 @@
 	);
 
 	/**
-	 * ⭐ THE BANNER'S GLYPH, READ OFF THE SAME CLASSIFIED STORY EVERY OTHER
-	 * SURFACE DRAWS. (2026-09-03) `blockedSlots.some((s) =>
-	 * s.notPassingGates.length > 0) ? CalendarMonthSolid : UserCircleSolid`
-	 * treated `awaitingApprovalGates` as "needs a person" — but that bucket is
-	 * only "this gate published an allow-list", and the environment
-	 * controller and the dependency controller both publish one (see
-	 * `lib/CLAUDE.md`'s note on `promotionBlock.awaitingApprovalGates`). So a
-	 * page whose only block is `hello-frontend-app` waiting on `hello-api-app`
-	 * to ship `api ^1.67.0` — a `dependency` gate, no person anywhere —
-	 * printed a person glyph for it, while `/apps`, `/apps/<name>`,
-	 * `/environments` and rollout detail all draw a share-node for the exact
-	 * same fact. Worst-first over every blocked slot's own classified story,
-	 * same ordering `blockingStory` itself sorts gates in.
-	 */
-	/**
 	 * ⭐ ONE `blockingStory` PER BLOCKED PLACE, BUILT ONCE. (finding 1 + 2,
-	 * coordinator sweep) `bannerIcon` already called `blockingStory` per slot
-	 * to pick a glyph; `bannerFacts` and the rule-count trigger below need the
-	 * SAME classified gates, not a second pass over raw gate-name arrays —
-	 * that second pass is exactly how a `RolloutDependency` contract gate
-	 * ended up captioned `Approval` here while the Overview banner for the
-	 * identical rollout said `service contract`. One list, three consumers.
+	 * coordinator sweep) `bannerFacts` and the rule-count trigger below need
+	 * the SAME classified gates, not a second pass over raw gate-name
+	 * arrays — that second pass is exactly how a `RolloutDependency`
+	 * contract gate ended up captioned `Approval` here while the Overview
+	 * banner for the identical rollout said `service contract`. One list,
+	 * several consumers.
+	 *
+	 * ⛔ LANE 9, ROUND 11 QA, ITEM 10 — `bannerIcon` (the glyph-picking
+	 * `$derived.by` that used to sit here, worst-first over these same
+	 * stories via `iconForStory`) is DELETED, dead: nothing reads it —
+	 * `HeldBanner` (round 11) draws its own icon now.
 	 */
 	const slotStories = $derived.by<{ slot: CoverageSlotVM; story: BlockingStory }[]>(() => {
 		const out: { slot: CoverageSlotVM; story: BlockingStory }[] = [];
@@ -531,23 +524,6 @@
 			});
 		}
 		return out;
-	});
-
-	const bannerIcon = $derived.by(() => {
-		let worst: BlockingStory | null = null;
-		const rank: Record<string, number> = {
-			person: 0,
-			unknown: 1,
-			dependency: 2,
-			promotion: 2,
-			check: 3,
-			clock: 4,
-			pinned: -1
-		};
-		for (const { story } of slotStories) {
-			if (!worst || rank[story.iconKind] < rank[worst.iconKind]) worst = story;
-		}
-		return iconForStory(worst ?? blockingStory(null, gateContext));
 	});
 
 	/**
@@ -690,15 +666,14 @@
 		return apps.length === 1 ? apps[0] : `${apps.length} services`;
 	});
 	const heldReleaseLabel = $derived(releaseSplitLines.find((l) => l.held)?.aheadLabel ?? null);
-	const bannerTitle = $derived(
-		heldReleaseLabel ? `${bannerSubject} ${heldReleaseLabel} is held` : `${row?.short} is held`
-	);
 
 	/**
 	 * ⭐ ROUND 11 CRAFT FINDING 7 — HELDBANNER TAKES A BARE `subject`
-	 * (it composes "{subject} is held" itself); this is `bannerTitle`
-	 * minus that suffix, so the two can never say a different subject for
-	 * the same fact.
+	 * (it composes "{subject} is held" itself); this is what the deleted
+	 * `bannerTitle` (round 11 QA, item 10 — dead, nothing read it; `HeldBanner`
+	 * composes the same sentence from `subject` itself) used to build, minus
+	 * that suffix, so the two can never say a different subject for the
+	 * same fact.
 	 */
 	const bannerBuildSubject = $derived(
 		heldReleaseLabel ? `${bannerSubject} ${heldReleaseLabel}` : row?.short ?? ''
@@ -2257,7 +2232,10 @@
 			Lane 2 extracted). Landmark order pinned by B.6:
 			['<repo>', 'What each service runs', /^Newest build ·/,
 			'Also still running', 'No longer running anywhere',
-			'Never deployed'].
+			'No deploy on record'] — round 11 QA, item 13 renamed the rail's
+			heading from the old, conditional 'Never deployed'/'No deploy on
+			record' pair to one fixed string; see `BuildLists.svelte`'s own
+			`pendingTitle` for why.
 		-->
 		<div class="mb-5">
 			<!--
@@ -2419,12 +2397,23 @@
 				prints 48px below it (`compact`'s count line, above the bar).
 				One header saying the identical figure twice with 48px of
 				vertical distance between them is the repetition this file's
-				own `heroVerdict` note elsewhere warns against. `null` when
-				there is no held/other fact to add — `Card`'s own `{:else if
-				verdict}` guard hides the rollup slot entirely rather than
-				printing an empty one.
+				own `heroVerdict` note elsewhere warns against.
+
+				⛔ ⭐ LANE 9, ROUND 11 QA, ITEM 12 — BUT `null` WAS "PRINT
+				NOTHING", NOT "NOTHING HELD". `Card`'s own `{:else if verdict}`
+				guard hides the rollup slot entirely on `null`, so a hero with
+				no held sibling had NO right-hand rollup at all — measured
+				live, ink covering only 57% of the header width, the release
+				label(s) this build ships under simply missing. The head band
+				always prints its release label(s) (`064b655` when the only
+				label is the sha itself; `2.66.0-66 · 2.67.0-67` when the
+				commit ships under several) — the hero's own header rollup
+				must too, falling back to that same fact rather than to
+				nothing. `heldLabel` still wins when it exists (the held fact
+				is the more important one to lead with).
 			-->
-			{@const heroVerdict = heldLabel ? `${heldLabel} held` : null}
+			{@const heroLabels = leadRow.labelGroups.map((g) => g.label).join(' · ')}
+			{@const heroVerdict = heldLabel ? `${heldLabel} held` : heroLabels}
 			<Card
 				icon={RocketOutline}
 				title="Newest build {leadRow.short} · {heroTitleTail}"
@@ -2494,14 +2483,26 @@
 				     stitched onto a repo path reads as if the whole run-on were the
 				     repository's name. `repoPath` is the object that is not known;
 				     `urlKey` is named as the separate thing that was being looked
-				     for inside it. -->
+				     for inside it.
+
+				     ⛔ LANE 9, ROUND 11 QA, ITEM 11 — AND WHEN NEITHER HALF MATCHES,
+				     NAME THE WHOLE SLUG, NOT THE TRUNCATED ONE. This branch is only
+				     reached once B.1's resolution order has ALREADY tried the whole
+				     slug as a repository (`repoPageLedger`, above) and failed, then
+				     popped the last segment and tried THAT as a repository
+				     (`ledger`) and failed too — so `repoPath` (`parts` with the last
+				     segment popped) is not a real repository EITHER; it is an
+				     arbitrary truncation of a slug that was never a real repo plus a
+				     build key to begin with. `/revisions/github.com/littlechimera/
+				     no-such-repo` used to say "No repository
+				     github.com/littlechimera is known … so it cannot hold the
+				     revision no-such-repo either" — a repo path that was itself
+				     invented by the pop, holding a "revision" that was actually the
+				     one meaningful segment of the URL. `wholeSlugPath` (the
+				     un-popped slug B.1 already computes) is the object the reader
+				     actually typed; that is what does not exist. -->
 				<p class="t-body mt-1 max-w-md text-gray-500 dark:text-gray-400">
-					{#if repoPath}
-						No repository <span class="t-code">{repoPath}</span> is known to this dashboard, so it
-						cannot hold the revision <span class="t-code">{urlKey}</span> either.
-					{:else}
-						No repository <span class="t-code">{urlKey}</span> is known to this dashboard.
-					{/if}
+					No repository <span class="t-code">{wholeSlugPath}</span> is known to this dashboard.
 				</p>
 			{:else}
 				<h1 class="t-body font-semibold text-gray-900 dark:text-white">Revision not found</h1>
@@ -2629,10 +2630,19 @@
 			own "dev · hello-api-app · running this build" title the same way
 			`RevisionLead`'s hero bar already does; without it this bar was
 			the one `CoverageBar` caller left titling the GROUP only.
+
+			⭐ LANE 9, ROUND 11 QA, ITEM 4 — `neverDeployed` (declared above,
+			at `row`/`revision` resolution — it was computed and then never
+			read, an eslint-reported dead assignment) is exactly "zero live
+			and zero ran-before": `!ledger.rows.includes(row)` is true only
+			when this build lives in `ledger.pending`, i.e. no service has
+			EVER deployed it. Passed through so this build page's own bar
+			draws all track, not "moved past", on that one build — the same
+			fix `BuildLists`' rail already applies to every pending row.
 		-->
 		<CoverageBar
-			segments={coverageBarSegments(coverage)}
-			cells={coverageCells(coverage)}
+			segments={coverageBarSegments(coverage, neverDeployed)}
+			cells={coverageCells(coverage, neverDeployed)}
 			label={coverageBarLabel(coverage, row.short)}
 			class="mt-3 w-full"
 		/>
@@ -3277,11 +3287,35 @@
 						padded={false}
 					>
 						{#snippet rollup()}
-							<!-- THE SWATCH IS THE BAR'S OWN FILL VALUE, at 12px, in the card
-							     header — so the segment above and the card below are bound by
-							     colour without a key row anywhere on the page. -->
+							<!--
+								THE SWATCH IS THE BAR'S OWN FILL VALUE, at 12px, in the card
+								header — so the segment above and the card below are bound by
+								colour without a key row anywhere on the page.
+
+								⭐ LANE 9, ROUND 11 QA, ITEM 3 — AND IT MUST READ `weightFill`,
+								NOT `coverageSwatch`. Round 11 recoloured the BAR to one hue,
+								three weights (`WEIGHT_FILL`) — `ahead`'s cells are `movedOn`,
+								the SAME green as `here`, one step down. `COVERAGE_SWATCH` is
+								a different, older table (A.3's own "untouched" exception for
+								the six BUCKET-CARD colours) that still paints `ahead` neutral
+								gray — measured live, this exact swatch, on "Already moved
+								on": gray while the bar's own `movedOn` cells above it are
+								green. The comment above promises the swatch IS the bar's fill;
+								it has to read the bar's own table to keep that promise.
+								`coverageWeight` maps every bucket to its bar weight first
+								(`live`/`failing`/`deploying`→`here`, `ahead`→`movedOn`,
+								`notYet`→`notReached`, `unplaceable`→`unplaceable`), so this is
+								correct for every bucket this card renders, not only `ahead`.
+								EXCEPT the two that are a state, not a depth: `failing` keeps
+								its red and `deploying` its blue swatch (tech lead, r11 lane 9
+								review) — the bar never carries those hues, but the bucket card
+								is the one place that names the state, and one mark per fact
+								means the swatch may not lie green beside a red title.
+							-->
 							<span
-								class="cov-swatch {coverageSwatch(bucket.key, coverage!.reachable)}"
+								class="cov-swatch {bucket.key === 'failing' || bucket.key === 'deploying'
+									? coverageSwatch(bucket.key)
+									: weightFill(coverageWeight(bucket.key))}"
 								aria-hidden="true"
 							></span>
 							<span class="text-xs font-medium text-gray-500 dark:text-gray-400"

@@ -69,7 +69,8 @@
 		revisionCoverage,
 		coverageBarSegments,
 		coverageBarLabel,
-		coverageCounts
+		coverageCounts,
+		coverageCells
 	} from '$lib/view-models/revision-coverage';
 	import { historyAtLimit } from '$lib/history-marks';
 	import { revisionPath } from '$lib/version-utils';
@@ -211,7 +212,17 @@
 		return { atLimit: !checked, limit: 10 };
 	});
 
-	const pendingTitle = $derived(historyLimit.atLimit ? 'No deploy on record' : 'Never deployed');
+	/**
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 13 — ONE HEADING, ALWAYS. The title used
+	 * to flip between "No deploy on record" and "Never deployed" on
+	 * `historyLimit.atLimit`, so the SAME rail read a different landmark
+	 * name on different repositories — one titled `24 builds`, the sibling
+	 * `0 builds`, under two different headings for the identical concept.
+	 * The heading is now fixed; only the body (below) still tells the
+	 * cautious/confident story, which is where a claim about EVIDENCE
+	 * belongs — a heading is a label, not a hedge.
+	 */
+	const pendingTitle = 'No deploy on record';
 	const PENDING_FOOTNOTE = (n: number) =>
 		`History keeps the last ${n} deploys per service, so a build with no deploy on record may simply predate that window — it is not necessarily one nobody has ever run.`;
 
@@ -273,12 +284,28 @@
 	kind: 'live' | 'past' | 'pending'
 )}
 	{@const c = coverageCounts(cov)}
+	{@const neverDeployed = kind === 'pending'}
 	{#if c.deploying > 0}
 		<span class="t-dense text-gray-700 dark:text-gray-200">{c.deploying} deploying</span>
 	{/if}
+	<!--
+		⭐ LANE 9, ROUND 11 QA, ITEM 5 — COMPACT BARS NOW CARRY `cells` TOO.
+		Every `.bld-row` bar rendered with `title=null` on each cell before
+		this: the only `CoverageBar` caller passing `cells` was the default
+		(16px) scale. `coverageCells` is the same per-place identity
+		`RevisionLead` and the build-page head band already compute; this is
+		the one call site that was skipping it.
+
+		⭐ ITEM 4 — `neverDeployed`, ONLY FOR THE "No deploy on record" LIST.
+		A.6.1's own promise: a build nobody has ever run draws ALL TRACK, not
+		"moved past" — see `coverageBarSegments`'s doc comment for why this
+		module cannot derive that fact on its own and needs it from the
+		caller that actually knows the row is `repo.pending`.
+	-->
 	<CoverageBar
 		compact
-		segments={coverageBarSegments(cov)}
+		segments={coverageBarSegments(cov, neverDeployed)}
+		cells={coverageCells(cov, neverDeployed)}
 		label={coverageBarLabel(cov, row.short)}
 		class="mt-1 w-full"
 	/>
@@ -464,12 +491,14 @@
 				{/if}
 				{#if repo.pending.length === 0}
 					<!--
-						⭐ REVISIONS-PASS-6, ITEM 8 (second half) — THE SENTENCE MATCHES
-						THE TITLE'S OWN CONFIDENCE. "Has run somewhere" is the
-						confident claim `pendingTitle`'s "Never deployed" branch makes;
-						under the cautious branch ("No deploy on record") the body
-						says the same hedge, not a sentence one confidence level
-						louder than the header above it.
+						⭐ REVISIONS-PASS-6, ITEM 8 (second half) — THE SENTENCE CARRIES
+						THE CONFIDENCE THE FIXED TITLE NO LONGER DOES (round 11 QA,
+						item 13 — `pendingTitle` is one string now, "No deploy on
+						record", always). "Has run somewhere" is the confident claim;
+						under the cautious branch (retained history may not reach far
+						enough back) the body says the hedge instead — the ONLY place
+						left that distinguishes the two, since the heading above it no
+						longer does.
 					-->
 					<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
 						{#if historyLimit.atLimit}

@@ -1140,6 +1140,29 @@ describe('matchesRevisionText / revisionLookup — finding 1 (label search must 
 		expect(matchesRevisionText(row, '2.67.0')).toBe(true);
 	});
 
+	/**
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 9 — `matchServiceNames: false` DROPS THE
+	 * SIBLING-NAME CLAUSE, NEVER THE ROW'S OWN SHA/LABEL. Default `true`
+	 * (every existing call above stays byte-identical); `false` is
+	 * `RepoLedgerCard`'s own per-service ledger line, which must not let a
+	 * query matching one service's name (`hello-api-app`) also match a
+	 * SIBLING service's line sharing the same row (`hello-frontend-app`).
+	 */
+	it('matchServiceNames: false drops the sibling-service-name clause, keeps sha/label', () => {
+		const row = {
+			revision: '9f10e494d5601111',
+			short: '9f10e49',
+			labelGroups: [{ label: '2.67.0-67', isOwnSha: false, services: [] }],
+			services: [{ appName: 'hello-api-app' }, { appName: 'hello-frontend-app' }]
+		} as unknown as RevisionRow;
+		// Sibling name match: allowed by default, dropped when disabled.
+		expect(matchesRevisionText(row, 'hello-api')).toBe(true);
+		expect(matchesRevisionText(row, 'hello-api', false)).toBe(false);
+		// The row's own sha/label still match either way.
+		expect(matchesRevisionText(row, '9f10e49', false)).toBe(true);
+		expect(matchesRevisionText(row, '2.67.0-67', false)).toBe(true);
+	});
+
 	it('empty query matches everything', () => {
 		const row = labelledRow('9f10e494d5601111', '9f10e49', []);
 		expect(matchesRevisionText(row, '')).toBe(true);

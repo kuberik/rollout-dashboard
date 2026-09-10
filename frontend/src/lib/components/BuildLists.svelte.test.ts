@@ -49,7 +49,7 @@ function environment(app: string, ns: string, tier: string): Environment {
  * Same shape as `routes/revisions/page.svelte.test.ts`'s own `repoFixture`:
  * `r1` is `web`'s current head (excluded — it's the hero's row, not a
  * build-list row); `r2` is `api`'s current build ("Also still running");
- * `r3` is known but never deployed ("Never deployed"); `r4` ran once, on
+ * `r3` is known but never deployed (the rail's "No deploy on record"); `r4` ran once, on
  * `web`, and nothing runs it now ("No longer running anywhere").
  */
 function repoFixture() {
@@ -84,7 +84,7 @@ describe('BuildLists', () => {
 		// ⛔ SUPERSEDES finding 7 (2026-09-09), which had this render as a
 		// bare, unbordered `<p>` on the theory that an empty headered `Card`
 		// "outranks a full one by sheer position and chrome". Measured
-		// against the RAIL's own empty state ("Never deployed") two hundred
+		// against the RAIL's own empty state ("No deploy on record") two hundred
 		// pixels away — a full titled `Card` with an icon and a `0 builds`
 		// rollup — that produced the opposite defect: this section's own
 		// landmark ("Also still running") vanished from the page's heading
@@ -116,7 +116,7 @@ describe('BuildLists', () => {
 		expect(screen.getByText('a222222')).toBeInTheDocument();
 	});
 
-	test('renames "Never deployed" to "No deploy on record" when history may be truncated — finding 2', () => {
+	test('the rail heading is "No deploy on record" when history may be truncated — finding 2, round 11 QA item 13', () => {
 		const r1 = rel('c111111', 5);
 		const r2 = rel('c222222', 4000); // never deployed, and OLD enough to plausibly have been evicted
 		// Exactly at the cap: 1 history entry, `versionHistoryLimit: 1`.
@@ -124,19 +124,28 @@ describe('BuildLists', () => {
 		const [repo] = buildRevisionLedger([web], [environment('web', 'team', 'prod')]);
 		render(BuildLists, { repo, now: new Date(NOW), storageKey: 'at-limit' });
 		expect(screen.getByText('No deploy on record')).toBeInTheDocument();
-		expect(screen.queryByText('Never deployed')).toBeNull();
 		expect(screen.getByText(/may simply predate that window/)).toBeInTheDocument();
 	});
 
-	test('keeps "Never deployed" when history is provably complete', () => {
+	/**
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 13 — THE HEADING NO LONGER FLIPS. It used
+	 * to read "Never deployed" whenever history was provably complete and
+	 * "No deploy on record" whenever it might not be — one rail, two
+	 * landmark names, depending on data the reader never sees directly.
+	 * The heading is fixed now; only the BODY still carries the
+	 * cautious/confident distinction (the footnote's presence, asserted
+	 * here by its absence in the provably-complete case).
+	 */
+	test('the rail heading stays "No deploy on record" when history is provably complete', () => {
 		const r1 = rel('d111111', 5);
 		const r2 = rel('d222222', 4000);
 		// Two releases known, one history entry, limit 10 — provably complete.
 		const web = rollout('web', 'team', [r1, r2], [{ r: r1, minutesAgo: 5 }], 10);
 		const [repo] = buildRevisionLedger([web], [environment('web', 'team', 'prod')]);
 		render(BuildLists, { repo, now: new Date(NOW), storageKey: 'not-at-limit' });
-		expect(screen.getByText('Never deployed')).toBeInTheDocument();
-		expect(screen.queryByText('No deploy on record')).toBeNull();
+		expect(screen.getAllByText('No deploy on record')).toHaveLength(1);
+		expect(screen.queryByText('Never deployed')).toBeNull();
+		expect(screen.queryByText(/may simply predate that window/)).toBeNull();
 	});
 
 	/**

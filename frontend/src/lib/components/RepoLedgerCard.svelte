@@ -156,9 +156,22 @@
 		// own label lives on WHICHEVER row it belongs to, and a lookup that
 		// only kept one would go blind on the other exactly the way the
 		// blocking finding described.
+		//
+		// ⛔ ⭐ LANE 9, ROUND 11 QA, ITEM 9 — `matchServiceNames: false` ON
+		// BOTH CALLS. This runs from INSIDE `visibleGroupsOf`'s per-service
+		// loop, once the group's own `appName` has already failed to match
+		// — so a `true` result here has to come from THIS row's own sha or
+		// label, never from a SIBLING service sharing the row (the shape
+		// `matchesRevisionText`'s default services-clause exists for at the
+		// ROW level, and exactly what leaked `hello-frontend-app`'s own line
+		// into a `?q=hello-api` filtered ledger before this fix — the two
+		// services share one revision, and the row-level predicate does not
+		// know which service's LINE is asking).
 		const rows = lookup.get(line.revision);
-		if (rows && rows.length > 0) return rows.some((row) => matchesRevisionText(row, needle));
-		return matchesRevisionText(line as never, needle);
+		if (rows && rows.length > 0) {
+			return rows.some((row) => matchesRevisionText(row, needle, false));
+		}
+		return matchesRevisionText(line as never, needle, false);
 	}
 
 	function visibleGroupsOf(groups: ServiceLedgerGroup[]): ServiceLedgerGroup[] {
@@ -346,24 +359,59 @@
 {/snippet}
 
 {#snippet indexRollup()}
-	{#if noMatch}
-		<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">no match</span>
-	{:else if active}
-		<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">
-			{matchCount} of {repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'}
-		</span>
-	{:else if verdict.chip}
-		<!--
-			⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — CHIP OR WORDS, NEVER BOTH.
-			`3 HELD · 3 places held ›` said the identical fact twice — the
-			chip already carries the count (`3 held`) and the full sentence
-			lives in its own `title`. The chevron stays; the words go.
-		-->
-		<Chip role={verdict.chip.role} label={verdict.chip.label} wide title={verdict.text} />
-	{:else}
-		<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">{verdict.text}</span>
-	{/if}
-	<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+	<!--
+		⭐ LANE 9, ROUND 11 QA, ITEM 7 — THE CHEVRON IS A FIXED TRAILING
+		COLUMN NOW, NOT PART OF THE WRAPPING ROLLUP. Measured live at 390:
+		repo A (title + rollup sharing one line) put the chevron at x=326;
+		repo B (a longer title forced the rollup — chip AND chevron — onto
+		its OWN line, flush left per `Card`'s own documented single-item
+		rule) put it at x=223, immediately after the words. Same control,
+		two different positions, because it travelled inside whatever box
+		`Card`'s `rollup` snippet became.
+
+		`Card`'s header already carries `position: relative` whenever
+		`titleHref` is set (`.tap-zone`, `app.css`) — true on every index
+		card, since `titleHref` is always set here — so an absolutely
+		positioned child of THIS snippet resolves against the HEADER
+		itself, not against whatever box the rollup words end up in. Pinned
+		`top`/`right`, it sits in the same physical spot at every width,
+		independent of whether the words share the title's line or wrap
+		alone beneath it — a real fixed column, not a flex item that only
+		looks like one when nothing wraps. `pointer-events: none` because
+		it is decorative (`aria-hidden`): the `.tap-zone` overlay under it
+		still gets the click. The `pr-6` on the text/chip wrapper reserves
+		the room so the shared-line case never lets the chevron overlap the
+		last few pixels of the words.
+	-->
+	<span class="ledger-index-rollup-text flex min-w-0 items-center gap-2 pr-6">
+		{#if noMatch}
+			<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">no match</span>
+		{:else if active}
+			<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">
+				{matchCount} of {repo.knownRevisions} build{repo.knownRevisions === 1 ? '' : 's'}
+			</span>
+		{:else if verdict.chip}
+			<!--
+				⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 — CHIP OR WORDS, NEVER BOTH.
+				`3 HELD · 3 places held ›` said the identical fact twice — the
+				chip already carries the count (`3 held`) and the full sentence
+				lives in its own `title`. The chevron stays; the words go.
+			-->
+			<Chip role={verdict.chip.role} label={verdict.chip.label} wide title={verdict.text} />
+		{:else}
+			<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">{verdict.text}</span>
+		{/if}
+	</span>
+	<!--
+		A plain wrapping `<span>`, not the class on `ChevronRightOutline`
+		directly — Svelte's scoped-CSS analysis cannot see through a child
+		COMPONENT's own template to confirm `.ledger-index-chevron` lands on
+		a real element, so it flags the selector unused even though the
+		prop does forward correctly. A literal element here is unambiguous.
+	-->
+	<span class="ledger-index-chevron">
+		<ChevronRightOutline class="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
+	</span>
 {/snippet}
 
 <Card
@@ -384,7 +432,16 @@
 			{#each shown as group, gi (group.appName)}
 				{@const li = serviceLineIndex.get(group.appName) ?? 0}
 				{@const prevLi = gi > 0 ? (serviceLineIndex.get(shown[gi - 1].appName) ?? 0) : null}
-				{#if multiLine && li !== prevLi}
+				<!--
+					⭐ LANE 9, ROUND 11 QA, ITEM 6 — `gi > 0` GUARDS THE FIRST ROW.
+					`prevLi` was `null` on the very first group, and `li !== null`
+					is `true` for any real line index (`0 !== null`) — so this drew
+					a stray divider under the card header, 7px below it, on EVERY
+					multi-line repository, before the first group's own boundary
+					could ever legitimately fire. A card with `n` release lines
+					needs `n − 1` dividers, between groups, never leading one.
+				-->
+				{#if gi > 0 && multiLine && li !== prevLi}
 					<div class="svc-line-gap" aria-hidden="true"></div>
 				{/if}
 				{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
@@ -609,6 +666,26 @@
 
 <style>
 	/*
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 7 — THE CHEVRON'S FIXED COLUMN. See
+	 * `indexRollup`'s own comment for why this positions against the
+	 * HEADER (via `Card`'s `.tap-zone`, `position: relative` whenever
+	 * `titleHref` is set — always true here) rather than against whatever
+	 * box the wrapping rollup words become. `top`/`right` match the
+	 * header's own `px-4 py-3` inset and a 16px icon vertically centred in
+	 * a 47px single-line header ((47 − 16) / 2 = 15.5); pinning to a fixed
+	 * offset from the TOP (not `top: 50%` of the header's own, possibly
+	 * taller, box) keeps it aligned with the title's row even when the
+	 * rollup wraps to a second line beneath it, rather than drifting to
+	 * the vertical centre of both lines combined.
+	 */
+	.ledger-index-chevron {
+		position: absolute;
+		top: 15.5px;
+		right: 16px;
+		pointer-events: none;
+	}
+
+	/*
 	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 2 (r11c) — 16px INSETS, BOTH SIDES,
 	 * AT EVERY WIDTH. Measured live: the LEFT edge was already close (17px,
 	 * one column's own `.svc-name` padding away from the card border) but
@@ -657,20 +734,30 @@
 		 *      never wrapping. 150px is back; a 24-character name MAY wrap
 		 *      at 1024 now, and that is an accepted, deliberate trade —
 		 *      verified live, not a regression nobody noticed.
-		 *   2. `minmax(200px, max-content)` — the build chip + the optional
-		 *      `HELD` chip beside it. Measured live (floor temporarily
-		 *      dropped to 50px to read the TRUE unclamped width): the widest
-		 *      pair on the live fleet — `1 BEHIND 9f10e49` + `HELD
-		 *      2.67.0-67` — renders at 266px. `max-content` — not the
-		 *      200px floor — is what actually sizes this column for that
-		 *      row (a `minmax()` floor is a MINIMUM, never a cap; content
-		 *      wider than the floor still grows the track to fit it, so
-		 *      266px still renders in full with no clip). The floor only
-		 *      governs the OTHER direction — a card whose own widest chip
-		 *      pair is narrower than 200px still gets a 200px column,
-		 *      which is what keeps most sibling cards' chip columns
-		 *      starting at the same x without forcing every grid on the
-		 *      page wider than this fleet's content actually needs.
+		 *   2. `minmax(270px, max-content)` — the build chip + the optional
+		 *      `HELD` chip beside it.
+		 *      ⭐ LANE 9, ROUND 11 QA, ITEM 8 — 270, NOT 200. Measured live
+		 *      (floor temporarily dropped to 50px to read the TRUE unclamped
+		 *      width): the widest pair on the live fleet — `1 BEHIND
+		 *      9f10e49` + `HELD 2.67.0-67` — renders at 266px. `max-content`
+		 *      is what actually sizes THIS column for that row, but a
+		 *      `minmax()` floor is a per-card minimum, not a fleet-wide one:
+		 *      a SIBLING card whose own widest pair is narrower still got
+		 *      its OWN, smaller `max-content` width at 200 — measured live,
+		 *      the dev chip started at x 684 on one card and x 618 on its
+		 *      neighbour, because each card's grid answers "how wide does
+		 *      THIS card's content need" independently and 200 was below
+		 *      what the widest row on the fleet needs. 270 (just past 266)
+		 *      is now ABOVE every pair this fleet renders, so `max-content`
+		 *      never wins the sizing argument for any card and every card's
+		 *      column starts at the identical 270px — which is what makes
+		 *      the environment column after it start at one x on every
+		 *      card, the actual bug this row was filed against. (This is
+		 *      NOT the earlier, reverted 220/270 pair above — that one also
+		 *      raised the NAME floor to 220, which is what pushed the grid's
+		 *      true minimum past 1024's own card width; leaving the name
+		 *      floor at 170 keeps this fix inside that budget — see the
+		 *      height-budget comment below for the arithmetic.)
 		 *   3. `max-content` — the environment chips.
 		 *   4. `minmax(0, 1fr)` — the ONE flexible track, a bare spacer. It
 		 *      absorbs whatever the first three columns do not need, so nothing
@@ -690,7 +777,7 @@
 		 */
 		grid-template-columns:
 			minmax(170px, max-content)
-			minmax(200px, max-content)
+			minmax(270px, max-content)
 			max-content
 			minmax(0, 1fr)
 			min-content;
@@ -838,18 +925,21 @@
 	 * correction: an 840px threshold means a 1024px-viewport laptop (card
 	 * measured 783px) got the PHONE-STACKED ledger, not the table — the
 	 * single-line grid holding at 1024 and 1140 outranks any one name never
-	 * wrapping. The floors above are back to 150px (name) / 200px (chips),
-	 * which drops this grid's true minimum width back down: 16px padding +
-	 * 150 name + 200 chips + 149 envs (this fleet's real 3-chip width) + a
-	 * 0px spacer + ~95px age + 4×12px gaps + 16px padding ≈ 730px — but the chips column is max-content, 266px for the BEHIND+HELD pair, and the name floor is 170, so the TRUE minimum is ≈ 760px; the fallback is 768px
-	 * sits just under that, so a 1024 laptop's 783px card (783 > 720) and
-	 * 1140's 899px card both render the grid; verified live — see the
-	 * measurement notes on the grid's own `grid-template-columns` above for
-	 * why 150/200 no longer guarantee zero wrap the way 220/270 did, and why
-	 * that trade is the accepted one now.
+	 * wrapping. The name floor is 170px, not 220 — see the earlier
+	 * correction above for why that number stays put.
+	 *
+	 * ⭐ LANE 9, ROUND 11 QA, ITEM 8 — THE CHIP FLOOR IS 270px NOW (item 8's
+	 * OWN fix, above), and this is the re-check that it still fits the same
+	 * budget the reverted 220/270 pair could not: 16px padding + 170 name +
+	 * 270 chips + 149 envs (this fleet's real 3-chip width) + a 0px spacer +
+	 * ~95px age + 4×12px gaps + 16px padding ≈ 764px. That is the TRUE
+	 * minimum now — narrower than the earlier rejected attempt's ~840
+	 * because only the CHIP floor moved, not the name floor too — and it
+	 * still clears 768: a 1024-viewport laptop's 783px card (783 > 764) and
+	 * 1140's 899px card both render the grid, verified live.
 	 * ⚠️ Still a COMMON-CASE number: a repository with more than 3
 	 * environments per service needs a wider `envs` column than this
-	 * fleet's 149px and could push the true minimum back past 720px,
+	 * fleet's 149px and could push the true minimum back past 764px,
 	 * reopening a clip right at the boundary. Re-measure before trusting it
 	 * for a much wider fleet.
 	 */
