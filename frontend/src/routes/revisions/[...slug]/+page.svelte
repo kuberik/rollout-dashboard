@@ -2092,8 +2092,19 @@
 		{/if}
 		{#if !repoPageLedger && ledger}
 			<ChevronRightOutline class="h-3 w-3 shrink-0 text-gray-400" aria-hidden="true" />
-			<a class="nav-link min-w-0 truncate" href={withQuery(`/revisions/${repoSlug(ledger.repoKey)}`)}
-				>{repoTitle(ledger.repoLabel)}</a
+			<!-- ⛔ `truncate` MUST NOT SIT ON THE ANCHOR: `.nav-link` IS
+			     `display:flex`, AND `text-overflow: ellipsis` DOES NOT APPLY TO
+			     A FLEX CONTAINER. (2026-09-10) It only styles a BLOCK
+			     container's own inline content, so on the flex box the
+			     `overflow:hidden` half still bit and the ellipsis half did
+			     not — measured at 390 on this page, `app` rendered with 6px
+			     hard-cut off its right edge and no `…` to say so. The clip
+			     belongs on an inline child; the anchor keeps its flex layout
+			     and `min-w-0` so the child still has something to shrink
+			     against. (Repo-wide sweep: this was the only element in the
+			     product with `text-overflow: ellipsis` on a flex/grid box.) -->
+			<a class="nav-link min-w-0" href={withQuery(`/revisions/${repoSlug(ledger.repoKey)}`)}
+				><span class="min-w-0 truncate">{repoTitle(ledger.repoLabel)}</span></a
 			>
 		{/if}
 	</nav>

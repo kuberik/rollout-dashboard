@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { Button } from 'flowbite-svelte';
 	import { ChevronLeftOutline } from 'flowbite-svelte-icons';
+	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import type { Rollout } from '../../../../../../../types';
 	import { theme } from '$lib/stores/theme';
 	import { createPatch } from 'diff';
@@ -127,6 +128,23 @@
 			: `Diff v${version}`}</title
 	>
 	{#if currentTheme === 'dark'}
+		<!--
+			⛔ `--d2h-del-color` AND `--d2h-ins-color` USED TO BE THE LIGHT
+			THEME'S OWN VALUES, COPIED. (2026-09-10) Every other var in this
+			block flips for dark; these two did not — both blocks said
+			`rgb(185 28 28)` (red-700) and `rgb(22 101 52)` (green-800), which
+			are inks chosen to sit on `red-100`/`green-100`. On this block's own
+			`gray-900` ground they measure **2.68:1** and **2.38:1**, i.e. the
+			added and removed LINE TEXT — the entire point of a diff — was under
+			the 4.5:1 floor in dark theme. (Light is fine and unchanged: 5.30
+			and 6.49 on its own tinted rows.)
+
+			`red-400` / `green-400` are the dark-side inks `BakeStatusIcon`'s
+			`TONE` already declares for the same two meanings, so this
+			introduces no new colour value. Measured on this block's own tinted
+			rows: **6.00:1** removed, **9.53:1** added (6.14 / 9.98 on the
+			untinted context lines).
+		-->
 		<style>
 			:root {
 				--d2h-bg-color: rgb(17 24 39);
@@ -134,9 +152,9 @@
 				--d2h-code-line-bg-color: rgb(17 24 39);
 				--d2h-code-side-line-bg-color: rgb(17 24 39);
 				--d2h-del-bg-color: rgb(127 29 29 / 0.1);
-				--d2h-del-color: rgb(185 28 28);
+				--d2h-del-color: rgb(255 100 103);
 				--d2h-ins-bg-color: rgb(20 83 45 / 0.1);
-				--d2h-ins-color: rgb(22 101 52);
+				--d2h-ins-color: rgb(5 223 114);
 				--d2h-file-header-color: rgb(209 213 219);
 				--d2h-code-line-color: rgb(209 213 219);
 			}
@@ -171,8 +189,13 @@
 	</div>
 
 	{#if loading}
+		<!-- ⛔ WAS `border-b-2 border-gray-900` — A GRAY-900 ARC ON THIS PAGE'S
+		     OWN `dark:bg-gray-900`, i.e. 1.00:1 and completely invisible in dark
+		     theme, so a slow diff fetch showed nothing at all. `StatusSpinner`
+		     is the product's own spinner and its every colour is a light/dark
+		     PAIR (see that file's contrast note). -->
 		<div class="flex items-center justify-center p-8">
-			<div class="h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
+			<StatusSpinner size="8" color="gray" />
 		</div>
 	{:else if error}
 		<div class="p-4 text-red-600 dark:text-red-400">{error}</div>
