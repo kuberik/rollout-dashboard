@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/kuberik/rollout-dashboard/pkg/githubapp"
@@ -45,19 +46,33 @@ func TestGitHubCommit_FullSha_Happy(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if req.URL.Path != "/repos/octo/repo/commits/"+fullSha {
+		switch req.URL.Path {
+		case "/repos/octo/repo/commits/" + fullSha:
+			fmt.Fprintf(w, `{
+				"sha": %q,
+				"html_url": "https://github.com/octo/repo/commit/%s",
+				"author": {"login": "alice"},
+				"commit": {
+					"message": "Fix the flaky retry loop\n\nLonger body explaining why.",
+					"author": {"name": "Alice Author", "date": "2026-02-01T00:00:00Z"},
+					"committer": {"name": "GitHub", "date": "2026-02-02T00:00:00Z"}
+				}
+			}`, fullSha, fullSha)
+		case "/repos/octo/repo":
+			fmt.Fprint(w, `{"default_branch": "main"}`)
+		case "/repos/octo/repo/commits":
+			// GitHub's since= is inclusive, so this list (newest-first)
+			// includes the commit itself as the oldest entry — the handler
+			// must exclude it and preserve the newest-first ordering for the
+			// two genuinely later commits.
+			fmt.Fprintf(w, `[
+				{"sha": "newer2000000000000000000000000000000002"},
+				{"sha": "newer1000000000000000000000000000000001"},
+				{"sha": %q}
+			]`, fullSha)
+		default:
 			t.Fatalf("unexpected path %s", req.URL.Path)
 		}
-		fmt.Fprintf(w, `{
-			"sha": %q,
-			"html_url": "https://github.com/octo/repo/commit/%s",
-			"author": {"login": "alice"},
-			"commit": {
-				"message": "Fix the flaky retry loop\n\nLonger body explaining why.",
-				"author": {"name": "Alice Author", "date": "2026-02-01T00:00:00Z"},
-				"committer": {"name": "GitHub", "date": "2026-02-02T00:00:00Z"}
-			}
-		}`, fullSha, fullSha)
 	}))
 	defer ts.Close()
 	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
@@ -66,8 +81,10 @@ func TestGitHubCommit_FullSha_Happy(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
 	}
-	if got := w.Header().Get("Cache-Control"); got != "private, max-age=600" {
-		t.Fatalf("Cache-Control = %q, want %q (full sha is immutable)", got, "private, max-age=600")
+	// containedIn is mutable (grows as new commits land), so a full sha no
+	// longer earns a straight max-age — it must revalidate every time.
+	if got := w.Header().Get("Cache-Control"); got != "private, no-cache" {
+		t.Fatalf("Cache-Control = %q, want %q (containedIn is mutable even for a full sha)", got, "private, no-cache")
 	}
 	var body map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -90,6 +107,16 @@ func TestGitHubCommit_FullSha_Happy(t *testing.T) {
 	if body["htmlUrl"] != "https://github.com/octo/repo/commit/"+fullSha {
 		t.Fatalf("htmlUrl = %v", body["htmlUrl"])
 	}
+	ci, ok := body["containedIn"].([]interface{})
+	if !ok || len(ci) != 2 {
+		t.Fatalf("containedIn = %v, want the two later commits (self excluded)", body["containedIn"])
+	}
+	if ci[0] != "newer2000000000000000000000000000000002" || ci[1] != "newer1000000000000000000000000000000001" {
+		t.Fatalf("containedIn = %v, want newest-first ordering preserved", ci)
+	}
+	if body["containedInAll"] != false {
+		t.Fatalf("containedInAll = %v, want false (well under the cap)", body["containedInAll"])
+	}
 }
 
 func TestGitHubCommit_ShortShaResolvesAndFallsBackToGitAuthorName(t *testing.T) {
@@ -101,19 +128,27 @@ func TestGitHubCommit_ShortShaResolvesAndFallsBackToGitAuthorName(t *testing.T) 
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if req.URL.Path != "/repos/octo/repo/commits/"+short {
+		switch req.URL.Path {
+		case "/repos/octo/repo/commits/" + short:
+			// No linked GitHub user (a bot commit, or an email GitHub can't
+			// match) — the git author's own name is the fallback.
+			fmt.Fprintf(w, `{
+				"sha": %q,
+				"html_url": "https://github.com/octo/repo/commit/%s",
+				"commit": {
+					"message": "Bump dependency",
+					"author": {"name": "dependabot[bot]", "date": "2026-02-03T00:00:00Z"}
+				}
+			}`, full, full)
+		case "/repos/octo/repo":
+			fmt.Fprint(w, `{"default_branch": "trunk"}`)
+		case "/repos/octo/repo/commits":
+			// Nothing landed since — the walk resolves to just the commit
+			// itself, excluded, so containedIn is empty.
+			fmt.Fprintf(w, `[{"sha": %q}]`, full)
+		default:
 			t.Fatalf("unexpected path %s", req.URL.Path)
 		}
-		// No linked GitHub user (a bot commit, or an email GitHub can't
-		// match) — the git author's own name is the fallback.
-		fmt.Fprintf(w, `{
-			"sha": %q,
-			"html_url": "https://github.com/octo/repo/commit/%s",
-			"commit": {
-				"message": "Bump dependency",
-				"author": {"name": "dependabot[bot]", "date": "2026-02-03T00:00:00Z"}
-			}
-		}`, full, full)
 	}))
 	defer ts.Close()
 	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
@@ -122,10 +157,10 @@ func TestGitHubCommit_ShortShaResolvesAndFallsBackToGitAuthorName(t *testing.T) 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
 	}
-	// The resolved sha is full-length, so the response is still treated as
-	// immutable — the short input form doesn't change the underlying fact.
-	if got := w.Header().Get("Cache-Control"); got != "private, max-age=600" {
-		t.Fatalf("Cache-Control = %q, want %q", got, "private, max-age=600")
+	// The resolved sha is full-length, so the FACTS are still immutable, but
+	// containedIn is not — the short input form doesn't change that.
+	if got := w.Header().Get("Cache-Control"); got != "private, no-cache" {
+		t.Fatalf("Cache-Control = %q, want %q", got, "private, no-cache")
 	}
 	var body map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -140,6 +175,12 @@ func TestGitHubCommit_ShortShaResolvesAndFallsBackToGitAuthorName(t *testing.T) 
 	// No committer date in this fixture — falls back to the author date.
 	if body["committedAt"] != "2026-02-03T00:00:00Z" {
 		t.Fatalf("committedAt = %v, want the author date fallback", body["committedAt"])
+	}
+	if ci, ok := body["containedIn"].([]interface{}); !ok || len(ci) != 0 {
+		t.Fatalf("containedIn = %v, want empty (only the commit itself was in the walk, and it is excluded)", body["containedIn"])
+	}
+	if body["containedInAll"] != false {
+		t.Fatalf("containedInAll = %v, want false", body["containedInAll"])
 	}
 }
 
@@ -200,5 +241,82 @@ func TestGitHubCommit_InvalidSha400(t *testing.T) {
 	w := doGitHubPullsRequest(r, "/api/github/repos/octo/repo/commits/not-a-sha!!", "ghu_test_token")
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 (body: %s)", w.Code, w.Body.String())
+	}
+}
+
+// TestGitHubCommit_ContainedInPaginationCutAt300 mirrors
+// TestGitHubPullRequest_PaginationCutAt300 (main_github_pulls_test.go): 4
+// pages of 100 commits (400 available) must stop at maxContainedInCommits
+// and report containedInAll=true, exactly commitsSinceMerge's own cap
+// semantics reused here.
+func TestGitHubCommit_ContainedInPaginationCutAt300(t *testing.T) {
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+	const fullSha = "0123456789abcdef0123456789abcdef01234567"
+
+	pages := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/repos/octo/repo/commits/" + fullSha:
+			fmt.Fprintf(w, `{
+				"sha": %q,
+				"html_url": "https://github.com/octo/repo/commit/%s",
+				"author": {"login": "alice"},
+				"commit": {
+					"message": "Old commit",
+					"committer": {"name": "GitHub", "date": "2026-01-01T00:00:00Z"}
+				}
+			}`, fullSha, fullSha)
+		case "/repos/octo/repo":
+			fmt.Fprint(w, `{"default_branch": "main"}`)
+		case "/repos/octo/repo/commits":
+			pages++
+			page := 1
+			if p := req.URL.Query().Get("page"); p != "" {
+				page, _ = strconv.Atoi(p)
+			}
+			// 4 pages of 100 = 400 available commits; the handler must stop
+			// at 300 (never reaching page 4 at all) and report
+			// containedInAll=true.
+			commits := make([]map[string]string, 0, 100)
+			for i := 0; i < 100; i++ {
+				commits = append(commits, map[string]string{"sha": fmt.Sprintf("sha-p%d-%03d", page, i)})
+			}
+			if page < 4 {
+				w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?page=%d>; rel="next"`, req.Host, req.URL.Path, page+1))
+			}
+			b, _ := json.Marshal(commits)
+			w.Write(b)
+		default:
+			t.Fatalf("unexpected path %s", req.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/repos/octo/repo/commits/"+fullSha, "ghu_paginate_token")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	ci, ok := body["containedIn"].([]interface{})
+	if !ok || len(ci) != 300 {
+		t.Fatalf("containedIn length = %v, want 300", body["containedIn"])
+	}
+	for _, s := range ci {
+		if s == fullSha {
+			t.Fatalf("containedIn contains the commit's own sha, want it excluded")
+		}
+	}
+	if body["containedInAll"] != true {
+		t.Fatalf("containedInAll = %v, want true (cut at cap)", body["containedInAll"])
+	}
+	if pages < 3 {
+		t.Fatalf("expected at least 3 pages fetched, got %d", pages)
 	}
 }
