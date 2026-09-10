@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { buildPaletteBuildIndex, buildEntryLine, scoreBuildEntry, buildPrPaletteResults } from './palette-index';
+import {
+	buildPaletteBuildIndex,
+	buildEntryLine,
+	scoreBuildEntry,
+	parseChangeRef,
+	changePath,
+	buildChangeRefPaletteResults,
+	buildMergedChangeIndex
+} from './palette-index';
 import type { Environment, Rollout } from '../types';
+import type { MyPull } from './api/my-pulls';
 
 /**
  * The operator-walk bug this module closes: pasting `9f10e49` into ⌘K
@@ -191,37 +200,98 @@ describe('scoreBuildEntry — the bug, closed both directions', () => {
 	});
 });
 
-describe('buildPrPaletteResults', () => {
+/**
+ * ⭐ CHANGES-2026-09-10.md, "THE PALETTE" — the renamed `pr` kind. Renamed
+ * from `buildPrPaletteResults`/`PalettePrEntry`, and pointed at `/changes/…`
+ * instead of `/pr/…` (the old routes are retired, never produced again).
+ */
+describe('parseChangeRef', () => {
+	it('parses a full PR URL, owner/repo#n and a bare #n exactly as pr-ref.ts does', () => {
+		expect(parseChangeRef('https://github.com/kuberik/rollout-dashboard/pull/123')).toEqual({
+			kind: 'full',
+			owner: 'kuberik',
+			repo: 'rollout-dashboard',
+			number: 123
+		});
+		expect(parseChangeRef('kuberik/rollout-dashboard#123')).toEqual({
+			kind: 'full',
+			owner: 'kuberik',
+			repo: 'rollout-dashboard',
+			number: 123
+		});
+		expect(parseChangeRef('#123')).toEqual({ kind: 'bare', number: 123 });
+	});
+
+	it('parses a bare 7-40 character hex string as a sha', () => {
+		expect(parseChangeRef('bf5be49')).toEqual({ kind: 'sha', sha: 'bf5be49' });
+		expect(parseChangeRef('9F10E494D5605D5D5D5D5D5D5D5D5D5D5D5D5D5D')).toEqual({
+			kind: 'sha',
+			sha: '9f10e494d5605d5d5d5d5d5d5d5d5d5d5d5d5d5d'
+		});
+	});
+
+	it('requires at least 7 hex characters for the sha shape', () => {
+		expect(parseChangeRef('bf5be4')).toBeNull();
+	});
+
+	it('returns null for free text', () => {
+		expect(parseChangeRef('hello world')).toBeNull();
+		expect(parseChangeRef('')).toBeNull();
+	});
+});
+
+describe('changePath', () => {
+	it('builds the pull-request path', () => {
+		expect(changePath('kuberik', 'rollout-dashboard', { kind: 'pull', number: 123 })).toBe(
+			'/changes/kuberik/rollout-dashboard/pull/123'
+		);
+	});
+
+	it('builds the sha path', () => {
+		expect(changePath('kuberik', 'rollout-dashboard', { kind: 'sha', sha: 'bf5be49' })).toBe(
+			'/changes/kuberik/rollout-dashboard/bf5be49'
+		);
+	});
+
+	it('encodes owner/repo segments', () => {
+		expect(changePath('ku berik', 'foo/bar', { kind: 'pull', number: 1 })).toBe(
+			'/changes/ku%20berik/foo%2Fbar/pull/1'
+		);
+	});
+});
+
+describe('buildChangeRefPaletteResults', () => {
 	function withSource(source: string): Rollout {
 		return { metadata: {}, spec: {}, status: { source } } as unknown as Rollout;
 	}
 
-	it('returns nothing for a query naming no PR', () => {
-		expect(buildPrPaletteResults('hello world', [])).toEqual([]);
-		expect(buildPrPaletteResults('', [])).toEqual([]);
+	it('returns nothing for a query naming no change', () => {
+		expect(buildChangeRefPaletteResults('hello world', [])).toEqual([]);
+		expect(buildChangeRefPaletteResults('', [])).toEqual([]);
 	});
 
 	it('resolves a full URL to exactly one result, without touching the cluster data', () => {
-		const results = buildPrPaletteResults(
+		const results = buildChangeRefPaletteResults(
 			'https://github.com/kuberik/rollout-dashboard/pull/123',
 			[]
 		);
 		expect(results).toEqual([
 			{
-				key: 'pr:kuberik/rollout-dashboard#123',
+				key: 'change-ref:kuberik/rollout-dashboard:pull:123',
 				owner: 'kuberik',
 				repo: 'rollout-dashboard',
-				number: 123,
-				title: 'Open PR #123 · kuberik/rollout-dashboard',
-				href: '/pr/kuberik/rollout-dashboard/123'
+				ref: { kind: 'pull', number: 123 },
+				title: 'Open change #123 · rollout-dashboard',
+				href: '/changes/kuberik/rollout-dashboard/pull/123'
 			}
 		]);
 	});
 
 	it('resolves owner/repo#123 to exactly one result', () => {
-		const results = buildPrPaletteResults('kuberik/rollout-dashboard#123', []);
+		const results = buildChangeRefPaletteResults('kuberik/rollout-dashboard#123', []);
 		expect(results).toHaveLength(1);
-		expect(results[0].title).toBe('Open PR #123 · kuberik/rollout-dashboard');
+		expect(results[0].title).toBe('Open change #123 · rollout-dashboard');
+		expect(results[0].href).toBe('/changes/kuberik/rollout-dashboard/pull/123');
 	});
 
 	it('fans a bare #123 out to one result per distinct cluster source repo', () => {
@@ -232,21 +302,74 @@ describe('buildPrPaletteResults', () => {
 			withSource('github.com/acme/widget'),
 			withSource('https://github.com/acme/gadget')
 		];
-		const results = buildPrPaletteResults('#7', rollouts);
+		const results = buildChangeRefPaletteResults('#7', rollouts);
 		expect(results).toHaveLength(2);
 		expect(results.map((r) => r.title)).toEqual([
-			'Open PR #7 · acme/gadget',
-			'Open PR #7 · acme/widget'
+			'Open change #7 · gadget',
+			'Open change #7 · widget'
+		]);
+		expect(results.map((r) => r.href)).toEqual([
+			'/changes/acme/gadget/pull/7',
+			'/changes/acme/widget/pull/7'
+		]);
+	});
+
+	it('fans a bare sha out the same way a bare #n does', () => {
+		const rollouts = [withSource('https://github.com/acme/widget.git')];
+		const results = buildChangeRefPaletteResults('bf5be49', rollouts);
+		expect(results).toEqual([
+			{
+				key: 'change-ref:acme/widget:sha:bf5be49',
+				owner: 'acme',
+				repo: 'widget',
+				ref: { kind: 'sha', sha: 'bf5be49' },
+				title: 'Open change bf5be49 · widget',
+				href: '/changes/acme/widget/bf5be49'
+			}
 		]);
 	});
 
 	it('ignores a rollout with no source at all', () => {
 		const rollouts = [{ metadata: {}, spec: {}, status: {} } as unknown as Rollout];
-		expect(buildPrPaletteResults('#7', rollouts)).toEqual([]);
+		expect(buildChangeRefPaletteResults('#7', rollouts)).toEqual([]);
 	});
 
-	it('produces nothing for a bare #n when no rollout has a GitHub source', () => {
+	it('produces nothing for a bare #n or sha when no rollout has a GitHub source', () => {
 		const rollouts = [withSource('https://gitlab.com/acme/widget')];
-		expect(buildPrPaletteResults('#7', rollouts)).toEqual([]);
+		expect(buildChangeRefPaletteResults('#7', rollouts)).toEqual([]);
+		expect(buildChangeRefPaletteResults('bf5be49', rollouts)).toEqual([]);
+	});
+});
+
+describe('buildMergedChangeIndex', () => {
+	function pull(overrides: Partial<MyPull>): MyPull {
+		return {
+			owner: 'kuberik',
+			repo: 'kuberik-testing',
+			number: 4,
+			title: 'fix(frontend): retry on 502',
+			htmlUrl: '',
+			state: 'merged',
+			openedAt: null,
+			mergedAt: '2026-09-01T00:00:00Z',
+			mergeCommitSha: 'deadbeef',
+			headSha: null,
+			base: 'main',
+			updatedAt: '2026-09-01T00:00:00Z',
+			...overrides
+		};
+	}
+
+	it('includes only MERGED pulls — open and closed are excluded', () => {
+		const pulls = [pull({ state: 'merged' }), pull({ state: 'open', number: 5 }), pull({ state: 'closed', number: 6 })];
+		const entries = buildMergedChangeIndex(pulls);
+		expect(entries).toHaveLength(1);
+		expect(entries[0].ref).toEqual({ kind: 'pull', number: 4 });
+	});
+
+	it('carries the pull title verbatim, so a free-text search matches on it', () => {
+		const entries = buildMergedChangeIndex([pull({})]);
+		expect(entries[0].title).toBe('fix(frontend): retry on 502');
+		expect(entries[0].href).toBe('/changes/kuberik/kuberik-testing/pull/4');
 	});
 });
