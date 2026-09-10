@@ -96,7 +96,12 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           release_name: Release ${{ steps.version.outputs.version }}
           draft: false
-          prerelease: false
+          # A tag with a pre-release suffix (v0.9.1-rc.0, v1.0.0-beta.2) must
+          # not be published as a normal release: GitHub would show it as
+          # "Latest" and anyone following the repo's releases would take a
+          # release candidate for the stable one. SemVer puts that suffix
+          # after a hyphen, and a plain release tag never contains one.
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
 
       - name: Upload manifests to release
         uses: actions/upload-release-asset@v1
