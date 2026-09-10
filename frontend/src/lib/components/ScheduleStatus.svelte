@@ -8,7 +8,7 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout } from '$lib/types';
 	import AlertPanel from './AlertPanel.svelte';
-	import type { BlockingStory } from '$lib/view-models/blocking-story';
+	import { prettyNameOf, type BlockingStory } from '$lib/view-models/blocking-story';
 	import { iconForStory } from './BlockingStoryPanel.svelte';
 	import { formatAbsoluteReopen, scheduleWindowQueryKey } from '$lib/api/schedules';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -16,7 +16,11 @@
 	import { apiPath } from '$lib/api/urls';
 
 	type RolloutSchedule = {
-		metadata: { name: string; namespace: string };
+		// `annotations` carries `gate.kuberik.com/pretty-name`, which is the
+		// name a reader should see for this window — see `windowClause`. It was
+		// absent from this local type, so the payload's own pretty name was
+		// unreachable here even though `blocking-story.ts` already reads it.
+		metadata: { name: string; namespace: string; annotations?: Record<string, string> };
 		spec: {
 			rules: Array<{
 				name?: string;
@@ -35,7 +39,7 @@
 	};
 
 	type ClusterRolloutSchedule = {
-		metadata: { name: string };
+		metadata: { name: string; annotations?: Record<string, string> };
 		spec: {
 			rules: Array<{
 				name?: string;
@@ -361,10 +365,62 @@
 	 * SHAPE — see `metaText` below and this component's template: a closed,
 	 * empty window is not a filled full-width banner at all, so the banner
 	 * slot stays reserved for an actual blocking fact.
+	 *
+	 * ⛔ AND IT HAS TO ASK WHETHER A DEPLOY WINDOW EXISTS AT ALL. (2026-09-10,
+	 * from the human: *"why do i see 'Deploys pause outside business hours' on
+	 * prod/caffeine/caffeine-ai even though we don't have any kuberik schedules
+	 * that would do that"*)
+	 *
+	 * Every clause below is about the STORY — is it pinned, is it blocked, is
+	 * anything queued — and not one of them asks about a schedule. So on a
+	 * healthy rollout on its newest build with NO `RolloutSchedule` and NO
+	 * `ClusterRolloutSchedule` anywhere, this was true, `metaText` fired, and
+	 * the page stated a deploy-window rule that does not exist. Measured on the
+	 * live fleet: `/api/clusters/prod/rollouts/caffeine/caffeine-ai/schedules`
+	 * returns `rolloutSchedules.items: null` and `clusterRolloutSchedules.items:
+	 * null`, the cluster- and hub-wide lists are both `[]`, and the page printed
+	 * the sentence anyway.
+	 *
+	 * ⚠️ THE TEMPLATE'S OWN GUARD DID NOT COVER THIS, AND THAT IS THE LESSON.
+	 * The banner branch below is `{:else if !loading && !error &&
+	 * allSchedules.length > 0}`, so nothing this component DRAWS can make that
+	 * claim. `metaText` leaves by a different door — an `$effect` calling
+	 * `onMeta`, which sits outside the template and therefore outside that
+	 * guard — and the parent prints whatever it is handed. A fact escaping
+	 * through a callback needs its own precondition; it does not inherit the
+	 * one on the markup beside it.
 	 */
 	let nothingWaiting = $derived(
-		!!story && !story.pinnedTo && !story.blocked && story.candidateCount === 0
+		allSchedules.length > 0 &&
+			!!story &&
+			!story.pinnedTo &&
+			!story.blocked &&
+			story.candidateCount === 0
 	);
+
+	/**
+	 * ⛔ THE WINDOW IS NAMED FROM THE DATA, NOT FROM THE FIXTURE IT WAS WRITTEN
+	 * AGAINST. (2026-09-10) `metaText` hard-coded the words "business hours",
+	 * which is the name of ONE schedule on the `hello-world` demo cluster
+	 * (`Business Hours Only`). Any other window — a weekend freeze, a release
+	 * train, a maintenance hour — was announced as business hours, and this is
+	 * the surface that tells a reader WHICH rule pauses their deploys.
+	 *
+	 * `lib/CLAUDE.md`'s vocabulary rule already settles the shape: the pretty
+	 * name leads a rendered clause, `deploy window` is the kind word, and
+	 * `blocking-story.ts` builds exactly this label the same way
+	 * (`prettyNameOf(metadata) || metadata.name`) — reused here rather than
+	 * spelled a second time, so the meta row and the gate clause cannot drift.
+	 * Past one window there is no single name to lead with, so it states the
+	 * kind in the plural instead of picking one arbitrarily.
+	 */
+	let windowClause = $derived.by(() => {
+		if (allSchedules.length === 0) return null;
+		if (allSchedules.length > 1) return 'Deploys pause outside this rollout’s deploy windows';
+		const s = allSchedules[0];
+		const label = prettyNameOf(s.metadata) || s.metadata.name;
+		return `Deploys pause outside the ${label} deploy window`;
+	});
 
 	/**
 	 * ⭐ THE ONE-LINE FORM `nothingWaiting` PRINTS INSTEAD OF A BANNER.
@@ -381,10 +437,10 @@
 	 * `formatAbsoluteReopen`'s own comment.
 	 */
 	let metaText = $derived.by(() => {
-		if (!nothingWaiting) return null;
+		if (!nothingWaiting || !windowClause) return null;
 		return nextChange
-			? `Deploys pause outside business hours · reopens ${formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}`
-			: 'Deploys pause outside business hours';
+			? `${windowClause} · reopens ${formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}`
+			: windowClause;
 	});
 
 	$effect(() => {
