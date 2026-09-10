@@ -2067,7 +2067,7 @@
 	>
 </svelte:head>
 
-<div class="rev-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="rev-cq mx-auto w-full px-4 py-6 sm:px-6">
 	<!--
 		⭐ ROUND 11, B.4 ITEM 1 — THE TRAIL. `All revisions` on the repository
 		page; `All revisions › kuberik-testing` on the build page (the repo

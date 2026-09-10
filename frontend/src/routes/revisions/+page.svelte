@@ -213,7 +213,7 @@
 	<title>kuberik | Revisions</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full px-4 py-6 sm:px-6">
 	<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
 		<h1 class="sr-only">Revisions</h1>
 		{#if query.isLoading}

@@ -1139,3 +1139,10 @@ slot) rendered a 69×20 chip; `.hit-32`'s own `::before` floors the TOTAL reach 
   there is no sibling row height to steal — the element's own box is the whole story.
 - `ClearPinModal` was checked and does not share this shape (a plain flowbite `Modal`, no
   step header, no `Back`) — nothing there needed the same fix.
+
+## Pages use the full width (2026-09-10, human)
+
+The human: "i would always like to use full width of the page, add that as a rule." No
+`max-w-*` on a page container — every route body is `w-full px-4 py-6 sm:px-6` and grows with
+the viewport; only dialogs, the palette, prose paragraphs and single inputs may cap themselves.
+Cards and grids inside decide their own columns (container queries), never the page.

@@ -54,7 +54,7 @@
      against the scroller's full height — which would make this tab exactly one
      tab strip taller than its pane and give the only tab that must not scroll a
      49px scrollbar. As a flex item it takes the remainder instead. -->
-<div class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden px-4 py-6 dark:bg-gray-900 sm:px-6">
+<div class="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 py-6 dark:bg-gray-900 sm:px-6">
 	<div class="mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-2 sm:mb-4">
 		<!-- ⛔ THIS `h1` SAID "Logs" DIRECTLY UNDER A TAB STRIP WHOSE ACTIVE TAB
 		     ALREADY SAYS "Logs" — the same duplicate-heading defect `/apps`,

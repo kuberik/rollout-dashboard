@@ -1548,7 +1548,7 @@
 	<title>kuberik | Apps</title>
 </svelte:head>
 
-<div class="apps-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="apps-cq mx-auto w-full px-4 py-6 sm:px-6">
 	<!-- ══ PAGE HEADER — THE ROLLUP, NOT THE SECTION NAME ═══════════════════
 	     ⛔ THE VISIBLE `Apps` TITLE IS GONE. (2026-09-01, from the human:
 	     *"i think i don't like that we have a title on the page when it's

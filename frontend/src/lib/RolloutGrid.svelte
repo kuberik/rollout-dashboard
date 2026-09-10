@@ -679,7 +679,7 @@
 	</a>
 {/snippet}
 
-<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full px-4 py-6 sm:px-6">
 	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
 	     ⛔ THE DRAWN `Rollouts` TITLE IS GONE. (2026-09-01, from the human:
 	     *"environments and rollouts still have a heading"*, against the rule

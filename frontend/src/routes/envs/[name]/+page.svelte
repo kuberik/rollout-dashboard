@@ -1041,7 +1041,7 @@
 	<title>kuberik | {envName}</title>
 </svelte:head>
 
-<div class="env-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="env-cq mx-auto w-full px-4 py-6 sm:px-6">
 	<!--
 		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
 		replied and names the ones that did not in `clusterErrors`, so this page

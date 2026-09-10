@@ -339,7 +339,7 @@
 		     overflow here — a strip that scrolls internally instead of stretching
 		     its parent — keeps every tab reachable without widening the page. -->
 		<div bind:this={tabStripEl}
-			class="mx-auto flex w-full max-w-7xl items-stretch overflow-x-auto px-4 no-scrollbar sm:justify-start sm:gap-0 sm:px-6">
+			class="mx-auto flex w-full items-stretch overflow-x-auto px-4 no-scrollbar sm:justify-start sm:gap-0 sm:px-6">
 			<!--
 				⭐ NO `.filter()` HERE ANY MORE — SEE `tabs`' OWN COMMENT. All four
 				entries render on every paint; `state` decides the TREATMENT, not
