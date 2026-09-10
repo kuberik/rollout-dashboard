@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/go-github/v88/github"
 	"github.com/kuberik/rollout-dashboard/pkg/githubapp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -493,5 +494,185 @@ func TestGitHubChanges_ETag304(t *testing.T) {
 	}
 	if w2.Body.Len() != 0 {
 		t.Fatalf("304 response body = %q, want empty", w2.Body.String())
+	}
+}
+
+// TestGitHubChanges_ContainedInExcludesOwnMergeSha reproduces the
+// kuberik-testing#2 (f7a46ae) row from the 2026-09-10 QA report: a PR with a
+// real merge commit (exact merge_commit_sha match, classifyChanges rule 1)
+// plus a much OLDER, unrelated commit on the same branch whose message
+// happens to start with that PR's title. Before the fix, matchSquashPR's
+// prefix match on the older commit overwrote the PR's already-correct
+// position (set by the exact-sha pass) with the older commit's position,
+// which made containedIn (computed from that wrong position) include the
+// PR's own merge commit sha — contradicting containedIn's contract that an
+// entry never contains itself.
+func TestGitHubChanges_ContainedInExcludesOwnMergeSha(t *testing.T) {
+	r := setupGitHubChangesTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/user":
+			fmt.Fprint(w, `{"login":"alice"}`)
+		case "/repos/octo/repo":
+			fmt.Fprint(w, `{"default_branch":"main"}`)
+		case "/repos/octo/repo/pulls":
+			fmt.Fprint(w, `[
+				{"number":2,"title":"Bump app version to v1.4.0","html_url":"https://github.com/octo/repo/pull/2","state":"closed","updated_at":"2026-09-09T10:00:00Z","merged_at":"2026-09-09T10:00:00Z","merge_commit_sha":"f7a46ae","base":{"ref":"main"},"head":{"sha":"headsha2"},"user":{"login":"alice"}}
+			]`)
+		case "/repos/octo/repo/commits":
+			// Newest first: the real merge commit (idx 0, exact sha match),
+			// an unrelated bare commit (idx 1), then a much older commit
+			// (idx 2) whose message merely starts with the PR's title —
+			// the false-positive matchSquashPR would otherwise latch onto.
+			fmt.Fprint(w, `[
+				{"sha":"f7a46ae","html_url":"https://github.com/octo/repo/commit/f7a46ae","parents":[{"sha":"pa"},{"sha":"pb"}],"commit":{"message":"Merge pull request #2 from bump-version","committer":{"date":"2026-09-09T10:00:00Z"}}},
+				{"sha":"midsha","html_url":"https://github.com/octo/repo/commit/midsha","parents":[{"sha":"p1"}],"commit":{"message":"chore: cleanup","committer":{"date":"2026-09-08T00:00:00Z"}},"author":{"name":"Eve","date":"2026-09-08T00:00:00Z"}},
+				{"sha":"staleSha","html_url":"https://github.com/octo/repo/commit/staleSha","parents":[{"sha":"p0"}],"commit":{"message":"Bump app version to v1.4.0-rc1 (early attempt)","committer":{"date":"2026-01-01T00:00:00Z"}},"author":{"name":"Frank","date":"2026-01-01T00:00:00Z"}}
+			]`)
+		default:
+			t.Fatalf("unexpected path %s", req.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/changes?days=3650", "ghu_f7a46ae_token")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		Changes []map[string]interface{}
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v (body: %s)", err, w.Body.String())
+	}
+	if len(body.Changes) != 3 {
+		t.Fatalf("len(changes) = %d, want 3 (got %v)", len(body.Changes), body.Changes)
+	}
+
+	pr2 := findChange(t, body.Changes, func(ch map[string]interface{}) bool { return ch["number"] == float64(2) })
+	if pr2["mergeCommitSha"] != "f7a46ae" {
+		t.Fatalf("pr2.mergeCommitSha = %v, want f7a46ae", pr2["mergeCommitSha"])
+	}
+	got := shaStrings(t, pr2["containedIn"])
+	for _, sha := range got {
+		if sha == "f7a46ae" {
+			t.Fatalf("pr2.containedIn = %v, contains its own merge commit sha f7a46ae", got)
+		}
+	}
+	if len(got) != 0 {
+		t.Fatalf("pr2.containedIn = %v, want [] (its real merge commit is the newest entry, nothing precedes it)", got)
+	}
+
+	// staleSha must NOT have stolen pr2's position — it's its own bare
+	// commit, positioned at the true end of history.
+	stale := findChange(t, body.Changes, func(ch map[string]interface{}) bool { return ch["mergeCommitSha"] == "staleSha" })
+	if stale["kind"] != "commit" {
+		t.Fatalf("staleSha.kind = %v, want commit (must not be misattributed to PR #2)", stale["kind"])
+	}
+	wantStaleContained := []string{"f7a46ae", "midsha"}
+	if got := shaStrings(t, stale["containedIn"]); fmt.Sprint(got) != fmt.Sprint(wantStaleContained) {
+		t.Fatalf("staleSha.containedIn = %v, want %v", got, wantStaleContained)
+	}
+}
+
+// TestGitHubChanges_StaleTitlePrefixDoesNotStealSquashPosition reproduces
+// the kuberik-testing-second#2 (dfdee1e) row from the 2026-09-10 QA report:
+// a squash-merged PR whose reported merge_commit_sha never appears in the
+// fetched commit window at all (so only the matchSquashPR "(#N)"-suffix
+// heuristic can place it), plus a much older, unrelated commit whose message
+// happens to start with the same PR title. The older commit must fall back
+// to being its own bare change instead of overwriting the PR's
+// heuristically-assigned position.
+func TestGitHubChanges_StaleTitlePrefixDoesNotStealSquashPosition(t *testing.T) {
+	r := setupGitHubChangesTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/user":
+			fmt.Fprint(w, `{"login":"alice"}`)
+		case "/repos/octo/repo":
+			fmt.Fprint(w, `{"default_branch":"main"}`)
+		case "/repos/octo/repo/pulls":
+			fmt.Fprint(w, `[
+				{"number":2,"title":"Fix retry loop","html_url":"https://github.com/octo/repo/pull/2","state":"closed","updated_at":"2026-09-09T09:00:00Z","merged_at":"2026-09-09T09:00:00Z","merge_commit_sha":"phantomsha2","base":{"ref":"main"},"head":{"sha":"headsha2"},"user":{"login":"alice"}}
+			]`)
+		case "/repos/octo/repo/commits":
+			// Newest first: the true squash commit (idx 0, only findable via
+			// the "(#2)" suffix — PR #2's own reported merge_commit_sha,
+			// "phantomsha2", never appears here), a bare commit (idx 1),
+			// then a much older commit (idx 2) whose message starts with
+			// the same PR title but is otherwise unrelated.
+			fmt.Fprint(w, `[
+				{"sha":"dfdee1e","html_url":"https://github.com/octo/repo/commit/dfdee1e","parents":[{"sha":"p2"}],"commit":{"message":"Fix retry loop (#2)","committer":{"date":"2026-09-09T09:00:00Z"}},"author":{"login":"alice"}},
+				{"sha":"midsha2","html_url":"https://github.com/octo/repo/commit/midsha2","parents":[{"sha":"p1"}],"commit":{"message":"docs: update readme","committer":{"date":"2026-09-08T00:00:00Z"}},"author":{"name":"Eve","date":"2026-09-08T00:00:00Z"}},
+				{"sha":"staleSha2","html_url":"https://github.com/octo/repo/commit/staleSha2","parents":[{"sha":"p0"}],"commit":{"message":"Fix retry loop in old subsystem","committer":{"date":"2026-01-01T00:00:00Z"}},"author":{"name":"Frank","date":"2026-01-01T00:00:00Z"}}
+			]`)
+		default:
+			t.Fatalf("unexpected path %s", req.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/changes?days=3650", "ghu_dfdee1e_token")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		Changes []map[string]interface{}
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v (body: %s)", err, w.Body.String())
+	}
+	if len(body.Changes) != 3 {
+		t.Fatalf("len(changes) = %d, want 3 (got %v)", len(body.Changes), body.Changes)
+	}
+
+	pr2 := findChange(t, body.Changes, func(ch map[string]interface{}) bool { return ch["number"] == float64(2) })
+	if pr2["kind"] != "pr" {
+		t.Fatalf("pr2.kind = %v, want pr", pr2["kind"])
+	}
+	got := shaStrings(t, pr2["containedIn"])
+	for _, sha := range got {
+		if sha == "dfdee1e" {
+			t.Fatalf("pr2.containedIn = %v, contains its own squash commit sha dfdee1e", got)
+		}
+	}
+	if len(got) != 0 {
+		t.Fatalf("pr2.containedIn = %v, want [] (its squash commit is the newest entry)", got)
+	}
+
+	stale := findChange(t, body.Changes, func(ch map[string]interface{}) bool { return ch["mergeCommitSha"] == "staleSha2" })
+	if stale["kind"] != "commit" {
+		t.Fatalf("staleSha2.kind = %v, want commit (must not be misattributed to PR #2)", stale["kind"])
+	}
+	wantStaleContained := []string{"dfdee1e", "midsha2"}
+	if got := shaStrings(t, stale["containedIn"]); fmt.Sprint(got) != fmt.Sprint(wantStaleContained) {
+		t.Fatalf("staleSha2.containedIn = %v, want %v", got, wantStaleContained)
+	}
+}
+
+// TestMatchSquashPR_SuffixPreferredOverTitlePrefix locks in classifyChanges
+// rule 3's tie-break: when a single commit message coincidentally matches
+// one PR's title-prefix AND another PR's "(#N)" suffix, the suffix match
+// wins, regardless of the two PRs' order in the list. The suffix names an
+// exact PR number and is the more specific signal; a title prefix is just a
+// substring test that can coincidentally match an unrelated PR.
+func TestMatchSquashPR_SuffixPreferredOverTitlePrefix(t *testing.T) {
+	prA := &github.PullRequest{Number: github.Ptr(5), Title: github.Ptr("Fix bug now")}
+	prB := &github.PullRequest{Number: github.Ptr(3), Title: github.Ptr("Something else entirely")}
+
+	// "Fix bug now (#3)" starts with prA's title ("Fix bug now") but ends
+	// with prB's "(#3)" suffix. prB (index 1) must win even though prA
+	// (index 0) is checked first for a naive single-pass, prefix-first scan.
+	got := matchSquashPR("Fix bug now (#3)", []*github.PullRequest{prA, prB})
+	if got != 1 {
+		t.Fatalf("matchSquashPR = %d, want 1 (prB, matched by its (#3) suffix over prA's coincidental title prefix)", got)
 	}
 }

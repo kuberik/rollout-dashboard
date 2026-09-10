@@ -355,20 +355,38 @@ func classifyChanges(owner, repo, defaultBranch string, prs []*github.PullReques
 		}
 	}
 
-	var bareChanges []*ghChange
 	positions := make(map[*ghChange]int, len(commits))
+
+	// Pass 1: exact merge_commit_sha equality (rule 1) always wins and is
+	// never overwritten below — a commit whose sha IS a PR's reported
+	// merge_commit_sha is unambiguously that PR's position, no matter what
+	// an older commit's message happens to look like.
+	hasExactMatch := make([]bool, len(prs))
+	for idx, rc := range commits {
+		if i, ok := mergeShaIndex[rc.GetSHA()]; ok {
+			positions[prChanges[i]] = idx
+			hasExactMatch[i] = true
+		}
+	}
+
+	// Pass 2: untracked merge commits, the squash/rebase message heuristic
+	// (rule 3, only for PRs pass 1 didn't already place, and only when the
+	// commit isn't implausibly older than the PR's merged_at), and bare
+	// commits (rule 4).
+	var bareChanges []*ghChange
 	for idx, rc := range commits {
 		sha := rc.GetSHA()
-		if i, ok := mergeShaIndex[sha]; ok {
-			positions[prChanges[i]] = idx
-			continue
+		if _, ok := mergeShaIndex[sha]; ok {
+			continue // already positioned in pass 1
 		}
 		if len(rc.GetParents()) > 1 {
 			continue // untracked merge commit
 		}
-		if i := matchSquashPR(rc.GetCommit().GetMessage(), prs); i >= 0 {
-			positions[prChanges[i]] = idx
-			continue
+		if i := matchSquashPR(rc.GetCommit().GetMessage(), prs); i >= 0 && !hasExactMatch[i] && !squashMatchTooOld(rc, prs[i]) {
+			if _, already := positions[prChanges[i]]; !already {
+				positions[prChanges[i]] = idx
+				continue
+			}
 		}
 		bc := bareCommitToChange(owner, repo, defaultBranch, rc)
 		positions[bc] = idx
@@ -384,9 +402,79 @@ func classifyChanges(owner, repo, defaultBranch string, prs []*github.PullReques
 		} else {
 			ch.ContainedIn = []string{}
 		}
+		// Defensive: containedIn must never contain the entry's own sha,
+		// regardless of how its position was computed above. See the
+		// 2026-09-10 QA report (kuberik-testing#2, kuberik-testing-second#2)
+		// for the bug this guards against.
+		ch.ContainedIn = removeOwnSha(ch.ContainedIn, ch.MergeCommitSHA)
 		ch.ContainedInAll = cutByCap
 	}
 	return all
+}
+
+// removeOwnSha strips ownSha out of containedIn if present. shasBefore
+// already excludes the commit at its own position, so this should be a
+// no-op in practice — but containedIn contradicting its own contract (an
+// entry can't be contained in itself) is exactly the class of bug this
+// handler must not reintroduce, so it's asserted here too, not just in
+// classifyChanges's position bookkeeping.
+func removeOwnSha(containedIn []string, ownSha *string) []string {
+	if ownSha == nil || *ownSha == "" {
+		return containedIn
+	}
+	for i, s := range containedIn {
+		if s == *ownSha {
+			out := make([]string, 0, len(containedIn)-1)
+			out = append(out, containedIn[:i]...)
+			out = append(out, containedIn[i+1:]...)
+			return out
+		}
+	}
+	return containedIn
+}
+
+// changesSquashMatchGrace bounds how much older than a PR's merged_at a
+// commit may be and still be treated as that PR's squash/rebase commit by
+// the matchSquashPR title/suffix heuristic (classifyChanges rule 3). A real
+// squash commit lands at merge time, modulo clock skew; an unrelated OLDER
+// commit that merely happens to share a title prefix (e.g. a bare "Fix
+// widget bug" commit predating a later PR titled "Fix widget bug (round 2)")
+// must not steal that PR's position — that mix-up is exactly what corrupted
+// containedIn for kuberik-testing#2 (f7a46ae) and kuberik-testing-second#2
+// (dfdee1e) in the 2026-09-10 QA report.
+const changesSquashMatchGrace = 5 * time.Minute
+
+// squashMatchTooOld reports whether rc is implausibly older than pr's
+// merged_at to be pr's squash/rebase commit (see changesSquashMatchGrace).
+// Missing data (no merged_at, no commit date) is treated as "too old" —
+// fails closed into a bare commit rather than risking a false positional
+// match.
+func squashMatchTooOld(rc *github.RepositoryCommit, pr *github.PullRequest) bool {
+	if pr.MergedAt == nil {
+		return true
+	}
+	date := commitDate(rc)
+	if date.IsZero() {
+		return true
+	}
+	return date.Before(pr.MergedAt.Time.Add(-changesSquashMatchGrace))
+}
+
+// commitDate returns rc's committer date, falling back to its author date,
+// or the zero time if neither is set — the same preference order
+// bareCommitToChange uses for a bare commit's displayed date.
+func commitDate(rc *github.RepositoryCommit) time.Time {
+	commit := rc.GetCommit()
+	if commit == nil {
+		return time.Time{}
+	}
+	if commit.Committer != nil && commit.Committer.Date != nil {
+		return commit.Committer.Date.Time
+	}
+	if commit.Author != nil && commit.Author.Date != nil {
+		return commit.Author.Date.Time
+	}
+	return time.Time{}
 }
 
 // shasBefore returns the shas of commits[0:idx] — the entries that precede
@@ -400,15 +488,23 @@ func shasBefore(commits []*github.RepositoryCommit, idx int) []string {
 	return out
 }
 
-// matchSquashPR returns the index into prs of the PR whose title or "(#N)"
-// suffix matches message's first line, or -1. See classifyChanges rule 3.
+// matchSquashPR returns the index into prs of the PR whose "(#N)" suffix or
+// title prefix matches message's first line, or -1. See classifyChanges
+// rule 3. The "(#N)" suffix (GitHub's own squash-merge default commit
+// format, naming an exact PR number) is checked across every PR before any
+// title-prefix match is considered, since a title prefix is just a
+// substring test and can coincidentally match an unrelated commit whose
+// message happens to start the same way — the suffix match is the more
+// specific, more trustworthy signal and must win when both are available.
 func matchSquashPR(message string, prs []*github.PullRequest) int {
 	line := firstLine(message)
 	for i, pr := range prs {
-		if title := pr.GetTitle(); title != "" && strings.HasPrefix(line, title) {
+		if suffix := fmt.Sprintf("(#%d)", pr.GetNumber()); strings.HasSuffix(line, suffix) {
 			return i
 		}
-		if suffix := fmt.Sprintf("(#%d)", pr.GetNumber()); strings.HasSuffix(line, suffix) {
+	}
+	for i, pr := range prs {
+		if title := pr.GetTitle(); title != "" && strings.HasPrefix(line, title) {
 			return i
 		}
 	}
