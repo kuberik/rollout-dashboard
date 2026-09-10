@@ -1737,7 +1737,7 @@
 	 * line when there is room.
 	 */
 	function envGridTemplate(envCols: string[]): string {
-		return `160px ${envCols.map(() => '145px').join(' ')} minmax(90px, 1fr)`;
+		return `minmax(160px, max-content) ${envCols.map(() => '145px').join(' ')} minmax(90px, 1fr)`;
 	}
 
 	/** 1-based grid line for this environment's OWN column — line 1 is the
