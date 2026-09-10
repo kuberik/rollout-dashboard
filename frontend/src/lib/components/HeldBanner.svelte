@@ -263,7 +263,7 @@
 	cards' 200 — the banner was the one element on the page not sharing
 	their left/right edge.
 -->
-<div class="held-banner my-4 overflow-hidden rounded-lg">
+<div class="held-banner">
 	<!--
 		⚠️ `actions` PASSED CONDITIONALLY, NOT A SNIPPET WHOSE BODY IS
 		CONDITIONAL. `lib/CLAUDE.md`'s own note: a snippet reference is
@@ -280,18 +280,15 @@
 	/>
 </div>
 
-<style>
-	/*
-	 * ⭐ LANE 9, ROUND 11 QA, ITEM 14 — 8px, NOT 12px. `.held-banner` (above)
-	 * already asks for `rounded-lg` (8px, matching every 8px card this
-	 * banner sits in a column of), but `AlertPanel`'s own root is
-	 * `rounded-xl` (12px) — a fixed radius this component does not own —
-	 * and since it fills the wrapper edge to edge, ITS corner is what
-	 * paints. `:global(.ap-cq)`, scoped through `.held-banner` so this rule
-	 * cannot reach any OTHER `AlertPanel` on the page, overrides the one
-	 * property in conflict without forking the component.
-	 */
-	.held-banner :global(.ap-cq) {
-		border-radius: 8px;
-	}
-</style>
+<!--
+	⛔ NO WRAPPER RADIUS, NO OVERFLOW CLIP, NO `:global(.ap-cq)` OVERRIDE.
+	(2026-09-10, human on a phone in dark: "borders are screwed up".) A
+	wrapper that clips at 8px around AlertPanel's own 12px-radius bordered
+	container leaves the border showing on two edges and not the others.
+	AlertPanel is THE alert component; its radius is its own decision, and
+	this banner takes it as is. Change AlertPanel if every panel must change.
+	No outer margin either: a component does not own the space around it,
+	the caller does — the repository page reorders this banner above the
+	ledger below `sm`, and a margin that travelled with it left the ledger
+	touching the first hero (2026-09-10, human on a phone).
+-->

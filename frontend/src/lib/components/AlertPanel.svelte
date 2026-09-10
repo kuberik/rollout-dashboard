@@ -764,8 +764,9 @@
 						cell does, so its edge is the banner's padding edge exactly
 						as it was when `actions` was a flex sibling this morning.
 					-->
+						<!-- `flex-wrap`: at 390 in dark the error panel's two actions ("Try again", "Back to all rollouts") ran past the panel edge (2026-09-10, human on a phone). Actions wrap onto a second line rather than clip; every caller inherits it. -->
 					<div
-						class="ap-actions-cell col-start-2 col-end-4 row-start-4 mt-1 flex shrink-0 items-center gap-3 self-start {palette.title}"
+						class="ap-actions-cell col-start-2 col-end-4 row-start-4 mt-1 flex shrink-0 flex-wrap items-center gap-3 self-start {palette.title}"
 						style="--nav-link-ink: currentColor"
 					>
 						{@render actions()}

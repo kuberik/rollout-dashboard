@@ -2345,7 +2345,7 @@
 			repoUrl={repoPageLedger.repoKey.startsWith('repo:') && repoBody(repoPageLedger.repoKey).includes('/')
 				? `https://${repoBody(repoPageLedger.repoKey)}`
 				: null}
-			class="mt-5"
+			class=""
 		/>
 		</div>
 
@@ -2420,7 +2420,7 @@
 				verdict={heroVerdict}
 				verdictTitle="Everything below is counted across the services that have a release for this commit."
 				titleHref={revisionPath(repoPageLedger.repoKey, leadRow.revision)}
-				class={repoMultiLine && li < repoVisibleLeadRows.length - 1 ? 'mb-4' : ''}
+				class={repoMultiLine && li < repoVisibleLeadRows.length - 1 ? 'mt-4 mb-4' : 'mt-4'}
 			>
 				<RevisionLead
 					short={leadRow.short}
@@ -2682,6 +2682,7 @@
 				repository page, so the two pages cannot converge on two
 				different held vocabularies for the same kind of fact).
 			-->
+			<div class="mt-4">
 			<HeldBanner
 				subject={bannerBuildSubject}
 				releaseSplitMessage={bannerMessage}
@@ -2692,6 +2693,7 @@
 				hasSchedule={buildHasSchedule}
 				indefinite={storiesAreIndefinite(distinctBuildStories)}
 			/>
+			</div>
 		{/if}
 
 		<!--
@@ -3957,6 +3959,10 @@
 	.rev-repo-top {
 		display: flex;
 		flex-direction: column;
+		/* The gap belongs to the container, not to the banner: whichever
+		   order the children take below `sm`, every pair is 16px apart. */
+		gap: 16px;
+		margin-top: 20px;
 	}
 
 	.rev-repo-ledger {
