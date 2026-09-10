@@ -188,7 +188,15 @@
 	 * would be the redundant tab stop `lib/CLAUDE.md` bans, so this is
 	 * plain text inside the zone, not a second anchor.
 	 */
-	const shortRevision = $derived(cell.revision ? cell.revision.slice(0, 7) : null);
+	// The sha prints beside the label only when the label is not already the
+	// sha (a release tagged by its commit printed "f7a46ae · f7a46ae").
+	const shortRevision = $derived.by(() => {
+		if (!cell.revision) return null;
+		const short = cell.revision.slice(0, 7);
+		const label = cell.releaseLabel ?? '';
+		if (label === short || cell.revision.startsWith(label) || label.startsWith(short)) return null;
+		return short;
+	});
 
 	/**
 	 * ⭐ ROUND 3, ITEM 4 (2026-09-10 fix pass) — "FAMILY WORDS IN EVERY STAGE
