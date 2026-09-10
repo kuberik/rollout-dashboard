@@ -670,7 +670,7 @@ func splitOwnerRepo(s string) (owner, repo string, ok bool) {
 	return parts[0], parts[1], true
 }
 
-// defaultBranchCache maps sha256... no — NormalizedRepoKey(owner, repo) ->
+// defaultBranchCache maps NormalizedRepoKey(owner, repo) ->
 // its default branch, for changesDefaultBranchCacheTTL. Unlike loginCache
 // (main_github_pulls_mine.go), the key here is not sensitive (a repo name,
 // not a token), so it's kept in plain text.
