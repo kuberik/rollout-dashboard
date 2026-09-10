@@ -301,11 +301,19 @@ describe('/changes/[...slug] — repository page resolution', () => {
 		await renderAt(REPO_PATH);
 
 		await waitFor(() => expect(screen.getByText('Changes')).toBeInTheDocument());
-		// Both changes render as compact `ChangeLine` rows in ONE flat list —
-		// no "Not everywhere yet"/"Live everywhere" split, no landing grid.
-		expect(screen.getByText(/retry on 502/)).toBeInTheDocument();
+		// The live-everywhere commit renders as a compact `ChangeLine` row in
+		// the flat list — no "Not everywhere yet"/"Live everywhere" split, no
+		// landing grid.
 		expect(screen.getByText('Everywhere already')).toBeInTheDocument();
-		expect(screen.getByText('1 not everywhere yet')).toBeInTheDocument();
+		// ⭐ ROUND 3B (2026-09-10) — "NO RELEASE MEANS NOT AFFECTED, AND MUST
+		// NOT COMPETE". `web` (this repo's only rollout) carries no release
+		// evidence anywhere for PR #4's own sha — it is `noRelease`, folded
+		// behind the muted footer line rather than shown as a normal row or
+		// counted as "not everywhere yet" (a fact about a DEPLOYABLE change
+		// that has not reached every environment, which this one is not).
+		expect(screen.queryByText(/retry on 502/)).toBeNull();
+		expect(screen.queryByText(/not everywhere yet/)).toBeNull();
+		expect(screen.getByText('1 commit produced no release ›')).toBeInTheDocument();
 		// The section precedes the ops content, landmark order unchanged below
 		// it (R2.4's own pin, restated for the round-3 single section).
 		const headings = headingTexts();

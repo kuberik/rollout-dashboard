@@ -293,9 +293,12 @@ describe('/changes/[...slug] — sha form', () => {
 		// text match.)
 		await waitFor(() =>
 			expect(
-				screen.getByRole('heading', { level: 2, name: 'No release for this commit yet' })
+				screen.getByRole('heading', { level: 2, name: 'No release for this commit' })
 			).toBeInTheDocument()
 		);
+		expect(
+			screen.getByText(/CI did not publish a build for this commit/i)
+		).toBeInTheDocument();
 		expect(screen.queryByText('This repository does not exist')).toBeNull();
 	});
 

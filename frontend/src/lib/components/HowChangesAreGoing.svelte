@@ -7,7 +7,7 @@
 	 * Cannot reuse `HowItsGoing` — that component's five rows
 	 * (`Deploys`/`Typical deploy`/`Failed`/`Furthest behind`) are
 	 * ROLLOUT-shaped; this card's four rows are CHANGE-shaped (`Merged`,
-	 * `Typical to prod`, `Held`, `Never built`). It reuses that component's
+	 * `Typical to prod`, `Held`, `No release`). It reuses that component's
 	 * GRAMMAR exactly, not its markup: `Card icon={ChartMixedOutline}`,
 	 * header `verdict` naming the section-1 count, body `dl.space-y-3`, each
 	 * row `div.flex.items-baseline.justify-between.gap-3` with
@@ -83,7 +83,7 @@
 
 		<div class="flex items-baseline justify-between gap-3">
 			<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-				<MinusOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Never built
+				<MinusOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />No release
 			</dt>
 			<dd class="t-figure text-gray-900 tabular-nums dark:text-white">{summary.neverBuiltCount}</dd>
 		</div>

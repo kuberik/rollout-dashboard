@@ -1109,9 +1109,14 @@ describe('builtElsewhere / joined dependency reasons (CHANGES-2026-09-10 fix pas
 		);
 		const dependentSvc = vm.services.find((s) => s.appName === 'widget-app')!;
 		expect(dependentSvc.cells[0].state).toBe('waiting-upstream');
-		expect(dependentSvc.cells[0].reason).toBe(
-			'waiting on api-app — its build of this change does not exist yet'
-		);
+		// ⭐ ROUND 3B (2026-09-10, coordinator correction) — the reason is the
+		// ORDINARY dependency constraint sentence (`blocking-story.ts`'s own
+		// "Waiting for X to ship Y — it is on Z"), never the retired "its
+		// build of this change does not exist yet" join: under ruling A,
+		// api-app is unaffected by this change and needs a NEW release of its
+		// own contract, not a build of this specific commit.
+		expect(dependentSvc.cells[0].reason).toBe('Waiting for api-app to ship a newer api — it is on 1.0.0');
+		expect(dependentSvc.cells[0].providerHasNoBuild).toBe(true);
 	});
 
 	/**
@@ -1356,6 +1361,9 @@ describe('Round 3 (2026-09-10 ruling A, refined) — no release means not affect
 		);
 		expect(vm.services).toEqual([]);
 		expect(vm.noRelease).toBe(true);
-		expect(vm.verdict).toBe('No release for this commit yet');
+		// ⭐ ROUND 3B (2026-09-10) — "no release for this commit", not "…yet":
+		// "yet" promises a future build this dashboard cannot back up (it
+		// cannot tell a skipped build from a failed one).
+		expect(vm.verdict).toBe('No release for this commit');
 	});
 });

@@ -635,10 +635,11 @@ describe('standingWords — ≤4 words for every PrState', () => {
 	});
 
 	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built" is retired copy.
-	it('reads "no release yet" when a service exists but nothing has built', () => {
+	// ⭐ ROUND 3B (2026-09-10) — "no release yet" → "no release" (no promise).
+	it('reads "no release" when a service exists but nothing has built', () => {
 		const vm = mkVm([mkService('a', [mkCell('not-built')])]);
 		const grid = buildLandingGrid(vm, new Date());
-		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('no release yet');
+		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('no release');
 	});
 
 	// ⭐ ROUND 3 (2026-09-10 ruling A). Renamed from "not built here" — the
@@ -705,12 +706,16 @@ function mkRows(overrides: Partial<ChangeRowVM>[]): ChangeRowVM[] {
 }
 
 describe('changesSummary', () => {
-	it('counts the merged feed, held and never-built rows', () => {
+	it('counts the merged feed, held and no-release rows', () => {
+		// ⭐ ROUND 3B — `neverBuiltCount` reads `noRelease` directly, not
+		// `verdictTone === 'not-built'` (that tone is ALSO worn by "no app on
+		// this cluster deploys this repository at all", a different fact
+		// never labelled "no release" anywhere else in the product).
 		const rows = mkRows([
 			{ verdictTone: 'live' },
 			{ verdictTone: 'held' },
 			{ verdictTone: 'held' },
-			{ verdictTone: 'not-built' }
+			{ verdictTone: 'not-built', noRelease: true }
 		]);
 		const s = changesSummary(rows);
 		expect(s.mergedCount).toBe(4);

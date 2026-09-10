@@ -98,7 +98,17 @@
 	);
 
 	const ROW_CAP = 5;
-	const rows = $derived(buildChangeRows(mine, rollouts, environments, rolloutDependencies, $now));
+	// ⭐ ROUND 3B (2026-09-10, "NO RELEASE MEANS NOT AFFECTED, AND MUST NOT
+	// COMPETE"). A bare commit or merged PR with no release anywhere is not
+	// deployable and never appears on this card — not even folded behind a
+	// "N commits produced no release" line (that fold exists on `/changes`
+	// and the repository page, which have room for it; this card does not,
+	// and the whole point of a rail card is that every row is a real
+	// answer). Filtered here, once, so every count below (`myCount`,
+	// `notEverywhereMine`, `allLive`) is already scoped to released changes.
+	const rows = $derived(
+		buildChangeRows(mine, rollouts, environments, rolloutDependencies, $now).filter((r) => !r.noRelease)
+	);
 	// The rollup counts read off every row THIS card built (before the ≤5
 	// cap), never `shown.length` — a stray divergence between this card's own
 	// filter and the shared function's would fail loudly (a count mismatch)

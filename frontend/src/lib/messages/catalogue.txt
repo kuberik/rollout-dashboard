@@ -358,8 +358,8 @@ lib/components/HowChangesAreGoing.svelte	code	… not everywhere yet
 lib/components/HowChangesAreGoing.svelte	code	all landed
 lib/components/HowChangesAreGoing.svelte	title	How your changes are going
 lib/components/HowChangesAreGoing.svelte	text	Merged · 30d
-lib/components/HowChangesAreGoing.svelte	text	Never built
 lib/components/HowChangesAreGoing.svelte	text	no measured trip yet
+lib/components/HowChangesAreGoing.svelte	text	No release
 lib/components/HowChangesAreGoing.svelte	text	Typical to prod
 lib/components/HowItsGoing.svelte	code	At least one rollout counted here has hit its version history retention limit, so earlier deploys have already been evicted from the API — this count is a floor, not a total.
 lib/components/HowItsGoing.svelte	text	Deploys · … …
@@ -758,7 +758,6 @@ lib/view-models/changes.ts	code	held · …
 lib/view-models/changes.ts	code	held in …
 lib/view-models/changes.ts	code	live everywhere
 lib/view-models/changes.ts	code	no release
-lib/view-models/changes.ts	code	no release yet
 lib/view-models/changes.ts	code	not built here
 lib/view-models/changes.ts	code	not deployed here
 lib/view-models/changes.ts	code	not yet
@@ -851,6 +850,7 @@ lib/view-models/pr-pipeline.ts	code	live (since before recorded history)
 lib/view-models/pr-pipeline.ts	code	live everywhere
 lib/view-models/pr-pipeline.ts	code	manifest unreadable
 lib/view-models/pr-pipeline.ts	code	no environments
+lib/view-models/pr-pipeline.ts	code	no release for this commit
 lib/view-models/pr-pipeline.ts	code	no release for this commit yet
 lib/view-models/pr-pipeline.ts	code	No service on this cluster deploys this repository
 lib/view-models/pr-pipeline.ts	code	not built
@@ -867,7 +867,6 @@ lib/view-models/pr-pipeline.ts	code	the bake failed
 lib/view-models/pr-pipeline.ts	code	the bake was cancelled
 lib/view-models/pr-pipeline.ts	code	waiting for … first
 lib/view-models/pr-pipeline.ts	code	waiting for the next reconcile
-lib/view-models/pr-pipeline.ts	code	waiting on … — its build of this change does not exist yet
 lib/view-models/pr-pipeline.ts	code	waiting on … to reach …
 lib/view-models/regions.ts	code	… … across … builds
 lib/view-models/regions.ts	code	… … with no deploy yet
@@ -1177,6 +1176,7 @@ routes/changes/[...slug]/+page.svelte	text	… … … · live … · updated
 routes/changes/[...slug]/+page.svelte	code	… · every other place on its newest build
 routes/changes/[...slug]/+page.svelte	code	… · kuberik
 routes/changes/[...slug]/+page.svelte	code	… +… more
+routes/changes/[...slug]/+page.svelte	text	… commit … produced no release ›
 routes/changes/[...slug]/+page.svelte	code	… file…
 routes/changes/[...slug]/+page.svelte	text	… not everywhere yet
 routes/changes/[...slug]/+page.svelte	text	… open … · … … … · … … head
@@ -1189,6 +1189,7 @@ routes/changes/[...slug]/+page.svelte	code	A check has not passed yet — it cle
 routes/changes/[...slug]/+page.svelte	text	All changes
 routes/changes/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
 routes/changes/[...slug]/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
+routes/changes/[...slug]/+page.svelte	text	CI did not publish a build for this commit; the dashboard cannot tell whether it failed or was skipped.
 routes/changes/[...slug]/+page.svelte	code	closed by @…
 routes/changes/[...slug]/+page.svelte	title	Closed without merging
 routes/changes/[...slug]/+page.svelte	text	Commit … is not in … / …
@@ -1196,6 +1197,7 @@ routes/changes/[...slug]/+page.svelte	code	committed … ago
 routes/changes/[...slug]/+page.svelte	code	committed … ago by @…
 routes/changes/[...slug]/+page.svelte	text	Connect GitHub
 routes/changes/[...slug]/+page.svelte	text	Connect GitHub to see this pull request
+routes/changes/[...slug]/+page.svelte	code	deployed to … of … rollouts
 routes/changes/[...slug]/+page.svelte	code	every place is on its newest build
 routes/changes/[...slug]/+page.svelte	title	Every rollout
 routes/changes/[...slug]/+page.svelte	placeholder	Find a build or service
@@ -1242,6 +1244,7 @@ routes/changes/[...slug]/+page.svelte	text	View commit
 routes/changes/[...slug]/+page.svelte	text	View on GitHub
 routes/changes/+page.svelte	text	… · … repositor …
 routes/changes/+page.svelte	code	… change……
+routes/changes/+page.svelte	text	… commit … produced no release ›
 routes/changes/+page.svelte	text	… not everywhere yet
 routes/changes/+page.svelte	text	… of … live
 routes/changes/+page.svelte	code	· … not everywhere

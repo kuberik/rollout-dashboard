@@ -21,7 +21,7 @@
 		type PrCell
 	} from '$lib/view-models/pr-pipeline';
 	import { buildLandingGrid, orderByVerdict, classify, worstCell } from '$lib/view-models/landing-grid';
-	import { checksLine, cellStateSentence, reasonTail } from '$lib/pr-cell-copy';
+	import { checksLine, cellStateSentence, cellReasonText } from '$lib/pr-cell-copy';
 	import { changesQueryOptions } from '$lib/api/changes';
 	import { buildChangeRows } from '$lib/view-models/changes';
 	import { median, compactSpan } from '$lib/view-models/lead-time';
@@ -370,6 +370,17 @@
 	 *  at 30, same idiom as the index's "Your changes" block. */
 	const REPO_CHANGES_CAP = 30;
 	let repoChangesExpanded = $state(false);
+	/**
+	 * ⭐ ROUND 3B (2026-09-10) — "NO RELEASE MEANS NOT AFFECTED, AND MUST NOT
+	 * COMPETE". This is the exact list a live fleet measured at 43 of 61 rows
+	 * being bare commits with no release, interleaved by time with the four
+	 * PRs that matter. `repoReleasedRows` competes for the section's own
+	 * count/pagination; `repoNoReleaseRows` folds behind one muted footer
+	 * line that expands in place — same idiom as the index's "Your changes".
+	 */
+	const repoReleasedRows = $derived(repoChangeRows.filter((r) => !r.noRelease));
+	const repoNoReleaseRows = $derived(repoChangeRows.filter((r) => r.noRelease));
+	let repoNoReleaseExpanded = $state(false);
 
 	// THE COVERAGE.
 	const coverage = $derived(row ? revisionCoverage(row, coarse) : null);
@@ -1353,6 +1364,24 @@
 	 */
 	const changeRolloutsTotal = $derived(changeVm?.rolloutsTotal ?? 0);
 	const changeRolloutsLive = $derived(changeVm?.rolloutsLive ?? 0);
+	/**
+	 * ⭐ ROUND 3B (2026-09-10, coordinator correction) — WITH EXACTLY ONE
+	 * AFFECTED SERVICE, THE "EVERY ROLLOUT" CARD SAYS NOTHING A READER DOES
+	 * NOT ALREADY HAVE. "Every rollout" exists to answer "how far across the
+	 * FLEET did this go" when several services carry the change — with one
+	 * service, that card's own body collapses to "all 1 service" (the
+	 * `allSameLabel` fold), a card-sized restatement of the one service card
+	 * already below it. The card is omitted in that case; the ONE fact it
+	 * carried ("deployed to N of M rollouts") moves into the head band
+	 * instead, so the reader still gets it without a card that answers a
+	 * question only relevant once there is more than one service.
+	 */
+	const showEveryRolloutCard = $derived(changeRolloutsTotal > 0 && (changeVm?.services.length ?? 0) !== 1);
+	const changeRolloutsHeadBandLine = $derived(
+		changeRolloutsTotal > 0 && changeVm?.services.length === 1
+			? `deployed to ${changeRolloutsLive} of ${changeRolloutsTotal} rollouts`
+			: null
+	);
 
 	/**
 	 * ⛔ FIX PASS ITEM 7, 2026-09-10 — THE BLOCKING FACT IS A `HeldBanner`,
@@ -1390,23 +1419,28 @@
 				changeFrontier.cell.state === 'waiting-upstream')
 	);
 	/**
-	 * ⭐ FIX PASS ITEM 2, 2026-09-10 — THE JOINED REASON REACHES THE BANNER.
-	 * `cellStateSentence` alone prints only "waiting on hello-api-app" for a
-	 * `waiting-upstream` frontier — `joinDependencyReasons` (`pr-pipeline.ts`,
-	 * RULING 4) already computed the more useful ADDED fact ("its build of
-	 * this change does not exist yet") onto `cell.reason`, but nothing read
-	 * it here. `reasonTail` strips the shared "waiting on X" prefix so it is
-	 * not printed twice — the banner's one message line ends up "waiting on
-	 * hello-api-app — its build of this change does not exist yet" instead
-	 * of stopping short.
+	 * ⭐ ROUND 3B (2026-09-10, coordinator correction) — THE CONSTRAINT
+	 * SENTENCE REACHES THE BANNER, NEVER THE RETIRED JOIN. `cellStateSentence`
+	 * alone prints only "waiting on hello-api-app" for a `waiting-upstream`
+	 * frontier — the fuller fact worth showing is `cellReasonText`'s own
+	 * reason, `blocking-story.ts`'s dependency clause ("Waiting for
+	 * hello-api-app to ship api ^1.68.0 — it is on 1.67.0"), which already
+	 * names the provider, the contract, the required range and what it
+	 * currently serves. Previously this composed `cellStateSentence` with
+	 * `reasonTail`'s stripped-prefix join, which (before that join was
+	 * retired) printed the false "its build of this change does not exist
+	 * yet" — under ruling A the provider is simply unaffected and needs an
+	 * ordinary new release, not "a build of this change". The verdict's own
+	 * "will not move on its own" tail (`buildChangeVerdict`) is unaffected —
+	 * it is a separate fact, drawn once, up in the head band.
 	 */
 	const changeHeldMessage = $derived.by(() => {
 		if (!changeFrontier) return '';
-		const sentence = cellStateSentence(changeFrontier.cell, coarse, {
-			builtElsewhere: changeFrontier.builtElsewhere
-		});
-		const tail = reasonTail(changeFrontier.cell, coarse);
-		return tail ? `${sentence} — ${tail}` : sentence;
+		const reason = cellReasonText(changeFrontier.cell, coarse);
+		return (
+			reason ??
+			cellStateSentence(changeFrontier.cell, coarse, { builtElsewhere: changeFrontier.builtElsewhere })
+		);
 	});
 	const changeHeldPrimary = $derived.by<{ href: string; label: string } | null>(() => {
 		if (!changeFrontier || changeFrontier.cell.gateSubjectKind !== 'service' || !changeFrontier.cell.gateSubject) {
@@ -1650,10 +1684,23 @@
 								/>
 							</div>
 						{:else}
-							<h2 class="t-headline mb-4 text-gray-900 dark:text-white">{changeVm.verdict}</h2>
+							<h2 class="t-headline text-gray-900 dark:text-white" class:mb-4={!changeVm.noRelease}>
+								{changeVm.verdict}
+							</h2>
+							{#if changeVm.noRelease}
+								<!-- ⭐ ROUND 3B (2026-09-10) — `docs/changes.md`'s own honesty
+								     limit, named rather than implied. This dashboard has no
+								     signal for "CI decided not to build this" vs. "CI tried
+								     and failed" — printing an ETA or a bare silence would both
+								     claim more than it knows. -->
+								<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">
+									CI did not publish a build for this commit; the dashboard cannot tell whether it failed
+									or was skipped.
+								</p>
+							{/if}
 						{/if}
 
-						{#if changeRolloutsTotal > 0}
+						{#if showEveryRolloutCard}
 							<!--
 								⭐ ROUND 2, R2.3 — "THE GRID GETS A CARD." Was two bare
 								`<p>` sentences ("N of M rollouts have a build…", "Not
@@ -2038,7 +2085,7 @@
 			</div>
 		</div>
 
-		{#if repoChangeRows.length > 0}
+		{#if repoReleasedRows.length > 0 || repoNoReleaseRows.length > 0}
 			<!--
 				⭐ ROUND 3 RULING B — "THAT REPOSITORY'S CHANGES AS COMPACT ROWS
 				(PAGINATED)". Supersedes round 2's own two sections
@@ -2050,15 +2097,22 @@
 				on the change page only), paginated at 30, above the round-11
 				ops content untouched below it.
 
+				⭐ ROUND 3B (2026-09-10) — "NO RELEASE MEANS NOT AFFECTED, AND
+				MUST NOT COMPETE". A live fleet measured 43 of 61 rows here as
+				bare commits with no release anywhere, interleaved by time with
+				the four PRs that matter. `repoReleasedRows` is the list that
+				competes for the count/pagination below; `repoNoReleaseRows`
+				folds behind one muted footer line that expands in place.
+
 				Landmark order (unchanged): `<repo>` → `Changes` →
 				`What each service runs` → … — this section sits exactly where
 				the superseded two-section block did.
 			-->
-			{@const repoNotEverywhereCount = repoChangeRows.filter((r) => r.notEverywhere).length}
+			{@const repoNotEverywhereCount = repoReleasedRows.filter((r) => r.notEverywhere).length}
 			{@const repoChangesShown = repoChangesExpanded
-				? repoChangeRows
-				: repoChangeRows.slice(0, REPO_CHANGES_CAP)}
-			{@const repoChangesHiddenCount = repoChangeRows.length - repoChangesShown.length}
+				? repoReleasedRows
+				: repoReleasedRows.slice(0, REPO_CHANGES_CAP)}
+			{@const repoChangesHiddenCount = repoReleasedRows.length - repoChangesShown.length}
 			<section class="mb-8">
 				<div class="mb-3 flex items-center gap-2">
 					<span
@@ -2068,24 +2122,44 @@
 							: 'bg-gray-400'}"
 					></span>
 					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Changes</h2>
-					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoChangeRows.length}</span>
+					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoReleasedRows.length}</span>
 					{#if repoNotEverywhereCount > 0}
 						<span class="text-xs text-gray-500 dark:text-gray-400"
 							>{repoNotEverywhereCount} not everywhere yet</span
 						>
 					{/if}
 				</div>
-				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-					{#each repoChangesShown as row (row.href)}
-						<ChangeLine {row} now={coarse} />
-					{/each}
-				</ul>
-				{#if !repoChangesExpanded && repoChangesHiddenCount > 0}
+				{#if repoReleasedRows.length > 0}
+					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+						{#each repoChangesShown as row (row.href)}
+							<ChangeLine {row} now={coarse} />
+						{/each}
+					</ul>
+					{#if !repoChangesExpanded && repoChangesHiddenCount > 0}
+						<button
+							type="button"
+							class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+							onclick={() => (repoChangesExpanded = true)}>Show {repoChangesHiddenCount} more ›</button
+						>
+					{/if}
+				{/if}
+				{#if repoNoReleaseRows.length > 0}
+					<!-- ⭐ ROUND 3B — THE FOLD, same idiom as the index's "Your
+					     changes". -->
 					<button
 						type="button"
 						class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-						onclick={() => (repoChangesExpanded = true)}>Show {repoChangesHiddenCount} more ›</button
+						onclick={() => (repoNoReleaseExpanded = !repoNoReleaseExpanded)}
 					>
+						{repoNoReleaseRows.length} commit{repoNoReleaseRows.length === 1 ? '' : 's'} produced no release ›
+					</button>
+					{#if repoNoReleaseExpanded}
+						<ul class="mt-2 divide-y divide-gray-100 dark:divide-gray-700/60">
+							{#each repoNoReleaseRows as row (row.href)}
+								<ChangeLine {row} now={coarse} />
+							{/each}
+						</ul>
+					{/if}
 				{/if}
 			</section>
 		{/if}
@@ -2339,6 +2413,11 @@
 						{/if}
 					</p>
 				{/if}
+				{#if changeRolloutsHeadBandLine}
+					<!-- ⭐ ROUND 3B — the one fact the omitted "Every rollout" card
+					     would have carried, with exactly one affected service. -->
+					<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">{changeRolloutsHeadBandLine}</p>
+				{/if}
 			</header>
 
 			{#if prData.state === 'open'}
@@ -2419,6 +2498,11 @@
 					<span aria-hidden="true">↗</span>
 				</a>
 			</p>
+			{#if changeRolloutsHeadBandLine}
+				<!-- ⭐ ROUND 3B — the one fact the omitted "Every rollout" card
+				     would have carried, with exactly one affected service. -->
+				<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">{changeRolloutsHeadBandLine}</p>
+			{/if}
 		</header>
 		{@render changeBody()}
 	{:else if ledger && row}

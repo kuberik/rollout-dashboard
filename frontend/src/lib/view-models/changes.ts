@@ -431,10 +431,22 @@ export type ChangesSummary = {
 	repoCount: number;
 };
 
+/**
+ * ⭐ ROUND 3B (2026-09-10, "NO RELEASE MEANS NOT AFFECTED, AND MUST NOT
+ * COMPETE"). `count`/`notEverywhereCount` are computed over changes that
+ * carry at least one affected service (`!r.noRelease`) — a bare commit or a
+ * merged PR nothing on the cluster ever released is not deployable and does
+ * not get to inflate "N changes" or "N not everywhere yet" (a live fleet
+ * measured 43 of 61 rows this way, all reading "no release", none of them
+ * competing with the four that actually matter). `repoCount` is unchanged —
+ * a repository is still "seen" whether or not its most recent activity has
+ * a release yet.
+ */
 export function summarizeChangeRows(rows: readonly ChangeRowVM[]): ChangesSummary {
+	const released = rows.filter((r) => !r.noRelease);
 	return {
-		count: rows.length,
-		notEverywhereCount: rows.filter((r) => r.notEverywhere).length,
+		count: released.length,
+		notEverywhereCount: released.filter((r) => r.notEverywhere).length,
 		repoCount: new Set(rows.map((r) => r.repoKey)).size
 	};
 }
@@ -663,7 +675,7 @@ export function standingWords(
 	// FIRST, ahead of `verdictTone`, so this reads correctly however the
 	// caller reached `not-built` (the real pipeline's own `noRelease`, or a
 	// hand-built fixture that never set the flag).
-	if (row.noRelease) return 'no release yet';
+	if (row.noRelease) return 'no release';
 	if (row.verdictTone === 'live') return 'live everywhere';
 	if (row.verdictTone === 'not-built') {
 		// `grid.services.length === 0` with `noRelease` falsy is the OTHER
@@ -674,9 +686,9 @@ export function standingWords(
 		// `furthestCompact` for the same split). A service that DOES exist
 		// with an actual `not-built` cell (a hand-built fixture bypassing
 		// `buildPrPipeline`, which never produces this shape for real) reads
-		// the same "no release yet" `noRelease` does, rather than a THIRD
+		// the same "no release" `noRelease` does, rather than a THIRD
 		// phrase for a case the real pipeline cannot produce.
-		return row.grid.services.length === 0 ? 'not deployed here' : 'no release yet';
+		return row.grid.services.length === 0 ? 'not deployed here' : 'no release';
 	}
 
 	const step = frontierStandingStep(row);
@@ -772,7 +784,13 @@ export function changesSummary(rows: readonly ChangeRowVM[]): ChangesRailSummary
 		typicalToProdMs: typicalToProdMs(rows),
 		typicalToProdSamples: samples.length,
 		heldCount: rows.filter((r) => r.verdictTone === 'held').length,
-		neverBuiltCount: rows.filter((r) => r.verdictTone === 'not-built').length
+		// ⭐ ROUND 3B — "No release · 43" (was "Never built"). Reads `r.noRelease`
+		// directly, not `verdictTone === 'not-built'`: the latter tone is also
+		// worn by the OTHER zero-service shape ("no app on this cluster
+		// deploys this repository at all", a fact about the REPO, never
+		// printed as "no release" anywhere else — folding it in here would
+		// have double-counted a different bucket under this label).
+		neverBuiltCount: rows.filter((r) => r.noRelease).length
 	};
 }
 
@@ -830,9 +848,13 @@ export type RepoProgress = {
  * changes · 2 not everywhere · typical to prod 5m". Scopes `rows` to
  * `repoKey` itself (the caller does not need to pre-filter), so it is safe
  * to call once per repo over the SAME full feed `recentByRepo` also reads.
+ *
+ * ⭐ ROUND 3B — excludes `noRelease` rows from every count. A repo's card
+ * counts what it actually shipped, not the bare commits sitting beside it
+ * with nothing to show.
  */
 export function repoProgress(rows: readonly ChangeRowVM[], repoKey: string): RepoProgress {
-	const repoRows = rows.filter((r) => r.repoKey === repoKey);
+	const repoRows = rows.filter((r) => r.repoKey === repoKey && !r.noRelease);
 	return {
 		changes: repoRows.length,
 		notEverywhere: repoRows.filter((r) => r.notEverywhere).length,
@@ -848,10 +870,15 @@ export function repoProgress(rows: readonly ChangeRowVM[], repoKey: string): Rep
  * `repoChipOptions()` and re-filtering/re-slicing the full array once per
  * repo. Preserves the feed's own newest-first order within each bucket
  * (never re-sorts) because `rows` is assumed newest-first already.
+ *
+ * ⭐ ROUND 3B — a `noRelease` row is skipped outright: it has nothing to
+ * show (no landing grid, no standing beyond "no release") and must not
+ * spend one of the 5 "most recent" slots a released change could use.
  */
 export function recentByRepo(rows: readonly ChangeRowVM[], n: number): Map<string, ChangeRowVM[]> {
 	const out = new Map<string, ChangeRowVM[]>();
 	for (const row of rows) {
+		if (row.noRelease) continue;
 		const bucket = out.get(row.repoKey);
 		if (bucket) {
 			if (bucket.length < n) bucket.push(row);

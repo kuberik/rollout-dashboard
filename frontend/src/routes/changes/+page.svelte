@@ -145,13 +145,30 @@
 	 * ⭐ ROUND 3 RULING B, BLOCK 1 — "YOUR CHANGES". Every merged change
 	 * authored by the viewer, stuck-first (`orderHomeChangeRows` — the same
 	 * ordering Home's own card uses), paginated at 20.
+	 *
+	 * ⭐ ROUND 3B (2026-09-10) — "NO RELEASE MEANS NOT AFFECTED, AND MUST NOT
+	 * COMPETE". A live fleet measured 43 of 61 rows here as bare commits with
+	 * no release anywhere ("Initial commit" ×5, "Add patchN"…), interleaved
+	 * BY TIME with the four PRs that actually matter — `orderHomeChangeRows`
+	 * treats every non-`live` row as equally "stuck", so a commit nothing
+	 * ever built sorted right next to a genuinely held PR. `mineRows` is
+	 * split in two: `mineReleased` (has at least one affected service) is
+	 * the list that competes for the cap/pagination above, unchanged
+	 * otherwise; `mineNoRelease` is folded behind one muted footer line —
+	 * "N commits produced no release ›" — that expands IN PLACE to the same
+	 * compact rows, still newest-first among themselves (every one of them
+	 * shares the same "no release" standing, so time is the only ordering
+	 * left to make).
 	 */
 	const MINE_CAP = 20;
 	const mineRows = $derived(orderHomeChangeRows(filterChangeRows(allRows, currentUser, { mine: true, q: searchQuery })));
+	const mineReleased = $derived(mineRows.filter((r) => !r.noRelease));
+	const mineNoRelease = $derived(mineRows.filter((r) => r.noRelease));
 	let mineExpanded = $state(false);
-	const mineShown = $derived(mineExpanded ? mineRows : mineRows.slice(0, MINE_CAP));
-	const mineHiddenCount = $derived(mineRows.length - mineShown.length);
-	const mineAlert = $derived(mineRows.some((r) => r.verdictTone === 'held' || r.verdictTone === 'failed'));
+	const mineShown = $derived(mineExpanded ? mineReleased : mineReleased.slice(0, MINE_CAP));
+	const mineHiddenCount = $derived(mineReleased.length - mineShown.length);
+	const mineAlert = $derived(mineReleased.some((r) => r.verdictTone === 'held' || r.verdictTone === 'failed'));
+	let mineNoReleaseExpanded = $state(false);
 
 	/**
 	 * ⭐ ROUND 3 RULING B, BLOCK 2 — "REPOSITORIES". One card per repo seen in
@@ -431,24 +448,47 @@
 									aria-hidden="true"
 								></span>
 								<h2 class="text-base font-semibold text-gray-900 dark:text-white">Your changes</h2>
-								<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{mineRows.length}</span>
+								<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{mineReleased.length}</span>
 							</div>
-							{#if mineRows.length === 0}
+							{#if mineReleased.length === 0 && mineNoRelease.length === 0}
 								<p class="t-body text-gray-500 dark:text-gray-400">
 									Nothing of yours merged in the last 30 days.
 								</p>
 							{:else}
-								<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-									{#each mineShown as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
-										<ChangeLine {row} showRepo now={$now} />
-									{/each}
-								</ul>
-								{#if !mineExpanded && mineHiddenCount > 0}
+								{#if mineReleased.length > 0}
+									<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+										{#each mineShown as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
+											<ChangeLine {row} showRepo now={$now} />
+										{/each}
+									</ul>
+									{#if !mineExpanded && mineHiddenCount > 0}
+										<button
+											type="button"
+											class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+											onclick={() => (mineExpanded = true)}>Show {mineHiddenCount} more ›</button
+										>
+									{/if}
+								{/if}
+								{#if mineNoRelease.length > 0}
+									<!-- ⭐ ROUND 3B — THE FOLD. A bare commit or PR with no
+									     release anywhere is not deployable and must not
+									     compete with the changes above; it is named once,
+									     as a count, and expands IN PLACE to the same compact
+									     rows on demand. -->
 									<button
 										type="button"
 										class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-										onclick={() => (mineExpanded = true)}>Show {mineHiddenCount} more ›</button
+										onclick={() => (mineNoReleaseExpanded = !mineNoReleaseExpanded)}
 									>
+										{mineNoRelease.length} commit{mineNoRelease.length === 1 ? '' : 's'} produced no release ›
+									</button>
+									{#if mineNoReleaseExpanded}
+										<ul class="mt-2 divide-y divide-gray-100 dark:divide-gray-700/60">
+											{#each mineNoRelease as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
+												<ChangeLine {row} showRepo now={$now} />
+											{/each}
+										</ul>
+									{/if}
 								{/if}
 							{/if}
 						</section>

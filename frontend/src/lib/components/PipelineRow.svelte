@@ -423,9 +423,17 @@
 	</div>
 
 	{#if cell.releaseLabel}
+		<!-- ⭐ ROUND 3B (2026-09-10, coordinator correction) — LABEL AND SHA NEED
+		     A SEPARATOR. Concatenated with nothing between them this printed
+		     "2.68.0-68bf5be49" — a version tag butted directly against a sha
+		     with no visual break, easy to misread as one token. `·` (mono,
+		     same muted ink as the sha) matches every other label/identifier
+		     pairing on this page (`#{n} · owner/repo`, `sha · owner/repo`). -->
 		<p class="pl-10 pr-4 pb-1.5 t-micro font-mono text-gray-500 dark:text-gray-400">
 			{cell.releaseLabel}{#if shortRevision}
-				<span class="text-gray-400 dark:text-gray-500">{shortRevision}</span>
+				<span class="text-gray-400 dark:text-gray-500"> · </span><span
+					class="text-gray-400 dark:text-gray-500">{shortRevision}</span
+				>
 			{/if}
 		</p>
 	{/if}

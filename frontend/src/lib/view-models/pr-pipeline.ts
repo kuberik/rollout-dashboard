@@ -1123,14 +1123,27 @@ export function buildChangeVerdict(services: PrService[]): { word: string; tone:
  * ⭐ RULING 4 (CHANGES-2026-09-10 fix pass, "JOIN THE REASON"). A second pass
  * over already-built services: a `waiting-upstream` cell whose dependency
  * `subjectKind === 'service'` may be waiting on a service that is ITSELF one
- * of this same change's own services — in which case the generic gate
- * clause ("Waiting for hello-api-app to ship api ^1.67.0 — it is on
- * 1.66.0") is replaced with the more useful fact this VM can now see across
- * services: does the provider have a build of THIS change anywhere, and has
- * it reached the SAME env/cluster the waiting cell is in? Runs after every
- * service is built because it is the only point every service's cells are
- * all in hand at once. Mutates no cell in place — returns fresh cell/service
- * objects so nothing else that captured a reference is surprised.
+ * of this same change's own services — in which case this VM can see
+ * something the generic gate clause alone cannot: does the provider have a
+ * build of THIS change anywhere, and has it reached the SAME env/cluster the
+ * waiting cell is in? Runs after every service is built because it is the
+ * only point every service's cells are all in hand at once. Mutates no cell
+ * in place — returns fresh cell/service objects so nothing else that
+ * captured a reference is surprised.
+ *
+ * ⭐ ROUND 3B (2026-09-10, coordinator correction) — RETIRED: "its build of
+ * this change does not exist yet". Under ruling A ("no release means not
+ * affected"), a provider with no release evidence for this exact commit is
+ * not "missing a build of this change" — it needs a NEW, ordinary release of
+ * its own contract, exactly like any other unsatisfied dependency. The
+ * generic gate clause `buildCell` already computed (`pick.short`,
+ * `blocking-story.ts`'s own dependency branch — "Waiting for hello-api-app
+ * to ship api ^1.68.0 — it is on 1.67.0", naming the provider, the contract,
+ * the required range and what it currently serves) is the true, actionable
+ * sentence and is left untouched in both branches below. Only
+ * `providerHasNoBuild` is still set — `buildChangeVerdict`'s own "will not
+ * move on its own" tail is the one place that fact belongs, not a second,
+ * invented reason on the cell.
  */
 function joinDependencyReasons(
 	services: readonly PrService[],
@@ -1145,16 +1158,10 @@ function joinDependencyReasons(
 			}
 			// ⭐ ROUND 3 (2026-09-10 ruling A). A provider dropped entirely for
 			// having no release evidence at all (`buildPrPipeline`'s own
-			// `unaffectedServices`) joins exactly as if it were present with
-			// every cell `not-built` — without this, `byName.get` below returns
-			// `undefined` for it and the cell keeps its generic, less useful
-			// reason.
+			// `unaffectedServices`) still needs `providerHasNoBuild` set — the
+			// cell's own `reason` (the generic dependency clause) stays as-is.
 			if (unaffected.has(cell.gateSubject)) {
-				return {
-					...cell,
-					reason: `waiting on ${cell.gateSubject} — its build of this change does not exist yet`,
-					providerHasNoBuild: true
-				};
+				return { ...cell, providerHasNoBuild: true };
 			}
 			const provider = byName.get(cell.gateSubject);
 			if (!provider) return cell;
@@ -1163,12 +1170,8 @@ function joinDependencyReasons(
 				// ⭐ FIX PASS ITEM 5. `providerHasNoBuild` is the honest "will not
 				// move on its own" signal `buildChangeVerdict` reads to add its
 				// own tail — this cell cannot resolve no matter how long the
-				// reader waits, because the thing it needs does not exist yet.
-				return {
-					...cell,
-					reason: `waiting on ${cell.gateSubject} — its build of this change does not exist yet`,
-					providerHasNoBuild: true
-				};
+				// reader waits, because the release it needs does not exist yet.
+				return { ...cell, providerHasNoBuild: true };
 			}
 			const atSameSpot = provider.cells.find(
 				(c) => c.envName === cell.envName && c.cluster === cell.cluster
@@ -1273,8 +1276,15 @@ export function buildPrPipeline(
 	//    here" (unchanged from the original fix-pass wording — a DIFFERENT
 	//    fact from "no release", and not banned copy).
 	//  - the repository IS deployed here, but nothing anywhere carries this
-	//    exact change → `noRelease`, "no release for this commit yet".
+	//    exact change → `noRelease`, "no release for this commit".
 	//  - at least one included service exists → the ordinary frontier verdict.
+	//
+	// ⭐ ROUND 3B (2026-09-10) — "no release for this commit", not "…yet".
+	// "Yet" promises a future build this dashboard has no way to back up
+	// (`docs/changes.md`: "we cannot see a build that failed or was
+	// skipped" — CI may simply never build this commit for any service, on
+	// purpose). The change page pairs this with a muted line naming that
+	// exact limitation instead.
 	const matchedAnyRepo = services.length > 0 || unaffectedServices.length > 0;
 	const noRelease = matchedAnyRepo && services.length === 0;
 	let word: string;
@@ -1285,7 +1295,7 @@ export function buildPrPipeline(
 		tone = 'not-built';
 		verdict = 'No service on this cluster deploys this repository';
 	} else if (noRelease) {
-		word = 'no release for this commit yet';
+		word = 'no release for this commit';
 		tone = 'not-built';
 		verdict = capitalize(word);
 	} else {
