@@ -866,11 +866,22 @@
 									triggered={c.statusKey !== 'pending'}
 								>
 									{#snippet trailing()}
+										<!-- ⚠️ THE VERSION YIELDS, THE ACTION DOES NOT. `RolloutStepper`'s
+										     caption row wraps this pair onto its own line when line 1
+										     runs out (see that file's note), which resolves every width
+										     the product supports. `min-w-0 truncate` here is the floor
+										     UNDER that: a build id is unbreakable and caller-supplied, so
+										     if one ever exceeds a whole card's width it must clip — with
+										     the full string still on the `title` — rather than push the
+										     button back out of the card. `shrink-0` on the button is what
+										     makes the version the half that gives. -->
 										<span
-											class="font-mono text-xs text-gray-600 dark:text-gray-300"
+											class="min-w-0 truncate font-mono text-xs text-gray-600 dark:text-gray-300"
 											title={c.version ?? ''}>{c.version ? shortenVersion(c.version) : '—'}</span
 										>
-										<Button size="xs" color="light" href={href(c)}>{attnActionLabel(c)}</Button>
+										<Button size="xs" color="light" class="shrink-0" href={href(c)}
+											>{attnActionLabel(c)}</Button
+										>
 									{/snippet}
 								</RolloutStepper>
 							</div>

@@ -801,9 +801,9 @@
 										href={buildDatadogLogsUrl(ddInfo.service, ddInfo.env)}
 										target="_blank"
 										rel="noopener noreferrer"
-										class="inline-flex items-center gap-0.5 font-medium text-purple-600 hover:underline dark:text-purple-400"
+										class="inline-flex items-center gap-1 font-medium text-purple-600 hover:underline dark:text-purple-400"
 									>
-										<DatadogLogo class="h-2.5 w-2.5" />Logs
+										<DatadogLogo class="h-3 w-3 shrink-0" />Logs
 									</a>
 									<a
 										href={buildDatadogTestRunsUrl(
@@ -812,9 +812,9 @@
 										)}
 										target="_blank"
 										rel="noopener noreferrer"
-										class="inline-flex items-center gap-0.5 font-medium text-purple-600 hover:underline dark:text-purple-400"
+										class="inline-flex items-center gap-1 font-medium text-purple-600 hover:underline dark:text-purple-400"
 									>
-										<DatadogLogo class="h-2.5 w-2.5" />CI
+										<DatadogLogo class="h-3 w-3 shrink-0" />CI
 									</a>
 									<a
 										href={buildDatadogTraceSearchUrl(
@@ -824,9 +824,9 @@
 										)}
 										target="_blank"
 										rel="noopener noreferrer"
-										class="inline-flex items-center gap-0.5 font-medium text-purple-600 hover:underline dark:text-purple-400"
+										class="inline-flex items-center gap-1 font-medium text-purple-600 hover:underline dark:text-purple-400"
 									>
-										<DatadogLogo class="h-2.5 w-2.5" />Trace
+										<DatadogLogo class="h-3 w-3 shrink-0" />Trace
 									</a>
 								{/if}
 							</li>

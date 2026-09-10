@@ -2722,6 +2722,21 @@
 		align-items: flex-start;
 		text-align: left;
 	}
+	/* ⛔ `align-items: flex-start` ABOVE IS WHY THE CAPTION'S `truncate` NEVER
+	   FIRED. (2026-09-10) A flex COLUMN stretches its items across the cross
+	   axis (width) by default, and `flex-start` turns that off — so each child
+	   sizes to `max-content` instead of to the track, and `text-overflow:
+	   ellipsis` has nothing to clip against. Measured at 1440 and 1920 on the
+	   desktop form, where `act` is a fixed 128px track: `20 deploys in 7d ·
+	   33m ago` rendered at its full 142px and spilled 14px into the `lead`
+	   column beside it, on every app with a week of deploys behind it.
+	   `flex-start` is still right — a shorter caption must not stretch to the
+	   track and take the row's alignment with it — so the cap goes on the
+	   items: shrink-to-fit, but never past the track. `truncate` engages from
+	   here, and the sparkline's own band is capped by the same rule. */
+	.apps-act > * {
+		max-width: 100%;
+	}
 	.apps-lead {
 		grid-area: lead;
 	}

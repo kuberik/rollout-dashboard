@@ -80,11 +80,36 @@
 			<span class="h-1.5 flex-1 rounded-sm {segCls(s)}"></span>
 		{/each}
 	</div>
-	<div class="mt-1.5 flex items-center gap-2 text-[10px] leading-none">
+	<!--
+		⛔ THE CAPTION ROW WRAPS. IT USED TO BE ONE UNBREAKABLE LINE OF
+		`shrink-0` ITEMS AND THE BUTTON LEFT THE CARD. (2026-09-10)
+
+		Every item here was `shrink-0` with no `flex-wrap`, so the row's width
+		was the SUM of its parts and nothing could yield: measured on `/` at
+		1280 with two cards in `Needs you now`, `1/4 stages done · 1 failing ·
+		0.0.1-7624.d861b57 · [Retry deploy]` needed 448px of a 340px card and
+		the `Retry deploy` button rendered 58px OUTSIDE its own card, on top of
+		the neighbouring card's own caption. Same row, 61px out, for
+		`[Reconcile]`. That is the defect `ControlCenter`'s own grid note
+		("the stepper's `Retry deploy` button overhung the card next door")
+		recorded and fixed by widening the TRACK — the row itself could still
+		not survive a narrow one, so at 390 it came back and took the whole
+		page's horizontal scrollbar with it (403px of document in a 390px
+		viewport).
+
+		`flex-wrap` is the fix rather than a narrower button or a shorter
+		version, because the trailing group is the ONE part of this row whose
+		content the component does not control — the caller passes it. On its
+		own line the version + action pair measures ~234px, inside the 326px a
+		390 card gives it, so the wrap resolves at every width the product
+		supports. `ml-auto` is kept: it is per-LINE in a wrapping flex row, so
+		the pair stays flush right whether it shares line 1 or takes line 2.
+	-->
+	<div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[10px] leading-none">
 		<span class="shrink-0 text-gray-500 dark:text-gray-400">{meter.doneN}/{meter.total} stages done</span>
 		{#if trailing}
 			<span class="shrink-0 font-medium {meter.capTone}">{meter.cap}</span>
-			<span class="ml-auto flex shrink-0 items-center gap-2">{@render trailing()}</span>
+			<span class="ml-auto flex min-w-0 items-center gap-2">{@render trailing()}</span>
 		{:else}
 			<span class="ml-auto shrink-0 font-medium {meter.capTone}">{meter.cap}</span>
 		{/if}

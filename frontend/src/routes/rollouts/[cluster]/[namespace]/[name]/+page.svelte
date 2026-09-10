@@ -3415,7 +3415,9 @@
 											rel="noopener noreferrer"
 											class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/30"
 										>
-											<DatadogLogo class="h-4 w-4 flex-shrink-0 text-[#632CA6]" />
+											<!-- No ink class: the asset's fill is literal, not `currentColor` — the
+											     theme picks the official asset now (see `DatadogLogo`). -->
+											<DatadogLogo class="h-4 w-4 flex-shrink-0" />
 											<div class="min-w-0 flex-1">
 												<span class="text-sm text-gray-700 dark:text-gray-300"
 													>{datadogServiceInfo.service}</span
