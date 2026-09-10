@@ -1,5 +1,5 @@
-import { describe, test, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/svelte';
+import { describe, test, expect, vi, afterEach } from 'vitest';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
 // `pick()` calls `goto` on Enter/click — unused by every test above (none of
 // them select a row), so this file never needed the mock other palette-
 // adjacent tests already carry (`subject-uncovered.svelte.test.ts`,
@@ -8,10 +8,56 @@ import { render, fireEvent } from '@testing-library/svelte';
 // `$app/navigation` tolerates being called outside a page.
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 import CommandPalette from './CommandPalette.svelte';
+import WithQueryClient from './testing/WithQueryClient.svelte';
 import { goto } from '$app/navigation';
 import { SOURCE_CLUSTER_ANNOTATION } from './source-dashboard';
 import type { Rollout, Environment } from '../types';
 import type { MyPull } from './api/my-pulls';
+
+// ⛔ FIX PASS ITEM 6/8, 2026-09-10 — the "Your changes" tile now reads
+// `myChangesCount` off a real `changesQueryOptions()` fetch (the SAME
+// function `YourChangesCard` uses, ruling 5), not the `myPulls` prop. Most
+// tests here never select a row or open the tile, so an unmocked relative
+// `fetch('/api/github/changes?...')` simply rejects synchronously and the
+// query settles into an empty/error state — never a hang. `afterEach`
+// restores the global between tests that DO stub it.
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
+
+function stubChangesFetch(changes: Array<Record<string, unknown>>, user = 'octocat') {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn((url: string) => {
+			if (typeof url === 'string' && url.startsWith('/api/github/changes')) {
+				return Promise.resolve(
+					new Response(JSON.stringify({ user, repos: [], since: '2026-08-01T00:00:00Z', changes }), {
+						status: 200
+					})
+				);
+			}
+			return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+		})
+	);
+}
+
+function change(overrides: Partial<Record<string, unknown>> = {}) {
+	return {
+		owner: 'acme',
+		repo: 'widget',
+		kind: 'pr',
+		number: 1,
+		title: 'hello world',
+		htmlUrl: '',
+		author: 'octocat',
+		mergedAt: '2026-09-01T00:00:00Z',
+		mergeCommitSha: 'deadbeef',
+		base: 'main',
+		containedIn: [],
+		containedInAll: false,
+		...overrides
+	};
+}
 
 function baseProps() {
 	return {
@@ -52,15 +98,13 @@ describe('CommandPalette multi-cluster duplicate keys', () => {
 			rollout('demo', 'hello-world', 'dev'),
 			rollout('demo', 'hello-world', 'prod')
 		];
-		render(CommandPalette, {
-			props: {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: {
 				open: true,
 				scope: 'rollout',
 				rollouts,
 				environments: [],
 				localClusterName: 'hub'
-			}
-		});
+			} } });
 		// Both cluster instances must render as distinct rows. The overlay is
 		// portalled to `document.body` (see `a11y.svelte.ts`'s `portal`), so it
 		// is no longer a descendant of `render()`'s own `container` div.
@@ -80,15 +124,13 @@ describe('CommandPalette multi-cluster duplicate keys', () => {
  */
 describe('P8 — the palette focuses its input on open, at any pointer type', () => {
 	test('the search input is the active element as soon as the dialog opens', () => {
-		render(CommandPalette, {
-			props: {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: {
 				open: true,
 				scope: null,
 				rollouts: [],
 				environments: [],
 				localClusterName: 'hub'
-			}
-		});
+			} } });
 		expect(document.activeElement?.tagName).toBe('INPUT');
 	});
 });
@@ -109,8 +151,7 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 			environment('hello-frontend-app', 'dev'),
 			environment('hello-world-app', 'dev')
 		];
-		render(CommandPalette, {
-			props: {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: {
 				open: true,
 				scope: 'app',
 				rollouts: [],
@@ -119,8 +160,7 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 				// The route param for `/apps/hello-world-app` — NOT the first
 				// app inserted (that's `hello-frontend-app`).
 				currentName: 'hello-world-app'
-			}
-		});
+			} } });
 		const rows = document.body.querySelectorAll('[data-idx]');
 		expect(rows.length).toBe(2);
 		const selected = document.body.querySelector('[aria-selected="true"]');
@@ -132,8 +172,7 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 			rollout('demo', 'hello-world', 'dev'),
 			rollout('demo', 'hello-world', 'prod')
 		];
-		render(CommandPalette, {
-			props: {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: {
 				open: true,
 				scope: 'rollout',
 				rollouts,
@@ -141,8 +180,7 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 				localClusterName: 'hub',
 				currentNamespace: 'demo',
 				currentName: 'hello-world'
-			}
-		});
+			} } });
 		// Both rows share namespace+name; only the `prod`-cluster one is
 		// "current" per `isCurrentResult`'s `r.isCurrent` — but `isCurrent`
 		// itself only compares ns/name, so either match is acceptable here.
@@ -177,8 +215,17 @@ describe('nit 12 — focus return after close, regardless of trigger', () => {
 			(document.activeElement as HTMLElement | null)?.blur();
 			expect(document.activeElement).toBe(document.body);
 
-			const { rerender } = render(CommandPalette, { props: baseProps() });
-			await rerender({ ...baseProps(), open: false });
+			// ⛔ FIX PASS ITEM 6, 2026-09-10 — CLOSE VIA A REAL ESCAPE PRESS, NOT
+			// `rerender`. `WithQueryClient`'s own prop is (legitimately) named
+			// `props`, which `@testing-library/svelte`'s `rerender` mistakes for
+			// its OWN deprecated `{ props: {...} }` wrapper convention and
+			// unwraps — silently dropping `component` from the update and
+			// leaving the palette open. Firing the same `Escape` keydown
+			// `Navbar.svelte`'s `<svelte:window onkeydown>` listener reacts to
+			// exercises the identical code path (`handleKeydown` sets `open =
+			// false`) without touching the render harness's own prop shape.
+			render(WithQueryClient, { props: { component: CommandPalette as never, props: baseProps() } });
+			await fireEvent.keyDown(window, { key: 'Escape' });
 			await waitForFocusRestore();
 
 			expect(document.activeElement).toBe(searchButton);
@@ -198,8 +245,10 @@ describe('nit 12 — focus return after close, regardless of trigger', () => {
 			otherTrigger.focus();
 			expect(document.activeElement).toBe(otherTrigger);
 
-			const { rerender } = render(CommandPalette, { props: baseProps() });
-			await rerender({ ...baseProps(), open: false });
+			// See the sibling test above for why this closes via a real Escape
+			// press rather than `rerender`.
+			render(WithQueryClient, { props: { component: CommandPalette as never, props: baseProps() } });
+			await fireEvent.keyDown(window, { key: 'Escape' });
 			await waitForFocusRestore();
 
 			expect(document.activeElement).toBe(otherTrigger);
@@ -246,9 +295,7 @@ describe('the build index — a sha resolves regardless of the label a service c
 	// that fact rather than by the sha alone.
 	test('typing a 7-character sha prefix finds the build, even though the rollout displays a semver label', async () => {
 		const rollouts = [rolloutWithBuild('checkout-api', 'demo', '9f10e49', '2.66.0-66')];
-		const { getByRole } = render(CommandPalette, {
-			props: { ...baseProps(), rollouts }
-		});
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: { ...baseProps(), rollouts } } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: '9f10e49' } });
 
@@ -272,7 +319,7 @@ describe('the build index — a sha resolves regardless of the label a service c
 
 describe('top-level pages resolve by the name the sidebar prints', () => {
 	test('typing "Home" finds and opens the fleet-overview page', async () => {
-		const { getByRole } = render(CommandPalette, { props: baseProps() });
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: baseProps() } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'Home' } });
 
@@ -288,7 +335,7 @@ describe('top-level pages resolve by the name the sidebar prints', () => {
 		// CHANGES-2026-09-10.md §1/§2: the Go-to row is `Changes` → `/changes`
 		// now, not `Revisions` → `/revisions` (the old address 308s forever,
 		// but the palette's own row points at the live one).
-		const { getByRole } = render(CommandPalette, { props: baseProps() });
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: baseProps() } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'changes' } });
 
@@ -315,7 +362,7 @@ describe('top-level pages resolve by the name the sidebar prints', () => {
  */
 describe('the change result kind — reference rows', () => {
 	test('a full PR URL resolves to exactly one row, above everything else, with no group header', async () => {
-		const { getByRole } = render(CommandPalette, { props: baseProps() });
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: baseProps() } });
 
 		await fireEvent.input(getByRole('combobox'), {
 			target: { value: 'https://github.com/kuberik/rollout-dashboard/pull/123' }
@@ -335,7 +382,7 @@ describe('the change result kind — reference rows', () => {
 	});
 
 	test('owner/repo#123 resolves the same way', async () => {
-		const { getByRole } = render(CommandPalette, { props: baseProps() });
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: baseProps() } });
 
 		await fireEvent.input(getByRole('combobox'), {
 			target: { value: 'kuberik/rollout-dashboard#123' }
@@ -357,7 +404,7 @@ describe('the change result kind — reference rows', () => {
 				status: { source: 'https://github.com/acme/gadget.git' }
 			} as unknown as Rollout
 		];
-		const { getByRole } = render(CommandPalette, { props: { ...baseProps(), rollouts } });
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: { ...baseProps(), rollouts } } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: '#7' } });
 
@@ -371,7 +418,12 @@ describe('the change result kind — reference rows', () => {
 		expect(goto).toHaveBeenCalledWith('/changes/acme/gadget/pull/7');
 	});
 
-	test('a bare 7-character sha fans out the same way a bare #n does', async () => {
+	// ⛔ FIX PASS ITEM 8, 2026-09-10 — a bare sha no longer fans out
+	// unconditionally the way a bare #n does: `buildChangeRefPaletteResults`
+	// narrows to repos whose OWN rollout data (`availableReleases`/`history`)
+	// actually carries the revision, and only falls back to one row per repo
+	// (worded "Look up …", not "Open change …") when none do.
+	test('a bare 7-character sha nobody\'s rollout data knows offers "Look up …" per repo', async () => {
 		const rollouts = [
 			{
 				metadata: { namespace: 'gadget-dev', name: 'gadget-app' },
@@ -379,12 +431,12 @@ describe('the change result kind — reference rows', () => {
 				status: { source: 'https://github.com/acme/gadget.git' }
 			} as unknown as Rollout
 		];
-		const { getByRole } = render(CommandPalette, { props: { ...baseProps(), rollouts } });
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: { ...baseProps(), rollouts } } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'bf5be49' } });
 
 		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
-		const changeRow = rows.find((r) => r.textContent?.includes('Open change bf5be49'));
+		const changeRow = rows.find((r) => r.textContent?.includes('Look up bf5be49'));
 		expect(changeRow).toBeTruthy();
 		expect(changeRow!.textContent).toContain('gadget');
 
@@ -392,8 +444,35 @@ describe('the change result kind — reference rows', () => {
 		expect(goto).toHaveBeenCalledWith('/changes/acme/gadget/bf5be49');
 	});
 
+	test('a bare sha a rollout\'s own history carries narrows to just that repo', async () => {
+		const rollouts = [
+			{
+				metadata: { namespace: 'gadget-dev', name: 'gadget-app' },
+				spec: {},
+				status: {
+					source: 'https://github.com/acme/gadget.git',
+					availableReleases: [{ tag: 'v1', revision: 'bf5be49123456789' }]
+				}
+			} as unknown as Rollout,
+			{
+				metadata: { namespace: 'widget-dev', name: 'widget-app' },
+				spec: {},
+				status: { source: 'https://github.com/acme/widget.git' }
+			} as unknown as Rollout
+		];
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: { ...baseProps(), rollouts } } });
+
+		await fireEvent.input(getByRole('combobox'), { target: { value: 'bf5be49' } });
+
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
+		const changeRows = rows.filter((r) => /Open change bf5be49|Look up bf5be49/.test(r.textContent ?? ''));
+		expect(changeRows).toHaveLength(1);
+		expect(changeRows[0].textContent).toContain('Open change bf5be49');
+		expect(changeRows[0].textContent).toContain('gadget');
+	});
+
 	test('an unrelated query produces no ref row at all', async () => {
-		const { getByRole } = render(CommandPalette, { props: baseProps() });
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: baseProps() } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'hello world' } });
 
@@ -435,9 +514,7 @@ describe('title matches rank below rollouts/apps/environments, capped at 3', () 
 			myPull({ number: 3, title: 'hello three' }),
 			myPull({ number: 4, title: 'hello four' })
 		];
-		const { getByRole } = render(CommandPalette, {
-			props: { ...baseProps(), rollouts, myPulls }
-		});
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: { ...baseProps(), rollouts, myPulls } } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'hello' } });
 
@@ -456,7 +533,7 @@ describe('title matches rank below rollouts/apps/environments, capped at 3', () 
 
 	test('a merged pull that is NOT in the myPulls cache never renders — open/closed pulls are excluded upstream', async () => {
 		const myPulls = [myPull({ state: 'open', title: 'hello open' })];
-		const { getByRole } = render(CommandPalette, { props: { ...baseProps(), myPulls } });
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: { ...baseProps(), myPulls } } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'hello' } });
 
@@ -471,15 +548,22 @@ describe('title matches rank below rollouts/apps/environments, capped at 3', () 
  */
 describe('the "Your changes" Browse tile', () => {
 	test('renders as the fifth tile, with the merged-in-30-days count, and navigates on click', async () => {
-		const myPulls = [
-			myPull({ number: 1, title: 'one' }),
-			myPull({ number: 2, title: 'two' }),
-			myPull({ number: 3, title: 'three', state: 'open' }) // excluded — merged only
-		];
-		const { getByText } = render(CommandPalette, { props: { ...baseProps(), myPulls } });
+		// ⛔ FIX PASS ITEM 6/8, 2026-09-10 — `myChangesCount` off
+		// `changesQueryOptions()`'s own fetch (ruling 5), the SAME function
+		// and cache `YourChangesCard` reads on Home, not the `myPulls` prop
+		// (which this tile no longer counts from).
+		stubChangesFetch([
+			change({ number: 1, title: 'one' }),
+			change({ number: 2, title: 'two' }),
+			change({ number: 3, title: 'three', author: 'someone-else' }) // excluded — not mine
+		]);
+		const { getByText } = render(WithQueryClient, { props: { component: CommandPalette as never, props: baseProps() } });
 
-		const tile = getByText('Your changes').closest('button')!;
-		expect(tile.textContent).toContain('2');
+		const tile = await waitFor(() => {
+			const el = getByText('Your changes').closest('button')!;
+			expect(el.textContent).toContain('2');
+			return el;
+		});
 		expect(tile.textContent).toContain('merged in the last 30 days');
 
 		await fireEvent.click(tile);
@@ -497,9 +581,7 @@ describe('group order', () => {
 		const rollouts = [rollout('demo', 'hello-world', 'dev')];
 		const environments = [environment('hello-world', 'dev')];
 		const myPulls = [myPull({ title: 'hello change' })];
-		const { getByRole } = render(CommandPalette, {
-			props: { ...baseProps(), rollouts, environments, myPulls }
-		});
+		const { getByRole } = render(WithQueryClient, { props: { component: CommandPalette as never, props: { ...baseProps(), rollouts, environments, myPulls } } });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'hello' } });
 

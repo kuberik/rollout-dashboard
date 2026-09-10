@@ -285,6 +285,36 @@ function distinctSourceRepos(rollouts: readonly Rollout[]): { owner: string; rep
 }
 
 /**
+ * ⛔ FIX PASS ITEM 8, 2026-09-10 — DOES THIS REPO'S OWN ROLLOUT DATA KNOW
+ * THIS REVISION? Unlike a bare PR number (unresolvable without a network
+ * call, whichever repo it turns out to belong to), a SHA is a fact this
+ * cluster's own rollouts already carry — `status.availableReleases[]` (every
+ * release the registry has published) and `status.history[]` (every release
+ * this rollout has actually deployed), same two sources
+ * `revision-ledger.ts`'s own `resolveRevision` reads. Prefix-matched, same
+ * convention as every other revision lookup in this product (a 7-char sha
+ * pasted from a terminal is the common case).
+ */
+function repoKnowsRevision(rollouts: readonly Rollout[], owner: string, repo: string, sha: string): boolean {
+	const needle = sha.toLowerCase();
+	for (const r of rollouts) {
+		const source = r.status?.source;
+		if (!source) continue;
+		const parsed = ownerRepoFromSource(source);
+		if (!parsed || parsed.owner.toLowerCase() !== owner.toLowerCase() || parsed.repo.toLowerCase() !== repo.toLowerCase()) {
+			continue;
+		}
+		for (const rel of r.status?.availableReleases ?? []) {
+			if (rel.revision?.toLowerCase().startsWith(needle)) return true;
+		}
+		for (const h of r.status?.history ?? []) {
+			if (h.version?.revision?.toLowerCase().startsWith(needle)) return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Every "open this change" result the current query produces — zero, one (a
  * full reference), or one per distinct cluster repo (a bare `#123` or a bare
  * sha, both ambiguous without a network call). Rendered UNGROUPED, above the
@@ -308,8 +338,20 @@ export function buildChangeRefPaletteResults(
 			changeRefEntry(owner, repo, { kind: 'pull', number: ref.number })
 		);
 	}
-	// `ref.kind === 'sha'`
-	return repos.map(({ owner, repo }) => changeRefEntry(owner, repo, { kind: 'sha', sha: ref.sha }));
+	// `ref.kind === 'sha'` — ⛔ FIX PASS ITEM 8: narrow to the repos whose OWN
+	// rollout data actually knows this revision. When none do (the common
+	// case for a sha nobody on this cluster has built — GitHub itself may
+	// still know it), fall back to every repo, but the entry says so
+	// ("Look up …" rather than "Open change …") so the reader is not told a
+	// destination is known to exist when it is only a guess.
+	const knownIn = repos.filter(({ owner, repo }) => repoKnowsRevision(rollouts, owner, repo, ref.sha));
+	if (knownIn.length > 0) {
+		return knownIn.map(({ owner, repo }) => changeRefEntry(owner, repo, { kind: 'sha', sha: ref.sha }));
+	}
+	return repos.map(({ owner, repo }) => ({
+		...changeRefEntry(owner, repo, { kind: 'sha', sha: ref.sha }),
+		title: `Look up ${ref.sha} in ${repo}`
+	}));
 }
 
 /**

@@ -26,6 +26,7 @@
 	import Card from './Card.svelte';
 	import PipelineRow from './PipelineRow.svelte';
 	import type { PrService, PrCell } from '$lib/view-models/pr-pipeline';
+	import { cellStateSentence } from '$lib/pr-cell-copy';
 	import type { Environment, RolloutDependency } from '../../types';
 
 	let {
@@ -77,6 +78,26 @@
 		return 'neutral';
 	}
 	const tone = $derived(verdictTone(service.cells));
+
+	/**
+	 * ⛔ FIX PASS ITEM 7, 2026-09-10 — A CARD WHOSE EVERY ROW SAYS THE SAME
+	 * THING PRINTS ONE LINE, NOT N ROWS. Measured live: `hello-api-app` held
+	 * three (identical) "not built yet" rows, one per environment — the
+	 * exact "twelve rows of `not built yet`" defect CHANGES-2026-09-10.md's
+	 * own intro names as the thing to cut, still present at the CARD grain
+	 * (§2c item 1 folds it at the card-ROLLUP level already; this is the
+	 * card BODY). Folds only when `cellStateSentence` — the row's own
+	 * sentence, same call `PipelineRow` makes — agrees for every cell, not
+	 * merely `state`: two `gated` cells held by two DIFFERENT rules are not
+	 * "the same" even though their state matches.
+	 */
+	const foldedSentence = $derived.by<string | null>(() => {
+		if (service.cells.length < 2) return null;
+		const first = cellStateSentence(service.cells[0], now);
+		if (!service.cells.every((c) => cellStateSentence(c, now) === first)) return null;
+		const envNames = service.cells.map((c) => c.envName.toLowerCase()).join(' · ');
+		return `${first} in ${envNames}`;
+	});
 </script>
 
 <Card
@@ -88,18 +109,23 @@
 	verdictTone={tone}
 	padded={false}
 >
-	<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-		{#each service.cells as cell (`${cell.cluster}/${cell.envName}`)}
-			<PipelineRow
-				{cell}
-				appName={service.appName}
-				{localClusterName}
-				{multiCluster}
-				{environments}
-				{rolloutDependencies}
-				{now}
-				isFrontier={frontierKey === `${cell.cluster}/${cell.envName}`}
-			/>
-		{/each}
-	</ul>
+	{#if foldedSentence}
+		<!-- ⛔ FIX PASS ITEM 7 — ONE LINE, NOT A RUN OF IDENTICAL ROWS. -->
+		<p class="t-body px-4 py-2.5 text-gray-600 dark:text-gray-300">{foldedSentence}</p>
+	{:else}
+		<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+			{#each service.cells as cell (`${cell.cluster}/${cell.envName}`)}
+				<PipelineRow
+					{cell}
+					appName={service.appName}
+					{localClusterName}
+					{multiCluster}
+					{environments}
+					{rolloutDependencies}
+					{now}
+					isFrontier={frontierKey === `${cell.cluster}/${cell.envName}`}
+				/>
+			{/each}
+		</ul>
+	{/if}
 </Card>

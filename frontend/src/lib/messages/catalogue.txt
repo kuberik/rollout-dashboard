@@ -9,11 +9,11 @@ lib/api/commit-pulls.ts	code	Failed to fetch pull requests for this commit
 lib/api/commit-pulls.ts	code	GitHub account not connected
 lib/api/commit-pulls.ts	code	No response from the server
 lib/api/commit-pulls.ts	code	No service on this cluster deploys …/…
+lib/api/commit.ts	code	Commit … is not in …/…
 lib/api/commit.ts	code	Connect GitHub to see this commit
 lib/api/commit.ts	code	Failed to fetch this commit
 lib/api/commit.ts	code	GitHub account not connected
 lib/api/commit.ts	code	No response from the server
-lib/api/commit.ts	code	No service on this cluster deploys …/…
 lib/api/errors.ts	code	… The dashboard tried … times, and keeps checking every …s, so the page fills itself in when the server answers again.
 lib/api/errors.ts	code	… Trying again will not change the answer until something on the server side changes.
 lib/api/errors.ts	code	…… does not exist
@@ -357,6 +357,8 @@ lib/components/HowItsGoing.svelte	title	How it’s going
 lib/components/HowItsGoing.svelte	text	no measured trip yet
 lib/components/HowItsGoing.svelte	text	Typical deploy
 lib/components/HowItsGoing.svelte	text	Typical to prod
+lib/components/LandingGrid.svelte	text	+ … service …
+lib/components/LandingGrid.svelte	code	grid-template-columns: minmax(56px, var(--lg-name-w)) repeat(…, minmax(44px, auto));
 lib/components/LandingMark.svelte	code	--lm-ring: …; --lm-ring-dark: …; --lm-word: …; --lm-word-dark: …;
 lib/components/LandingMark.svelte	code	not built
 lib/components/LandingMark.svelte	code	rolled back
@@ -406,6 +408,7 @@ lib/components/PartialDataNotice.svelte	text	missing from these counts, not heal
 lib/components/PartialDataNotice.svelte	code	this page
 lib/components/pin-copy.ts	code	Clear pin
 lib/components/pin-copy.ts	code	Clear the pin on … in …?
+lib/components/PipelineCard.svelte	code	… in …
 lib/components/PipelineGlyph.svelte	title	Check window
 lib/components/PipelineRow.svelte	code	a check
 lib/components/PipelineRow.svelte	code	a deploy-window schedule
@@ -570,6 +573,7 @@ lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/history-marks.ts	code	What … replaced is unknown — it is the oldest deploy the retained history (last …) still holds.
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	aria-label	Switch rollout (⌘K)
+lib/palette-index.ts	code	Look up … in …
 lib/palette-index.ts	code	Open change … · …
 lib/pr-cell-copy.ts	code	… · … of … min
 lib/pr-cell-copy.ts	code	… of … checks failing
@@ -580,6 +584,8 @@ lib/pr-cell-copy.ts	code	deploying now
 lib/pr-cell-copy.ts	code	held by …
 lib/pr-cell-copy.ts	code	held by a rule
 lib/pr-cell-copy.ts	code	live since …
+lib/pr-cell-copy.ts	code	no build of this change for this service
+lib/pr-cell-copy.ts	code	not built (unverified)
 lib/pr-cell-copy.ts	code	not built here yet
 lib/pr-cell-copy.ts	code	not built yet
 lib/pr-cell-copy.ts	code	promoting shortly
@@ -726,13 +732,7 @@ lib/view-models/blocking-story.ts	code	Waiting for … to ship a newer … — i
 lib/view-models/blocking-story.ts	code	Waiting for its upstream environment to deploy this build
 lib/view-models/blocking-story.ts	code	Waiting for someone to approve it
 lib/view-models/blocking-story.ts	code	Waiting for the service it depends on to ship a newer version
-lib/view-models/changes.ts	code	failed in …
-lib/view-models/changes.ts	code	held in …
-lib/view-models/changes.ts	code	live everywhere
-lib/view-models/changes.ts	code	not built
 lib/view-models/changes.ts	code	not built here
-lib/view-models/changes.ts	code	not built yet
-lib/view-models/changes.ts	code	rolled back
 lib/view-models/dependencies.ts	code	… version… ahead
 lib/view-models/dependencies.ts	code	… version… waiting to move
 lib/view-models/dependency-graph.ts	code	, … serves …
@@ -803,41 +803,36 @@ lib/view-models/health-witness.ts	code	A health check
 lib/view-models/health-witness.ts	code	Health check …
 lib/view-models/health-witness.ts	code	passing, last errored …
 lib/view-models/health-witness.ts	code	This check
+lib/view-models/landing-grid.ts	code	…: ${cellStateSentence(c, now, { builtElsewhere })}
 lib/view-models/landing-grid.ts	code	all … service…
 lib/view-models/pin-schedule-clause.ts	code	…, and … reopens ….
 lib/view-models/pr-pipeline.ts	code	… in …
+lib/view-models/pr-pipeline.ts	code	… in … …
 lib/view-models/pr-pipeline.ts	code	… in progress
 lib/view-models/pr-pipeline.ts	code	… of … active
 lib/view-models/pr-pipeline.ts	code	… of … live
-lib/view-models/pr-pipeline.ts	code	…… in …
 lib/view-models/pr-pipeline.ts	code	baking, no timer
-lib/view-models/pr-pipeline.ts	code	Cancelled in …
 lib/view-models/pr-pipeline.ts	code	deploying now
-lib/view-models/pr-pipeline.ts	code	Failed in …
-lib/view-models/pr-pipeline.ts	code	Held by a rule in …
 lib/view-models/pr-pipeline.ts	code	held in …
 lib/view-models/pr-pipeline.ts	code	live (since before recorded history)
-lib/view-models/pr-pipeline.ts	code	Live everywhere
+lib/view-models/pr-pipeline.ts	code	live everywhere
 lib/view-models/pr-pipeline.ts	code	manifest unreadable
 lib/view-models/pr-pipeline.ts	code	no environments
 lib/view-models/pr-pipeline.ts	code	No service on this cluster deploys this repository
 lib/view-models/pr-pipeline.ts	code	not built
 lib/view-models/pr-pipeline.ts	code	not built (unverified)
+lib/view-models/pr-pipeline.ts	code	not built here
 lib/view-models/pr-pipeline.ts	code	not built here yet
 lib/view-models/pr-pipeline.ts	code	not built yet
-lib/view-models/pr-pipeline.ts	code	Not built yet
-lib/view-models/pr-pipeline.ts	code	Pinned away from it in …
 lib/view-models/pr-pipeline.ts	code	pinned to …
-lib/view-models/pr-pipeline.ts	code	Promoting shortly in …
 lib/view-models/pr-pipeline.ts	code	retrying the bake
 lib/view-models/pr-pipeline.ts	code	rolled back
-lib/view-models/pr-pipeline.ts	code	Rolled back in …
 lib/view-models/pr-pipeline.ts	code	rolled back to …
 lib/view-models/pr-pipeline.ts	code	the bake failed
 lib/view-models/pr-pipeline.ts	code	the bake was cancelled
-lib/view-models/pr-pipeline.ts	code	Waiting for … to deploy it first
 lib/view-models/pr-pipeline.ts	code	waiting for the next reconcile
-lib/view-models/pr-pipeline.ts	code	Waiting in … on …
+lib/view-models/pr-pipeline.ts	code	waiting on … — its build of this change does not exist yet
+lib/view-models/pr-pipeline.ts	code	waiting on … to reach …
 lib/view-models/regions.ts	code	… … across … builds
 lib/view-models/regions.ts	code	… … with no deploy yet
 lib/view-models/regions.ts	code	… of … … on …
@@ -1149,8 +1144,8 @@ routes/changes/[...slug]/+page.svelte	code	… · every other place on its newes
 routes/changes/[...slug]/+page.svelte	code	… · kuberik
 routes/changes/[...slug]/+page.svelte	code	… +… more
 routes/changes/[...slug]/+page.svelte	code	… file…
+routes/changes/[...slug]/+page.svelte	text	… of … rollout … have a build of this change … · live in … …
 routes/changes/[...slug]/+page.svelte	text	… open … · … … … · … … head
-routes/changes/[...slug]/+page.svelte	text	… rollout … would get it … · live in … …
 routes/changes/[...slug]/+page.svelte	code	… service…
 routes/changes/[...slug]/+page.svelte	code	… services
 routes/changes/[...slug]/+page.svelte	text	· … not built anywhere
@@ -1159,10 +1154,14 @@ routes/changes/[...slug]/+page.svelte	code	#… … · kuberik
 routes/changes/[...slug]/+page.svelte	code	#… · kuberik
 routes/changes/[...slug]/+page.svelte	code	A check has not passed yet — it clears on its own
 routes/changes/[...slug]/+page.svelte	text	All changes
+routes/changes/[...slug]/+page.svelte	aria-label	All changes in …
+routes/changes/[...slug]/+page.svelte	text	All changes in …
 routes/changes/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
 routes/changes/[...slug]/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
+routes/changes/[...slug]/+page.svelte	title	Changes in this repository
 routes/changes/[...slug]/+page.svelte	code	closed by @…
 routes/changes/[...slug]/+page.svelte	title	Closed without merging
+routes/changes/[...slug]/+page.svelte	text	Commit … is not in … / …
 routes/changes/[...slug]/+page.svelte	code	committed … ago by @…
 routes/changes/[...slug]/+page.svelte	text	Connect GitHub
 routes/changes/[...slug]/+page.svelte	text	Connect GitHub to see this pull request
@@ -1172,6 +1171,7 @@ routes/changes/[...slug]/+page.svelte	code	Held by a deploy window
 routes/changes/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
 routes/changes/[...slug]/+page.svelte	code	Held for another …
 routes/changes/[...slug]/+page.svelte	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
+routes/changes/[...slug]/+page.svelte	text	It looks like it belongs to
 routes/changes/[...slug]/+page.svelte	code	merged … ago by @…
 routes/changes/[...slug]/+page.svelte	code	merged … by @…
 routes/changes/[...slug]/+page.svelte	code	minmax(160px, max-content) … minmax(90px, 1fr)
@@ -1211,6 +1211,7 @@ routes/changes/+page.svelte	text	kuberik | Changes
 routes/changes/+page.svelte	text	Not yet everywhere
 routes/changes/+page.svelte	text	Nothing built yet
 routes/changes/+page.svelte	text	of the last 30 days' changes … not everywhere yet · … repositor … … · live …
+routes/changes/+page.svelte	text	Pull requests
 routes/changes/+page.svelte	text	Try clearing a filter or the search box above.
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.

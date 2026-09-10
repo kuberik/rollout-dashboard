@@ -8,22 +8,26 @@
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	import { commitPullsQueryOptions } from '$lib/api/commit-pulls';
-	import { commitQueryOptions } from '$lib/api/commit';
+	import { commitQueryOptions, FetchCommitError } from '$lib/api/commit';
 	import { parseChangeSlug } from '$lib/pr-ref';
 	import { connectGithub } from '$lib/api/github';
 	import { FetchPullError } from '$lib/api/pulls';
 	import { ensurePrMeta, notifyRevisionSeen, prMetaKey } from '$lib/stores/pr-meta.svelte';
-	import { buildPrPipeline, type PrPipelineMeta } from '$lib/view-models/pr-pipeline';
-	import { buildLandingGrid } from '$lib/view-models/landing-grid';
-	import { checksLine } from '$lib/pr-cell-copy';
+	import { buildPrPipeline, type PrPipelineMeta, type PrCell } from '$lib/view-models/pr-pipeline';
+	import { buildLandingGrid, orderByVerdict, classify, worstCell } from '$lib/view-models/landing-grid';
+	import { checksLine, cellStateSentence } from '$lib/pr-cell-copy';
+	import { changesQueryOptions } from '$lib/api/changes';
+	import { buildChangeRows } from '$lib/view-models/changes';
 	import LandingGrid from '$lib/components/LandingGrid.svelte';
 	import PipelineCard from '$lib/components/PipelineCard.svelte';
+	import ChangeRow from '$lib/components/ChangeRow.svelte';
 	import {
 		repoBody,
 		changeBuildPath,
 		displayVersionForTag,
 		shortRevision,
-		repoSlug
+		repoSlug,
+		githubOwnerRepo
 	} from '$lib/version-utils';
 	import { getDisplayVersion } from '$lib/utils';
 	import { repoKeyFromSource } from '$lib/version-utils';
@@ -160,7 +164,6 @@
 	// `[api|1.66.0] → [^1.67.0]` chip pair) so this page cannot spell the same
 	// fact a fifth way.
 	import BlockReason, { contractBlockReason } from '$lib/components/BlockReason.svelte';
-	import Chip from '$lib/components/Chip.svelte';
 	import type { Rollout, Environment } from '../../../types';
 	import { pollWhenHealthy, staleTimeWhenHealthy, ApiError } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -405,6 +408,37 @@
 		const id = setInterval(() => (coarse = new Date()), 30_000);
 		return () => clearInterval(id);
 	});
+
+	/**
+	 * ⛔ FIX PASS ITEM 9, 2026-09-10 — "CHANGES IN THIS REPOSITORY", THE
+	 * REPOSITORY PAGE'S OWN TOP SECTION. §3's own accounting: the index
+	 * answers "what changed, across every repo, by time"; this repo page
+	 * answers "what does this repo run, per service" (the ledger/held-
+	 * banner/`BuildLists` below, unchanged) — this section is the bridge:
+	 * the index's OWN rows, filtered to this one repo, so a reader lands
+	 * here from a change row and can keep reading forward in the SAME
+	 * grammar before falling into the ops view. Reads the SAME
+	 * `/api/github/changes` cache the index and Home already warm
+	 * (`changesQueryOptions` — TanStack dedupes by key), so mounting this
+	 * page after either has been open this session costs no second fetch.
+	 */
+	const repoChangesQuery = createQuery(() =>
+		changesQueryOptions({ days: 30, enabled: githubConnected && !!repoPageLedger })
+	);
+	const repoChangesOwnerRepo = $derived(repoPageLedger ? githubOwnerRepo(repoPageLedger.repoKey) : null);
+	const repoChangeRows = $derived.by(() => {
+		if (!repoChangesOwnerRepo) return [];
+		const key = `${repoChangesOwnerRepo.owner}/${repoChangesOwnerRepo.repo}`.toLowerCase();
+		const all = buildChangeRows(
+			repoChangesQuery.data?.changes ?? [],
+			rollouts,
+			environments,
+			query.data?.rolloutDependencies ?? null,
+			coarse
+		);
+		return all.filter((r) => r.repoKey === key);
+	});
+	const repoChangesShown = $derived(repoChangeRows.slice(0, 10));
 
 	// THE COVERAGE.
 	const coverage = $derived(row ? revisionCoverage(row, coarse) : null);
@@ -2266,6 +2300,34 @@
 	);
 	const commitDetail = $derived(commitDetailQuery.data ?? null);
 
+	/**
+	 * ⛔ FIX PASS ITEM 7, 2026-09-10 — A SHA THAT DOES NOT EXIST IN THIS
+	 * REPO IS A SCOPE ERROR, NOT "NOT BUILT YET". `buildPullsQuery` resolving
+	 * nothing rules out a PR too (both queries fire in parallel — see the
+	 * doc comment above `buildPullsQuery`). `commit.ts`'s own `not_found`
+	 * reason is exactly this case. Once confirmed, `ledgers` (every repo
+	 * THIS CLUSTER deploys, already built above) is searched for the one
+	 * repo whose own revision history actually contains this sha — "a link
+	 * to the repo it IS in when the ledger knows it".
+	 */
+	const commitNotFoundInRepo = $derived(
+		isShaChange &&
+			!buildPullsQuery.isLoading &&
+			buildPulls.length === 0 &&
+			commitDetailQuery.error instanceof FetchCommitError &&
+			commitDetailQuery.error.reason === 'not_found'
+	);
+	const commitFoundInOtherRepo = $derived.by<{ repoKey: string; label: string } | null>(() => {
+		if (!commitNotFoundInRepo || !shaForChange) return null;
+		for (const other of ledgers) {
+			if (other.repoKey === ledger?.repoKey) continue;
+			if (resolveRevision(other, shaForChange)) {
+				return { repoKey: other.repoKey, label: repoTitle(other.repoLabel) };
+			}
+		}
+		return null;
+	});
+
 	/** §3's title rule: the PR title when `commits/:sha/pulls` resolves one
 	 *  (reusing the SAME lazy client `buildPullsQuery` below already wired
 	 *  for the (now-superseded) build page's own "Pull requests" line — one
@@ -2297,22 +2359,21 @@
 			: null
 	);
 
-	/** ⭐ ITEM 4 (fix pass, kept). Services with a build carrying the change
-	 *  first (adverse before the rest), then services with no build anywhere,
-	 *  each group alphabetical. */
+	/**
+	 * ⛔ FIX PASS ITEM 4, 2026-09-10 — `orderByVerdict`, `landing-grid.ts`'s
+	 * own exported ordering (ruling 6: "the SAME order function is
+	 * exported for the change page's own cards"), not a second hand-rolled
+	 * sort. `classify(worstCell(...).state)` is the identical fold
+	 * `buildLandingGrid` uses for `LandingServiceVM.verdictWord`, so the
+	 * head grid above and this per-service card list below can never
+	 * disagree about which service leads. */
 	const changeOrderedServices = $derived.by(() => {
 		if (!changeVm) return [];
-		const hasBuild = (s: (typeof changeVm.services)[number]) =>
-			s.cells.some((c) => c.state !== 'not-built');
-		return [...changeVm.services].sort((a, b) => {
-			const aBuilt = hasBuild(a);
-			const bBuilt = hasBuild(b);
-			if (aBuilt !== bBuilt) return aBuilt ? -1 : 1;
-			const aAdverse = a.cells.some((c) => c.state === 'failed');
-			const bAdverse = b.cells.some((c) => c.state === 'failed');
-			if (aAdverse !== bAdverse) return aAdverse ? -1 : 1;
-			return a.appName.localeCompare(b.appName);
-		});
+		return orderByVerdict(
+			changeVm.services,
+			(s) => (s.cells.length ? classify(worstCell(s.cells).state) : 'live'),
+			(s) => s.appName
+		);
 	});
 	const changeNotBuiltServiceNames = $derived.by(() => {
 		if (!changeVm) return [];
@@ -2322,13 +2383,63 @@
 			.sort((a, b) => a.localeCompare(b));
 	});
 
-	/** §2 / item 3 — the count of deployments this change WOULD reach, and how
-	 *  many already have it: "12 rollouts would get it · live in 3", a number
-	 *  instead of an inference from counting rows. */
-	const changeCellCount = $derived(changeVm ? changeVm.services.flatMap((s) => s.cells).length : 0);
-	const changeLiveCount = $derived(
-		changeVm ? changeVm.services.flatMap((s) => s.cells).filter((c) => c.state === 'live').length : 0
+	/**
+	 * ⛔ FIX PASS ITEM 7, 2026-09-10 — READS `pr-pipeline.ts`'s OWN COUNTS
+	 * NOW (`rolloutsTotal`/`rolloutsWithBuild`/`rolloutsLive`, ruling 3's
+	 * additive fields), not a second hand-rolled `flatMap` over
+	 * `changeVm.services` computed here. "N of M rollouts have a build of
+	 * this change · live in K" — a build-progress fact (N of M), not the
+	 * "would get it" framing the old wording used, which only ever counted
+	 * M and could not say how many of them actually have it yet. */
+	const changeRolloutsTotal = $derived(changeVm?.rolloutsTotal ?? 0);
+	const changeRolloutsWithBuild = $derived(changeVm?.rolloutsWithBuild ?? 0);
+	const changeRolloutsLive = $derived(changeVm?.rolloutsLive ?? 0);
+
+	/**
+	 * ⛔ FIX PASS ITEM 7, 2026-09-10 — THE BLOCKING FACT IS A `HeldBanner`,
+	 * NOT AN `h2`. The verdict already NAMES the frontier
+	 * (`buildChangeVerdict`, ruling 3) — this finds the actual FRONTIER
+	 * CELL behind that word (same selection: earliest env-rank cell, among
+	 * cells whose service has a build, that is not live) so the banner can
+	 * carry a real subject, sentence and action. `pr-pipeline.ts` does not
+	 * export the cell itself (only the word/tone pair), so this mirrors
+	 * `buildChangeVerdict`'s own selection — a small, stable selection, not
+	 * a second gate-classification pass (this page invents no new gate
+	 * facts; `cell.reason`/`gateSubject`/`gateLabel` are already computed by
+	 * `pr-pipeline.ts`).
+	 */
+	const changeFrontier = $derived.by<{ cell: PrCell; appName: string; builtElsewhere: boolean } | null>(() => {
+		if (!changeVm) return null;
+		const withBuild = changeVm.services
+			.flatMap((s) => s.cells.map((cell) => ({ cell, appName: s.appName, builtElsewhere: s.builtElsewhere })))
+			.filter((x) => x.cell.state !== 'not-built');
+		if (withBuild.length === 0 || withBuild.every((x) => x.cell.state === 'live')) return null;
+		const candidates = withBuild
+			.filter((x) => x.cell.state !== 'live')
+			.sort((a, b) => a.cell.envRank - b.cell.envRank || a.cell.cluster.localeCompare(b.cell.cluster));
+		return candidates[0] ?? null;
+	});
+
+	// `frontierTone`'s own classification (pr-pipeline.ts): held-like states
+	// are `gated`/`pinned`/`waiting-upstream`. Matches `changeVm.verdictTone
+	// === 'held'` exactly — restated here as a cell-level check because the
+	// banner needs the CELL, not just the tone.
+	const changeHeld = $derived(
+		changeFrontier != null &&
+			(changeFrontier.cell.state === 'gated' ||
+				changeFrontier.cell.state === 'pinned' ||
+				changeFrontier.cell.state === 'waiting-upstream')
 	);
+	const changeHeldMessage = $derived(
+		changeFrontier ? cellStateSentence(changeFrontier.cell, coarse, { builtElsewhere: changeFrontier.builtElsewhere }) : ''
+	);
+	const changeHeldPrimary = $derived.by<{ href: string; label: string } | null>(() => {
+		if (!changeFrontier || changeFrontier.cell.gateSubjectKind !== 'service' || !changeFrontier.cell.gateSubject) {
+			return null;
+		}
+		return { href: `/apps/${encodeURIComponent(changeFrontier.cell.gateSubject)}`, label: changeFrontier.cell.gateSubject };
+	});
+	const changeHeldHasSchedule = $derived(changeFrontier?.cell.gateSubjectKind === 'schedule');
 
 	const landingGrid = $derived(changeVm ? buildLandingGrid(changeVm, coarse) : null);
 
@@ -2463,7 +2574,32 @@
 	-->
 	{#snippet changeBody()}
 		{#if changeVm}
-			<h2 class="t-headline mb-1 text-gray-900 dark:text-white">{changeVm.verdict}</h2>
+			{#if changeHeld && changeFrontier}
+				<!-- ⛔ FIX PASS ITEM 7, 2026-09-10 — THE BLOCKING FACT IS A
+				     `HeldBanner` (filled, icon, action), NOT AN `h2`. Replaces
+				     the plain verdict headline for exactly the held case — the
+				     banner's own title already says "{subject} is held", so
+				     printing the bare verdict word above it too would restate
+				     the same fact twice. `stories={[]}` deliberately: this VM
+				     does not carry a full `BlockingStory` (`pr-pipeline.ts`
+				     supplies `reason`/`gateSubject`/`gateLabel` per cell, not a
+				     `rolloutGates` classification this page can stand behind —
+				     see that module's own `containmentKnown` doc) — the banner
+				     degrades cleanly to just `releaseSplitMessage` with no
+				     stories, which is exactly the one sentence this page has. -->
+				<div class="mb-4">
+					<HeldBanner
+						subject={changeFrontier.appName}
+						releaseSplitMessage={changeHeldMessage}
+						stories={[]}
+						primaryHref={changeHeldPrimary?.href ?? null}
+						primaryLabel={changeHeldPrimary?.label ?? null}
+						hasSchedule={changeHeldHasSchedule}
+					/>
+				</div>
+			{:else}
+				<h2 class="t-headline mb-1 text-gray-900 dark:text-white">{changeVm.verdict}</h2>
+			{/if}
 			{#if changeNotBuiltServiceNames.length > 0 && changeNotBuiltServiceNames.length < changeVm.services.length}
 				<!-- Only when it's NEW information — a page whose verdict is
 				     already "Not built yet" (every service) would restate itself. -->
@@ -2471,13 +2607,17 @@
 					Not built yet for {changeNotBuiltServiceNames.join(', ')}.
 				</p>
 			{/if}
-			{#if changeCellCount > 0}
-				<!-- ⭐ §2 / item 3 — the count of deployments this change WOULD
-				     reach, and how many already have it: a NUMBER, not an
-				     inference from counting rows on the grid below. -->
+			{#if changeRolloutsTotal > 0}
+				<!-- ⛔ FIX PASS ITEM 7, 2026-09-10 — "N of M rollouts have a build
+				     of this change · live in K", off `pr-pipeline.ts`'s own
+				     `rolloutsWithBuild`/`rolloutsTotal`/`rolloutsLive` counts
+				     (ruling 3), not the old "M rollouts would get it" framing,
+				     which only ever counted the destination and could not say
+				     how many of them actually have the change yet. -->
 				<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">
-					{changeCellCount} rollout{changeCellCount === 1 ? '' : 's'} would get it{#if changeLiveCount > 0}
-						· live in {changeLiveCount}{/if}
+					{changeRolloutsWithBuild} of {changeRolloutsTotal} rollout{changeRolloutsTotal === 1 ? '' : 's'} have a
+					build of this change{#if changeRolloutsLive > 0}
+						· live in {changeRolloutsLive}{/if}
 				</p>
 			{/if}
 			{#if landingGrid}
@@ -2486,15 +2626,14 @@
 					     grid of identical rows. -->
 					<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">{landingGrid.allSameLabel}</p>
 				{:else if landingGrid.visible.length > 0}
-					<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+					<!-- ⛔ FIX PASS ITEM 4, 2026-09-10 — `landingGrid.visible` is now
+					     `landing-grid.ts`'s FULL adverse-first list (ruling 6, no
+					     longer 3-capped); `LandingGrid` owns its own fold (a real
+					     button, ≥1024px shows every service). Passing the SAME list
+					     here as `ChangeRow` passes on the index means the row a
+					     reader clicked is a strict prefix of this page. -->
+					<div class="mb-4">
 						<LandingGrid services={landingGrid.visible} />
-						{#if landingGrid.overflow}
-							<Chip
-								role="count"
-								label={`+${landingGrid.overflow.count} services`}
-								title={landingGrid.overflow.title}
-							/>
-						{/if}
 					</div>
 				{/if}
 			{/if}
@@ -2708,6 +2847,41 @@
 				{/if}
 			</div>
 		</div>
+
+		{#if repoChangesShown.length > 0}
+			<!--
+				⛔ FIX PASS ITEM 9, 2026-09-10 — "CHANGES IN THIS REPOSITORY"
+				FIRST, THEN THE OPS CONTENT AS TODAY. The index's own rows
+				(`ChangeRow`, unchanged — same component, same grammar), capped
+				at 10, newest first (`buildChangeRows`' own order), so a reader
+				who landed here from a change row can keep reading forward
+				before falling into "what each service runs" below. Absent
+				entirely when GitHub is not connected or nothing has merged in
+				the window — never an empty card.
+			-->
+			<div class="mb-5">
+				<Card icon={CodePullRequestOutline} title="Changes in this repository" padded={false}>
+					{#snippet rollup()}
+						<a
+							href={`/changes?repo=${encodeURIComponent(`${repoChangesOwnerRepo?.owner}/${repoChangesOwnerRepo?.repo}`.toLowerCase())}`}
+							class="nav-link shrink-0"
+							aria-label="All changes in {repoTitle(repoPageLedger.repoLabel)}"
+						>
+							All changes in {repoTitle(repoPageLedger.repoLabel)}
+							<ChevronRightOutline class="h-3.5 w-3.5" />
+						</a>
+					{/snippet}
+					<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+						{#each repoChangesShown as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
+							<!-- `dense` — a bridging preview of up to 10 changes should
+							     read like Home's own card, not re-run the change page's
+							     full per-column-header grid ten times over. -->
+							<ChangeRow {row} dense now={coarse} />
+						{/each}
+					</ul>
+				</Card>
+			</div>
+		{/if}
 
 		<RevisionSearch bind:value={repoSearchQuery} />
 
@@ -2980,6 +3154,23 @@
 			{:else}
 				{@render changeBody()}
 			{/if}
+		{/if}
+	{:else if isShaChange && commitNotFoundInRepo}
+		<!-- ⛔ FIX PASS ITEM 7, 2026-09-10 — "COMMIT NOT IN THIS REPO". A scope
+		     error (the sha simply is not part of this repository's history),
+		     told apart from the honest "not built yet" degrade every other
+		     sha renders. A link to the repo the ledger DOES find it in, when
+		     one exists — never a dead end. -->
+		<h1 class="t-display text-gray-900 dark:text-white">
+			Commit {shaForChange ? shortRevision(shaForChange) : ''} is not in {changeOwner}/{changeRepo}
+		</h1>
+		{#if commitFoundInOtherRepo}
+			<p class="t-body mt-2 max-w-prose text-gray-600 dark:text-gray-300">
+				It looks like it belongs to
+				<a class="nav-link" href={withQuery(`/changes/${repoSlug(commitFoundInOtherRepo.repoKey)}`)}
+					>{commitFoundInOtherRepo.label} ›</a
+				>
+			</p>
 		{/if}
 	{:else if isShaChange}
 		<!-- ══ THE CHANGE PAGE — SHA FORM (CHANGES-2026-09-10 §3) ═══════════

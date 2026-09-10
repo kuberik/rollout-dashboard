@@ -485,8 +485,17 @@
 	<title>kuberik</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="w-full px-4 py-6 sm:px-6">
 	<!--
+		⛔ FIX PASS ITEM 2, 2026-09-10 — `max-w-7xl` DROPPED. Measured at 1680:
+		`/` spanned 280→1560 (the old `mx-auto max-w-7xl` cap) while `/changes`
+		spanned 176→1665, full width, the standing "no `max-w-*` on a route
+		container" rule (`.agents-context/design/CHANGES-2026-09-10.md`'s own
+		RISK section flags this exact tension and defers it to the human — but
+		this pass's own instruction is explicit: full width is the rule, every
+		route the same edges). `w-full px-4 py-6 sm:px-6` is `/changes`' own
+		recipe, byte-identical.
+
 		THE ONLY PAGE IN THE PRODUCT WITH NO h1 (fixed 2026-08-27).
 
 		`/rollouts`, `/apps`, `/versions`, `/environments`, `/activity` and every

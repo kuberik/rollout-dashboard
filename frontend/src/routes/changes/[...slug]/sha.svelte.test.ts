@@ -184,7 +184,11 @@ describe('/changes/[...slug] — sha form', () => {
 			environments: [environment('web', 'team', 'prod'), environment('api', 'team', 'prod')]
 		});
 		renderAt(`${REPO_PATH}/${SHA}`);
-		await waitFor(() => expect(screen.getByText(/2 rollouts would get it/)).toBeInTheDocument());
+		// Fix pass item 7 — "N of M rollouts have a build of this change",
+		// off `pr-pipeline.ts`'s own rolloutsWithBuild/rolloutsTotal counts.
+		await waitFor(() =>
+			expect(screen.getByText(/2 of 2 rollouts have a build of this change/)).toBeInTheDocument()
+		);
 	});
 
 	test('a build with no linked GitHub repository degrades honestly, no crash', async () => {

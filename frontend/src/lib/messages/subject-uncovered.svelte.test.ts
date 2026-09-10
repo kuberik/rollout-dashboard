@@ -253,13 +253,20 @@ describe('the surfaces that had no render test name their subjects too', () => {
 describe('the command palette names what each row is', () => {
 	function open() {
 		const p = payload();
-		return render(CommandPalette, {
+		// ⛔ FIX PASS ITEM 6, 2026-09-10 — `WithQueryClient`, not a bare
+		// `render(CommandPalette, ...)`: the "Your changes" tile now reads
+		// `myChangesCount` off a real `createQuery(changesQueryOptions)`
+		// (ruling 5), which throws without a `QueryClientProvider` above it.
+		return render(WithQueryClient, {
 			props: {
-				open: true,
-				scope: 'rollout',
-				rollouts: p.rollouts.items as any,
-				environments: p.environments.items as any,
-				localClusterName: 'rollout-a'
+				component: CommandPalette as any,
+				props: {
+					open: true,
+					scope: 'rollout',
+					rollouts: p.rollouts.items as any,
+					environments: p.environments.items as any,
+					localClusterName: 'rollout-a'
+				}
 			}
 		});
 	}

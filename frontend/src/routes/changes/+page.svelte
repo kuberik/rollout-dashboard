@@ -38,10 +38,14 @@
 		filterChangeRows,
 		repoChipOptions,
 		groupByDay,
+		summarizeChangeRows,
 		type ChangeRowVM,
 		type LedgerChangeRow
 	} from '$lib/view-models/changes';
 	import { now } from '$lib/stores/time';
+	import { tick } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
+	import { getScrollPosition, scrollMemoryKey } from '$lib/scroll-memory';
 	import { CodePullRequestOutline, GithubSolid } from 'flowbite-svelte-icons';
 	import RevisionSearch from '$lib/components/RevisionSearch.svelte';
 	import ChangeRow from '$lib/components/ChangeRow.svelte';
@@ -89,6 +93,10 @@
 
 	let mine = $state(page.url.searchParams.has('mine'));
 	let pendingOnly = $state(page.url.searchParams.has('pending'));
+	// ⛔ FIX PASS ITEM 5, 2026-09-10 — "Pull requests", `changes.ts`'s own
+	// `ChangesFilter.kind`. `?pr` in the URL, the same "unset = no chip
+	// selected" convention every other multi-select filter here uses.
+	let prOnly = $state(page.url.searchParams.has('pr'));
 	let selectedRepos = $state<string[]>(
 		(page.url.searchParams.get('repo') ?? '')
 			.split(',')
@@ -102,6 +110,7 @@
 		const params = new URLSearchParams(page.url.searchParams);
 		mine ? params.set('mine', '') : params.delete('mine');
 		pendingOnly ? params.set('pending', '') : params.delete('pending');
+		prOnly ? params.set('pr', '') : params.delete('pr');
 		if (selectedRepos.length > 0) params.set('repo', selectedRepos.join(','));
 		else params.delete('repo');
 		const trimmedQ = searchQuery.trim();
@@ -118,6 +127,9 @@
 	function togglePending() {
 		pendingOnly = !pendingOnly;
 	}
+	function togglePrOnly() {
+		prOnly = !prOnly;
+	}
 	function toggleRepo(repoKey: string) {
 		selectedRepos = selectedRepos.includes(repoKey)
 			? selectedRepos.filter((r) => r !== repoKey)
@@ -131,6 +143,7 @@
 			mine,
 			repos: selectedRepos,
 			pendingOnly,
+			kind: prOnly ? 'pr' : undefined,
 			q: searchQuery
 		})
 	);
@@ -138,11 +151,22 @@
 	const dayGroups = $derived(groupByDay(filteredRows, (r) => r.mergedAt, $now));
 	const ledgerDayGroups = $derived(groupByDay(ledgerRows, (r) => r.createdAt, $now));
 
-	const notEverywhereCount = $derived(allRows.filter((r) => r.notEverywhere).length);
-	const repoCount = $derived(new Set(allRows.map((r) => r.repoKey)).size);
+	/**
+	 * ⛔ FIX PASS ITEM 5, 2026-09-10 — THE HEAD BAND READS THE FILTERED
+	 * SUMMARY (`summarizeChangeRows`, ruling 5), not `allRows`. A reader who
+	 * has narrowed to one repo's chip should see THAT repo's own "N not
+	 * everywhere yet · M repositories" count, not the whole cluster's —
+	 * otherwise the repo count in the sentence never matches the number of
+	 * repo chips actually selected.
+	 */
+	const summary = $derived(summarizeChangeRows(filteredRows));
+	const notEverywhereCount = $derived(summary.notEverywhereCount);
+	const repoCount = $derived(summary.repoCount);
 	const streamHealthy = $derived(isEventStreamHealthy());
 
-	const anyFilterActive = $derived(mine || pendingOnly || selectedRepos.length > 0 || searchQuery.trim().length > 0);
+	const anyFilterActive = $derived(
+		mine || pendingOnly || prOnly || selectedRepos.length > 0 || searchQuery.trim().length > 0
+	);
 
 	/* ── SKELETON SHAPE ── */
 	const SHAPE_KEY = 'changes';
@@ -157,7 +181,16 @@
 	});
 
 	/**
-	 * ⛔ MUST WAIT ON `changesQuery` TOO, NOT JUST `query`/`githubStatus`.
+	 * ⛔ `githubStatus.isLoading` IS UNCONDITIONAL — NOT GATED ON `configured`.
+	 * `configured` DEFAULTS TO `false` (`githubStatus.data?.configured ?? false`)
+	 * before the query has ever resolved, so a `configured && githubStatus.isLoading`
+	 * guard is false from the very first render — the "not configured" branch
+	 * below renders immediately, for the ~200ms the status query is actually
+	 * in flight, then the real content replaces it. Fixed 2026-09-10 (fix
+	 * pass, item 1): wait on `githubStatus.isLoading` itself, regardless of
+	 * what `configured` currently defaults to.
+	 *
+	 * ⛔ MUST ALSO WAIT ON `changesQuery`, NOT JUST `query`/`githubStatus`.
 	 * `changesQuery` only turns `enabled` once `connected` resolves `true`,
 	 * so there is a real window — `githubStatus` settled, `changesQuery`
 	 * has not even started fetching yet — where `configured && connected`
@@ -168,8 +201,45 @@
 	 * names ("no late pop-in without a reserved placeholder").
 	 */
 	const isLoading = $derived(
-		query.isLoading || (configured && githubStatus.isLoading) || (connected && changesQuery.isLoading)
+		query.isLoading || githubStatus.isLoading || (connected && changesQuery.isLoading)
 	);
+
+	/**
+	 * ⛔ FIX PASS ITEM 5, 2026-09-10 — BACK TO `/changes` RESTORES SCROLL.
+	 * The root layout's own `scroll-memory.ts` already retries
+	 * `main.scrollTop = target` for ~500ms on a `popstate` arrival — long
+	 * enough for most pages, whose list is already in the DOM (even if
+	 * still fetching fresh data). This page's own list MOUNTS AFTER TWO
+	 * SEQUENTIAL QUERIES SETTLE (`githubStatus`, then `changesQuery` once
+	 * `connected` resolves — see `isLoading`'s own doc comment above), which
+	 * on a cold cache can outlast that 500ms window: the skeleton's
+	 * `recallShape` reserves roughly the right ROW COUNT, but `<main>` is
+	 * still short while `isLoading` is `true`, so the layout's retry gives
+	 * up before there is anything to scroll into. This is the same defect
+	 * class the layout's own comment names ("a popstate arrival can land
+	 * here before the new page's own data has loaded") — this page's own
+	 * fix, gated on ITS OWN `isLoading` settling rather than a fixed clock,
+	 * so it succeeds regardless of how long the two queries take.
+	 */
+	let pendingScrollRestore = $state<number | null>(null);
+
+	afterNavigate((nav) => {
+		if (nav.type !== 'popstate') return;
+		pendingScrollRestore = getScrollPosition(scrollMemoryKey(page.url)) ?? null;
+	});
+
+	$effect(() => {
+		if (pendingScrollRestore == null || isLoading) return;
+		const target = pendingScrollRestore;
+		pendingScrollRestore = null;
+		const main = document.querySelector('main');
+		if (!main) return;
+		// One more tick past the query settling so the just-rendered list (not
+		// the skeleton) has its final height before the scrollTop is set.
+		tick().then(() => {
+			main.scrollTop = target;
+		});
+	});
 </script>
 
 <svelte:head>
@@ -301,7 +371,7 @@
 				aria-pressed={mine}
 				title={mine ? 'Stop showing only your changes' : 'Show only your changes'}
 				onclick={toggleMine}
-				class="pill-btn t-label rounded border px-3 py-[3px] transition-colors
+				class="pill-btn t-label rounded border px-3 py-[5px] transition-colors
 					{mine
 					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 					: 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500'}"
@@ -314,7 +384,7 @@
 					aria-pressed={selectedRepos.includes(opt.repoKey)}
 					title={selectedRepos.includes(opt.repoKey) ? `Stop showing only ${opt.label}` : `Show only ${opt.label}`}
 					onclick={() => toggleRepo(opt.repoKey)}
-					class="pill-btn t-label rounded border px-3 py-[3px] transition-colors
+					class="pill-btn t-label rounded border px-3 py-[5px] transition-colors
 						{selectedRepos.includes(opt.repoKey)
 						? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 						: 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500'}"
@@ -322,12 +392,26 @@
 					{opt.label}
 				</button>
 			{/each}
+			<!-- ⛔ FIX PASS ITEM 5, 2026-09-10 — "Pull requests", lane A's
+			     `ChangesFilter.kind: 'pr'`. -->
+			<button
+				type="button"
+				aria-pressed={prOnly}
+				title={prOnly ? 'Show every change' : 'Show only changes that came through a pull request'}
+				onclick={togglePrOnly}
+				class="pill-btn t-label rounded border px-3 py-[5px] transition-colors
+					{prOnly
+					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
+					: 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500'}"
+			>
+				Pull requests
+			</button>
 			<button
 				type="button"
 				aria-pressed={pendingOnly}
 				title={pendingOnly ? 'Show every change' : 'Show only changes not yet everywhere'}
 				onclick={togglePending}
-				class="pill-btn t-label rounded border px-3 py-[3px] transition-colors
+				class="pill-btn t-label rounded border px-3 py-[5px] transition-colors
 					{pendingOnly
 					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
 					: 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500'}"

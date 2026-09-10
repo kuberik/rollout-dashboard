@@ -12,8 +12,10 @@
 	 * — as the row's `.tap-link`, then the meta (`#n · repo`, merge age).
 	 *
 	 * Line 2 is the landing grid — `allSameLabel` collapses to one line of
-	 * text ("today's PR page renders this case as 12 rows"); otherwise the
-	 * worst-first `visible` slice plus a `+N services` count chip.
+	 * text ("today's PR page renders this case as 12 rows"); otherwise
+	 * `LandingGrid` renders every service itself, worst-first, folding
+	 * beyond 4 below 1024px behind its own "+N services" button (fix pass
+	 * item 4/5, 2026-09-10 — no more caller-side 3-cap + dead span).
 	 *
 	 * ⛔ NOT `justify-between`. `ActivityRail.svelte` and the old
 	 * `MyPullListRow.svelte` both record two flush ends fighting a wrap as
@@ -21,7 +23,6 @@
 	 * wraps whatever does not fit, on both lines.
 	 */
 	import LandingGrid from './LandingGrid.svelte';
-	import Chip from './Chip.svelte';
 	import type { ChangeRowVM, ChangeVerdictTone } from '$lib/view-models/changes';
 	import { formatTimeAgoCompact } from '$lib/utils';
 
@@ -79,12 +80,22 @@
 			{#if row.grid.allSameLabel}
 				<span class="text-[11px] text-gray-500 dark:text-gray-400">{row.grid.allSameLabel}</span>
 			{:else}
-				<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-					<LandingGrid services={row.grid.visible} {dense} />
-					{#if row.grid.overflow}
-						<Chip role="count" label="+{row.grid.overflow.count} services" title={row.grid.overflow.title} />
-					{/if}
-				</div>
+				<!-- ⛔ FIX PASS ITEM 4/5, 2026-09-10 — `row.grid.visible` is now
+				     `landing-grid.ts`'s FULL adverse-first list (ruling 6, no
+				     longer 3-capped); `LandingGrid` owns its own fold (a real
+				     "+N services" button), so the index preview is always a
+				     strict prefix of what the change page shows for the same
+				     change — same list, same order, both places.
+
+				     ⛔ FIX PASS ITEM 6, 2026-09-10 — `dense` FOLDS AT 2, NOT 4.
+				     `LandingGrid`'s one row per service (needed for column
+				     alignment) costs real height even in dense mode — measured,
+				     a 5-row Home card with a 5-service change hit 992px at 390.
+				     A dense caller (Home, the repo page's own preview list) is
+				     a SUMMARY; 2 services plus a "+N services" button keeps
+				     every row's own height bounded regardless of how many
+				     services a change touches. -->
+				<LandingGrid services={row.grid.visible} {dense} fold={dense ? 2 : undefined} />
 			{/if}
 		</div>
 	</div>

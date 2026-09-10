@@ -315,7 +315,40 @@ describe('buildChangeRefPaletteResults', () => {
 		]);
 	});
 
-	it('fans a bare sha out the same way a bare #n does', () => {
+	/**
+	 * ⛔ FIX PASS ITEM 8, 2026-09-10 — A BARE SHA NARROWS TO REPOS THE
+	 * LEDGER ACTUALLY KNOWS IT IN, UNLIKE A BARE #n (which stays ambiguous
+	 * across every repo — no local data can resolve a PR number without a
+	 * network call). Superseded: `fans a bare sha out the same way a bare
+	 * #n does` — that was the exact defect item 8 fixes; a fan-out is now
+	 * ONLY the "nobody knows this sha" fallback (renamed below), and a
+	 * known revision narrows to just the one repo whose rollout data
+	 * actually carries it.
+	 */
+	it('narrows a bare sha to the repo whose rollout history actually carries it', () => {
+		const known: Rollout = {
+			metadata: {},
+			spec: {},
+			status: {
+				source: 'https://github.com/acme/widget.git',
+				availableReleases: [{ tag: 'v1', revision: 'bf5be49123456789' }]
+			}
+		} as unknown as Rollout;
+		const unknown = withSource('https://github.com/acme/gadget');
+		const results = buildChangeRefPaletteResults('bf5be49', [known, unknown]);
+		expect(results).toEqual([
+			{
+				key: 'change-ref:acme/widget:sha:bf5be49',
+				owner: 'acme',
+				repo: 'widget',
+				ref: { kind: 'sha', sha: 'bf5be49' },
+				title: 'Open change bf5be49 · widget',
+				href: '/changes/acme/widget/bf5be49'
+			}
+		]);
+	});
+
+	it('falls back to one "Look up …" row per repo when no ledger knows the sha', () => {
 		const rollouts = [withSource('https://github.com/acme/widget.git')];
 		const results = buildChangeRefPaletteResults('bf5be49', rollouts);
 		expect(results).toEqual([
@@ -324,7 +357,7 @@ describe('buildChangeRefPaletteResults', () => {
 				owner: 'acme',
 				repo: 'widget',
 				ref: { kind: 'sha', sha: 'bf5be49' },
-				title: 'Open change bf5be49 · widget',
+				title: 'Look up bf5be49 in widget',
 				href: '/changes/acme/widget/bf5be49'
 			}
 		]);

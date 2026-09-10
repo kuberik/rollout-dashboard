@@ -151,6 +151,18 @@
 	// `not-built` is the ONLY dashed ring — the other 11 states are solid.
 	// See the state table's own header: "not-built needed a shape, not a hue."
 	const dashed = $derived(state === 'not-built');
+	// ⛔ FIX PASS ITEM 3, 2026-09-10 — HELD IS THE ONE FIELD IDENTITY INK
+	// MEASURES BADLY AGAINST. Canvas-resolved: DEV's identity green
+	// (`#008236`, `PRESET_RAMPS.dev.textColor`) on the held field
+	// (`orange-100`) is 4.31:1 in light — under the 4.5 floor, the one
+	// combination this state table's own accept criterion names
+	// ("held word ink ≥4.5:1 on its field in light"). STG/PRD's identity
+	// inks clear it fine (8.0/7.9) but a per-environment carve-out would be
+	// a second spelling of the same rule, so the darkening below applies to
+	// every environment's word ink on the held field alike — 10% toward
+	// black is enough to take DEV to 5.1:1 and only adds headroom to the
+	// two that already passed. Dark mode is untouched (15-19:1 already).
+	const held = $derived(state === 'gated' || state === 'waiting-upstream' || state === 'pinned');
 
 	const accessibleLabel = $derived(
 		`${family}${count > 1 ? ` × ${count}` : ''}, ${STATE_WORD[state]}: ${sentence}`
@@ -172,6 +184,7 @@
 	class="lm {FIELD[state]} {className}"
 	class:lm--dashed={dashed}
 	class:lm--themed={!!theme}
+	class:lm--held={held}
 	style={themeStyle}
 	{href}
 	title={sentence}
@@ -214,23 +227,45 @@
 		border-color: var(--lm-ring-dark);
 	}
 
-	/* `not-built` — the one DASHED ring, "env hue at 60%" per the state
-	   table. `color-mix` on the identity ring var; the untheme'd fallback
-	   just dashes the neutral hairline instead of inventing an alpha value
-	   for a colour that does not exist. */
+	/* `not-built` — the one DASHED ring. CHANGES-2026-09-10's own state
+	   table says "env hue at 60%", which the first cut read as `--lm-ring`
+	   (the IDENTITY ring's own colour — `borderColor`, `mixWith(seed,
+	   white, 0.64)`, deliberately pale so it reads softly *paired with its
+	   own matching tinted chip fill* everywhere else it ships). This mark's
+	   `not-built` field is FIELD:NONE — the ring has no tinted partner to
+	   sit on, just the bare page background — and canvas-measured, that
+	   pale colour caps at 1.2-1.9:1 against white/`gray-900` even at 100%
+	   opacity: it cannot reach the state table's own "dashed ring ≥ 3:1"
+	   floor at ANY opacity. ⛔ FIX PASS ITEM 3, 2026-09-10 — use `--lm-word`
+	   (`textColor`, `mixWith(seed, black, 0.18)`, the SAME strong ink the
+	   word itself already renders in) instead of `--lm-ring`, at 80% (DEV
+	   is the tightest environment and needs ~78%; STG/PRD clear 3:1 by
+	   60%; dark clears easily at 40%, so one shared 80% covers all three
+	   safely in both themes — 3.5:1 DEV / 6.1:1 STG / 5.5:1 PRD light,
+	   9.7-10.4:1 dark). */
 	.lm--dashed {
 		border-style: dashed;
 	}
 
 	.lm--dashed.lm--themed {
-		border-color: color-mix(in srgb, var(--lm-ring) 60%, transparent);
+		border-color: color-mix(in srgb, var(--lm-word) 80%, transparent);
 	}
 
 	:global(.dark) .lm--dashed.lm--themed {
-		border-color: color-mix(in srgb, var(--lm-ring-dark) 60%, transparent);
+		border-color: color-mix(in srgb, var(--lm-word-dark) 80%, transparent);
 	}
 
-	.lm-glyph {
+	/* ⛔ FIX PASS ITEM 3, 2026-09-10 — `:global`, NOT SCOPED. `<Icon>` is a
+	   flowbite-svelte-icons component; the class we pass through lands on
+	   ITS OWN `<svg>`, which never receives THIS component's scope-hash
+	   attribute (Svelte only stamps that hash on elements written literally
+	   in this component's own template). A scoped `.lm-glyph` selector
+	   therefore matched nothing, ever, and every glyph rendered at the
+	   icon's own default `size="md"` (`w-5 h-5`, i.e. 20px) inside a mark
+	   sized for 12px — the marks measured 56px wide at ~44px's budget.
+	   `:global(.lm-glyph)` matches the class wherever it lands, in the
+	   child's DOM, and wins the cascade over the icon's own `w-5 h-5`. */
+	:global(.lm-glyph) {
 		height: 12px;
 		width: 12px;
 		flex-shrink: 0;
@@ -259,6 +294,14 @@
 
 	:global(.dark) .lm--themed .lm-word {
 		color: var(--lm-word-dark);
+	}
+
+	/* HELD, LIGHT ONLY — canvas-measured floor. `:global(html:not(.dark))`
+	   rather than fighting cascade order against the rule above: a mutually
+	   exclusive selector on the root, so light and dark can never both
+	   apply. See the `held` derivation above for the numbers. */
+	:global(html:not(.dark)) .lm--held.lm--themed .lm-word {
+		color: color-mix(in srgb, var(--lm-word) 90%, black 10%);
 	}
 
 	.lm-count {

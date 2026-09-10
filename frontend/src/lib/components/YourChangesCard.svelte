@@ -26,8 +26,11 @@
 	 * card is being redesigned away from (§2's own "mark the deviation, never
 	 * the norm").
 	 *
-	 * ── THREE GITHUB STATES, NEVER A BROKEN CARD ──────────────────────────
+	 * ── FOUR GITHUB STATES, NEVER A BROKEN CARD, NEVER A LATE POP-IN ──────
 	 *
+	 *   `githubStatus.isLoading`→ the card's own skeleton, reserving the
+	 *                             header + 3 rows so nothing shifts once the
+	 *                             query settles (fix pass, 2026-09-10, item 1).
 	 *   `configured === false`  → the card does not render at all.
 	 *   `connected === false`   → the connect prompt renders INLINE, in the
 	 *                             card's own body.
@@ -43,7 +46,7 @@
 	import ChangeRow from './ChangeRow.svelte';
 	import SkeletonBar from './skeleton/SkeletonBar.svelte';
 	import type { Rollout, Environment, RolloutDependency } from '../../types';
-	import { buildChangeRows } from '$lib/view-models/changes';
+	import { buildChangeRows, myChangesCount, orderHomeChangeRows } from '$lib/view-models/changes';
 
 	let {
 		rollouts,
@@ -66,23 +69,58 @@
 
 	const changesQuery = createQuery(() => changesQueryOptions({ days: 30, enabled: connected }));
 
+	/**
+	 * ⛔ FIX PASS ITEM 6, 2026-09-10 — `myChangesCount`/`orderHomeChangeRows`,
+	 * `changes.ts`'s own shared functions (ruling 5), not a local filter this
+	 * card computed by hand. Ruling 5's whole point: the palette's Browse
+	 * tile (`CommandPalette.svelte`) reads `myChangesCount` off the SAME
+	 * cache this card does, so the two counts can never drift by counting
+	 * "mine" two different ways.
+	 */
+	const currentUser = $derived(changesQuery.data?.user ?? '');
 	const mine = $derived(
-		(changesQuery.data?.changes ?? []).filter(
-			(c) => c.author.toLowerCase() === (changesQuery.data?.user ?? '').toLowerCase()
-		)
+		(changesQuery.data?.changes ?? []).filter((c) => c.author.toLowerCase() === currentUser.toLowerCase())
 	);
 
 	const ROW_CAP = 5;
 	const rows = $derived(buildChangeRows(mine, rollouts, environments, rolloutDependencies, $now));
-	const shown = $derived(rows.slice(0, ROW_CAP));
+	// The rollup NUMBER reads `myChangesCount` directly (off every row this
+	// card built, before the ≤5 cap) rather than `rows.length`, so a stray
+	// divergence between this card's own filter and the shared function's
+	// would fail loudly (a count mismatch) instead of silently agreeing by
+	// construction.
+	const myCount = $derived(myChangesCount(rows, currentUser));
+	// Stuck-first, §4's own fold ordering (ruling 5) — a card that showed
+	// five settled rows above one stuck one would bury the reason the card
+	// exists to answer.
+	const shown = $derived(orderHomeChangeRows(rows).slice(0, ROW_CAP));
 	const allLive = $derived(shown.length > 0 && shown.every((r) => r.verdictTone === 'live'));
 </script>
 
-{#if configured}
+{#if githubStatus.isLoading}
+	<!--
+		⛔ FIX PASS ITEM 1, 2026-09-10 — RESERVE THE SHAPE WHILE `githubStatus`
+		IS STILL IN FLIGHT. `configured` defaults to `false` before the query
+		resolves, so an `{#if configured}` guard alone hid this whole card for
+		the ~200ms-1.3s `githubStatus` takes on a direct load, then popped it
+		in once `configured` turned true on a cluster where GitHub really is
+		configured — a layout jump, the exact "no late pop-in without a
+		reserved placeholder" defect `feedback_navigation_and_loading_states.md`
+		names. Render the card's own skeleton instead so nothing shifts under
+		the fleet once the query settles.
+	-->
+	<Card icon={CodePullRequestOutline} title="Your changes" padded={false}>
+		<ul class="space-y-2 p-3" aria-hidden="true">
+			{#each [0, 1, 2] as i (i)}
+				<li><SkeletonBar width="w-full" height="h-4" /></li>
+			{/each}
+		</ul>
+	</Card>
+{:else if configured}
 	<Card icon={CodePullRequestOutline} title="Your changes" padded={false}>
 		{#snippet rollup()}
 			<a href="/changes?mine" class="nav-link shrink-0" aria-label="See all your changes">
-				{rows.length} change{rows.length === 1 ? '' : 's'}
+				{myCount} change{myCount === 1 ? '' : 's'}
 				<ChevronRightOutline class="h-3.5 w-3.5" />
 			</a>
 		{/snippet}
@@ -109,7 +147,7 @@
 			<p class="p-4 text-sm text-gray-500 dark:text-gray-400">Nothing of yours merged in the last 30 days.</p>
 		{:else if allLive}
 			<p class="p-4 text-sm text-gray-600 dark:text-gray-300">
-				{rows.length} change{rows.length === 1 ? '' : 's'} · all live everywhere
+				{myCount} change{myCount === 1 ? '' : 's'} · all live everywhere
 			</p>
 		{:else}
 			<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">

@@ -66,10 +66,26 @@ export async function fetchCommit(
 				url
 			);
 		}
-		if (res.status === 404) {
+		/**
+		 * ⛔ FIX PASS ITEM 7, 2026-09-10 — "COMMIT NOT IN THIS REPO", THE ONE
+		 * `not_found` MEANING FOR THIS ENDPOINT. A sha that does not exist in
+		 * `owner/repo` at all — a scope error, not "this cluster never built
+		 * it" (that case is `pr-pipeline.ts`'s own honest "not built yet"
+		 * degrade and never reaches this file). Correctly a `404` per this
+		 * endpoint's own contract; LIVE, the handler wraps GitHub's `422 No
+		 * commit found for SHA: …` in a `502` instead (`details` carries the
+		 * upstream sentence verbatim) — matched defensively here so the copy
+		 * below is correct against TODAY's backend, not just the documented
+		 * one. Flagged to the tech lead: the backend should translate that
+		 * upstream 422 into a clean 404, the same shape `commits/:sha/pulls`
+		 * already uses for "no PR found".
+		 */
+		const upstreamSaysNoSuchCommit =
+			typeof body.details === 'string' && /no commit found for sha/i.test(body.details);
+		if (res.status === 404 || upstreamSaysNoSuchCommit) {
 			throw new FetchCommitError(
 				'not_found',
-				`No service on this cluster deploys ${owner}/${repo}`,
+				`Commit ${sha} is not in ${owner}/${repo}`,
 				res.status,
 				body.details || body.error || '',
 				url

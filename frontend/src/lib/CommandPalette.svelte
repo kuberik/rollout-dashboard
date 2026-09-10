@@ -86,6 +86,9 @@
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
+	import { createQuery } from '@tanstack/svelte-query';
+	import { changesQueryOptions } from '$lib/api/changes';
+	import { buildChangeRows, myChangesCount } from '$lib/view-models/changes';
 	import { inertSiblings, trapFocus, modalFocusReturn, portal } from '$lib/a11y.svelte';
 
 	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action' | 'build' | 'change';
@@ -168,6 +171,26 @@
 	});
 
 	modalFocusReturn(() => open);
+
+	/**
+	 * ⛔ FIX PASS ITEM 6/8, 2026-09-10 — THE TILE COUNT READS `myChangesCount`
+	 * NOW, THE SAME FUNCTION `YourChangesCard` DOES (ruling 5), NOT
+	 * `kindCounts.change` (a count of how many `change`-kind rows survived
+	 * INTO THE CAPPED, QUERY-SCORED `allResults` — capped at 3 by §6's own
+	 * "free-text title match" rule, and zero whenever the search box is
+	 * empty). That produced a "Your changes" tile whose own sentence
+	 * changed with what the reader had typed, or read 0 changes merged with
+	 * a connected account that has several. `changesQueryOptions` shares
+	 * its query KEY with `myPullsQueryOptions` (`api/my-pulls.ts`'s own doc
+	 * comment) — gated on `open` so the palette does not fetch while
+	 * closed, and a cache hit whenever `/`, `/changes` or this same palette
+	 * has already warmed it this session.
+	 */
+	const changesQuery = createQuery(() => changesQueryOptions({ days: 30, enabled: open }));
+	const myChangeRows = $derived(
+		buildChangeRows(changesQuery.data?.changes ?? [], rollouts, environments, null, $now)
+	);
+	const myChangeCount = $derived(myChangesCount(myChangeRows, changesQuery.data?.user ?? ''));
 
 	/**
 	 * ⭐ LOCK THE DOCUMENT SCROLL WHILE THE PALETTE IS OPEN. (2026-09-03,
@@ -1301,8 +1324,8 @@
 								<span class="flex flex-1 flex-col gap-0.5">
 									<span class="text-sm font-medium text-gray-900 dark:text-white">Your changes</span>
 									<span class="text-[11px] text-gray-500 dark:text-gray-400"
-										>{kindCounts.change}
-										{kindCounts.change === 1 ? 'change' : 'changes'} merged in the last 30 days</span
+										>{myChangeCount}
+										{myChangeCount === 1 ? 'change' : 'changes'} merged in the last 30 days</span
 									>
 								</span>
 								<span
