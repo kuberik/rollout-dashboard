@@ -15,7 +15,7 @@
 	import { ensurePrMeta, notifyRevisionSeen, prMetaKey } from '$lib/stores/pr-meta.svelte';
 	import { buildPrPipeline, type PrPipelineMeta, type PrCell } from '$lib/view-models/pr-pipeline';
 	import { buildLandingGrid, orderByVerdict, classify, worstCell } from '$lib/view-models/landing-grid';
-	import { checksLine, cellStateSentence } from '$lib/pr-cell-copy';
+	import { checksLine, cellStateSentence, reasonTail } from '$lib/pr-cell-copy';
 	import { changesQueryOptions } from '$lib/api/changes';
 	import { buildChangeRows } from '$lib/view-models/changes';
 	import LandingGrid from '$lib/components/LandingGrid.svelte';
@@ -2430,9 +2430,25 @@
 				changeFrontier.cell.state === 'pinned' ||
 				changeFrontier.cell.state === 'waiting-upstream')
 	);
-	const changeHeldMessage = $derived(
-		changeFrontier ? cellStateSentence(changeFrontier.cell, coarse, { builtElsewhere: changeFrontier.builtElsewhere }) : ''
-	);
+	/**
+	 * ⭐ FIX PASS ITEM 2, 2026-09-10 — THE JOINED REASON REACHES THE BANNER.
+	 * `cellStateSentence` alone prints only "waiting on hello-api-app" for a
+	 * `waiting-upstream` frontier — `joinDependencyReasons` (`pr-pipeline.ts`,
+	 * RULING 4) already computed the more useful ADDED fact ("its build of
+	 * this change does not exist yet") onto `cell.reason`, but nothing read
+	 * it here. `reasonTail` strips the shared "waiting on X" prefix so it is
+	 * not printed twice — the banner's one message line ends up "waiting on
+	 * hello-api-app — its build of this change does not exist yet" instead
+	 * of stopping short.
+	 */
+	const changeHeldMessage = $derived.by(() => {
+		if (!changeFrontier) return '';
+		const sentence = cellStateSentence(changeFrontier.cell, coarse, {
+			builtElsewhere: changeFrontier.builtElsewhere
+		});
+		const tail = reasonTail(changeFrontier.cell, coarse);
+		return tail ? `${sentence} — ${tail}` : sentence;
+	});
 	const changeHeldPrimary = $derived.by<{ href: string; label: string } | null>(() => {
 		if (!changeFrontier || changeFrontier.cell.gateSubjectKind !== 'service' || !changeFrontier.cell.gateSubject) {
 			return null;

@@ -26,7 +26,7 @@
 	import Card from './Card.svelte';
 	import PipelineRow from './PipelineRow.svelte';
 	import type { PrService, PrCell } from '$lib/view-models/pr-pipeline';
-	import { cellStateSentence } from '$lib/pr-cell-copy';
+	import { cellStateSentence, reasonTail } from '$lib/pr-cell-copy';
 	import type { Environment, RolloutDependency } from '../../types';
 
 	let {
@@ -96,7 +96,21 @@
 		const first = cellStateSentence(service.cells[0], now);
 		if (!service.cells.every((c) => cellStateSentence(c, now) === first)) return null;
 		const envNames = service.cells.map((c) => c.envName.toLowerCase()).join(' · ');
-		return `${first} in ${envNames}`;
+		/**
+		 * ⭐ FIX PASS ITEM 2, 2026-09-10 — THE FOLDED SENTENCE STAYS WHOLE.
+		 * The card used to print only the state sentence and the env list —
+		 * "waiting on hello-api-app in dev · staging · prod" — dropping the
+		 * ADDED fact `joinDependencyReasons` attaches to `reason`
+		 * ("— its build of this change does not exist yet"). `reasonTail`
+		 * strips the shared "waiting on hello-api-app" prefix so it is not
+		 * printed twice; folds only when every cell's tail agrees too (not
+		 * merely its state sentence) — two cells held for the SAME state but
+		 * DIFFERENT specific reasons are not "the same" here either.
+		 */
+		const firstTail = reasonTail(service.cells[0], now);
+		const tailAgrees = service.cells.every((c) => reasonTail(c, now) === firstTail);
+		const tail = tailAgrees && firstTail ? ` — ${firstTail}` : '';
+		return `${first} in ${envNames}${tail}`;
 	});
 </script>
 

@@ -170,6 +170,37 @@ export function cellReasonText(cell: PrCell, now: Date = new Date()): string | n
 	return cell.reason;
 }
 
+/**
+ * ⭐ CHANGES-2026-09-10 FIX PASS, ITEM 2 ("JOIN THE REASON REACHES THE
+ * READER"). `joinDependencyReasons` (`pr-pipeline.ts`, RULING 4) sets a
+ * `waiting-upstream` cell's `reason` to the SUBJECT clause plus an added
+ * fact, joined with " — " — `"waiting on hello-api-app — its build of this
+ * change does not exist yet"`. That subject clause is byte-identical to
+ * `cellStateSentence`'s own "waiting on <subject>" — so a caller that
+ * already draws the sentence once (a folded card row naming several
+ * environments, `HeldBanner`'s single message line) must not glue the raw
+ * `cellReasonText` on afterward, or the subject repeats
+ * ("waiting on hello-api-app … waiting on hello-api-app — its build…").
+ * This strips the shared subject prefix, returning ONLY the added fact
+ * ("its build of this change does not exist yet") for such a caller to
+ * append after its own "in dev · staging · prod" tail. `null` when the
+ * reason carries no such prefix-shared tail (a plain reason, a redundant
+ * one `cellReasonText` already suppressed, or the promotion-order
+ * "waiting on X to reach Y" variant, which is one clause, not two — nothing
+ * to safely split off). `PipelineRow`'s own per-cell rendering is
+ * unaffected: it keeps drawing `cellStateSentence` and `cellReasonText`
+ * side by side, exactly as it already did.
+ */
+export function reasonTail(cell: PrCell, now: Date = new Date()): string | null {
+	const reason = cellReasonText(cell, now);
+	if (!reason) return null;
+	const sentence = cellStateSentence(cell, now);
+	const sep = ' — ';
+	const prefix = `${sentence}${sep}`;
+	if (!reason.toLowerCase().startsWith(prefix.toLowerCase())) return null;
+	return reason.slice(prefix.length);
+}
+
 /** `"usually 12 min"`, or an em dash under the view-model's own 2-sample
  *  guard (`cell.usuallyMs === null`) — never render an unresolvable
  *  comparison as a claim. */

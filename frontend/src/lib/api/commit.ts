@@ -71,18 +71,17 @@ export async function fetchCommit(
 		 * `not_found` MEANING FOR THIS ENDPOINT. A sha that does not exist in
 		 * `owner/repo` at all — a scope error, not "this cluster never built
 		 * it" (that case is `pr-pipeline.ts`'s own honest "not built yet"
-		 * degrade and never reaches this file). Correctly a `404` per this
-		 * endpoint's own contract; LIVE, the handler wraps GitHub's `422 No
-		 * commit found for SHA: …` in a `502` instead (`details` carries the
-		 * upstream sentence verbatim) — matched defensively here so the copy
-		 * below is correct against TODAY's backend, not just the documented
-		 * one. Flagged to the tech lead: the backend should translate that
-		 * upstream 422 into a clean 404, the same shape `commits/:sha/pulls`
-		 * already uses for "no PR found".
+		 * degrade and never reaches this file). A clean `404` per this
+		 * endpoint's own contract (`{"error":"not_found","scope":"sha"}`,
+		 * confirmed live) — the backend used to wrap GitHub's own `422 No
+		 * commit found for SHA: …` in a `502` instead, which this file matched
+		 * defensively via a `details` regex; the backend now translates that
+		 * upstream 422 into this clean 404 itself (the same shape
+		 * `commits/:sha/pulls` already used for "no PR found"), so the
+		 * regex fallback is dead and dropped rather than kept as a second,
+		 * unreachable path against a bad sha this endpoint no longer sends.
 		 */
-		const upstreamSaysNoSuchCommit =
-			typeof body.details === 'string' && /no commit found for sha/i.test(body.details);
-		if (res.status === 404 || upstreamSaysNoSuchCommit) {
+		if (res.status === 404) {
 			throw new FetchCommitError(
 				'not_found',
 				`Commit ${sha} is not in ${owner}/${repo}`,

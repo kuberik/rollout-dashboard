@@ -21,7 +21,13 @@
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { buildGateContext, classifyGate, withSchedules, prettyNameOf } from '$lib/view-models/blocking-story';
 	import type { PrCell, PrState } from '$lib/view-models/pr-pipeline';
-	import { cellStateSentence, cellReasonText, usuallyLabel, sinceLabel, frontierUsuallyLabel } from '$lib/pr-cell-copy';
+	import {
+		cellStateSentence,
+		cellReasonText,
+		usuallyLabel,
+		sinceLabel,
+		frontierUsuallyLabelForCell
+	} from '$lib/pr-cell-copy';
 	import type { Environment, RolloutDependency } from '../../types';
 
 	let {
@@ -219,6 +225,18 @@
 		const until = formatTimeUntil(clearsAt, now);
 		return until ? `opens in ${until}` : null;
 	});
+
+	/**
+	 * ⭐ CHANGES-2026-09-10 §7, ITEM 1 — THE GUARDED VARIANT, NOT THE RAW ONE.
+	 * `frontierUsuallyLabelForCell` (not `frontierUsuallyLabel`) so a frontier
+	 * cell with no existing build anywhere (`not-built`) or one already past
+	 * "starting" (`retrying`/`failed`/`cancelled`/`rolled-back`/`deploying`/
+	 * `baking`) never gets an "once it starts" estimate that makes no sense
+	 * for it — only `gated`/`pinned`/`waiting-upstream`/`promoting` (a build
+	 * exists, merely not deployed here yet) ever return a string. `null` off
+	 * any non-frontier cell by construction.
+	 */
+	const frontierUsually = $derived(isFrontier ? frontierUsuallyLabelForCell(cell) : null);
 </script>
 
 <li class="pc-row tap-zone flex min-h-11 flex-wrap items-baseline gap-x-2 gap-y-1 px-4 py-2">
@@ -286,18 +304,22 @@
 			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}`}
 			>{usuallyLabel(cell.usuallyMs)}</span
 		>
-	{:else if isFrontier && cell.usuallyMs != null}
+	{:else if frontierUsually}
 		<!-- ⭐ CHANGES-2026-09-10 §7, ITEM 1 — the FRONTIER cell's own estimate
 		     for a cell that has not started yet (held, not-built, promoting…):
 		     "with a time estimation", answered where the question is actually
 		     asked. Every other non-active, non-frontier cell stays silent —
 		     this branch is mutually exclusive with the one above by
 		     construction (that one already claims every `deploying`/`baking`
-		     cell), so a cell never shows two estimates. -->
+		     cell), so a cell never shows two estimates. `frontierUsually` is
+		     already guarded to the states where a build exists but has not
+		     landed here yet (`frontierUsuallyLabelForCell` — ruling 2,
+		     "NOT-BUILT HAS NO ETA"), so a `not-built`/`failed`/`retrying`
+		     frontier prints nothing here. -->
 		<span
 			class="t-micro ml-auto shrink-0 text-gray-400 dark:text-gray-500"
 			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}, once a deploy starts`}
-			>{frontierUsuallyLabel(cell.usuallyMs)}</span
+			>{frontierUsually}</span
 		>
 	{/if}
 

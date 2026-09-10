@@ -227,32 +227,26 @@
 		border-color: var(--lm-ring-dark);
 	}
 
-	/* `not-built` — the one DASHED ring. CHANGES-2026-09-10's own state
-	   table says "env hue at 60%", which the first cut read as `--lm-ring`
-	   (the IDENTITY ring's own colour — `borderColor`, `mixWith(seed,
-	   white, 0.64)`, deliberately pale so it reads softly *paired with its
-	   own matching tinted chip fill* everywhere else it ships). This mark's
-	   `not-built` field is FIELD:NONE — the ring has no tinted partner to
-	   sit on, just the bare page background — and canvas-measured, that
-	   pale colour caps at 1.2-1.9:1 against white/`gray-900` even at 100%
-	   opacity: it cannot reach the state table's own "dashed ring ≥ 3:1"
-	   floor at ANY opacity. ⛔ FIX PASS ITEM 3, 2026-09-10 — use `--lm-word`
-	   (`textColor`, `mixWith(seed, black, 0.18)`, the SAME strong ink the
-	   word itself already renders in) instead of `--lm-ring`, at 80% (DEV
-	   is the tightest environment and needs ~78%; STG/PRD clear 3:1 by
-	   60%; dark clears easily at 40%, so one shared 80% covers all three
-	   safely in both themes — 3.5:1 DEV / 6.1:1 STG / 5.5:1 PRD light,
-	   9.7-10.4:1 dark). */
+	/* `not-built` — the one DASHED ring. ⛔ FIX PASS ITEM 3, 2026-09-10 (ROUND
+	   2) — "colour is state only": the previous cut still derived this ring
+	   from `--lm-word`/`--lm-ring` (the mark's IDENTITY colour), so a
+	   not-built DEV/STG/PRD mark drew a green/purple/amber dashed ring —
+	   the exact defect the human flagged live ("the not-built dashed ring
+	   still carries the environment hue"). `not-built` has no build to have
+	   an identity-tinted OUTCOME for; it is the one state this mark draws
+	   with NO colour at all — flat gray, in both themes, regardless of
+	   whether a theme resolved (`.lm--dashed` alone, not gated behind
+	   `.lm--themed`). The environment is still legible — the WORD's TEXT
+	   ("PRD") — just not through colour. `gray-500`/white ≈ 4.8:1, `gray-400`/
+	   `gray-900` ≈ 7.0:1: comfortably past the state table's own "dashed
+	   ring ≥ 3:1" floor in both themes. */
 	.lm--dashed {
 		border-style: dashed;
+		border-color: var(--color-gray-500);
 	}
 
-	.lm--dashed.lm--themed {
-		border-color: color-mix(in srgb, var(--lm-word) 80%, transparent);
-	}
-
-	:global(.dark) .lm--dashed.lm--themed {
-		border-color: color-mix(in srgb, var(--lm-word-dark) 80%, transparent);
+	:global(.dark) .lm--dashed {
+		border-color: var(--color-gray-400);
 	}
 
 	/* ⛔ FIX PASS ITEM 3, 2026-09-10 — `:global`, NOT SCOPED. `<Icon>` is a
@@ -294,6 +288,21 @@
 
 	:global(.dark) .lm--themed .lm-word {
 		color: var(--lm-word-dark);
+	}
+
+	/* `not-built`'s word, same ruling as its ring above: no identity colour,
+	   flat gray in both themes — falls back to exactly the SAME value
+	   `.lm-word`'s own no-theme default already uses (already ≥4.5:1 in
+	   both themes, per L1's own accept criterion), so this is a plain
+	   override of `.lm--themed .lm-word` rather than a third ink to
+	   maintain. Source order (after `.lm--themed .lm-word` above) breaks
+	   the specificity tie. */
+	.lm--dashed.lm--themed .lm-word {
+		color: var(--color-gray-700);
+	}
+
+	:global(.dark) .lm--dashed.lm--themed .lm-word {
+		color: var(--color-gray-300);
 	}
 
 	/* HELD, LIGHT ONLY — canvas-measured floor. `:global(html:not(.dark))`

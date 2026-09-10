@@ -5,6 +5,7 @@ import {
 	usuallyLabel,
 	frontierUsuallyLabel,
 	frontierUsuallyLabelForCell,
+	reasonTail,
 	sinceLabel,
 	checksLine
 } from './pr-cell-copy';
@@ -291,6 +292,36 @@ describe('frontierUsuallyLabelForCell — guarded, ruling 2 (CHANGES-2026-09-10 
 	it('never on a state already in flight (deploying/baking) — that is `usuallyLabel`\'s own job', () => {
 		expect(frontierUsuallyLabelForCell(mkCell('deploying', { usuallyMs: 6 * 60_000 }))).toBeNull();
 		expect(frontierUsuallyLabelForCell(mkCell('baking', { usuallyMs: 6 * 60_000 }))).toBeNull();
+	});
+});
+
+describe('reasonTail — fix pass item 2, "JOIN THE REASON REACHES THE READER"', () => {
+	it('strips the shared "waiting on X" subject, keeping only the added fact', () => {
+		const cell = mkCell('waiting-upstream', {
+			gateSubject: 'hello-api-app',
+			gateSubjectKind: 'service',
+			reason: 'waiting on hello-api-app — its build of this change does not exist yet'
+		});
+		expect(reasonTail(cell, NOW)).toBe('its build of this change does not exist yet');
+	});
+
+	it('null when the reason is a single clause with no shared-subject split (the promotion-order variant)', () => {
+		const cell = mkCell('waiting-upstream', {
+			gateSubject: 'hello-api-app',
+			gateSubjectKind: 'service',
+			reason: 'waiting on hello-api-app to reach dev'
+		});
+		expect(reasonTail(cell, NOW)).toBeNull();
+	});
+
+	it('null when cellReasonText itself would suppress the reason', () => {
+		expect(reasonTail(mkCell('baking'), NOW)).toBeNull();
+		expect(reasonTail(mkCell('live'), NOW)).toBeNull();
+	});
+
+	it('null on a plain gated cell whose reason clause does not restate the sentence', () => {
+		const cell = mkCell('gated', { gateLabel: 'a manual approval', reason: 'needs sign-off' });
+		expect(reasonTail(cell, NOW)).toBeNull();
 	});
 });
 

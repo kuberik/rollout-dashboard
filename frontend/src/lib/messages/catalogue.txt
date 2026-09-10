@@ -408,7 +408,7 @@ lib/components/PartialDataNotice.svelte	text	missing from these counts, not heal
 lib/components/PartialDataNotice.svelte	code	this page
 lib/components/pin-copy.ts	code	Clear pin
 lib/components/pin-copy.ts	code	Clear the pin on … in …?
-lib/components/PipelineCard.svelte	code	… in …
+lib/components/PipelineCard.svelte	code	… in ……
 lib/components/PipelineGlyph.svelte	title	Check window
 lib/components/PipelineRow.svelte	code	a check
 lib/components/PipelineRow.svelte	code	a deploy-window schedule
