@@ -67,7 +67,7 @@
 	import { rankLabel, rankRole, type RankVerdict } from '$lib/view-models/env-rank';
 	import { shortEnvLabel } from '$lib/environment-theme';
 	import { bakeWord, bakeTitle } from '$lib/bake-status';
-	import { revisionPath, repoSlug, repoLabel as repoLabelOf } from '$lib/version-utils';
+	import { changeBuildPath, changeRepoPath, repoLabel as repoLabelOf } from '$lib/version-utils';
 	import { formatTimeAgoCompact, formatDate } from '$lib/utils';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { repoTitle } from '$lib/repo-title';
@@ -118,7 +118,9 @@
 	const active = $derived(query.trim().length > 0);
 	const needle = $derived(query.trim().toLowerCase());
 
-	const href = $derived(`/revisions/${repoSlug(repo.repoKey)}${active ? `?q=${encodeURIComponent(query.trim())}` : ''}`);
+	const href = $derived(
+		changeRepoPath(repo.repoKey) + (active ? `?q=${encodeURIComponent(query.trim())}` : '')
+	);
 
 	let expanded = $state(false);
 
@@ -516,7 +518,7 @@
 											role={rankRole(verdict2)}
 											label={rankLabel(verdict2)}
 											value={line.short}
-											valueHref={revisionPath(repo.repoKey, line.revision)}
+											valueHref={changeBuildPath(repo.repoKey, line.revision, line.revision)}
 											valueTitle={line.revision}
 										/>
 									</span>
@@ -526,7 +528,7 @@
 								<span class="svc-build">
 									<a
 										class="svc-sha rev-sha ident tap-link t-code text-gray-900 hover:underline dark:text-white"
-										href={revisionPath(repo.repoKey, line.revision)}
+										href={changeBuildPath(repo.repoKey, line.revision, line.revision)}
 										title={line.revision}>{line.short}</a
 									>
 									{@render secondaryChip(state, line.short)}

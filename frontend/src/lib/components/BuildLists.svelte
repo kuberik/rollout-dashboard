@@ -73,7 +73,7 @@
 		coverageCells
 	} from '$lib/view-models/revision-coverage';
 	import { historyAtLimit } from '$lib/history-marks';
-	import { revisionPath } from '$lib/version-utils';
+	import { changeBuildPath } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { shortEnvLabel } from '$lib/environment-theme';
 	import { formatTimeAgoCompact, formatDate } from '$lib/utils';
@@ -384,7 +384,7 @@
 									<div class="min-w-0">
 										<a
 											class="ident rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
-											href={revisionPath(repo.repoKey, row.revision)}
+											href={changeBuildPath(repo.repoKey, row.revision, row.revision)}
 											title={row.revision}>{row.short}</a
 										>
 										{@render names(row, namedLive)}
@@ -437,7 +437,7 @@
 									<div class="min-w-0">
 										<a
 											class="ident rev-sha tap-link t-code text-gray-700 hover:underline dark:text-gray-200"
-											href={revisionPath(repo.repoKey, row.revision)}
+											href={changeBuildPath(repo.repoKey, row.revision, row.revision)}
 											title={row.revision}>{row.short}</a
 										>
 										{@render names(row, namedPast)}
@@ -518,7 +518,7 @@
 								{#snippet identity()}
 									<a
 										class="ident rev-sha tap-link t-code min-w-0 text-gray-700 hover:underline dark:text-gray-200"
-										href={revisionPath(repo.repoKey, row.revision)}
+										href={changeBuildPath(repo.repoKey, row.revision, row.revision)}
 										title={row.revision}>{row.short}</a
 									>
 								{/snippet}

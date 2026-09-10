@@ -270,6 +270,13 @@ func setupRouter() *gin.Engine {
 		// PR title behind a sha.
 		api.GET("/github/repos/:owner/:repo/commits/:sha/pulls", handleGitHubCommitPulls)
 
+		// GET /api/github/repos/:owner/:repo/commits/:sha — see
+		// handleGitHubCommit (main_github_commit.go): the commit itself
+		// (subject, author, committed date, html url), for the changes page
+		// to print a title and subtitle behind a BARE sha that landed with
+		// no PR the change feed can attach it to.
+		api.GET("/github/repos/:owner/:repo/commits/:sha", handleGitHubCommit)
+
 		// GET /api/github/changes?days=30&repo=<owner/repo> — see
 		// handleGitHubChanges (main_github_changes.go): every merged PR plus
 		// every PR-less base-branch commit ("did my changes land"), across

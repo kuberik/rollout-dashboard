@@ -76,7 +76,8 @@ describe('RepoLedgerCard', () => {
 		expect(zone).not.toBeNull();
 		const link = zone!.querySelector('a.tap-link');
 		expect(link).not.toBeNull();
-		expect(link!.getAttribute('href')).toBe(`/revisions/${repoSlug(repo.repoKey)}`);
+		// CHANGES-2026-09-10.md §1: the repository page is `/changes/...` now.
+		expect(link!.getAttribute('href')).toBe(`/changes/${repoSlug(repo.repoKey)}`);
 		// No `<a>` nested inside another `<a>` anywhere in the header.
 		expect(zone!.querySelectorAll('a a').length).toBe(0);
 	});

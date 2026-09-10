@@ -73,6 +73,7 @@ function stubFetch(opts: {
 	rollouts?: Rollout[];
 	environments?: Environment[];
 	commitPulls?: () => Promise<Response>;
+	commitDetail?: () => Promise<Response>;
 	githubConnected?: boolean;
 }) {
 	vi.stubGlobal(
@@ -90,6 +91,13 @@ function stubFetch(opts: {
 			}
 			if (url.includes('/commits/') && url.includes('/pulls')) {
 				return (opts.commitPulls ?? (() => jsonResponse([])))();
+			}
+			// ITEM 4 — GET /api/github/repos/:owner/:repo/commits/:sha (no
+			// `/pulls` suffix): the bare-commit lookup this file's own
+			// "item 4" test exercises. Checked AFTER the `/pulls` branch
+			// above, since that URL also contains `/commits/`.
+			if (url.includes('/commits/')) {
+				return (opts.commitDetail ?? (() => jsonResponse({})))();
 			}
 			return jsonResponse({});
 		})
@@ -126,6 +134,30 @@ describe('/changes/[...slug] — sha form', () => {
 			`https://github.com/acme/kuberik-testing/commit/${SHA}`
 		);
 		await waitFor(() => expect(screen.getByRole('link', { name: 'web' })).toBeInTheDocument());
+	});
+
+	test('item 4: a build with no PR but a resolved commit — title is the subject, subtitle is "committed N ago by @who"', async () => {
+		const committedAt = new Date(NOW - 3 * 24 * 60 * 60 * 1000).toISOString();
+		stubFetch({
+			rollouts: [rollout('web', 'team', SHA)],
+			environments: [environment('web', 'team', 'prod')],
+			githubConnected: true,
+			commitPulls: () => jsonResponse([]),
+			commitDetail: () =>
+				jsonResponse({
+					sha: SHA,
+					subject: 'Fix the flaky retry loop',
+					author: 'jane',
+					committedAt,
+					htmlUrl: `https://github.com/acme/kuberik-testing/commit/${SHA}`
+				})
+		});
+		renderAt(`${REPO_PATH}/${SHA}`);
+
+		expect(
+			await screen.findByRole('heading', { level: 1, name: 'Fix the flaky retry loop' })
+		).toBeInTheDocument();
+		expect(screen.getByText(/committed 3d ago by @jane/)).toBeInTheDocument();
 	});
 
 	test('a sha this cluster has never built anywhere still renders a page — never a 404', async () => {

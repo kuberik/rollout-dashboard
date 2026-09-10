@@ -8,6 +8,7 @@
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	import { commitPullsQueryOptions } from '$lib/api/commit-pulls';
+	import { commitQueryOptions } from '$lib/api/commit';
 	import { parseChangeSlug } from '$lib/pr-ref';
 	import { connectGithub } from '$lib/api/github';
 	import { FetchPullError } from '$lib/api/pulls';
@@ -2247,11 +2248,29 @@
 	);
 	const buildPulls = $derived(buildPullsQuery.data ?? []);
 
+	/**
+	 * ITEM 4 (CHANGES-2026-09-10.md) — THE BARE-SHA TITLE/SUBTITLE, WHEN NO
+	 * PR RESOLVES ONE. Fires in PARALLEL with `buildPullsQuery` (not gated
+	 * on it resolving first — see `commit.ts`'s own doc comment): a commit
+	 * that never landed via a PR this cluster can see is the common case for
+	 * a bare-sha change page, and there is no reason to pay a sequential
+	 * round trip for it.
+	 */
+	const commitDetailQuery = createQuery(() =>
+		commitQueryOptions({
+			owner: changeOwnerRepo?.owner ?? '',
+			repo: changeOwnerRepo?.repo ?? '',
+			sha: shaForChange ?? '',
+			enabled: isShaChange && githubConnected && !!shaForChange
+		})
+	);
+	const commitDetail = $derived(commitDetailQuery.data ?? null);
 
 	/** §3's title rule: the PR title when `commits/:sha/pulls` resolves one
 	 *  (reusing the SAME lazy client `buildPullsQuery` below already wired
 	 *  for the (now-superseded) build page's own "Pull requests" line — one
-	 *  request, not a second endpoint), else the short sha. Prefers a MERGED
+	 *  request, not a second endpoint), else the commit's own subject
+	 *  (`commitDetail`, item 4), else the short sha. Prefers a MERGED
 	 *  result so a still-open PR naming this exact commit does not outrank
 	 *  the record GitHub itself would call authoritative for a landed change. */
 	const changeCommitPull = $derived(
@@ -2321,7 +2340,9 @@
 			: isShaChange
 				? changeCommitPull
 					? `${changeCommitPull.title} · kuberik`
-					: `${shaForChange ? shortRevision(shaForChange) : changeSlugParsed?.ref.kind === 'sha' ? changeSlugParsed.ref.sha : ''} · kuberik`
+					: commitDetail?.subject
+						? `${commitDetail.subject} · kuberik`
+						: `${shaForChange ? shortRevision(shaForChange) : changeSlugParsed?.ref.kind === 'sha' ? changeSlugParsed.ref.sha : ''} · kuberik`
 				: ''
 	);
 
@@ -2335,11 +2356,19 @@
 	 * leading whitespace of a text node that OPENS a block branch, which
 	 * swallowed the space here too and rendered `kuberik-testing· merged …`
 	 * with no gap before the dot, live on `bf5be49`).
+	 *
+	 * ITEM 4 — a resolved PR's own merge sentence still wins when one
+	 * exists (it is the more specific fact: WHO merged it and WHEN, not
+	 * just when the commit was made); `commitDetail`'s `committed N ago by
+	 * @who` is the fallback for the common "no PR" case this item exists
+	 * for, not a replacement for the PR sentence.
 	 */
 	const shaSubtitleTail = $derived(
 		changeCommitPull?.mergedAt
 			? `merged ${formatTimeAgoCompact(changeCommitPull.mergedAt, coarse)} ago by @${changeCommitPull.author}`
-			: null
+			: commitDetail?.committedAt
+				? `committed ${formatTimeAgoCompact(commitDetail.committedAt, coarse)} ago by @${commitDetail.author}`
+				: null
 	);
 
 	/* ── SKELETON — remembers the last service-card count, like the
@@ -2965,7 +2994,13 @@
 		     IS the `live` cells — so the coverage bar is correctly dropped. -->
 		<header class="mb-6">
 			<h1 class="t-display text-gray-900 dark:text-white">
-				{changeCommitPull ? changeCommitPull.title : shaForChange ? shortRevision(shaForChange) : ''}
+				{changeCommitPull
+					? changeCommitPull.title
+					: commitDetail?.subject
+						? commitDetail.subject
+						: shaForChange
+							? shortRevision(shaForChange)
+							: ''}
 			</h1>
 			<p
 				class="t-dense mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
@@ -3180,61 +3215,6 @@
 	}
 
 	/*
-	 * ⭐ ROUND 11 CRAFT FINDING 7 — THE NUMERAL LEADS THE ROW: LARGER THAN
-	 * THE SHA, LIGHT WEIGHT (`REVISION-PAGES.md`'s own hero anatomy — sha
-	 * ~30px, numeral large and light). Both are markup order now
-	 * (`.rev-hero-figure` before `.rev-hero-sha`), so no `margin-left` trick
-	 * is needed to bind the figure to anything — it is simply first.
-	 * ⛔ THE DENOMINATOR MOVED FROM THE CAPTION INTO THE FIGURE, ROUND 11
-	 * REVISIONS-PASS-6 ITEM 3 — see `.rev-hero-denom`, below.
-	 */
-	.rev-hero-figure {
-		font-family: var(--font-montserrat);
-		font-size: 32px;
-		font-weight: 300;
-		line-height: 1.15;
-	}
-
-	/*
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 3 — THE DENOMINATOR, ATTACHED TO THE
-	 * NUMERATOR. `REVISION-PAGES.md`'s own hero anatomy: "a very large light
-	 * numeral N with a SMALLER /M suffix". Half the figure's size and the
-	 * caption's own ink (not the figure's near-black), so `6 of 6` reads as
-	 * one figure at two weights rather than a second number competing with
-	 * the first.
-	 */
-	.rev-hero-denom {
-		font-size: 16px;
-		font-weight: 400;
-	}
-
-	.rev-hero-sha {
-		font-size: 26px;
-	}
-
-	/*
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 3 — THE BREAK IS UNCONDITIONAL NOW.
-	 * (Was `@container (max-width: 559px)` only — ITEM 5/round-8 critique,
-	 * REPOSITIONED round 11 craft finding 7.) Measured live at 1440: with no
-	 * break, the figure, the sha AND the full caption sentence shared one
-	 * 150-character row — "jammed" was the caption crowding the sha, not a
-	 * spacing defect between the two. The figure and the sha are always a
-	 * short pair that fits one line together; the caption is a full
-	 * sentence that never should have shared it at any width. `.rev-head-
-	 * caption`'s own `max-width: 80ch` (below) is what "nothing orphans at
-	 * 390" needs on TOP of the break — a full-width sentence at 390 already
-	 * wraps on its own, `80ch` is what keeps it from stretching the same
-	 * sentence into one 150-character line at 1440+ instead.
-	 */
-	.rev-head-break {
-		flex-basis: 100%;
-	}
-
-	.rev-head-caption {
-		max-width: 80ch;
-	}
-
-	/*
 	 * ⛔ THE OLD PAINTED-TRACK FALLBACK IS GONE, ROUND 11 A.6.3.
 	 * That painted-track fallback lived inside `This build` and was gated
 	 * on `liveCount > 0 && liveCount < totalCount` — false on every 0% and
@@ -3310,223 +3290,6 @@
 	}
 
 	/*
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 4 — `THIS BUILD` AND `WHAT EACH
-	 * SERVICE CALLS IT` SHARE ONE ROW'S HEIGHT, NEVER SPAN. Replaces round
-	 * 11 craft finding 7's `.rev-card-span` (`grid-column: 1 / -1`), which
-	 * fixed the 128px ragged-bottom gap by giving `This build` its own
-	 * full-width row — moving the hole under `What each service calls it`
-	 * instead of closing it (measured live: that card alone at half width,
-	 * an empty right track beside it). `.rev-buckets`' own `align-items:
-	 * start` (above) is unchanged for every OTHER row — a bucket card still
-	 * answers to its own content, per that rule's comment — this is an
-	 * `align-self` OPT-IN on exactly these two cells, the one row on the
-	 * page where two cards about the same subject (the build's identity)
-	 * belong side by side at equal height.
-	 *
-	 * ⛔ `display: flex` ON THE WRAPPER COLLAPSED THE CARD TO 2px WIDE AT
-	 * 390 — CAUGHT LIVE, NOT IN THE FIRST DRAFT. `Card.svelte`'s root is
-	 * `.card-cq { container-type: inline-size }` for its OWN `@container`
-	 * queries, and `contain: inline-size` (which that property sets)
-	 * REMOVES an element's content from its INLINE-axis (width) intrinsic
-	 * size contribution to its ancestors — by spec, exactly so a container
-	 * query cannot create a sizing loop. A flex ROW child with no explicit
-	 * width sizes itself from that same intrinsic contribution
-	 * (`flex-basis: auto` = content size); with the content stripped out by
-	 * containment, the browser measured it as ~0 and `flex-shrink: 1`
-	 * finished the job. `Card` is exempt from the same failure on the
-	 * BLOCK axis — `contain: inline-size` only strips the INLINE dimension
-	 * — which is why the wrapper's own HEIGHT (967px, measured) was
-	 * correct while its WIDTH (2px) was not: the two axes hit two
-	 * different CSS mechanisms and only one of them was broken.
-	 *
-	 * The fix does not put the wrapper in the flex model at all. `align-
-	 * self: stretch` on a plain block `<div>` GRID ITEM stretches its
-	 * BLOCK size (height) to the row's — a grid track's own width is fr-
-	 * distributed independently of any item's content in the first place,
-	 * so nothing here depends on `Card`'s intrinsic size for WIDTH either.
-	 * `height: 100%` on `Card`'s own root then fills that stretched
-	 * wrapper — a block child resolves a percentage height against its
-	 * parent's own (now explicit, stretched) height with no containment
-	 * interaction on the block axis to break it.
-	 */
-	.rev-buckets > .rev-card-pair {
-		align-self: stretch;
-	}
-
-	.rev-buckets > .rev-card-pair > :global(.card-cq) {
-		height: 100%;
-	}
-
-	/*
-	 * ⭐ ROUND 11 r11c ITEM 4 — ONE COLUMN PER ENVIRONMENT, EVERY ROW'S OWN
-	 * GRID BUILT FROM THE IDENTICAL TEMPLATE STRING. Measured live at 1024:
-	 * `STAGING` sat at x=443 on one app's row and x=641 on another's —
-	 * `.rev-group-row` was an independent `flex-wrap` per row, so identical
-	 * environments landed wherever THAT row's own preceding atom happened
-	 * to end (a rolled-back place's atom is wider than an ordinary one).
-	 *
-	 * ⛔ `subgrid` WAS THE FIRST DRAFT (`envColumnsFor`'s own doc comment has
-	 * the measured failure) — this uses `grid-template-columns` set INLINE
-	 * per `<li>` instead (`envGridTemplate`, script-side; identical fixed-
-	 * length string for every row in the bucket), which needs no
-	 * cross-row negotiation: two independent grids given the same literal
-	 * template always agree, where two independent `max-content` grids
-	 * (or, it turns out, a subgrid asked to size `max-content` through a
-	 * parent) do not.
-	 *
-	 * `container-type: inline-size` stays for the mobile container query
-	 * below, which measures this element's own rendered width inside
-	 * `.rev-buckets`' 2-column layout.
-	 *
-	 * ⚠️ `--env-grid` (A CUSTOM PROPERTY), NOT `grid-template-columns`
-	 * DIRECTLY, IN THE INLINE `style`. An inline style always wins over a
-	 * stylesheet rule regardless of specificity or source order — if the
-	 * per-row template were set as a literal inline `grid-template-columns`,
-	 * the mobile `@container` override below could never replace it with
-	 * `minmax(0, 1fr)`. Routing it through a custom property lets the
-	 * MOBILE rule set the real property directly (which always beats a
-	 * `var()` reference at equal specificity), the same fix this file's
-	 * `CoverageBar`-adjacent width bug and the ledger toggle's pressed state
-	 * both needed for the identical reason.
-	 */
-	.rev-place-row {
-		container-type: inline-size;
-		display: grid;
-		grid-template-columns: var(--env-grid);
-		column-gap: 12px;
-		row-gap: 8px;
-		align-items: baseline;
-	}
-
-	/*
-	 * ⭐ ITEM 4 — `.rev-group-row`/`.rev-group-chips` ARE `display: contents`
-	 * AT DESKTOP: their own boxes disappear so their CHILDREN (the name
-	 * link, the optional label, each environment atom, the trail) become
-	 * direct items of `.rev-place-row`'s subgrid — which is what lets each
-	 * atom be placed by ENVIRONMENT IDENTITY (`--env-col`, set inline per
-	 * atom from `envColumnLine`) instead of by flex-wrap's left-to-right
-	 * packing order. `--rg-row` (also set inline, from the `{#each g.runs as
-	 * rg, gi}` index) keeps a service with TWO release-runs — one held
-	 * environment on an older label, the rest on the row's own — on two
-	 * separate grid rows instead of letting auto-placement interleave their
-	 * cells wherever a column happens to be free.
-	 *
-	 * ⛔ BELOW 560px BOTH REVERT (see the `@container` block) — the mobile
-	 * layout is unchanged from before this round: one column, name then
-	 * chips (still a real `flex-wrap` box there, so short atoms keep
-	 * sharing a line) then trail, each its own line.
-	 */
-	.rev-group-row,
-	.rev-group-chips {
-		display: contents;
-	}
-
-	.rev-group-name {
-		grid-column: 1;
-		grid-row: var(--rg-row, auto);
-	}
-
-	.rev-group-label {
-		grid-row: var(--rg-row, auto);
-	}
-
-	/*
-	 * `display: inline-flex`, its own `--env-col`/`--rg-row` placing it in
-	 * its row's fixed-width env column at desktop (the rule two above this
-	 * one makes its immediate parent, `.rev-group-chips`, transparent to
-	 * layout there).
-	 *
-	 * ⛔ `flex-wrap: nowrap` IS GONE (r11c item 4). It existed so the chip
-	 * and its own age could never split across a LINE BREAK BETWEEN atoms
-	 * in the old free-flowing `flex-wrap` row; now each atom has its own
-	 * FIXED-width cell (170px, `envGridTemplate`) and the rare compound
-	 * content (a rolled-back place's badge plus its own age, ~235px
-	 * measured) needs to wrap onto a second line WITHIN that cell instead
-	 * of overflowing into the next column — `wrap` is what lets it.
-	 */
-	.rev-env-atom {
-		display: inline-flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-		grid-column: var(--env-col, auto);
-		grid-row: var(--rg-row, auto);
-	}
-
-	.rev-group-trail {
-		grid-column: -2;
-		grid-row: var(--rg-row, auto);
-	}
-
-	.rev-group-trail {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: flex-end;
-		justify-self: end;
-		text-align: right;
-		gap: 4px;
-	}
-
-	/*
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 9 — HIDDEN ABOVE 560px. `display:
-	 * none` removes it from layout entirely at desktop, so it costs the
-	 * subgrid no track. Un-hidden inside the `@container` block below.
-	 */
-	.rev-group-label {
-		display: none;
-	}
-
-	/*
-	 * ⭐ ROUND 11 r11c ITEM 4 — BELOW 560px, THE SUBGRID STANDS DOWN. One
-	 * column (name, chips, trail each their own full-width line — the phone
-	 * ledger form `lib/CLAUDE.md`'s "the service ledger" note already
-	 * asks for), and the two elements that went `display: contents` for the
-	 * desktop subgrid (`.rev-group-row`, `.rev-group-chips`) become real
-	 * boxes again: `.rev-group-chips` reverts to the ORIGINAL `flex-wrap`
-	 * row so its own atoms keep sharing a line the ordinary way (this was
-	 * never broken at mobile — the misalignment item 4 fixes is a desktop-
-	 * width, multi-row-per-card defect; `.rev-place-row`'s own container
-	 * query already only fires when THIS row itself is narrow). `grid-row:
-	 * auto` on every element that carried an explicit `--rg-row` lets two
-	 * release-runs stack in DOM order instead of overlapping in the single
-	 * remaining column — an explicit row number front the desktop subgrid
-	 * would otherwise still apply.
-	 */
-	@container (max-width: 560px) {
-		.rev-place-row {
-			grid-template-columns: minmax(0, 1fr);
-		}
-
-		.rev-group-chips {
-			display: flex;
-			flex-wrap: wrap;
-			align-items: center;
-			gap: 8px 16px;
-			min-width: 0;
-			grid-row: auto;
-		}
-
-		.rev-group-name,
-		.rev-group-label,
-		.rev-env-atom,
-		.rev-group-trail {
-			grid-row: auto;
-		}
-
-		.rev-group-label {
-			display: inline;
-		}
-
-		.rev-group-trail {
-			justify-self: start;
-			justify-content: flex-start;
-			text-align: left;
-		}
-	}
-
-	/*
 	 * ⛔ `.rev-pair-natural`/`.rev-pair-match` ARE GONE (ITEM 3, 2026-09-06
 	 * round-7 critique). F9's height-match opt-in still stretched `What each
 	 * service calls it` on `9f10e494d560` — 593×315 with ~92px of dead body
@@ -3567,47 +3330,6 @@
 	   a child component's `<svg>`, which Svelte 5 does not give the scoping
 	   hash. The rules matched nothing; every glyph rendered PURE BLACK
 	   (1.43:1 on the dark card). Do not move them back into a component. */
-
-	/*
-	 * NAME OVER BUILD — STACKED, AT EVERY WIDTH.
-	 *
-	 * It was `name | badge` on one line, right-aligned, which worked in a
-	 * 1024px column and does not in a 340px rail: `hello-world-manifests` +
-	 * a joined `[NEWEST][0afab6f]` + `of 32` measured 396px and the NAME was
-	 * what ellipsised — `hello-world-mani…`. Truncating the identifier to keep
-	 * a column is the same defect that killed the `/apps` convergence bar, in
-	 * the other direction.
-	 *
-	 * Stacked, the binding is the line break, which is a stronger grouping cue
-	 * than a shared right edge anyway; and every row is one name, one badge and
-	 * one denominator, so the badge has exactly one possible referent.
-	 *
-	 * ⛔ FINDING 2 (operator sweep, 2026-09-07) GROWS ONE EXCEPTION. A `held`
-	 * row now carries TWO badges — the release running, then the release held
-	 * from replacing it (`.chip-mark`, in the template) — because printing
-	 * only the held one is the exact defect this finding names: the loudest
-	 * thing on the row claimed a build that was not actually live anywhere.
-	 * `.rev-svc-build` gains `flex-wrap` so that pair can drop under the name
-	 * at 390 instead of forcing the row wider than its column.
-	 */
-	.rev-svc-row {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		padding: 10px 16px;
-		min-width: 0;
-	}
-
-	/* The DENOMINATOR gets a fixed track, so the badges right-align to one x
-	   instead of to `of 4` / `of 35` / `of 37` — three different string widths,
-	   which would leave the boxes ragged by 12px while claiming to be a column. */
-	.rev-svc-build {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 6px;
-		min-width: 0;
-	}
 
 	/*
 	 * PHONE WIDTH IS A DESIGN, NOT A FALLBACK.

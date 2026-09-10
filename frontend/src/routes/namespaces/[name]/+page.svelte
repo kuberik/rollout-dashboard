@@ -58,7 +58,7 @@
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
-	import { versionPathForRollout } from '$lib/version-utils';
+	import { changePathForRollout } from '$lib/version-utils';
 	import {
 		getDisplayVersion,
 		categorizeFailure,
@@ -678,7 +678,7 @@
 											label={rankLabel(rank)}
 											title={rankTitle(rank, appName)}
 											value={shortenVersion(ver)}
-											valueHref={versionPathForRollout(a.rollout, appName, ver)}
+											valueHref={changePathForRollout(a.rollout, appName, ver)}
 											valueTitle={ver}
 											wide
 											class="min-w-0"

@@ -103,7 +103,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, rolloutPath, sourceClusterName } from '$lib/source-dashboard';
-	import { groupRolloutsByApp, versionPathForRollout } from '$lib/version-utils';
+	import { groupRolloutsByApp, changePathForRollout } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { rankVerdicts, rankBehindBy, rankIsAdverse } from '$lib/view-models/env-rank';
 	import type { RankVerdict } from '$lib/view-models/env-rank';
@@ -511,7 +511,7 @@
 						behindBy: rankBehindBy(rank),
 						version,
 						versionHref: version
-							? versionPathForRollout(cell.rollout, group.appName, version)
+							? changePathForRollout(cell.rollout, group.appName, version)
 							: null,
 						rolloutHref: rolloutHref(cell),
 						deployable: block.deployableCount,

@@ -1,6 +1,6 @@
 import type { Rollout, Environment } from '../types';
 import { buildRevisionLedger, type RevisionRow } from '$lib/view-models/revision-ledger';
-import { revisionPath, repoKeyFromSource, githubOwnerRepo } from '$lib/version-utils';
+import { changeBuildPath, repoKeyFromSource, githubOwnerRepo } from '$lib/version-utils';
 import { parsePrRef, type PrRef } from '$lib/pr-ref';
 import type { MyPull } from '$lib/api/my-pulls';
 
@@ -102,7 +102,7 @@ export function buildPaletteBuildIndex(
 				repoKey: ledger.repoKey,
 				repoLabel: ledger.repoLabel,
 				repoShort,
-				href: revisionPath(ledger.repoKey, row.revision)
+				href: changeBuildPath(ledger.repoKey, row.revision, row.revision)
 			});
 		}
 	}

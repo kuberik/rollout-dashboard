@@ -32,7 +32,7 @@
 		buildDatadogTestRunsUrl,
 		buildDatadogLogsUrl
 	} from '$lib/utils';
-	import { versionPathForRollout, displayVersionForTag } from '$lib/version-utils';
+	import { changePathForRollout, displayVersionForTag } from '$lib/version-utils';
 	import { apiPath } from '$lib/api/urls';
 	/**
 	 * ⛔ THE DEPLOY-STATE WORDS AND THEIR COLOUR ARE NOT THIS PAGE'S TO SPELL.
@@ -1043,7 +1043,7 @@
 										     anchor above the expand button's overlay, so a click on
 										     it is a click on IT and never on the row. -->
 										<a
-											href={versionPathForRollout(rollout, name, getDisplayVersion(entry.version))}
+											href={changePathForRollout(rollout, name, getDisplayVersion(entry.version))}
 											class="font-mono text-sm font-semibold text-gray-900 hover:underline dark:text-white"
 										>
 											{getDisplayVersion(entry.version)}

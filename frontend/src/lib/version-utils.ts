@@ -307,6 +307,21 @@ export function versionPathForRollout(
 	return buildPath(repoKeyFor(rollout, fallbackName), revisionFor(rollout, version), version);
 }
 
+/**
+ * `versionPathForRollout`'s `/changes` sibling — CHANGES-2026-09-10.md §1's link
+ * sweep. Same resolution (repoKey via `repoKeyFor`, revision via `revisionFor`),
+ * routed through `changeBuildPath` instead of the superseded `buildPath`/
+ * `revisionPath`/`versionPath` trio, so a caller holding a rollout+version keeps
+ * one call instead of re-deriving the repoKey/revision pair by hand.
+ */
+export function changePathForRollout(
+	rollout: Rollout | null | undefined,
+	fallbackName: string,
+	version: string
+): string {
+	return changeBuildPath(repoKeyFor(rollout, fallbackName), revisionFor(rollout, version), version);
+}
+
 export type AppCell = {
 	envName: string;
 	environment: Environment | null;

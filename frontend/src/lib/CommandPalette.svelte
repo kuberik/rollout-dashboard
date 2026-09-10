@@ -444,7 +444,7 @@
 			{ title: 'Rollouts', subtitle: 'Full inventory list', href: '/rollouts' },
 			{ title: 'Apps', subtitle: 'Apps across environments', href: '/apps' },
 			{ title: 'Environments', subtitle: 'Cross-env matrix', href: '/environments' },
-			{ title: 'Revisions', subtitle: 'Repositories and their builds', href: '/revisions' },
+			{ title: 'Changes', subtitle: 'Merged changes and where they landed', href: '/changes' },
 			{ title: 'Activity', subtitle: 'Recent deployments', href: '/activity' },
 			// ⭐ APPROACH B, ITEM C — `/me` IS DELIBERATELY NOT IN THE SIDEBAR
 			// (design doc: "reach it from Home and the palette"), so this

@@ -262,8 +262,10 @@ describe('the build index — a sha resolves regardless of the label a service c
 		expect(buildRow!.textContent).toContain('kuberik-testing');
 
 		await fireEvent.click(buildRow!);
+		// CHANGES-2026-09-10.md §1: the build result's href is `/changes/...`
+		// now, not `/revisions/...`.
 		expect(goto).toHaveBeenCalledWith(
-			'/revisions/github.com/littlechimera/kuberik-testing/9f10e4900000'
+			'/changes/github.com/littlechimera/kuberik-testing/9f10e4900000'
 		);
 	});
 });
@@ -282,17 +284,22 @@ describe('top-level pages resolve by the name the sidebar prints', () => {
 		expect(goto).toHaveBeenCalledWith('/');
 	});
 
-	test('typing "revisions" finds the Revisions page — it used to return 0 results', async () => {
+	test('typing "changes" finds the Changes page — it used to return 0 results', async () => {
+		// CHANGES-2026-09-10.md §1/§2: the Go-to row is `Changes` → `/changes`
+		// now, not `Revisions` → `/revisions` (the old address 308s forever,
+		// but the palette's own row points at the live one).
 		const { getByRole } = render(CommandPalette, { props: baseProps() });
 
-		await fireEvent.input(getByRole('combobox'), { target: { value: 'revisions' } });
+		await fireEvent.input(getByRole('combobox'), { target: { value: 'changes' } });
 
 		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
-		const revisionsRow = rows.find((r) => r.textContent?.includes('Revisions'));
-		expect(revisionsRow).toBeTruthy();
+		const changesRow = rows.find(
+			(r) => r.textContent?.includes('Changes') && r.textContent?.includes('landed')
+		);
+		expect(changesRow).toBeTruthy();
 
-		await fireEvent.click(revisionsRow!);
-		expect(goto).toHaveBeenCalledWith('/revisions');
+		await fireEvent.click(changesRow!);
+		expect(goto).toHaveBeenCalledWith('/changes');
 	});
 });
 

@@ -107,10 +107,11 @@ describe('buildPaletteBuildIndex', () => {
 		const apiEntry = entries.find((e) => e.short === '9f10e49')!;
 		expect(apiEntry.labels).toContain('2.66.0-66');
 		expect(apiEntry.repoShort).toBe('kuberik-testing');
-		// `revisionPath` slices to the 12-character URL form (`revisionSlug`)
+		// `changeBuildPath` slices to the 12-character URL form (`revisionSlug`)
 		// — the fixture's revision is `9f10e49` zero-padded to 40 characters,
-		// so the first 12 are `9f10e49` + five zeros.
-		expect(apiEntry.href).toBe('/revisions/github.com/littlechimera/kuberik-testing/9f10e4900000');
+		// so the first 12 are `9f10e49` + five zeros. CHANGES-2026-09-10.md
+		// §1: the build result's href is `/changes/...` now, not `/revisions/...`.
+		expect(apiEntry.href).toBe('/changes/github.com/littlechimera/kuberik-testing/9f10e4900000');
 	});
 
 	it('renders the required display line: <sha7> · <labels> · <repo short name>', () => {
