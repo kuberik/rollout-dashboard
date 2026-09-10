@@ -1045,6 +1045,7 @@ describe('orderServiceGroups — round 3 addendum C, extracted (round six §6)',
 		return {
 			appName: 'x',
 			revision: 'aaaaaaa',
+			rowKey: `${'aaaaaaa'}#x`,
 			short: 'aaaaaaa',
 			rank: 0,
 			ladderLength: 1,
@@ -1262,5 +1263,29 @@ describe('leadRowsFor / restRows / pastRows — ported from the route (round 11,
 			]
 		};
 		expect(pastRows(repo, new Set()).map((r) => r.revision)).toEqual(['b', 'a']);
+	});
+});
+
+describe('RevisionRow.key — two rows may share a revision (2026-09-10 each_key_duplicate)', () => {
+	it('rows for two releases of one revision get distinct keys and ledger lines carry them', () => {
+		// hello-frontend-app: rel-66 (prod) and rel-67 (dev) are the same commit
+		// 9f10e49 — the shape that threw each_key_duplicate on /revisions once a
+		// third release (rel-68, another sha) made dev and prod diverge.
+		const r66 = rel('9f10e49', 'rel-66', 300);
+		const r67 = rel('9f10e49', 'rel-67', 200);
+		const r68 = rel('bf5be49', 'rel-68', 10);
+		const rollouts = [
+			rollout('fe', 'fe-dev', [r66, r67, r68], [{ r: r67, minutesAgo: 5 }]),
+			rollout('fe', 'fe-prod', [r66, r67, r68], [{ r: r66, minutesAgo: 3 }])
+		];
+		const environments = [environment('fe', 'fe-dev', 'dev'), environment('fe', 'fe-prod', 'prod')];
+		const [repo] = buildRevisionLedger(rollouts, environments);
+		const same = repo.rows.filter((r) => r.revision === r66.revision);
+		expect(same.length).toBe(2);
+		expect(new Set(same.map((r) => r.key)).size).toBe(2);
+		expect(same.every((r) => r.key.startsWith(r66.revision + '#'))).toBe(true);
+		const lines = serviceLedger(repo).find((g) => g.appName === 'fe')!.lines;
+		expect(lines.length).toBe(2);
+		expect(new Set(lines.map((l) => `${l.appName}/${l.rowKey}`)).size).toBe(2);
 	});
 });

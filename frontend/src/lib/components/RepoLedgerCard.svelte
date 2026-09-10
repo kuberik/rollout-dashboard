@@ -444,7 +444,7 @@
 				{#if gi > 0 && multiLine && li !== prevLi}
 					<div class="svc-line-gap" aria-hidden="true"></div>
 				{/if}
-				{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.revision}` : `${group.appName}/none`)}
+				{#each group.lines.length ? group.lines : [null] as line, idx (line ? `${group.appName}/${line.rowKey}` : `${group.appName}/none`)}
 					{@const state = line ? lineState(line, now) : null}
 					{@const selected = filterable && isAppSelected(group.appName)}
 					<div class="svc-line">

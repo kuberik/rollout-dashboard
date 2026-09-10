@@ -2377,7 +2377,7 @@
 			`repoLeadRows`: a hero for a line `?q=` excludes is not drawn at
 			all, the same rule the held banner above already follows.
 		-->
-		{#each repoVisibleLeadRows as leadRow, li (leadRow.revision)}
+		{#each repoVisibleLeadRows as leadRow, li (leadRow.key)}
 			{@const cov = repoHeroCoverage(leadRow)}
 			{@const heroServices = repoHeroMatchedServices(leadRow)}
 			{@const heroNames = heroServices.map((s) => s.appName)}

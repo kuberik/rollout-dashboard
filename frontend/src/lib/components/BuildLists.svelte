@@ -373,7 +373,7 @@
 					</p>
 				{:else if liveVisible.length > 0}
 					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each liveVisible as row (row.revision)}
+						{#each liveVisible as row (row.key)}
 							{@const cov = coverageOf(row)}
 							{@const envSlots = liveEnvSlots(row)}
 							<BuildRow>
