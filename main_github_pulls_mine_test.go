@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -124,7 +125,7 @@ func TestGitHubPullsMine_Happy(t *testing.T) {
 	if etag == "" {
 		t.Fatalf("expected an ETag header")
 	}
-	if !contains(searchQuery, "author:alice") || !contains(searchQuery, "repo:octo/repo-a") || !contains(searchQuery, "repo:octo/repo-b") || !contains(searchQuery, "updated:>=") {
+	if !contains(searchQuery, "is:merged") || !contains(searchQuery, "author:alice") || !contains(searchQuery, "repo:octo/repo-a") || !contains(searchQuery, "repo:octo/repo-b") || !contains(searchQuery, "updated:>=") {
 		t.Fatalf("search query = %q, missing expected qualifiers", searchQuery)
 	}
 
@@ -142,12 +143,16 @@ func TestGitHubPullsMine_Happy(t *testing.T) {
 	if len(body.Repos) != 2 || body.Repos[0] != "octo/repo-a" || body.Repos[1] != "octo/repo-b" {
 		t.Fatalf("repos = %v, want [octo/repo-a octo/repo-b]", body.Repos)
 	}
-	if len(body.Pulls) != 2 {
-		t.Fatalf("len(pulls) = %d, want 2", len(body.Pulls))
+	// The open PR (#10) is in the stub's search response (proving the
+	// handler's own merged-only filter — not just the search qualifier —
+	// is what keeps it out, since a real GitHub server honoring is:merged
+	// would never have returned it in the first place) but must not appear
+	// in the response: the human only wants to see what landed.
+	if len(body.Pulls) != 1 {
+		t.Fatalf("len(pulls) = %d, want 1 (open PR #10 must be filtered out)", len(body.Pulls))
 	}
-	// Sorted by updatedAt desc: #20 (updated 09-06) before #10 (updated 09-05).
 	if body.Pulls[0]["number"] != float64(20) {
-		t.Fatalf("pulls[0].number = %v, want 20 (most recently updated first)", body.Pulls[0]["number"])
+		t.Fatalf("pulls[0].number = %v, want 20", body.Pulls[0]["number"])
 	}
 	if body.Pulls[0]["state"] != "merged" {
 		t.Fatalf("pulls[0].state = %v, want merged", body.Pulls[0]["state"])
@@ -157,15 +162,6 @@ func TestGitHubPullsMine_Happy(t *testing.T) {
 	}
 	if body.Pulls[0]["base"] != "main" {
 		t.Fatalf("pulls[0].base = %v, want main", body.Pulls[0]["base"])
-	}
-	if body.Pulls[1]["number"] != float64(10) {
-		t.Fatalf("pulls[1].number = %v, want 10", body.Pulls[1]["number"])
-	}
-	if body.Pulls[1]["state"] != "open" {
-		t.Fatalf("pulls[1].state = %v, want open", body.Pulls[1]["state"])
-	}
-	if body.Pulls[1]["mergeCommitSha"] != nil {
-		t.Fatalf("pulls[1].mergeCommitSha = %v, want nil (open PRs aren't detail-fetched)", body.Pulls[1]["mergeCommitSha"])
 	}
 	if got := pullsCalls.Load(); got != 1 {
 		t.Fatalf("pulls/{n} detail calls = %d, want 1 (only the merged PR)", got)
@@ -201,22 +197,29 @@ func TestGitHubPullsMine_SearchBatchedPastTwentyRepos(t *testing.T) {
 	var searchCalls atomic.Int64
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch req.URL.Path {
-		case "/user":
+		switch {
+		case req.URL.Path == "/user":
 			fmt.Fprint(w, `{"login":"alice"}`)
-		case "/search/issues":
+		case req.URL.Path == "/search/issues":
 			n := searchCalls.Add(1)
-			// Each call returns 40 distinct, all-open issues (80 total across
-			// both chunks) so nothing triggers the merged-detail fetch; only
-			// the cross-chunk merge, sort, and 50-cap are under test here.
+			// Each call returns 40 distinct, all-MERGED issues (80 total
+			// across both chunks) — merged-only is now the whole point of
+			// this endpoint, so an all-open fixture would exercise nothing
+			// here (everything would be filtered out). This still exercises
+			// the cross-chunk merge, sort, and 50-cap; the generic
+			// pulls/{n} handler below absorbs whatever detail-fetch calls
+			// the merged results trigger (bounded by pullsMineMaxDetailFetch
+			// regardless of how many of the 80 are merged).
 			var items []string
 			base := int(n) * 1000
 			for i := 0; i < 40; i++ {
 				num := base + i
 				updated := fmt.Sprintf("2026-09-%02dT00:00:00Z", 1+(i%27))
-				items = append(items, fmt.Sprintf(`{"number":%d,"title":"pr %d","html_url":"https://github.com/octo/repo-00/pull/%d","state":"open","repository_url":"https://api.github.com/repos/octo/repo-00","created_at":"2026-08-01T00:00:00Z","updated_at":"%s"}`, num, num, num, updated))
+				items = append(items, fmt.Sprintf(`{"number":%d,"title":"pr %d","html_url":"https://github.com/octo/repo-00/pull/%d","state":"closed","repository_url":"https://api.github.com/repos/octo/repo-00","created_at":"2026-08-01T00:00:00Z","updated_at":"%s","pull_request":{"merged_at":"%s"}}`, num, num, num, updated, updated))
 			}
 			fmt.Fprintf(w, `{"total_count":%d,"items":[%s]}`, len(items), joinJSON(items))
+		case strings.HasPrefix(req.URL.Path, "/repos/octo/repo-00/pulls/"):
+			fmt.Fprint(w, `{"state":"closed","merged_at":"2026-09-01T00:00:00Z","merge_commit_sha":"deadbeef","base":{"ref":"main"},"head":{"sha":"headsha"},"user":{"login":"alice"}}`)
 		default:
 			t.Fatalf("unexpected path %s", req.URL.Path)
 		}

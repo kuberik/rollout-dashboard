@@ -39,8 +39,11 @@ const (
 )
 
 // handleGitHubPullsMine serves GET /api/github/pulls/mine?days=30 — "Your
-// PRs" (design doc, Approach B): every PR the viewing user authored, across
-// every repo this cluster's visible rollouts deploy, updated within `days`.
+// PRs" (design doc, Approach B): every PR the viewing user authored AND
+// merged, across every repo this cluster's visible rollouts deploy, updated
+// within `days`. Open (and closed-without-merging) PRs are deliberately
+// excluded: the human only cares whether their change landed, not whether
+// they have something in flight.
 //
 // ── Rate-limit budget ────────────────────────────────────────────────────
 // The GitHub Search API is budgeted separately from the core API: 30
@@ -134,9 +137,18 @@ func handleGitHubPullsMine(c *gin.Context) {
 	}
 	pulls := []*ghMinePull{}
 	for _, issue := range issues {
-		if p := issueToMinePull(issue); p != nil {
-			pulls = append(pulls, p)
+		p := issueToMinePull(issue)
+		if p == nil || p.State != "merged" {
+			// The human doesn't want open (or closed-without-merging) PRs on
+			// this list — "Your PRs" now answers "what did I actually land",
+			// not "what have I opened". The `is:merged` qualifier in
+			// buildMyPullsQuery already asks GitHub for this; this is the
+			// belt to that suspenders (a test stub, or a future qualifier
+			// GitHub doesn't honor exactly as expected, must not leak an
+			// open PR through).
+			continue
 		}
+		pulls = append(pulls, p)
 	}
 	sort.Slice(pulls, func(i, j int) bool { return pulls[i].updatedAtTime.After(pulls[j].updatedAtTime) })
 	if len(pulls) > pullsMineMaxResults {
@@ -251,7 +263,10 @@ func searchMyPulls(ctx context.Context, ghClient *github.Client, login string, r
 
 func buildMyPullsQuery(login string, repos []string, since string) string {
 	var b strings.Builder
-	b.WriteString("is:pr author:")
+	// is:merged narrows the search itself to what the human actually wants —
+	// "did my changes land" — not just "is:pr", which used to also return
+	// open (and closed-without-merging) PRs.
+	b.WriteString("is:pr is:merged author:")
 	b.WriteString(login)
 	for _, r := range repos {
 		b.WriteString(" repo:")

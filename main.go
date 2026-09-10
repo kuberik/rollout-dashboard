@@ -270,6 +270,13 @@ func setupRouter() *gin.Engine {
 		// PR title behind a sha.
 		api.GET("/github/repos/:owner/:repo/commits/:sha/pulls", handleGitHubCommitPulls)
 
+		// GET /api/github/changes?days=30&repo=<owner/repo> — see
+		// handleGitHubChanges (main_github_changes.go): every merged PR plus
+		// every PR-less base-branch commit ("did my changes land"), across
+		// this cluster's visible source repos. The frontend joins this list
+		// to rollouts/builds in memory; this endpoint only lists changes.
+		api.GET("/github/changes", handleGitHubChanges)
+
 		api.GET("/rollouts", func(c *gin.Context) {
 			k8sClient, ok := getK8sReadClient(c)
 			if !ok {
