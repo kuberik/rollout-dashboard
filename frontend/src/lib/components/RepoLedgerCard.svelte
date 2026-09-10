@@ -70,7 +70,7 @@
 	import { revisionPath, repoSlug, repoLabel as repoLabelOf } from '$lib/version-utils';
 	import { formatTimeAgoCompact, formatDate } from '$lib/utils';
 	import { rolloutPath } from '$lib/source-dashboard';
-	import { repoTitle } from '../../routes/revisions/repo-title';
+	import { repoTitle } from '$lib/repo-title';
 	import { countLabel } from '$lib/disclosure';
 	import {
 		CodeBranchOutline,

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { cellStateSentence, cellReasonText, usuallyLabel, sinceLabel, checksLine } from './pr-cell-copy';
+import {
+	cellStateSentence,
+	cellReasonText,
+	usuallyLabel,
+	frontierUsuallyLabel,
+	sinceLabel,
+	checksLine
+} from './pr-cell-copy';
 import type { PrCell, PrState } from './view-models/pr-pipeline';
 import type { PrChecks } from './api/pulls';
 
@@ -225,6 +232,16 @@ describe('usuallyLabel', () => {
 
 	it('never rounds down to 0 min', () => {
 		expect(usuallyLabel(10_000)).toBe('usually 1 min');
+	});
+});
+
+describe('frontierUsuallyLabel (CHANGES-2026-09-10 §7, item 1)', () => {
+	it('rounds to whole minutes, "once it starts"', () => {
+		expect(frontierUsuallyLabel(11.6 * 60_000)).toBe('usually 12 min once it starts');
+	});
+
+	it('never rounds down to 0 min', () => {
+		expect(frontierUsuallyLabel(10_000)).toBe('usually 1 min once it starts');
 	});
 });
 

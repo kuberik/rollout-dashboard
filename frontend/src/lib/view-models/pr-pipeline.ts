@@ -182,11 +182,21 @@ export type PrPipelineVM = {
 	verdict: string;
 };
 
-/** The PR facts `fetchPull` (`api/pulls.ts`) resolves, plus the repo it is on. */
+/**
+ * The PR facts `fetchPull` (`api/pulls.ts`) resolves, plus the repo it is on.
+ *
+ * ⭐ `number` IS OPTIONAL (CHANGES-2026-09-10 §3): a bare commit reference —
+ * `/changes/<repo>/<sha>`, no PR behind it at all — constructs this same
+ * shape with no PR number, `containedIn: []`, `containedInAll: false` (exact
+ * membership: only `mergeCommitSha` itself counts, never a truncation
+ * fallback). Nothing in this module reads `number` — it exists for a
+ * caller's own head band (a PR page prints `#N`; a bare-sha page does not) —
+ * so leaving it unset changes no VM behaviour at all.
+ */
 export type PrPipelineMeta = {
 	owner: string;
 	repo: string;
-	number: number;
+	number?: number;
 	mergedAt: string | null;
 	mergeCommitSha: string | null;
 	containedIn: readonly string[];

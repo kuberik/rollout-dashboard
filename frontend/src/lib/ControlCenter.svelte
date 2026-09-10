@@ -44,6 +44,8 @@
 	import RolloutStepper from '$lib/components/RolloutStepper.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import HomeRail from '$lib/components/HomeRail.svelte';
+	import YourChangesCard from '$lib/components/YourChangesCard.svelte';
+	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
 	import {
 		ChevronRightOutline,
 		CloseCircleSolid,
@@ -72,6 +74,27 @@
 		})
 	);
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
+
+	/**
+	 * ⭐ CHANGES-2026-09-10.md §4 — "Your changes" PLACEMENT. `configured`/
+	 * `connected` decide WHERE the card renders, not just whether it does:
+	 * `!configured` → nowhere; `configured && !connected` → first in
+	 * `HomeRail`'s ordinary stack (`showChangesCard`, below); `connected` →
+	 * its own `.cc-changes` grid/flex item, below, so it can move above the
+	 * fleet at `<sm` (`order-first sm:order-none`) while still landing at the
+	 * top of the rail COLUMN once the container is wide enough to show one.
+	 * Cache-shared with `YourChangesCard`'s own query (same `githubStatusQueryKey`)
+	 * — this is a second subscription to the same TanStack cache entry, not a
+	 * second request.
+	 */
+	const changesGithubStatus = createQuery(() => ({
+		queryKey: githubStatusQueryKey,
+		queryFn: fetchGithubStatus,
+		staleTime: 300_000,
+		refetchInterval: false as const
+	}));
+	const changesConfigured = $derived(changesGithubStatus.data?.configured ?? false);
+	const changesConnected = $derived(changesGithubStatus.data?.connected ?? false);
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
@@ -568,8 +591,8 @@
 		-->
 		<HeadBandSkeleton leadWidth="w-6" rollupWidth="w-64" class="mb-5" />
 		<div class="cc-wrap">
-			<div class="cc-grid">
-			<div class="min-w-0">
+			<div class="cc-grid {changesConfigured && changesConnected ? 'cc-grid--with-changes' : ''}">
+			<div class="cc-main min-w-0">
 				{#each skelSections as s, i (s.key)}
 					<section class={i < skelSections.length - 1 ? 'mb-8' : ''}>
 						{@render skelSectionHeader()}
@@ -583,6 +606,27 @@
 					</section>
 				{/each}
 			</div>
+			{#if changesConfigured && changesConnected}
+				<!-- ⭐ THE SAME `.cc-changes` SLOT THE LOADED PAGE USES, SO THE
+				     FLIP TEST HOLDS (see the loaded markup's own note). Only
+				     rendered once `changesGithubStatus` has actually resolved to
+				     `connected` — before that this is simply absent, same as
+				     the loaded page. -->
+				<div class="cc-changes order-first sm:order-none min-w-0" aria-hidden="true">
+					<div
+						class="flex flex-col rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800"
+						style="height: 190px"
+					>
+						<div class="flex items-center gap-1.5">
+							<span class="skel-block h-4 w-4 shrink-0"></span>
+							<span class="skel-block h-3.5 w-28"></span>
+						</div>
+						<span class="skel-block mt-3 h-3 w-full"></span>
+						<span class="skel-block mt-2 h-3 w-full"></span>
+						<span class="skel-block mt-2 h-3 w-2/3"></span>
+					</div>
+				</div>
+			{/if}
 			{#if skelShowRail}
 				<!-- ⭐ THE REMEMBERED HEIGHT, NOT A GUESSED `rows`/`rowHeight`.
 				     `HomeRail`'s two cards hold genuinely variable content
@@ -706,8 +750,8 @@
 			not nudge it.
 		-->
 		<div class="cc-wrap">
-			<div class="cc-grid">
-		<div class="min-w-0">
+			<div class="cc-grid {changesConfigured && changesConnected ? 'cc-grid--with-changes' : ''}">
+		<div class="cc-main min-w-0">
 
 		<!-- Needs you now -->
 		{#if needsYou.length > 0}
@@ -1568,6 +1612,24 @@
 		</section>
 		</div>
 
+			<!-- ══ "YOUR CHANGES", ONLY WHEN CONNECTED ═══════════════════════════
+			     CHANGES-2026-09-10.md §4. A THIRD grid/flex item, deliberately
+			     NOT nested inside `HomeRail` — `order` only reorders DIRECT
+			     flex/grid children, and the whole point is to move THIS card
+			     (never `Recent activity`/`How it's going`) above the fleet at
+			     `<sm`, which needs it to be a sibling of `.cc-main`, not a
+			     grandchild three levels down. `order-first sm:order-none` is a
+			     plain (viewport) Tailwind breakpoint, deliberately NOT gated on
+			     the `@container` query below — see that rule's own note on why
+			     the two must stay independent. Gated ONLY on `connected` (never
+			     on the data inside it — an all-live fold or an empty state must
+			     not change WHERE the card sits, only what it says). -->
+			{#if changesConfigured && changesConnected}
+				<div class="cc-changes order-first sm:order-none min-w-0">
+					<YourChangesCard {rollouts} {environments} rolloutDependencies={query.data?.rolloutDependencies ?? null} />
+				</div>
+			{/if}
+
 			<!-- ══ THE RAIL ═══════════════════════════════════════════════════
 			     `mt-8` matches the `mb-8` every section above it carries, so
 			     stacked under the groups below the container-query breakpoint
@@ -1581,6 +1643,7 @@
 					{environments}
 					rolloutDependencies={query.data?.rolloutDependencies ?? null}
 					{localClusterName}
+					showChangesCard={changesConfigured && !changesConnected}
 				/>
 			</div>
 			</div>
@@ -1614,12 +1677,36 @@
 		container-type: inline-size;
 	}
 
+	/*
+	 * ⭐ `display: flex; flex-direction: column`, NOT `display: block` — the
+	 * CHANGES-2026-09-10.md §4 "above the fleet at `<sm`" REQUIREMENT is why.
+	 * `order` only has an effect inside a flex or grid formatting context,
+	 * and `.cc-changes` (below) needs it to jump ahead of `.cc-main` under
+	 * `sm`. `.cc-changes` itself carries NO `order` rule here — only the
+	 * Tailwind `order-first sm:order-none` utility classes on its own
+	 * element decide that, so there is no specificity fight between a
+	 * scoped component rule and a plain one-class Tailwind utility (a
+	 * scoped `.cc-changes{order:…}` would out-specificity it and silently
+	 * pin the order at every width).
+	 *
+	 * ⛔ SPACING IS `gap` ON THE CONTAINER, NOT A MARGIN ON EACH CHILD.
+	 * (Caught in this lane's own 2×2 review, 390 dark: measured 0px between
+	 * `.cc-changes` and `.cc-main` — the two cards touched.) A margin
+	 * declared on one child only ever pushes THAT child away from whatever
+	 * is BEFORE it in paint order — `.cc-rail`'s old `margin-top: 2rem`
+	 * pushed it away from `.cc-main` only because `.cc-rail` was ALWAYS
+	 * last. Once `order-first` can put `.cc-changes` first, a margin
+	 * written for one fixed visual order stops describing the others: at
+	 * `<sm` `.cc-changes` renders before `.cc-main`, so its own top margin
+	 * pushes it away from the HEAD BAND above, not from `.cc-main` below —
+	 * leaving nothing between them. `gap` spaces every pair of VISUALLY
+	 * adjacent flex items regardless of `order`, so it is correct for
+	 * whichever item ends up first.
+	 */
 	.cc-grid {
-		display: block;
-	}
-
-	.cc-rail {
-		margin-top: 2rem; /* mt-8 */
+		display: flex;
+		flex-direction: column;
+		gap: 2rem; /* mt-8's own rhythm, now as a container-level gap */
 	}
 
 	@container (min-width: 860px) {
@@ -1627,11 +1714,46 @@
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) 320px;
 			align-items: start;
-			gap: 24px; /* gap-6 */
+			gap: 24px; /* gap-6 — the grid's own, narrower rhythm */
 		}
 
-		.cc-rail {
-			margin-top: 0;
+		/*
+		 * EXPLICIT PLACEMENT, ONLY WHEN `.cc-changes` ACTUALLY RENDERS. Three
+		 * grid items (`.cc-main`, `.cc-changes`, `.cc-rail`) would otherwise
+		 * auto-place `.cc-changes` into a SECOND ROW OF COLUMN 1, under
+		 * `.cc-main` — CSS Grid fills row by row, and `order` alone cannot
+		 * rescue that once the track count is fixed. Naming the cell directly
+		 * is what keeps `.cc-changes` in column 2, row 1 — "first in the
+		 * rail" — regardless of any `order` value inherited from the
+		 * viewport-scoped Tailwind classes above; an item with an explicit
+		 * `grid-row`/`grid-column` ignores auto-placement's own ordering.
+		 *
+		 * ⛔ THE PLAIN TWO-ITEM CASE (not connected, or not configured) IS
+		 * BYTE-IDENTICAL TO BEFORE THIS CHANGE — no `grid-template-rows`, no
+		 * explicit placement, `.cc-main`/`.cc-rail` auto-flow into column 1
+		 * and 2 of one implicit row exactly as they always did. Only
+		 * `.cc-grid--with-changes` (set in the markup when `changesConfigured
+		 * && changesConnected`) opts into the second row — an unconditional
+		 * `grid-row: 2` on `.cc-rail` would otherwise leave column 2's first
+		 * row permanently empty whenever the card does not render.
+		 */
+		.cc-grid--with-changes {
+			grid-template-rows: auto auto;
+		}
+
+		.cc-grid--with-changes .cc-main {
+			grid-column: 1;
+			grid-row: 1 / span 2;
+		}
+
+		.cc-grid--with-changes .cc-changes {
+			grid-column: 2;
+			grid-row: 1;
+		}
+
+		.cc-grid--with-changes .cc-rail {
+			grid-column: 2;
+			grid-row: 2;
 		}
 	}
 

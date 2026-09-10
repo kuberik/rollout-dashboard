@@ -112,7 +112,11 @@ const DENY: Array<{
 			// gate here too, same precedence `blocking-story.ts`'s own `blockingStory()`
 			// already uses) and on the revision ledger view-model that feeds the list
 			// page's own pinned rows -- not a fresh spelling per surface.
-			"routes/revisions/[...slug]/+page.svelte\tcode\tPinned to … — automatic deploys are paused until the pin is cleared.",
+			// CHANGES-2026-09-10.md §1 — this page moved from
+			// `routes/revisions/[...slug]/+page.svelte` to
+			// `routes/changes/[...slug]/+page.svelte` (renamed, relinked);
+			// the sentence itself is unchanged.
+			"routes/changes/[...slug]/+page.svelte\tcode\tPinned to … — automatic deploys are paused until the pin is cleared.",
 			'lib/view-models/revision-ledger.ts\tcode\tPinned to … — automatic deploys are paused until the pin is cleared.'
 		]
 	},

@@ -48,6 +48,21 @@
 		new Set(service.cells.map((c) => c.cluster || localClusterName)).size > 1
 	);
 
+	/**
+	 * ⭐ CHANGES-2026-09-10 §7, ITEM 1/2 — THE FRONTIER CELL. The first
+	 * not-yet-live cell in `service.cells`' own order (`pr-pipeline.ts`
+	 * already sorts it `envRank` ascending — dev → prod), i.e. the next
+	 * environment this change has not reached. `null` when every cell is
+	 * already `live` (nothing left to estimate or promote). Cells are keyed
+	 * `cluster/envName` — the same key `PipelineCard`'s own `{#each}` already
+	 * uses, so identity survives a mid-flight state change with no index to
+	 * go stale.
+	 */
+	const frontierKey = $derived.by<string | null>(() => {
+		const cell = service.cells.find((c) => c.state !== 'live');
+		return cell ? `${cell.cluster}/${cell.envName}` : null;
+	});
+
 	/** No amber option on `Card` (`Card.svelte`'s own rule: a blocked card
 	 *  states its fact in a banner, not by staining the whole header) — the
 	 *  rollup's tone is restrained to the four values the component has. */
@@ -83,6 +98,7 @@
 				{environments}
 				{rolloutDependencies}
 				{now}
+				isFrontier={frontierKey === `${cell.cluster}/${cell.envName}`}
 			/>
 		{/each}
 	</ul>

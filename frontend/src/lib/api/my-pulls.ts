@@ -1,21 +1,28 @@
 /**
- * `GET /api/github/pulls/mine?days=30` — the viewing operator's own recent
- * pull requests across every repository this cluster deploys (hub AND every
- * spoke — the same fan-in `main_fanout.go` already unions rollouts across,
- * per the design doc's Approach B). Backs Home's "Your pull requests" card
- * and `/me`; the palette's title-matching (`palette-index.ts`'s
- * `buildMyPullTitlePaletteResults` / `prResultTitle`) reads the same cached
- * response rather than fetching it again.
+ * ⛔ SUPERSEDED, KEPT AS A THIN RE-EXPORT OVER `api/changes.ts`.
+ * CHANGES-2026-09-10.md §6 (the palette lane): `/api/github/pulls/mine` is
+ * gone — every open-PR half of this module's old contract went with it, the
+ * human having rejected open PRs on Home/`/me` outright. What survives is
+ * the SHAPE `Navbar.svelte`, `CommandPalette.svelte` and `palette-index.ts`
+ * (Lane 4, already landed) import from here — `MyPull` and
+ * `myPullsQueryOptions` — so none of those files needs an edit for this
+ * lane's work.
  *
- * ⛔ NOT SCOPED BY `:owner/:repo` THE WAY `pulls/:owner/:repo/:number` IS —
- * this endpoint decides the repo set itself (every distinct `status.source`
- * the viewing user can see) and hands it back as `repos`, so no caller has
- * to enumerate them first.
+ * ⭐ SAME `queryKey` AS `changesQueryOptions`, DELIBERATELY. `myPullsQueryKey`
+ * is `changesQueryKey` itself, unchanged — so a page already holding the
+ * unfiltered `/github/changes` cache warm (the `/changes` index,
+ * `YourChangesCard`) makes `Navbar`'s own `myPullsQueryOptions()` call a
+ * `select`-only re-shape of that SAME cache entry, never a second request.
+ * Two different `queryFn`s under one key would silently race each other's
+ * cached value; `select` is what lets each caller read its own shape off one
+ * fetch instead.
  *
- * ⭐ SORTED BY THE BACKEND (`updatedAt` desc) — this module does not re-sort.
+ * MERGED PULL REQUESTS ONLY, filtered here to the response's own `user` — a
+ * bare commit (`kind: 'commit'`) is dropped, because `MyPull.number` is not
+ * optional and `palette-index.ts`'s `buildMergedChangeIndex` builds a
+ * PR-shaped palette entry from every row it's handed.
  */
-import { apiPath } from './urls';
-import { ApiError } from './errors';
+import { changesQueryKey, fetchChanges, FetchChangesError, type ChangesResponse } from './changes';
 import { pollWhenHealthy } from './errors';
 
 export type MyPullState = 'open' | 'merged' | 'closed';
@@ -27,7 +34,8 @@ export type MyPull = {
 	title: string;
 	htmlUrl: string;
 	state: MyPullState;
-	/** ISO instant, or `null`. */
+	/** ISO instant, or `null`. Always `null` now — `/github/changes` never
+	 *  carries an open PR's opened-at instant, only a merged change's. */
 	openedAt: string | null;
 	/** ISO instant, or `null` — only set once `state` is `'merged'`. */
 	mergedAt: string | null;
@@ -37,7 +45,8 @@ export type MyPull = {
 	headSha: string | null;
 	/** The branch this PR targets, e.g. `main`. */
 	base: string;
-	/** ISO instant — what the response is sorted by (desc). */
+	/** ISO instant — what the old endpoint sorted by. Mirrors `mergedAt`
+	 *  here (the new feed has no separate "last updated" instant). */
 	updatedAt: string;
 };
 
@@ -47,89 +56,48 @@ export type MyPullsResponse = {
 	pulls: MyPull[];
 };
 
-export type MyPullsFetchErrorReason = 'not_connected' | 'not_found' | 'error';
+export const myPullsQueryKey = changesQueryKey;
 
-/**
- * ⛔ EXTENDS `ApiError`, SAME REASONING AS `FetchPullError`/`FetchCommitsError`:
- * carries `status` so the retry policy can tell "connect GitHub" (an answer)
- * apart from "the server hiccuped" (worth one more try), and `reason` stays
- * for the UI's two different sentences. The one 404 this endpoint can send
- * means no rollout on this cluster names a GitHub source at all — there is
- * nothing to look up, which is a different fact from "connected, but zero
- * PRs in the last 30 days" (a normal, empty `200`).
- */
-export class FetchMyPullsError extends ApiError {
-	reason: MyPullsFetchErrorReason;
-	constructor(reason: MyPullsFetchErrorReason, message: string, status = 0, detail = '', url = '') {
-		super(status, message, detail || message, url);
-		this.name = 'FetchMyPullsError';
-		this.reason = reason;
-	}
-}
-
-export const myPullsQueryKey = (days: number, cluster?: string) =>
-	['github-my-pulls', days, cluster] as const;
-
-export async function fetchMyPulls(days = 30, cluster?: string): Promise<MyPullsResponse> {
-	const url = `${apiPath(cluster, '/github/pulls/mine')}?days=${days}`;
-	const res = await fetch(url).catch(() => null);
-	if (!res) {
-		throw new FetchMyPullsError('error', 'No response from the server', 0, '', url);
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => ({}));
-		if (res.status === 401 || body.error === 'github_not_connected') {
-			throw new FetchMyPullsError(
-				'not_connected',
-				'Connect GitHub to see your pull requests',
-				res.status,
-				'GitHub account not connected',
-				url
-			);
-		}
-		if (res.status === 404) {
-			throw new FetchMyPullsError(
-				'not_found',
-				'No repository on this cluster is linked to GitHub',
-				res.status,
-				body.details || body.error || '',
-				url
-			);
-		}
-		throw new FetchMyPullsError(
-			'error',
-			body.error || 'Failed to fetch your pull requests',
-			res.status,
-			body.details || body.error || '',
-			url
-		);
-	}
-	return (await res.json()) as MyPullsResponse;
+function toMyPullsResponse(raw: ChangesResponse): MyPullsResponse {
+	const pulls: MyPull[] = raw.changes
+		.filter(
+			(c) => c.kind === 'pr' && c.number != null && c.author.toLowerCase() === raw.user.toLowerCase()
+		)
+		.map((c) => ({
+			owner: c.owner,
+			repo: c.repo,
+			number: c.number as number,
+			title: c.title,
+			htmlUrl: c.htmlUrl,
+			state: 'merged' as const,
+			openedAt: null,
+			mergedAt: c.mergedAt,
+			mergeCommitSha: c.mergeCommitSha,
+			headSha: c.headSha ?? null,
+			base: c.base,
+			updatedAt: c.mergedAt
+		}));
+	return { user: raw.user, repos: raw.repos, pulls };
 }
 
 /**
- * ⭐ `pollWhenHealthy(300000, …)` — THE DESIGN DOC'S OWN CADENCE (5 minutes),
- * unchanged from the task, and it ALREADY STOPS on `not_connected` /
- * `not_found` for free: both throw with a 4xx `status`, `isRetryable` says
- * no, and `pollWhenHealthy` reads that off the query's own error state. The
- * server ETags the response (per the design doc) so a quiet 5 minutes costs
- * a 304, not a re-parse — nothing extra to do client-side for that half;
- * `If-None-Match` on a plain `fetch` is the browser HTTP cache's job, same
- * as every other conditional-request endpoint this app already calls this
- * way (no client here hand-rolls ETag storage).
+ * `pollWhenHealthy(300000, …)` — identical cadence to `changesQueryOptions`,
+ * since this reads the same cache entry. `select` runs on every read, not
+ * on every fetch, so re-shaping here costs nothing extra per poll.
  */
 export function myPullsQueryOptions(args: { days?: number; cluster?: string; enabled?: boolean } = {}) {
 	const { days = 30, cluster, enabled = true } = args;
 	return {
-		queryKey: myPullsQueryKey(days, cluster),
-		queryFn: () => fetchMyPulls(days, cluster),
+		queryKey: changesQueryKey(days, cluster),
+		queryFn: () => fetchChanges(days, cluster),
+		select: toMyPullsResponse,
 		enabled,
 		staleTime: 60_000,
 		gcTime: 30 * 60_000,
 		refetchInterval: pollWhenHealthy(300_000),
 		refetchOnWindowFocus: false as const,
 		retry: (failureCount: number, error: unknown) => {
-			if (error instanceof FetchMyPullsError) return false;
+			if (error instanceof FetchChangesError) return false;
 			return failureCount < 1;
 		}
 	};

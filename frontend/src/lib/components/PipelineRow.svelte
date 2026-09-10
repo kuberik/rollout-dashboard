@@ -17,11 +17,11 @@
 	import FactList, { type Fact } from './FactList.svelte';
 	import SkeletonBar from './skeleton/SkeletonBar.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
-	import { fetchScheduleObjects, type ScheduleObject, formatAbsoluteReopen } from '$lib/api/schedules';
+	import { fetchScheduleObjects, type ScheduleObject, formatAbsoluteReopen, formatTimeUntil } from '$lib/api/schedules';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { buildGateContext, classifyGate, withSchedules, prettyNameOf } from '$lib/view-models/blocking-story';
 	import type { PrCell, PrState } from '$lib/view-models/pr-pipeline';
-	import { cellStateSentence, cellReasonText, usuallyLabel, sinceLabel } from '$lib/pr-cell-copy';
+	import { cellStateSentence, cellReasonText, usuallyLabel, sinceLabel, frontierUsuallyLabel } from '$lib/pr-cell-copy';
 	import type { Environment, RolloutDependency } from '../../types';
 
 	let {
@@ -31,7 +31,8 @@
 		multiCluster,
 		environments,
 		rolloutDependencies,
-		now = new Date()
+		now = new Date(),
+		isFrontier = false
 	}: {
 		cell: PrCell;
 		appName: string;
@@ -40,6 +41,12 @@
 		environments: Environment[];
 		rolloutDependencies: { items?: RolloutDependency[] } | null;
 		now?: Date;
+		/** ⭐ CHANGES-2026-09-10 §7 — the next environment this change has not
+		 *  reached yet (`PipelineCard`'s own `frontierKey`). Gates the ONE
+		 *  eager gate/schedule fetch item 2 asks for, and the frontier-only
+		 *  "usually N min once it starts" estimate item 1 asks for. Every
+		 *  other row stays exactly as lazy as it already was. */
+		isFrontier?: boolean;
 	} = $props();
 
 	/** HELD names a build that exists somewhere but cannot land in THIS cell
@@ -98,7 +105,7 @@
 			name: cell.gateHint?.rolloutName ?? '',
 			cluster: cell.gateHint?.cluster || undefined
 		}),
-		enabled: !!cell.gateHint && whyOpen,
+		enabled: !!cell.gateHint && (whyOpen || isFrontier),
 		staleTime: Infinity,
 		refetchInterval: false as const,
 		refetchOnWindowFocus: false as const,
@@ -118,7 +125,7 @@
 				cell.gateHint?.rolloutName ?? '',
 				cell.gateHint?.cluster || undefined
 			),
-		enabled: !!cell.gateHint && whyOpen,
+		enabled: !!cell.gateHint && (whyOpen || isFrontier),
 		staleTime: Infinity,
 		refetchInterval: false as const,
 		refetchOnWindowFocus: false as const,
@@ -139,14 +146,13 @@
 	const whyReady = $derived(whyQuery.data != null && schedulesQuery.data != null);
 
 	/**
-	 * The rule record the disclosure prints: its pretty name (never the raw
-	 * Kubernetes gate id), its description when the object publishes one,
-	 * and `status.nextTransition` as "opens <time>" — the literal "when can
-	 * I expect it" the design doc asks for. Both requests must have
-	 * SETTLED before this runs — `withSchedules` is only safe to call once
-	 * (see its own doc comment on `schedulesLoaded`).
+	 * ⭐ CHANGES-2026-09-10 §7, ITEM 2 — SHARED BY `gateFacts` (the
+	 * disclosure's own record) AND `frontierOpensLabel` (the row-promoted
+	 * countdown) so the classification runs once, not twice, per settle.
+	 * Both requests must have SETTLED before this runs — `withSchedules` is
+	 * only safe to call once (see its own doc comment on `schedulesLoaded`).
 	 */
-	const gateFacts = $derived.by<Fact[] | null>(() => {
+	const classifiedGate = $derived.by(() => {
 		const hint = cell.gateHint;
 		const data = whyQuery.data;
 		const schedules = schedulesQuery.data;
@@ -159,7 +165,21 @@
 			rolloutGates: data.rolloutGates ?? null
 		});
 		ctx = withSchedules(ctx, hint.namespace, schedules);
-		const classified = classifyGate(gate, hint.namespace, ctx);
+		return classifyGate(gate, hint.namespace, ctx);
+	});
+
+	/**
+	 * The rule record the disclosure prints: its pretty name (never the raw
+	 * Kubernetes gate id), its description when the object publishes one,
+	 * and `status.nextTransition` as "opens <time>" — the literal "when can
+	 * I expect it" the design doc asks for.
+	 */
+	const gateFacts = $derived.by<Fact[] | null>(() => {
+		const hint = cell.gateHint;
+		const data = whyQuery.data;
+		const schedules = schedulesQuery.data;
+		const classified = classifiedGate;
+		if (!hint || !data || !schedules || !classified) return null;
 
 		const gateObj = data.rolloutGates?.items?.find((g) => g.metadata?.name === hint.gateName) ?? null;
 		const scheduleObj =
@@ -180,6 +200,24 @@
 			facts.push({ label: 'When', value: `opens ${formatAbsoluteReopen(classified.clearsAt, classified.timezone)}` });
 		}
 		return facts;
+	});
+
+	/**
+	 * ⭐ ITEM 2 (CHANGES-2026-09-10 §7). "when can I expect it" — a held
+	 * FRONTIER cell promotes the rule's own next opening to the row itself,
+	 * `opens in 1d 4h`, rather than requiring a click into "Why is it held?"
+	 * first. Sourced from the SAME classification the disclosure computes
+	 * (fetched eagerly for this one cell, per `isFrontier` above) — `null`
+	 * off any non-frontier cell, a cell with no clock-kind gate, or once the
+	 * window has already opened (`formatTimeUntil` itself returns `null`
+	 * past the deadline — a countdown does not count backwards).
+	 */
+	const frontierOpensLabel = $derived.by<string | null>(() => {
+		if (!isFrontier) return null;
+		const clearsAt = classifiedGate?.clearsAt;
+		if (!clearsAt) return null;
+		const until = formatTimeUntil(clearsAt, now);
+		return until ? `opens in ${until}` : null;
 	});
 </script>
 
@@ -248,6 +286,28 @@
 			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}`}
 			>{usuallyLabel(cell.usuallyMs)}</span
 		>
+	{:else if isFrontier && cell.usuallyMs != null}
+		<!-- ⭐ CHANGES-2026-09-10 §7, ITEM 1 — the FRONTIER cell's own estimate
+		     for a cell that has not started yet (held, not-built, promoting…):
+		     "with a time estimation", answered where the question is actually
+		     asked. Every other non-active, non-frontier cell stays silent —
+		     this branch is mutually exclusive with the one above by
+		     construction (that one already claims every `deploying`/`baking`
+		     cell), so a cell never shows two estimates. -->
+		<span
+			class="t-micro ml-auto shrink-0 text-gray-400 dark:text-gray-500"
+			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}, once a deploy starts`}
+			>{frontierUsuallyLabel(cell.usuallyMs)}</span
+		>
+	{/if}
+
+	{#if frontierOpensLabel}
+		<!-- ⭐ CHANGES-2026-09-10 §7, ITEM 2 — "when can I expect it", promoted
+		     to the row for the held frontier cell. The "Why is it held?"
+		     disclosure below still prints the SAME fact in its absolute form
+		     (`When: opens 09:00 …`); this is the relative countdown a reader
+		     can act on without opening anything. -->
+		<span class="t-micro shrink-0 text-gray-500 dark:text-gray-400">{frontierOpensLabel}</span>
 	{/if}
 
 	{#if since}

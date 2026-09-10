@@ -193,8 +193,16 @@ describe('PipelineCard', () => {
 	});
 
 	test('"Why is it held?" fetches the single-rollout endpoint AND this rollout\'s schedules once, lazily, and prints the gate\'s kind', async () => {
+		// ⭐ CHANGES-2026-09-10 §7, ITEM 2 — a `not-built` cell in `dev` is now
+		// the FRONTIER (first not-yet-live cell), so this held `staging` cell
+		// is deliberately NOT the frontier — the disclosure it tests stays
+		// exactly as lazy as before. See the two tests below for the frontier
+		// cell's own eager-fetch behaviour.
 		const service = mkService([
+			mkCell('not-built', { envName: 'dev', envRank: 1 }),
 			mkCell('gated', {
+				envName: 'staging',
+				envRank: 4,
 				gateLabel: 'hello-world-manual-approval',
 				gateHint: {
 					cluster: '',
@@ -241,5 +249,69 @@ describe('PipelineCard', () => {
 		await fireEvent.click(screen.getByText('Why is it held?'));
 		await fireEvent.click(screen.getByText('Why is it held?'));
 		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	test('CHANGES-2026-09-10 §7, item 2: a HELD FRONTIER cell fetches eagerly, no click, and promotes "opens in …" to the row', async () => {
+		const service = mkService([
+			mkCell('gated', {
+				envName: 'dev',
+				envRank: 1,
+				gateLabel: 'Business Hours Only',
+				gateHint: {
+					cluster: '',
+					namespace: 'widget-dev',
+					rolloutName: 'widget-app',
+					gateName: 'business-hours-gate'
+				}
+			})
+		]);
+
+		const rolloutResponse: RolloutResponse = {
+			rollout: {
+				metadata: { name: 'widget-app', namespace: 'widget-dev' },
+				status: { gates: [{ name: 'business-hours-gate' }] }
+			} as never,
+			rolloutGates: { items: [] }
+		};
+		const nextTransition = new Date(NOW.getTime() + 28 * 60 * 60_000).toISOString(); // 1d 4h out
+		const schedulesResponse = {
+			rolloutSchedules: {
+				items: [
+					{
+						metadata: { name: 'business-hours', annotations: {} },
+						spec: { action: 'Allow', timezone: 'America/New_York' },
+						status: { active: false, nextTransition, managedGates: ['business-hours-gate'] }
+					}
+				]
+			}
+		};
+
+		const fetchMock = vi.fn((url: string) => {
+			if (url.includes('/schedules')) {
+				return Promise.resolve(new Response(JSON.stringify(schedulesResponse), { status: 200 }));
+			}
+			return Promise.resolve(new Response(JSON.stringify(rolloutResponse), { status: 200 }));
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		renderCard(service);
+
+		// ⛔ NO CLICK — this is the one cell in the service, so it is the
+		// frontier by construction, and item 2 asks for exactly one eager
+		// fetch here.
+		await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(screen.getByText(/opens in 1d 4h/)).toBeInTheDocument());
+	});
+
+	test('CHANGES-2026-09-10 §7, item 1: the frontier cell prints "usually N min once it starts" — every other held/not-built cell stays silent', () => {
+		const service = mkService([
+			mkCell('gated', { envName: 'dev', envRank: 1, gateLabel: 'a-rule', usuallyMs: 12 * 60_000 }),
+			mkCell('not-built', { envName: 'staging', envRank: 4, usuallyMs: 9 * 60_000 })
+		]);
+		renderCard(service);
+		expect(screen.getByText('usually 12 min once it starts')).toBeInTheDocument();
+		// The non-frontier `not-built` cell prints nothing, per item 1's own
+		// "everywhere else stays silent" — never a second estimate on this row.
+		expect(screen.queryByText(/usually 9 min/)).not.toBeInTheDocument();
 	});
 });

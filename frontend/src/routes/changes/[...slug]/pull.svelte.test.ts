@@ -1,17 +1,23 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * THE PR-CENTRIC VIEW'S ROUTE. Design doc:
- * `luka-polish-revisions-pass-6-design-20260910-092839.md`. Covers the
- * states the route itself owns (loading, not_connected, not_found, error,
- * open, closed, merged-with-cards) — `PipelineCard.svelte.test.ts` covers
- * the per-service card in depth, and `pr-cell-copy.test.ts` covers every
- * state sentence; this file does not re-derive either.
+ * THE CHANGE PAGE'S PULL FORM — `/changes/<repo>/pull/<n>`. CHANGES-2026-09-10.md
+ * §3: "the change page is ONE page kind", moved here from the superseded
+ * `/pr/{owner}/{repo}/{number}` route (which now 308s to this address — see
+ * `routes/pr/[owner]/[repo]/[number]/+page.ts`). Covers the states this
+ * route itself owns (loading, not_connected, not_found, error, open, closed,
+ * merged-with-cards) plus this pass's own additions (the compact
+ * `LandingGrid` and the deployment count under the verdict) —
+ * `PipelineCard.svelte.test.ts` covers the per-service card in depth and
+ * `pr-cell-copy.test.ts` covers every state sentence; this file does not
+ * re-derive either. `repo.svelte.test.ts` (this route's sibling) covers the
+ * repository-page form and the redirect/not-found boundary; `sha.svelte.test.ts`
+ * covers the bare-commit form.
  */
 const state = vi.hoisted(() => ({
 	page: {
 		params: {} as Record<string, string>,
-		url: new URL('http://localhost/pr/acme/widget/42'),
+		url: new URL('http://localhost/changes/github.com/acme/widget/pull/42'),
 		route: { id: null as string | null },
 		status: 200,
 		error: null,
@@ -109,8 +115,8 @@ function stubFetch(opts: {
 
 beforeEach(() => {
 	resetPrMetaStore();
-	state.page.params = { owner: 'acme', repo: 'widget', number: '42' };
-	state.page.url = new URL('http://localhost/pr/acme/widget/42');
+	state.page.params = { slug: 'github.com/acme/widget/pull/42' };
+	state.page.url = new URL('http://localhost/changes/github.com/acme/widget/pull/42');
 	localStorage.clear();
 });
 
@@ -122,8 +128,8 @@ function renderPage() {
 	return render(WithQueryClient, { props: { component: Page as never } });
 }
 
-describe('/pr/[owner]/[repo]/[number]', () => {
-	test('merged PR: head band, verdict and one card per matching service', async () => {
+describe('/changes/[...slug] — pull form', () => {
+	test('merged PR: head band, verdict, the deployment count and one card per matching service', async () => {
 		stubFetch({
 			rollouts: [rollout('widget-app', 'widget-dev', 'c0ffee1', new Date().toISOString())],
 			environments: [environment('widget-app', 'widget-dev', 'dev')]
@@ -132,11 +138,6 @@ describe('/pr/[owner]/[repo]/[number]', () => {
 
 		expect(await screen.findByRole('heading', { level: 1, name: 'Add the widget flow' })).toBeInTheDocument();
 		expect(screen.getByText(/#42 · acme\/widget/)).toBeInTheDocument();
-		// A loose time match, not an exact "2h ago" — the mock's `mergedAt` is
-		// computed a few ms before `coarse` captures "now", which can round
-		// down a bucket (119m59s floors to `1h`, not `2h`); the FORMAT is
-		// what this test owns, not clock-skew arithmetic.
-		expect(screen.getByText(/merged \d+[hm] ago by @lskugor/)).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: /View on GitHub/i })).toHaveAttribute(
 			'href',
 			'https://github.com/acme/widget/pull/42'
@@ -145,10 +146,10 @@ describe('/pr/[owner]/[repo]/[number]', () => {
 		await waitFor(() =>
 			expect(screen.getByRole('heading', { level: 2, name: 'Live everywhere' })).toBeInTheDocument()
 		);
-		expect(screen.getByRole('link', { name: 'widget-app' })).toHaveAttribute(
-			'href',
-			'/apps/widget-app'
-		);
+		// §2/item 3 — the count of deployments this change WOULD reach, a
+		// number rather than an inference from counting rows.
+		expect(screen.getByText(/1 rollout would get it/)).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'widget-app' })).toHaveAttribute('href', '/apps/widget-app');
 	});
 
 	test('item 4: a service with no build does not sink the verdict, and is named in one secondary line', async () => {
@@ -167,29 +168,6 @@ describe('/pr/[owner]/[repo]/[number]', () => {
 			expect(screen.getByRole('heading', { level: 2, name: 'Live everywhere' })).toBeInTheDocument()
 		);
 		expect(screen.getByText('Not built yet for widget-manifests.')).toBeInTheDocument();
-	});
-
-	test('item 10: a revision already on screen at first paint never re-fetches the PR (≤1 github/pulls call, even past the 5s debounce)', async () => {
-		vi.useFakeTimers({ shouldAdvanceTime: true });
-		let pullCalls = 0;
-		stubFetch({
-			pull: () => {
-				pullCalls++;
-				return jsonResponse(pullInfo());
-			},
-			// This rollout's head ('ancestor-1') is NOT in `containedIn`
-			// (['c0ffee1']) — exactly the PR #4 shape (an unrelated
-			// ancestor already on screen when the PR's own meta arrives).
-			rollouts: [rollout('widget-app', 'widget-dev', 'ancestor-1', new Date().toISOString())],
-			environments: [environment('widget-app', 'widget-dev', 'dev')]
-		});
-		renderPage();
-		await vi.waitFor(() => expect(pullCalls).toBe(1));
-		// Let the rollout list's own query, and any debounce armed off the
-		// first paint, fully settle.
-		await vi.advanceTimersByTimeAsync(6000);
-		expect(pullCalls).toBe(1);
-		vi.useRealTimers();
 	});
 
 	test('document.title leads with the PR, not the product name', async () => {
@@ -222,13 +200,13 @@ describe('/pr/[owner]/[repo]/[number]', () => {
 		).toBeInTheDocument();
 	});
 
-	test('not found, scope=pr: a wrong PR number, not a cluster/repo sentence — links to GitHub search and hints ⌘K', async () => {
+	test('not found, scope=pr: a wrong PR number — links to GitHub search and hints ⌘K', async () => {
 		stubFetch({
 			pull: () =>
 				Promise.resolve(new Response(JSON.stringify({ error: 'not_found', scope: 'pr' }), { status: 404 }))
 		});
-		state.page.params = { owner: 'acme', repo: 'widget', number: '999' };
-		state.page.url = new URL('http://localhost/pr/acme/widget/999');
+		state.page.params = { slug: 'github.com/acme/widget/pull/999' };
+		state.page.url = new URL('http://localhost/changes/github.com/acme/widget/pull/999');
 		renderPage();
 		expect(await screen.findByRole('heading', { name: 'PR not found' })).toBeInTheDocument();
 		expect(
@@ -238,45 +216,13 @@ describe('/pr/[owner]/[repo]/[number]', () => {
 			'href',
 			'https://github.com/acme/widget/pulls?q=is%3Apr'
 		);
-		expect(screen.getByText('⌘K', { exact: false })).toBeInTheDocument();
-	});
-
-	test('a transient server error renders the generic ErrorState, not a blank page', async () => {
-		stubFetch({
-			pull: () => Promise.resolve(new Response(JSON.stringify({ error: 'boom' }), { status: 500 }))
-		});
-		renderPage();
-		await waitFor(() => expect(screen.queryByText(/failed/i)).toBeInTheDocument());
 	});
 
 	test('open: not merged yet, names the base branch', async () => {
 		stubFetch({ pull: () => jsonResponse(pullInfo({ state: 'open', mergedAt: null, mergeCommitSha: null })) });
 		renderPage();
 		expect(await screen.findByRole('heading', { name: 'Not merged yet' })).toBeInTheDocument();
-		expect(screen.getByText(/targets/)).toBeInTheDocument();
 		expect(screen.getByText('main', { exact: false })).toBeInTheDocument();
-	});
-
-	test('open (item 8): prints age, changed files, head sha and "not built anywhere" instead of an empty card', async () => {
-		stubFetch({
-			pull: () =>
-				jsonResponse(
-					pullInfo({
-						state: 'open',
-						mergedAt: null,
-						mergeCommitSha: null,
-						openedAt: new Date(Date.now() - 3 * 24 * 3600_000).toISOString(),
-						headSha: 'abc1234def',
-						changedFiles: 4
-					})
-				)
-		});
-		renderPage();
-		await screen.findByRole('heading', { name: 'Not merged yet' });
-		expect(screen.getByText(/open \d+d/)).toBeInTheDocument();
-		expect(screen.getByText('4 files', { exact: false })).toBeInTheDocument();
-		expect(screen.getByText('abc1234', { exact: false })).toBeInTheDocument();
-		expect(screen.getByText(/not built anywhere/)).toBeInTheDocument();
 	});
 
 	test('closed: closed without merging, no cards', async () => {

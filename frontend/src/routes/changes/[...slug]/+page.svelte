@@ -8,16 +8,24 @@
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	import { commitPullsQueryOptions } from '$lib/api/commit-pulls';
-	import { prPath } from '$lib/pr-ref';
+	import { parseChangeSlug } from '$lib/pr-ref';
+	import { connectGithub } from '$lib/api/github';
+	import { FetchPullError } from '$lib/api/pulls';
+	import { ensurePrMeta, notifyRevisionSeen, prMetaKey } from '$lib/stores/pr-meta.svelte';
+	import { buildPrPipeline, type PrPipelineMeta } from '$lib/view-models/pr-pipeline';
+	import { buildLandingGrid } from '$lib/view-models/landing-grid';
+	import { checksLine } from '$lib/pr-cell-copy';
+	import LandingGrid from '$lib/components/LandingGrid.svelte';
+	import PipelineCard from '$lib/components/PipelineCard.svelte';
 	import {
 		repoBody,
-		revisionPath,
+		changeBuildPath,
 		displayVersionForTag,
 		shortRevision,
-		repoSlug,
-		githubOwnerRepo
+		repoSlug
 	} from '$lib/version-utils';
 	import { getDisplayVersion } from '$lib/utils';
+	import { repoKeyFromSource } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
 	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
 	// words — `unreleased` — and it takes it from here rather than spelling it.
@@ -117,10 +125,12 @@
 		ChevronRightOutline,
 		CheckCircleSolid,
 		ClockOutline,
+		CloseCircleOutline,
 		CodeBranchOutline,
 		CodePullRequestOutline,
 		ExclamationCircleSolid,
 		FolderOutline,
+		GithubSolid,
 		HourglassOutline,
 		LayersOutline,
 		LockOpenOutline,
@@ -154,7 +164,7 @@
 	import { pollWhenHealthy, staleTimeWhenHealthy, ApiError } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	// THE REPO, NOT THE URL IT IS FETCHED FROM — one spelling with `/versions`.
-	import { repoTitle, repoTitleFull } from '../repo-title';
+	import { repoTitle, repoTitleFull } from '$lib/repo-title';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
@@ -239,7 +249,7 @@
 	 */
 	let cameFromList = $state(false);
 	afterNavigate((nav) => {
-		cameFromList = nav.from?.route?.id === '/revisions';
+		cameFromList = nav.from?.route?.id === '/changes';
 	});
 
 	// The route is /versions/[...slug]; the slug is "<repo path>/<key>" where
@@ -359,8 +369,11 @@
 	 * the back button walk the resolution instead of leaving the page.
 	 */
 	$effect(() => {
-		if (repoPageLedger || !ledger || !revision) return;
-		const canonical = revisionPath(ledger.repoKey, revision);
+		// ⭐ CHANGES-2026-09-10 §1 — canonicalise onto `/changes/<repo>/<sha>`,
+		// never onto the superseded `/revisions/...` form, and never for a
+		// `pull/<n>` URL (that address is already canonical).
+		if (repoPageLedger || !ledger || !revision || isPullChange) return;
+		const canonical = changeBuildPath(ledger.repoKey, revision, revision);
 		if (page.url.pathname !== canonical) replaceState(canonical, page.state);
 	});
 
@@ -380,27 +393,6 @@
 		refetchInterval: false as const
 	}));
 	const githubConnected = $derived(githubStatus.data?.connected ?? false);
-
-	/**
-	 * ⭐ APPROACH B, ITEM D — "This build"'s "Pull requests" LINE. Lazily
-	 * fetched ONCE PER PAGE (`enabled` gates on `githubConnected` AND a
-	 * resolved owner/repo/revision — never on the repository list rows,
-	 * which is what "lean" means in the task: no per-row cost, one call for
-	 * the one build this page is about).
-	 */
-	const buildOwnerRepo = $derived(ledger ? githubOwnerRepo(ledger.repoKey) : null);
-	const buildPullsQuery = createQuery(() =>
-		commitPullsQueryOptions({
-			owner: buildOwnerRepo?.owner ?? '',
-			repo: buildOwnerRepo?.repo ?? '',
-			sha: row?.revision ?? '',
-			enabled: githubConnected && !!buildOwnerRepo && !!row?.revision
-		})
-	);
-	const buildPulls = $derived(buildPullsQuery.data ?? []);
-	const buildPullsLoaded = $derived(
-		githubConnected && !!buildOwnerRepo && !!row?.revision && !buildPullsQuery.isLoading
-	);
 
 	/**
 	 * A COARSE CLOCK, DELIBERATELY — not `$now`, which ticks every 100ms.
@@ -2086,19 +2078,299 @@
 			pending: Math.min(repoPageLedger.pending.length, 5)
 		});
 	});
+
+	// ══════════════════════════════════════════════════════════════════════
+	// CHANGES-2026-09-10 — THE CHANGE PAGE (PULL AND SHA FORMS)
+	//
+	// §1's ONE disambiguation rule, evaluated only once the whole-slug repo
+	// match above (`repoPageLedger`) has failed: a slug whose last two
+	// segments are `pull/<digits>` is a change page keyed on a PR; everything
+	// else splits the last segment off as a build key, exactly as `parsed`
+	// above already does for the repository/build split. `parseChangeSlug`
+	// (`pr-ref.ts`, Lane 1) is that one rule; this file does not re-derive it.
+	//
+	// §3: "the change page is ONE page kind" — `/changes/<repo>/pull/<n>` and
+	// `/changes/<repo>/<sha>` render the SAME body (verdict → the compact
+	// `LandingGrid` → one `PipelineCard` per service), built off the SAME
+	// `PrPipelineMeta`/`buildPrPipeline` a real PR already used on the
+	// (superseded) `/pr/…` route. A bare commit constructs the meta the design
+	// doc names verbatim: `{mergeCommitSha: sha, containedIn: [],
+	// containedInAll: false}` — exact membership, no truncation fallback.
+	// §3 also settles the "does the old build page survive" question: it does
+	// not, verbatim — "what each service calls it" IS `cell.releaseLabel` and
+	// "running it now" IS the `live` cells, both already drawn by
+	// `PipelineCard`/`PipelineRow`, so nothing is lost and the coverage bar is
+	// correctly dropped ("a change's coverage is the grid").
+	// ══════════════════════════════════════════════════════════════════════
+
+	const changeSlugParsed = $derived.by(() => {
+		if (repoPageLedger) return null;
+		const raw = (page.params.slug as string) || '';
+		const segments = raw
+			.split('/')
+			.filter((s) => s.length > 0)
+			.map(safeDecode);
+		return parseChangeSlug(segments);
+	});
+
+	/**
+	 * owner/repo parsed straight off the URL's own repo slug — independent of
+	 * the fleet's ledger, exactly like the (superseded) `/pr/…` route always
+	 * worked. `null` when the slug names something other than a well-formed
+	 * `github.com/owner/repo` — an `app:`-fallback repo (no linked source) or
+	 * a repo on a non-GitHub host has no PR/commit concept at all, and a
+	 * malformed slug is the existing "repository not found" case below,
+	 * unchanged.
+	 */
+	const changeOwnerRepo = $derived.by<{ owner: string; repo: string } | null>(() => {
+		const repoSlugPath = changeSlugParsed?.repoSlug ?? '';
+		const parts = repoSlugPath.split('/').filter((s) => s.length > 0);
+		if (parts.length !== 3 || parts[0] !== 'github.com') return null;
+		return { owner: parts[1], repo: parts[2] };
+	});
+
+	const isPullChange = $derived(changeSlugParsed?.ref.kind === 'pull' && !!changeOwnerRepo);
+	const isShaChange = $derived(changeSlugParsed?.ref.kind === 'sha' && !!changeOwnerRepo);
+	const changeOwner = $derived(changeOwnerRepo?.owner ?? '');
+	const changeRepo = $derived(changeOwnerRepo?.repo ?? '');
+	const changeNumber = $derived(
+		changeSlugParsed?.ref.kind === 'pull' ? changeSlugParsed.ref.number : NaN
+	);
+
+	// ── THE PULL FORM — byte-identical machinery to the superseded `/pr/…`
+	// route (`ensurePrMeta` memoises by `owner/repo#n`, so this is a cache
+	// lookup, not a re-fetch, for a tab that already had this PR open there).
+	const prEntry = $derived(isPullChange ? ensurePrMeta(changeOwner, changeRepo, changeNumber) : null);
+	const prData = $derived(prEntry?.data ?? null);
+	const prError = $derived(prEntry?.error ?? null);
+	const prLoading = $derived(!!prEntry?.loading && !prData && !prError);
+	const pullError = $derived(prError instanceof FetchPullError ? prError : null);
+
+	const expectedChangeRepoKey = $derived(repoKeyFromSource(`github.com/${changeOwner}/${changeRepo}`, ''));
+	const notifiedChangeRevisions = new Set<string>();
+	let changeSnapshotKey = '';
+	let changeSnapshotRevisions = new Set<string>();
+	let changeSnapshotTaken = false;
+	$effect(() => {
+		if (!isPullChange || !prData) return;
+		if (!query.data) return; // wait for the list's own first settle
+		const key = prMetaKey(changeOwner, changeRepo, changeNumber);
+		if (changeSnapshotKey !== key) {
+			changeSnapshotKey = key;
+			changeSnapshotRevisions = new Set<string>();
+			changeSnapshotTaken = false;
+			notifiedChangeRevisions.clear();
+		}
+		if (!changeSnapshotTaken) {
+			changeSnapshotTaken = true;
+			for (const rollout of rollouts) {
+				if (repoKeyFromSource(rollout.status?.source, '') !== expectedChangeRepoKey) continue;
+				for (const rel of rollout.status?.availableReleases ?? []) {
+					if (rel.revision) changeSnapshotRevisions.add(rel.revision);
+				}
+			}
+			return;
+		}
+		for (const rollout of rollouts) {
+			if (repoKeyFromSource(rollout.status?.source, '') !== expectedChangeRepoKey) continue;
+			for (const rel of rollout.status?.availableReleases ?? []) {
+				const rev = rel.revision;
+				if (!rev || notifiedChangeRevisions.has(rev) || changeSnapshotRevisions.has(rev)) continue;
+				notifiedChangeRevisions.add(rev);
+				notifyRevisionSeen(key, rev);
+			}
+		}
+	});
+
+	const mergedAgo = $derived(
+		prData?.mergedAt ? `${formatTimeAgoCompact(prData.mergedAt, coarse)} ago` : null
+	);
+	/** See the (superseded) `/pr/…` route's own comment: composed as ONE
+	 *  string, not a template built across `{#if}` branches, so Svelte never
+	 *  gets a chance to trim a leading space across a block boundary. */
+	const subtitleTail = $derived(
+		prData
+			? mergedAgo
+				? `merged ${mergedAgo} by @${prData.author}`
+				: prData.state === 'closed'
+					? `closed by @${prData.author}`
+					: `opened by @${prData.author}`
+			: ''
+	);
+	const checks = $derived(checksLine(prData?.checks));
+	const openAge = $derived(prData?.openedAt ? formatTimeAgoCompact(prData.openedAt, coarse) : null);
+	const openHeadShort = $derived(prData?.headSha ? prData.headSha.slice(0, 7) : null);
+	const openFilesLabel = $derived(
+		prData?.changedFiles != null
+			? `${prData.changedFiles} file${prData.changedFiles === 1 ? '' : 's'}`
+			: null
+	);
+
+	const pullMeta = $derived<PrPipelineMeta | null>(
+		isPullChange && prData && prData.state === 'merged'
+			? {
+					owner: changeOwner,
+					repo: changeRepo,
+					number: changeNumber,
+					mergedAt: prData.mergedAt,
+					mergeCommitSha: prData.mergeCommitSha,
+					containedIn: prData.containedIn,
+					containedInAll: prData.containedInAll
+				}
+			: null
+	);
+
+	// ── THE SHA FORM — a bare commit. `revision` (already resolved above via
+	// `resolveRevision(ledger, urlKey)`, prefix-matched against every known
+	// build on this repo) wins when this cluster has ever built it; the raw
+	// URL segment is the fallback, so a sha this cluster has NEVER built still
+	// renders a valid page ("not built yet", §3/item 8 — never a 404 for an
+	// honest question).
+	const shaForChange = $derived(changeSlugParsed?.ref.kind === 'sha' ? (revision ?? changeSlugParsed.ref.sha) : null);
+
+	/**
+	 * ⭐ APPROACH B, ITEM D, RETARGETED FOR CHANGES-2026-09-10 §3 — THE CHANGE
+	 * PAGE'S OWN TITLE RESOLUTION FOR A BARE SHA. Lazily fetched ONCE PER PAGE
+	 * (`enabled` gates on `githubConnected` and a resolved owner/repo/sha —
+	 * never on the repository list rows). `changeOwnerRepo`/`shaForChange`
+	 * (below) are URL-derived, not ledger-derived, so this fires even for a
+	 * sha this cluster has never built (§3/item 8: "not built yet" still
+	 * gets a page, and a PR title if GitHub happens to know one anyway).
+	 */
+	const buildPullsQuery = createQuery(() =>
+		commitPullsQueryOptions({
+			owner: changeOwnerRepo?.owner ?? '',
+			repo: changeOwnerRepo?.repo ?? '',
+			sha: shaForChange ?? '',
+			enabled: isShaChange && githubConnected && !!shaForChange
+		})
+	);
+	const buildPulls = $derived(buildPullsQuery.data ?? []);
+
+
+	/** §3's title rule: the PR title when `commits/:sha/pulls` resolves one
+	 *  (reusing the SAME lazy client `buildPullsQuery` below already wired
+	 *  for the (now-superseded) build page's own "Pull requests" line — one
+	 *  request, not a second endpoint), else the short sha. Prefers a MERGED
+	 *  result so a still-open PR naming this exact commit does not outrank
+	 *  the record GitHub itself would call authoritative for a landed change. */
+	const changeCommitPull = $derived(
+		buildPulls.find((p) => p.state === 'merged') ?? buildPulls[0] ?? null
+	);
+
+	const shaMeta = $derived<PrPipelineMeta | null>(
+		isShaChange && shaForChange
+			? {
+					owner: changeOwner,
+					repo: changeRepo,
+					mergedAt: changeCommitPull?.mergedAt ?? null,
+					mergeCommitSha: shaForChange,
+					containedIn: [],
+					containedInAll: false
+				}
+			: null
+	);
+
+	const changeMeta = $derived(pullMeta ?? shaMeta);
+	const changeVm = $derived(
+		changeMeta
+			? buildPrPipeline(changeMeta, rollouts, environments, query.data?.rolloutDependencies ?? null, coarse)
+			: null
+	);
+
+	/** ⭐ ITEM 4 (fix pass, kept). Services with a build carrying the change
+	 *  first (adverse before the rest), then services with no build anywhere,
+	 *  each group alphabetical. */
+	const changeOrderedServices = $derived.by(() => {
+		if (!changeVm) return [];
+		const hasBuild = (s: (typeof changeVm.services)[number]) =>
+			s.cells.some((c) => c.state !== 'not-built');
+		return [...changeVm.services].sort((a, b) => {
+			const aBuilt = hasBuild(a);
+			const bBuilt = hasBuild(b);
+			if (aBuilt !== bBuilt) return aBuilt ? -1 : 1;
+			const aAdverse = a.cells.some((c) => c.state === 'failed');
+			const bAdverse = b.cells.some((c) => c.state === 'failed');
+			if (aAdverse !== bAdverse) return aAdverse ? -1 : 1;
+			return a.appName.localeCompare(b.appName);
+		});
+	});
+	const changeNotBuiltServiceNames = $derived.by(() => {
+		if (!changeVm) return [];
+		return changeVm.services
+			.filter((s) => s.cells.every((c) => c.state === 'not-built'))
+			.map((s) => s.appName)
+			.sort((a, b) => a.localeCompare(b));
+	});
+
+	/** §2 / item 3 — the count of deployments this change WOULD reach, and how
+	 *  many already have it: "12 rollouts would get it · live in 3", a number
+	 *  instead of an inference from counting rows. */
+	const changeCellCount = $derived(changeVm ? changeVm.services.flatMap((s) => s.cells).length : 0);
+	const changeLiveCount = $derived(
+		changeVm ? changeVm.services.flatMap((s) => s.cells).filter((c) => c.state === 'live').length : 0
+	);
+
+	const landingGrid = $derived(changeVm ? buildLandingGrid(changeVm, coarse) : null);
+
+	const changePageTitle = $derived(
+		isPullChange
+			? prData
+				? `#${changeNumber} ${prData.title} · kuberik`
+				: `#${changeNumber} · kuberik`
+			: isShaChange
+				? changeCommitPull
+					? `${changeCommitPull.title} · kuberik`
+					: `${shaForChange ? shortRevision(shaForChange) : changeSlugParsed?.ref.kind === 'sha' ? changeSlugParsed.ref.sha : ''} · kuberik`
+				: ''
+	);
+
+	const commitHtmlUrl = $derived(
+		isShaChange && shaForChange ? `https://github.com/${changeOwner}/${changeRepo}/commit/${shaForChange}` : ''
+	);
+
+	/**
+	 * ⭐ ONE STRING, NOT A TEMPLATE BUILT ACROSS `{#if}` BRANCHES — same
+	 * reasoning as the pull form's own `subtitleTail` above (Svelte trims the
+	 * leading whitespace of a text node that OPENS a block branch, which
+	 * swallowed the space here too and rendered `kuberik-testing· merged …`
+	 * with no gap before the dot, live on `bf5be49`).
+	 */
+	const shaSubtitleTail = $derived(
+		changeCommitPull?.mergedAt
+			? `merged ${formatTimeAgoCompact(changeCommitPull.mergedAt, coarse)} ago by @${changeCommitPull.author}`
+			: null
+	);
+
+	/* ── SKELETON — remembers the last service-card count, like the
+	   (superseded) `/pr/…` route. */
+	const CHANGE_SHAPE_KEY = 'changes/pipeline';
+	const changeRemembered = recallShape<{ services: number }>(CHANGE_SHAPE_KEY);
+	const changeSkelServices = changeRemembered?.services ?? 2;
+	$effect(() => {
+		if (!changeVm) return;
+		rememberShape(CHANGE_SHAPE_KEY, { services: Math.min(changeVm.services.length, 5) });
+	});
 </script>
 
 <svelte:head>
+	<!-- CHANGES-2026-09-10.md §1's title table: the repository page keeps the
+	     `kuberik | <repo> changes` shape; the pull/sha change-page forms use
+	     their OWN title (`changePageTitle`, `#N <title> · kuberik` or
+	     `<sha> · kuberik`) — not the `kuberik | ` prefix, matching the
+	     superseded `/pr/…` route's own title exactly. -->
 	<title
-		>kuberik | {repoPageLedger
-			? repoTitle(repoPageLedger.repoLabel)
-			: row
-				? row.short
-				: urlKey}</title
+		>{repoPageLedger
+			? `kuberik | ${repoTitle(repoPageLedger.repoLabel)} changes`
+			: isPullChange || isShaChange
+				? changePageTitle
+				: row
+					? `kuberik | ${row.short}`
+					: `kuberik | ${urlKey}`}</title
 	>
 </svelte:head>
 
-<div class="rev-cq mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="rev-cq mx-auto w-full px-4 py-6 sm:px-6">
 	<!--
 		⭐ ROUND 11, B.4 ITEM 1 — THE TRAIL. `All revisions` on the repository
 		page; `All revisions › kuberik-testing` on the build page (the repo
@@ -2112,22 +2384,30 @@
 		not a URL, the same reasoning `+error.svelte`'s own `Go back`
 		control already uses.
 	-->
-	<nav
-		class="t-dense mb-4 flex min-w-0 flex-wrap items-center gap-1.5 text-gray-500 dark:text-gray-400"
-		aria-label="Breadcrumb"
-	>
-		{#if cameFromList}
-			<button type="button" class="nav-link" onclick={() => history.back()}>All revisions</button>
-		{:else}
-			<a class="nav-link" href={withQuery('/revisions')}>All revisions</a>
-		{/if}
-		{#if !repoPageLedger && ledger}
-			<ChevronRightOutline class="h-3 w-3 shrink-0 text-gray-400" aria-hidden="true" />
-			<a class="nav-link min-w-0 truncate" href={withQuery(`/revisions/${repoSlug(ledger.repoKey)}`)}
-				>{repoTitle(ledger.repoLabel)}</a
-			>
-		{/if}
-	</nav>
+	{#if !isPullChange && !isShaChange}
+		<!-- ⛔ NO BREADCRUMB ON THE CHANGE PAGE ITSELF (pull or sha form) —
+		     explicit, not an oversight, carried over from the superseded
+		     `/pr/{owner}/{repo}/{number}` route's own comment: "a PR is not
+		     a rollout, and the palette is how a reader got here and how they
+		     leave." The repository page (and the not-found / unlinked-repo
+		     branches below it) keep the trail. -->
+		<nav
+			class="t-dense mb-4 flex min-w-0 flex-wrap items-center gap-1.5 text-gray-500 dark:text-gray-400"
+			aria-label="Breadcrumb"
+		>
+			{#if cameFromList}
+				<button type="button" class="nav-link" onclick={() => history.back()}>All changes</button>
+			{:else}
+				<a class="nav-link" href={withQuery('/changes')}>All changes</a>
+			{/if}
+			{#if !repoPageLedger && ledger}
+				<ChevronRightOutline class="h-3 w-3 shrink-0 text-gray-400" aria-hidden="true" />
+				<a class="nav-link min-w-0 truncate" href={withQuery(`/changes/${repoSlug(ledger.repoKey)}`)}
+					>{repoTitle(ledger.repoLabel)}</a
+				>
+			{/if}
+		</nav>
+	{/if}
 
 	<!--
 		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
@@ -2142,6 +2422,68 @@
 		onRetry={() => query.refetch()}
 		isRetrying={query.isFetching}
 	/>
+
+	<!--
+		⭐ CHANGES-2026-09-10 §3 — "THE CHANGE PAGE IS ONE PAGE KIND." The body
+		below the head band is byte-identical whether `changeVm` was built from
+		a merged PR's `PrPipelineMeta` or a bare commit's — one snippet, two
+		callers (the `isPullChange`/`isShaChange` branches further down), so
+		the verdict/`LandingGrid`/`PipelineCard` composition cannot drift
+		between the two forms the way two independently-maintained templates
+		eventually would.
+	-->
+	{#snippet changeBody()}
+		{#if changeVm}
+			<h2 class="t-headline mb-1 text-gray-900 dark:text-white">{changeVm.verdict}</h2>
+			{#if changeNotBuiltServiceNames.length > 0 && changeNotBuiltServiceNames.length < changeVm.services.length}
+				<!-- Only when it's NEW information — a page whose verdict is
+				     already "Not built yet" (every service) would restate itself. -->
+				<p class="t-dense mb-1 text-gray-500 dark:text-gray-400">
+					Not built yet for {changeNotBuiltServiceNames.join(', ')}.
+				</p>
+			{/if}
+			{#if changeCellCount > 0}
+				<!-- ⭐ §2 / item 3 — the count of deployments this change WOULD
+				     reach, and how many already have it: a NUMBER, not an
+				     inference from counting rows on the grid below. -->
+				<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">
+					{changeCellCount} rollout{changeCellCount === 1 ? '' : 's'} would get it{#if changeLiveCount > 0}
+						· live in {changeLiveCount}{/if}
+				</p>
+			{/if}
+			{#if landingGrid}
+				{#if landingGrid.allSameLabel}
+					<!-- §2b's fold rule 1: every service agrees — one label, not a
+					     grid of identical rows. -->
+					<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">{landingGrid.allSameLabel}</p>
+				{:else if landingGrid.visible.length > 0}
+					<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+						<LandingGrid services={landingGrid.visible} />
+						{#if landingGrid.overflow}
+							<Chip
+								role="count"
+								label={`+${landingGrid.overflow.count} services`}
+								title={landingGrid.overflow.title}
+							/>
+						{/if}
+					</div>
+				{/if}
+			{/if}
+			{#if changeOrderedServices.length > 0}
+				<div class="space-y-4">
+					{#each changeOrderedServices as service (service.appName)}
+						<PipelineCard
+							{service}
+							{localClusterName}
+							{environments}
+							rolloutDependencies={query.data?.rolloutDependencies ?? null}
+							now={coarse}
+						/>
+					{/each}
+				</div>
+			{/if}
+		{/if}
+	{/snippet}
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} class="mt-4 mb-0" />
@@ -2247,8 +2589,8 @@
 		<ErrorState
 			error={query.error}
 			subject="this revision"
-			backHref="/revisions"
-			backLabel="Back to all revisions"
+			backHref="/changes"
+			backLabel="Back to all changes"
 			onRetry={() => query.refetch()}
 			isRetrying={query.isFetching}
 			class="mt-4"
@@ -2449,7 +2791,7 @@
 				title="Newest build {leadRow.short} · {heroTitleTail}"
 				verdict={heroVerdict}
 				verdictTitle="Everything below is counted across the services that have a release for this commit."
-				titleHref={revisionPath(repoPageLedger.repoKey, leadRow.revision)}
+				titleHref={changeBuildPath(repoPageLedger.repoKey, leadRow.revision, leadRow.revision)}
 				class={repoMultiLine && li < repoVisibleLeadRows.length - 1 ? 'mt-4 mb-4' : 'mt-4'}
 			>
 				<RevisionLead
@@ -2484,1503 +2826,227 @@
 			query={repoSearchQuery}
 			storageKey={page.url.pathname}
 		/>
-	{:else if !row || !ledger || !coverage}
+	{:else if isPullChange}
+		<!-- ══ THE CHANGE PAGE — PULL FORM (CHANGES-2026-09-10 §3) ═══════════
+		     Moved from the superseded `/pr/{owner}/{repo}/{number}` route,
+		     which now 308s here (`routes/pr/**`). ⛔ NO BREADCRUMB — a PR is
+		     not a rollout, and the palette is how a reader got here and how
+		     they leave; the head band (title, `#N · owner/repo`, "View on
+		     GitHub ↗") is the page's only orientation, unchanged from the
+		     superseded route. -->
+		{#if prLoading}
+			<!-- THE SKELETON KEEPS THE HEAD BAND'S SHAPE (CardSkeleton's own
+			     rule: a placeholder is the whole composition, header included). -->
+			<div class="mb-6 space-y-2" aria-hidden="true">
+				<div class="h-7 w-2/3 max-w-xl animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+				<div class="h-4 w-1/2 max-w-sm animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+			</div>
+			<div class="space-y-4">
+				{#each Array.from({ length: changeSkelServices }, (_, i) => i) as i (i)}
+					<CardSkeleton titleWidth="w-32" rollupWidth="w-40" rows={3} rowHeight={28} padded={false} />
+				{/each}
+			</div>
+		{:else if pullError?.reason === 'not_connected'}
+			<p class="t-dense mb-1 text-gray-500 dark:text-gray-400">
+				#{changeNumber} · {changeOwner}/{changeRepo}
+			</p>
+			<h1 class="t-display text-gray-900 dark:text-white">Connect GitHub to see this pull request</h1>
+			<p class="t-body mt-2 max-w-prose text-gray-600 dark:text-gray-300">
+				This dashboard reads pull request details as you, through your own GitHub account — connect
+				it to see #{changeNumber} on {changeOwner}/{changeRepo}.
+			</p>
+			<button type="button" class="btn btn-primary mt-4" onclick={() => connectGithub()}>
+				<GithubSolid aria-hidden="true" />
+				Connect GitHub
+			</button>
+		{:else if pullError?.reason === 'not_found' && pullError.scope === 'pr'}
+			<p class="t-dense mb-1 text-gray-500 dark:text-gray-400">
+				#{changeNumber} · {changeOwner}/{changeRepo}
+			</p>
+			<h1 class="t-display text-gray-900 dark:text-white">PR not found</h1>
+			<p class="t-body mt-2 max-w-prose text-gray-600 dark:text-gray-300">
+				PR #{changeNumber} not found in {changeOwner}/{changeRepo} (or you cannot see it). Check the
+				number, or
+				<a
+					href={`https://github.com/${changeOwner}/${changeRepo}/pulls?q=is%3Apr`}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="nav-link">search {changeOwner}/{changeRepo}'s pull requests on GitHub ↗</a
+				>. You can also press <kbd class="t-code-sm">⌘K</kbd> to look it up here.
+			</p>
+		{:else if pullError?.reason === 'not_found'}
+			<p class="t-dense mb-1 text-gray-500 dark:text-gray-400">
+				#{changeNumber} · {changeOwner}/{changeRepo}
+			</p>
+			<h1 class="t-display text-gray-900 dark:text-white">Not on this cluster</h1>
+			<p class="t-body mt-2 max-w-prose text-gray-600 dark:text-gray-300">
+				No service on this cluster deploys {changeOwner}/{changeRepo}.
+			</p>
+		{:else if prError}
+			<ErrorState
+				error={prError}
+				subject="this pull request"
+				backHref="/"
+				backLabel="Back to the dashboard"
+				isRetrying={prEntry?.loading ?? false}
+				onRetry={() => void prEntry?.fetch()}
+			/>
+		{:else if prData}
+			<!-- ══ HEAD BAND — THE PAGE'S ONLY ORIENTATION, NO BREADCRUMB ═══════ -->
+			<header class="mb-6">
+				<h1 class="t-display text-gray-900 dark:text-white">{prData.title}</h1>
+				<p
+					class="t-dense mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
+				>
+					<span>#{prData.number} · {changeOwner}/{changeRepo} · {subtitleTail}</span>
+					<a
+						href={prData.htmlUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="nav-link inline-flex items-center gap-1"
+					>
+						<GithubSolid class="h-3.5 w-3.5" aria-hidden="true" />
+						View on GitHub
+						<span aria-hidden="true">↗</span>
+					</a>
+				</p>
+				{#if checks}
+					<!-- ⭐ APPROACH B, ITEM E — ONE HEAD-BAND LINE, NEVER FOLDED INTO A
+					     CELL. -->
+					<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
+						{#if checks.href}
+							<a
+								href={checks.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="nav-link inline-flex items-center gap-1"
+							>
+								{checks.text}
+								<span aria-hidden="true">↗</span>
+							</a>
+						{:else}
+							{checks.text}
+						{/if}
+					</p>
+				{/if}
+			</header>
+
+			{#if prData.state === 'open'}
+				<Card icon={ClockOutline} title="Not merged yet">
+					<p class="t-body text-gray-600 dark:text-gray-300">
+						This pull request has not merged yet — it targets <code class="t-code-sm">{prData.base}</code
+						>. Once it merges, this page fills in per service.
+					</p>
+					<p class="t-dense mt-2 text-gray-500 dark:text-gray-400">
+						{#if openAge}open {openAge} · {/if}{#if openFilesLabel}{openFilesLabel} · {/if}{#if openHeadShort}head
+							<code class="t-code-sm">{openHeadShort}</code> · {/if}not built anywhere
+					</p>
+				</Card>
+			{:else if prData.state === 'closed'}
+				<Card icon={CloseCircleOutline} title="Closed without merging">
+					<p class="t-body text-gray-600 dark:text-gray-300">
+						This pull request was closed without merging, so no build ever contained it.
+					</p>
+				</Card>
+			{:else}
+				{@render changeBody()}
+			{/if}
+		{/if}
+	{:else if isShaChange}
+		<!-- ══ THE CHANGE PAGE — SHA FORM (CHANGES-2026-09-10 §3) ═══════════
+		     A bare commit, no PR behind it (or GitHub simply not asked). The
+		     SAME page kind as the pull form above — `changeBody()` renders
+		     the identical verdict/grid/card composition off a `PrPipelineMeta`
+		     constructed with `containedIn: []`, `containedInAll: false`
+		     (exact membership: only this one sha counts, never a truncation
+		     fallback). §3's own accounting: today's build page's three unique
+		     facts survive inside these rows without restating them — "what
+		     each service calls it" IS `cell.releaseLabel`, "running it now"
+		     IS the `live` cells — so the coverage bar is correctly dropped. -->
+		<header class="mb-6">
+			<h1 class="t-display text-gray-900 dark:text-white">
+				{changeCommitPull ? changeCommitPull.title : shaForChange ? shortRevision(shaForChange) : ''}
+			</h1>
+			<p
+				class="t-dense mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
+			>
+				<span
+					>{shaForChange ? shortRevision(shaForChange) : ''} · {changeOwner}/{changeRepo}{shaSubtitleTail
+						? ` · ${shaSubtitleTail}`
+						: ''}</span
+				>
+				<a
+					href={commitHtmlUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="nav-link inline-flex items-center gap-1"
+				>
+					<GithubSolid class="h-3.5 w-3.5" aria-hidden="true" />
+					View commit
+					<span aria-hidden="true">↗</span>
+				</a>
+			</p>
+		</header>
+		{@render changeBody()}
+	{:else if ledger && row}
+		<!-- ══ A BUILD WITH NO LINKED GITHUB REPOSITORY ═══════════════════════
+		     CHANGES-2026-09-10 is a GitHub-shaped page kind (a PR or a commit
+		     reference) — an `app:`-fallback repo (no `status.source` at all)
+		     or a non-GitHub host has no PR/commit concept to build one from.
+		     Honest degrade rather than a broken page: name the build and
+		     where it runs, and point back at the repository page, which still
+		     answers "what runs where" for it. -->
+		<h1 class="t-display text-gray-900 dark:text-white">{row.short}</h1>
+		<p class="t-body mt-2 max-w-prose text-gray-600 dark:text-gray-300">
+			This build has no linked GitHub repository, so there is no change page for it — changes need a
+			pull request or a commit on a GitHub-hosted repo.
+			<a class="nav-link" href={withQuery(`/changes/${repoSlug(ledger.repoKey)}`)}
+				>See what {repoTitle(ledger.repoLabel)} runs ›</a
+			>
+		</p>
+		{#if row.services.length > 0}
+			<ul class="mt-4 space-y-1">
+				{#each row.services as svc (svc.appName)}
+					{#each svc.slots.filter((s) => s.onIt) as slot (slot.envName)}
+						<li class="t-dense text-gray-600 dark:text-gray-300">
+							<a
+								class="nav-link"
+								href={rolloutPath(
+									slot.cell.sourceCluster || localClusterName,
+									slot.cell.rollout.metadata?.namespace ?? '',
+									slot.cell.rollout.metadata?.name ?? ''
+								)}
+							>
+								{svc.appName} · {slot.envName}
+							</a>
+						</li>
+					{/each}
+				{/each}
+			</ul>
+		{/if}
+	{:else}
 		<!--
 			⛔ A REPO THAT DOES NOT EXIST WAS CALLED A "REVISION NOT FOUND", AND
-			THE REVISION IT NAMED WAS A REPO SEGMENT. (2026-09-03,
-			operator-walk) `/versions/github.com/littlechimera/no-such-repo` —
-			three path segments, no revision anywhere in it — printed `Nothing
-			in github.com/littlechimera knows the revision no-such-repo.`. The
-			URL scheme (`repoPath` + `/` + `key`) always pops the LAST segment
-			as the "revision", so a bare repo path with nothing after it gets
-			its own final segment relabelled as one; `repoPath` is then an
-			OWNER, not a repo, and matches nothing by construction.
-
-			`!ledger` is exactly that case — the split-based lookup found no
-			repo AT ALL — and is now told apart from the real "revision not
-			found IN a real repo" case (`ledger` resolved, `row`/`coverage`
-			did not). The rejoined FULL path is what the reader actually
-			typed or followed; that is the object that does not exist, not a
-			revision inside a truncated one.
-		-->
-		<!--
-			⛔ ⭐ ROUND 6, LANE 10 — THIS WAS BARE CENTRED TEXT WITH A `←`, THE
-			ONLY NOT-FOUND STATE IN THE PRODUCT THAT WAS NOT `ErrorState`.
-			`/rollouts/<cluster>/<namespace>/<name>` draws its own "does not
-			exist" fact (a successful fetch, object absent — the identical
-			CLASS of fact this branch is) as `ErrorState`'s own filled
-			`AlertPanel`, `Try again` and a trailing `›`; this page instead
-			hand-rolled a centred icon, an `<h1>`, and a leading `←` — a
-			SECOND not-found grammar, and the one arrow in the product
-			pointing the wrong way. `ApiError`'s own `isMissing` branch is
-			built for exactly "this address does not resolve to a real
-			object" — a synthetic `404` carries the same headline
-			(`errorHeadline`: "This repository/revision does not exist") and
-			consequence (`errorConsequence`: "It may have been deleted, or
-			the address may be wrong.") `ErrorState` already renders for a
-			REAL 404 twelve lines up this same branch chain, so the two read
-			as one fact, not two dialects — same as the rollout precedent's
-			own note on this. The specific address the reader typed still
-			survives, in `errorFacts`'s "Address" field (the URL each
-			synthetic error carries below), which is exactly where `/rollouts`'
-			own missing-object case puts its `namespace/name` pair.
+			THE REVISION IT NAMED WAS A REPO SEGMENT — preserved from the
+			superseded `/revisions/[...slug]` route's own finding (2026-09-03,
+			operator-walk). `!ledger` is the split-based lookup finding no repo
+			AT ALL; told apart from "a real repo, but this ref/build does not
+			resolve" (`ledger` known, non-GitHub, `row` absent), which is the
+			one remaining case reaching this branch after CHANGES-2026-09-10 —
+			the GitHub pull/sha forms above render "not built yet" rather than
+			404ing (§3/item 8: an honest question always gets a page).
 		-->
 		<ErrorState
 			error={!ledger
-				? new ApiError(404, 'not found', '', `/revisions/${wholeSlugPath}`)
-				: new ApiError(404, 'not found', '', `/revisions/${repoPath}/${urlKey}`)}
+				? new ApiError(404, 'not found', '', `/changes/${wholeSlugPath}`)
+				: new ApiError(404, 'not found', '', `/changes/${repoPath}/${urlKey}`)}
 			subject={!ledger ? 'this repository' : 'this revision'}
-			backHref="/revisions"
-			backLabel="Back to all revisions"
+			backHref="/changes"
+			backLabel="Back to all changes"
 			onRetry={() => query.refetch()}
 			isRetrying={query.isFetching}
 			class="mt-4"
 		/>
-	{:else}
-		<!--
-			⭐ THE HERO IS THE HEAD BAND NOW, THE SAME ROW `/versions`, `/activity`
-			AND `/dependencies` LEAD WITH. (2026-09-02, design re-check: *"the
-			hero is eight ungrouped lines on the page ground … the page's rollup
-			floating 1180px away top-right; it is the one region with no card."*)
-
-			`RevisionLead`'s two-column hero (eyebrow / sha / count / bar) is gone
-			from THIS page — it stays exactly as it was on `/versions`, where it
-			leads a card and is the page's only object. Here the object is named
-			ONCE, at display scale, in one row: an `sr-only` `h1` (the object's
-			full name, for the outline and for a screen reader), the sha at
-			`t-display-id`, and the coverage count at `t-display` on its baseline.
-			Everything else this build has to say — the commit, the repo, the
-			services, when it last moved, the outbound link — moved into ONE
-			titled card below (`This build`), which is also the card that gives
-			the page's previously 39%-empty viewport something to hold. See the
-			`rev-buckets` block for it.
-
-			⛔ `BuildStateMark` USED TO SIT HERE TOO, AND IT WAS A SECOND
-			STATEMENT OF THE SAME NUMBER. (2026-09-02, residue.) `3 of 6 places
-			running it` and, 40px later, `⧗ 3 places still to go` say one fact
-			twice — the second is `buildState()`'s word for whichever bucket
-			dominates, and on THIS page that bucket already has its own titled
-			card with its own count (`Not here yet · 3 places`). The count stays
-			here ONCE; the state word lives on the card that owns it. `/versions`'
-			list row had the identical duplication (the word beside the sha,
-			`Running in N of M places` in the roll column) and is fixed the same
-			way — see the comment there.
-		-->
-		<div class="mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-			<h1 class="sr-only">Tracking build {row.short} in {repoTitle(ledger.repoLabel)}</h1>
-			<!--
-				⭐ ROUND 11 CRAFT FINDING 7 — THE NUMERAL LEADS, LARGER AND LIGHTER
-				THAN THE SHA. `REVISION-PAGES.md`'s own hero anatomy: the places
-				figure is the largest mark on the row (light weight, so its SIZE
-				— not its boldness — is what makes it lead), the sha sits beside
-				it at a smaller, heavier mono weight. `.rev-hero-figure`/
-				`.rev-hero-sha` are this file's own scoped sizes (Svelte-scoped
-				rules outrank a utility class per `lib/CLAUDE.md`'s layering note)
-				— `t-display`/`t-display-id` stay at their product-wide 24px
-				everywhere else this pair is used.
-
-				⭐ ROUND 11 REVISIONS-PASS-6, ITEM 3 — THE DENOMINATOR MOVES INTO
-				THE FIGURE, AND THE SENTENCE ALWAYS WRAPS BENEATH. Measured live
-				at 1440: figure, sha and the full caption sentence all shared one
-				row with no break (`.rev-head-break` only forced a line below
-				559px), so `6 9f10e49 of 6 places run this build · 1 place rolled
-				back to it · …` ran as one 150-character line — the "jam" was
-				the caption crowding the sha, not a spacing bug between the two.
-				`.rev-hero-denom` is the smaller "of M" REVISION-PAGES.md's own
-				anatomy attaches to the numerator (`N`, smaller `/M` suffix) — so
-				the figure alone answers "how many, out of how many" as one visual
-				unit, and the caption below it no longer repeats the denominator
-				("of 6 places run this build" → "places run this build"). The
-				break is UNCONDITIONAL now, not gated to `max-width: 559px` — the
-				sentence is always the head band's own second line, capped at
-				`.rev-head-caption`'s `80ch` — and never orphans the figure alone
-				the way the break's old position (between sha and figure) could.
-
-				⭐ ITEM 2 (round-8 critique) — A RELEASE, NEVER A "BUILD". This sha
-				has exactly one build; what is held is a newer RELEASE of it,
-				via `headBandHeldClause` (round 11 finding 1 — `releaseHeldClause`,
-				not a hand-rolled "held from a newer release": the held sibling is
-				THIS SAME COMMIT under a newer label, never a second build).
-			-->
-			<span class="rev-hero-figure text-gray-900 tabular-nums dark:text-white"
-				>{coverage.liveCount}<span class="rev-hero-denom text-gray-500 dark:text-gray-400"
-					>&nbsp;of {coverage.totalCount}</span
-				></span
-			>
-			<span class="rev-hero-sha t-display-id text-gray-900 dark:text-white">{row.short}</span>
-			<span class="rev-head-break" aria-hidden="true"></span>
-			<!--
-				⚠️ THE SENTENCE STAYS "places run this build …", BYTE FOR BYTE
-				after its own "of {N}" lead — `deploying.svelte.test.ts` pins the
-				remainder in one text node. The denominator moved into the figure
-				above (this comment's own block); the caption keeps naming what
-				it is a caption OF.
-			-->
-			<span
-				class="rev-head-caption t-body text-gray-500 dark:text-gray-400"
-				title="A place is one service in one environment."
-				>places run this build{headBandDeployingCount > 0
-					? ` · ${headBandDeployingCount} deploying`
-					: ''}{headBandRolledBackCount > 0
-					? ` · ${countLabel(headBandRolledBackCount, 'place')} rolled back to it`
-					: ''}{headBandHeldClause ? ` · ${headBandHeldClause}` : ''}</span
-			>
-		</div>
-
-		<!--
-			⭐ ROUND 11, A.6.3 — THE BAR COMES BACK TO THE HEAD BAND, AND IT
-			ALWAYS DRAWS. Replaces the old painted-track fallback (which
-			lived inside `This build`, below, and was gated on
-			`liveCount > 0 && liveCount < totalCount` — false on every 0% and
-			every 100% build, i.e. false on this fleet's every fully-arrived or
-			never-deployed row). `CoverageBar` at its default (16px) scale,
-			under the figure line, full width — the same object the list's own
-			hero draws, at the same scale.
-		-->
-		<!--
-			⭐ LANE 6B ADDITION — `cells`, so each cell in this bar carries its
-			own "dev · hello-api-app · running this build" title the same way
-			`RevisionLead`'s hero bar already does; without it this bar was
-			the one `CoverageBar` caller left titling the GROUP only.
-
-			⭐ LANE 9, ROUND 11 QA, ITEM 4 — `neverDeployed` (declared above,
-			at `row`/`revision` resolution — it was computed and then never
-			read, an eslint-reported dead assignment) is exactly "zero live
-			and zero ran-before": `!ledger.rows.includes(row)` is true only
-			when this build lives in `ledger.pending`, i.e. no service has
-			EVER deployed it. Passed through so this build page's own bar
-			draws all track, not "moved past", on that one build — the same
-			fix `BuildLists`' rail already applies to every pending row.
-		-->
-		<CoverageBar
-			segments={coverageBarSegments(coverage, neverDeployed)}
-			cells={coverageCells(coverage, neverDeployed)}
-			label={coverageBarLabel(coverage, row.short)}
-			class="mt-3 w-full"
-		/>
-
-		<!--
-			⛔ THE RELEASE-LINE PARAGRAPH IS GONE (ITEM 2, 2026-09-06 round-7
-			critique). `3 of them on 2.66.0-66; 2.67.0-67 is held in dev,
-			staging and prod.` restated two facts the page already states
-			elsewhere: how many are held is the head band's own
-			`headBandHeldCount` sentence 12px up, and WHICH release is held
-			and WHERE is now the banner's own headline (`bannerTitle`, named
-			below) and its `message` (`held in dev, staging and prod` — see
-			`bannerMessage`'s own comment). One fact, once, named by the
-			banner's subject rather than restated in prose above it.
-		-->
-
-		<!--
-			THE ONE BLOCKING FACT, AS A FILLED FIELD. `AlertPanel` IS the object
-			rollout detail draws its schedule gate in — 40px circular icon, bold
-			headline, the concrete consequence underneath, a chip on the right.
-			ONE banner: a page with three has none.
-		-->
-		{#if blockedSlots.length > 0}
-			<!--
-				⭐ ROUND 11 CRAFT FINDING 7 — `HeldBanner`, NOT A HAND-ROLLED
-				`AlertPanel` WITH A `footnoteBody`/`footnoteLabel` DISCLOSURE.
-				The old `‹ Waiting on … › then dev → staging → prod` trigger was
-				`AlertPanel`'s own disclosure summary — `whitespace-nowrap` by
-				that component's contract, right for a short label and wrong
-				for this one: measured live at 390 it clipped mid-sentence with
-				no way to read the rest. `HeldBanner` (Lane 2's extraction from
-				this exact banner shape) prints the same facts as a plain,
-				always-visible, wrapping paragraph instead — nothing here hides
-				behind a `<summary>` any more. `distinctBuildStories` is one
-				`blockingStory` per rollout (`slotStories` deduped by place,
-				the identical predicate `repoHeldStories` uses on the
-				repository page, so the two pages cannot converge on two
-				different held vocabularies for the same kind of fact).
-			-->
-			<div class="mt-4">
-			<HeldBanner
-				subject={bannerBuildSubject}
-				releaseSplitMessage={bannerMessage}
-				stories={distinctBuildStories}
-				heldEnvLabels={buildHeldEnvLabels}
-				primaryHref={primaryHold?.appHref ?? null}
-				primaryLabel={primaryHold?.reason.subject ?? null}
-				hasSchedule={buildHasSchedule}
-				indefinite={storiesAreIndefinite(distinctBuildStories)}
-			/>
-			</div>
-		{/if}
-
-		<!--
-			⭐ ONE FLAT 2-COLUMN GRID NOW, NOT A RAIL. (2026-09-02, design
-			re-check, two rounds: first *"the three cards in the side-by-side row
-			end at 460 / 538 / 546 — 86px of rag"*, then *"`This build | Running
-			it now | Not here yet` on row 1 and `What each service calls it`
-			alone on row 2 with two empty tracks beside it."*) `This build`, the
-			bucket cards and `What each service calls it` used to split across
-			two grid levels — a `rev-buckets` sub-grid plus a fixed-340px rail —
-			each with its OWN `align-items: start`, so a rail taller than the
-			buckets (or the reverse) just left a gap. Cards are `flex flex-col`
-			with a `grow` body for exactly this case (see the comment on
-			`Card.svelte`'s `<section>`) — used at the time to STRETCH every
-			card sharing a row to that row's height.
-
-			⛔ THE STRETCH ITSELF IS GONE, ITEM 1 (2026-09-06 critique). It
-			traded ragged bottoms for the opposite defect: `Running it now`
-			ran 417px beside a 161px `Not here yet`, 61% empty. `.rev-buckets`
-			is `align-items: start` now (see its own CSS comment) — every card
-			on the grid, including `This build` / `What each service calls
-			it`, is its own height now (round-7 item 3 removed the pair's own
-			height-match opt-in too — see the CSS comment on `.rev-buckets`).
-
-			AND `auto-fit` GAVE WAY TO A FIXED 2 COLUMNS, because a THIRD track
-			at 1440 is exactly what stranded the fourth card alone. `What each
-			service calls it` moved up to sit right beside `This build` — both
-			are about the BUILD — so the bucket cards, both about PLACES, fill
-			row 2 on. See the CSS for the rest (the 2-column breakpoint and the
-			odd-card-spans-both-tracks rule).
-		-->
-		<div class="rev-buckets mt-4">
-			<!--
-				⭐ `This build` — THE CARD THE HERO'S FACTS MOVED INTO. (2026-09-02)
-				Commit, repo, services, last deployed and the outbound link were
-				eight ungrouped lines on the page ground with no card of their own —
-				the one region on this page without one. The coverage bar shrinks to
-				a ROW-SCALE mark in the header (`compact`, same object the list rows
-				carry at 8px) rather than repeating the head band's `N of M` in
-				digits a fourth time; its accessible name carries the full sentence
-				for anyone who cannot see the segments.
-			-->
-			<!--
-				⭐ ROUND 11 CRAFT FINDING 7 — THE ROLLUP IS BACK. The header
-				rollup and the bar both left this card the same round (A.6.3
-				moved the bar to the head band above); with neither, `This
-				build` measured a 128px shorter body than its row-mate `Where
-				it sits`/`What each service calls it` — a rollup (the release
-				count — a fact this card's own body does not otherwise
-				summarise in one line) so the header is no longer the one on
-				the page with nothing on its right.
-
-				⛔ `.rev-card-span` (THIS CARD SPANS BOTH TRACKS ALONE) IS GONE
-				— ROUND 11 REVISIONS-PASS-6, ITEM 4. It fixed the 128px gap by
-				giving `This build` its own full-width row, which pushed `What
-				each service calls it` onto its OWN row below it, alone at
-				half width with an empty right half — the hole moved rather
-				than closing. `.rev-card-pair` puts the two back side by side
-				in one grid row with `align-self: stretch` (the grid's own
-				`align-items: start` stays the default for every OTHER row —
-				see that rule's own comment — this is an opt-IN on exactly
-				these two cells), so both cards share the row's height and
-				neither is ragged beside the other.
-			-->
-			<div class="rev-card-pair">
-			<!--
-				⭐ SECOND OPERATOR WALK, ITEM 10 — `This build`'s ROLLUP MUST NOT
-				RESTATE ITS NEIGHBOUR'S. `{n} services` here and `{n} services`
-				on `What each service calls it`, 380px to the right, printed the
-				IDENTICAL rollup for two different cards on the same row — a
-				reader scanning right-aligned figures sees one fact twice. This
-				card's own body already counts RELEASES, not services
-				(`serviceReleaseCountLabel`, the `LayersOutline` row below); the
-				rollup states that count instead, which is also the number
-				`buildReleases` (3 lines down) actually lists.
-			-->
-			<Card
-				icon={RocketOutline}
-				title="This build"
-				verdict="{buildReleases.length} release{buildReleases.length === 1 ? '' : 's'}"
-				verdictTitle="Every release of this commit any service has ever shipped"
-			>
-				<ul class="space-y-3">
-					<!--
-						THE COMMIT — DEGRADES HONESTLY. Concept 07 puts the commit message
-						and author here. GitHub is not connected on this cluster — that is
-						the SHIPPED STATE, not an edge case — so the row says which fact is
-						missing and why, and takes no data row and no second button.
-						`CommitSummary` draws its own branch glyph, so the row's icon track
-						is not doubled with a second one in the connected case.
-
-						⭐ THE SENTENCE IS `githubAbsenceSentence`'s NOW, NOT A PRIVATE
-						SPELLING. (2026-09-03) This used to say "which is not connected"
-						whatever the reason — the same fact `ChangeVersionModal`'s dialog
-						worded as "did not answer" and the app-detail `Source` card said
-						nothing about at all. `githubStatus.data` distinguishes "nobody
-						has set this dashboard up for GitHub" from "configured, but this
-						account is not the one connected", which are different facts with
-						different remedies.
-					-->
-					{#if githubConnected && rep && prev}
-						<li class="flex items-start gap-2.5">
-							<CommitSummary
-								namespace={rep.ns}
-								name={rep.name}
-								cluster={rep.cluster}
-								base={prev.revision}
-								head={row.revision}
-								verb={`in this build · since ${prev.short}`}
-								showMessages
-								showAvatars
-							/>
-						</li>
-					{/if}
-					<li class="flex items-start gap-2.5">
-						<FolderOutline
-							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-							aria-hidden="true"
-						/>
-						<span
-							class="t-body min-w-0 truncate text-gray-700 dark:text-gray-200"
-							title={repoTitleFull(ledger.repoLabel) ?? undefined}
-							>{repoTitle(ledger.repoLabel)}</span
-						>
-					</li>
-					<li class="flex items-start gap-2.5">
-						<LayersOutline
-							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-							aria-hidden="true"
-						/>
-						<!--
-							⭐ FINDING 2 (operator sweep, 2026-09-07) — THE COUNT NAMES
-							BOTH UNITS WHEN THEY DIFFER. See `serviceReleaseCountLabel`'s
-							own comment: `2 services` said nothing untrue on its own, but
-							the list three lines below it (`buildReleases`) went on to
-							print THREE rows for this exact build — a real, sayable fact
-							this line was silently hiding a count for.
-						-->
-						<span class="t-body text-gray-700 dark:text-gray-200"
-							>{serviceReleaseCountLabel}</span
-						>
-					</li>
-					<!--
-						⭐ `built` NAMED, NOT JUST `deployed`. (2026-09-03, operator-walk
-						finding 4) This page said `last deployed 10 hours ago` and left
-						`row.createdMs` — when the commit itself was built — unprinted
-						anywhere on it, so the ONE other bare age on the page (each
-						place's own deploy time, in `Running it now`) had nothing to be
-						confused WITH by name, only by omission. Both clocks get their
-						verb now. Omitted only when it would restate `lastDeployMs` to
-						within a second — the one case that is truly the same instant
-						(`builtDiffersFromDeploy`, its own comment) — never merely
-						close: `c1ecfe553070` built at :18:46 and first deployed at
-						:19:14, a real 28s build pipeline, and a `> 60_000` guard here
-						used to read that as "the same moment" and hide it.
-					-->
-					{#if buildReleases.length > 1}
-						<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM E — ONE `built` PER RELEASE. See
-						     `buildReleases`'s own comment: a bare, unnamed `built N ago`
-						     is a claim about ONE of this revision's releases stated as
-						     if it were about all of them.
-
-						     ⭐ ITEM 6 (2026-09-06 round-7 critique) — A LIST, NOT A
-						     WRAPPING SENTENCE. `flex flex-wrap` alternated mono (the
-						     release label) and sans (`built … ago`) six times for a
-						     three-release commit, and at 390 wrapped mid-sentence with a
-						     leading `·` orphaned at the start of a line — the same "no
-						     separator at a line start" defect the env-age atom was
-						     already fixed for, two cards up. Each release is its own
-						     row now (`flex flex-col`), so there is nothing to wrap
-						     mid-clause and no join character to strand. -->
-						<li class="flex items-start gap-2.5">
-							<CalendarMonthSolid
-								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-								aria-hidden="true"
-							/>
-							<span class="flex min-w-0 flex-col gap-1">
-								{#each buildReleases as rel (rel.label + rel.createdMs)}
-									<span class="t-body flex flex-wrap items-baseline gap-x-1.5 text-gray-700 dark:text-gray-200">
-										<span class="t-code-sm">{rel.label}</span> built <time
-											datetime={new Date(rel.createdMs).toISOString()}
-											title={new Date(rel.createdMs).toLocaleString()}
-											>{formatTimeAgoCompact(new Date(rel.createdMs).toISOString(), $now)}</time
-										>
-										ago
-									</span>
-								{/each}
-							</span>
-						</li>
-					{:else if builtDiffersFromDeploy}
-						<li class="flex items-start gap-2.5">
-							<CalendarMonthSolid
-								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-								aria-hidden="true"
-							/>
-							<span class="t-body text-gray-700 dark:text-gray-200">
-								<!-- ⭐ ITEM 5 (2026-09-06 critique) — TITLE CASE: this word
-								     LEADS the line (only an icon precedes it), the same rule
-								     that gives `/revisions` its `Deployed`/`Built`. -->
-								Built <time
-									datetime={new Date(singleBuiltMs).toISOString()}
-									title={new Date(singleBuiltMs).toLocaleString()}
-									>{formatTimeAgoCompact(new Date(singleBuiltMs).toISOString(), $now)}</time
-								>
-								ago
-							</span>
-						</li>
-					{/if}
-					<li class="flex items-start gap-2.5">
-						<ClockOutline
-							class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-							aria-hidden="true"
-						/>
-						<!--
-							⭐ ITEM 5 / 6 (2026-09-06 round-7 critique) —
-							`last deployed` LEADS THE LINE THE SAME WAY `Built` DOES (only
-							an icon precedes it), so it takes the same title case — ONE
-							CASE across every fact in this list (`Built`, this, `Never
-							deployed`), not this the one lowercase holdout. And while the
-							row's own newest deploy is still in flight (`headBandDeployingCount`
-							— the same `deploying` bucket the head band and the bar already
-							read), the clock is not settled yet: `last deployed 32s ago`
-							read as a completed fact about a deploy that was, measured live,
-							32 seconds into a 2m45s canary. `Last deployed` is reserved for a
-							SETTLED deploy now; an in-flight one reads `Deploying since`.
-						-->
-						<span class="t-body text-gray-700 dark:text-gray-200">
-							{#if row.lastDeployMs}
-								{#if headBandDeployingCount > 0}
-									Deploying since
-								{:else}
-									Last deployed
-								{/if}
-								<time
-									datetime={new Date(row.lastDeployMs).toISOString()}
-									title={new Date(row.lastDeployMs).toLocaleString()}
-									>{formatTimeAgoCompact(new Date(row.lastDeployMs).toISOString(), $now)}</time
-								>
-								ago
-							{:else}
-								Never deployed
-							{/if}
-						</span>
-					</li>
-					<!--
-						⛔ `View commit` WAS A `.btn` AND IT IS NAVIGATION. (2026-09-02,
-						from the human: *"two navigation controls wearing button chrome"*,
-						filed against the list and true here for the same control.) It
-						changes no cluster state — it opens someone else's website — so it
-						is `.nav-link` with the external glyph, which is the rule's stated
-						answer for an outbound link.
-					-->
-					{#if commitUrl}
-						<li class="flex items-start gap-2.5">
-							<TagOutline
-								class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-								aria-hidden="true"
-							/>
-							<a
-								class="nav-link"
-								href={commitUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								aria-label={`View the commit for ${row.short} on GitHub — opens in a new tab`}
-							>
-								View commit
-								<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
-							</a>
-						</li>
-					{/if}
-					<!--
-						⭐ APPROACH B, ITEM D — "PULL REQUESTS" LINE. Lazy per-page fetch
-						(`buildPullsQuery`, above), only once GitHub is connected — the
-						repository page's own build rows stay lean (task's own words),
-						nothing added there. `buildPullsLoaded` is false both before the
-						query settles AND when it is not even enabled (not connected, or
-						the repo/revision could not be resolved), so this renders NOTHING
-						in either of those cases rather than a premature "no pull request
-						found" — that sentence is reserved for a REAL empty answer.
-					-->
-					{#if githubConnected && buildPullsLoaded}
-						{#if buildPulls.length > 0}
-							{#each buildPulls as pr (pr.number)}
-								<li class="flex items-start gap-2.5">
-									<CodePullRequestOutline
-										class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-										aria-hidden="true"
-									/>
-									<a
-										class="t-body nav-link min-w-0 truncate"
-										href={buildOwnerRepo
-											? prPath(buildOwnerRepo.owner, buildOwnerRepo.repo, pr.number)
-											: '#'}
-									>
-										#{pr.number} {pr.title}
-									</a>
-								</li>
-							{/each}
-						{:else}
-							<li class="flex items-start gap-2.5">
-								<CodePullRequestOutline
-									class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
-									aria-hidden="true"
-								/>
-								<span class="t-body text-gray-500 dark:text-gray-400">
-									no pull request found for this commit
-								</span>
-							</li>
-						{/if}
-					{/if}
-					<!--
-						⭐ ITEM 6 (2026-09-06 round-7 critique) — DEMOTED TO THE END OF
-						THE FACT LIST, AT `t-micro`. The absence sentence used to sit
-						second in this list, at `t-body` — the first and largest line a
-						reader hit on the card the moment coverage reached 100% and the
-						bar above it stopped drawing, which is the SHIPPED state on this
-						cluster (GitHub is not connected here). An apology for a fact
-						this card cannot show is not the card's leading fact; it moves
-						after every fact the card CAN state, in the same gray micro-copy
-						`historyLimitNote`'s own card-footer caveat uses elsewhere on
-						this page.
-					-->
-					{#if !(githubConnected && rep && prev)}
-						<li class="flex items-start gap-2.5">
-							<CodeBranchOutline
-								class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
-								aria-hidden="true"
-							/>
-							<span class="t-micro text-gray-500 dark:text-gray-400">
-								Commit message and author need GitHub. {githubAbsenceSentence(
-									githubStatus.data
-								)}
-							</span>
-						</li>
-					{/if}
-				</ul>
-			</Card>
-			</div>
-
-				<!--
-					CRITERION 2, NOW A PEER TILE IN THE SAME FLAT GRID, NOT A FIXED-WIDTH
-					RAIL. One rank per service, against that service's OWN denominator,
-					with the denominator named. `newest of 4` beside `newest of 37` is
-					the page's whole point — those two services share a source repo and
-					nothing else, and collapsing them onto one ladder is the defect
-					revision keying was built to close, one level down. It does NOT
-					restate the buckets: the buckets say WHERE, this says WHAT EACH
-					SERVICE CALLS IT and how far down its own ladder it now sits.
-				-->
-				<div class="rev-card-pair">
-				<!--
-					⭐ ROUND 11 CRAFT FINDING 5 — "OF 33 / 26 / 34 BUILDS" IS
-					UNREADABLE ALONE, AND IT IS DROPPED RATHER THAN REWORDED.
-					`serviceLadderLengths` is three services' own ladder lengths
-					joined with " / " (e.g. `33 / 26 / 34`) with no service name
-					attached to any one figure — a reader cannot tell which number
-					belongs to which service, and each row ALREADY states its own
-					`of N builds` beside its own name two lines down. A header
-					rollup that repeats one of those three numbers, unlabelled,
-					teaches nothing a row does not already say better.
-				-->
-				<Card
-					icon={TagSolid}
-					title={allLabelsMatchSha ? 'Where it sits' : 'What each service calls it'}
-					verdict={allLabelsMatchSha
-						? null
-						: `${row.services.length} service${row.services.length === 1 ? '' : 's'}`}
-					verdictTitle={allLabelsMatchSha
-						? undefined
-						: 'One commit, one row per service — each service names and ranks it on its own'}
-					padded={false}
-				>
-				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-					{#each row.services as svc (svc.appName)}
-						{@const rank = rankSentence(svc)}
-						{@const chip = rankChipFor(svc)}
-						{@const pinned = pinnedEnvsOf(svc)}
-						{@const ranBefore = ranBeforeOf(svc)}
-						<!-- ⭐ ROUND 11 r11c FINDING 9 — see the comment beside this
-						     row's "No earlier deploy on record." branch, below. -->
-						{@const elsewhere = svc.slots.some((s) => !s.onRevision)}
-						<!--
-							⭐ FINDING 2 (operator sweep, 2026-09-07) — THE RUNNING RELEASE
-							LEADS. `chip?.role === 'held'` used to print `HELD 2.67.0-67`
-							alone, with the release actually running (`2.66.0-66`) folded
-							into a small gray line BELOW the row — a reader who stopped at
-							the chip (the loudest thing on the row) came away thinking
-							`2.67.0-67` was live. `runningLabelFor` reads the SAME `live`
-							bucket `heldNewest` already checked, so this can never name a
-							different release than the chip below it. `null` when the
-							places running it disagree on WHAT they run (a genuine split
-							`DESIGN.md` forbids naming half of) — same case that printed
-							nothing before, unchanged.
-						-->
-						{@const runningLabel = chip?.role === 'held' ? runningLabelFor(svc) : null}
-						<!--
-							ONE INK FOR A SERVICE NAME, ON BOTH REVISION PAGES. A service is
-							never the subject of either page — the revision is — so it takes
-							the secondary ink everywhere, and the three places that print it
-							stop disagreeing about how important it is.
-						-->
-						<li class="rev-svc-row">
-							<a
-								href="/apps/{encodeURIComponent(svc.appName)}"
-								class="t-body min-w-0 truncate text-gray-700 hover:underline dark:text-gray-200"
-								>{svc.appName}</a
-							>
-							<span class="rev-svc-build">
-								{#if chip && rank}
-									<!--
-										⭐ FINDING 2, CONTINUED — TWO CHIPS, RUNNING FIRST. A row
-										with a `runningLabel` is the ONE case this file's own
-										"one name, one badge, one denominator" rule (below, on
-										`.rev-svc-row`) grows a second badge: the release actually
-										live, then the release being held from replacing it —
-										`.chip-mark` is the product's existing loose-group idiom
-										for two adjacent, independently-joined boxes (already used
-										two rows down for `[PINNED][DEV]`), so this spends no new
-										geometry.
-									-->
-									<span class="chip-mark min-w-0">
-										{#if runningLabel}
-											<Chip
-												role="unranked"
-												label="running"
-												title="{svc.appName} is running {runningLabel} right now — the newer {svc.label} has not replaced it"
-												value={runningLabel}
-												wide
-												class="min-w-0"
-											/>
-										{/if}
-									<!--
-										⭐ ROUND 11 CRAFT FINDING 5 — ONE HELD VOCABULARY, THE
-										LIST'S OWN. `Chip role="alarm" label="HELD"` is exactly
-										`RepoLedgerCard`'s own held-row chip (and the index
-										header's `{n} held`) — the softer `role="held"` (the
-										same `TRAILING`/orange tone `N behind` uses) said the
-										identical fact in a quieter vocabulary than the list
-										already committed to for it.
-									-->
-										<Chip
-										role={chip.role === 'held' ? 'alarm' : chip.role}
-										label={chip.role === 'held' ? 'HELD' : chip.label}
-											title={svc.diverged
-												? 'On no environment’s release list — promotion does not arrive at it'
-												: chip.role === 'held'
-													? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy — not running anywhere yet`
-													: chip.role === 'newest'
-														? `The newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`
-														: `${chip.label} the newest of the ${rank.of.replace(/^of /, '')} ${svc.appName} can deploy`}
-											value={svc.labelDiffers ? svc.label : undefined}
-											valueTitle={svc.labelDiffers ? svc.label : undefined}
-											wide
-											class="min-w-0"
-										/>
-									</span>
-									<!-- ⭐ THE DENOMINATOR CARRIES ITS OWN DEFINITION.
-									     `newest` means different things in different corners of
-									     this product; here it is rank 0 on THIS service's ladder.
-									     It was said in a 3-line footer under the card
-									     (2026-09-02, cut with the page's other definitions); it is
-									     said here. `scan.ts` reads `title`, so it stays pinned.
-
-									     ⛔ ROUND 11 REVISIONS-PASS-6, ITEM 5 — `rank.of` ("of 4
-									     builds") beside a WORD chip (`NEWEST`, never a numerator
-									     digit) completed to "1 of 4 builds" as if the row drew a
-									     fraction it never actually draws the top half of.
-									     `ladderPositionLabel` states this build's own POSITION
-									     on the ladder instead ("1 of this service's 4 builds") —
-									     or, at a ladder of one, that there is nothing to count. -->
-									<span
-										class="t-micro text-gray-500 dark:text-gray-400"
-										title="Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be on the newest."
-										>{ladderPositionLabel(svc)}</span
-									>
-								{:else}
-									<!-- No number at all. A `0` here would read as "newest".
-									     The WORD is `rankLabel`'s, like the `unreleased` above it:
-									     `unknown` is a legible answer and the product spells it in
-									     exactly one place. -->
-									<Chip
-										role="unranked"
-										label={rankLabel({ kind: 'unknown' })}
-										title="This service does not list this build, so it has no position for it"
-										value={svc.label}
-										wide
-										class="min-w-0"
-									/>
-								{/if}
-							</span>
-							{#if pinned.length > 0}
-								<!--
-									⭐ ROUND-4B REVIEW, ITEM 2 — A CHIP PAIR, NOT A SECOND
-									SPELLING OF THE PIN SENTENCE. `Pinned in DEV — automatic
-									updates are off there` and `Pinned to 6f9524e — automatic
-									deploys are paused until the pin is cleared.` (this row's
-									own `reasonsFor` pin branch, when the place also sits in
-									`Not here yet`) said the same fact in two different
-									sentences on one page. The canonical sentence survives —
-									on `title`, per place, with that place's own pinned tag —
-									and this row draws the fact instead of narrating it:
-									`[PINNED][DEV]`, the same loose `.chip-mark` grouping the
-									STUCK mark already uses beside an env chip.
-								-->
-								<div class="mt-1 flex flex-wrap items-center gap-1.5">
-									{#each pinned as p (p.envLabel)}
-										<span class="chip-mark">
-											<Chip role="unranked" label="pinned" title={p.title} />
-											<Chip role="env" theme={p.theme} label={p.envLabel} wide title={p.title} />
-										</span>
-									{/each}
-								</div>
-							{/if}
-							<!--
-								⭐ ROUND 11 r11c FINDING 9 — "NO EARLIER DEPLOY ON RECORD" IS
-								ONLY A QUESTION WHERE THE BUILD IS NOT LIVE EVERYWHERE FOR
-								THIS SERVICE. Measured live: `hello-api-app` NEWEST
-								everywhere still printed "No earlier deploy on record." —
-								`ranBeforeOf` only ever searches slots that are NOT
-								currently on this revision (`!s.onRevision`), so a service
-								running it on every one of its own slots has nothing left to
-								search and `ranBefore.length === 0` by construction, not
-								because history was checked and came up empty. `elsewhere`
-								(declared with the row's other `{@const}`s, above — a
-								`{@const}` may only be an immediate child of the `{#each}`)
-								is true only when at least one slot is on a DIFFERENT build —
-								the case this sentence (either branch) is actually about.
-							-->
-							{#if elsewhere}
-								{#if ranBefore.length > 0}
-									<!-- ⭐ "WHERE DID THIS BUILD RUN BEFORE?" (operator-walk finding 2)
-									     `status.history[i > 0]` on this exact place, matched by the same
-									     revision key `onIt`/`resolveRevision` use everywhere else on this
-									     page — never a second opinion about identity. -->
-									<div
-										class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-									>
-										<!-- ⛔ ROUND 6, LANE 10 — THE ICON AND ITS FIRST WORD ARE ONE
-										     `inline-flex flex-nowrap` UNIT, NOT TWO SEPARATE FLEX
-										     ITEMS. Measured live at 390: `flex-wrap` on the OUTER row
-										     let the icon (item 1) and the whole "Ran before in …"
-										     span (item 2) land on different lines whenever the row
-										     ran out of width — a 12px clock glyph alone on its own
-										     line, above the sentence it decorates. Gluing the icon to
-										     "Ran before in" inside a `flex-nowrap` child makes that
-										     pair ATOMIC from the outer row's point of view: the row
-										     can still wrap (the env/time list below still does, at
-										     any `·`), it just can never split the icon from the words
-										     it introduces. -->
-										<span class="inline-flex flex-nowrap items-center gap-1.5">
-											<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-											<!-- ⭐ ITEM 5 (2026-09-06 critique) — `ENV · Nd ago`, THE
-											     LIST'S OWN CHIP+AGE ATOM GRAMMAR, NOT `ENV (N days
-											     ago)`. -->
-											<span>Ran before in</span>
-										</span>
-										<span>
-											{#each ranBefore as rb, i (rb.envLabel)}
-												{rb.envLabel} · <time
-													datetime={rb.timestamp}
-													title={new Date(rb.timestamp).toLocaleString()}
-													>{formatTimeAgoCompact(rb.timestamp, $now)}</time
-												>
-												ago{i < ranBefore.length - 1 ? ', ' : ''}
-											{/each}
-										</span>
-									</div>
-								{:else if !historyLimitNote(svc)}
-									<!--
-										⭐ SECOND OPERATOR WALK, ITEM 10 — NEVER-RAN AND OUTSIDE-THE-
-										WINDOW MUST NOT LOOK THE SAME. Both used to render NOTHING
-										here — `hello-world-manifests` on `991829b` and a service
-										whose retained history simply does not reach far enough
-										back were both silent, and a silent line answers "did this
-										ever run before" with nothing at all. `historyLimitNote(svc)`
-										already knows whether THIS service's history could be
-										truncated (the card's own footer caveat, drawn once); when
-										it is `null` — every slot's history is provably complete —
-										the absence of a match is itself the answer, so it is said
-										rather than left blank. When the note IS non-null, this
-										stays silent: the footer already carries the uncertainty,
-										and a per-slot guess here would contradict it.
-									-->
-									<div
-										class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
-									>
-										<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-										<span>No earlier deploy on record.</span>
-									</div>
-								{/if}
-							{/if}
-						</li>
-					{/each}
-				</ul>
-				<!-- ⛔ THE FOOTER THAT SAID THIS IS GONE, THE SENTENCE IS NOT.
-				     (2026-09-02.) It is the `title` on `of N` in every row above —
-				     on the term it defines, which is where a definition belongs and
-				     is the only place it is legible without counting rows. -->
-				<!--
-					⭐ ROUND-4B REVIEW, ITEM 3 — A DIFFERENT SENTENCE, AND IT DOES GET
-					A FOOTER. The comment above this one is about the `of N`
-					definition, which lives on the term it defines and stays gone.
-					This caveat names no term on any row — it is a fact about the
-					CARD'S data source, true or false once for the whole list — and
-					printing it under whichever service happened to trip it first
-					was the only reason it looked page-repeated at 3× on
-					`hello-multi-app`. `text-gray-500` matches `ranBefore`'s own
-					secondary ink two rows up (`text-gray-400` measured 2.60:1, the
-					only contrast failure either revision page had).
-				-->
-				{@const cardNote = cardHistoryLimitNote()}
-				{#if cardNote}
-					<div
-						class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
-					>
-						{cardNote}
-					</div>
-				{/if}
-			</Card>
-			</div>
-
-			<!--
-				THE BUCKETS, AS TITLED CARDS. One per NON-EMPTY bucket, so a fully
-				converged revision renders one card and a mid-promotion head renders
-				three. The card lists its places, which is what makes the design hold
-				at 4 prod regions and at 13: the bar is proportional and the buckets
-				are LISTS, so N environments cost wrapped chips inside one card rather
-				than columns across the page.
-			-->
-			{#each coverage.buckets as bucket (bucket.key)}
-					<Card
-						icon={bucket.key === 'live' && !liveIsFrontier
-							? ArrowRightOutline
-							: BUCKET_ICON[bucket.key]}
-						iconClass={bucket.key === 'live'
-							? liveIsFrontier
-								? 'tone-live'
-								: 'tone-mute'
-							: bucket.key === 'failing'
-								? 'tone-bad'
-								: bucket.key === 'deploying'
-									? 'tone-active'
-									: 'tone-mute'}
-						title={bucket.title}
-						verdict="{bucket.slots.length} place{bucket.slots.length === 1 ? '' : 's'}"
-						verdictTitle={bucket.description}
-						padded={false}
-					>
-						{#snippet rollup()}
-							<!--
-								THE SWATCH IS THE BAR'S OWN FILL VALUE, at 12px, in the card
-								header — so the segment above and the card below are bound by
-								colour without a key row anywhere on the page.
-
-								⭐ LANE 9, ROUND 11 QA, ITEM 3 — AND IT MUST READ `weightFill`,
-								NOT `coverageSwatch`. Round 11 recoloured the BAR to one hue,
-								three weights (`WEIGHT_FILL`) — `ahead`'s cells are `movedOn`,
-								the SAME green as `here`, one step down. `COVERAGE_SWATCH` is
-								a different, older table (A.3's own "untouched" exception for
-								the six BUCKET-CARD colours) that still paints `ahead` neutral
-								gray — measured live, this exact swatch, on "Already moved
-								on": gray while the bar's own `movedOn` cells above it are
-								green. The comment above promises the swatch IS the bar's fill;
-								it has to read the bar's own table to keep that promise.
-								`coverageWeight` maps every bucket to its bar weight first
-								(`live`/`failing`/`deploying`→`here`, `ahead`→`movedOn`,
-								`notYet`→`notReached`, `unplaceable`→`unplaceable`), so this is
-								correct for every bucket this card renders, not only `ahead`.
-								EXCEPT the two that are a state, not a depth: `failing` keeps
-								its red and `deploying` its blue swatch (tech lead, r11 lane 9
-								review) — the bar never carries those hues, but the bucket card
-								is the one place that names the state, and one mark per fact
-								means the swatch may not lie green beside a red title.
-							-->
-							<span
-								class="cov-swatch {bucket.key === 'failing' || bucket.key === 'deploying'
-									? coverageSwatch(bucket.key)
-									: weightFill(coverageWeight(bucket.key))}"
-								aria-hidden="true"
-							></span>
-							<span class="text-xs font-medium text-gray-500 dark:text-gray-400"
-								>{bucket.slots.length} place{bucket.slots.length === 1 ? '' : 's'}</span
-							>
-						{/snippet}
-
-						{#if bucket.key === 'notYet'}
-							<!--
-								ONE ROW PER PLACE, AND ONLY HERE. `Not yet` is the bucket whose
-								places each have their OWN story — a different gate holding them,
-								a different action — so a group heading cannot carry it, and this
-								is the bucket that must stay actionable.
-							-->
-							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-								{#each notYetGroups(bucket.slots) as g (g.key)}
-									{@const solo = g.slots.length === 1 ? g.slots[0] : null}
-									<li class="px-4 py-3">
-										<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-											<!-- ⭐ THE SERVICE LEADS, ITS ENVIRONMENTS WRAP AFTER IT.
-											     One row per REASON, not per place, so a 13-region fan-out
-											     held by one gate is one row with thirteen chips instead
-											     of thirteen rows carrying one sentence thirteen times.
-											     The link goes to the ROLLOUT, never to `/apps/<name>`:
-											     the rollout is the object the gate is attached to and
-											     the page that can clear it. -->
-											<a
-												href={placeHref(g.slots[0])}
-												class="t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
-												aria-label="Open the {g.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
-												title="Open the {g.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
-												><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
-													class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
-													aria-hidden="true"
-												/></a
-											>
-											{#each g.slots as s (s.envName)}
-												<!-- `[ENV][−N]` and nothing more, with `STUCK` loose 4px
-												     beside it in the same `.chip-mark` group — the form
-												     `StuckBadge` already ships on `/`, `/rollouts` and the
-												     rollout detail page.
-
-												     ⭐ OPERATOR-WALK ROUND 4, ITEM A — THE GROUP IS ITS OWN
-												     LINK NOW. The row's one chevron (above) points at
-												     `g.slots[0]` — the environment this row's own action, if
-												     any, targets — so every OTHER environment sharing this
-												     row's reason was unreachable: `hello-multi-app
-												     [STAGING][STUCK] [PROD][STUCK]` linked to staging only.
-												     `.chip-mark` becomes the `<a>` itself (`.hit-32` for the
-												     touch floor, same escape hatch `/envs/<name>`'s own
-												     env-chain chip links use) so every environment in the
-												     row opens its own rollout, chevron or not. -->
-												<a
-													href={placeHref(s)}
-													class="chip-mark hit-32"
-													aria-label="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
-													title="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
-												>
-													{#if s.currentRank !== null && s.currentRank > 0}
-														<span class="chip-joined">
-															<Chip
-																role="env"
-																theme={s.slot.cell.theme}
-																label={s.envLabel}
-																wide
-																title="{s.envLabel.toUpperCase()} — {s.statusWord}{wasOnClause(s)}"
-															/>
-															<!-- ⛔ `−N` → `N behind`. (2026-08-30) The last
-															     `−N` in the product. Same `rank` role, same
-															     joined box; a signed integer beside a build id
-															     reads as a diff and names no unit.
-
-															     ⭐ ROUND-4 CRAFT REVIEW, ITEM 7 — JOINED WITH A
-															     BUILD, LIKE `/rollouts`. `NEWEST` in `What each
-															     service calls it` carries the tag glyph because it
-															     is joined with `svc.label` (`value={svc.label}`);
-															     this chip named no value at all, so `hasGlyph`
-															     (`Chip.svelte`) never fired for it — 250px away,
-															     the same rank vocabulary carrying its glyph on one
-															     side and not the other. `/rollouts` pairs EVERY
-															     rank chip with the build the environment actually
-															     runs (`RolloutGrid.svelte`'s `value={c.version}`);
-															     `s.runs` is that same fact here, so the two chips
-															     converge on one spelling instead of one only. -->
-															<Chip
-																role="rank"
-																label={`${s.currentRank} behind`}
-																value={s.runs}
-																valueTitle={s.runs ?? undefined}
-																title="{s.envLabel.toUpperCase()} can still take {s.currentRank} newer version{s.currentRank ===
-																1
-																	? ''
-																	: 's'}"
-															/>
-														</span>
-													{:else}
-														<Chip
-															role="env"
-															theme={s.slot.cell.theme}
-															label={s.envLabel}
-															wide
-															title="{s.envLabel.toUpperCase()} — {s.statusWord}{wasOnClause(s)}"
-														/>
-													{/if}
-													{#if isStuck(s)}
-														<Chip
-															role="alarm"
-															label="stuck"
-															title="{s.envLabel.toUpperCase()} is stuck"
-														/>
-													{/if}
-												</a>
-											{/each}
-										</div>
-
-										<!-- CRITERION 3, ON THE ROW THAT STATES THE PROBLEM — and
-										     each reason carries a glyph naming WHAT KIND of gate it
-										     is, plus the clear time when the cluster publishes one. -->
-										<div class="mt-2 flex flex-col gap-2">
-											{#each g.reasons as r, i (i)}
-												{#if r.drawn}
-													<!-- ⭐ ITEM 3 (2026-09-06 critique) — THE CONTRACT, DRAWN
-													     ONCE. `notYetGroups` already folded every environment
-													     this exact upstream cause bites into `g`, so this
-													     renders exactly once for the whole group — never the
-													     per-environment prose the list banner already replaced
-													     (`lib/CLAUDE.md`: "ONE CAUSE IS DRAWN ONCE"). -->
-													<div class="min-w-0">
-														<BlockReason
-															reason={contractBlockReason({
-																provider: r.drawn.subject,
-																contract: r.drawn.contract,
-																requiredVersion: r.drawn.need,
-																providedVersion: r.drawn.have,
-																gateName: r.drawn.gateName
-															})}
-															subjectHref={r.drawn.subjectHref}
-														/>
-														<a
-															class="nav-link mt-1 inline-flex"
-															href={r.drawn.subjectHref}
-															aria-label={`Open ${r.drawn.subject}`}
-														>
-															Open {r.drawn.subject}
-															<ArrowRightOutline class="h-3.5 w-3.5" aria-hidden="true" />
-														</a>
-													</div>
-												{:else}
-													{@const ReasonIcon = r.icon}
-													<div class="flex items-start gap-2">
-														<ReasonIcon class="mt-0.5 h-4 w-4 shrink-0 {r.tone}" aria-hidden="true" />
-														<div class="min-w-0">
-															<!-- THE SENTENCE FIRST, THE OBJECT NAMES UNDER IT.
-															     Inline, the gate name's `whitespace-nowrap` pushed the
-															     break INTO the sentence and orphaned `3h` on its own
-															     line — the clear time, which is the one thing on the
-															     row a reader came for, split in half to keep a
-															     generated identifier whole. The names are evidence, so
-															     they go under the claim they support and wrap among
-															     themselves. -->
-															<div class="t-body text-gray-600 dark:text-gray-300">{r.text}</div>
-															{#if r.gates.length > 0}
-																<div class="mt-0.5 flex flex-wrap gap-x-2">
-																	{#each r.gates as gate (gate)}
-																		<span
-																			class="t-code-sm text-gray-500 dark:text-gray-400"
-																			title="Rule {gate}">{gate}</span
-																		>
-																	{/each}
-																</div>
-															{:else if r.record}
-																<!-- ⭐ ROUND-4 CRAFT REVIEW, ITEM 3 — THE RAW TAG AS A
-																     RECORD ROW, NEVER INLINE PROSE. Same treatment as
-																     `r.gates` above (mono, its own row under the claim),
-																     plus `break-all`: a gate id is short and hyphenated
-																     and wraps on its own; an OCI tag is one 56-character
-																     unbroken run and needs the harder break rule to avoid
-																     the silent `overflow: hidden` clip this replaces. -->
-																<div class="mt-0.5">
-																	<span
-																		class="t-code-sm text-gray-500 dark:text-gray-400 break-all"
-																		title={r.recordTitle ?? r.record}>{r.record}</span
-																	>
-																</div>
-															{/if}
-														</div>
-													</div>
-												{/if}
-											{/each}
-										</div>
-
-									{#if solo?.promoteTag}
-										{@const soloPinnedTo = solo.slot.cell.rollout?.spec?.wantedVersion}
-										{@const isOnlyAction = singleDeployAction?.key === g.key}
-										<!--
-											⭐ ROUND-4 CRAFT REVIEW, ITEMS 5 + C.
-
-											PRIMARY IS ASSERTED BY CAPABILITY (item 5, see the
-											`deployableGroups`/`singleDeployAction` comment in the
-											script block): `.btn-secondary` stays the default — the
-											reasoned rule that a deploy surface's loudest control must
-											not be the one that changes production still holds when
-											several such rows coexist — and steps up to `.btn-primary`
-											only when this is the ONE row on the page with a live
-											candidate and no gate, which is what this build actually
-											measured.
-
-											CLEAR PIN LEADS WHEN THERE IS ONE TO CLEAR (item C, from
-											the operator walk: *"When the blocker is a pin, the
-											primary remedy is clearing it."*) A pinned environment's
-											real remedy is removing the pin, not re-pinning it to a
-											different build — `ClearPinModal` is the SAME component
-											rollout detail, `/apps` and `RolloutGrid` already open, so
-											there is one clear-pin flow and one confirmation dialog,
-											not a second one authored here. When it renders, it takes
-											the row's primary weight and `Deploy … to …` (which
-											re-pins, per its own modal's pre-checked toggle) drops to
-											secondary regardless of `isOnlyAction` — clearing the
-											block is the leading remedy, deploying a specific build
-											over it is the fallback.
-
-											⭐ `Promote` → `Deploy … to …` WHEN THE PLACE IS PINNED.
-											(operator-walk finding 1) `Promote to dev` on a pinned
-											environment reads as the ordinary, automatic advance — it
-											is not: the pin already refuses every candidate, and this
-											button's own `title` has said `Deploy …` the whole time (a
-											one-verb-per-action mismatch between the visible label and
-											its own accessible name). `deploy` is the right verb here
-											regardless — `promote` is reserved for the AUTOMATIC
-											advance (`lib/CLAUDE.md` vocabulary (d)) and this has
-											always been a person clicking a button. The click still
-											opens the same `ChangeVersionModal` ceremony as every other
-											deploy on this product (typed build, a production note
-											where `deploy-risk.ts` requires one) — never a one-click
-											mutation — and that modal's own pin toggle (pre-checked
-											here — `pinVersionToggleComputed` in `ChangeVersionModal`)
-											is what decides whether the pin follows the new build or
-											is cleared. This label does not guess which, because the
-											operator has not chosen yet.
-										-->
-										<div class="mt-2.5 flex flex-wrap items-center gap-2">
-											{#if soloPinnedTo}
-												<button
-													type="button"
-													class="btn {isOnlyAction ? 'btn-primary' : 'btn-secondary'}"
-													onclick={() => openClearPin(solo.slot, solo.envLabel)}
-													title={`Clear the pin on ${solo.appName} in ${solo.envLabel}`}
-												>
-													<LockOpenOutline class="h-4 w-4" />
-													{CLEAR_PIN_LABEL}
-												</button>
-											{/if}
-											<button
-												type="button"
-												class="btn {soloPinnedTo || !isOnlyAction ? 'btn-secondary' : 'btn-primary'}"
-												onclick={() => openPromote(solo.slot, solo.promoteTag!)}
-												title={`Deploy ${row.short} to ${solo.appName} in ${solo.envName}`}
-											>
-												<ArrowRightOutline class="h-4 w-4" />
-												{soloPinnedTo ? `Deploy ${row.short} to ${solo.envLabel}` : `Promote to ${solo.envLabel}`}
-											</button>
-										</div>
-									{/if}
-									</li>
-								{/each}
-							</ul>
-						{:else}
-							{@const envCols = envColumnsFor(bucket.slots)}
-							{@const envTemplate = envGridTemplate(envCols)}
-							<!--
-								⭐ ROUND 11 r11c ITEM 4 — EVERY ROW'S OWN GRID, BUILT FROM
-								THE SAME `envGridTemplate` STRING. `envColumnsFor` computes
-								the bucket-wide environment universe once; every `<li>`
-								below gets the IDENTICAL literal `grid-template-columns`
-								(fixed-length env tracks — see that function's own doc
-								comment for why fixed, not `subgrid`), which is what makes
-								`DEV`/`STAGING`/`PROD` share one x per column across every
-								app in this card without any cross-row coordination.
-							-->
-							<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-								{#each groupSlots(bucket.slots) as g (g.appName)}
-									<!--
-										⭐ ROUND 11 REVISIONS-PASS-6, ITEM 9 — THE LABEL, FOLDED
-										IN BELOW `sm` ONLY. `What each service calls it` and
-										`Running it now` restated each other at 390: both listed
-										`hello-api-app` with a chip beside it and neither said
-										anything the other did not, once the two cards were far
-										enough apart on a phone that a reader could not hold both
-										in mind. `.rev-group-label` is `display: none` above
-										560px (see its own CSS, below the `.rev-group-row` rules)
-										— at desktop width the two cards sit close enough that
-										restating it there would be the opposite defect.
-									-->
-									<li class="rev-place-row px-4 py-3" style="--env-grid: {envTemplate}">
-										{#each g.runs as rg, gi (rg.runs ?? '—')}
-											{@const sharedAge = sharedAgeFor(bucket.key, rg.slots)}
-											<!--
-												⭐ ITEM 9, CONTINUED — `rg.runs` IS THIS GROUP'S OWN
-												RUNNING LABEL, NOT `row.services.find(...)`. This
-												build's commit can resolve to TWO rows (a held sibling
-												splits one revision into a "running" row and a "held"
-												row — see `revisionLookup`'s own doc comment) — on the
-												HELD row, `row.services.find(...).label` names the
-												HELD release, and folding THAT into `Running it now`
-												would print `2.67.0-67` beside slots that are actually
-												running `2.66.0-66`, a wrong-build claim this exact
-												`<li>` disproves four lines down (`on 2.66.0-66`).
-												`rg.runs` is read off the SAME per-slot fact the group
-												was partitioned by, so it can never name a release
-												other than what these specific slots report. -->
-											{@const groupLabel =
-												bucket.key === 'live' && rg.runs && rg.runs !== row.short && rg.runs !== row.revision
-													? rg.runs
-													: null}
-											<!--
-												⭐ ITEM 3 (2026-09-06 round-7 critique) — THE LEDGER'S
-												OWN TRACKS (name / chips / age), NOT A FREE-FLOWING
-												FLEX ROW. Measured live on `c1ecfe553070`'s "Already
-												moved on": the chip run started wherever the app
-												name's own width happened to end, a 45px spread
-												between rows with `hello-multi-app` and
-												`hello-world-manifests` as their names. `.rev-group-row`
-												is a fixed-first-column grid — same fix `.rev-svc-row`'s
-												neighbour applies for the identical reason — so the
-												chips column starts at the same x on every row in this
-												card regardless of name length. `max-width: 46rem`
-												caps the row's own reading measure so the trailing
-												`now on <sha>` (below) sits close to the chips it is
-												about rather than at the far edge of however wide the
-												card happens to be (745px away, measured on the same
-												row, before the odd-card full-span rule above was
-												also removed).
-											-->
-											<div class="rev-group-row">
-												<a
-													href={placeHref(rg.slots[0])}
-													class="rev-group-name t-body inline-flex min-w-0 items-center gap-1 text-gray-700 hover:underline dark:text-gray-200"
-													style="--rg-row: {gi + 1}"
-													aria-label="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
-													title="Open the {rg.slots[0].envLabel.toUpperCase()} rollout for {g.appName}"
-													><span class="min-w-0 truncate">{g.appName}</span><ChevronRightOutline
-														class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
-														aria-hidden="true"
-													/></a
-												>
-												{#if groupLabel}
-													<span
-														class="rev-group-label t-code-sm text-gray-500 dark:text-gray-400"
-														style="--rg-row: {gi + 1}"
-														title="{g.appName} calls this {groupLabel}"
-														>{groupLabel}</span
-													>
-												{/if}
-												<div class="rev-group-chips" style="--rg-row: {gi + 1}">
-												{#each rg.slots as s (s.envName)}
-													{@const age = bucket.key === 'live' ? slotDeployedAgo(s) : null}
-													{@const pinTitle = pinnedChipTitle(s)}
-													<!--
-														`/apps`'s unit, character for character: the
-														environment's badge, and nothing beside it unless the
-														environment is stuck.
-														`wide` IS LOAD-BEARING: `.chip` caps at 12ch, which is
-														right in a fixed table track and wrong here —
-														`prod-ap-south`, `prod-us-east` and `prod-us-west` all
-														ellipsise to the same eight characters, the exact defect
-														that killed the `/apps` convergence bar.
-
-														⭐ OPERATOR-WALK ROUND 4, ITEMS 2 + A — ONE NON-WRAPPING
-														ATOM, AND THE ATOM IS THE LINK.
-
-														ITEM 2: the chip and its own age used to be SIBLING flex
-														children of the row (`flex flex-wrap`), so the wrap
-														could land BETWEEN a chip and the age that names it —
-														measured live at 1440, a `5 days ago` sitting 84px left
-														of the `PROD` chip it looked like it was labelling, and
-														at 390 wrong on every row. `.rev-env-atom` is
-														`display: inline-flex` with its own `flex-wrap: nowrap`,
-														so the pair can only ever wrap as ONE unit between
-														atoms, never inside one; the container query below
-														forces one atom per line under 560px, chip first.
-
-														ITEM A: every environment chip elsewhere on this page
-														was inert — only the row's own appName link (above)
-														went anywhere, so `hello-multi-app [STAGING] [PROD]`
-														here could only ever open staging. The atom becomes the
-														`<a>` itself (`.hit-32` for the touch floor), so each
-														place opens its own rollout regardless of which one the
-														row's own chevron happens to point at.
-													-->
-													<a
-														href={placeHref(s)}
-														class="rev-env-atom hit-32"
-														style="--env-col: {envColumnLine(envCols, s.envLabel)}; --rg-row: {gi + 1}"
-														aria-label="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
-														title="Open the {s.envLabel.toUpperCase()} rollout for {g.appName}"
-													>
-														<span class="chip-mark">
-															<!--
-																⭐ ITEM 5 / ROUND-7 RULING 4 (2026-09-06 critique) —
-																THE BAKE STATE IS ONE MARK, INSIDE THE CHIP'S OWN
-																BOX, NEVER AN INSERTED WORD. Mirrors the list
-																page's `inFlightGlyph` byte for byte: the spinner
-																replaces the chip's glyph slot at the same width
-																the tag glyph already reserves, in the bake's own
-																hue — the chip's identity colour (the environment's
-																own theme) is untouched. The trailing caption below
-																(`deployingCaption`) no longer repeats the verb or
-																the sha; this icon plus `title` is where that fact
-																now lives.
-															-->
-															{#if bucket.key === 'deploying'}
-																{@const bs = slotBakeStatus(s.slot)}
-																{#snippet inFlightGlyph()}
-																	<span class="mr-[3px] inline-flex shrink-0 items-center">
-																		<BakeStatusIcon bakeStatus={bs} size="small" decorative />
-																	</span>
-																{/snippet}
-																<Chip
-																	role="env"
-																	theme={s.slot.cell.theme}
-																	label={s.envLabel}
-																	wide
-																	icon={inFlightGlyph}
-																	title="{s.envLabel.toUpperCase()} — {bakeTitle(bs)}{wasOnClause(s)}"
-																/>
-															{:else}
-																<Chip
-																	role="env"
-																	theme={s.slot.cell.theme}
-																	label={s.envLabel}
-																	wide
-																	title="{s.envLabel.toUpperCase()} — {s.statusWord}{wasOnClause(s)}"
-																/>
-															{/if}
-															{#if pinTitle}
-																<!-- ⭐ ROUND-4B REVIEW, ITEM 1 — SEE
-																     `pinnedChipTitle`'s OWN NOTE. Same mark the
-																     list row's `lineState` already draws for this
-																     fact, loose beside the env chip like `STUCK`. -->
-																<Chip role="unranked" label="pinned" title={pinTitle} />
-															{/if}
-															{#if isStuck(s)}
-																<Chip
-																	role="alarm"
-																	label="stuck"
-																	title="{s.envLabel.toUpperCase()} is stuck"
-																/>
-															{/if}
-															<!--
-																⭐ ROUND 11 OPERATOR-WALK, FINDING 2 — "ROLLED BACK",
-																NOT JUST "HELD". See `rollbackFor`'s own doc
-																comment: real, verified against the live cluster
-																(`hello-frontend-app` DEV). Same role/label the
-																`/apps` list already ships for this exact fact
-																(`ROLLED BACK`), loose beside the env chip like
-																`STUCK`/`pinned`.
-															-->
-															{#if rollbackFor(s)}
-																{@const rb = rollbackFor(s)!}
-																<Chip
-																	role="unranked"
-																	label="rolled back"
-																	title="Rolled back {rb.by} release{rb.by === 1 ? '' : 's'}: {rb.from} → {rb.to}."
-																/>
-															{/if}
-														</span>
-														<!-- ⭐ PER-PLACE AGE — `live` ONLY. (F13, 2026-09-03) See
-														     `slotDeployedAgo`'s own note: three environments
-														     running one build rarely arrived together, and this
-														     is the one card on the page that can say when EACH
-														     place actually got it, from data already read to
-														     decide the place belongs in this bucket at all.
-														     ⛔ `{age}` PRINTED BARE — the same "4h ago" a `built`
-														     time on `This build` could just as easily be — and an
-														     operator walk read them as the same clock. The verb
-														     is always in front of the number now.
-														     ⛔ SUPPRESSED WHEN `sharedAge` IS SET (ITEM 2,
-														     2026-09-06 critique) — every place in this row agrees,
-														     so the row states it once, after the chips, instead
-														     of on every atom.
-														     ⭐ ROUND 11, FINDING 2 — "ROLLED BACK", NOT "DEPLOYED",
-														     WHEN THIS PLACE'S OWN CURRENT DEPLOY IS ONE. Same
-														     verb the chip beside it just named; the two can never
-														     disagree because both read `rollbackFor(s)`. -->
-														{#if age && !sharedAge}
-															<span class="t-micro text-gray-500 dark:text-gray-400"
-																>{rollbackFor(s) ? 'rolled back' : 'deployed'} <time
-																	datetime={age.iso}
-																	title={new Date(age.iso).toLocaleString()}>{age.ago}</time
-																> ago</span
-															>
-														{/if}
-														<!-- ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 1 — THE IN-FLIGHT
-														     CAPTION, PER PLACE. Bake phase is a fact about THIS
-														     slot, not the row (two places sharing a build rarely
-														     started their deploy at the same instant), so it is
-														     read here rather than hoisted to the group like the
-														     `deployed …` age above — the ordinary case (one place
-														     in flight) still prints once. -->
-														{#if bucket.key === 'deploying'}
-															<span class="t-micro text-gray-500 dark:text-gray-400"
-																>{deployingCaption(s)}</span
-															>
-														{/if}
-													</a>
-												{/each}
-												</div>
-												<!-- ⭐ ITEM 3 (2026-09-06 round-7 critique) — THE TRAILING
-												     FACT IS ITS OWN GRID COLUMN NOW, `justify-self: end`
-												     INSTEAD OF `ml-auto`. `ml-auto` pushed to the far edge
-												     of whatever the row happened to measure — 745px from
-												     the chips when the card behind it was full-width (see
-												     the removed odd-card span rule, above). Capped by
-												     `.rev-group-row`'s own `max-width: 46rem` and anchored
-												     to column 3, it now sits at a fixed, close distance
-												     from the chips it is about. -->
-												<div class="rev-group-trail" style="--rg-row: {gi + 1}">
-												<!-- ⭐ ITEM 2 (2026-09-06 critique) — THE AGE, HOISTED ONCE.
-												     `sharedAgeFor` only returns non-null when EVERY slot in
-												     this row printed the identical `formatTimeAgoCompact`
-												     string, so dropping the per-atom age above and printing
-												     it here once can never disagree with what the atoms
-												     would have said individually. Lowercase — it follows the
-												     chips, it does not lead the line (`lib/CLAUDE.md`'s age
-												     grammar note). -->
-												{#if sharedAge}
-												<!-- ⭐ FOLLOW-UP (d), 2026-09-06 coordinator re-check — NO LEADING
-												     SEPARATOR. `· deployed 7d ago` wrapped to its own line at 390
-												     (three stacked chips left no room beside it), and a leading `·`
-												     with nothing before it on THAT line reads as a stray dot. The
-												     row's own `gap-x-4` already separates this span from the chips
-												     when they share a line; nothing is lost relying on it instead
-												     of a mark that can end up alone. -->
-													<span class="t-micro text-gray-500 dark:text-gray-400"
-														>deployed <time
-															datetime={sharedAge.iso}
-															title={new Date(sharedAge.iso).toLocaleString()}>{sharedAge.ago}</time
-														> ago</span
-													>
-												{/if}
-												<!-- WHAT TOOK ITS PLACE — once per (service, build), not
-												     once per environment. `deploying` is excluded: it is
-												     STILL this row's own build going out, never something
-												     that "took its place" — see `deployingCaption`, drawn
-												     per atom above instead. -->
-												{#if bucket.key !== 'live' && bucket.key !== 'failing' && bucket.key !== 'deploying' && rg.runs}
-													<span class="t-micro text-gray-500 dark:text-gray-400"
-														>now on <span class="t-code-sm">{rg.runs}</span></span
-													>
-												{:else if bucket.key === 'live' && rg.slots.some((s) => !s.onOwnRelease)}
-													<!--
-														⭐ THE RELEASE EACH PLACE RUNS, SAID ONCE THE ROW HAS
-														TWO TO CHOOSE FROM. (2026-09-03, operator-walk
-														BLOCKING item) `live` used to mean "running the row's
-														OWN release" by construction, so a place here never
-														needed to say which release — it was always this
-														one. Now `live` means "running the revision", and a
-														place on an OLDER release sharing it (rel-66 while
-														the row is named for rel-67) is exactly the deviation
-														this product's whole design marks: the ordinary case
-														(every place onOwnRelease) prints nothing extra, same
-														as before.
-													-->
-													<span
-														class="t-micro flex flex-wrap items-center gap-1.5 text-gray-500 dark:text-gray-400"
-													>
-														on <span class="t-code-sm">{rg.runs}</span>
-														{#if rg.slots.some((s) => s.blockingGates.length > 0)}
-															<Chip
-																role="held"
-																label="held"
-																title="A newer release of this build exists and no rule lets it through yet"
-															/>
-														{:else}
-															<span>— on an older release of it</span>
-														{/if}
-													</span>
-												{/if}
-											</div>
-											</div>
-										{/each}
-									</li>
-								{/each}
-							</ul>
-						{/if}
-
-						<!-- ⛔ A FOOTER `<p>` PRINTED `bucket.description`, WHICH IS THE
-						     CARD'S OWN `verdictTitle` AND, WORSE, ITS OWN TITLE RESTATED.
-						     (2026-09-02, from the human: definitions belong in a record,
-						     not in the printed tier.) `Running it now` sat 130px above
-						     `These are running this build right now.` — one card, one
-						     fact, twice, and the second copy in prose. The record on the
-						     `N places` rollup keeps every word of it. -->
-					</Card>
-				{/each}
-
-		</div>
 	{/if}
 
 	<ChangeVersionModal

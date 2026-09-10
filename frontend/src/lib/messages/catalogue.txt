@@ -1,4 +1,9 @@
 lib/activity-deeplink.ts	code	… … on ……, ….
+lib/api/changes.ts	code	Connect GitHub to see what merged across the repos this cluster deploys
+lib/api/changes.ts	code	Failed to load changes
+lib/api/changes.ts	code	GitHub account not connected
+lib/api/changes.ts	code	No repository on this cluster is linked to GitHub
+lib/api/changes.ts	code	No response from the server
 lib/api/commit-pulls.ts	code	Connect GitHub to see pull requests for this commit
 lib/api/commit-pulls.ts	code	Failed to fetch pull requests for this commit
 lib/api/commit-pulls.ts	code	GitHub account not connected
@@ -34,11 +39,6 @@ lib/api/github.ts	code	No access to this repository
 lib/api/github.ts	code	No response from the server
 lib/api/github.ts	code	You do not have access to this repository
 lib/api/logs.ts	code	Stream closed
-lib/api/my-pulls.ts	code	Connect GitHub to see your pull requests
-lib/api/my-pulls.ts	code	Failed to fetch your pull requests
-lib/api/my-pulls.ts	code	GitHub account not connected
-lib/api/my-pulls.ts	code	No repository on this cluster is linked to GitHub
-lib/api/my-pulls.ts	code	No response from the server
 lib/api/pulls.ts	code	Connect GitHub to see this pull request
 lib/api/pulls.ts	code	Failed to fetch pull request
 lib/api/pulls.ts	code	GitHub account not connected
@@ -134,6 +134,7 @@ lib/components/ChangeList.svelte	text	Recorded note
 lib/components/ChangeList.svelte	text	See the diff on GitHub
 lib/components/ChangeList.svelte	text	See the full diff on GitHub
 lib/components/ChangeList.svelte	code	Your GitHub account cannot read this repository.
+lib/components/ChangeRow.svelte	text	… # … · … … … · … ago … by @ … …
 lib/components/ChangeVersionModal.svelte	code	… — … has not shipped it
 lib/components/ChangeVersionModal.svelte	text	… … … … Connect your GitHub account to see which commits will … .
 lib/components/ChangeVersionModal.svelte	code	… back
@@ -409,6 +410,7 @@ lib/components/PipelineRow.svelte	code	a service dependency
 lib/components/PipelineRow.svelte	code	an unclassified rule
 lib/components/PipelineRow.svelte	text	Could not load this rule.
 lib/components/PipelineRow.svelte	code	opens …
+lib/components/PipelineRow.svelte	code	opens in …
 lib/components/PipelineRow.svelte	text	This rule no longer applies.
 lib/components/PipelineRow.svelte	text	Why is it held?
 lib/components/PromotionNode.svelte	text	awaiting first deploy
@@ -517,13 +519,14 @@ lib/components/WaitingBuilds.svelte	code	… · … ago
 lib/components/WaitingBuilds.svelte	code	… · oldest … ago
 lib/components/WaitingBuilds.svelte	code	… version… ready
 lib/components/WaitingBuilds.svelte	text	ready since
-lib/components/YourPullRequestsCard.svelte	text	… pull request …
-lib/components/YourPullRequestsCard.svelte	text	Connect GitHub
-lib/components/YourPullRequestsCard.svelte	text	Connect GitHub to see your pull requests across the repos this cluster deploys.
-lib/components/YourPullRequestsCard.svelte	text	Could not load your pull requests.
-lib/components/YourPullRequestsCard.svelte	text	No pull requests in the last 30 days … .
-lib/components/YourPullRequestsCard.svelte	aria-label	See all your pull requests
-lib/components/YourPullRequestsCard.svelte	title	Your pull requests
+lib/components/YourChangesCard.svelte	text	… change …
+lib/components/YourChangesCard.svelte	text	… change … · all live everywhere
+lib/components/YourChangesCard.svelte	text	Connect GitHub
+lib/components/YourChangesCard.svelte	text	Connect GitHub to see if your changes have landed, service by service, environment by environment.
+lib/components/YourChangesCard.svelte	text	Could not load your changes.
+lib/components/YourChangesCard.svelte	text	Nothing of yours merged in the last 30 days.
+lib/components/YourChangesCard.svelte	aria-label	See all your changes
+lib/components/YourChangesCard.svelte	title	Your changes
 lib/ControlCenter.svelte	text	… … · … held … · … steady
 lib/ControlCenter.svelte	text	… need … you
 lib/ControlCenter.svelte	code	· … of …
@@ -580,6 +583,7 @@ lib/pr-cell-copy.ts	code	rolled back to …
 lib/pr-cell-copy.ts	code	the bake failed
 lib/pr-cell-copy.ts	code	the bake was cancelled
 lib/pr-cell-copy.ts	code	usually … min
+lib/pr-cell-copy.ts	code	usually … min once it starts
 lib/pr-cell-copy.ts	code	waiting for … to deploy it first
 lib/pr-cell-copy.ts	code	waiting on …
 lib/rollout-cards.ts	code	… newer build… waiting.
@@ -717,6 +721,13 @@ lib/view-models/blocking-story.ts	code	Waiting for … to ship a newer … — i
 lib/view-models/blocking-story.ts	code	Waiting for its upstream environment to deploy this build
 lib/view-models/blocking-story.ts	code	Waiting for someone to approve it
 lib/view-models/blocking-story.ts	code	Waiting for the service it depends on to ship a newer version
+lib/view-models/changes.ts	code	failed in …
+lib/view-models/changes.ts	code	held in …
+lib/view-models/changes.ts	code	live everywhere
+lib/view-models/changes.ts	code	not built
+lib/view-models/changes.ts	code	not built here
+lib/view-models/changes.ts	code	not built yet
+lib/view-models/changes.ts	code	rolled back
 lib/view-models/dependencies.ts	code	… version… ahead
 lib/view-models/dependencies.ts	code	… version… waiting to move
 lib/view-models/dependency-graph.ts	code	, … serves …
@@ -788,14 +799,6 @@ lib/view-models/health-witness.ts	code	Health check …
 lib/view-models/health-witness.ts	code	passing, last errored …
 lib/view-models/health-witness.ts	code	This check
 lib/view-models/landing-grid.ts	code	all … service…
-lib/view-models/my-pulls.ts	code	… · held in …
-lib/view-models/my-pulls.ts	code	… of … building
-lib/view-models/my-pulls.ts	code	closed without merging
-lib/view-models/my-pulls.ts	code	held in …
-lib/view-models/my-pulls.ts	code	live in … of … service…
-lib/view-models/my-pulls.ts	code	not built here
-lib/view-models/my-pulls.ts	code	not built yet
-lib/view-models/my-pulls.ts	code	open …
 lib/view-models/pin-schedule-clause.ts	code	…, and … reopens ….
 lib/view-models/pr-pipeline.ts	code	… in …
 lib/view-models/pr-pipeline.ts	code	… in progress
@@ -1131,6 +1134,78 @@ routes/apps/+page.svelte	code	someone pinned a version here, so nothing newer ca
 routes/apps/+page.svelte	code	the version running here is worse than the one before it
 routes/apps/+page.svelte	title	Typical time a build takes to get from … to …, measured over … build… that made the whole trip
 routes/apps/+page.svelte	text	View all activity
+routes/changes/[...slug]/+page.svelte	text	, stream down …
+routes/changes/[...slug]/+page.svelte	text	. Once it merges, this page fills in per service.
+routes/changes/[...slug]/+page.svelte	text	. You can also press
+routes/changes/[...slug]/+page.svelte	text	… … … · live … · updated
+routes/changes/[...slug]/+page.svelte	code	… … held in ….
+routes/changes/[...slug]/+page.svelte	code	… · … releases
+routes/changes/[...slug]/+page.svelte	code	… · every other place on its newest build
+routes/changes/[...slug]/+page.svelte	code	… · kuberik
+routes/changes/[...slug]/+page.svelte	code	… +… more
+routes/changes/[...slug]/+page.svelte	code	… file…
+routes/changes/[...slug]/+page.svelte	text	… open … · … … … · … … head
+routes/changes/[...slug]/+page.svelte	text	… rollout … would get it … · live in … …
+routes/changes/[...slug]/+page.svelte	code	… service…
+routes/changes/[...slug]/+page.svelte	code	… services
+routes/changes/[...slug]/+page.svelte	text	· … not built anywhere
+routes/changes/[...slug]/+page.svelte	code	· was on … until …
+routes/changes/[...slug]/+page.svelte	code	#… … · kuberik
+routes/changes/[...slug]/+page.svelte	code	#… · kuberik
+routes/changes/[...slug]/+page.svelte	code	A check has not passed yet — it clears on its own
+routes/changes/[...slug]/+page.svelte	text	All changes
+routes/changes/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
+routes/changes/[...slug]/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
+routes/changes/[...slug]/+page.svelte	code	closed by @…
+routes/changes/[...slug]/+page.svelte	title	Closed without merging
+routes/changes/[...slug]/+page.svelte	text	Connect GitHub
+routes/changes/[...slug]/+page.svelte	text	Connect GitHub to see this pull request
+routes/changes/[...slug]/+page.svelte	code	every place is on its newest build
+routes/changes/[...slug]/+page.svelte	placeholder	Find a build or service
+routes/changes/[...slug]/+page.svelte	code	Held by a deploy window
+routes/changes/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
+routes/changes/[...slug]/+page.svelte	code	Held for another …
+routes/changes/[...slug]/+page.svelte	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
+routes/changes/[...slug]/+page.svelte	code	merged … ago by @…
+routes/changes/[...slug]/+page.svelte	code	merged … by @…
+routes/changes/[...slug]/+page.svelte	code	minmax(160px, max-content) … minmax(90px, 1fr)
+routes/changes/[...slug]/+page.svelte	title	Newest build … · …
+routes/changes/[...slug]/+page.svelte	text	No build matches “ … ”.
+routes/changes/[...slug]/+page.svelte	text	No service on this cluster deploys … / … .
+routes/changes/[...slug]/+page.svelte	text	Not built yet for … .
+routes/changes/[...slug]/+page.svelte	title	Not merged yet
+routes/changes/[...slug]/+page.svelte	text	Not on this cluster
+routes/changes/[...slug]/+page.svelte	code	opened by @…
+routes/changes/[...slug]/+page.svelte	code	Pinned to … — automatic deploys are paused until the pin is cleared.
+routes/changes/[...slug]/+page.svelte	text	PR # … not found in … / … (or you cannot see it). Check the number, or
+routes/changes/[...slug]/+page.svelte	text	PR not found
+routes/changes/[...slug]/+page.svelte	code	Ready to deploy — still on …
+routes/changes/[...slug]/+page.svelte	code	Ready to deploy here
+routes/changes/[...slug]/+page.svelte	code	Running … of this revision; … is held
+routes/changes/[...slug]/+page.svelte	text	search … / … 's pull requests on GitHub ↗
+routes/changes/[...slug]/+page.svelte	text	See what … runs ›
+routes/changes/[...slug]/+page.svelte	code	Skipped — newer builds are ahead of this one
+routes/changes/[...slug]/+page.svelte	code	started … ago
+routes/changes/[...slug]/+page.svelte	code	The pinned tag: …
+routes/changes/[...slug]/+page.svelte	text	This build has no linked GitHub repository, so there is no change page for it — changes need a pull request or a commit on a GitHub-hosted repo.
+routes/changes/[...slug]/+page.svelte	text	This dashboard reads pull request details as you, through your own GitHub account — connect it to see # … on … / … .
+routes/changes/[...slug]/+page.svelte	text	This pull request has not merged yet — it targets
+routes/changes/[...slug]/+page.svelte	text	This pull request was closed without merging, so no build ever contained it.
+routes/changes/[...slug]/+page.svelte	text	to look it up here.
+routes/changes/[...slug]/+page.svelte	text	View commit
+routes/changes/[...slug]/+page.svelte	text	View on GitHub
+routes/changes/+page.svelte	text	… of … live
+routes/changes/+page.svelte	text	A revision shows up here as soon as one of your services deploys it.
+routes/changes/+page.svelte	text	Connect GitHub
+routes/changes/+page.svelte	text	every change has landed everywhere · … repositor … … · live …
+routes/changes/+page.svelte	placeholder	Find a change by title, #n or sha
+routes/changes/+page.svelte	text	GitHub is not configured for this dashboard — showing what this cluster has actually deployed instead.
+routes/changes/+page.svelte	text	GitHub is not connected — showing what this cluster has actually deployed instead.
+routes/changes/+page.svelte	text	kuberik | Changes
+routes/changes/+page.svelte	text	Not yet everywhere
+routes/changes/+page.svelte	text	Nothing built yet
+routes/changes/+page.svelte	text	of the last 30 days' changes … not everywhere yet · … repositor … … · live …
+routes/changes/+page.svelte	text	Try clearing a filter or the search box above.
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
 routes/dependencies/+page.svelte	text	… holding
@@ -1236,16 +1311,6 @@ routes/envs/[name]/+page.svelte	code	The last deploy did not complete. Nothing n
 routes/envs/[name]/+page.svelte	title	This app has never deployed here
 routes/envs/[name]/+page.svelte	text	View all activity
 routes/envs/[name]/+page.svelte	code	waiting for … to ship … … — it is on …
-routes/me/+page.svelte	text	… @ … · … … open · … merged in 30 days
-routes/me/+page.svelte	text	Connect GitHub
-routes/me/+page.svelte	text	Connect GitHub to see your pull requests across the repos this cluster deploys.
-routes/me/+page.svelte	text	Could not load your pull requests.
-routes/me/+page.svelte	text	GitHub is not configured for this dashboard.
-routes/me/+page.svelte	text	No merged pull requests in the last 30 days.
-routes/me/+page.svelte	text	No open pull requests in the last 30 days.
-routes/me/+page.svelte	text	No pull requests in the last 30 days … .
-routes/me/+page.svelte	text	Your pull requests
-routes/me/+page.svelte	text	Your pull requests · kuberik
 routes/namespaces/[name]/+page.svelte	title	… — this page
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … …
 routes/namespaces/[name]/+page.svelte	text	… deploy …
@@ -1264,100 +1329,6 @@ routes/namespaces/[name]/+page.svelte	title	Recent activity
 routes/namespaces/[name]/+page.svelte	text	Show … more rollouts ›
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
 routes/namespaces/[name]/+page.svelte	text	View all activity
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	. Once it merges, this page fills in per service.
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	. You can also press
-routes/pr/[owner]/[repo]/[number]/+page.svelte	code	… file…
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	… open … · … … … · … … head
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	· … not built anywhere
-routes/pr/[owner]/[repo]/[number]/+page.svelte	code	#… … · kuberik
-routes/pr/[owner]/[repo]/[number]/+page.svelte	code	#… · kuberik
-routes/pr/[owner]/[repo]/[number]/+page.svelte	code	closed by @…
-routes/pr/[owner]/[repo]/[number]/+page.svelte	title	Closed without merging
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Connect GitHub
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Connect GitHub to see this pull request
-routes/pr/[owner]/[repo]/[number]/+page.svelte	code	merged … by @…
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	No service on this cluster deploys … / … .
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Not built yet for … .
-routes/pr/[owner]/[repo]/[number]/+page.svelte	title	Not merged yet
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	Not on this cluster
-routes/pr/[owner]/[repo]/[number]/+page.svelte	code	opened by @…
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	PR # … not found in … / … (or you cannot see it). Check the number, or
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	PR not found
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	search … / … 's pull requests on GitHub ↗
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This dashboard reads pull request details as you, through your own GitHub account — connect it to see # … on … / … .
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This pull request has not merged yet — it targets
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	This pull request was closed without merging, so no build ever contained it.
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	to look it up here.
-routes/pr/[owner]/[repo]/[number]/+page.svelte	text	View on GitHub
-routes/revisions/[...slug]/+page.svelte	text	— on an older release of it
-routes/revisions/[...slug]/+page.svelte	text	, stream down …
-routes/revisions/[...slug]/+page.svelte	text	… … … · live … · updated
-routes/revisions/[...slug]/+page.svelte	text	… … Deploying since … Last deployed …
-routes/revisions/[...slug]/+page.svelte	code	… … held in ….
-routes/revisions/[...slug]/+page.svelte	code	… · … releases
-routes/revisions/[...slug]/+page.svelte	code	… · every other place on its newest build
-routes/revisions/[...slug]/+page.svelte	code	… +… more
-routes/revisions/[...slug]/+page.svelte	title	… calls this …
-routes/revisions/[...slug]/+page.svelte	title	… can still take … newer version…
-routes/revisions/[...slug]/+page.svelte	title	… is running … right now — the newer … has not replaced it
-routes/revisions/[...slug]/+page.svelte	title	… is stuck
-routes/revisions/[...slug]/+page.svelte	text	… place …
-routes/revisions/[...slug]/+page.svelte	code	… service…
-routes/revisions/[...slug]/+page.svelte	code	… services
-routes/revisions/[...slug]/+page.svelte	code	· was on … until …
-routes/revisions/[...slug]/+page.svelte	text	&nbsp;of …
-routes/revisions/[...slug]/+page.svelte	code	A check has not passed yet — it clears on its own
-routes/revisions/[...slug]/+page.svelte	title	A newer release of this build exists and no rule lets it through yet
-routes/revisions/[...slug]/+page.svelte	title	A place is one service in one environment.
-routes/revisions/[...slug]/+page.svelte	text	ago … …
-routes/revisions/[...slug]/+page.svelte	text	ago … Never deployed …
-routes/revisions/[...slug]/+page.svelte	text	All revisions
-routes/revisions/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
-routes/revisions/[...slug]/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
-routes/revisions/[...slug]/+page.svelte	text	Commit message and author need GitHub. …
-routes/revisions/[...slug]/+page.svelte	code	every place is on its newest build
-routes/revisions/[...slug]/+page.svelte	title	Every service counts its own builds, so newest here means newest for that service. Two services from one repo can be on different builds and both be on the newest.
-routes/revisions/[...slug]/+page.svelte	placeholder	Find a build or service
-routes/revisions/[...slug]/+page.svelte	code	Held by a deploy window
-routes/revisions/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
-routes/revisions/[...slug]/+page.svelte	code	Held for another …
-routes/revisions/[...slug]/+page.svelte	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
-routes/revisions/[...slug]/+page.svelte	text	kuberik | …
-routes/revisions/[...slug]/+page.svelte	code	minmax(160px, max-content) … minmax(90px, 1fr)
-routes/revisions/[...slug]/+page.svelte	title	Newest build … · …
-routes/revisions/[...slug]/+page.svelte	text	No build matches “ … ”.
-routes/revisions/[...slug]/+page.svelte	text	No earlier deploy on record.
-routes/revisions/[...slug]/+page.svelte	text	no pull request found for this commit
-routes/revisions/[...slug]/+page.svelte	text	now on
-routes/revisions/[...slug]/+page.svelte	text	Open …
-routes/revisions/[...slug]/+page.svelte	aria-label	Open the … rollout for …
-routes/revisions/[...slug]/+page.svelte	title	Open the … rollout for …
-routes/revisions/[...slug]/+page.svelte	code	Pinned to … — automatic deploys are paused until the pin is cleared.
-routes/revisions/[...slug]/+page.svelte	text	places run this build … … …
-routes/revisions/[...slug]/+page.svelte	text	Ran before in
-routes/revisions/[...slug]/+page.svelte	code	Ready to deploy — still on …
-routes/revisions/[...slug]/+page.svelte	code	Ready to deploy here
-routes/revisions/[...slug]/+page.svelte	title	Rolled back … release…: … → ….
-routes/revisions/[...slug]/+page.svelte	title	Rule …
-routes/revisions/[...slug]/+page.svelte	code	Running … of this revision; … is held
-routes/revisions/[...slug]/+page.svelte	code	Skipped — newer builds are ahead of this one
-routes/revisions/[...slug]/+page.svelte	code	started … ago
-routes/revisions/[...slug]/+page.svelte	code	The pinned tag: …
-routes/revisions/[...slug]/+page.svelte	title	This build
-routes/revisions/[...slug]/+page.svelte	title	This service does not list this build, so it has no position for it
-routes/revisions/[...slug]/+page.svelte	text	Tracking build … in …
-routes/revisions/[...slug]/+page.svelte	text	View commit
-routes/revisions/+page.svelte	text	, stream down … …
-routes/revisions/+page.svelte	text	… … build … … “ … ” … in … repositor … … … … … … · … &nbsp;repositor … … … · live … · updated
-routes/revisions/+page.svelte	code	… · every other place on its newest build
-routes/revisions/+page.svelte	text	A commit shows up here as soon as one of your services can deploy it.
-routes/revisions/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
-routes/revisions/+page.svelte	code	every place is on its newest build
-routes/revisions/+page.svelte	placeholder	Find a build or service
-routes/revisions/+page.svelte	text	kuberik | Revisions
-routes/revisions/+page.svelte	text	Nothing built yet
-routes/revisions/+page.svelte	title	One commit, one build. Here is every build your services can deploy, and how far each one has got.
-routes/revisions/+page.svelte	text	Open build …
 routes/rollouts/[cluster]/[namespace]/[name]/+layout.svelte	aria-label	Rollout sections
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … newer · held by the pin … … … …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.

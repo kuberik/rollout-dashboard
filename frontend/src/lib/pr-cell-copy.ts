@@ -164,6 +164,23 @@ export function usuallyLabel(ms: number | null): string {
 	return `usually ${minutes} min`;
 }
 
+/**
+ * ⭐ ITEM 1 (CHANGES-2026-09-10 §7). The FRONTIER cell's own estimate for a
+ * cell that has not started yet (held, not-built, promoting…) — "with a time
+ * estimation" answered where the question is actually asked, not only on a
+ * cell already in flight (`usuallyLabel`'s bare "usually N min", which reads
+ * naturally once a bake is already running). `null` under the same 2-sample
+ * guard `usuallyLabel` honours — never a bare em dash, per the design doc's
+ * own instruction; callers render nothing at all rather than call this with
+ * a null. Every OTHER (non-frontier) cell stays silent, by the caller simply
+ * never invoking this off it — the silence is the caller's job, not this
+ * function's.
+ */
+export function frontierUsuallyLabel(ms: number): string {
+	const minutes = Math.max(1, Math.round(ms / 60000));
+	return `usually ${minutes} min once it starts`;
+}
+
 /** The row's trailing "time since" column — the compact "2h ago" form, or
  *  `null` when the cell names no instant at all (e.g. `pinned`, `gated`,
  *  `not-built`, or `live` with no recorded history). */
