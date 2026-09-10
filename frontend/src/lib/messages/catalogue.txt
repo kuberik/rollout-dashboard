@@ -765,7 +765,7 @@ lib/view-models/revision-coverage.ts	code	a newer release
 lib/view-models/revision-coverage.ts	code	Across …: ….
 lib/view-models/revision-coverage.ts	code	Across …: none is running … yet.
 lib/view-models/revision-coverage.ts	code	Already moved on
-lib/view-models/revision-coverage.ts	code	bg-[oklch(82%_0.07_154)] dark:bg-green-800
+lib/view-models/revision-coverage.ts	code	bg-[oklch(82%_0.07_154)] dark:bg-[oklch(42%_0.05_154)]
 lib/view-models/revision-coverage.ts	code	Deployed in … place… where the deploy is not healthy
 lib/view-models/revision-coverage.ts	code	Every place that can run this build is running it
 lib/view-models/revision-coverage.ts	code	failing in … place…
@@ -1154,7 +1154,6 @@ routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
 routes/namespaces/[name]/+page.svelte	text	View all activity
 routes/revisions/[...slug]/+page.svelte	text	— on an older release of it
 routes/revisions/[...slug]/+page.svelte	text	, stream down …
-routes/revisions/[...slug]/+page.svelte	text	. This page covers every commit on a service's release ladder, deployed or not.
 routes/revisions/[...slug]/+page.svelte	text	… … … · live … · updated
 routes/revisions/[...slug]/+page.svelte	text	… … Deploying since … Last deployed …
 routes/revisions/[...slug]/+page.svelte	code	… … held in ….
@@ -1186,26 +1185,20 @@ routes/revisions/[...slug]/+page.svelte	code	Held by a deploy window
 routes/revisions/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
 routes/revisions/[...slug]/+page.svelte	code	Held for another …
 routes/revisions/[...slug]/+page.svelte	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
-routes/revisions/[...slug]/+page.svelte	text	is known to this dashboard.
-routes/revisions/[...slug]/+page.svelte	text	knows the revision
 routes/revisions/[...slug]/+page.svelte	text	kuberik | …
 routes/revisions/[...slug]/+page.svelte	code	minmax(160px, max-content) … minmax(90px, 1fr)
 routes/revisions/[...slug]/+page.svelte	title	Newest build … · …
 routes/revisions/[...slug]/+page.svelte	text	No build matches “ … ”.
 routes/revisions/[...slug]/+page.svelte	text	No earlier deploy on record.
-routes/revisions/[...slug]/+page.svelte	text	No repository
-routes/revisions/[...slug]/+page.svelte	text	Nothing in
 routes/revisions/[...slug]/+page.svelte	text	now on
 routes/revisions/[...slug]/+page.svelte	text	Open …
 routes/revisions/[...slug]/+page.svelte	aria-label	Open the … rollout for …
 routes/revisions/[...slug]/+page.svelte	title	Open the … rollout for …
 routes/revisions/[...slug]/+page.svelte	code	Pinned to … — automatic deploys are paused until the pin is cleared.
 routes/revisions/[...slug]/+page.svelte	text	places run this build … … …
-routes/revisions/[...slug]/+page.svelte	text	Ran before in … … ·
+routes/revisions/[...slug]/+page.svelte	text	Ran before in
 routes/revisions/[...slug]/+page.svelte	code	Ready to deploy — still on …
 routes/revisions/[...slug]/+page.svelte	code	Ready to deploy here
-routes/revisions/[...slug]/+page.svelte	text	Repository not found
-routes/revisions/[...slug]/+page.svelte	text	Revision not found
 routes/revisions/[...slug]/+page.svelte	title	Rolled back … release…: … → ….
 routes/revisions/[...slug]/+page.svelte	title	Rule …
 routes/revisions/[...slug]/+page.svelte	code	Running … of this revision; … is held

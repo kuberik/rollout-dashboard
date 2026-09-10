@@ -214,7 +214,7 @@ describe('the surfaces that had no render test name their subjects too', () => {
 		expect(
 			container.textContent,
 			'the slug resolved to the not-found branch; the test would then assert nothing'
-		).not.toMatch(/Revision not found/);
+		).not.toMatch(/does not exist/);
 		assertSubject('/revisions/[...slug]', container);
 	});
 
@@ -265,8 +265,15 @@ describe('the command palette names what each row is', () => {
 	}
 
 	test('every row names its app', async () => {
-		const { container } = open();
-		assertSubject('command palette', container);
+		open();
+		// `CommandPalette`'s overlay is portalled to `document.body` (see
+		// `a11y.svelte.ts`'s `portal`, round 6 lane 10 — a transformed
+		// `.header-group` ancestor was making the palette's `fixed inset-0`
+		// resolve against a 53px box at 390 instead of the viewport), so it
+		// is no longer a descendant of `render()`'s own `container` div;
+		// scanning `container` here would silently find zero rows and pass
+		// vacuously instead of actually checking anything.
+		assertSubject('command palette', document.body);
 	});
 
 	/**
@@ -277,8 +284,9 @@ describe('the command palette names what each row is', () => {
 	 * row prints.
 	 */
 	test('six competing rows are six distinguishable rows', () => {
-		const { container } = open();
-		const rows = Array.from(container.querySelectorAll('[data-idx]')).map((r) =>
+		open();
+		// Portalled to `document.body` — see the note in the test above.
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]')).map((r) =>
 			(r.textContent ?? '').replace(/\s+/g, ' ').trim()
 		);
 		expect(rows.length).toBe(APPS.length * TIERS.length);

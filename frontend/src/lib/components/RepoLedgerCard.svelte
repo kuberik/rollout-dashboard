@@ -801,6 +801,16 @@
 	 * mobile `@container` block below also lightens the ORDINARY per-row
 	 * hairline so the two are never the same weight in the same screenshot.
 	 */
+	/* ⛔ ROUND 6, LANE 10 — EXACTLY THE CARD-BORDER TOKEN, NO ALPHA, BOTH
+	   THEMES. Light already matched (`gray-200`, the same token `Card`'s own
+	   `border-gray-200` uses); dark did not — `color-mix(in oklab,
+	   var(--color-gray-600) 70%, transparent)` resolves to `oklab(0.446 …
+	   / 0.7)`, LIGHTER than `Card`'s actual dark border (`gray-700`, `oklch
+	   (0.373 …)`) even before the 70% alpha is considered, so the boundary
+	   this divider draws was louder than the card outline it sits inside.
+	   `var(--color-gray-700)` at full alpha is the same value `Card`'s
+	   `dark:border-gray-700` already resolves to — one token, no mix, no
+	   transparency, in both themes. */
 	.svc-line-gap {
 		grid-column: 1 / -1;
 		height: 1px;
@@ -809,7 +819,7 @@
 	}
 
 	:global(.dark) .svc-line-gap {
-		background-color: color-mix(in oklab, var(--color-gray-600) 70%, transparent);
+		background-color: var(--color-gray-700);
 	}
 
 	/*
@@ -974,7 +984,8 @@
 			 * mark (a hairline plus 8px of clear space) rather than another
 			 * line at this same weight. `gray-100`/a lower dark alpha keeps
 			 * it present (rows are still separated) but visibly quieter than
-			 * `.svc-line-gap`'s `gray-200`/heavier dark mix.
+			 * `.svc-line-gap`'s `gray-200`/solid `gray-700` (round 6 lane 10
+			 * — the card-border token, no alpha; see that rule's own note).
 			 */
 			border-bottom: 1px solid var(--color-gray-100);
 		}

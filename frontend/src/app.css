@@ -1439,9 +1439,39 @@ textarea {
 	summary,
 	.pill-btn,
 	.rev-sha,
-	.hit-32,
 	.tap-link:not(.tap-zone .tap-link) {
 		position: relative;
+	}
+
+	/* ⛔ `.hit-32` GETS ITS OWN RULE, INSIDE `@layer components` — NOT A
+	   SEAT IN THE UNLAYERED LIST ABOVE. (round 6 lane 10) `RevisionSearch`'s
+	   clear button is `absolute right-2 top-1/2 -translate-y-1/2`. Tried
+	   `:where(.hit-32) { position: relative }` first, on the theory that a
+	   zero-specificity selector always loses to Tailwind's `.absolute`
+	   (0,1,0) — measured live, no change: this whole `@media` block sits
+	   OUTSIDE every `@layer`, and CSS cascades by LAYER before it ever
+	   compares specificity — an unlayered rule beats EVERY layered rule,
+	   full stop, so a 0-specificity unlayered selector still outranked a
+	   0,1,0 selector living in Tailwind's `@layer utilities`. (Same fact
+	   the `.chip`/`app.css` notes elsewhere already document, direction
+	   reversed: those go unlayered on purpose to BEAT a utility; this one
+	   needs the opposite, so it has to go INTO a layer.) Confirmed live at
+	   390 before this fix: the button computed `position: relative`, joined
+	   normal flow, grew the wrapper 36px -> 61px and painted 8px from the
+	   LEFT edge of the field it was meant to sit inside on the right.
+	   `@layer components` is what every other "must lose to a utility"
+	   rule in this file already uses (`@import`'s implicit layer order is
+	   `theme, base, components, utilities`), so `.absolute`/`.relative`/
+	   `.fixed` on the element now correctly outrank this regardless of
+	   selector specificity, while a `.hit-32` caller with NO position
+	   utility of its own (a plain static link) still gets `relative` here
+	   uncontested. The touch-floor widening itself still comes entirely
+	   from the invisible, absolutely-positioned `::before` below — never
+	   from moving the control's own box. */
+	@layer components {
+		.hit-32 {
+			position: relative;
+		}
 	}
 
 	.nav-link::before,

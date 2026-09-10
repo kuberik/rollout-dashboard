@@ -100,6 +100,37 @@ export function trapFocus(node: HTMLElement) {
 }
 
 /**
+ * Svelte action. Moves `node` to be a direct child of `document.body` on
+ * mount. `CommandPalette`'s `fixed inset-0` overlay is written inside
+ * `Navbar`, which the root layout renders inside `.header-group` — a
+ * `position: fixed` element that ALSO carries `transform`/`will-change:
+ * transform` below `sm` (the hide-on-scroll unit, `app.css`). A `transform`
+ * on an ancestor makes it the containing block for its `fixed` descendants
+ * per spec, so at 390 the palette wasn't full-viewport at all: it was
+ * positioned against `.header-group`'s own ~53px box, landing the search
+ * input at `top:-4px` and the close button at `top:-8px`, both off the
+ * clickable area. Measured 2026-09-10.
+ *
+ * Fixing `.header-group` to stop transforming was rejected: the slide is the
+ * shipped hide-on-scroll behaviour (2026-09-05), and ANY future fixed overlay
+ * mounted under `Navbar` would hit the same bug again. Moving the node's
+ * real DOM position to `document.body` escapes every transformed ancestor at
+ * once, for this overlay and any later one — it is a DOM relocation, not a
+ * component reparent, so `bind:open`/`bind:scope` and the rest of Svelte's
+ * reactivity are untouched. Run this action BEFORE `inertSiblings` on the
+ * same element (action order = attribute order) so the sibling walk starts
+ * from the node's new, correct position under `<body>`.
+ */
+export function portal(node: HTMLElement) {
+	document.body.appendChild(node);
+	return {
+		destroy() {
+			node.remove();
+		}
+	};
+}
+
+/**
  * Call once at component init with a getter for the overlay's `open` state.
  * Remembers what had focus the instant before the overlay opened (via
  * `$effect.pre`, which runs before the DOM is patched, so the trigger is still

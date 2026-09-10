@@ -51,7 +51,7 @@ describe('CommandPalette multi-cluster duplicate keys', () => {
 			rollout('demo', 'hello-world', 'dev'),
 			rollout('demo', 'hello-world', 'prod')
 		];
-		const { container } = render(CommandPalette, {
+		render(CommandPalette, {
 			props: {
 				open: true,
 				scope: 'rollout',
@@ -60,8 +60,10 @@ describe('CommandPalette multi-cluster duplicate keys', () => {
 				localClusterName: 'hub'
 			}
 		});
-		// Both cluster instances must render as distinct rows.
-		expect(container.querySelectorAll('[data-idx]')).toHaveLength(2);
+		// Both cluster instances must render as distinct rows. The overlay is
+		// portalled to `document.body` (see `a11y.svelte.ts`'s `portal`), so it
+		// is no longer a descendant of `render()`'s own `container` div.
+		expect(document.body.querySelectorAll('[data-idx]')).toHaveLength(2);
 	});
 });
 
@@ -106,7 +108,7 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 			environment('hello-frontend-app', 'dev'),
 			environment('hello-world-app', 'dev')
 		];
-		const { container } = render(CommandPalette, {
+		render(CommandPalette, {
 			props: {
 				open: true,
 				scope: 'app',
@@ -118,9 +120,9 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 				currentName: 'hello-world-app'
 			}
 		});
-		const rows = container.querySelectorAll('[data-idx]');
+		const rows = document.body.querySelectorAll('[data-idx]');
 		expect(rows.length).toBe(2);
-		const selected = container.querySelector('[aria-selected="true"]');
+		const selected = document.body.querySelector('[aria-selected="true"]');
 		expect(selected?.textContent).toContain('hello-world-app');
 	});
 
@@ -129,7 +131,7 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 			rollout('demo', 'hello-world', 'dev'),
 			rollout('demo', 'hello-world', 'prod')
 		];
-		const { container } = render(CommandPalette, {
+		render(CommandPalette, {
 			props: {
 				open: true,
 				scope: 'rollout',
@@ -145,8 +147,8 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
 		// itself only compares ns/name, so either match is acceptable here.
 		// The property under test is that SOME row is preselected, not row 0
 		// by construction accident.
-		const rows = container.querySelectorAll('[data-idx]');
-		const selected = container.querySelector('[aria-selected="true"]');
+		const rows = document.body.querySelectorAll('[data-idx]');
+		const selected = document.body.querySelector('[aria-selected="true"]');
 		expect(rows.length).toBe(2);
 		expect(selected?.textContent).toContain('hello-world');
 	});
@@ -235,13 +237,13 @@ function rolloutWithBuild(name: string, ns: string, sha: string, label: string):
 describe('the build index — a sha resolves regardless of the label a service currently shows', () => {
 	test('typing a 7-character sha prefix finds the build, even though the rollout displays a semver label', async () => {
 		const rollouts = [rolloutWithBuild('checkout-api', 'demo', '9f10e49', '2.66.0-66')];
-		const { container, getByRole } = render(CommandPalette, {
+		const { getByRole } = render(CommandPalette, {
 			props: { ...baseProps(), rollouts }
 		});
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: '9f10e49' } });
 
-		const rows = Array.from(container.querySelectorAll('[data-idx]'));
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
 		const buildRow = rows.find((r) => r.textContent?.includes('9f10e49'));
 		expect(buildRow).toBeTruthy();
 		// The row also names the label it ships under and the repo — the
@@ -259,11 +261,11 @@ describe('the build index — a sha resolves regardless of the label a service c
 
 describe('top-level pages resolve by the name the sidebar prints', () => {
 	test('typing "Home" finds and opens the fleet-overview page', async () => {
-		const { container, getByRole } = render(CommandPalette, { props: baseProps() });
+		const { getByRole } = render(CommandPalette, { props: baseProps() });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'Home' } });
 
-		const rows = Array.from(container.querySelectorAll('[data-idx]'));
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
 		const homeRow = rows.find((r) => r.textContent?.includes('Home'));
 		expect(homeRow).toBeTruthy();
 
@@ -272,11 +274,11 @@ describe('top-level pages resolve by the name the sidebar prints', () => {
 	});
 
 	test('typing "revisions" finds the Revisions page — it used to return 0 results', async () => {
-		const { container, getByRole } = render(CommandPalette, { props: baseProps() });
+		const { getByRole } = render(CommandPalette, { props: baseProps() });
 
 		await fireEvent.input(getByRole('combobox'), { target: { value: 'revisions' } });
 
-		const rows = Array.from(container.querySelectorAll('[data-idx]'));
+		const rows = Array.from(document.body.querySelectorAll('[data-idx]'));
 		const revisionsRow = rows.find((r) => r.textContent?.includes('Revisions'));
 		expect(revisionsRow).toBeTruthy();
 

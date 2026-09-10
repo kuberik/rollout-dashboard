@@ -202,18 +202,31 @@ describe('/revisions/[...slug] — repository page resolution (B.1)', () => {
 		expect(links[1].getAttribute('href')).toContain('q=web');
 	});
 
-	test('an unknown, single-segment slug gets the reworded not-found state, never a glued repo+revision string — B.9', async () => {
+	/**
+	 * ⭐ ROUND 6, LANE 10 — THE NOT-FOUND STATE IS `ErrorState` NOW, THE SAME
+	 * OBJECT `/rollouts/<cluster>/<namespace>/<name>` DRAWS FOR THE IDENTICAL
+	 * CLASS OF FACT (a successful fetch, object absent). It used to be bare
+	 * centred text ("No repository X is known to this dashboard.", a leading
+	 * `←`) — the one not-found state in the product with its own grammar.
+	 * The generic missing-object copy (`errorHeadline`/`errorConsequence`) is
+	 * now the headline and body; the specific slug the reader typed still
+	 * survives, in `ErrorState`'s "Address" fact (`errorFacts`), which is
+	 * where the rollout page's own missing-object case puts its own
+	 * `namespace/name` pair.
+	 */
+	test('an unknown, single-segment slug gets ErrorState, never a glued repo+revision string — B.9', async () => {
 		stubFetch([], []);
 		await renderAt('no-such-repo');
 		await waitFor(() =>
-			expect(screen.getByText('No repository', { exact: false })).toBeInTheDocument()
+			expect(screen.getByText('This repository does not exist')).toBeInTheDocument()
 		);
 		expect(
-			screen.getByText(
-				(_, node) => node?.textContent === 'No repository no-such-repo is known to this dashboard.'
-			)
+			screen.getByText((_, node) => node?.textContent === '/revisions/no-such-repo')
 		).toBeInTheDocument();
-		const backLinks = screen.getAllByRole('link', { name: /All revisions/ });
+		// The breadcrumb prints "All revisions"; `ErrorState`'s own way out
+		// (this file's `backLabel`) prints "Back to all revisions" — same
+		// destination, same word, different case and a leading verb.
+		const backLinks = screen.getAllByRole('link', { name: /all revisions/i });
 		expect(backLinks.length).toBeGreaterThanOrEqual(2); // breadcrumb + the not-found state's own way out
 		for (const link of backLinks) expect(link).toHaveAttribute('href', '/revisions');
 	});
@@ -226,19 +239,21 @@ describe('/revisions/[...slug] — repository page resolution (B.1)', () => {
 	 * not-found state read "No repository github.com/littlechimera is
 	 * known … so it cannot hold the revision no-such-repo either" — a repo
 	 * path invented by the pop, holding a "revision" that was actually the
-	 * one meaningful segment of the URL the reader typed.
+	 * one meaningful segment of the URL the reader typed. Now (round 6 lane
+	 * 10) the headline is the same generic "This repository does not exist"
+	 * either way; what still proves the WHOLE slug survived, not a popped
+	 * remainder, is the "Address" fact.
 	 */
 	test('an unknown, multi-segment slug names the WHOLE slug, not the popped remainder — B.9', async () => {
 		stubFetch([], []);
 		await renderAt('github.com/littlechimera/no-such-repo');
 		await waitFor(() =>
-			expect(screen.getByText('No repository', { exact: false })).toBeInTheDocument()
+			expect(screen.getByText('This repository does not exist')).toBeInTheDocument()
 		);
 		expect(
 			screen.getByText(
 				(_, node) =>
-					node?.textContent ===
-					'No repository github.com/littlechimera/no-such-repo is known to this dashboard.'
+					node?.textContent === '/revisions/github.com/littlechimera/no-such-repo'
 			)
 		).toBeInTheDocument();
 		expect(screen.queryByText(/cannot hold the revision/)).toBeNull();

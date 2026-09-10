@@ -102,7 +102,6 @@
 	import { sortEnvironmentNames } from '$lib/env-order';
 	import { Spinner } from 'flowbite-svelte';
 	import {
-		ArrowLeftOutline,
 		ArrowRightOutline,
 		ArrowUpRightFromSquareOutline,
 		CalendarMonthSolid,
@@ -142,7 +141,7 @@
 	import BlockReason, { contractBlockReason } from '$lib/components/BlockReason.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import type { Rollout, Environment } from '../../../types';
-	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
+	import { pollWhenHealthy, staleTimeWhenHealthy, ApiError } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	// THE REPO, NOT THE URL IT IS FETCHED FROM — one spelling with `/versions`.
 	import { repoTitle, repoTitleFull } from '../repo-title';
@@ -2473,57 +2472,39 @@
 			typed or followed; that is the object that does not exist, not a
 			revision inside a truncated one.
 		-->
-		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<TagOutline class="mb-3 h-8 w-8 text-gray-500 dark:text-gray-400" />
-			{#if !ledger}
-				<h1 class="t-body font-semibold text-gray-900 dark:text-white">Repository not found</h1>
-				<!-- ⭐ ITEM 6 (2026-09-06 critique) — THE REPO AND THE SHA ARE TWO
-				     FACTS, NEVER ONE GLUED STRING. `${repoPath}/${urlKey}` printed
-				     `github.com/littlechimera/nope/064b655b5159 is known` — a sha
-				     stitched onto a repo path reads as if the whole run-on were the
-				     repository's name. `repoPath` is the object that is not known;
-				     `urlKey` is named as the separate thing that was being looked
-				     for inside it.
-
-				     ⛔ LANE 9, ROUND 11 QA, ITEM 11 — AND WHEN NEITHER HALF MATCHES,
-				     NAME THE WHOLE SLUG, NOT THE TRUNCATED ONE. This branch is only
-				     reached once B.1's resolution order has ALREADY tried the whole
-				     slug as a repository (`repoPageLedger`, above) and failed, then
-				     popped the last segment and tried THAT as a repository
-				     (`ledger`) and failed too — so `repoPath` (`parts` with the last
-				     segment popped) is not a real repository EITHER; it is an
-				     arbitrary truncation of a slug that was never a real repo plus a
-				     build key to begin with. `/revisions/github.com/littlechimera/
-				     no-such-repo` used to say "No repository
-				     github.com/littlechimera is known … so it cannot hold the
-				     revision no-such-repo either" — a repo path that was itself
-				     invented by the pop, holding a "revision" that was actually the
-				     one meaningful segment of the URL. `wholeSlugPath` (the
-				     un-popped slug B.1 already computes) is the object the reader
-				     actually typed; that is what does not exist. -->
-				<p class="t-body mt-1 max-w-md text-gray-500 dark:text-gray-400">
-					No repository <span class="t-code">{wholeSlugPath}</span> is known to this dashboard.
-				</p>
-			{:else}
-				<h1 class="t-body font-semibold text-gray-900 dark:text-white">Revision not found</h1>
-				<p class="t-body mt-1 max-w-md text-gray-500 dark:text-gray-400">
-					Nothing in <span class="t-code">{repoPath}</span> knows the revision
-					<span class="t-code">{urlKey}</span>. This page covers every commit on a service's release
-					ladder, deployed or not.
-				</p>
-			{/if}
-			<!--
-				⛔ THIS PAGE HAD NO WAY BACK OF ITS OWN. (2026-09-03,
-				operator-walk) The breadcrumb 40px above the head band is easy to
-				miss coming in on a bad link — every OTHER not-found/error state
-				in the product (`ErrorState`'s `backHref`/`backLabel`) repeats its
-				way out INSIDE the centred message, and this hand-rolled block
-				was the one that did not.
-			-->
-			<a href="/revisions" class="nav-link mt-4">
-				<ArrowLeftOutline class="h-4 w-4" /> All revisions
-			</a>
-		</div>
+		<!--
+			⛔ ⭐ ROUND 6, LANE 10 — THIS WAS BARE CENTRED TEXT WITH A `←`, THE
+			ONLY NOT-FOUND STATE IN THE PRODUCT THAT WAS NOT `ErrorState`.
+			`/rollouts/<cluster>/<namespace>/<name>` draws its own "does not
+			exist" fact (a successful fetch, object absent — the identical
+			CLASS of fact this branch is) as `ErrorState`'s own filled
+			`AlertPanel`, `Try again` and a trailing `›`; this page instead
+			hand-rolled a centred icon, an `<h1>`, and a leading `←` — a
+			SECOND not-found grammar, and the one arrow in the product
+			pointing the wrong way. `ApiError`'s own `isMissing` branch is
+			built for exactly "this address does not resolve to a real
+			object" — a synthetic `404` carries the same headline
+			(`errorHeadline`: "This repository/revision does not exist") and
+			consequence (`errorConsequence`: "It may have been deleted, or
+			the address may be wrong.") `ErrorState` already renders for a
+			REAL 404 twelve lines up this same branch chain, so the two read
+			as one fact, not two dialects — same as the rollout precedent's
+			own note on this. The specific address the reader typed still
+			survives, in `errorFacts`'s "Address" field (the URL each
+			synthetic error carries below), which is exactly where `/rollouts`'
+			own missing-object case puts its `namespace/name` pair.
+		-->
+		<ErrorState
+			error={!ledger
+				? new ApiError(404, 'not found', '', `/revisions/${wholeSlugPath}`)
+				: new ApiError(404, 'not found', '', `/revisions/${repoPath}/${urlKey}`)}
+			subject={!ledger ? 'this repository' : 'this revision'}
+			backHref="/revisions"
+			backLabel="Back to all revisions"
+			onRetry={() => query.refetch()}
+			isRetrying={query.isFetching}
+			class="mt-4"
+		/>
 	{:else}
 		<!--
 			⭐ THE HERO IS THE HEAD BAND NOW, THE SAME ROW `/versions`, `/activity`
@@ -3191,12 +3172,26 @@
 									<div
 										class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
 									>
-										<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-										<span>
+										<!-- ⛔ ROUND 6, LANE 10 — THE ICON AND ITS FIRST WORD ARE ONE
+										     `inline-flex flex-nowrap` UNIT, NOT TWO SEPARATE FLEX
+										     ITEMS. Measured live at 390: `flex-wrap` on the OUTER row
+										     let the icon (item 1) and the whole "Ran before in …"
+										     span (item 2) land on different lines whenever the row
+										     ran out of width — a 12px clock glyph alone on its own
+										     line, above the sentence it decorates. Gluing the icon to
+										     "Ran before in" inside a `flex-nowrap` child makes that
+										     pair ATOMIC from the outer row's point of view: the row
+										     can still wrap (the env/time list below still does, at
+										     any `·`), it just can never split the icon from the words
+										     it introduces. -->
+										<span class="inline-flex flex-nowrap items-center gap-1.5">
+											<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
 											<!-- ⭐ ITEM 5 (2026-09-06 critique) — `ENV · Nd ago`, THE
 											     LIST'S OWN CHIP+AGE ATOM GRAMMAR, NOT `ENV (N days
 											     ago)`. -->
-											Ran before in
+											<span>Ran before in</span>
+										</span>
+										<span>
 											{#each ranBefore as rb, i (rb.envLabel)}
 												{rb.envLabel} · <time
 													datetime={rb.timestamp}

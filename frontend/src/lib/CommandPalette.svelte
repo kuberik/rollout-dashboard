@@ -78,7 +78,7 @@
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
-	import { inertSiblings, trapFocus, modalFocusReturn } from '$lib/a11y.svelte';
+	import { inertSiblings, trapFocus, modalFocusReturn, portal } from '$lib/a11y.svelte';
 
 	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action' | 'build';
 
@@ -929,6 +929,7 @@
 		role="dialog"
 		aria-modal="true"
 		aria-label="Command palette"
+		use:portal
 		use:inertSiblings
 		use:trapFocus
 	>

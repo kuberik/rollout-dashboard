@@ -519,10 +519,38 @@ export function coverageWeight(key: CoverageKey): CoverageWeight {
  * "as much daylight as possible", it was "a reader can see three steps",
  * and 0.17/0.18 clears that by design, not by accident. ZERO NEW VALUES —
  * `green-800` is `COVERAGE_FILL`'s own `ahead`-adjacent step one over.
+ *
+ * ⛔ ⭐ ROUND 6, LANE 10 — MONOTONIC IS NOT THE SAME CLAIM AS "NOT THE
+ * LOUDEST INK". `green-800` fixed the ORDER (`here` > `movedOn` >
+ * `notReached`) but not the SIZE: measured against the page ground this bar
+ * actually sits on (`gray-900`, L 0.21 — not `Card`'s own `gray-800` the
+ * paragraph above used), `movedOn` read ΔL 0.238 from ground while `here`
+ * itself is only ΔL 0.417 — 57% of `here`'s own contrast, well past light's
+ * equivalent 38% (`movedOn` ΔL 0.18 / `here` ΔL 0.473 in light, `white`
+ * ground). A "spent" cell should recede next to the bucket that is actually
+ * live, not sit at MORE than half its loudness. The earlier fix moved
+ * `movedOn` OUTSIDE the `here`→ground span in dark (`green-800` sits between
+ * `here` and ground on lightness alone, same as light's low-chroma value
+ * does) but never re-checked chroma the way light's own fix had to —
+ * `green-800` (C 0.119) is still a saturated step off the SAME ramp `here`
+ * uses, so the two read as "two shades of the same green" rather than "one
+ * live, one spent". `oklch(42% 0.05 154)` is the dark mirror of light's
+ * `oklch(82% 0.07 154)` move: same hue (154, `here`'s own family — this bar
+ * does not switch hue for `movedOn` in either theme, only chroma and
+ * lightness), chroma roughly halved again (0.119 → 0.05, close to light's
+ * 0.07 halving of `green-300`'s 0.15), a greyed-out dark green instead of a
+ * dimmer saturated one. ΔL(`movedOn`, `gray-800` card ground) = 0.42 − 0.278
+ * = 0.142, ΔL(`here`, `movedOn`) = 0.627 − 0.42 = 0.207 — both inside this
+ * round's 0.14–0.16 / ≥0.2 floors, monotonicity unchanged (`here` .35 (page
+ * ground) > `movedOn` .21 > `notReached`/track ~0). See the tech lead's
+ * report for the live-page ΔL measurement this paragraph's numbers come
+ * from (screenshot + computed-style probe, not the Tailwind ramp values
+ * alone — the card/page ground distinction above is exactly why a hand
+ * calculation off the ramp disagreed with what actually renders).
  */
 export const WEIGHT_FILL: Record<CoverageWeight, string> = {
 	here: 'bg-green-700 dark:bg-green-600',
-	movedOn: 'bg-[oklch(82%_0.07_154)] dark:bg-green-800',
+	movedOn: 'bg-[oklch(82%_0.07_154)] dark:bg-[oklch(42%_0.05_154)]',
 	notReached: 'bg-gray-200 dark:bg-gray-700',
 	unplaceable: 'bg-transparent border border-gray-400 dark:border-gray-500'
 };
