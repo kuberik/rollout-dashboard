@@ -1427,6 +1427,7 @@
 											<GitHubViewButton
 												sourceUrl={rollout.status.source}
 												version={getDisplayVersion(entry.version)}
+												revision={entry.version.revision}
 												size="xs"
 												color="light"
 											/>

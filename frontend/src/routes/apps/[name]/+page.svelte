@@ -3591,6 +3591,7 @@
 														<GitHubViewButton
 															sourceUrl={f.cell.sourceURL}
 															version={f.version}
+															revision={f.revision}
 															size="sm"
 															color="light"
 														/>

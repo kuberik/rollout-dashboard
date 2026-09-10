@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { gitRef } from '$lib/git-ref';
 	import { Button } from 'flowbite-svelte';
 	import { GithubSolid } from 'flowbite-svelte-icons';
 
 	export let sourceUrl: string;
 	export let version: string;
+	/** Commit sha (or `<tag>@sha1:<sha>`); the link targets it over `version` when present. */
+	export let revision: string | null | undefined = undefined;
 	export let size: 'xs' | 'sm' | 'md' | 'lg' = 'xs';
 	export let color: 'light' | 'blue' | 'green' | 'red' | 'yellow' | 'purple' | 'dark' = 'light';
 	/**
@@ -23,22 +26,22 @@
 		if (sourceUrl.includes('github.com')) {
 			// If it's already a GitHub URL, append the version
 			githubUrl = sourceUrl.endsWith('/')
-				? sourceUrl + 'tree/' + version
-				: sourceUrl + '/tree/' + version;
+				? sourceUrl + 'tree/' + gitRef(revision, version)
+				: sourceUrl + '/tree/' + gitRef(revision, version);
 			window.open(githubUrl, '_blank');
 		} else if (sourceUrl.includes('git@github.com:')) {
 			// Convert SSH to HTTPS and append version
-			githubUrl = sourceUrl.replace('git@github.com:', 'https://github.com/') + '/tree/' + version;
+			githubUrl = sourceUrl.replace('git@github.com:', 'https://github.com/') + '/tree/' + gitRef(revision, version);
 			window.open(githubUrl, '_blank');
 		} else if (sourceUrl.includes('.git')) {
 			// Remove .git extension, append version
-			githubUrl = sourceUrl.replace('.git', '') + '/tree/' + version;
+			githubUrl = sourceUrl.replace('.git', '') + '/tree/' + gitRef(revision, version);
 			window.open(githubUrl, '_blank');
 		} else {
 			// Try to open as is with version
 			githubUrl = sourceUrl.endsWith('/')
-				? sourceUrl + 'tree/' + version
-				: sourceUrl + '/tree/' + version;
+				? sourceUrl + 'tree/' + gitRef(revision, version)
+				: sourceUrl + '/tree/' + gitRef(revision, version);
 			window.open(githubUrl, '_blank');
 		}
 	}

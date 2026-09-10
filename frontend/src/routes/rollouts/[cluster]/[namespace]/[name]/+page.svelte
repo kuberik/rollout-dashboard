@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { gitRef } from '$lib/git-ref';
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
 	import type {
@@ -1254,7 +1255,8 @@
 	}
 
 	// Build GitHub tree URL for a given version
-	function getGitHubUrl(version: string): string {
+	function getGitHubUrl(version: string, revision?: string | null): string {
+		version = gitRef(revision, version); // sha over tag (2026-09-10, human)
 		let url = rollout?.status?.source ?? '';
 		if (!url) return '';
 		if (url.includes('github.com')) {
@@ -2735,7 +2737,7 @@
 											size="sm"
 											color="light"
 											class="w-full justify-center sm:w-auto"
-											href={getGitHubUrl(getDisplayVersion(latestEntry.version))}
+											href={getGitHubUrl(getDisplayVersion(latestEntry.version), latestEntry.version.revision)}
 											target="_blank"
 											rel="noopener noreferrer"
 										>
@@ -3215,7 +3217,7 @@
 														aria-label={`View ${getDisplayVersion(releaseCandidate)} on GitHub`}
 														onclick={() => {
 															let url = rollout?.status?.source ?? '';
-															const ver = getDisplayVersion(releaseCandidate);
+															const ver = gitRef(releaseCandidate.revision, getDisplayVersion(releaseCandidate));
 															if (url.includes('github.com')) {
 																url = url.endsWith('/')
 																	? url + 'tree/' + ver
