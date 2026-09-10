@@ -7,7 +7,16 @@
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
-	import { repoBody, revisionPath, displayVersionForTag, shortRevision, repoSlug } from '$lib/version-utils';
+	import { commitPullsQueryOptions } from '$lib/api/commit-pulls';
+	import { prPath } from '$lib/pr-ref';
+	import {
+		repoBody,
+		revisionPath,
+		displayVersionForTag,
+		shortRevision,
+		repoSlug,
+		githubOwnerRepo
+	} from '$lib/version-utils';
 	import { getDisplayVersion } from '$lib/utils';
 	import { rolloutPath } from '$lib/source-dashboard';
 	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
@@ -109,6 +118,7 @@
 		CheckCircleSolid,
 		ClockOutline,
 		CodeBranchOutline,
+		CodePullRequestOutline,
 		ExclamationCircleSolid,
 		FolderOutline,
 		HourglassOutline,
@@ -370,6 +380,27 @@
 		refetchInterval: false as const
 	}));
 	const githubConnected = $derived(githubStatus.data?.connected ?? false);
+
+	/**
+	 * ⭐ APPROACH B, ITEM D — "This build"'s "Pull requests" LINE. Lazily
+	 * fetched ONCE PER PAGE (`enabled` gates on `githubConnected` AND a
+	 * resolved owner/repo/revision — never on the repository list rows,
+	 * which is what "lean" means in the task: no per-row cost, one call for
+	 * the one build this page is about).
+	 */
+	const buildOwnerRepo = $derived(ledger ? githubOwnerRepo(ledger.repoKey) : null);
+	const buildPullsQuery = createQuery(() =>
+		commitPullsQueryOptions({
+			owner: buildOwnerRepo?.owner ?? '',
+			repo: buildOwnerRepo?.repo ?? '',
+			sha: row?.revision ?? '',
+			enabled: githubConnected && !!buildOwnerRepo && !!row?.revision
+		})
+	);
+	const buildPulls = $derived(buildPullsQuery.data ?? []);
+	const buildPullsLoaded = $derived(
+		githubConnected && !!buildOwnerRepo && !!row?.revision && !buildPullsQuery.isLoading
+	);
 
 	/**
 	 * A COARSE CLOCK, DELIBERATELY — not `$now`, which ticks every 100ms.
@@ -2944,6 +2975,46 @@
 								<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
 							</a>
 						</li>
+					{/if}
+					<!--
+						⭐ APPROACH B, ITEM D — "PULL REQUESTS" LINE. Lazy per-page fetch
+						(`buildPullsQuery`, above), only once GitHub is connected — the
+						repository page's own build rows stay lean (task's own words),
+						nothing added there. `buildPullsLoaded` is false both before the
+						query settles AND when it is not even enabled (not connected, or
+						the repo/revision could not be resolved), so this renders NOTHING
+						in either of those cases rather than a premature "no pull request
+						found" — that sentence is reserved for a REAL empty answer.
+					-->
+					{#if githubConnected && buildPullsLoaded}
+						{#if buildPulls.length > 0}
+							{#each buildPulls as pr (pr.number)}
+								<li class="flex items-start gap-2.5">
+									<CodePullRequestOutline
+										class="mt-0.5 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+										aria-hidden="true"
+									/>
+									<a
+										class="t-body nav-link min-w-0 truncate"
+										href={buildOwnerRepo
+											? prPath(buildOwnerRepo.owner, buildOwnerRepo.repo, pr.number)
+											: '#'}
+									>
+										#{pr.number} {pr.title}
+									</a>
+								</li>
+							{/each}
+						{:else}
+							<li class="flex items-start gap-2.5">
+								<CodePullRequestOutline
+									class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+									aria-hidden="true"
+								/>
+								<span class="t-body text-gray-500 dark:text-gray-400">
+									no pull request found for this commit
+								</span>
+							</li>
+						{/if}
 					{/if}
 					<!--
 						⭐ ITEM 6 (2026-09-06 round-7 critique) — DEMOTED TO THE END OF

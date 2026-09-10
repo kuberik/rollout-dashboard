@@ -43,6 +43,7 @@
  * text only where it adds something the sentence does not carry.
  */
 import type { PrCell } from './view-models/pr-pipeline';
+import type { PrChecks } from './api/pulls';
 import { formatTimeAgoCompact } from './utils';
 
 /**
@@ -169,4 +170,45 @@ export function usuallyLabel(ms: number | null): string {
 export function sinceLabel(cell: PrCell, now: Date = new Date()): string | null {
 	if (!cell.since) return null;
 	return agoCompact(cell.since, now);
+}
+
+/**
+ * ── APPROACH B, ITEM E — THE HEAD BAND'S ONE "TESTS" LINE ─────────────────
+ *
+ * ⛔ HEAD-BAND SCOPE ONLY, DELIBERATELY NOT A CELL FACT. The design doc is
+ * explicit: *"the verdict says 'held by failing checks' is NOT a controller
+ * fact, so do not fold it into cells — one head-band line only."* A CI check
+ * run on the merge commit is a GitHub fact about the PR itself, not a
+ * per-`cluster/env` state this rollout's own controller ever reasoned
+ * about — folding it into `PrCell.state` would imply a gate that does not
+ * exist. `+page.svelte` renders this ALONGSIDE the head band's existing
+ * subtitle line, never inside `PipelineCard`/`PipelineRow`.
+ *
+ * `null` for `'none'` (no check runs at all — nothing to report) exactly as
+ * the design doc's "nothing for none" says; every other state gets exactly
+ * one of the three sentences, with a link to GitHub's own checks tab when
+ * the backend supplied one.
+ */
+export type ChecksLine = { text: string; href: string | null };
+
+export function checksLine(checks: PrChecks | null | undefined): ChecksLine | null {
+	if (!checks) return null;
+	switch (checks.state) {
+		case 'none':
+			return null;
+		case 'success':
+			return { text: 'checks passing', href: checks.url ?? null };
+		case 'pending':
+			return { text: 'checks pending', href: checks.url ?? null };
+		case 'failure': {
+			// Defensive against a backend that reports `failure` with a zero
+			// count (should not happen, but a printed "0 of 0 checks failing"
+			// would be a worse failure than a slightly generic fallback).
+			const failed = Math.max(checks.failed, 1);
+			const total = Math.max(checks.total, failed);
+			return { text: `${failed} of ${total} checks failing`, href: checks.url ?? null };
+		}
+		default:
+			return null;
+	}
 }

@@ -67,18 +67,21 @@
 	import { now } from '$lib/stores/time';
 	import { isHeld } from '$lib/view-models/fleet-groups';
 	import type { RolloutCard } from '$lib/rollout-cards';
-	import type { Rollout, Environment } from '../../types';
+	import type { Rollout, Environment, RolloutDependency } from '../../types';
 	import { ClockOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
+	import YourPullRequestsCard from './YourPullRequestsCard.svelte';
 
 	let {
 		cards,
 		rollouts,
 		environments,
+		rolloutDependencies = null,
 		localClusterName = ''
 	}: {
 		cards: RolloutCard[];
 		rollouts: Rollout[];
 		environments: Environment[];
+		rolloutDependencies?: { items?: RolloutDependency[] } | null;
 		localClusterName?: string;
 	} = $props();
 
@@ -249,6 +252,17 @@
 		so the rollup speaks the page's own vocabulary rather than a synonym of
 		it. The full sentence, with its denominator, is in `verdictTitle`.
 	-->
+	<!--
+		⭐ APPROACH B, ITEM A — "Your pull requests", FIRST IN THE RAIL. This
+		page has no "for you" band (its main column is the four fleet-wide
+		severity groups, all scoped to the FLEET, none to the viewing
+		operator's own work — see the module doc up top), so the task's own
+		fallback rule applies: "otherwise first in the rail". See
+		`YourPullRequestsCard.svelte`'s own doc comment for the full placement
+		reasoning and the three GitHub-state branches it renders.
+	-->
+	<YourPullRequestsCard {rollouts} {environments} {rolloutDependencies} />
+
 	<HowItsGoing
 		scope="fleet"
 		verdict="{onNewest} of {rankable.length} newest{heldCount > 0 ? ` · ${heldCount} held` : ''}"

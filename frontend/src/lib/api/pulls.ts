@@ -18,6 +18,22 @@ import { ApiError } from './errors';
 
 export type PrGithubState = 'open' | 'merged' | 'closed';
 
+/**
+ * ⭐ APPROACH B, ITEM E. `'none'` means the merge sha has no check runs at
+ * all (nothing configured, or GitHub simply has nothing to report) — the
+ * PR page prints NOTHING for this state (design doc: "nothing for none"),
+ * distinct from `'pending'` (checks exist and are still running).
+ */
+export type PrCheckState = 'success' | 'failure' | 'pending' | 'none';
+
+export type PrChecks = {
+	state: PrCheckState;
+	total: number;
+	failed: number;
+	/** Deep link to GitHub's own checks tab, or `null`. */
+	url: string | null;
+};
+
 export type PullRequestInfo = {
 	number: number;
 	title: string;
@@ -54,6 +70,15 @@ export type PullRequestInfo = {
 	headSha: string | null;
 	/** File count from the same `pulls/{n}` response, no second GitHub call. */
 	changedFiles: number | null;
+	/**
+	 * ⭐ APPROACH B, ITEM E. Added to this same endpoint's response (design
+	 * doc backend contract) rather than a second call — the PR page's head
+	 * band renders ONE "Tests" line off it (`checksSummary`, `pr-cell-copy.ts`).
+	 * Optional so a page holding onto data cached before this field existed
+	 * (or a backend mid-rollout) degrades to "no line printed" rather than a
+	 * runtime error on a missing property.
+	 */
+	checks?: PrChecks;
 };
 
 /** Distinguishable failure reasons, same shape as `github.ts`'s `CommitsError`. */

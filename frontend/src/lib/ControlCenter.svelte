@@ -1575,7 +1575,13 @@
 			     its own invention. At and above it the grid's `gap-6` owns the
 			     space and the margin goes. -->
 			<div class="cc-rail min-w-0" bind:this={railEl}>
-				<HomeRail {cards} {rollouts} {environments} {localClusterName} />
+				<HomeRail
+					{cards}
+					{rollouts}
+					{environments}
+					rolloutDependencies={query.data?.rolloutDependencies ?? null}
+					{localClusterName}
+				/>
 			</div>
 			</div>
 		</div>

@@ -61,7 +61,13 @@
 	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
-	import { buildPaletteBuildIndex, scoreBuildEntry, buildPrPaletteResults } from '$lib/palette-index';
+	import {
+		buildPaletteBuildIndex,
+		scoreBuildEntry,
+		buildPrPaletteResults,
+		buildMyPullTitlePaletteResults
+	} from '$lib/palette-index';
+	import type { MyPull } from '$lib/api/my-pulls';
 	import {
 		SearchOutline,
 		GridOutline,
@@ -91,7 +97,8 @@
 		localClusterName = '',
 		currentNamespace,
 		currentName,
-		loading = false
+		loading = false,
+		myPulls = []
 	}: {
 		open: boolean;
 		scope?: ResultKind | null;
@@ -101,6 +108,13 @@
 		currentNamespace?: string;
 		currentName?: string;
 		loading?: boolean;
+		/**
+		 * ⭐ APPROACH B, ITEM C. The `/mine` cache (`api/my-pulls.ts`) — `[]`
+		 * before it has ever loaded, or when GitHub is not connected. Used
+		 * ONLY to enrich/discover PR results; a query with none of these never
+		 * behaves differently for any OTHER result kind.
+		 */
+		myPulls?: MyPull[];
 	} = $props();
 
 	/**
@@ -422,7 +436,19 @@
 			{ title: 'Apps', subtitle: 'Apps across environments', href: '/apps' },
 			{ title: 'Environments', subtitle: 'Cross-env matrix', href: '/environments' },
 			{ title: 'Revisions', subtitle: 'Repositories and their builds', href: '/revisions' },
-			{ title: 'Activity', subtitle: 'Recent deployments', href: '/activity' }
+			{ title: 'Activity', subtitle: 'Recent deployments', href: '/activity' },
+			// ⭐ APPROACH B, ITEM C — `/me` IS DELIBERATELY NOT IN THE SIDEBAR
+			// (design doc: "reach it from Home and the palette"), so this
+			// static row is the ONLY way a typed search ever finds it. The
+			// subtitle carries the literal phrase "my pull requests" — the
+			// task's own words — because `score()`'s substring match is exact
+			// text, not a synonym lookup; typing that phrase must hit this
+			// row even though the title itself says "Your".
+			{
+				title: 'Your pull requests',
+				subtitle: 'My pull requests across the repos this cluster deploys',
+				href: '/me'
+			}
 		];
 		for (const a of actions) {
 			out.push({
@@ -487,8 +513,18 @@
 	 * pass over `rollouts`) and is merged straight into `filtered` below,
 	 * bypassing `score()` entirely — see the design doc's ⌘K section.
 	 */
-	const prResults = $derived.by<Result[]>(() =>
-		buildPrPaletteResults(query, rollouts).map((e) => ({
+	const prResults = $derived.by<Result[]>(() => {
+		// Ref-shaped input (URL / #n / owner/repo#n) — titles decorated from
+		// the `/mine` cache when the PR is in it (`prResultTitle`,
+		// `palette-index.ts`), otherwise the generic `Open PR #n · owner/repo`
+		// line this has always printed.
+		const refResults = buildPrPaletteResults(query, rollouts, myPulls);
+		// ⭐ APPROACH B, ITEM C — "typing part of a title matches your recent
+		// PRs". Independent search over the SAME cache; `buildMyPullTitlePaletteResults`
+		// already refuses to fire on ref-shaped input, so the two lists never
+		// name the same PR twice.
+		const titleResults = buildMyPullTitlePaletteResults(query, myPulls);
+		return [...refResults, ...titleResults].map((e) => ({
 			kind: 'pr' as const,
 			key: e.key,
 			title: e.title,
@@ -497,8 +533,8 @@
 			owner: e.owner,
 			repo: e.repo,
 			prNumber: e.number
-		}))
-	);
+		}));
+	});
 
 	const ATTENTION_CAP = 6;
 	const attention = $derived.by<Result[]>(() =>

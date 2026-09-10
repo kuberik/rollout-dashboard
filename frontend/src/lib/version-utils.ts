@@ -63,6 +63,27 @@ export function repoLabel(repoKey: string): string {
 	return repoBody(repoKey);
 }
 
+/**
+ * `repo:github.com/owner/repo` → `{owner, repo}`, or `null` when the key
+ * names something other than a GitHub repository (no linked repo, or a
+ * different host). ONE parser, so every caller that needs to talk to the
+ * GitHub API about a rollout's own repo agrees with `normalizeSource`'s own
+ * rules (a `/tree/<branch>` tail stripped, dots kept in the repo name) —
+ * `palette-index.ts` used to hand-roll this as a private function, and its
+ * own doc comment records the bug a SECOND regex here already caused (a
+ * `/tree/` tail it did not strip). Extracted here so `pulls.ts`-adjacent
+ * call sites (Home's "Your pull requests" card, the revisions build page's
+ * "Pull requests" line) can resolve `owner/repo` the same way the palette
+ * does, without duplicating the parse.
+ */
+export function githubOwnerRepo(repoKey: string): { owner: string; repo: string } | null {
+	if (!repoKey.startsWith('repo:')) return null;
+	const body = repoBody(repoKey);
+	const [host, owner, ...rest] = body.split('/');
+	if (host !== 'github.com' || !owner || rest.length === 0) return null;
+	return { owner, repo: rest.join('/') };
+}
+
 // URL path form of a repoKey: the repo body as real path segments (each
 // segment individually encoded, slashes kept as separators) so the version
 // detail URL reads like

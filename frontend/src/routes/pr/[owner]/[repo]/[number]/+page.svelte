@@ -31,6 +31,7 @@
 	import { ensurePrMeta, notifyRevisionSeen, prMetaKey } from '$lib/stores/pr-meta.svelte';
 	import { connectGithub } from '$lib/api/github';
 	import { buildPrPipeline, type PrPipelineMeta } from '$lib/view-models/pr-pipeline';
+	import { checksLine } from '$lib/pr-cell-copy';
 	import { repoKeyFromSource } from '$lib/version-utils';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { rememberShape, recallShape } from '$lib/skeleton-hints';
@@ -190,6 +191,11 @@
 		prData?.mergedAt ? `${formatTimeAgoCompact(prData.mergedAt, coarse)} ago` : null
 	);
 
+	/** ⭐ APPROACH B, ITEM E — see `pr-cell-copy.ts`'s own doc comment for why
+	 *  this is a head-band line, never a cell fact. `null` for `'none'` and
+	 *  before `prData` has loaded. */
+	const checks = $derived(checksLine(prData?.checks));
+
 	/** Item 8 — an open PR's own facts, straight off `pulls/{n}`, no build state. */
 	const openAge = $derived(prData?.openedAt ? formatTimeAgoCompact(prData.openedAt, coarse) : null);
 	const openHeadShort = $derived(prData?.headSha ? prData.headSha.slice(0, 7) : null);
@@ -310,6 +316,25 @@
 					<span aria-hidden="true">↗</span>
 				</a>
 			</p>
+			{#if checks}
+				<!-- ⭐ APPROACH B, ITEM E — ONE HEAD-BAND LINE, NEVER FOLDED INTO A
+				     CELL (see `pr-cell-copy.ts`'s `checksLine` doc comment). -->
+				<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
+					{#if checks.href}
+						<a
+							href={checks.href}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="nav-link inline-flex items-center gap-1"
+						>
+							{checks.text}
+							<span aria-hidden="true">↗</span>
+						</a>
+					{:else}
+						{checks.text}
+					{/if}
+				</p>
+			{/if}
 		</header>
 
 		{#if prData.state === 'open'}

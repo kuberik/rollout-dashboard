@@ -12,6 +12,8 @@
 	import { ChevronSortOutline } from 'flowbite-svelte-icons';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
+	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
+	import { myPullsQueryOptions } from '$lib/api/my-pulls';
 	import CommandPalette from '$lib/CommandPalette.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import GithubConnectButton from '$lib/components/GithubConnectButton.svelte';
@@ -110,6 +112,28 @@
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
+
+	/**
+	 * ⭐ APPROACH B, ITEM C — THE PALETTE'S GLOBAL PR TITLE CACHE. `Navbar` is
+	 * the one component that mounts `CommandPalette` and it lives in the root
+	 * layout, so this query runs once for the tab's lifetime rather than
+	 * being re-created per route — the same reasoning `allRolloutsQuery`
+	 * above already relies on. Gated on `connected` so a cluster where
+	 * GitHub was never set up (or this browser never connected it) never
+	 * fires the request at all, rather than eating one guaranteed 401.
+	 * `pollWhenHealthy(300000, …)` (inside `myPullsQueryOptions`) already
+	 * stops polling on that 401 if the gate is ever wrong.
+	 */
+	const githubStatusQuery = createQuery(() => ({
+		queryKey: githubStatusQueryKey,
+		queryFn: fetchGithubStatus,
+		staleTime: 300_000,
+		refetchInterval: false as const
+	}));
+	const myPullsQuery = createQuery(() =>
+		myPullsQueryOptions({ days: 30, enabled: githubStatusQuery.data?.connected ?? false })
+	);
+	const myPulls = $derived(myPullsQuery.data?.pulls ?? []);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
@@ -308,5 +332,6 @@
 	currentNamespace={namespace}
 	currentName={name}
 	loading={allRolloutsQuery.isLoading}
+	{myPulls}
 />
 

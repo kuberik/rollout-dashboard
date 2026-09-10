@@ -1,4 +1,9 @@
 lib/activity-deeplink.ts	code	… … on ……, ….
+lib/api/commit-pulls.ts	code	Connect GitHub to see pull requests for this commit
+lib/api/commit-pulls.ts	code	Failed to fetch pull requests for this commit
+lib/api/commit-pulls.ts	code	GitHub account not connected
+lib/api/commit-pulls.ts	code	No response from the server
+lib/api/commit-pulls.ts	code	No service on this cluster deploys …/…
 lib/api/errors.ts	code	… The dashboard tried … times, and keeps checking every …s, so the page fills itself in when the server answers again.
 lib/api/errors.ts	code	… Trying again will not change the answer until something on the server side changes.
 lib/api/errors.ts	code	…… does not exist
@@ -29,6 +34,11 @@ lib/api/github.ts	code	No access to this repository
 lib/api/github.ts	code	No response from the server
 lib/api/github.ts	code	You do not have access to this repository
 lib/api/logs.ts	code	Stream closed
+lib/api/my-pulls.ts	code	Connect GitHub to see your pull requests
+lib/api/my-pulls.ts	code	Failed to fetch your pull requests
+lib/api/my-pulls.ts	code	GitHub account not connected
+lib/api/my-pulls.ts	code	No repository on this cluster is linked to GitHub
+lib/api/my-pulls.ts	code	No response from the server
 lib/api/pulls.ts	code	Connect GitHub to see this pull request
 lib/api/pulls.ts	code	Failed to fetch pull request
 lib/api/pulls.ts	code	GitHub account not connected
@@ -62,6 +72,7 @@ lib/CommandPalette.svelte	code	Every environment of … is on the newest version
 lib/CommandPalette.svelte	text	Fleet overview
 lib/CommandPalette.svelte	code	Fleet overview — everything at a glance
 lib/CommandPalette.svelte	code	Full inventory list
+lib/CommandPalette.svelte	code	My pull requests across the repos this cluster deploys
 lib/CommandPalette.svelte	text	Needs you
 lib/CommandPalette.svelte	text	No matches for
 lib/CommandPalette.svelte	text	Or type to search across everything
@@ -71,6 +82,7 @@ lib/CommandPalette.svelte	code	Recent deployments
 lib/CommandPalette.svelte	code	Repositories and their builds
 lib/CommandPalette.svelte	title	Stopped moving
 lib/CommandPalette.svelte	code	The furthest-behind environment of … can still take … newer version…
+lib/CommandPalette.svelte	code	Your pull requests
 lib/components/ActivityRail.svelte	text	… failed
 lib/components/ActivityRail.svelte	text	Deployments will appear here as a timeline.
 lib/components/ActivityRail.svelte	text	No activity yet
@@ -502,6 +514,13 @@ lib/components/WaitingBuilds.svelte	code	… · … ago
 lib/components/WaitingBuilds.svelte	code	… · oldest … ago
 lib/components/WaitingBuilds.svelte	code	… version… ready
 lib/components/WaitingBuilds.svelte	text	ready since
+lib/components/YourPullRequestsCard.svelte	text	… pull request …
+lib/components/YourPullRequestsCard.svelte	text	Connect GitHub
+lib/components/YourPullRequestsCard.svelte	text	Connect GitHub to see your pull requests across the repos this cluster deploys.
+lib/components/YourPullRequestsCard.svelte	text	Could not load your pull requests.
+lib/components/YourPullRequestsCard.svelte	text	No pull requests in the last 30 days … .
+lib/components/YourPullRequestsCard.svelte	aria-label	See all your pull requests
+lib/components/YourPullRequestsCard.svelte	title	Your pull requests
 lib/ControlCenter.svelte	text	… … · … held … · … steady
 lib/ControlCenter.svelte	text	… need … you
 lib/ControlCenter.svelte	code	· … of …
@@ -542,7 +561,10 @@ lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	aria-label	Switch rollout (⌘K)
 lib/palette-index.ts	code	Open PR #… · …/…
 lib/pr-cell-copy.ts	code	… · … of … min
+lib/pr-cell-copy.ts	code	… of … checks failing
 lib/pr-cell-copy.ts	code	a later build that also carries this PR has since shipped
+lib/pr-cell-copy.ts	code	checks passing
+lib/pr-cell-copy.ts	code	checks pending
 lib/pr-cell-copy.ts	code	deploying now
 lib/pr-cell-copy.ts	code	held by …
 lib/pr-cell-copy.ts	code	held by a rule
@@ -762,6 +784,14 @@ lib/view-models/health-witness.ts	code	A health check
 lib/view-models/health-witness.ts	code	Health check …
 lib/view-models/health-witness.ts	code	passing, last errored …
 lib/view-models/health-witness.ts	code	This check
+lib/view-models/my-pulls.ts	code	… · held in …
+lib/view-models/my-pulls.ts	code	… of … building
+lib/view-models/my-pulls.ts	code	closed without merging
+lib/view-models/my-pulls.ts	code	held in …
+lib/view-models/my-pulls.ts	code	live in … of … service…
+lib/view-models/my-pulls.ts	code	not built here
+lib/view-models/my-pulls.ts	code	not built yet
+lib/view-models/my-pulls.ts	code	open …
 lib/view-models/pin-schedule-clause.ts	code	…, and … reopens ….
 lib/view-models/pr-pipeline.ts	code	… in …
 lib/view-models/pr-pipeline.ts	code	… in progress
@@ -1202,6 +1232,16 @@ routes/envs/[name]/+page.svelte	code	The last deploy did not complete. Nothing n
 routes/envs/[name]/+page.svelte	title	This app has never deployed here
 routes/envs/[name]/+page.svelte	text	View all activity
 routes/envs/[name]/+page.svelte	code	waiting for … to ship … … — it is on …
+routes/me/+page.svelte	text	… @ … · … … open · … merged in 30 days
+routes/me/+page.svelte	text	Connect GitHub
+routes/me/+page.svelte	text	Connect GitHub to see your pull requests across the repos this cluster deploys.
+routes/me/+page.svelte	text	Could not load your pull requests.
+routes/me/+page.svelte	text	GitHub is not configured for this dashboard.
+routes/me/+page.svelte	text	No merged pull requests in the last 30 days.
+routes/me/+page.svelte	text	No open pull requests in the last 30 days.
+routes/me/+page.svelte	text	No pull requests in the last 30 days … .
+routes/me/+page.svelte	text	Your pull requests
+routes/me/+page.svelte	text	Your pull requests · kuberik
 routes/namespaces/[name]/+page.svelte	title	… — this page
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … …
 routes/namespaces/[name]/+page.svelte	text	… deploy …
@@ -1283,6 +1323,7 @@ routes/revisions/[...slug]/+page.svelte	code	minmax(160px, max-content) … minm
 routes/revisions/[...slug]/+page.svelte	title	Newest build … · …
 routes/revisions/[...slug]/+page.svelte	text	No build matches “ … ”.
 routes/revisions/[...slug]/+page.svelte	text	No earlier deploy on record.
+routes/revisions/[...slug]/+page.svelte	text	no pull request found for this commit
 routes/revisions/[...slug]/+page.svelte	text	now on
 routes/revisions/[...slug]/+page.svelte	text	Open …
 routes/revisions/[...slug]/+page.svelte	aria-label	Open the … rollout for …

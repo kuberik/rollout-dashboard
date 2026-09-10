@@ -1,7 +1,8 @@
 import type { Rollout, Environment } from '../types';
 import { buildRevisionLedger, type RevisionRow } from '$lib/view-models/revision-ledger';
-import { revisionPath, repoKeyFromSource, repoBody } from '$lib/version-utils';
+import { revisionPath, repoKeyFromSource, githubOwnerRepo } from '$lib/version-utils';
 import { parsePrRef, prPath } from '$lib/pr-ref';
+import type { MyPull } from '$lib/api/my-pulls';
 
 /**
  * ⌘K's BUILD INDEX. (operator walk, blocking: `9f10e49` returned "No matches"
@@ -174,27 +175,53 @@ export type PalettePrEntry = {
 // ⛔ NO SEPARATE REGEX HERE (2026-09-10, PR-view fix pass, item 12 — a
 // second, hand-rolled `SOURCE_OWNER_REPO` regex used to live here, and it
 // did not strip a `/tree/<branch>` tail the way `repoKeyFromSource` claimed
-// every caller could rely on). `repoKeyFromSource` is the ONE normalisation
-// rule every other repo-identity comparison in this product already uses
-// (`version-utils.ts`'s own doc comment); reusing it here means a fix to
-// that rule (the `/tree/` tail, dotted repo names) reaches this call site
-// for free instead of needing to be re-applied to a duplicate pattern.
+// every caller could rely on). `repoKeyFromSource` + `githubOwnerRepo` are
+// the ONE normalisation rule every other repo-identity comparison in this
+// product already uses (`version-utils.ts`'s own doc comment); reusing them
+// here means a fix to that rule (the `/tree/` tail, dotted repo names)
+// reaches this call site for free instead of needing to be re-applied to a
+// duplicate pattern. (2026-09-10, Approach B: `ownerRepoFromSource` moved to
+// `version-utils.ts` as `githubOwnerRepo`, exported, so the revisions build
+// page's "Pull requests" line and Home's "Your pull requests" card can
+// resolve the same `owner/repo` without a THIRD copy of this parse.)
 function ownerRepoFromSource(source: string): { owner: string; repo: string } | null {
-	const key = repoKeyFromSource(source, '');
-	if (!key.startsWith('repo:')) return null;
-	const body = repoBody(key); // e.g. "github.com/acme/foo.js" — lowercased, tree-tail stripped, dots kept
-	const [host, owner, ...rest] = body.split('/');
-	if (host !== 'github.com' || !owner || rest.length === 0) return null;
-	return { owner, repo: rest.join('/') };
+	return githubOwnerRepo(repoKeyFromSource(source, ''));
 }
 
-function prEntry(owner: string, repo: string, number: number): PalettePrEntry {
+/**
+ * ⭐ APPROACH B, ITEM C: A PALETTE PR RESULT CARRIES ITS REAL TITLE WHEN THE
+ * PR IS ALREADY IN THE `/mine` CACHE (Home's and `/me`'s own data — see
+ * `api/my-pulls.ts`). Only the OPERATOR'S OWN recent PRs are ever in that
+ * cache, so a bare `#123`/full reference to somebody else's PR still falls
+ * back to the generic `Open PR #123 · owner/repo` line this always printed
+ * — this is an ENRICHMENT of an already-resolved reference, never a new way
+ * to find one (that is `buildMyPullTitlePaletteResults`, below).
+ */
+function findMyPull(
+	myPulls: readonly MyPull[],
+	owner: string,
+	repo: string,
+	number: number
+): MyPull | undefined {
+	const o = owner.toLowerCase();
+	const r = repo.toLowerCase();
+	return myPulls.find(
+		(p) => p.number === number && p.owner.toLowerCase() === o && p.repo.toLowerCase() === r
+	);
+}
+
+function prResultTitle(owner: string, repo: string, number: number, myPulls: readonly MyPull[]): string {
+	const hit = findMyPull(myPulls, owner, repo, number);
+	return hit ? `#${number} ${hit.title} · ${repo}` : `Open PR #${number} · ${owner}/${repo}`;
+}
+
+function prEntry(owner: string, repo: string, number: number, myPulls: readonly MyPull[]): PalettePrEntry {
 	return {
 		key: `pr:${owner}/${repo}#${number}`,
 		owner,
 		repo,
 		number,
-		title: `Open PR #${number} · ${owner}/${repo}`,
+		title: prResultTitle(owner, repo, number, myPulls),
 		href: prPath(owner, repo, number)
 	};
 }
@@ -203,14 +230,21 @@ function prEntry(owner: string, repo: string, number: number): PalettePrEntry {
  * Every PR result the current query produces — zero, one (a full reference),
  * or one per distinct cluster repo (a bare `#123`). `rollouts` supplies the
  * distinct-repo list for the bare case; unused for a full reference, which
- * needs no cluster data to resolve.
+ * needs no cluster data to resolve. `myPulls` is the `/mine` cache
+ * (`[]` when GitHub is not connected, or before it has ever loaded) — passing
+ * it decorates the result's title (see `prResultTitle`) without changing
+ * which references resolve or where they go.
  */
-export function buildPrPaletteResults(query: string, rollouts: readonly Rollout[]): PalettePrEntry[] {
+export function buildPrPaletteResults(
+	query: string,
+	rollouts: readonly Rollout[],
+	myPulls: readonly MyPull[] = []
+): PalettePrEntry[] {
 	const ref = parsePrRef(query);
 	if (!ref) return [];
 
 	if (ref.kind === 'full') {
-		return [prEntry(ref.owner, ref.repo, ref.number)];
+		return [prEntry(ref.owner, ref.repo, ref.number, myPulls)];
 	}
 
 	// Bare `#n` — one candidate per distinct repo, deduped by the SAME
@@ -228,5 +262,43 @@ export function buildPrPaletteResults(query: string, rollouts: readonly Rollout[
 	}
 	return [...seen.values()]
 		.sort((a, b) => `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`))
-		.map(({ owner, repo }) => prEntry(owner, repo, ref.number));
+		.map(({ owner, repo }) => prEntry(owner, repo, ref.number, myPulls));
+}
+
+/**
+ * ⭐ APPROACH B, ITEM C: "TYPING PART OF A TITLE MATCHES YOUR RECENT PRs."
+ * Independent of `buildPrPaletteResults` above, which only ever fires on
+ * REF-SHAPED input (a URL, `#n`, `owner/repo#n`) — free text is not one of
+ * those shapes and `parsePrRef` correctly returns `null` for it. This is the
+ * other half: plain-text substring search over the `/mine` cache's own
+ * titles, so "retry on 502" finds the PR whose title contains it.
+ *
+ * ⛔ SKIPS ENTIRELY WHEN `query` PARSES AS A REF. A ref-shaped query is
+ * handled, exactly once, by `buildPrPaletteResults` — searching titles too
+ * would risk a second, differently-worded result for the identical PR
+ * (`owner/repo#123` matching both the ref parse AND, coincidentally, its own
+ * title text).
+ */
+export function buildMyPullTitlePaletteResults(
+	query: string,
+	myPulls: readonly MyPull[]
+): PalettePrEntry[] {
+	const q = query.trim().toLowerCase();
+	if (q.length < 2) return [];
+	if (parsePrRef(query)) return [];
+	const TITLE_MATCH_CAP = 5;
+	return myPulls
+		.filter((p) => p.state !== 'closed')
+		.map((p) => ({ p, at: p.title.toLowerCase().indexOf(q) }))
+		.filter((x) => x.at >= 0)
+		.sort((a, b) => a.at - b.at || a.p.title.length - b.p.title.length)
+		.slice(0, TITLE_MATCH_CAP)
+		.map(({ p }) => ({
+			key: `pr:${p.owner}/${p.repo}#${p.number}`,
+			owner: p.owner,
+			repo: p.repo,
+			number: p.number,
+			title: `#${p.number} ${p.title} · ${p.repo}`,
+			href: prPath(p.owner, p.repo, p.number)
+		}));
 }

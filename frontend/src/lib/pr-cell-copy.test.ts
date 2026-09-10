@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { cellStateSentence, cellReasonText, usuallyLabel, sinceLabel } from './pr-cell-copy';
+import { cellStateSentence, cellReasonText, usuallyLabel, sinceLabel, checksLine } from './pr-cell-copy';
 import type { PrCell, PrState } from './view-models/pr-pipeline';
+import type { PrChecks } from './api/pulls';
 
 const NOW = new Date('2026-09-10T12:00:00Z');
 
@@ -235,5 +236,43 @@ describe('sinceLabel', () => {
 	it('relative time otherwise', () => {
 		const cell = mkCell('live', { since: '2026-09-10T10:00:00Z' });
 		expect(sinceLabel(cell, NOW)).toBe('2h ago');
+	});
+});
+
+describe('checksLine', () => {
+	function mkChecks(overrides: Partial<PrChecks> = {}): PrChecks {
+		return { state: 'success', total: 0, failed: 0, url: null, ...overrides };
+	}
+
+	it('null when there is no checks fact at all (data not yet loaded)', () => {
+		expect(checksLine(undefined)).toBeNull();
+		expect(checksLine(null)).toBeNull();
+	});
+
+	it("nothing for 'none' — the design doc's own words", () => {
+		expect(checksLine(mkChecks({ state: 'none' }))).toBeNull();
+	});
+
+	it('"checks passing" for success', () => {
+		expect(checksLine(mkChecks({ state: 'success' }))?.text).toBe('checks passing');
+	});
+
+	it('"checks pending" while still running', () => {
+		expect(checksLine(mkChecks({ state: 'pending' }))?.text).toBe('checks pending');
+	});
+
+	it('"N of M checks failing" on failure', () => {
+		expect(checksLine(mkChecks({ state: 'failure', total: 7, failed: 2 }))?.text).toBe(
+			'2 of 7 checks failing'
+		);
+	});
+
+	it('carries the href through when the backend supplied one', () => {
+		const line = checksLine(mkChecks({ state: 'failure', total: 7, failed: 2, url: 'https://github.com/o/r/pull/1/checks' }));
+		expect(line?.href).toBe('https://github.com/o/r/pull/1/checks');
+	});
+
+	it('href is null when the backend sent none', () => {
+		expect(checksLine(mkChecks({ state: 'success', url: null }))?.href).toBeNull();
 	});
 });
