@@ -1888,7 +1888,9 @@ func setupRouter() *gin.Engine {
 				if envs, err := localReadClient.GetEnvironmentsAllNamespaces(c.Request.Context()); err != nil {
 					log.Printf("events/stream: spoke discovery failed, streaming local-only: %v", err)
 				} else {
-					discovered := discoverClusters(c.Request.Context(), marshalToRaw(envs), localDashboardURL(c), token)
+					// Non-blocking on purpose — discovery must not gate
+					// the first SSE byte (PERF-2026-09-10).
+					discovered := discoverClustersNonBlocking(c.Request.Context(), marshalToRaw(envs), localDashboardURL(c), token)
 					registry.put(discovered)
 					spokes = make([]kubernetes.ClusterSpec, len(discovered))
 					for i, d := range discovered {

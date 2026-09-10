@@ -70,15 +70,18 @@ func discoverClusters(ctx context.Context, envsJSON json.RawMessage, localURL, t
 		return nil
 	}
 
+	// PERF-2026-09-10: resolved through the shared name cache, so this is
+	// normally memory-only. Previously every call here made a live
+	// /api/cluster request per spoke with a 5s client timeout, which is
+	// what made GET /api/clusters take 5.6s — and it runs on every page via
+	// the Navbar — whenever one spoke was unroutable.
 	names := make([]string, len(spokeURLs))
 	var wg sync.WaitGroup
 	for i, su := range spokeURLs {
 		wg.Add(1)
 		go func(idx int, spokeURL string) {
 			defer wg.Done()
-			fctx, cancel := context.WithTimeout(ctx, 12*time.Second)
-			defer cancel()
-			names[idx] = fetchSpokeClusterName(fctx, spokeURL, token)
+			names[idx] = cachedSpokeClusterName(ctx, spokeURL, token)
 		}(i, su)
 	}
 	wg.Wait()
@@ -128,4 +131,54 @@ func resolveClusterURL(c *gin.Context, name string) (baseURL string, isLocal boo
 		return u, false, nil
 	}
 	return "", false, fmt.Errorf("unknown cluster %q", name)
+}
+
+// discoverClustersNonBlocking returns the spokes whose names are already
+// known — from the name cache, else the URL-derived fallback — without ever
+// touching the network, and warms the cache in the background for next time.
+//
+// PERF-2026-09-10: this is what GET /api/events/stream uses. That handler
+// used to call discoverClusters synchronously before writing its first SSE
+// byte, so opening the event stream cost a live /api/cluster round trip per
+// spoke — up to 5s of dead air on every connect AND every reconnect, which
+// is what made the stream feel slow to open even though events themselves
+// were fine once flowing.
+//
+// Using the URL-derived name when the cache is cold is safe here in a way
+// it would not be for the proxy's resolveClusterURL: the name is used to
+// label a spoke's connection state and to tag events that arrive untagged,
+// and a spoke tags its own events itself (see RunMultiStream's contract).
+// A first connect on a cold cache may therefore briefly label a spoke by
+// its hostname-derived name; the background warm corrects it for every
+// subsequent connect.
+func discoverClustersNonBlocking(ctx context.Context, envsJSON json.RawMessage, localURL, token string) []ClusterInfo {
+	envs := parseEnvironments(envsJSON)
+	selfURLs := append([]string{localURL}, localDashboardURLsFromEnvironments(envs)...)
+	spokeURLs := extractSpokeURLs(envs, selfURLs)
+	if len(spokeURLs) == 0 {
+		return nil
+	}
+
+	clusters := make([]ClusterInfo, 0, len(spokeURLs))
+	seen := make(map[string]bool)
+	for _, su := range spokeURLs {
+		name, cached := spokeNameCache.get(su)
+		if !cached || name == "" {
+			name = ClusterNameFromURL(su)
+			// Warm it for the next connect. Detached from ctx on purpose:
+			// this request is about to start streaming and may outlive or
+			// undercut the fetch either way.
+			fanoutBackgroundWG.Add(1)
+			go func() {
+				defer fanoutBackgroundWG.Done()
+				cachedSpokeClusterName(context.Background(), su, token)
+			}()
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		clusters = append(clusters, ClusterInfo{URL: su, Name: name})
+	}
+	return clusters
 }
