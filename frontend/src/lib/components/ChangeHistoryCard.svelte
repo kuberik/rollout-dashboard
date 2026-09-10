@@ -32,6 +32,7 @@
 	import BakeStatusIcon from './BakeStatusIcon.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import { formatTimeAgoCompact } from '$lib/utils';
+	import { envFamilyWord } from '$lib/version-utils';
 	import type { ChangeHistoryRow } from '$lib/view-models/pr-pipeline';
 
 	let {
@@ -52,6 +53,16 @@
 	// the CURRENT cell in `PipelineRow`, a different question ("can this
 	// cell take a build today") from this card's own ("what happened, when
 	// it happened") — so this disc reads `bakeStatus` alone, unconditioned.
+
+	/** ⭐ ROUND 3, ITEM 5 (2026-09-10) — CAPPED AT 6, THEN "Show N more". A
+	 *  rail card is a summary, not the History tab itself — measured live,
+	 *  PR #1's own card printed all 11 matched deploys with no fold at all,
+	 *  the exact "rail card runs open-ended" shape every other rail card on
+	 *  this page (`This change`, `How it's going`) avoids. */
+	const CAP = 6;
+	let expanded = $state(false);
+	const shown = $derived(expanded ? rows : rows.slice(0, CAP));
+	const hiddenCount = $derived(rows.length - shown.length);
 </script>
 
 <Card icon={ClockOutline} title="History" verdict="{rows.length} deploy{rows.length === 1 ? '' : 's'}" padded={false}>
@@ -61,7 +72,7 @@
 		</p>
 	{:else}
 		<ol class="divide-y divide-gray-100 dark:divide-gray-700/60">
-			{#each rows as row (row.key)}
+			{#each shown as row (row.key)}
 				<li>
 					<a
 						href={row.href}
@@ -74,11 +85,34 @@
 						>
 							<BakeStatusIcon bakeStatus={row.bakeStatus} size="small" decorative />
 						</span>
-						<Chip role="env" theme={row.theme} label={row.envName} title={`${row.appName} in ${row.envName.toUpperCase()}`} />
+						<!-- ⭐ ROUND 3, ITEM 5 (2026-09-10) — THE FAMILY WORD, NOT THE RAW
+					     ENV NAME, IN THIS 320px RAIL. `env` labels are unbounded by
+					     design (`Chip.svelte`'s own "truncating is the cap's whole
+					     job" rule) — correct at full card width, but this row's chip
+					     competes with a version, a sha and a time for a rail's own
+					     narrow measure, and two DIFFERENT environments sharing a
+					     prefix ("hello-world-staging"/"hello-world-prod") both
+					     truncate to the SAME "HELLO-W…", indistinguishable. The full
+					     name still rides on `title`. -->
+					<Chip
+						role="env"
+						theme={row.theme}
+						label={envFamilyWord(row.envName)}
+						title={`${row.appName} in ${row.envName.toUpperCase()}`}
+					/>
 						<span class="min-w-0 flex-1">
 							<span class="flex flex-wrap items-center gap-1.5">
-								<span class="t-code-sm font-semibold text-gray-900 dark:text-white">{row.displayVersion}</span>
-								{#if row.shortRevision}
+						<span class="t-code-sm font-semibold text-gray-900 dark:text-white">{row.displayVersion}</span>
+								{#if row.shortRevision && row.shortRevision !== row.displayVersion}
+									<!-- ⭐ ROUND 3, ITEM 5 (2026-09-10) — THE SHA ONCE, WITH A
+									     SEPARATOR. `displayVersion` already falls back to the
+									     bare sha when a deploy carries no distinct release tag
+									     (`getDisplayVersion`'s own rule) — printing `shortRevision`
+									     unconditionally beside it duplicated the identical string
+									     ("f7a46ae f7a46ae", measured live on PR #1's History card).
+									     Shown only when it says something NEW, and with a visible
+									     `·` between the label and the sha rather than a bare gap. -->
+									<span aria-hidden="true" class="text-gray-300 dark:text-gray-600">·</span>
 									<span class="t-code-sm text-gray-400 dark:text-gray-500">{row.shortRevision}</span>
 								{/if}
 								{#if row.act?.kind === 'rollback'}
@@ -110,6 +144,15 @@
 				</li>
 			{/each}
 		</ol>
+		{#if !expanded && hiddenCount > 0}
+			<div class="px-4 py-2.5">
+				<button
+					type="button"
+					class="t-micro text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+					onclick={() => (expanded = true)}>Show {hiddenCount} more ›</button
+				>
+			</div>
+		{/if}
 	{/if}
 	{#if retentionNote}
 		<p class="t-micro border-t border-gray-100 px-4 py-2.5 text-gray-400 dark:border-gray-700/60 dark:text-gray-500">

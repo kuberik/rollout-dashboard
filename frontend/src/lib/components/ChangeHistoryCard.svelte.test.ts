@@ -52,9 +52,12 @@ describe('ChangeHistoryCard', () => {
 				now: NOW
 			}
 		});
-		// `.t-chip` uppercases the label in CSS, not in the DOM's own text —
-		// same convention every other `Chip` label in this product follows.
-		expect(screen.getByText('staging')).toBeInTheDocument();
+		// ⭐ ROUND 3, ITEM 5 (2026-09-10) — THE FAMILY WORD, NOT THE RAW ENV
+		// NAME (`envFamilyWord('staging')` → `'STG'`) — see the component's
+		// own doc for why. `.t-chip` uppercases in CSS, not in the DOM's own
+		// text — same convention every other `Chip` label in this product
+		// follows.
+		expect(screen.getByText('STG')).toBeInTheDocument();
 		expect(screen.getByText('1.66.0-66')).toBeInTheDocument();
 		expect(screen.getByText('abc1234')).toBeInTheDocument();
 		expect(screen.getByText('sam')).toBeInTheDocument();
@@ -97,6 +100,27 @@ describe('ChangeHistoryCard', () => {
 	test('an empty feed states the fact rather than drawing an empty list', () => {
 		render(ChangeHistoryCard, { props: { rows: [] } });
 		expect(screen.getByText(/has not deployed anywhere on this cluster/)).toBeInTheDocument();
+	});
+
+	// ⭐ ROUND 3, ITEM 5 (2026-09-10)
+	test('caps at 6 rows and shows the rest behind "Show N more"', async () => {
+		const { fireEvent } = await import('@testing-library/svelte');
+		const rows = Array.from({ length: 11 }, (_, i) =>
+			mkRow({ key: `k${i}`, timestamp: new Date(Date.parse(NOW.toISOString()) - i * 3600_000).toISOString() })
+		);
+		render(ChangeHistoryCard, { props: { rows, now: NOW } });
+		expect(screen.getAllByText('1.66.0-66')).toHaveLength(6);
+		const more = screen.getByText('Show 5 more ›');
+		await fireEvent.click(more);
+		expect(screen.getAllByText('1.66.0-66')).toHaveLength(11);
+		expect(screen.queryByText(/Show \d+ more/)).not.toBeInTheDocument();
+	});
+
+	test('the sha prints once, not duplicated, when it equals the display version', () => {
+		render(ChangeHistoryCard, {
+			props: { rows: [mkRow({ displayVersion: 'f7a46ae', shortRevision: 'f7a46ae' })] }
+		});
+		expect(screen.getAllByText('f7a46ae')).toHaveLength(1);
 	});
 
 	test('the retention caveat prints once, at the foot, only when passed', () => {

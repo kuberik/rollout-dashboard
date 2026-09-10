@@ -61,9 +61,12 @@
 	 * item — always inline with the title at ≥640px of this row's own
 	 * container width. Below 640, `.cl-status` gets `flex-basis: 100%` and
 	 * drops to its own second line — "the standing line may drop under the
-	 * title with the meter" — and the age hides entirely at that same
-	 * breakpoint (not a separate, finer one) so the row is NEVER three
-	 * lines: below 640 it is title-alone, then meter+standing.
+	 * title with the meter". ⭐ ROUND 3, ITEM 3 (2026-09-10): the AGE always
+	 * renders now, at every width — it is the one fact a reader cannot get
+	 * anywhere else, and the previous 640px breakpoint hid it on every rail
+	 * card and every phone. The meter's per-family WORD LABELS
+	 * (`.cl-meter-label`) give way instead, below the same breakpoint —
+	 * the coloured dot still carries the family's state without the text.
 	 *
 	 * ── THE CONTAINER QUERY IS THIS COMPONENT'S OWN ───────────────────────
 	 *
@@ -228,7 +231,9 @@
 					{/each}
 				</div>
 			{/if}
-			<span class="t-dense cl-standing shrink-0 truncate {toneClass}">{standingDisplay}</span>
+			{#if standingDisplay !== 'live everywhere'}
+				<span class="t-dense cl-standing shrink-0 truncate {toneClass}">{standingDisplay}</span>
+			{/if}
 			<span class="t-micro cl-age shrink-0 text-gray-500 dark:text-gray-400" title={ageLabel}
 				>{ageLabel}</span
 			>
@@ -377,14 +382,12 @@
 			margin-top: 2px;
 		}
 
-		/* The age hides at the SAME breakpoint the status group wraps at
-		   (not a separate, finer one) — otherwise a container between
-		   420-640px would show the age on a THIRD line (after the wrapped
-		   meter+standing group already consumed the second line's full
-		   width), which is not "two lines" any more. Below 640, the full
-		   instant is still in `title` via `ageLabel`, unchanged. */
-		.cl-age {
-			display: none;
-		}
+		/* ⭐ ROUND 3, ITEM 3 (2026-09-10) — THE AGE ALWAYS RENDERS NOW. It used
+		   to hide at this same breakpoint — the one fact a reader cannot get
+		   any other way ("how long has this been in this state"), dropped on
+		   every rail card and every phone. The meter's FAMILY WORDS
+		   (`.cl-meter-label`, above) are what gives way instead: the coloured
+		   dot still says which family without the label, and the row stays
+		   at most two lines either way. */
 	}
 </style>

@@ -45,16 +45,19 @@
 		now?: Date;
 	} = $props();
 
-	// R2.2's own table: `live`→`good`, `failed`/`held`→`adverse`, `active`
-	// (deploying/baking alike, since `Card`'s own palette has no separate
-	// yellow)→`active`, `not-built`→`neutral`. Deliberately NOT `Card`'s own
-	// `held` (orange) tone — the design doc's literal mapping for THIS card
-	// puts held on the same adverse red as failed, distinct from the
-	// per-mark amber `LandingMark` still carries inside block 1.
+	// ⭐ ROUND 3, ITEM 3 (2026-09-10) — ONE HELD TONE, SHARED. `held` used to
+	// map to `Card`'s `adverse` (red) here — the same ink as `failed`, which
+	// is exactly the collision `lib/CLAUDE.md`'s vocabulary rule warns
+	// against ("held" is a rule correctly refusing a candidate, not a
+	// failure). `Card.svelte` already carries a real `held` tone
+	// (`text-orange-800 dark:text-orange-300`) that nothing here was using —
+	// this is the ONE tone map every change surface (`ChangeLine`, this
+	// card, the change page's pipeline rows, `Chip role="held"`) now shares:
+	// `held` → amber/orange, never red, never gray.
 	const CARD_TONE: Record<ChangeVerdictTone, 'neutral' | 'good' | 'adverse' | 'active' | 'held'> = {
 		live: 'good',
 		failed: 'adverse',
-		held: 'adverse',
+		held: 'held',
 		active: 'active',
 		'not-built': 'neutral'
 	};

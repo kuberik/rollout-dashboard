@@ -308,9 +308,12 @@ describe('/changes/[...slug] — sha form', () => {
 		// ⭐ ROUND 2, R2.3 — "the grid gets a card": the fix pass's own bare
 		// sentence ("N of M rollouts have a build of this change") is now the
 		// "Every rollout" card's `verdict` rollup — off the SAME
-		// `pr-pipeline.ts` rolloutsWithBuild/rolloutsTotal counts, just drawn
-		// in the card header instead of a `<p>` above the grid.
-		await waitFor(() => expect(screen.getByText('2 of 2 have this build')).toBeInTheDocument());
+		// `pr-pipeline.ts` rolloutsLive/rolloutsTotal counts, just drawn in
+		// the card header instead of a `<p>` above the grid. ⭐ ROUND 3, ITEM 5
+		// (2026-09-10): "deployed to N of M rollouts", never "have this
+		// build" (`rolloutsLive`, not `rolloutsWithBuild`, is the count that
+		// means deployed).
+		await waitFor(() => expect(screen.getByText('deployed to 2 of 2 rollouts')).toBeInTheDocument());
 	});
 
 	test('a build with no linked GitHub repository degrades honestly, no crash', async () => {

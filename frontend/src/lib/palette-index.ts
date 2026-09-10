@@ -334,7 +334,23 @@ export function buildChangeRefPaletteResults(
 	if (!ref) return [];
 
 	if (ref.kind === 'full') {
-		return [changeRefEntry(ref.owner, ref.repo, { kind: 'pull', number: ref.number })];
+		// ⭐ ROUND 3, ITEM 7 (2026-09-10) — A PASTED URL'S OWNER/REPO IS
+		// LOWER-CASED BEFORE BUILDING THE HREF. `parsePrRef`'s own doc records
+		// that it returns the segments VERBATIM (display casing) on purpose —
+		// but every OTHER path into this function (`distinctSourceRepos`, off
+		// `normalizeSource`, which lower-cases the whole source string) already
+		// produces a lower-cased owner/repo, and `repoBody(l.repoKey)` (the
+		// route's own repo match) is always lower-case too. Pasting a
+		// mixed-case GitHub URL (`.../LittleChimera/Kuberik-Testing/pull/4`)
+		// built the one non-canonical `/changes` address in the product —
+		// GitHub's own routes are case-insensitive, so nothing is lost by
+		// normalising here.
+		return [
+			changeRefEntry(ref.owner.toLowerCase(), ref.repo.toLowerCase(), {
+				kind: 'pull',
+				number: ref.number
+			})
+		];
 	}
 
 	const repos = distinctSourceRepos(rollouts);

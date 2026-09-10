@@ -25,7 +25,7 @@
 	import { ChevronDoubleRightOutline } from 'flowbite-svelte-icons';
 	import Card from './Card.svelte';
 	import PipelineRow from './PipelineRow.svelte';
-	import type { PrService, PrCell } from '$lib/view-models/pr-pipeline';
+	import type { PrService, PrCell, PrState } from '$lib/view-models/pr-pipeline';
 	import { cellStateSentence, reasonTail } from '$lib/pr-cell-copy';
 	import { envFamilyWord } from '$lib/version-utils';
 	import type { Environment, RolloutDependency } from '../../types';
@@ -81,6 +81,21 @@
 	const tone = $derived(verdictTone(service.cells));
 
 	/**
+	 * ⭐ ROUND 3, ITEM 5 (2026-09-10) — HELD NEVER FOLDS. A held service must
+	 * show its env rows in the full stage-row grammar (28px disc, env chip,
+	 * `HELD` chip, sentence, time) — folding is for a row with NOTHING to
+	 * say, which a held row never is: measured live, `hello-frontend-app`'s
+	 * held-in-three-environments PR folded to one line ("waiting in dev ·
+	 * staging · prod — its build of this change does not exist yet"),
+	 * exactly the "twelve rows of `not built yet`" shape this fold was built
+	 * to cut, now hiding the one thing a reader here needs — the HELD chip
+	 * and the per-row time. `FOLDABLE_STATES` is deliberately narrow: only
+	 * `queued`/`live`, the two states that are genuinely uninteresting per
+	 * row (nothing blocking, nothing to click, nothing dated that matters).
+	 */
+	const FOLDABLE_STATES = new Set<PrState>(['queued', 'live']);
+
+	/**
 	 * ⛔ FIX PASS ITEM 7, 2026-09-10 — A CARD WHOSE EVERY ROW SAYS THE SAME
 	 * THING PRINTS ONE LINE, NOT N ROWS. Measured live: `hello-api-app` held
 	 * three (identical) "not built yet" rows, one per environment — the
@@ -94,6 +109,7 @@
 	 */
 	const foldedSentence = $derived.by<string | null>(() => {
 		if (service.cells.length < 2) return null;
+		if (!service.cells.every((c) => FOLDABLE_STATES.has(c.state))) return null;
 		const first = cellStateSentence(service.cells[0], now);
 		if (!service.cells.every((c) => cellStateSentence(c, now) === first)) return null;
 		const envNames = service.cells.map((c) => c.envName.toLowerCase()).join(' · ');

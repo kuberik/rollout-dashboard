@@ -162,11 +162,26 @@
 </div>
 
 <style>
+	/*
+	 * ⭐ ROUND 3, ITEM 9 (2026-09-10) — CONTAINER QUERIES, NOT A VIEWPORT
+	 * MEDIA QUERY. This grid always renders inside a `.card-cq` card
+	 * (`Card.svelte`'s own `container-type: inline-size`) — a `640px`
+	 * *viewport* media query narrows the name column on a phone even when
+	 * the CARD is wide (a full-width `/changes` grid), and fails to narrow
+	 * it on a real phone when the card itself sits in a narrower rail slot
+	 * at a wide viewport (`YourChangesCard`, this file's own `dense`
+	 * caller) — the exact viewport-vs-container mismatch this file's
+	 * module doc already calls out for the `fold` prop. `container-type:
+	 * inline-size` on `.lg-wrap` itself makes it correct with or without an
+	 * ancestor `.card-cq`: the nearest container ancestor always wins, so
+	 * nesting inside `Card` costs nothing extra.
+	 */
 	.lg-wrap {
 		--lg-name-w: 140px;
+		container-type: inline-size;
 	}
 
-	@media (max-width: 640px) {
+	@container (max-width: 640px) {
 		.lg-wrap {
 			--lg-name-w: 90px;
 		}
@@ -186,7 +201,7 @@
 		justify-content: start;
 	}
 
-	@media (max-width: 640px) {
+	@container (max-width: 640px) {
 		.lg-grid {
 			column-gap: 6px;
 		}

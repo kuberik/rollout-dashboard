@@ -392,6 +392,41 @@ describe('PipelineCard', () => {
 		expect(screen.getByText('promoting', { selector: '.chip' })).toBeInTheDocument();
 	});
 
+	// ⭐ ROUND 3, ITEM 5 (2026-09-10) — HELD NEVER FOLDS, EVEN WHEN EVERY CELL
+	// AGREES. Live bug: PR #4's `hello-frontend-app` was held on the SAME
+	// dependency gate in dev/staging/prod (identical `cellStateSentence` AND
+	// `reasonTail`), and the old fold collapsed all three into one line with
+	// no disc, no env chip, no HELD chip and no per-row time — the exact
+	// facts a held row exists to carry. Folding stays for a row with nothing
+	// to say (`queued`/`live`, tested elsewhere in this file); a held row
+	// always draws its full stage-row grammar.
+	test('ROUND 3, item 5: three identically-held cells draw three rows, not one folded line', () => {
+		const service = mkService([
+			mkCell('gated', {
+				envName: 'dev',
+				envRank: 1,
+				gateSubject: 'hello-api-app',
+				reason: 'waiting on hello-api-app'
+			}),
+			mkCell('gated', {
+				envName: 'staging',
+				envRank: 4,
+				gateSubject: 'hello-api-app',
+				reason: 'waiting on hello-api-app'
+			}),
+			mkCell('gated', {
+				envName: 'prod',
+				envRank: 7,
+				gateSubject: 'hello-api-app',
+				reason: 'waiting on hello-api-app'
+			})
+		]);
+		const { container } = renderCard(service);
+		const discs = container.querySelectorAll('.rounded-full.h-7.w-7, .h-7.w-7.rounded-full');
+		expect(discs.length).toBe(3);
+		expect(screen.getAllByText('held', { selector: '.chip' })).toHaveLength(3);
+	});
+
 	test('R2.3: the state chip prints HELD for gated/waiting-upstream/pinned, and the plain state word otherwise', () => {
 		const service = mkService([
 			mkCell('gated', { envName: 'dev', envRank: 1, gateLabel: 'a-rule' }),

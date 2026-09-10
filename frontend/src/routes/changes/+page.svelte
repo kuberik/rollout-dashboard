@@ -2,68 +2,81 @@
 
 <script lang="ts">
 	/**
-	 * `/changes` — THE INDEX. CHANGES-2026-09-10.md ROUND 2, §R2.2.
+	 * `/changes` — THE INDEX. CHANGES-2026-09-10.md ROUND 3, RULING B ("TWO
+	 * VIEWS, NOT ONE LIST").
 	 *
-	 * Round 1 was a bare day-grouped list — no card, no section, no rail, one
-	 * icon on the whole page (the human: "that changes page is way
-	 * underdeveloped compared to what revisions page set looked like").
-	 * Round 2 reads it as the same page KIND as `/` and `/rollouts`: a head
-	 * band in the fleet grammar, two dot-headed sections (Home's own
-	 * section-header shape), and a real rail.
+	 * Round 2 was one mixed list, split into "Not everywhere yet" (a card
+	 * grid) and "Live everywhere" (a flat line list), filtered by three chips
+	 * (Mine / Pull requests / Not yet everywhere). The human, after seeing it
+	 * ship: *"It's mainly to get an overview of how far his changes or
+	 * changes of a certain repo went. It kinda sucks that you mixed up both
+	 * of those into a single list."* and *"again too verbose showing every
+	 * environment and service."*
 	 *
-	 * ── THE CORRECTIVE RULE, APPLIED TWICE ────────────────────────────────
+	 * Round 3 is two blocks, no chips, no landing grid on this page at all
+	 * (the grid lives on the change page only — `changes.ts`'s own
+	 * `ChangeSections`/`ChangeCard` are the round-2 shape this ruling
+	 * supersedes, kept for `/changes/<repo>`'s own use, not deleted):
 	 *
-	 * A change is either an ANSWER or a NORM. An answer gets a card
-	 * (`ChangeCard`, "Not everywhere yet" — this section IS the page's
-	 * subject, no cap). A norm gets a line (`ChangeLine`, "Live everywhere" —
-	 * no box, no card, `/activity`'s own day-grouped flat shape, paginated at
-	 * 20 rows).
+	 *   1. **Your changes** — every merged change (PR or bare commit)
+	 *      authored by the viewer, 30 days, stuck-first (`orderHomeChangeRows`),
+	 *      compact `ChangeLine` rows, paginated at 20.
+	 *   2. **Repositories** — one `Card` per repository: header is the repo
+	 *      name plus `repoProgress`'s own rollup ("6 changes · 2 not
+	 *      everywhere"), body is the `typicalToProdMs` dl line, the 5 most
+	 *      recent changes (`recentByRepo`) as the same compact rows, and
+	 *      "All changes in `<repo>` ›".
 	 *
-	 * ⭐ GITHUB NOT CONFIGURED OR NOT CONNECTED STILL RENDERS A USEFUL INDEX
-	 * (§3's own "honest degrade, not an empty page"). `buildLedgerChangeRows`
-	 * falls back to the ledger's own truth — one row per revision this
-	 * cluster's services actually deployed, no author, no PR link, no
-	 * landing grid — and the head band says so once, WITH its own figure
-	 * (round 1 printed the sentence alone; every other list page on this
-	 * product opens on a `t-display` count). No filters, no search, no rail
-	 * on that path: there is no title/author/PR number to filter over, and
-	 * no GitHub data to spend two rail cards summarising.
+	 * The head band is the fleet grammar WITHOUT the held/not-built/live
+	 * breakdown round 2 printed (that sentence also stuttered "live" twice —
+	 * a `X live` clause followed by a stream-status `· live` — which no
+	 * other head band in the product does; dropped rather than fixed twice):
+	 * "59 changes · 47 not everywhere yet · 2 repositories".
+	 *
+	 * Search stays (`?q=`, over both blocks — a search scopes what "yours"
+	 * and "repositories" both mean, same feed). The repo/pending/kind chips
+	 * are gone: `Repositories` replaces the repo chip (browse instead of
+	 * filter), and there is no mixed list left to narrow with "Not yet
+	 * everywhere"/"Pull requests".
+	 *
+	 * ⭐ GITHUB NOT CONFIGURED OR NOT CONNECTED STILL RENDERS A USEFUL INDEX —
+	 * unchanged from round 2, see `buildLedgerChangeRows`'s own doc.
 	 *
 	 * `w-full px-4 py-6 sm:px-6` — full width is the product rule
 	 * (`lib/CLAUDE.md`, "THE PAGE CONTAINER"): no `max-w-*` on a route
-	 * container, no line-length argument on a page of cards and figures.
+	 * container.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
-	import { isEventStreamHealthy } from '$lib/api/events';
 	import { fetchGithubStatus, githubStatusQueryKey, connectGithub } from '$lib/api/github';
 	import { changesQueryOptions } from '$lib/api/changes';
 	import {
 		buildChangeRows,
 		buildLedgerChangeRows,
 		filterChangeRows,
+		orderHomeChangeRows,
 		repoChipOptions,
+		recentByRepo,
+		repoProgress,
 		groupByDay,
 		summarizeChangeRows,
 		changesSummary,
-		perRepoCounts,
-		splitChangeSections,
 		type ChangeRowVM,
 		type LedgerChangeRow
 	} from '$lib/view-models/changes';
+	import { compactSpan } from '$lib/view-models/lead-time';
 	import { now } from '$lib/stores/time';
 	import { tick } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { getScrollPosition, scrollMemoryKey } from '$lib/scroll-memory';
-	import { CodePullRequestOutline, GithubSolid, ClockSolid, CalendarMonthSolid } from 'flowbite-svelte-icons';
+	import { CodePullRequestOutline, GithubSolid, FolderOutline, HourglassOutline } from 'flowbite-svelte-icons';
 	import RevisionSearch from '$lib/components/RevisionSearch.svelte';
 	import ChangeLine from '$lib/components/ChangeLine.svelte';
-	import ChangeCard from '$lib/components/ChangeCard.svelte';
+	import Card from '$lib/components/Card.svelte';
 	import HowChangesAreGoing from '$lib/components/HowChangesAreGoing.svelte';
-	import RepositoriesCard from '$lib/components/RepositoriesCard.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
@@ -106,27 +119,13 @@
 		!configured || !connected ? buildLedgerChangeRows(rollouts, environments) : []
 	);
 
-	/* ── FILTERS — ALL URL-BACKED, THE `/activity`/`/revisions` PATTERN ── */
+	/* ── SEARCH — THE ONE URL-BACKED FILTER LEFT (ROUND 3 RULING B) ── */
 
-	let mine = $state(page.url.searchParams.has('mine'));
-	let pendingOnly = $state(page.url.searchParams.has('pending'));
-	let prOnly = $state(page.url.searchParams.has('pr'));
-	let selectedRepos = $state<string[]>(
-		(page.url.searchParams.get('repo') ?? '')
-			.split(',')
-			.map((s) => s.trim())
-			.filter(Boolean)
-	);
 	let searchQuery = $state(page.url.searchParams.get('q') ?? '');
 
 	$effect(() => {
 		const original = page.url.searchParams.toString();
 		const params = new URLSearchParams(page.url.searchParams);
-		mine ? params.set('mine', '') : params.delete('mine');
-		pendingOnly ? params.set('pending', '') : params.delete('pending');
-		prOnly ? params.set('pr', '') : params.delete('pr');
-		if (selectedRepos.length > 0) params.set('repo', selectedRepos.join(','));
-		else params.delete('repo');
 		const trimmedQ = searchQuery.trim();
 		if (trimmedQ) params.set('q', trimmedQ);
 		else params.delete('q');
@@ -135,107 +134,81 @@
 		goto(qs ? `?${qs}` : '?', { replaceState: true, noScroll: true, keepFocus: true });
 	});
 
-	function toggleMine() {
-		mine = !mine;
-	}
-	function togglePending() {
-		pendingOnly = !pendingOnly;
-	}
-	function togglePrOnly() {
-		prOnly = !prOnly;
-	}
-	function toggleRepo(repoKey: string) {
-		selectedRepos = selectedRepos.includes(repoKey)
-			? selectedRepos.filter((r) => r !== repoKey)
-			: [...selectedRepos, repoKey];
-	}
-
-	const repoOptions = $derived(repoChipOptions(allRows));
-
-	const filteredRows = $derived(
-		filterChangeRows(allRows, currentUser, {
-			mine,
-			repos: selectedRepos,
-			pendingOnly,
-			kind: prOnly ? 'pr' : undefined,
-			q: searchQuery
-		})
-	);
+	/** Every change matching the search box — the one population BOTH blocks
+	 *  below scope themselves to, so a search narrows "yours" and
+	 *  "repositories" together rather than two independently-filtered
+	 *  views. */
+	const filteredRows = $derived(filterChangeRows(allRows, currentUser, { q: searchQuery }));
+	const anyFilterActive = $derived(searchQuery.trim().length > 0);
 
 	/**
-	 * ⭐ ROUND 2's TWO SECTIONS — `changes.ts`'s own `splitChangeSections`
-	 * (ruling: one function, so the section bodies and their own counts can
-	 * never disagree with the filter/search that produced `filteredRows`).
+	 * ⭐ ROUND 3 RULING B, BLOCK 1 — "YOUR CHANGES". Every merged change
+	 * authored by the viewer, stuck-first (`orderHomeChangeRows` — the same
+	 * ordering Home's own card uses), paginated at 20.
 	 */
-	const sections = $derived(splitChangeSections(filteredRows));
-	const notEverywhere = $derived(sections.notEverywhere);
-	const liveEverywhere = $derived(sections.liveEverywhere);
+	const MINE_CAP = 20;
+	const mineRows = $derived(orderHomeChangeRows(filterChangeRows(allRows, currentUser, { mine: true, q: searchQuery })));
+	let mineExpanded = $state(false);
+	const mineShown = $derived(mineExpanded ? mineRows : mineRows.slice(0, MINE_CAP));
+	const mineHiddenCount = $derived(mineRows.length - mineShown.length);
+	const mineAlert = $derived(mineRows.some((r) => r.verdictTone === 'held' || r.verdictTone === 'failed'));
 
 	/**
-	 * ⭐ SECTION 1's DOT IS AMBER ONLY WHEN SOMETHING IN IT IS GENUINELY
-	 * STUCK (R2.5(b)'s own distinction — a gate waiting its own clock, or a
-	 * change merely mid-promotion, is not an alarm; `held`/`failed` are).
-	 * A section of changes moving normally through a pipeline is not one.
+	 * ⭐ ROUND 3 RULING B, BLOCK 2 — "REPOSITORIES". One card per repo seen in
+	 * the (search-filtered) feed — `repoChipOptions`'s own alphabetical list,
+	 * reused here as the repo roster rather than a filter chip row.
+	 * `repoProgress`/`recentByRepo` (`changes.ts`) are read against the SAME
+	 * `filteredRows`, so a search narrows every card's own count and recent
+	 * list too.
 	 */
-	const notEverywhereAlert = $derived(
-		notEverywhere.some((r) => r.verdictTone === 'held' || r.verdictTone === 'failed')
-	);
+	const repoList = $derived(repoChipOptions(filteredRows));
+	const recentByRepoMap = $derived(recentByRepo(filteredRows, 5));
 
-	/* ── LIVE-EVERYWHERE PAGINATION, §R2.2 ("collapsed by default above 20
-	   rows, then `Show N more changes ›`") ── */
-	const LIVE_CAP = 20;
-	let liveExpanded = $state(false);
-	const liveShown = $derived(liveExpanded ? liveEverywhere : liveEverywhere.slice(0, LIVE_CAP));
-	const liveHiddenCount = $derived(liveEverywhere.length - liveShown.length);
-	const liveDayGroups = $derived(groupByDay(liveShown, (r) => r.mergedAt, $now));
+	function repoHref(repoKey: string): string {
+		return `/changes/github.com/${repoKey}`;
+	}
+
+	function repoRollupText(repoKey: string): string {
+		const p = repoProgress(filteredRows, repoKey);
+		const notEverywhere = p.notEverywhere > 0 ? ` · ${p.notEverywhere} not everywhere` : '';
+		return `${p.changes} change${p.changes === 1 ? '' : 's'}${notEverywhere}`;
+	}
+
 	const ledgerDayGroups = $derived(groupByDay(ledgerRows, (r) => r.createdAt, $now));
 
 	/**
-	 * ⭐ THE HEAD BAND'S OWN THREE SUB-COUNTS. Read directly off
-	 * `filteredRows`'s per-row `verdictTone` (`pr-pipeline.ts`'s canonical
-	 * five: `live`/`held`/`failed`/`active`/`not-built`) rather than adding a
-	 * sixth shared function for three field reads — `held` folds `failed` in
-	 * too (both are the section-1 "needs a person" half of the fleet; the
-	 * section body and each row's own coloured glyph still tell them apart).
-	 * `live` is the exact arithmetic remainder (`summary.count` minus the two
-	 * named clauses), which folds an in-flight `active` change (deploying,
-	 * baking, promoting) in with it — the SAME call `splitChangeSections`'s
-	 * own `notEverywhere` predicate already makes (an `active` cell is not
-	 * flagged pending), so the head band's "N live" can never disagree with
-	 * which section a change actually lands in.
+	 * ⭐ THE HEAD BAND — THE FLEET GRAMMAR, NO STUTTER. `summarizeChangeRows`
+	 * is the ONE population every clause below reads
+	 * (`count`/`notEverywhereCount`/`repoCount`), computed on `filteredRows`
+	 * so a narrowed search narrows the head band too. Dropped from round 2:
+	 * the held/not-built/live breakdown (verbose — "too verbose showing
+	 * every environment and service" was the human's own complaint about the
+	 * OLD page, and this sentence was the index's version of it) and the
+	 * stream-status `· live`/`· updated` tail, which stuttered "live" twice
+	 * whenever the change stream was healthy AND said "N live" — no other
+	 * head band in the product prints a stream-liveness word at all, so it
+	 * is dropped rather than fixed a second time.
 	 */
 	const summary = $derived(summarizeChangeRows(filteredRows));
-	const headHeldCount = $derived(
-		filteredRows.filter((r) => r.verdictTone === 'held' || r.verdictTone === 'failed').length
-	);
-	const headNotBuiltCount = $derived(filteredRows.filter((r) => r.verdictTone === 'not-built').length);
-	const headLiveCount = $derived(summary.count - headHeldCount - headNotBuiltCount);
-	const repoCount = $derived(summary.repoCount);
-	const streamHealthy = $derived(isEventStreamHealthy());
 
-	/** The rail's own summary — `changes.ts`'s `changesSummary`/`perRepoCounts`,
-	 *  read off the SAME filtered feed the sections and head band use. */
+	/** The rail's own summary — `changes.ts`'s `changesSummary`, read off the
+	 *  SAME filtered feed the head band and both blocks use. */
 	const railSummary = $derived(changesSummary(filteredRows));
-	const repoCounts = $derived(perRepoCounts(filteredRows));
-
-	const anyFilterActive = $derived(
-		mine || pendingOnly || prOnly || selectedRepos.length > 0 || searchQuery.trim().length > 0
-	);
 
 	/* ── SKELETON SHAPE ── */
 	const SHAPE_KEY = 'changes';
-	type Shape = { notEverywhere: number; live: number; hasRail: boolean };
+	type Shape = { mine: number; repos: number; hasRail: boolean };
 	const remembered = recallShape<Shape>(SHAPE_KEY);
-	const skelNotEverywhere = remembered?.notEverywhere ?? 2;
-	const skelLive = remembered?.live ?? 3;
+	const skelMine = remembered?.mine ?? 3;
+	const skelRepos = remembered?.repos ?? 2;
 	const skelHasRail = remembered?.hasRail ?? true;
 
 	$effect(() => {
 		if (query.isLoading || query.isError) return;
 		if (connected && changesQuery.isLoading) return;
 		rememberShape(SHAPE_KEY, {
-			notEverywhere: Math.min(notEverywhere.length, 6),
-			live: Math.min(liveEverywhere.length, 6),
+			mine: Math.min(mineRows.length, 5),
+			repos: Math.min(repoList.length, 4),
 			hasRail: configured && connected
 		});
 	});
@@ -244,7 +217,7 @@
 		query.isLoading || githubStatus.isLoading || (connected && changesQuery.isLoading)
 	);
 
-	/* ── SCROLL RESTORE — unchanged from round 1 ── */
+	/* ── SCROLL RESTORE — unchanged from round 1/2 ── */
 	let pendingScrollRestore = $state<number | null>(null);
 
 	afterNavigate((nav) => {
@@ -254,6 +227,16 @@
 
 	$effect(() => {
 		if (pendingScrollRestore == null || isLoading) return;
+		// ⭐ ROUND 3, ITEM 10 (2026-09-10) — WAIT FOR THE ROWS TO ACTUALLY
+		// EXIST, NOT JUST FOR `isLoading` TO CLEAR. `isLoading` (above) is
+		// `query.isLoading`/`githubStatus.isLoading`/`changesQuery.isLoading` —
+		// all three can flip to `false` a frame before `mineRows`/`repoList`
+		// (and the DOM they drive) have actually re-rendered with real data,
+		// which is exactly the gap that made a restore to y=3000 land back at
+		// 288: the shell restored against a `<main>` that still measured its
+		// EMPTY-state height. Gating on the rows existing too means the
+		// restore fires only once there is something to scroll to.
+		if (connected && mineRows.length === 0 && repoList.length === 0 && !anyFilterActive) return;
 		const target = pendingScrollRestore;
 		pendingScrollRestore = null;
 		const main = document.querySelector('main');
@@ -290,36 +273,20 @@
 				{/if}
 			</p>
 		{:else}
-			<!-- ⭐ THE FLEET GRAMMAR, §R2.2: "59 changes · 5 held · 3 not built ·
-			     51 live". Zero clauses are omitted, exactly as Home omits
-			     "0 need you" — `held`/`not built` print only when non-zero;
-			     `live` (the reassurance number, parallel to Home's `steady`) is
-			     never guarded. -->
+			<!-- ⭐ ROUND 3 RULING B: THE FLEET GRAMMAR, NO STUTTER — "59 changes ·
+			     47 not everywhere yet · 2 repositories". Zero clauses are
+			     omitted (`not everywhere` prints only when non-zero, matching
+			     Home's own "0 need you" omission rule); `repositories` is never
+			     guarded, same as Home's reassurance figure. -->
 			<span class="t-display text-gray-900 tabular-nums dark:text-white">{summary.count}</span>
 			<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
 				change{summary.count === 1 ? '' : 's'}
-				{#if headHeldCount > 0}
-					· <span class="font-medium text-gray-700 dark:text-gray-200">{headHeldCount} held</span>
+				{#if summary.notEverywhereCount > 0}
+					· <span class="font-medium text-gray-700 dark:text-gray-200"
+						>{summary.notEverywhereCount} not everywhere yet</span
+					>
 				{/if}
-				{#if headNotBuiltCount > 0}
-					· {headNotBuiltCount} not built
-				{/if}
-				· {headLiveCount} live
-				{#if streamHealthy}
-					· live
-				{:else if changesQuery.dataUpdatedAt}
-					· updated
-					<time
-						datetime={new Date(changesQuery.dataUpdatedAt).toISOString()}
-						title="Change stream disconnected; showing data fetched at {new Date(
-							changesQuery.dataUpdatedAt
-						).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"
-						>{new Date(changesQuery.dataUpdatedAt).toLocaleTimeString([], {
-							hour: '2-digit',
-							minute: '2-digit'
-						})}</time
-					>, stream down
-				{/if}
+				· {summary.repoCount} repositor{summary.repoCount === 1 ? 'y' : 'ies'}
 			</p>
 		{/if}
 	</div>
@@ -347,14 +314,14 @@
 					<section class="mb-8" aria-hidden="true">
 						<div class="mb-3 flex items-center gap-2">
 							<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-200 dark:bg-gray-700"></span>
-							<span class="skel-block h-3.5 w-40"></span>
+							<span class="skel-block h-3.5 w-28"></span>
 							<span class="skel-block h-3 w-4"></span>
 						</div>
-						<div class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]">
-							{#each Array(skelNotEverywhere) as _, i (i)}
-								<div class="skel-block h-40 w-full rounded-lg"></div>
+						<ul class="space-y-2">
+							{#each Array(skelMine) as _, i (i)}
+								<li class="skel-block h-7 w-full rounded"></li>
 							{/each}
-						</div>
+						</ul>
 					</section>
 					<section aria-hidden="true">
 						<div class="mb-3 flex items-center gap-2">
@@ -362,17 +329,16 @@
 							<span class="skel-block h-3.5 w-32"></span>
 							<span class="skel-block h-3 w-4"></span>
 						</div>
-						<ul class="space-y-2">
-							{#each Array(skelLive) as _, i (i)}
-								<li class="skel-block h-7 w-full rounded"></li>
+						<div class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]">
+							{#each Array(skelRepos) as _, i (i)}
+								<div class="skel-block h-40 w-full rounded-lg"></div>
 							{/each}
-						</ul>
+						</div>
 					</section>
 				</div>
 				{#if skelHasRail}
 					<div class="rail-side min-w-0 space-y-4" aria-hidden="true">
 						<CardSkeleton titleWidth="w-40" rollupWidth="w-20" rows={4} rowHeight={20} />
-						<CardSkeleton titleWidth="w-28" rollupWidth="w-16" rows={4} rowHeight={20} padded={false} />
 					</div>
 				{/if}
 			</div>
@@ -388,9 +354,9 @@
 			class="mt-6"
 		/>
 	{:else if !configured || !connected}
-		<!-- ⭐ THE LEDGER FALLBACK — round 1's shape, untouched. No filters, no
-		     search: there is no title/author/PR number to filter or search
-		     over, only a revision and a sha. -->
+		<!-- ⭐ THE LEDGER FALLBACK — round 1's shape, untouched. No search: there
+		     is no title/author/PR number to search over, only a revision and a
+		     sha. -->
 		{#if configured}
 			<button type="button" class="btn btn-primary mt-1" onclick={() => connectGithub()}>
 				<GithubSolid aria-hidden="true" />
@@ -438,59 +404,6 @@
 			/>
 		</div>
 
-		<div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
-			<button
-				type="button"
-				aria-pressed={mine}
-				title={mine ? 'Stop showing only your changes' : 'Show only your changes'}
-				onclick={toggleMine}
-				class="pill-btn t-label rounded border px-3 py-[5px] transition-colors
-					{mine
-					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
-					: 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500'}"
-			>
-				Mine
-			</button>
-			{#each repoOptions as opt (opt.repoKey)}
-				<button
-					type="button"
-					aria-pressed={selectedRepos.includes(opt.repoKey)}
-					title={selectedRepos.includes(opt.repoKey) ? `Stop showing only ${opt.label}` : `Show only ${opt.label}`}
-					onclick={() => toggleRepo(opt.repoKey)}
-					class="pill-btn t-label rounded border px-3 py-[5px] transition-colors
-						{selectedRepos.includes(opt.repoKey)
-						? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
-						: 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500'}"
-				>
-					{opt.label}
-				</button>
-			{/each}
-			<button
-				type="button"
-				aria-pressed={prOnly}
-				title={prOnly ? 'Show every change' : 'Show only changes that came through a pull request'}
-				onclick={togglePrOnly}
-				class="pill-btn t-label rounded border px-3 py-[5px] transition-colors
-					{prOnly
-					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
-					: 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500'}"
-			>
-				Pull requests
-			</button>
-			<button
-				type="button"
-				aria-pressed={pendingOnly}
-				title={pendingOnly ? 'Show every change' : 'Show only changes not yet everywhere'}
-				onclick={togglePending}
-				class="pill-btn t-label rounded border px-3 py-[5px] transition-colors
-					{pendingOnly
-					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
-					: 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500'}"
-			>
-				Not yet everywhere
-			</button>
-		</div>
-
 		{#if filteredRows.length === 0}
 			<div class="flex flex-col items-center justify-center py-16 text-center">
 				<CodePullRequestOutline class="mb-3 h-8 w-8 text-gray-500 dark:text-gray-400" />
@@ -499,96 +412,113 @@
 				</p>
 				{#if anyFilterActive}
 					<p class="t-body mt-1 max-w-sm text-gray-500 dark:text-gray-400">
-						Try clearing a filter or the search box above.
+						Try clearing the search box above.
 					</p>
 				{/if}
 			</div>
 		{:else}
-			<!-- ══ THE TWO SECTIONS + THE RAIL — Home's own shell, extracted.
+			<!-- ══ TWO BLOCKS + THE RAIL — ROUND 3 RULING B ═══════════════════
 			     `.rail-wrap`/`.rail-grid`/`.rail-main`/`.rail-side` (`app.css`).
-			     Sections are ALWAYS FIRST in document order; there is no
-			     `order` anywhere on this page, unlike Home's `.cc-changes`
-			     (which needs one for its own, different, reason). -->
+			     Blocks are ALWAYS FIRST in document order. -->
 			<div class="rail-wrap mt-5">
 				<div class="rail-grid">
 					<div class="rail-main min-w-0">
-						<!-- ── SECTION 1 — "Not everywhere yet". An ANSWER gets a
-						     card: no cap, this section IS the page's subject. ── -->
+						<!-- ── BLOCK 1 — "Your changes" ── -->
 						<section class="mb-8">
 							<div class="mb-3 flex items-center gap-2">
 								<span
-									class="h-[5px] w-[5px] shrink-0 rounded {notEverywhereAlert
-										? 'bg-amber-500'
-										: 'bg-gray-400'}"
+									class="h-[5px] w-[5px] shrink-0 rounded {mineAlert ? 'bg-amber-500' : 'bg-gray-400'}"
+									aria-hidden="true"
 								></span>
-								<h2 class="text-base font-semibold text-gray-900 dark:text-white">Not everywhere yet</h2>
-								<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{notEverywhere.length}</span>
-								<span class="text-xs text-gray-500 dark:text-gray-400">held, building, or still moving</span>
+								<h2 class="text-base font-semibold text-gray-900 dark:text-white">Your changes</h2>
+								<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{mineRows.length}</span>
 							</div>
-							{#if notEverywhere.length === 0}
+							{#if mineRows.length === 0}
 								<p class="t-body text-gray-500 dark:text-gray-400">
-									Every change in view has landed everywhere.
+									Nothing of yours merged in the last 30 days.
 								</p>
 							{:else}
-								<div
-									class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
-								>
-									{#each notEverywhere as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
-										<ChangeCard {row} now={$now} />
+								<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+									{#each mineShown as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
+										<ChangeLine {row} showRepo now={$now} />
 									{/each}
-								</div>
-							{/if}
-						</section>
-
-						<!-- ── SECTION 2 — "Live everywhere". A NORM gets a line: no
-						     box, no card, `/activity`'s own day-grouped flat list. ── -->
-						<section>
-							<div class="mb-3 flex items-center gap-2">
-								<span class="h-[5px] w-[5px] shrink-0 rounded bg-green-700 dark:bg-green-400"></span>
-								<h2 class="text-base font-semibold text-gray-900 dark:text-white">Live everywhere</h2>
-								<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{liveEverywhere.length}</span>
-								<span class="text-xs text-gray-500 dark:text-gray-400">nothing left to do</span>
-							</div>
-							{#if liveEverywhere.length === 0}
-								<p class="t-body text-gray-500 dark:text-gray-400">Nothing has landed everywhere yet.</p>
-							{:else}
-								{#each liveDayGroups as group, gi (group.label)}
-									<div class={gi > 0 ? 'mt-5' : ''}>
-										<div class="mb-3 flex items-center gap-2">
-											{#if group.label === 'Today'}
-												<ClockSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" />
-											{:else}
-												<CalendarMonthSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" />
-											{/if}
-											<span class="t-label text-gray-500 dark:text-gray-400">{group.label}</span>
-											<span
-												class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"
-											></span>
-											<span class="t-code-sm text-gray-500 dark:text-gray-400">{group.rows.length}</span>
-										</div>
-										<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-											{#each group.rows as row (`${row.owner}/${row.repo}:${row.kind}:${row.number ?? row.sha}`)}
-												<ChangeLine {row} showRepo now={$now} />
-											{/each}
-										</ul>
-									</div>
-								{/each}
-								{#if !liveExpanded && liveHiddenCount > 0}
+								</ul>
+								{#if !mineExpanded && mineHiddenCount > 0}
 									<button
 										type="button"
 										class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-										onclick={() => (liveExpanded = true)}>Show {liveHiddenCount} more changes ›</button
+										onclick={() => (mineExpanded = true)}>Show {mineHiddenCount} more ›</button
 									>
 								{/if}
 							{/if}
 						</section>
+
+						<!-- ── BLOCK 2 — "Repositories" ── -->
+						<section>
+							<div class="mb-3 flex items-center gap-2">
+								<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-400" aria-hidden="true"></span>
+								<h2 class="text-base font-semibold text-gray-900 dark:text-white">Repositories</h2>
+								<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoList.length}</span>
+							</div>
+							{#if repoList.length === 0}
+								<p class="t-body text-gray-500 dark:text-gray-400">No repository matches.</p>
+							{:else}
+								<div
+									class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+								>
+									{#each repoList as repo (repo.repoKey)}
+										{@const recent = recentByRepoMap.get(repo.repoKey) ?? []}
+										{@const prog = repoProgress(filteredRows, repo.repoKey)}
+										<Card
+											icon={FolderOutline}
+											title={repo.label}
+											titleHref={repoHref(repo.repoKey)}
+											verdict={repoRollupText(repo.repoKey)}
+											padded={false}
+										>
+											<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
+												<div class="px-4 py-2.5">
+													<dl class="flex items-baseline justify-between gap-3">
+														<dt
+															class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+														>
+															<HourglassOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical
+															to prod
+														</dt>
+														<dd class="t-figure tabular-nums text-gray-900 dark:text-white">
+															{#if prog.typicalToProdMs == null}
+																<span class="t-micro text-gray-500 dark:text-gray-400"
+																	>no measured trip yet</span
+																>
+															{:else}
+																{compactSpan(prog.typicalToProdMs)}
+															{/if}
+														</dd>
+													</dl>
+												</div>
+												{#if recent.length > 0}
+													<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+														{#each recent as row (row.href)}
+															<ChangeLine {row} now={$now} />
+														{/each}
+													</ul>
+												{/if}
+												<div class="px-4 py-2.5">
+													<a href={repoHref(repo.repoKey)} class="nav-link"
+														>All changes in {repo.label} ›</a
+													>
+												</div>
+											</div>
+										</Card>
+									{/each}
+								</div>
+							{/if}
+						</section>
 					</div>
 
-					<!-- ── THE RAIL — only when GitHub is connected (the ledger
-					     fallback branch above never reaches here at all). ── -->
+					<!-- ── THE RAIL — only when GitHub is connected. -->
 					<div class="rail-side min-w-0 space-y-4">
-						<HowChangesAreGoing summary={railSummary} notEverywhereCount={notEverywhere.length} />
-						<RepositoriesCard repos={repoCounts} />
+						<HowChangesAreGoing summary={railSummary} notEverywhereCount={summary.notEverywhereCount} />
 					</div>
 				</div>
 			</div>

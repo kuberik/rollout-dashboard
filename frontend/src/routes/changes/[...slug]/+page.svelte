@@ -5,7 +5,7 @@
 	import { replaceState, afterNavigate } from '$app/navigation';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
-	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
+	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
 	import { fetchScheduleWindow, formatTimeUntil, type ScheduleWindow } from '$lib/api/schedules';
 	import { commitPullsQueryOptions } from '$lib/api/commit-pulls';
 	import { commitQueryOptions, FetchCommitError } from '$lib/api/commit';
@@ -23,11 +23,10 @@
 	import { buildLandingGrid, orderByVerdict, classify, worstCell } from '$lib/view-models/landing-grid';
 	import { checksLine, cellStateSentence, reasonTail } from '$lib/pr-cell-copy';
 	import { changesQueryOptions } from '$lib/api/changes';
-	import { buildChangeRows, splitChangeSections, groupByDay } from '$lib/view-models/changes';
+	import { buildChangeRows } from '$lib/view-models/changes';
 	import { median, compactSpan } from '$lib/view-models/lead-time';
 	import LandingGrid from '$lib/components/LandingGrid.svelte';
 	import PipelineCard from '$lib/components/PipelineCard.svelte';
-	import ChangeCard from '$lib/components/ChangeCard.svelte';
 	import ChangeLine from '$lib/components/ChangeLine.svelte';
 	import ChangeHistoryCard from '$lib/components/ChangeHistoryCard.svelte';
 	import {
@@ -38,21 +37,13 @@
 		repoSlug,
 		githubOwnerRepo
 	} from '$lib/version-utils';
-	import { getDisplayVersion } from '$lib/utils';
 	import { repoKeyFromSource } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
-	// THE PRODUCT'S ONE RANK VOCABULARY. This page prints exactly one of its
-	// words — `unreleased` — and it takes it from here rather than spelling it.
-	// ⛔ LANE 9, ROUND 11 QA, ITEM 10 — `rankRole`/`RankVerdict` DELETED, dead
-	// (eslint-reported, unreferenced anywhere else in this file).
-	import { rankLabel } from '$lib/view-models/env-rank';
 	import { detectRollback } from '$lib/rollout-cards';
 	import RevisionLead from '$lib/components/RevisionLead.svelte';
 	import {
 		buildRevisionLedger,
 		findRow,
-		rankSentence,
-		ladderPositionLabel,
 		resolveRevision,
 		leadRowsFor,
 		releaseLines,
@@ -62,42 +53,22 @@
 		pastRows,
 		type RepoLedger,
 		type RevisionRow,
-		type RevisionService,
-		type RevisionSlot
+		type RevisionService
 	} from '$lib/view-models/revision-ledger';
 	import {
 		revisionCoverage,
-		coverageWeight,
-		weightFill,
-		coverageSwatch,
-		releaseSplit,
-		slotBakeStatus,
 		heldBehind,
-		coverageBarSegments,
-		coverageBarLabel,
-		coverageCells,
-		releaseHeldClause,
 		repoHeroCoverage as coverageForServices,
 		releaseSplitSentence,
-		type CoverageKey,
 		type CoverageSlotVM,
 		type RevisionCoverage
 	} from '$lib/view-models/revision-coverage';
-	import CoverageBar from '$lib/components/CoverageBar.svelte';
 	import RevisionSearch from '$lib/components/RevisionSearch.svelte';
 	import BuildLists from '$lib/components/BuildLists.svelte';
 	import HeldBanner from '$lib/components/HeldBanner.svelte';
 	import RepoLedgerCard from '$lib/components/RepoLedgerCard.svelte';
 	import { rememberShape, recallShape } from '$lib/skeleton-hints';
-	// ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 2 (IN-FLIGHT DETAIL, blocking) — THE
-	// DEPLOYING ROW'S OWN WORD. `bakeWord` is `bake-status.ts`'s one exported
-	// verb table (`Deploying` → `deploying`, `InProgress` → `checking` — the
-	// file's own header comment records why `baking` was retired from every
-	// user-facing surface in 2026-08-30; this row must not reinvent it).
-	import { bakeWord, bakeTitle } from '$lib/bake-status';
-	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import {
-		joinClauses,
 		buildGateContext,
 		blockingStory,
 		type GateContext,
@@ -111,51 +82,23 @@
 	// was Round 11's own dead code, deleted when `HeldBanner` replaced it — only
 	// `gateMark` survives from this import.
 	import { gateMark } from '$lib/components/GateRecord.svelte';
-	import { countLabel } from '$lib/disclosure';
-	import {
-		formatTimeAgo,
-		formatTimeAgoCompact,
-		formatDate,
-		detectStuck,
-		detectStuckBehind
-	} from '$lib/utils';
-	// ⭐ THE SAME THREE-STEP STUCK DERIVATION `/apps/<name>` USES (operator-walk
-	// finding 3) — see `stuckFor` below for why `CoverageSlotVM.stuck` alone is
-	// not trustworthy for the badge this page draws.
-	import { detectStuckPromotion } from '$lib/view-models/promotion';
-	// ⭐ "ABSENCE IS NOT EVIDENCE" — `status.history` is capped at
-	// `spec.versionHistoryLimit`, so a build not found there may simply have
-	// aged out. See `historyLimitNote` below (operator-walk finding 2).
-	import { historyAtLimit } from '$lib/history-marks';
+	import { formatTimeAgoCompact } from '$lib/utils';
 	import { isEventStreamHealthy } from '$lib/api/events';
 	import { now } from '$lib/stores/time';
-	import { shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
-	import { sortEnvironmentNames } from '$lib/env-order';
-	import { Spinner } from 'flowbite-svelte';
 	import {
-		ArrowRightOutline,
 		ArrowUpRightFromSquareOutline,
 		CalendarMonthSolid,
 		ChevronRightOutline,
-		CheckCircleSolid,
 		ClockOutline,
-		ClockSolid,
 		CloseCircleOutline,
 		CodeBranchOutline,
-		CodePullRequestOutline,
-		ExclamationCircleSolid,
 		FolderOutline,
 		GithubSolid,
 		GridOutline,
 		HourglassOutline,
 		LayersOutline,
-		LockOpenOutline,
 		LockSolid,
-		QuestionCircleOutline,
-		RefreshOutline,
 		RocketOutline,
-		TagOutline,
-		TagSolid,
 		UserCircleSolid
 	} from 'flowbite-svelte-icons';
 	// ⛔ LANE 9, ROUND 11 QA, ITEM 10 — `AlertPanel`/`FactList` DELETED, dead
@@ -163,23 +106,17 @@
 	// blocking fact and the fact list are `HeldBanner`'s and `BuildLists`'
 	// own components now.
 	import Card from '$lib/components/Card.svelte';
-	import CommitSummary from '$lib/components/CommitSummary.svelte';
-	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
-	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
-	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
-	// ⭐ ITEM 3 (2026-09-06 critique) — THE DRAWN CONTRACT CLAUSE, NOT A FOURTH
-	// PROSE SPELLING OF IT. `contractBlockReason` builds the same `provider →
-	// contract → required range` relation `/dependencies` and `/apps` already
-	// draw; `<BlockReason>` is the ONE renderer for it (`reason.subject` at
-	// full ink, `subjectHref` when the provider is reachable, the
-	// `[api|1.66.0] → [^1.67.0]` chip pair) so this page cannot spell the same
-	// fact a fifth way.
-	import BlockReason, { contractBlockReason } from '$lib/components/BlockReason.svelte';
+	// ⛔ ROUND 3, ITEM 5 (2026-09-10) — `ChangeVersionModal`/`ClearPinModal`/
+	// `<BlockReason>`/`contractBlockReason` ALL DELETED, dead: the change
+	// page renders no mutation UI by design, and the one live call site each
+	// of these had (`openPromote`/`openClearPin`/`primaryHold`) was itself
+	// unreachable — see the note further down where that apparatus used to
+	// live.
 	import type { Rollout, Environment } from '../../../types';
 	import { pollWhenHealthy, staleTimeWhenHealthy, ApiError } from '$lib/api/errors';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	// THE REPO, NOT THE URL IT IS FETCHED FROM — one spelling with `/versions`.
-	import { repoTitle, repoTitleFull } from '$lib/repo-title';
+	import { repoTitle } from '$lib/repo-title';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
@@ -356,26 +293,6 @@
 	 */
 	const revision = $derived(resolveRevision(ledger, urlKey));
 	const row = $derived.by<RevisionRow | null>(() => findRow(ledger, revision));
-	/** True when no service has ever run this build. Changes the words, not the shape. */
-	const neverDeployed = $derived(!!row && !!ledger && !ledger.rows.includes(row));
-	const rowIndex = $derived(ledger && row ? ledger.rows.indexOf(row) : -1);
-	const prev = $derived(ledger && rowIndex >= 0 ? (ledger.rows[rowIndex + 1] ?? null) : null);
-
-	/**
-	 * ⭐ ITEM 3 (round-8 critique) — "WHAT EACH SERVICE CALLS IT" WHEN
-	 * NOTHING CALLS IT ANYTHING. Measured live on `064b655b5159`: all three
-	 * services print the row's own sha as their `value` chip
-	 * (`NEWEST 064b655` × 3) because none of them has a differing label —
-	 * `svc.labelDiffers` (`revision-ledger.ts`'s own rule, "print the label
-	 * only when it differs from the row's own identifier") was computed but
-	 * never consulted at this call site. Guarding `value`/`valueTitle` on it
-	 * stops the repeat; once nothing differs, the card is no longer
-	 * answering "what does each service call it" — the honest question left
-	 * is "where does this build sit on each service's own ladder", so the
-	 * title and verdict follow this flag rather than staying captioned for
-	 * a fact the card no longer states.
-	 */
-	const allLabelsMatchSha = $derived(!!row && row.services.every((s) => !s.labelDiffers));
 
 	/**
 	 * Canonicalise the URL once the revision is known, so an old label link and
@@ -449,74 +366,13 @@
 		);
 		return all.filter((r) => r.repoKey === key);
 	});
+	/** ⭐ ROUND 3 RULING B — the repo page's own compact-row list, paginated
+	 *  at 30, same idiom as the index's "Your changes" block. */
+	const REPO_CHANGES_CAP = 30;
+	let repoChangesExpanded = $state(false);
 
 	// THE COVERAGE.
 	const coverage = $derived(row ? revisionCoverage(row, coarse) : null);
-	const rep = $derived.by(() => {
-		const cell = row?.services[0]?.slots[0]?.cell;
-		if (!cell) return null;
-		return {
-			ns: cell.rollout.metadata?.namespace ?? '',
-			name: cell.rollout.metadata?.name ?? '',
-			cluster: cell.sourceCluster ?? ''
-		};
-	});
-
-	/**
-	 * A CARD PER BUCKET, AND THE ICON IS THE BUCKET'S OWN MEANING.
-	 *
-	 * Five buckets, five glyphs, each one saying in a second channel what the
-	 * swatch says in colour — which is how the bar reads with no legend and no
-	 * dummy graphic. The human has rejected legends twice; a card that IS the
-	 * explanation is not one.
-	 */
-	const BUCKET_ICON: Record<CoverageKey, typeof CheckCircleSolid> = {
-		live: CheckCircleSolid,
-		// ⭐ ITEM 10 (coverage contract, 2026-09-06) — `RefreshOutline` +
-		// `tone-active`, the SAME glyph/hue pair `BuildStateMark.svelte`
-		// (the list lane's own bucket icon) already ships for `deploying` —
-		// blue is `Deploying`'s own colour product-wide, reused rather than
-		// invented for a sixth in-flight spelling.
-		deploying: RefreshOutline,
-		failing: ExclamationCircleSolid,
-		ahead: ArrowRightOutline,
-		notYet: HourglassOutline,
-		unplaceable: QuestionCircleOutline
-	};
-
-	/**
-	 * ⭐ ROUND-4B REVIEW, ITEM 4 — THE `live` HEADER'S GLYPH IS A VERDICT,
-	 * NOT A STATUS DOT. (2026-09-05, verified live on
-	 * `github.com/littlechimera/kuberik-testing/6f9524e28087`:
-	 * `hello-multi-app`'s DEV ran this exact build, pinned, two releases
-	 * behind its own newest — and `Running it now` still drew a green check
-	 * over `1 place`.) A green check says "this is the frontier"; a `live`
-	 * bucket whose every occupant is BEHIND its own service's newest is the
-	 * opposite fact and the row an operator actually has to look at, so it
-	 * earns the same neutral glyph and ink `ahead` ("Already moved on")
-	 * already uses for "not the frontier" — never a sixth spelling of that
-	 * idea. `true` (frontier, keep green) whenever no service data is
-	 * available yet, so this never flips the header before `coverage`/`row`
-	 * resolve.
-	 *
-	 * ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 3 — AND NOT WHILE ANYTHING IS STILL
-	 * DEPLOYING. `Running it now`'s green check is a claim that this build has
-	 * SETTLED here; a bake in progress elsewhere on this same build is the
-	 * identical "not done yet" fact the rank check above already earns the
-	 * neutral glyph for. Checked first, and independent of rank, so a build
-	 * that IS everyone's newest but still has one place mid-canary does not
-	 * draw a premature green check — the same defect item 2 closed for the
-	 * coverage count, one glyph over.
-	 */
-	const liveIsFrontier = $derived.by<boolean>(() => {
-		if (!coverage || !row) return true;
-		const deploying = coverage.buckets.find((b) => b.key === 'deploying');
-		if (deploying && deploying.slots.length > 0) return false;
-		const live = coverage.buckets.find((b) => b.key === 'live');
-		if (!live || live.slots.length === 0) return true;
-		const runningApps = new Set(live.slots.map((s) => s.appName));
-		return row.services.some((svc) => runningApps.has(svc.appName) && svc.rank === 0);
-	});
 
 	// ── GATE CLEAR TIMES ────────────────────────────────────────────────────
 	//
@@ -593,74 +449,6 @@
 		return out;
 	});
 
-	/**
-	 * ⭐ THE RELEASE-LINE CLAUSE, AS ITS OWN SENTENCE. (2026-09-03,
-	 * operator-walk BLOCKING item) `coverage.liveCount` of `coverage.totalCount`
-	 * answers "does this place run the revision" — the head band's job. It
-	 * says nothing about WHICH release, and folding that into the count is
-	 * the defect this whole pass exists to close: a place on an older release
-	 * sharing the revision is not "not here yet". `releaseSplit` is the
-	 * missing half, read straight off the SAME `live` bucket, and this turns
-	 * it into the sentence the head band prints under the count: *"3 of them
-	 * on 2.66.0-66; 2.67.0-67 is held in dev, staging and prod."*
-	 */
-	const releaseSplitLines = $derived(coverage ? releaseSplit(coverage) : []);
-
-	/**
-	 * ⭐ THE HEAD BAND'S OWN CLAUSE — ONE SENTENCE, NO BARE `HELD` BESIDE A
-	 * COUNT. (2026-09-03, operator-walk finding 4) `6 of 6 places running it`
-	 * sat directly above a banner titled `9f10e49 is held` next to a chip
-	 * reading `3 HELD` — true on their own terms (all six run the commit,
-	 * three of them under an older, held release of it) but unreadable as a
-	 * pair: the hero says "running", the banner says "held", and nothing ties
-	 * the two counts together. This sums `releaseSplitLines`' own `held`
-	 * lines — the same evidence the banner below is built from, never a
-	 * second count of its own — so the two can never disagree.
-	 */
-	const headBandHeldCount = $derived(
-		releaseSplitLines.filter((l) => l.held).reduce((n, l) => n + l.count, 0)
-	);
-
-	/**
-	 * ⭐ ROUND 11 OPERATOR-WALK, FINDING 1 — `releaseHeldClause`, NOT A HAND-
-	 * ROLLED "held from a newer release". This sha's held sibling is THIS
-	 * SAME COMMIT under a newer label, never a second build — see that
-	 * function's own doc comment, which is the exact wording this head
-	 * band used to get wrong ("held from a newer release" implies a
-	 * different commit exists ahead of this one; there is none).
-	 */
-	const headBandHeldClause = $derived(
-		headBandHeldCount > 0
-			? releaseSplitLines
-					.filter((l) => l.held)
-					.map(releaseHeldClause)
-					.join('; ')
-			: ''
-	);
-
-	/**
-	 * ⭐ REVISIONS-2026-09-06 ROUND 5, ITEM 2 — THE HEAD BAND NAMES THE PLACE IN
-	 * FLIGHT TOO. `8 of 9 places run this build` was silent on the ninth during
-	 * a real canary — it is neither `live` (excluded from the numerator, see
-	 * `revision-coverage.ts`'s own `classify()` doc) nor `notYet`, so the count
-	 * alone made it look absent rather than in progress. Read off the same
-	 * `deploying` bucket the bar/card already draw, never a second count.
-	 */
-	const headBandDeployingCount = $derived(
-		coverage?.buckets.find((b) => b.key === 'deploying')?.slots.length ?? 0
-	);
-
-	/**
-	 * ⭐ ROUND 11 OPERATOR-WALK, FINDING 2 — THE HERO SENTENCE NAMES A
-	 * ROLLBACK TOO. Read off the same `live` bucket the "Running it now"
-	 * card draws its own rollback chips from (`rollbackFor`), so the head
-	 * band and the card can never disagree about which places arrived here
-	 * via a rollback.
-	 */
-	const headBandRolledBackCount = $derived(
-		coverage?.buckets.find((b) => b.key === 'live')?.slots.filter((s) => !!rollbackFor(s)).length ?? 0
-	);
-
 	$effect(() => {
 		for (const s of blockedSlots) {
 			if (s.notPassingGates.length === 0 || !s.rolloutRef) continue;
@@ -673,93 +461,6 @@
 				.catch(() => {});
 		}
 	});
-
-	/**
-	 * ⭐ ITEM 1 (2026-09-06 round-7 critique) — THE BLOCKING CAUSE, DRAWN
-	 * ONCE, LEADING THE DISCLOSURE. Measured live on `9f10e494d560`: the
-	 * head-band's `2 rules in prod · 2 in staging · 1 in dev` disclosure
-	 * expanded to FIVE equal `GateRecord` entries (`KIND service contract /
-	 * RULE dependency-hello-frontend-needs-api`, `KIND promotion order /
-	 * RULE ghd-9qcnj`, …) with zero links — a dependency contract and a
-	 * promotion-order gate that clears itself once the contract does,
-	 * printed as if they were the same kind of fact. The list page's own
-	 * banner (`heldGateReason` there) already draws this correctly: the
-	 * contract leads, in prose, with an `Open <service>` action. This is
-	 * the same shape, reused rather than re-derived — `slotStories` already
-	 * carries every classified gate this page needs; a dependency gate
-	 * with a full provider/contract/have/need relation IS the current
-	 * blocker (nobody clicks anything to clear it — a person has to ship
-	 * the other service), so it is the first one found, across every
-	 * blocked place, deduped by its own id.
-	 */
-	const primaryHold = $derived.by<{
-		reason: NonNullable<ReturnType<typeof contractBlockReason>>;
-		appHref: string | null;
-		gateId: string;
-	} | null>(() => {
-		for (const { story } of slotStories) {
-			const dep = story.gates.find(
-				(g) => g.kind === 'dependency' && g.subject && g.contract && g.have && g.need
-			);
-			if (dep) {
-				return {
-					reason: contractBlockReason({
-						provider: dep.subject!,
-						contract: dep.contract!,
-						requiredVersion: dep.need,
-						providedVersion: dep.have,
-						gateName: dep.id
-					}),
-					appHref: `/apps/${encodeURIComponent(dep.subject!)}`,
-					gateId: dep.id
-				};
-			}
-		}
-		return null;
-	});
-
-	/**
-	 * ⭐ ITEM 2 (2026-09-06 round-7 critique) — THE HEADLINE NAMES THE
-	 * RELEASE AND THE SERVICE WHEN THE SHA CARRIES SEVERAL. `9f10e49 is
-	 * held` was true and unhelpful the moment the sha resolved to two
-	 * releases (`2.66.0-66`, running everywhere; `2.67.0-67`, held
-	 * everywhere) — the bare sha does not say WHICH release is the one
-	 * actually stuck. `releaseSplitLines`' own `held` line already carries
-	 * the answer (`aheadLabel`), the same evidence the (now-removed)
-	 * page-level sentence read — reused here rather than a second lookup.
-	 */
-	const bannerSubject = $derived.by(() => {
-		const apps = [...new Set(blockedSlots.map((s) => s.appName))];
-		return apps.length === 1 ? apps[0] : `${apps.length} services`;
-	});
-	const heldReleaseLabel = $derived(releaseSplitLines.find((l) => l.held)?.aheadLabel ?? null);
-
-	/**
-	 * ⭐ ROUND 11 CRAFT FINDING 7 — HELDBANNER TAKES A BARE `subject`
-	 * (it composes "{subject} is held" itself); this is what the deleted
-	 * `bannerTitle` (round 11 QA, item 10 — dead, nothing read it; `HeldBanner`
-	 * composes the same sentence from `subject` itself) used to build, minus
-	 * that suffix, so the two can never say a different subject for the
-	 * same fact.
-	 */
-	const bannerBuildSubject = $derived(
-		heldReleaseLabel ? `${bannerSubject} ${heldReleaseLabel}` : row?.short ?? ''
-	);
-	/** One `blockingStory` per DISTINCT held rollout, deduped the same way `repoHeldStories` is. */
-	const distinctBuildStories = $derived.by<BlockingStory[]>(() => {
-		const seen = new Set<string>();
-		const out: BlockingStory[] = [];
-		for (const { slot, story } of slotStories) {
-			const key = slotKey(slot);
-			if (seen.has(key)) continue;
-			seen.add(key);
-			out.push(story);
-		}
-		return out;
-	});
-	const buildHasSchedule = $derived(slotStories.some(({ story }) => story.iconKind === 'clock'));
-	/** ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 — the places `distinctBuildStories` covers, for `HeldBanner`'s own `orderClause`. */
-	const buildHeldEnvLabels = $derived([...new Set(blockedSlots.map((s) => s.envLabel))]);
 
 	/**
 	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 5 (HOIST) — `numberWord` and
@@ -788,250 +489,16 @@
 		return stories.some((s) => s.upstream.some((g) => g.kind === 'dependency' && g.have && g.need));
 	}
 
-	/**
-	 * ⭐ ITEM 2 (round-8 critique) — THE BANNER SENTENCE IS AT LEAST THE
-	 * LIST'S. Measured live: the list page's own banner for this identical
-	 * hold says `dev, staging and prod run 2.66.0-66; 2.67.0-67 is held in
-	 * all three.` (`releaseSplitSentence`, `/revisions`' own script) — it
-	 * names BOTH releases and where each one sits. This page's banner said
-	 * only `hello-frontend-app is held in dev, staging and prod.`, which
-	 * drops the running release entirely — less informative than the list
-	 * for the same fact. `releaseSplitLines` is read off the same
-	 * `revision-coverage.ts` evidence the list's own sentence uses, so the
-	 * two can never disagree; this is the identical grammar, reused rather
-	 * than re-derived; `own-view-model duplication is deliberate — this
-	 * route does not own `revision-ledger.ts`/`+page.svelte` on `/revisions`.
-	 */
-	const bannerMessage = $derived.by(() => {
-		if (!coverage || blockedSlots.length === 0) return '';
-		// ⭐ SECOND OPERATOR WALK, ITEM 3 (PAINFUL) — `releaseSplitSentence`
-		// (`revision-coverage.ts`, hoisted there round 11 item 5), not this
-		// inline `.map` over `releaseSplitLines` — the inline form flattened
-		// a rollback (see that function's own doc comment). Reads `coverage`
-		// directly rather than the already-derived
-		// `releaseSplitLines`, because it needs the raw slot each line's
-		// `envLabels` had already discarded.
-		if (releaseSplitLines.length > 0) {
-			return releaseSplitSentence(coverage);
-		}
-		// ⭐ ITEM 4 (2026-09-06 critique) — `joinClauses`, NOT A BARE `.join(', ')`.
-		// The head band's own release-split line already reads "dev, staging
-		// and prod" (`joinClauses`, imported above); this banner said "dev,
-		// staging, prod" — the same list, one comma short of the rest of the
-		// page's grammar.
-		const envs = joinClauses([...new Set(blockedSlots.map((s) => s.envLabel))].map((e) => e.toLowerCase()));
-		const apps = [...new Set(blockedSlots.map((s) => s.appName))];
-		const who = apps.length === 1 ? apps[0] : `${apps.length} services`;
-		// THE BANNER SAYS THE BLOCK AND ONLY THE BLOCK — the hero directly under
-		// it states the coverage at 24px over the bar that draws it.
-		return `${who} ${apps.length === 1 ? 'is' : 'are'} held in ${envs}.`;
-	});
-
-	// THE ONE MUTATING CONTROL, and the same wiring as before: preselect
-	// `ChangeVersionModal` on a tag `isDeployable` has already cleared. No new
-	// mutation path, no one-click promote.
-	let modalOpen = $state(false);
-	let modalRollout = $state<Rollout | null>(null);
-	let modalVersion = $state<string | null>(null);
-	let modalCluster = $state<string | undefined>(undefined);
-
-	function openPromote(slot: RevisionSlot, tag: string) {
-		modalRollout = slot.cell.rollout;
-		modalVersion = tag;
-		modalCluster = slot.cell.sourceCluster || undefined;
-		modalOpen = true;
-	}
-
-	// ⭐ ROUND-4 CRAFT REVIEW, ITEM C — CLEARING THE PIN IS THE OTHER MUTATING
-	// CONTROL ON THIS PAGE, WIRED THE SAME WAY. `ClearPinModal` is the one
-	// component the product already uses for this act (rollout detail,
-	// `/apps`, `/environments`, `RolloutGrid`) — its own doc comment records
-	// that duplicating the markup a second time is exactly how the product
-	// lost the copy once already, so this page opens THAT component rather
-	// than re-deriving a dialog.
-	let clearPinOpen = $state(false);
-	let clearPinRollout = $state<Rollout | null>(null);
-	let clearPinCluster = $state<string | undefined>(undefined);
-	let clearPinEnvLabel = $state<string | null>(null);
-
-	function openClearPin(slot: RevisionSlot, envLabel: string) {
-		clearPinRollout = slot.cell.rollout;
-		clearPinCluster = slot.cell.sourceCluster || undefined;
-		clearPinEnvLabel = envLabel;
-		clearPinOpen = true;
-	}
-
-	/**
-	 * ⭐ ROUND-4 CRAFT REVIEW, ITEM 5 — `.btn-primary` IS ASSERTED BY
-	 * CAPABILITY, NOT HARD-CODED TO SECONDARY.
-	 *
-	 * The button below has carried `.btn-secondary` since it shipped, with a
-	 * reasoned comment: *"the loudest control on a deploy surface must not be
-	 * the one that changes production … a place with an action never shares a
-	 * row, so this button always has exactly one target."* That reasoning is
-	 * about ONE ROW never holding two targets — true, and unchanged here — not
-	 * about how many such rows the PAGE can have; `notYetGroups` keys any
-	 * slot with a `promoteTag` to its own solo row precisely so several can
-	 * coexist (one per environment with a live candidate and no gate).
-	 * `lib/CLAUDE.md`'s own rule is "`.btn-primary` … at most one per page,"
-	 * so a page with three such rows may not fill all three — but the one
-	 * this branch was reviewed against genuinely has ONE: `Deploy 064b655 to
-	 * dev` was the page's only control that changes what is running, wearing
-	 * the same secondary chrome as `Cancel`. Counted here, the same way
-	 * `/apps/<name>`'s own primary was re-derived "by CAPABILITY … not
-	 * position" when its topmost row stopped being a reliable proxy for it.
-	 */
-	const deployableGroups = $derived.by<NotYetGroup[]>(() => {
-		if (!coverage) return [];
-		const bucket = coverage.buckets.find((b) => b.key === 'notYet');
-		if (!bucket) return [];
-		return notYetGroups(bucket.slots).filter((g) => g.slots.length === 1 && g.slots[0].promoteTag);
-	});
-	const singleDeployAction = $derived(deployableGroups.length === 1 ? deployableGroups[0] : null);
-
-	const commitUrl = $derived.by<string | null>(() => {
-		if (!ledger || !revision) return null;
-		if (!ledger.repoKey.startsWith('repo:')) return null;
-		const body = repoBody(ledger.repoKey);
-		if (!body.includes('/')) return null;
-		return `https://${body}/commit/${revision}`;
-	});
-
-	type BuildRelease = { label: string; createdMs: number };
-
-	/**
-	 * ⭐ ROUND-4 CRAFT REVIEW, ITEM E — PER-RELEASE `built`, WHEN A REVISION HAS
-	 * MORE THAN ONE.
-	 *
-	 * `row.createdMs` (`revision-ledger.ts`) is the MAX `createdMs` across
-	 * every release sharing this revision — right for sorting rows newest
-	 * first, wrong for naming a single build time: `9f10e49` has two releases
-	 * (`2.66.0-66` built 07-29, `2.67.0-67` built 08-31), and the bare `built 5
-	 * days ago` this used to print is true of the newer one and silently
-	 * false of the other, with no release named to tell them apart.
-	 * `revision-ledger.ts` is another lane's file, so this reads the raw
-	 * `availableReleases` directly rather than asking that module to expose
-	 * the breakdown — the same array `displayVersionForTag` above already
-	 * walks, on the same rollouts this row already carries.
-	 *
-	 * ⭐ ITEM 6 (2026-09-06 critique) — SCANS `coverage`, NOT `row.services`.
-	 * `row.services` is scoped to ONE release-line (round-4's "a row is
-	 * about one release") — measured live, `9f10e494d560`'s `row` was built
-	 * around release `2.67.0-67` (held everywhere), so its `services` never
-	 * included the rollouts actually running the sibling release
-	 * `2.66.0-66` in three places, and their `availableReleases` — the only
-	 * place that release's own `created` timestamp lives — never got
-	 * scanned. `coverage` (`revisionCoverage`, another lane's file but
-	 * already exposed to this page) carries every slot touching this
-	 * revision across EVERY bucket, so flattening it here reaches the
-	 * missing rollouts without this file guessing at `revision-ledger.ts`'s
-	 * own row-per-release grouping.
-	 */
-	const buildReleases = $derived.by<BuildRelease[]>(() => {
-		if (!row || !coverage) return [];
-		// ⭐ FOLLOW-UP (a), 2026-09-06 coordinator re-check — KEYED BY LABEL,
-		// NOT BY THE RAW TAG. Measured live on `9f10e494d560`: `hello-api-app`
-		// and `hello-frontend-app` are two SEPARATE services built off the
-		// SAME monorepo git tag (`rel-66`) — `hello-api-app`'s release prints
-		// as `1.66.0-66`, `hello-frontend-app`'s as `2.66.0-66`, distinct facts
-		// sharing one tag string. Keying the map on `rel.tag` let whichever
-		// service's `rel-66` was scanned FIRST claim that key, so the second
-		// service's own release of this commit was silently dropped —
-		// `2.66.0-66`, the release actually running in 3 places, never made it
-		// into the list. The label (`getDisplayVersion`) is what a service
-		// actually calls its own release and is what gets printed, so it is
-		// also the right identity to dedupe on.
-		const byLabel = new Map<string, BuildRelease>();
-		for (const bucket of coverage.buckets) {
-			for (const s of bucket.slots) {
-				for (const rel of s.slot.cell.rollout?.status?.availableReleases ?? []) {
-					if (rel.revision !== row.revision || !rel.created) continue;
-					const label = getDisplayVersion(rel);
-					if (byLabel.has(label)) continue;
-					const createdMs = new Date(rel.created).getTime();
-					if (Number.isNaN(createdMs)) continue;
-					byLabel.set(label, { label, createdMs });
-				}
-			}
-		}
-		// ⭐ ITEM 6 (2026-09-06 critique) — FALL BACK TO `history[].version`
-		// WHEN `availableReleases` HAS AGED THE BUILD OUT. Measured live:
-		// `c1ecfe553070` printed no `built …` line at all — `availableReleases`
-		// is a live, size-bounded OCI catalog (the provider's own image
-		// policy), and on every one of the nine rollouts that once ran this
-		// build it had scrolled the entry off by the time this page asked. The
-		// deploy that happened DID record its own `version.created`, though —
-		// `history[]` is per-rollout and durable up to `versionHistoryLimit`,
-		// not the provider's catalog window — so this is a second, independent
-		// source for the SAME fact, never a guess. Only fills labels
-		// `availableReleases` did not already answer for.
-		for (const bucket of coverage.buckets) {
-			for (const s of bucket.slots) {
-				for (const h of s.slot.cell.rollout?.status?.history ?? []) {
-					const v = h.version;
-					if (!v || v.revision !== row.revision || !v.created) continue;
-					const label = getDisplayVersion(v);
-					if (byLabel.has(label)) continue;
-					const createdMs = new Date(v.created).getTime();
-					if (Number.isNaN(createdMs)) continue;
-					byLabel.set(label, { label, createdMs });
-				}
-			}
-		}
-		return [...byLabel.values()].sort((a, b) => a.createdMs - b.createdMs);
-	});
-
-	/**
-	 * ⭐ FINDING 2 (operator sweep, 2026-09-07) — `N SERVICES` ALONE
-	 * UNDERCOUNTS THE MOMENT A SHA CARRIES A HELD SIBLING RELEASE. Measured
-	 * live on `9f10e494d560`: `This build` said `2 services` while
-	 * `buildReleases`, three lines down the same card, listed THREE rows —
-	 * `hello-frontend-app` ships this commit as both `2.66.0-66` (running)
-	 * and `2.67.0-67` (held), plus `hello-api-app`'s own release of it. A
-	 * reader who only reads the count line never learns a release split even
-	 * exists. `buildReleases` is already this file's one count of distinct
-	 * releases on the revision (its own doc comment); this only prints the
-	 * clause when it says something `row.services.length` does not — the
-	 * ordinary one-release-per-service commit never grows a `· 1 releases`
-	 * tail nobody asked for.
-	 */
-	const serviceReleaseCountLabel = $derived.by<string>(() => {
-		const services = row?.services.length ?? 0;
-		const base = `${services} service${services === 1 ? '' : 's'}`;
-		return buildReleases.length > services ? `${base} · ${buildReleases.length} releases` : base;
-	});
-
-	/**
-	 * ⭐ ITEM 6 (2026-09-06 critique) — THE SINGLE-RELEASE `built` LINE'S OWN
-	 * FALLBACK. `row.createdMs` (`revision-ledger.ts`) is computed the SAME
-	 * `availableReleases`-only way `buildReleases` used to be — so on a build
-	 * every rollout's OCI catalog has since aged out, `revision-ledger.ts`
-	 * has nothing to report either and the whole `built …` line vanished
-	 * (`c1ecfe553070`, measured live). `buildReleases[0]` now also carries
-	 * the `history[].version` fallback, so preferring it here reaches the
-	 * same durable evidence rather than asking `revision-ledger.ts` (another
-	 * lane's file) to grow the identical fallback a second time.
-	 */
-	const singleBuiltMs = $derived(buildReleases[0]?.createdMs || row?.createdMs || 0);
-
-	/**
-	 * ⭐ FOLLOW-UP (a), 2026-09-06 coordinator re-check — THE 60s "TOO CLOSE
-	 * TO BOTH TO BOTHER" GUARD WAS THE REAL REASON `c1ecfe553070` PRINTED NO
-	 * `Built …` LINE, NOT A MISSING DATA SOURCE. Measured precisely from the
-	 * live payload: `availableReleases` puts this build's `created` at
-	 * 11:18:30-46Z; the only surviving `history` entry for it deploys at
-	 * 11:19:14Z — a real, 28-44 SECOND gap (a build-then-deploy pipeline),
-	 * not the "pushed and deployed in the same instant" case the old
-	 * `> 60_000` threshold was written for. That threshold was rounding a
-	 * genuine two-step pipeline into "restates the same fact" and hiding a
-	 * fact the API plainly has. Narrowed to `> 1_000`: still skips the true
-	 * same-instant case (both fields sourced from one webhook timestamp,
-	 * sub-second apart or bit-identical), shows everything else.
-	 */
-	const builtDiffersFromDeploy = $derived(
-		!!singleBuiltMs && !!row && Math.abs(singleBuiltMs - row.lastDeployMs) > 1_000
-	);
-
+	// ⛔ ROUND 3, ITEM 5 (2026-09-10) — THE MUTATION APPARATUS THIS BLOCK USED
+	// TO HOLD (`ChangeVersionModal`/`ClearPinModal` state, `openPromote`,
+	// `openClearPin`, `deployableGroups`/`singleDeployAction`,
+	// `notYetGroups`/`NotYetGroup`/`reasonGroupKey`) WAS DEAD: nothing in the
+	// rendered template called `openPromote`/`openClearPin`, so the two
+	// modals could never open, and `singleDeployAction` (their only reader)
+	// was itself never read by anything else. Deleted, whole tree — "the
+	// change page has no mutations by design" (item 5's own ruling); a
+	// repository's OWN deploy/pin controls live on its rollout/app pages,
+	// not here.
 	/**
 	 * ⛔ THE HEIGHT-MATCH OPT-IN IS GONE (ITEM 3, 2026-09-06 round-7
 	 * critique). F9's 25%-gap heuristic still stretched `What each service
@@ -1041,243 +508,6 @@
 	 * cards); this top pair now gets the same honest rule — its own content
 	 * height, never a neighbour's.
 	 */
-
-	/**
-	 * ⭐ PER-PLACE AGE, FOR THE `live` BUCKET ONLY. (F13, 2026-09-03)
-	 *
-	 * `Running it now` used to print an environment's chip and stop —
-	 * `hello-api-app › DEV STAGING PROD` — leaving 65.9% of the card's
-	 * height-matched row empty while `This build` beside it ran to 249px of
-	 * real content. The fact was already on the wire and unused: a slot in
-	 * this bucket is CURRENTLY running the row's own revision, which by
-	 * `revision-ledger.ts`'s own `onIt = cur === revision` derivation means
-	 * `history[0]` IS that deploy — the same entry `currentKeyOf` reads to
-	 * decide `onIt` in the first place. So the age is not a new fetch or a
-	 * new field, only a read of a timestamp that was already being compared.
-	 *
-	 * Three environments running one build rarely arrived at the same
-	 * moment — DEV got it days before PROD did — so this also answers a
-	 * question the bare chip row could not: how long has EACH place actually
-	 * had it, not just the row's own single `last deployed N ago`.
-	 */
-	function slotDeployedAgo(s: CoverageSlotVM): { ago: string; iso: string } | null {
-		// ⭐ ITEM 5 (2026-09-06 critique) — THE LIST'S OWN GRAMMAR
-		// (`formatTimeAgoCompact`), NOT THE FULL-WORD FORM. This page printed
-		// `deployed 6 days ago`; `/revisions` says `Deployed 6d ago`. One
-		// spelling, product-wide.
-		const ts = s.slot.cell.rollout?.status?.history?.[0]?.timestamp;
-		return ts ? { ago: formatTimeAgoCompact(ts, $now), iso: ts } : null;
-	}
-
-	/**
-	 * ⭐ ITEM 7 (2026-09-06 round-7 critique) — "WHAT DID THIS PLACE RUN
-	 * BEFORE THIS?" HAD NO ANSWER ON AN ENV CHIP ANYWHERE ON THIS PAGE.
-	 * `history[0]` is the place's CURRENT deploy (whatever this row already
-	 * reads it as — live, held, ahead, deploying); `history[1]` is the one
-	 * immediately before it, a real timestamped record regardless of
-	 * whether it matches this row's own revision. Distinct from
-	 * `ranBeforeOf` (which searches the WHOLE history for a match to THIS
-	 * row's revision, for the service-ledger card) — this is the simpler,
-	 * always-available fact an operator asks of any single chip: what was
-	 * here immediately before what's here now, and until when.
-	 */
-	function wasOnClause(s: CoverageSlotVM): string {
-		const prev = s.slot.cell.rollout?.status?.history?.[1];
-		const prevRevision = prev?.version?.revision;
-		if (!prevRevision || !prev?.timestamp) return '';
-		return ` · was on ${shortRevision(prevRevision)} until ${formatDate(prev.timestamp)}`;
-	}
-
-	/**
-	 * ⛔ SUPERSEDED — ITEM 5 (2026-09-06 round-7 critique), measured on a
-	 * real canary (Clear pin on `hello-multi-dev`, 2m45s): this caption
-	 * printed `Deploying 064b655 · started 32s ago` under a card titled
-	 * `Deploying`, on a page whose own `h1` is already `064b655` — the sha
-	 * said three times in one screenful for no new information. Round-7
-	 * ruling 4: "In flight is one mark per row … no inserted word, no
-	 * second chip." The env chip now carries `bakeWord()` itself, inside
-	 * its own box (`BakeStatusIcon` — see the call site), so this caption
-	 * is left with exactly the one fact the chip cannot carry: since when.
-	 */
-	function deployingCaption(s: CoverageSlotVM): string {
-		const started = slotDeployedAgo(s);
-		if (started) return `started ${started.ago} ago`;
-		// Defensive fallback only — every `deploying`-bucket slot has a
-		// `history[0]` timestamp in practice (it is what put it in this
-		// bucket at all). Stay honest rather than print nothing if it does not.
-		return bakeTitle(slotBakeStatus(s.slot));
-	}
-
-	/**
-	 * ⭐ ITEM 2 (2026-09-06 critique) — ONE AGE PER ROW, WHEN EVERY PLACE
-	 * AGREES. `Running it now` on `064b655` repeated `deployed 6d ago` on
-	 * every one of three atoms in a row — the container query below forces
-	 * one atom per line under 560px, and three atoms each carrying a full
-	 * `[chip][age]` pair do not fit ABOVE 560 either once padding is spent,
-	 * so the row still stacked at a measured 591px container. Removing the
-	 * repeated fact (not widening the breakpoint) is what actually lets the
-	 * chips flow: three bare env chips fit in far less width than three
-	 * chip+age pairs. Returns the shared age only when EVERY slot in the row
-	 * has one and they all agree; a genuine split (one place newer than its
-	 * siblings) keeps each atom's own age, which is the fact worth the extra
-	 * width.
-	 */
-	function sharedAgeFor(
-		bucketKey: string,
-		slots: CoverageSlotVM[]
-	): { ago: string; iso: string } | null {
-		if (bucketKey !== 'live' || slots.length < 2) return null;
-		// ⭐ ROUND 11, FINDING 2 — A ROLLBACK NEVER FOLDS INTO THE SHARED LINE.
-		// Two places can coincidentally report the identical `ago` string
-		// while only ONE of them actually arrived there via a rollback — the
-		// shared line has no per-place slot to carry that distinction, so a
-		// rollback place always keeps its own dedicated line instead.
-		if (slots.some((s) => rollbackFor(s))) return null;
-		const ages = slots.map((s) => slotDeployedAgo(s));
-		const first = ages[0];
-		if (!first) return null;
-		return ages.every((a) => a?.ago === first.ago) ? first : null;
-	}
-
-	/** One pinned place, ready to draw as a `[PINNED][ENV]` chip pair. */
-	type PinnedPlace = { envLabel: string; theme: EnvironmentTheme | null; title: string };
-
-	/**
-	 * ⭐ PER-SERVICE ENV PINS, ON `What each service calls it`. (F13,
-	 * 2026-09-03)
-	 *
-	 * The card's row was a name, a rank chip and an `of N` — one line, done,
-	 * while its neighbour `This build` ran on for five. `spec.wantedVersion`
-	 * is already on every slot's own `rollout` (the same object `promoteTag`
-	 * reads three lines up in `revision-ledger.ts`), so a service pinned
-	 * somewhere is a fact this page already has and was not saying — and it
-	 * is directly relevant to the row it sits under: a reader looking at
-	 * `hello-api-app · NEWEST · of 1` benefits from knowing PROD will not
-	 * move off it even though nothing is holding it, because it is pinned.
-	 *
-	 * ⭐ ROUND-4B REVIEW, ITEM 2 — RETURNS A CHIP-READY RECORD NOW, NOT A
-	 * BARE STRING. The row used to say `Pinned in DEV — automatic updates
-	 * are off there`, a second spelling of the ONE canonical pin sentence
-	 * this file already prints, unabbreviated, in `reasonsFor`'s pin branch
-	 * two hundred pixels below. Prose is gone from this row; the theme and
-	 * the canonical sentence (per place, with THAT place's own pinned tag —
-	 * `displayVersionForTag`, the same lookup `reasonsFor` uses) travel with
-	 * the label so the render side draws chips and puts the full sentence on
-	 * `title` instead of retyping a shorter one.
-	 */
-	function pinnedEnvsOf(svc: RevisionService): PinnedPlace[] {
-		return svc.slots
-			.filter((s) => s.cell.rollout?.spec?.wantedVersion)
-			.map((s) => {
-				const pinnedTo = s.cell.rollout!.spec!.wantedVersion!;
-				const display = displayVersionForTag(s.cell.rollout, pinnedTo) || pinnedTo;
-				return {
-					// ⭐ ROUND-4 CRAFT REVIEW, ITEM D — THE ENVIRONMENT'S OWN LABEL,
-					// NOT ITS RAW `envName`. `RevisionSlot.envName` is the rollout's
-					// own name (`hello-world-staging`), not the environment tier
-					// every chip on this page prints (`STAGING`) — `shortEnvLabel`
-					// off the slot's own theme is the same lookup
-					// `envSlots`/`Chip`'s `label={s.envLabel}` resolve through
-					// elsewhere on this page.
-					envLabel: (shortEnvLabel(s.cell.theme) || s.envName).toUpperCase(),
-					theme: s.cell.theme,
-					title: `Pinned to ${display} — automatic deploys are paused until the pin is cleared.`
-				};
-			});
-	}
-
-	/**
-	 * ⭐ "WHERE DID THIS BUILD RUN BEFORE?" HAD NO ANSWER. (operator-walk
-	 * finding 2) `status.history[0]` is the environment's CURRENT deploy;
-	 * everything after it is a real, timestamped record of what this exact
-	 * place ran previously, and this page never read past index 0. A place
-	 * that has since moved on (or been rolled further back) still carries the
-	 * evidence that this revision was here — `history[i].version.revision` is
-	 * the same key `resolveRevision`/`onIt` use to decide identity everywhere
-	 * else on this page, so this cannot name a match the rest of the page
-	 * would disagree with.
-	 *
-	 * ⭐ FOLLOW-UP (b), 2026-09-06 coordinator re-check — SKIPS `onRevision`,
-	 * NOT JUST `onIt`. Measured live: `hello-frontend-app` printed `Ran
-	 * before in DEV · 2d ago` directly under `Held — still running
-	 * 2.66.0-66` — DEV is CURRENTLY running this commit (under the sibling
-	 * release), so "ran before" is a contradiction, not a second fact. Round
-	 * 5's own rule is that coverage counts the REVISION: a place on ANY
-	 * release of it is running it now, not merely "before". `onIt` alone
-	 * (the row's own EXACT release) is too narrow a guard now that `live`
-	 * itself means `onRevision`, not `onIt`.
-	 */
-	function ranBeforeOf(svc: RevisionService): { envLabel: string; timestamp: string }[] {
-		if (!revision) return [];
-		const out: { envLabel: string; timestamp: string }[] = [];
-		for (const s of svc.slots) {
-			if (s.onRevision) continue;
-			const history = s.cell.rollout?.status?.history ?? [];
-			// index 0 is the CURRENT deploy, already excluded by `!s.onRevision` above
-			// when it matches — start the search one entry back regardless, so a
-			// stale `onIt` never double-counts the running deploy as "before."
-			const match = history.slice(1).find((h) => h.version?.revision === revision);
-			// ⭐ ROUND-4 CRAFT REVIEW, ITEM D — SEE `pinnedEnvsOf`'s OWN NOTE, THE
-			// IDENTICAL DEFECT: `s.envName` printed `HELLO-WORLD-STAGING`, not
-			// `STAGING`, the label every other chip on this page prints.
-			if (match?.timestamp)
-				out.push({
-					envLabel: (shortEnvLabel(s.cell.theme) || s.envName).toUpperCase(),
-					timestamp: match.timestamp
-				});
-		}
-		return out;
-	}
-
-	/**
-	 * ⭐ ABSENCE FROM `status.history` IS NOT EVIDENCE IT NEVER RAN THERE.
-	 * (operator-walk finding 2) `spec.versionHistoryLimit` bounds the array
-	 * this page just searched — `historyAtLimit` (`lib/history-marks.ts`,
-	 * already the product's one definition of "this array may have been
-	 * truncated") is true once a rollout has deployed at least that many
-	 * times, and past that point the oldest entry is evicted on every new
-	 * deploy.
-	 *
-	 * ⭐ ROUND-4B REVIEW, ITEM 3 — PER SERVICE, BUT NO LONGER PRINTED PER
-	 * SERVICE. (2026-09-05, verified live: `6f9524e28087` printed this
-	 * sentence three times, once under each of `hello-multi-app`'s three
-	 * services, byte-identical each time.) The caveat is about the card's
-	 * data source, not about any one service, so it is still computed here —
-	 * `cardHistoryLimitNote` below calls this once per service to find
-	 * whether ANY of them tripped it — but it is drawn once, as the card's
-	 * footer. See that function for the render-side half of this split.
-	 */
-	function historyLimitNote(svc: RevisionService): string | null {
-		const limited = svc.slots.find((s) => !s.onIt && historyAtLimit(s.cell.rollout));
-		if (!limited) return null;
-		const limit = limited.cell.rollout?.spec?.versionHistoryLimit ?? 10;
-		// ⭐ ROUND-4 CRAFT REVIEW, ITEM 6 — THE LIST PAGE'S OWN WORDING, NOT A
-		// SECOND SPELLING OF IT. `/revisions`' `HISTORY_LIMIT_NOTE` says this
-		// once, product-wide; this file cannot import it (`revision-ledger.ts`'s
-		// lane owns the list route this constant lives in), so the words are
-		// copied verbatim rather than re-authored — a second wording of the
-		// same caveat is exactly the sprawl the vocabulary passes exist to cut.
-		return `History keeps the last ${limit} deploys per service; a build deployed earlier is not recorded.`;
-	}
-
-	/**
-	 * ⭐ ROUND-4B REVIEW, ITEM 3 — THE CARD'S OWN FOOTER LINE, SAID ONCE.
-	 * `historyLimitNote` is per-service by construction (it reads that
-	 * service's own `spec.versionHistoryLimit`), but the sentence it returns
-	 * names no service — it is a caveat about truncated history in general —
-	 * so printing it once per service that happened to hit the limit was
-	 * pure repetition, not three different facts. This reads every service
-	 * on the row and stops at the first hit: the card draws the sentence
-	 * only when it is true of AT LEAST ONE of them.
-	 */
-	function cardHistoryLimitNote(): string | null {
-		if (!row) return null;
-		for (const svc of row.services) {
-			const note = historyLimitNote(svc);
-			if (note) return note;
-		}
-		return null;
-	}
 
 	/**
 	 * ⭐ FINDING 1's SECOND LOCATION: THE PER-PLACE REASON ROW. (coordinator
@@ -1290,112 +520,6 @@
 		for (const { slot, story } of slotStories) map.set(slotKey(slot), story);
 		return map;
 	});
-
-	/** Where a place actually lives. Never `/apps/<name>` — see the header block. */
-	function placeHref(s: CoverageSlotVM): string {
-		if (!s.rolloutRef) return `/apps/${encodeURIComponent(s.appName)}`;
-		return rolloutPath(
-			s.rolloutRef.cluster || localClusterName,
-			s.rolloutRef.namespace,
-			s.rolloutRef.name
-		);
-	}
-
-	/**
-	 * ⭐ ONE STUCK DERIVATION, THE SAME ONE `/apps/<name>` USES. (operator-walk
-	 * finding 3) `CoverageSlotVM.stuck` (`revision-coverage.ts`) runs
-	 * `detectStuckBehind` with no `GateContext`, so a promotion/dependency gate
-	 * CORRECTLY refusing a candidate has no way to classify as anything but
-	 * `unknown` — and `unknown` still counts as stuck. Measured live:
-	 * `hello-multi-app` read `STAGING [STUCK] PROD [STUCK]` on this page while
-	 * both rollouts sat at rank 0, `Ready`, every gate `passing: true` — the
-	 * exact defect `lib/CLAUDE.md`'s "a gate correctly refusing a candidate is
-	 * not a stoppage" rule exists to kill, just not closed here yet.
-	 *
-	 * This page already builds `gateContext` for the banner above, so the fix
-	 * is to feed it through the same three-step derivation `/apps/<name>`'s own
-	 * `stuckFor` uses — own bake timeout, then a classified promotion stuck,
-	 * then peer staleness guarded by `refusedNotStalled` — not a sixth,
-	 * page-local spelling of "stuck." `CoverageSlotVM.stuck` itself is left
-	 * alone (`revision-coverage.ts` is another lane's file); this page just
-	 * stops trusting it for the badge it draws.
-	 */
-	function refusedNotStalled(story: BlockingStory): boolean {
-		return story.blocked && story.person.length === 0 && story.unknown.length === 0;
-	}
-
-	/**
-	 * ⭐ ITEM 7 (2026-09-06 critique) — TRANSIENT STUCK, WHEN THE CONTROLLER
-	 * HAS NOT ACTED YET. Measured live: one second after Clear pin, the
-	 * place read `2 BEHIND · STUCK · Ready to deploy` — the dashboard's own
-	 * data was still the pre-clear snapshot (the mutation lands, but the
-	 * controller has not reconciled it yet), and every downstream check
-	 * below ran on stale evidence. Round-5 ruling 9: *"a place whose
-	 * generation the controller has not observed yet (or that changed in
-	 * the last minutes) is queued/deploying; STUCK needs eligibility plus
-	 * stillness."*
-	 *
-	 * The precise signal named in that ruling — `metadata.generation !==
-	 * status.observedGeneration` — is NOT on the wire: the dashboard's own
-	 * condensed `KubernetesMetadata` type carries no `generation` field, and
-	 * `RolloutStatus` has no top-level `observedGeneration` (only individual
-	 * `conditions[].observedGeneration`, which is a different question per
-	 * condition, not one comparable number). Falls back, as the ruling
-	 * allows, to the newest history timestamp: a place that changed in the
-	 * last 5 minutes has not held still long enough to call STUCK, whatever
-	 * the three checks below would otherwise say.
-	 */
-	function recentlyChanged(rollout: Rollout | null | undefined): boolean {
-		const ts = rollout?.status?.history?.[0]?.timestamp;
-		if (!ts) return false;
-		const ageMs = $now.getTime() - new Date(ts).getTime();
-		return ageMs >= 0 && ageMs < 5 * 60 * 1000;
-	}
-
-	function stuckFor(s: CoverageSlotVM) {
-		const rollout = s.slot.cell.rollout;
-		if (recentlyChanged(rollout)) return null;
-		const own = detectStuck(rollout, { now: $now });
-		if (own) return own;
-		const promo = detectStuckPromotion(rollout, { now: $now, gateContext });
-		if (promo) return promo;
-		const story = blockingStory(rollout, gateContext, { place: s.envLabel, now: $now });
-		if (refusedNotStalled(story)) return null;
-		const peers = (row?.services.find((sv) => sv.appName === s.appName)?.slots ?? []).filter(
-			(p) => p.envName !== s.envName
-		);
-		for (const peer of peers) {
-			const r = detectStuckBehind(rollout, peer.cell.rollout, peer.envName, { now: $now });
-			if (r) return r;
-		}
-		return null;
-	}
-
-	/** The one predicate the chip-mark row actually renders. */
-	function isStuck(s: CoverageSlotVM): boolean {
-		return !!stuckFor(s);
-	}
-
-	/**
-	 * ⭐ ROUND-4B REVIEW, ITEM 1 — THE SAME PIN CHIP THE LIST ROW CARRIES,
-	 * HERE TOO. (2026-09-05, verified live on
-	 * `github.com/littlechimera/kuberik-testing/6f9524e28087`:
-	 * `hello-multi-app`'s `Running it now` card printed `[DEV] deployed 1
-	 * day ago` with no sign DEV is pinned to this exact build — the fact
-	 * was stated only in `What each service calls it`, 300px up, and
-	 * `/revisions`' own row already carries a `pinned` chip for the
-	 * identical fact via `lineState`.) Same role and label as that chip
-	 * (`role="unranked"`, `label="pinned"`), rendered as a loose mark inside
-	 * the row's `.chip-mark` group, the same slot `STUCK` already uses. The
-	 * canonical sentence rides on `title` — never a second prose spelling of
-	 * it beside the chip.
-	 */
-	function pinnedChipTitle(s: CoverageSlotVM): string | null {
-		const pinnedTo = s.slot.cell.rollout?.spec?.wantedVersion;
-		if (!pinnedTo) return null;
-		const display = displayVersionForTag(s.slot.cell.rollout, pinnedTo) || pinnedTo;
-		return `Pinned to ${display} — automatic deploys are paused until the pin is cleared.`;
-	}
 
 	/**
 	 * ⭐ ROUND 11 OPERATOR-WALK, FINDING 2 — A HELD PLACE WHOSE HISTORY SHOWS
@@ -1655,224 +779,6 @@
 			});
 		}
 		return out;
-	}
-
-	/**
-	 * ⭐ PLACES HELD FOR THE SAME REASON ARE ONE ROW, NOT THIRTEEN.
-	 *
-	 * Found by running the page against a 13-region fan-out under `MOCK_API=1`:
-	 * `Not here yet` printed one row per place, and thirteen of them carried the
-	 * byte-identical sentence *"Skipped — this place runs 7c14e2a, and newer
-	 * builds are ahead of this one"*. That is the furniture the good pages never
-	 * draw — a graphic (or a sentence) that is the same on every row carries no
-	 * information after the first one, and it buried the two rows that DID have
-	 * their own story.
-	 *
-	 * The bucket's design note said each place here has its own story, and that
-	 * is true of a 3-environment app and false at 13 regions. So the grouping is
-	 * on the STORY, not on a count: places whose reasons and gate names are
-	 * identical collapse into one row whose environments are wrapped chips.
-	 *
-	 * A PLACE WITH AN ACTION NEVER GROUPS. `promoteTag` means a button, the
-	 * button names its environment, and two buttons cannot share a row without
-	 * the reader inferring the target from position — so those keep one row
-	 * each, which is also where the reader most needs the room.
-	 */
-	type NotYetGroup = { key: string; appName: string; slots: CoverageSlotVM[]; reasons: Reason[] };
-
-	/**
-	 * ⭐ ITEM 3 (2026-09-06 critique) — A DRAWN REASON GROUPS ON THE RELATION,
-	 * NOT ON THE GATE ID. dev/staging/prod each carry their own
-	 * `RolloutDependency` object for the identical upstream cause, so keying
-	 * on `r.gates` (the raw id) never folded them — three rows, one sentence
-	 * each, byte-identical. Keying on `subject|contract|need` instead means
-	 * every place this exact contract bites folds into one row regardless of
-	 * which generated gate published it, which is what lets the row draw the
-	 * clause once.
-	 *
-	 * ⛔ A NAMED FUNCTION, NOT A TERNARY INLINE INSIDE THE OUTER TEMPLATE
-	 * LITERAL (`lib/CLAUDE.md`: "no nested template literals in a `.ts` fact
-	 * value" — `lib/messages/scan.ts`'s regex reads the fragment up to the
-	 * first line break, so a multi-line ternary nested inside `${…}` came
-	 * back to the census as the unreadable tail `) .join('§')}`). Building
-	 * the part first keeps every template literal here single-line.
-	 */
-	function reasonGroupKey(r: Reason): string {
-		if (r.drawn) return `drawn:${r.drawn.subject}|${r.drawn.contract}|${r.drawn.need}`;
-		return `${r.text}·${r.gates.join(',')}`;
-	}
-
-	function notYetGroups(slots: CoverageSlotVM[]): NotYetGroup[] {
-		const out: NotYetGroup[] = [];
-		for (const s of slots) {
-			const reasons = reasonsFor(s);
-			const key = s.promoteTag
-				? `solo:${s.appName}/${s.envName}`
-				: `${s.appName}|${reasons.map(reasonGroupKey).join('§')}`;
-			let g = out.find((o) => o.key === key);
-			if (!g) {
-				g = { key, appName: s.appName, slots: [], reasons };
-				out.push(g);
-			}
-			g.slots.push(s);
-		}
-		return out;
-	}
-
-	/**
-	 * A BUCKET'S SLOTS, GROUPED TWICE — BY SERVICE, THEN BY WHAT EACH PLACE IS
-	 * ACTUALLY RUNNING. Grouping by SERVICE makes criterion 2 structural;
-	 * grouping again by RUNNING BUILD is what lets `Moved ahead` say `now on
-	 * 9f10e49` once per service instead of once per environment. Environments
-	 * become CHIPS THAT WRAP rather than rows that stack, so a 13-region service
-	 * costs one wrapped line instead of thirteen rows.
-	 */
-	type RunsGroup = { runs: string | null; slots: CoverageSlotVM[] };
-	type ServiceGroup = { appName: string; runs: RunsGroup[] };
-
-	function groupSlots(slots: CoverageSlotVM[]): ServiceGroup[] {
-		const out: ServiceGroup[] = [];
-		for (const s of slots) {
-			let g = out.find((o) => o.appName === s.appName);
-			if (!g) {
-				g = { appName: s.appName, runs: [] };
-				out.push(g);
-			}
-			let r = g.runs.find((o) => o.runs === s.runs);
-			if (!r) {
-				r = { runs: s.runs, slots: [] };
-				g.runs.push(r);
-			}
-			r.slots.push(s);
-		}
-		return out;
-	}
-
-	/**
-	 * ⭐ ROUND 11 r11c ITEM 4 — ONE GRID COLUMN PER ENVIRONMENT, SHARED BY
-	 * EVERY ROW IN THE BUCKET. Measured live at 1024: `STAGING` sat at x=443
-	 * on `hello-api-app`'s row and x=641 on `hello-frontend-app`'s — each
-	 * `.rev-group-row` was an independent `flex-wrap` packing its own atoms
-	 * left to right, so the SAME environment landed wherever the PRECEDING
-	 * atom's own width (which differs row to row — a rolled-back place's
-	 * atom carries an extra badge and its own age, an ordinary one does not)
-	 * happened to end. `envColumnsFor` is the bucket-wide environment
-	 * universe, sorted dev → staging → prod (`sortEnvironmentNames`, the
-	 * product's one pipeline order); every row's OWN grid (`.rev-place-row`,
-	 * below) shares the SAME `grid-template-columns` built from it, and
-	 * every atom is placed by environment IDENTITY (`envColumnLine`), not by
-	 * DOM position — a row missing an environment simply leaves that column
-	 * empty rather than shifting everything after it.
-	 *
-	 * ⛔ `CSS subgrid` WAS THE FIRST DRAFT AND MEASURED BROKEN. The intent
-	 * was `.rev-place-row` adopting the `<ul>`'s own tracks so every column
-	 * sizes to the widest content any row puts in it, coordinated across
-	 * rows for free — clean in theory, but the live Chromium build behind
-	 * this dev server resolved the PARENT's own `max-content` columns to
-	 * `0px` (nothing propagated up through the subgrid boundary) while each
-	 * `<li>` independently resolved a DIFFERENT, unrelated width for the
-	 * "same" column (140px on one row, 127px on the sibling) — measured via
-	 * `getComputedStyle` on both the `<ul>` and each `<li>`, not a guess.
-	 * FIXED-length columns sidestep the whole negotiation: every row's own
-	 * grid, given the identical literal template string, resolves
-	 * IDENTICALLY with no cross-row coordination required at all.
-	 */
-	function envColumnsFor(slots: CoverageSlotVM[]): string[] {
-		return sortEnvironmentNames([...new Set(slots.map((s) => s.envLabel))]);
-	}
-
-	/**
-	 * `160px` (name) then one FIXED-width track per environment, then the
-	 * trailing fact's own flexible track. `145px` holds an ordinary env chip
-	 * (`PROD`, ~40px) on one line; a chip carrying its own age suffix
-	 * (`STAGING deployed 11d ago`, ~166px measured) or the rare compound
-	 * case (a rolled-back place's badge plus its own age, ~235px measured)
-	 * wraps onto a second line within its own cell instead of overflowing
-	 * into the next column — see `.rev-env-atom`'s own `flex-wrap: wrap`.
-	 *
-	 * ⛔ MEASURED, NOT GUESSED, AND NARROWER THAN THE FIRST DRAFT (`170px`).
-	 * At 170px/env, three environments plus the 160px name column and four
-	 * 12px gaps already consumed 718 of a 751px content width at 1024 (the
-	 * odd-card full-span rule does not fire here — this bucket card shares
-	 * `.rev-buckets`' row with none other, but the row itself is still
-	 * `.rev-buckets`' own single track at this width), leaving the trailing
-	 * `minmax(0, 1fr)` column 33px — not enough for `on 2.66.0-66 [HELD]`
-	 * (129px on one line, measured), and it visibly overlapped the PROD
-	 * atom's own age text. `minmax(90px, 1fr)` on the trail column (below)
-	 * gives it a real floor — `held`/`on 2.66.0-66` each fit that alone, and
-	 * the trail's own `flex-wrap` (unchanged) still lets the two share a
-	 * line when there is room.
-	 */
-	function envGridTemplate(envCols: string[]): string {
-		return `minmax(160px, max-content) ${envCols.map(() => '145px').join(' ')} minmax(90px, 1fr)`;
-	}
-
-	/** 1-based grid line for this environment's OWN column — line 1 is the
-	 *  name column, so environment index 0 starts at line 2. Falls back to
-	 *  the trailing column if somehow asked for an environment the bucket
-	 *  itself never named (defensive; every slot's `envLabel` comes from the
-	 *  same set `envColumnsFor` built). */
-	function envColumnLine(envCols: string[], envLabel: string): number {
-		const idx = envCols.indexOf(envLabel);
-		return idx >= 0 ? idx + 2 : envCols.length + 2;
-	}
-
-	/**
-	 * ⛔ `NEWEST` ON A RELEASE DEPLOYED NOWHERE IS THE SAME LIE AS `NEWEST` ON
-	 * ONE DEPLOYED EVERYWHERE. (2026-09-03, operator-walk BLOCKING item)
-	 * `svc.rank === 0` is true of the row's own headline release whether or
-	 * not anyone has actually taken it — it is a fact about the LADDER, not
-	 * about deployment. `NEWEST` beside `2.67.0-67` here read exactly like
-	 * `NEWEST` beside `1.66.0-66` on an ordinary, fully-arrived row: one badge,
-	 * two different meanings, and nothing on the card said which one this
-	 * was. `heldNewest` is true only when the coverage bar's OWN `live`
-	 * bucket agrees nobody is on this exact release yet (`onOwnRelease` —
-	 * same field the release-line clause above reads), so the chip and the
-	 * clause cannot disagree about the same fact.
-	 */
-	function heldNewest(svc: RevisionService): boolean {
-		if (!coverage || svc.rank !== 0) return false;
-		const live = coverage.buckets.find((b) => b.key === 'live');
-		const mine = live?.slots.filter((s) => s.appName === svc.appName) ?? [];
-		return mine.length > 0 && mine.every((s) => !s.onOwnRelease);
-	}
-
-	/**
-	 * ⭐ WHAT A `held` SERVICE ROW ACTUALLY RUNS, ON THE SAME ROW. (2026-09-03,
-	 * operator-walk finding 4) `What each service calls it` printed `HELD
-	 * 2.67.0-67` and stopped; forty pixels down, `Running it now` printed the
-	 * SAME service on `2.66.0-66` — true, but reachable only by reading two
-	 * cards and holding both in mind at once, which one live read out loud as
-	 * a contradiction. This reads the identical `live` bucket `heldNewest`
-	 * already checks, so the two can never name different releases. `null`
-	 * when the places running it disagree on WHAT they run — a genuine split
-	 * is not sayable as one label, and `DESIGN.md` forbids naming half of it.
-	 */
-	function runningLabelFor(svc: RevisionService): string | null {
-		if (!coverage) return null;
-		const live = coverage.buckets.find((b) => b.key === 'live');
-		const mine = live?.slots.filter((s) => s.appName === svc.appName && !s.onOwnRelease) ?? [];
-		if (mine.length === 0) return null;
-		const runs = new Set(mine.map((s) => s.runs).filter((r): r is string => Boolean(r)));
-		return runs.size === 1 ? [...runs][0] : null;
-	}
-
-	function rankChipFor(svc: RevisionService): {
-		role: 'newest' | 'rank' | 'diverged' | 'held';
-		label: string;
-	} | null {
-		const r = rankSentence(svc);
-		if (!r) return null;
-		// ⛔ THE WORD COMES FROM `rankLabel`, NOT FROM THIS FILE. (2026-09-01)
-		// It said `diverged` — git's word for two branches — while `/apps`,
-		// `/environments` and `/envs/*` all said `unreleased`, which is the
-		// fact: this build is on no environment's release list. One fact, one
-		// spelling, and it is now READ from the product's one formatter so
-		// this call site cannot drift again. Same `diverged` Chip ROLE, same
-		// colour value; only the string moves.
-		if (svc.diverged) return { role: 'diverged', label: rankLabel({ kind: 'diverged' }) };
-		if (heldNewest(svc)) return { role: 'held', label: 'held' };
-		return { role: svc.rank === 0 ? 'newest' : 'rank', label: r.rank };
 	}
 
 	/* ════════════════════════════════════════════════════════════════════
@@ -2436,14 +1342,16 @@
 
 	/**
 	 * ⛔ FIX PASS ITEM 7, 2026-09-10 — READS `pr-pipeline.ts`'s OWN COUNTS
-	 * NOW (`rolloutsTotal`/`rolloutsWithBuild`/`rolloutsLive`, ruling 3's
-	 * additive fields), not a second hand-rolled `flatMap` over
-	 * `changeVm.services` computed here. "N of M rollouts have a build of
-	 * this change · live in K" — a build-progress fact (N of M), not the
-	 * "would get it" framing the old wording used, which only ever counted
-	 * M and could not say how many of them actually have it yet. */
+	 * NOW (`rolloutsTotal`/`rolloutsLive`, ruling 3's additive fields), not a
+	 * second hand-rolled `flatMap` over `changeVm.services` computed here.
+	 *
+	 * ⭐ ROUND 3, ITEM 5 (2026-09-10) — "DEPLOYED TO N OF M ROLLOUTS", NEVER
+	 * "HAVE THIS BUILD". `rolloutsLive` is the only one of `pr-pipeline.ts`'s
+	 * three counts that means "deployed" — `rolloutsWithBuild` (deleted here)
+	 * counted a held/queued/rolled-back rollout as if the change had already
+	 * shipped there, which is exactly the false claim this ruling retires.
+	 */
 	const changeRolloutsTotal = $derived(changeVm?.rolloutsTotal ?? 0);
-	const changeRolloutsWithBuild = $derived(changeVm?.rolloutsWithBuild ?? 0);
 	const changeRolloutsLive = $derived(changeVm?.rolloutsLive ?? 0);
 
 	/**
@@ -2750,15 +1658,26 @@
 								⭐ ROUND 2, R2.3 — "THE GRID GETS A CARD." Was two bare
 								`<p>` sentences ("N of M rollouts have a build…", "Not
 								built yet for…") floating above the grid — a titled card
-								is this product's unit for an answer, and the "3 of 15
-								have this build" figure is exactly that answer, so it is
-								the card's own `verdict` rollup now, not prose above it.
+								is this product's unit for an answer, and "deployed to 3
+								of 15 rollouts" is exactly that answer, so it is the
+								card's own `verdict` rollup now, not prose above it.
+
+								⭐ ROUND 3, ITEM 5 (2026-09-10) — "DEPLOYED" MEANS `live`,
+								NEVER "HAVE THIS BUILD". `rolloutsWithBuild` counts every
+								rollout that carries a RELEASE of this change somewhere in
+								its own history/candidates — held, queued, rolled back, or
+								actually running it all count. "Have this build" claimed all
+								of those as if the change were already deployed there, which
+								is false for a held/queued rollout. `rolloutsLive` (already
+								computed by `pr-pipeline.ts`, ruling 3) is the one count that
+								actually means "deployed": the change is the frontier's
+								`live` cell right now.
 							-->
 							<div class="mb-4">
 								<Card
 									icon={GridOutline}
 									title="Every rollout"
-									verdict={`${changeRolloutsWithBuild} of ${changeRolloutsTotal} have this build`}
+									verdict={`deployed to ${changeRolloutsLive} of ${changeRolloutsTotal} rollouts`}
 									padded={false}
 								>
 									<div class="px-4 py-3">
@@ -3121,78 +2040,54 @@
 
 		{#if repoChangeRows.length > 0}
 			<!--
-				⭐ ROUND 2, R2.4 — "CHANGES IN THIS REPOSITORY" ADOPTS THE INDEX'S
-				OWN TWO SECTIONS, COMPACT. Supersedes the fix-pass's single
-				`Card` wrapping ten `ChangeRow`s (byte for byte the defect the
-				round's own intro names: six repeats of "held in dev on
-				hello-api-app"). `splitChangeSections`/`groupByDay` are LA's own
-				exports (`changes.ts`) — this section reads the SAME functions
-				the index runs, never a second fold of the identical feed.
+				⭐ ROUND 3 RULING B — "THAT REPOSITORY'S CHANGES AS COMPACT ROWS
+				(PAGINATED)". Supersedes round 2's own two sections
+				(`splitChangeSections`'s "Not everywhere yet"/"Live everywhere"
+				card-vs-line split) — the human's own complaint, twice: *"again
+				too verbose showing every environment and service"*. ONE flat,
+				stuck-first list of `ChangeLine` rows (Home's own compact-row
+				grammar — no landing grid, no per-service cells; the grid lives
+				on the change page only), paginated at 30, above the round-11
+				ops content untouched below it.
 
-				Landmark order (R2.4's own pin): `<repo>` → `Not everywhere yet`
-				→ `Live everywhere` → `What each service runs` → … — this whole
-				block sits exactly where the superseded Card did, so nothing
-				below it moves.
+				Landmark order (unchanged): `<repo>` → `Changes` →
+				`What each service runs` → … — this section sits exactly where
+				the superseded two-section block did.
 			-->
-			{@const repoSections = splitChangeSections(repoChangeRows)}
-			{@const repoNotEverywhereShown = repoSections.notEverywhere.slice(0, 4)}
-			{@const repoLiveShown = repoSections.liveEverywhere.slice(0, 8)}
-			{@const repoLiveDayGroups = groupByDay(repoLiveShown, (r) => r.mergedAt, coarse)}
-			{@const repoAllChangesHref = `/changes?repo=${encodeURIComponent(`${repoChangesOwnerRepo?.owner}/${repoChangesOwnerRepo?.repo}`.toLowerCase())}`}
-			{@const repoSomeStuck = repoSections.notEverywhere.some((r) => r.verdictTone === 'held')}
-
-			{#if repoSections.notEverywhere.length > 0}
-				<section class="mb-8">
-					<div class="mb-3 flex items-center gap-2">
-						<span
-							aria-hidden="true"
-							class="h-[5px] w-[5px] rounded {repoSomeStuck ? 'bg-amber-500' : 'bg-gray-400'}"
-						></span>
-						<h2 class="text-base font-semibold text-gray-900 dark:text-white">Not everywhere yet</h2>
-						<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoSections.notEverywhere.length}</span>
-						<span class="text-xs text-gray-500 dark:text-gray-400">in this repository</span>
-					</div>
-					<div class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]">
-						{#each repoNotEverywhereShown as row (row.href)}
-							<ChangeCard {row} now={coarse} />
-						{/each}
-					</div>
-					<a href={repoAllChangesHref} class="nav-link mt-3 inline-flex items-center gap-1">
-						All {repoChangeRows.length} changes in {repoTitle(repoPageLedger.repoLabel)}
-						<ChevronRightOutline class="h-3.5 w-3.5" />
-					</a>
-				</section>
-			{/if}
-
-			{#if repoSections.liveEverywhere.length > 0}
-				<section class="mb-8">
-					<div class="mb-3 flex items-center gap-2">
-						<span aria-hidden="true" class="h-[5px] w-[5px] rounded-full bg-green-500"></span>
-						<h2 class="text-base font-semibold text-gray-900 dark:text-white">Live everywhere</h2>
-						<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoSections.liveEverywhere.length}</span>
-					</div>
-					{#each repoLiveDayGroups as group (group.label)}
-						<div class="mt-3 mb-1 flex items-center gap-2 first:mt-0">
-							{#if group.label === 'Today'}
-								<ClockSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-							{:else}
-								<CalendarMonthSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-							{/if}
-							<span class="t-label text-gray-500 dark:text-gray-400">{group.label}</span>
-							<span
-								aria-hidden="true"
-								class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"
-							></span>
-							<span class="t-code-sm text-gray-500 dark:text-gray-400">{group.rows.length}</span>
-						</div>
-						<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-							{#each group.rows as row (row.href)}
-								<ChangeLine {row} now={coarse} />
-							{/each}
-						</ul>
+			{@const repoNotEverywhereCount = repoChangeRows.filter((r) => r.notEverywhere).length}
+			{@const repoChangesShown = repoChangesExpanded
+				? repoChangeRows
+				: repoChangeRows.slice(0, REPO_CHANGES_CAP)}
+			{@const repoChangesHiddenCount = repoChangeRows.length - repoChangesShown.length}
+			<section class="mb-8">
+				<div class="mb-3 flex items-center gap-2">
+					<span
+						aria-hidden="true"
+						class="h-[5px] w-[5px] shrink-0 rounded {repoNotEverywhereCount > 0
+							? 'bg-amber-500'
+							: 'bg-gray-400'}"
+					></span>
+					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Changes</h2>
+					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoChangeRows.length}</span>
+					{#if repoNotEverywhereCount > 0}
+						<span class="text-xs text-gray-500 dark:text-gray-400"
+							>{repoNotEverywhereCount} not everywhere yet</span
+						>
+					{/if}
+				</div>
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each repoChangesShown as row (row.href)}
+						<ChangeLine {row} now={coarse} />
 					{/each}
-				</section>
-			{/if}
+				</ul>
+				{#if !repoChangesExpanded && repoChangesHiddenCount > 0}
+					<button
+						type="button"
+						class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+						onclick={() => (repoChangesExpanded = true)}>Show {repoChangesHiddenCount} more ›</button
+					>
+				{/if}
+			</section>
 		{/if}
 
 		<RevisionSearch bind:value={repoSearchQuery} />
@@ -3586,19 +2481,6 @@
 			class="mt-4"
 		/>
 	{/if}
-
-	<ChangeVersionModal
-		bind:open={modalOpen}
-		rollout={modalRollout}
-		initialSelectedVersion={modalVersion}
-		cluster={modalCluster}
-	/>
-	<ClearPinModal
-		bind:open={clearPinOpen}
-		rollout={clearPinRollout}
-		cluster={clearPinCluster}
-		environmentName={clearPinEnvLabel}
-	/>
 </div>
 
 <style>

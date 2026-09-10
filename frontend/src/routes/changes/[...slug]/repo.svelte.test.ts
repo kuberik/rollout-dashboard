@@ -251,7 +251,7 @@ describe('/changes/[...slug] — repository page resolution', () => {
 		);
 	}
 
-	test('GitHub connected: the two sections render, capped and day-grouped, above "What each service runs"', async () => {
+	test('GitHub connected: the compact "Changes" list renders above "What each service runs" (ROUND 3 RULING B)', async () => {
 		const liveRel = rel('a1', 10);
 		const liveSha = liveRel.revision;
 		const web = rollout('web', 'team', [liveRel], [{ r: liveRel, minutesAgo: 10 }]);
@@ -300,17 +300,15 @@ describe('/changes/[...slug] — repository page resolution', () => {
 		);
 		await renderAt(REPO_PATH);
 
-		await waitFor(() => expect(screen.getByText('Not everywhere yet')).toBeInTheDocument());
-		expect(screen.getByText('Live everywhere')).toBeInTheDocument();
-		// The unmatched PR (no service on this cluster built it) is the
-		// "not everywhere yet" one; the change whose sha IS the running
-		// revision is "live everywhere".
+		await waitFor(() => expect(screen.getByText('Changes')).toBeInTheDocument());
+		// Both changes render as compact `ChangeLine` rows in ONE flat list —
+		// no "Not everywhere yet"/"Live everywhere" split, no landing grid.
 		expect(screen.getByText(/retry on 502/)).toBeInTheDocument();
 		expect(screen.getByText('Everywhere already')).toBeInTheDocument();
-		// Both sections precede the ops content, landmark order unchanged
-		// below them (R2.4's own pin).
+		expect(screen.getByText('1 not everywhere yet')).toBeInTheDocument();
+		// The section precedes the ops content, landmark order unchanged below
+		// it (R2.4's own pin, restated for the round-3 single section).
 		const headings = headingTexts();
-		expect(headings.indexOf('Not everywhere yet')).toBeLessThan(headings.indexOf('What each service runs'));
-		expect(headings.indexOf('Live everywhere')).toBeLessThan(headings.indexOf('What each service runs'));
+		expect(headings.indexOf('Changes')).toBeLessThan(headings.indexOf('What each service runs'));
 	});
 });

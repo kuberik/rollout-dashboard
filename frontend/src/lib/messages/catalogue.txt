@@ -132,6 +132,7 @@ lib/components/BuildLists.svelte	text	Show … …
 lib/components/ChangeCard.svelte	text	… · … ago …
 lib/components/ChangeCard.svelte	text	GitHub ↗
 lib/components/ChangeCard.svelte	text	Open change ›
+lib/components/ChangeHistoryCard.svelte	text	Show … more ›
 lib/components/ChangeHistoryCard.svelte	text	This build has not deployed anywhere on this cluster.
 lib/components/ChangeLine.svelte	code	in this state for …
 lib/components/ChangeList.svelte	text	… commit … went live here
@@ -144,7 +145,6 @@ lib/components/ChangeList.svelte	text	Recorded note
 lib/components/ChangeList.svelte	text	See the diff on GitHub
 lib/components/ChangeList.svelte	text	See the full diff on GitHub
 lib/components/ChangeList.svelte	code	Your GitHub account cannot read this repository.
-lib/components/ChangeRow.svelte	text	… # … · … … … · … ago … by @ … …
 lib/components/ChangeVersionModal.svelte	code	… — … has not shipped it
 lib/components/ChangeVersionModal.svelte	text	… … … … Connect your GitHub account to see which commits will … .
 lib/components/ChangeVersionModal.svelte	code	… back
@@ -478,9 +478,6 @@ lib/components/RepoLedgerCard.svelte	text	no match
 lib/components/RepoLedgerCard.svelte	text	Not deployed
 lib/components/RepoLedgerCard.svelte	text	Open on GitHub
 lib/components/RepoLedgerCard.svelte	text	Show … more service … …
-lib/components/RepositoriesCard.svelte	text	… change … … ·
-lib/components/RepositoriesCard.svelte	text	… held
-lib/components/RepositoriesCard.svelte	text	Show … more ›
 lib/components/ResourceCard.svelte	text	Error …
 lib/components/ResourcesCard.svelte	title	… — Deployment
 lib/components/ResourcesCard.svelte	text	… … … ready resource …
@@ -1177,22 +1174,18 @@ routes/changes/[...slug]/+page.svelte	text	, stream down …
 routes/changes/[...slug]/+page.svelte	text	. Once it merges, this page fills in per service.
 routes/changes/[...slug]/+page.svelte	text	. You can also press
 routes/changes/[...slug]/+page.svelte	text	… … … · live … · updated
-routes/changes/[...slug]/+page.svelte	code	… … held in ….
-routes/changes/[...slug]/+page.svelte	code	… · … releases
 routes/changes/[...slug]/+page.svelte	code	… · every other place on its newest build
 routes/changes/[...slug]/+page.svelte	code	… · kuberik
 routes/changes/[...slug]/+page.svelte	code	… +… more
 routes/changes/[...slug]/+page.svelte	code	… file…
+routes/changes/[...slug]/+page.svelte	text	… not everywhere yet
 routes/changes/[...slug]/+page.svelte	text	… open … · … … … · … … head
 routes/changes/[...slug]/+page.svelte	text	… service … · … rollout …
-routes/changes/[...slug]/+page.svelte	code	… service…
 routes/changes/[...slug]/+page.svelte	code	… services
 routes/changes/[...slug]/+page.svelte	text	· … not built anywhere
-routes/changes/[...slug]/+page.svelte	code	· was on … until …
 routes/changes/[...slug]/+page.svelte	code	#… … · kuberik
 routes/changes/[...slug]/+page.svelte	code	#… · kuberik
 routes/changes/[...slug]/+page.svelte	code	A check has not passed yet — it clears on its own
-routes/changes/[...slug]/+page.svelte	text	All … changes in …
 routes/changes/[...slug]/+page.svelte	text	All changes
 routes/changes/[...slug]/+page.svelte	code	Already on …, and newer builds are ahead of this one
 routes/changes/[...slug]/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( query.dataUpdatedAt ).toLocaleTimeString([], …)}
@@ -1210,24 +1203,19 @@ routes/changes/[...slug]/+page.svelte	text	first deployed … ago
 routes/changes/[...slug]/+page.svelte	code	Held by a deploy window
 routes/changes/[...slug]/+page.svelte	code	Held by a rule this dashboard has not classified yet
 routes/changes/[...slug]/+page.svelte	code	Held for another …
-routes/changes/[...slug]/+page.svelte	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
 routes/changes/[...slug]/+page.svelte	title	How it's going
-routes/changes/[...slug]/+page.svelte	text	in this repository
 routes/changes/[...slug]/+page.svelte	code	In this state
 routes/changes/[...slug]/+page.svelte	text	It looks like it belongs to
-routes/changes/[...slug]/+page.svelte	text	Live everywhere
 routes/changes/[...slug]/+page.svelte	code	Live since
 routes/changes/[...slug]/+page.svelte	code	merged …
 routes/changes/[...slug]/+page.svelte	code	merged … ago
 routes/changes/[...slug]/+page.svelte	code	merged … ago by @…
 routes/changes/[...slug]/+page.svelte	code	merged … by @…
-routes/changes/[...slug]/+page.svelte	code	minmax(160px, max-content) … minmax(90px, 1fr)
 routes/changes/[...slug]/+page.svelte	title	Newest build … · …
 routes/changes/[...slug]/+page.svelte	text	No build matches “ … ”.
 routes/changes/[...slug]/+page.svelte	text	no measured trip yet
 routes/changes/[...slug]/+page.svelte	text	No service on this cluster deploys … / … .
 routes/changes/[...slug]/+page.svelte	text	Not built yet for … .
-routes/changes/[...slug]/+page.svelte	text	Not everywhere yet
 routes/changes/[...slug]/+page.svelte	title	Not merged yet
 routes/changes/[...slug]/+page.svelte	text	Not on this cluster
 routes/changes/[...slug]/+page.svelte	code	opened by @…
@@ -1239,9 +1227,9 @@ routes/changes/[...slug]/+page.svelte	code	Ready to deploy here
 routes/changes/[...slug]/+page.svelte	code	Running … of this revision; … is held
 routes/changes/[...slug]/+page.svelte	text	search … / … 's pull requests on GitHub ↗
 routes/changes/[...slug]/+page.svelte	text	See what … runs ›
+routes/changes/[...slug]/+page.svelte	text	Show … more ›
 routes/changes/[...slug]/+page.svelte	code	Skipped — newer builds are ahead of this one
 routes/changes/[...slug]/+page.svelte	code	slot… —
-routes/changes/[...slug]/+page.svelte	code	started … ago
 routes/changes/[...slug]/+page.svelte	code	The pinned tag: …
 routes/changes/[...slug]/+page.svelte	text	This build has no linked GitHub repository, so there is no change page for it — changes need a pull request or a commit on a GitHub-hosted repo.
 routes/changes/[...slug]/+page.svelte	title	This change
@@ -1252,28 +1240,26 @@ routes/changes/[...slug]/+page.svelte	text	to look it up here.
 routes/changes/[...slug]/+page.svelte	text	Typical to prod
 routes/changes/[...slug]/+page.svelte	text	View commit
 routes/changes/[...slug]/+page.svelte	text	View on GitHub
-routes/changes/+page.svelte	text	, stream down …
-routes/changes/+page.svelte	text	… … · … not built … · … live … · live … · updated
-routes/changes/+page.svelte	text	… held
+routes/changes/+page.svelte	text	… · … repositor …
+routes/changes/+page.svelte	code	… change……
+routes/changes/+page.svelte	text	… not everywhere yet
 routes/changes/+page.svelte	text	… of … live
+routes/changes/+page.svelte	code	· … not everywhere
 routes/changes/+page.svelte	text	A revision shows up here as soon as one of your services deploys it.
+routes/changes/+page.svelte	text	All changes in … ›
 routes/changes/+page.svelte	text	change … … ·
-routes/changes/+page.svelte	title	Change stream disconnected; showing data fetched at {new Date( changesQuery.dataUpdatedAt ).toLocaleTimeString([], …)}
 routes/changes/+page.svelte	text	Connect GitHub
-routes/changes/+page.svelte	text	Every change in view has landed everywhere.
 routes/changes/+page.svelte	placeholder	Find a change by title, #n or sha
-routes/changes/+page.svelte	text	held, building, or still moving
 routes/changes/+page.svelte	text	kuberik | Changes
-routes/changes/+page.svelte	text	Live everywhere
-routes/changes/+page.svelte	text	Not everywhere yet
-routes/changes/+page.svelte	text	Not yet everywhere
+routes/changes/+page.svelte	text	no measured trip yet
+routes/changes/+page.svelte	text	No repository matches.
 routes/changes/+page.svelte	text	Nothing built yet
-routes/changes/+page.svelte	text	Nothing has landed everywhere yet.
-routes/changes/+page.svelte	text	nothing left to do
-routes/changes/+page.svelte	text	Pull requests
+routes/changes/+page.svelte	text	Nothing of yours merged in the last 30 days.
 routes/changes/+page.svelte	text	revision … · … GitHub is not connected — showing what this cluster has actually deployed instead. … GitHub is not configured for this dashboard — showing what this cluster has actually deployed instead. …
-routes/changes/+page.svelte	text	Show … more changes ›
-routes/changes/+page.svelte	text	Try clearing a filter or the search box above.
+routes/changes/+page.svelte	text	Show … more ›
+routes/changes/+page.svelte	text	Try clearing the search box above.
+routes/changes/+page.svelte	text	Typical to prod
+routes/changes/+page.svelte	text	Your changes
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
 routes/dependencies/+page.svelte	text	… holding
