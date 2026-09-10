@@ -187,6 +187,48 @@ function frontierReasonFor(frontier: PrCell | null, now: Date): string | null {
 }
 
 /**
+ * ⭐ HOME FEEDBACK PASS, ROUND 2 FIX (2026-09-10) — "in this state for Xh".
+ * `pickFrontierCell` (above) answers a slightly different question: it picks
+ * ONE cell, the earliest-env-rank non-live cell across every service,
+ * tie-broken by cluster name — a reasonable single instant for
+ * `frontierReason`'s prose, but the wrong one for "how long has it been
+ * stuck HERE" once two services are both stuck in the SAME frontier family
+ * at two different instants (the earlier one wins the tie-break above,
+ * understating how long the family has actually been held). This reads the
+ * SAME frontier `familyProgress` computes for the meter (never a second,
+ * disagreeing frontier) and takes the MOST RECENT `since` among the raw
+ * cells that put that family in its classification — a service that got
+ * stuck five minutes ago should not make the row claim "stuck for 3 days"
+ * because a DIFFERENT service in the same family has been stuck that long.
+ * `null` when live everywhere, nothing built anywhere yet, or none of the
+ * matching cells carry a `since` (`ChangeLine` falls back to `mergedAt`).
+ */
+function frontierFamilySince(vm: PrPipelineVM, grid: LandingGridVM): string | null {
+	const steps = familyProgress({ grid });
+	const idx = steps.findIndex((s) => s.tone !== 'live');
+	if (idx === -1 || steps[idx].builtCount === 0) return null;
+	const step = steps[idx];
+
+	const matches = (state: PrState): boolean => {
+		if (step.tone === 'stuck') return HELD_LIKE_PR_STATES.has(state);
+		if (step.tone === 'failed') return state === 'failed';
+		return state !== 'not-built';
+	};
+
+	let maxMs: number | null = null;
+	for (const service of vm.services) {
+		for (const cell of service.cells) {
+			if (envFamilyWord(cell.envName) !== step.family) continue;
+			if (!matches(cell.state) || !cell.since) continue;
+			const ms = new Date(cell.since).getTime();
+			if (!Number.isFinite(ms)) continue;
+			if (maxMs == null || ms > maxMs) maxMs = ms;
+		}
+	}
+	return maxMs != null ? new Date(maxMs).toISOString() : null;
+}
+
+/**
  * `prodLeadMs`'s own computation — see the field's doc comment. `null`
  * whenever the delta cannot be trusted as a real trip: no PRD-family `live`
  * cell with a recorded `since`, an unparseable timestamp on either end, or a
@@ -240,6 +282,7 @@ function buildChangeRow(
 	const vm = buildPrPipeline(meta, rollouts, environments, rolloutDependencies, now);
 	const verdict = changeVerdict(vm);
 	const frontier = pickFrontierCell(vm);
+	const grid = buildLandingGrid(vm, now);
 	const href =
 		change.kind === 'pr' && change.number != null
 			? changePath(change.owner, change.repo, { number: change.number })
@@ -260,11 +303,11 @@ function buildChangeRow(
 		mergedAt: change.mergedAt,
 		verdictWord: verdict.word,
 		verdictTone: verdict.tone,
-		grid: buildLandingGrid(vm, now),
+		grid,
 		notEverywhere: computeNotEverywhere(vm),
 		prodLeadMs: firstProdLeadMs(vm, change.mergedAt),
 		frontierReason: frontierReasonFor(frontier, now),
-		frontierSince: frontier?.since ?? null
+		frontierSince: frontierFamilySince(vm, grid)
 	};
 }
 
@@ -542,6 +585,33 @@ function capWords(s: string, max = 4): string {
 }
 
 /**
+ * ⭐ HOME FEEDBACK PASS, ROUND 2 FIX (2026-09-10). Both `standingWords` and
+ * `standingWordsCompact` used to scan EVERY mark for the worst state,
+ * independent of position — so a row already live in `dev` but incidentally
+ * `held` on some unrelated service way out in `prod` read "held in prod",
+ * burying the fact that the change is actually MOVING. That is the same bug
+ * `familyProgress` fixes for the meter (§2's "DEV·STG·PRD all amber"); this
+ * reads the SAME frontier steps rather than re-deriving a second, possibly
+ * disagreeing one. `idx` is the first family that is not fully `live`; a
+ * `partial` family (some live, none stuck — `familyProgress`'s own doc) has
+ * nothing to name but a count, which is exactly the "prefer the services
+ * that ARE live over the consequential holds" the human asked for.
+ */
+function frontierStandingStep(row: Pick<ChangeRowVM, 'grid'>): FamilyProgressStep | null {
+	const steps = familyProgress(row);
+	const idx = steps.findIndex((s) => s.tone !== 'live' || s.liveCount < s.builtCount);
+	return idx === -1 ? null : steps[idx];
+}
+
+function totalLiveBuilt(row: Pick<ChangeRowVM, 'grid'>): { live: number; built: number } {
+	const steps = familyProgress(row);
+	return steps.reduce(
+		(acc, s) => ({ live: acc.live + s.liveCount, built: acc.built + s.builtCount }),
+		{ live: 0, built: 0 }
+	);
+}
+
+/**
  * THE ≤4-WORD STANDING PHRASE. `ChangeLine`'s "where it stands" slot and
  * `ChangeCard`'s header `verdict` both print this — one function, so the
  * one-line row and the card can never drift on what a change's own state
@@ -555,31 +625,19 @@ export function standingWords(row: Pick<ChangeRowVM, 'verdictTone' | 'grid'>): s
 		return row.grid.services.length === 0 ? 'not built here' : 'not built yet';
 	}
 
-	const marks = row.grid.services.flatMap((s) => s.marks);
-
-	const failed = marks.filter((m) => m.state === 'failed');
-	if (failed.length > 0) {
-		const worst = [...failed].sort((a, b) => a.familyOrder - b.familyOrder)[0];
-		return capWords(`failed in ${worst.family.toLowerCase()}`);
+	const step = frontierStandingStep(row);
+	if (step) {
+		if (step.tone === 'failed') return capWords(`failed in ${step.family.toLowerCase()}`);
+		if (step.tone === 'stuck') return capWords(`held in ${step.family.toLowerCase()}`);
+		if (step.state && STANDING_VERB[step.state]) {
+			const vp = STANDING_VERB[step.state]!;
+			return capWords(`${vp.verb} ${vp.prep} ${step.family.toLowerCase()}`);
+		}
 	}
 
-	const held = marks.filter((m) => HELD_LIKE_PR_STATES.has(m.state));
-	if (held.length > 0) {
-		const worst = [...held].sort((a, b) => a.familyOrder - b.familyOrder)[0];
-		return capWords(`held in ${worst.family.toLowerCase()}`);
-	}
-
-	const inFlight = marks.filter((m) => STANDING_VERB[m.state]);
-	if (inFlight.length > 0) {
-		const worst = [...inFlight].sort((a, b) => a.familyOrder - b.familyOrder)[0];
-		const vp = STANDING_VERB[worst.state]!;
-		return capWords(`${vp.verb} ${vp.prep} ${worst.family.toLowerCase()}`);
-	}
-
-	const live = marks.filter((m) => m.state === 'live').length;
-	const total = marks.length;
-	if (live > 0 && total > 0) return capWords(`${live} of ${total} live`);
-	return total > 0 ? capWords(`${total} in progress`) : 'not built here';
+	const { live, built } = totalLiveBuilt(row);
+	if (live > 0 && built > 0) return capWords(`${live} of ${built} live`);
+	return built > 0 ? capWords(`${built} in progress`) : 'not built here';
 }
 
 /**
@@ -591,30 +649,18 @@ export function standingWordsCompact(row: Pick<ChangeRowVM, 'verdictTone' | 'gri
 	if (row.verdictTone === 'live') return 'live';
 	if (row.verdictTone === 'not-built') return 'not built';
 
-	const marks = row.grid.services.flatMap((s) => s.marks);
-
-	const failed = marks.filter((m) => m.state === 'failed');
-	if (failed.length > 0) {
-		const worst = [...failed].sort((a, b) => a.familyOrder - b.familyOrder)[0];
-		return `failed · ${worst.family.toLowerCase()}`;
+	const step = frontierStandingStep(row);
+	if (step) {
+		if (step.tone === 'failed') return `failed · ${step.family.toLowerCase()}`;
+		if (step.tone === 'stuck') return `held · ${step.family.toLowerCase()}`;
+		if (step.state && STANDING_VERB[step.state]) {
+			return `${STANDING_VERB[step.state]!.verb} · ${step.family.toLowerCase()}`;
+		}
 	}
 
-	const held = marks.filter((m) => HELD_LIKE_PR_STATES.has(m.state));
-	if (held.length > 0) {
-		const worst = [...held].sort((a, b) => a.familyOrder - b.familyOrder)[0];
-		return `held · ${worst.family.toLowerCase()}`;
-	}
-
-	const inFlight = marks.filter((m) => STANDING_VERB[m.state]);
-	if (inFlight.length > 0) {
-		const worst = [...inFlight].sort((a, b) => a.familyOrder - b.familyOrder)[0];
-		return `${STANDING_VERB[worst.state]!.verb} · ${worst.family.toLowerCase()}`;
-	}
-
-	const live = marks.filter((m) => m.state === 'live').length;
-	const total = marks.length;
-	if (live > 0 && total > 0) return `${live}/${total} live`;
-	return total > 0 ? `${total} moving` : 'not built';
+	const { live, built } = totalLiveBuilt(row);
+	if (live > 0 && built > 0) return `${live}/${built} live`;
+	return built > 0 ? `${built} moving` : 'not built';
 }
 
 // ── ROUND 2 — R2.2's RAIL CARD 1, `How your changes are going` ───────────
@@ -722,71 +768,170 @@ export function splitChangeSections(rows: readonly ChangeRowVM[]): ChangeSection
 // FAMILY (`DEV`/`STG`/`PRD`, `landing-grid.ts`'s own tiers), not one mark per
 // service/env cell.
 
-/** One stage in the compact per-family progress meter — `ChangeLine`'s own
- *  new slot. Reuses `landing-grid.ts`'s `MarkTone` (`live`/`stuck`/`active`/
- *  `queued`/`none`/`failed`) rather than inventing a second state-colour
- *  vocabulary, and keeps the underlying `PrState` alongside it because a
- *  single `active` tone covers both `deploying` (blue) and
- *  `baking`/`retrying` (yellow) — the same two-way split `ChangeLine`'s own
- *  row icon already makes off `standingWords`' leading verb, restated here
- *  off the real state instead of a guessed prefix match. */
+/**
+ * ⭐ FIX PASS (2026-09-10, "FRONTIER-AWARE METER"). One stage in the compact
+ * per-family progress meter — `ChangeLine`'s own slot. Reuses
+ * `landing-grid.ts`'s `MarkTone` (`live`/`stuck`/`active`/`queued`/`none`/
+ * `failed`) rather than inventing a second state-colour vocabulary: `none`
+ * now ALSO carries "this family is unreachable given where the change is
+ * actually stuck" (the frontier freeze below), the same dashed/neutral
+ * treatment `LandingMark` already gives a plain not-built cell — visually
+ * identical, the difference is only in `sentence`/the tooltip. `state` keeps
+ * the underlying `PrState` (`null` when nothing built or frozen) because a
+ * single `active` tone covers both `deploying` (blue) and `baking`/
+ * `retrying` (yellow) — the same two-way split `ChangeLine`'s own row icon
+ * already makes off `standingWords`' leading verb.
+ */
 export type FamilyProgressStep = {
 	/** `DEV` / `STG` / `PRD` / `TEST`, or a 3-letter fallback. */
 	family: string;
 	familyOrder: number;
 	tone: MarkTone;
-	state: PrState;
-	/** The worst mark's own multi-region sentence, for the step's `title`. */
+	/** Representative underlying state — the stuck cell's own state for
+	 *  `stuck`, the active cell's for `active`/`queued`, `null` otherwise
+	 *  (nothing to single out for `live`/`none`/`failed`). */
+	state: PrState | null;
+	/** Marks with a build in this family (`state !== 'not-built'`), BEFORE
+	 *  the frontier freeze — always the real count, even on a frozen step,
+	 *  so a caller summing "N of M live" across every step never undercounts
+	 *  a family the meter itself must draw as moot. */
+	builtCount: number;
+	/** Of `builtCount`, how many are `live`. */
+	liveCount: number;
+	/** Every contributing mark's own sentence, joined — for the step's
+	 *  `title`/tooltip. */
 	sentence: string;
 };
 
-/** Worst-first, whole-mark edition — `landing-grid.ts`'s own `STATE_RANK` is
- *  private (it operates on raw `PrCell`s, which a `LandingMarkVM` no longer
- *  carries once a family has collapsed), so this is a coarser, TONE-level
- *  restatement of the same "worse sorts first" ordering: `failed` outranks
- *  `stuck`, which outranks something actually moving (`active`), which
- *  outranks a normal promotion-order wait (`queued`), which outranks having
- *  no build at all yet (`none`) — `live` is the one state nothing outranks.
- *  Good enough to pick which SERVICE's mark wins a family aggregate; the
- *  finer `PrState`-level tie-break stays inside `landing-grid.ts`, where the
- *  real cells still live. */
-const TONE_SEVERITY: Record<MarkTone, number> = {
-	failed: 0,
-	stuck: 1,
-	active: 2,
-	queued: 3,
-	none: 4,
-	live: 5
-};
+/** §"AMBER IS THE FRONTIER, NOT EVERY STUCK CELL". `gated`/`pinned`/
+ *  `waiting-upstream` — byte-identical to `pr-pipeline.ts`'s own
+ *  `HELD_LIKE_STATES` (private there) and this module's own
+ *  `HELD_LIKE_PR_STATES`; restated as a `MarkTone`-level check below because
+ *  `LandingMarkVM` already carries the collapsed `tone`, not the raw state,
+ *  for a mark spanning multiple regions. */
 
 /**
- * THE PER-FAMILY PROGRESS METER. One step per environment family this
- * change's services actually span (typically `DEV`/`STG`/`PRD`, in that
- * rank order), each carrying the WORST mark for that family across every
- * service — a change held in `dev` on one service and live in `dev` on
- * another reads as `dev: held`, never averaged or silently dropped. Reads
- * `row.grid.services` (`landing-grid.ts`'s own family-collapsed marks,
- * already computed once at `buildChangeRow` time), so this can never
+ * THE PER-FAMILY PROGRESS METER, FRONTIER-AWARE. `familyProgress` used to
+ * take the WORST mark per family independently — so a change held in `dev`
+ * on one service read `DEV·STG·PRD` all amber the moment ANY service was
+ * ALSO (independently) held in staging/prod, even though the change cannot
+ * possibly have moved past `dev` yet. Walks families in rank order instead:
+ *
+ *  - `live` — every mark WITH A BUILD in this family is `live` (a family
+ *    with zero built marks is `none`, not `live` — nothing to claim).
+ *  - `live` (partial) — some marks are live, none are `stuck`/`failed` —
+ *    `liveCount < builtCount` tells a caller (the meter's ring-vs-fill, the
+ *    standing word's "N of M live") this family is not FULLY there yet,
+ *    without inventing a second green tone.
+ *  - `stuck` / `failed` — the FIRST family (walking forward from the last
+ *    `live` one) that has a stuck/failed mark. This family, and only this
+ *    one, gets the loud amber/red — and FREEZES the walk: every family
+ *    after it is forced to `none` regardless of ITS OWN marks, because the
+ *    change cannot have reached further than its own frontier. This is the
+ *    fix — a service ALSO independently held three stages downstream no
+ *    longer repaints every stage amber.
+ *  - `active` / `queued` — nothing live yet, nothing stuck, something is
+ *    moving (or waiting its promotion-order turn). Does not freeze the
+ *    walk: it is still genuinely in flight, not blocked.
+ *  - `none` — no mark in this family carries a build (or the walk has
+ *    already frozen past an upstream stuck/failed family).
+ *
+ * Reads `row.grid.services` (`landing-grid.ts`'s own family-collapsed
+ * marks, already computed once at `buildChangeRow` time), so this can never
  * disagree with what the SAME row's own `ChangeCard` landing grid draws in
  * full two sections down.
  */
 export function familyProgress(row: Pick<ChangeRowVM, 'grid'>): FamilyProgressStep[] {
-	const worstByFamily = new Map<string, LandingMarkVM>();
+	const byFamily = new Map<string, LandingMarkVM[]>();
 	for (const service of row.grid.services) {
 		for (const mark of service.marks) {
-			const existing = worstByFamily.get(mark.family);
-			if (!existing || TONE_SEVERITY[mark.tone] < TONE_SEVERITY[existing.tone]) {
-				worstByFamily.set(mark.family, mark);
-			}
+			const list = byFamily.get(mark.family);
+			if (list) list.push(mark);
+			else byFamily.set(mark.family, [mark]);
 		}
 	}
-	return [...worstByFamily.values()]
-		.sort((a, b) => a.familyOrder - b.familyOrder)
-		.map((m) => ({
-			family: m.family,
-			familyOrder: m.familyOrder,
-			tone: m.tone,
-			state: m.state,
-			sentence: m.sentence
-		}));
+
+	const families = [...byFamily.entries()].sort((a, b) => a[1][0].familyOrder - b[1][0].familyOrder);
+
+	const steps: FamilyProgressStep[] = [];
+	let frozen = false;
+	for (const [family, marks] of families) {
+		const familyOrder = marks[0].familyOrder;
+		const sentence = marks.map((m) => m.sentence).join('; ');
+		const built = marks.filter((m) => m.tone !== 'none');
+		const liveCount = built.filter((m) => m.tone === 'live').length;
+
+		// The NATURAL classification for this family, on its own — computed
+		// regardless of `frozen`, so a frozen family's `state` still says
+		// what is honestly true of it (`not-built` if nothing ever built
+		// here, the real stuck/active state otherwise), even though `tone`
+		// below gets overridden to the quiet `none` the frontier freeze
+		// requires.
+		let tone: MarkTone;
+		let state: PrState | null;
+		if (built.length === 0) {
+			tone = 'none';
+			state = 'not-built';
+		} else if (liveCount === built.length) {
+			tone = 'live';
+			state = null;
+		} else {
+			const failedMark = built.find((m) => m.tone === 'failed');
+			const stuckMark = built.find((m) => m.tone === 'stuck');
+			if (failedMark) {
+				tone = 'failed';
+				state = failedMark.state;
+			} else if (stuckMark) {
+				tone = 'stuck';
+				state = stuckMark.state;
+			} else if (liveCount > 0) {
+				// Partial: some live, none stuck/failed — still green, just
+				// not full (`liveCount < builtCount` is the caller's own
+				// ring-vs-fill signal; no second tone invented for it).
+				tone = 'live';
+				state = null;
+			} else {
+				const activeMark =
+					built.find((m) => m.tone === 'active') ?? built.find((m) => m.tone === 'queued') ?? built[0];
+				tone = activeMark.tone === 'queued' ? 'queued' : 'active';
+				state = activeMark.state;
+			}
+		}
+
+		if (frozen) {
+			// §"THE CHANGE CANNOT HAVE MOVED FURTHER" — this family's own
+			// classification is moot once an upstream one is stuck/failed;
+			// draw it quiet regardless of what it would have said on its own.
+			steps.push({ family, familyOrder, tone: 'none', state, builtCount: built.length, liveCount, sentence });
+			continue;
+		}
+
+		steps.push({ family, familyOrder, tone, state, builtCount: built.length, liveCount, sentence });
+		if (tone === 'stuck' || tone === 'failed') frozen = true;
+	}
+	return steps;
+}
+
+/** `DEV`/`STG`/`PRD`/`TEST` → the full lowercase word the accessible label
+ *  reads — `landing-grid.ts`'s own family-word vocabulary, spelled out
+ *  rather than abbreviated (an abbreviation is a visual-budget concession,
+ *  not something a screen reader should have to decode). */
+const FAMILY_FULL_WORD: Record<string, string> = { DEV: 'dev', TEST: 'test', STG: 'staging', PRD: 'prod' };
+
+const STEP_ARIA_WORD: Record<MarkTone, string> = {
+	live: 'live',
+	stuck: 'held',
+	failed: 'failed',
+	active: 'active',
+	queued: 'queued',
+	none: 'not yet'
+};
+
+/** The meter's own `aria-label` — "dev live · staging held · prod not yet".
+ *  A `live` step whose `liveCount < builtCount` (partial) still reads plain
+ *  `live`: the count is a visual nicety the label does not need to spell
+ *  out, and "partly live" is not a phrase a reader unfamiliar with the
+ *  meter would parse faster than the simple word. */
+export function familyMeterAriaLabel(steps: readonly FamilyProgressStep[]): string {
+	return steps.map((s) => `${FAMILY_FULL_WORD[s.family] ?? s.family.toLowerCase()} ${STEP_ARIA_WORD[s.tone]}`).join(' · ');
 }

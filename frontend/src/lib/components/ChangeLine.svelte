@@ -10,8 +10,8 @@
 	 * `showRepo` below).
 	 *
 	 * ```
-	 * [glyph] #4  fix(frontend): retry on 502    [●●●]        held in dev on hello-api-app   5h
-	 *   14px  mono         t-body / tap-link      meter              t-dense                t-micro
+	 * [glyph] #4  fix(frontend): retry on 502    [●●●]   held in dev   5h
+	 *   14px  mono         t-body / tap-link      meter    t-dense    t-micro
 	 * ```
 	 *
 	 * ⛔ NO LANDING GRID HERE. §R2.1's own cut list: five services × three
@@ -21,57 +21,60 @@
 	 * ⛔ NO `by @who`, NO repo name on Home (both are the norm printed once
 	 * per row — see the same section's cut list).
 	 *
-	 * ── HOME FEEDBACK PASS (2026-09-10, AFTER ROUND 2 SHIPPED) ────────────
+	 * ── ROUND 2 FIX PASS (2026-09-10, TWO DEFECTS FOUND ON HOME) ──────────
 	 *
-	 * The human, on `YourChangesCard`: *"the PRs on homepage don't display
-	 * enough information. I'd want to see at a glance whether they're
-	 * progressing, how far, and whatnot. without showing every single
-	 * environment."* Three changes, all gated on `row.verdictTone !== 'live'`
-	 * (a live-everywhere row already answers every one of these):
+	 * The "Home feedback pass" (round 2's immediate follow-up, see the git
+	 * history on this file) swapped the standing slot to print
+	 * `row.verdictWord` — the FULL fused sentence ("hello-frontend-app held
+	 * in dev on hello-api-app") — for every non-live row. That sentence has
+	 * no upper bound on length, and `.cl-standing` had no `flex-shrink`/
+	 * `max-width` of its own: in a flex row where `.cl-line1`'s title has
+	 * `flex: 1 1 0%` (a DEFINITE zero basis) and `.cl-standing` has the
+	 * browser's default `flex: 0 1 auto` (a CONTENT basis), the shrink
+	 * algorithm assigns a flex-basis-0 item ZERO weight in the negative-space
+	 * distribution — so when the row overflows, 100% of the deficit lands on
+	 * the sibling with a real basis (`.cl-standing`) and the title is
+	 * resolved to a literal 0px. The result, live: every row's TITLE slot
+	 * showed the verdict sentence instead, and a developer could not tell
+	 * PR #1 from PR #4. Two fixes, together:
 	 *
-	 * 1. **A compact per-family progress METER** (`familyProgress`,
-	 *    `changes.ts`) — one 12px step per environment FAMILY (`DEV`/`STG`/
-	 *    `PRD`), the worst mark across every service, NOT one mark per
-	 *    service/env cell (that is the landing grid this row still refuses).
-	 * 2. **The standing slot reads `row.verdictWord`**, the fused
-	 *    subject-first sentence (`buildChangeVerdict`, RULING 3 — "the
-	 *    change page, the index row and the Home card all read this"), not
-	 *    the ≤4-word `standingWords` — "held in dev" named WHERE; "held in
-	 *    dev on hello-api-app" names WHICH SERVICE too.
-	 * 3. **The age answers "how long has it been stuck here"**
-	 *    (`row.frontierSince`, `PrCell.since` for the frontier cell) instead
-	 *    of "how long ago did this merge" — a fact the row's own history
-	 *    already carries once there is a frontier to blame.
+	 * 1. **The standing slot is ≤4 words again, always** (`standingWords`,
+	 *    not `row.verdictWord`) — "held in dev", "live everywhere", "2 of 5
+	 *    live", never a service name or a gate clause (those stay on the
+	 *    change card/page, which have the room).
+	 * 2. **`.cl-standing` (and the meter) are `shrink-0`**, moved into their
+	 *    own group AFTER `.cl-line1` (which now holds only the glyph/number/
+	 *    title) so the title is the row's ONLY flexible/growing slot — every
+	 *    other slot has a small, bounded footprint that never competes with
+	 *    it for space. `familyProgress` is ALSO now frontier-aware (see that
+	 *    function's own doc in `changes.ts`) — a change held in `dev` no
+	 *    longer paints `STG`/`PRD` amber too just because a DIFFERENT service
+	 *    happens to be independently held there; only the frontier family
+	 *    gets the loud colour, everything after it goes quiet/dashed.
 	 *
-	 * ── THE ROW IS STILL ONE LINE AT ≥640, TWO BELOW IT ───────────────────
+	 * ── READING ORDER: TITLE · METER · STANDING · TIME ────────────────────
 	 *
-	 * The meter sits between the title and the standing slot in DOM/reading
-	 * order — inline with everything else at ≥640 container width (`.cl-row`
-	 * now `flex-wrap`s, but nothing forces a wrap above that width: the
-	 * title's own `truncate` absorbs the squeeze the same way it always
-	 * has). Below 640 the meter alone drops to its own second line (a
-	 * container-query `order` + `flex-basis: 100%` swap, not a DOM change —
-	 * see the style block) and its family WORDS hide (dots only); every
-	 * other slot stays on line 1 exactly as before.
-	 *
-	 * ── THE STANDING WORD IS ≤4 WORDS, ONLY WHEN LIVE ─────────────────────
-	 *
-	 * `standingWords` (`changes.ts`) still backs the LIVE case ("live
-	 * everywhere") and `ChangeCard`'s header (a separate call site, its own
-	 * container-width fold) — this row's own non-live case now prefers the
-	 * fuller sentence per the feedback pass above.
+	 * `.cl-line1` (glyph, `#n`, title) is the row's one FLEXIBLE item —
+	 * `flex: 1 1 0%`, so it grows to fill whatever the fixed-width siblings
+	 * leave and truncates in place when there isn't enough. `.cl-status`
+	 * (meter, then the standing word, then the age) is a SECOND, fixed-width
+	 * item — always inline with the title at ≥640px of this row's own
+	 * container width. Below 640, `.cl-status` gets `flex-basis: 100%` and
+	 * drops to its own second line — "the standing line may drop under the
+	 * title with the meter" — and the age hides entirely at that same
+	 * breakpoint (not a separate, finer one) so the row is NEVER three
+	 * lines: below 640 it is title-alone, then meter+standing.
 	 *
 	 * ── THE CONTAINER QUERY IS THIS COMPONENT'S OWN ───────────────────────
 	 *
 	 * Home nests this inside `Card`'s own `.card-cq` (`container-type:
 	 * inline-size`); `/changes`' "Live everywhere" section does not — no
 	 * card there at all (§R2.2: "no box, no card"). So every width threshold
-	 * here (the age drop, the meter's own line-break) cannot depend on an
-	 * ancestor container existing; the `<li>` establishes its OWN
-	 * containment context and every `@container` query resolves against
-	 * that (the nearest container ancestor always wins, whether that is
-	 * this element or a `Card` two levels up makes no difference — this one
-	 * is always nearer).
+	 * here cannot depend on an ancestor container existing; the `<li>`
+	 * establishes its OWN containment context and every `@container` query
+	 * resolves against that (the nearest container ancestor always wins,
+	 * whether that is this element or a `Card` two levels up makes no
+	 * difference — this one is always nearer).
 	 *
 	 * ── CALLER CONTRACT: THE DIVIDER IS THE LIST'S, NOT THE ROW'S ─────────
 	 *
@@ -89,7 +92,7 @@
 		MinusOutline
 	} from 'flowbite-svelte-icons';
 	import type { ChangeRowVM } from '$lib/view-models/changes';
-	import { standingWords, familyProgress } from '$lib/view-models/changes';
+	import { standingWords, familyProgress, familyMeterAriaLabel } from '$lib/view-models/changes';
 	import { formatTimeAgoCompact } from '$lib/utils';
 
 	let {
@@ -129,8 +132,11 @@
 		held: 'text-orange-950 dark:text-orange-300'
 	} as const;
 
-	const standingShort = $derived(standingWords(row));
-	const isBaking = $derived(standingShort.startsWith('baking') || standingShort.startsWith('retrying'));
+	// ⭐ FIX PASS — the standing slot is ALWAYS the ≤4-word phrase now (never
+	// `row.verdictWord`, which has no length bound and was crushing the
+	// title — see the module doc above).
+	const standingDisplay = $derived(standingWords(row));
+	const isBaking = $derived(standingDisplay.startsWith('baking') || standingDisplay.startsWith('retrying'));
 
 	const Icon = $derived(
 		row.verdictTone === 'active'
@@ -150,51 +156,30 @@
 
 	const numberLabel = $derived(row.kind === 'pr' && row.number != null ? `#${row.number}` : row.shortSha);
 
-	// ⭐ HOME FEEDBACK PASS, ITEM 2 — the fused subject-first sentence when
-	// there is a frontier to name; `standingShort` only for the settled
-	// live-everywhere case (unchanged from round 2).
-	const standingDisplay = $derived(row.verdictTone === 'live' ? standingShort : row.verdictWord);
-
-	// ⭐ ITEM 3 — "how long has it been stuck here", off the frontier cell's
-	// own `since` where one exists; falls back to the merge age (round 2's
-	// original behaviour) for the live case AND for the rare non-live row
-	// with no resolvable frontier instant (nothing built anywhere yet).
+	// "How long has it been stuck here", off the frontier FAMILY's own most
+	// recent `since` (`changes.ts`'s `frontierFamilySince` — recomputed at
+	// `buildChangeRow` time, so this component reads it, never re-derives
+	// it); falls back to the merge age for the live case AND for the rare
+	// non-live row with no resolvable frontier instant (nothing built
+	// anywhere yet).
 	const ageInstant = $derived(row.verdictTone !== 'live' && row.frontierSince ? row.frontierSince : row.mergedAt);
 	const age = $derived(formatTimeAgoCompact(ageInstant, now));
 	const ageLabel = $derived(
 		row.verdictTone !== 'live' && row.frontierSince ? `in this state for ${age}` : age
 	);
 
-	// ⭐ ITEM 1 — the per-family meter. `familyProgress` reads
-	// `row.grid.services` (already computed once at `buildChangeRow` time),
-	// so this can never disagree with the same row's own `ChangeCard`
-	// landing grid two sections down.
+	// The per-family meter — frontier-aware (`familyProgress`, `changes.ts`):
+	// a family reads amber ONLY when it is the frontier itself; every family
+	// after it reads dashed/neutral regardless of its own cells, because the
+	// change cannot have moved further than its own frontier.
 	const steps = $derived(familyProgress(row));
-	const stagesLive = $derived(steps.filter((s) => s.tone === 'live').length);
-	const meterLabel = $derived(`${stagesLive} of ${steps.length} stages`);
+	const meterAriaLabel = $derived(familyMeterAriaLabel(steps));
 </script>
 
 <li class="cl-item">
 	<div
 		class="tap-zone cl-row flex flex-wrap items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
 	>
-		<!-- ⭐ HOME FEEDBACK PASS — `.cl-line1` IS ITS OWN `flex: 1 1 0%` ITEM,
-		     NOT LOOSE CHILDREN OF THE WRAPPING ROW. A flex item with an
-		     `auto` flex-basis (every child below WOULD be one, individually,
-		     if left direct children of `.cl-row`) reports its CONTENT size —
-		     for `.cl-standing`/`.tap-link`, that is the full UN-truncated
-		     text width, hundreds of px — to the outer row's line-breaking
-		     decision, which uses that HYPOTHETICAL size regardless of how
-		     much the item can later shrink. Measured live: with those spans
-		     as direct children of a `flex-wrap` row, `.cl-standing` wrapped
-		     to its OWN line even though it visually had room once shrunk,
-		     because the un-shrunk sentence didn't "fit" for the wrap
-		     algorithm's own purposes. Grouping them into one `flex-1`
-		     (flex-basis `0%`) item makes THIS item's hypothetical size 0 —
-		     the wrap decision no longer sees the long sentence at all — and
-		     `min-w-0` lets it actually shrink to whatever the meter (the
-		     only item that may force a line break, via its own
-		     `flex-basis: 100%` below 640px) leaves it. -->
 		<div class="cl-line1 flex min-w-0 flex-1 items-center gap-2">
 			<Icon class="h-3.5 w-3.5 shrink-0 {toneClass}" aria-hidden="true" />
 			<span class="t-code-sm shrink-0 text-gray-500 dark:text-gray-400">{numberLabel}</span>
@@ -206,42 +191,48 @@
 				class="tap-link t-body min-w-0 flex-1 truncate text-gray-900 dark:text-white"
 				title={row.title}>{row.title}</a
 			>
-			<span class="t-dense cl-standing min-w-0 truncate {toneClass}">{standingDisplay}</span>
+		</div>
+		<div class="cl-status flex shrink-0 items-center gap-2">
+			{#if steps.length > 0}
+				<div class="cl-meter" role="img" aria-label={meterAriaLabel}>
+					{#each steps as step (step.family)}
+						<span class="cl-step" title="{step.family}: {step.sentence}">
+							{#if step.tone === 'live'}
+								{#if step.liveCount < step.builtCount}
+									<span class="cl-dot cl-dot--live-ring" aria-hidden="true"></span>
+								{:else}
+									<CheckCircleSolid class="cl-step-icon tone-live" aria-hidden="true" />
+								{/if}
+							{:else if step.tone === 'queued'}
+								<ClockSolid class="cl-step-icon tone-mute" aria-hidden="true" />
+							{:else if step.tone === 'none'}
+								<span class="cl-dot cl-dot--dashed" aria-hidden="true"></span>
+							{:else if step.tone === 'failed'}
+								<span class="cl-dot bg-red-600 dark:bg-red-500" aria-hidden="true"></span>
+							{:else if step.tone === 'stuck'}
+								<span class="cl-dot bg-orange-500 dark:bg-orange-400" aria-hidden="true"></span>
+							{:else}
+								<!-- `active` — `deploying` (blue) vs `baking`/`retrying` (yellow),
+								     the same two-way split this row's own leading icon makes,
+								     restated here off the real state. A subtle pulse: something
+								     is genuinely moving right now. -->
+								<span
+									class="cl-dot animate-pulse {step.state === 'deploying'
+										? 'bg-blue-600 dark:bg-blue-400'
+										: 'bg-yellow-500 dark:bg-yellow-400'}"
+									aria-hidden="true"
+								></span>
+							{/if}
+							<span class="cl-meter-label t-micro text-gray-500 dark:text-gray-400">{step.family}</span>
+						</span>
+					{/each}
+				</div>
+			{/if}
+			<span class="t-dense cl-standing shrink-0 truncate {toneClass}">{standingDisplay}</span>
 			<span class="t-micro cl-age shrink-0 text-gray-500 dark:text-gray-400" title={ageLabel}
 				>{ageLabel}</span
 			>
 		</div>
-		{#if steps.length > 0}
-			<div class="cl-meter" role="img" aria-label={meterLabel}>
-				{#each steps as step (step.family)}
-					<span class="cl-step" title="{step.family}: {step.sentence}">
-						{#if step.tone === 'live'}
-							<CheckCircleSolid class="cl-step-icon tone-live" aria-hidden="true" />
-						{:else if step.tone === 'queued'}
-							<ClockSolid class="cl-step-icon tone-mute" aria-hidden="true" />
-						{:else if step.tone === 'none'}
-							<span class="cl-dot cl-dot--dashed" aria-hidden="true"></span>
-						{:else if step.tone === 'failed'}
-							<span class="cl-dot bg-red-600 dark:bg-red-500" aria-hidden="true"></span>
-						{:else if step.tone === 'stuck'}
-							<span class="cl-dot bg-orange-500 dark:bg-orange-400" aria-hidden="true"></span>
-						{:else}
-							<!-- `active` — `deploying` (blue) vs `baking`/`retrying` (yellow),
-							     the same two-way split this row's own leading icon makes,
-							     restated here off the real state. A subtle pulse: something
-							     is genuinely moving right now. -->
-							<span
-								class="cl-dot animate-pulse {step.state === 'deploying'
-									? 'bg-blue-600 dark:bg-blue-400'
-									: 'bg-yellow-500 dark:bg-yellow-400'}"
-								aria-hidden="true"
-							></span>
-						{/if}
-						<span class="cl-meter-label t-micro text-gray-500 dark:text-gray-400">{step.family}</span>
-					</span>
-				{/each}
-			</div>
-		{/if}
 	</div>
 </li>
 
@@ -281,28 +272,37 @@
 	   line, no clipped content — holds at every width; only the numeric
 	   ceiling does not, and only on the one axis (mobile touch target) that
 	   has a standing, written reason to be taller.
-	   ⚠️ SUPERSEDED IN PART, HOME FEEDBACK PASS (2026-09-10): "no second
-	   line ever appears" is no longer true below 640px of container width —
-	   the meter now drops to its own line there, by explicit request (see
-	   the module doc). The 30px ceiling above was always about ONE
-	   width-independent line count; it now holds only at ≥640. */
+	   ⚠️ "no second line ever appears" is no longer true below 640px of
+	   container width — `.cl-status` (meter + standing + age) drops to its
+	   own line there, by explicit request (see the module doc). The 30px
+	   ceiling above was always about ONE width-independent line count; it
+	   now holds only at ≥640, and the row is a fixed TWO lines below that
+	   (never three — the age hides at the same breakpoint the status group
+	   wraps at, see `.cl-age` below). */
 
-	/* R2.1: "Below 420px of card width the age drops (kept in `title`);
-	   nothing else moves, nothing reorders." Still true independent of the
-	   meter's own breakpoint below. */
-	@container (max-width: 419.98px) {
-		.cl-age {
-			display: none;
-		}
-	}
-
-	/* `flex: 1 1 0%` — see the template's own comment on `.cl-line1`: a
-	   DEFINITE flex-basis (`0%`, not `auto`) is what keeps this item's
-	   hypothetical size out of `.cl-row`'s line-wrap decision, so a long
-	   `.cl-standing` sentence inside it can shrink/truncate in place
-	   instead of forcing the whole group onto its own line. */
+	/* `flex: 1 1 0%` — a DEFINITE flex-basis (`0%`, not `auto`) is what lets
+	   this item's title shrink/truncate in place instead of reporting its
+	   full un-truncated content width to `.cl-row`'s line-wrap decision.
+	   Every sibling in `.cl-status` is `shrink-0` (a fixed, bounded
+	   footprint) so this is the row's ONE flexible/growing slot — nothing
+	   else competes with it for space, which is the fix for the "standing
+	   sentence crushes the title to 0px" defect this file's module doc
+	   describes. */
 	.cl-line1 {
 		flex: 1 1 0%;
+	}
+
+	.cl-status {
+		gap: 8px;
+	}
+
+	/* Bounded — even the longest `standingWords` phrase in the closed
+	   vocabulary ("rolled back in staging") is well under this, so it is a
+	   defensive floor, not the primary mechanism (that is `shrink-0` on
+	   `.cl-status` itself, which keeps this whole group out of the title's
+	   negative-space distribution in the first place). */
+	.cl-standing {
+		max-width: 22ch;
 	}
 
 	/* ── THE PER-FAMILY METER ──────────────────────────────────────────── */
@@ -333,7 +333,8 @@
 		flex-shrink: 0;
 	}
 
-	/* `not-built` — no field, no ring colour (state-only, never identity —
+	/* `not-built`, or a family the change cannot have reached yet (past the
+	   frontier) — no field, no ring colour (state-only, never identity —
 	   the same rule `LandingMark`'s own `.lm--dashed` states). */
 	.cl-dot--dashed {
 		border: 1.5px dashed var(--color-gray-400);
@@ -344,6 +345,18 @@
 		border-color: var(--color-gray-500);
 	}
 
+	/* Partial-live — some services in this family are live, none are stuck;
+	   a green RING (not a filled disc) says "getting there", never a second
+	   hue for a state that is still, honestly, green. */
+	.cl-dot--live-ring {
+		border: 1.5px solid var(--color-green-600);
+		background: transparent;
+	}
+
+	:global(.dark) .cl-dot--live-ring {
+		border-color: var(--color-green-400);
+	}
+
 	/* Family words show only once there is room to read them AND the row
 	   is not fighting them for the same line — ≥640px of THIS component's
 	   own container width. */
@@ -352,16 +365,26 @@
 			display: none;
 		}
 
-		/* The meter drops to its own second line: `flex-basis: 100%` alone
-		   forces it to be wider than any remaining space on `.cl-line1`'s
-		   line, so it starts a fresh one — no `order` needed, `.cl-meter` is
-		   already the LAST child of `.cl-row` in DOM order. `padding-left`
-		   aligns the dots under the title, past the leading glyph +
-		   number's own width. */
-		.cl-meter {
+		/* The status group (meter, standing, age) drops to its own second
+		   line: `flex-basis: 100%` alone forces it to be wider than any
+		   remaining space on `.cl-line1`'s line, so it starts a fresh one —
+		   no `order` needed, `.cl-status` is already the LAST child of
+		   `.cl-row` in DOM order. `padding-left` aligns it under the title,
+		   past the leading glyph + number's own width. */
+		.cl-status {
 			flex-basis: 100%;
 			padding-left: 22px;
 			margin-top: 2px;
+		}
+
+		/* The age hides at the SAME breakpoint the status group wraps at
+		   (not a separate, finer one) — otherwise a container between
+		   420-640px would show the age on a THIRD line (after the wrapped
+		   meter+standing group already consumed the second line's full
+		   width), which is not "two lines" any more. Below 640, the full
+		   instant is still in `title` via `ageLabel`, unchanged. */
+		.cl-age {
+			display: none;
 		}
 	}
 </style>

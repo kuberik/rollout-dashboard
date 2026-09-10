@@ -18,6 +18,7 @@ import {
 	myChangesCount,
 	orderHomeChangeRows,
 	familyProgress,
+	familyMeterAriaLabel,
 	type ChangeRowVM
 } from './changes';
 import { buildPrPipeline } from './pr-pipeline';
@@ -797,5 +798,77 @@ describe('familyProgress', () => {
 		expect(familyProgress({ grid: { services: [], allSameLabel: null, visible: [], overflow: null } })).toEqual(
 			[]
 		);
+	});
+
+	// ⭐ THE LIVE BUG THIS FIX PASS EXISTS FOR. `hello-frontend-app` genuinely
+	// has an independently-held candidate in DEV, STAGING *and* PROD at once
+	// (three separate `HELD` rollouts on the real cluster) — the OLD
+	// worst-per-family aggregation painted all three amber, because each
+	// family's own marks really were `stuck` on their own. The change cannot
+	// have moved past DEV, so STG/PRD must read as moot (`none`), not as a
+	// second and third independent block.
+	it('FRONTIER FREEZE: a service held in dev, staging AND prod reads amber ONLY in dev — later families go quiet', () => {
+		const vm = mkVm([
+			mkService('hello-frontend-app', [
+				mkCell('gated', { envName: 'dev', envRank: 0 }),
+				mkCell('gated', { envName: 'staging', envRank: 1 }),
+				mkCell('gated', { envName: 'prod', envRank: 2 })
+			])
+		]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		expect(steps.map((s) => s.tone)).toEqual(['stuck', 'none', 'none']);
+		expect(steps[0].family).toBe('DEV');
+	});
+
+	it('a failed family freezes the walk exactly like a stuck one', () => {
+		const vm = mkVm([
+			mkService('svc', [
+				mkCell('failed', { envName: 'dev', envRank: 0 }),
+				mkCell('gated', { envName: 'staging', envRank: 1 })
+			])
+		]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		expect(steps.map((s) => s.tone)).toEqual(['failed', 'none']);
+	});
+
+	// #2-SHAPED — a multi-service change, live everywhere for one service,
+	// perpetually queued (never stuck) for another: every family is a MIX of
+	// live and not-yet-live with nothing amber anywhere, so every family
+	// reads `live` (partial — `liveCount < builtCount`), never `stuck`.
+	it('#2-shaped: no service is stuck anywhere — every family reads partial-live, never amber', () => {
+		const vm = mkVm([
+			mkService('hello-multi-app', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('live', { envName: 'staging', envRank: 1 }),
+				mkCell('live', { envName: 'prod', envRank: 2 })
+			]),
+			mkService('hello-frontend-app', [
+				mkCell('queued', { envName: 'dev', envRank: 0 }),
+				mkCell('queued', { envName: 'staging', envRank: 1 }),
+				mkCell('queued', { envName: 'prod', envRank: 2 })
+			])
+		]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		expect(steps.map((s) => s.tone)).toEqual(['live', 'live', 'live']);
+		for (const s of steps) {
+			expect(s.liveCount).toBe(1);
+			expect(s.builtCount).toBe(2);
+		}
+		// The row's own standing word prefers the live services over any
+		// bare count of "how many aren't there yet".
+		const grid = buildLandingGrid(vm, NOW);
+		expect(standingWords({ verdictTone: 'active', grid })).toBe('3 of 6 live');
+	});
+
+	it('familyMeterAriaLabel reads "<family> <state>" joined by " · "', () => {
+		const vm = mkVm([
+			mkService('hello-api-app', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('gated', { envName: 'staging', envRank: 1 }),
+				mkCell('not-built', { envName: 'prod', envRank: 2 })
+			])
+		]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		expect(familyMeterAriaLabel(steps)).toBe('dev live · staging held · prod not yet');
 	});
 });

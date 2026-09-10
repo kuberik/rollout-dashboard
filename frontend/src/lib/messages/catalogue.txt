@@ -133,7 +133,6 @@ lib/components/ChangeCard.svelte	text	… · … ago …
 lib/components/ChangeCard.svelte	text	GitHub ↗
 lib/components/ChangeCard.svelte	text	Open change ›
 lib/components/ChangeHistoryCard.svelte	text	This build has not deployed anywhere on this cluster.
-lib/components/ChangeLine.svelte	code	… of … stages
 lib/components/ChangeLine.svelte	code	in this state for …
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	code	… commit…
@@ -764,6 +763,7 @@ lib/view-models/changes.ts	code	live everywhere
 lib/view-models/changes.ts	code	not built
 lib/view-models/changes.ts	code	not built here
 lib/view-models/changes.ts	code	not built yet
+lib/view-models/changes.ts	code	not yet
 lib/view-models/changes.ts	code	rolled back
 lib/view-models/dependencies.ts	code	… version… ahead
 lib/view-models/dependencies.ts	code	… version… waiting to move

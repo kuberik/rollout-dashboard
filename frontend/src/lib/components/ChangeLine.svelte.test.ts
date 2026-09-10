@@ -76,29 +76,72 @@ describe('ChangeLine', () => {
 		expect(index.container.textContent).toContain('widget');
 	});
 
-	test('the standing slot caps at 4 words ONLY when live everywhere', () => {
-		const { container } = render(ChangeLine, { props: { row: mkRow({ verdictTone: 'live', verdictWord: 'live everywhere' } as Partial<ChangeRowVM>) } });
-		const text = container.querySelector('.cl-standing')?.textContent?.trim() ?? '';
-		expect(text.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
-	});
+	test('the standing slot caps at 4 words, always — live or not', () => {
+		const live = render(ChangeLine, {
+			props: { row: mkRow({ verdictTone: 'live', verdictWord: 'live everywhere' } as Partial<ChangeRowVM>) }
+		});
+		const liveText = live.container.querySelector('.cl-standing')?.textContent?.trim() ?? '';
+		expect(liveText.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
+		live.unmount();
 
-	/**
-	 * HOME FEEDBACK PASS (2026-09-10, after round 2 shipped): "the standing
-	 * words shrink to the frontier fact" — every NON-live row now prints
-	 * `row.verdictWord` verbatim (the fused subject-first sentence,
-	 * `buildChangeVerdict`), which can run past 4 words on purpose.
-	 */
-	test('a non-live row prints the full `verdictWord` sentence, not the ≤4-word standing form', () => {
-		const { container } = render(ChangeLine, {
+		const held = render(ChangeLine, {
 			props: {
 				row: mkRow({
 					verdictTone: 'held',
+					// A long fused sentence, the shape the round-2 "feedback pass"
+					// briefly printed verbatim in this slot — see below.
 					verdictWord: 'hello-frontend-app held in dev on hello-api-app'
 				})
 			}
 		});
-		const text = container.querySelector('.cl-standing')?.textContent?.trim() ?? '';
-		expect(text).toBe('hello-frontend-app held in dev on hello-api-app');
+		const heldText = held.container.querySelector('.cl-standing')?.textContent?.trim() ?? '';
+		expect(heldText.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(4);
+	});
+
+	/**
+	 * ⭐ THE LIVE BUG THIS FIX PASS EXISTS FOR (2026-09-10). Every row on Home
+	 * printed the FULL `verdictWord` sentence in the standing slot — with no
+	 * `flex-shrink`/`max-width` of its own, that sentence's un-truncated
+	 * content basis absorbed 100% of the row's negative flex-shrink space
+	 * (a `flex-basis: 0%` sibling like the title contributes ZERO weight to
+	 * that distribution), resolving the TITLE to 0px. Four different PRs all
+	 * showed "hello-frontend-app held in dev on hello…" where the title
+	 * should have been. The fix is two-fold: the standing slot is always the
+	 * ≤4-word `standingWords` form (never `verdictWord`), and it is
+	 * `shrink-0`/bounded so it can never again eat the title's space. This
+	 * test is the regression: the title must render its OWN text, in full,
+	 * never the standing sentence.
+	 */
+	test('the title always renders the PR title, never the standing sentence, even when standing is long', () => {
+		const grid: LandingGridVM = {
+			services: [
+				{
+					appName: 'hello-frontend-app',
+					marks: [mkMark({ family: 'DEV', familyOrder: 0, state: 'gated', tone: 'stuck', sentence: 'dev: held' })],
+					verdictWord: 'held',
+					landedCount: 0,
+					total: 1
+				}
+			],
+			allSameLabel: null,
+			visible: [],
+			overflow: null
+		};
+		const { container } = render(ChangeLine, {
+			props: {
+				row: mkRow({
+					title: 'fix(frontend): retry on 502',
+					verdictTone: 'held',
+					verdictWord: 'hello-frontend-app held in dev on hello-api-app',
+					grid
+				})
+			}
+		});
+		const link = container.querySelector('a.tap-link') as HTMLAnchorElement;
+		expect(link.textContent).toBe('fix(frontend): retry on 502');
+		const standing = container.querySelector('.cl-standing')?.textContent?.trim() ?? '';
+		expect(standing).toBe('held in dev');
+		expect(standing).not.toBe(link.textContent);
 	});
 
 	test('the age answers "how long ago did this merge" when live, "how long stuck" otherwise', () => {
@@ -181,13 +224,73 @@ describe('ChangeLine', () => {
 		const meter = container.querySelector('.cl-meter') as HTMLElement;
 		expect(meter).toBeTruthy();
 		// DEV: one service held, the other live — the aggregate keeps the
-		// WORST (held), never averages the two.
-		expect(meter.getAttribute('aria-label')).toBe('0 of 2 stages');
+		// WORST (held), never averages the two. STG has no build for either
+		// service — with DEV as the frontier already stuck, STG reads "not
+		// yet" (frontier-frozen), not a second independent amber family.
+		expect(meter.getAttribute('aria-label')).toBe('dev held · staging not yet');
 		expect(container.querySelectorAll('.cl-step').length).toBe(2);
 	});
 
 	test('the meter is absent for a row with no landing-grid services (the ledger fallback shape)', () => {
 		const { container } = render(ChangeLine, { props: { row: mkRow({ grid: EMPTY_GRID }) } });
 		expect(container.querySelector('.cl-meter')).toBeNull();
+	});
+
+	// ⭐ THE LIVE BUG DEFECT #2 EXISTS FOR: a service held in EVERY family
+	// (dev/staging/prod all independently stuck on the real cluster) must
+	// still draw only ONE amber step — the frontier — never three.
+	test('a service held in every family draws amber only at the frontier, dashed after it', () => {
+		const grid: LandingGridVM = {
+			services: [
+				{
+					appName: 'hello-frontend-app',
+					marks: [
+						mkMark({ family: 'DEV', familyOrder: 0, state: 'gated', tone: 'stuck', sentence: 'dev: held' }),
+						mkMark({ family: 'STG', familyOrder: 1, state: 'gated', tone: 'stuck', sentence: 'stg: held' }),
+						mkMark({ family: 'PRD', familyOrder: 2, state: 'gated', tone: 'stuck', sentence: 'prd: held' })
+					],
+					verdictWord: 'held',
+					landedCount: 0,
+					total: 3
+				}
+			],
+			allSameLabel: null,
+			visible: [],
+			overflow: null
+		};
+		const { container } = render(ChangeLine, { props: { row: mkRow({ verdictTone: 'held', grid }) } });
+		expect(container.querySelectorAll('.cl-step .bg-orange-500').length).toBe(1);
+		expect(container.querySelectorAll('.cl-dot--dashed').length).toBe(2);
+	});
+
+	// A partial-live family (some services live, none stuck) draws a green
+	// RING, not a filled disc — distinct from the fully-live case.
+	test('a partial-live family draws a green ring, not the solid live check', () => {
+		const grid: LandingGridVM = {
+			services: [
+				{
+					appName: 'hello-multi-app',
+					marks: [mkMark({ family: 'DEV', familyOrder: 0, state: 'live', tone: 'live', sentence: 'dev: live' })],
+					verdictWord: 'live',
+					landedCount: 1,
+					total: 1
+				},
+				{
+					appName: 'hello-frontend-app',
+					marks: [
+						mkMark({ family: 'DEV', familyOrder: 0, state: 'queued', tone: 'queued', sentence: 'dev: queued' })
+					],
+					verdictWord: 'active',
+					landedCount: 0,
+					total: 1
+				}
+			],
+			allSameLabel: null,
+			visible: [],
+			overflow: null
+		};
+		const { container } = render(ChangeLine, { props: { row: mkRow({ verdictTone: 'active', grid }) } });
+		expect(container.querySelector('.cl-dot--live-ring')).toBeTruthy();
+		expect(container.querySelector('.tone-live')).toBeNull();
 	});
 });
