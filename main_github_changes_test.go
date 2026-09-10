@@ -77,17 +77,22 @@ func TestGitHubChanges_RepoParamNotInCluster404(t *testing.T) {
 // classification/ordering/cap tests below: one repo ("octo/repo") whose
 // default branch is "main", four merged PRs (of every merge style this
 // handler distinguishes), and a hand-ordered commit history exercising every
-// classifyChanges rule.
+// classifyChanges rule PLUS firstParentChain's filtering.
 //
-// Commit history, newest (index 0) to oldest, as returned by
-// GET .../commits (mirrors real GitHub's most-recent-first order):
+// Commit history exactly as GET .../commits would return it for
+// sha=<default> — commit-date order, newest first, including every
+// branch-side (second-parent-only) commit GitHub's API reachability walk
+// picks up along the way:
 //
-//	0  mergesha1   (2 parents) == PR #1's merge_commit_sha -> PR #1 (merge commit)
-//	1  baresha1    (1 parent)  "Add readme"                -> bare commit
-//	2  realsha2    (1 parent)  "Fix widget bug (#2)"       -> PR #2 (squash: "(#2)" suffix match; PR #2's own reported merge_commit_sha, "phantomsha2", never appears in this history at all — the squash-message rule is the ONLY way to attribute it)
-//	3  mergedanon  (2 parents) matches no PR                -> skipped entirely (untracked merge commit)
-//	4  baresha2    (1 parent)  "Update docs"               -> bare commit
-//	5  mergesha3   (2 parents) == PR #3's merge_commit_sha -> PR #3 (merge commit)
+//	0  mergesha1    (parents: baresha1, branchtip1)  == PR #1's merge_commit_sha -> PR #1 (merge commit, on the chain)
+//	1  branchtip1   (parents: none needed)            second-parent-only       -> DROPPED (not on the first-parent chain)
+//	2  baresha1     (parent: realsha2)                "Add readme"             -> bare commit
+//	3  realsha2     (parent: mergedanon)              "Fix widget bug (#2)"    -> PR #2 (squash: "(#2)" suffix match; PR #2's own reported merge_commit_sha, "phantomsha2", never appears in this history at all — the squash-message rule is the ONLY way to attribute it)
+//	4  mergedanon   (parents: baresha2, branchside2)  matches no PR            -> now a bare "commit" change (its own subject line), since firstParentChain already dropped its branch side
+//	5  branchside2  (parents: none needed)            second-parent-only       -> DROPPED
+//	6  baresha2     (parent: mergesha3)                "Update docs"           -> bare commit
+//	7  mergesha3    (parents: rootsha-outside-window, branchtip3) == PR #3's merge_commit_sha -> PR #3 (merge commit); its first parent is never fetched, so the chain legitimately ends here
+//	8  branchtip3   (parents: none needed)            second-parent-only       -> DROPPED
 //
 // PR #4's reported merge_commit_sha ("phantomsha4") also never appears in
 // this history — it stays a "pr" change with containedIn == [].
@@ -109,12 +114,15 @@ func changesFixtureServer(t *testing.T) *httptest.Server {
 			]`)
 		case "/repos/octo/repo/commits":
 			fmt.Fprint(w, `[
-				{"sha":"mergesha1","html_url":"https://github.com/octo/repo/commit/mergesha1","parents":[{"sha":"p1a"},{"sha":"p1b"}],"commit":{"message":"Merge pull request #1","committer":{"date":"2026-09-08T00:00:00Z"}}},
-				{"sha":"baresha1","html_url":"https://github.com/octo/repo/commit/baresha1","parents":[{"sha":"p1"}],"commit":{"message":"Add readme","committer":{"date":"2026-09-07T12:00:00Z"},"author":{"name":"Eve","date":"2026-09-07T12:00:00Z"}}},
-				{"sha":"realsha2","html_url":"https://github.com/octo/repo/commit/realsha2","parents":[{"sha":"p2"}],"commit":{"message":"Fix widget bug (#2)","committer":{"date":"2026-09-07T00:00:00Z"}},"author":{"login":"bob"}},
-				{"sha":"mergedanon","html_url":"https://github.com/octo/repo/commit/mergedanon","parents":[{"sha":"pa"},{"sha":"pb"}],"commit":{"message":"Merge branch 'untracked'","committer":{"date":"2026-09-06T12:00:00Z"}}},
-				{"sha":"baresha2","html_url":"https://github.com/octo/repo/commit/baresha2","parents":[{"sha":"p3"}],"commit":{"message":"Update docs","committer":{"date":"2026-09-06T00:00:00Z"},"author":{"name":"Frank","date":"2026-09-06T00:00:00Z"}}},
-				{"sha":"mergesha3","html_url":"https://github.com/octo/repo/commit/mergesha3","parents":[{"sha":"p4a"},{"sha":"p4b"}],"commit":{"message":"Merge pull request #3","committer":{"date":"2026-09-05T00:00:00Z"}}}
+				{"sha":"mergesha1","html_url":"https://github.com/octo/repo/commit/mergesha1","parents":[{"sha":"baresha1"},{"sha":"branchtip1"}],"commit":{"message":"Merge pull request #1","committer":{"date":"2026-09-08T00:00:00Z"}}},
+				{"sha":"branchtip1","html_url":"https://github.com/octo/repo/commit/branchtip1","parents":[{"sha":"sideroot1"}],"commit":{"message":"feat(hello): branch work","committer":{"date":"2026-09-07T18:00:00Z"}}},
+				{"sha":"baresha1","html_url":"https://github.com/octo/repo/commit/baresha1","parents":[{"sha":"realsha2"}],"commit":{"message":"Add readme","committer":{"date":"2026-09-07T12:00:00Z"},"author":{"name":"Eve","date":"2026-09-07T12:00:00Z"}}},
+				{"sha":"realsha2","html_url":"https://github.com/octo/repo/commit/realsha2","parents":[{"sha":"mergedanon"}],"commit":{"message":"Fix widget bug (#2)","committer":{"date":"2026-09-07T00:00:00Z"}},"author":{"login":"bob"}},
+				{"sha":"mergedanon","html_url":"https://github.com/octo/repo/commit/mergedanon","parents":[{"sha":"baresha2"},{"sha":"branchside2"}],"commit":{"message":"Merge branch 'untracked'","committer":{"date":"2026-09-06T12:00:00Z"}}},
+				{"sha":"branchside2","html_url":"https://github.com/octo/repo/commit/branchside2","parents":[{"sha":"sideroot2"}],"commit":{"message":"some untracked branch work","committer":{"date":"2026-09-06T06:00:00Z"}}},
+				{"sha":"baresha2","html_url":"https://github.com/octo/repo/commit/baresha2","parents":[{"sha":"mergesha3"}],"commit":{"message":"Update docs","committer":{"date":"2026-09-06T00:00:00Z"},"author":{"name":"Frank","date":"2026-09-06T00:00:00Z"}}},
+				{"sha":"mergesha3","html_url":"https://github.com/octo/repo/commit/mergesha3","parents":[{"sha":"rootsha-outside-window"},{"sha":"branchtip3"}],"commit":{"message":"Merge pull request #3","committer":{"date":"2026-09-05T00:00:00Z"}}},
+				{"sha":"branchtip3","html_url":"https://github.com/octo/repo/commit/branchtip3","parents":[{"sha":"sideroot3"}],"commit":{"message":"feat(hello-second): add /healthz endpoint","committer":{"date":"2026-09-04T12:00:00Z"}}}
 			]`)
 		default:
 			t.Fatalf("unexpected path %s", req.URL.Path)
@@ -176,14 +184,23 @@ func TestGitHubChanges_Classification(t *testing.T) {
 		t.Fatalf("repos = %v, want [octo/repo]", body.Repos)
 	}
 
-	// mergedanon (untracked 2-parent merge commit) must not appear as its
-	// own change; every other commit/PR must.
-	if len(body.Changes) != 6 {
-		t.Fatalf("len(changes) = %d, want 6 (got %v)", len(body.Changes), body.Changes)
+	// 4 PRs + 3 bare commits (readme, mergedanon, docs). The 3 second-parent-
+	// only branch-side commits (branchtip1, branchside2, branchtip3) must
+	// never appear — they're inside their respective merge commits, not
+	// separate changes.
+	if len(body.Changes) != 7 {
+		t.Fatalf("len(changes) = %d, want 7 (got %v)", len(body.Changes), body.Changes)
 	}
-	for _, ch := range body.Changes {
-		if ch["mergeCommitSha"] == "mergedanon" {
-			t.Fatalf("untracked merge commit mergedanon leaked into changes: %v", ch)
+	for _, dropped := range []string{"branchtip1", "branchside2", "branchtip3"} {
+		for _, ch := range body.Changes {
+			if ch["mergeCommitSha"] == dropped {
+				t.Fatalf("second-parent-only commit %s leaked into changes: %v", dropped, ch)
+			}
+			for _, sha := range shaStrings(t, ch["containedIn"]) {
+				if sha == dropped {
+					t.Fatalf("second-parent-only commit %s leaked into %v's containedIn", dropped, ch)
+				}
+			}
 		}
 	}
 
@@ -192,6 +209,23 @@ func TestGitHubChanges_Classification(t *testing.T) {
 	}
 	byTitle := func(title string) func(map[string]interface{}) bool {
 		return func(ch map[string]interface{}) bool { return ch["title"] == title }
+	}
+
+	// mergedanon: an untracked (no matching PR) merge commit that IS on the
+	// first-parent chain must now surface as its own "commit"-kind change,
+	// titled by its own subject — its branch-side commit (branchside2) was
+	// already dropped by firstParentChain, so this merge commit is the only
+	// remaining record that anything landed.
+	mergedanon := findChange(t, body.Changes, byTitle("Merge branch 'untracked'"))
+	if mergedanon["kind"] != "commit" {
+		t.Fatalf("mergedanon.kind = %v, want commit", mergedanon["kind"])
+	}
+	if mergedanon["mergeCommitSha"] != "mergedanon" {
+		t.Fatalf("mergedanon.mergeCommitSha = %v, want mergedanon", mergedanon["mergeCommitSha"])
+	}
+	wantMergedanonContained := []string{"mergesha1", "baresha1", "realsha2"}
+	if got := shaStrings(t, mergedanon["containedIn"]); fmt.Sprint(got) != fmt.Sprint(wantMergedanonContained) {
+		t.Fatalf("mergedanon.containedIn = %v, want %v", got, wantMergedanonContained)
 	}
 
 	// PR #1: a real 2-parent merge commit, matched by merge_commit_sha
@@ -348,11 +382,26 @@ func TestGitHubChanges_PaginationCutSetsContainedInAll(t *testing.T) {
 			if p := req.URL.Query().Get("page"); p != "" {
 				page = atoiOrOne(p)
 			}
+			// Each commit's first parent is the next one in the same
+			// first-parent chain — the last commit of a page points into
+			// the next page, so the whole fetched history (up to the page
+			// cap) is one unbroken chain firstParentChain must not truncate
+			// early. Page 4 is never actually requested (changesCommitsMaxPages
+			// is 3), so page 3's last commit's parent naturally falls
+			// outside the fetched window and the chain ends there, exactly
+			// like the real cutByCap/containedInAll case this test covers.
 			commits := make([]map[string]interface{}, 0, 100)
 			for i := 0; i < 100; i++ {
+				var parentSHA string
+				if i < 99 {
+					parentSHA = fmt.Sprintf("sha-p%d-%03d", page, i+1)
+				} else {
+					parentSHA = fmt.Sprintf("sha-p%d-000", page+1)
+				}
 				commits = append(commits, map[string]interface{}{
-					"sha":    fmt.Sprintf("sha-p%d-%03d", page, i),
-					"commit": map[string]interface{}{"message": "bare commit", "committer": map[string]string{"date": "2026-09-01T00:00:00Z"}},
+					"sha":     fmt.Sprintf("sha-p%d-%03d", page, i),
+					"parents": []map[string]string{{"sha": parentSHA}},
+					"commit":  map[string]interface{}{"message": "bare commit", "committer": map[string]string{"date": "2026-09-01T00:00:00Z"}},
 				})
 			}
 			// 4 pages of 100 available, but changesCommitsMaxPages is 3 —
@@ -528,8 +577,8 @@ func TestGitHubChanges_ContainedInExcludesOwnMergeSha(t *testing.T) {
 			// (idx 2) whose message merely starts with the PR's title —
 			// the false-positive matchSquashPR would otherwise latch onto.
 			fmt.Fprint(w, `[
-				{"sha":"f7a46ae","html_url":"https://github.com/octo/repo/commit/f7a46ae","parents":[{"sha":"pa"},{"sha":"pb"}],"commit":{"message":"Merge pull request #2 from bump-version","committer":{"date":"2026-09-09T10:00:00Z"}}},
-				{"sha":"midsha","html_url":"https://github.com/octo/repo/commit/midsha","parents":[{"sha":"p1"}],"commit":{"message":"chore: cleanup","committer":{"date":"2026-09-08T00:00:00Z"}},"author":{"name":"Eve","date":"2026-09-08T00:00:00Z"}},
+				{"sha":"f7a46ae","html_url":"https://github.com/octo/repo/commit/f7a46ae","parents":[{"sha":"midsha"},{"sha":"pb"}],"commit":{"message":"Merge pull request #2 from bump-version","committer":{"date":"2026-09-09T10:00:00Z"}}},
+				{"sha":"midsha","html_url":"https://github.com/octo/repo/commit/midsha","parents":[{"sha":"staleSha"}],"commit":{"message":"chore: cleanup","committer":{"date":"2026-09-08T00:00:00Z"}},"author":{"name":"Eve","date":"2026-09-08T00:00:00Z"}},
 				{"sha":"staleSha","html_url":"https://github.com/octo/repo/commit/staleSha","parents":[{"sha":"p0"}],"commit":{"message":"Bump app version to v1.4.0-rc1 (early attempt)","committer":{"date":"2026-01-01T00:00:00Z"}},"author":{"name":"Frank","date":"2026-01-01T00:00:00Z"}}
 			]`)
 		default:
@@ -609,8 +658,8 @@ func TestGitHubChanges_StaleTitlePrefixDoesNotStealSquashPosition(t *testing.T) 
 			// then a much older commit (idx 2) whose message starts with
 			// the same PR title but is otherwise unrelated.
 			fmt.Fprint(w, `[
-				{"sha":"dfdee1e","html_url":"https://github.com/octo/repo/commit/dfdee1e","parents":[{"sha":"p2"}],"commit":{"message":"Fix retry loop (#2)","committer":{"date":"2026-09-09T09:00:00Z"}},"author":{"login":"alice"}},
-				{"sha":"midsha2","html_url":"https://github.com/octo/repo/commit/midsha2","parents":[{"sha":"p1"}],"commit":{"message":"docs: update readme","committer":{"date":"2026-09-08T00:00:00Z"}},"author":{"name":"Eve","date":"2026-09-08T00:00:00Z"}},
+				{"sha":"dfdee1e","html_url":"https://github.com/octo/repo/commit/dfdee1e","parents":[{"sha":"midsha2"}],"commit":{"message":"Fix retry loop (#2)","committer":{"date":"2026-09-09T09:00:00Z"}},"author":{"login":"alice"}},
+				{"sha":"midsha2","html_url":"https://github.com/octo/repo/commit/midsha2","parents":[{"sha":"staleSha2"}],"commit":{"message":"docs: update readme","committer":{"date":"2026-09-08T00:00:00Z"}},"author":{"name":"Eve","date":"2026-09-08T00:00:00Z"}},
 				{"sha":"staleSha2","html_url":"https://github.com/octo/repo/commit/staleSha2","parents":[{"sha":"p0"}],"commit":{"message":"Fix retry loop in old subsystem","committer":{"date":"2026-01-01T00:00:00Z"}},"author":{"name":"Frank","date":"2026-01-01T00:00:00Z"}}
 			]`)
 		default:
@@ -655,6 +704,71 @@ func TestGitHubChanges_StaleTitlePrefixDoesNotStealSquashPosition(t *testing.T) 
 	wantStaleContained := []string{"dfdee1e", "midsha2"}
 	if got := shaStrings(t, stale["containedIn"]); fmt.Sprint(got) != fmt.Sprint(wantStaleContained) {
 		t.Fatalf("staleSha2.containedIn = %v, want %v", got, wantStaleContained)
+	}
+}
+
+// TestFirstParentChain exercises firstParentChain directly: HEAD is a merge
+// commit whose second parent leads into a branch-side history (side1, side2)
+// that GitHub's commits API would include in the raw list (it's reachable
+// from HEAD) but that must never surface as its own change — only the
+// first-parent line (HEAD, then its first-parent bare commit) survives, and
+// the walk stops cleanly once a first parent (bare1's) falls outside the
+// fetched window.
+func TestFirstParentChain(t *testing.T) {
+	head := &github.RepositoryCommit{
+		SHA:     github.Ptr("head"),
+		Parents: []*github.Commit{{SHA: github.Ptr("bare1")}, {SHA: github.Ptr("side1")}},
+	}
+	side1 := &github.RepositoryCommit{
+		SHA:     github.Ptr("side1"),
+		Parents: []*github.Commit{{SHA: github.Ptr("side2")}},
+	}
+	side2 := &github.RepositoryCommit{
+		SHA:     github.Ptr("side2"),
+		Parents: []*github.Commit{{SHA: github.Ptr("root")}},
+	}
+	bare1 := &github.RepositoryCommit{
+		SHA:     github.Ptr("bare1"),
+		Parents: []*github.Commit{{SHA: github.Ptr("outside-fetched-window")}},
+	}
+	commits := []*github.RepositoryCommit{head, side1, side2, bare1}
+
+	got := firstParentChain(commits)
+	gotSHAs := make([]string, len(got))
+	for i, c := range got {
+		gotSHAs[i] = c.GetSHA()
+	}
+	want := []string{"head", "bare1"}
+	if fmt.Sprint(gotSHAs) != fmt.Sprint(want) {
+		t.Fatalf("firstParentChain = %v, want %v (side1/side2 are reachable only via HEAD's second parent and must drop; bare1's first parent isn't fetched, so the chain stops there)", gotSHAs, want)
+	}
+}
+
+func TestFirstParentChain_Empty(t *testing.T) {
+	if got := firstParentChain(nil); got != nil {
+		t.Fatalf("firstParentChain(nil) = %v, want nil", got)
+	}
+}
+
+// TestFirstParentChain_RootCommit covers a repo history's true root: a
+// single-parent chain that simply ends because the oldest commit has no
+// parents at all (not because a parent fell outside the fetch window).
+func TestFirstParentChain_RootCommit(t *testing.T) {
+	head := &github.RepositoryCommit{
+		SHA:     github.Ptr("head"),
+		Parents: []*github.Commit{{SHA: github.Ptr("root")}},
+	}
+	root := &github.RepositoryCommit{
+		SHA:     github.Ptr("root"),
+		Parents: nil,
+	}
+	got := firstParentChain([]*github.RepositoryCommit{head, root})
+	if len(got) != 2 || got[0].GetSHA() != "head" || got[1].GetSHA() != "root" {
+		gotSHAs := make([]string, len(got))
+		for i, c := range got {
+			gotSHAs[i] = c.GetSHA()
+		}
+		t.Fatalf("firstParentChain = %v, want [head root]", gotSHAs)
 	}
 }
 

@@ -236,7 +236,69 @@ func changesForRepo(ctx context.Context, ghClient *github.Client, owner, repo st
 		return nil, err
 	}
 
+	// GitHub's commits list for sha=<default> returns every commit reachable
+	// from the branch head, in commit-date order — that includes
+	// second-parent (branch-side) commits of every merge commit on the way,
+	// which are not themselves "a change on the default branch": they only
+	// landed as part of the merge commit that brought them in. Filter down
+	// to the first-parent chain before classifying, so a PR's own
+	// branch-side commits never show up as separate, spurious changes.
+	commits = firstParentChain(commits)
+
 	return classifyChanges(owner, repo, defaultBranch, prs, commits, cutByCap), nil
+}
+
+// firstParentChain walks commits (as returned by the GitHub commits API for
+// sha=<default>, newest first) starting at commits[0] — the branch head —
+// and follows each commit's first parent (parents[0]) only, returning just
+// the commits on that chain, still newest first.
+//
+// A "change" on the default branch is a first-parent commit only: a merge
+// commit's second (and later) parents are the branch it merged, not commits
+// that landed on the default branch in their own right — they're already
+// represented by the merge commit itself. Since GitHub's commits list
+// contains every commit reachable from the head (both chain and
+// branch-side), those branch-side commits appear in commits but must never
+// become their own change entries, and this is the only place that drops
+// them.
+//
+// The walk stops when a parent's sha isn't found among the fetched commits
+// — either because it's genuinely the repo's root commit, or because it's
+// older than `since`/the page cap and so was never fetched at all. Either
+// way, there's nothing further this handler can attribute a change to, and
+// classifyChanges's existing cutByCap/containedInAll signal already tells
+// the caller the list may be incomplete.
+func firstParentChain(commits []*github.RepositoryCommit) []*github.RepositoryCommit {
+	if len(commits) == 0 {
+		return nil
+	}
+	bySHA := make(map[string]*github.RepositoryCommit, len(commits))
+	for _, rc := range commits {
+		bySHA[rc.GetSHA()] = rc
+	}
+
+	chain := make([]*github.RepositoryCommit, 0, len(commits))
+	seen := make(map[string]bool, len(commits))
+	cur := commits[0]
+	for cur != nil {
+		sha := cur.GetSHA()
+		if seen[sha] {
+			break // defensive cycle guard; a real git history is acyclic
+		}
+		seen[sha] = true
+		chain = append(chain, cur)
+
+		parents := cur.GetParents()
+		if len(parents) == 0 {
+			break // repo root
+		}
+		next, ok := bySHA[parents[0].GetSHA()]
+		if !ok {
+			break // parent falls outside the fetched window
+		}
+		cur = next
+	}
+	return chain
 }
 
 // fetchMergedPulls lists repo's closed pull requests (sorted by updated,
@@ -315,26 +377,27 @@ func fetchDefaultBranchCommits(ctx context.Context, ghClient *github.Client, own
 }
 
 // classifyChanges tells apart, for one repo's already-fetched merged-PR list
-// and default-branch commit list (newest-first, as GitHub returns them):
+// and default-branch commit list (newest-first, first-parent-only — see
+// firstParentChain, which the caller has already applied):
 //
 //  1. a commit whose sha IS a listed PR's merge_commit_sha — that PR, however
 //     it merged (merge commit, rebase, or squash: for a squash/rebase the
 //     merge_commit_sha IS the one commit that landed, so this rule alone
 //     already catches most of them).
-//  2. otherwise, a commit with more than one parent — an untracked merge
-//     commit (e.g. a PR merged through some path this handler didn't see, or
-//     a merge from a branch with no open/closed PR at all) — skipped
-//     entirely: it is not itself a "change" a human authored, and whatever
-//     PR it belonged to (if any) is either already caught by rule 1 or is
-//     outside this handler's data.
-//  3. otherwise, a single-parent commit whose message's first line starts
+//  2. otherwise, a single-parent commit whose message's first line starts
 //     with a listed PR's title, or ends with "(#N)" for a listed PR number N
 //     — a squash merge GitHub's UI produced without preserving
 //     merge_commit_sha equality (defensive: in practice rule 1 already
 //     covers squash merges, since GitHub always sets merge_commit_sha to the
 //     squash commit itself).
-//  4. otherwise, a bare commit — pushed straight to the default branch with
-//     no pull request.
+//  3. otherwise, a bare commit — pushed straight to the default branch with
+//     no pull request. This also covers a merge commit that matches no PR
+//     (e.g. merged through some path this handler didn't see, or a plain
+//     `git merge` with no PR at all): since firstParentChain already dropped
+//     its second-parent (branch-side) commits, the merge commit itself is
+//     the only remaining record that anything landed, so it becomes a
+//     "commit"-kind change titled by its own subject line rather than
+//     vanishing.
 //
 // containedIn for every change is computed from this same commit list (no
 // extra calls): the shas of commits that come BEFORE it in this
@@ -369,18 +432,16 @@ func classifyChanges(owner, repo, defaultBranch string, prs []*github.PullReques
 		}
 	}
 
-	// Pass 2: untracked merge commits, the squash/rebase message heuristic
-	// (rule 3, only for PRs pass 1 didn't already place, and only when the
-	// commit isn't implausibly older than the PR's merged_at), and bare
-	// commits (rule 4).
+	// Pass 2: the squash/rebase message heuristic (rule 2, only for PRs pass
+	// 1 didn't already place, and only when the commit isn't implausibly
+	// older than the PR's merged_at), and bare commits (rule 3 — including
+	// untracked merge commits, now that firstParentChain has already
+	// stripped their second-parent branch-side commits).
 	var bareChanges []*ghChange
 	for idx, rc := range commits {
 		sha := rc.GetSHA()
 		if _, ok := mergeShaIndex[sha]; ok {
 			continue // already positioned in pass 1
-		}
-		if len(rc.GetParents()) > 1 {
-			continue // untracked merge commit
 		}
 		if i := matchSquashPR(rc.GetCommit().GetMessage(), prs); i >= 0 && !hasExactMatch[i] && !squashMatchTooOld(rc, prs[i]) {
 			if _, already := positions[prChanges[i]]; !already {
