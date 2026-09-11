@@ -129,21 +129,26 @@
 	>
 	{#if currentTheme === 'dark'}
 		<!--
-			⛔ `--d2h-del-color` AND `--d2h-ins-color` USED TO BE THE LIGHT
-			THEME'S OWN VALUES, COPIED. (2026-09-10) Every other var in this
-			block flips for dark; these two did not — both blocks said
-			`rgb(185 28 28)` (red-700) and `rgb(22 101 52)` (green-800), which
-			are inks chosen to sit on `red-100`/`green-100`. On this block's own
-			`gray-900` ground they measure **2.68:1** and **2.38:1**, i.e. the
-			added and removed LINE TEXT — the entire point of a diff — was under
-			the 4.5:1 floor in dark theme. (Light is fine and unchanged: 5.30
-			and 6.49 on its own tinted rows.)
+			⚠️ SIX OF THE TEN CUSTOM PROPERTIES IN THESE TWO BLOCKS ARE DEAD, AND
+			THAT IS WORTH KNOWING BEFORE ANYONE "FIXES" A COLOUR HERE.
+			(2026-09-11) `diff2html`'s own stylesheet names its tokens
+			`--d2h-dark-del-bg-color`, `--d2h-change-del-color`,
+			`--d2h-del-highlight-bg-color` … — it has no `--d2h-del-color`,
+			`--d2h-ins-color`, `--d2h-code-line-color`, `--d2h-code-side-line-bg-color`,
+			`--d2h-code-line-bg-color` or `--d2h-file-header-color` at all. Grepped
+			against `diff2html/bundles/css/diff2html.min.css`, and confirmed on the
+			rendered page: no loaded rule references either of the two ink vars, and
+			the diff draws in `diff2html`'s OWN dark palette because `renderDiff`
+			already passes `colorScheme: ColorSchemeType.DARK`.
+			Measured on the running page in dark theme: line text `rgb(230,237,243)`
+			on `rgb(16,24,40)` — legible, nothing to fix.
 
-			`red-400` / `green-400` are the dark-side inks `BakeStatusIcon`'s
-			`TONE` already declares for the same two meanings, so this
-			introduces no new colour value. Measured on this block's own tinted
-			rows: **6.00:1** removed, **9.53:1** added (6.14 / 9.98 on the
-			untinted context lines).
+			Left in place rather than deleted: the four REAL names here
+			(`--d2h-bg-color`, `--d2h-file-header-bg-color`, `--d2h-del-bg-color`,
+			`--d2h-ins-bg-color`) may still be doing something on some code path,
+			and proving that either way is its own pass. Do not compute a contrast
+			ratio from these values and call it a defect — they are not what the
+			page paints.
 		-->
 		<style>
 			:root {
@@ -152,9 +157,9 @@
 				--d2h-code-line-bg-color: rgb(17 24 39);
 				--d2h-code-side-line-bg-color: rgb(17 24 39);
 				--d2h-del-bg-color: rgb(127 29 29 / 0.1);
-				--d2h-del-color: rgb(255 100 103);
+				--d2h-del-color: rgb(185 28 28);
 				--d2h-ins-bg-color: rgb(20 83 45 / 0.1);
-				--d2h-ins-color: rgb(5 223 114);
+				--d2h-ins-color: rgb(22 101 52);
 				--d2h-file-header-color: rgb(209 213 219);
 				--d2h-code-line-color: rgb(209 213 219);
 			}
