@@ -209,7 +209,9 @@
 
 	const explanation = $derived(heldExplanation(stories, heldEnvLabels, indefinite));
 	const message = $derived(
-		explanation ? `${releaseSplitMessage} ${explanation}` : releaseSplitMessage
+		explanation
+			? `${/[.!?]$/.test(releaseSplitMessage.trim()) ? releaseSplitMessage.trim() : releaseSplitMessage.trim() + '.'} ${explanation}`
+			: releaseSplitMessage
 	);
 	const HeldIcon: Component = $derived(hasSchedule ? CalendarMonthSolid : UserCircleSolid);
 	/**

@@ -1473,6 +1473,7 @@
 									subject={changeFrontier.appName}
 									releaseSplitMessage={changeHeldMessage}
 									stories={changeHeldStory ? [changeHeldStory] : []}
+									indefinite={changeHeldStory ? storiesAreIndefinite([changeHeldStory]) : false}
 									primaryHref={changeHeldPrimary?.href ?? null}
 									primaryLabel={changeHeldPrimary?.label ?? null}
 									hasSchedule={changeHeldHasSchedule}
