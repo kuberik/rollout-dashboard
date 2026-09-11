@@ -1156,3 +1156,12 @@ or a card grid — never one centred column of stacked blocks. A list row about 
 "whether it is progressing and how far" with a compact per-environment-family meter (worst state
 per family, aggregated over services) plus the frontier fact and time in the current state —
 "without showing every single environment" per service.
+
+## Consistency without complacency (2026-09-11, human)
+
+A new region reuses the component that plays its role on Home, /rollouts or the rollout detail
+(Card + 47px header + rollup, dot section headers, rail `dl` cards, RolloutGrid rows, `.btn`,
+Chip, HeldBanner, `t-*`). What is genuinely new is designed inside that grammar and its doc
+comment says what role it plays, why nothing existing fits, and which reference lends its
+proportions. A list without a card, a page ≥1024 in one column, or an old role drawn a new way
+is a defect; a new object with its reason written down is not.
