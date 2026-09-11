@@ -636,7 +636,7 @@
 			(1201×373, divided rows at the real ~65px row height) in the
 			product's own `CardSkeleton` vocabulary.
 		-->
-		<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+		<div class="mx-auto w-full px-4 py-6 sm:px-6">
 			<div class="mb-5 flex flex-wrap items-start justify-between gap-4" aria-hidden="true">
 				<div class="flex flex-col gap-2">
 					<span class="skel-block h-6 w-48"></span>
@@ -705,7 +705,7 @@
 		     and the comment on `scrollToEntry` above already records that the
 		     list's real scroll container is four ancestors up. Removed rather
 		     than styled around. -->
-		<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+		<div class="mx-auto w-full px-4 py-6 sm:px-6">
 			<!-- Page header + stats bar -->
 			<div class="mb-5 flex flex-wrap items-start justify-between gap-4">
 				<div>

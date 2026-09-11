@@ -509,14 +509,15 @@ lib/components/RolloutStepper.svelte	code	… failing
 lib/components/RolloutStepper.svelte	code	… rolling out
 lib/components/RolloutStepper.svelte	code	…/… done
 lib/components/RolloutStepper.svelte	aria-label	Deploy pipeline
+lib/components/ScheduleStatus.svelte	code	… · reopens …
 lib/components/ScheduleStatus.svelte	text	… Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	code	… newer build… … waiting.
 lib/components/ScheduleStatus.svelte	text	… rule …
 lib/components/ScheduleStatus.svelte	code	…Nothing promotes itself for another … — ….
 lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
-lib/components/ScheduleStatus.svelte	code	Deploys pause outside business hours
-lib/components/ScheduleStatus.svelte	code	Deploys pause outside business hours · reopens …
+lib/components/ScheduleStatus.svelte	code	Deploys pause outside the … deploy window
+lib/components/ScheduleStatus.svelte	code	Deploys pause outside this rollout’s deploy windows
 lib/components/ScheduleStatus.svelte	code	Failed to load schedules
 lib/components/ScheduleStatus.svelte	text	Held by … rule … …
 lib/components/SourceViewer.svelte	code	Failed to fetch files

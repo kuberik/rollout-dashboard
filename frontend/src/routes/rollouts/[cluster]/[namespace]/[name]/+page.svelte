@@ -1719,7 +1719,7 @@
 			(neither is a `Card`) are hand-drawn, matching their own real markup
 			below (`rounded-2xl` hero, the header's `t-display-id` name).
 		-->
-		<div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-10 sm:px-6">
+		<div class="mx-auto w-full px-4 pt-6 pb-10 sm:px-6">
 			<StillTryingNotice failureCount={rolloutQuery.failureCount} />
 			<div class="mb-4 flex flex-wrap items-baseline gap-3" aria-hidden="true">
 				<span class="skel-block h-6 w-48"></span>
@@ -1792,7 +1792,7 @@
 			different fact from a failed request, so the footnote states the
 			address that was asked for. Never invent a quote from the server.
 		-->
-		<div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-10 sm:px-6">
+		<div class="mx-auto w-full px-4 pt-6 pb-10 sm:px-6">
 			<!-- ⭐ THE ADDRESS AND THE ANSWER, AS FIELDS. (2026-09-02) It was
 			     *"The server answered for hello-dep-dev/does-not-exist on dev and
 			     returned no release."* — a namespace/name pair, a cluster and an
@@ -1850,7 +1850,7 @@
 		     exception", and that exception was the 180px step at 1800 (560 at
 		     2560) between the strip and this block that the human read as
 		     rollout detail having a larger margin. See the layout file. -->
-		<div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-10 sm:px-6">
+		<div class="mx-auto w-full px-4 pt-6 pb-10 sm:px-6">
 			{#if rollout.status?.history?.[0]}
 				{@const latestEntry = rollout.status.history[0]}
 				<!--
@@ -3415,7 +3415,9 @@
 											rel="noopener noreferrer"
 											class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/30"
 										>
-											<DatadogLogo class="h-4 w-4 flex-shrink-0 text-[#632CA6]" />
+											<!-- No ink class: the asset's fill is literal, not `currentColor` — the
+											     theme picks the official asset now (see `DatadogLogo`). -->
+											<DatadogLogo class="h-4 w-4 flex-shrink-0" />
 											<div class="min-w-0 flex-1">
 												<span class="text-sm text-gray-700 dark:text-gray-300"
 													>{datadogServiceInfo.service}</span

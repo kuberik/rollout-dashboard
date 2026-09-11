@@ -426,12 +426,33 @@
      pair sits in its row. -->
 {#snippet versionSnippet(a: ActivityEntry)}
 	{@const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const }}
-	<span class="flex min-w-0 shrink-0 items-center gap-1">
+	<!--
+		⛔ `shrink-0` IS GONE, AND THE PAIR WRAPS. IT WAS CUTTING THE NEW BUILD
+		IN HALF ON EVERY RAIL IN THE PRODUCT. (2026-09-10)
+
+		This span held `[old] → [NEWEST new]` as ONE `shrink-0` flex item, so
+		flexbox never asked it to give and it could not break internally
+		either. The rail is a 320px column: measured, the item wanted 377px in
+		a 262px row and overflowed the panel by 115px — the NEW build, the one
+		fact the row exists to state, rendered as `1.246.0` and then stopped at
+		the card's edge. Reproduced at 390/768/1280/1920 on `/`, `/apps`,
+		`/apps/[name]` and `/envs/[name]`, worst 129px, and at 390 it was one
+		of the two things giving `/` a horizontal scrollbar.
+
+		The row above already wraps (`flex-wrap` — see its own note); it simply
+		had one child that refused to participate. Wrapping HERE lets the old
+		build keep line 1 and the joined rank chip take line 2, which is the
+		break the reader wants anyway: `.chip-joined` is already
+		`max-width: 100%` over a `.chip-value` that clips, so on a rail too
+		narrow even for that the sha truncates inside its own box — with the
+		full string on the chip's `valueTitle` — instead of leaving the panel.
+	-->
+	<span class="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1">
 		{#if a.previousVersion}
-			<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
+			<span class="t-code-sm min-w-0 truncate text-gray-500 line-through dark:text-gray-400"
 				>{a.previousVersion}</span
 			>
-			<span class="t-micro text-gray-500 dark:text-gray-400">→</span>
+			<span class="t-micro shrink-0 text-gray-500 dark:text-gray-400">→</span>
 		{/if}
 		{#if a.version && a.isLive}
 			<Chip

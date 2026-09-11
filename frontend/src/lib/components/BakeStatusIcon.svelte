@@ -45,7 +45,7 @@
 	 */
 	interface Props {
 		bakeStatus?: string;
-		size?: 'small' | 'medium' | 'large';
+		size?: 'chip' | 'small' | 'medium' | 'large';
 		class?: string;
 		/**
 		 * ⭐ COLOUR AND SHAPE ARE THE ONLY TWO CHANNELS THIS ATOM HAD, AND ONE
@@ -115,13 +115,26 @@
 	// at each size, so running rows on the activity rail don't read
 	// bigger than settled ones. `small` is `h-4 w-4` (16px) which is
 	// the smallest Flowbite `Spinner` accepts.
+	//
+	// ⭐ `chip` IS THE FOURTH SIZE, AND IT EXISTS BECAUSE `small` DOES NOT FIT
+	// INSIDE A CHIP. (2026-09-10) `.chip` is 20px tall with a 1px border, so a
+	// 16px `small` glyph in its `icon` slot leaves 1px of visible clearance and
+	// reads as a disc jammed against the box that holds it — measured on
+	// `/revisions`, where `RepoLedgerCard` puts an in-flight mark in every
+	// deploying environment chip, at every width from 390 to 1920. The slot's
+	// OTHER occupant already knew the right answer: `ActivityRail`'s rollback
+	// glyph is an 11px `UndoOutline`. 12px is that, rounded to the scale's own
+	// step (`h-3`, and `StatusSpinner`'s existing `'3'`), so the two marks that
+	// share this slot are finally the same size and no new value is introduced.
 	const sizeClasses = {
+		chip: 'h-3 w-3',
 		small: 'h-4 w-4',
 		medium: 'h-6 w-6',
 		large: 'h-8 w-8'
 	};
 
-	const spinnerSizes: Record<'small' | 'medium' | 'large', '4' | '6' | '8'> = {
+	const spinnerSizes: Record<'chip' | 'small' | 'medium' | 'large', '3' | '4' | '6' | '8'> = {
+		chip: '3',
 		small: '4',
 		medium: '6',
 		large: '8'

@@ -247,7 +247,7 @@
 	<title>kuberik | Dependencies</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+<div class="mx-auto w-full px-4 py-6 sm:px-6">
 	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
 	     ⛔ THE `h1` IS `sr-only` NOW — THE PREMISE THAT KEPT IT DRAWN CHANGED
 	     UNDER US. (2026-09-02) This page used to be the one documented

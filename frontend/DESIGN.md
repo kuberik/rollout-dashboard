@@ -5788,3 +5788,11 @@ pre-existing errors.
   history only reaches five entries per service, so a literal "ran here" bar is a data ask.
 - Build-page environment columns are a fixed 145px each; a fleet with more than three
   environments needs the budget re-measured.
+
+## Rule: full width (2026-09-10)
+
+Page bodies never cap their width. `max-w-7xl` (1280px) sat on every route container since May
+and centred 1232px of content inside 400px of margin on a wide monitor; the human noticed on a
+1920 screen. Removed everywhere. Only overlays, prose measure and single inputs may set a
+`max-w`. Layouts inside a page adapt by container query, so a wider page means more columns or
+wider columns, not wider gutters.
