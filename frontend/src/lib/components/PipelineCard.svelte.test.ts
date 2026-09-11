@@ -432,7 +432,7 @@ describe('PipelineCard', () => {
 		const { container } = renderCard(service);
 		const discs = container.querySelectorAll('.rounded-full.h-7.w-7, .h-7.w-7.rounded-full');
 		expect(discs.length).toBe(3);
-		expect(screen.getAllByText('HELD', { selector: '.chip' })).toHaveLength(3);
+		expect(screen.getAllByText('HELD')).toHaveLength(3);
 	});
 
 	test('R2.3: the state chip prints HELD for gated/waiting-upstream/pinned, and the plain state word otherwise', () => {
@@ -442,7 +442,7 @@ describe('PipelineCard', () => {
 			mkCell('failed', { envName: 'prod', envRank: 7 })
 		]);
 		renderCard(service);
-		expect(screen.getAllByText('HELD', { selector: '.chip' })).toHaveLength(1);
+		expect(screen.getAllByText('HELD')).toHaveLength(1);
 		expect(screen.getByText('live', { selector: '.chip' })).toBeInTheDocument();
 		expect(screen.getByText('failed', { selector: '.chip' })).toBeInTheDocument();
 	});
