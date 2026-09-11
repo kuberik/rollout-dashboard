@@ -573,7 +573,13 @@
 			>{displaySentence}</span
 		>
 
-		<span class="chip t-chip chip-wide shrink-0 {stateChip.class}">{stateChip.label}</span>
+		{#if stateChip.label === 'held'}
+			<!-- One HELD chip in the product: the Chip role, never a hand-rolled class list
+			     (2026-09-11 consistency pass found this as a third HELD spelling). -->
+			<Chip role="held" label="HELD" />
+		{:else}
+			<span class="chip t-chip chip-wide shrink-0 {stateChip.class}">{stateChip.label}</span>
+		{/if}
 
 		{#if since}
 			<time class="t-micro shrink-0 text-gray-400 dark:text-gray-500">{since}</time>
