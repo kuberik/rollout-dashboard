@@ -58,13 +58,18 @@
 	 * `flex: 1 1 0%`, so it grows to fill whatever the fixed-width siblings
 	 * leave and truncates in place when there isn't enough. `.cl-status`
 	 * (meter, then the standing word, then the age) is a SECOND, fixed-width
-	 * item — always inline with the title at ≥640px of this row's own
-	 * container width. Below 640, `.cl-status` gets `flex-basis: 100%` and
-	 * drops to its own second line — "the standing line may drop under the
-	 * title with the meter". ⭐ ROUND 3, ITEM 3 (2026-09-10): the AGE always
-	 * renders now, at every width — it is the one fact a reader cannot get
-	 * anywhere else, and the previous 640px breakpoint hid it on every rail
-	 * card and every phone. The meter's per-family WORD LABELS
+	 * item — always inline with the title at ≥420px of this row's own
+	 * container width (⛔ FIX PASS ITEM 2, 2026-09-11 — was 640px; the row's
+	 * own spec is "single line in any container ≥ 420px, the 2-line form
+	 * only in the 320px rail," and 640 folded it anywhere a caller's column
+	 * ran 420–639px, which the `/changes/<repo>` main column does for a
+	 * width band just above where its rail turns on). Below 420, `.cl-status`
+	 * gets `flex-basis: 100%` and drops to its own second line — "the
+	 * standing line may drop under the title with the meter". ⭐ ROUND 3,
+	 * ITEM 3 (2026-09-10): the AGE always renders now, at every width — it
+	 * is the one fact a reader cannot get anywhere else, and the previous
+	 * breakpoint hid it on every rail card and every phone. The meter's
+	 * per-family WORD LABELS
 	 * (`.cl-meter-label`) give way instead, below the same breakpoint —
 	 * the coloured dot still carries the family's state without the text.
 	 *
@@ -140,20 +145,35 @@
 	// title — see the module doc above).
 	const standingDisplay = $derived(standingWords(row));
 	const isBaking = $derived(standingDisplay.startsWith('baking') || standingDisplay.startsWith('retrying'));
+	// ⛔ FIX PASS ITEM 15, 2026-09-11 — "QUEUED" IS NEUTRAL GRAY, NEVER BLUE.
+	// `frontierTone` (`pr-pipeline.ts`) collapses `queued` into the row's
+	// bare `active` bucket alongside genuinely in-flight states
+	// (`deploying`/`baking`/`retrying`), so this row's icon/ink fell through
+	// to the SAME blue `tone-active` a real deploy gets — "queued for stg"
+	// printed in blue beside `[✓DEV][○STG][○PRD]` marks that already draw a
+	// plain gray clock for the identical state (`LandingMark`'s own
+	// `queued: 'tone-mute'`). Nothing is moving yet; queued only means "your
+	// turn has not come up" and gets the marks' own neutral ink, not the
+	// "something is happening right now" blue.
+	const isQueued = $derived(standingDisplay.startsWith('queued'));
 
 	const Icon = $derived(
 		row.verdictTone === 'active'
-			? isBaking
+			? isQueued
 				? STATE_ICON.activeYellow
-				: STATE_ICON.activeBlue
+				: isBaking
+					? STATE_ICON.activeYellow
+					: STATE_ICON.activeBlue
 			: STATE_ICON[row.verdictTone]
 	);
 
 	const toneClass = $derived(
 		row.verdictTone === 'active'
-			? isBaking
-				? 'text-yellow-700 dark:text-yellow-400'
-				: 'tone-active'
+			? isQueued
+				? 'tone-mute'
+				: isBaking
+					? 'text-yellow-700 dark:text-yellow-400'
+					: 'tone-active'
 			: STATIC_TONE_CLASS[row.verdictTone]
 	);
 
@@ -277,13 +297,14 @@
 	   line, no clipped content — holds at every width; only the numeric
 	   ceiling does not, and only on the one axis (mobile touch target) that
 	   has a standing, written reason to be taller.
-	   ⚠️ "no second line ever appears" is no longer true below 640px of
-	   container width — `.cl-status` (meter + standing + age) drops to its
-	   own line there, by explicit request (see the module doc). The 30px
-	   ceiling above was always about ONE width-independent line count; it
-	   now holds only at ≥640, and the row is a fixed TWO lines below that
-	   (never three — the age hides at the same breakpoint the status group
-	   wraps at, see `.cl-age` below). */
+	   ⚠️ "no second line ever appears" is no longer true below 420px of
+	   container width (⛔ FIX PASS ITEM 2, 2026-09-11 — was 640) —
+	   `.cl-status` (meter + standing + age) drops to its own line there, by
+	   explicit request (see the module doc). The 30px ceiling above was
+	   always about ONE width-independent line count; it now holds only at
+	   ≥420, and the row is a fixed TWO lines below that (never three — the
+	   age hides at the same breakpoint the status group wraps at, see
+	   `.cl-age` below). */
 
 	/* `flex: 1 1 0%` — a DEFINITE flex-basis (`0%`, not `auto`) is what lets
 	   this item's title shrink/truncate in place instead of reporting its
@@ -381,8 +402,17 @@
 		font-weight: 600;
 	}
 
-	@container (max-width: 639.98px) {
-		/* The status group (meter, standing, age) drops to its own second
+	@container (max-width: 419.98px) {
+		/* ⛔ FIX PASS ITEM 2, 2026-09-11 — WAS 639.98px. `ChangeLine` "has one
+		   pitch: 30px single line in any container ≥ 420px; the 2-line form
+		   only in the 320px rail." At 640px this row wrapped anywhere the
+		   caller's own column ran 420–639px wide — the exact band a `/changes`
+		   `<repo>` page's main column occupies for a while just above the
+		   860px point its rail turns on (`main = container − 24 − 320`, so
+		   `container` 764–984 puts `main` in this range). Measured live at
+		   500px of container width: the row is 30px again, not 62.
+
+		   The status group (meter, standing, age) drops to its own second
 		   line: `flex-basis: 100%` alone forces it to be wider than any
 		   remaining space on `.cl-line1`'s line, so it starts a fresh one —
 		   no `order` needed, `.cl-status` is already the LAST child of

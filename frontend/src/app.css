@@ -2181,7 +2181,12 @@ textarea {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) 320px;
 		align-items: start;
-		gap: 24px;
+		/* ⛔ FIX PASS ITEM 9, 2026-09-11 — was 24px here, 32px (`2rem`) in the
+		   flex-column form above — ONE main→rail seam value everywhere this
+		   shared shell is used (Home, `/changes`, the change page), matching
+		   the value the mobile/narrow form already had rather than inventing
+		   a third number. */
+		gap: 32px;
 	}
 }
 

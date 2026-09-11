@@ -67,7 +67,6 @@
 		type ChangeRowVM,
 		type LedgerChangeRow
 	} from '$lib/view-models/changes';
-	import { compactSpan } from '$lib/view-models/lead-time';
 	import { now } from '$lib/stores/time';
 	import { tick, untrack } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
@@ -76,7 +75,6 @@
 		CodePullRequestOutline,
 		GithubSolid,
 		FolderOutline,
-		HourglassOutline,
 		CheckCircleSolid,
 		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
@@ -427,7 +425,7 @@
 							<span class="skel-block h-3.5 w-32"></span>
 							<span class="skel-block h-3 w-4"></span>
 						</div>
-						<div class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]">
+						<div class="grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]">
 							{#each Array(skelRepos) as _, i (i)}
 								<div class="skel-block h-40 w-full rounded-lg"></div>
 							{/each}
@@ -548,7 +546,7 @@
 											<div class="px-4 py-2.5">
 												<button
 													type="button"
-													class="btn btn-secondary"
+													class="nav-link"
 													onclick={() => (mineDeviationsExpanded = true)}
 													>Show {mineDeviationsHiddenCount} more ›</button
 												>
@@ -566,7 +564,7 @@
 											<CheckCircleSolid class="tone-live h-4 w-4 shrink-0" aria-hidden="true" />
 											<button
 												type="button"
-												class="btn btn-secondary"
+												class="nav-link"
 												onclick={() => (mineLiveExpanded = !mineLiveExpanded)}
 											>
 												{mineLiveRun.length} change{mineLiveRun.length === 1 ? '' : 's'} · all live everywhere ›
@@ -589,7 +587,7 @@
 										<div class="px-4 py-2.5">
 											<button
 												type="button"
-												class="btn btn-secondary"
+												class="nav-link"
 												onclick={() => (mineNoReleaseExpanded = !mineNoReleaseExpanded)}
 											>
 												{mineNoRelease.length} commit{mineNoRelease.length === 1 ? '' : 's'} produced no release ›
@@ -618,7 +616,7 @@
 								<p class="t-body text-gray-500 dark:text-gray-400">No repository matches.</p>
 							{:else}
 								<div
-									class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+									class="grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
 								>
 									{#each repoList as repo (repo.repoKey)}
 										{@const notEverywhere = recentByRepoMap.get(repo.repoKey) ?? []}
@@ -631,25 +629,13 @@
 											padded={false}
 										>
 											<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
-												<div class="px-4 py-2.5">
-													<dl class="flex items-baseline justify-between gap-3">
-														<dt
-															class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
-														>
-															<HourglassOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical
-															to prod
-														</dt>
-														<dd class="t-figure tabular-nums text-gray-900 dark:text-white">
-															{#if prog.typicalToProdMs == null}
-																<span class="t-micro text-gray-500 dark:text-gray-400"
-																	>no measured trip yet</span
-																>
-															{:else}
-																{compactSpan(prog.typicalToProdMs)}
-															{/if}
-														</dd>
-													</dl>
-												</div>
+												<!-- ⛔ FIX PASS ITEM 12, 2026-09-11 — "Typical to prod" is dropped
+												     from this card. The rail's `How your changes are going`
+												     (`HowChangesAreGoing`) already prints that exact label; this
+												     card restated it a second time on the same screen, scoped to
+												     one repo instead of the viewer's own changes. The per-repo
+												     rollup (`repoRollupText`, the card's own header verdict)
+												     still names the count/deviation fact this card is for. -->
 												<!-- ⭐ ROUND 3C FIX (2026-09-10) — "REPOSITORIES DUPLICATES YOUR
 												     CHANGES". A repo card's own row list is ONLY its
 												     `notEverywhere` changes (`recentByRepo` filters and orders

@@ -884,10 +884,20 @@ export function repoProgress(rows: readonly ChangeRowVM[], repoKey: string): Rep
  * one-line "all live everywhere" (the caller's job, see `repoAllLive`
  * below); this list would just be reprinting them for no new fact.
  *
- * Ordered stuck-first (failed → held → active/queued → not-built —
- * `SECTION_RANK`, the same precedence `splitChangeSections` already uses),
- * stable on the feed's own newest-first order within each tone, capped at
- * `n` per repo.
+ * Ordered newest-first, capped at `n` per repo.
+ *
+ * ⭐ FIX PASS ITEM 11, 2026-09-11 — ONE SORT KEY FOR THE SAME CHANGES ON ONE
+ * SCREEN. This used to re-rank by `SECTION_RANK` (failed → held → active →
+ * not-built) — a FINER split than "Your changes" applies to the identical
+ * population. `orderHomeChangeRows` (RULING 5, this file's own "ONE
+ * definition") sorts everything newest-first inside its one non-live
+ * bucket, so a repo whose "Your changes" card put a `held` row above an
+ * `active` one (both non-live, tied on that binary key, newest wins) could
+ * show the SAME two rows in the opposite order in its own "Repositories"
+ * card two hundred pixels away, on a live fleet. Matched to
+ * `orderHomeChangeRows`'s own tie-break — newest first, no second key —
+ * rather than the reverse: that function is the ruling's canonical
+ * definition and also drives Home's identical card.
  *
  * ⭐ ROUND 3B — a `noRelease` row is skipped outright: it has nothing to
  * show (no landing grid, no standing beyond "no release") and must not
@@ -904,7 +914,7 @@ export function recentByRepo(rows: readonly ChangeRowVM[], n: number): Map<strin
 	const out = new Map<string, ChangeRowVM[]>();
 	for (const [repoKey, entries] of byRepo) {
 		const sorted = entries
-			.sort((a, b) => SECTION_RANK[a.r.verdictTone] - SECTION_RANK[b.r.verdictTone] || a.i - b.i)
+			.sort((a, b) => a.i - b.i)
 			.slice(0, n)
 			.map(({ r }) => r);
 		out.set(repoKey, sorted);

@@ -30,10 +30,20 @@
 		/** The SAME count section 1's own dot-header prints (`notEverywhere`
 		 *  over the FILTERED feed) — one population, read twice, so this
 		 *  card's header can never disagree with the section under it. */
-		notEverywhereCount
+		notEverywhereCount,
+		/**
+		 * ⛔ FIX PASS ITEM 1, 2026-09-11 — an optional title, so the
+		 * `/changes/<repo>` page can scope this card to ONE repository
+		 * ("How this repository is going") rather than repeat "your
+		 * changes" over a feed that page never filters to the viewer.
+		 * Same grammar, same `dl` rows, same four facts — a caller-supplied
+		 * caption, not a new component.
+		 */
+		title = 'How your changes are going'
 	}: {
 		summary: ChangesRailSummary;
 		notEverywhereCount: number;
+		title?: string;
 	} = $props();
 
 	const verdict = $derived(
@@ -41,7 +51,7 @@
 	);
 </script>
 
-<Card icon={ChartMixedOutline} title="How your changes are going" {verdict}>
+<Card icon={ChartMixedOutline} {title} {verdict}>
 	<dl class="space-y-3">
 		<div class="flex items-baseline justify-between gap-3">
 			<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">

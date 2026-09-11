@@ -148,12 +148,16 @@ describe('/changes/[...slug] — pull form', () => {
 		);
 		// §2/item 3, updated by fix pass item 7, then again by ROUND 2 R2.3
 		// ("the grid gets a card") — off `pr-pipeline.ts`'s own
-		// rolloutsLive/rolloutsTotal counts, now the "Every rollout" card's
-		// own `verdict` rollup rather than a bare sentence. ⭐ ROUND 3, ITEM 5
-		// (2026-09-10): "deployed to N of M rollouts", never "have this
-		// build" — `rolloutsLive` (not `rolloutsWithBuild`) is the count that
-		// actually means deployed.
-		expect(screen.getByText('deployed to 1 of 1 rollouts')).toBeInTheDocument();
+		// rolloutsLive/rolloutsTotal counts. ⭐ ROUND 3, ITEM 5 (2026-09-10):
+		// "deployed to N of M rollouts", never "have this build" —
+		// `rolloutsLive` (not `rolloutsWithBuild`) is the count that actually
+		// means deployed. ⛔ FIX PASS ITEM 16 (2026-09-11): with exactly ONE
+		// service the "Every rollout" card does not render at all
+		// (`showEveryRolloutCard`), so this fact folds into the head band's
+		// own ONE caption line instead of standing alone — a regex, not an
+		// exact match, since it now shares a text node with the rest of the
+		// caption.
+		expect(screen.getByText(/deployed to 1 of 1 rollouts/)).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: 'widget-app' })).toHaveAttribute('href', '/apps/widget-app');
 	});
 

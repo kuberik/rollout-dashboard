@@ -49,9 +49,10 @@
 	/**
 	 * `.rev-cols` + THE THREE BUILD LISTS — extracted from `/revisions`
 	 * (round 11, lane 2). Main column: "Also still running" and "No longer
-	 * running anywhere"; 340px rail: "Never deployed". For the repository
-	 * page (lane 3) — the index (this lane's own route) renders none of
-	 * this (B.2.5).
+	 * running anywhere"; 320px rail: "Never deployed" — the same rail width
+	 * as every other rail on the product (fix pass item 10, 2026-09-11; was
+	 * 340px, a one-off). For the repository page (lane 3) — the index (this
+	 * lane's own route) renders none of this (B.2.5).
 	 */
 	import { untrack } from 'svelte';
 	import {
@@ -552,7 +553,11 @@
 
 	@container (min-width: 860px) {
 		.rev-cols {
-			grid-template-columns: minmax(0, 1fr) 340px;
+			/* ⛔ FIX PASS ITEM 10, 2026-09-11 — was 340px, the one rail on the
+			   product off the shared 320px width every other rail (`.rail-side`,
+			   Home, `/changes`, the change page) uses. No reason for this one to
+			   differ; matched. */
+			grid-template-columns: minmax(0, 1fr) 320px;
 		}
 	}
 

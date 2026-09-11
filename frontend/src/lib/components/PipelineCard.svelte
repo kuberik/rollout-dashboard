@@ -149,11 +149,20 @@
 	icon={ChevronDoubleRightOutline}
 	title={service.appName}
 	titleHref={`/apps/${encodeURIComponent(service.appName)}`}
-	verdict={service.furthest}
-	verdictCompact={service.furthestCompact}
+	verdict={service.furthestCompact}
 	verdictTone={tone}
 	padded={false}
->
+><!--
+	⛔ FIX PASS ITEM 14, 2026-09-11 — THE ROLLUP IS THE COMPACT FORM AT EVERY
+	WIDTH, NOT ONLY BELOW 560px. `Card`'s own `verdict`/`verdictCompact` pair
+	only switches to `verdictCompact` below its 560px container-query
+	threshold; above it, `service.furthest`'s clause-list form ("live in
+	dev · held in staging · not-built in prod") had no upper bound on
+	length and read as loose prose next to every neighbouring rail card's
+	short rollup ("2 of 3 live", "3 not everywhere yet"). Passing
+	`furthestCompact` as the ONLY `verdict` (no `verdictCompact` prop at
+	all) makes `Card` render the single always-shown span, so this card's
+	own rollup reads identically at 1440 and at 390. -->
 	{#if foldedSentence}
 		<!-- ⛔ FIX PASS ITEM 7 — ONE LINE, NOT A RUN OF IDENTICAL ROWS. -->
 		<p class="t-body px-4 py-2.5 text-gray-600 dark:text-gray-300">{foldedSentence}</p>

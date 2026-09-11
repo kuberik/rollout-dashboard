@@ -75,14 +75,20 @@ function renderCard(service: PrService) {
 }
 
 describe('PipelineCard', () => {
-	test('header names the service, links to its app page, and shows the rollup', () => {
+	// ⛔ FIX PASS ITEM 14, 2026-09-11 — THE ROLLUP IS THE COMPACT FORM AT
+	// EVERY WIDTH now, not just below 560px: the card passes only
+	// `furthestCompact` as `verdict` (no `verdictCompact` prop), so
+	// `furthest`'s clause-list form never renders at all.
+	test('header names the service, links to its app page, and shows the compact rollup', () => {
 		const service = mkService([mkCell('live', { since: '2026-09-10T10:00:00Z' })], {
-			furthest: 'live in dev'
+			furthest: 'live in dev',
+			furthestCompact: '1 of 1 live'
 		});
 		renderCard(service);
 		const link = screen.getByRole('link', { name: 'widget-app' });
 		expect(link).toHaveAttribute('href', '/apps/widget-app');
-		expect(screen.getByText('live in dev')).toBeInTheDocument();
+		expect(screen.getByText('1 of 1 live')).toBeInTheDocument();
+		expect(screen.queryByText('live in dev')).toBeNull();
 	});
 
 	test('one row per cell, each a link to that cluster/env rollout', () => {

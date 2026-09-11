@@ -88,7 +88,14 @@
 	import { now } from '$lib/stores/time';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { changesQueryOptions } from '$lib/api/changes';
-	import { buildChangeRows, myChangesCount } from '$lib/view-models/changes';
+	import {
+		buildChangeRows,
+		myChangesCount,
+		familyProgress,
+		standingWords,
+		familyMeterAriaLabel,
+		type ChangeRowVM
+	} from '$lib/view-models/changes';
 	import { inertSiblings, trapFocus, modalFocusReturn, portal } from '$lib/a11y.svelte';
 
 	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action' | 'build' | 'change';
@@ -187,10 +194,49 @@
 	 * has already warmed it this session.
 	 */
 	const changesQuery = createQuery(() => changesQueryOptions({ days: 30, enabled: open }));
+	/**
+	 * ⛔ FIX PASS ITEM 6, 2026-09-11 — `.filter((r) => !r.noRelease)`, MATCHING
+	 * `YourChangesCard`'s OWN FILTER (ruling "NO RELEASE MEANS NOT AFFECTED,
+	 * AND MUST NOT COMPETE"). Without it this tile counted a bare commit with
+	 * no release anywhere as one of "your changes" — on a live fleet the tile
+	 * read 59 while Home's identical card, built from the same
+	 * `changesQueryOptions` cache, read 46. `myChangesCount` itself does not
+	 * filter (it is the shared COUNTING function, not the shared SCOPING
+	 * decision) — every caller must apply the same scope first, which this
+	 * one was not doing.
+	 */
 	const myChangeRows = $derived(
-		buildChangeRows(changesQuery.data?.changes ?? [], rollouts, environments, null, $now)
+		buildChangeRows(changesQuery.data?.changes ?? [], rollouts, environments, null, $now).filter(
+			(r) => !r.noRelease
+		)
 	);
 	const myChangeCount = $derived(myChangesCount(myChangeRows, changesQuery.data?.user ?? ''));
+
+	/**
+	 * ⛔ FIX PASS ITEM 13, 2026-09-11 — THE CHANGES RESULT ROW CARRIES THE
+	 * COMPACT METER + STANDING. A `change`-kind result used to fall through
+	 * to the generic `{:else if r.subtitle}` line (`#4 · owner/repo`) — the
+	 * one fact a reader opens the palette to ask about a change ("did it
+	 * land") was nowhere on its own result row. `familyProgress`/
+	 * `standingWords` are the SAME functions `ChangeLine` already renders
+	 * (`changes.ts`'s own shared view-model), so this row cannot draw a
+	 * verdict that disagrees with `/changes`' or Home's. Keyed the same way
+	 * `buildMergedChangeIndex` keys its own entries (`owner/repo:pull:n`) —
+	 * a bare-commit or sha-guess result has no entry here and keeps the
+	 * plain subtitle line, unchanged.
+	 */
+	const myChangeRowsByKey = $derived.by<Map<string, ChangeRowVM>>(() => {
+		const map = new Map<string, ChangeRowVM>();
+		for (const row of myChangeRows) {
+			if (row.kind !== 'pr' || row.number == null) continue;
+			map.set(`${row.owner}/${row.repo}:pull:${row.number}`, row);
+		}
+		return map;
+	});
+	function changeResultMeta(r: Result): ChangeRowVM | null {
+		if (r.kind !== 'change' || !r.owner || !r.repo || r.changeRef?.kind !== 'pull') return null;
+		return myChangeRowsByKey.get(`${r.owner}/${r.repo}:pull:${r.changeRef.number}`) ?? null;
+	}
 
 	/**
 	 * ⭐ LOCK THE DOCUMENT SCROLL WHILE THE PALETTE IS OPEN. (2026-09-03,
@@ -819,15 +865,25 @@
 
 	/**
 	 * THE DEFAULT SCREEN IS ONE FLAT INDEX SPACE: the attention rows first,
-	 * then the picker tiles — four that SCOPE (`rollout`/`app`/`env`/
-	 * `namespace`) plus one, "Your changes", that NAVIGATES straight to
-	 * `/changes?mine` instead (`openYourChanges`, above — there is no
+	 * then the picker tiles — five that SCOPE (`rollout`/`app`/`env`/
+	 * `namespace`/`build`) plus one, "Your changes", that NAVIGATES straight
+	 * to `/changes?mine` instead (`openYourChanges`, above — there is no
 	 * client-side change index to scope into). `Enter` opens a row, drills
 	 * into a kind, or navigates, depending on which slot the cursor is in —
 	 * the reader never has to know there are three kinds of thing here, only
 	 * that down-arrow and Enter work.
+	 *
+	 * ⛔ FIX PASS ITEM 13, 2026-09-11 — `build` JOINS THE PICKER, MAKING SIX.
+	 * The `sm:grid-cols-2` Browse grid held five tiles (four scoping + "Your
+	 * changes"), so the last row was one tile beside an empty 326px cell —
+	 * a live fleet's own screenshot of the fifth tile alone in its row. Six
+	 * fills the grid evenly. `build` was already a full `ResultKind` (its
+	 * own `KIND_LABEL`/`KIND_SINGULAR`/`KIND_ICON`, its own scored results
+	 * via `buildPaletteBuildIndex`, its own `kindCounts` entry) with no
+	 * Browse tile of its own — adding it here is turning on a slot the type
+	 * already had, not inventing a new category to pad the grid.
 	 */
-	const PICKER_KINDS: ResultKind[] = ['rollout', 'app', 'env', 'namespace'];
+	const PICKER_KINDS: ResultKind[] = ['rollout', 'app', 'env', 'namespace', 'build'];
 	/** The picker tiles, scoping ones plus the one navigating tile. */
 	const BROWSE_TILE_COUNT = PICKER_KINDS.length + 1;
 	const inPicker = $derived(!scope && !query);
@@ -1096,6 +1152,54 @@
 						{/if}
 					</span>
 				</div>
+			{:else if r.kind === 'change'}
+				<!-- ⛔ FIX PASS ITEM 13, 2026-09-11 — SAME METER, SAME STANDING WORD
+				     `ChangeLine` DRAWS, AT THIS ROW'S OWN SCALE. `changeResultMeta`
+				     returns `null` for a bare-commit/sha guess (no matching entry in
+				     the "my merged pulls" cache) — those fall back to the plain
+				     `#n · repo` subtitle line, unchanged. -->
+				{@const meta = changeResultMeta(r)}
+				{#if meta}
+					{@const steps = familyProgress(meta)}
+					<div class="flex min-w-0 items-center gap-2">
+						<div
+							class="flex shrink-0 items-center gap-1.5"
+							role="img"
+							aria-label={familyMeterAriaLabel(steps)}
+						>
+							{#each steps as step (step.family)}
+								<span
+									class="inline-block h-2 w-2 shrink-0 rounded-full {step.tone === 'live'
+										? 'bg-green-600 dark:bg-green-400'
+										: step.tone === 'stuck'
+											? 'bg-orange-500 dark:bg-orange-400'
+											: step.tone === 'failed'
+												? 'bg-red-600 dark:bg-red-500'
+												: step.tone === 'active'
+													? 'animate-pulse bg-blue-600 dark:bg-blue-400'
+													: step.tone === 'queued'
+														? 'bg-gray-400 dark:bg-gray-500'
+														: 'border border-dashed border-gray-300 dark:border-gray-600'}"
+									title="{step.family}: {step.sentence}"
+									aria-hidden="true"
+								></span>
+							{/each}
+						</div>
+						<span
+							class="truncate text-xs font-medium {meta.verdictTone === 'live'
+								? 'tone-live'
+								: meta.verdictTone === 'held'
+									? 'text-orange-950 dark:text-orange-300'
+									: meta.verdictTone === 'failed'
+										? 'tone-bad'
+										: meta.verdictTone === 'not-built'
+											? 'text-gray-400 dark:text-gray-500'
+											: 'tone-active'}">{standingWords(meta)}</span
+						>
+					</div>
+				{:else if r.subtitle}
+					<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.subtitle}</span>
+				{/if}
 			{:else if r.subtitle}
 				<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.subtitle}</span>
 			{/if}

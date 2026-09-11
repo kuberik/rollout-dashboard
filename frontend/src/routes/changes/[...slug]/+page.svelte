@@ -22,12 +22,13 @@
 	import { buildLandingGrid, orderByVerdict, classify, worstCell } from '$lib/view-models/landing-grid';
 	import { checksLine, cellStateSentence, cellReasonText } from '$lib/pr-cell-copy';
 	import { changesQueryOptions } from '$lib/api/changes';
-	import { buildChangeRows, repoProgress } from '$lib/view-models/changes';
+	import { buildChangeRows, repoProgress, orderHomeChangeRows, changesSummary } from '$lib/view-models/changes';
 	import { median, compactSpan } from '$lib/view-models/lead-time';
 	import LandingGrid from '$lib/components/LandingGrid.svelte';
 	import PipelineCard from '$lib/components/PipelineCard.svelte';
 	import ChangeLine from '$lib/components/ChangeLine.svelte';
 	import ChangeHistoryCard from '$lib/components/ChangeHistoryCard.svelte';
+	import HowChangesAreGoing from '$lib/components/HowChangesAreGoing.svelte';
 	import { repoBody, changeBuildPath, shortRevision, repoSlug, githubOwnerRepo } from '$lib/version-utils';
 	import { repoKeyFromSource } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
@@ -69,10 +70,12 @@
 	import {
 		ArrowUpRightFromSquareOutline,
 		CalendarMonthSolid,
+		CheckCircleSolid,
 		ChevronRightOutline,
 		ClockOutline,
 		CloseCircleOutline,
 		CodeBranchOutline,
+		CodePullRequestOutline,
 		FolderOutline,
 		GithubSolid,
 		GridOutline,
@@ -378,6 +381,38 @@
 			: null
 	);
 	let repoNoReleaseExpanded = $state(false);
+
+	/**
+	 * ⛔ FIX PASS ITEM 1, 2026-09-11 — THIS SECTION IS A `Card`, FOLDED LIKE
+	 * `/changes`' OWN "Your changes" — a titled card (icon, "Changes", a
+	 * count-plus-deviation rollup) whose deviations always show, whose
+	 * live run folds behind one `.nav-link` line, and whose no-release
+	 * commits fold behind a second — never a bare heading over a flat,
+	 * 1201px list (the shape a live screenshot of this page measured).
+	 *
+	 * ⛔ FIX PASS ITEM 11 — ONE SORT KEY. `repoReleasedRows` is re-ordered
+	 * stuck-first (`orderHomeChangeRows`, RULING 5's own definition — the
+	 * SAME key `/changes`' "Your changes" and Home's identical card apply
+	 * to this exact row shape) before it is split into the always-visible
+	 * deviations prefix and the foldable live-run suffix, rather than
+	 * re-deriving a second ordering for the identical population.
+	 */
+	const repoOrderedChangeRows = $derived(orderHomeChangeRows(repoReleasedRows));
+	const repoDeviations = $derived(repoOrderedChangeRows.filter((r) => r.notEverywhere));
+	const repoLiveRun = $derived(repoOrderedChangeRows.filter((r) => !r.notEverywhere));
+	const repoDeviationsShown = $derived(
+		repoChangesExpanded ? repoDeviations : repoDeviations.slice(0, REPO_CHANGES_CAP)
+	);
+	const repoDeviationsHiddenCount = $derived(repoDeviations.length - repoDeviationsShown.length);
+	let repoLiveExpanded = $state(false);
+	function repoChangesRollupText(): string {
+		if (repoReleasedRows.length === 0) return 'No changes in 30 days';
+		if (repoDeviations.length > 0) return `${repoReleasedRows.length} · ${repoDeviations.length} not everywhere yet`;
+		return `${repoReleasedRows.length} all live`;
+	}
+	/** The rail card beside it — `HowChangesAreGoing`'s own grammar, scoped
+	 *  to THIS repository's released rows rather than the viewer's own. */
+	const repoRailSummary = $derived(changesSummary(repoReleasedRows));
 
 	/**
 	 * ⭐ THE GATE JOIN TABLE, so the banner can ask `blocking-story.ts` the
@@ -1109,6 +1144,36 @@
 	});
 	const changeHeldHasSchedule = $derived(changeFrontier?.cell.gateSubjectKind === 'schedule');
 
+	/**
+	 * ⛔ FIX PASS ITEM 17, 2026-09-11 — THE BANNER GAINS "› N rules", THE
+	 * ROLLOUT DETAIL'S OWN DISCLOSURE. The comment this replaces recorded a
+	 * real gap: `pr-pipeline.ts`'s `PrCell` carries a fused reason sentence,
+	 * not a `BlockingStory` classification — but the cell already names the
+	 * exact rollout it is about (`namespace`/`rolloutName`), and this page
+	 * already holds the SAME `rollouts` list and the SAME `gateContext`
+	 * (`buildGateContext`) the repo page's own `repoHeldStories` reads two
+	 * hundred lines down. So rather than stub `stories={[]}`, look the real
+	 * `Rollout` up and run it through `blockingStory` — the identical
+	 * classification every other banner in the product stands behind, not a
+	 * second, page-local approximation of it.
+	 */
+	const changeFrontierRollout = $derived.by<Rollout | null>(() => {
+		if (!changeFrontier) return null;
+		const cell = changeFrontier.cell;
+		return (
+			rollouts.find(
+				(r) => r.metadata?.namespace === cell.namespace && r.metadata?.name === cell.rolloutName
+			) ?? null
+		);
+	});
+	const changeHeldStory = $derived.by<BlockingStory | null>(() => {
+		if (!changeFrontierRollout || !changeFrontier) return null;
+		return blockingStory(changeFrontierRollout, gateContext, {
+			place: changeFrontier.cell.envName,
+			now: coarse
+		});
+	});
+
 	const landingGrid = $derived(changeVm ? buildLandingGrid(changeVm, coarse) : null);
 
 	// ══ ROUND 2, R2.3 — THE RAIL'S OWN FACTS ═════════════════════════════════
@@ -1325,18 +1390,25 @@
 							     the plain verdict headline for exactly the held case — the
 							     banner's own title already says "{subject} is held", so
 							     printing the bare verdict word above it too would restate
-							     the same fact twice. `stories={[]}` deliberately: this VM
-							     does not carry a full `BlockingStory` (`pr-pipeline.ts`
-							     supplies `reason`/`gateSubject`/`gateLabel` per cell, not a
-							     `rolloutGates` classification this page can stand behind —
-							     see that module's own `containmentKnown` doc) — the banner
-							     degrades cleanly to just `releaseSplitMessage` with no
-							     stories, which is exactly the one sentence this page has. -->
+							     the same fact twice.
+
+							     ⛔ FIX PASS ITEM 17, 2026-09-11 — `stories={changeHeldStory
+							     ? [changeHeldStory] : []}`, SUPERSEDING THE OLD `stories={[]}`.
+							     `changeHeldStory` (above) runs the real rollout through the
+							     SAME `blockingStory` classification `repoHeldStories` and
+							     rollout detail's own banner already stand behind, so this
+							     banner now gains the "› N rules" disclosure too — the rows
+							     inside it state only what differs from the sentence already
+							     printed (the environment, the version it is on), per
+							     `dedupedCauses`' own dedup. A `null` story (no rollout match
+							     — should not happen once `changeHeld` is true, but the page
+							     must not crash if it ever does) degrades to the empty array,
+							     same as before. -->
 							<div class="mb-4">
 								<HeldBanner
 									subject={changeFrontier.appName}
 									releaseSplitMessage={changeHeldMessage}
-									stories={[]}
+									stories={changeHeldStory ? [changeHeldStory] : []}
 									primaryHref={changeHeldPrimary?.href ?? null}
 									primaryLabel={changeHeldPrimary?.label ?? null}
 									hasSchedule={changeHeldHasSchedule}
@@ -1387,10 +1459,25 @@
 									padded={false}
 								>
 									<div class="px-4 py-3">
-										{#if landingGrid?.allSameLabel}
+										{#if landingGrid?.allSameLabel && landingGrid.services[0]?.verdictWord !== 'live'}
 											<!-- §2b's fold rule 1: every service agrees — one
-											     label, not a grid of identical rows. -->
-											<span class="t-dense text-gray-500 dark:text-gray-400">{landingGrid.allSameLabel}</span>
+											     label, not a grid of identical rows.
+
+											     ⛔ FIX PASS ITEM 7, 2026-09-11 — NEVER FOR THE
+											     LIVE CASE. "Not built yet · all 3 services" loses
+											     nothing by folding — a dashed mark carries no
+											     information the words don't already say. "Live
+											     everywhere · all 3 services" is the opposite: the
+											     grid IS the confirmation the reader opened this
+											     card for (which environments, not just that they
+											     agree), and collapsing it left a titled card whose
+											     entire body was three words under a "deployed to 9
+											     of 9 rollouts" rollup that had just promised detail.
+											     Draw the grid whenever the uniform state is `live`,
+											     same as a change whose services disagree already
+											     does — a bare-commit sha with a fully-uniform grid
+											     (pull/1's own live-everywhere shape) reads exactly
+											     the same way now. -->
 										{:else if landingGrid && landingGrid.visible.length > 0}
 											<!-- ⛔ FIX PASS ITEM 4, 2026-09-10 — `landingGrid.visible`
 											     is `landing-grid.ts`'s FULL adverse-first list
@@ -1414,6 +1501,28 @@
 						{/if}
 
 						{#if changeOrderedServices.length > 0}
+							<!--
+								⛔ FIX PASS ITEM 4, 2026-09-11 — THE SECTION-HEADER GRAMMAR,
+								APPLIED HERE TOO: a 5px dot in the section's state ink,
+								`text-base font-semibold` title, mono count — the SAME
+								shape `/changes`' "Repositories" and this page's own
+								"Changes" card grid use. This service-cards group had no
+								header of its own at all.
+							-->
+							<div class="mb-3 flex items-center gap-2">
+								<span
+									aria-hidden="true"
+									class="h-[5px] w-[5px] shrink-0 rounded {changeHeld
+										? 'bg-orange-500'
+										: changeVm?.verdictTone === 'live'
+											? 'bg-green-500'
+											: 'bg-gray-400'}"
+								></span>
+								<h2 class="text-base font-semibold text-gray-900 dark:text-white">Services</h2>
+								<span class="font-mono text-xs text-gray-500 dark:text-gray-400"
+									>{changeOrderedServices.length}</span
+								>
+							</div>
 							<!--
 								⭐ COORDINATOR, 2026-09-10 — service cards run 2-up at
 								≥1280 of MAIN-column width (a container query, not a
@@ -1766,80 +1875,106 @@
 
 		{#if repoReleasedRows.length > 0 || repoNoReleaseRows.length > 0}
 			<!--
-				⭐ ROUND 3 RULING B — "THAT REPOSITORY'S CHANGES AS COMPACT ROWS
-				(PAGINATED)". Supersedes round 2's own two sections
-				(`splitChangeSections`'s "Not everywhere yet"/"Live everywhere"
-				card-vs-line split) — the human's own complaint, twice: *"again
-				too verbose showing every environment and service"*. ONE flat,
-				stuck-first list of `ChangeLine` rows (Home's own compact-row
-				grammar — no landing grid, no per-service cells; the grid lives
-				on the change page only), paginated at 30, above the round-11
-				ops content untouched below it.
+				⭐ FIX PASS ITEM 1, 2026-09-11 — A `Card`, INSIDE THE PAGE'S
+				MAIN+RAIL GRID, NEVER A BARE 1201px LIST. Supersedes the round-3
+				bare-heading-over-one-list shape a live screenshot caught: this
+				section is now `/changes`' own "Your changes" grammar (a
+				titled `Card`, deviations always visible, the live run and the
+				no-release commits each folded behind one `.nav-link` line) —
+				not a new drawing, the SAME one reused with a repo-scoped
+				population. The rail beside it is `HowChangesAreGoing`, the
+				SAME component `/changes`' own rail uses, retitled for one
+				repository via its new `title` prop rather than forked.
 
-				⭐ ROUND 3B (2026-09-10) — "NO RELEASE MEANS NOT AFFECTED, AND
-				MUST NOT COMPETE". A live fleet measured 43 of 61 rows here as
-				bare commits with no release anywhere, interleaved by time with
-				the four PRs that matter. `repoReleasedRows` is the list that
-				competes for the count/pagination below; `repoNoReleaseRows`
-				folds behind one muted footer line that expands in place.
+				`.rail-wrap`/`.rail-grid`/`.rail-main`/`.rail-side` (`app.css`)
+				— main column, 320px rail, the shared shell every rail on the
+				product already runs.
 
 				Landmark order (unchanged): `<repo>` → `Changes` →
 				`What each service runs` → … — this section sits exactly where
-				the superseded two-section block did.
+				the superseded bare list did.
 			-->
-			{@const repoNotEverywhereCount = repoReleasedRows.filter((r) => r.notEverywhere).length}
-			{@const repoChangesShown = repoChangesExpanded
-				? repoReleasedRows
-				: repoReleasedRows.slice(0, REPO_CHANGES_CAP)}
-			{@const repoChangesHiddenCount = repoReleasedRows.length - repoChangesShown.length}
 			<section class="mb-8">
-				<div class="mb-3 flex items-center gap-2">
-					<span
-						aria-hidden="true"
-						class="h-[5px] w-[5px] shrink-0 rounded {repoNotEverywhereCount > 0
-							? 'bg-amber-500'
-							: 'bg-gray-400'}"
-					></span>
-					<h2 class="text-base font-semibold text-gray-900 dark:text-white">Changes</h2>
-					<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoReleasedRows.length}</span>
-					{#if repoNotEverywhereCount > 0}
-						<span class="text-xs text-gray-500 dark:text-gray-400"
-							>{repoNotEverywhereCount} not everywhere yet</span
-						>
-					{/if}
+				<div class="rail-wrap">
+					<div class="rail-grid">
+						<div class="rail-main min-w-0">
+							<Card
+								icon={CodePullRequestOutline}
+								title="Changes"
+								verdict={repoChangesRollupText()}
+								padded={false}
+							>
+								{#if repoDeviations.length > 0}
+									<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+										{#each repoDeviationsShown as row (row.href)}
+											<ChangeLine {row} now={coarse} />
+										{/each}
+									</ul>
+									{#if !repoChangesExpanded && repoDeviationsHiddenCount > 0}
+										<div class="px-4 py-2.5">
+											<button
+												type="button"
+												class="nav-link"
+												onclick={() => (repoChangesExpanded = true)}
+												>Show {repoDeviationsHiddenCount} more ›</button
+											>
+										</div>
+									{/if}
+								{/if}
+								{#if repoLiveRun.length > 0}
+									<!-- ⭐ THE LIVE-RUN FOLD — same idiom as `/changes`' "Your
+									     changes": every row already live everywhere is one
+									     contiguous run at the tail of the stuck-first order,
+									     folded behind one line rather than repeated N times. -->
+									<div class="flex items-center gap-2 px-4 py-2.5">
+										<CheckCircleSolid class="tone-live h-4 w-4 shrink-0" aria-hidden="true" />
+										<button
+											type="button"
+											class="nav-link"
+											onclick={() => (repoLiveExpanded = !repoLiveExpanded)}
+										>
+											{repoLiveRun.length} change{repoLiveRun.length === 1 ? '' : 's'} · all live everywhere ›
+										</button>
+									</div>
+									{#if repoLiveExpanded}
+										<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+											{#each repoLiveRun as row (row.href)}
+												<ChangeLine {row} now={coarse} />
+											{/each}
+										</ul>
+									{/if}
+								{/if}
+								{#if repoNoReleaseRows.length > 0}
+									<!-- ⭐ ROUND 3B — THE FOLD, same idiom as the index's "Your
+									     changes". -->
+									<div class="px-4 py-2.5">
+										<button
+											type="button"
+											class="nav-link"
+											onclick={() => (repoNoReleaseExpanded = !repoNoReleaseExpanded)}
+										>
+											{repoNoReleaseRows.length} commit{repoNoReleaseRows.length === 1 ? '' : 's'} produced no release ›
+										</button>
+									</div>
+									{#if repoNoReleaseExpanded}
+										<ul class="mt-2 divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+											{#each repoNoReleaseRows as row (row.href)}
+												<ChangeLine {row} now={coarse} />
+											{/each}
+										</ul>
+									{/if}
+								{/if}
+							</Card>
+						</div>
+						<div class="rail-side min-w-0">
+							<HowChangesAreGoing
+								title="How this repository is going"
+								summary={repoRailSummary}
+								notEverywhereCount={repoDeviations.length}
+							/>
+						</div>
+					</div>
 				</div>
-				{#if repoReleasedRows.length > 0}
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each repoChangesShown as row (row.href)}
-							<ChangeLine {row} now={coarse} />
-						{/each}
-					</ul>
-					{#if !repoChangesExpanded && repoChangesHiddenCount > 0}
-						<button
-							type="button"
-							class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-							onclick={() => (repoChangesExpanded = true)}>Show {repoChangesHiddenCount} more ›</button
-						>
-					{/if}
-				{/if}
-				{#if repoNoReleaseRows.length > 0}
-					<!-- ⭐ ROUND 3B — THE FOLD, same idiom as the index's "Your
-					     changes". -->
-					<button
-						type="button"
-						class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-						onclick={() => (repoNoReleaseExpanded = !repoNoReleaseExpanded)}
-					>
-						{repoNoReleaseRows.length} commit{repoNoReleaseRows.length === 1 ? '' : 's'} produced no release ›
-					</button>
-					{#if repoNoReleaseExpanded}
-						<ul class="mt-2 divide-y divide-gray-100 dark:divide-gray-700/60">
-							{#each repoNoReleaseRows as row (row.href)}
-								<ChangeLine {row} now={coarse} />
-							{/each}
-						</ul>
-					{/if}
-				{/if}
 			</section>
 		{/if}
 
@@ -2055,13 +2190,33 @@
 				onRetry={() => void prEntry?.fetch()}
 			/>
 		{:else if prData}
-			<!-- ══ HEAD BAND — THE PAGE'S ONLY ORIENTATION, NO BREADCRUMB ═══════ -->
+			<!-- ══ HEAD BAND — THE PAGE'S ONLY ORIENTATION, NO BREADCRUMB ═══════
+			     ⛔ FIX PASS ITEM 16, 2026-09-11 — NAME + ONE CAPTION LINE, THE
+			     ROLLOUT DETAIL'S OWN SHAPE. This used to be three stacked `<p>`s
+			     — `#N · owner/repo · merged …`, a standalone `checks` line, and
+			     a standalone "deployed to N of M" line — three lines answering
+			     "how did this change land" above a page whose CARDS already
+			     answer that in full. `checks.text` folds into the SAME caption
+			     line now (`· no checks reported` / its own link when `checks.href`
+			     exists); `changeRolloutsHeadBandLine` folds in beside it ONLY
+			     when `showEveryRolloutCard` is false (the one-service edge case
+			     where no card carries the fact) — everywhere else it is already
+			     the "Every rollout" card's own `verdict` rollup two lines down,
+			     and printing it twice is the defect this item exists to fix. -->
 			<header class="mb-6">
 				<h1 class="t-display text-gray-900 dark:text-white">{prData.title}</h1>
 				<p
 					class="t-dense mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
 				>
-					<span>#{prData.number} · {changeOwner}/{changeRepo} · {subtitleTail}</span>
+					<span
+						>#{prData.number} · {changeOwner}/{changeRepo} · {subtitleTail}
+						{#if checks && !checks.href}
+							· {checks.text}
+						{/if}
+						{#if !showEveryRolloutCard && changeRolloutsHeadBandLine}
+							· {changeRolloutsHeadBandLine}
+						{/if}</span
+					>
 					<a
 						href={prData.htmlUrl}
 						target="_blank"
@@ -2072,31 +2227,18 @@
 						View on GitHub
 						<span aria-hidden="true">↗</span>
 					</a>
-				</p>
-				{#if checks}
-					<!-- ⭐ APPROACH B, ITEM E — ONE HEAD-BAND LINE, NEVER FOLDED INTO A
-					     CELL. -->
-					<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
-						{#if checks.href}
-							<a
-								href={checks.href}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="nav-link inline-flex items-center gap-1"
-							>
-								{checks.text}
-								<span aria-hidden="true">↗</span>
-							</a>
-						{:else}
+					{#if checks?.href}
+						<a
+							href={checks.href}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="nav-link inline-flex items-center gap-1"
+						>
 							{checks.text}
-						{/if}
-					</p>
-				{/if}
-				{#if changeRolloutsHeadBandLine}
-					<!-- ⭐ ROUND 3B — the one fact the omitted "Every rollout" card
-					     would have carried, with exactly one affected service. -->
-					<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">{changeRolloutsHeadBandLine}</p>
-				{/if}
+							<span aria-hidden="true">↗</span>
+						</a>
+					{/if}
+				</p>
 			</header>
 
 			{#if prData.state === 'open'}
@@ -2172,12 +2314,21 @@
 							? shortRevision(shaForChange)
 							: ''}
 			</h1>
+			<!-- ⛔ FIX PASS ITEM 16, 2026-09-11 — NAME + ONE CAPTION LINE, matching
+			     the pull form above: `changeRolloutsHeadBandLine` folds into
+			     THIS line, only for the one-service edge case where no
+			     "Every rollout" card exists to carry it (`showEveryRolloutCard`
+			     false) — everywhere else that card's own `verdict` rollup
+			     already states it, and a second standalone line would repeat
+			     it. -->
 			<p
 				class="t-dense mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
 			>
 				<span
 					>{shaForChange ? shortRevision(shaForChange) : ''} · {changeOwner}/{changeRepo}{shaSubtitleTail
 						? ` · ${shaSubtitleTail}`
+						: ''}{!showEveryRolloutCard && changeRolloutsHeadBandLine
+						? ` · ${changeRolloutsHeadBandLine}`
 						: ''}</span
 				>
 				<a
@@ -2191,11 +2342,6 @@
 					<span aria-hidden="true">↗</span>
 				</a>
 			</p>
-			{#if changeRolloutsHeadBandLine}
-				<!-- ⭐ ROUND 3B — the one fact the omitted "Every rollout" card
-				     would have carried, with exactly one affected service. -->
-				<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">{changeRolloutsHeadBandLine}</p>
-			{/if}
 		</header>
 		{@render changeBody()}
 	{:else if ledger && row}

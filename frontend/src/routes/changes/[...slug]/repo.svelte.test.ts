@@ -301,10 +301,13 @@ describe('/changes/[...slug] — repository page resolution', () => {
 		await renderAt(REPO_PATH);
 
 		await waitFor(() => expect(screen.getByText('Changes')).toBeInTheDocument());
-		// The live-everywhere commit renders as a compact `ChangeLine` row in
-		// the flat list — no "Not everywhere yet"/"Live everywhere" split, no
-		// landing grid.
-		expect(screen.getByText('Everywhere already')).toBeInTheDocument();
+		// ⛔ FIX PASS ITEM 1 (2026-09-11) — the section is a `Card` now, and
+		// the live-everywhere commit is the whole "live run", folded behind
+		// one `.nav-link` line rather than shown as a `ChangeLine` row (the
+		// SAME fold `/changes`' own "Your changes" applies) — no "Not
+		// everywhere yet"/"Live everywhere" split, no landing grid.
+		expect(screen.getByText('1 change · all live everywhere ›')).toBeInTheDocument();
+		expect(screen.queryByText('Everywhere already')).toBeNull();
 		// ⭐ ROUND 3B (2026-09-10) — "NO RELEASE MEANS NOT AFFECTED, AND MUST
 		// NOT COMPETE". `web` (this repo's only rollout) carries no release
 		// evidence anywhere for PR #4's own sha — it is `noRelease`, folded

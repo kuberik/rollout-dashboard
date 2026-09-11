@@ -795,9 +795,13 @@ describe('recentByRepo (ruling B, "Repositories" card)', () => {
 	 * `recentByRepo` used to bucket the "5 most recent changes, any
 	 * standing" — the SAME live rows "Your changes" already prints in full,
 	 * a live fleet measured 10 of 10 href-identical rows across two repo
-	 * cards. It now returns ONLY `notEverywhere` rows, capped at `n`,
-	 * ordered stuck-first (`SECTION_RANK`'s own precedence — failed → held
-	 * → active/queued → not-built) rather than merely newest-first.
+	 * cards. It now returns ONLY `notEverywhere` rows, capped at `n`.
+	 *
+	 * ⭐ FIX PASS ITEM 11 (2026-09-11) — ordered newest-first ONLY, matching
+	 * `orderHomeChangeRows`'s own tie-break, not `SECTION_RANK`'s finer
+	 * failed→held→active precedence: "Your changes" and this card render
+	 * the identical `notEverywhere` population and must agree on one sort
+	 * key, not two.
 	 */
 	it('only buckets notEverywhere rows, live rows never take a slot', () => {
 		const rows = mkRows([
@@ -812,14 +816,14 @@ describe('recentByRepo (ruling B, "Repositories" card)', () => {
 		expect(byRepo.get('acme/other')!.map((r) => r.title)).toEqual(['o1', 'o2']);
 	});
 
-	it('caps at n per repo, ordered stuck-first (failed before held), newest-first within a tone', () => {
+	it('caps at n per repo, ordered newest-first regardless of tone', () => {
 		const rows = mkRows([
 			{ repoKey: 'acme/widget', title: 'held-1', notEverywhere: true, verdictTone: 'held' },
 			{ repoKey: 'acme/widget', title: 'failed-1', notEverywhere: true, verdictTone: 'failed' },
 			{ repoKey: 'acme/widget', title: 'held-2', notEverywhere: true, verdictTone: 'held' }
 		]);
 		const byRepo = recentByRepo(rows, 2);
-		expect(byRepo.get('acme/widget')!.map((r) => r.title)).toEqual(['failed-1', 'held-1']);
+		expect(byRepo.get('acme/widget')!.map((r) => r.title)).toEqual(['held-1', 'failed-1']);
 	});
 
 	it('a repo with nothing notEverywhere (all live) has no entry at all', () => {

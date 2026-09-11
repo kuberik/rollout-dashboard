@@ -345,7 +345,6 @@ lib/components/HeldBanner.svelte	code	… newer build… … waiting.
 lib/components/HeldBanner.svelte	code	No newer build satisfying this exists anywhere yet — this is not a matter of waiting, it is held indefinitely until someone ships one.
 lib/components/HeldBanner.svelte	code	Nothing promotes itself until ….
 lib/components/HeldBanner.svelte	text	Open …
-lib/components/HeldBanner.svelte	text	Rules: …
 lib/components/HeldBanner.svelte	code	then …
 lib/components/HomeRail.svelte	text	… deploy …
 lib/components/HomeRail.svelte	title	Recent activity
@@ -353,7 +352,7 @@ lib/components/HomeRail.svelte	aria-label	View all activity
 lib/components/HomeRail.svelte	text	View all activity
 lib/components/HowChangesAreGoing.svelte	code	… not everywhere yet
 lib/components/HowChangesAreGoing.svelte	code	all landed
-lib/components/HowChangesAreGoing.svelte	title	How your changes are going
+lib/components/HowChangesAreGoing.svelte	code	How your changes are going
 lib/components/HowChangesAreGoing.svelte	text	Merged · 30d
 lib/components/HowChangesAreGoing.svelte	text	no measured trip yet
 lib/components/HowChangesAreGoing.svelte	text	No release
@@ -1174,8 +1173,11 @@ routes/changes/[...slug]/+page.svelte	text	, stream down …
 routes/changes/[...slug]/+page.svelte	text	. Once it merges, this page fills in per service.
 routes/changes/[...slug]/+page.svelte	text	. You can also press
 routes/changes/[...slug]/+page.svelte	text	… … · typical to prod … … … · live … · updated
+routes/changes/[...slug]/+page.svelte	code	… · … not everywhere yet
 routes/changes/[...slug]/+page.svelte	code	… · kuberik
 routes/changes/[...slug]/+page.svelte	code	… +… more
+routes/changes/[...slug]/+page.svelte	code	… all live
+routes/changes/[...slug]/+page.svelte	text	… change … · all live everywhere ›
 routes/changes/[...slug]/+page.svelte	text	… commit … produced no release ›
 routes/changes/[...slug]/+page.svelte	code	… file…
 routes/changes/[...slug]/+page.svelte	text	… not everywhere yet
@@ -1203,6 +1205,7 @@ routes/changes/[...slug]/+page.svelte	placeholder	Find a build or service
 routes/changes/[...slug]/+page.svelte	text	first deployed … ago
 routes/changes/[...slug]/+page.svelte	text	GitHub is not connected — see what this cluster runs below.
 routes/changes/[...slug]/+page.svelte	title	How it's going
+routes/changes/[...slug]/+page.svelte	title	How this repository is going
 routes/changes/[...slug]/+page.svelte	code	In this state
 routes/changes/[...slug]/+page.svelte	text	It looks like it belongs to
 routes/changes/[...slug]/+page.svelte	code	Live since
@@ -1212,6 +1215,7 @@ routes/changes/[...slug]/+page.svelte	code	merged … ago by @…
 routes/changes/[...slug]/+page.svelte	code	merged … by @…
 routes/changes/[...slug]/+page.svelte	title	Newest build … · …
 routes/changes/[...slug]/+page.svelte	text	No build matches “ … ”.
+routes/changes/[...slug]/+page.svelte	code	No changes in 30 days
 routes/changes/[...slug]/+page.svelte	text	no measured trip yet
 routes/changes/[...slug]/+page.svelte	text	No service on this cluster deploys … / … .
 routes/changes/[...slug]/+page.svelte	text	Not built yet for … .
@@ -1248,7 +1252,6 @@ routes/changes/+page.svelte	text	change … … ·
 routes/changes/+page.svelte	text	Connect GitHub
 routes/changes/+page.svelte	placeholder	Find a change by title, #n or sha
 routes/changes/+page.svelte	text	kuberik | Changes
-routes/changes/+page.svelte	text	no measured trip yet
 routes/changes/+page.svelte	text	No repository matches.
 routes/changes/+page.svelte	text	Nothing built yet
 routes/changes/+page.svelte	text	Nothing of yours merged in the last 30 days.
@@ -1256,7 +1259,6 @@ routes/changes/+page.svelte	text	revision … · … GitHub is not connected —
 routes/changes/+page.svelte	code	See all changes
 routes/changes/+page.svelte	text	Show … more ›
 routes/changes/+page.svelte	text	Try clearing the search box above.
-routes/changes/+page.svelte	text	Typical to prod
 routes/changes/+page.svelte	title	Your changes
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
