@@ -115,7 +115,13 @@
 
 	const allRows = $derived<ChangeRowVM[]>(
 		connected
-			? buildChangeRows(changesQuery.data?.changes ?? [], rollouts, environments, rolloutDependencies, $now)
+			? buildChangeRows(
+					changesQuery.data?.changes ?? [],
+					rollouts,
+					environments,
+					rolloutDependencies,
+					$now
+				)
 			: []
 	);
 	const currentUser = $derived(changesQuery.data?.user ?? '');
@@ -175,7 +181,9 @@
 	 * below it, so the card has one consistent "click to expand a settled
 	 * group" idiom rather than two different ones.
 	 */
-	const mineRows = $derived(orderHomeChangeRows(filterChangeRows(allRows, currentUser, { mine: true, q: searchQuery })));
+	const mineRows = $derived(
+		orderHomeChangeRows(filterChangeRows(allRows, currentUser, { mine: true, q: searchQuery }))
+	);
 	const mineReleased = $derived(mineRows.filter((r) => !r.noRelease));
 	const mineNoRelease = $derived(mineRows.filter((r) => r.noRelease));
 	const notEverywhereMine = $derived(mineReleased.filter((r) => r.notEverywhere).length);
@@ -208,7 +216,11 @@
 			const raw = sessionStorage.getItem(CHANGES_EXPAND_KEY);
 			if (!raw) return empty;
 			const parsed = JSON.parse(raw);
-			return { deviations: !!parsed.deviations, live: !!parsed.live, noRelease: !!parsed.noRelease };
+			return {
+				deviations: !!parsed.deviations,
+				live: !!parsed.live,
+				noRelease: !!parsed.noRelease
+			};
 		} catch {
 			return empty;
 		}
@@ -243,7 +255,8 @@
 	 *  sentences on two pages. */
 	function mineRollupText(): string {
 		if (mineReleased.length === 0) return 'See all changes';
-		if (notEverywhereMine > 0) return `${notEverywhereMine} of ${mineReleased.length} not everywhere yet`;
+		if (notEverywhereMine > 0)
+			return `${notEverywhereMine} of ${mineReleased.length} not everywhere yet`;
 		return `${mineReleased.length} all live`;
 	}
 
@@ -410,7 +423,7 @@
 				type="text"
 				disabled
 				placeholder="Find a change by title, #n or sha"
-				class="t-body block h-9 w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-gray-400 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-500"
+				class="t-body block h-9 w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pr-3 pl-8 text-gray-400 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-500"
 			/>
 		</div>
 		<div class="rail-wrap mt-5">
@@ -425,7 +438,9 @@
 							<span class="skel-block h-3.5 w-32"></span>
 							<span class="skel-block h-3 w-4"></span>
 						</div>
-						<div class="grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]">
+						<div
+							class="grid [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))] items-start gap-4"
+						>
 							{#each Array(skelRepos) as _, i (i)}
 								<div class="skel-block h-40 w-full rounded-lg"></div>
 							{/each}
@@ -469,15 +484,23 @@
 			</div>
 		{:else}
 			{#each ledgerDayGroups as group, gi (group.label)}
-				<h2 class="{gi === 0 ? 'mt-5' : 'mt-6'} mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
+				<h2
+					class="{gi === 0
+						? 'mt-5'
+						: 'mt-6'} mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400"
+				>
 					{group.label}
 				</h2>
 				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
 					{#each group.rows as row (`${row.repoKey}:${row.revision}`)}
 						<li class="environment-theme-scope">
-							<div class="tap-zone -mx-2 block rounded px-2 py-1.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40">
+							<div
+								class="tap-zone -mx-2 block rounded px-2 py-1.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+							>
 								<div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-									<a href={row.href} class="tap-link min-w-0 truncate font-mono text-sm text-gray-900 dark:text-white"
+									<a
+										href={row.href}
+										class="tap-link min-w-0 truncate font-mono text-sm text-gray-900 dark:text-white"
 										>{row.short}</a
 									>
 									<span class="text-[11px] text-gray-500 dark:text-gray-400">{row.repoLabel}</span>
@@ -527,7 +550,12 @@
 						     your changes are going`, the `Repositories` cards below
 						     it on THIS page) is a `Card`; this was the odd one out. -->
 						<section class="mb-8">
-							<Card icon={CodePullRequestOutline} title="Your changes" verdict={mineRollupText()} padded={false}>
+							<Card
+								icon={CodePullRequestOutline}
+								title="Your changes"
+								verdict={mineRollupText()}
+								padded={false}
+							>
 								{#if mineReleased.length === 0 && mineNoRelease.length === 0}
 									<p class="t-body p-4 text-gray-500 dark:text-gray-400">
 										Nothing of yours merged in the last 30 days.
@@ -543,7 +571,18 @@
 											{/each}
 										</ul>
 										{#if !mineDeviationsExpanded && mineDeviationsHiddenCount > 0}
-											<div class="px-4 py-2.5">
+											<!--
+												⭐ FIX PASS ITEM 5, 2026-09-11 — SAME BLANK LEADING
+												SLOT AS THE LIVE-RUN FOLD BELOW. See the identical
+												note on the repository page's own copy of this card
+												(`routes/changes/[...slug]/+page.svelte`) — that
+												fold's `CheckCircleSolid` (16px + `gap-2`'s 8px)
+												pushed its button 24px right of this one and the
+												no-release fold's; this blank same-size slot aligns
+												all three at one x with no icon invented to fill it.
+											-->
+											<div class="flex items-center gap-2 px-4 py-2.5">
+												<span class="h-4 w-4 shrink-0" aria-hidden="true"></span>
 												<button
 													type="button"
 													class="nav-link"
@@ -567,7 +606,8 @@
 												class="nav-link"
 												onclick={() => (mineLiveExpanded = !mineLiveExpanded)}
 											>
-												{mineLiveRun.length} change{mineLiveRun.length === 1 ? '' : 's'} · all live everywhere ›
+												{mineLiveRun.length} change{mineLiveRun.length === 1 ? '' : 's'} · all live everywhere
+												›
 											</button>
 										</div>
 										{#if mineLiveExpanded}
@@ -579,18 +619,45 @@
 										{/if}
 									{/if}
 									{#if mineNoRelease.length > 0}
-										<!-- ⭐ ROUND 3B — THE FOLD. A bare commit or PR with no
-										     release anywhere is not deployable and must not
-										     compete with the changes above; it is named once,
-										     as a count, and expands IN PLACE to the same compact
-										     rows on demand. -->
-										<div class="px-4 py-2.5">
+										<!--
+											⭐ ROUND 3B — THE FOLD. A bare commit or PR with no
+											release anywhere is not deployable and must not
+											compete with the changes above; it is named once,
+											as a count, and expands IN PLACE to the same compact
+											rows on demand. ⭐ FIX PASS ITEM 5, 2026-09-11 — SAME
+											BLANK LEADING SLOT AS THE OTHER TWO FOLDS ABOVE.
+
+											⭐ NEW BY DESIGN (FIX PASS ITEM 8, 2026-09-11). ROLE: a
+											RELEVANCE disclosure, not an overflow one — it hides
+											commits this list has already decided are not
+											deployable (no release evidence anywhere), so they
+											cannot compete with the changes above for attention,
+											and reveals them on demand for the reader who wants
+											the full picture. WHY NOTHING EXISTING FITS: Home,
+											`/rollouts` and rollout detail have no "some rows are
+											categorically not relevant to this list's own subject"
+											disclosure to reuse — their folds (`RolloutGrid`'s
+											"N more services", a `dl` fold) all hide OVERFLOW, a
+											count past a fixed budget, never a set excluded by
+											KIND. WHICH REFERENCE LENDS PROPORTIONS: this file's
+											own count-form disclosure grammar, `lib/CLAUDE.md`'s
+											"a SET you can count, of one kind → `N <noun>`" rule —
+											the identical `.nav-link` a plain text button already
+											spends on `BlockingStoryPanel`'s "N rules" (see that
+											note in `HeldBanner.svelte`) and on the sibling
+											live-run fold immediately above this one. Not a new
+											control, a new REASON to fold, drawn with the
+											product's one existing disclosure shape.
+										-->
+										<div class="flex items-center gap-2 px-4 py-2.5">
+											<span class="h-4 w-4 shrink-0" aria-hidden="true"></span>
 											<button
 												type="button"
 												class="nav-link"
 												onclick={() => (mineNoReleaseExpanded = !mineNoReleaseExpanded)}
 											>
-												{mineNoRelease.length} commit{mineNoRelease.length === 1 ? '' : 's'} produced no release ›
+												{mineNoRelease.length} commit{mineNoRelease.length === 1 ? '' : 's'} produced
+												no release ›
 											</button>
 										</div>
 										{#if mineNoReleaseExpanded}
@@ -608,15 +675,18 @@
 						<!-- ── BLOCK 2 — "Repositories" ── -->
 						<section>
 							<div class="mb-3 flex items-center gap-2">
-								<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-400" aria-hidden="true"></span>
+								<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-400" aria-hidden="true"
+								></span>
 								<h2 class="text-base font-semibold text-gray-900 dark:text-white">Repositories</h2>
-								<span class="font-mono text-xs text-gray-500 dark:text-gray-400">{repoList.length}</span>
+								<span class="font-mono text-xs text-gray-500 dark:text-gray-400"
+									>{repoList.length}</span
+								>
 							</div>
 							{#if repoList.length === 0}
 								<p class="t-body text-gray-500 dark:text-gray-400">No repository matches.</p>
 							{:else}
 								<div
-									class="grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))]"
+									class="grid [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))] items-start gap-4"
 								>
 									{#each repoList as repo (repo.repoKey)}
 										{@const notEverywhere = recentByRepoMap.get(repo.repoKey) ?? []}
@@ -652,7 +722,10 @@
 													</ul>
 												{:else if prog.changes > 0}
 													<div class="flex items-center gap-2 px-4 py-2.5">
-														<CheckCircleSolid class="tone-live h-4 w-4 shrink-0" aria-hidden="true" />
+														<CheckCircleSolid
+															class="tone-live h-4 w-4 shrink-0"
+															aria-hidden="true"
+														/>
 														<span class="t-body text-gray-900 dark:text-white"
 															>{prog.changes} change{prog.changes === 1 ? '' : 's'} · all live everywhere</span
 														>

@@ -945,6 +945,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 		gateApprovalGuess: false,
 			gateContract: null,
 			gateRequiredVersion: null,
+			gateProvidedVersion: null,
 			providerHasNoBuild: false,
 			containmentKnown: true,
 			historyMatches: [],

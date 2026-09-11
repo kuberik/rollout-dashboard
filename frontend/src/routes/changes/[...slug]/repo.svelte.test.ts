@@ -139,13 +139,22 @@ describe('/changes/[...slug] — repository page resolution', () => {
 
 		await waitFor(() => expect(screen.getByText('What each service runs')).toBeInTheDocument());
 
+		// ⭐ FIX PASS ITEM 1 (round 2), 2026-09-11 — "How this repository is
+		// going" now renders UNCONDITIONALLY inside the page's ONE
+		// `.rail-grid` (previously it shared a guard with the "Changes"
+		// card, both hidden when GitHub reports no changes/no-release rows —
+		// this fixture stubs no GitHub data at all). The rail sits AFTER
+		// `.rail-main`'s own content in DOM order (main, then rail — the
+		// same order Home and `/changes` already use), so it is the LAST
+		// heading, not absent.
 		expect(headingTexts()).toEqual([
 			'kuberik-testing',
 			'What each service runs',
 			'Newest build a111111 · api · web',
 			'Also still running',
 			'No longer running anywhere',
-			'No deploy on record'
+			'No deploy on record',
+			'How this repository is going'
 		]);
 	});
 

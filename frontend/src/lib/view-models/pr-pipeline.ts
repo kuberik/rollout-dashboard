@@ -206,6 +206,25 @@ export type PrCell = {
 	gateContract: string | null;
 	gateRequiredVersion: string | null;
 	/**
+	 * ⭐ FIX PASS ITEM 7, 2026-09-11 — THE SERVED VERSION, NAMED APART FROM
+	 * `reason`'s FREE TEXT. `blocking-story.ts`'s dependency branch builds
+	 * its `short` sentence as `Waiting for <provider> to ship <contract>
+	 * <need> — it is on <have>` — one string, on `pull/4` printed VERBATIM
+	 * three times: the held banner (14px), this cell's own reason paragraph
+	 * (11px), and again inside "Why is it held?". `have` (`pick.have`,
+	 * `dep.providedVersion` in `blocking-story.ts`) is the ONE fragment of
+	 * that sentence that genuinely differs row to row (DEV/STG/PRD can each
+	 * be a version behind the provider's head by a different amount); the
+	 * rest of the sentence is the SAME clause the banner already prints.
+	 * Carried through so `PipelineRow` can state "on 1.67.0" beside its env
+	 * chip and version instead of repeating the whole clause — see that
+	 * component's own doc comment. `null` off every cell except a
+	 * `waiting-upstream` one whose gate resolved to a service dependency
+	 * that HAS a served version to report (the same guard `gateContract`/
+	 * `gateRequiredVersion` already use).
+	 */
+	gateProvidedVersion: string | null;
+	/**
 	 * ⭐ FIX PASS ITEM 5. Set by `joinDependencyReasons`'s own cross-service
 	 * pass (RULING 4) — `true` when the provider named by `gateSubject` has
 	 * NOT built this change AT ALL yet, meaning this cell genuinely cannot
@@ -484,7 +503,11 @@ function displayVersionForTag(rollout: Rollout, tag: string): string {
 /** Time left against a Go-duration deadline that started at `startIso`. May
  *  be negative (the deadline has already passed but the controller has not
  *  reconciled the terminal state yet). `null` when the duration is unset. */
-function deadlineLeftMs(startIso: string | undefined, duration: string | undefined, now: Date): number | null {
+function deadlineLeftMs(
+	startIso: string | undefined,
+	duration: string | undefined,
+	now: Date
+): number | null {
 	if (!startIso || !duration) return null;
 	const totalMs = parseGoDuration(duration);
 	if (!totalMs) return null;
@@ -526,6 +549,7 @@ const NOTHING: Pick<
 	| 'gateApprovalGuess'
 	| 'gateContract'
 	| 'gateRequiredVersion'
+	| 'gateProvidedVersion'
 	| 'providerHasNoBuild'
 > = {
 	since: null,
@@ -539,6 +563,7 @@ const NOTHING: Pick<
 	gateApprovalGuess: false,
 	gateContract: null,
 	gateRequiredVersion: null,
+	gateProvidedVersion: null,
 	providerHasNoBuild: false
 };
 
@@ -705,7 +730,15 @@ function buildCell(
 			}
 		}
 		const superseded = meta.mergeCommitSha != null && headRevision !== meta.mergeCommitSha;
-		return cell({ ...NOTHING, state: 'live', reason, since, superseded, releaseLabel, revision: headRevision });
+		return cell({
+			...NOTHING,
+			state: 'live',
+			reason,
+			since,
+			superseded,
+			releaseLabel,
+			revision: headRevision
+		});
 	}
 
 	// ── RULE 2: rolled back — an OLDER history entry has it, HEAD does not ──
@@ -791,7 +824,9 @@ function buildCell(
 			// see `blocking-story.ts`'s owner branch) — anything upstream that
 			// is NOT a bare environment-subject promotion wait is still ranked
 			// above every non-upstream gate, unchanged from before this fix.
-			const promotionGate = classified.find((c) => c.clears === 'upstream' && c.subjectKind === 'environment');
+			const promotionGate = classified.find(
+				(c) => c.clears === 'upstream' && c.subjectKind === 'environment'
+			);
 			const dependencyGate = classified.find((c) => c.clears === 'upstream' && c !== promotionGate);
 			const otherGate = classified.find((c) => c !== promotionGate && c !== dependencyGate);
 			// `upstream` keeps its OLD meaning (a `waiting-upstream`-shaped
@@ -845,7 +880,11 @@ function buildCell(
 			// reads `gated` first; a `'service'`-subject dependency still
 			// outranks everything, amber `waiting-upstream`. See `PrState`'s own
 			// doc comment for why `queued`/`waiting-upstream` were split.
-			const upstreamState: PrState = dependencyGate ? 'waiting-upstream' : otherGate ? 'gated' : 'queued';
+			const upstreamState: PrState = dependencyGate
+				? 'waiting-upstream'
+				: otherGate
+					? 'gated'
+					: 'queued';
 			return cell({
 				...NOTHING,
 				state: upstreamState,
@@ -864,7 +903,9 @@ function buildCell(
 				// `NOTHING_TO_DRAW` spread leaves them `null`), so this is a
 				// no-op for `queued`/`gated` even without the extra check.
 				gateContract: upstream ? (pick.contract ?? null) : null,
-				gateRequiredVersion: upstream ? (pick.need ?? null) : null
+				gateRequiredVersion: upstream ? (pick.need ?? null) : null,
+				// ⭐ FIX PASS ITEM 7 — see `gateProvidedVersion`'s own doc comment.
+				gateProvidedVersion: upstream ? (pick.have ?? null) : null
 			});
 		}
 
@@ -968,7 +1009,11 @@ function leadDeploysFor(rollout: Rollout): LeadDeploy[] {
 		if (!v || !h.timestamp) continue;
 		const ms = new Date(h.timestamp).getTime();
 		if (Number.isFinite(ms)) {
-			out.push({ version: v, ms, inFlight: h.bakeStatus === 'InProgress' || h.bakeStatus === 'Deploying' });
+			out.push({
+				version: v,
+				ms,
+				inFlight: h.bakeStatus === 'InProgress' || h.bakeStatus === 'Deploying'
+			});
 		}
 	}
 	return out;
@@ -1113,7 +1158,8 @@ function frontierTone(state: PrState): ChangeVerdictTone {
 function frontierSubject(cell: PrCell): string | null {
 	if (cell.state === 'gated') return cell.gateLabel ? `by ${cell.gateLabel}` : null;
 	if (cell.state === 'waiting-upstream') return `on ${cell.gateSubject ?? 'its upstream'}`;
-	if (cell.state === 'queued') return `waiting for ${cell.gateSubject ?? 'an earlier environment'} first`;
+	if (cell.state === 'queued')
+		return `waiting for ${cell.gateSubject ?? 'an earlier environment'} first`;
 	return null;
 }
 
@@ -1163,7 +1209,10 @@ function capitalize(word: string): string {
  * everywhere` keeps no subject: it is a claim about the WHOLE fleet, and no
  * one service is "the" subject of it.
  */
-export function buildChangeVerdict(services: PrService[]): { word: string; tone: ChangeVerdictTone } {
+export function buildChangeVerdict(services: PrService[]): {
+	word: string;
+	tone: ChangeVerdictTone;
+} {
 	const allCells = services.flatMap((s) => s.cells.map((cell) => ({ cell, appName: s.appName })));
 	const withBuild = allCells.filter((x) => x.cell.state !== 'not-built');
 	// ⭐ NO SUBJECT HERE, DELIBERATELY. Unlike a frontier CANDIDATE below
@@ -1179,11 +1228,14 @@ export function buildChangeVerdict(services: PrService[]): { word: string; tone:
 	// here, worded the same as `noRelease`'s own verdict, for a caller that
 	// hands this function a hand-built `PrService[]` directly.
 	if (withBuild.length === 0) return { word: 'no release for this commit yet', tone: 'not-built' };
-	if (withBuild.every((x) => x.cell.state === 'live')) return { word: 'live everywhere', tone: 'live' };
+	if (withBuild.every((x) => x.cell.state === 'live'))
+		return { word: 'live everywhere', tone: 'live' };
 
 	const candidates = withBuild
 		.filter((x) => x.cell.state !== 'live')
-		.sort((a, b) => a.cell.envRank - b.cell.envRank || a.cell.cluster.localeCompare(b.cell.cluster));
+		.sort(
+			(a, b) => a.cell.envRank - b.cell.envRank || a.cell.cluster.localeCompare(b.cell.cluster)
+		);
 	const frontier = candidates[0];
 	const subject = frontierSubject(frontier.cell);
 	const base = subject
@@ -1196,7 +1248,9 @@ export function buildChangeVerdict(services: PrService[]): { word: string; tone:
 	// range is what makes this actionable rather than another "waiting"
 	// sentence the reader has already seen twice.
 	const needsClause =
-		frontier.cell.providerHasNoBuild && frontier.cell.gateContract && frontier.cell.gateRequiredVersion
+		frontier.cell.providerHasNoBuild &&
+		frontier.cell.gateContract &&
+		frontier.cell.gateRequiredVersion
 			? ` · will not move on its own — needs ${frontier.cell.gateSubject} ${frontier.cell.gateContract} ${frontier.cell.gateRequiredVersion}`
 			: '';
 	return { word: `${base}${needsClause}`, tone: frontierTone(frontier.cell.state) };
@@ -1236,7 +1290,11 @@ function joinDependencyReasons(
 	return services.map((svc) => ({
 		...svc,
 		cells: svc.cells.map((cell) => {
-			if (cell.state !== 'waiting-upstream' || cell.gateSubjectKind !== 'service' || !cell.gateSubject) {
+			if (
+				cell.state !== 'waiting-upstream' ||
+				cell.gateSubjectKind !== 'service' ||
+				!cell.gateSubject
+			) {
 				return cell;
 			}
 			// ⭐ ROUND 3 (2026-09-10 ruling A). A provider dropped entirely for
@@ -1299,7 +1357,10 @@ function backfillRequiredVersion(services: readonly PrService[]): PrService[] {
 				cell.gateRequiredVersion &&
 				!known.has(cell.gateSubject)
 			) {
-				known.set(cell.gateSubject, { contract: cell.gateContract, need: cell.gateRequiredVersion });
+				known.set(cell.gateSubject, {
+					contract: cell.gateContract,
+					need: cell.gateRequiredVersion
+				});
 			}
 		}
 	}
@@ -1360,7 +1421,8 @@ export function buildPrPipeline(
 	// ⭐ RULING 1. See `PrPipelineMeta.containmentKnown`'s own doc — the
 	// default reads an unpopulated bare-sha stub as UNKNOWN, never as
 	// "verified empty".
-	const containmentKnown = meta.containmentKnown ?? (meta.containedIn.length > 0 || meta.containedInAll);
+	const containmentKnown =
+		meta.containmentKnown ?? (meta.containedIn.length > 0 || meta.containedInAll);
 
 	// The PR's own repo, normalised the SAME way every rollout's own
 	// `status.source` is — so `https://github.com/o/r.git` and `o/r` agree.
@@ -1386,7 +1448,17 @@ export function buildPrPipeline(
 
 		const cells = matching
 			.map((c) =>
-				buildCell(c.rollout, c.envName, c.sourceCluster, c.theme, set, meta, gateCtx, now, containmentKnown)
+				buildCell(
+					c.rollout,
+					c.envName,
+					c.sourceCluster,
+					c.theme,
+					set,
+					meta,
+					gateCtx,
+					now,
+					containmentKnown
+				)
 			)
 			.map(remapForIncludedService)
 			.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));

@@ -19,17 +19,33 @@
 		type PrPipelineMeta,
 		type PrCell
 	} from '$lib/view-models/pr-pipeline';
-	import { buildLandingGrid, orderByVerdict, classify, worstCell } from '$lib/view-models/landing-grid';
+	import {
+		buildLandingGrid,
+		orderByVerdict,
+		classify,
+		worstCell
+	} from '$lib/view-models/landing-grid';
 	import { checksLine, cellStateSentence, cellReasonText } from '$lib/pr-cell-copy';
 	import { changesQueryOptions } from '$lib/api/changes';
-	import { buildChangeRows, repoProgress, orderHomeChangeRows, changesSummary } from '$lib/view-models/changes';
+	import {
+		buildChangeRows,
+		repoProgress,
+		orderHomeChangeRows,
+		changesSummary
+	} from '$lib/view-models/changes';
 	import { median, compactSpan } from '$lib/view-models/lead-time';
 	import LandingGrid from '$lib/components/LandingGrid.svelte';
 	import PipelineCard from '$lib/components/PipelineCard.svelte';
 	import ChangeLine from '$lib/components/ChangeLine.svelte';
 	import ChangeHistoryCard from '$lib/components/ChangeHistoryCard.svelte';
 	import HowChangesAreGoing from '$lib/components/HowChangesAreGoing.svelte';
-	import { repoBody, changeBuildPath, shortRevision, repoSlug, githubOwnerRepo } from '$lib/version-utils';
+	import {
+		repoBody,
+		changeBuildPath,
+		shortRevision,
+		repoSlug,
+		githubOwnerRepo
+	} from '$lib/version-utils';
 	import { repoKeyFromSource } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import RevisionLead from '$lib/components/RevisionLead.svelte';
@@ -336,7 +352,9 @@
 	const repoChangesQuery = createQuery(() =>
 		changesQueryOptions({ days: 30, enabled: githubConnected && !!repoPageLedger })
 	);
-	const repoChangesOwnerRepo = $derived(repoPageLedger ? githubOwnerRepo(repoPageLedger.repoKey) : null);
+	const repoChangesOwnerRepo = $derived(
+		repoPageLedger ? githubOwnerRepo(repoPageLedger.repoKey) : null
+	);
 	const repoChangeRows = $derived.by(() => {
 		if (!repoChangesOwnerRepo) return [];
 		const key = `${repoChangesOwnerRepo.owner}/${repoChangesOwnerRepo.repo}`.toLowerCase();
@@ -377,7 +395,10 @@
 	 */
 	const repoChangesProgress = $derived(
 		repoChangesOwnerRepo
-			? repoProgress(repoChangeRows, `${repoChangesOwnerRepo.owner}/${repoChangesOwnerRepo.repo}`.toLowerCase())
+			? repoProgress(
+					repoChangeRows,
+					`${repoChangesOwnerRepo.owner}/${repoChangesOwnerRepo.repo}`.toLowerCase()
+				)
 			: null
 	);
 	let repoNoReleaseExpanded = $state(false);
@@ -407,7 +428,8 @@
 	let repoLiveExpanded = $state(false);
 	function repoChangesRollupText(): string {
 		if (repoReleasedRows.length === 0) return 'No changes in 30 days';
-		if (repoDeviations.length > 0) return `${repoReleasedRows.length} · ${repoDeviations.length} not everywhere yet`;
+		if (repoDeviations.length > 0)
+			return `${repoReleasedRows.length} · ${repoDeviations.length} not everywhere yet`;
 		return `${repoReleasedRows.length} all live`;
 	}
 	/** The rail card beside it — `HowChangesAreGoing`'s own grammar, scoped
@@ -476,7 +498,6 @@
 	 * cards); this top pair now gets the same honest rule — its own content
 	 * height, never a neighbour's.
 	 */
-
 
 	/* ════════════════════════════════════════════════════════════════════
 	 * ROUND 11, B.4 — THE REPOSITORY PAGE. Everything below backs
@@ -615,9 +636,13 @@
 	});
 	const repoHeldPrimary = $derived.by<{ appHref: string; appName: string } | null>(() => {
 		for (const s of repoHeldSlots) {
-			const story = blockingStory(s.slot.cell.rollout, gateContext, { place: s.envLabel, now: coarse });
+			const story = blockingStory(s.slot.cell.rollout, gateContext, {
+				place: s.envLabel,
+				now: coarse
+			});
 			const dep = story.gates.find((g) => g.kind === 'dependency' && g.subject);
-			if (dep) return { appHref: `/apps/${encodeURIComponent(dep.subject!)}`, appName: dep.subject! };
+			if (dep)
+				return { appHref: `/apps/${encodeURIComponent(dep.subject!)}`, appName: dep.subject! };
 		}
 		return null;
 	});
@@ -759,13 +784,17 @@
 	// ── THE PULL FORM — byte-identical machinery to the superseded `/pr/…`
 	// route (`ensurePrMeta` memoises by `owner/repo#n`, so this is a cache
 	// lookup, not a re-fetch, for a tab that already had this PR open there).
-	const prEntry = $derived(isPullChange ? ensurePrMeta(changeOwner, changeRepo, changeNumber) : null);
+	const prEntry = $derived(
+		isPullChange ? ensurePrMeta(changeOwner, changeRepo, changeNumber) : null
+	);
 	const prData = $derived(prEntry?.data ?? null);
 	const prError = $derived(prEntry?.error ?? null);
 	const prLoading = $derived(!!prEntry?.loading && !prData && !prError);
 	const pullError = $derived(prError instanceof FetchPullError ? prError : null);
 
-	const expectedChangeRepoKey = $derived(repoKeyFromSource(`github.com/${changeOwner}/${changeRepo}`, ''));
+	const expectedChangeRepoKey = $derived(
+		repoKeyFromSource(`github.com/${changeOwner}/${changeRepo}`, '')
+	);
 	const notifiedChangeRevisions = new Set<string>();
 	let changeSnapshotKey = '';
 	let changeSnapshotRevisions = new Set<string>();
@@ -850,7 +879,9 @@
 	// URL segment is the fallback, so a sha this cluster has NEVER built still
 	// renders a valid page ("not built yet", §3/item 8 — never a 404 for an
 	// honest question).
-	const shaForChange = $derived(changeSlugParsed?.ref.kind === 'sha' ? (revision ?? changeSlugParsed.ref.sha) : null);
+	const shaForChange = $derived(
+		changeSlugParsed?.ref.kind === 'sha' ? (revision ?? changeSlugParsed.ref.sha) : null
+	);
 
 	/**
 	 * ⭐ APPROACH B, ITEM D, RETARGETED FOR CHANGES-2026-09-10 §3 — THE CHANGE
@@ -958,7 +989,13 @@
 	const changeMeta = $derived(pullMeta ?? shaMeta);
 	const changeVm = $derived(
 		changeMeta
-			? buildPrPipeline(changeMeta, rollouts, environments, query.data?.rolloutDependencies ?? null, coarse)
+			? buildPrPipeline(
+					changeMeta,
+					rollouts,
+					environments,
+					query.data?.rolloutDependencies ?? null,
+					coarse
+				)
 			: null
 	);
 
@@ -1049,7 +1086,9 @@
 	 * instead, so the reader still gets it without a card that answers a
 	 * question only relevant once there is more than one service.
 	 */
-	const showEveryRolloutCard = $derived(changeRolloutsTotal > 0 && (changeVm?.services.length ?? 0) !== 1);
+	const showEveryRolloutCard = $derived(
+		changeRolloutsTotal > 0 && (changeVm?.services.length ?? 0) !== 1
+	);
 	const changeRolloutsHeadBandLine = $derived(
 		changeRolloutsTotal > 0 && changeVm?.services.length === 1
 			? `deployed to ${changeRolloutsLive} of ${changeRolloutsTotal} rollouts`
@@ -1069,15 +1108,23 @@
 	 * facts; `cell.reason`/`gateSubject`/`gateLabel` are already computed by
 	 * `pr-pipeline.ts`).
 	 */
-	const changeFrontier = $derived.by<{ cell: PrCell; appName: string; builtElsewhere: boolean } | null>(() => {
+	const changeFrontier = $derived.by<{
+		cell: PrCell;
+		appName: string;
+		builtElsewhere: boolean;
+	} | null>(() => {
 		if (!changeVm) return null;
 		const withBuild = changeVm.services
-			.flatMap((s) => s.cells.map((cell) => ({ cell, appName: s.appName, builtElsewhere: s.builtElsewhere })))
+			.flatMap((s) =>
+				s.cells.map((cell) => ({ cell, appName: s.appName, builtElsewhere: s.builtElsewhere }))
+			)
 			.filter((x) => x.cell.state !== 'not-built');
 		if (withBuild.length === 0 || withBuild.every((x) => x.cell.state === 'live')) return null;
 		const candidates = withBuild
 			.filter((x) => x.cell.state !== 'live')
-			.sort((a, b) => a.cell.envRank - b.cell.envRank || a.cell.cluster.localeCompare(b.cell.cluster));
+			.sort(
+				(a, b) => a.cell.envRank - b.cell.envRank || a.cell.cluster.localeCompare(b.cell.cluster)
+			);
 		return candidates[0] ?? null;
 	});
 
@@ -1112,7 +1159,9 @@
 		const reason = cellReasonText(changeFrontier.cell, coarse);
 		return (
 			reason ??
-			cellStateSentence(changeFrontier.cell, coarse, { builtElsewhere: changeFrontier.builtElsewhere })
+			cellStateSentence(changeFrontier.cell, coarse, {
+				builtElsewhere: changeFrontier.builtElsewhere
+			})
 		);
 	});
 	/**
@@ -1185,7 +1234,9 @@
 	/** `prData.author` (pull form) or the resolved commit's own author (sha
 	 *  form: a resolved PR first, else the bare commit's own `author`). */
 	const changeAuthor = $derived(
-		isPullChange ? (prData?.author ?? null) : (changeCommitPull?.author ?? commitDetail?.author ?? null)
+		isPullChange
+			? (prData?.author ?? null)
+			: (changeCommitPull?.author ?? commitDetail?.author ?? null)
 	);
 
 	/** "merged 5h ago" (pull form, or a sha resolved to a merged PR) / "committed
@@ -1193,8 +1244,10 @@
 	 *  of record this change actually is, never guessed. */
 	const changeMergedLine = $derived.by<string | null>(() => {
 		if (isPullChange) return mergedAgo ? `merged ${mergedAgo}` : null;
-		if (changeCommitPull?.mergedAt) return `merged ${formatTimeAgoCompact(changeCommitPull.mergedAt, coarse)} ago`;
-		if (commitDetail?.committedAt) return `committed ${formatTimeAgoCompact(commitDetail.committedAt, coarse)} ago`;
+		if (changeCommitPull?.mergedAt)
+			return `merged ${formatTimeAgoCompact(changeCommitPull.mergedAt, coarse)} ago`;
+		if (commitDetail?.committedAt)
+			return `committed ${formatTimeAgoCompact(commitDetail.committedAt, coarse)} ago`;
 		return null;
 	});
 
@@ -1207,7 +1260,9 @@
 			.flatMap((s) => s.cells)
 			.filter((c): c is PrCell & { since: string } => c.state === 'live' && !!c.since);
 		if (lives.length === 0) return null;
-		return lives.reduce((a, b) => (new Date(a.since).getTime() < new Date(b.since).getTime() ? a : b));
+		return lives.reduce((a, b) =>
+			new Date(a.since).getTime() < new Date(b.since).getTime() ? a : b
+		);
 	});
 
 	/**
@@ -1221,19 +1276,26 @@
 	 */
 	const changeTypicalToProdMs = $derived.by<number | null>(() => {
 		if (!changeVm) return null;
-		const samples = changeVm.services.map((s) => s.leadTimeMs).filter((x): x is number => x != null);
+		const samples = changeVm.services
+			.map((s) => s.leadTimeMs)
+			.filter((x): x is number => x != null);
 		return samples.length > 0 ? median(samples) : null;
 	});
 	const changeStateSince = $derived.by<{ label: string; since: string } | null>(() => {
-		if (changeFrontier?.cell.since) return { label: 'In this state', since: changeFrontier.cell.since };
+		if (changeFrontier?.cell.since)
+			return { label: 'In this state', since: changeFrontier.cell.since };
 		return changeFirstDeployed ? { label: 'Live since', since: changeFirstDeployed.since } : null;
 	});
 
 	/** `ChangeHistoryCard`'s own feed — every `status.history` entry, any
 	 *  service/environment, that carries this change; see `pr-pipeline.ts`'s
 	 *  own doc comment for the containment test it reuses. */
-	const changeHistoryRows = $derived(changeVm ? buildChangeHistory(changeVm.services, localClusterName) : []);
-	const changeHistoryRetention = $derived(changeVm ? changeHistoryRetentionNote(changeVm.services) : null);
+	const changeHistoryRows = $derived(
+		changeVm ? buildChangeHistory(changeVm.services, localClusterName) : []
+	);
+	const changeHistoryRetention = $derived(
+		changeVm ? changeHistoryRetentionNote(changeVm.services) : null
+	);
 
 	const changePageTitle = $derived(
 		isPullChange
@@ -1250,9 +1312,10 @@
 	);
 
 	const commitHtmlUrl = $derived(
-		isShaChange && shaForChange ? `https://github.com/${changeOwner}/${changeRepo}/commit/${shaForChange}` : ''
+		isShaChange && shaForChange
+			? `https://github.com/${changeOwner}/${changeRepo}/commit/${shaForChange}`
+			: ''
 	);
-
 
 	/**
 	 * ⭐ ONE STRING, NOT A TEMPLATE BUILT ACROSS `{#if}` BRANCHES — same
@@ -1335,8 +1398,9 @@
 			{/if}
 			{#if !repoPageLedger && ledger}
 				<ChevronRightOutline class="h-3 w-3 shrink-0 text-gray-400" aria-hidden="true" />
-				<a class="nav-link min-w-0 truncate" href={withQuery(`/changes/${repoSlug(ledger.repoKey)}`)}
-					>{repoTitle(ledger.repoLabel)}</a
+				<a
+					class="nav-link min-w-0 truncate"
+					href={withQuery(`/changes/${repoSlug(ledger.repoKey)}`)}>{repoTitle(ledger.repoLabel)}</a
 				>
 			{/if}
 		</nav>
@@ -1425,8 +1489,8 @@
 								     and failed" — printing an ETA or a bare silence would both
 								     claim more than it knows. -->
 								<p class="t-dense mb-4 text-gray-500 dark:text-gray-400">
-									CI did not publish a build for this commit; the dashboard cannot tell whether it failed
-									or was skipped.
+									CI did not publish a build for this commit; the dashboard cannot tell whether it
+									failed or was skipped.
 								</p>
 							{/if}
 						{/if}
@@ -1534,7 +1598,9 @@
 								overflow, the exact defect `ChangeCard`'s own grid
 								(R2.2) already guards against with the identical clamp.
 							-->
-							<div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(28rem,100%),1fr))]">
+							<div
+								class="grid [grid-template-columns:repeat(auto-fill,minmax(min(28rem,100%),1fr))] gap-4"
+							>
 								{#each changeOrderedServices as service (service.appName)}
 									<PipelineCard
 										{service}
@@ -1565,13 +1631,20 @@
 						>
 							<ul class="space-y-2">
 								<li class="t-body flex items-start gap-2 text-gray-900 dark:text-white">
-									<FolderOutline class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+									<FolderOutline
+										class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+										aria-hidden="true"
+									/>
 									<span class="min-w-0 truncate">{changeOwner}/{changeRepo}</span>
 								</li>
 								<li class="t-body flex items-start gap-2 text-gray-900 dark:text-white">
-									<LayersOutline class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+									<LayersOutline
+										class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+										aria-hidden="true"
+									/>
 									<span
-										>{changeVm.services.length} service{changeVm.services.length === 1 ? '' : 's'} · {changeRolloutsTotal}
+										>{changeVm.services.length} service{changeVm.services.length === 1 ? '' : 's'} ·
+										{changeRolloutsTotal}
 										rollout{changeRolloutsTotal === 1 ? '' : 's'}</span
 									>
 								</li>
@@ -1595,8 +1668,13 @@
 								{/if}
 								{#if changeFirstDeployed}
 									<li class="t-body flex items-start gap-2 text-gray-900 dark:text-white">
-										<ClockOutline class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" aria-hidden="true" />
-										<span>first deployed {formatTimeAgoCompact(changeFirstDeployed.since, coarse)} ago</span>
+										<ClockOutline
+											class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
+											aria-hidden="true"
+										/>
+										<span
+											>first deployed {formatTimeAgoCompact(changeFirstDeployed.since, coarse)} ago</span
+										>
 									</li>
 								{/if}
 								<!-- ⛔ NO "View on GitHub" ROW HERE. Both forms' head band
@@ -1609,7 +1687,11 @@
 							</ul>
 						</Card>
 
-						<ChangeHistoryCard rows={changeHistoryRows} retentionNote={changeHistoryRetention} now={coarse} />
+						<ChangeHistoryCard
+							rows={changeHistoryRows}
+							retentionNote={changeHistoryRetention}
+							now={coarse}
+						/>
 
 						<!--
 							⭐ COORDINATOR, 2026-09-10 — RAIL CARD 3, "How it's going".
@@ -1636,7 +1718,9 @@
 							<Card
 								icon={HourglassOutline}
 								title="How it's going"
-								verdict={changeTypicalToProdMs != null ? `typical ${compactSpan(changeTypicalToProdMs)}` : 'no data yet'}
+								verdict={changeTypicalToProdMs != null
+									? `typical ${compactSpan(changeTypicalToProdMs)}`
+									: 'no data yet'}
 							>
 								<dl class="space-y-3">
 									<div class="flex items-baseline justify-between gap-3">
@@ -1644,20 +1728,24 @@
 											<HourglassOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
 											Typical to prod
 										</dt>
-										<dd class="t-figure tabular-nums text-gray-900 dark:text-white">
+										<dd class="t-figure text-gray-900 tabular-nums dark:text-white">
 											{changeTypicalToProdMs != null ? compactSpan(changeTypicalToProdMs) : '—'}
 										</dd>
 									</div>
 									{#if changeTypicalToProdMs == null}
-										<p class="t-micro -mt-2 text-gray-400 dark:text-gray-500">no measured trip yet</p>
+										<p class="t-micro -mt-2 text-gray-400 dark:text-gray-500">
+											no measured trip yet
+										</p>
 									{/if}
 									{#if changeStateSince}
 										<div class="flex items-baseline justify-between gap-3">
-											<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+											<dt
+												class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+											>
 												<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
 												{changeStateSince.label}
 											</dt>
-											<dd class="t-figure tabular-nums text-gray-900 dark:text-white">
+											<dd class="t-figure text-gray-900 tabular-nums dark:text-white">
 												{compactSpan(coarse.getTime() - new Date(changeStateSince.since).getTime())}
 											</dd>
 										</div>
@@ -1691,7 +1779,7 @@
 					type="text"
 					disabled
 					placeholder="Find a build or service"
-					class="t-body block h-9 w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-gray-400 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-500"
+					class="t-body block h-9 w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pr-3 pl-8 text-gray-400 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-500"
 				/>
 			</div>
 			<div
@@ -1709,10 +1797,14 @@
 						<span class="skel-block h-[26px] w-full"></span>
 					{/each}
 				</div>
-				<div class="skel-block h-[53px] w-full border-t border-gray-100 dark:border-gray-700/60"></div>
+				<div
+					class="skel-block h-[53px] w-full border-t border-gray-100 dark:border-gray-700/60"
+				></div>
 			</div>
 			{#if repoSkelHeldBanner}
-				<div class="skel-block mx-4 my-4 h-[122px] w-[calc(100%-2rem)] sm:h-[122px]" aria-hidden="true"
+				<div
+					class="skel-block mx-4 my-4 h-[122px] w-[calc(100%-2rem)] sm:h-[122px]"
+					aria-hidden="true"
 				></div>
 			{/if}
 			{#each [...Array(repoSkelHeroes).keys()] as h (h)}
@@ -1733,11 +1825,26 @@
 			{/each}
 			<div class="rev-cols mt-4" aria-hidden="true">
 				<div class="flex min-w-0 flex-col gap-4">
-					<CardSkeleton titleWidth="w-32" rollupWidth="w-16" rows={repoSkelRunning} rowHeight={37} />
-					<CardSkeleton titleWidth="w-36" rollupWidth="w-16" rows={repoSkelRetired} rowHeight={37} />
+					<CardSkeleton
+						titleWidth="w-32"
+						rollupWidth="w-16"
+						rows={repoSkelRunning}
+						rowHeight={37}
+					/>
+					<CardSkeleton
+						titleWidth="w-36"
+						rollupWidth="w-16"
+						rows={repoSkelRetired}
+						rowHeight={37}
+					/>
 				</div>
 				<div class="flex min-w-0 flex-col gap-4">
-					<CardSkeleton titleWidth="w-28" rollupWidth="w-16" rows={repoSkelPending} rowHeight={35} />
+					<CardSkeleton
+						titleWidth="w-28"
+						rollupWidth="w-16"
+						rows={repoSkelPending}
+						rowHeight={35}
+					/>
 				</div>
 			</div>
 		{:else}
@@ -1811,7 +1918,7 @@
 				`h1` there is `sr-only`, so visually it was already only ever
 				one line).
 			-->
-			<h1 class="t-display block text-gray-900 leading-[1.15] dark:text-white">
+			<h1 class="t-display block leading-[1.15] text-gray-900 dark:text-white">
 				{repoTitle(repoPageLedger.repoLabel)}
 			</h1>
 			<div class="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -1849,21 +1956,21 @@
 						{#if repoChangesProgress.typicalToProdMs != null}
 							· typical to prod {compactSpan(repoChangesProgress.typicalToProdMs)}
 						{/if}
-					{#if repoStreamHealthy}
-						· live
-					{:else if query.dataUpdatedAt}
-						· updated
-						<time
-							datetime={new Date(query.dataUpdatedAt).toISOString()}
-							title="Change stream disconnected; showing data fetched at {new Date(
-								query.dataUpdatedAt
-							).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"
-							>{new Date(query.dataUpdatedAt).toLocaleTimeString([], {
-								hour: '2-digit',
-								minute: '2-digit'
-							})}</time
-						>, stream down
-					{/if}
+						{#if repoStreamHealthy}
+							· live
+						{:else if query.dataUpdatedAt}
+							· updated
+							<time
+								datetime={new Date(query.dataUpdatedAt).toISOString()}
+								title="Change stream disconnected; showing data fetched at {new Date(
+									query.dataUpdatedAt
+								).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"
+								>{new Date(query.dataUpdatedAt).toLocaleTimeString([], {
+									hour: '2-digit',
+									minute: '2-digit'
+								})}</time
+							>, stream down
+						{/if}
 					</p>
 				{:else}
 					<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
@@ -1873,257 +1980,315 @@
 			</div>
 		</div>
 
-		{#if repoReleasedRows.length > 0 || repoNoReleaseRows.length > 0}
-			<!--
-				⭐ FIX PASS ITEM 1, 2026-09-11 — A `Card`, INSIDE THE PAGE'S
-				MAIN+RAIL GRID, NEVER A BARE 1201px LIST. Supersedes the round-3
-				bare-heading-over-one-list shape a live screenshot caught: this
-				section is now `/changes`' own "Your changes" grammar (a
-				titled `Card`, deviations always visible, the live run and the
-				no-release commits each folded behind one `.nav-link` line) —
-				not a new drawing, the SAME one reused with a repo-scoped
-				population. The rail beside it is `HowChangesAreGoing`, the
-				SAME component `/changes`' own rail uses, retitled for one
-				repository via its new `title` prop rather than forked.
+		<!--
+			⭐ FIX PASS ITEM 1 (round 2), 2026-09-11 — ONE GRID FOR THE WHOLE
+			PAGE, NOT TWO. The prior pass (comment below, unchanged) folded
+			`Changes` and its rail into ONE `.rail-wrap`/`.rail-grid` — but
+			left the round-11 ops content (`RepoLedgerCard`, the held banner,
+			the hero cards, `BuildLists`) rendering AFTER that grid closed, as
+			1201px full-bleed siblings, with `BuildLists` running its OWN
+			second `.rev-cols` grid (16px seam, 320px rail) beneath it. Two
+			main/rail systems on one page, at two different widths and two
+			different seams, is the defect a live screenshot caught. Now
+			there is exactly one: this section's `.rail-main` holds
+			`Changes` (when there is GitHub data for it), the ledger, the
+			held banner, every hero card and `BuildLists`' first two lists,
+			in that order; `.rail-side` holds `HowChangesAreGoing` alone.
+			`BuildLists`' own "No deploy on record" list — the build-list
+			rail item 1's brief names — STACKS UNDER the other two lists
+			inside the same main column instead of opening a second rail
+			(see that component's own note, below its `<div class="rev-cols">`
+			replacement) — the simpler of the two options the brief allows,
+			and the one that does not require threading a second snippet
+			into this page's own rail.
 
-				`.rail-wrap`/`.rail-grid`/`.rail-main`/`.rail-side` (`app.css`)
-				— main column, 320px rail, the shared shell every rail on the
-				product already runs.
+			`RevisionSearch` moves ABOVE this whole section, matching
+			`/changes`' own placement (FIX PASS ITEM 2) — under the head
+			band, at the page's full main width, never sandwiched between
+			two card systems the way a bare 384px input was before.
+		-->
+		<div class="flex flex-wrap items-center gap-2">
+			<RevisionSearch bind:value={repoSearchQuery} />
+		</div>
 
-				Landmark order (unchanged): `<repo>` → `Changes` →
-				`What each service runs` → … — this section sits exactly where
-				the superseded bare list did.
-			-->
-			<section class="mb-8">
-				<div class="rail-wrap">
-					<div class="rail-grid">
-						<div class="rail-main min-w-0">
-							<Card
-								icon={CodePullRequestOutline}
-								title="Changes"
-								verdict={repoChangesRollupText()}
-								padded={false}
-							>
-								{#if repoDeviations.length > 0}
-									<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
-										{#each repoDeviationsShown as row (row.href)}
-											<ChangeLine {row} now={coarse} />
-										{/each}
-									</ul>
-									{#if !repoChangesExpanded && repoDeviationsHiddenCount > 0}
-										<div class="px-4 py-2.5">
+		<!--
+			⭐ FIX PASS ITEM 1, 2026-09-11 — A `Card`, INSIDE THE PAGE'S
+			MAIN+RAIL GRID, NEVER A BARE 1201px LIST. Supersedes the round-3
+			bare-heading-over-one-list shape a live screenshot caught: this
+			section is now `/changes`' own "Your changes" grammar (a
+			titled `Card`, deviations always visible, the live run and the
+			no-release commits each folded behind one `.nav-link` line) —
+			not a new drawing, the SAME one reused with a repo-scoped
+			population. The rail beside it is `HowChangesAreGoing`, the
+			SAME component `/changes`' own rail uses, retitled for one
+			repository via its new `title` prop rather than forked.
+
+			`.rail-wrap`/`.rail-grid`/`.rail-main`/`.rail-side` (`app.css`)
+			— main column, 320px rail, the shared shell every rail on the
+			product already runs.
+
+			Landmark order (unchanged): `<repo>` → `Changes` →
+			`What each service runs` → … — this section sits exactly where
+			the superseded bare list did.
+		-->
+		<section class="mb-8">
+			<div class="rail-wrap">
+				<div class="rail-grid">
+					<div class="rail-main min-w-0">
+						{#if repoReleasedRows.length > 0 || repoNoReleaseRows.length > 0}
+							<div class="mb-8">
+								<Card
+									icon={CodePullRequestOutline}
+									title="Changes"
+									verdict={repoChangesRollupText()}
+									padded={false}
+								>
+									{#if repoDeviations.length > 0}
+										<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+											{#each repoDeviationsShown as row (row.href)}
+												<ChangeLine {row} now={coarse} />
+											{/each}
+										</ul>
+										{#if !repoChangesExpanded && repoDeviationsHiddenCount > 0}
+											<!--
+												⭐ FIX PASS ITEM 5, 2026-09-11 — THE SAME LEADING
+												SLOT AS THE LIVE-RUN FOLD BELOW, EMPTY. That fold's
+												`CheckCircleSolid` (16px + `gap-2`'s 8px) pushed its
+												own button 24px right of this one and the no-release
+												fold's — three folds in one card, two different text
+												x-positions. This fold has no icon to spend (nothing
+												folded here is uniformly one state), so the slot is a
+												same-size blank rather than inventing one — `.chip`'s
+												own "never draw a mark that says nothing" rule applies
+												to icons too.
+											-->
+											<div class="flex items-center gap-2 px-4 py-2.5">
+												<span class="h-4 w-4 shrink-0" aria-hidden="true"></span>
+												<button
+													type="button"
+													class="nav-link"
+													onclick={() => (repoChangesExpanded = true)}
+													>Show {repoDeviationsHiddenCount} more ›</button
+												>
+											</div>
+										{/if}
+									{/if}
+									{#if repoLiveRun.length > 0}
+										<!-- ⭐ THE LIVE-RUN FOLD — same idiom as `/changes`' "Your
+										     changes": every row already live everywhere is one
+										     contiguous run at the tail of the stuck-first order,
+										     folded behind one line rather than repeated N times. -->
+										<div class="flex items-center gap-2 px-4 py-2.5">
+											<CheckCircleSolid class="tone-live h-4 w-4 shrink-0" aria-hidden="true" />
 											<button
 												type="button"
 												class="nav-link"
-												onclick={() => (repoChangesExpanded = true)}
-												>Show {repoDeviationsHiddenCount} more ›</button
+												onclick={() => (repoLiveExpanded = !repoLiveExpanded)}
 											>
+												{repoLiveRun.length} change{repoLiveRun.length === 1 ? '' : 's'} · all live everywhere
+												›
+											</button>
 										</div>
+										{#if repoLiveExpanded}
+											<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+												{#each repoLiveRun as row (row.href)}
+													<ChangeLine {row} now={coarse} />
+												{/each}
+											</ul>
+										{/if}
 									{/if}
-								{/if}
-								{#if repoLiveRun.length > 0}
-									<!-- ⭐ THE LIVE-RUN FOLD — same idiom as `/changes`' "Your
-									     changes": every row already live everywhere is one
-									     contiguous run at the tail of the stuck-first order,
-									     folded behind one line rather than repeated N times. -->
-									<div class="flex items-center gap-2 px-4 py-2.5">
-										<CheckCircleSolid class="tone-live h-4 w-4 shrink-0" aria-hidden="true" />
-										<button
-											type="button"
+									{#if repoNoReleaseRows.length > 0}
+										<!--
+											⭐ ROUND 3B — THE FOLD, same idiom as the index's "Your
+											changes". ⭐ FIX PASS ITEM 5, 2026-09-11 — SAME BLANK
+											LEADING SLOT AS THE OTHER TWO FOLDS ABOVE (see that
+											item's own note); all three fold buttons in this card
+											now share ONE x.
+										-->
+										<div class="flex items-center gap-2 px-4 py-2.5">
+											<span class="h-4 w-4 shrink-0" aria-hidden="true"></span>
+											<button
+												type="button"
+												class="nav-link"
+												onclick={() => (repoNoReleaseExpanded = !repoNoReleaseExpanded)}
+											>
+												{repoNoReleaseRows.length} commit{repoNoReleaseRows.length === 1 ? '' : 's'}
+												produced no release ›
+											</button>
+										</div>
+										{#if repoNoReleaseExpanded}
+											<ul class="mt-2 divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
+												{#each repoNoReleaseRows as row (row.href)}
+													<ChangeLine {row} now={coarse} />
+												{/each}
+											</ul>
+										{/if}
+									{/if}
+								</Card>
+							</div>
+						{/if}
+
+						<!--
+							⭐ ROUND 11 CRAFT FINDING 4 — DECISION: A CONTAINER QUERY, NOT AN
+							IN-PAGE LINK. Below `sm` the ledger card can run to many rows
+							(one per service), which would otherwise put the held banner
+							three screens down on a repository with a real roster. Chose the
+							reorder over "the head band's alarm chip is an in-page link to
+							the banner" because this page's head band carries no alarm CHIP
+							of its own to anchor from (B.4 item 2 is a figure + sentence, not
+							a chip — unlike the index's header) — inventing one only to link
+							it somewhere else on the same screen is a second control for a
+							fact the reorder answers structurally, for free, with no new
+							affordance to explain. `.rev-repo-top` is `display: flex;
+							flex-direction: column` with `order` swapped in the container
+							query below `sm`, so the banner (when present) always precedes
+							the ledger there.
+						-->
+						<div class="rev-repo-top">
+							<div class="rev-repo-ledger">
+								<!--
+							⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — ONE LEDGER. This used
+							to be a second, hand-rolled copy of `RepoLedgerCard`'s own grammar
+							(`.svc-name-btn` toggles, its own `.svc-ledger` grid) — now the
+							SAME component the index renders, with `filterable` turning row
+							names into the multi-select toggle B.4 item 4 asks for and the
+							header into the plain "What each service runs" / "N services"
+							shape instead of the index's link-out header.
+						-->
+								<RepoLedgerCard
+									repo={repoPageLedger}
+									now={coarse}
+									query={repoSearchQuery}
+									filterable
+									repoUrl={repoPageLedger.repoKey.startsWith('repo:') &&
+									repoBody(repoPageLedger.repoKey).includes('/')
+										? `https://${repoBody(repoPageLedger.repoKey)}`
+										: null}
+									class=""
+								/>
+							</div>
+
+							<!--
+							⭐ B.4 ITEM 5 — THE HELD BANNER, UNDER THE LEDGER AT `sm`+, NEVER
+							COLLAPSIBLE (round 7.3, unchanged — only its address moved, from
+							the index to here). Whenever a hold exists anywhere in this
+							repository. See the finding-4 decision comment above
+							`.rev-repo-top` for why it precedes the ledger below `sm` instead.
+						-->
+							{#if repoHeldSlots.length > 0}
+								<div class="rev-repo-banner">
+									<HeldBanner
+										subject={repoHeldSubject}
+										releaseSplitMessage={repoHeldMessage}
+										stories={repoHeldStories}
+										heldEnvLabels={repoHeldEnvLabels}
+										primaryHref={repoHeldPrimary?.appHref ?? null}
+										primaryLabel={repoHeldPrimary?.appName ?? null}
+										hasSchedule={repoHasSchedule}
+										indefinite={storiesAreIndefinite(repoHeldStories)}
+									/>
+								</div>
+							{/if}
+						</div>
+
+						<!--
+							⭐ B.4 ITEM 6 — ONE HERO PER RELEASE LINE, A.6.2's ALWAYS-DRAWN-BAR
+							BODY. Round 11, finding 3 — `repoVisibleLeadRows`, not
+							`repoLeadRows`: a hero for a line `?q=` excludes is not drawn at
+							all, the same rule the held banner above already follows.
+						-->
+						{#each repoVisibleLeadRows as leadRow, li (leadRow.key)}
+							{@const cov = repoHeroCoverage(leadRow)}
+							{@const heroServices = repoHeroMatchedServices(leadRow)}
+							{@const heroNames = heroServices.map((s) => s.appName)}
+							{@const heroTitleTail = repoHeroServicesLabel(heroNames)}
+							{@const heldSlotsForRow = heldBehind(cov).filter((s) => s.blockingGates.length > 0)}
+							{@const heldLabel =
+								heldSlotsForRow.length > 0
+									? (leadRow.services.find((s) =>
+											heldSlotsForRow.some((hs) => hs.appName === s.appName)
+										)?.label ?? leadRow.short)
+									: null}
+							<!--
+								⭐ ROUND 11 r11c FINDING 8 — THE HEADER ROLLUP NAMES ONLY THE
+								HELD/OTHER FACT, NEVER THE COUNT. `heroVerdict` used to open
+								with `${cov.liveCount} of ${cov.totalCount} places` — the exact
+								sentence `RevisionLead`'s own `.lead-compact-count` already
+								prints 48px below it (`compact`'s count line, above the bar).
+								One header saying the identical figure twice with 48px of
+								vertical distance between them is the repetition this file's
+								own `heroVerdict` note elsewhere warns against.
+
+								⛔ ⭐ LANE 9, ROUND 11 QA, ITEM 12 — BUT `null` WAS "PRINT
+								NOTHING", NOT "NOTHING HELD". `Card`'s own `{:else if verdict}`
+								guard hides the rollup slot entirely on `null`, so a hero with
+								no held sibling had NO right-hand rollup at all — measured
+								live, ink covering only 57% of the header width, the release
+								label(s) this build ships under simply missing. The head band
+								always prints its release label(s) (`064b655` when the only
+								label is the sha itself; `2.66.0-66 · 2.67.0-67` when the
+								commit ships under several) — the hero's own header rollup
+								must too, falling back to that same fact rather than to
+								nothing. `heldLabel` still wins when it exists (the held fact
+								is the more important one to lead with).
+							-->
+							{@const heroLabels = leadRow.labelGroups.map((g) => g.label).join(' · ')}
+							{@const heroVerdict = heldLabel ? `${heldLabel} held` : heroLabels}
+							<Card
+								icon={RocketOutline}
+								title="Newest build {leadRow.short} · {heroTitleTail}"
+								verdict={heroVerdict}
+								verdictTitle="Everything below is counted across the services that have a release for this commit."
+								titleHref={changeBuildPath(
+									repoPageLedger.repoKey,
+									leadRow.revision,
+									leadRow.revision
+								)}
+								class={repoMultiLine && li < repoVisibleLeadRows.length - 1 ? 'mt-4 mb-4' : 'mt-4'}
+							>
+								<RevisionLead
+									short={leadRow.short}
+									href={null}
+									eyebrow="Newest build"
+									coverage={cov}
+									spread={false}
+									showHeldChip
+									compact
+								>
+									{#if repoCommitUrlFor(leadRow.revision)}
+										<a
 											class="nav-link"
-											onclick={() => (repoLiveExpanded = !repoLiveExpanded)}
+											href={repoCommitUrlFor(leadRow.revision)}
+											target="_blank"
+											rel="noopener noreferrer"
+											aria-label={`View the commit for ${leadRow.short} on GitHub — opens in a new tab`}
 										>
-											{repoLiveRun.length} change{repoLiveRun.length === 1 ? '' : 's'} · all live everywhere ›
-										</button>
-									</div>
-									{#if repoLiveExpanded}
-										<ul class="divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
-											{#each repoLiveRun as row (row.href)}
-												<ChangeLine {row} now={coarse} />
-											{/each}
-										</ul>
+											View commit
+											<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
+										</a>
 									{/if}
-								{/if}
-								{#if repoNoReleaseRows.length > 0}
-									<!-- ⭐ ROUND 3B — THE FOLD, same idiom as the index's "Your
-									     changes". -->
-									<div class="px-4 py-2.5">
-										<button
-											type="button"
-											class="nav-link"
-											onclick={() => (repoNoReleaseExpanded = !repoNoReleaseExpanded)}
-										>
-											{repoNoReleaseRows.length} commit{repoNoReleaseRows.length === 1 ? '' : 's'} produced no release ›
-										</button>
-									</div>
-									{#if repoNoReleaseExpanded}
-										<ul class="mt-2 divide-y divide-gray-100 px-2 py-1 dark:divide-gray-700/60">
-											{#each repoNoReleaseRows as row (row.href)}
-												<ChangeLine {row} now={coarse} />
-											{/each}
-										</ul>
-									{/if}
-								{/if}
+								</RevisionLead>
 							</Card>
-						</div>
-						<div class="rail-side min-w-0">
-							<HowChangesAreGoing
-								title="How this repository is going"
-								summary={repoRailSummary}
-								notEverywhereCount={repoDeviations.length}
-							/>
-						</div>
+						{/each}
+
+						<!-- ⭐ B.4 ITEM 7 — `.rev-cols`, EXTRACTED TO `BuildLists` (Lane 2). -->
+						<BuildLists
+							repo={repoPageLedger}
+							now={coarse}
+							query={repoSearchQuery}
+							storageKey={page.url.pathname}
+						/>
+					</div>
+					<div class="rail-side min-w-0">
+						<HowChangesAreGoing
+							title="How this repository is going"
+							summary={repoRailSummary}
+							notEverywhereCount={repoDeviations.length}
+						/>
 					</div>
 				</div>
-			</section>
-		{/if}
-
-		<RevisionSearch bind:value={repoSearchQuery} />
-
-		<!--
-			⭐ ROUND 11 CRAFT FINDING 4 — DECISION: A CONTAINER QUERY, NOT AN
-			IN-PAGE LINK. Below `sm` the ledger card can run to many rows
-			(one per service), which would otherwise put the held banner
-			three screens down on a repository with a real roster. Chose the
-			reorder over "the head band's alarm chip is an in-page link to
-			the banner" because this page's head band carries no alarm CHIP
-			of its own to anchor from (B.4 item 2 is a figure + sentence, not
-			a chip — unlike the index's header) — inventing one only to link
-			it somewhere else on the same screen is a second control for a
-			fact the reorder answers structurally, for free, with no new
-			affordance to explain. `.rev-repo-top` is `display: flex;
-			flex-direction: column` with `order` swapped in the container
-			query below `sm`, so the banner (when present) always precedes
-			the ledger there.
-		-->
-		<div class="rev-repo-top">
-		<div class="rev-repo-ledger">
-		<!--
-			⭐ ROUND 11 REVISIONS-PASS-6, ITEM 1 (r11c) — ONE LEDGER. This used
-			to be a second, hand-rolled copy of `RepoLedgerCard`'s own grammar
-			(`.svc-name-btn` toggles, its own `.svc-ledger` grid) — now the
-			SAME component the index renders, with `filterable` turning row
-			names into the multi-select toggle B.4 item 4 asks for and the
-			header into the plain "What each service runs" / "N services"
-			shape instead of the index's link-out header.
-		-->
-		<RepoLedgerCard
-			repo={repoPageLedger}
-			now={coarse}
-			query={repoSearchQuery}
-			filterable
-			repoUrl={repoPageLedger.repoKey.startsWith('repo:') && repoBody(repoPageLedger.repoKey).includes('/')
-				? `https://${repoBody(repoPageLedger.repoKey)}`
-				: null}
-			class=""
-		/>
-		</div>
-
-		<!--
-			⭐ B.4 ITEM 5 — THE HELD BANNER, UNDER THE LEDGER AT `sm`+, NEVER
-			COLLAPSIBLE (round 7.3, unchanged — only its address moved, from
-			the index to here). Whenever a hold exists anywhere in this
-			repository. See the finding-4 decision comment above
-			`.rev-repo-top` for why it precedes the ledger below `sm` instead.
-		-->
-		{#if repoHeldSlots.length > 0}
-			<div class="rev-repo-banner">
-				<HeldBanner
-					subject={repoHeldSubject}
-					releaseSplitMessage={repoHeldMessage}
-					stories={repoHeldStories}
-					heldEnvLabels={repoHeldEnvLabels}
-					primaryHref={repoHeldPrimary?.appHref ?? null}
-					primaryLabel={repoHeldPrimary?.appName ?? null}
-					hasSchedule={repoHasSchedule}
-					indefinite={storiesAreIndefinite(repoHeldStories)}
-				/>
 			</div>
-		{/if}
-		</div>
-
-		<!--
-			⭐ B.4 ITEM 6 — ONE HERO PER RELEASE LINE, A.6.2's ALWAYS-DRAWN-BAR
-			BODY. Round 11, finding 3 — `repoVisibleLeadRows`, not
-			`repoLeadRows`: a hero for a line `?q=` excludes is not drawn at
-			all, the same rule the held banner above already follows.
-		-->
-		{#each repoVisibleLeadRows as leadRow, li (leadRow.key)}
-			{@const cov = repoHeroCoverage(leadRow)}
-			{@const heroServices = repoHeroMatchedServices(leadRow)}
-			{@const heroNames = heroServices.map((s) => s.appName)}
-			{@const heroTitleTail = repoHeroServicesLabel(heroNames)}
-			{@const heldSlotsForRow = heldBehind(cov).filter((s) => s.blockingGates.length > 0)}
-			{@const heldLabel =
-				heldSlotsForRow.length > 0
-					? leadRow.services.find((s) => heldSlotsForRow.some((hs) => hs.appName === s.appName))
-							?.label ?? leadRow.short
-					: null}
-			<!--
-				⭐ ROUND 11 r11c FINDING 8 — THE HEADER ROLLUP NAMES ONLY THE
-				HELD/OTHER FACT, NEVER THE COUNT. `heroVerdict` used to open
-				with `${cov.liveCount} of ${cov.totalCount} places` — the exact
-				sentence `RevisionLead`'s own `.lead-compact-count` already
-				prints 48px below it (`compact`'s count line, above the bar).
-				One header saying the identical figure twice with 48px of
-				vertical distance between them is the repetition this file's
-				own `heroVerdict` note elsewhere warns against.
-
-				⛔ ⭐ LANE 9, ROUND 11 QA, ITEM 12 — BUT `null` WAS "PRINT
-				NOTHING", NOT "NOTHING HELD". `Card`'s own `{:else if verdict}`
-				guard hides the rollup slot entirely on `null`, so a hero with
-				no held sibling had NO right-hand rollup at all — measured
-				live, ink covering only 57% of the header width, the release
-				label(s) this build ships under simply missing. The head band
-				always prints its release label(s) (`064b655` when the only
-				label is the sha itself; `2.66.0-66 · 2.67.0-67` when the
-				commit ships under several) — the hero's own header rollup
-				must too, falling back to that same fact rather than to
-				nothing. `heldLabel` still wins when it exists (the held fact
-				is the more important one to lead with).
-			-->
-			{@const heroLabels = leadRow.labelGroups.map((g) => g.label).join(' · ')}
-			{@const heroVerdict = heldLabel ? `${heldLabel} held` : heroLabels}
-			<Card
-				icon={RocketOutline}
-				title="Newest build {leadRow.short} · {heroTitleTail}"
-				verdict={heroVerdict}
-				verdictTitle="Everything below is counted across the services that have a release for this commit."
-				titleHref={changeBuildPath(repoPageLedger.repoKey, leadRow.revision, leadRow.revision)}
-				class={repoMultiLine && li < repoVisibleLeadRows.length - 1 ? 'mt-4 mb-4' : 'mt-4'}
-			>
-				<RevisionLead
-					short={leadRow.short}
-					href={null}
-					eyebrow="Newest build"
-					coverage={cov}
-					spread={false}
-					showHeldChip
-					compact
-				>
-					{#if repoCommitUrlFor(leadRow.revision)}
-						<a
-							class="nav-link"
-							href={repoCommitUrlFor(leadRow.revision)}
-							target="_blank"
-							rel="noopener noreferrer"
-							aria-label={`View the commit for ${leadRow.short} on GitHub — opens in a new tab`}
-						>
-							View commit
-							<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />
-						</a>
-					{/if}
-				</RevisionLead>
-			</Card>
-		{/each}
-
-		<!-- ⭐ B.4 ITEM 7 — `.rev-cols`, EXTRACTED TO `BuildLists` (Lane 2). -->
-		<BuildLists
-			repo={repoPageLedger}
-			now={coarse}
-			query={repoSearchQuery}
-			storageKey={page.url.pathname}
-		/>
+		</section>
 	{:else if isPullChange}
 		<!-- ══ THE CHANGE PAGE — PULL FORM (CHANGES-2026-09-10 §3) ═══════════
 		     Moved from the superseded `/pr/{owner}/{repo}/{number}` route,
@@ -2141,14 +2306,22 @@
 			</div>
 			<div class="space-y-4">
 				{#each Array.from({ length: changeSkelServices }, (_, i) => i) as i (i)}
-					<CardSkeleton titleWidth="w-32" rollupWidth="w-40" rows={3} rowHeight={28} padded={false} />
+					<CardSkeleton
+						titleWidth="w-32"
+						rollupWidth="w-40"
+						rows={3}
+						rowHeight={28}
+						padded={false}
+					/>
 				{/each}
 			</div>
 		{:else if pullError?.reason === 'not_connected'}
 			<p class="t-dense mb-1 text-gray-500 dark:text-gray-400">
 				#{changeNumber} · {changeOwner}/{changeRepo}
 			</p>
-			<h1 class="t-display text-gray-900 dark:text-white">Connect GitHub to see this pull request</h1>
+			<h1 class="t-display text-gray-900 dark:text-white">
+				Connect GitHub to see this pull request
+			</h1>
 			<p class="t-body mt-2 max-w-prose text-gray-600 dark:text-gray-300">
 				This dashboard reads pull request details as you, through your own GitHub account — connect
 				it to see #{changeNumber} on {changeOwner}/{changeRepo}.
@@ -2244,12 +2417,16 @@
 			{#if prData.state === 'open'}
 				<Card icon={ClockOutline} title="Not merged yet">
 					<p class="t-body text-gray-600 dark:text-gray-300">
-						This pull request has not merged yet — it targets <code class="t-code-sm">{prData.base}</code
+						This pull request has not merged yet — it targets <code class="t-code-sm"
+							>{prData.base}</code
 						>. Once it merges, this page fills in per service.
 					</p>
 					<p class="t-dense mt-2 text-gray-500 dark:text-gray-400">
-						{#if openAge}open {openAge} · {/if}{#if openFilesLabel}{openFilesLabel} · {/if}{#if openHeadShort}head
-							<code class="t-code-sm">{openHeadShort}</code> · {/if}not built anywhere
+						{#if openAge}open {openAge} ·
+						{/if}{#if openFilesLabel}{openFilesLabel} ·
+						{/if}{#if openHeadShort}head
+							<code class="t-code-sm">{openHeadShort}</code> ·
+						{/if}not built anywhere
 					</p>
 				</Card>
 			{:else if prData.state === 'closed'}
@@ -2594,7 +2771,6 @@
 		.rev-buckets > :global(:last-child:nth-child(odd)) {
 			grid-column: 1 / -1;
 		}
-
 	}
 
 	/*

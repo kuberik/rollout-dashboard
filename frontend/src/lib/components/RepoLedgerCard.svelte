@@ -249,10 +249,15 @@
 			behind += notYet.filter((s) => !s.slot.onRevision).length;
 		}
 		const headCreated = repo.rows[0]?.createdMs ?? 0;
-		const newer = headCreated > 0 ? repo.pending.filter((p) => p.createdMs > headCreated).length : 0;
+		const newer =
+			headCreated > 0 ? repo.pending.filter((p) => p.createdMs > headCreated).length : 0;
 		if (held > 0) {
+			// ⭐ FIX PASS ITEM 3, 2026-09-11 — `role: 'held'`, not `'alarm'`. See
+			// the identical fix and its note in `secondaryChip` below: this
+			// card's own header rollup was the second of two hardcoded `alarm`
+			// overrides for what is everywhere else a `held` chip.
 			return {
-				chip: { role: 'alarm' as const, label: `${held} held` },
+				chip: { role: 'held' as const, label: `${held} held` },
 				text: `${countLabel(held, 'place')} held`
 			};
 		}
@@ -345,9 +350,20 @@
 {#snippet secondaryChip(state: LineStateChip | null, lineShort?: string)}
 	{#if state?.role === 'held'}
 		{@const sameCommit = !!lineShort && state.holdOf?.short === lineShort}
+		<!--
+			⭐ FIX PASS ITEM 3, 2026-09-11 — `role="held"`, NOT `role="alarm"`.
+			This joined form hardcoded `alarm` (solid amber-400 fill, amber-500
+			border) while every other HELD chip in the product — Home,
+			`/rollouts`, `/apps`, `/environments`, `/envs/<name>` — goes through
+			`Chip.svelte`'s own `held: TRAILING` mapping (a tinted chip on a
+			neutral gray border; `held` is a gate correctly refusing a
+			candidate, not a stoppage, and `alarm` is reserved for `stuck`
+			alone). `state.role` from `revision-ledger.ts` was already `'held'`
+			here; only this call site's LITERAL override was wrong.
+		-->
 		<Chip
-			role="alarm"
-			label="HELD"
+			role="held"
+			label="held"
 			value={state.holdOf?.label ?? state.holdOf?.short}
 			valueTitle={state.holdOf?.label ? state.holdOf.short : undefined}
 			title={sameCommit
@@ -401,7 +417,9 @@
 			-->
 			<Chip role={verdict.chip.role} label={verdict.chip.label} wide title={verdict.text} />
 		{:else}
-			<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400">{verdict.text}</span>
+			<span class="t-card-rollup whitespace-nowrap text-gray-500 dark:text-gray-400"
+				>{verdict.text}</span
+			>
 		{/if}
 	</span>
 	<!--
@@ -556,10 +574,18 @@
 												label={envDisplay}
 												wide
 												icon={inFlightGlyph}
-												title="{group.appName} in {envDisplay.toUpperCase()} — {bakeTitle(inFlightBake)}"
+												title="{group.appName} in {envDisplay.toUpperCase()} — {bakeTitle(
+													inFlightBake
+												)}"
 											/>
 										{:else}
-											<Chip role="env" theme={slot.cell.theme} label={envDisplay} wide title="{group.appName} in {envDisplay.toUpperCase()}" />
+											<Chip
+												role="env"
+												theme={slot.cell.theme}
+												label={envDisplay}
+												wide
+												title="{group.appName} in {envDisplay.toUpperCase()}"
+											/>
 										{/if}
 									</a>
 								{/each}
@@ -598,7 +624,8 @@
 							<span class="svc-fill" aria-hidden="true"></span>
 							<span class="svc-age t-micro text-gray-500 dark:text-gray-400">
 								{#if lineAge(line)}
-									<time datetime={lineAgeIso(line)} title={lineAgeTitle(line)}>{lineAge(line)}</time>
+									<time datetime={lineAgeIso(line)} title={lineAgeTitle(line)}>{lineAge(line)}</time
+									>
 								{/if}
 							</span>
 						{:else}
@@ -862,6 +889,25 @@
 		border-width: 1px;
 		border-style: solid;
 		border-radius: 4px;
+		/*
+		 * ⭐ FIX PASS ITEM 6, 2026-09-11 — THE NAME COLUMN ALIGNS TO THE
+		 * PIXEL. `.svc-name`/`.svc-name-continuation` (above) carry NO
+		 * horizontal padding — the 16px inset is `.svc-ledger`'s job, once,
+		 * for every column (r11c's own item 2 ruling: two mechanisms must
+		 * not double up one edge). This toggle's own padding-left (10px)
+		 * plus its always-1px border (the colour varies with `selected`,
+		 * the WIDTH never does — see the class list above) pushed its own
+		 * NAME 11px right of a continuation row's, on the SAME column, in
+		 * the SAME card: measured live, a toggled first line and its own
+		 * wrapped/sibling continuation line disagreed on where the name
+		 * starts. The border needs its 1px and the fill needs its 10px of
+		 * breathing room around the pressed word, so the padding stays;
+		 * a negative margin pulls the BOX back by the exact amount its own
+		 * padding+border adds, leaving the toggle's hit target and hover
+		 * ring their full size while its rendered text lands at the
+		 * identical x as every plain name in the column.
+		 */
+		margin-left: -11px;
 	}
 
 	.svc-build {

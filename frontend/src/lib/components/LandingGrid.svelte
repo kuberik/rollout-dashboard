@@ -99,6 +99,48 @@
 		return [...byFamily.entries()].sort((a, b) => a[1] - b[1]).map(([family]) => family);
 	});
 
+	/**
+	 * ⭐ FIX PASS ITEM 4, 2026-09-11 — THE HEADER WORD IS THE SAME MARK AS
+	 * THE ROWS BELOW IT, NOT A THIRD SPELLING. A live census of `pull/1`
+	 * found FOUR sizes/colours of environment word on one page: this
+	 * header (9px flat gray), `LandingMark`'s own word (10px, env hue —
+	 * the reference), the row-scale env `Chip` in `PipelineRow`'s stage
+	 * rows (20px box, `.chip-env`'s own identity ring+fill — a different
+	 * component for a different role, see that file's own note), and a
+	 * banner headline that turned out to be unrelated (`AlertPanel`'s
+	 * `dark:text-white` title ink, shared by all four severities —
+	 * investigated and left alone; a banner headline names the APP, not
+	 * one environment, so "use the env hue" does not apply to it).
+	 *
+	 * A column header naming `DEV`/`STG`/`PRD` IS an environment identity,
+	 * the same fact `LandingMark`'s own word states on every row beneath
+	 * it — so it takes the identical ink, at the identical 10px/600, via
+	 * the same CSS-custom-property mechanism `LandingMark`'s own
+	 * `themeStyle` uses (`--lg-head-word`/`--lg-head-word-dark`, scoped to
+	 * this component rather than reusing `LandingMark`'s `--lm-word` name,
+	 * since the header is a sibling element, not that component). The
+	 * FIRST theme found for a family, across every service's marks, is
+	 * the header's theme — every environment in one family shares one
+	 * preset ramp (`environment-theme.ts`'s `PRESET_RAMPS`), so any mark
+	 * in the column already carries the colour the whole column should
+	 * print.
+	 */
+	const columnTheme = $derived.by(() => {
+		const byFamily = new Map<string, LandingServiceVM['marks'][number]['theme']>();
+		for (const s of services) {
+			for (const m of s.marks) {
+				if (!byFamily.has(m.family) && m.theme) byFamily.set(m.family, m.theme);
+			}
+		}
+		return byFamily;
+	});
+
+	function headStyle(family: string): string {
+		const theme = columnTheme.get(family);
+		if (!theme) return '';
+		return `--lg-head-word: ${theme.textColor}; --lg-head-word-dark: ${theme.darkTextColor};`;
+	}
+
 	let expanded = $state(false);
 	const hiddenCount = $derived(Math.max(0, services.length - fold));
 
@@ -126,14 +168,16 @@
 		{#if !dense}
 			<span class="lg-head" aria-hidden="true"></span>
 			{#each columns as col (col)}
-				<span class="lg-head lg-head-fam">{col}</span>
+				<span
+					class="lg-head lg-head-fam"
+					class:lg-head-fam--themed={columnTheme.has(col)}
+					style={headStyle(col)}>{col}</span
+				>
 			{/each}
 		{/if}
 		{#each services as service, i (service.appName)}
-			<span
-				class="lg-name"
-				class:lg-hidden-below-lg={isFolded(i)}
-				title={service.appName}>{service.appName}</span
+			<span class="lg-name" class:lg-hidden-below-lg={isFolded(i)} title={service.appName}
+				>{service.appName}</span
 			>
 			{#each columns as col (col)}
 				{@const mark = service.marks.find((m) => m.family === col)}
@@ -228,8 +272,29 @@
 		border-bottom-color: var(--color-gray-700);
 	}
 
+	/*
+	 * ⭐ FIX PASS ITEM 4, 2026-09-11 — 10px/600, ENV HUE, MATCHING
+	 * `LandingMark.svelte`'s `.lm-word` EXACTLY (see the doc comment above
+	 * `columnTheme` in the script). Overrides `.lg-head`'s own 9px flat
+	 * gray, which stays correct for the corner cell (the empty span with
+	 * no environment to name) and for any family this component could not
+	 * resolve a theme for (`.lg-head-fam` alone, no `--themed` modifier —
+	 * same neutral fallback `.lm-word` itself falls back to when
+	 * `LandingMark`'s own `theme` prop is `null`).
+	 */
 	.lg-head-fam {
 		text-align: left;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+	}
+
+	.lg-head-fam--themed {
+		color: var(--lg-head-word, var(--color-gray-400));
+	}
+
+	:global(.dark) .lg-head-fam--themed {
+		color: var(--lg-head-word-dark, var(--color-gray-500));
 	}
 
 	.lg-name {

@@ -365,6 +365,7 @@ lib/components/HowItsGoing.svelte	title	How it’s going
 lib/components/HowItsGoing.svelte	text	no measured trip yet
 lib/components/HowItsGoing.svelte	text	Typical deploy
 lib/components/HowItsGoing.svelte	text	Typical to prod
+lib/components/LandingGrid.svelte	code	--lg-head-word: …; --lg-head-word-dark: …;
 lib/components/LandingGrid.svelte	text	+ … service …
 lib/components/LandingGrid.svelte	code	grid-template-columns: minmax(56px, var(--lg-name-w)) repeat(…, max-content);
 lib/components/LandingMark.svelte	code	--lm-ring: …; --lm-ring-dark: …; --lm-word: …; --lm-word-dark: …;

@@ -12,17 +12,32 @@
 	 * the disclosure's fetch-once contract.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
-	import { ChevronDownOutline, ClockOutline, ClockSolid, MinusOutline } from 'flowbite-svelte-icons';
+	import {
+		ChevronDownOutline,
+		ClockOutline,
+		ClockSolid,
+		MinusOutline
+	} from 'flowbite-svelte-icons';
 	import Chip from './Chip.svelte';
 	import BakeStatusIcon from './BakeStatusIcon.svelte';
 	import { getStatusCircleClass } from '$lib/bake-status';
 	import FactList, { type Fact } from './FactList.svelte';
 	import SkeletonBar from './skeleton/SkeletonBar.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
-	import { fetchScheduleObjects, type ScheduleObject, formatAbsoluteReopen, formatTimeUntil } from '$lib/api/schedules';
+	import {
+		fetchScheduleObjects,
+		type ScheduleObject,
+		formatAbsoluteReopen,
+		formatTimeUntil
+	} from '$lib/api/schedules';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { envFamilyWord } from '$lib/version-utils';
-	import { buildGateContext, classifyGate, withSchedules, prettyNameOf } from '$lib/view-models/blocking-story';
+	import {
+		buildGateContext,
+		classifyGate,
+		withSchedules,
+		prettyNameOf
+	} from '$lib/view-models/blocking-story';
 	import type { PrCell, PrState } from '$lib/view-models/pr-pipeline';
 	import {
 		cellStateSentence,
@@ -142,28 +157,89 @@
 	 * pair already draws for the identical three states.
 	 */
 	const STATE_CHIP: Record<PrState, { label: string; class: string }> = {
-		live: { label: 'live', class: 'border-gray-200 text-green-700 dark:border-gray-700 dark:text-green-400' },
-		deploying: { label: 'deploying', class: 'border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400' },
-		baking: { label: 'baking', class: 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400' },
-		retrying: { label: 'retrying', class: 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400' },
-		failed: { label: 'failed', class: 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400' },
-		cancelled: { label: 'cancelled', class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400' },
-		'rolled-back': { label: 'rolled back', class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400' },
+		live: {
+			label: 'live',
+			class: 'border-gray-200 text-green-700 dark:border-gray-700 dark:text-green-400'
+		},
+		deploying: {
+			label: 'deploying',
+			class: 'border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400'
+		},
+		baking: {
+			label: 'baking',
+			class: 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
+		},
+		retrying: {
+			label: 'retrying',
+			class: 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
+		},
+		failed: {
+			label: 'failed',
+			class: 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
+		},
+		cancelled: {
+			label: 'cancelled',
+			class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+		},
+		'rolled-back': {
+			label: 'rolled back',
+			class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+		},
 		// HELD — orange, the same ink `Chip role="held"`/`LandingMark`'s own
 		// `held` word already spend; the border stays the product's neutral
 		// hairline (`pillClasses`' own rule: "the border stays neutral and
 		// nothing fills — the alarm chip is the only fill in the product").
-		gated: { label: 'held', class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300' },
-		'waiting-upstream': { label: 'held', class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300' },
-		pinned: { label: 'held', class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300' },
-		queued: { label: 'queued', class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400' },
-		promoting: { label: 'promoting', class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400' },
-		'not-built': { label: 'not built', class: 'border-gray-200 text-gray-400 dark:border-gray-700 dark:text-gray-500' }
+		gated: {
+			label: 'held',
+			class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300'
+		},
+		'waiting-upstream': {
+			label: 'held',
+			class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300'
+		},
+		pinned: {
+			label: 'held',
+			class: 'border-orange-200 text-orange-950 dark:border-orange-900 dark:text-orange-300'
+		},
+		queued: {
+			label: 'queued',
+			class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+		},
+		promoting: {
+			label: 'promoting',
+			class: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+		},
+		'not-built': {
+			label: 'not built',
+			class: 'border-gray-200 text-gray-400 dark:border-gray-700 dark:text-gray-500'
+		}
 	};
 	const stateChip = $derived(STATE_CHIP[cell.state]);
 
 	const sentence = $derived(cellStateSentence(cell, now));
 	const reason = $derived(cellReasonText(cell, now));
+	/**
+	 * ⭐ FIX PASS ITEM 7, 2026-09-11 — THE ROW STATES ONLY WHAT DIFFERS.
+	 * Measured live on `pull/4` at 390: the held banner (14px), this row's
+	 * own `reason` paragraph (11px, below) and the "Why is it held?"
+	 * disclosure all printed the IDENTICAL sentence — "Waiting for
+	 * hello-api-app to ship api ^1.68.0 — it is on 1.67.0" — banner and
+	 * row and disclosure, three times in one screen, on every one of DEV/
+	 * STG/PRD's three rows. The banner already states the shared clause
+	 * once (who, what contract, what range); the disclosure is the genuine
+	 * RECORD and stays (`lib/CLAUDE.md`'s "the record holds what the row
+	 * does not" rule — this is that rule applied one level down, banner to
+	 * row instead of row to popover). What the ROW alone knows, and what
+	 * actually differs DEV to STG to PRD, is which version of the
+	 * provider is currently running THERE — `cell.gateProvidedVersion`
+	 * (`pr-pipeline.ts`'s own `have`, threaded through for exactly this).
+	 * Set only on the dependency-wait shape this duplication came from
+	 * (`waiting-upstream`, service subject, a served version resolved);
+	 * every other reason shape (a schedule hold, an approval gate, a
+	 * plain promotion wait) has no banner restating it and keeps printing
+	 * `reason` in full, unchanged.
+	 */
+	const rowReason = $derived(cell.gateProvidedVersion ? `on ${cell.gateProvidedVersion}` : reason);
 	/**
 	 * ⛔ SUPPRESSED FOR `live` — caught live on `/pr/…/kuberik-testing/1`:
 	 * `cellStateSentence` already prints "live since 43m ago" for this
@@ -175,7 +251,9 @@
 	 * sentence" rule is the same one `cellReasonText` already applies.
 	 */
 	const since = $derived(cell.state === 'live' ? null : sinceLabel(cell, now));
-	const href = $derived(rolloutPath(cell.cluster || localClusterName, cell.namespace, cell.rolloutName));
+	const href = $derived(
+		rolloutPath(cell.cluster || localClusterName, cell.namespace, cell.rolloutName)
+	);
 
 	/**
 	 * ⭐ ITEM 7 (2026-09-10 fix pass). The release that carries the PR in
@@ -310,10 +388,13 @@
 		const schedules = schedulesQuery.data;
 		const classified = classifiedGate;
 		if (!hint || !data || !schedules || !classified) return null;
-		const gateObj = data.rolloutGates?.items?.find((g) => g.metadata?.name === hint.gateName) ?? null;
+		const gateObj =
+			data.rolloutGates?.items?.find((g) => g.metadata?.name === hint.gateName) ?? null;
 		const scheduleObj =
 			schedules.find((s) => (s.status?.managedGates ?? []).includes(hint.gateName)) ?? null;
-		return prettyNameOf(scheduleObj?.metadata) || prettyNameOf(gateObj?.metadata) || classified.label;
+		return (
+			prettyNameOf(scheduleObj?.metadata) || prettyNameOf(gateObj?.metadata) || classified.label
+		);
 	});
 
 	/**
@@ -329,7 +410,8 @@
 		const classified = classifiedGate;
 		if (!hint || !data || !schedules || !classified) return null;
 
-		const gateObj = data.rolloutGates?.items?.find((g) => g.metadata?.name === hint.gateName) ?? null;
+		const gateObj =
+			data.rolloutGates?.items?.find((g) => g.metadata?.name === hint.gateName) ?? null;
 		const scheduleObj =
 			schedules.find((s) => (s.status?.managedGates ?? []).includes(hint.gateName)) ?? null;
 		const prettyName = resolvedRuleName ?? classified.label;
@@ -344,7 +426,10 @@
 		];
 		if (description) facts.push({ label: 'Description', value: description });
 		if (classified.clearsAt) {
-			facts.push({ label: 'When', value: `opens ${formatAbsoluteReopen(classified.clearsAt, classified.timezone)}` });
+			facts.push({
+				label: 'When',
+				value: `opens ${formatAbsoluteReopen(classified.clearsAt, classified.timezone)}`
+			});
 		}
 		return facts;
 	});
@@ -418,13 +503,13 @@
 	{#if connectorAbove}
 		<div
 			aria-hidden="true"
-			class="absolute left-[29px] top-0 h-2 w-0.5 bg-gray-300 dark:bg-gray-600"
+			class="absolute top-0 left-[29px] h-2 w-0.5 bg-gray-300 dark:bg-gray-600"
 		></div>
 	{/if}
 	{#if connectorBelow}
 		<div
 			aria-hidden="true"
-			class="absolute left-[29px] top-9 bottom-0 w-0.5 bg-gray-300 dark:bg-gray-600"
+			class="absolute top-9 bottom-0 left-[29px] w-0.5 bg-gray-300 dark:bg-gray-600"
 		></div>
 	{/if}
 
@@ -444,7 +529,12 @@
 					disc.discState
 				)}"
 			>
-				<BakeStatusIcon bakeStatus={disc.bakeStatus} state={disc.discState} size="small" decorative />
+				<BakeStatusIcon
+					bakeStatus={disc.bakeStatus}
+					state={disc.discState}
+					size="small"
+					decorative
+				/>
 			</span>
 		{:else if disc.kind === 'waiting'}
 			<span
@@ -479,7 +569,9 @@
 			/>
 		</a>
 
-		<span class="t-body min-w-32 flex-1 truncate text-gray-900 dark:text-white">{displaySentence}</span>
+		<span class="t-body min-w-32 flex-1 truncate text-gray-900 dark:text-white"
+			>{displaySentence}</span
+		>
 
 		<span class="chip t-chip chip-wide shrink-0 {stateChip.class}">{stateChip.label}</span>
 
@@ -495,7 +587,7 @@
 		     with no visual break, easy to misread as one token. `·` (mono,
 		     same muted ink as the sha) matches every other label/identifier
 		     pairing on this page (`#{n} · owner/repo`, `sha · owner/repo`). -->
-		<p class="pl-10 pr-4 pb-1.5 t-micro font-mono text-gray-500 dark:text-gray-400">
+		<p class="t-micro pr-4 pb-1.5 pl-10 font-mono text-gray-500 dark:text-gray-400">
 			{cell.releaseLabel}{#if shortRevision}
 				<span class="text-gray-400 dark:text-gray-500"> · </span><span
 					class="text-gray-400 dark:text-gray-500">{shortRevision}</span
@@ -511,11 +603,11 @@
 		     what may really be a closed schedule) — a SkeletonBar stands in
 		     for it, sized to roughly the eventual clause's width, until the
 		     "why" disclosure below resolves it. -->
-		<div class="pl-10 pr-4 pb-1.5">
+		<div class="pr-4 pb-1.5 pl-10">
 			<SkeletonBar width="w-40" />
 		</div>
-	{:else if reason}
-		<p class="pl-10 pr-4 pb-1.5 t-micro text-gray-500 dark:text-gray-400">{reason}</p>
+	{:else if rowReason}
+		<p class="t-micro pr-4 pb-1.5 pl-10 text-gray-500 dark:text-gray-400">{rowReason}</p>
 	{/if}
 
 	{#if (cell.state === 'deploying' || cell.state === 'baking') && cell.usuallyMs != null}
@@ -526,7 +618,7 @@
 		     with an actual timer running (`bakeLeftMs`); everywhere else
 		     this slot renders nothing rather than a dash. -->
 		<p
-			class="pl-10 pr-4 pb-1.5 t-micro text-gray-400 dark:text-gray-500"
+			class="t-micro pr-4 pb-1.5 pl-10 text-gray-400 dark:text-gray-500"
 			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}`}
 		>
 			{usuallyLabel(cell.usuallyMs)}
@@ -547,7 +639,7 @@
 		     carries the 'usually …' / 'opens in …' second line", now with the
 		     spec's own `ClockOutline` glyph. -->
 		<p
-			class="pl-10 pr-4 pb-1.5 t-micro flex items-center gap-1 text-gray-400 dark:text-gray-500"
+			class="t-micro flex items-center gap-1 pr-4 pb-1.5 pl-10 text-gray-400 dark:text-gray-500"
 			title={`Median of ${appName}'s own recorded bake times in ${cell.envName.toUpperCase()}, once a deploy starts`}
 		>
 			<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />{frontierUsually}
@@ -560,7 +652,7 @@
 		     disclosure below still prints the SAME fact in its absolute form
 		     (`When: opens 09:00 …`); this is the relative countdown a reader
 		     can act on without opening anything. -->
-		<p class="pl-10 pr-4 pb-1.5 t-micro flex items-center gap-1 text-gray-500 dark:text-gray-400">
+		<p class="t-micro flex items-center gap-1 pr-4 pb-1.5 pl-10 text-gray-500 dark:text-gray-400">
 			<ClockOutline class="h-3 w-3 shrink-0" aria-hidden="true" />{frontierOpensLabel}
 		</p>
 	{/if}
@@ -571,7 +663,7 @@
 		     (`min-h-11`), a chevron that flips on open, and a label that
 		     names what it is a control FOR ("Why is it held?"), not an
 		     interrogative fragment. -->
-		<details class="group pl-10 pr-4 pb-1.5" bind:open={whyOpen}>
+		<details class="group pr-4 pb-1.5 pl-10" bind:open={whyOpen}>
 			<summary
 				class="t-micro flex min-h-11 w-full cursor-pointer list-none items-center gap-1.5 rounded text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white [&::-webkit-details-marker]:hidden"
 			>

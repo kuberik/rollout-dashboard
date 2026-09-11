@@ -208,7 +208,9 @@
 	} = $props();
 
 	const explanation = $derived(heldExplanation(stories, heldEnvLabels, indefinite));
-	const message = $derived(explanation ? `${releaseSplitMessage} ${explanation}` : releaseSplitMessage);
+	const message = $derived(
+		explanation ? `${releaseSplitMessage} ${explanation}` : releaseSplitMessage
+	);
 	const HeldIcon: Component = $derived(hasSchedule ? CalendarMonthSolid : UserCircleSolid);
 	/**
 	 * ⛔ FIX PASS ITEM 17, 2026-09-11 — "› N rules", THE SAME DISCLOSURE
@@ -236,6 +238,29 @@
 	 * prod cannot yet print "what differs (env, version)" per row the way
 	 * the punch list also asks — that needs a field this VM does not have
 	 * yet, not a template guess at one.
+	 *
+	 * ⭐ FIX PASS ITEM 7, 2026-09-11 — THE GAP ABOVE IS CLOSED, ONE LEVEL
+	 * DOWN. `PrCell.gateProvidedVersion` (`pr-pipeline.ts`) now carries
+	 * exactly the missing per-row fact for the ONE surface that draws a
+	 * per-environment stage row over this same held shape (`PipelineRow`'s
+	 * own doc comment) — this banner still speaks for the WHOLE hold, at
+	 * the coarser grain `ClassifiedGate` can support, and correctly does
+	 * not attempt env/version rows itself.
+	 *
+	 * ⭐ NEW BY DESIGN (FIX PASS ITEM 8, 2026-09-11). ROLE: the RECORD
+	 * behind this banner's disclosure — the full set of rules a reader can
+	 * open to inspect (kind, name, description), never restated as prose
+	 * in the banner body itself. WHY NOTHING EXISTING FITS: this is
+	 * explicitly NOT new — the comment above already states it supersedes
+	 * a flat, always-visible id list with the SAME disclosure
+	 * `BlockingStoryPanel` (rollout detail's own banner) already draws for
+	 * the identical `BlockingStory[]` shape, so there was no gap to design
+	 * around, only a second hand-rolled copy to delete. WHICH REFERENCE
+	 * LENDS PROPORTIONS: `BlockingStoryPanel` + `GateRecord` exactly —
+	 * same count-form trigger (`lib/CLAUDE.md`'s "N <noun>" rule), same
+	 * `<dl>` record component, `tone="banner"` the only caller-supplied
+	 * difference (reads `currentColor` off this banner's own severity ink
+	 * instead of the card-scale neutral).
 	 */
 	const gates = $derived.by<ClassifiedGate[]>(() => {
 		const seen = new Set<string>();
