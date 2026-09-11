@@ -168,6 +168,15 @@ export type RevisionLabelGroup = {
 export type RevisionRow = {
 	/** Full git revision — the row's identity. */
 	revision: string;
+	/**
+	 * Identity of THIS ROW, not of the commit: `<revision>#<labels>`. Rows are
+	 * split per release ("a row is about ONE release"), so two rows can share a
+	 * revision — hello-frontend-app ran rel-66 in prod and rel-67 in dev, both
+	 * 9f10e49, and every `{#each … (row.revision)}` threw each_key_duplicate
+	 * (2026-09-10, the human: "Revisions list page doesn't open for me"). Key
+	 * keyed blocks on this, never on `revision`.
+	 */
+	key: string;
 	/** Seven characters. What is displayed, never what is keyed on. */
 	short: string;
 	createdMs: number;
@@ -571,6 +580,8 @@ function buildRow(
 
 	return {
 		revision,
+		key: `${revision}#${[...new Set(services.map((x) => x.label))].sort().join('+')}`,
+
 		short,
 		createdMs,
 		lastDeployMs,
@@ -984,6 +995,8 @@ export function findRow(ledger: RepoLedger | null, revision: string | null): Rev
 export type ServiceLedgerLine = {
 	appName: string;
 	revision: string;
+	/** The row this line came from (`RevisionRow.key`): unique even when two rows share a revision. */
+	rowKey: string;
 	short: string;
 	/** Rank on THIS service's own ladder; null when unplaceable. Never a guess. */
 	rank: number | null;
@@ -1014,6 +1027,7 @@ export function serviceLedger(repo: Pick<RepoLedger, 'rows' | 'pending'>): Servi
 			byApp.get(service.appName)!.push({
 				appName: service.appName,
 				revision: row.revision,
+				rowKey: row.key,
 				short: row.short,
 				rank: service.rank,
 				ladderLength: service.ladderLength,

@@ -49,15 +49,15 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
-import Versions from '../../routes/revisions/+page.svelte';
-import VersionDetail from '../../routes/revisions/[...slug]/+page.svelte';
+import Versions from '../../routes/changes/+page.svelte';
+import VersionDetail from '../../routes/changes/[...slug]/+page.svelte';
 import Namespace from '../../routes/namespaces/[name]/+page.svelte';
 import Dependencies from '../../routes/dependencies/+page.svelte';
 import CommandPalette from '$lib/CommandPalette.svelte';
 import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
 import RecoveryModeWarningModal from '$lib/components/RecoveryModeWarningModal.svelte';
 import { buildRevisionLedger } from '$lib/view-models/revision-ledger';
-import { revisionPath } from '$lib/version-utils';
+import { changeBuildPath } from '$lib/version-utils';
 import { fleet, respond, APPS, TIERS } from './fleet-fixture';
 import { SURFACES, AXES, type Axis } from './registry';
 import { subjectViolations, formatViolation, applyPending, type Pending } from './axis';
@@ -203,8 +203,8 @@ describe('the surfaces that had no render test name their subjects too', () => {
 		expect(ledgers.length, 'the fixture produced no revision ledger to open').toBeGreaterThan(0);
 		const ledger = ledgers[0];
 		expect(ledger.rows.length, 'the fixture ledger has no revisions').toBeGreaterThan(0);
-		const path = revisionPath(ledger.repoKey, ledger.rows[0].revision);
-		const slug = path.replace(/^\/revisions\//, '');
+		const path = changeBuildPath(ledger.repoKey, ledger.rows[0].revision, ledger.rows[0].revision);
+		const slug = path.replace(/^\/changes\//, '');
 
 		const { container } = await mount(VersionDetail, { slug }, path);
 		await waitFor(
@@ -253,13 +253,20 @@ describe('the surfaces that had no render test name their subjects too', () => {
 describe('the command palette names what each row is', () => {
 	function open() {
 		const p = payload();
-		return render(CommandPalette, {
+		// ⛔ FIX PASS ITEM 6, 2026-09-10 — `WithQueryClient`, not a bare
+		// `render(CommandPalette, ...)`: the "Your changes" tile now reads
+		// `myChangesCount` off a real `createQuery(changesQueryOptions)`
+		// (ruling 5), which throws without a `QueryClientProvider` above it.
+		return render(WithQueryClient, {
 			props: {
-				open: true,
-				scope: 'rollout',
-				rollouts: p.rollouts.items as any,
-				environments: p.environments.items as any,
-				localClusterName: 'rollout-a'
+				component: CommandPalette as any,
+				props: {
+					open: true,
+					scope: 'rollout',
+					rollouts: p.rollouts.items as any,
+					environments: p.environments.items as any,
+					localClusterName: 'rollout-a'
+				}
 			}
 		});
 	}

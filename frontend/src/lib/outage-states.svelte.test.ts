@@ -7,7 +7,7 @@ import RolloutGrid from '$lib/RolloutGrid.svelte';
 import Apps from '../routes/apps/+page.svelte';
 import Activity from '../routes/activity/+page.svelte';
 import Environments from '../routes/environments/+page.svelte';
-import Versions from '../routes/revisions/+page.svelte';
+import Changes from '../routes/changes/+page.svelte';
 
 /**
  * ⭐ FINDING 2 OF THE 2026-08-31 OPERATOR CRITIQUE, PINNED.
@@ -41,7 +41,7 @@ const pages: [string, unknown][] = [
 	['/apps', Apps],
 	['/activity', Activity],
 	['/environments', Environments],
-	['/versions', Versions]
+	['/changes', Changes]
 ];
 
 describe('a 503 from the API is a terminal, legible failure on every page', () => {

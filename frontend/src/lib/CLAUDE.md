@@ -161,6 +161,14 @@ between pages feels jittery."* Measured at 1440 it was two separate defects.
 1280px cap, 24px gutters (16px under `sm`). Content left edge **200px** at 1440 with the
 sidebar open, **16px** at 390, on every route. **There are now NO exceptions.**
 
+- **The PR page's `w-full` (no `max-w-*`) is an APPLICATION of this same full-width principle,
+  not an exception to it.** (2026-09-10.) `/pr/[owner]/[repo]/[number]` has no natural reading
+  measure to cap (it is cards and figures, the same shape `/rollouts` and `/apps` already run
+  edge-to-edge) — the "NO exceptions" sentence above is about not inventing a narrower
+  `max-w-*` without a line-length argument, and a page with no line-length argument choosing
+  full width is that rule being followed, not broken. Don't apologise for it in the page's own
+  comment; say so in one sentence and point here.
+
 - **`w-full` is part of the recipe, not decoration.** `mx-auto` + `max-width` on a block
   parent and on a *flex* parent are not the same box: a flex item with `auto` cross-axis
   margins does not stretch, so it shrinks to its content. Dropped into the rollout layout
@@ -1146,3 +1154,21 @@ The human: "i would always like to use full width of the page, add that as a rul
 `max-w-*` on a page container — every route body is `w-full px-4 py-6 sm:px-6` and grows with
 the viewport; only dialogs, the palette, prose paragraphs and single inputs may cap themselves.
 Cards and grids inside decide their own columns (container queries), never the page.
+
+## No single-column pages; progress at a glance (2026-09-10, human)
+
+"I'd generally avoid having pages that have a single column layout. They're very boring and use
+space inefficiently." Every route at ≥ 1024 is a main column plus a rail (320px, Home's grammar)
+or a card grid — never one centred column of stacked blocks. A list row about a change shows
+"whether it is progressing and how far" with a compact per-environment-family meter (worst state
+per family, aggregated over services) plus the frontier fact and time in the current state —
+"without showing every single environment" per service.
+
+## Consistency without complacency (2026-09-11, human)
+
+A new region reuses the component that plays its role on Home, /rollouts or the rollout detail
+(Card + 47px header + rollup, dot section headers, rail `dl` cards, RolloutGrid rows, `.btn`,
+Chip, HeldBanner, `t-*`). What is genuinely new is designed inside that grammar and its doc
+comment says what role it plays, why nothing existing fits, and which reference lends its
+proportions. A list without a card, a page ≥1024 in one column, or an old role drawn a new way
+is a defect; a new object with its reason written down is not.

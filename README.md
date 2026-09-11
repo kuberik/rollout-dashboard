@@ -161,3 +161,11 @@ kubectl create secret tls rollout-dashboard-tls \
 ## GitHub commit changelists
 
 The dashboard can show the commits between the running build and the one you are about to deploy. That needs a GitHub App — see [docs/github-app.md](docs/github-app.md).
+
+## Changes (`/changes`)
+
+With a GitHub App configured, `/changes` tracks every merged pull request and bare commit
+against each service's own deployed releases — how far it got, what is holding it, and how long
+it typically takes to reach prod. See [docs/changes.md](docs/changes.md) for how a change's
+affected services are decided, what "no release yet" means (and its one known limitation), and
+the verdict/meter grammar.

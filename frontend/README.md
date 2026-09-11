@@ -36,3 +36,27 @@ npm run build
 You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+
+## Dev-only GitHub auth (`GITHUB_DEV_TOKEN`)
+
+The GitHub-backed endpoints (`/api/github/...`, the commits panel on rollout
+detail) read the viewing user's GitHub access token from a `gh_token`
+cookie, normally set by the real OAuth round-trip at
+`/api/auth/github/login`. That flow needs a registered callback URL and a
+browser redirect, which is friction for a dev loop that just wants to see a
+GitHub-backed page render.
+
+Set `GITHUB_DEV_TOKEN` to a personal access token (or a GitHub App user
+token you've minted once by hand) before starting `npm run dev`, and
+`dev-auth.ts`'s Vite plugin appends `Cookie: gh_token=<token>` to every
+proxied `/api` request — never `/oauth2`, which is the unrelated OIDC login
+flow this same plugin already impersonates. The dashboard backend then reads
+it exactly as it would a real OAuth-issued cookie; no dev-mode branch exists
+anywhere else in the app.
+
+```bash
+GITHUB_DEV_TOKEN=ghp_xxx npm run dev
+```
+
+Unset by default — nothing changes for a `GITHUB_DEV_TOKEN`-less `npm run
+dev`. See `dev-auth.ts`'s own header comment for the exact mechanics.

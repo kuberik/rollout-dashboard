@@ -66,7 +66,7 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
-	import { groupRolloutsByApp, versionPathForRollout } from '$lib/version-utils';
+	import { groupRolloutsByApp, changePathForRollout } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { rankVerdicts, rankRole, rankBehindBy, rankIsAdverse } from '$lib/view-models/env-rank';
 	// ⛔ THE CHIPS BELOW PRINTED THE RAW BUILD AND THE 12ch VALUE HALF ATE IT.
@@ -526,7 +526,7 @@
 				statusKey,
 				version,
 				versionHref: version
-					? versionPathForRollout(slot.cell.rollout, slot.appName, version)
+					? changePathForRollout(slot.cell.rollout, slot.appName, version)
 					: null,
 				rank: slot.rank,
 				timestamp: latest?.timestamp ?? null,

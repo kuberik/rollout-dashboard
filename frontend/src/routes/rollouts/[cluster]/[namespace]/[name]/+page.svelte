@@ -92,7 +92,7 @@
 		detectStuck
 	} from '$lib/utils';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
-	import { versionPathForRollout, displayVersionForTag } from '$lib/version-utils';
+	import { changePathForRollout, displayVersionForTag } from '$lib/version-utils';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
 	import { detectRollback } from '$lib/rollout-cards';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
@@ -2507,7 +2507,7 @@
 										<div class="min-w-0">
 											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
 												<a
-													href={versionPathForRollout(
+													href={changePathForRollout(
 														rollout,
 														name,
 														getDisplayVersion(latestEntry.version)

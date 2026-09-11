@@ -12,6 +12,8 @@
 	import { ChevronSortOutline } from 'flowbite-svelte-icons';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
+	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
+	import { myPullsQueryOptions } from '$lib/api/my-pulls';
 	import CommandPalette from '$lib/CommandPalette.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import GithubConnectButton from '$lib/components/GithubConnectButton.svelte';
@@ -46,7 +48,7 @@
 		{ key: 'apps', label: 'Apps', href: '/apps' },
 		{ key: 'environments', label: 'Environments', href: '/environments' },
 		{ key: 'activity', label: 'Activity', href: '/activity' },
-		{ key: 'revisions', label: 'Revisions', href: '/revisions' },
+		{ key: 'changes', label: 'Changes', href: '/changes' },
 		// Reached from a rollout's Dependencies tab ("Whole network ›"), not from
 		// the sidebar — so the crumb is the only thing on the page that names it.
 		{ key: 'dependencies', label: 'Dependencies', href: '/dependencies' }
@@ -56,7 +58,8 @@
 		if (p.startsWith('/apps')) return SECTIONS[2];
 		if (p.startsWith('/environments') || p.startsWith('/envs/')) return SECTIONS[3];
 		if (p.startsWith('/activity')) return SECTIONS[4];
-		if (p.startsWith('/revisions') || p.startsWith('/versions')) return SECTIONS[5];
+		if (p.startsWith('/changes') || p.startsWith('/revisions') || p.startsWith('/versions'))
+			return SECTIONS[5];
 		if (p.startsWith('/dependencies')) return SECTIONS[6];
 		if (p.startsWith('/rollouts') || p.startsWith('/namespaces/')) return SECTIONS[1];
 		return SECTIONS[0];
@@ -110,6 +113,28 @@
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
+
+	/**
+	 * ⭐ APPROACH B, ITEM C — THE PALETTE'S GLOBAL PR TITLE CACHE. `Navbar` is
+	 * the one component that mounts `CommandPalette` and it lives in the root
+	 * layout, so this query runs once for the tab's lifetime rather than
+	 * being re-created per route — the same reasoning `allRolloutsQuery`
+	 * above already relies on. Gated on `connected` so a cluster where
+	 * GitHub was never set up (or this browser never connected it) never
+	 * fires the request at all, rather than eating one guaranteed 401.
+	 * `pollWhenHealthy(300000, …)` (inside `myPullsQueryOptions`) already
+	 * stops polling on that 401 if the gate is ever wrong.
+	 */
+	const githubStatusQuery = createQuery(() => ({
+		queryKey: githubStatusQueryKey,
+		queryFn: fetchGithubStatus,
+		staleTime: 300_000,
+		refetchInterval: false as const
+	}));
+	const myPullsQuery = createQuery(() =>
+		myPullsQueryOptions({ days: 30, enabled: githubStatusQuery.data?.connected ?? false })
+	);
+	const myPulls = $derived(myPullsQuery.data?.pulls ?? []);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
@@ -308,5 +333,6 @@
 	currentNamespace={namespace}
 	currentName={name}
 	loading={allRolloutsQuery.isLoading}
+	{myPulls}
 />
 

@@ -1,24 +1,20 @@
 import { redirect } from '@sveltejs/kit';
 
 /**
- * `/versions` → `/revisions`.
+ * `/versions` → `/changes`.
  *
- * (2026-09-03, vocabulary pass.) The concept was "Revisions" in the nav, the
- * URL, the chip labels and everywhere a person reads it — except the address
- * bar, which said `/versions`, and the object itself, which the body text
- * called a "version"/"tag"/"release" almost as often as a "build". This pass
- * closed that: the nav label ("Revisions"), the page's own labels, and the
- * canonical URL all now agree. `revisionPath()`/`versionPath()`
- * (`lib/version-utils.ts`) generate `/revisions/...` directly.
+ * (2026-09-03, vocabulary pass; RETARGETED 2026-09-10, CHANGES-2026-09-10.md
+ * §1.) This route was `/versions` → `/revisions`'s own redirect; "Revisions"
+ * has since been renamed to "Changes" (the developer's unit — a merged PR, a
+ * bare commit, a manifest bump are all "changes"), so this now points
+ * straight at the CURRENT canonical address rather than through
+ * `/revisions`, which is itself only a redirect now. **Never chained
+ * twice**: retargeting this route directly is what keeps a `/versions` link
+ * a single hop instead of two.
  *
- * This redirect exists so a bookmark, a pasted link, or a person who types
- * the OLD address does not 404. `308 Permanent Redirect` preserves the
- * method and tells crawlers/caches the move is durable, which it is — this
- * is the second time this exact pair of routes has traded which one is
- * canonical (see git history), and this time the rename goes all the way
- * through: nav, URL, and body copy agree, so there is no reason to reverse
- * it again.
+ * `308 Permanent Redirect` preserves the method and tells crawlers/caches
+ * the move is durable.
  */
 export const load = () => {
-	redirect(308, '/revisions');
+	redirect(308, '/changes');
 };

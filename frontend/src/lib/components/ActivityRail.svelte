@@ -8,7 +8,7 @@
 		formatDate,
 		shortenVersion
 	} from '$lib/utils';
-	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
+	import { changeBuildPath, repoKeyFromSource } from '$lib/version-utils';
 	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
 	import {
 		CalendarMonthSolid,
@@ -460,13 +460,13 @@
 				label={rankLabel(rank)}
 				title={rankTitle(rank, a.displayName)}
 				value={shortenVersion(a.version)}
-				valueHref={buildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
+				valueHref={changeBuildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
 				valueTitle={a.version}
 				class="min-w-0"
 			/>
 		{:else if a.version}
 			<a
-				href={buildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
+				href={changeBuildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
 				class="t-code-sm text-gray-700 hover:underline dark:text-gray-300">{a.version}</a
 			>
 		{/if}

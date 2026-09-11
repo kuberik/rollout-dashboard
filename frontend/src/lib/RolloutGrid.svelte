@@ -95,13 +95,14 @@
 	// True when more than one cluster is represented in the current result set.
 	const isMultiCluster = $derived(spokeClusters.length > 0);
 
-	const localClusterName = $derived<string>(clusterQuery.data?.name || clusterLabelFromURL(localClusterURL));
+	const localClusterName = $derived<string>(
+		clusterQuery.data?.name || clusterLabelFromURL(localClusterURL)
+	);
 
 	// All clusters for the filter pills: local + discovered spokes.
-	const allClusters = $derived<ClusterInfo[]>([
-		{ url: localClusterURL, name: localClusterName },
-		...spokeClusters
-	].filter((cl) => cl.url));
+	const allClusters = $derived<ClusterInfo[]>(
+		[{ url: localClusterURL, name: localClusterName }, ...spokeClusters].filter((cl) => cl.url)
+	);
 
 	function clusterLabelFromURL(rawURL: string): string {
 		try {
@@ -287,7 +288,10 @@
 	}
 
 	const knownEnvs = $derived.by(() => {
-		const map = new Map<string, { display: string; theme: ReturnType<typeof getRolloutEnvironmentTheme> }>();
+		const map = new Map<
+			string,
+			{ display: string; theme: ReturnType<typeof getRolloutEnvironmentTheme> }
+		>();
 		for (const c of cards) {
 			if (!c.envKey) continue;
 			if (!map.has(c.envKey)) map.set(c.envKey, { display: c.envDisplay, theme: c.theme });
@@ -322,9 +326,11 @@
 			// PARAM changed to a name, so the comparison resolves through the
 			// same `clusterLabelForCard` the filter pill and every row already
 			// render, never a second lookup of its own.
-			if (clusterFilters.length > 0 && !clusterFilters.includes(clusterLabelForCard(c))) return false;
+			if (clusterFilters.length > 0 && !clusterFilters.includes(clusterLabelForCard(c)))
+				return false;
 			if (q) {
-				const hay = `${c.ns} ${c.name} ${c.title} ${c.envKey} ${c.envDisplay} ${c.version ?? ''}`.toLowerCase();
+				const hay =
+					`${c.ns} ${c.name} ${c.title} ${c.envKey} ${c.envDisplay} ${c.version ?? ''}`.toLowerCase();
 				if (!hay.includes(q)) return false;
 			}
 			return true;
@@ -592,10 +598,34 @@
 	// that `Healthy 14` means "everything is fine" would read `Healthy 11` the
 	// same way. `/` has called this bucket Steady since it was built.
 	const statusPills = $derived([
-		{ key: 'attention' as QuickFilter, label: 'Needs you', count: attentionCards.length, dot: 'bg-red-500', qualifier: null as string | null },
-		{ key: 'active' as QuickFilter, label: 'In motion', count: inMotionCards.length, dot: 'bg-blue-500', qualifier: null as string | null },
-		{ key: 'held' as QuickFilter, label: 'Held', count: heldCards.length, dot: 'bg-orange-500', qualifier: null as string | null },
-		{ key: 'trailing' as QuickFilter, label: 'Trailing', count: trailingCards.length, dot: 'bg-amber-500', qualifier: null as string | null },
+		{
+			key: 'attention' as QuickFilter,
+			label: 'Needs you',
+			count: attentionCards.length,
+			dot: 'bg-red-500',
+			qualifier: null as string | null
+		},
+		{
+			key: 'active' as QuickFilter,
+			label: 'In motion',
+			count: inMotionCards.length,
+			dot: 'bg-blue-500',
+			qualifier: null as string | null
+		},
+		{
+			key: 'held' as QuickFilter,
+			label: 'Held',
+			count: heldCards.length,
+			dot: 'bg-orange-500',
+			qualifier: null as string | null
+		},
+		{
+			key: 'trailing' as QuickFilter,
+			label: 'Trailing',
+			count: trailingCards.length,
+			dot: 'bg-amber-500',
+			qualifier: null as string | null
+		},
 		{
 			key: 'steady' as QuickFilter,
 			label: 'Steady',
@@ -620,8 +650,6 @@
 		new Set(cards.map((c) => (c.sourceCluster || c.sourceURL || '') + '|' + c.ns)).size
 	);
 	const clusterSpread = $derived(new Set(cards.map((c) => clusterLabelForCard(c))).size);
-
-
 </script>
 
 <!--
@@ -663,7 +691,9 @@
 		class="group mb-3 flex items-center justify-between gap-3 border-b border-gray-100 pb-2 dark:border-gray-700/60"
 	>
 		<div class="flex min-w-0 items-center gap-2">
-			<h2 class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">{g.ns}</h2>
+			<h2 class="truncate font-mono text-sm font-medium text-gray-700 dark:text-gray-300">
+				{g.ns}
+			</h2>
 			{#if isMultiCluster}
 				<ClusterMark name={g.clusterLabel} class="shrink-0 text-gray-500 dark:text-gray-400" />
 			{/if}
@@ -671,15 +701,38 @@
 		<div class="flex shrink-0 items-center gap-2">
 			<span class="text-[11px] text-gray-500 dark:text-gray-400">
 				{g.cards.length} rollout{g.cards.length === 1 ? '' : 's'}{#if g.attentionCount > 0}
-					· <span class="font-medium text-red-600 dark:text-red-400">{g.attentionCount} need attention</span>
+					· <span class="font-medium text-red-600 dark:text-red-400"
+						>{g.attentionCount} need attention</span
+					>
 				{/if}
 			</span>
-			<ChevronRightOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
+			<ChevronRightOutline
+				class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
+			/>
 		</div>
 	</a>
 {/snippet}
 
-<div class="mx-auto w-full px-4 py-6 sm:px-6">
+<!--
+	⭐ FIX PASS ITEM 9, 2026-09-11 — `max-w-7xl` DROPPED, NO REPLACEMENT CAP.
+	Full width is a rule (2026-09-10, from the human: *"I would always like
+	to use full width of the page."*): a route container never caps its
+	width, only overlays, prose and single inputs may. `/changes`' own root
+	container is the reference (`<div class="w-full px-4 py-6 sm:px-6">`,
+	no `mx-auto`, no `max-w-*`) — this page's was the one left behind.
+
+	⚠️ THIS DOES NOT REOPEN THE "3 COLUMNS AT MOST" DECISION TWO PARAGRAPHS
+	BELOW. That cap was rewritten off `auto-fit` onto FIXED tracks the same
+	day it shipped (`.rg-grid-multi`/`.rg-grid-solo`, `repeat(3, minmax(0,
+	1fr))` from a 1024px CONTAINER query on `.rg-cq` — see the "FIXED
+	TRACKS, BY DECISION" note above those rules) and no longer reads the
+	page's own width at all, so this page keeps exactly 3 columns at any
+	viewport, wide or narrow, with or without this container's cap. The
+	`auto-fit`/`max-w-7xl` reasoning in the comment above `grouped`'s own
+	definition describes the SUPERSEDED mechanism and is stale; left
+	unedited, out of this item's scope.
+-->
+<div class="w-full px-4 py-6 sm:px-6">
 	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
 	     ⛔ THE DRAWN `Rollouts` TITLE IS GONE. (2026-09-01, from the human:
 	     *"environments and rollouts still have a heading"*, against the rule
@@ -794,8 +847,8 @@
 		     on a first-ever visit, when nothing is remembered yet. -->
 		<div
 			class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
-			style="--rg-chip-block-min-h: {shapeHint?.chipBlockHMobile ?? 205}px; --rg-chip-block-min-h-sm: {shapeHint?.chipBlockHDesktop ??
-				71}px"
+			style="--rg-chip-block-min-h: {shapeHint?.chipBlockHMobile ??
+				205}px; --rg-chip-block-min-h-sm: {shapeHint?.chipBlockHDesktop ?? 71}px"
 			data-rg-chip-skel
 			aria-hidden="true"
 		>
@@ -827,13 +880,13 @@
 			     wraps its own pills when the line is tight. -->
 			<div class="relative w-full sm:w-80 sm:flex-none">
 				<SearchOutline
-					class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400"
+					class="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400"
 				/>
 				<input
 					type="text"
 					bind:value={searchQuery}
 					placeholder="Search rollouts…"
-					class="block w-full rounded border border-gray-200 bg-white py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
+					class="block w-full rounded border border-gray-200 bg-white py-1.5 pr-3 pl-8 text-sm text-gray-900 placeholder-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
 				/>
 			</div>
 			<!--
@@ -858,8 +911,8 @@
 				chip's own content, not a second column.
 			-->
 			<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-			<div class="flex flex-wrap items-center gap-1.5">
-				<!-- Status filter pills (compact, single-select) — replaces the old
+				<div class="flex flex-wrap items-center gap-1.5">
+					<!-- Status filter pills (compact, single-select) — replaces the old
 				     tile banner while keeping the filtering it provided.
 
 				     ⛔ A ZERO-COUNT PILL WAS FULL-INK AT 1440 AND GONE AT 390 —
@@ -890,8 +943,8 @@
 				     own `dark:gray-400`. "Quieter than a real bucket" is now said
 				     ENTIRELY by the lighter border and the `hover:` step, never
 				     by ink a reader with normal vision has to squint at. -->
-				{#each statusPills as sp (sp.key)}
-					<!--
+					{#each statusPills as sp (sp.key)}
+						<!--
 						⭐ F2: ONE HEIGHT, ONE RADIUS, ACROSS ALL THREE FILTER-CHIP ROWS.
 						(2026-09-03, breakpoints pass) Measured on the live page:
 						status pills 18px/pill, cluster pills 26px/pill, env chips
@@ -902,72 +955,73 @@
 						three, so raising the shorter two never clips their own
 						content) now apply to all three rows below.
 					-->
-					<button
-						type="button"
-						onclick={() => setQuickFilter(quickFilter === sp.key ? 'all' : sp.key)}
-						aria-pressed={quickFilter === sp.key}
-						class="t-label inline-flex min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
+						<button
+							type="button"
+							onclick={() => setQuickFilter(quickFilter === sp.key ? 'all' : sp.key)}
+							aria-pressed={quickFilter === sp.key}
+							class="t-label inline-flex min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
 							{quickFilter === sp.key
 								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
 								: sp.count === 0
 									? 'border-gray-100 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'
 									: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
-					>
-						<span class="h-[5px] w-[5px] shrink-0 rounded {sp.dot}"></span>
-						{sp.label}
-						<!-- No `opacity-60` here. It composited to 2.32:1 in light /
+						>
+							<span class="h-[5px] w-[5px] shrink-0 rounded {sp.dot}"></span>
+							{sp.label}
+							<!-- No `opacity-60` here. It composited to 2.32:1 in light /
 						     3.27:1 in dark at 11px, and dimming instead of explaining is
 						     the pattern `DESIGN.md` has now rejected twice (it is why
 						     `valueDim` came out of `/envs/[name]`). The count inherits
 						     the pill's own ink, which is the muted token in the resting
 						     state and the knockout in the selected one - both measured. -->
-						<span class="font-mono tabular-nums">{sp.count}</span>
-						<!-- `Steady`'s pending qualifier — `/`'s own `· N pending` on
+							<span class="font-mono tabular-nums">{sp.count}</span>
+							<!-- `Steady`'s pending qualifier — `/`'s own `· N pending` on
 						     the section header, folded into the pill since a filter
 						     chip has no header of its own. See `statusPills`' note. -->
-						{#if sp.qualifier}
-							<span class="font-mono text-[10px] tabular-nums">{sp.qualifier}</span>
-						{/if}
-					</button>
-				{/each}
-			</div>
-			{#if isMultiCluster && allClusters.length > 0}
-				<div class="flex flex-wrap items-center gap-1.5">
-					{#each allClusters as cl}
-						{@const sel = clusterFilters.includes(cl.name)}
-						<button
-							type="button"
-							onclick={() => toggleCluster(cl.name)}
-							aria-pressed={sel}
-							class="inline-flex min-h-[26px] items-center rounded border px-2.5 py-1 transition-colors
-								{sel
-									? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
-									: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
-						>
-							<ClusterMark name={cl.name} />
+							{#if sp.qualifier}
+								<span class="font-mono text-[10px] tabular-nums">{sp.qualifier}</span>
+							{/if}
 						</button>
 					{/each}
 				</div>
-			{/if}
-			<div class="flex flex-wrap items-center gap-1.5">
-				{#each knownEnvs as e}
-					{@const sel = envFilters.includes(e.key)}
-					<button
-						type="button"
-						onclick={() => toggleEnv(e.key)}
-						aria-pressed={sel}
-						aria-label={`Environment ${e.display}`}
-						class="environment-theme-scope inline-flex min-h-[26px] items-center rounded transition-opacity
+				{#if isMultiCluster && allClusters.length > 0}
+					<div class="flex flex-wrap items-center gap-1.5">
+						{#each allClusters as cl}
+							{@const sel = clusterFilters.includes(cl.name)}
+							<button
+								type="button"
+								onclick={() => toggleCluster(cl.name)}
+								aria-pressed={sel}
+								class="inline-flex min-h-[26px] items-center rounded border px-2.5 py-1 transition-colors
+								{sel
+									? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
+									: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+							>
+								<ClusterMark name={cl.name} />
+							</button>
+						{/each}
+					</div>
+				{/if}
+				<div class="flex flex-wrap items-center gap-1.5">
+					{#each knownEnvs as e}
+						{@const sel = envFilters.includes(e.key)}
+						<button
+							type="button"
+							onclick={() => toggleEnv(e.key)}
+							aria-pressed={sel}
+							aria-label={`Environment ${e.display}`}
+							class="environment-theme-scope inline-flex min-h-[26px] items-center rounded transition-opacity
 							{sel
 								? 'ring-1 ring-gray-900/30 dark:ring-gray-100/30'
 								: envFilters.length === 0
 									? ''
 									: 'opacity-40 hover:opacity-100'}"
-						style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-					><Chip role="env" theme={e.theme} label={e.display} wide /></button>
-				{/each}
-			</div>
-			<!--
+							style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
+							><Chip role="env" theme={e.theme} label={e.display} wide /></button
+						>
+					{/each}
+				</div>
+				<!--
 				⭐ THE FOURTH WRAP GROUP — UX SWEEP FINDING 4. Same 26px/rounded
 				chip shape the status/cluster/env groups above already use (see
 				F2's note on that unification), its own `flex-wrap` group so it
@@ -981,31 +1035,32 @@
 				reader arriving from `/apps`' "N rollouts without an Environment
 				record ›" sees the chip lit, not just the grid narrowed.
 			-->
-			{#if unlinkedCards.length > 0}
-				<div class="flex flex-wrap items-center gap-1.5">
-					<button
-						type="button"
-						onclick={toggleUnlinked}
-						aria-pressed={unlinkedOnly}
-						title="No `Environment` object in the cluster matched this rollout"
-						class="t-label inline-flex min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
+				{#if unlinkedCards.length > 0}
+					<div class="flex flex-wrap items-center gap-1.5">
+						<button
+							type="button"
+							onclick={toggleUnlinked}
+							aria-pressed={unlinkedOnly}
+							title="No `Environment` object in the cluster matched this rollout"
+							class="t-label inline-flex min-h-[26px] items-center gap-1.5 rounded border px-2.5 py-1 transition-colors
 							{unlinkedOnly
 								? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900'
 								: 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
-					>
-						<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-400"></span>
-						No Environment record
-						<span class="font-mono tabular-nums">{unlinkedCards.length}</span>
-					</button>
-				</div>
-			{/if}
+						>
+							<span class="h-[5px] w-[5px] shrink-0 rounded bg-gray-400"></span>
+							No Environment record
+							<span class="font-mono tabular-nums">{unlinkedCards.length}</span>
+						</button>
+					</div>
+				{/if}
 			</div>
 			{#if envFilters.length > 0 || quickFilter !== 'all' || clusterFilters.length > 0 || unlinkedOnly || searchQuery}
 				<button
 					type="button"
 					onclick={clearFilters}
 					class="text-[11px] text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-				>clear</button>
+					>clear</button
+				>
 			{/if}
 		</div>
 	{/if}
@@ -1050,7 +1105,7 @@
 								<span class="skel-block h-3 w-16"></span>
 							</div>
 						</div>
-						<div class="rg-grid grid gap-2 rg-grid-multi">
+						<div class="rg-grid rg-grid-multi grid gap-2">
 							{#each g.cards as c (c)}
 								<div
 									class="flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800"
@@ -1095,11 +1150,20 @@
 	{:else if cards.length === 0}
 		<div class="mx-auto max-w-2xl py-12">
 			<!-- Faded sample card preview showing what a rollout looks like -->
-			<div class="pointer-events-none relative mx-auto w-full max-w-sm select-none opacity-60 grayscale" aria-hidden="true">
-				<div class="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+			<div
+				class="pointer-events-none relative mx-auto w-full max-w-sm opacity-60 grayscale select-none"
+				aria-hidden="true"
+			>
+				<div
+					class="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+				>
 					<div class="flex items-start justify-between gap-3">
 						<div class="flex items-center gap-3">
-							<span class="inline-flex h-7 w-7 items-center justify-center rounded-full {getStatusCircleClass('Succeeded')}">
+							<span
+								class="inline-flex h-7 w-7 items-center justify-center rounded-full {getStatusCircleClass(
+									'Succeeded'
+								)}"
+							>
 								<BakeStatusIcon bakeStatus="Succeeded" size="medium" />
 							</span>
 							<div class="flex flex-col">
@@ -1107,10 +1171,15 @@
 								<span class="font-mono text-[11px] text-gray-500 dark:text-gray-400">my-app</span>
 							</div>
 						</div>
-						<span class="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:bg-gray-700 dark:text-gray-300">PROD</span>
+						<span
+							class="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold tracking-wider text-gray-600 uppercase dark:bg-gray-700 dark:text-gray-300"
+							>PROD</span
+						>
 					</div>
 					<div class="mt-2 flex items-baseline justify-between gap-3 pl-12">
-						<span class="font-mono text-sm font-medium text-gray-700 dark:text-gray-300">v1.2.3</span>
+						<span class="font-mono text-sm font-medium text-gray-700 dark:text-gray-300"
+							>v1.2.3</span
+						>
 						<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400">2h</span>
 					</div>
 				</div>
@@ -1118,7 +1187,11 @@
 			<!-- Empty state message + CTA -->
 			<div class="mt-8 text-center">
 				<p class="text-base font-semibold text-gray-900 dark:text-white">No rollouts yet</p>
-				<p class="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400 mx-auto">Cards like the one above will appear here once you create a <code class="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">Rollout</code> resource in your cluster.</p>
+				<p class="mx-auto mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+					Cards like the one above will appear here once you create a <code
+						class="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">Rollout</code
+					> resource in your cluster.
+				</p>
 				<!-- ⛔ NOT A FILLED BUTTON. (2026-09-02) This was the darkest,
 				     highest-contrast mark on the empty state and all it did was
 				     open a README. A fill is reserved for a control that changes
@@ -1154,7 +1227,9 @@
 			unlinkedOnly
 		].filter(Boolean).length}
 		<div class="flex flex-col items-center justify-center py-12 text-center">
-			<p class="text-sm font-medium text-gray-700 dark:text-gray-300">Nothing matches these filters</p>
+			<p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+				Nothing matches these filters
+			</p>
 			<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
 				Try clearing one filter at a time, or clear them all.
 			</p>
@@ -1231,8 +1306,12 @@
 						     screens are not one stretched row each. -->
 						<div class="rg-grid grid gap-2 {solo ? 'rg-grid-solo' : 'rg-grid-multi'}">
 							{#each g.cards as c (c.sourceURL + '|' + c.ns + '/' + c.name)}
-							{@const rolloutHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
-							<!-- THE JOINED BUILD BADGE, AND IT IS NOW THE SAME COMPONENT AS
+								{@const rolloutHref = rolloutPath(
+									c.sourceCluster || localClusterName,
+									c.ns,
+									c.name
+								)}
+								<!-- THE JOINED BUILD BADGE, AND IT IS NOW THE SAME COMPONENT AS
 							     EVERY OTHER PAGE'S. This card used to hand-roll it: a
 							     `rounded-md` box (a sixth radius against the legal two), a
 							     10px bold uppercase label half with a FILL (`bg-gray-100`
@@ -1245,7 +1324,7 @@
 							     `#d97706`, an amber `−N` half sat in the same card as an
 							     amber-inked `PROD` env chip; `rank` is red now (see
 							     `Chip.svelte`) and this card no longer overrides it. -->
-							<!-- ⛔ THE VALUE IN THIS BADGE WAS WRONG, AND ON ONE PAGE IT
+								<!-- ⛔ THE VALUE IN THIS BADGE WAS WRONG, AND ON ONE PAGE IT
 							     CONTRADICTED ITSELF. (2026-08-30) It read `c.behind`, which
 							     counted against the ROLLOUT'S OWN `availableReleases` and
 							     returned `null` whenever it could not answer — and `null`
@@ -1265,21 +1344,21 @@
 							     GEOMETRY UNCHANGED: same `Chip`, same joined badge, same
 							     four roles. Only the number and, for `behind`, the spelling
 							     (`−19` → `19 behind`, matching every other page). -->
-							{@const verdict = cardVerdict(
-								c,
-								rankLabel(c.rank),
-								rankTitle(c.rank, c.envDisplay || c.name)
-							)}
-							{@const stateMark = cardStateMark(c)}
-							{@const rel =
-								c.statusKey === 'pending'
-									? { role: 'unranked' as const, txt: 'pending', tip: 'No deploy yet' }
-									: {
-											role: rankRole(c.rank),
-											txt: verdict.label,
-											tip: verdict.title
-										}}
-							<!--
+								{@const verdict = cardVerdict(
+									c,
+									rankLabel(c.rank),
+									rankTitle(c.rank, c.envDisplay || c.name)
+								)}
+								{@const stateMark = cardStateMark(c)}
+								{@const rel =
+									c.statusKey === 'pending'
+										? { role: 'unranked' as const, txt: 'pending', tip: 'No deploy yet' }
+										: {
+												role: rankRole(c.rank),
+												txt: verdict.label,
+												tip: verdict.title
+											}}
+								<!--
 								⭐ F2: THE HOVER IS A FILL NOW, NOT JUST A BORDER STEP.
 								(2026-09-03, breakpoints pass) `hover:border-gray-300` on a
 								1px border is a ΔL of 0.056 — measured invisible in a
@@ -1290,7 +1369,7 @@
 								language for every clickable row/card in the product,
 								not a border nobody can see change.
 							-->
-							<!-- ⛔ WAS ONE `<a href={rolloutHref}>` WRAPPING THE WHOLE CARD.
+								<!-- ⛔ WAS ONE `<a href={rolloutHref}>` WRAPPING THE WHOLE CARD.
 							     (2026-09-03, B2) That made the region a destination but left
 							     no legal way to add a second control inside it — a `<button>`
 							     nested in an `<a>` is invalid HTML and doubles the tab stop.
@@ -1298,53 +1377,59 @@
 							     pattern for "the region navigates, AND it holds a control":
 							     the name below is the ONE `.tap-link` (its `::after` covers
 							     the region), `Clear pin` is a raised `<button>` alongside it. -->
-							<div
-								class="tap-zone environment-theme-scope flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:hover:bg-gray-700/30"
-								style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
-							>
-								<!-- Identity: status circle + metadata.name (+ title) + env badge -->
-								<div class="flex items-center gap-2.5">
-									<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned` — see
+								<div
+									class="tap-zone environment-theme-scope flex flex-col gap-2.5 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:hover:bg-gray-700/30"
+									style={c.theme ? getEnvironmentThemeStyle(c.theme) : undefined}
+								>
+									<!-- Identity: status circle + metadata.name (+ title) + env badge -->
+									<div class="flex items-center gap-2.5">
+										<!-- ⛔ THE DISC CARRIES `rolled back` / `pinned` — see
 									     `rollout-cards.ts`. It used to be the chip's label, which
 									     evicted the rank number from the row entirely. The word may
 									     not live in a badge on one list and inside a chip on the
 									     other, so `/` does exactly this too. -->
-									<span
-										class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(c.bakeStatus, stateMark?.kind ?? null)}"
-										title={stateMark ? stateMark.title : undefined}
-									>
-										<BakeStatusIcon
-											bakeStatus={c.bakeStatus}
-											size="medium"
-											state={stateMark?.kind ?? null}
-											stateWord={stateMark?.word ?? ''}
-										/>
-									</span>
-									<div class="min-w-0 flex-1">
-										<div class="flex min-w-0 items-baseline gap-1.5">
-											<a
-												href={rolloutHref}
-												class="tap-link truncate font-mono text-sm font-semibold text-gray-900 dark:text-white"
-												>{c.name}</a
-											>
-											{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
-											<!-- ⛔ THE ROW THAT SAID `deploy succeeded` WHILE THE SLO
+										<span
+											class="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
+												c.bakeStatus,
+												stateMark?.kind ?? null
+											)}"
+											title={stateMark ? stateMark.title : undefined}
+										>
+											<BakeStatusIcon
+												bakeStatus={c.bakeStatus}
+												size="medium"
+												state={stateMark?.kind ?? null}
+												stateWord={stateMark?.word ?? ''}
+											/>
+										</span>
+										<div class="min-w-0 flex-1">
+											<div class="flex min-w-0 items-baseline gap-1.5">
+												<a
+													href={rolloutHref}
+													class="tap-link truncate font-mono text-sm font-semibold text-gray-900 dark:text-white"
+													>{c.name}</a
+												>
+												{#if c.stuck}<StuckBadge reason={c.stuck} />{/if}
+												<!-- ⛔ THE ROW THAT SAID `deploy succeeded` WHILE THE SLO
 											     WAS BLOWN. (2026-08-31) `statusKey` is the DEPLOY's
 											     verdict and the deploy did succeed; the check failed
 											     after it, and nothing on this card read it. Same slot
 											     and same `alarm` Chip as `StuckBadge` — a failing
 											     check is not a new severity and must not get a
 											     second, weaker geometry. -->
-											{#if c.checkFailure}<Chip
-													role="alarm"
-													label="unhealthy"
-													title={checkFailureTitle(c.checkFailure)}
-													wide
-													class="shrink-0"
-												/>{/if}
-										</div>
-										{#if c.title && c.title !== c.name}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">{c.title}</span>{/if}
-										<!-- ⭐ WHY THIS ROW IS HERE — UX SWEEP FINDING 4. `c.envDisplay`
+												{#if c.checkFailure}<Chip
+														role="alarm"
+														label="unhealthy"
+														title={checkFailureTitle(c.checkFailure)}
+														wide
+														class="shrink-0"
+													/>{/if}
+											</div>
+											{#if c.title && c.title !== c.name}<span
+													class="truncate text-[11px] text-gray-500 dark:text-gray-400"
+													>{c.title}</span
+												>{/if}
+											<!-- ⭐ WHY THIS ROW IS HERE — UX SWEEP FINDING 4. `c.envDisplay`
 										     can still be a fully-themed chip with no `Environment`
 										     object behind it (see `isUnlinked`'s note in
 										     `fleet-groups.ts`), so the env chip alone cannot tell a
@@ -1352,16 +1437,19 @@
 										     record ›" which rows are the ones the sentence meant.
 										     Same words the source pages already print, said once per
 										     row instead of once in a header. -->
-										{#if isUnlinked(c)}<span class="truncate text-[11px] text-gray-500 dark:text-gray-400">no Environment record</span>{/if}
+											{#if isUnlinked(c)}<span
+													class="truncate text-[11px] text-gray-500 dark:text-gray-400"
+													>no Environment record</span
+												>{/if}
+										</div>
+										{#if c.envDisplay}
+											<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
+										{/if}
 									</div>
-									{#if c.envDisplay}
-										<Chip role="env" theme={c.theme} label={c.envDisplay} wide class="shrink-0" />
-									{/if}
-								</div>
-								<!-- Version tag + last change -->
-								<div class="flex items-center justify-between gap-2">
-									<span class="flex min-w-0 flex-wrap items-center gap-1.5">
-										<!-- ⛔ A ROLLBACK USED TO BE INDISTINGUISHABLE FROM A DEPLOY
+									<!-- Version tag + last change -->
+									<div class="flex items-center justify-between gap-2">
+										<span class="flex min-w-0 flex-wrap items-center gap-1.5">
+											<!-- ⛔ A ROLLBACK USED TO BE INDISTINGUISHABLE FROM A DEPLOY
 										     ON EVERY LIST SURFACE. A live UX critique rolled production
 										     back to a one-hour-old build and this card drew it exactly
 										     like a forward one.
@@ -1374,22 +1462,22 @@
 										     `PinBadge` is gone from HERE: this card had the room, but the
 										     word `pinned` may not live in a badge on one list and inside
 										     the chip on the other. -->
-										<!-- `wide` LIFTS THE 12ch CAP, and it is REQUIRED by the
+											<!-- `wide` LIFTS THE 12ch CAP, and it is REQUIRED by the
 										     new label. `−19` fit; `19 BEHIND` at the chip's uppercase
 										     tracking renders `19 BEHI…`, which is not a word. Same
 										     opt-out `/environments` and `/envs/*` already use for
 										     this exact string. -->
-										<Chip
-											role={rel.role}
-											label={rel.txt}
-											title={rel.tip}
-											wide
-											value={c.version ? shortenVersion(c.version) : '—'}
-											valueTitle={c.version ?? 'no build'}
-											valueDim={!c.version}
-											class="min-w-0"
-										/>
-									<!-- ⛔ REVERSED, 2026-09-03 (F4 third re-check, finding 2:
+											<Chip
+												role={rel.role}
+												label={rel.txt}
+												title={rel.tip}
+												wide
+												value={c.version ? shortenVersion(c.version) : '—'}
+												valueTitle={c.version ?? 'no build'}
+												valueDim={!c.version}
+												class="min-w-0"
+											/>
+											<!-- ⛔ REVERSED, 2026-09-03 (F4 third re-check, finding 2:
 									     "HELD IS SPELLED FIVE WAYS"). A prior pass deleted this
 									     chip on the theory that the disc's pause glyph already
 									     says it — true for a mouse hovering the disc's `title`,
@@ -1407,15 +1495,15 @@
 									     than competing with the app name for width. See the same
 									     chip on `/namespaces/[name]` and `/environments` for the
 									     other two surfaces this pass fixed. -->
-									{#if c.held}
-										<Chip
-											role="held"
-											label="held"
-											title="Held: a newer build exists, but no rule lets it through yet."
-											class="shrink-0"
-										/>
-									{/if}
-									<!-- ⭐ B2, operator-walk finding (2026-09-03): AN OPERATOR'S
+											{#if c.held}
+												<Chip
+													role="held"
+													label="held"
+													title="Held: a newer build exists, but no rule lets it through yet."
+													class="shrink-0"
+												/>
+											{/if}
+											<!-- ⭐ B2, operator-walk finding (2026-09-03): AN OPERATOR'S
 									     PIN RENDERED AS `held` HERE, AND NEVER AS ITSELF. The disc
 									     above still resolves to ONE glyph (`held` outranks `pinned`
 									     there by design — see `cardStateMark`'s own note), but a
@@ -1428,33 +1516,33 @@
 									     vocabulary (`type` lane's file) has no dedicated `pinned`
 									     hue yet, so this reads in the neutral `unranked` gray
 									     rather than inventing a colour outside this lane. -->
-									{#if c.pinnedVersion}
-										<Chip
-											role="unranked"
-											label="pinned"
-											title="Pinned to {c.pinnedVersion} — automatic deploys are paused until the pin is cleared."
-											class="shrink-0"
-										/>
-										<!-- ⭐ THE SAME CONTROL `/apps` HAS, NOT A NAVIGATION LINK TO
+											{#if c.pinnedVersion}
+												<Chip
+													role="unranked"
+													label="pinned"
+													title="Pinned to {c.pinnedVersion} — automatic deploys are paused until the pin is cleared."
+													class="shrink-0"
+												/>
+												<!-- ⭐ THE SAME CONTROL `/apps` HAS, NOT A NAVIGATION LINK TO
 										     IT. `/apps` links to `/apps/<name>?release=<env>` because
 										     ITS row is not the object being unpinned — this row IS,
 										     so the control can act in place. Raised above the card's
 										     `.tap-link` overlay automatically (`app.css`'s `.tap-zone`
 										     rule), so pressing it does not also navigate. -->
-										<button
-											type="button"
-											class="btn btn-secondary shrink-0 px-2 py-1 text-xs"
-											aria-label="{CLEAR_PIN_LABEL} on {c.name} in {c.envDisplay || c.envName}"
-											onclick={(e) => {
-												e.preventDefault();
-												openClearPin(c);
-											}}
-										>
-											{CLEAR_PIN_LABEL}
-										</button>
-									{/if}
-									</span>
-									<!-- ⛔ F8: THE NOUN LINE SURVIVED AT `sm`+ AND ORPHANED ITSELF.
+												<button
+													type="button"
+													class="btn btn-secondary shrink-0 px-2 py-1 text-xs"
+													aria-label="{CLEAR_PIN_LABEL} on {c.name} in {c.envDisplay || c.envName}"
+													onclick={(e) => {
+														e.preventDefault();
+														openClearPin(c);
+													}}
+												>
+													{CLEAR_PIN_LABEL}
+												</button>
+											{/if}
+										</span>
+										<!-- ⛔ F8: THE NOUN LINE SURVIVED AT `sm`+ AND ORPHANED ITSELF.
 									     (2026-09-03, re-check) The 2026-09-02 fix above stopped `4d
 									     ago` splitting and dropped the `updated`/`started` noun
 									     below `sm` — which quieted the wrap at 390 but left it
@@ -1468,21 +1556,23 @@
 									     row is mid-deploy — so it drops into the `title` at every
 									     width now, same as the tail-8 pattern; the age is one line
 									     everywhere. -->
-									<span class="flex shrink-0 items-center">
-										{#if c.timestamp}
-											<span
-												class="t-micro font-mono whitespace-nowrap text-gray-500 dark:text-gray-400"
-												title="{formatDate(c.timestamp)} — {c.isRunning ? 'started' : 'updated'}"
-												>{formatTimeAgoCompact(c.timestamp, $now)} ago</span
-											>
-										{:else}
-											<span class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400">no deploy</span>
-										{/if}
-									</span>
+										<span class="flex shrink-0 items-center">
+											{#if c.timestamp}
+												<span
+													class="t-micro font-mono whitespace-nowrap text-gray-500 dark:text-gray-400"
+													title="{formatDate(c.timestamp)} — {c.isRunning ? 'started' : 'updated'}"
+													>{formatTimeAgoCompact(c.timestamp, $now)} ago</span
+												>
+											{:else}
+												<span class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
+													>no deploy</span
+												>
+											{/if}
+										</span>
+									</div>
 								</div>
-							</div>
-						{/each}
-					</div>
+							{/each}
+						</div>
 					</div>
 				</section>
 			{/each}

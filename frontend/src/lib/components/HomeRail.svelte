@@ -67,19 +67,37 @@
 	import { now } from '$lib/stores/time';
 	import { isHeld } from '$lib/view-models/fleet-groups';
 	import type { RolloutCard } from '$lib/rollout-cards';
-	import type { Rollout, Environment } from '../../types';
+	import type { Rollout, Environment, RolloutDependency } from '../../types';
 	import { ClockOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
+	import YourChangesCard from './YourChangesCard.svelte';
 
 	let {
 		cards,
 		rollouts,
 		environments,
-		localClusterName = ''
+		rolloutDependencies = null,
+		localClusterName = '',
+		/**
+		 * ⭐ CHANGES-2026-09-10.md §4. `ControlCenter` renders `YourChangesCard`
+		 * OUTSIDE this rail (as its own grid/flex item, positioned to LOOK
+		 * like the rail's first card at every width — see that file's own
+		 * `.cc-changes` note) whenever the viewing user is `connected`, so the
+		 * card can move above the fleet at `<sm`. This prop covers the OTHER
+		 * two GitHub states, where there is nothing to reorder and the card
+		 * belongs in its ordinary rail position, unchanged: `configured &&
+		 * !connected` (the inline connect prompt) renders it here, first in
+		 * the rail, exactly where `YourPullRequestsCard` always rendered it.
+		 * `false` while `githubStatus` is still loading or the user is
+		 * `connected` (ControlCenter owns that case instead) — never both.
+		 */
+		showChangesCard = false
 	}: {
 		cards: RolloutCard[];
 		rollouts: Rollout[];
 		environments: Environment[];
+		rolloutDependencies?: { items?: RolloutDependency[] } | null;
 		localClusterName?: string;
+		showChangesCard?: boolean;
 	} = $props();
 
 	/** The same window the two sibling cards use. */
@@ -249,6 +267,20 @@
 		so the rollup speaks the page's own vocabulary rather than a synonym of
 		it. The full sentence, with its denominator, is in `verdictTitle`.
 	-->
+	<!--
+		⭐ "Your changes", FIRST IN THE RAIL — ONLY WHEN `showChangesCard` IS
+		SET. This page has no "for you" band otherwise (its main column is the
+		four fleet-wide severity groups, all scoped to the FLEET, none to the
+		viewing operator's own work — see the module doc up top). The
+		CONNECTED case renders this same component from `ControlCenter`
+		instead, positioned to move above the fleet at `<sm` — see this file's
+		own `showChangesCard` prop doc and `ControlCenter.svelte`'s `.cc-changes`
+		note.
+	-->
+	{#if showChangesCard}
+		<YourChangesCard {rollouts} {environments} {rolloutDependencies} />
+	{/if}
+
 	<HowItsGoing
 		scope="fleet"
 		verdict="{onNewest} of {rankable.length} newest{heldCount > 0 ? ` · ${heldCount} held` : ''}"

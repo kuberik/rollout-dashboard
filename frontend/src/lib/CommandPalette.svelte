@@ -61,7 +61,14 @@
 	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { rankLabel, rankRole, rankTitle, rankBehindBy } from '$lib/view-models/env-rank';
-	import { buildPaletteBuildIndex, scoreBuildEntry } from '$lib/palette-index';
+	import {
+		buildPaletteBuildIndex,
+		scoreBuildEntry,
+		buildChangeRefPaletteResults,
+		buildMergedChangeIndex,
+		parseChangeRef
+	} from '$lib/palette-index';
+	import type { MyPull } from '$lib/api/my-pulls';
 	import {
 		SearchOutline,
 		GridOutline,
@@ -69,7 +76,8 @@
 		LayersSolid,
 		ClockOutline,
 		FolderOutline,
-		TagOutline
+		TagOutline,
+		CodePullRequestOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		getEnvironmentThemeStyle,
@@ -78,9 +86,19 @@
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
+	import { createQuery } from '@tanstack/svelte-query';
+	import { changesQueryOptions } from '$lib/api/changes';
+	import {
+		buildChangeRows,
+		myChangesCount,
+		familyProgress,
+		standingWords,
+		familyMeterAriaLabel,
+		type ChangeRowVM
+	} from '$lib/view-models/changes';
 	import { inertSiblings, trapFocus, modalFocusReturn, portal } from '$lib/a11y.svelte';
 
-	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action' | 'build';
+	type ResultKind = 'rollout' | 'app' | 'env' | 'namespace' | 'action' | 'build' | 'change';
 
 	let {
 		open = $bindable(false),
@@ -90,7 +108,8 @@
 		localClusterName = '',
 		currentNamespace,
 		currentName,
-		loading = false
+		loading = false,
+		myPulls = []
 	}: {
 		open: boolean;
 		scope?: ResultKind | null;
@@ -100,6 +119,15 @@
 		currentNamespace?: string;
 		currentName?: string;
 		loading?: boolean;
+		/**
+		 * The `/mine` cache (`api/my-pulls.ts`) — `[]` before it has ever
+		 * loaded, or when GitHub is not connected. Backs the `change` result
+		 * kind (title matches over the user's own MERGED pulls,
+		 * `buildMergedChangeIndex`) and the "Your changes" Browse tile's
+		 * count. A query with none of these never behaves differently for
+		 * any OTHER result kind.
+		 */
+		myPulls?: MyPull[];
 	} = $props();
 
 	/**
@@ -150,6 +178,65 @@
 	});
 
 	modalFocusReturn(() => open);
+
+	/**
+	 * ⛔ FIX PASS ITEM 6/8, 2026-09-10 — THE TILE COUNT READS `myChangesCount`
+	 * NOW, THE SAME FUNCTION `YourChangesCard` DOES (ruling 5), NOT
+	 * `kindCounts.change` (a count of how many `change`-kind rows survived
+	 * INTO THE CAPPED, QUERY-SCORED `allResults` — capped at 3 by §6's own
+	 * "free-text title match" rule, and zero whenever the search box is
+	 * empty). That produced a "Your changes" tile whose own sentence
+	 * changed with what the reader had typed, or read 0 changes merged with
+	 * a connected account that has several. `changesQueryOptions` shares
+	 * its query KEY with `myPullsQueryOptions` (`api/my-pulls.ts`'s own doc
+	 * comment) — gated on `open` so the palette does not fetch while
+	 * closed, and a cache hit whenever `/`, `/changes` or this same palette
+	 * has already warmed it this session.
+	 */
+	const changesQuery = createQuery(() => changesQueryOptions({ days: 30, enabled: open }));
+	/**
+	 * ⛔ FIX PASS ITEM 6, 2026-09-11 — `.filter((r) => !r.noRelease)`, MATCHING
+	 * `YourChangesCard`'s OWN FILTER (ruling "NO RELEASE MEANS NOT AFFECTED,
+	 * AND MUST NOT COMPETE"). Without it this tile counted a bare commit with
+	 * no release anywhere as one of "your changes" — on a live fleet the tile
+	 * read 59 while Home's identical card, built from the same
+	 * `changesQueryOptions` cache, read 46. `myChangesCount` itself does not
+	 * filter (it is the shared COUNTING function, not the shared SCOPING
+	 * decision) — every caller must apply the same scope first, which this
+	 * one was not doing.
+	 */
+	const myChangeRows = $derived(
+		buildChangeRows(changesQuery.data?.changes ?? [], rollouts, environments, null, $now).filter(
+			(r) => !r.noRelease
+		)
+	);
+	const myChangeCount = $derived(myChangesCount(myChangeRows, changesQuery.data?.user ?? ''));
+
+	/**
+	 * ⛔ FIX PASS ITEM 13, 2026-09-11 — THE CHANGES RESULT ROW CARRIES THE
+	 * COMPACT METER + STANDING. A `change`-kind result used to fall through
+	 * to the generic `{:else if r.subtitle}` line (`#4 · owner/repo`) — the
+	 * one fact a reader opens the palette to ask about a change ("did it
+	 * land") was nowhere on its own result row. `familyProgress`/
+	 * `standingWords` are the SAME functions `ChangeLine` already renders
+	 * (`changes.ts`'s own shared view-model), so this row cannot draw a
+	 * verdict that disagrees with `/changes`' or Home's. Keyed the same way
+	 * `buildMergedChangeIndex` keys its own entries (`owner/repo:pull:n`) —
+	 * a bare-commit or sha-guess result has no entry here and keeps the
+	 * plain subtitle line, unchanged.
+	 */
+	const myChangeRowsByKey = $derived.by<Map<string, ChangeRowVM>>(() => {
+		const map = new Map<string, ChangeRowVM>();
+		for (const row of myChangeRows) {
+			if (row.kind !== 'pr' || row.number == null) continue;
+			map.set(`${row.owner}/${row.repo}:pull:${row.number}`, row);
+		}
+		return map;
+	});
+	function changeResultMeta(r: Result): ChangeRowVM | null {
+		if (r.kind !== 'change' || !r.owner || !r.repo || r.changeRef?.kind !== 'pull') return null;
+		return myChangeRowsByKey.get(`${r.owner}/${r.repo}:pull:${r.changeRef.number}`) ?? null;
+	}
 
 	/**
 	 * ⭐ LOCK THE DOCUMENT SCROLL WHILE THE PALETTE IS OPEN. (2026-09-03,
@@ -228,6 +315,16 @@
 		 */
 		revisionFull?: string;
 		labels?: string[];
+		/** `change` rows only — the reference this result resolves to. */
+		owner?: string;
+		repo?: string;
+		changeRef?: { kind: 'pull'; number: number } | { kind: 'sha'; sha: string };
+		/**
+		 * A ref row (`Open change #4 · repo`) — rendered UNGROUPED, above the
+		 * first group header, never inside `grouped`'s own per-kind sections.
+		 * See `buildChangeRefPaletteResults`'s own doc comment.
+		 */
+		ungrouped?: boolean;
 	};
 
 	/**
@@ -416,8 +513,20 @@
 			{ title: 'Rollouts', subtitle: 'Full inventory list', href: '/rollouts' },
 			{ title: 'Apps', subtitle: 'Apps across environments', href: '/apps' },
 			{ title: 'Environments', subtitle: 'Cross-env matrix', href: '/environments' },
-			{ title: 'Revisions', subtitle: 'Repositories and their builds', href: '/revisions' },
-			{ title: 'Activity', subtitle: 'Recent deployments', href: '/activity' }
+			{ title: 'Changes', subtitle: 'Merged changes and where they landed', href: '/changes' },
+			{ title: 'Activity', subtitle: 'Recent deployments', href: '/activity' },
+			// ⭐ APPROACH B, ITEM C — `/me` IS DELIBERATELY NOT IN THE SIDEBAR
+			// (design doc: "reach it from Home and the palette"), so this
+			// static row is the ONLY way a typed search ever finds it. The
+			// subtitle carries the literal phrase "my pull requests" — the
+			// task's own words — because `score()`'s substring match is exact
+			// text, not a synonym lookup; typing that phrase must hit this
+			// row even though the title itself says "Your".
+			{
+				title: 'Your pull requests',
+				subtitle: 'My pull requests across the repos this cluster deploys',
+				href: '/me'
+			}
 		];
 		for (const a of actions) {
 			out.push({
@@ -443,6 +552,26 @@
 				href: b.href,
 				revisionFull: b.revision,
 				labels: b.labels
+			});
+		}
+
+		// 7. Changes — one entry per the operator's own MERGED pull, from the
+		// `/mine` cache. A NORMAL kind now (CHANGES-2026-09-10.md, "THE
+		// PALETTE"): scored by `score()`'s own generic substring matcher on
+		// `title` (the pull's real title, so "retry on 502" finds it), never
+		// bypassed the way the old `pr` kind's title matches used to be. See
+		// `score()`'s `change` guard below for the one exception (a
+		// ref-shaped query never double-counts as a title match).
+		for (const c of buildMergedChangeIndex(myPulls)) {
+			out.push({
+				kind: 'change',
+				key: c.key,
+				title: c.title,
+				subtitle: `#${c.ref.kind === 'pull' ? c.ref.number : c.ref.sha} · ${c.repo}`,
+				href: c.href,
+				owner: c.owner,
+				repo: c.repo,
+				changeRef: c.ref
 			});
 		}
 
@@ -472,6 +601,36 @@
 	 * being a triage list and becomes the list you already have at `/`, and the
 	 * header prints the true total so the cap can never hide one.
 	 */
+	/**
+	 * ⭐ A CHANGE REFERENCE IS PARSED FROM THE QUERY ITSELF, NEVER SCORED
+	 * AGAINST A PRE-BUILT INDEX — same reasoning `build`'s sha-prefix match
+	 * has, one level up: every other kind here answers "which of the
+	 * fleet's OWN objects does this query name," and a PR/sha reference
+	 * names an object this dashboard has never indexed (GitHub's, not the
+	 * cluster's). `buildChangeRefPaletteResults` re-parses on every
+	 * keystroke (cheap: a few regexes and, for the two ambiguous shapes, one
+	 * pass over `rollouts`) and is rendered UNGROUPED, ahead of the first
+	 * group header — see `palette-index.ts`'s own doc comment and this
+	 * file's template. It is NOT merged into `filtered`'s scored ranking;
+	 * only its ARRAY POSITION (spliced at the very front) puts it above
+	 * everything else — this is the one destination-not-category exception
+	 * the CHANGES design doc calls for. Title matches against the user's own
+	 * merged changes are the opposite case, and go through `score()` like
+	 * every other kind — see the `change` branch below.
+	 */
+	const changeRefResults = $derived.by<Result[]>(() =>
+		buildChangeRefPaletteResults(query, rollouts).map((e) => ({
+			kind: 'change' as const,
+			key: e.key,
+			title: e.title,
+			href: e.href,
+			owner: e.owner,
+			repo: e.repo,
+			changeRef: e.ref,
+			ungrouped: true
+		}))
+	);
+
 	const ATTENTION_CAP = 6;
 	const attention = $derived.by<Result[]>(() =>
 		allResults
@@ -482,11 +641,18 @@
 
 	// Scoring: substring on title is best, then on subtitle/version/env, etc.
 	// Tied scores fall back to entity-kind priority so users see rollouts first.
+	// ⭐ `change` = 1.5 (CHANGES-2026-09-10.md, "THE PALETTE") — BELOW
+	// `rollout`/`app`/`env`, ABOVE `namespace`. This is the ONLY thing that
+	// changed from the retired `pr: 5` entry: a title match used to outrank
+	// every rollout on the page by fiat; now it is a normal kind whose
+	// tiebreak sits at the bottom of the "fleet object" tier, same mechanism
+	// every other kind here already uses.
 	const KIND_PRIORITY: Record<ResultKind, number> = {
 		rollout: 4,
 		build: 3.5,
 		app: 3,
 		env: 2,
+		change: 1.5,
 		namespace: 1,
 		action: 0
 	};
@@ -500,6 +666,12 @@
 			// cannot disagree about what matched.
 			return scoreBuildEntry({ revision: r.revisionFull ?? '', labels: r.labels ?? [] }, q);
 		}
+		// A ref-shaped query (URL / `#n` / `owner/repo#n` / a bare sha) is
+		// handled ENTIRELY by `changeRefResults` above — a title match here
+		// too would risk a second, differently-worded row for the identical
+		// change. Free text (the normal case) is not ref-shaped and falls
+		// through to the generic scorer below, same as every other kind.
+		if (r.kind === 'change' && parseChangeRef(q)) return -1;
 		const lower = q.toLowerCase();
 		const hay = [
 			r.title,
@@ -532,6 +704,22 @@
 		return s;
 	}
 
+	/**
+	 * ⭐ THE LONG TAIL IS CAPPED, NOT THE WHOLE KIND. `buildMergedChangeIndex`
+	 * hands every merged pull to `allResults`; capping happens HERE, after
+	 * scoring/sorting, so the three shown are always the three BEST matches
+	 * — never an arbitrary first-three-by-insertion-order.
+	 */
+	const CHANGE_TITLE_CAP = 3;
+	function capKind(results: Result[], kind: ResultKind, cap: number): Result[] {
+		let count = 0;
+		return results.filter((r) => {
+			if (r.kind !== kind) return true;
+			count += 1;
+			return count <= cap;
+		});
+	}
+
 	const filtered = $derived.by(() => {
 		const q = query.trim();
 		const scoped = scope ? allResults.filter((r) => r.kind === scope) : allResults;
@@ -545,7 +733,13 @@
 			if (sev !== 0) return sev;
 			return a.r.title.localeCompare(b.r.title);
 		});
-		return scored.slice(0, 200).map((x) => x.r);
+		const ranked = capKind(scored.slice(0, 200).map((x) => x.r), 'change', CHANGE_TITLE_CAP);
+		// Reference rows ride ABOVE everything else, ungrouped, and only in
+		// the unscoped default search — there is no `change` picker tile to
+		// scope INTO (the fifth Browse tile navigates instead, see
+		// `openYourChanges` below), so a non-null `scope` is always one of
+		// the other kinds asking for its own objects only.
+		return !scope && changeRefResults.length > 0 ? [...changeRefResults, ...ranked] : ranked;
 	});
 
 	// Group filtered results by kind for rendering. Keeps a flat index for kb nav.
@@ -555,6 +749,7 @@
 		build: 'Builds',
 		app: 'Apps',
 		env: 'Environments',
+		change: 'Changes',
 		namespace: 'Namespaces',
 		action: 'Go to'
 	};
@@ -563,12 +758,19 @@
 		build: 'build',
 		app: 'app',
 		env: 'environment',
+		change: 'change',
 		namespace: 'namespace',
 		action: 'page'
 	};
 	const grouped = $derived.by<Group[]>(() => {
 		const map = new Map<ResultKind, Group>();
 		filtered.forEach((result, idx) => {
+			// Ref rows (`Open change #4 · repo`) are rendered separately, above
+			// every group header — see the template — so they never form a
+			// "Changes" group of their own. This is the fix for the measured
+			// defect: a `PULL REQUESTS` group used to render here, above every
+			// rollout, for exactly these rows.
+			if (result.ungrouped) return;
 			let g = map.get(result.kind);
 			if (!g) {
 				g = { kind: result.kind, label: KIND_LABEL[result.kind], items: [] };
@@ -644,6 +846,18 @@
 		goto(r.href);
 	}
 
+	/**
+	 * THE FIFTH BROWSE TILE, "Your changes" — it NAVIGATES rather than
+	 * scoping (CHANGES-2026-09-10.md, "THE PALETTE", item 3): there is no
+	 * client-side index of changes to scope into the way `rollout`/`app`/
+	 * `env`/`namespace` have one, so pressing it goes straight to
+	 * `/changes?mine` instead of narrowing the picker.
+	 */
+	function openYourChanges() {
+		open = false;
+		goto('/changes?mine');
+	}
+
 	function onInput(e: Event) {
 		query = (e.currentTarget as HTMLInputElement).value;
 		selectedIndex = 0;
@@ -651,17 +865,33 @@
 
 	/**
 	 * THE DEFAULT SCREEN IS ONE FLAT INDEX SPACE: the attention rows first,
-	 * then the four picker tiles. `Enter` opens a row or drills into a kind
-	 * depending on which half the cursor is in — the reader never has to know
-	 * there are two kinds of thing here, only that down-arrow and Enter work.
+	 * then the picker tiles — five that SCOPE (`rollout`/`app`/`env`/
+	 * `namespace`/`build`) plus one, "Your changes", that NAVIGATES straight
+	 * to `/changes?mine` instead (`openYourChanges`, above — there is no
+	 * client-side change index to scope into). `Enter` opens a row, drills
+	 * into a kind, or navigates, depending on which slot the cursor is in —
+	 * the reader never has to know there are three kinds of thing here, only
+	 * that down-arrow and Enter work.
+	 *
+	 * ⛔ FIX PASS ITEM 13, 2026-09-11 — `build` JOINS THE PICKER, MAKING SIX.
+	 * The `sm:grid-cols-2` Browse grid held five tiles (four scoping + "Your
+	 * changes"), so the last row was one tile beside an empty 326px cell —
+	 * a live fleet's own screenshot of the fifth tile alone in its row. Six
+	 * fills the grid evenly. `build` was already a full `ResultKind` (its
+	 * own `KIND_LABEL`/`KIND_SINGULAR`/`KIND_ICON`, its own scored results
+	 * via `buildPaletteBuildIndex`, its own `kindCounts` entry) with no
+	 * Browse tile of its own — adding it here is turning on a slot the type
+	 * already had, not inventing a new category to pad the grid.
 	 */
-	const PICKER_KINDS: ResultKind[] = ['rollout', 'app', 'env', 'namespace'];
+	const PICKER_KINDS: ResultKind[] = ['rollout', 'app', 'env', 'namespace', 'build'];
+	/** The picker tiles, scoping ones plus the one navigating tile. */
+	const BROWSE_TILE_COUNT = PICKER_KINDS.length + 1;
 	const inPicker = $derived(!scope && !query);
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (!open) return;
 		const maxIdx = inPicker
-			? attentionShown.length + PICKER_KINDS.length - 1
+			? attentionShown.length + BROWSE_TILE_COUNT - 1
 			: filtered.length - 1;
 		if (e.key === 'Escape') {
 			e.preventDefault();
@@ -693,7 +923,12 @@
 					pick(r);
 					return;
 				}
-				const k = PICKER_KINDS[selectedIndex - attentionShown.length];
+				const tileIdx = selectedIndex - attentionShown.length;
+				if (tileIdx === PICKER_KINDS.length) {
+					openYourChanges();
+					return;
+				}
+				const k = PICKER_KINDS[tileIdx];
 				if (k) {
 					scope = k;
 					selectedIndex = 0;
@@ -707,6 +942,7 @@
 	}
 
 	const KIND_ICON: Record<ResultKind, typeof GridOutline> = {
+		change: CodePullRequestOutline,
 		rollout: GridOutline,
 		build: TagOutline,
 		app: RocketOutline,
@@ -916,6 +1152,54 @@
 						{/if}
 					</span>
 				</div>
+			{:else if r.kind === 'change'}
+				<!-- ⛔ FIX PASS ITEM 13, 2026-09-11 — SAME METER, SAME STANDING WORD
+				     `ChangeLine` DRAWS, AT THIS ROW'S OWN SCALE. `changeResultMeta`
+				     returns `null` for a bare-commit/sha guess (no matching entry in
+				     the "my merged pulls" cache) — those fall back to the plain
+				     `#n · repo` subtitle line, unchanged. -->
+				{@const meta = changeResultMeta(r)}
+				{#if meta}
+					{@const steps = familyProgress(meta)}
+					<div class="flex min-w-0 items-center gap-2">
+						<div
+							class="flex shrink-0 items-center gap-1.5"
+							role="img"
+							aria-label={familyMeterAriaLabel(steps)}
+						>
+							{#each steps as step (step.family)}
+								<span
+									class="inline-block h-2 w-2 shrink-0 rounded-full {step.tone === 'live'
+										? 'bg-green-600 dark:bg-green-400'
+										: step.tone === 'stuck'
+											? 'bg-orange-500 dark:bg-orange-400'
+											: step.tone === 'failed'
+												? 'bg-red-600 dark:bg-red-500'
+												: step.tone === 'active'
+													? 'animate-pulse bg-blue-600 dark:bg-blue-400'
+													: step.tone === 'queued'
+														? 'bg-gray-400 dark:bg-gray-500'
+														: 'border border-dashed border-gray-300 dark:border-gray-600'}"
+									title="{step.family}: {step.sentence}"
+									aria-hidden="true"
+								></span>
+							{/each}
+						</div>
+						<span
+							class="truncate text-xs font-medium {meta.verdictTone === 'live'
+								? 'tone-live'
+								: meta.verdictTone === 'held'
+									? 'text-orange-950 dark:text-orange-300'
+									: meta.verdictTone === 'failed'
+										? 'tone-bad'
+										: meta.verdictTone === 'not-built'
+											? 'text-gray-400 dark:text-gray-500'
+											: 'tone-active'}">{standingWords(meta)}</span
+						>
+					</div>
+				{:else if r.subtitle}
+					<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.subtitle}</span>
+				{/if}
 			{:else if r.subtitle}
 				<span class="truncate text-xs text-gray-500 dark:text-gray-400">{r.subtitle}</span>
 			{/if}
@@ -987,14 +1271,14 @@
 					role="combobox"
 					aria-label={scope
 						? `Search ${KIND_LABEL[scope].toLowerCase()}`
-						: 'Search rollouts, apps, environments and namespaces'}
+						: 'Search rollouts, apps, environments and namespaces, or paste a PR link or a commit sha'}
 					aria-expanded="true"
 					aria-controls="command-palette-results"
 					aria-autocomplete="list"
 					aria-activedescendant={`cp-opt-${selectedIndex}`}
 					placeholder={scope
 						? `Search ${KIND_LABEL[scope].toLowerCase()}…`
-						: 'Search rollouts, apps, environments, namespaces…'}
+						: 'Search rollouts, apps, environments, namespaces, or paste a PR link or a commit sha…'}
 					autocomplete="off"
 					spellcheck="false"
 					class="flex-1 border-0 bg-transparent p-0 text-base text-gray-900 placeholder-gray-500 outline-none focus:outline-none focus:ring-0 sm:text-sm dark:text-white"
@@ -1026,6 +1310,7 @@
 					<!-- Default screen: what needs a person, then the categories. -->
 					{@const kindCounts = (() => {
 						const c: Record<ResultKind, number> = {
+							change: 0,
 							rollout: 0,
 							build: 0,
 							app: 0,
@@ -1112,6 +1397,47 @@
 								>
 							</button>
 						{/each}
+						<!-- THE FIFTH TILE — "Your changes". NAVIGATES straight to
+						     `/changes?mine` (`openYourChanges`) rather than setting
+						     `scope`, unlike its four siblings above: there is no
+						     client-side change index to scope into. Same tile chrome,
+						     so it reads as one more Browse option, not a different
+						     kind of control. Wrapped in a one-item {#each} — `{@const}`
+						     must be the immediate child of a block, and this is the only
+						     tile that is not itself inside the `PICKER_KINDS` loop. -->
+						{#each [0] as _}
+							{@const changeTileIdx = attentionShown.length + PICKER_KINDS.length}
+							{@const changeSel = changeTileIdx === selectedIndex}
+							<button
+								type="button"
+								role="option"
+								id={`cp-opt-${changeTileIdx}`}
+								aria-selected={changeSel}
+								data-idx={changeTileIdx}
+								onclick={openYourChanges}
+								onmouseenter={() => (selectedIndex = changeTileIdx)}
+								class="group flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-3 text-left transition-colors dark:border-gray-700 {changeSel
+									? 'bg-blue-50/70 dark:bg-blue-900/30'
+									: 'bg-gray-50/50 hover:bg-gray-100 dark:bg-gray-700/30 dark:hover:bg-gray-700/60'}"
+							>
+								<span
+									class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-white text-gray-600 shadow-sm dark:bg-gray-800 dark:text-gray-400"
+								>
+									<CodePullRequestOutline class="h-4 w-4" />
+								</span>
+								<span class="flex flex-1 flex-col gap-0.5">
+									<span class="text-sm font-medium text-gray-900 dark:text-white">Your changes</span>
+									<span class="text-[11px] text-gray-500 dark:text-gray-400"
+										>{myChangeCount}
+										{myChangeCount === 1 ? 'change' : 'changes'} merged in the last 30 days</span
+									>
+								</span>
+								<span
+									class="text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
+									aria-hidden="true">›</span
+								>
+							</button>
+						{/each}
 					</div>
 					<div class="mt-3 border-t border-gray-100 px-2 pb-1 pt-3 dark:border-gray-700/60" role="presentation">
 						<span
@@ -1125,6 +1451,18 @@
 						<span class="font-medium text-gray-700 dark:text-gray-300">"{query}"</span>
 					</div>
 				{:else}
+					<!-- REFERENCE ROWS — UNGROUPED, ABOVE THE FIRST GROUP HEADER, and
+					     only in an UNSCOPED search: `filtered` only ever splices
+					     `changeRefResults` in when `!scope` (there is no `change` scope
+					     to browse into), so this guard keeps `i` here in sync with the
+					     real `data-idx`/`selectedIndex` `filtered` assigned. This is the
+					     fix for "why does search now have a pull request category" —
+					     a reference is a destination, never a group. -->
+					{#if !scope}
+						{#each changeRefResults as r, i (r.key)}
+							{@render resultRow(r, i)}
+						{/each}
+					{/if}
 					{#each grouped as group (group.kind)}
 						<div class="flex items-center gap-2 px-3 pb-1 pt-2" role="presentation">
 							<span

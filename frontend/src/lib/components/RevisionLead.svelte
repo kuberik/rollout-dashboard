@@ -180,7 +180,11 @@
 		-->
 		<div class="lead-compact">
 			<div class="lead-compact-count t-dense text-gray-700 dark:text-gray-200">
-				<span>{coverage.liveCount} of {coverage.totalCount} place{coverage.totalCount === 1 ? '' : 's'}</span>
+				<span
+					>{coverage.liveCount} of {coverage.totalCount} place{coverage.totalCount === 1
+						? ''
+						: 's'}</span
+				>
 				<!--
 					⭐ REVISIONS-PASS-6, ITEM 3 — THE HELD CHIP MOVES TO THE COUNT
 					LINE. It used to be its own full-width row between the count and
@@ -191,8 +195,14 @@
 					qualifies, never on a row of its own.
 				-->
 				{#if showHeldChip && heldTotal > 0}
+					<!-- ⭐ FIX PASS ITEM 3, 2026-09-11 — `role="held"`, not
+					     `role="alarm"`. Same defect and fix as `RepoLedgerCard`'s
+					     two call sites: `held` is a gate correctly refusing a
+					     candidate, not a stoppage, so it takes `Chip.svelte`'s own
+					     `held: TRAILING` tone (Home's chip) everywhere, never the
+					     solid amber `stuck` fill. -->
 					<Chip
-						role="alarm"
+						role="held"
 						label="{heldTotal} held"
 						title="{heldTotal} place{heldTotal === 1
 							? ''
@@ -242,8 +252,10 @@
 					figure and before the `t-label` line wraps beneath both.
 				-->
 				{#if showHeldChip && heldTotal > 0}
+					<!-- ⭐ FIX PASS ITEM 3, 2026-09-11 — see the identical note in
+					     the compact branch above. -->
 					<Chip
-						role="alarm"
+						role="held"
 						label="{heldTotal} held"
 						title="{heldTotal} place{heldTotal === 1
 							? ''

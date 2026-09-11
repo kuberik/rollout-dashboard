@@ -13,6 +13,12 @@
 	import { ScrollDirectionTracker } from '$lib/scroll-direction.svelte';
 	import { scrollMemoryKey, saveScrollPosition, getScrollPosition } from '$lib/scroll-memory';
 
+	// ⭐ FIX PASS ITEM 7 (2026-09-10). Namespaces a document-scroller entry
+	// apart from an `<main>`-scroller entry for the SAME url — see the
+	// `beforeNavigate` doc comment below for why the two must never share a
+	// key.
+	const DOC_KEY_PREFIX = 'doc:';
+
 	/**
 	 * ⛔ P12 — FOCUS RESET TO BODY ON EVERY NAVIGATION. (2026-09-03,
 	 * operator walk)
@@ -145,15 +151,28 @@
 	// `beforeNavigate` is the only moment the OUTGOING page's `<main>` and
 	// the OUTGOING url are both still live — by the time `afterNavigate`
 	// runs, `nav.from` is all that is left of the page we came from, and its
-	// scroll offset is gone. Gated to `sm`+ (`overflowY === 'auto'`): below
-	// `sm` the document scrolls and the browser's native history restoration
-	// already does the right thing, so this store is never written there —
-	// writing a phone-width 0 for every route would just poison the sm+
-	// entry the next time the SAME url is visited above `sm` in one tab.
+	// scroll offset is gone.
+	//
+	// ⭐ FIX PASS ITEM 7 (2026-09-10) — THE DOCUMENT CASE, ADDED. Below `sm`
+	// the DOCUMENT scrolls (`overflowY !== 'auto'` on `<main>`) and the
+	// comment above used to claim "the browser's native history restoration
+	// already does the right thing" there — false on `/changes`: the
+	// browser's own restore fires against whatever height the page has AT
+	// THAT INSTANT, which on a `popstate` arrival is the short skeleton, not
+	// the real list, so it clamps to a shallow offset and never revisits it
+	// once the real rows grow the page taller a moment later. This is the
+	// SAME defect the `<main>` fix above already closed, on the other side
+	// of the one `sm` breakpoint — so it gets the same memory, keyed
+	// separately (`DOC_KEY_PREFIX`) so an entry saved for one scroller never
+	// misapplies to the other if the SAME url is later visited at the other
+	// breakpoint in one tab.
 	beforeNavigate((nav) => {
-		if (!mainEl || getComputedStyle(mainEl).overflowY !== 'auto') return;
 		if (!nav.from?.url) return;
-		saveScrollPosition(scrollMemoryKey(nav.from.url), mainEl.scrollTop);
+		if (mainEl && getComputedStyle(mainEl).overflowY === 'auto') {
+			saveScrollPosition(scrollMemoryKey(nav.from.url), mainEl.scrollTop);
+		} else if (typeof window !== 'undefined') {
+			saveScrollPosition(DOC_KEY_PREFIX + scrollMemoryKey(nav.from.url), window.scrollY);
+		}
 	});
 
 	/**
@@ -172,6 +191,26 @@
 		function attempt() {
 			main.scrollTop = target;
 			if (main.scrollTop >= target - 1) return;
+			if (performance.now() >= deadline) return;
+			requestAnimationFrame(attempt);
+		}
+		attempt();
+	}
+
+	/**
+	 * ⭐ FIX PASS ITEM 7. The document-scroller sibling of `restoreMainScroll`
+	 * above — same retry-across-frames shape, `window.scrollTo` in place of
+	 * `main.scrollTop`. `/changes` at 390 is exactly the case this closes:
+	 * its own data query (and, once a page renders more rows than fit in
+	 * one screenful, its own force-render-up-to-the-saved-row logic) grows
+	 * the document taller AFTER this first runs, and the retry loop is what
+	 * gives that growth a chance to land before giving up.
+	 */
+	function restoreDocumentScroll(target: number): void {
+		const deadline = performance.now() + 500;
+		function attempt() {
+			window.scrollTo(0, target);
+			if (window.scrollY >= target - 1) return;
 			if (performance.now() >= deadline) return;
 			requestAnimationFrame(attempt);
 		}
@@ -200,6 +239,15 @@
 				tick().then(() => restoreMainScroll(main, saved));
 			} else {
 				main.scrollTop = 0;
+			}
+		} else if (typeof window !== 'undefined') {
+			// ⭐ FIX PASS ITEM 7 — the document-scroller restore, symmetric
+			// with the `<main>` branch above.
+			const saved = nav.type === 'popstate' && nav.to?.url
+				? getScrollPosition(DOC_KEY_PREFIX + scrollMemoryKey(nav.to.url))
+				: undefined;
+			if (saved !== undefined) {
+				tick().then(() => restoreDocumentScroll(saved));
 			}
 		}
 		if (nav.type === 'enter') return;

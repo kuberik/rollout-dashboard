@@ -2159,7 +2159,7 @@
 	 * ⭐ THE REMEMBERED SHAPE. (2026-09-04, load-state audit finding 1: the
 	 * skeleton's `Source`/`Recent activity` cards span the main column
 	 * instead of the rail.) The skeleton below already reuses the loaded
-	 * page's OWN `.ab-wrap`/`.ab-grid` named-area grid — the fix the finding
+	 * page's OWN `.rail-wrap`/`.ab-grid` named-area grid — the fix the finding
 	 * asks for — but it always drew all four areas (`act`/`pipe`/`state`/
 	 * `hist`), while the loaded grid conditionally drops `act`
 	 * (`ab-grid--noact`, when `hasAct` is false) and the whole rail
@@ -2764,11 +2764,11 @@
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
 		<!--
-			⭐ THE SAME `.ab-wrap`/`.ab-grid` NAMED-AREA GRID THE LOADED PAGE
+			⭐ THE SAME `.rail-wrap`/`.ab-grid` NAMED-AREA GRID THE LOADED PAGE
 			USES, NOT A `lg:grid-cols-[minmax(0,1fr)_320px]` UTILITY GRID THAT
 			MATCHES NOTHING IN THE MARKUP BELOW. (2026-09-04, load-state audit
 			— apply the same rules the ranked findings fixed elsewhere.) The
-			real split is a container query on `.ab-wrap` with named areas
+			real split is a container query on `.rail-wrap` with named areas
 			(`act`/`pipe`/`state`/`hist`), scoped to this file; reusing those
 			classes here means the identical 860px threshold that reflows the
 			real page reflows this skeleton too, instead of a second grid
@@ -2798,7 +2798,7 @@
 				<span class="skel-block h-3.5 w-28"></span>
 			</div>
 		</section>
-		<div class="ab-wrap">
+		<div class="rail-wrap">
 			<div class="ab-grid {skelHasAct ? '' : 'ab-grid--noact'} {skelHasRail ? '' : 'ab-grid--norail'}">
 				{#if skelHasAct}
 					<div class="ab-act">
@@ -2991,7 +2991,7 @@
 		     DOM order is act → state → history, so the phone stack puts the
 		     state column ABOVE the timeline. On desktop the grid areas put
 		     history back under the tasks. -->
-		<div class="ab-wrap">
+		<div class="rail-wrap">
 			<div class="ab-grid {hasAct ? '' : 'ab-grid--noact'} {hasRail ? '' : 'ab-grid--norail'}">
 				<!-- ── ACT ──────────────────────────────────────────────────
 				     THE WRAPPER OWNS THE GRID AREA, not the `Card`. Svelte's
@@ -4042,10 +4042,20 @@
 	   at `sm`+ and absent below it, so the content box is not monotonic in
 	   viewport width: a 639px viewport gives this grid 607px and a 640px
 	   viewport gives it 431px. A `lg:` media query flips the layout the wrong
-	   way across that boundary. */
-	.ab-wrap {
-		container-type: inline-size;
-	}
+	   way across that boundary.
+
+	   ⭐ EXTRACTED, CHANGES-2026-09-10.md ROUND 2, §R2.2/§R2.6. `.ab-wrap`'s
+	   own declaration (`container-type: inline-size`, nothing else) was
+	   byte-identical to `ControlCenter.svelte`'s `.cc-wrap` — the wrapper is
+	   `app.css`'s shared `.rail-wrap` now, a pure rename with zero visual
+	   change (verified with a pixel diff at 1440/390, both themes, before
+	   this landed). `.ab-grid` itself stays exactly as it was: it is a 4-row
+	   NAMED-AREA grid (`act`/`pipe`/`state`/`hist`, with two rows toggled off
+	   by `ab-grid--noact`/`ab-grid--norail`), not the plain main/side pair
+	   `.rail-grid`/`.rail-main`/`.rail-side` model — forcing this page's
+	   shape into that pair would mean reassigning which element plays which
+	   grid area, which is exactly the "must not move" pixel risk this
+	   extraction was not worth spending on a page already measured good. */
 
 	.ab-grid {
 		display: grid;

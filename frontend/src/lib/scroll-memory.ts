@@ -18,9 +18,18 @@
  * and the outgoing URL are both still known) and read by its
  * `afterNavigate` on a `popstate` arrival.
  *
- * ⛔ NOT a general history API. Below `sm` the document scrolls and the
- * browser's native scroll restoration already does the right thing — this
- * store is never consulted there. Only `sm`+ Back/Forward reads it.
+ * ⛔ NOT a general history API.
+ *
+ * ⭐ FIX PASS ITEM 7 (2026-09-10) — SUPERSEDES "below `sm` this store is
+ * never consulted". That was wrong on `/changes`: the browser's own native
+ * restoration reads whatever height the page happens to have at the exact
+ * instant a `popstate` lands, which is the short skeleton, not the real
+ * list — it clamps short and never revisits the offset once real content
+ * grows the page taller a moment later. `routes/+layout.svelte`'s
+ * `beforeNavigate`/`afterNavigate` now write and read a document-scroller
+ * entry too (`window.scrollY` in place of `main.scrollTop`), keyed with a
+ * `doc:` prefix so it can never collide with an `<main>`-scroller entry
+ * saved for the SAME url at the other breakpoint.
  */
 
 const MAX_ENTRIES = 50;

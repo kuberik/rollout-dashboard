@@ -2141,3 +2141,59 @@ textarea {
 		display: inline-block;
 	}
 }
+
+/* ── THE RAIL SHELL — main column + 320px side rail. CHANGES-2026-09-10.md
+   ROUND 2, §R2.2/§R2.6 ("this is the THIRD hand-copy of that block —
+   extract it once"). `ControlCenter.svelte`'s `.cc-wrap`/`.cc-grid`/
+   `.cc-main`/`.cc-rail` and `/apps/[name]`'s `.ab-wrap` were the same
+   container-query shape typed twice already: `container-type: inline-size`
+   on the wrapper, a flex column below 860px of CONTAINER width (never a
+   viewport breakpoint — the sidebar makes viewport width non-monotonic
+   with content width, both pages' own notes say so independently), a
+   `minmax(0,1fr) 320px` two-column grid at and above it.
+
+   `.rail-wrap` is the wrapper both pages already declared byte-identically
+   (`container-type: inline-size` and nothing else) — a pure rename, zero
+   risk. `.rail-grid`/`.rail-main`/`.rail-side` are the plain two-item shape
+   `ControlCenter.svelte` (`/`) and `/changes` (R2.2) both use unmodified.
+
+   ⛔ `/apps/[name]`'s OWN `.ab-grid` KEEPS ITS PRIVATE GRID RULES. Its shape
+   is a 4-row NAMED-AREA grid (`act`/`pipe`/`state`/`hist`, with `state`
+   playing the rail's role) that toggles two of those rows off
+   (`ab-grid--noact`/`ab-grid--norail`) — not the plain main/side pair this
+   class pair models. Forcing it onto `.rail-grid`/`.rail-main`/`.rail-side`
+   would mean rewriting which element is which grid area, which is exactly
+   the "must not move" pixel risk this extraction is not worth spending on
+   a page already measured good; it adopts `.rail-wrap` alone (the one rule
+   that WAS byte-identical) and keeps `.ab-grid` unchanged. */
+.rail-wrap {
+	container-type: inline-size;
+}
+
+.rail-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 2rem;
+}
+
+@container (min-width: 860px) {
+	.rail-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 320px;
+		align-items: start;
+		/* ⛔ FIX PASS ITEM 9, 2026-09-11 — was 24px here, 32px (`2rem`) in the
+		   flex-column form above — ONE main→rail seam value everywhere this
+		   shared shell is used (Home, `/changes`, the change page), matching
+		   the value the mobile/narrow form already had rather than inventing
+		   a third number. */
+		gap: 32px;
+	}
+}
+
+.rail-main {
+	min-width: 0;
+}
+
+.rail-side {
+	min-width: 0;
+}

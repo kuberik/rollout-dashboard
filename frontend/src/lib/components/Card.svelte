@@ -101,6 +101,7 @@
 		titleTooltip = undefined,
 		titleHref = undefined,
 		verdict = null,
+		verdictCompact = null,
 		verdictTone = 'neutral',
 		verdictTitle,
 		rollup,
@@ -135,6 +136,27 @@
 		titleHref?: string;
 		/** The rolled-up answer, right-aligned. `3/3 healthy`, `2 builds`. */
 		verdict?: string | null;
+		/**
+		 * ⭐ PR-VIEW FIX PASS, ITEM 11 (2026-09-10). An OPTIONAL shorter
+		 * spelling of `verdict`, shown INSTEAD of it below a 560px CARD
+		 * width (this card's own `container-type: inline-size`, not the
+		 * viewport — same subject `.card-cq`'s other container queries
+		 * already measure against). `undefined` is a no-op: every existing
+		 * call site keeps rendering `verdict` alone at every width,
+		 * unconditionally `whitespace-nowrap`, byte-identical to before this
+		 * prop existed.
+		 *
+		 * The defect this fixes: a `verdict` that is a variable-length
+		 * clause LIST (`PipelineCard`'s "not built in hello-world-dev · not
+		 * built in hello-world-staging · not built in hello-world-prod")
+		 * measured 535px of content in a 341px card at 390 — `shrink-0` on
+		 * a single `whitespace-nowrap` span means it never wraps and never
+		 * shrinks, so it clipped mid-word with no ellipsis. Passing
+		 * `verdictCompact` gives the CALLER (who alone knows the compact
+		 * grammar — "1 of 3 live", "held in 2") a shorter string to show at
+		 * that width instead of asking Card to invent one.
+		 */
+		verdictCompact?: string | null;
 		verdictTone?: VerdictTone;
 		verdictTitle?: string;
 		/** The rollup as markup — chips, a count plus a link. Beats `verdict`. */
@@ -298,10 +320,29 @@
 				{@render rollup()}
 			</div>
 		{:else if verdict}
-			<span
-				class="t-card-rollup card-header-verdict shrink-0 whitespace-nowrap {VERDICT_TONE[verdictTone]}"
-				title={verdictTitle}>{verdict}</span
-			>
+			{#if verdictCompact}
+				<!-- ⭐ ITEM 11: the FULL clause list truncates with an ellipsis
+				     rather than clipping mid-word (`min-width: 0` lets it
+				     actually shrink; `shrink-0` never did) above 560px, and is
+				     replaced by the COMPACT form the caller supplied below it. -->
+				<span
+					class="t-card-rollup card-header-verdict card-header-verdict--full truncate {VERDICT_TONE[
+						verdictTone
+					]}"
+					title={verdictTitle}>{verdict}</span
+				>
+				<span
+					class="t-card-rollup card-header-verdict card-header-verdict--compact shrink-0 whitespace-nowrap {VERDICT_TONE[
+						verdictTone
+					]}"
+					title={verdictTitle}>{verdictCompact}</span
+				>
+			{:else}
+				<span
+					class="t-card-rollup card-header-verdict shrink-0 whitespace-nowrap {VERDICT_TONE[verdictTone]}"
+					title={verdictTitle}>{verdict}</span
+				>
+			{/if}
 		{/if}
 	</header>
 	<div class="grow {padded ? `p-4 ${bodyClass}` : bodyClass}">
@@ -326,5 +367,32 @@
 	 */
 	.card-cq {
 		container-type: inline-size;
+	}
+
+	/*
+	 * ⭐ PR-VIEW FIX PASS, ITEM 11 (2026-09-10). Only reached when the
+	 * caller passed `verdictCompact` — the plain single-`verdict` path
+	 * above never renders these classes at all, so every other Card caller
+	 * is unaffected. `--full` needs `min-width: 0` to be ALLOWED to shrink
+	 * below its content size (a flex item defaults to `min-width: auto`,
+	 * which is what let it overflow uncapped in the first place); `truncate`
+	 * (markup utility class) then has room to actually clip it WITH an
+	 * ellipsis instead of a bare overflow cut. `--compact` is hidden until
+	 * the card itself narrows past 560px, matching the title-fold threshold
+	 * already established two paragraphs up.
+	 */
+	.card-header-verdict--full {
+		min-width: 0;
+	}
+	.card-header-verdict--compact {
+		display: none;
+	}
+	@container (max-width: 559.98px) {
+		.card-header-verdict--full {
+			display: none;
+		}
+		.card-header-verdict--compact {
+			display: inline;
+		}
 	}
 </style>

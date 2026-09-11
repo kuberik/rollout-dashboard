@@ -47,11 +47,20 @@
 
 <script lang="ts">
 	/**
-	 * `.rev-cols` + THE THREE BUILD LISTS — extracted from `/revisions`
-	 * (round 11, lane 2). Main column: "Also still running" and "No longer
-	 * running anywhere"; 340px rail: "Never deployed". For the repository
-	 * page (lane 3) — the index (this lane's own route) renders none of
-	 * this (B.2.5).
+	 * THE THREE BUILD LISTS — extracted from `/revisions` (round 11, lane
+	 * 2): "Also still running", "No longer running anywhere", "No deploy
+	 * on record" (né "Never deployed"). For the repository page (lane 3) —
+	 * the index (this lane's own route) renders none of this (B.2.5).
+	 *
+	 * ⛔ FIX PASS ITEM 1, 2026-09-11 (round 2) — ONE FLEX COLUMN, NOT A
+	 * SECOND MAIN/RAIL GRID. This used to run its own `.rev-cols` grid (a
+	 * 320px rail for "No deploy on record", the SAME width as every rail
+	 * on the product but at a different SEAM — 16px here, 32px on the
+	 * page's own `.rail-grid`), which made the repository page carry two
+	 * main/rail systems stacked on top of each other. All three lists are
+	 * equal siblings in one column now, rendered inside the page's own
+	 * `.rail-main` — see `routes/changes/[...slug]/+page.svelte`'s own
+	 * fix-pass comment above the section this component sits in.
 	 */
 	import { untrack } from 'svelte';
 	import {
@@ -73,7 +82,7 @@
 		coverageCells
 	} from '$lib/view-models/revision-coverage';
 	import { historyAtLimit } from '$lib/history-marks';
-	import { revisionPath } from '$lib/version-utils';
+	import { changeBuildPath } from '$lib/version-utils';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { shortEnvLabel } from '$lib/environment-theme';
 	import { formatTimeAgoCompact, formatDate } from '$lib/utils';
@@ -240,7 +249,12 @@
 
 {#snippet more(key: 'past' | 'pending', label: string)}
 	<div class="border-t border-gray-100 p-2 dark:border-gray-700/60">
-		<button type="button" class="btn btn-secondary w-full" aria-expanded={expandState[key]} onclick={() => toggle(key)}>
+		<button
+			type="button"
+			class="btn btn-secondary w-full"
+			aria-expanded={expandState[key]}
+			onclick={() => toggle(key)}
+		>
 			{#if expandState[key]}
 				<ChevronDownOutline class="h-3.5 w-3.5" aria-hidden="true" />
 				Hide {label}
@@ -320,11 +334,15 @@
 	<span class="rev-names {named ? '' : 'rev-names--unnamed'}">
 		{#each row.labelGroups as g (g.label)}
 			<span class="rev-name-row">
-				{#if named && rowNamesBuild(row)}<span class="rev-name t-code-sm text-gray-900 dark:text-white">{g.label}</span
+				{#if named && rowNamesBuild(row)}<span
+						class="rev-name t-code-sm text-gray-900 dark:text-white">{g.label}</span
 					>{/if}
 				<span class="rev-name-svcs">
-					{#each g.services as svc, i (svc.appName)}<span class="t-body text-gray-700 dark:text-gray-200"
-							>{svc.appName}{#if i < g.services.length - 1}<span class="mx-1 text-gray-500" aria-hidden="true">·</span
+					{#each g.services as svc, i (svc.appName)}<span
+							class="t-body text-gray-700 dark:text-gray-200"
+							>{svc.appName}{#if i < g.services.length - 1}<span
+									class="mx-1 text-gray-500"
+									aria-hidden="true">·</span
 								>{/if}</span
 						>{/each}
 				</span>
@@ -333,11 +351,22 @@
 	</span>
 {/snippet}
 
-<div class="rev-cols mt-4">
-	<div class="flex min-w-0 flex-col gap-4">
-		<!-- CARD 1 — THE QUIET PATH. -->
-		{#if !(active && liveVisible.length === 0)}
-			<!--
+<!--
+	⭐ FIX PASS ITEM 1, 2026-09-11 — ONE COLUMN, STACKED, NOT A SECOND
+	MAIN/RAIL GRID. `.rev-cols` used to run its own `@container` grid here
+	(320px rail below `sm`, a 16px seam) — the SECOND main/rail system on
+	the repository page, at a different width and a different seam than
+	the page's own `.rail-grid` (849/320, 32px) one screen up. The brief
+	names both options as legitimate ("become part of the page rail or
+	stack under"); this is the stack-under half — all three lists
+	(`Also still running`, `No longer running anywhere`, `No deploy on
+	record`) are now equal siblings in one flex column, inside the page's
+	own `.rail-main`, so there is exactly one main/rail seam on this page,
+	not two. -->
+<div class="mt-4 flex min-w-0 flex-col gap-4">
+	<!-- CARD 1 — THE QUIET PATH. -->
+	{#if !(active && liveVisible.length === 0)}
+		<!--
 				⭐ REVISIONS-PASS-6, ITEM 5 — THE EMPTY STATE IS A `Card` AGAIN,
 				MATCHING THE RAIL'S "Never deployed". Finding 7 (2026-09-09) had
 				dropped this to a bare, unbordered `<p>` on the theory that an
@@ -352,118 +381,116 @@
 				NAME survives being empty and both empty states in this
 				component read as the same kind of fact.
 			-->
-			<Card
-				icon={CheckCircleSolid}
-				title={hasLeadRow ? 'Also still running' : 'Still running'}
-				verdict={liveAll.length === 0
-					? '0 builds'
-					: liveVisible.length === liveAll.length
-						? `${liveAll.length} build${liveAll.length === 1 ? '' : 's'}`
-						: `${liveVisible.length} of ${liveAll.length} build${liveAll.length === 1 ? '' : 's'}`}
-				verdictTitle="Older builds that some service is still running"
-				padded={false}
-			>
-				{#if liveAll.length === 0}
-					<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
-						{#if hasLeadRow}
-							Nothing older is still running — every place is on a build above.
-						{:else}
-							Nothing this repo has deployed is still running. Every place has moved on.
-						{/if}
-					</p>
-				{:else if liveVisible.length > 0}
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each liveVisible as row (row.revision)}
-							{@const cov = coverageOf(row)}
-							{@const envSlots = liveEnvSlots(row)}
-							<BuildRow>
-								{#snippet mark()}
-									<BuildStateMark coverage={cov} showWord={false} />
-								{/snippet}
-								{#snippet identity()}
-									<div class="min-w-0">
-										<a
-											class="ident rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
-											href={revisionPath(repo.repoKey, row.revision)}
-											title={row.revision}>{row.short}</a
-										>
-										{@render names(row, namedLive)}
-										{#if envSlots.length > 0}
-											<div class="bld-envs flex flex-wrap gap-1.5 pt-1">
-												{#each envSlots as slot (slot.envName)}
-													{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
-													<a
-														class="hit-32 shrink-0"
-														href={placeHref(slot)}
-														aria-label={`Open the ${envDisplay.toUpperCase()} rollout for ${slot.appName}`}
-													>
-														<Chip role="env" theme={slot.cell.theme} label={envDisplay} wide />
-													</a>
-												{/each}
-											</div>
-										{/if}
-									</div>
-								{/snippet}
-								{#snippet roll()}
-									{@render coverageRoll(row, cov, 'live')}
-								{/snippet}
-							</BuildRow>
-						{/each}
-					</ul>
-				{/if}
-			</Card>
-		{/if}
-
-		<!-- CARD 2 — HISTORY. -->
-		{#if pastAll.length > 0 && !(active && pastVisible.length === 0)}
-			<Card
-				icon={ArchiveSolid}
-				title="No longer running anywhere"
-				verdict={pastVisible.length === pastAll.length
-					? `${pastAll.length} build${pastAll.length === 1 ? '' : 's'}`
-					: `${pastVisible.length} of ${pastAll.length} build${pastAll.length === 1 ? '' : 's'}`}
-				verdictTitle="Deployed at least once; every place that ran them has since moved on"
-				padded={false}
-			>
-				{#if pastVisible.length > 0}
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each expandState.past ? pastVisible : pastVisible.slice(0, FOLD) as row (row.revision)}
-							{@const cov = coverageOf(row)}
-							<BuildRow>
-								{#snippet mark()}
-									<BuildStateMark coverage={cov} showWord={false} />
-								{/snippet}
-								{#snippet identity()}
-									<div class="min-w-0">
-										<a
-											class="ident rev-sha tap-link t-code text-gray-700 hover:underline dark:text-gray-200"
-											href={revisionPath(repo.repoKey, row.revision)}
-											title={row.revision}>{row.short}</a
-										>
-										{@render names(row, namedPast)}
-									</div>
-								{/snippet}
-								{#snippet roll()}
-									{@render coverageRoll(row, cov, 'past')}
-								{/snippet}
-							</BuildRow>
-						{/each}
-					</ul>
-					{#if pastVisible.length > FOLD}
-						{@render more(
-							'past',
-							`${pastVisible.length - FOLD} older build${pastVisible.length - FOLD === 1 ? '' : 's'}`
-						)}
+		<Card
+			icon={CheckCircleSolid}
+			title={hasLeadRow ? 'Also still running' : 'Still running'}
+			verdict={liveAll.length === 0
+				? '0 builds'
+				: liveVisible.length === liveAll.length
+					? `${liveAll.length} build${liveAll.length === 1 ? '' : 's'}`
+					: `${liveVisible.length} of ${liveAll.length} build${liveAll.length === 1 ? '' : 's'}`}
+			verdictTitle="Older builds that some service is still running"
+			padded={false}
+		>
+			{#if liveAll.length === 0}
+				<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
+					{#if hasLeadRow}
+						Nothing older is still running — every place is on a build above.
+					{:else}
+						Nothing this repo has deployed is still running. Every place has moved on.
 					{/if}
-				{/if}
-			</Card>
-		{/if}
-	</div>
+				</p>
+			{:else if liveVisible.length > 0}
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each liveVisible as row (row.key)}
+						{@const cov = coverageOf(row)}
+						{@const envSlots = liveEnvSlots(row)}
+						<BuildRow>
+							{#snippet mark()}
+								<BuildStateMark coverage={cov} showWord={false} />
+							{/snippet}
+							{#snippet identity()}
+								<div class="min-w-0">
+									<a
+										class="ident rev-sha tap-link t-code text-gray-900 hover:underline dark:text-white"
+										href={changeBuildPath(repo.repoKey, row.revision, row.revision)}
+										title={row.revision}>{row.short}</a
+									>
+									{@render names(row, namedLive)}
+									{#if envSlots.length > 0}
+										<div class="bld-envs flex flex-wrap gap-1.5 pt-1">
+											{#each envSlots as slot (slot.envName)}
+												{@const envDisplay = shortEnvLabel(slot.cell.theme) || slot.envName}
+												<a
+													class="hit-32 shrink-0"
+													href={placeHref(slot)}
+													aria-label={`Open the ${envDisplay.toUpperCase()} rollout for ${slot.appName}`}
+												>
+													<Chip role="env" theme={slot.cell.theme} label={envDisplay} wide />
+												</a>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							{/snippet}
+							{#snippet roll()}
+								{@render coverageRoll(row, cov, 'live')}
+							{/snippet}
+						</BuildRow>
+					{/each}
+				</ul>
+			{/if}
+		</Card>
+	{/if}
 
-	<div class="flex min-w-0 flex-col gap-4">
-		<!-- THE RAIL — builds nobody has taken. -->
-		{#if !(active && pendingVisible.length === 0 && repo.pending.length > 0)}
-			<!--
+	<!-- CARD 2 — HISTORY. -->
+	{#if pastAll.length > 0 && !(active && pastVisible.length === 0)}
+		<Card
+			icon={ArchiveSolid}
+			title="No longer running anywhere"
+			verdict={pastVisible.length === pastAll.length
+				? `${pastAll.length} build${pastAll.length === 1 ? '' : 's'}`
+				: `${pastVisible.length} of ${pastAll.length} build${pastAll.length === 1 ? '' : 's'}`}
+			verdictTitle="Deployed at least once; every place that ran them has since moved on"
+			padded={false}
+		>
+			{#if pastVisible.length > 0}
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each expandState.past ? pastVisible : pastVisible.slice(0, FOLD) as row (row.revision)}
+						{@const cov = coverageOf(row)}
+						<BuildRow>
+							{#snippet mark()}
+								<BuildStateMark coverage={cov} showWord={false} />
+							{/snippet}
+							{#snippet identity()}
+								<div class="min-w-0">
+									<a
+										class="ident rev-sha tap-link t-code text-gray-700 hover:underline dark:text-gray-200"
+										href={changeBuildPath(repo.repoKey, row.revision, row.revision)}
+										title={row.revision}>{row.short}</a
+									>
+									{@render names(row, namedPast)}
+								</div>
+							{/snippet}
+							{#snippet roll()}
+								{@render coverageRoll(row, cov, 'past')}
+							{/snippet}
+						</BuildRow>
+					{/each}
+				</ul>
+				{#if pastVisible.length > FOLD}
+					{@render more(
+						'past',
+						`${pastVisible.length - FOLD} older build${pastVisible.length - FOLD === 1 ? '' : 's'}`
+					)}
+				{/if}
+			{/if}
+		</Card>
+	{/if}
+
+	<!-- CARD 3 — builds nobody has taken. -->
+	{#if !(active && pendingVisible.length === 0 && repo.pending.length > 0)}
+		<!--
 				⭐ REVISIONS-PASS-6, ITEM 5 (second half) — THE HEADER STAYS ONE
 				LINE. The verdict used to carry `· newest first` beside the
 				count, and at ≥1280 that made `Card`'s header wrap to 65px
@@ -474,23 +501,25 @@
 				there — the body's first line, alongside the retention
 				footnote when one applies, rather than a second first line.
 			-->
-			<Card
-				icon={HourglassOutline}
-				title={pendingTitle}
-				verdict={pendingVisible.length === repo.pending.length
-					? `${repo.pending.length} build${repo.pending.length === 1 ? '' : 's'}`
-					: `${pendingVisible.length} of ${repo.pending.length} build${repo.pending.length === 1 ? '' : 's'}`}
-				padded={false}
-			>
-				{#if repo.pending.length > 0}
-					<p class="t-micro border-b border-gray-100 px-4 py-2 text-gray-500 dark:border-gray-700/60 dark:text-gray-400">
-						{historyLimit.atLimit
-							? `Newest first. ${PENDING_FOOTNOTE(historyLimit.limit)}`
-							: 'Newest first.'}
-					</p>
-				{/if}
-				{#if repo.pending.length === 0}
-					<!--
+		<Card
+			icon={HourglassOutline}
+			title={pendingTitle}
+			verdict={pendingVisible.length === repo.pending.length
+				? `${repo.pending.length} build${repo.pending.length === 1 ? '' : 's'}`
+				: `${pendingVisible.length} of ${repo.pending.length} build${repo.pending.length === 1 ? '' : 's'}`}
+			padded={false}
+		>
+			{#if repo.pending.length > 0}
+				<p
+					class="t-micro border-b border-gray-100 px-4 py-2 text-gray-500 dark:border-gray-700/60 dark:text-gray-400"
+				>
+					{historyLimit.atLimit
+						? `Newest first. ${PENDING_FOOTNOTE(historyLimit.limit)}`
+						: 'Newest first.'}
+				</p>
+			{/if}
+			{#if repo.pending.length === 0}
+				<!--
 						⭐ REVISIONS-PASS-6, ITEM 8 (second half) — THE SENTENCE CARRIES
 						THE CONFIDENCE THE FIXED TITLE NO LONGER DOES (round 11 QA,
 						item 13 — `pendingTitle` is one string now, "No deploy on
@@ -500,61 +529,61 @@
 						left that distinguishes the two, since the heading above it no
 						longer does.
 					-->
-					<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
-						{#if historyLimit.atLimit}
-							No deploy is on record for any build your services can run — retained history may not go back far enough to be sure none of them ever has.
-						{:else}
-							Every build your services can deploy has run somewhere.
-						{/if}
-					</p>
-				{:else if pendingVisible.length > 0}
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each expandState.pending ? pendingVisible : pendingVisible.slice(0, FOLD) as row (row.revision)}
-							{@const cov = coverageOf(row)}
-							<BuildRow>
-								{#snippet mark()}
-									<HourglassOutline class="h-4 w-4 text-gray-400 dark:text-gray-500" aria-hidden="true" />
-								{/snippet}
-								{#snippet identity()}
-									<a
-										class="ident rev-sha tap-link t-code min-w-0 text-gray-700 hover:underline dark:text-gray-200"
-										href={revisionPath(repo.repoKey, row.revision)}
-										title={row.revision}>{row.short}</a
-									>
-								{/snippet}
-								{#snippet roll()}
-									<span class="bld-svc-names t-dense block text-gray-700 dark:text-gray-200"
-										>{matchedServiceNames(row).join(' · ')}</span
-									>
-									{@render coverageRoll(row, cov, 'pending')}
-								{/snippet}
-							</BuildRow>
-						{/each}
-					</ul>
-					{#if pendingVisible.length > FOLD}
-						{@render more(
-							'pending',
-							`${pendingVisible.length - FOLD} more build${pendingVisible.length - FOLD === 1 ? '' : 's'}`
-						)}
+				<p class="emptyListText t-body px-4 py-6 text-gray-500 dark:text-gray-400">
+					{#if historyLimit.atLimit}
+						No deploy is on record for any build your services can run — retained history may not go
+						back far enough to be sure none of them ever has.
+					{:else}
+						Every build your services can deploy has run somewhere.
 					{/if}
+				</p>
+			{:else if pendingVisible.length > 0}
+				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+					{#each expandState.pending ? pendingVisible : pendingVisible.slice(0, FOLD) as row (row.revision)}
+						{@const cov = coverageOf(row)}
+						<BuildRow>
+							{#snippet mark()}
+								<HourglassOutline
+									class="h-4 w-4 text-gray-400 dark:text-gray-500"
+									aria-hidden="true"
+								/>
+							{/snippet}
+							{#snippet identity()}
+								<a
+									class="ident rev-sha tap-link t-code min-w-0 text-gray-700 hover:underline dark:text-gray-200"
+									href={changeBuildPath(repo.repoKey, row.revision, row.revision)}
+									title={row.revision}>{row.short}</a
+								>
+							{/snippet}
+							{#snippet roll()}
+								<span class="bld-svc-names t-dense block text-gray-700 dark:text-gray-200"
+									>{matchedServiceNames(row).join(' · ')}</span
+								>
+								{@render coverageRoll(row, cov, 'pending')}
+							{/snippet}
+						</BuildRow>
+					{/each}
+				</ul>
+				{#if pendingVisible.length > FOLD}
+					{@render more(
+						'pending',
+						`${pendingVisible.length - FOLD} more build${pendingVisible.length - FOLD === 1 ? '' : 's'}`
+					)}
 				{/if}
-			</Card>
-		{/if}
-	</div>
+			{/if}
+		</Card>
+	{/if}
 </div>
 
 <style>
-	.rev-cols {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		gap: 16px;
-	}
-
-	@container (min-width: 860px) {
-		.rev-cols {
-			grid-template-columns: minmax(0, 1fr) 340px;
-		}
-	}
+	/*
+	 * ⛔ `.rev-cols`'S GRID IS GONE, ROUND 2 OF FIX PASS ITEM 1, 2026-09-11.
+	 * It was the page's SECOND main/rail system — a 320px rail at a 16px
+	 * seam, one screen below the page's own `.rail-grid` (849/320, 32px
+	 * seam) — so the three lists this component renders are a single flex
+	 * column now (see the markup comment above it) and this class has no
+	 * caller left.
+	 */
 
 	/*
 	 * ⛔ `.bld-fill-track`/`.bld-fill` ARE GONE, ROUND 11 REVISIONS-PASS-6,

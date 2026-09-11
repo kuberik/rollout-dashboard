@@ -251,6 +251,39 @@ func setupRouter() *gin.Engine {
 			c.JSON(http.StatusOK, gin.H{"clusters": clusters})
 		})
 
+		// GET /api/github/pulls/:owner/:repo/:number — see
+		// handleGitHubPullRequest (main_github_pulls.go) for the full
+		// contract: merge state + the set of commit shas on the base branch
+		// since merge, plus checks (check-runs summary) scoped to repos this
+		// cluster's visible rollouts actually deploy.
+		api.GET("/github/pulls/:owner/:repo/:number", handleGitHubPullRequest)
+
+		// GET /api/github/pulls/mine?days=30 — see handleGitHubPullsMine
+		// (main_github_pulls_mine.go): every PR the viewing user authored
+		// across this cluster's visible source repos, via one Search API
+		// call (batched past 20 repos).
+		api.GET("/github/pulls/mine", handleGitHubPullsMine)
+
+		// GET /api/github/repos/:owner/:repo/commits/:sha/pulls — see
+		// handleGitHubCommitPulls (main_github_commit_pulls.go): the PRs
+		// that landed a given commit, for the revisions/build page to show a
+		// PR title behind a sha.
+		api.GET("/github/repos/:owner/:repo/commits/:sha/pulls", handleGitHubCommitPulls)
+
+		// GET /api/github/repos/:owner/:repo/commits/:sha — see
+		// handleGitHubCommit (main_github_commit.go): the commit itself
+		// (subject, author, committed date, html url), for the changes page
+		// to print a title and subtitle behind a BARE sha that landed with
+		// no PR the change feed can attach it to.
+		api.GET("/github/repos/:owner/:repo/commits/:sha", handleGitHubCommit)
+
+		// GET /api/github/changes?days=30&repo=<owner/repo> — see
+		// handleGitHubChanges (main_github_changes.go): every merged PR plus
+		// every PR-less base-branch commit ("did my changes land"), across
+		// this cluster's visible source repos. The frontend joins this list
+		// to rollouts/builds in memory; this endpoint only lists changes.
+		api.GET("/github/changes", handleGitHubChanges)
+
 		api.GET("/rollouts", func(c *gin.Context) {
 			k8sClient, ok := getK8sReadClient(c)
 			if !ok {

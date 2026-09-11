@@ -72,7 +72,7 @@
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
-	import { buildPath, repoKeyFromSource } from '$lib/version-utils';
+	import { changeBuildPath, repoKeyFromSource } from '$lib/version-utils';
 	import {
 		formatTimeAgoCompact,
 		formatTimeAgo,
@@ -1773,7 +1773,7 @@
 														label={rankLabel(rank)}
 														title={rankTitle(rank, entry.displayName)}
 														value={shortenVersion(entry.version)}
-														valueHref={buildPath(
+														valueHref={changeBuildPath(
 															repoKeyFromSource(entry.source, entry.rolloutName),
 															entry.revision,
 															entry.version
@@ -1783,7 +1783,7 @@
 													/>
 												{:else if entry.version}
 													<a
-														href={buildPath(
+														href={changeBuildPath(
 															repoKeyFromSource(entry.source, entry.rolloutName),
 															entry.revision,
 															entry.version

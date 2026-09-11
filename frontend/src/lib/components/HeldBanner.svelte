@@ -177,6 +177,8 @@
 	import { ArrowRightOutline, CalendarMonthSolid, UserCircleSolid } from 'flowbite-svelte-icons';
 	import type { Component } from 'svelte';
 	import AlertPanel from './AlertPanel.svelte';
+	import GateRecord from './GateRecord.svelte';
+	import type { ClassifiedGate } from '$lib/view-models/blocking-story';
 
 	let {
 		subject,
@@ -206,51 +208,86 @@
 	} = $props();
 
 	const explanation = $derived(heldExplanation(stories, heldEnvLabels, indefinite));
-	const message = $derived(explanation ? `${releaseSplitMessage} ${explanation}` : releaseSplitMessage);
+	const message = $derived(
+		explanation ? `${releaseSplitMessage} ${explanation}` : releaseSplitMessage
+	);
 	const HeldIcon: Component = $derived(hasSchedule ? CalendarMonthSolid : UserCircleSolid);
 	/**
-	 * ⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 (r11c) — THE GATE IDS, FOR THE
-	 * MUTED LINE UNDER THE SENTENCE. Same `dedupedCauses(stories)` list
-	 * `heldConsequence` already dedupes internally — recomputed here (a
-	 * pure, cheap function of `stories`) rather than threading a second
-	 * return value through `heldExplanation`'s string result.
+	 * ⛔ FIX PASS ITEM 17, 2026-09-11 — "› N rules", THE SAME DISCLOSURE
+	 * `BlockingStoryPanel` (rollout detail's own banner) ALREADY DRAWS FOR
+	 * THE IDENTICAL `BlockingStory[]` SHAPE. Supersedes the flat, always-
+	 * visible "Rules: id1 · id2" line ROUND 11's `gateIds` printed — that
+	 * decision was correct FOR A BARE LIST OF ID STRINGS ("this fact is
+	 * neither a set nor a record"), but a `ClassifiedGate` carries a kind, a
+	 * rule name and a description, which IS a record, and `lib/CLAUDE.md`'s
+	 * later disclosure taxonomy is unambiguous about the shape a countable
+	 * SET of records gets: "`N <noun>`", behind a control, same as every
+	 * other gate list on the product. Deduped by gate id across every
+	 * distinct held rollout `stories` covers (two places blocked by the
+	 * identical rule show it once), same dedup key `dedupedCauses` already
+	 * used, now keeping the full gate object instead of throwing it away
+	 * for a bare id string.
+	 *
+	 * ⚠️ NOT SUPERSEDING FINDING 3 (round 7.3): that ruling is about the
+	 * EXPLANATION SENTENCE (`message`, above) staying always-visible,
+	 * unconstrained prose — untouched here, still passed to `AlertPanel` as
+	 * plain `message`, never folded behind a `<summary>`.
+	 *
+	 * ⚠️ KNOWN GAP, FLAGGED RATHER THAN GUESSED: `ClassifiedGate` carries no
+	 * environment/version field, so a rule held identically in dev/staging/
+	 * prod cannot yet print "what differs (env, version)" per row the way
+	 * the punch list also asks — that needs a field this VM does not have
+	 * yet, not a template guess at one.
+	 *
+	 * ⭐ FIX PASS ITEM 7, 2026-09-11 — THE GAP ABOVE IS CLOSED, ONE LEVEL
+	 * DOWN. `PrCell.gateProvidedVersion` (`pr-pipeline.ts`) now carries
+	 * exactly the missing per-row fact for the ONE surface that draws a
+	 * per-environment stage row over this same held shape (`PipelineRow`'s
+	 * own doc comment) — this banner still speaks for the WHOLE hold, at
+	 * the coarser grain `ClassifiedGate` can support, and correctly does
+	 * not attempt env/version rows itself.
+	 *
+	 * ⭐ NEW BY DESIGN (FIX PASS ITEM 8, 2026-09-11). ROLE: the RECORD
+	 * behind this banner's disclosure — the full set of rules a reader can
+	 * open to inspect (kind, name, description), never restated as prose
+	 * in the banner body itself. WHY NOTHING EXISTING FITS: this is
+	 * explicitly NOT new — the comment above already states it supersedes
+	 * a flat, always-visible id list with the SAME disclosure
+	 * `BlockingStoryPanel` (rollout detail's own banner) already draws for
+	 * the identical `BlockingStory[]` shape, so there was no gap to design
+	 * around, only a second hand-rolled copy to delete. WHICH REFERENCE
+	 * LENDS PROPORTIONS: `BlockingStoryPanel` + `GateRecord` exactly —
+	 * same count-form trigger (`lib/CLAUDE.md`'s "N <noun>" rule), same
+	 * `<dl>` record component, `tone="banner"` the only caller-supplied
+	 * difference (reads `currentColor` off this banner's own severity ink
+	 * instead of the card-scale neutral).
 	 */
-	const gateIds = $derived(dedupedCauses(stories).map((c) => c.id));
+	const gates = $derived.by<ClassifiedGate[]>(() => {
+		const seen = new Set<string>();
+		const out: ClassifiedGate[] = [];
+		for (const s of stories) {
+			for (const g of s.gates) {
+				if (seen.has(g.id)) continue;
+				seen.add(g.id);
+				out.push(g);
+			}
+		}
+		return out;
+	});
 </script>
+
+{#snippet gateBody()}
+	<!-- THE SAME OBJECT `BlockingStoryPanel`'s own disclosure draws, in the
+	     banner's own ink — `tone="banner"` reads `currentColor` off
+	     `AlertPanel`'s footnote class, same mechanism, same voice. -->
+	<GateRecord {gates} tone="banner" />
+{/snippet}
 
 {#snippet openAction()}
 	<a class="nav-link" href={primaryHref}>
 		Open {primaryLabel ?? 'the service'}
 		<ArrowRightOutline class="h-3.5 w-3.5" aria-hidden="true" />
 	</a>
-{/snippet}
-
-<!--
-	⭐ ROUND 11 REVISIONS-PASS-6, ITEM 6 (r11c) — `messageBody`, NOT `message`.
-	`lib/CLAUDE.md`'s "ids belong in the disclosed tier" rule: a raw gate id
-	in the middle of the consequence sentence is unfindable-by-eye and reads
-	as noise. Switching to the snippet form lets this component draw the
-	sentence and a SEPARATE, muted `t-micro` line under it
-	(`Gates: dependency-hello-frontend-needs-api · ghd-5b2wn`) — still always
-	visible (never a disclosure — `AlertPanel`'s own `footnoteBody` is for
-	that, and this fact is neither a set nor a record), one line, wraps at
-	390. `opacity-70` dims it relative to the sentence above while inheriting
-	`palette.message`'s own severity ink for contrast, rather than hard-coding
-	a second colour this component would have to keep in sync with
-	`AlertPanel`'s palette.
--->
-{#snippet heldMessageBody()}
-	<p class="break-words">{message}</p>
-	{#if gateIds.length > 0}
-		<!--
-			⭐ "Rules:", NOT "Gates:" — `lib/messages/vocabulary.test.ts`'s
-			retired-spelling census bans `gate`/`gates` from user-facing text
-			product-wide (CLAUDE.md (b): "the generic noun is `rule`, the kind
-			is named where it matters"). Same noun `GateRecord`'s own `Kind`
-			row and every disclosure count on this product already use.
-		-->
-		<p class="t-micro mt-1 break-words opacity-70">Rules: {gateIds.join(' · ')}</p>
-	{/if}
 {/snippet}
 
 <!--
@@ -275,7 +312,9 @@
 		severity="warning"
 		icon={HeldIcon}
 		title="{subject} is held"
-		messageBody={heldMessageBody}
+		{message}
+		footnoteCount={gates.length === 0 ? undefined : gates.length}
+		footnoteBody={gates.length === 0 ? undefined : gateBody}
 		actions={primaryHref ? openAction : undefined}
 	/>
 </div>
