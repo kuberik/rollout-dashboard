@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
-	imagereflectorv1beta2 "github.com/fluxcd/image-reflector-controller/api/v1beta2"
+	imagereflectorv1 "github.com/fluxcd/image-reflector-controller/api/v1"
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	envv1alpha1 "github.com/kuberik/environment-controller/api/v1alpha1"
@@ -143,7 +143,7 @@ func buildScheme() (*runtime.Scheme, error) {
 	if err := rolloutv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add scheme: %w", err)
 	}
-	if err := imagereflectorv1beta2.AddToScheme(scheme); err != nil {
+	if err := imagereflectorv1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add image reflector scheme: %w", err)
 	}
 	if err := kustomizev1.AddToScheme(scheme); err != nil {
@@ -748,8 +748,8 @@ func (c *Client) GetSecret(ctx context.Context, namespace, name string) (*corev1
 	return secret, nil
 }
 
-func (c *Client) GetImagePolicies(ctx context.Context, namespace string) (*imagereflectorv1beta2.ImagePolicyList, error) {
-	imagePolicies := &imagereflectorv1beta2.ImagePolicyList{}
+func (c *Client) GetImagePolicies(ctx context.Context, namespace string) (*imagereflectorv1.ImagePolicyList, error) {
+	imagePolicies := &imagereflectorv1.ImagePolicyList{}
 	if err := c.client.List(ctx, imagePolicies, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list image policies: %w", err)
 	}
@@ -758,8 +758,8 @@ func (c *Client) GetImagePolicies(ctx context.Context, namespace string) (*image
 }
 
 // New: list image policies across all namespaces
-func (c *Client) GetImagePoliciesAllNamespaces(ctx context.Context) (*imagereflectorv1beta2.ImagePolicyList, error) {
-	imagePolicies := &imagereflectorv1beta2.ImagePolicyList{}
+func (c *Client) GetImagePoliciesAllNamespaces(ctx context.Context) (*imagereflectorv1.ImagePolicyList, error) {
+	imagePolicies := &imagereflectorv1.ImagePolicyList{}
 	if err := c.client.List(ctx, imagePolicies); err != nil {
 		return nil, fmt.Errorf("failed to list image policies across all namespaces: %w", err)
 	}
@@ -767,8 +767,8 @@ func (c *Client) GetImagePoliciesAllNamespaces(ctx context.Context) (*imagerefle
 	return imagePolicies, nil
 }
 
-func (c *Client) GetImageRepositories(ctx context.Context, namespace string) (*imagereflectorv1beta2.ImageRepositoryList, error) {
-	imageRepositories := &imagereflectorv1beta2.ImageRepositoryList{}
+func (c *Client) GetImageRepositories(ctx context.Context, namespace string) (*imagereflectorv1.ImageRepositoryList, error) {
+	imageRepositories := &imagereflectorv1.ImageRepositoryList{}
 	if err := c.client.List(ctx, imageRepositories, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list image repositories: %w", err)
 	}
@@ -777,8 +777,8 @@ func (c *Client) GetImageRepositories(ctx context.Context, namespace string) (*i
 }
 
 // New: list image repositories across all namespaces
-func (c *Client) GetImageRepositoriesAllNamespaces(ctx context.Context) (*imagereflectorv1beta2.ImageRepositoryList, error) {
-	imageRepositories := &imagereflectorv1beta2.ImageRepositoryList{}
+func (c *Client) GetImageRepositoriesAllNamespaces(ctx context.Context) (*imagereflectorv1.ImageRepositoryList, error) {
+	imageRepositories := &imagereflectorv1.ImageRepositoryList{}
 	if err := c.client.List(ctx, imageRepositories); err != nil {
 		return nil, fmt.Errorf("failed to list image repositories across all namespaces: %w", err)
 	}
@@ -824,16 +824,16 @@ func (c *Client) GetOCIRepositoriesAllNamespaces(ctx context.Context) (*sourcev1
 	return ociRepositories, nil
 }
 
-func (c *Client) GetImagePolicy(ctx context.Context, namespace, name string) (*imagereflectorv1beta2.ImagePolicy, error) {
-	imagePolicy := &imagereflectorv1beta2.ImagePolicy{}
+func (c *Client) GetImagePolicy(ctx context.Context, namespace, name string) (*imagereflectorv1.ImagePolicy, error) {
+	imagePolicy := &imagereflectorv1.ImagePolicy{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, imagePolicy); err != nil {
 		return nil, fmt.Errorf("failed to get image policy: %w", err)
 	}
 	return imagePolicy, nil
 }
 
-func (c *Client) GetImageRepository(ctx context.Context, namespace, name string) (*imagereflectorv1beta2.ImageRepository, error) {
-	imageRepository := &imagereflectorv1beta2.ImageRepository{}
+func (c *Client) GetImageRepository(ctx context.Context, namespace, name string) (*imagereflectorv1.ImageRepository, error) {
+	imageRepository := &imagereflectorv1.ImageRepository{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, imageRepository); err != nil {
 		return nil, fmt.Errorf("failed to get image repository: %w", err)
 	}
@@ -1405,7 +1405,7 @@ func (c *Client) ReconcileOCIRepository(ctx context.Context, namespace, name str
 
 // ReconcileImageRepository adds the reconcile annotation to trigger a reconciliation
 func (c *Client) ReconcileImageRepository(ctx context.Context, namespace, name string) error {
-	imageRepository := &imagereflectorv1beta2.ImageRepository{}
+	imageRepository := &imagereflectorv1.ImageRepository{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, imageRepository); err != nil {
 		return fmt.Errorf("failed to get image repository: %w", err)
 	}
