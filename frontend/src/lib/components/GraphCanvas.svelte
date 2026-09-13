@@ -56,6 +56,10 @@
 		snugHeight?: boolean;
 		/** The `LR`/`TB` this canvas settled on, for a caller that names axes. */
 		onorientation?: ((o: 'LR' | 'TB') => void) | undefined;
+		/** The frame's own narrowed width, when it drew snug to its content
+		 *  rather than at the caller's full offer — see `GraphCanvasInner`'s
+		 *  own doc on `snugFrameWidth`. `null` while it drew at full width. */
+		onsnugwidth?: ((w: number | null) => void) | undefined;
 		class?: string;
 	};
 

@@ -150,6 +150,28 @@
 	const STACK_BELOW = 620;
 	/** Written by the canvas once it has measured itself. See `onorientation`. */
 	let stacked = $state(false);
+	/**
+	 * ⭐ 2026-09-13 · THE LEGEND ROW MATCHES THE CANVAS'S OWN WIDTH, WHEN THE
+	 * CANVAS HAS ONE.
+	 *
+	 * From a design pass on the live fleet's `checkout-api`⇄`payments-svc`
+	 * neighbourhood: `GraphCanvasInner`'s `snugFrameWidth` fix (a small
+	 * single-rank graph draws in a canvas sized to ITS OWN content, centred,
+	 * rather than stretched to the full card) shrank the canvas but left this
+	 * file's own `» environments · services in one environment` row at the
+	 * CARD's full width above it — two objects that used to share one edge
+	 * now read as unrelated: a centred, narrow frame floating under a
+	 * hard-left row with a wide gap between them.
+	 *
+	 * `onsnugwidth` (`GraphCanvasInner`'s own callback, the same idiom as
+	 * `onorientation`) reports that width back here, and the row picks it up
+	 * as its own `max-width` + `margin-inline: auto` — the identical two
+	 * declarations the canvas itself renders with, so the two objects share
+	 * one measured edge and read as one composition again. `null` (every
+	 * `TB` render, every multi-rank `LR` graph) is a no-op: the row keeps
+	 * its ordinary full-width flow, byte-identical to before this existed.
+	 */
+	let snugWidth = $state<number | null>(null);
 
 	const nodeById = $derived(new Map(graph.nodes.map((n) => [n.id, n] as const)));
 	const inbound = $derived.by(() => {
@@ -472,7 +494,10 @@
 		`stacked`, because that edge is genuinely vertical under `TB` and the
 		glyph should say so; the share icon has no orientation to carry.
 	-->
-	<p class="t-micro mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400">
+	<p
+		class="t-micro mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400"
+		style={snugWidth !== null ? `max-width:${snugWidth}px;margin-inline:auto` : undefined}
+	>
 		<span class="inline-flex items-center gap-1">
 			<ChevronDoubleRightOutline class="h-3 w-3 shrink-0 {stacked ? 'rotate-90' : ''}" />
 			environments
@@ -546,6 +571,7 @@
 		minZoomWide={0.85}
 		snugHeight
 		onorientation={(o) => (stacked = o === 'TB')}
+		onsnugwidth={(w) => (snugWidth = w)}
 		{dark}
 		ariaLabel="Dependency graph"
 		class="rounded-lg border border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/40"
