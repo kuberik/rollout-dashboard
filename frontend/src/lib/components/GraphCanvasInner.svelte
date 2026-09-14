@@ -1498,6 +1498,76 @@
 			const offer = availableWidth > 0 ? availableWidth : frameWidth;
 			nextSnugWidth = need < offer - 4 ? Math.max(TB_HOOK_WIDTH_FLOOR, need) : null;
 		}
+		/**
+		 * ⭐ WHERE A CONTRACT EDGE'S LABEL GOES WHEN THERE IS NO HOOK — THE
+		 * ONLY LAYER THAT KNOWS THE NODE BOXES. (2026-09-13, tenth film
+		 * review: a floating `ents` at the capture's own geometry.)
+		 *
+		 * The library places a `smoothstep` label at its path centre, and a
+		 * route that has to loop — `Bottom`→`Top` with the target ABOVE the
+		 * source, which is every contract edge between two services dagre
+		 * stacked in one column — puts that centre inside a node. Neither the
+		 * edge component (it gets two endpoints, no boxes) nor the caller (it
+		 * runs before layout) can see the collision; dagre's own graph, right
+		 * here, can.
+		 *
+		 * The point: the middle of the CLEAR CHANNEL between the two boxes —
+		 * the vertical gap when they share a column, the horizontal gap when
+		 * they share a row — then swept against EVERY node box (not just this
+		 * edge's own two, since a long edge crosses others) and pushed past
+		 * any it still touches. `w`/`h` estimate the label's own box with the
+		 * same `length * 6 + 12` this file already uses to reserve rank space
+		 * for a labelled edge.
+		 */
+		{
+			const LABEL_H = 18;
+			const PAD = 6;
+			const boxes = flowNodes
+				.map((n) => g.node(n.id))
+				.filter((b): b is { x: number; y: number; width: number; height: number } => !!b)
+				.map((b) => ({
+					l: b.x - b.width / 2,
+					r: b.x + b.width / 2,
+					t: b.y - b.height / 2,
+					b: b.y + b.height / 2
+				}));
+			const nextEdges = flowEdges.map((e) => {
+				if (e.type !== 'contractHop') return e;
+				if (typeof (e.data as { gutterX?: number } | undefined)?.gutterX === 'number') return e;
+				const sd = g.node(e.source);
+				const td = g.node(e.target);
+				if (!sd || !td || typeof e.label !== 'string') return e;
+				const w = e.label.length * 6 + 12;
+				const S = { l: sd.x - sd.width / 2, r: sd.x + sd.width / 2, t: sd.y - sd.height / 2, b: sd.y + sd.height / 2 };
+				const T = { l: td.x - td.width / 2, r: td.x + td.width / 2, t: td.y - td.height / 2, b: td.y + td.height / 2 };
+				let x = (sd.x + td.x) / 2;
+				let y = (sd.y + td.y) / 2;
+				const vGap = S.b < T.t ? [S.b, T.t] : T.b < S.t ? [T.b, S.t] : null;
+				const hGap = S.r < T.l ? [S.r, T.l] : T.r < S.l ? [T.r, S.l] : null;
+				if (vGap && vGap[1] - vGap[0] >= LABEL_H) {
+					y = (vGap[0] + vGap[1]) / 2;
+				} else if (hGap && hGap[1] - hGap[0] >= w) {
+					x = (hGap[0] + hGap[1]) / 2;
+				}
+				// Whatever the channel gave, it still has to clear every box.
+				for (let pass = 0; pass < boxes.length + 1; pass++) {
+					const hit = boxes.find(
+						(b) =>
+							x + w / 2 + PAD > b.l &&
+							x - w / 2 - PAD < b.r &&
+							y + LABEL_H / 2 + PAD > b.t &&
+							y - LABEL_H / 2 - PAD < b.b
+					);
+					if (!hit) break;
+					x = hit.r + w / 2 + PAD + 2;
+				}
+				const prev = e.data as { labelX?: number; labelY?: number } | undefined;
+				if (prev?.labelX === x && prev?.labelY === y) return e;
+				return { ...e, data: { ...(e.data ?? {}), labelX: x, labelY: y } };
+			});
+			if (nextEdges.some((e, i) => e !== flowEdges[i])) flowEdges = nextEdges;
+		}
+
 		if (nextSnugWidth !== snugFrameWidth) snugFrameWidth = nextSnugWidth;
 
 		let changed = false;

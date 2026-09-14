@@ -335,7 +335,19 @@
 		 * problem, because a contract partner really is beside the node
 		 * there, not somewhere else in the same column.
 		 */
-		const type = !promotion && stacked ? 'contractHop' : 'smoothstep';
+		/**
+		 * ⛔ 2026-09-13 · NO LONGER `stacked`-ONLY. The hook itself still is
+		 * (`ContractHopEdge` draws it only when the layout hands it a
+		 * `gutterX`, which only a `singleFile` `TB` column gets), but the
+		 * LABEL placement this component owns has to apply everywhere,
+		 * because `stacked` is not the same question as "did dagre put these
+		 * two nodes in one column". Under `LR` a contract edge does not rank
+		 * anything, so two services in ONE environment land in the same
+		 * column with `stacked` false — the library then loops the
+		 * `Bottom`→`Top` route and drops its label inside a node. Seen in the
+		 * film's own 06-dependencies take as a floating `ents`.
+		 */
+		const type = promotion ? 'smoothstep' : 'contractHop';
 		return {
 			id: e.key,
 			source: e.from,

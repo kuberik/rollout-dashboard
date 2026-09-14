@@ -33,12 +33,49 @@
 	 * hooks share the gutter. The fallback here (`sourceX`/`targetX` plus a
 	 * flat margin) only fires before the first measured layout has run.
 	 */
-	import { BaseEdge, type EdgeProps } from '@xyflow/svelte';
+	import { BaseEdge, getSmoothStepPath, Position, type EdgeProps } from '@xyflow/svelte';
 
-	let { sourceX, sourceY, targetX, targetY, label, labelStyle, style, markerEnd, markerStart, data }: EdgeProps =
-		$props();
+	let {
+		sourceX,
+		sourceY,
+		targetX,
+		targetY,
+		sourcePosition,
+		targetPosition,
+		label,
+		labelStyle,
+		style,
+		markerEnd,
+		markerStart,
+		data
+	}: EdgeProps = $props();
 
 	const FALLBACK_GUTTER = 28;
+	/**
+	 * ⭐ THE HOOK IS ONE OF TWO SHAPES THIS COMPONENT DRAWS, AND `gutterX` IS
+	 * THE DISCRIMINATOR. (2026-09-13.)
+	 *
+	 * `GraphCanvasInner` hands `gutterX` to a contract edge only where the
+	 * hook applies — a `singleFile` `TB` column. Everywhere else this edge
+	 * draws the LIBRARY'S OWN `smoothstep`, byte for byte the path the
+	 * default edge type drew before this component took the type over, so
+	 * switching every contract edge onto it (see `DependencyNetwork`'s
+	 * `edgeOf`) changed no line on any canvas.
+	 *
+	 * ⛔ WHY TAKE THE TYPE OVER AT ALL, THEN: THE LABEL. The library places a
+	 * `smoothstep` label at ITS OWN path centre, which is a point on the
+	 * route — and a route that has to LOOP (a `Bottom`→`Top` pair whose
+	 * target sits ABOVE its source, which is every contract edge between two
+	 * services dagre stacked in one column) runs that centre straight
+	 * THROUGH a node. Measured at the film's capture geometry (3840×2160 at
+	 * `html{zoom:2}`, i.e. a 1920px layout, `/rollouts/.../dependencies`):
+	 * the `payments` label landed at x 1140-1201 against a `checkout-api`
+	 * node spanning 922-1174, so 34px of the word sat UNDER the node and the
+	 * frame showed a floating `ents`. The label's position is therefore
+	 * computed from the real node boxes by the one layer that has them (the
+	 * layout effect, as `data.labelX`/`data.labelY`) and only read here.
+	 */
+	const hooked = $derived(typeof (data as { gutterX?: number } | undefined)?.gutterX === 'number');
 	const gutterX = $derived.by(() => {
 		const g = (data as { gutterX?: number } | undefined)?.gutterX;
 		return typeof g === 'number' ? g : Math.max(sourceX, targetX) + FALLBACK_GUTTER;
@@ -50,13 +87,38 @@
 	 * node intersections), not decorative, and a right-angle hook reads fine
 	 * at this size.
 	 */
-	const path = $derived(
+	const hookPath = $derived(
 		`M ${sourceX} ${sourceY} L ${gutterX} ${sourceY} L ${gutterX} ${targetY} L ${targetX} ${targetY}`
 	);
 
-	/** Midpoint of the OUTBOUND segment only — always gutter, never a node. */
-	const labelX = $derived((sourceX + gutterX) / 2);
-	const labelY = $derived(sourceY);
+	const smooth = $derived(
+		getSmoothStepPath({
+			sourceX,
+			sourceY,
+			targetX,
+			targetY,
+			sourcePosition: sourcePosition ?? Position.Bottom,
+			targetPosition: targetPosition ?? Position.Top
+		})
+	);
+
+	const path = $derived(hooked ? hookPath : smooth[0]);
+
+	/**
+	 * Hooked: the midpoint of the OUTBOUND segment only — always gutter,
+	 * never a node. Otherwise the layout's own collision-free point, and the
+	 * library's path centre only until the first measured layout has run.
+	 */
+	const labelX = $derived.by(() => {
+		if (hooked) return (sourceX + gutterX) / 2;
+		const x = (data as { labelX?: number } | undefined)?.labelX;
+		return typeof x === 'number' ? x : smooth[1];
+	});
+	const labelY = $derived.by(() => {
+		if (hooked) return sourceY;
+		const y = (data as { labelY?: number } | undefined)?.labelY;
+		return typeof y === 'number' ? y : smooth[2];
+	});
 </script>
 
 <BaseEdge {path} {labelX} {labelY} {label} {labelStyle} {markerStart} {markerEnd} {style} />
