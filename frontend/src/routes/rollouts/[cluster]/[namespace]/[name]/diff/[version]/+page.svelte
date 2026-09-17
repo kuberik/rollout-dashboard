@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { Button } from 'flowbite-svelte';
 	import { ChevronLeftOutline } from 'flowbite-svelte-icons';
+	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import type { Rollout } from '../../../../../../../types';
 	import { theme } from '$lib/stores/theme';
 	import { createPatch } from 'diff';
@@ -127,6 +128,28 @@
 			: `Diff v${version}`}</title
 	>
 	{#if currentTheme === 'dark'}
+		<!--
+			⚠️ SIX OF THE TEN CUSTOM PROPERTIES IN THESE TWO BLOCKS ARE DEAD, AND
+			THAT IS WORTH KNOWING BEFORE ANYONE "FIXES" A COLOUR HERE.
+			(2026-09-11) `diff2html`'s own stylesheet names its tokens
+			`--d2h-dark-del-bg-color`, `--d2h-change-del-color`,
+			`--d2h-del-highlight-bg-color` … — it has no `--d2h-del-color`,
+			`--d2h-ins-color`, `--d2h-code-line-color`, `--d2h-code-side-line-bg-color`,
+			`--d2h-code-line-bg-color` or `--d2h-file-header-color` at all. Grepped
+			against `diff2html/bundles/css/diff2html.min.css`, and confirmed on the
+			rendered page: no loaded rule references either of the two ink vars, and
+			the diff draws in `diff2html`'s OWN dark palette because `renderDiff`
+			already passes `colorScheme: ColorSchemeType.DARK`.
+			Measured on the running page in dark theme: line text `rgb(230,237,243)`
+			on `rgb(16,24,40)` — legible, nothing to fix.
+
+			Left in place rather than deleted: the four REAL names here
+			(`--d2h-bg-color`, `--d2h-file-header-bg-color`, `--d2h-del-bg-color`,
+			`--d2h-ins-bg-color`) may still be doing something on some code path,
+			and proving that either way is its own pass. Do not compute a contrast
+			ratio from these values and call it a defect — they are not what the
+			page paints.
+		-->
 		<style>
 			:root {
 				--d2h-bg-color: rgb(17 24 39);
@@ -171,8 +194,13 @@
 	</div>
 
 	{#if loading}
+		<!-- ⛔ WAS `border-b-2 border-gray-900` — A GRAY-900 ARC ON THIS PAGE'S
+		     OWN `dark:bg-gray-900`, i.e. 1.00:1 and completely invisible in dark
+		     theme, so a slow diff fetch showed nothing at all. `StatusSpinner`
+		     is the product's own spinner and its every colour is a light/dark
+		     PAIR (see that file's contrast note). -->
 		<div class="flex items-center justify-center p-8">
-			<div class="h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
+			<StatusSpinner size="8" color="gray" />
 		</div>
 	{:else if error}
 		<div class="p-4 text-red-600 dark:text-red-400">{error}</div>

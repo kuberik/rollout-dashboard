@@ -201,7 +201,10 @@
 	function nodeTitle(n: GraphNode): string {
 		if (n.unresolved) return `${n.name} — no Rollout of this name is visible to this dashboard`;
 		const lines = [nodeLabel(n)];
-		if (n.build) lines.push(`running ${n.build}`);
+		// The TOOLTIP gets the whole identifier; the node's own text is the short
+		// form (see `displayBuild`). `buildFull` falls back to `build` so a node
+		// built by an older path still says something.
+		if (n.build) lines.push(`running ${n.buildFull ?? n.build}`);
 		if (n.candidateCount > 0)
 			lines.push(`${n.candidateCount} newer build${n.candidateCount === 1 ? '' : 's'} available`);
 		for (const e of inbound.get(n.id) ?? []) lines.push(edgeSentence(e, nodeById));

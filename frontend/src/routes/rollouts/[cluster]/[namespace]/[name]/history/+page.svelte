@@ -766,7 +766,15 @@
 						<span class="font-semibold tabular-nums text-gray-900 dark:text-white">{totalDeploys}</span>
 						{totalDeploys === 1 ? 'deploy' : 'deploys'}
 						{#if atLimit}
-							<span class="text-gray-400 dark:text-gray-500">(retention limit)</span>
+							<!-- ⛔ `text-gray-400 dark:text-gray-500` IS THE PAIR INVERTED, AND
+								     IT FAILS IN BOTH THEMES. (2026-09-10) Measured on this
+								     page: **2.60:1** in light (gray-400 on white) and
+								     **3.67:1** in dark (gray-500 on gray-900), against the
+								     4.5:1 floor for text. The product spells muted text
+								     `text-gray-500 dark:text-gray-400` in 398 places and this
+								     inversion in 12; the two TEXT users of the inversion are
+								     here. -->
+								<span class="text-gray-500 dark:text-gray-400">(retention limit)</span>
 						{/if}
 					</span>
 					{#if pinnedDisplay}
@@ -805,7 +813,8 @@
 						<span class="font-semibold tabular-nums text-green-700 dark:text-green-400">{succeeded}</span>
 						healthy
 						{#if rollbacks > 0}
-							<span class="text-gray-400 dark:text-gray-500"
+							<!-- Same inverted pair as `(retention limit)` above — see that note. -->
+							<span class="text-gray-500 dark:text-gray-400"
 								>({rollbacks} rolled back)</span
 							>
 						{/if}

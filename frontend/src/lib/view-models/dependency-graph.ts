@@ -83,6 +83,7 @@
 import type { Rollout, Environment, RolloutDependency } from '../../types';
 import { SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 import { displayVersionForTag } from '../version-utils';
+import { shortenVersion } from '../utils';
 import { promotionBlock } from './promotion';
 import {
 	blockingStory,
@@ -147,6 +148,13 @@ export type GraphNode = {
 	unresolved: boolean;
 	/** The build it is running now, in the product's display form. */
 	build: string | null;
+	/**
+	 * The same build UNSHORTENED, for the node's tooltip only. `build` is what
+	 * the node DRAWS and it is deliberately short (see `displayBuild`); the
+	 * tooltip is where the whole identifier stays reachable, the same division
+	 * `Chip`'s `value` / `valueTitle` pair already makes everywhere else.
+	 */
+	buildFull: string | null;
 	/** Newer builds it could take. */
 	candidateCount: number;
 	/** Held at all — including by a clock that reopens on its own. */
@@ -248,10 +256,28 @@ export function namespacesByCluster(rollouts: Rollout[]): Map<string, Set<string
 	return map;
 }
 
-function displayBuild(r: Rollout | undefined): string | null {
+/**
+ * ⛔ SHORTENED, LIKE EVERY OTHER SURFACE THAT PRINTS A BUILD. (2026-09-10)
+ * This returned the raw value, and for a rollout whose build IS a 40-char
+ * revision (`admin-ai`, `admin-api`, `calm`, `api` on this fleet) the node's
+ * `truncate` box then clipped it to nine characters: measured on
+ * `/dependencies` at 1440, four nodes all read `78944e76d7a3cdc…`, i.e. the
+ * identifier that distinguishes them was the part that got cut. `/`,
+ * `/rollouts`, `/activity`, `/namespaces/<name>` and the activity rail all
+ * pass their build through `shortenVersion` for exactly this reason; the
+ * graph was the surface that did not. The full string stays on the node's
+ * own `title`.
+ */
+function rawBuild(r: Rollout | undefined): string | null {
 	const v = r?.status?.history?.[0]?.version;
 	if (!v) return null;
 	return v.version || v.revision || v.tag || null;
+}
+
+function displayBuild(r: Rollout | undefined): string | null {
+	const v = r?.status?.history?.[0]?.version;
+	if (!v) return null;
+	return shortenVersion(v.version || v.revision || v.tag || null) || null;
 }
 
 /** The one value a set agrees on, or null when it does not agree (or is empty). */
@@ -389,6 +415,7 @@ export function buildRolloutGraph(args: {
 				envRank: 0,
 				unresolved: !r,
 				build: displayBuild(r),
+				buildFull: rawBuild(r),
 				candidateCount: 0,
 				waiting: false,
 				blocked: false,

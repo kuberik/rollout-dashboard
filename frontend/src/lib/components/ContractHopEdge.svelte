@@ -54,9 +54,37 @@
 		`M ${sourceX} ${sourceY} L ${gutterX} ${sourceY} L ${gutterX} ${targetY} L ${targetX} ${targetY}`
 	);
 
+	/**
+	 * ⛔ TWO HOPS LEAVING ONE NODE PRINTED THEIR LABELS ON TOP OF EACH OTHER.
+	 * (2026-09-10) `labelY` was `sourceY` for every edge and `labelX` is the
+	 * midpoint of the outbound segment, so the ONLY thing separating two
+	 * labels that share a source was the caller's lane stagger — and that
+	 * stagger is `LANE_GAP` (20px) on `gutterX`, which a MIDPOINT halves to
+	 * 10px. Against a label like `opencode-manager` (~120px at 11/400) 10px
+	 * is nothing: measured on the rollout Dependencies tab at 390 and 768,
+	 * two `opencode-manager` labels overlapped by 90% and rendered as one
+	 * illegible smear.
+	 *
+	 * The gutter has vertical room and nothing else in it, so the labels
+	 * separate along Y — one label row per lane. Lane 0 is byte-identical to
+	 * before, so the ordinary single-hop graph does not move; only the
+	 * additional hops that were colliding step down. `LABEL_ROW` is the 11px
+	 * label's own line box plus a hair, so two rows read as two rows.
+	 *
+	 * ⚠️ NOT a bigger `LANE_GAP`: that gap sizes the vertical CHANNELS, where
+	 * 20px is already right for a 2px stroke. Widening it to clear a label
+	 * would push the whole gutter out and shrink the drawing for a reason
+	 * that has nothing to do with the paths.
+	 */
+	const LABEL_ROW = 15;
+	const lane = $derived.by(() => {
+		const l = (data as { lane?: number } | undefined)?.lane;
+		return typeof l === 'number' && l > 0 ? l : 0;
+	});
+
 	/** Midpoint of the OUTBOUND segment only — always gutter, never a node. */
 	const labelX = $derived((sourceX + gutterX) / 2);
-	const labelY = $derived(sourceY);
+	const labelY = $derived(sourceY + lane * LABEL_ROW);
 </script>
 
 <BaseEdge {path} {labelX} {labelY} {label} {labelStyle} {markerStart} {markerEnd} {style} />

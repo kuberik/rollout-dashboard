@@ -69,6 +69,13 @@
 	import { groupRolloutsByApp, changePathForRollout } from '$lib/version-utils';
 	import type { AppGroup, AppCell } from '$lib/version-utils';
 	import { rankVerdicts, rankRole, rankBehindBy, rankIsAdverse } from '$lib/view-models/env-rank';
+	// ⛔ THE CHIPS BELOW PRINTED THE RAW BUILD AND THE 12ch VALUE HALF ATE IT.
+	// (2026-09-10) Measured on `/envs/prod` at 1440: `78944e76d7a…`,
+	// `9a2724a27…`, `8988194c124…` — the full 40-char revision clipped to nine
+	// characters, so two rollouts on DIFFERENT builds rendered the same string
+	// (191–302px of each identifier was hidden). `/`, `/rollouts`, `/activity`
+	// and `/namespaces/<name>` all shorten first; this page did not.
+	import { shortenVersion } from '$lib/utils';
 	import type { RankVerdict } from '$lib/view-models/env-rank';
 	import {
 		newestDeployableCandidate,
@@ -1668,7 +1675,8 @@
 												role="diverged"
 												label="unreleased"
 												title="Running a version that is on no environment’s release list"
-												value={row.version}
+												value={shortenVersion(row.version)}
+												valueTitle={row.version ?? undefined}
 												valueHref={row.versionHref}
 												wide
 												class="min-w-0"
@@ -1680,7 +1688,8 @@
 												title="{row.appName} here can still take {rankBehindBy(
 													row.rank
 												)} newer version{rankBehindBy(row.rank) === 1 ? '' : 's'}"
-												value={row.version}
+												value={shortenVersion(row.version)}
+												valueTitle={row.version ?? undefined}
 												valueHref={row.versionHref}
 												wide
 												class="min-w-0"
@@ -1697,7 +1706,8 @@
 												role="unranked"
 												label="unknown"
 												title="{row.appName} here is running {row.version}, which cannot be placed on this app’s build ladder"
-												value={row.version}
+												value={shortenVersion(row.version)}
+												valueTitle={row.version ?? undefined}
 												valueHref={row.versionHref}
 												wide
 												class="min-w-0"
@@ -1707,7 +1717,8 @@
 												role="head"
 												label="newest"
 												title="{row.version} — the newest version this app has"
-												value={row.version}
+												value={shortenVersion(row.version)}
+												valueTitle={row.version ?? undefined}
 												valueHref={row.versionHref}
 												class="min-w-0"
 											/>

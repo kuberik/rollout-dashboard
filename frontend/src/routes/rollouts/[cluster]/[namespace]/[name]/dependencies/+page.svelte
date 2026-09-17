@@ -131,6 +131,7 @@
 	 * adverse case — `blockedReleases` a person actually wants — is the only
 	 * thing that spends colour.
 	 */
+	import { shortenVersion } from '$lib/utils';
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
@@ -1400,11 +1401,22 @@
 												     operand, so the sentence is what is LEFT of it,
 												     in the same `From <tag>` form the mirror card
 												     one column over already prints. -->
-												From <span class="t-code-sm">{b.providedTag}</span>
+												<!-- ⛔ SHORT FORM. A release tag here is
+												     `main-<epoch>-<40 hex>`; printed raw it was 56
+												     characters of an 11px prose line (measured on
+												     this tab at 1440, it wrapped and dominated the
+												     row). `shortenVersion` is the product's own
+												     `prefix + 7` rule; the whole tag stays on the
+												     title. -->
+												From <span class="t-code-sm" title={b.providedTag ?? undefined}
+													>{shortenVersion(b.providedTag)}</span
+												>
 											{:else if b.providedTag}
 												Now on {b.contract}
 												<span class="t-code-sm">{b.providedVersion}</span>, from
-												<span class="t-code-sm">{b.providedTag}</span>
+												<span class="t-code-sm" title={b.providedTag ?? undefined}
+													>{shortenVersion(b.providedTag)}</span
+												>
 											{:else if !b.providedVersion}
 												<!-- NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent
 												     `providedVersion` says the gate has not read one;
@@ -1624,7 +1636,9 @@
 												     own below. -->
 												The rules have read different versions from this rollout.
 											{:else if c.providedTag}
-												From <span class="t-code-sm">{c.providedTag}</span> ·
+												From <span class="t-code-sm" title={c.providedTag ?? undefined}
+													>{shortenVersion(c.providedTag)}</span
+												> ·
 											{:else if !c.providedVersion}
 												<!-- NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent
 												     `providedVersion` says the gate has read none; it
