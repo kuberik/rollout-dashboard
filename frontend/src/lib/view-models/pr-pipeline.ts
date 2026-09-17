@@ -656,6 +656,60 @@ function buildCell(
 		const bakeStatus = head?.bakeStatus ?? 'None';
 		const releaseLabel = getDisplayVersion(head!.version);
 
+		/**
+		 * ⛔ AN IN-FLIGHT HEAD DOES NOT UNDO A LANDING THAT ALREADY HAPPENED.
+		 * (2026-09-17, reported: *"it shows that all my PRs reached prod, but
+		 * not dev"*.)
+		 *
+		 * The three in-flight branches below used to return
+		 * `deploying`/`baking`/`retrying` on the sole evidence of `history[0]`,
+		 * and EVERY "did it land" count in the product reads `state === 'live'`
+		 * (`rolloutsLive`, `landingGrid`'s `landedCount`, the head band's
+		 * `deployed to N of M rollouts`). So a place where this change had
+		 * ALREADY gone live, and which is now rolling a LATER build that also
+		 * carries it, was counted as not having the change at all.
+		 *
+		 * That reads as an inversion of the pipeline, because it lands on
+		 * whichever environment deploys most — dev. Measured on the live fleet
+		 * (change #8761, `caffeinelabs/app`): `caffeine-ai` in dev had
+		 * `0.0.1-7784.e6b4c09` SUCCEEDED 7m earlier carrying the change and was
+		 * mid-deploy of `0.0.1-7786.7499a4b`, which carries it too — printed
+		 * `deploying`, excluded from `1 of 2 live` — while prod, settled on an
+		 * OLDER build, printed `live`. Same change, and the environment that
+		 * got it FIRST was the one the page said had not got it.
+		 *
+		 * `historyMatches` (computed above, newest-first, every entry this
+		 * change is in) already holds the answer: index 0 is this in-flight
+		 * head, so anything after it is an EARLIER deploy of the same change.
+		 * If one of those succeeded, the change is live here right now — what
+		 * is in flight is a newer build that also carries it, which is exactly
+		 * the `superseded` fact prod's own cell already states.
+		 *
+		 * ⚠️ NARROW ON PURPOSE. A head deploying the FIRST build to carry the
+		 * change has no earlier succeeded match, so it stays `deploying` — the
+		 * change really is arriving only now, and that is the state a reader
+		 * wants. Only a RE-deploy over an existing landing is re-read as live.
+		 */
+		const earlierLanded = historyMatches
+			.slice(1)
+			.find((m) => m.bakeStatus === 'Succeeded');
+		if (earlierLanded && (bakeStatus === 'Deploying' || bakeStatus === 'InProgress' || bakeStatus === 'BakeTimeRetrying')) {
+			return cell({
+				...NOTHING,
+				state: 'live',
+				// The landing is the fact; the roll happening over it is the
+				// qualifier, in the same voice as the `superseded` clause.
+				reason: 'live · a newer build carrying it is deploying',
+				// WHEN IT WENT LIVE, not when the current roll started — the
+				// same distinction Rule 1's own `since before recorded history`
+				// branch draws below.
+				since: earlierLanded.timestamp,
+				superseded: true,
+				releaseLabel,
+				revision: headRevision
+			});
+		}
+
 		if (bakeStatus === 'Deploying') {
 			return cell({
 				...NOTHING,

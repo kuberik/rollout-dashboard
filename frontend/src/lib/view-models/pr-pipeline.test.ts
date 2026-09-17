@@ -606,6 +606,74 @@ describe('buildPrPipeline', () => {
 		expect(vm.noRelease).toBe(true);
 	});
 
+	/**
+	 * ⛔ REGRESSION, 2026-09-17 — reported as *"it shows that all my PRs
+	 * reached prod, but not dev"*. Reproduces change #8761 on the live fleet:
+	 * dev landed the change (7784, Succeeded) and is now rolling 7786, which
+	 * carries it too; prod sits on an older build that also carries it. Before
+	 * the fix dev printed `deploying` and was excluded from every "live" count,
+	 * so the environment that got the change FIRST read as the one without it.
+	 */
+	it('a re-deploy over an existing landing stays live, and still counts as landed', () => {
+		const dev = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [
+				// Rolling a LATER build that also carries the change.
+				{ revision: 'later-2', timestamp: '2026-09-10T11:59:00Z', bakeStatus: 'Deploying' },
+				// …over one that already landed it.
+				{ revision: 'c0ffee1', timestamp: '2026-09-10T11:50:00Z', bakeStatus: 'Succeeded' }
+			]
+		});
+		const prod = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-10T11:40:00Z', bakeStatus: 'Succeeded' }]
+		});
+		const vm = buildPrPipeline(
+			meta({ containedIn: ['c0ffee1', 'later-2'] }),
+			[dev, prod],
+			[
+				mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' }),
+				mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' })
+			],
+			{ items: [] },
+			NOW
+		);
+		const cells = vm.services[0].cells;
+		const devCell = cells.find((c) => c.envName === 'dev')!;
+		const prodCell = cells.find((c) => c.envName === 'prod')!;
+
+		expect(devCell.state).toBe('live');
+		// The landing time, not the moment the current roll started.
+		expect(devCell.since).toBe('2026-09-10T11:50:00Z');
+		expect(devCell.superseded).toBe(true);
+		expect(prodCell.state).toBe('live');
+		// Both places have it — the count a reader actually reads.
+		expect(vm.rolloutsLive).toBe(2);
+	});
+
+	it('the FIRST build carrying the change is still deploying, not live', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [
+				{ revision: 'c0ffee1', timestamp: '2026-09-10T11:59:00Z', bakeStatus: 'Deploying' },
+				// An earlier deploy that does NOT carry the change.
+				{ revision: 'before-1', timestamp: '2026-09-10T11:50:00Z', bakeStatus: 'Succeeded' }
+			]
+		});
+		const vm = buildPrPipeline(
+			meta(),
+			[rollout],
+			[mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' })],
+			{ items: [] },
+			NOW
+		);
+		expect(vm.services[0].cells[0].state).toBe('deploying');
+		expect(vm.rolloutsLive).toBe(0);
+	});
+
 	it('deploying: bakeLeftMs counts down against deployTimeout', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',

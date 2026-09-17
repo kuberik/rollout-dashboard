@@ -848,6 +848,7 @@ lib/view-models/pr-pipeline.ts	code	baking, no timer
 lib/view-models/pr-pipeline.ts	code	deploying now
 lib/view-models/pr-pipeline.ts	code	held in …
 lib/view-models/pr-pipeline.ts	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
+lib/view-models/pr-pipeline.ts	code	live · a newer build carrying it is deploying
 lib/view-models/pr-pipeline.ts	code	live (since before recorded history)
 lib/view-models/pr-pipeline.ts	code	live everywhere
 lib/view-models/pr-pipeline.ts	code	manifest unreadable
