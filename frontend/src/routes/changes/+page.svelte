@@ -685,8 +685,22 @@
 							{#if repoList.length === 0}
 								<p class="t-body text-gray-500 dark:text-gray-400">No repository matches.</p>
 							{:else}
+								<!--
+									⛔ `items-start` LEFT THE ROW RAGGED. (2026-09-18, from the
+									human: *"I think the cards should be the same height"*.) These
+									cards hold between one and five rows each, so under
+									`items-start` every card in a row ended at its own content's
+									height — measured on the live fleet at 1920, one row of four
+									finished at four different baselines, and the `All changes in
+									<repo> ›` link — the one control every card has — sat at a
+									different height in each. `stretch` is the grid default; the
+									card is already `flex flex-col` with a `grow` body, so it fills
+									the track without anything else changing, and the list inside
+									grows too (see the note on the footer below) so the links line
+									up across the row instead of floating under short lists.
+								-->
 								<div
-									class="grid [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))] items-start gap-4"
+									class="grid [grid-template-columns:repeat(auto-fill,minmax(min(24rem,100%),1fr))] gap-4"
 								>
 									{#each repoList as repo (repo.repoKey)}
 										{@const notEverywhere = recentByRepoMap.get(repo.repoKey) ?? []}
@@ -697,8 +711,11 @@
 											titleHref={repoHref(repo.repoKey)}
 											verdict={repoRollupText(repo.repoKey)}
 											padded={false}
+											class="h-full"
 										>
-											<div class="divide-y divide-gray-100 dark:divide-gray-700/60">
+											<div
+												class="flex h-full flex-col divide-y divide-gray-100 dark:divide-gray-700/60"
+											>
 												<!-- ⛔ FIX PASS ITEM 12, 2026-09-11 — "Typical to prod" is dropped
 												     from this card. The rail's `How your changes are going`
 												     (`HowChangesAreGoing`) already prints that exact label; this
@@ -715,13 +732,13 @@
 												     cards. When every one of this repo's changes is live, the
 												     card says so in one line instead of repeating any row. -->
 												{#if notEverywhere.length > 0}
-													<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+													<ul class="grow divide-y divide-gray-100 dark:divide-gray-700/60">
 														{#each notEverywhere as row (row.href)}
 															<ChangeLine {row} now={$now} />
 														{/each}
 													</ul>
 												{:else if prog.changes > 0}
-													<div class="flex items-center gap-2 px-4 py-2.5">
+													<div class="flex grow items-center gap-2 px-4 py-2.5">
 														<CheckCircleSolid
 															class="tone-live h-4 w-4 shrink-0"
 															aria-hidden="true"
@@ -731,6 +748,15 @@
 														>
 													</div>
 												{/if}
+												<!-- ⚠️ THE BODY GROWS; THE FOOTER IS NOT PUSHED WITH `mt-auto`.
+												     Tailwind v4's `divide-y` draws border-BOTTOM on
+												     `:not(:last-child)`, so the rule between the list and this
+												     link belongs to the LIST, not to this div. Pushing the footer
+												     down with `mt-auto` therefore left the rule stranded under the
+												     last row with the new slack opening BELOW it — a hairline
+												     floating in empty space. Growing the body instead carries the
+												     rule down with it, so it still sits directly on top of this
+												     link. Measured both ways against the real stylesheet. -->
 												<div class="px-4 py-2.5">
 													<a href={repoHref(repo.repoKey)} class="nav-link"
 														>All changes in {repo.label} ›</a
