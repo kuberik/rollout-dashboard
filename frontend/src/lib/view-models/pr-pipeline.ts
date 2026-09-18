@@ -141,6 +141,16 @@ export type PrCell = {
 	 * because of the exact commit that shipped it.
 	 */
 	superseded: boolean;
+	/**
+	 * On a `superseded` live cell, WHAT THE LATER BUILD IS DOING —
+	 * the head's own `bakeStatus`, so the muted note can say what actually
+	 * happened instead of assuming it went well.
+	 *
+	 * `null` when we know a later build shipped and nothing more (Rule 1's
+	 * tail infers supersession from `mergeCommitSha` alone, where the head
+	 * HAS succeeded), and on every non-superseded cell.
+	 */
+	supersededHeadStatus: string | null;
 	/** See `PrGateHint`. `null` when this cell's state names no gate. */
 	gateHint: PrGateHint | null;
 	/**
@@ -541,6 +551,7 @@ const NOTHING: Pick<
 	| 'since'
 	| 'bakeLeftMs'
 	| 'superseded'
+	| 'supersededHeadStatus'
 	| 'gateHint'
 	| 'gateLabel'
 	| 'gateSubject'
@@ -555,6 +566,7 @@ const NOTHING: Pick<
 	since: null,
 	bakeLeftMs: null,
 	superseded: false,
+	supersededHeadStatus: null,
 	gateHint: null,
 	gateLabel: null,
 	gateSubject: null,
@@ -693,18 +705,60 @@ function buildCell(
 		const earlierLanded = historyMatches
 			.slice(1)
 			.find((m) => m.bakeStatus === 'Succeeded');
-		if (earlierLanded && (bakeStatus === 'Deploying' || bakeStatus === 'InProgress' || bakeStatus === 'BakeTimeRetrying')) {
+		/**
+		 * ⛔ AND A HEAD THAT *FAILED* UNDOES IT LEAST OF ALL. (2026-09-18,
+		 * reported from `/changes`: *"these PRs did not fail — I think it's
+		 * because a descendant version just failed on ux"*. Six merged PRs,
+		 * long live in prod, every one of them reading `failed in prd`, all
+		 * `in this state for 17s` — the tell that one head build's failure was
+		 * being reported as six separate PRs failing.)
+		 *
+		 * The guard above shipped covering only the three IN-FLIGHT statuses,
+		 * which left `Failed` and `Cancelled` falling through to branches that
+		 * describe the HEAD BUILD as though it described the CHANGE. It does
+		 * not. When an earlier build carrying this change succeeded here, the
+		 * change is in this environment, and a later build failing its bake
+		 * cannot take it back out:
+		 *
+		 *   - the failed build carries the change too, so if it is still up,
+		 *     the change is up;
+		 *   - and if the rollout fell back, it fell back to a build that also
+		 *     carries the change — that is what `earlierLanded` IS.
+		 *
+		 * Either way the change is present. What failed is a LATER build's
+		 * health, which is a fact about that build, and one every other
+		 * surface in the product already shows loudly (`/`, `/rollouts`, the
+		 * rollout detail page). `/changes` answers "did MY change reach prod",
+		 * and for these six the answer was yes the whole time.
+		 *
+		 * ⚠️ STILL NARROW. With no earlier succeeded match the change's FIRST
+		 * arrival is the one that failed, `earlierLanded` is undefined, and the
+		 * cell stays `failed` — which is exactly right, and is the case the
+		 * reader must not lose.
+		 */
+		if (
+			earlierLanded &&
+			(bakeStatus === 'Deploying' ||
+				bakeStatus === 'InProgress' ||
+				bakeStatus === 'BakeTimeRetrying' ||
+				bakeStatus === 'Failed' ||
+				bakeStatus === 'Cancelled')
+		) {
 			return cell({
 				...NOTHING,
 				state: 'live',
-				// The landing is the fact; the roll happening over it is the
-				// qualifier, in the same voice as the `superseded` clause.
-				reason: 'live · a newer build carrying it is deploying',
+				// The landing is the fact; whatever the later build is doing is
+				// the qualifier, in the same voice as the `superseded` clause.
+				reason: 'live · a newer build carrying it is not the one serving',
 				// WHEN IT WENT LIVE, not when the current roll started — the
 				// same distinction Rule 1's own `since before recorded history`
 				// branch draws below.
 				since: earlierLanded.timestamp,
 				superseded: true,
+				// ⭐ So the muted note can name what the later build DID.
+				// Without this the cell would print "has since shipped" over a
+				// build that failed, trading one false statement for another.
+				supersededHeadStatus: bakeStatus,
 				releaseLabel,
 				revision: headRevision
 			});

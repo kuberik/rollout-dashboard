@@ -45,6 +45,7 @@ function mkCell(state: PrCell['state'], overrides: Partial<PrCell> = {}): PrCell
 		releaseLabel: '',
 		revision: null,
 		superseded: false,
+		supersededHeadStatus: null,
 		gateHint: null,
 		gateLabel: null,
 		gateSubject: null,

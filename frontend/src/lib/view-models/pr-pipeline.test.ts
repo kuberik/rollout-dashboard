@@ -653,6 +653,106 @@ describe('buildPrPipeline', () => {
 		expect(vm.rolloutsLive).toBe(2);
 	});
 
+	/**
+	 * ⛔ REGRESSION, 2026-09-18 — reported from `/changes`: *"these PRs did not
+	 * fail — I think it's because a descendant version just failed on ux"*.
+	 * Six merged PRs, long live in prod, every one reading `failed in prd` and
+	 * all of them `in this state for 17s`, which is the tell: ONE head build's
+	 * failure printed as six separate PRs failing.
+	 *
+	 * The 2026-09-17 fix above covered only the three in-flight statuses, so
+	 * `Failed` fell through to a branch that describes the HEAD BUILD as though
+	 * it described the CHANGE.
+	 */
+	it('a LATER build failing does not un-land a change that already went live', () => {
+		const prod = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [
+				// The descendant build. It carries the change too, and its bake failed.
+				{
+					revision: 'later-2',
+					timestamp: '2026-09-10T11:59:00Z',
+					bakeStatus: 'Failed',
+					bakeStatusMessage: 'HighErrorRate firing'
+				},
+				// …over a build that already landed the change here.
+				{ revision: 'c0ffee1', timestamp: '2026-09-10T11:50:00Z', bakeStatus: 'Succeeded' }
+			]
+		});
+		const vm = buildPrPipeline(
+			meta({ containedIn: ['c0ffee1', 'later-2'] }),
+			[prod],
+			[mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' })],
+			{ items: [] },
+			NOW
+		);
+		const cell = vm.services[0].cells.find((c) => c.envName === 'prod')!;
+
+		expect(cell.state).toBe('live');
+		// The landing, not the failed roll on top of it.
+		expect(cell.since).toBe('2026-09-10T11:50:00Z');
+		expect(cell.superseded).toBe(true);
+		// ⭐ So the muted note says the later build FAILED rather than claiming
+		// it "has since shipped".
+		expect(cell.supersededHeadStatus).toBe('Failed');
+		expect(vm.rolloutsLive).toBe(1);
+	});
+
+	it('a LATER build being cancelled does not un-land it either', () => {
+		const prod = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [
+				{ revision: 'later-2', timestamp: '2026-09-10T11:59:00Z', bakeStatus: 'Cancelled' },
+				{ revision: 'c0ffee1', timestamp: '2026-09-10T11:50:00Z', bakeStatus: 'Succeeded' }
+			]
+		});
+		const vm = buildPrPipeline(
+			meta({ containedIn: ['c0ffee1', 'later-2'] }),
+			[prod],
+			[mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' })],
+			{ items: [] },
+			NOW
+		);
+		const cell = vm.services[0].cells.find((c) => c.envName === 'prod')!;
+		expect(cell.state).toBe('live');
+		expect(cell.supersededHeadStatus).toBe('Cancelled');
+		expect(vm.rolloutsLive).toBe(1);
+	});
+
+	/**
+	 * ⚠️ THE OTHER HALF, AND THE ONE THAT MUST NOT BREAK. When the change's
+	 * FIRST arrival is the build that failed, there is no earlier landing and
+	 * the cell stays `failed`. That is a real failure of this change and the
+	 * reader has to see it.
+	 */
+	it('a FIRST build that fails is still a failure, not a landing', () => {
+		const prod = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [
+				{
+					revision: 'c0ffee1',
+					timestamp: '2026-09-10T11:59:00Z',
+					bakeStatus: 'Failed',
+					bakeStatusMessage: 'HighErrorRate firing'
+				}
+			]
+		});
+		const vm = buildPrPipeline(
+			meta({ containedIn: ['c0ffee1'] }),
+			[prod],
+			[mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' })],
+			{ items: [] },
+			NOW
+		);
+		const cell = vm.services[0].cells.find((c) => c.envName === 'prod')!;
+		expect(cell.state).toBe('failed');
+		expect(cell.reason).toBe('HighErrorRate firing');
+		expect(vm.rolloutsLive).toBe(0);
+	});
+
 	it('the FIRST build carrying the change is still deploying, not live', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
@@ -1005,6 +1105,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 			releaseLabel: 'build-42',
 			revision: 'c0ffee1',
 			superseded: false,
+			supersededHeadStatus: null,
 			gateHint: { cluster: '', namespace: 'widget-dev', rolloutName: 'widget-app', gateName: 'peak-hours' },
 			gateLabel: 'Peak Hours Protection',
 			gateSubject: null,

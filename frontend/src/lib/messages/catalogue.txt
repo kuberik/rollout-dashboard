@@ -592,7 +592,10 @@ lib/palette-index.ts	code	Look up … in …
 lib/palette-index.ts	code	Open change … · …
 lib/pr-cell-copy.ts	code	… · … of … min
 lib/pr-cell-copy.ts	code	… of … checks failing
+lib/pr-cell-copy.ts	code	a later build that also carries this change failed its bake
+lib/pr-cell-copy.ts	code	a later build that also carries this change had its bake cancelled
 lib/pr-cell-copy.ts	code	a later build that also carries this change has since shipped
+lib/pr-cell-copy.ts	code	a later build that also carries this change is deploying now
 lib/pr-cell-copy.ts	code	checks passing
 lib/pr-cell-copy.ts	code	checks pending
 lib/pr-cell-copy.ts	code	deploying now
@@ -848,7 +851,7 @@ lib/view-models/pr-pipeline.ts	code	baking, no timer
 lib/view-models/pr-pipeline.ts	code	deploying now
 lib/view-models/pr-pipeline.ts	code	held in …
 lib/view-models/pr-pipeline.ts	code	History keeps the last … deploys per service; a build deployed earlier is not recorded.
-lib/view-models/pr-pipeline.ts	code	live · a newer build carrying it is deploying
+lib/view-models/pr-pipeline.ts	code	live · a newer build carrying it is not the one serving
 lib/view-models/pr-pipeline.ts	code	live (since before recorded history)
 lib/view-models/pr-pipeline.ts	code	live everywhere
 lib/view-models/pr-pipeline.ts	code	manifest unreadable
