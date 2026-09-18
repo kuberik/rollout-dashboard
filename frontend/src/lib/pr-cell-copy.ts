@@ -190,7 +190,27 @@ export function cellStateSentence(
 export function cellReasonText(cell: PrCell, now: Date = new Date()): string | null {
 	if (cell.state === 'baking') return null;
 	if (cell.state === 'live') {
-		return cell.superseded ? 'a later build that also carries this change has since shipped' : null;
+		if (!cell.superseded) return null;
+		// ⛔ "SHIPPED" IS A CLAIM ABOUT THE LATER BUILD, AND IT IS NOT ALWAYS
+		// TRUE. (2026-09-18.) A live cell is superseded whenever a LATER build
+		// also carries the change — which now includes the case where that
+		// later build FAILED its bake. Printing "has since shipped" there
+		// would replace the old false statement ("this PR failed") with a
+		// quieter one. `supersededHeadStatus` is the head's own bakeStatus;
+		// `null` is the original case, where supersession was inferred from
+		// `mergeCommitSha` and the head really had succeeded.
+		switch (cell.supersededHeadStatus) {
+			case 'Failed':
+				return 'a later build that also carries this change failed its bake';
+			case 'Cancelled':
+				return 'a later build that also carries this change had its bake cancelled';
+			case 'Deploying':
+			case 'InProgress':
+			case 'BakeTimeRetrying':
+				return 'a later build that also carries this change is deploying now';
+			default:
+				return 'a later build that also carries this change has since shipped';
+		}
 	}
 	if (!cell.reason) return null;
 	if (REDUNDANT_REASON.has(cell.reason)) return null;

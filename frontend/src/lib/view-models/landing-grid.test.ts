@@ -34,6 +34,7 @@ function mkCell(overrides: Partial<PrCell> & { envName: string; state: PrState }
 		releaseLabel: 'v1.0.0',
 		revision: 'abc1234',
 		superseded: false,
+		supersededHeadStatus: null,
 		gateHint: null,
 		gateLabel: null,
 		gateSubject: null,
