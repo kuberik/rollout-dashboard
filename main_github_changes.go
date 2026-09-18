@@ -34,6 +34,18 @@ const (
 	// reasoning: a repo's default branch changes rarely enough that paying
 	// for repos/{o}/{r} on every poll tick would be wasted budget.
 	changesDefaultBranchCacheTTL = 10 * time.Minute
+	// changesRepoWorkers bounds the per-repo fan-out below. The repos are
+	// independent of one another, so walking them one at a time made the
+	// whole response as slow as the SUM of every repo's own round trips:
+	// this cluster has 9 visible repositories and the budget above is up to
+	// 6 core-API calls each, i.e. up to 54 GitHub round trips in series —
+	// measured on the live dashboard as ~10s to load the Changes page.
+	//
+	// 5 matches pullsMineDetailWorkers, the sibling endpoint's own pool, for
+	// the same reason it picked that number: enough to collapse the wall
+	// clock, small enough not to look like a burst to GitHub's secondary
+	// rate limiter.
+	changesRepoWorkers = 5
 )
 
 // handleGitHubChanges serves GET /api/github/changes?days=30&repo=<owner/repo>
@@ -131,30 +143,71 @@ func handleGitHubChanges(c *gin.Context) {
 	sinceTime := time.Now().AddDate(0, 0, -days)
 	mineOnly := c.Query("mine") == "1"
 
-	var allChanges []*ghChange
-	for _, repoKey := range repos {
+	// ⭐ THE REPOS ARE FETCHED CONCURRENTLY, AND THAT IS THE WHOLE LATENCY
+	// STORY. (2026-09-18, reported: "loading github changes often takes 10
+	// seconds".) This loop used to be serial, so the response cost the SUM of
+	// every repo's own round trips — see changesRepoWorkers for the
+	// arithmetic. Each repo's work is completely independent (its own default
+	// branch, its own pulls, its own commits; nothing is shared but the
+	// client), so the only thing serialising them was the loop itself.
+	//
+	// ⚠️ RESULTS LAND IN AN INDEXED SLOT, NOT AN APPEND. A shared `append`
+	// from N goroutines is a data race, and taking a mutex around it would
+	// also make the output order depend on which repo happened to answer
+	// first. Writing to `results[i]` needs no lock (distinct elements) and
+	// keeps assembly in `repos` order, so the same fleet answers byte-identically
+	// every time — the sort below is by merge time and would otherwise leave
+	// same-instant changes flapping between polls.
+	type repoResult struct {
+		changes      []*ghChange
+		unauthorized bool
+	}
+	results := make([]repoResult, len(repos))
+	sem := make(chan struct{}, changesRepoWorkers)
+	var wg sync.WaitGroup
+	for i, repoKey := range repos {
 		owner, repo, ok := splitOwnerRepo(repoKey)
 		if !ok {
 			continue // defensive only: repoKey came from NormalizedRepoKey, always owner/repo
 		}
-		changes, cerr := changesForRepo(ctx, ghClient, owner, repo, sinceTime)
-		if cerr != nil {
-			if isGitHubUnauthorized(cerr) {
-				// The token itself is bad — true for every remaining repo
-				// too, so stop and answer once, same as every other GitHub
-				// endpoint's revoked-token handling.
-				c.SetCookie(githubTokenCookie, "", -1, "/", "", true, true)
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "github_not_connected"})
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, owner, repo string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			changes, cerr := changesForRepo(ctx, ghClient, owner, repo, sinceTime)
+			if cerr != nil {
+				if isGitHubUnauthorized(cerr) {
+					// The token itself is bad — true for every other repo too.
+					// Recorded rather than answered from in here: the response
+					// belongs to the request goroutine, after the wait.
+					results[i].unauthorized = true
+					return
+				}
+				// Any other per-repo failure (this specific repo renamed/deleted
+				// on GitHub, a transient 5xx, etc.) degrades gracefully: this is
+				// a multi-repo aggregation, not a single-repo-scoped answer, so
+				// one repo's trouble doesn't 502 every other repo's data.
+				log.Printf("Error fetching changes for %s/%s: %v", owner, repo, cerr)
 				return
 			}
-			// Any other per-repo failure (this specific repo renamed/deleted
-			// on GitHub, a transient 5xx, etc.) degrades gracefully: this is
-			// a multi-repo aggregation, not a single-repo-scoped answer, so
-			// one repo's trouble doesn't 502 every other repo's data.
-			log.Printf("Error fetching changes for %s/%s: %v", owner, repo, cerr)
-			continue
+			results[i].changes = changes
+		}(i, owner, repo)
+	}
+	wg.Wait()
+
+	var allChanges []*ghChange
+	for _, r := range results {
+		if r.unauthorized {
+			// Same revoked-token handling as every other GitHub endpoint,
+			// just decided once the fan-out has finished.
+			c.SetCookie(githubTokenCookie, "", -1, "/", "", true, true)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "github_not_connected"})
+			return
 		}
-		allChanges = append(allChanges, changes...)
+	}
+	for _, r := range results {
+		allChanges = append(allChanges, r.changes...)
 	}
 
 	if mineOnly {
