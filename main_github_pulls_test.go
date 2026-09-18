@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
@@ -217,16 +216,12 @@ func TestGitHubPullRequest_MergedContainsCommits(t *testing.T) {
 			fmt.Fprint(w, `{
 				"number":99,"title":"Ship it","html_url":"https://github.com/octo/repo/pull/99",
 				"state":"closed","merged_at":"2026-01-01T00:00:00Z","merge_commit_sha":"deadbeef01",
-				"base":{"ref":"main"},"user":{"login":"carol"}
+				"base":{"ref":"main","repo":{"default_branch":"main"}},"user":{"login":"carol"}
 			}`)
-		case req.URL.Path == "/repos/octo/repo/commits":
-			if got := req.URL.Query().Get("sha"); got != "main" {
-				t.Fatalf("sha query = %q, want main", got)
-			}
-			if got := req.URL.Query().Get("since"); got == "" {
-				t.Fatalf("since query missing")
-			}
-			fmt.Fprint(w, `[{"sha":"deadbeef01"},{"sha":"cafebabe02"}]`)
+		// ⭐ CONTAINMENT IS AN ANCESTRY COMPARE NOW, NOT A `since=` WALK — and the
+		// path itself is the assertion: `{mergeSha}...{defaultBranch}`.
+		case req.URL.Path == "/repos/octo/repo/compare/deadbeef01...main":
+			fmt.Fprint(w, `{"status":"ahead","total_commits":1,"commits":[{"sha":"cafebabe02"}]}`)
 		case req.URL.Path == "/repos/octo/repo/commits/deadbeef01/check-runs":
 			// Merged PR: checks are asked on the merge sha. One passed, one
 			// failed -> overall "failure".
@@ -325,7 +320,7 @@ func TestGitHubPullRequest_ChecksPending(t *testing.T) {
 	}
 }
 
-func TestGitHubPullRequest_PaginationCutAt300(t *testing.T) {
+func TestGitHubPullRequest_CompareCapReportedByTotalCommits(t *testing.T) {
 	r := setupGitHubPullsTest(t, []client.Object{
 		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
 	})
@@ -338,24 +333,22 @@ func TestGitHubPullRequest_PaginationCutAt300(t *testing.T) {
 			fmt.Fprint(w, `{
 				"number":5,"title":"Big PR","html_url":"https://github.com/octo/repo/pull/5",
 				"state":"closed","merged_at":"2026-01-01T00:00:00Z","merge_commit_sha":"sha-p1-000",
-				"base":{"ref":"main"},"user":{"login":"dave"}
+				"base":{"ref":"main","repo":{"default_branch":"main"}},"user":{"login":"dave"}
 			}`)
-		case "/repos/octo/repo/commits":
+		case "/repos/octo/repo/compare/sha-p1-000...main":
 			pages++
-			page := 1
-			if p := req.URL.Query().Get("page"); p != "" {
-				page, _ = strconv.Atoi(p)
+			// ⭐ TRUNCATION IS THE API'S OWN, NOT A PAGE COUNTER'S. `compare`
+			// returns at most 250 commits in one response while `total_commits`
+			// reports the true size of the range, so "this list is short" is a
+			// fact GitHub states rather than one the handler infers by walking
+			// until the pages run out.
+			commits := make([]map[string]string, 0, 250)
+			for i := 0; i < 250; i++ {
+				commits = append(commits, map[string]string{"sha": fmt.Sprintf("sha-c-%03d", i)})
 			}
-			// 4 pages of 100 = 400 available commits; the handler must stop
-			// at 300 and report containedInAll=true.
-			commits := make([]map[string]string, 0, 100)
-			for i := 0; i < 100; i++ {
-				commits = append(commits, map[string]string{"sha": fmt.Sprintf("sha-p%d-%03d", page, i)})
-			}
-			if page < 4 {
-				w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?page=%d>; rel="next"`, req.Host, req.URL.Path, page+1))
-			}
-			b, _ := json.Marshal(commits)
+			b, _ := json.Marshal(map[string]interface{}{
+				"status": "ahead", "total_commits": 400, "commits": commits,
+			})
 			w.Write(b)
 		case "/repos/octo/repo/commits/sha-p1-000/check-runs":
 			fmt.Fprint(w, `{"total_count":0,"check_runs":[]}`)
@@ -374,15 +367,20 @@ func TestGitHubPullRequest_PaginationCutAt300(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
+	// 250 from the compare plus the merge commit union'd in front of them.
 	ci, ok := body["containedIn"].([]interface{})
-	if !ok || len(ci) != 300 {
-		t.Fatalf("containedIn length = %v, want 300", body["containedIn"])
+	if !ok || len(ci) != 251 {
+		t.Fatalf("containedIn length = %v, want 251 (250 + the merge sha)", len(ci))
 	}
 	if body["containedInAll"] != true {
-		t.Fatalf("containedInAll = %v, want true (cut at cap)", body["containedInAll"])
+		t.Fatalf("containedInAll = %v, want true — total_commits (400) exceeded the returned page", body["containedInAll"])
 	}
-	if pages < 3 {
-		t.Fatalf("expected at least 3 pages fetched, got %d", pages)
+	// ⭐ AND IT COSTS ONE CALL, WHICH IS THE POINT. The walk this replaced paged
+	// through `commits?since=` until the pages ran out — four requests for this
+	// range. A compare answers the whole thing once, and says how much it left
+	// out.
+	if pages != 1 {
+		t.Fatalf("compare calls = %d, want exactly 1", pages)
 	}
 }
 
@@ -461,11 +459,13 @@ func TestGitHubPullRequest_DeletedBaseBranchDegrades(t *testing.T) {
 				"number":8864,"title":"Stacked on a branch that is now gone",
 				"html_url":"https://github.com/octo/repo/pull/8864",
 				"state":"closed","merged_at":"2026-01-01T00:00:00Z","merge_commit_sha":"deadbeef01",
-				"base":{"ref":"gio/stacked-branch"},"user":{"login":"gio"}
+				"base":{"ref":"gio/stacked-branch","repo":{"default_branch":"main"}},"user":{"login":"gio"}
 			}`)
-		case req.URL.Path == "/repos/octo/repo/commits":
-			// The deleted base branch. GitHub's own words here are what the
-			// frontend used to misread as "the pull request is missing".
+		case req.URL.Path == "/repos/octo/repo/compare/deadbeef01...main":
+			// ⭐ THE COMPARE IS WHAT FAILS NOW. The original defect was a DELETED
+			// BASE BRANCH; containment no longer asks about the PR's base at all,
+			// so that exact cause is gone — but any failure of this call must
+			// still degrade rather than 502, which is what this asserts.
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, `{"message":"Not Found"}`)
 		case req.URL.Path == "/repos/octo/repo/commits/deadbeef01/check-runs":
@@ -495,6 +495,9 @@ func TestGitHubPullRequest_DeletedBaseBranchDegrades(t *testing.T) {
 	if body["base"] != "gio/stacked-branch" {
 		t.Fatalf("base = %v, want gio/stacked-branch", body["base"])
 	}
+	if body["containedInUnknown"] != true {
+		t.Fatalf("containedInUnknown = %v, want true — the compare failed", body["containedInUnknown"])
+	}
 	// The merge commit is still union'd in — it is contained by definition.
 	ci, ok := body["containedIn"].([]interface{})
 	if !ok || len(ci) != 1 || ci[0] != "deadbeef01" {
@@ -514,64 +517,13 @@ func TestGitHubPullRequest_DeletedBaseBranchDegrades(t *testing.T) {
 	}
 }
 
-// TestGitHubPullRequest_StackedBaseMarksContainmentUnknown is the live case
-// from caffeinelabs/app#8864: a PR that merged one feature branch into another
-// (`giorgio/agent-feedback-model-ai` -> `giorgio/agent-feedback-model`) while
-// every rollout deploys from `main`.
-//
-// The commit walk still runs and still succeeds — it just answers about a
-// branch nothing is built from, so every build the fleet ran is absent from
-// `containedIn`. Without a signal, the frontend read that absence as proof and
-// reported a ROLLBACK on environments that had moved forward.
-func TestGitHubPullRequest_StackedBaseMarksContainmentUnknown(t *testing.T) {
-	r := setupGitHubPullsTest(t, []client.Object{
-		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
-	})
-
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case req.URL.Path == "/repos/octo/repo/pulls/8864":
-			fmt.Fprint(w, `{
-				"number":8864,"title":"Stacked on another feature branch",
-				"html_url":"https://github.com/octo/repo/pull/8864",
-				"state":"closed","merged_at":"2026-01-01T00:00:00Z","merge_commit_sha":"75d69ad",
-				"base":{"ref":"giorgio/agent-feedback-model","repo":{"default_branch":"main"}},
-				"user":{"login":"giorgio"}
-			}`)
-		case req.URL.Path == "/repos/octo/repo/commits":
-			// The walk succeeds — against the stacked base, which is the point.
-			fmt.Fprint(w, `[{"sha":"75d69ad"}]`)
-		case req.URL.Path == "/repos/octo/repo/commits/75d69ad/check-runs":
-			fmt.Fprint(w, `{"total_count":0,"check_runs":[]}`)
-		default:
-			t.Fatalf("unexpected path %s", req.URL.Path)
-		}
-	}))
-	defer ts.Close()
-	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
-
-	w := doGitHubPullsRequest(r, "/api/github/pulls/octo/repo/8864", "ghu_stacked_base")
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
-	}
-	var body map[string]interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if body["base"] != "giorgio/agent-feedback-model" {
-		t.Fatalf("base = %v", body["base"])
-	}
-	// ⭐ THE ASSERTION. The walk ran and returned a real list, so
-	// `containedInAll` is honestly false — but that list says nothing about
-	// what `main` carries, and this flag is what tells the frontend so.
-	if body["containedInUnknown"] != true {
-		t.Fatalf("containedInUnknown = %v, want true (base is not the default branch)", body["containedInUnknown"])
-	}
-	if body["containedInAll"] != false {
-		t.Fatalf("containedInAll = %v, want false — the walk was not truncated", body["containedInAll"])
-	}
-}
+// ⛔ THE TEST THAT USED TO LIVE HERE ASSERTED THE WORSE BEHAVIOUR, AND IS GONE.
+// `TestGitHubPullRequest_StackedBaseMarksContainmentUnknown` pinned "a stacked
+// PR's containment is unknown". That was true of the previous implementation
+// and is no longer true of this one: containment is computed against the
+// DEPLOY branch by ancestry, so a stacked PR whose stack has landed is fully
+// knowable. `main_github_pulls_ancestry_test.go` covers the stacked case in
+// both directions now — landed and not-yet-landed.
 
 // An ordinary PR based on the default branch keeps containment authoritative.
 func TestGitHubPullRequest_DefaultBaseKeepsContainmentKnown(t *testing.T) {
@@ -588,8 +540,8 @@ func TestGitHubPullRequest_DefaultBaseKeepsContainmentKnown(t *testing.T) {
 				"state":"closed","merged_at":"2026-01-01T00:00:00Z","merge_commit_sha":"deadbeef01",
 				"base":{"ref":"main","repo":{"default_branch":"main"}},"user":{"login":"carol"}
 			}`)
-		case req.URL.Path == "/repos/octo/repo/commits":
-			fmt.Fprint(w, `[{"sha":"deadbeef01"},{"sha":"cafebabe02"}]`)
+		case req.URL.Path == "/repos/octo/repo/compare/deadbeef01...main":
+			fmt.Fprint(w, `{"status":"ahead","total_commits":1,"commits":[{"sha":"cafebabe02"}]}`)
 		case req.URL.Path == "/repos/octo/repo/commits/deadbeef01/check-runs":
 			fmt.Fprint(w, `{"total_count":0,"check_runs":[]}`)
 		default:
