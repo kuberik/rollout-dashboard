@@ -438,3 +438,78 @@ func TestGitHubPullRequest_DottedRepoNameNotTruncated(t *testing.T) {
 		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
 	}
 }
+
+// TestGitHubPullRequest_DeletedBaseBranchDegrades is the live case from
+// caffeinelabs/app#8864: a PR whose BASE is another PR's branch (stacked work,
+// `base: gio/…`) which was deleted once the stack landed. The commit walk over
+// that branch is a GitHub 404 forever, so this is not a transient blip — the
+// page for a real, merged PR was permanently 502, and the frontend rendered
+// that as "This pull request does not exist".
+//
+// The PR itself fetched fine, so everything except the containment range is
+// known and must still be answered.
+func TestGitHubPullRequest_DeletedBaseBranchDegrades(t *testing.T) {
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.URL.Path == "/repos/octo/repo/pulls/8864":
+			fmt.Fprint(w, `{
+				"number":8864,"title":"Stacked on a branch that is now gone",
+				"html_url":"https://github.com/octo/repo/pull/8864",
+				"state":"closed","merged_at":"2026-01-01T00:00:00Z","merge_commit_sha":"deadbeef01",
+				"base":{"ref":"gio/stacked-branch"},"user":{"login":"gio"}
+			}`)
+		case req.URL.Path == "/repos/octo/repo/commits":
+			// The deleted base branch. GitHub's own words here are what the
+			// frontend used to misread as "the pull request is missing".
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"message":"Not Found"}`)
+		case req.URL.Path == "/repos/octo/repo/commits/deadbeef01/check-runs":
+			fmt.Fprint(w, `{"total_count":1,"check_runs":[{"status":"completed","conclusion":"success"}]}`)
+		default:
+			t.Fatalf("unexpected path %s", req.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/pulls/octo/repo/8864", "ghu_stacked_token")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 — a missing commit range must not fail the whole PR (body: %s)", w.Code, w.Body.String())
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// Everything the PR fetch already knew is still answered.
+	if body["state"] != "merged" {
+		t.Fatalf("state = %v, want merged", body["state"])
+	}
+	if body["title"] != "Stacked on a branch that is now gone" {
+		t.Fatalf("title = %v", body["title"])
+	}
+	if body["base"] != "gio/stacked-branch" {
+		t.Fatalf("base = %v, want gio/stacked-branch", body["base"])
+	}
+	// The merge commit is still union'd in — it is contained by definition.
+	ci, ok := body["containedIn"].([]interface{})
+	if !ok || len(ci) != 1 || ci[0] != "deadbeef01" {
+		t.Fatalf("containedIn = %v, want just the merge sha", body["containedIn"])
+	}
+	// ⚠️ THE LOAD-BEARING ASSERTION. `containedInAll: true` is the frontend's
+	// "this list is not a complete account, so absence from it proves nothing".
+	// If this were false, every build would be confidently reported as NOT
+	// carrying the change — unknown masquerading as a negative observation.
+	if body["containedInAll"] != true {
+		t.Fatalf("containedInAll = %v, want true (containment is unknown, not empty)", body["containedInAll"])
+	}
+	// The unrelated enrichment still works.
+	checks, ok := body["checks"].(map[string]interface{})
+	if !ok || checks["state"] != "success" {
+		t.Fatalf("checks = %v, want success", body["checks"])
+	}
+}

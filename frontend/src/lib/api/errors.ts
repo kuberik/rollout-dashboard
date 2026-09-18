@@ -73,7 +73,36 @@ export class ApiError extends Error {
 	 */
 	get isMissing(): boolean {
 		if (this.status === 404) return true;
-		return this.status >= 500 && /\bnot found\b/i.test(this.detail);
+		if (this.status < 500) return false;
+		// ⛔ AN UPSTREAM HTTP STATUS PHRASE IS NOT THIS OBJECT GOING MISSING.
+		// (2026-09-18, from caffeinelabs/app#8864.) The heuristic above reads
+		// the server's own words, and go-github's error string ends with the
+		// verbatim status line it got from GitHub:
+		//
+		//   GET https://api.github.com/repos/o/r/commits?sha=gio/x: 404 Not Found []
+		//
+		// which contains `Not Found` and so matched. The dashboard had returned
+		// 502 because it could not list a MERGED PR's commit range — the PR was
+		// real, fetched, and fully rendered a moment earlier — and the page
+		// answered "This pull request does not exist. It may have been deleted,
+		// or the address may be wrong." It also set `isRetryable` false, so
+		// `Try again` could never clear it. A confident false statement about
+		// someone's merged PR is worse than the raw error it replaced.
+		//
+		// A genuinely absent PR never needs this branch: `main_github_pulls.go`
+		// answers a GitHub 404/403 on the PR itself with a real
+		// `404 {error: 'not_found', scope: 'pr'}`, which the page renders as
+		// "PR not found" on its own path. So excluding the status-phrase shape
+		// costs nothing and the rollout case below is untouched.
+		//
+		// What the branch IS for stays exactly as it was — the backend's 500 on
+		// a missing k8s object, whose words are a SENTENCE about the object:
+		//   failed to get rollout: rollouts.kuberik.com "x" not found
+		// There the phrase is not preceded by a status code. That is the whole
+		// discriminator, and it is the narrowest one that separates the two
+		// real strings.
+		if (/\b[1-5]\d{2}\s+not found\b/i.test(this.detail)) return false;
+		return /\bnot found\b/i.test(this.detail);
 	}
 
 	/**
