@@ -145,6 +145,7 @@
 	import { BAKE_WORD } from '$lib/bake-status';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import { shortenVersion } from '$lib/utils';
 	import NextStep from '$lib/components/NextStep.svelte';
 	import StageChain from '$lib/components/StageChain.svelte';
 	import UpToDate from '$lib/components/UpToDate.svelte';
@@ -1339,13 +1340,24 @@
 											     card. One fact drawn twice is worse than one fact
 											     narrated once. -->
 											{#if b.providedVersion && !b.providedVaries && !drawn}
+												<!-- ⛔ `shortenVersion`, NOT THE RAW STRING. A contract
+												     version is whatever the provider deployed, and on a
+												     fleet that versions by commit that is a 40-character
+												     SHA. `Chip` truncates with an ellipsis rather than
+												     overflowing, so the raw value did not break the box —
+												     it filled it with `9f3c1ab2e4d5…` and pushed the
+												     row's own rollup off the card. The 7-char form is
+												     what every other surface prints (`/envs/<name>`, the
+												     dependency graph, `RepoLedgerCard`); the full value
+												     stays one hover away, which is the same contract
+												     `shortenVersion`'s other call sites keep. -->
 												<Chip
 													role="count"
 													label={b.contract}
-													value={b.providedVersion}
+													value={shortenVersion(b.providedVersion)}
 													wide
 													title="{b.providerName} has deployed {b.contract} {b.providedVersion}"
-													valueTitle="Contract version {b.providerName} is serving"
+													valueTitle="Contract version {b.providerName} is serving — {b.providedVersion}"
 													class="shrink-0"
 												/>
 											{/if}
@@ -1403,7 +1415,9 @@
 												From <span class="t-code-sm">{b.providedTag}</span>
 											{:else if b.providedTag}
 												Now on {b.contract}
-												<span class="t-code-sm">{b.providedVersion}</span>, from
+												<span class="t-code-sm" title={b.providedVersion}
+													>{shortenVersion(b.providedVersion)}</span
+												>, from
 												<span class="t-code-sm">{b.providedTag}</span>
 											{:else if !b.providedVersion}
 												<!-- NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent
@@ -1450,8 +1464,10 @@
 															title={e.env}
 															wide
 														/>
-														<span class="t-code-sm text-gray-500 dark:text-gray-400"
-															>{b.contract} {e.providedVersion}</span
+														<span
+															class="t-code-sm text-gray-500 dark:text-gray-400"
+															title="{b.contract} {e.providedVersion}"
+															>{b.contract} {shortenVersion(e.providedVersion)}</span
 														>
 													</li>
 												{/each}
@@ -1598,13 +1614,15 @@
 											     borrowing type size. -->
 											<span class="text-xs text-gray-500 dark:text-gray-400">Serving</span>
 											{#if c.providedVersion && !c.providedVaries}
+												<!-- Same 40-char-SHA truncation as the provider chip
+												     above; see its note. -->
 												<Chip
 													role="count"
 													label={c.contract}
-													value={c.providedVersion}
+													value={shortenVersion(c.providedVersion)}
 													wide
 													title="This rollout has deployed {c.contract} {c.providedVersion}"
-													valueTitle="The contract version every service below is gated on"
+													valueTitle="The contract version every service below is gated on — {c.providedVersion}"
 													class="shrink-0"
 												/>
 											{:else}
