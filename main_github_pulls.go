@@ -171,69 +171,57 @@ func handleGitHubPullRequest(c *gin.Context) {
 		if sha != "" {
 			mergeCommitSha = &sha
 		}
-		// ⛔ A STACKED PR'S BASE IS NOT THE BRANCH THE FLEET DEPLOYS.
-		// (2026-09-18, reported: "some of the environments say they're rolled
-		// back even though they're on latest".) `commitsSinceMerge` walks
-		// `sha=<base>`, which is right for the ordinary PR whose base IS the
-		// default branch. caffeinelabs/app#8864 merged
+		// ⭐ THE DEPLOY BRANCH, NOT THE PR'S BASE. A stacked PR merges into
+		// another feature branch — caffeinelabs/app#8864 merged
 		// `giorgio/agent-feedback-model-ai` into `giorgio/agent-feedback-model`
-		// — one feature branch into another — while every rollout deploys from
-		// `main`. So `containedIn` came back as a handful of commits on a
-		// branch no build is ever cut from, and EVERY build the fleet actually
-		// ran was absent from it.
+		// — while every rollout is built from the repo's DEFAULT branch. Asking
+		// about the PR's own base answered a question nobody had: first it
+		// produced false rollbacks, then an honest but useless "unknown".
 		//
-		// Absent from that list is not evidence. The frontend, though, had no
-		// way to know the list was about the wrong branch: it read the head
-		// build's absence as proof the head lacked the change, found the
-		// merge-commit build one entry down in history, and reported a
-		// ROLLBACK — "rolled back to 0.0.1-7833.f1143fe" on an environment that
-		// had in fact moved FORWARD to 7833 from 7825. You cannot roll back to
-		// a higher build number, which is how the report read as obviously
-		// wrong on sight.
-		//
-		// The change does reach `main` eventually — when the whole stack lands
-		// — but that merge is a different commit this PR knows nothing about,
-		// so the honest answer here is "unknown", not a guess.
+		// The default branch is the one the fleet actually deploys, so it is the
+		// one worth asking about, for a stacked PR and an ordinary one alike.
+		deployBranch := base
 		if pr.Base != nil && pr.Base.Repo != nil {
-			if def := pr.Base.Repo.GetDefaultBranch(); def != "" && base != def {
-				containedInUnknown = true
+			if def := pr.Base.Repo.GetDefaultBranch(); def != "" {
+				deployBranch = def
 			}
 		}
-		shas, cutAt300, cerr := commitsSinceMerge(context.Background(), ghClient, owner, repo, base, pr.MergedAt.Time)
+		shas, truncated, onBranch, cerr := commitsCarryingMerge(
+			context.Background(), ghClient, owner, repo, pr.GetMergeCommitSHA(), deployBranch,
+		)
 		if cerr != nil {
-			// ⛔ NOT A 502. This walk is an ENRICHMENT — it answers "which
-			// builds carry this PR" — and the rest of the response (title,
-			// state, mergedAt, merge sha, checks) is already in hand. Failing
-			// the whole page for it breaks the rule the `checks` block below
-			// states in its own comment: never turn a missing extra into a 502
-			// "for facts the caller already has".
+			// ⛔ NOT A 502. This walk is an ENRICHMENT — it answers "which builds
+			// carry this PR" — and the rest of the response is already in hand.
+			// Failing the whole page for it breaks the rule the `checks` block
+			// below states in its own comment.
 			//
-			// The live case: a PR whose BASE branch is another PR's branch —
-			// stacked work, `base: gio/…` — where that branch is deleted once
-			// the stack lands. `GET /commits?sha=<deleted branch>` is then a
-			// GitHub 404 forever, so the page for a perfectly real, merged PR
-			// was permanently dead rather than briefly degraded. Reported on
-			// caffeinelabs/app#8864.
-			//
-			// ⚠️ IT DEGRADES TO `containedInAll = true`, WHICH IS NOT A COSMETIC
-			// CHOICE. That flag is the frontend's own name for "this list is
-			// not a complete account of the range, so absence from it does not
-			// PROVE a build lacks the change" — `pr-pipeline.ts`'s `containment`
-			// falls back to comparing each release's `created` against
-			// `mergedAt` whenever it is set. An empty list with the flag FALSE
-			// would instead be read as authoritative and every build would be
-			// confidently labelled "does not carry this change". Unknown must
-			// not masquerade as a negative observation.
-			log.Printf("Error listing commits since merge for %s/%s#%d (degrading to unknown containment): %v", owner, repo, number, cerr)
+			// ⚠️ `containedInUnknown` NOW MEANS ONLY THIS: we asked and could not
+			// get an answer. It used to also cover "the PR is stacked", which is
+			// no longer unknowable — see `commitsCarryingMerge`. Absence from an
+			// unknown set proves nothing, so no cell may read it as a rollback.
+			log.Printf("Error comparing %s..%s for %s/%s#%d (containment unknown): %v",
+				pr.GetMergeCommitSHA(), deployBranch, owner, repo, number, cerr)
 			shas = []string{}
-			cutAt300 = true
+			truncated = true
 			containedInUnknown = true
+		} else if !onBranch {
+			// ⭐ A REAL ANSWER, NOT AN ABSENCE OF ONE. The merge commit is not
+			// reachable from the deploy branch, so the stack it is part of has
+			// not landed yet and NOTHING built from that branch can carry the
+			// change. An authoritative empty set says exactly that — every cell
+			// reads "not built", which is true — and it is emphatically not
+			// `containedInUnknown`.
+			log.Printf("Change %s for %s/%s#%d has not reached %s yet",
+				pr.GetMergeCommitSHA(), owner, repo, number, deployBranch)
 		}
-		// The merge commit itself is always "contained" — union it in even
-		// though a normal merge/squash/rebase commit lands on the base
-		// branch with a date >= mergedAt and so is already picked up by the
-		// since= walk below; this is the belt for that suspenders.
-		if sha != "" {
+		// ⭐ THE MERGE COMMIT ITSELF, ALWAYS. `compare/{mergeSha}...{branch}`
+		// returns the commits AFTER the merge commit and never the commit
+		// itself, so without this a build cut at exactly that sha would read
+		// "not built" — the one revision we are certain carries the change.
+		// (The previous clock-based walk needed this too, for the same reason;
+		// dropping it in the rewrite is what the "want just the merge sha" test
+		// caught.)
+		if sha := pr.GetMergeCommitSHA(); sha != "" {
 			found := false
 			for _, s := range shas {
 				if s == sha {
@@ -245,11 +233,12 @@ func handleGitHubPullRequest(c *gin.Context) {
 				shas = append([]string{sha}, shas...)
 				if len(shas) > maxContainedInCommits {
 					shas = shas[:maxContainedInCommits]
+					truncated = true
 				}
 			}
 		}
 		containedIn = shas
-		containedInAll = cutAt300
+		containedInAll = truncated
 	}
 
 	// checks: one call to repos/{o}/{r}/commits/{sha}/check-runs on the merge
@@ -295,6 +284,84 @@ func handleGitHubPullRequest(c *gin.Context) {
 		"headSha":      headSha,
 		"changedFiles": changedFiles,
 	})
+}
+
+// ⭐ CONTAINMENT BY ANCESTRY, NOT BY CLOCK — AND AGAINST THE BRANCH THE FLEET
+// ACTUALLY DEPLOYS. (2026-09-18, from the human, looking at a stacked PR whose
+// prod cells all read "release status unknown": "it looks better but still
+// weird that prod doesn't have some data. can we really not do better?")
+//
+// We can, and this is how much better. `compare/{mergeSha}...{branch}` answers
+// BOTH questions this endpoint has, in ONE call:
+//
+//	status "ahead"     — the merge commit IS an ancestor of the branch, and
+//	                     `commits` is EXACTLY its descendants there.
+//	status "diverged"  — it is not on that branch at all.
+//	status "identical" — the branch head IS the merge commit.
+//
+// ⛔ WHY THIS REPLACES `commitsSinceMerge` *IN THIS HANDLER*. (It stays for the
+// bare-sha endpoint in `main_github_commit.go`, which already walks the DEFAULT
+// branch — that endpoint had this right all along and the pulls handler was the
+// odd one out.) That walked `commits?sha=<base>
+// &since=<mergedAt>` — a CLOCK proxy for ancestry, against the PR's OWN base.
+// Both halves were wrong for a stacked PR and the second was wrong for
+// everyone:
+//
+//	· THE BRANCH. A stacked PR's base is another feature branch, which nothing
+//	  is ever built from, so the walk answered about a branch no build exists
+//	  on. That is what produced the false rollbacks, and then the honest but
+//	  useless "unknown" that replaced them.
+//	· THE CLOCK. `since=mergedAt` includes every commit on the branch after
+//	  that instant whether or not it descends from the merge — so a build cut
+//	  from a commit that does NOT carry the change could still be reported as
+//	  carrying it. Ancestry cannot make that mistake.
+//
+// Measured on caffeinelabs/app#8864, the reported case: base
+// `giorgio/agent-feedback-model`, default `main`, merge commit 75d69ad. The
+// compare against `main` returns status `ahead` with 24 commits — the change
+// has been on the deploy branch for hours. The old walk could not see that and
+// gave up.
+//
+// ⚠️ TRUNCATION IS REPORTED, NOT GUESSED. GitHub caps `commits` at 250 per
+// response while `total_commits` reports the true size, so a range past the cap
+// is known to be short rather than silently partial — the same bit `cutAt300`
+// carried, now sourced from the API instead of from a page counter.
+func commitsCarryingMerge(
+	ctx context.Context,
+	ghClient *github.Client,
+	owner, repo, mergeSha, branch string,
+) (shas []string, truncated bool, onBranch bool, err error) {
+	cmp, _, cerr := ghClient.Repositories.CompareCommits(
+		ctx, owner, repo, mergeSha, branch, &github.ListOptions{PerPage: 250},
+	)
+	if cerr != nil {
+		return nil, false, false, cerr
+	}
+	switch cmp.GetStatus() {
+	case "ahead", "identical":
+		// The merge commit is reachable from the branch.
+	default:
+		// "diverged" (and anything unexpected): the change has not reached this
+		// branch. That is a REAL answer — nothing built from it carries the
+		// change — and must not be dressed up as "unknown".
+		return []string{}, false, false, nil
+	}
+	for _, c := range cmp.Commits {
+		if sha := c.GetSHA(); sha != "" {
+			shas = append(shas, sha)
+		}
+	}
+	if cmp.GetTotalCommits() > len(shas) {
+		truncated = true
+	}
+	if len(shas) > maxContainedInCommits {
+		shas = shas[:maxContainedInCommits]
+		truncated = true
+	}
+	if shas == nil {
+		shas = []string{}
+	}
+	return shas, truncated, true, nil
 }
 
 // commitsSinceMerge lists the shas on repo's base branch since the PR merged,
