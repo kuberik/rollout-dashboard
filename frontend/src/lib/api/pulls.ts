@@ -64,6 +64,23 @@ export type PullRequestInfo = {
 	 * simply not built, no fallback, whatever its `created` timestamp says.
 	 */
 	containedInAll: boolean;
+	/**
+	 * ⛔ NOT A SHADE OF `containedInAll` — A DIFFERENT QUESTION. That flag says
+	 * the walk RAN and was truncated. This one says `containedIn` is not
+	 * evidence about the deployed fleet at all, for either of two reasons the
+	 * backend knows and this client cannot infer:
+	 *
+	 *   1. the commit walk failed (e.g. the base branch was deleted), or
+	 *   2. `base` is NOT the repository's default branch — a STACKED PR, whose
+	 *      base is another feature branch nothing deploys from.
+	 *
+	 * (2) is the one that bit: caffeinelabs/app#8864 merged one feature branch
+	 * into another while every rollout deploys from `main`, so every build the
+	 * fleet ran was absent from `containedIn` and the page called each of them
+	 * a ROLLBACK. When this is `true`, absence proves nothing and no cell may
+	 * claim `rolled-back` off it.
+	 */
+	containedInUnknown: boolean;
 	/** ISO instant the PR was opened. Present regardless of `state`. */
 	openedAt: string | null;
 	/** The head branch's own current sha — item 8's "an open PR still has a head". */
@@ -133,8 +150,17 @@ export class FetchPullError extends ApiError {
  * PR's own `PrPipelineMeta` should set `containmentKnown` from this, never
  * leave it to the default.
  */
-export function containmentKnownFor(_pull: Pick<PullRequestInfo, 'containedIn' | 'containedInAll'>): true {
-	return true;
+export function containmentKnownFor(
+	pull: Pick<PullRequestInfo, 'containedIn' | 'containedInAll' | 'containedInUnknown'>
+): boolean {
+	// ⛔ NO LONGER ALWAYS `true`. The paragraph above assumed a real `pulls/{n}`
+	// response is "always the backend's own authoritative computation, empty or
+	// not". That assumption held only while every PR's base was the branch the
+	// fleet deploys from. A stacked PR's containment is computed against a
+	// branch nothing is built from, and a failed walk has no computation at
+	// all — `containedInUnknown` is the backend saying so, and it is the one
+	// case where this must answer `false`.
+	return !pull.containedInUnknown;
 }
 
 export const pullQueryKey = (owner: string, repo: string, number: number, cluster?: string) =>

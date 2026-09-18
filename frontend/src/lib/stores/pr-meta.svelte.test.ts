@@ -19,6 +19,7 @@ const PULL = {
 	base: 'main',
 	containedIn: ['c0ffee1'],
 	containedInAll: true,
+	containedInUnknown: false,
 	openedAt: '2026-08-30T00:00:00Z',
 	headSha: 'c0ffee1def',
 	changedFiles: 3

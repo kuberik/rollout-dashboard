@@ -513,3 +513,96 @@ func TestGitHubPullRequest_DeletedBaseBranchDegrades(t *testing.T) {
 		t.Fatalf("checks = %v, want success", body["checks"])
 	}
 }
+
+// TestGitHubPullRequest_StackedBaseMarksContainmentUnknown is the live case
+// from caffeinelabs/app#8864: a PR that merged one feature branch into another
+// (`giorgio/agent-feedback-model-ai` -> `giorgio/agent-feedback-model`) while
+// every rollout deploys from `main`.
+//
+// The commit walk still runs and still succeeds — it just answers about a
+// branch nothing is built from, so every build the fleet ran is absent from
+// `containedIn`. Without a signal, the frontend read that absence as proof and
+// reported a ROLLBACK on environments that had moved forward.
+func TestGitHubPullRequest_StackedBaseMarksContainmentUnknown(t *testing.T) {
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.URL.Path == "/repos/octo/repo/pulls/8864":
+			fmt.Fprint(w, `{
+				"number":8864,"title":"Stacked on another feature branch",
+				"html_url":"https://github.com/octo/repo/pull/8864",
+				"state":"closed","merged_at":"2026-01-01T00:00:00Z","merge_commit_sha":"75d69ad",
+				"base":{"ref":"giorgio/agent-feedback-model","repo":{"default_branch":"main"}},
+				"user":{"login":"giorgio"}
+			}`)
+		case req.URL.Path == "/repos/octo/repo/commits":
+			// The walk succeeds — against the stacked base, which is the point.
+			fmt.Fprint(w, `[{"sha":"75d69ad"}]`)
+		case req.URL.Path == "/repos/octo/repo/commits/75d69ad/check-runs":
+			fmt.Fprint(w, `{"total_count":0,"check_runs":[]}`)
+		default:
+			t.Fatalf("unexpected path %s", req.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/pulls/octo/repo/8864", "ghu_stacked_base")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["base"] != "giorgio/agent-feedback-model" {
+		t.Fatalf("base = %v", body["base"])
+	}
+	// ⭐ THE ASSERTION. The walk ran and returned a real list, so
+	// `containedInAll` is honestly false — but that list says nothing about
+	// what `main` carries, and this flag is what tells the frontend so.
+	if body["containedInUnknown"] != true {
+		t.Fatalf("containedInUnknown = %v, want true (base is not the default branch)", body["containedInUnknown"])
+	}
+	if body["containedInAll"] != false {
+		t.Fatalf("containedInAll = %v, want false — the walk was not truncated", body["containedInAll"])
+	}
+}
+
+// An ordinary PR based on the default branch keeps containment authoritative.
+func TestGitHubPullRequest_DefaultBaseKeepsContainmentKnown(t *testing.T) {
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case req.URL.Path == "/repos/octo/repo/pulls/42":
+			fmt.Fprint(w, `{
+				"number":42,"title":"Ordinary","html_url":"https://github.com/octo/repo/pull/42",
+				"state":"closed","merged_at":"2026-01-01T00:00:00Z","merge_commit_sha":"deadbeef01",
+				"base":{"ref":"main","repo":{"default_branch":"main"}},"user":{"login":"carol"}
+			}`)
+		case req.URL.Path == "/repos/octo/repo/commits":
+			fmt.Fprint(w, `[{"sha":"deadbeef01"},{"sha":"cafebabe02"}]`)
+		case req.URL.Path == "/repos/octo/repo/commits/deadbeef01/check-runs":
+			fmt.Fprint(w, `{"total_count":0,"check_runs":[]}`)
+		default:
+			t.Fatalf("unexpected path %s", req.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	w := doGitHubPullsRequest(r, "/api/github/pulls/octo/repo/42", "ghu_ordinary")
+	var body map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body["containedInUnknown"] != false {
+		t.Fatalf("containedInUnknown = %v, want false for a PR based on the default branch", body["containedInUnknown"])
+	}
+}

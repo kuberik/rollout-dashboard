@@ -59,6 +59,7 @@ function pullInfo(overrides: Partial<PullRequestInfo> = {}): PullRequestInfo {
 		base: 'main',
 		containedIn: ['c0ffee1'],
 		containedInAll: true,
+		containedInUnknown: false,
 		openedAt: null,
 		headSha: null,
 		changedFiles: null,
