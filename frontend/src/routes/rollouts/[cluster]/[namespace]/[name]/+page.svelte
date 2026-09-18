@@ -3171,50 +3171,51 @@
 													{#if depInfo}
 														{@const depTheme = getRolloutEnvironmentTheme(null, depInfo.env)}
 														<!--
-															⭐ `size="chip"` (12px), NOT `small` (16px). This is the
-															defect `BakeStatusIcon`'s own `chip` note was written for,
-															in the one slot that never got migrated: `.chip` is a 20px
-															box, and a `small` glyph left ~2px of clearance — but the
-															in-flight mark SPINS, and `animate-spin` rotates the whole
-															square, so its swept box is the DIAGONAL, 16 x √2 ≈ 22.6px.
-															A 16px spinner does not merely sit tight in a 20px chip, it
-															sweeps OUTSIDE it. Measured mid-rotation on this exact
-															markup: the `Deploying` glyph's box was 19.0px in dark and
-															17.6px light against a 20px chip — 0.51px of clearance —
-															which is the "spinner looks buggy, too big for the chip"
-															report. At `chip` the sweep is 12 x √2 ≈ 17.0px and the
-															clearance measures 2.88px / 3.4px, steady through the whole
-															rotation. `RepoLedgerCard` already draws this same in-flight
-															mark at `chip` in this same slot.
+															⛔ THE STATE IS NOT DRAWN INSIDE THE ENVIRONMENT'S BOX.
+															(2026-09-18, from the human: "it's weird that green of the
+															environment is mixed with red failure here".)
+
+															The previous pass put the bake glyph in the env chip's own label
+															half, so a RED failure mark sat inside a chip tinted with DEV's
+															green — two hues eight pixels apart saying different things. And
+															it is not only the red pair: `Succeeded` put a GREEN tick inside
+															that same green box, where the mark stopped reading as a separate
+															fact at all.
+
+															`Chip`'s own grammar already names the way out — a chip is
+															`[role][value]`, and "anything past the second half is now a LOOSE
+															mark inside a `.chip-mark` group". The environment is the identity
+															and keeps the only tinted box here; the deploy state is a second
+															fact and sits beside it, not inside it.
+
+															⚠️ THE WORD IS NOT COLOURED AND THE GLYPH TRAILS IT. Colouring the
+															word would put a second full-strength hue on a row whose whole job
+															is to say WHERE this build already got to. The glyph carries the
+															state's colour by itself, which is the same single-channel split
+															`BakeStatusIcon` uses everywhere else. The word inherits this row's
+															muted ink rather than declaring its own, so it cannot drift from
+															its neighbours.
 														-->
-														{#snippet depGlyph()}
-															<span class="mr-[3px] inline-flex shrink-0 items-center">
-																<BakeStatusIcon bakeStatus={depInfo.bakeStatus} size="chip" />
+														<span class="chip-mark">
+															<Chip
+																role="env"
+																theme={depTheme}
+																label={shortEnvLabel(depTheme) || depInfo.env}
+																title="{depInfo.env} — {bakeTitle(depInfo.bakeStatus)}"
+																wide
+															/>
+															<span
+																class="inline-flex min-w-0 items-center gap-1"
+																title={bakeTitle(depInfo.bakeStatus)}
+															>
+																<span class="min-w-0 truncate">{bakeWord(depInfo.bakeStatus)}</span>
+																<!-- `decorative`: the word is printed right beside it now, so the
+																     glyph's own `sr-only` copy would announce the state twice.
+																     Still `size="chip"` — a spinning 16px mark sweeps its 22.6px
+																     diagonal and does not fit a 20px box. -->
+																<BakeStatusIcon bakeStatus={depInfo.bakeStatus} size="chip" decorative />
 															</span>
-														{/snippet}
-														<!--
-															⭐ AND IT IS AN `env` CHIP, BECAUSE IT NAMES AN ENVIRONMENT.
-															This was `role="count"` — the NEUTRAL role, for counts —
-															carrying the label `dev env`, i.e. an environment printed in
-															the one chip style the product does NOT use for
-															environments, with the word `env` spelled out to make up for
-															it. Every other environment in this product is an env-themed
-															chip whose tint IS the "this is an environment" signal
-															(`/revisions`, `/apps`, the chain rows on the dependencies
-															tab, and the header chip on this very page), so the word is
-															redundant once the theme is there. `shortEnvLabel` is the
-															spelling those call sites use.
-														-->
-														<Chip
-															role="env"
-															theme={depTheme}
-															label={shortEnvLabel(depTheme) || depInfo.env}
-															value={bakeWord(depInfo.bakeStatus)}
-															valueTitle={bakeTitle(depInfo.bakeStatus)}
-															title="{depInfo.env} — {bakeTitle(depInfo.bakeStatus)}"
-															icon={depGlyph}
-															wide
-														/>
+														</span>
 													{/if}
 												</div>
 												<!-- WHAT THIS BUILD WOULD SHIP. (2026-09-03, from the human:
