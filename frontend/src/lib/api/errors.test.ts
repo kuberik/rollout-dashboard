@@ -58,6 +58,30 @@ describe('isRetryable — the policy, stated as tests', () => {
 		expect(isRetryable(live)).toBe(false);
 	});
 
+	/**
+	 * THE FALSE POSITIVE THE RULE ABOVE PRODUCED, FROM caffeinelabs/app#8864.
+	 * The dashboard 502s when it cannot list a merged PR's commit range, and
+	 * go-github's error string carries GitHub's own status line verbatim. The
+	 * phrase `Not Found` is about the deleted BASE BRANCH being walked, not
+	 * about the pull request — which had already been fetched successfully.
+	 * Classified as missing, the page printed "This pull request does not
+	 * exist" for a real merged PR and disabled `Try again` with it.
+	 */
+	it('does not call a PR missing because an upstream GitHub 404 is quoted in a 502', () => {
+		const live = err(
+			502,
+			'GET https://api.github.com/repos/caffeinelabs/app/commits?per_page=100&sha=gio/stacked-branch: 404 Not Found []'
+		);
+		expect(live.isMissing).toBe(false);
+		expect(live.isUnreachable).toBe(true);
+		expect(isRetryable(live)).toBe(true);
+	});
+
+	it('still calls a 5xx missing when the words are a sentence, not a status line', () => {
+		expect(err(500, 'rollouts.kuberik.com "x" not found').isMissing).toBe(true);
+		expect(err(500, 'deployment gate not found in namespace prod').isMissing).toBe(true);
+	});
+
 	it('retries when there was no response at all (offline, dropped tunnel)', () => {
 		expect(isRetryable(err(0))).toBe(true);
 	});

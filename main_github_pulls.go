@@ -167,12 +167,32 @@ func handleGitHubPullRequest(c *gin.Context) {
 		}
 		shas, cutAt300, cerr := commitsSinceMerge(context.Background(), ghClient, owner, repo, base, pr.MergedAt.Time)
 		if cerr != nil {
-			log.Printf("Error listing commits since merge for %s/%s#%d: %v", owner, repo, number, cerr)
-			c.JSON(http.StatusBadGateway, gin.H{
-				"error":   "Failed to fetch commit range from GitHub",
-				"details": cerr.Error(),
-			})
-			return
+			// ⛔ NOT A 502. This walk is an ENRICHMENT — it answers "which
+			// builds carry this PR" — and the rest of the response (title,
+			// state, mergedAt, merge sha, checks) is already in hand. Failing
+			// the whole page for it breaks the rule the `checks` block below
+			// states in its own comment: never turn a missing extra into a 502
+			// "for facts the caller already has".
+			//
+			// The live case: a PR whose BASE branch is another PR's branch —
+			// stacked work, `base: gio/…` — where that branch is deleted once
+			// the stack lands. `GET /commits?sha=<deleted branch>` is then a
+			// GitHub 404 forever, so the page for a perfectly real, merged PR
+			// was permanently dead rather than briefly degraded. Reported on
+			// caffeinelabs/app#8864.
+			//
+			// ⚠️ IT DEGRADES TO `containedInAll = true`, WHICH IS NOT A COSMETIC
+			// CHOICE. That flag is the frontend's own name for "this list is
+			// not a complete account of the range, so absence from it does not
+			// PROVE a build lacks the change" — `pr-pipeline.ts`'s `containment`
+			// falls back to comparing each release's `created` against
+			// `mergedAt` whenever it is set. An empty list with the flag FALSE
+			// would instead be read as authoritative and every build would be
+			// confidently labelled "does not carry this change". Unknown must
+			// not masquerade as a negative observation.
+			log.Printf("Error listing commits since merge for %s/%s#%d (degrading to unknown containment): %v", owner, repo, number, cerr)
+			shas = []string{}
+			cutAt300 = true
 		}
 		// The merge commit itself is always "contained" — union it in even
 		// though a normal merge/squash/rebase commit lands on the base
