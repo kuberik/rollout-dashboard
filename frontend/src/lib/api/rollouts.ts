@@ -51,6 +51,23 @@ export type RolloutsListResponse = {
     clusters?: ClusterInfo[];
     // Multi-cluster: spokes that could not be reached.
     clusterErrors?: ClusterError[];
+    /**
+     * ⭐ SUPPORTING LISTS THIS RESPONSE COULD NOT READ, BY NAME.
+     *
+     * `kustomizations` / `environments` / `kruiseRollouts` are each fetched in
+     * their own goroutine server-side, and a failure there logs and leaves the
+     * list nil — which arrives here as an EMPTY list, indistinguishable from
+     * "this cluster has none". Consumers that read emptiness as a FACT about a
+     * rollout must check this first: `derivePipeline` treats an empty
+     * `kruiseRollouts` as "no canary pipeline" and collapses a 14-stage card to
+     * its 3-stage fallback, so one failed read redraws the page and the next
+     * poll redraws it back.
+     *
+     * Absent or empty means every list was read. `rolloutDependencies` is never
+     * listed here — a nil there is the ordinary answer on a cluster without the
+     * CRD, not a failure.
+     */
+    partialReads?: string[];
 };
 
 type QueryOverrides<TData> = Omit<

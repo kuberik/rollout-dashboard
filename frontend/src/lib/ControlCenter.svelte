@@ -115,8 +115,51 @@
 
 	const rollouts = $derived<Rollout[]>(query.data?.rollouts?.items || []);
 	const environments = $derived<Environment[]>(query.data?.environments?.items || []);
-	const kustomizations = $derived<Kustomization[]>(query.data?.kustomizations?.items || []);
-	const kruiseRollouts = $derived<KruiseRollout[]>(query.data?.kruiseRollouts?.items || []);
+	const rawKustomizations = $derived<Kustomization[]>(query.data?.kustomizations?.items || []);
+	const rawKruiseRollouts = $derived<KruiseRollout[]>(query.data?.kruiseRollouts?.items || []);
+
+	/**
+	 * ⛔ A LIST THE SERVER COULD NOT READ IS NOT AN EMPTY LIST, AND THIS PAGE
+	 * USED TO REDRAW ITSELF ON THE DIFFERENCE. (2026-09-18, reported:
+	 * "sometimes it doesn't display all the stages and it moves back and forth
+	 * between showing all the stages and the simplified version".)
+	 *
+	 * `derivePipeline` has exactly two shapes and picks between them on
+	 * `krs.length === 0`: the real per-track pipeline, or a 3-stage
+	 * trigger/deploy/bake fallback for a rollout that has no KruiseRollouts at
+	 * all. `kruiseRolloutsForRollout` resolves those through the
+	 * `kustomizations` inventory, so an empty EITHER list collapses the card.
+	 *
+	 * Both lists arrive empty when their server-side LIST failed — the handler
+	 * logs and ships null. So a single unlucky poll rewrote `consumer`'s card
+	 * from `5/14 stages done · 4 rolling out` to `1/3 stages done · 1 rolling
+	 * out`, and the next poll rewrote it back. The flapping was never about the
+	 * rollout; it was the page believing a failed read.
+	 *
+	 * `partialReads` is the server naming the reads that failed, so the two
+	 * cases are finally distinguishable. When the pipeline inputs are among
+	 * them this keeps the last COMPLETE pair instead of deriving from a list it
+	 * knows is not an observation. Everything else on the page still updates —
+	 * `rollouts` is fatal server-side, so it is never the short one.
+	 */
+	const partialReads = $derived<string[]>(query.data?.partialReads || []);
+	const pipelineInputsUnreliable = $derived(
+		partialReads.includes('kruiseRollouts') || partialReads.includes('kustomizations')
+	);
+	let lastGoodKustomizations = $state<Kustomization[]>([]);
+	let lastGoodKruiseRollouts = $state<KruiseRollout[]>([]);
+	$effect(() => {
+		if (!pipelineInputsUnreliable) {
+			lastGoodKustomizations = rawKustomizations;
+			lastGoodKruiseRollouts = rawKruiseRollouts;
+		}
+	});
+	const kustomizations = $derived<Kustomization[]>(
+		pipelineInputsUnreliable ? lastGoodKustomizations : rawKustomizations
+	);
+	const kruiseRollouts = $derived<KruiseRollout[]>(
+		pipelineInputsUnreliable ? lastGoodKruiseRollouts : rawKruiseRollouts
+	);
 	const clusterErrors = $derived<ClusterError[]>(query.data?.clusterErrors || []);
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 

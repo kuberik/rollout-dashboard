@@ -384,6 +384,46 @@ func setupRouter() *gin.Engine {
 			})
 			_ = g.Wait()
 
+			// ⭐ WHICH SUPPORTING LISTS DID NOT ANSWER, NAMED RATHER THAN
+			// SILENTLY EMPTY.
+			//
+			// Each LIST above logs its error and leaves its variable nil. nil
+			// marshals to `null`, which the frontend reads as an EMPTY list —
+			// indistinguishable from "this cluster has none of these". That is
+			// the unknown-as-observation trap, and here is what it costs:
+			// `derivePipeline` reads an empty `kruiseRollouts` (or an empty
+			// `kustomizations`, which is what resolves them) as "this rollout
+			// has no canary pipeline" and redraws the card from its real 14
+			// stages down to the 3-stage fallback. One unlucky poll flips the
+			// card; the next flips it back. Reported as "sometimes it doesn't
+			// display all the stages and it moves back and forth between
+			// showing all the stages and the simplified version".
+			//
+			// nil here means exactly "the List call failed": every one of these
+			// is assigned on success even when the cluster genuinely has none,
+			// in which case it is an empty-but-non-nil list. So the test is a
+			// nil check and needs no extra bookkeeping in the goroutines.
+			//
+			// ⚠️ `rolloutDependencies` is deliberately NOT included. Its own
+			// fetch comments that a nil there is the ordinary, expected answer
+			// on a cluster that has not installed the CRD — reporting that as a
+			// failed read would be the same false claim in the other direction.
+			//
+			// Naming these does not repair them; it lets the client tell "could
+			// not read" from "there are none", which is the only way it can
+			// refuse to redraw. Same shape as the `clusterErrors` this response
+			// already carries for a spoke that did not answer.
+			var partialReads []string
+			if kustomizations == nil {
+				partialReads = append(partialReads, "kustomizations")
+			}
+			if environments == nil {
+				partialReads = append(partialReads, "environments")
+			}
+			if kruiseRollouts == nil {
+				partialReads = append(partialReads, "kruiseRollouts")
+			}
+
 			if rolloutsErr != nil {
 				log.Printf("Error fetching rollouts: %v", rolloutsErr)
 				c.JSON(http.StatusInternalServerError, gin.H{
@@ -455,13 +495,19 @@ func setupRouter() *gin.Engine {
 			// If we're already serving a fan-out leg (header set by the calling hub),
 			// return local data only — fanning out again would create a cycle.
 			if c.GetHeader(fanoutHeader) != "" {
-				c.JSON(http.StatusOK, gin.H{
+				leg := gin.H{
 					"rollouts":            rollouts,
 					"kustomizations":      kustomizations,
 					"environments":        environments,
 					"kruiseRollouts":      kruiseRollouts,
 					"rolloutDependencies": rolloutDependencies,
-				})
+				}
+				// A spoke's own partial read has to reach the hub, or the hub
+				// merges a silently-short list and reports it as complete.
+				if len(partialReads) > 0 {
+					leg["partialReads"] = partialReads
+				}
+				c.JSON(http.StatusOK, leg)
 				return
 			}
 
@@ -489,6 +535,9 @@ func setupRouter() *gin.Engine {
 			}
 			if len(clusterErrors) > 0 {
 				response["clusterErrors"] = clusterErrors
+			}
+			if len(partialReads) > 0 {
+				response["partialReads"] = partialReads
 			}
 			writeJSONWithETag(c, http.StatusOK, response)
 		})
