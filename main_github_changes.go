@@ -46,6 +46,30 @@ const (
 	// clock, small enough not to look like a burst to GitHub's secondary
 	// rate limiter.
 	changesRepoWorkers = 5
+
+	// ⭐ HOW LONG A COMPUTED CHANGES RESPONSE IS REUSED.
+	//
+	// Parallelising the per-repo fan-out took this endpoint from "the sum of 9
+	// repos" to "the slowest repo". It did not make the round trips stop
+	// happening, and the HTTP cache underneath does not either: `githubcache`
+	// runs `no-cache`, i.e. STORE BUT ALWAYS REVALIDATE, so a warm cache turns
+	// each call into a 304 with no body — free against the rate limit, still a
+	// full round trip against the clock. That is why the page felt slow even
+	// when nothing had changed.
+	//
+	// The dashboard polls this endpoint, so the same expensive answer is
+	// recomputed every few seconds for a fleet whose merged PRs move on the
+	// order of minutes. 30s is chosen against THAT: long enough that a poll
+	// loop and a page reload both land on a warm entry, short enough that a
+	// change a human just merged shows up within one refresh of when it would
+	// have anyway.
+	changesResponseCacheTTL = 30 * time.Second
+
+	// Bounds the cache. One entry per (user, days, visible repo set); a handful
+	// of operators with a couple of ranges each is a few dozen. The sweep at
+	// this size drops expired entries first and only then gives up — see
+	// cachedChangesStore.
+	changesResponseCacheMax = 256
 )
 
 // handleGitHubChanges serves GET /api/github/changes?days=30&repo=<owner/repo>
@@ -143,6 +167,21 @@ func handleGitHubChanges(c *gin.Context) {
 	sinceTime := time.Now().AddDate(0, 0, -days)
 	mineOnly := c.Query("mine") == "1"
 
+	// ⭐ A COMPUTED ANSWER IS REUSED FOR changesResponseCacheTTL.
+	//
+	// ⚠️ THE KEY CARRIES THE VISIBLE REPO SET, NOT JUST THE USER. Two operators
+	// can hold different cluster visibility, and one operator's visibility can
+	// change under them — `repos` is already computed above from exactly that,
+	// so folding it into the key makes the cache correct by construction
+	// instead of by assuming visibility is stable. The token is hashed, never
+	// stored raw, for the reason `tokenCacheKey` documents: nothing replayable
+	// as a credential is ever a map key.
+	cacheKey := changesCacheKey(token, days, mineOnly, repos)
+	if cached, ok := cachedChangesGet(cacheKey); ok {
+		writeJSONWithETag(c, http.StatusOK, cached)
+		return
+	}
+
 	// ⭐ THE REPOS ARE FETCHED CONCURRENTLY, AND THAT IS THE WHOLE LATENCY
 	// STORY. (2026-09-18, reported: "loading github changes often takes 10
 	// seconds".) This loop used to be serial, so the response cost the SUM of
@@ -228,12 +267,69 @@ func handleGitHubChanges(c *gin.Context) {
 		allChanges = []*ghChange{}
 	}
 
-	writeJSONWithETag(c, http.StatusOK, ghChangesResponse{
+	resp := ghChangesResponse{
 		User:    login,
 		Repos:   repos,
 		Since:   sinceTime.Format("2006-01-02"),
 		Changes: allChanges,
-	})
+	}
+	// Only a fully-assembled answer is stored. Every early return above is an
+	// error or an auth bounce and none of them reach here, so a failure is
+	// never cached — the next request retries it.
+	cachedChangesPut(cacheKey, resp)
+	writeJSONWithETag(c, http.StatusOK, resp)
+}
+
+// ── the computed-response cache ──────────────────────────────────────────────
+
+type changesCacheEntry struct {
+	resp      ghChangesResponse
+	expiresAt time.Time
+}
+
+var (
+	changesCacheMu sync.Mutex
+	changesCache   = map[string]changesCacheEntry{}
+)
+
+// changesCacheKey identifies one computed answer. Everything that can change
+// the BODY is in it: who is asking (hashed), the window, the mine-only filter
+// and the exact set of repos they can see.
+func changesCacheKey(token string, days int, mineOnly bool, repos []string) string {
+	// `repos` is sorted by the caller, so the same visibility always spells the
+	// same key.
+	return fmt.Sprintf("%s|%d|%t|%s", tokenCacheKey(token), days, mineOnly, strings.Join(repos, ","))
+}
+
+func cachedChangesGet(key string) (ghChangesResponse, bool) {
+	changesCacheMu.Lock()
+	defer changesCacheMu.Unlock()
+	e, ok := changesCache[key]
+	if !ok || !time.Now().Before(e.expiresAt) {
+		return ghChangesResponse{}, false
+	}
+	return e.resp, true
+}
+
+func cachedChangesPut(key string, resp ghChangesResponse) {
+	changesCacheMu.Lock()
+	defer changesCacheMu.Unlock()
+	if len(changesCache) >= changesResponseCacheMax {
+		// Drop what has already expired before resorting to anything cruder.
+		now := time.Now()
+		for k, e := range changesCache {
+			if !now.Before(e.expiresAt) {
+				delete(changesCache, k)
+			}
+		}
+		// Still full — every entry is live. Refuse to grow rather than evict a
+		// valid entry at random; the TTL is 30s, so this self-corrects almost
+		// immediately and the only cost is a cache miss.
+		if len(changesCache) >= changesResponseCacheMax {
+			return
+		}
+	}
+	changesCache[key] = changesCacheEntry{resp: resp, expiresAt: time.Now().Add(changesResponseCacheTTL)}
 }
 
 // ghChange is one entry of GET /api/github/changes' `changes` array — either
