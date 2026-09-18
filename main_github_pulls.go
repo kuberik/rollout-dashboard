@@ -159,11 +159,45 @@ func handleGitHubPullRequest(c *gin.Context) {
 	var mergeCommitSha *string
 	containedIn := []string{}
 	containedInAll := false
+	// ⭐ "WE CANNOT ANSWER THIS", WHICH IS NOT THE SAME AS `containedInAll`.
+	// `containedInAll` means the walk RAN and hit the 300-commit cap, so the
+	// list is real but partial. This means the list is not evidence about the
+	// deployed fleet at all. Two causes, below: the walk failed, or it ran
+	// against a branch nothing deploys from.
+	containedInUnknown := false
 
 	if state == "merged" && pr.MergedAt != nil {
 		sha := pr.GetMergeCommitSHA()
 		if sha != "" {
 			mergeCommitSha = &sha
+		}
+		// ⛔ A STACKED PR'S BASE IS NOT THE BRANCH THE FLEET DEPLOYS.
+		// (2026-09-18, reported: "some of the environments say they're rolled
+		// back even though they're on latest".) `commitsSinceMerge` walks
+		// `sha=<base>`, which is right for the ordinary PR whose base IS the
+		// default branch. caffeinelabs/app#8864 merged
+		// `giorgio/agent-feedback-model-ai` into `giorgio/agent-feedback-model`
+		// — one feature branch into another — while every rollout deploys from
+		// `main`. So `containedIn` came back as a handful of commits on a
+		// branch no build is ever cut from, and EVERY build the fleet actually
+		// ran was absent from it.
+		//
+		// Absent from that list is not evidence. The frontend, though, had no
+		// way to know the list was about the wrong branch: it read the head
+		// build's absence as proof the head lacked the change, found the
+		// merge-commit build one entry down in history, and reported a
+		// ROLLBACK — "rolled back to 0.0.1-7833.f1143fe" on an environment that
+		// had in fact moved FORWARD to 7833 from 7825. You cannot roll back to
+		// a higher build number, which is how the report read as obviously
+		// wrong on sight.
+		//
+		// The change does reach `main` eventually — when the whole stack lands
+		// — but that merge is a different commit this PR knows nothing about,
+		// so the honest answer here is "unknown", not a guess.
+		if pr.Base != nil && pr.Base.Repo != nil {
+			if def := pr.Base.Repo.GetDefaultBranch(); def != "" && base != def {
+				containedInUnknown = true
+			}
 		}
 		shas, cutAt300, cerr := commitsSinceMerge(context.Background(), ghClient, owner, repo, base, pr.MergedAt.Time)
 		if cerr != nil {
@@ -193,6 +227,7 @@ func handleGitHubPullRequest(c *gin.Context) {
 			log.Printf("Error listing commits since merge for %s/%s#%d (degrading to unknown containment): %v", owner, repo, number, cerr)
 			shas = []string{}
 			cutAt300 = true
+			containedInUnknown = true
 		}
 		// The merge commit itself is always "contained" — union it in even
 		// though a normal merge/squash/rebase commit lands on the base
@@ -240,17 +275,18 @@ func handleGitHubPullRequest(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"number":         pr.GetNumber(),
-		"title":          pr.GetTitle(),
-		"htmlUrl":        pr.GetHTMLURL(),
-		"author":         pr.GetUser().GetLogin(),
-		"state":          state,
-		"mergedAt":       mergedAt,
-		"mergeCommitSha": mergeCommitSha,
-		"base":           base,
-		"containedIn":    containedIn,
-		"containedInAll": containedInAll,
-		"checks":         checks,
+		"number":             pr.GetNumber(),
+		"title":              pr.GetTitle(),
+		"htmlUrl":            pr.GetHTMLURL(),
+		"author":             pr.GetUser().GetLogin(),
+		"state":              state,
+		"mergedAt":           mergedAt,
+		"mergeCommitSha":     mergeCommitSha,
+		"base":               base,
+		"containedIn":        containedIn,
+		"containedInAll":     containedInAll,
+		"containedInUnknown": containedInUnknown,
+		"checks":             checks,
 		// Open-PR facts (item 8): "is my PR in yet" has no build-pipeline
 		// answer at all while the PR is still open, so the page prints these
 		// instead — created_at/head.sha/changed_files, straight off the same

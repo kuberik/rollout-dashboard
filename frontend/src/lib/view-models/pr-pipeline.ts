@@ -434,6 +434,17 @@ export type PrPipelineMeta = {
 	 * UNKNOWN, never as "verified empty".
 	 */
 	containmentKnown?: boolean;
+	/**
+	 * ⛔ `containedIn` IS NOT EVIDENCE ABOUT THIS FLEET. See
+	 * `PullRequestInfo.containedInUnknown`: the backend could not compute a
+	 * meaningful containment list — the walk failed, or the PR is STACKED and
+	 * its base is a branch nothing deploys from. Distinct from
+	 * `containedInAll`, which means the walk ran and was truncated.
+	 *
+	 * When set, absence from the set proves nothing, so Rule 2 may not read a
+	 * head that is missing from it as a ROLLBACK.
+	 */
+	containedInUnknown?: boolean;
 };
 
 type ReleaseLike = { tag: string; version?: string; revision?: string; created?: string };
@@ -857,14 +868,57 @@ function buildCell(
 	});
 	if (rolledBackEntry) {
 		const releaseLabel = head?.version ? getDisplayVersion(head.version) : '';
-		return cell({
-			...NOTHING,
-			state: 'rolled-back',
-			reason: head?.message?.trim() || `rolled back to ${releaseLabel}`,
-			since: head?.timestamp ?? null,
-			releaseLabel,
-			revision: headRevision
-		});
+		/**
+		 * ⛔ A ROLLBACK IS INFERRED FROM AN ABSENCE, SO THE SET HAS TO BE
+		 * EVIDENCE. (2026-09-18, reported: "some of the environments say
+		 * they're rolled back even though they're on latest".)
+		 *
+		 * This rule reads "head's revision is not in `set`" as "the head does
+		 * not carry the change". That is only sound when `set` is an
+		 * authoritative account of what carries it. For caffeinelabs/app#8864
+		 * it was not: the PR is STACKED — it merged
+		 * `giorgio/agent-feedback-model-ai` into `giorgio/agent-feedback-model`
+		 * — and `containedIn` is the walk of THAT branch, while every rollout
+		 * deploys from `main`. So every build the fleet ran was missing from
+		 * the set, the merge-commit build sat one entry down in history, and
+		 * this rule fired on all of them.
+		 *
+		 * What it printed is self-refuting, which is how it was caught: "rolled
+		 * back to 0.0.1-7833.f1143fe" on an environment that had moved FORWARD
+		 * to 7833 from 7825. You cannot roll back to a higher build.
+		 *
+		 * ⚠️ The change DID land here — that is exactly what `rolledBackEntry`
+		 * proves, and it is the one thing the set can still be trusted for: a
+		 * POSITIVE membership never needed the list to be complete. So when
+		 * containment is unknown this reports the landing it can prove, marked
+		 * superseded, rather than a rollback it cannot.
+		 */
+		if (meta.containedInUnknown) {
+			if (rolledBackEntry.bakeStatus === 'Succeeded') {
+				return cell({
+					...NOTHING,
+					state: 'live',
+					reason: 'live · a later build is serving, and whether it carries this change could not be verified',
+					since: rolledBackEntry.timestamp ?? null,
+					superseded: true,
+					releaseLabel,
+					revision: headRevision
+				});
+			}
+			// It never landed cleanly here either, so there is no rollback AND
+			// no landing to report — fall through to the release rules below,
+			// which answer from `availableReleases` without claiming a state
+			// this data cannot support.
+		} else {
+			return cell({
+				...NOTHING,
+				state: 'rolled-back',
+				reason: head?.message?.trim() || `rolled back to ${releaseLabel}`,
+				since: head?.timestamp ?? null,
+				releaseLabel,
+				revision: headRevision
+			});
+		}
 	}
 
 	// ── RULE 3/4: search `availableReleases` for a build carrying the PR ────
@@ -1530,7 +1584,8 @@ export function buildPrPipeline(
 	// default reads an unpopulated bare-sha stub as UNKNOWN, never as
 	// "verified empty".
 	const containmentKnown =
-		meta.containmentKnown ?? (meta.containedIn.length > 0 || meta.containedInAll);
+		!meta.containedInUnknown &&
+		(meta.containmentKnown ?? (meta.containedIn.length > 0 || meta.containedInAll));
 
 	// The PR's own repo, normalised the SAME way every rollout's own
 	// `status.source` is — so `https://github.com/o/r.git` and `o/r` agree.

@@ -753,6 +753,78 @@ describe('buildPrPipeline', () => {
 		expect(vm.rolloutsLive).toBe(0);
 	});
 
+	/**
+	 * ⛔ REGRESSION, 2026-09-18 — reported: "some of the environments say
+	 * they're rolled back even though they're on latest".
+	 *
+	 * caffeinelabs/app#8864 is a STACKED PR: it merged
+	 * `giorgio/agent-feedback-model-ai` into `giorgio/agent-feedback-model`
+	 * while every rollout deploys from `main`. `containedIn` is the walk of
+	 * the PR's own base, so it holds the merge commit and nothing the fleet
+	 * ever built — and Rule 2 read every real build's absence as proof the
+	 * head had lost the change.
+	 *
+	 * The output was self-refuting: "rolled back to 0.0.1-7833" on an
+	 * environment that had moved FORWARD to 7833 from 7825.
+	 */
+	it('does not call a forward move a rollback when containment is not evidence', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [
+				// Built from main, later. Absent from the stacked base's walk.
+				{ revision: 'f1143fe', timestamp: '2026-09-10T11:59:00Z', bakeStatus: 'Succeeded' },
+				// The merge-commit build, which DID carry the change.
+				{ revision: '75d69ad', timestamp: '2026-09-10T10:00:00Z', bakeStatus: 'Succeeded' }
+			]
+		});
+		const vm = buildPrPipeline(
+			meta({
+				mergeCommitSha: '75d69ad',
+				containedIn: ['75d69ad'],
+				containedInAll: false,
+				containedInUnknown: true
+			}),
+			[rollout],
+			[mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' })],
+			{ items: [] },
+			NOW
+		);
+		const cell = vm.services[0].cells.find((c) => c.envName === 'prod')!;
+		expect(cell.state).not.toBe('rolled-back');
+		// The landing is the one thing the set still proves: a POSITIVE
+		// membership never needed the list to be complete.
+		expect(cell.state).toBe('live');
+		expect(cell.since).toBe('2026-09-10T10:00:00Z');
+		expect(cell.superseded).toBe(true);
+		expect(vm.rolloutsLive).toBe(1);
+	});
+
+	/**
+	 * ⚠️ THE OTHER HALF. With an authoritative list, a head missing the change
+	 * over an older entry that has it IS a rollback, and must stay one.
+	 */
+	it('still reports a real rollback when the containment list is authoritative', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [
+				{ revision: 'older00', timestamp: '2026-09-10T11:59:00Z', bakeStatus: 'Succeeded' },
+				{ revision: 'c0ffee1', timestamp: '2026-09-10T10:00:00Z', bakeStatus: 'Succeeded' }
+			]
+		});
+		const vm = buildPrPipeline(
+			meta({ containedIn: ['c0ffee1'], containedInAll: false }),
+			[rollout],
+			[mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' })],
+			{ items: [] },
+			NOW
+		);
+		const cell = vm.services[0].cells.find((c) => c.envName === 'prod')!;
+		expect(cell.state).toBe('rolled-back');
+		expect(vm.rolloutsLive).toBe(0);
+	});
+
 	it('the FIRST build carrying the change is still deploying, not live', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
