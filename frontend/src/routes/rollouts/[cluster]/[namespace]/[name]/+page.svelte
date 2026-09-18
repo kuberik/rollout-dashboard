@@ -116,7 +116,6 @@
 	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import ResourceCard from '$lib/components/ResourceCard.svelte';
 	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
-	import JoinedBadge from '$lib/components/JoinedBadge.svelte';
 	import ScheduleStatus from '$lib/components/ScheduleStatus.svelte';
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
 	import {
@@ -138,14 +137,18 @@
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
-	import { getBakeStatusColor, bakeWord, bakeTitle } from '$lib/bake-status';
+	import { bakeWord, bakeTitle } from '$lib/bake-status';
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
 	import EventsCard from '$lib/components/EventsCard.svelte';
 	import { fly, blur } from 'svelte/transition';
-	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme } from '$lib/environment-theme';
+	import {
+		getEnvironmentThemeStyle,
+		getRolloutEnvironmentTheme,
+		shortEnvLabel
+	} from '$lib/environment-theme';
 
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { DEPLOY_PARAM, deployKey } from '$lib/history-deeplink';
@@ -3166,17 +3169,52 @@
 														</span>
 													{/if}
 													{#if depInfo}
-														{@const valueColor = getBakeStatusColor(depInfo.bakeStatus)}
-														<JoinedBadge
-															label="{depInfo.env} env"
+														{@const depTheme = getRolloutEnvironmentTheme(null, depInfo.env)}
+														<!--
+															⭐ `size="chip"` (12px), NOT `small` (16px). This is the
+															defect `BakeStatusIcon`'s own `chip` note was written for,
+															in the one slot that never got migrated: `.chip` is a 20px
+															box, and a `small` glyph left ~2px of clearance — but the
+															in-flight mark SPINS, and `animate-spin` rotates the whole
+															square, so its swept box is the DIAGONAL, 16 x √2 ≈ 22.6px.
+															A 16px spinner does not merely sit tight in a 20px chip, it
+															sweeps OUTSIDE it. Measured mid-rotation on this exact
+															markup: the `Deploying` glyph's box was 19.0px in dark and
+															17.6px light against a 20px chip — 0.51px of clearance —
+															which is the "spinner looks buggy, too big for the chip"
+															report. At `chip` the sweep is 12 x √2 ≈ 17.0px and the
+															clearance measures 2.88px / 3.4px, steady through the whole
+															rotation. `RepoLedgerCard` already draws this same in-flight
+															mark at `chip` in this same slot.
+														-->
+														{#snippet depGlyph()}
+															<span class="mr-[3px] inline-flex shrink-0 items-center">
+																<BakeStatusIcon bakeStatus={depInfo.bakeStatus} size="chip" />
+															</span>
+														{/snippet}
+														<!--
+															⭐ AND IT IS AN `env` CHIP, BECAUSE IT NAMES AN ENVIRONMENT.
+															This was `role="count"` — the NEUTRAL role, for counts —
+															carrying the label `dev env`, i.e. an environment printed in
+															the one chip style the product does NOT use for
+															environments, with the word `env` spelled out to make up for
+															it. Every other environment in this product is an env-themed
+															chip whose tint IS the "this is an environment" signal
+															(`/revisions`, `/apps`, the chain rows on the dependencies
+															tab, and the header chip on this very page), so the word is
+															redundant once the theme is there. `shortEnvLabel` is the
+															spelling those call sites use.
+														-->
+														<Chip
+															role="env"
+															theme={depTheme}
+															label={shortEnvLabel(depTheme) || depInfo.env}
 															value={bakeWord(depInfo.bakeStatus)}
-															{valueColor}
-															title={bakeTitle(depInfo.bakeStatus)}
-														>
-															{#snippet icon()}
-																<BakeStatusIcon bakeStatus={depInfo.bakeStatus} size="small" />
-															{/snippet}
-														</JoinedBadge>
+															valueTitle={bakeTitle(depInfo.bakeStatus)}
+															title="{depInfo.env} — {bakeTitle(depInfo.bakeStatus)}"
+															icon={depGlyph}
+															wide
+														/>
 													{/if}
 												</div>
 												<!-- WHAT THIS BUILD WOULD SHIP. (2026-09-03, from the human:

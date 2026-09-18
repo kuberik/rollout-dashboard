@@ -149,12 +149,15 @@
 		 * A GLYPH FOR THE LABEL HALF, when the ROLE cannot supply one.
 		 *
 		 * The rank vocabulary supplies its own — see `GLYPH` below — so nothing
-		 * in the rank family passes this. It exists for `JoinedBadge`, the last
-		 * surviving second badge implementation, whose label half carries a
-		 * `BakeStatusIcon`. That was the ONE capability `Chip` did not have and
-		 * the only reason two components were drawing one idea; adding it here
-		 * is what lets `JoinedBadge` become a shim over this file instead of a
-		 * parallel geometry. See that file's header.
+		 * in the rank family passes this. It was added for `JoinedBadge`, the
+		 * last surviving second badge implementation, whose label half carried a
+		 * `BakeStatusIcon`: that was the ONE capability `Chip` did not have and
+		 * the only reason two components were drawing one idea. `JoinedBadge`
+		 * became a shim over this file and, on 2026-09-18, was DELETED along
+		 * with its one call site (the release-candidate rows on the rollout
+		 * detail page, now a plain env-themed `Chip`). The slot stays: it is
+		 * what `RepoLedgerCard` and that row both use to put an in-flight
+		 * `BakeStatusIcon` in the label half.
 		 *
 		 * ⛔ It is NOT a general decoration slot. A glyph that repeats the word
 		 * beside it is a second encoding, which is why `alarm`'s dot was deleted
