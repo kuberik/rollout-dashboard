@@ -57,6 +57,7 @@
 		MessageDotsOutline,
 		CalendarWeekSolid,
 		QuestionCircleOutline,
+		ChevronDownOutline,
 		HeartSolid,
 		CubesStackedSolid,
 		UserSolid,
@@ -136,6 +137,7 @@
 	} from '$lib/view-models/dependency-graph';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
+	import GateLines from '$lib/components/GateLines.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { bakeWord, bakeTitle } from '$lib/bake-status';
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
@@ -1105,6 +1107,47 @@
 	 * true of the GATE, false of the CANDIDATE, which will not deploy
 	 * automatically no matter what the clock does until the pin is cleared.
 	 */
+	/**
+	 * ⭐ HOW MANY RULES, FOR THE CHIP'S OWN VALUE HALF. (2026-09-18, from the
+	 * human: "held needs to display how many gates are blocking it".)
+	 *
+	 * Separate from `heldWord` on purpose. `heldWord` answers "what should the
+	 * line beside the chip say", and for a pin or a clock gate with a real
+	 * countdown that is a CLAUSE, not a count. The chip needs the count
+	 * unconditionally, so it gets its own function rather than parsing one out
+	 * of the other.
+	 */
+	function heldCountLabel(gates: ClassifiedGate[]): string {
+		return gates.length === 1 ? '1 rule' : `${gates.length} rules`;
+	}
+
+	/**
+	 * The plain-count spelling of `heldWord`, used only to decide whether
+	 * `heldWord` is saying anything the chip has not already said. Kept beside
+	 * `heldWord`'s own fallback so the two cannot drift into disagreeing about
+	 * the singular.
+	 */
+	function heldCountPhrase(gates: ClassifiedGate[]): string {
+		return gates.length === 1 ? 'by a rule' : `by ${gates.length} rules`;
+	}
+
+	/**
+	 * The record's last word. `heldClears` says HOW this clears (or that it
+	 * will not); the second sentence is the standing fact about held builds
+	 * that used to open the popover's paragraph.
+	 *
+	 * ⛔ THE REST OF THAT PARAGRAPH IS GONE, NOT RELOCATED. It narrated each
+	 * gate in prose and every gate then repeated the same fact in its own row.
+	 * `GateRecord` gives each gate a `Now` and a `Clears` fact, so the prose
+	 * was a second copy of the list below it.
+	 */
+	function heldFoot(gates: ClassifiedGate[]): string {
+		const clears = heldClears(gates);
+		const standing =
+			'Nothing promotes this build automatically while it is held. A deploy you start by hand still applies immediately.';
+		return clears ? `${clears} ${standing}` : standing;
+	}
+
 	function heldClears(gates: ClassifiedGate[]): string {
 		if (gates.length === 0) return '';
 		if (blockStory.pinnedTo)
@@ -3090,7 +3133,7 @@
 														<button
 															type="button"
 															aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
-															class="inline-flex cursor-help items-center gap-1 rounded text-xs"
+															class="hit-32 inline-flex cursor-pointer items-center gap-1 rounded text-xs"
 														>
 															<!-- `held` is a gate correctly refusing a candidate, not an
 															     adverse outcome — `role="blocked"` (red) was the wrong
@@ -3102,52 +3145,72 @@
 															     draws its own `Chip role="blocked" label="held"` from a
 															     separate template (not shared markup) and still needs
 															     the same fix — flagged to the graph lane. -->
-															<Chip role="held" label="held" />
-															<span class="text-gray-500 dark:text-gray-400">{heldWord(held)}</span>
-															<QuestionCircleOutline class="h-3 w-3 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+															<!--
+																⭐ THE COUNT IS ON THE CHIP. (2026-09-18, from the human:
+																"held needs to display how many gates are blocking it".)
+																It was a bare `held` with the count as loose text beside
+																it; `Chip`'s joined form is exactly this shape, so the
+																chip now answers "how many" on its own.
+
+																⚠️ `heldWord` IS STILL PRINTED WHEN IT SAYS MORE THAN THE
+																COUNT. It usually returns `by N rules` — redundant once
+																the chip carries N — but for a pin, or for a clock gate
+																with a real countdown, it returns the CLAUSE instead
+																(`reopens in 3h`). Dropping it wholesale would have
+																deleted that. So it is printed only when it differs from
+																the plain count form.
+															-->
+															<Chip role="held" label="held" value={heldCountLabel(held)} />
+															{#if heldWord(held) !== heldCountPhrase(held)}
+																<span class="text-gray-500 dark:text-gray-400">{heldWord(held)}</span>
+															{/if}
+															<!-- ⛔ A CHEVRON, NOT A QUESTION MARK. `?` with `cursor-help`
+															     is a HOVER affordance and says nothing on a phone, which
+															     is where this control most needs to read as openable. A
+															     chevron is the product's own "there is more behind this"
+															     mark. `hit-32` supplies the touch floor — its `::before`
+															     is scoped to `@media (pointer: coarse), (max-width: 639px)`,
+															     so it costs desktop nothing. -->
+															<ChevronDownOutline class="h-3 w-3 text-gray-500 dark:text-gray-400" aria-hidden="true" />
 														</button>
-														<Popover class="max-w-sm text-sm" title={heldTitle(held)}>
-															<div class="space-y-2 p-1">
-																<p class="text-xs text-gray-600 dark:text-gray-300">
-																	{heldClears(held)} Nothing promotes this build automatically while
-																	it is held. A deploy you start by hand still applies immediately.
-																</p>
-																{#each blockingGates as gate}
-																	<!-- WHAT CLEARS THIS ONE, from the same join
-																	     `BlockingStoryLines` renders in the banner above.
-																	     `Status: <enum>` further down is the controller's own
-																	     word and is a handle, not an explanation. -->
-																	{@const clears = held.find((h) => h.id === gate.metadata?.name)}
-																	<div class="flex items-start gap-2">
-																		<ExclamationCircleSolid
-																			class="mt-0.5 h-4 w-4 shrink-0 text-yellow-700 dark:text-yellow-400"
-																		/>
-																		<div class="min-w-0">
-																			<p class="font-medium text-gray-900 dark:text-white">
-																				{getGatePrettyName(gate) ||
-																					gate.metadata?.name ||
-																					'Unknown rule'}
-																			</p>
-																			{#if getGateDescription(gate)}
-																				<p class="text-xs text-gray-500 dark:text-gray-400">
-																					{getGateDescription(gate)}
-																				</p>
-																			{/if}
-																			{#if clears}
-																				<p class="text-xs text-gray-500 dark:text-gray-400">
-																					{clears.short}
-																				</p>
-																			{/if}
-																			{#if gate.status?.status}
-																				<p class="text-xs text-yellow-700 dark:text-yellow-400">
-																					Status: {gate.status.status}
-																				</p>
-																			{/if}
-																		</div>
-																	</div>
-																{/each}
-															</div>
-														</Popover>
+														<!--
+													⛔ THE LINES, NOT THE RECORD. (2026-09-18, third attempt, and the
+													second one is why this comment exists.)
+
+													This started as a paragraph. I replaced it with `GateRecord` —
+													the right OBJECT, wrong PLACE — and the human's verdict was:
+													"you have to show it visually, what you did here is just created
+													a table-like interface for each one with different values. in
+													the end, they look the same again."
+
+													Exactly so. A record is an aligned block of labelled facts, so
+													five gates render as five identical tables and a 14px icon is
+													the only thing telling them apart. `BlockingStoryLines` had
+													already solved this for the other surface, against the SAME
+													complaint ("i feel like you could better visualize this rather
+													than just putting ascii icons in there"), by COMPOSING the line
+													instead of narrating it — the provider at full ink, the contract
+													as `[db|1.262.0] → [1.263]`, the window with its own countdown.
+
+													Those lines are `GateLines` now, so this draws them instead of
+													inventing a third shape. Kinds differ here because some kinds
+													HAVE a second object to draw and some do not — `check`,
+													`approval` and `unknown` keep their sentence, deliberately.
+
+													⚠️ `GateRecord` IS NOT GONE FROM THE PRODUCT — it is what sits
+													behind `BlockingStoryLines`' own `RulePopover`. It was never the
+													wrong object, only the wrong one to put in the foreground. This
+													host is itself a popover, so it cannot nest that control; the
+													lines plus the verdict are what it shows.
+												-->
+												<Popover class="max-w-sm text-sm" title={heldTitle(held)}>
+													<div class="p-1">
+														<GateLines gates={held} />
+														<p class="mt-2 border-t border-gray-100 pt-2 text-xs text-gray-500 dark:border-gray-700/60 dark:text-gray-400">
+															{heldFoot(held)}
+														</p>
+													</div>
+												</Popover>
 													{:else}
 														<span
 															class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400"
