@@ -52,6 +52,15 @@
 		singleFile?: boolean;
 		/** The `LR` fit floor away from `narrow` — see `GraphCanvasInner`'s own doc. */
 		minZoomWide?: number;
+		/**
+		 * Let the frame narrow to a small `LR` drawing's own content instead of
+		 * the caller's full offer — see `GraphCanvasInner`'s `snugFrameWidth`
+		 * doc. Default `true`, unchanged from before this prop existed; a
+		 * caller whose card is ALREADY sized to its drawing (no wide band to
+		 * guard against) passes `false` so the frame fills the card instead of
+		 * shrinking a second time inside it.
+		 */
+		snugFrame?: boolean;
 		/** Size the pane to the width-driven zoom, not to zoom 1 — see `GraphCanvasInner`'s own doc. */
 		snugHeight?: boolean;
 		/** The `LR`/`TB` this canvas settled on, for a caller that names axes. */

@@ -105,7 +105,11 @@
 	import DependencyNode from '$lib/components/DependencyNode.svelte';
 	import ContractHopEdge from '$lib/components/ContractHopEdge.svelte';
 	import { theme } from '$lib/stores/theme';
-	import { getEnvironmentThemeStyle, shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
+	import {
+		getEnvironmentThemeStyle,
+		shortEnvLabel,
+		type EnvironmentTheme
+	} from '$lib/environment-theme';
 	import type { DependencyNodeData } from '$lib/components/dependency-node-data';
 	import {
 		layoutOrder,
@@ -151,27 +155,29 @@
 	/** Written by the canvas once it has measured itself. See `onorientation`. */
 	let stacked = $state(false);
 	/**
-	 * ⭐ 2026-09-13 · THE LEGEND ROW MATCHES THE CANVAS'S OWN WIDTH, WHEN THE
-	 * CANVAS HAS ONE.
+	 * ⭐ 2026-09-18 · THE LEGEND MOVED BELOW THE DRAWING AND LOST ITS CENTRING.
 	 *
-	 * From a design pass on the live fleet's `checkout-api`⇄`payments-svc`
-	 * neighbourhood: `GraphCanvasInner`'s `snugFrameWidth` fix (a small
-	 * single-rank graph draws in a canvas sized to ITS OWN content, centred,
-	 * rather than stretched to the full card) shrank the canvas but left this
-	 * file's own `» environments · services in one environment` row at the
-	 * CARD's full width above it — two objects that used to share one edge
-	 * now read as unrelated: a centred, narrow frame floating under a
-	 * hard-left row with a wide gap between them.
+	 * Until this redesign it sat ABOVE `<GraphCanvas>`, width-synced to
+	 * `GraphCanvasInner`'s `snugFrameWidth` (a small single-rank graph draws
+	 * in a canvas sized to its own content, centred, rather than stretched to
+	 * the full card) via the `onsnugwidth` callback — the row picked that
+	 * width up as its own `max-width` + `margin-inline: auto` so the two
+	 * objects shared one measured edge.
 	 *
-	 * `onsnugwidth` (`GraphCanvasInner`'s own callback, the same idiom as
-	 * `onorientation`) reports that width back here, and the row picks it up
-	 * as its own `max-width` + `margin-inline: auto` — the identical two
-	 * declarations the canvas itself renders with, so the two objects share
-	 * one measured edge and read as one composition again. `null` (every
-	 * `TB` render, every multi-rank `LR` graph) is a no-op: the row keeps
-	 * its ordinary full-width flow, byte-identical to before this existed.
+	 * On the rollout tab (`compact`) that centred pairing is exactly the
+	 * *"floating label"* the human named: a caption hanging above a narrow,
+	 * centred figure in a sea of empty card. §5c's `snugFrame={!compact}`
+	 * means the compact caller's frame is never narrowed in the first place
+	 * — the rail card is already sized to the drawing — so there is nothing
+	 * left to centre over. The legend now sits BELOW the drawing, left-
+	 * aligned at the card body's own left edge, as an ordinary caption. The
+	 * glyphs and their `stacked` rotation are unchanged.
+	 *
+	 * `snugWidth`/`onsnugwidth` are gone from THIS file because nothing here
+	 * reads them any more — `GraphCanvasInner`'s own `snugFrameWidth`
+	 * mechanism is untouched and still narrows `/dependencies`' frame for a
+	 * small subgraph; it just no longer has a caller-side row syncing to it.
 	 */
-	let snugWidth = $state<number | null>(null);
 
 	const nodeById = $derived(new Map(graph.nodes.map((n) => [n.id, n] as const)));
 	const inbound = $derived.by(() => {
@@ -492,34 +498,6 @@
 
 {#if graph.nodes.length > 0}
 	<!--
-		⭐ A TWO-AXIS LEGEND HAS A SHAPE, SO IT IS DRAWN, NOT WRITTEN.
-		(2026-09-02) Two full sentences of prose ("Across: a build moving
-		through environments, left first. Down: a service waiting on another
-		in the same environment.") said the same thing this glyph pair shows
-		in one line — direction is the one thing a graph can get
-		catastrophically wrong, and no arrowhead convention is universal, but
-		the FIX is geometry, not more words. The two marks are the product's
-		own, already-shipped icons for these two edge kinds
-		(`ChevronDoubleRightOutline` for a promotion, `ShareNodesSolid` for a
-		contract — `GateRecord.svelte`'s `gateMark()`), so the legend and the
-		graph cannot drift about what a mark means. The chevron ROTATES with
-		`stacked`, because that edge is genuinely vertical under `TB` and the
-		glyph should say so; the share icon has no orientation to carry.
-	-->
-	<p
-		class="t-micro mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400"
-		style={snugWidth !== null ? `max-width:${snugWidth}px;margin-inline:auto` : undefined}
-	>
-		<span class="inline-flex items-center gap-1">
-			<ChevronDoubleRightOutline class="h-3 w-3 shrink-0 {stacked ? 'rotate-90' : ''}" />
-			environments
-		</span>
-		<span class="inline-flex items-center gap-1">
-			<ShareNodesSolid class="h-3 w-3 shrink-0 {stacked ? '' : 'rotate-90'}" />
-			services in one environment
-		</span>
-	</p>
-	<!--
 		⭐ 2026-09-03 · THE SAME COMPONENT, ONE NODE PER ROW UNDER `TB`, NOT A
 		SECOND COMPONENT. The human's standing decision, reaffirmed this week:
 		one component at every width now that this is the flow library, not a
@@ -581,11 +559,46 @@
 		{anchorSpan}
 		fillWidth={!stacked}
 		minZoomWide={0.85}
+		snugFrame={!compact}
 		snugHeight
 		onorientation={(o) => (stacked = o === 'TB')}
-		onsnugwidth={(w) => (snugWidth = w)}
 		{dark}
 		ariaLabel="Dependency graph"
-		class="rounded-lg border border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/40"
+		class="rounded-lg bg-gray-50/60 dark:bg-gray-900/40"
 	/>
+	<!--
+		⭐ A TWO-AXIS LEGEND HAS A SHAPE, SO IT IS DRAWN, NOT WRITTEN.
+		(2026-09-02) Two full sentences of prose ("Across: a build moving
+		through environments, left first. Down: a service waiting on another
+		in the same environment.") said the same thing this glyph pair shows
+		in one line — direction is the one thing a graph can get
+		catastrophically wrong, and no arrowhead convention is universal, but
+		the FIX is geometry, not more words. The two marks are the product's
+		own, already-shipped icons for these two edge kinds
+		(`ChevronDoubleRightOutline` for a promotion, `ShareNodesSolid` for a
+		contract — `GateRecord.svelte`'s `gateMark()`), so the legend and the
+		graph cannot drift about what a mark means. The chevron ROTATES with
+		`stacked`, because that edge is genuinely vertical under `TB` and the
+		glyph should say so; the share icon has no orientation to carry.
+
+		⭐ 2026-09-18 · BELOW THE DRAWING NOW, NOT ABOVE IT — see the
+		`snugWidth` doc comment further up this file for the full argument.
+		In one line: this row used to width-sync to a narrowed, centred
+		frame; the compact caller's frame no longer narrows, so a caption
+		hanging above a centred figure in a sea of empty card was the
+		"floating label" the human named. Left-aligned at the card body's own
+		edge, below the figure, it reads as a caption should.
+	-->
+	<p
+		class="t-micro mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400"
+	>
+		<span class="inline-flex items-center gap-1">
+			<ChevronDoubleRightOutline class="h-3 w-3 shrink-0 {stacked ? 'rotate-90' : ''}" />
+			environments
+		</span>
+		<span class="inline-flex items-center gap-1">
+			<ShareNodesSolid class="h-3 w-3 shrink-0 {stacked ? '' : 'rotate-90'}" />
+			services in one environment
+		</span>
+	</p>
 {/if}

@@ -106,6 +106,7 @@
 		singleFile = false,
 		minZoomWide = 0.55,
 		snugHeight = false,
+		snugFrame = true,
 		onorientation = undefined,
 		onsnugwidth = undefined,
 		class: className = ''
@@ -301,6 +302,25 @@
 		 * this prop existed.
 		 */
 		snugHeight?: boolean;
+		/**
+		 * ⭐ 2026-09-18 · OPT OUT OF `snugFrameWidth` ENTIRELY, PER CALLER.
+		 *
+		 * `snugFrameWidth` (see its own doc below) exists because a small `LR`
+		 * drawing in a WIDE band is mostly dead card — it caps the frame at
+		 * `natural.width / 0.5` so the ink does not drown in blank ground. That
+		 * premise stops holding once the CALLER'S OWN CARD is already sized to
+		 * the drawing rather than to a fixed wide band: there the ratio is
+		 * already high, and narrowing the frame a second time draws a small
+		 * tinted rectangle floating inside a bordered card with dead card
+		 * either side of IT — the exact "box inside a box" `snugFrameWidth`
+		 * exists to prevent, just moved one level in.
+		 *
+		 * `true` is the default and keeps every existing caller
+		 * byte-identical (`/dependencies`, `AppPromotionFlow`). `false` is for
+		 * a caller whose card was built around this drawing — currently only
+		 * `DependencyNetwork`'s `compact` rollout-tab rendering.
+		 */
+		snugFrame?: boolean;
 		/**
 		 * ⭐ THE DIRECTION THIS CANVAS SETTLED ON, back to the caller.
 		 *
@@ -779,7 +799,8 @@
 		const wb = nb.measured?.width ?? fallbackNodeWidth;
 		const ha = na.measured?.height ?? fallbackNodeHeight;
 		const hb = nb.measured?.height ?? fallbackNodeHeight;
-		const boxWidth = Math.max(na.position.x + wa, nb.position.x + wb) - Math.min(na.position.x, nb.position.x);
+		const boxWidth =
+			Math.max(na.position.x + wa, nb.position.x + wb) - Math.min(na.position.x, nb.position.x);
 		const boxHeight =
 			Math.max(na.position.y + ha, nb.position.y + hb) - Math.min(na.position.y, nb.position.y);
 		if (boxWidth <= 0 || boxHeight <= 0) return 0;
@@ -1123,9 +1144,7 @@
 		untrack(() => {
 			const next = incoming.map((bn) => {
 				const existing = flowNodes.find((fn) => fn.id === bn.id);
-				return existing
-					? { ...bn, measured: existing.measured, position: existing.position }
-					: bn;
+				return existing ? { ...bn, measured: existing.measured, position: existing.position } : bn;
 			});
 			const sameIds =
 				JSON.stringify(next.map((n) => n.id)) === JSON.stringify(flowNodes.map((n) => n.id));
@@ -1345,27 +1364,28 @@
 					// …but never so wide that `overflows` flips on a graph that fits.
 					frameWidth - 2 * MARGIN - 8
 				);
-				const gaps =
-					new Set(flowNodes.map((n) => Math.round(g.node(n.id)?.x ?? 0))).size - 1;
+				const gaps = new Set(flowNodes.map((n) => Math.round(g.node(n.id)?.x ?? 0))).size - 1;
 				if (gaps >= 1 && natural.width < target - 4) {
 					const base = dir === 'LR' ? baseRanksep : baseNodesep;
 					// Everything the drawing is not already spending on gutters —
 					// the ranks themselves. Half of the stretched extent, at most.
 					const ink = natural.width - gaps * base;
-					const next = Math.min(
-						base + (target - natural.width) / gaps,
-						Math.max(base, ink / gaps)
-					);
+					const next = Math.min(base + (target - natural.width) / gaps, Math.max(base, ink / gaps));
 					if (next > base + 2) {
 						g = dir === 'LR' ? build(baseNodesep, next) : build(next, baseRanksep);
 					}
-				} else if (gaps < 1 && dir === 'LR') {
+				} else if (gaps < 1 && dir === 'LR' && snugFrame) {
 					/**
 					 * ⭐ THE COMPLEMENT: NO GAP TO WIDEN, SO THE FRAME SHRINKS TO
 					 * THE INK INSTEAD. See `snugFrameWidth`'s own doc above. Only
 					 * `LR` — under `TB` the constrained axis is height, and a
 					 * `singleFile` column already sizes its own width via the
 					 * `hasHook`/centring branch in `restingFit`, untouched here.
+					 *
+					 * `&& snugFrame` — 2026-09-18: this is the whole of the
+					 * `snugFrame={false}` opt-out (see that prop's own doc). When
+					 * false, the branch simply never runs and the frame keeps the
+					 * caller's full offered width, exactly as if `gaps >= 1`.
 					 *
 					 * ⚠️ THE TOLERANCE CHECK READS `availableWidth`, NOT
 					 * `frameWidth`. `frameWidth` is `containerWidth` — the
@@ -1452,9 +1472,10 @@
 			let maxLane = 0;
 			const nextEdges = flowEdges.map((e) => {
 				if (e.type !== 'contractHop') return e;
-				const lane = typeof (e.data as { lane?: number } | undefined)?.lane === 'number'
-					? (e.data as { lane: number }).lane
-					: 0;
+				const lane =
+					typeof (e.data as { lane?: number } | undefined)?.lane === 'number'
+						? (e.data as { lane: number }).lane
+						: 0;
 				maxLane = Math.max(maxLane, lane);
 				const gutterX = centerX + maxWidth / 2 + GUTTER_BASE + lane * LANE_GAP;
 				const prevGutterX = (e.data as { gutterX?: number } | undefined)?.gutterX;
@@ -1493,7 +1514,12 @@
 			const TB_HOOK_LEFT_OFFSET = 20; // restingFit's fixed `x` when `hasHook`
 			const TB_HOOK_RIGHT_PAD = 16;
 			const need = Math.round(
-				centerX + maxWidth / 2 + GUTTER_BASE + maxLane * LANE_GAP + TB_HOOK_LEFT_OFFSET + TB_HOOK_RIGHT_PAD
+				centerX +
+					maxWidth / 2 +
+					GUTTER_BASE +
+					maxLane * LANE_GAP +
+					TB_HOOK_LEFT_OFFSET +
+					TB_HOOK_RIGHT_PAD
 			);
 			const offer = availableWidth > 0 ? availableWidth : frameWidth;
 			nextSnugWidth = need < offer - 4 ? Math.max(TB_HOOK_WIDTH_FLOOR, need) : null;
@@ -1538,8 +1564,18 @@
 				const td = g.node(e.target);
 				if (!sd || !td || typeof e.label !== 'string') return e;
 				const w = e.label.length * 6 + 12;
-				const S = { l: sd.x - sd.width / 2, r: sd.x + sd.width / 2, t: sd.y - sd.height / 2, b: sd.y + sd.height / 2 };
-				const T = { l: td.x - td.width / 2, r: td.x + td.width / 2, t: td.y - td.height / 2, b: td.y + td.height / 2 };
+				const S = {
+					l: sd.x - sd.width / 2,
+					r: sd.x + sd.width / 2,
+					t: sd.y - sd.height / 2,
+					b: sd.y + sd.height / 2
+				};
+				const T = {
+					l: td.x - td.width / 2,
+					r: td.x + td.width / 2,
+					t: td.y - td.height / 2,
+					b: td.y + td.height / 2
+				};
 				let x = (sd.x + td.x) / 2;
 				let y = (sd.y + td.y) / 2;
 				const vGap = S.b < T.t ? [S.b, T.t] : T.b < S.t ? [T.b, S.t] : null;
@@ -1656,9 +1692,7 @@
 	 * with nothing to navigate to.
 	 */
 	const showMinimap = $derived(
-		!(singleFile && orientation === 'TB') &&
-			minimapFrom !== null &&
-			flowNodes.length >= minimapFrom
+		!(singleFile && orientation === 'TB') && minimapFrom !== null && flowNodes.length >= minimapFrom
 	);
 </script>
 
