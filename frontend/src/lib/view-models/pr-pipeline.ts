@@ -893,7 +893,27 @@ function buildCell(
 		 * containment is unknown this reports the landing it can prove, marked
 		 * superseded, rather than a rollback it cannot.
 		 */
-		if (meta.containedInUnknown) {
+		/**
+		 * ⛔ GUARDED ON `containmentKnown`, NOT ON `meta.containedInUnknown`.
+		 * (2026-09-18, second pass — the first shipped INERT.)
+		 *
+		 * The first attempt read `meta.containedInUnknown` directly. That field
+		 * is real and the backend sets it, but the page never copied it into
+		 * the `PrPipelineMeta` it builds — so it was `undefined` here, the
+		 * branch never ran, and app#8864 went on printing rollbacks on a
+		 * release that was supposed to have fixed them. The unit tests passed
+		 * because they construct `meta()` directly with the flag set, which is
+		 * exactly the wiring this bug lived in.
+		 *
+		 * `containmentKnown` is the right guard anyway, and it was threaded
+		 * into this function all along: `containmentKnownFor` already resolves
+		 * to `!containedInUnknown`, so the stacked-PR case reaches here through
+		 * a path the page actually populates. It is also BROADER in the correct
+		 * direction — a bare-sha stub (`containedIn: []`, `containedInAll:
+		 * false`) is equally unable to prove the head lost the change, and this
+		 * rule would have called that a rollback too.
+		 */
+		if (!containmentKnown) {
 			if (rolledBackEntry.bakeStatus === 'Succeeded') {
 				return cell({
 					...NOTHING,

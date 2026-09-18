@@ -801,6 +801,44 @@ describe('buildPrPipeline', () => {
 	});
 
 	/**
+	 * ⛔ THE WIRING THIS BUG ACTUALLY LIVED IN. The first fix guarded on
+	 * `meta.containedInUnknown`, which the page never copies into its
+	 * `PrPipelineMeta` — so the guard was `undefined` in production and
+	 * app#8864 kept printing rollbacks on the release meant to fix it. The
+	 * test above passed the whole time because it sets that flag by hand.
+	 *
+	 * This one sets ONLY `containmentKnown: false` — which is what the page
+	 * really passes, via `containmentKnownFor` — and no `containedInUnknown`
+	 * at all. It fails against the first fix and passes against the second.
+	 */
+	it('suppresses the rollback from containmentKnown alone, with no containedInUnknown flag', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [
+				{ revision: 'f1143fe', timestamp: '2026-09-10T11:59:00Z', bakeStatus: 'Succeeded' },
+				{ revision: '75d69ad', timestamp: '2026-09-10T10:00:00Z', bakeStatus: 'Succeeded' }
+			]
+		});
+		const vm = buildPrPipeline(
+			meta({
+				mergeCommitSha: '75d69ad',
+				containedIn: ['75d69ad'],
+				containedInAll: false,
+				containmentKnown: false
+			}),
+			[rollout],
+			[mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' })],
+			{ items: [] },
+			NOW
+		);
+		const cell = vm.services[0].cells.find((c) => c.envName === 'prod')!;
+		expect(cell.state).not.toBe('rolled-back');
+		expect(cell.state).toBe('live');
+		expect(vm.rolloutsLive).toBe(1);
+	});
+
+	/**
 	 * ⚠️ THE OTHER HALF. With an authoritative list, a head missing the change
 	 * over an older entry that has it IS a rollback, and must stay one.
 	 */

@@ -864,6 +864,10 @@
 					mergeCommitSha: prData.mergeCommitSha,
 					containedIn: prData.containedIn,
 					containedInAll: prData.containedInAll,
+					// Threaded so the field is not dead: `containmentKnown` below is
+					// what the cells actually read, but a reader of this object should
+					// not have to know that the two are the same fact.
+					containedInUnknown: prData.containedInUnknown,
 					// ⭐ FIX PASS ITEM 1 (2026-09-10). `fetchPull` always returns a real,
 					// server-computed containment set — never leave this to
 					// `buildPrPipeline`'s own ambiguous default (see
