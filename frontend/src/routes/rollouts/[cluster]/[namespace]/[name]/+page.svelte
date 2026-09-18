@@ -137,7 +137,7 @@
 	} from '$lib/view-models/dependency-graph';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import GateRecord from '$lib/components/GateRecord.svelte';
+	import GateLines from '$lib/components/GateLines.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { bakeWord, bakeTitle } from '$lib/bake-status';
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
@@ -3174,46 +3174,41 @@
 															<ChevronDownOutline class="h-3 w-3 text-gray-500 dark:text-gray-400" aria-hidden="true" />
 														</button>
 														<!--
-													⛔ THE RECORD IS THE SHARED COMPONENT, NOT A FOURTH COPY OF IT.
-													(2026-09-18, from the human: "popover now is just a wall of
-													text which is pretty ugly", then "you can style each gate type
-													appropriately".)
+													⛔ THE LINES, NOT THE RECORD. (2026-09-18, third attempt, and the
+													second one is why this comment exists.)
 
-													This popover hand-rolled its own gate list and drew the SAME
-													yellow `ExclamationCircleSolid` over every gate — a deploy
-													window, a service contract, a promotion order and a manual
-													approval all wearing one alarm glyph. `GateRecord` already
-													owns that problem: `gateMark` picks the mark from `kind` first
-													and `clears` second ("an icon names an OBJECT"), and
-													`gateKindWord` names it in words — deploy window / check /
-													promotion order / service contract / manual approval.
+													This started as a paragraph. I replaced it with `GateRecord` —
+													the right OBJECT, wrong PLACE — and the human's verdict was:
+													"you have to show it visually, what you did here is just created
+													a table-like interface for each one with different values. in
+													the end, they look the same again."
 
-													Its own header is explicit about why this must not be a copy:
-													"a shared object copied into a second file will not receive the
-													shared object's next fix". This was that copy, and it had
-													already drifted — the human's earlier "still don't like these
-													details when we have this nonsense icon" was fixed in the
-													record and never reached here.
+													Exactly so. A record is an aligned block of labelled facts, so
+													five gates render as five identical tables and a 14px icon is
+													the only thing telling them apart. `BlockingStoryLines` had
+													already solved this for the other surface, against the SAME
+													complaint ("i feel like you could better visualize this rather
+													than just putting ascii icons in there"), by COMPOSING the line
+													instead of narrating it — the provider at full ink, the contract
+													as `[db|1.262.0] → [1.263]`, the window with its own countdown.
 
-													The WALL OF TEXT goes with it. The paragraph narrated every
-													gate in prose and each gate then repeated the same fact
-													below — "someone has to ship a newer db from caffeine-db" up
-													top, "Waiting for caffeine-db to ship a newer db" in the row.
-													One fact, twice. The record gives each gate its own `Now` and
-													`Clears` facts, so only the genuinely global sentence is left,
-													as `foot`.
+													Those lines are `GateLines` now, so this draws them instead of
+													inventing a third shape. Kinds differ here because some kinds
+													HAVE a second object to draw and some do not — `check`,
+													`approval` and `unknown` keep their sentence, deliberately.
 
-													`clearsFor` returns `g.short` — the gate's CURRENT STATE, which
-													this host does not draw anywhere else, so the record is the
-													right place for it (see `GateRecord`'s note on the callback).
+													⚠️ `GateRecord` IS NOT GONE FROM THE PRODUCT — it is what sits
+													behind `BlockingStoryLines`' own `RulePopover`. It was never the
+													wrong object, only the wrong one to put in the foreground. This
+													host is itself a popover, so it cannot nest that control; the
+													lines plus the verdict are what it shows.
 												-->
 												<Popover class="max-w-sm text-sm" title={heldTitle(held)}>
 													<div class="p-1">
-														<GateRecord
-															gates={held}
-															clearsFor={(g) => g.short}
-															foot={heldFoot(held)}
-														/>
+														<GateLines gates={held} />
+														<p class="mt-2 border-t border-gray-100 pt-2 text-xs text-gray-500 dark:border-gray-700/60 dark:text-gray-400">
+															{heldFoot(held)}
+														</p>
 													</div>
 												</Popover>
 													{:else}

@@ -107,12 +107,11 @@
 	 * full ink at `t-code-sm`/`t-micro` instead of the fourth word of a gray
 	 * sentence, and the versions are chips. Less text, more hierarchy.
 	 */
-	import { ArrowRightOutline } from 'flowbite-svelte-icons';
 	import { formatTimeUntil } from '$lib/api/schedules';
 	import { now } from '$lib/stores/time';
-	import Chip from './Chip.svelte';
 	import RulePopover from './RulePopover.svelte';
-	import GateRecord, { gateMark } from './GateRecord.svelte';
+	import GateLines from './GateLines.svelte';
+	import GateRecord from './GateRecord.svelte';
 	import { type BlockingStory, type ClassifiedGate } from '$lib/view-models/blocking-story';
 
 	let {
@@ -158,29 +157,6 @@
 	}
 
 	/**
-	 * ⭐ THE ROW'S OWN MARK, NOT `gateMark()` UNTOUCHED. (2026-09-03, design
-	 * pass 7, finding #1) `gateMark({kind:'promotion'})` is `ChevronDoubleRightOutline`
-	 * — the SAME svg `PromotionPipeline`'s own card header wears on
-	 * `/apps/<name>` (`GateRecord.svelte`'s own comment names it: *"a
-	 * promotion order takes `ChevronDoubleRightOutline` (the `Promotion
-	 * pipeline` card header's)"*). That is correct where `gateMark` is used
-	 * as a RECORD field (`GateRecord`'s own popover rows, one scale down,
-	 * where the icon sits beside the rule's NAME) — it is wrong here, where
-	 * it sits as a bare bullet in front of a whole clause (`dev deploys it
-	 * first`). An icon that NAMES A CARD elsewhere in the product is not a
-	 * bullet; a reader who has seen the `Promotion pipeline` card reads this
-	 * row as "this is that card", which it is not. `gateMark` itself is
-	 * unchanged — `GateRecord.svelte`'s popover and its own test still pin
-	 * `ChevronDoubleRightOutline` for `kind: 'promotion'` — this only
-	 * overrides what THIS LIST draws, for this one kind, to the product's
-	 * plain directional glyph instead.
-	 */
-	function lineMark(g: ClassifiedGate) {
-		if (g.kind === 'promotion') return ArrowRightOutline;
-		return gateMark(g);
-	}
-
-	/**
 	 * ⭐ THE STATE OF `subject`, IN THE ROW'S RIGHT-HAND SLOT — the card-header
 	 * grammar (`COMPOSITION-GRAMMAR.md` §1: icon + title left, rolled-up verdict
 	 * right) brought down to row scale.
@@ -198,86 +174,16 @@
 
 {#if story.blocked && story.gates.length > 0}
 	<div class="mt-1.5 flex min-w-0 flex-col gap-1 {className}">
-		<ul class="flex min-w-0 flex-col gap-1">
-			{#each story.gates as g (g.id)}
-				{@const Icon = lineMark(g)}
-				{@const until = untilFor(g)}
-				{@const state = rowState(g, until)}
-				{@const drawn = !!g.subject && (drawsVersions(g) || state !== null)}
-				<!-- THE HANDLE FOR THIS LINE, ON THIS LINE. The record in the popover
-				     below names every gate, but the ROW is where the reader is
-				     looking; this says which object produced this line and costs no
-				     pixels. It is an ADDITION to the popover, never a substitute for
-				     it — a `title` is not reachable on a phone. -->
-				<li
-					class="t-micro flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
-					title="The rule holding this: {g.id}"
-				>
-					<span class="flex min-w-0 items-center gap-1.5">
-						<Icon class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-						{#if drawn && subjectHref && g.subject === subjectLabel}
-							<!-- THE OBJECT THAT HAS TO MOVE, AT FULL INK — AND NOW THE
-							     ZONE'S ONE `.tap-link` TOO. Same classes, same ink, the
-							     only addition is the anchor itself; a reader who does
-							     not notice it is a link loses nothing they had before. -->
-							<a
-								href={subjectHref}
-								class="{g.subjectKind === 'schedule'
-									? 't-micro font-medium'
-									: 't-code-sm'} tap-link min-w-0 truncate text-gray-900 dark:text-white">{g.subject}</a
-							>
-						{:else if drawn}
-							<!-- THE OBJECT THAT HAS TO MOVE, AT FULL INK. It was the
-							     fourth word of a gray sentence; it is the thing the
-							     reader is looking for. Mono for a Kubernetes object
-							     name (a service, an environment), sans for a
-							     human-authored window label. -->
-							<span
-								class="{g.subjectKind === 'schedule'
-									? 't-micro font-medium'
-									: 't-code-sm'} min-w-0 truncate text-gray-900 dark:text-white">{g.subject}</span
-							>
-						{:else}
-							<!-- NO SHAPE, SO THE SENTENCE STAYS. See the header. -->
-							<span class="min-w-0">{g.short}</span>
-						{/if}
-					</span>
-					{#if drawn && drawsVersions(g)}
-						<!-- ⭐ THE CONTRACT, DRAWN. `[API|1.66.0]` is `Chip`'s joined
-						     form — a caption and the identifier it captions, the
-						     product's one badge geometry — and `[^1.67.0]` is its
-						     identifier-only form. The arrow is between two operands,
-						     which is the difference between a structural mark and the
-						     decorative one this row used to lead with.
-						     `valueIsBuild={false}`: a CONTRACT version is not a build,
-						     and the tag glyph claims it is. -->
-						<span class="flex min-w-0 items-center gap-1">
-							<Chip
-								role="count"
-								label={g.contract ?? ''}
-								value={g.have}
-								valueIsBuild={false}
-								wide={(g.contract ?? '').length > 14}
-								title="{g.subject} serves {g.contract} {g.have}"
-							/>
-							<ArrowRightOutline
-								class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
-								aria-hidden="true"
-							/>
-							<Chip
-								role="count"
-								label=""
-								value={g.need}
-								valueIsBuild={false}
-								valueTitle="The held build needs {g.contract} {g.need}"
-							/>
-						</span>
-					{:else if drawn && state}
-						<span class="min-w-0">{state}</span>
-					{/if}
-				</li>
-			{/each}
-		</ul>
+		<!-- ⭐ THE LINES MOVED TO `GateLines`, UNCHANGED. The rollout detail
+		     page's per-candidate "held" popover needed the same composed lines
+		     and had grown its own list instead — a paragraph, then a record of
+		     labelled facts, which the human rejected because five gates then
+		     render as five identical tables. The lines are where the kinds stop
+		     looking alike, so they are now one object both surfaces draw.
+
+		     ⚠️ THE CONTROL STAYS HERE. `GateLines` deliberately holds no
+		     `RulePopover`: the other host IS a popover and must not nest one. -->
+		<GateLines gates={story.gates} {subjectHref} {subjectLabel} />
 		<!--
 			⭐ THE POPOVER, AND ITS CONTENT IS A RECORD. See the component note
 			above, and `RulePopover.svelte` for why the mechanism is still a native
