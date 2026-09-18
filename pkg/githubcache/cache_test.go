@@ -218,7 +218,18 @@ func TestIsImmutableRequest(t *testing.T) {
 		{"https://api.github.com/repos/o/r/compare/main...991829b", false},
 		{"https://api.github.com/repos/o/r/compare/064b655...main", false},
 		{"https://api.github.com/repos/o/r/compare/064b655...991829b?page=2", false},
-		{"https://api.github.com/repos/o/r/commits/064b655", false},
+		// ⭐ A COMMIT BY SHA IS IMMUTABLE TOO (2026-09-18). This case asserted
+		// `false` when only compares were covered; widening the rule is the
+		// point of the change, so the expectation moves with it.
+		{"https://api.github.com/repos/o/r/commits/064b655", true},
+		{"https://api.github.com/repos/o/r/commits/991829b6ab3bdb0100ac0a44d8867460732159f7", true},
+		// ⚠️ THE BOUNDARIES THAT KEEP IT SAFE. A branch name moves; the commit
+		// LIST moves with its `?sha=`; and check-runs are re-run on a commit
+		// that itself never changes, so nothing BELOW a commit may be cached.
+		{"https://api.github.com/repos/o/r/commits/main", false},
+		{"https://api.github.com/repos/o/r/commits", false},
+		{"https://api.github.com/repos/o/r/commits/064b655/check-runs", false},
+		{"https://api.github.com/repos/o/r/commits/064b655?per_page=1", false},
 		{"https://api.github.com/user", false},
 	}
 	for _, c := range cases {
