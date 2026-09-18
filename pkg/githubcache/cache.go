@@ -226,7 +226,13 @@ func (u *policyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 var (
 	comparePathRe = regexp.MustCompile(`^/?repos/[^/]+/[^/]+/compare/([^/]+)$`)
-	shaRe         = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
+	// ⚠️ ANCHORED AT BOTH ENDS, WHICH IS THE WHOLE SAFETY OF IT. It must not
+	// match the commit LIST (`/commits`, whose answer moves with its `?sha=`
+	// branch) nor anything BELOW a commit — `/commits/{sha}/check-runs` is the
+	// one that matters, since check runs are re-run on a commit that itself
+	// never changes.
+	commitPathRe = regexp.MustCompile(`^/?repos/[^/]+/[^/]+/commits/([^/]+)$`)
+	shaRe        = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
 )
 
 // IsCommitSHA reports whether a git ref is a commit sha — i.e. names an object
@@ -237,9 +243,15 @@ func IsCommitSHA(ref string) bool {
 	return shaRe.MatchString(ref)
 }
 
-// IsImmutableRequest reports whether a request's answer is fixed for all time:
-// a compare of two commit shas. A compare against a branch or tag name is NOT
-// immutable — the ref moves — and neither is any other endpoint.
+// IsImmutableRequest reports whether a request's answer is fixed for all time.
+// Two shapes qualify, both keyed on the same property — every ref in the path
+// names a commit OBJECT rather than a moving pointer:
+//
+//   - a compare of two commit shas, and
+//   - a single commit fetched by sha.
+//
+// A request naming a BRANCH or TAG is not immutable however it is spelled, and
+// neither is any other endpoint.
 func IsImmutableRequest(r *http.Request) bool {
 	if r.Method != http.MethodGet || r.URL == nil {
 		return false
@@ -249,15 +261,30 @@ func IsImmutableRequest(r *http.Request) bool {
 		// simple case simple and revalidate anything else.
 		return false
 	}
-	m := comparePathRe.FindStringSubmatch(r.URL.EscapedPath())
-	if m == nil {
-		return false
+	path := r.URL.EscapedPath()
+
+	if m := comparePathRe.FindStringSubmatch(path); m != nil {
+		base, head, ok := strings.Cut(m[1], "...")
+		if !ok {
+			return false
+		}
+		return IsCommitSHA(base) && IsCommitSHA(head)
 	}
-	base, head, ok := strings.Cut(m[1], "...")
-	if !ok {
-		return false
+
+	// ⭐ A COMMIT BY SHA. The object is immutable by construction: its message,
+	// tree, parents, files and stats are fixed the moment it exists. The
+	// dashboard reads these on the change pages, and they were paying a
+	// conditional request each time for an answer that cannot have moved.
+	//
+	// ⚠️ The embedded `author`/`committer` GitHub USER objects can drift (a
+	// renamed login, a new avatar) even though the commit cannot. That is the
+	// same bounded staleness the compare case already accepts, and it is what
+	// `ImmutableTTL` is for — the window is short precisely because the ANSWER
+	// being fixed is not the only thing that matters.
+	if m := commitPathRe.FindStringSubmatch(path); m != nil {
+		return IsCommitSHA(m[1])
 	}
-	return IsCommitSHA(base) && IsCommitSHA(head)
+	return false
 }
 
 // ── bounded in-memory store ─────────────────────────────────────────────────
