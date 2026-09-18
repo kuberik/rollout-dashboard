@@ -241,9 +241,36 @@
 		<!-- ⭐ CHIP ON ITS OWN LINE, ICON DROPPED. Neither competes with the
 		     name for the one axis this box is short of. The icon said
 		     nothing the border/fill colour does not already say. -->
-		<span class="inline-block" style="transform-origin: left center; transform: scale({chipInvZoom})">
-			<Chip role="env" label={data.envLabel} />
-		</span>
+		<!--
+			⛔ AN ENV CHIP ONLY WHEN THERE IS AN ENVIRONMENT. (2026-09-18.)
+			This was an unconditional `Chip role="env"` — the one such call site in
+			the product without the no-theme fallback every other one has. The
+			dependencies page next door already writes the rule out: a resolved
+			theme gets the chip, anything else gets plain `t-code-sm` text.
+		
+			It matters because `envLabel` is not always an environment.
+			`dependency-graph.ts`'s `envOfNs` falls back to the NAMESPACE when no
+			Environment maps it, so on a fleet whose namespaces are not named after
+			tiers — `flux-deployments` here — the graph printed a namespace inside
+			an environment chip. And this chip passes no `theme` prop: it inherits
+			the node's `--rollout-theme-*` vars, so when the node has no theme the
+			vars are unset and the chip renders as a bare bordered box. With an
+			empty label that is the reported artifact exactly — a bordered box with
+			nothing in it.
+		
+			`themeStyle` is already `null` for precisely "no environment resolved",
+			so it is the condition — no new field, and it cannot drift from the vars
+			the chip actually depends on.
+		-->
+		{#if data.themeStyle}
+			<span class="inline-block" style="transform-origin: left center; transform: scale({chipInvZoom})">
+				<Chip role="env" label={data.envLabel} />
+			</span>
+		{:else if data.envLabel}
+			<span class="t-code-sm block text-gray-500 dark:text-gray-400" title={data.envLabel}
+				>{data.envLabel}</span
+			>
+		{/if}
 		<span
 			class="ident min-w-0 text-wrap text-[12px] leading-tight font-semibold text-gray-900 dark:text-white"
 			>{#each identParts(data.name) as part, pi (pi)}{part}{#if pi < identParts(data.name).length - 1}<wbr
@@ -256,9 +283,15 @@
 			     and it would vanish the moment one environment is filtered out. The
 			     chip's hue is the product's env identity, so a column reads as one
 			     colour without anything being drawn between the boxes. -->
-			<span class="inline-block" style="transform-origin: left center; transform: scale({chipInvZoom})">
-				<Chip role="env" label={data.envLabel} />
-			</span>
+			{#if data.themeStyle}
+				<span class="inline-block" style="transform-origin: left center; transform: scale({chipInvZoom})">
+					<Chip role="env" label={data.envLabel} />
+				</span>
+			{:else if data.envLabel}
+				<span class="t-code-sm shrink-0 truncate text-gray-500 dark:text-gray-400" title={data.envLabel}
+					>{data.envLabel}</span
+				>
+			{/if}
 			{#if data.unresolved}
 				<QuestionCircleOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
 			{:else}

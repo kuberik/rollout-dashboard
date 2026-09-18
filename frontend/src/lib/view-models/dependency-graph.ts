@@ -385,7 +385,13 @@ export function buildRolloutGraph(args: {
 				cluster,
 				namespace,
 				name,
-				env: env ?? envOfNs(cluster, namespace),
+				// ⛔ `||`, NOT `??`. A caller passing an EMPTY environment name —
+				// an `Environment` whose `spec.environment` is `''` — slipped
+				// straight through `??` and became a node labelled with nothing,
+				// which `DependencyNode` drew as a bordered box with no text in
+				// it. Nullish-coalescing is the wrong operator for a field whose
+				// empty value is as meaningless as its absence.
+				env: env || envOfNs(cluster, namespace),
 				envRank: 0,
 				unresolved: !r,
 				build: displayBuild(r),
