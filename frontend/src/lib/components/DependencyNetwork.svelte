@@ -291,6 +291,60 @@
 	}
 
 	/**
+	 * ⭐ 2026-09-18 · RESIDUAL R3 — ONE LABEL PER (PROVIDER, TEXT) GROUP, NOT
+	 * PER EDGE. `from` is the PROVIDER on a contract edge (see
+	 * `dependency-graph.ts`'s own comment on the edge it builds) — so a
+	 * provider with N consumers is N edges sharing ONE source node. Under
+	 * `singleFile`/`TB`, `ContractHopEdge`'s hooked label sits at
+	 * `sourceY` (the midpoint of the OUTBOUND segment, which is pinned to
+	 * the source's own row — see that component's header). Every one of
+	 * those N edges shares that same source, so they all resolved to the
+	 * SAME `labelY`, and near-identical `labelX` (the lane stagger is 20px
+	 * against a ~60px word). Measured on `payments-svc`'s neighbourhood
+	 * (5 `checkout-api` environments, one contract edge each): five
+	 * `payments` labels stacked almost exactly on top of each other,
+	 * legible only as `p p p p p payments`.
+	 *
+	 * ⛔ FIXED HERE, NOT IN `ContractHopEdge` OR `GraphCanvasInner`. Those
+	 * two own the ROUTE (`gutterX`, the hook path, the lane a route sits
+	 * in so hooks don't cross) and correctly keep computing one gutter
+	 * lane per edge — the LINES still need to not overlap each other, and
+	 * they don't. What was wrong is a DATA decision: whether a given edge
+	 * carries a label at all, which is the same decision `contractLabel`
+	 * two lines up already makes (whether to print the constraint) and
+	 * belongs in the same file for the same reason.
+	 *
+	 * Option (a) over (b): draw the label on ONE representative edge per
+	 * group rather than spacing every label along the gutter. (b) would
+	 * still print `payments` five times down one gutter on a two-node-tall
+	 * card — true five times over, but a reader does not need five
+	 * confirmations that the contract is named `payments`; they need it
+	 * named once. The GROUP KEY is `from + the exact label text`, not just
+	 * `from + contract`, so a provider whose five consumers are not all in
+	 * the same state — say one is genuinely blocked on a distinct version
+	 * (`payments ^3.0.0`) while the rest are open (`payments`) — keeps that
+	 * edge's own distinct text: it is a group of one and always drawn. The
+	 * remaining edges in a group keep their own `gutterX`/lane and still
+	 * route; only their `label` is suppressed, so the fact that N
+	 * consumers exist is still fully legible as N lines converging on one
+	 * node, and the text that WOULD repeat is asserted exactly once by an
+	 * edge it is equally true of (every edge in the group shares that
+	 * exact string by construction).
+	 */
+	const labelledEdgeKeys = $derived.by(() => {
+		const seen = new Set<string>();
+		const keep = new Set<string>();
+		for (const e of graph.edges) {
+			if (e.writer !== 'contract') continue;
+			const groupKey = `${e.from}::${contractLabel(e)}`;
+			if (seen.has(groupKey)) continue;
+			seen.add(groupKey);
+			keep.add(e.key);
+		}
+		return keep;
+	});
+
+	/**
 	 * ⭐ ONE LANE PER CONTRACT EDGE THAT SHARES GUTTER SPACE WITH ANOTHER —
 	 * greedy interval scheduling over RANK SPANS, the same trick a calendar
 	 * view uses to stack overlapping meetings into columns.
@@ -331,7 +385,13 @@
 	function edgeOf(e: GraphEdge): Edge {
 		const stroke = e.state === 'blocked' ? ink('blocked') : ink('quiet');
 		const promotion = e.writer === 'promotion';
-		const label = promotion ? undefined : contractLabel(e);
+		// See `labelledEdgeKeys`'s own doc (R3): only the group's representative
+		// edge carries text; the rest still route, silently.
+		const label = promotion
+			? undefined
+			: labelledEdgeKeys.has(e.key)
+				? contractLabel(e)
+				: undefined;
 		/**
 		 * ⭐ `contractHop` UNDER `singleFile` ONLY. See `ContractHopEdge`'s own
 		 * header for the defect this replaces — the library's `smoothstep`

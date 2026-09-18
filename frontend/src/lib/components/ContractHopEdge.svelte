@@ -32,6 +32,22 @@
 	 * already inclusive of the caller's own per-edge LANE stagger for when two
 	 * hooks share the gutter. The fallback here (`sourceX`/`targetX` plus a
 	 * flat margin) only fires before the first measured layout has run.
+	 *
+	 * ⚠️ RESIDUAL R3 (2026-09-18) — `labelY` BELOW IS PINNED TO `sourceY`,
+	 * WHICH IS WHY A SHARED PROVIDER USED TO PRINT ITS LABEL N TIMES ON TOP
+	 * OF ITSELF. A contract edge's `from` is the PROVIDER; a provider with N
+	 * consumers is N edges that all share that one source node, so all N
+	 * resolved to the identical `sourceY` here — measured on `payments-svc`'s
+	 * neighbourhood as `payments` drawn five times, unreadable as
+	 * `p p p p p payments`. NOT fixed in this component and NOT by moving
+	 * `labelY` — that would break the "always gutter, never a node" guarantee
+	 * this file exists for. Fixed one layer up, in `DependencyNetwork.svelte`
+	 * (`labelledEdgeKeys`): the CALLER decides which edges carry text at all,
+	 * the same place that already decides what the text SAYS
+	 * (`contractLabel`). This component still draws every edge's own route
+	 * and lane; it just receives `undefined` for `label` on all but one
+	 * per (provider, text) group, so the shared position stops mattering —
+	 * one label, drawn once, is legible wherever it lands.
 	 */
 	import { BaseEdge, getSmoothStepPath, Position, type EdgeProps } from '@xyflow/svelte';
 
