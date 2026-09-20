@@ -108,7 +108,6 @@
 		snugHeight = false,
 		snugFrame = true,
 		onorientation = undefined,
-		onsnugwidth = undefined,
 		class: className = ''
 	}: {
 		/** Positions are assigned here — the caller supplies topology only. */
@@ -333,21 +332,6 @@
 		 * here.
 		 */
 		onorientation?: ((o: 'LR' | 'TB') => void) | undefined;
-		/**
-		 * ⭐ THE FRAME'S OWN NARROWED WIDTH, back to the caller — the same
-		 * idiom as `onorientation`, for the same reason: `snugFrameWidth`
-		 * (see its own doc) is read by the template to cap `.graph-canvas`
-		 * itself, but a caller that draws something ABOVE the canvas (a
-		 * filter row naming the two axes, on `DependencyNetwork`) has no
-		 * other way to learn that this render narrowed, and would otherwise
-		 * either hard-code a second breakpoint guess or leave its own row at
-		 * the full card width while the canvas beneath it sits centred and
-		 * narrower — two objects that stop reading as one composition.
-		 * `null` whenever the frame is at its full offered width (every
-		 * `singleFile`/`TB` render with no hook, every multi-rank `LR`
-		 * graph, `AppPromotionFlow`, which never reads this at all).
-		 */
-		onsnugwidth?: ((w: number | null) => void) | undefined;
 		class?: string;
 	} = $props();
 
@@ -1068,11 +1052,6 @@
 		onorientation?.(orientation);
 	});
 
-	/** Mirrors `snugFrameWidth` out to the caller — see `onsnugwidth`'s own doc. */
-	$effect(() => {
-		onsnugwidth?.(snugFrameWidth);
-	});
-
 	$effect(() => {
 		if (!containerEl) return;
 		const el = containerEl;
@@ -1510,6 +1489,17 @@
 			 * two can never both be non-null in one pass (`dir` is either
 			 * `'LR'` or `'TB'`), and the sync at the end of this effect is one
 			 * write for whichever ran.
+			 *
+			 * ⛔ AND IT TAKES THE SAME `snugFrame` OPT-OUT, WHICH IT DID NOT
+			 * UNTIL 2026-09-20 AND THAT WAS A SHIPPED DEFECT. The `LR` branch
+			 * above was gated on `snugFrame` and this one was not, so a caller
+			 * that had opted out still got a narrowed frame the moment the
+			 * canvas flipped to `TB` — which on the Dependencies rail is EVERY
+			 * width below `STACK_BELOW`. Measured: a 259px frame inside a 472px
+			 * card at 390, 1280 and 1440, with the legend (which is laid out
+			 * against the CARD, not against this frame) hanging past its right
+			 * edge. One branch honouring a prop and its sibling ignoring it is
+			 * the prop not existing.
 			 */
 			const TB_HOOK_LEFT_OFFSET = 20; // restingFit's fixed `x` when `hasHook`
 			const TB_HOOK_RIGHT_PAD = 16;
@@ -1522,7 +1512,7 @@
 					TB_HOOK_RIGHT_PAD
 			);
 			const offer = availableWidth > 0 ? availableWidth : frameWidth;
-			nextSnugWidth = need < offer - 4 ? Math.max(TB_HOOK_WIDTH_FLOOR, need) : null;
+			nextSnugWidth = snugFrame && need < offer - 4 ? Math.max(TB_HOOK_WIDTH_FLOOR, need) : null;
 		}
 		/**
 		 * ⭐ WHERE A CONTRACT EDGE'S LABEL GOES WHEN THERE IS NO HOOK — THE

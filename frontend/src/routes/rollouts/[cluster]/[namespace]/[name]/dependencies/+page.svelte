@@ -879,6 +879,44 @@
 	const adverse = $derived(blocks.filter((b) => b.blocked.length > 0));
 	const heldTags = $derived(new Set(adverse.flatMap((b) => b.blocked.map((w) => w.tag))));
 	const heldProviders = $derived([...new Set(adverse.map((b) => b.providerName))]);
+	/**
+	 * ⛔ THE CARD'S ROLLUP COUNTS PROVIDERS, NOT `ContractBlock`s. A block is
+	 * one (contract, provider) PAIR, so a single service this rollout waits on
+	 * for two contracts is TWO blocks — and `1 of 2 holding` against one named
+	 * service in the banner above is a number the page contradicts itself on.
+	 * The card is titled "Waiting on other SERVICES"; `heldProviders` is
+	 * already deduplicated by name, so the denominator must be too.
+	 */
+	const providerCount = $derived(new Set(blocks.map((x) => x.providerName)).size);
+
+	/**
+	 * ⛔ ONE `BlockReason` PER DISTINCT `reason`, AND REASONS ARE NEVER FOLDED
+	 * TOGETHER. (2026-09-20)
+	 *
+	 * The first cut of the compacted table rendered ONE `BlockReason` per
+	 * provider, built from the newest held build. That is only true when every
+	 * held build is held for the same cause, and the controller does not
+	 * guarantee it: `reason` is an open string and one dependency really does
+	 * report `ConstraintNotSatisfied` for one release and `ProviderVersionTooOld`
+	 * for another. Folding them printed the newest build's cause as the cause of
+	 * all of them — a confident falsehood, which is the defect class this page
+	 * was rebuilt to close.
+	 *
+	 * Insertion order is preserved, so the groups stay newest-first and so do
+	 * the rows inside each one; `rows[0]` is therefore that group's own newest
+	 * build, and its constraint is the one its sentence quotes.
+	 */
+	function byReason<T extends { reason: string | null; requiredVersion: string | null }>(
+		rows: T[]
+	): { reason: string | null; rows: T[] }[] {
+		const out: { reason: string | null; rows: T[] }[] = [];
+		for (const r of rows) {
+			const g = out.find((x) => x.reason === r.reason);
+			if (g) g.rows.push(r);
+			else out.push({ reason: r.reason, rows: [r] });
+		}
+		return out;
+	}
 
 	const blockedBanner = $derived.by(() => {
 		if (heldTags.size === 0) return null;
@@ -1333,8 +1371,8 @@
 									icon={ShareNodesSolid}
 									title="Waiting on other services"
 									verdict={heldProviders.length > 0
-										? `${heldProviders.length} of ${blocks.length} holding`
-										: `${blocks.length} service${blocks.length === 1 ? '' : 's'}`}
+										? `${heldProviders.length} of ${providerCount} holding`
+										: `${providerCount} provider${providerCount === 1 ? '' : 's'}`}
 									verdictTone={heldProviders.length > 0 ? 'held' : 'neutral'}
 									verdictTitle={heldProviders.length > 0
 										? `${heldProviders.join(', ')} will not let a newer build of this app deploy`
@@ -1541,20 +1579,34 @@
 										     untouched, the gate name still rides with the sentence, it
 										     is just not printed three times. -->
 												{#if b.blocked.length > 0}
-													{@const newest = b.blocked[0]}
 													<div
 														class="mt-3 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40"
 													>
+														<!-- ⛔ THE SUBJECT IS MARKUP TEXT, NOT A TERNARY OF TEMPLATE
+													     LITERALS. The string census reads the markup; a sentence
+													     assembled inside a `{...}` expression is invisible to it,
+													     and a sentence the census cannot see is one nothing checks
+													     for the product's vocabulary rulings. -->
 														<p class="text-xs text-gray-500 dark:text-gray-400">
 															<span class="font-medium text-gray-700 dark:text-gray-300"
 																>{name}</span
 															>
-															{b.blocked.length === 1
-																? 'is held on this build'
-																: `is held on ${b.blocked.length} builds`}
+															{#if b.blocked.length === 1}
+																is held on this build
+															{:else}
+																is held on {b.blocked.length} builds
+															{/if}
 														</p>
 
-														<!-- ⚠️ `sm:contents` + A 3-COLUMN GRID IS WHAT ALIGNS THE
+														<!-- ⛔ ONE SENTENCE PER DISTINCT `reason`, NEVER ONE PER PROVIDER.
+													     `reason` is an open string and one dependency can report
+													     `ConstraintNotSatisfied` for one release and
+													     `ProviderVersionTooOld` for another; quoting the newest
+													     build's cause for all of them is a confident falsehood.
+													     See `byReason`'s own doc. Rows that differ only in their
+													     reason render under their own reason line. -->
+														{#each byReason(b.blocked) as g, gi (g.reason ?? '')}
+															<!-- ⚠️ `sm:contents` + A 3-COLUMN GRID IS WHAT ALIGNS THE
 												     COLUMNS BELOW `sm`. Each `<li>` MUST render exactly three
 												     children ALWAYS — the `needs` span and the env span render
 												     EMPTY rather than being `{#if}`-ed away, or the grid shears
@@ -1564,68 +1616,71 @@
 												     plain wrapping flex row instead — verified at 390: each
 												     build wraps to two lines, chip+needs then the env chips.
 												     DO NOT "tidy" the empty spans away. -->
-														<ul
-															class="mt-1.5 flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
-														>
-															{#each b.blocked as w (w.key)}
-																<li
-																	class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents"
-																>
-																	<Chip
-																		role="held"
-																		label="held"
-																		value={w.display}
-																		valueTitle={w.tag}
-																		wide
-																		title="{name} is held on {w.tag} in {w.envs.join(', ')}"
-																		class="shrink-0"
-																	/>
-																	<span
-																		class="text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+															<ul
+																class="{gi > 0
+																	? 'mt-3'
+																	: 'mt-1.5'} flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
+															>
+																{#each g.rows as w (w.key)}
+																	<li
+																		class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents"
 																	>
-																		{#if w.requiredVersion}needs <span class="t-code-sm"
-																				>{w.requiredVersion}</span
-																			>{/if}
-																	</span>
-																	<!-- ⛔ NO `ml-auto` ON THE ENV CHIPS — tried it: at 1920 it
+																		<Chip
+																			role="held"
+																			label="held"
+																			value={w.display}
+																			valueTitle={w.tag}
+																			wide
+																			title="{name} is held on {w.tag} in {w.envs.join(', ')}"
+																			class="shrink-0"
+																		/>
+																		<span
+																			class="text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+																		>
+																			{#if w.requiredVersion}needs <span class="t-code-sm"
+																					>{w.requiredVersion}</span
+																				>{/if}
+																		</span>
+																		<!-- ⛔ NO `ml-auto` ON THE ENV CHIPS — tried it: at 1920 it
 															     put the chips 460px from the build they belong to, the
 															     same proximity inversion `StageChain`'s right-aligned
 															     badge caused (DESIGN.md's reason the chain card is
 															     capped at 360px). -->
-																	<span class="flex min-w-0 flex-wrap items-center gap-1">
-																		{#if hasChain && w.envs.length > 0}
-																			{#each w.envs as env (env)}
-																				<Chip
-																					role="env"
-																					theme={themeFor(env)}
-																					label={shortEnvLabel(themeFor(env)) || env}
-																					title={env}
-																					wide
-																				/>
-																			{/each}
-																		{/if}
-																	</span>
-																</li>
-															{/each}
-														</ul>
+																		<span class="flex min-w-0 flex-wrap items-center gap-1">
+																			{#if hasChain && w.envs.length > 0}
+																				{#each w.envs as env (env)}
+																					<Chip
+																						role="env"
+																						theme={themeFor(env)}
+																						label={shortEnvLabel(themeFor(env)) || env}
+																						title={env}
+																						wide
+																					/>
+																				{/each}
+																			{/if}
+																		</span>
+																	</li>
+																{/each}
+															</ul>
 
-														<!-- WHY, AS A CONSEQUENCE, FOR THE NEWEST HELD BUILD.
+															<!-- WHY, AS A CONSEQUENCE, FOR THE NEWEST HELD BUILD.
 												     `BlockReason` owns this wording for the whole product:
 												     the sentence first, then the generated gate name and the
 												     controller's own open-string `reason` BELOW it, in muted
 												     mono, prefixed `rule:` so neither can be mistaken for an
 												     explanation again. -->
-														<BlockReason
-															class="mt-2"
-															reason={contractBlockReason({
-																provider: b.providerName,
-																contract: b.contract,
-																requiredVersion: newest.requiredVersion,
-																providedVersion: b.providedVersion,
-																gateName: b.entries[0]?.dep?.status?.gateName ?? null,
-																reason: newest.reason
-															})}
-														/>
+															<BlockReason
+																class="mt-2"
+																reason={contractBlockReason({
+																	provider: b.providerName,
+																	contract: b.contract,
+																	requiredVersion: g.rows[0].requiredVersion,
+																	providedVersion: b.providedVersion,
+																	gateName: b.entries[0]?.dep?.status?.gateName ?? null,
+																	reason: g.reason
+																})}
+															/>
+														{/each}
 													</div>
 												{/if}
 											</li>
@@ -1661,7 +1716,7 @@
 									icon={CodeForkSolid}
 									title="Services waiting on this"
 									verdict={providedVerdict}
-									verdictTone={heldRolloutCount > 0 ? 'adverse' : 'neutral'}
+									verdictTone={heldRolloutCount > 0 ? 'held' : 'neutral'}
 									verdictTitle={heldRolloutCount > 0
 										? 'Rollouts with a build they cannot deploy until this rollout ships a newer contract'
 										: 'Rollouts held on the contract version this rollout has deployed'}
@@ -1851,80 +1906,87 @@
 													     newest-first, why `sm:contents` needs three children
 													     always, why no `ml-auto` on the place chips). -->
 															{#if d.holds.length > 0}
-																{@const newest = d.holds[0]}
 																<div
 																	class="mt-2 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40"
 																>
+																	<!-- Markup text, not a ternary of template literals, and one
+																     sentence per distinct `reason` — see §3c's two notes for
+																     both arguments; this card has the identical shape. -->
 																	<p class="text-xs text-gray-500 dark:text-gray-400">
 																		<span class="font-medium text-gray-700 dark:text-gray-300"
 																			>{d.name}</span
 																		>
-																		{d.holds.length === 1
-																			? 'is held on this build'
-																			: `is held on ${d.holds.length} builds`}
+																		{#if d.holds.length === 1}
+																			is held on this build
+																		{:else}
+																			is held on {d.holds.length} builds
+																		{/if}
 																	</p>
-
-																	<ul
-																		class="mt-1.5 flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
-																	>
-																		{#each d.holds as h (h.key)}
-																			<li
-																				class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents"
-																			>
-																				<Chip
-																					role="held"
-																					label="held"
-																					value={h.display}
-																					valueTitle={h.tag}
-																					wide
-																					title="{d.name} is held on {h.tag} until this rollout serves a newer {c.contract}"
-																					class="shrink-0"
-																				/>
-																				<span
-																					class="text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+																	{#each byReason(d.holds) as g, gi (g.reason ?? '')}
+																		<ul
+																			class="{gi > 0
+																				? 'mt-3'
+																				: 'mt-1.5'} flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
+																		>
+																			{#each g.rows as h (h.key)}
+																				<li
+																					class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents"
 																				>
-																					{#if h.requiredVersion}needs <span class="t-code-sm"
-																							>{h.requiredVersion}</span
-																						>{/if}
-																				</span>
-																				<!-- ⛔ NO `ml-auto` ON THE PLACE CHIPS — same proximity-
+																					<Chip
+																						role="held"
+																						label="held"
+																						value={h.display}
+																						valueTitle={h.tag}
+																						wide
+																						title="{d.name} is held on {h.tag} until this rollout serves a newer {c.contract}"
+																						class="shrink-0"
+																					/>
+																					<span
+																						class="text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+																					>
+																						{#if h.requiredVersion}needs <span class="t-code-sm"
+																								>{h.requiredVersion}</span
+																							>{/if}
+																					</span>
+																					<!-- ⛔ NO `ml-auto` ON THE PLACE CHIPS — same proximity-
 																		     inversion argument as §3c's identical note. -->
-																				<span class="flex min-w-0 flex-wrap items-center gap-1">
-																					{#if d.places.length > 1}
-																						{#each h.places as ns (ns)}
-																							{@const th = placeTheme(ns, d.name)}
-																							{#if th}
-																								<Chip
-																									role="env"
-																									theme={th}
-																									label={shortEnvLabel(th) || ns}
-																									title={ns}
-																									wide
-																								/>
-																							{:else}
-																								<span
-																									class="t-code-sm text-gray-500 dark:text-gray-400"
-																									>{ns}</span
-																								>
-																							{/if}
-																						{/each}
-																					{/if}
-																				</span>
-																			</li>
-																		{/each}
-																	</ul>
+																					<span class="flex min-w-0 flex-wrap items-center gap-1">
+																						{#if d.places.length > 1}
+																							{#each h.places as ns (ns)}
+																								{@const th = placeTheme(ns, d.name)}
+																								{#if th}
+																									<Chip
+																										role="env"
+																										theme={th}
+																										label={shortEnvLabel(th) || ns}
+																										title={ns}
+																										wide
+																									/>
+																								{:else}
+																									<span
+																										class="t-code-sm text-gray-500 dark:text-gray-400"
+																										>{ns}</span
+																									>
+																								{/if}
+																							{/each}
+																						{/if}
+																					</span>
+																				</li>
+																			{/each}
+																		</ul>
 
-																	<BlockReason
-																		class="mt-2"
-																		reason={contractBlockReason({
-																			provider: name,
-																			contract: c.contract,
-																			requiredVersion: newest.requiredVersion,
-																			providedVersion: c.providedVersion,
-																			gateName: gateNameOf(d),
-																			reason: newest.reason
-																		})}
-																	/>
+																		<BlockReason
+																			class="mt-2"
+																			reason={contractBlockReason({
+																				provider: name,
+																				contract: c.contract,
+																				requiredVersion: g.rows[0].requiredVersion,
+																				providedVersion: c.providedVersion,
+																				gateName: gateNameOf(d),
+																				reason: g.reason
+																			})}
+																		/>
+																	{/each}
 																</div>
 															{/if}
 														</li>

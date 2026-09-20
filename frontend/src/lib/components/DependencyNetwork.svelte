@@ -173,10 +173,13 @@
 	 * aligned at the card body's own left edge, as an ordinary caption. The
 	 * glyphs and their `stacked` rotation are unchanged.
 	 *
-	 * `snugWidth`/`onsnugwidth` are gone from THIS file because nothing here
-	 * reads them any more — `GraphCanvasInner`'s own `snugFrameWidth`
-	 * mechanism is untouched and still narrows `/dependencies`' frame for a
-	 * small subgraph; it just no longer has a caller-side row syncing to it.
+	 * `snugWidth` is gone from THIS file, and `GraphCanvasInner`'s
+	 * `onsnugwidth` callback is gone with it: this was its only caller in the
+	 * product, and a reporting channel nobody reads is a second source of
+	 * truth waiting to drift from the one the template already uses.
+	 * `snugFrameWidth` itself is untouched — it still narrows
+	 * `/dependencies`' frame for a small subgraph, read where it is written,
+	 * by that component's own template.
 	 */
 
 	const nodeById = $derived(new Map(graph.nodes.map((n) => [n.id, n] as const)));
@@ -641,13 +644,21 @@
 		`stacked`, because that edge is genuinely vertical under `TB` and the
 		glyph should say so; the share icon has no orientation to carry.
 
-		⭐ 2026-09-18 · BELOW THE DRAWING NOW, NOT ABOVE IT — see the
-		`snugWidth` doc comment further up this file for the full argument.
-		In one line: this row used to width-sync to a narrowed, centred
-		frame; the compact caller's frame no longer narrows, so a caption
-		hanging above a centred figure in a sea of empty card was the
+		⭐ 2026-09-18 · BELOW THE DRAWING NOW, NOT ABOVE IT — see the LEGEND
+		doc comment beside `STACK_BELOW` further up this file for the full
+		argument. In one line: this row used to width-sync to a narrowed,
+		centred frame; the compact caller's frame no longer narrows, so a
+		caption hanging above a centred figure in a sea of empty card was the
 		"floating label" the human named. Left-aligned at the card body's own
 		edge, below the figure, it reads as a caption should.
+
+		⛔ AND IT IS LAID OUT AGAINST THE CARD, NOT AGAINST THE FRAME. That is
+		only safe while the frame is at the card's full width, which is what
+		`snugFrame={!compact}` buys. When the `TB` hook branch was still
+		narrowing the frame behind that opt-out (fixed 2026-09-20), this row
+		ran past the frame's right edge at every width below `STACK_BELOW` —
+		the defect the opt-out existed to prevent, reappearing through the
+		branch that ignored it.
 	-->
 	<p
 		class="t-micro mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400"

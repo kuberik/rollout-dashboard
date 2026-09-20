@@ -448,10 +448,21 @@ export function contractBlocks(args: {
 		for (const row of b.blocked) {
 			row.envs.sort((x, y) => (rank.get(x) ?? 999) - (rank.get(y) ?? 999));
 		}
-		// Newest first: the build closest to shipping is the one to look at.
-		b.blocked.sort(
-			(x, y) => rankOfTag(order, x.tag) - rankOfTag(order, y.tag) || x.key.localeCompare(y.key)
-		);
+		// Newest first: the build closest to shipping is the one to look at,
+		// and it is the one whose constraint the card's `BlockReason` quotes.
+		//
+		// ⛔ A TAG THIS ORDER CANNOT RESOLVE SORTS LAST, NOT FIRST. `rankOfTag`
+		// returns -1 for a tag that is not in `order` at all (a blocked release
+		// whose `Release` this dashboard never saw), and -1 beats every real
+		// rank in an ascending sort — so the UNKNOWN build led the list and the
+		// card quoted ITS constraint as the one a person is trying to deploy.
+		// This mirrors the outbound `d.holds` comparator, which already pushes
+		// an unresolvable rank to the end for exactly this reason.
+		const newestFirst = (tag: string) => {
+			const r = rankOfTag(order, tag);
+			return r < 0 ? Number.MAX_SAFE_INTEGER : r;
+		};
+		b.blocked.sort((x, y) => newestFirst(x.tag) - newestFirst(y.tag) || x.key.localeCompare(y.key));
 	}
 	// Adverse contracts first - the page's one ordering decision, and it is
 	// the standing "worst first" rule every list in this product already uses.
@@ -622,8 +633,7 @@ export function hopBetween(up: ChainEnv | null, down: ChainEnv | null): ChainHop
 	// — the novice-pass defect `/apps/[name]` fixed by spelling it
 	// `2 versions waiting to move`. Same words here, so the product spells one
 	// fact one way.
-	if (n > 0)
-		return { waiting: n, label: `${n} version${n === 1 ? '' : 's'} waiting to move` };
+	if (n > 0) return { waiting: n, label: `${n} version${n === 1 ? '' : 's'} waiting to move` };
 	if (n < 0) return { waiting: 0, label: `${-n} version${n === -1 ? '' : 's'} ahead` };
 	return { waiting: 0, label: '' };
 }
@@ -990,11 +1000,11 @@ export function providedContracts(args: {
 		c.held = c.dependents.filter((d) => d.adverse).length;
 		c.adverse = c.held > 0;
 		// Worst first, the standing rule every list in this product uses.
-		c.dependents.sort((a, b) => Number(b.adverse) - Number(a.adverse) || a.name.localeCompare(b.name));
+		c.dependents.sort(
+			(a, b) => Number(b.adverse) - Number(a.adverse) || a.name.localeCompare(b.name)
+		);
 	}
 
-	out.sort(
-		(a, b) => Number(b.adverse) - Number(a.adverse) || a.contract.localeCompare(b.contract)
-	);
+	out.sort((a, b) => Number(b.adverse) - Number(a.adverse) || a.contract.localeCompare(b.contract));
 	return out;
 }
