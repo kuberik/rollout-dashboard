@@ -824,7 +824,15 @@
 				 * hook — keeps the old centred reading, since there is no
 				 * gutter to reserve room for.
 				 */
-				const hasHook = flowEdges.some((e) => e.type === 'contractHop');
+				// ⛔ WHETHER AN EDGE ACTUALLY HOOKS, NOT WHETHER ONE COULD. This read
+				// `e.type === 'contractHop'`, which is true for every contract edge
+				// including the ones that now route straight down because nothing is
+				// between their ends (see the gutter block's own note). Those have no
+				// gutter running off the right of the content box, so there is nothing
+				// to reserve room for and the column centres like any other.
+				const hasHook = flowEdges.some(
+					(e) => typeof (e.data as { gutterX?: number } | undefined)?.gutterX === 'number'
+				);
 				const x = hasHook ? 20 : Math.max(0, (containerWidth - contentSize.width) / 2);
 				/**
 				 * ⭐ CENTRED VERTICALLY, NOT TOP-PINNED — measured, `y: 0` put
@@ -1448,19 +1456,72 @@
 			);
 			const GUTTER_BASE = Math.max(56, maxLabelWidth + 24);
 			const LANE_GAP = 20;
+			/**
+			 * ⭐ 2026-09-20 · AN EDGE WITH NOTHING TO GO ROUND DOES NOT GO ROUND.
+			 *
+			 * The gutter exists for ONE reason: under `singleFile` every node
+			 * shares an x, so an edge between two nodes in the column would run
+			 * straight THROUGH whatever sits between them. When nothing sits
+			 * between them there is nothing to clear, and the out-and-back was
+			 * drawn anyway — measured on the two-node neighbourhood the rail
+			 * opens on, an 84x96 dashed elbow plus a 197px gutter at 1280-1600,
+			 * around a pair of boxes that are already adjacent.
+			 *
+			 * ⭐ AND IT IS WHY THE DRAWING WAS NOT CENTRED. `restingFit`'s
+			 * `singleFile`/`TB` branch pins a HOOKED column at `x = 20` (it has
+			 * to: the gutter runs off the right of the content box, so centring
+			 * the content would push the hook out of the canvas). No hook, and
+			 * the same branch's `else` centres the column in the canvas — so
+			 * killing a gutter nobody needed also centres the figure, with no
+			 * second rule and no new constant.
+			 *
+			 * "Between" is measured on dagre's own y bands, not on the edge's
+			 * endpoints, because the node boxes are what an edge would cross.
+			 */
+			const nodeBands = flowNodes
+				.map((n) => {
+					const nn = g.node(n.id);
+					if (!nn) return null;
+					const hh = nn.height ?? 0;
+					return { id: n.id, top: (nn.y ?? 0) - hh / 2, bottom: (nn.y ?? 0) + hh / 2 };
+				})
+				.filter((x): x is { id: string; top: number; bottom: number } => x !== null);
+			const crossesANode = (e: Edge) => {
+				const a = nodeBands.find((n) => n.id === e.source);
+				const c = nodeBands.find((n) => n.id === e.target);
+				if (!a || !c) return true; // cannot prove it is clear, so keep the gutter
+				const lo = Math.min(a.bottom, c.bottom);
+				const hi = Math.max(a.top, c.top);
+				return nodeBands.some(
+					(n) => n.id !== e.source && n.id !== e.target && n.bottom > lo && n.top < hi
+				);
+			};
+
 			let maxLane = 0;
 			const nextEdges = flowEdges.map((e) => {
 				if (e.type !== 'contractHop') return e;
+				const prevGutterX = (e.data as { gutterX?: number } | undefined)?.gutterX;
+				if (!crossesANode(e)) {
+					// No gutter key at all: `ContractHopEdge` reads its absence as
+					// "not hooked" and draws the library's own smoothstep path.
+					if (prevGutterX === undefined) return e;
+					const { gutterX: _drop, ...rest } = (e.data ?? {}) as { gutterX?: number };
+					return { ...e, data: rest };
+				}
 				const lane =
 					typeof (e.data as { lane?: number } | undefined)?.lane === 'number'
 						? (e.data as { lane: number }).lane
 						: 0;
 				maxLane = Math.max(maxLane, lane);
 				const gutterX = centerX + maxWidth / 2 + GUTTER_BASE + lane * LANE_GAP;
-				const prevGutterX = (e.data as { gutterX?: number } | undefined)?.gutterX;
 				if (prevGutterX === gutterX) return e;
 				return { ...e, data: { ...(e.data ?? {}), gutterX } };
 			});
+			const anyHook = nextEdges.some(
+				(e) =>
+					e.type === 'contractHop' &&
+					typeof (e.data as { gutterX?: number } | undefined)?.gutterX === 'number'
+			);
 			if (nextEdges.some((e, i) => e !== flowEdges[i])) flowEdges = nextEdges;
 
 			/**
@@ -1503,13 +1564,18 @@
 			 */
 			const TB_HOOK_LEFT_OFFSET = 20; // restingFit's fixed `x` when `hasHook`
 			const TB_HOOK_RIGHT_PAD = 16;
+			// `anyHook` false: no edge routes out to the gutter, so the width the
+			// drawing needs is the column itself, not the column plus a channel
+			// nothing runs in.
 			const need = Math.round(
-				centerX +
-					maxWidth / 2 +
-					GUTTER_BASE +
-					maxLane * LANE_GAP +
-					TB_HOOK_LEFT_OFFSET +
-					TB_HOOK_RIGHT_PAD
+				anyHook
+					? centerX +
+							maxWidth / 2 +
+							GUTTER_BASE +
+							maxLane * LANE_GAP +
+							TB_HOOK_LEFT_OFFSET +
+							TB_HOOK_RIGHT_PAD
+					: centerX + maxWidth / 2 + TB_HOOK_RIGHT_PAD
 			);
 			const offer = availableWidth > 0 ? availableWidth : frameWidth;
 			nextSnugWidth = snugFrame && need < offer - 4 ? Math.max(TB_HOOK_WIDTH_FLOOR, need) : null;

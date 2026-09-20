@@ -66,7 +66,8 @@
 		caption = null,
 		title,
 		class: className = '',
-		deviationOnly = false
+		deviationOnly = false,
+		rollup = false
 	}: {
 		/** Places running the newest version this thing has. */
 		onHead: number;
@@ -102,6 +103,24 @@
 		 * is no deviation to mark on a fleet that has never deployed.
 		 */
 		deviationOnly?: boolean;
+		/**
+		 * ⭐ THE CARD-HEADER SPEC RATHER THAN THE LIST-ROW SPEC. (2026-09-20)
+		 *
+		 * This object sits in two different slots and they have two different
+		 * type specs. On `/apps` it is a cell in a LIST ROW, where `.t-body`
+		 * (14px) is right and is what every other cell in that row uses. In a
+		 * `Card`'s 47px HEADER it is a rollup, and `Card`'s own verdict is
+		 * `.t-card-rollup` (12px/500) — so the unflagged component put a 14px
+		 * mark in a header beside 12px siblings, which on the Dependencies rail
+		 * read as two type sizes down one column.
+		 *
+		 * A prop rather than a call-site class override: the size is a fact
+		 * about WHICH SLOT the object is in, which only the caller knows, and
+		 * overriding the headline's class from outside would mean reaching past
+		 * the component into its internals. Default `false` — `/apps` renders
+		 * byte-identically.
+		 */
+		rollup?: boolean;
 	} = $props();
 
 	// ⛔ THE TWO SENTENCES LIVE IN `view-models/up-to-date.ts`. (2026-08-31)
@@ -114,7 +133,13 @@
 	const nowhere = $derived(isNowhere(facts));
 
 	const Icon = $derived(
-		nowhere ? PauseSolid : allCurrent ? CheckCircleSolid : spread === 1 ? CodeMergeSolid : CodeBranchSolid
+		nowhere
+			? PauseSolid
+			: allCurrent
+				? CheckCircleSolid
+				: spread === 1
+					? CodeMergeSolid
+					: CodeBranchSolid
 	);
 
 	const headline = $derived(upToDateHeadline(facts));
@@ -126,21 +151,34 @@
 	// own doc comment. `nowhere` is excluded from BOTH branches on purpose:
 	// there is nothing behind and nothing current, so neither hue applies.
 	const ink = $derived.by(() => {
-		if (nowhere) return { icon: 'text-gray-500 dark:text-gray-400', text: 'text-gray-500 dark:text-gray-400' };
+		if (nowhere)
+			return { icon: 'text-gray-500 dark:text-gray-400', text: 'text-gray-500 dark:text-gray-400' };
 		if (allCurrent)
 			return deviationOnly
-				? { icon: 'text-gray-500 dark:text-gray-400', text: 'font-medium text-gray-900 tabular-nums dark:text-white' }
-				: { icon: 'text-green-700 dark:text-green-400', text: 'font-medium text-green-700 tabular-nums dark:text-green-400' };
+				? {
+						icon: 'text-gray-500 dark:text-gray-400',
+						text: 'font-medium text-gray-900 tabular-nums dark:text-white'
+					}
+				: {
+						icon: 'text-green-700 dark:text-green-400',
+						text: 'font-medium text-green-700 tabular-nums dark:text-green-400'
+					};
 		return deviationOnly
-			? { icon: 'text-orange-950 dark:text-orange-300', text: 'font-medium text-orange-950 tabular-nums dark:text-orange-300' }
-			: { icon: 'text-gray-500 dark:text-gray-400', text: 'font-medium text-gray-900 tabular-nums dark:text-white' };
+			? {
+					icon: 'text-orange-950 dark:text-orange-300',
+					text: 'font-medium text-orange-950 tabular-nums dark:text-orange-300'
+				}
+			: {
+					icon: 'text-gray-500 dark:text-gray-400',
+					text: 'font-medium text-gray-900 tabular-nums dark:text-white'
+				};
 	});
 </script>
 
 <span class="flex min-w-0 flex-col gap-1 {className}" {title}>
 	<span class="utd-mark flex min-w-0 items-center gap-1.5">
 		<Icon class="h-4 w-4 shrink-0 {ink.icon}" />
-		<span class="t-body truncate {ink.text}">{headline}</span>
+		<span class="{rollup ? 't-card-rollup' : 't-body'} truncate {ink.text}">{headline}</span>
 	</span>
 	{#if shownCaption}
 		<span class="t-micro truncate text-gray-500 dark:text-gray-400">{shownCaption}</span>

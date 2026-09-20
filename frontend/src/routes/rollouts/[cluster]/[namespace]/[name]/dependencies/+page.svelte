@@ -1136,6 +1136,26 @@
 	 * in a page-wide container.
 	 */
 	const twoColumns = $derived((hasChain || hasNetwork) && (hasContracts || hasDependents));
+	/**
+	 * ⭐ THE MAP'S ROLLUP COUNTS WHAT IS DRAWN, AND NOTHING ELSE. (2026-09-20)
+	 *
+	 * §5e removed `1 of 1 links not read` for two reasons that still stand: it
+	 * counted EDGES where the rest of the page counts builds and services, and
+	 * it asserted a total the lists contradict — the map is this rollout's own
+	 * environment plus one hop, the lists span every environment of the app.
+	 * A card with a 47px header and no rollup is half the pattern, though, and
+	 * this was the only one of the three on this page missing one.
+	 *
+	 * The resolution is a number whose scope IS the drawing: distinct service
+	 * names in the box, minus this one. It cannot contradict the lists because
+	 * it does not claim to be a total of anything — a reader can count the
+	 * boxes and get the same answer, which is the test a rollup has to pass.
+	 * The promotion line is collapsed by NAME so seven environments of one
+	 * service are one service, not seven.
+	 */
+	const otherServicesDrawn = $derived(
+		Math.max(0, new Set(localNetwork.nodes.map((n) => n.name)).size - 1)
+	);
 
 	/** The env identity theme for a tier, for the graph's chips. */
 	const networkThemeOf = $derived((env: string) => {
@@ -1161,7 +1181,7 @@
 <div class="mx-auto w-full px-4 py-6 sm:px-6">
 	{#if rolloutQuery.isLoading}
 		<StillTryingNotice failureCount={rolloutQuery.failureCount} />
-		<div class="grid gap-4 xl:grid-cols-[3fr_minmax(22rem,2fr)] xl:items-start">
+		<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
 			<div class="h-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 		</div>
@@ -1337,7 +1357,7 @@
 				     measure even though the block is not. -->
 				<div
 					class="grid gap-4 {twoColumns
-						? 'xl:grid-cols-[3fr_minmax(22rem,2fr)] xl:items-start'
+						? 'lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start'
 						: ''}"
 				>
 					<!-- ⚠️ Svelte will not compile a `<div>` whose opening and closing
@@ -1605,23 +1625,53 @@
 													     build's cause for all of them is a confident falsehood.
 													     See `byReason`'s own doc. Rows that differ only in their
 													     reason render under their own reason line. -->
-														{#each byReason(b.blocked) as g, gi (g.reason ?? '')}
-															<!-- ⚠️ `sm:contents` + A 3-COLUMN GRID IS WHAT ALIGNS THE
-												     COLUMNS BELOW `sm`. Each `<li>` MUST render exactly three
-												     children ALWAYS — the `needs` span and the env span render
-												     EMPTY rather than being `{#if}`-ed away, or the grid shears
-												     (a `<li>` with `display: contents` hands its children
-												     straight to the grid, so two children instead of three
-												     shifts every column after it). Below `sm` the `<li>` is a
-												     plain wrapping flex row instead — verified at 390: each
-												     build wraps to two lines, chip+needs then the env chips.
-												     DO NOT "tidy" the empty spans away. -->
-															<ul
-																class="{gi > 0
-																	? 'mt-3'
-																	: 'mt-1.5'} flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
-															>
-																{#each g.rows as w (w.key)}
+														<!-- ⛔ ONE GRID FOR THE WHOLE BRACKET, NOT ONE PER REASON
+													     GROUP. `grid-cols-[max-content_max-content_1fr]` sizes
+													     its columns from ITS OWN rows, so a grid per group gave
+													     each group a different `needs` width and started the
+													     environment chips at a different x — two ragged column
+													     stacks inside one orange rule, which is the alignment the
+													     compaction existed to buy. One grid holds every row; the
+													     reason sentences are full-width items inside it
+													     (`sm:col-span-3`), so they interleave without breaking
+													     the columns above and below them.
+
+													     ⚠️ `sm:contents` + THE 3-COLUMN GRID IS WHAT ALIGNS THE
+													     COLUMNS. Each row `<li>` MUST render exactly three
+													     children ALWAYS — the `needs` span and the env span render
+													     EMPTY rather than being `{#if}`-ed away, or the grid shears
+													     (a `<li>` with `display: contents` hands its children
+													     straight to the grid, so two children instead of three
+													     shifts every column after it). Below `sm` the `<li>` is a
+													     plain wrapping flex row instead. DO NOT "tidy" the empty
+													     spans away.
+
+													     SPACING: the grid's own `gap-y-1.5` is 6px. A reason
+													     sentence adds 2 (8px above a reason); the first row of a
+													     LATER group adds 6 (12px above a new row group), which is
+													     what makes two groups read as two rather than as one list
+													     interrupted. -->
+														<ul
+															class="mt-1.5 flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
+														>
+															{#each byReason(b.blocked) as g, gi (g.reason ?? '')}
+																{#if gi > 0}
+																	<!-- The second cause gets its own one-line lead so the
+																     two groups read as two. The bracket's subject line
+																     above states the subject and the total once; this
+																     says only what is different about these rows. -->
+																	<li
+																		class="mt-1.5 text-xs text-gray-500 sm:col-span-3 dark:text-gray-400"
+																	>
+																		{#if g.rows.length === 1}
+																			1 more, held for a different reason
+																		{:else}
+																			{g.rows.length} more, held for a different reason
+																		{/if}
+																	</li>
+																{/if}
+																{#each g.rows as w, ri (w.key)}
+																	{@const top = gi > 0 && ri === 0 ? 'mt-1.5' : ''}
 																	<li
 																		class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents"
 																	>
@@ -1632,21 +1682,21 @@
 																			valueTitle={w.tag}
 																			wide
 																			title="{name} is held on {w.tag} in {w.envs.join(', ')}"
-																			class="shrink-0"
+																			class="shrink-0 {top}"
 																		/>
 																		<span
-																			class="text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+																			class="text-xs whitespace-nowrap text-gray-500 {top} dark:text-gray-400"
 																		>
 																			{#if w.requiredVersion}needs <span class="t-code-sm"
 																					>{w.requiredVersion}</span
 																				>{/if}
 																		</span>
 																		<!-- ⛔ NO `ml-auto` ON THE ENV CHIPS — tried it: at 1920 it
-															     put the chips 460px from the build they belong to, the
-															     same proximity inversion `StageChain`'s right-aligned
-															     badge caused (DESIGN.md's reason the chain card is
-															     capped at 360px). -->
-																		<span class="flex min-w-0 flex-wrap items-center gap-1">
+																     put the chips 460px from the build they belong to, the
+																     same proximity inversion `StageChain`'s right-aligned
+																     badge caused (DESIGN.md's reason the chain card is
+																     capped at 360px). -->
+																		<span class="flex min-w-0 flex-wrap items-center gap-1 {top}">
 																			{#if hasChain && w.envs.length > 0}
 																				{#each w.envs as env (env)}
 																					<Chip
@@ -1661,26 +1711,20 @@
 																		</span>
 																	</li>
 																{/each}
-															</ul>
-
-															<!-- WHY, AS A CONSEQUENCE, FOR THE NEWEST HELD BUILD.
-												     `BlockReason` owns this wording for the whole product:
-												     the sentence first, then the generated gate name and the
-												     controller's own open-string `reason` BELOW it, in muted
-												     mono, prefixed `rule:` so neither can be mistaken for an
-												     explanation again. -->
-															<BlockReason
-																class="mt-2"
-																reason={contractBlockReason({
-																	provider: b.providerName,
-																	contract: b.contract,
-																	requiredVersion: g.rows[0].requiredVersion,
-																	providedVersion: b.providedVersion,
-																	gateName: b.entries[0]?.dep?.status?.gateName ?? null,
-																	reason: g.reason
-																})}
-															/>
-														{/each}
+																<li class="mt-0.5 sm:col-span-3">
+																	<BlockReason
+																		reason={contractBlockReason({
+																			provider: b.providerName,
+																			contract: b.contract,
+																			requiredVersion: g.rows[0].requiredVersion,
+																			providedVersion: b.providedVersion,
+																			gateName: b.entries[0]?.dep?.status?.gateName ?? null,
+																			reason: g.reason
+																		})}
+																	/>
+																</li>
+															{/each}
+														</ul>
 													</div>
 												{/if}
 											</li>
@@ -1922,13 +1966,27 @@
 																			is held on {d.holds.length} builds
 																		{/if}
 																	</p>
-																	{#each byReason(d.holds) as g, gi (g.reason ?? '')}
-																		<ul
-																			class="{gi > 0
-																				? 'mt-3'
-																				: 'mt-1.5'} flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
-																		>
-																			{#each g.rows as h (h.key)}
+																	<!-- One grid for the whole bracket, reason sentences as
+																     full-width items inside it — see §3c's note for both
+																     arguments and the spacing rule; this card has the
+																     identical shape. -->
+																	<ul
+																		class="mt-1.5 flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
+																	>
+																		{#each byReason(d.holds) as g, gi (g.reason ?? '')}
+																			{#if gi > 0}
+																				<li
+																					class="mt-1.5 text-xs text-gray-500 sm:col-span-3 dark:text-gray-400"
+																				>
+																					{#if g.rows.length === 1}
+																						1 more, held for a different reason
+																					{:else}
+																						{g.rows.length} more, held for a different reason
+																					{/if}
+																				</li>
+																			{/if}
+																			{#each g.rows as h, ri (h.key)}
+																				{@const top = gi > 0 && ri === 0 ? 'mt-1.5' : ''}
 																				<li
 																					class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents"
 																				>
@@ -1939,18 +1997,20 @@
 																						valueTitle={h.tag}
 																						wide
 																						title="{d.name} is held on {h.tag} until this rollout serves a newer {c.contract}"
-																						class="shrink-0"
+																						class="shrink-0 {top}"
 																					/>
 																					<span
-																						class="text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+																						class="text-xs whitespace-nowrap text-gray-500 {top} dark:text-gray-400"
 																					>
 																						{#if h.requiredVersion}needs <span class="t-code-sm"
 																								>{h.requiredVersion}</span
 																							>{/if}
 																					</span>
 																					<!-- ⛔ NO `ml-auto` ON THE PLACE CHIPS — same proximity-
-																		     inversion argument as §3c's identical note. -->
-																					<span class="flex min-w-0 flex-wrap items-center gap-1">
+																			     inversion argument as §3c's identical note. -->
+																					<span
+																						class="flex min-w-0 flex-wrap items-center gap-1 {top}"
+																					>
 																						{#if d.places.length > 1}
 																							{#each h.places as ns (ns)}
 																								{@const th = placeTheme(ns, d.name)}
@@ -1973,20 +2033,20 @@
 																					</span>
 																				</li>
 																			{/each}
-																		</ul>
-
-																		<BlockReason
-																			class="mt-2"
-																			reason={contractBlockReason({
-																				provider: name,
-																				contract: c.contract,
-																				requiredVersion: g.rows[0].requiredVersion,
-																				providedVersion: c.providedVersion,
-																				gateName: gateNameOf(d),
-																				reason: g.reason
-																			})}
-																		/>
-																	{/each}
+																			<li class="mt-0.5 sm:col-span-3">
+																				<BlockReason
+																					reason={contractBlockReason({
+																						provider: name,
+																						contract: c.contract,
+																						requiredVersion: g.rows[0].requiredVersion,
+																						providedVersion: c.providedVersion,
+																						gateName: gateNameOf(d),
+																						reason: g.reason
+																					})}
+																				/>
+																			</li>
+																		{/each}
+																	</ul>
 																</div>
 															{/if}
 														</li>
@@ -2049,9 +2109,23 @@
 									`networkVerdict` stay in the view-model — `/dependencies`
 									still uses them.
 								-->
+										<!-- ⛔ ONE ROLLUP SPEC ON ALL THREE CARDS ON THIS PAGE.
+										     `Card`'s own verdict is `.t-card-rollup` — 12px/500 —
+										     and this slot was rendering `.nav-link`, which is
+										     14px/500. Two sibling cards at 12 and one at 14 is the
+										     header reading as two sizes down one rail. Both marks
+										     here take `.t-card-rollup`; the count takes the
+										     neutral verdict ink `Card` itself uses, so the only
+										     thing separating them is the link's blue. -->
+										<span
+											class="t-card-rollup shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400"
+											title="Other services drawn in this map — this rollout's own environment and one hop of contract neighbours. The lists below span every environment of the app, so this is not a total."
+											>{otherServicesDrawn}
+											{otherServicesDrawn === 1 ? 'other service' : 'other services'}</span
+										>
 										<a
 											href="/dependencies"
-											class="nav-link !py-0 whitespace-nowrap text-blue-600 dark:text-blue-400"
+											class="t-card-rollup shrink-0 whitespace-nowrap text-blue-600 hover:underline dark:text-blue-400"
 											>Whole network ›</a
 										>
 									{/snippet}
@@ -2092,7 +2166,10 @@
 									class="min-w-0 {twoColumns ? '' : 'max-w-[360px]'}"
 								>
 									{#snippet rollup()}
+										<!-- `rollup`: the card-header spec (12px/500), not the
+										     14px `/apps` row spec — see `UpToDate`'s own prop doc. -->
 										<UpToDate
+											rollup
 											onHead={chainRollup.onHead}
 											deployed={chainRollup.deployed}
 											total={chainRollup.total}
