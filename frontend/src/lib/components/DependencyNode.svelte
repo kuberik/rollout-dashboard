@@ -227,7 +227,9 @@
 	href={linked ? data.href : undefined}
 	title={data.title}
 	class="environment-theme-scope flex w-max flex-col rounded-lg border transition-colors
-		{stacked ? 'min-w-[92px] max-w-[132px] gap-0.5 px-2 py-1.5' : 'min-w-[176px] max-w-[280px] gap-1 px-2.5 py-2'}
+		{stacked
+		? 'max-w-[132px] min-w-[92px] gap-0.5 px-2 py-1.5'
+		: 'max-w-[280px] min-w-[176px] gap-1 px-2.5 py-2'}
 		{data.blocked
 		? 'border-red-300 bg-red-50/70 dark:border-red-900 dark:bg-red-950/40'
 		: data.unresolved
@@ -272,7 +274,7 @@
 			>
 		{/if}
 		<span
-			class="ident min-w-0 text-wrap text-[12px] leading-tight font-semibold text-gray-900 dark:text-white"
+			class="ident min-w-0 text-[12px] leading-tight font-semibold text-wrap text-gray-900 dark:text-white"
 			>{#each identParts(data.name) as part, pi (pi)}{part}{#if pi < identParts(data.name).length - 1}<wbr
 					/>{/if}{/each}</span
 		>
@@ -301,8 +303,22 @@
 						: 'text-gray-400 dark:text-gray-500'}"
 				/>
 			{/if}
-			<span class="min-w-0 truncate text-[13px] font-semibold text-gray-900 dark:text-white"
-				>{data.name}</span
+			<!-- ⛔ THE NAME WRAPS, IT DOES NOT TRUNCATE — AT EITHER WIDTH.
+			     (2026-09-20) This branch kept `truncate` while the `stacked`
+			     branch above already wrapped, and the reason given there holds
+			     here too: there is no ellipsis short enough to tell
+			     `hello-frontend-app` and `hello-api-app` apart, and telling two
+			     services apart is the whole job of a box in a dependency graph.
+			     Measured on `/dependencies` at 1440: `hello-frontend-app` was
+			     cut to 102px beside a wide `HELLO-DEP-STAGING` chip, which eats
+			     the row this name shares. Height is free — the page scrolls —
+			     so the box gets taller instead, the same trade `stacked` makes.
+			     `identParts` + `<wbr>` breaks at the identifier's own hyphens,
+			     never mid-token. -->
+			<span
+				class="ident min-w-0 text-[13px] leading-tight font-semibold text-wrap text-gray-900 dark:text-white"
+				>{#each identParts(data.name) as part, pi (pi)}{part}{#if pi < identParts(data.name).length - 1}<wbr
+						/>{/if}{/each}</span
 			>
 		</span>
 	{/if}
@@ -315,13 +331,16 @@
 	-->
 	<span class="flex min-w-0 items-center gap-1.5">
 		{#if data.unresolved}
-			<span class="t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
+			<!-- Wraps rather than truncating: `not in this dashbo…` is the
+			     ellipsis saying nothing the full phrase does not, on the one
+			     node whose whole message IS that phrase. -->
+			<span class="t-micro min-w-0 text-wrap text-gray-500 dark:text-gray-400"
 				>not in this dashboard</span
 			>
 		{:else if data.build}
 			<span class="t-code-sm min-w-0 truncate text-gray-600 dark:text-gray-300">{data.build}</span>
 		{:else}
-			<span class="t-micro min-w-0 truncate text-gray-500 dark:text-gray-400">never deployed</span>
+			<span class="t-micro min-w-0 text-wrap text-gray-500 dark:text-gray-400">never deployed</span>
 		{/if}
 	</span>
 
@@ -332,7 +351,9 @@
 		kind earns — a clock is not a person and must never look like one.
 	-->
 	{#each data.holds as hold (hold.gate + hold.short)}
-		{@const Icon = hold.pending ? HOLD_ICON.pending : (HOLD_ICON[hold.clears] ?? QuestionCircleOutline)}
+		{@const Icon = hold.pending
+			? HOLD_ICON.pending
+			: (HOLD_ICON[hold.clears] ?? QuestionCircleOutline)}
 		<!-- ⛔ F6 (2026-09-03, design pass 9 re-check): `truncate` CLIPPED THE
 		     GATE'S OWN SENTENCE TO 94px OF 266 AT EVERY WIDTH FROM 390 TO
 		     1024 — `Outside the Business Hours Only deploy window` is prose,

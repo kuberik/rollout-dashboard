@@ -105,7 +105,11 @@
 	import DependencyNode from '$lib/components/DependencyNode.svelte';
 	import ContractHopEdge from '$lib/components/ContractHopEdge.svelte';
 	import { theme } from '$lib/stores/theme';
-	import { getEnvironmentThemeStyle, shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
+	import {
+		getEnvironmentThemeStyle,
+		shortEnvLabel,
+		type EnvironmentTheme
+	} from '$lib/environment-theme';
 	import type { DependencyNodeData } from '$lib/components/dependency-node-data';
 	import {
 		layoutOrder,
@@ -150,6 +154,33 @@
 	const STACK_BELOW = 620;
 	/** Written by the canvas once it has measured itself. See `onorientation`. */
 	let stacked = $state(false);
+	/**
+	 * ⭐ 2026-09-18 · THE LEGEND MOVED BELOW THE DRAWING AND LOST ITS CENTRING.
+	 *
+	 * Until this redesign it sat ABOVE `<GraphCanvas>`, width-synced to
+	 * `GraphCanvasInner`'s `snugFrameWidth` (a small single-rank graph draws
+	 * in a canvas sized to its own content, centred, rather than stretched to
+	 * the full card) via the `onsnugwidth` callback — the row picked that
+	 * width up as its own `max-width` + `margin-inline: auto` so the two
+	 * objects shared one measured edge.
+	 *
+	 * On the rollout tab (`compact`) that centred pairing is exactly the
+	 * *"floating label"* the human named: a caption hanging above a narrow,
+	 * centred figure in a sea of empty card. §5c's `snugFrame={!compact}`
+	 * means the compact caller's frame is never narrowed in the first place
+	 * — the rail card is already sized to the drawing — so there is nothing
+	 * left to centre over. The legend now sits BELOW the drawing, left-
+	 * aligned at the card body's own left edge, as an ordinary caption. The
+	 * glyphs and their `stacked` rotation are unchanged.
+	 *
+	 * `snugWidth` is gone from THIS file, and `GraphCanvasInner`'s
+	 * `onsnugwidth` callback is gone with it: this was its only caller in the
+	 * product, and a reporting channel nobody reads is a second source of
+	 * truth waiting to drift from the one the template already uses.
+	 * `snugFrameWidth` itself is untouched — it still narrows
+	 * `/dependencies`' frame for a small subgraph, read where it is written,
+	 * by that component's own template.
+	 */
 
 	const nodeById = $derived(new Map(graph.nodes.map((n) => [n.id, n] as const)));
 	const inbound = $derived.by(() => {
@@ -263,6 +294,60 @@
 	}
 
 	/**
+	 * ⭐ 2026-09-18 · RESIDUAL R3 — ONE LABEL PER (PROVIDER, TEXT) GROUP, NOT
+	 * PER EDGE. `from` is the PROVIDER on a contract edge (see
+	 * `dependency-graph.ts`'s own comment on the edge it builds) — so a
+	 * provider with N consumers is N edges sharing ONE source node. Under
+	 * `singleFile`/`TB`, `ContractHopEdge`'s hooked label sits at
+	 * `sourceY` (the midpoint of the OUTBOUND segment, which is pinned to
+	 * the source's own row — see that component's header). Every one of
+	 * those N edges shares that same source, so they all resolved to the
+	 * SAME `labelY`, and near-identical `labelX` (the lane stagger is 20px
+	 * against a ~60px word). Measured on `payments-svc`'s neighbourhood
+	 * (5 `checkout-api` environments, one contract edge each): five
+	 * `payments` labels stacked almost exactly on top of each other,
+	 * legible only as `p p p p p payments`.
+	 *
+	 * ⛔ FIXED HERE, NOT IN `ContractHopEdge` OR `GraphCanvasInner`. Those
+	 * two own the ROUTE (`gutterX`, the hook path, the lane a route sits
+	 * in so hooks don't cross) and correctly keep computing one gutter
+	 * lane per edge — the LINES still need to not overlap each other, and
+	 * they don't. What was wrong is a DATA decision: whether a given edge
+	 * carries a label at all, which is the same decision `contractLabel`
+	 * two lines up already makes (whether to print the constraint) and
+	 * belongs in the same file for the same reason.
+	 *
+	 * Option (a) over (b): draw the label on ONE representative edge per
+	 * group rather than spacing every label along the gutter. (b) would
+	 * still print `payments` five times down one gutter on a two-node-tall
+	 * card — true five times over, but a reader does not need five
+	 * confirmations that the contract is named `payments`; they need it
+	 * named once. The GROUP KEY is `from + the exact label text`, not just
+	 * `from + contract`, so a provider whose five consumers are not all in
+	 * the same state — say one is genuinely blocked on a distinct version
+	 * (`payments ^3.0.0`) while the rest are open (`payments`) — keeps that
+	 * edge's own distinct text: it is a group of one and always drawn. The
+	 * remaining edges in a group keep their own `gutterX`/lane and still
+	 * route; only their `label` is suppressed, so the fact that N
+	 * consumers exist is still fully legible as N lines converging on one
+	 * node, and the text that WOULD repeat is asserted exactly once by an
+	 * edge it is equally true of (every edge in the group shares that
+	 * exact string by construction).
+	 */
+	const labelledEdgeKeys = $derived.by(() => {
+		const seen = new Set<string>();
+		const keep = new Set<string>();
+		for (const e of graph.edges) {
+			if (e.writer !== 'contract') continue;
+			const groupKey = `${e.from}::${contractLabel(e)}`;
+			if (seen.has(groupKey)) continue;
+			seen.add(groupKey);
+			keep.add(e.key);
+		}
+		return keep;
+	});
+
+	/**
 	 * ⭐ ONE LANE PER CONTRACT EDGE THAT SHARES GUTTER SPACE WITH ANOTHER —
 	 * greedy interval scheduling over RANK SPANS, the same trick a calendar
 	 * view uses to stack overlapping meetings into columns.
@@ -303,7 +388,13 @@
 	function edgeOf(e: GraphEdge): Edge {
 		const stroke = e.state === 'blocked' ? ink('blocked') : ink('quiet');
 		const promotion = e.writer === 'promotion';
-		const label = promotion ? undefined : contractLabel(e);
+		// See `labelledEdgeKeys`'s own doc (R3): only the group's representative
+		// edge carries text; the rest still route, silently.
+		const label = promotion
+			? undefined
+			: labelledEdgeKeys.has(e.key)
+				? contractLabel(e)
+				: undefined;
 		/**
 		 * ⭐ `contractHop` UNDER `singleFile` ONLY. See `ContractHopEdge`'s own
 		 * header for the defect this replaces — the library's `smoothstep`
@@ -313,7 +404,19 @@
 		 * problem, because a contract partner really is beside the node
 		 * there, not somewhere else in the same column.
 		 */
-		const type = !promotion && stacked ? 'contractHop' : 'smoothstep';
+		/**
+		 * ⛔ 2026-09-13 · NO LONGER `stacked`-ONLY. The hook itself still is
+		 * (`ContractHopEdge` draws it only when the layout hands it a
+		 * `gutterX`, which only a `singleFile` `TB` column gets), but the
+		 * LABEL placement this component owns has to apply everywhere,
+		 * because `stacked` is not the same question as "did dagre put these
+		 * two nodes in one column". Under `LR` a contract edge does not rank
+		 * anything, so two services in ONE environment land in the same
+		 * column with `stacked` false — the library then loops the
+		 * `Bottom`→`Top` route and drops its label inside a node. Seen in the
+		 * film's own 06-dependencies take as a floating `ents`.
+		 */
+		const type = promotion ? 'smoothstep' : 'contractHop';
 		return {
 			id: e.key,
 			source: e.from,
@@ -458,31 +561,6 @@
 
 {#if graph.nodes.length > 0}
 	<!--
-		⭐ A TWO-AXIS LEGEND HAS A SHAPE, SO IT IS DRAWN, NOT WRITTEN.
-		(2026-09-02) Two full sentences of prose ("Across: a build moving
-		through environments, left first. Down: a service waiting on another
-		in the same environment.") said the same thing this glyph pair shows
-		in one line — direction is the one thing a graph can get
-		catastrophically wrong, and no arrowhead convention is universal, but
-		the FIX is geometry, not more words. The two marks are the product's
-		own, already-shipped icons for these two edge kinds
-		(`ChevronDoubleRightOutline` for a promotion, `ShareNodesSolid` for a
-		contract — `GateRecord.svelte`'s `gateMark()`), so the legend and the
-		graph cannot drift about what a mark means. The chevron ROTATES with
-		`stacked`, because that edge is genuinely vertical under `TB` and the
-		glyph should say so; the share icon has no orientation to carry.
-	-->
-	<p class="t-micro mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400">
-		<span class="inline-flex items-center gap-1">
-			<ChevronDoubleRightOutline class="h-3 w-3 shrink-0 {stacked ? 'rotate-90' : ''}" />
-			environments
-		</span>
-		<span class="inline-flex items-center gap-1">
-			<ShareNodesSolid class="h-3 w-3 shrink-0 {stacked ? '' : 'rotate-90'}" />
-			services in one environment
-		</span>
-	</p>
-	<!--
 		⭐ 2026-09-03 · THE SAME COMPONENT, ONE NODE PER ROW UNDER `TB`, NOT A
 		SECOND COMPONENT. The human's standing decision, reaffirmed this week:
 		one component at every width now that this is the flow library, not a
@@ -544,10 +622,54 @@
 		{anchorSpan}
 		fillWidth={!stacked}
 		minZoomWide={0.85}
+		snugFrame={!compact}
 		snugHeight
 		onorientation={(o) => (stacked = o === 'TB')}
 		{dark}
 		ariaLabel="Dependency graph"
-		class="rounded-lg border border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/40"
+		class="rounded-lg bg-gray-50/60 dark:bg-gray-900/40"
 	/>
+	<!--
+		⭐ A TWO-AXIS LEGEND HAS A SHAPE, SO IT IS DRAWN, NOT WRITTEN.
+		(2026-09-02) Two full sentences of prose ("Across: a build moving
+		through environments, left first. Down: a service waiting on another
+		in the same environment.") said the same thing this glyph pair shows
+		in one line — direction is the one thing a graph can get
+		catastrophically wrong, and no arrowhead convention is universal, but
+		the FIX is geometry, not more words. The two marks are the product's
+		own, already-shipped icons for these two edge kinds
+		(`ChevronDoubleRightOutline` for a promotion, `ShareNodesSolid` for a
+		contract — `GateRecord.svelte`'s `gateMark()`), so the legend and the
+		graph cannot drift about what a mark means. The chevron ROTATES with
+		`stacked`, because that edge is genuinely vertical under `TB` and the
+		glyph should say so; the share icon has no orientation to carry.
+
+		⭐ 2026-09-18 · BELOW THE DRAWING NOW, NOT ABOVE IT — see the LEGEND
+		doc comment beside `STACK_BELOW` further up this file for the full
+		argument. In one line: this row used to width-sync to a narrowed,
+		centred frame; the compact caller's frame no longer narrows, so a
+		caption hanging above a centred figure in a sea of empty card was the
+		"floating label" the human named. Left-aligned at the card body's own
+		edge, below the figure, it reads as a caption should.
+
+		⛔ AND IT IS LAID OUT AGAINST THE CARD, NOT AGAINST THE FRAME. That is
+		only safe while the frame is at the card's full width, which is what
+		`snugFrame={!compact}` buys. When the `TB` hook branch was still
+		narrowing the frame behind that opt-out (fixed 2026-09-20), this row
+		ran past the frame's right edge at every width below `STACK_BELOW` —
+		the defect the opt-out existed to prevent, reappearing through the
+		branch that ignored it.
+	-->
+	<p
+		class="t-micro mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400"
+	>
+		<span class="inline-flex items-center gap-1">
+			<ChevronDoubleRightOutline class="h-3 w-3 shrink-0 {stacked ? 'rotate-90' : ''}" />
+			environments
+		</span>
+		<span class="inline-flex items-center gap-1">
+			<ShareNodesSolid class="h-3 w-3 shrink-0 {stacked ? '' : 'rotate-90'}" />
+			services in one environment
+		</span>
+	</p>
 {/if}

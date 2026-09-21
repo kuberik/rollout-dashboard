@@ -106,6 +106,7 @@
 		singleFile = false,
 		minZoomWide = 0.55,
 		snugHeight = false,
+		snugFrame = true,
 		onorientation = undefined,
 		class: className = ''
 	}: {
@@ -301,6 +302,25 @@
 		 */
 		snugHeight?: boolean;
 		/**
+		 * ⭐ 2026-09-18 · OPT OUT OF `snugFrameWidth` ENTIRELY, PER CALLER.
+		 *
+		 * `snugFrameWidth` (see its own doc below) exists because a small `LR`
+		 * drawing in a WIDE band is mostly dead card — it caps the frame at
+		 * `natural.width / 0.5` so the ink does not drown in blank ground. That
+		 * premise stops holding once the CALLER'S OWN CARD is already sized to
+		 * the drawing rather than to a fixed wide band: there the ratio is
+		 * already high, and narrowing the frame a second time draws a small
+		 * tinted rectangle floating inside a bordered card with dead card
+		 * either side of IT — the exact "box inside a box" `snugFrameWidth`
+		 * exists to prevent, just moved one level in.
+		 *
+		 * `true` is the default and keeps every existing caller
+		 * byte-identical (`/dependencies`, `AppPromotionFlow`). `false` is for
+		 * a caller whose card was built around this drawing — currently only
+		 * `DependencyNetwork`'s `compact` rollout-tab rendering.
+		 */
+		snugFrame?: boolean;
+		/**
 		 * ⭐ THE DIRECTION THIS CANVAS SETTLED ON, back to the caller.
 		 *
 		 * With `rankdir="auto"` the flip is decided HERE, from the container's
@@ -398,6 +418,36 @@
 
 	let containerEl = $state<HTMLDivElement | null>(null);
 	let containerWidth = $state(0);
+	/**
+	 * ⭐ 2026-09-13 · THE `.graph-canvas` WRAPPER ITSELF, so its PARENT's width
+	 * can be measured separately from `containerEl`'s — see `availableWidth`
+	 * below for why the two must not be the same number once `snugFrameWidth`
+	 * exists.
+	 */
+	let rootEl = $state<HTMLDivElement | null>(null);
+	/**
+	 * ⭐ THE WIDTH ON OFFER, UNCONTAMINATED BY OUR OWN `snugFrameWidth` CAP.
+	 *
+	 * `containerWidth` (above) is `containerEl.clientWidth` — the ACTUAL
+	 * rendered pane, which `snugFrameWidth` can now narrow on purpose (see
+	 * its own doc). Feeding that same number into the `LR`↔`TB` STACKING
+	 * decision below would be circular: cap the width because there is
+	 * nothing to stretch → the capped width drops under `stackBelow` → the
+	 * canvas stacks into `TB` → `DependencyNetwork` turns `fillWidth` off
+	 * for `TB` → the cap lifts → the width jumps back over `stackBelow` →
+	 * `LR` returns → the cap re-applies → repeat, forever, on a desktop-width
+	 * card that was never narrow. Measured live before this existed: a
+	 * 1167px card computing a 442px snug width for a 2-node graph (under
+	 * `stackBelow`'s default 620) would have oscillated on every
+	 * `ResizeObserver` tick.
+	 *
+	 * `availableWidth` is measured off `rootEl.parentElement` — one level
+	 * OUTSIDE `.graph-canvas`, which `snugFrameWidth` never touches — so it
+	 * reports the CALLER's real offer whether or not this component has
+	 * chosen to draw narrower than it. `0` until mount; every reader falls
+	 * back to `containerWidth` while it is.
+	 */
+	let availableWidth = $state(0);
 	// Owned by the effect below — `rankdir` is read there so a caller that
 	// switches it at runtime is followed rather than sampled once at mount.
 	let orientation = $state<'LR' | 'TB'>('LR');
@@ -433,6 +483,69 @@
 
 	let flowNodes = $state<Node[]>([]);
 	let flowEdges = $state<Edge[]>([]);
+	/**
+	 * ⭐ 2026-09-13 · THE FRAME'S OWN WIDTH FOLLOWS CONTENT, THE SAME WAY
+	 * `frameHeight` (`frameFor`, below) ALREADY DOES — FOR THE ONE SHAPE THE
+	 * `fillWidth` STRETCH CANNOT REACH.
+	 *
+	 * `fillWidth`'s own long comment above answers "the drawing is narrower
+	 * than its frame" by GROWING the drawing (widening `ranksep`/`nodesep`
+	 * between ranks) — correct whenever there is more than one rank to widen
+	 * a gap between. A graph with exactly ONE rank (a rollout's own
+	 * neighbourhood filtered to one environment — two services joined by a
+	 * single contract, no promotion edge to rank against) has no second rank
+	 * to push apart: `gaps` (below) is `0`, the stretch branch never fires,
+	 * and the drawing stays at its natural, single-node-column width
+	 * whatever the frame is. Measured on the live fleet's
+	 * `checkout-api-prod-us-east-2/checkout-api` Dependencies tab: a 221px
+	 * node in a 1167px frame at 1440, later 1647px at 1920 — 81–87% of the
+	 * canvas is ground, and doubling the viewport WIDENS the empty margin
+	 * rather than the drawing, because nothing about the layout was ever a
+	 * function of the frame in this branch.
+	 *
+	 * The fix is the same rule already governing the stretch, read the other
+	 * way: **the gutters may never total more than the ranks they
+	 * separate** — i.e. at least half of the frame, along the CONSTRAINED
+	 * axis, is ink. When there is a gap to widen, `fillWidth` grows the ink
+	 * to meet that ratio. When there is not (`gaps < 1`), the frame's own
+	 * rendered width shrinks to meet it instead — `natural.width / 0.5`,
+	 * floored so a single small node never renders in a canvas narrower than
+	 * it can comfortably hold its own zoom controls, and ceilinged at the
+	 * container's own width (a graph that already clears the ratio is a
+	 * no-op, unchanged from before this existed).
+	 *
+	 * `null` — the default, and every `LR` graph with `gaps >= 1`, and every
+	 * `TB` graph (the constrained axis there is height, not width — see
+	 * `restingWidthZoom`'s identical `orientation === 'LR'` guard) — renders
+	 * `.graph-canvas` at its parent's full width, byte-identical to before
+	 * this existed. Read by the template as an optional `max-width` on the
+	 * OUTER `.graph-canvas` wrapper, not on `containerEl` directly: the
+	 * `ResizeObserver` already watches `containerEl`, which is a plain block
+	 * child of the wrapper, so capping the wrapper's width is the one change
+	 * that reaches every downstream measurement (`containerWidth`, the fit
+	 * maths, the controls row) for free, with no second variable to keep in
+	 * sync.
+	 */
+	let snugFrameWidth = $state<number | null>(null);
+	/** Never narrower than this even for a single ~110px node — a canvas
+	 *  under this holds its own 3-button zoom strip uncomfortably tight. */
+	const SNUG_WIDTH_FLOOR = 280;
+	/**
+	 * ⭐ 2026-09-13 · THE `TB`+HOOK FLOOR IS LOWER, ON PURPOSE.
+	 *
+	 * `SNUG_WIDTH_FLOOR` was set for the `LR` single-rank case, where the
+	 * card genuinely has nothing narrower than a full node to show. The
+	 * `TB` hook case already computes a real `need` from the node, the
+	 * (now label-measured) gutter and the fixed offsets `restingFit` uses
+	 * — reusing the wider `LR` floor here just re-added back the dead
+	 * margin the whole fix exists to remove (measured: `need` ≈ 213px for
+	 * the `payments` label above, clamped up to 280 by the shared floor,
+	 * i.e. 67px of the "fixed" canvas was still unaccounted-for gutter).
+	 * `200` is the same "don't crowd the 3-button zoom strip" reasoning as
+	 * `SNUG_WIDTH_FLOOR`, just not padded for a wider node this branch
+	 * never draws (a hooked pair's own node width is already inside `need`).
+	 */
+	const TB_HOOK_WIDTH_FLOOR = 200;
 
 	/**
 	 * ⭐ AND THE FLOOR IS HIGHER ON A PHONE, BECAUSE 0.55 IS NOT LEGIBLE THERE.
@@ -670,7 +783,8 @@
 		const wb = nb.measured?.width ?? fallbackNodeWidth;
 		const ha = na.measured?.height ?? fallbackNodeHeight;
 		const hb = nb.measured?.height ?? fallbackNodeHeight;
-		const boxWidth = Math.max(na.position.x + wa, nb.position.x + wb) - Math.min(na.position.x, nb.position.x);
+		const boxWidth =
+			Math.max(na.position.x + wa, nb.position.x + wb) - Math.min(na.position.x, nb.position.x);
 		const boxHeight =
 			Math.max(na.position.y + ha, nb.position.y + hb) - Math.min(na.position.y, nb.position.y);
 		if (boxWidth <= 0 || boxHeight <= 0) return 0;
@@ -710,7 +824,15 @@
 				 * hook — keeps the old centred reading, since there is no
 				 * gutter to reserve room for.
 				 */
-				const hasHook = flowEdges.some((e) => e.type === 'contractHop');
+				// ⛔ WHETHER AN EDGE ACTUALLY HOOKS, NOT WHETHER ONE COULD. This read
+				// `e.type === 'contractHop'`, which is true for every contract edge
+				// including the ones that now route straight down because nothing is
+				// between their ends (see the gutter block's own note). Those have no
+				// gutter running off the right of the content box, so there is nothing
+				// to reserve room for and the column centres like any other.
+				const hasHook = flowEdges.some(
+					(e) => typeof (e.data as { gutterX?: number } | undefined)?.gutterX === 'number'
+				);
 				const x = hasHook ? 20 : Math.max(0, (containerWidth - contentSize.width) / 2);
 				/**
 				 * ⭐ CENTRED VERTICALLY, NOT TOP-PINNED — measured, `y: 0` put
@@ -926,8 +1048,14 @@
 		if (rankdir !== 'auto') {
 			orientation = rankdir;
 		} else {
+			// `availableWidth` — the real offer, not `snugFrameWidth`'s own
+			// narrowing of it — see that variable's doc for the oscillation
+			// this avoids. Falls back to `containerWidth` before the parent
+			// has been measured (mount) or for any caller with no parent to
+			// read (defensive only; every real caller renders inside one).
+			const widthForStacking = availableWidth > 0 ? availableWidth : containerWidth;
 			orientation =
-				containerWidth > 0 && (containerWidth < stackBelow || forceStack) ? 'TB' : 'LR';
+				widthForStacking > 0 && (widthForStacking < stackBelow || forceStack) ? 'TB' : 'LR';
 		}
 		onorientation?.(orientation);
 	});
@@ -952,6 +1080,20 @@
 			refit();
 		});
 		ro.observe(el);
+		/**
+		 * ⭐ `availableWidth`'s OWN OBSERVER — the CALLER's offer, one level
+		 * outside `.graph-canvas`, so it moves only when the READER resizes
+		 * something and never as a side effect of `snugFrameWidth` narrowing
+		 * `containerEl` on purpose. See that variable's own doc.
+		 */
+		const parentEl = rootEl?.parentElement ?? null;
+		availableWidth = parentEl ? parentEl.clientWidth : el.clientWidth;
+		const parentRo = parentEl
+			? new ResizeObserver((entries) => {
+					availableWidth = entries[entries.length - 1]?.contentRect.width ?? availableWidth;
+				})
+			: null;
+		parentRo?.observe(parentEl as Element);
 		window.addEventListener('resize', refit);
 		/**
 		 * ⭐ ONE FINGER BELONGS TO THE PAGE. See the header comment: this stops
@@ -967,6 +1109,7 @@
 		el.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
 		return () => {
 			ro.disconnect();
+			parentRo?.disconnect();
 			window.removeEventListener('resize', refit);
 			el.removeEventListener('touchstart', onTouchStart, { capture: true });
 		};
@@ -988,9 +1131,7 @@
 		untrack(() => {
 			const next = incoming.map((bn) => {
 				const existing = flowNodes.find((fn) => fn.id === bn.id);
-				return existing
-					? { ...bn, measured: existing.measured, position: existing.position }
-					: bn;
+				return existing ? { ...bn, measured: existing.measured, position: existing.position } : bn;
 			});
 			const sameIds =
 				JSON.stringify(next.map((n) => n.id)) === JSON.stringify(flowNodes.map((n) => n.id));
@@ -1031,6 +1172,7 @@
 	$effect(() => {
 		if (flowNodes.length === 0) {
 			contentSize = { width: 0, height: 0 };
+			snugFrameWidth = null;
 			return;
 		}
 		const dir = orientation;
@@ -1038,6 +1180,10 @@
 		const baseRanksep = ranksep ?? (dir === 'TB' ? 50 : 96);
 		// Read so a resize re-lays-out rather than only re-fitting.
 		const frameWidth = containerWidth;
+		// Set inside the `fillWidth` block below, `LR` only — see
+		// `snugFrameWidth`'s own doc for why `TB` and `gaps >= 1` leave it
+		// `null`.
+		let nextSnugWidth: number | null = null;
 
 		/**
 		 * `singleFile`'s spine — see the prop's own doc. `minlen` defaults to
@@ -1205,20 +1351,47 @@
 					// …but never so wide that `overflows` flips on a graph that fits.
 					frameWidth - 2 * MARGIN - 8
 				);
-				const gaps =
-					new Set(flowNodes.map((n) => Math.round(g.node(n.id)?.x ?? 0))).size - 1;
+				const gaps = new Set(flowNodes.map((n) => Math.round(g.node(n.id)?.x ?? 0))).size - 1;
 				if (gaps >= 1 && natural.width < target - 4) {
 					const base = dir === 'LR' ? baseRanksep : baseNodesep;
 					// Everything the drawing is not already spending on gutters —
 					// the ranks themselves. Half of the stretched extent, at most.
 					const ink = natural.width - gaps * base;
-					const next = Math.min(
-						base + (target - natural.width) / gaps,
-						Math.max(base, ink / gaps)
-					);
+					const next = Math.min(base + (target - natural.width) / gaps, Math.max(base, ink / gaps));
 					if (next > base + 2) {
 						g = dir === 'LR' ? build(baseNodesep, next) : build(next, baseRanksep);
 					}
+				} else if (gaps < 1 && dir === 'LR' && snugFrame) {
+					/**
+					 * ⭐ THE COMPLEMENT: NO GAP TO WIDEN, SO THE FRAME SHRINKS TO
+					 * THE INK INSTEAD. See `snugFrameWidth`'s own doc above. Only
+					 * `LR` — under `TB` the constrained axis is height, and a
+					 * `singleFile` column already sizes its own width via the
+					 * `hasHook`/centring branch in `restingFit`, untouched here.
+					 *
+					 * `&& snugFrame` — 2026-09-18: this is the whole of the
+					 * `snugFrame={false}` opt-out (see that prop's own doc). When
+					 * false, the branch simply never runs and the frame keeps the
+					 * caller's full offered width, exactly as if `gaps >= 1`.
+					 *
+					 * ⚠️ THE TOLERANCE CHECK READS `availableWidth`, NOT
+					 * `frameWidth`. `frameWidth` is `containerWidth` — the
+					 * pane's OWN width, which this very branch may just have
+					 * shrunk on a previous tick. Comparing the new candidate
+					 * against an already-shrunk `frameWidth` is comparing the
+					 * cap against itself: once `containerWidth` settles at
+					 * the capped value, `snug < frameWidth - 4` flips false
+					 * (the two numbers converge), the cap lifts, `containerWidth`
+					 * springs back to the full offer, the branch re-fires, and
+					 * the cap re-applies — forever. `availableWidth` is the
+					 * caller's offer with the cap never subtracted from it
+					 * (see that variable's own doc), so the comparison stays
+					 * true at exactly the same value on every tick once
+					 * converged.
+					 */
+					const snug = Math.round(Math.max(SNUG_WIDTH_FLOOR, natural.width / 0.5));
+					const offer = availableWidth > 0 ? availableWidth : frameWidth;
+					nextSnugWidth = snug < offer - 4 ? snug : null;
 				}
 			}
 		}
@@ -1253,24 +1426,241 @@
 			 * midpoint (`ContractHopEdge`), so that segment has to be AT LEAST
 			 * the label's width or the label's own left half overlaps the
 			 * node it just left — exactly the residue this constant exists to
-			 * fix. 96 clears the widest label this graph draws with margin to
-			 * spare; the pane has the width for it (`restingFit`'s `singleFile`
-			 * branch reserves the gutter on purpose).
+			 * fix.
+			 *
+			 * ⛔ 2026-09-13 · WAS A FLAT `96`, SIZED FOR THE WORST LABEL THIS
+			 * GRAPH CAN DRAW — WHICH MADE EVERY SHORTER ONE A LOOP AROUND
+			 * EXTRA GUTTER IT NEVER NEEDED. Measured on the live fleet's
+			 * two-node `checkout-api`⇄`payments-svc` neighbourhood (label
+			 * `payments`, no version constraint drawn): the label rendered
+			 * **60.7px**, and a flat 96 hook still drew a 96px-wide dashed
+			 * loop with 35px of dead gutter past the label's own right edge
+			 * — the loop's SIZE was never a function of what it was carrying.
+			 * `GUTTER_BASE` is now MEASURED per canvas, from the actual
+			 * `label.length` of every `contractHop` edge that will use it —
+			 * the identical `length * 6 + 12` estimate `GraphCanvasInner`'s
+			 * own dagre pass already uses to reserve rank space for a
+			 * labelled edge (see `build()`'s `g.setEdge` call above), not a
+			 * second guess at the same number. `+24` keeps the same "margin
+			 * to spare" the flat constant's own comment asked for; `56` is
+			 * the floor — short enough that a bare word never over-shrinks,
+			 * long enough that a one-word label at `t-micro` still clears
+			 * its own edge markers. A graph with a genuinely wide worst-case
+			 * label (`api ^1.67.0`, ~84px) still lands close to the old 96.
 			 */
-			const GUTTER_BASE = 96;
+			const maxLabelWidth = Math.max(
+				0,
+				...flowEdges
+					.filter((e) => e.type === 'contractHop')
+					.map((e) => (typeof e.label === 'string' ? e.label.length * 6 + 12 : 0))
+			);
+			const GUTTER_BASE = Math.max(56, maxLabelWidth + 24);
 			const LANE_GAP = 20;
+			/**
+			 * ⭐ 2026-09-20 · AN EDGE WITH NOTHING TO GO ROUND DOES NOT GO ROUND.
+			 *
+			 * The gutter exists for ONE reason: under `singleFile` every node
+			 * shares an x, so an edge between two nodes in the column would run
+			 * straight THROUGH whatever sits between them. When nothing sits
+			 * between them there is nothing to clear, and the out-and-back was
+			 * drawn anyway — measured on the two-node neighbourhood the rail
+			 * opens on, an 84x96 dashed elbow plus a 197px gutter at 1280-1600,
+			 * around a pair of boxes that are already adjacent.
+			 *
+			 * ⭐ AND IT IS WHY THE DRAWING WAS NOT CENTRED. `restingFit`'s
+			 * `singleFile`/`TB` branch pins a HOOKED column at `x = 20` (it has
+			 * to: the gutter runs off the right of the content box, so centring
+			 * the content would push the hook out of the canvas). No hook, and
+			 * the same branch's `else` centres the column in the canvas — so
+			 * killing a gutter nobody needed also centres the figure, with no
+			 * second rule and no new constant.
+			 *
+			 * "Between" is measured on dagre's own y bands, not on the edge's
+			 * endpoints, because the node boxes are what an edge would cross.
+			 */
+			const nodeBands = flowNodes
+				.map((n) => {
+					const nn = g.node(n.id);
+					if (!nn) return null;
+					const hh = nn.height ?? 0;
+					return { id: n.id, top: (nn.y ?? 0) - hh / 2, bottom: (nn.y ?? 0) + hh / 2 };
+				})
+				.filter((x): x is { id: string; top: number; bottom: number } => x !== null);
+			const crossesANode = (e: Edge) => {
+				const a = nodeBands.find((n) => n.id === e.source);
+				const c = nodeBands.find((n) => n.id === e.target);
+				if (!a || !c) return true; // cannot prove it is clear, so keep the gutter
+				const lo = Math.min(a.bottom, c.bottom);
+				const hi = Math.max(a.top, c.top);
+				return nodeBands.some(
+					(n) => n.id !== e.source && n.id !== e.target && n.bottom > lo && n.top < hi
+				);
+			};
+
+			let maxLane = 0;
 			const nextEdges = flowEdges.map((e) => {
 				if (e.type !== 'contractHop') return e;
-				const lane = typeof (e.data as { lane?: number } | undefined)?.lane === 'number'
-					? (e.data as { lane: number }).lane
-					: 0;
-				const gutterX = centerX + maxWidth / 2 + GUTTER_BASE + lane * LANE_GAP;
 				const prevGutterX = (e.data as { gutterX?: number } | undefined)?.gutterX;
+				if (!crossesANode(e)) {
+					// No gutter key at all: `ContractHopEdge` reads its absence as
+					// "not hooked" and draws the library's own smoothstep path.
+					if (prevGutterX === undefined) return e;
+					const { gutterX: _drop, ...rest } = (e.data ?? {}) as { gutterX?: number };
+					return { ...e, data: rest };
+				}
+				const lane =
+					typeof (e.data as { lane?: number } | undefined)?.lane === 'number'
+						? (e.data as { lane: number }).lane
+						: 0;
+				maxLane = Math.max(maxLane, lane);
+				const gutterX = centerX + maxWidth / 2 + GUTTER_BASE + lane * LANE_GAP;
 				if (prevGutterX === gutterX) return e;
 				return { ...e, data: { ...(e.data ?? {}), gutterX } };
 			});
+			const anyHook = nextEdges.some(
+				(e) =>
+					e.type === 'contractHop' &&
+					typeof (e.data as { gutterX?: number } | undefined)?.gutterX === 'number'
+			);
+			if (nextEdges.some((e, i) => e !== flowEdges[i])) flowEdges = nextEdges;
+
+			/**
+			 * ⭐ 2026-09-13 · THE FRAME SHRINKS TO THE HOOK, THE SAME WAY IT
+			 * SHRINKS TO A SINGLE-RANK `LR` DRAWING — see `snugFrameWidth`'s own
+			 * doc above. Measured on the live fleet's phone-width Dependencies
+			 * card (a two-node, one-contract neighbourhood): the frame stayed
+			 * the CARD's full width while the hook's own routed extent — node
+			 * width plus `GUTTER_BASE` plus the fixed left offset `restingFit`
+			 * gives a hooked column (20px, see its own `hasHook` branch) — was
+			 * under half of it, so the segment `ContractHopEdge` draws OUT to
+			 * the gutter and back IN reads as a dashed loop around a wide band
+			 * of otherwise-unused canvas, with its label stranded at the
+			 * loop's own right turn rather than near either node.
+			 *
+			 * dagre never sees this gutter (`ContractHopEdge`'s routing is a
+			 * decoration on top of dagre's own node positions, per its own
+			 * header), so `contentSize` — dagre's `g.graph().width/height` —
+			 * does not include it either; the required width is computed here,
+			 * once per lane count, from the exact same `centerX`/`maxWidth`/
+			 * `GUTTER_BASE` arithmetic the edges above were just given, plus
+			 * the fixed 20px `restingFit` offsets everything by and a small
+			 * breathing margin past the widest lane.
+			 *
+			 * Sets the SAME `nextSnugWidth` the `LR` branch above uses — the
+			 * two can never both be non-null in one pass (`dir` is either
+			 * `'LR'` or `'TB'`), and the sync at the end of this effect is one
+			 * write for whichever ran.
+			 *
+			 * ⛔ AND IT TAKES THE SAME `snugFrame` OPT-OUT, WHICH IT DID NOT
+			 * UNTIL 2026-09-20 AND THAT WAS A SHIPPED DEFECT. The `LR` branch
+			 * above was gated on `snugFrame` and this one was not, so a caller
+			 * that had opted out still got a narrowed frame the moment the
+			 * canvas flipped to `TB` — which on the Dependencies rail is EVERY
+			 * width below `STACK_BELOW`. Measured: a 259px frame inside a 472px
+			 * card at 390, 1280 and 1440, with the legend (which is laid out
+			 * against the CARD, not against this frame) hanging past its right
+			 * edge. One branch honouring a prop and its sibling ignoring it is
+			 * the prop not existing.
+			 */
+			const TB_HOOK_LEFT_OFFSET = 20; // restingFit's fixed `x` when `hasHook`
+			const TB_HOOK_RIGHT_PAD = 16;
+			// `anyHook` false: no edge routes out to the gutter, so the width the
+			// drawing needs is the column itself, not the column plus a channel
+			// nothing runs in.
+			const need = Math.round(
+				anyHook
+					? centerX +
+							maxWidth / 2 +
+							GUTTER_BASE +
+							maxLane * LANE_GAP +
+							TB_HOOK_LEFT_OFFSET +
+							TB_HOOK_RIGHT_PAD
+					: centerX + maxWidth / 2 + TB_HOOK_RIGHT_PAD
+			);
+			const offer = availableWidth > 0 ? availableWidth : frameWidth;
+			nextSnugWidth = snugFrame && need < offer - 4 ? Math.max(TB_HOOK_WIDTH_FLOOR, need) : null;
+		}
+		/**
+		 * ⭐ WHERE A CONTRACT EDGE'S LABEL GOES WHEN THERE IS NO HOOK — THE
+		 * ONLY LAYER THAT KNOWS THE NODE BOXES. (2026-09-13, tenth film
+		 * review: a floating `ents` at the capture's own geometry.)
+		 *
+		 * The library places a `smoothstep` label at its path centre, and a
+		 * route that has to loop — `Bottom`→`Top` with the target ABOVE the
+		 * source, which is every contract edge between two services dagre
+		 * stacked in one column — puts that centre inside a node. Neither the
+		 * edge component (it gets two endpoints, no boxes) nor the caller (it
+		 * runs before layout) can see the collision; dagre's own graph, right
+		 * here, can.
+		 *
+		 * The point: the middle of the CLEAR CHANNEL between the two boxes —
+		 * the vertical gap when they share a column, the horizontal gap when
+		 * they share a row — then swept against EVERY node box (not just this
+		 * edge's own two, since a long edge crosses others) and pushed past
+		 * any it still touches. `w`/`h` estimate the label's own box with the
+		 * same `length * 6 + 12` this file already uses to reserve rank space
+		 * for a labelled edge.
+		 */
+		{
+			const LABEL_H = 18;
+			const PAD = 6;
+			const boxes = flowNodes
+				.map((n) => g.node(n.id))
+				.filter((b): b is { x: number; y: number; width: number; height: number } => !!b)
+				.map((b) => ({
+					l: b.x - b.width / 2,
+					r: b.x + b.width / 2,
+					t: b.y - b.height / 2,
+					b: b.y + b.height / 2
+				}));
+			const nextEdges = flowEdges.map((e) => {
+				if (e.type !== 'contractHop') return e;
+				if (typeof (e.data as { gutterX?: number } | undefined)?.gutterX === 'number') return e;
+				const sd = g.node(e.source);
+				const td = g.node(e.target);
+				if (!sd || !td || typeof e.label !== 'string') return e;
+				const w = e.label.length * 6 + 12;
+				const S = {
+					l: sd.x - sd.width / 2,
+					r: sd.x + sd.width / 2,
+					t: sd.y - sd.height / 2,
+					b: sd.y + sd.height / 2
+				};
+				const T = {
+					l: td.x - td.width / 2,
+					r: td.x + td.width / 2,
+					t: td.y - td.height / 2,
+					b: td.y + td.height / 2
+				};
+				let x = (sd.x + td.x) / 2;
+				let y = (sd.y + td.y) / 2;
+				const vGap = S.b < T.t ? [S.b, T.t] : T.b < S.t ? [T.b, S.t] : null;
+				const hGap = S.r < T.l ? [S.r, T.l] : T.r < S.l ? [T.r, S.l] : null;
+				if (vGap && vGap[1] - vGap[0] >= LABEL_H) {
+					y = (vGap[0] + vGap[1]) / 2;
+				} else if (hGap && hGap[1] - hGap[0] >= w) {
+					x = (hGap[0] + hGap[1]) / 2;
+				}
+				// Whatever the channel gave, it still has to clear every box.
+				for (let pass = 0; pass < boxes.length + 1; pass++) {
+					const hit = boxes.find(
+						(b) =>
+							x + w / 2 + PAD > b.l &&
+							x - w / 2 - PAD < b.r &&
+							y + LABEL_H / 2 + PAD > b.t &&
+							y - LABEL_H / 2 - PAD < b.b
+					);
+					if (!hit) break;
+					x = hit.r + w / 2 + PAD + 2;
+				}
+				const prev = e.data as { labelX?: number; labelY?: number } | undefined;
+				if (prev?.labelX === x && prev?.labelY === y) return e;
+				return { ...e, data: { ...(e.data ?? {}), labelX: x, labelY: y } };
+			});
 			if (nextEdges.some((e, i) => e !== flowEdges[i])) flowEdges = nextEdges;
 		}
+
+		if (nextSnugWidth !== snugFrameWidth) snugFrameWidth = nextSnugWidth;
 
 		let changed = false;
 		const next = flowNodes.map((node) => {
@@ -1358,13 +1748,17 @@
 	 * with nothing to navigate to.
 	 */
 	const showMinimap = $derived(
-		!(singleFile && orientation === 'TB') &&
-			minimapFrom !== null &&
-			flowNodes.length >= minimapFrom
+		!(singleFile && orientation === 'TB') && minimapFrom !== null && flowNodes.length >= minimapFrom
 	);
 </script>
 
-<div class="graph-canvas relative {singleFile && orientation === 'TB' ? 'graph-canvas--scroll' : ''} {className}">
+<div
+	bind:this={rootEl}
+	class="graph-canvas relative {singleFile && orientation === 'TB'
+		? 'graph-canvas--scroll'
+		: ''} {className}"
+	style={snugFrameWidth !== null ? `max-width:${snugFrameWidth}px;margin-inline:auto` : undefined}
+>
 	{#if showControls}
 		<!-- ⭐ A STRIP, NOT AN OVERLAY. (2026-09-02) These used to float
 		     `absolute` on top of the pane, which is how the zoom stack ended up

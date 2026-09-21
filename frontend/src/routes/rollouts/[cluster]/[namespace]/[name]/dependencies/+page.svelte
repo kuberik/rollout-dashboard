@@ -185,12 +185,15 @@
 	import { rankVerdicts } from '$lib/view-models/env-rank';
 	import DependencyNetwork from '$lib/components/DependencyNetwork.svelte';
 	import { compareEnvironmentNames } from '$lib/env-order';
-	import { buildGateContext, blockingStory, contractRuleCountLabel } from '$lib/view-models/blocking-story';
+	import {
+		buildGateContext,
+		blockingStory,
+		contractRuleCountLabel
+	} from '$lib/view-models/blocking-story';
 	import { countLabel } from '$lib/disclosure';
 	import {
 		buildRolloutGraph,
 		neighbourhood,
-		networkVerdict,
 		nodeId,
 		namespacesByCluster,
 		withNetworkSchedules
@@ -808,7 +811,12 @@
 	const hasChain = $derived(chainRows.length > 0);
 	const hasContracts = $derived(blocks.length > 0);
 	const hasDependents = $derived(provided.length > 0);
-	const twoColumns = $derived(hasChain && (hasContracts || hasDependents));
+	// `hasNetwork`/`twoColumns` are declared further down, right after
+	// `localNetwork` — see that declaration's own comment for why the rail
+	// now has two possible occupants. (TS block scoping: `localNetwork` is
+	// itself `$derived` from `fullNetwork`, which is built from query data
+	// declared later in this file, so `hasNetwork` cannot live up here
+	// without a used-before-declaration error.)
 
 	/** Consumer services this rollout is currently holding, across contracts. */
 	const heldConsumers = $derived(
@@ -837,7 +845,9 @@
 	 */
 	const rolloutCount = $derived(
 		new Set(
-			provided.flatMap((c) => c.dependents.flatMap((d) => d.places.map((p) => `${d.name}/${p.namespace}`)))
+			provided.flatMap((c) =>
+				c.dependents.flatMap((d) => d.places.map((p) => `${d.name}/${p.namespace}`))
+			)
 		).size
 	);
 	const heldRolloutCount = $derived(
@@ -870,6 +880,44 @@
 	const adverse = $derived(blocks.filter((b) => b.blocked.length > 0));
 	const heldTags = $derived(new Set(adverse.flatMap((b) => b.blocked.map((w) => w.tag))));
 	const heldProviders = $derived([...new Set(adverse.map((b) => b.providerName))]);
+	/**
+	 * ⛔ THE CARD'S ROLLUP COUNTS PROVIDERS, NOT `ContractBlock`s. A block is
+	 * one (contract, provider) PAIR, so a single service this rollout waits on
+	 * for two contracts is TWO blocks — and `1 of 2 holding` against one named
+	 * service in the banner above is a number the page contradicts itself on.
+	 * The card is titled "Waiting on other SERVICES"; `heldProviders` is
+	 * already deduplicated by name, so the denominator must be too.
+	 */
+	const providerCount = $derived(new Set(blocks.map((x) => x.providerName)).size);
+
+	/**
+	 * ⛔ ONE `BlockReason` PER DISTINCT `reason`, AND REASONS ARE NEVER FOLDED
+	 * TOGETHER. (2026-09-20)
+	 *
+	 * The first cut of the compacted table rendered ONE `BlockReason` per
+	 * provider, built from the newest held build. That is only true when every
+	 * held build is held for the same cause, and the controller does not
+	 * guarantee it: `reason` is an open string and one dependency really does
+	 * report `ConstraintNotSatisfied` for one release and `ProviderVersionTooOld`
+	 * for another. Folding them printed the newest build's cause as the cause of
+	 * all of them — a confident falsehood, which is the defect class this page
+	 * was rebuilt to close.
+	 *
+	 * Insertion order is preserved, so the groups stay newest-first and so do
+	 * the rows inside each one; `rows[0]` is therefore that group's own newest
+	 * build, and its constraint is the one its sentence quotes.
+	 */
+	function byReason<T extends { reason: string | null; requiredVersion: string | null }>(
+		rows: T[]
+	): { reason: string | null; rows: T[] }[] {
+		const out: { reason: string | null; rows: T[] }[] = [];
+		for (const r of rows) {
+			const g = out.find((x) => x.reason === r.reason);
+			if (g) g.rows.push(r);
+			else out.push({ reason: r.reason, rows: [r] });
+		}
+		return out;
+	}
 
 	const blockedBanner = $derived.by(() => {
 		if (heldTags.size === 0) return null;
@@ -1067,9 +1115,48 @@
 	 * whichever one sorted first.
 	 */
 	const focusId = $derived(nodeId(cluster, namespace, name));
-	/** Its promotion neighbours and its contract neighbours. Depth 1 — no further. */
+	/**
+	 * Its promotion neighbours and its contract neighbours. Depth 1 — no
+	 * further. `networkVerdict(localNetwork)` — this card's own EDGE-scoped
+	 * count — is no longer read here; see the rollup snippet's own comment
+	 * (§5e) for the argument. `networkVerdict` stays exported from
+	 * `dependency-graph.ts` — `/dependencies` still rolls up its own network
+	 * with it.
+	 */
 	const localNetwork = $derived(neighbourhood(fullNetwork, focusId, 1));
-	const localVerdict = $derived(networkVerdict(localNetwork));
+
+	const hasNetwork = $derived(localNetwork.edges.length > 0);
+	/**
+	 * ⭐ 2026-09-18 · THE RAIL NOW HAS TWO POSSIBLE OCCUPANTS.
+	 *
+	 * Was `hasChain && (hasContracts || hasDependents)`. `In the network`
+	 * moved into the rail alongside `Where it's running` (see the composition
+	 * comment above the grid markup below), so a rollout with a map and no
+	 * chain — `standalone-api`, one provider, unbound from any `Environment` —
+	 * now gets two columns where it used to get a single 44rem card floating
+	 * in a page-wide container.
+	 */
+	const twoColumns = $derived((hasChain || hasNetwork) && (hasContracts || hasDependents));
+	/**
+	 * ⭐ THE MAP'S ROLLUP COUNTS WHAT IS DRAWN, AND NOTHING ELSE. (2026-09-20)
+	 *
+	 * §5e removed `1 of 1 links not read` for two reasons that still stand: it
+	 * counted EDGES where the rest of the page counts builds and services, and
+	 * it asserted a total the lists contradict — the map is this rollout's own
+	 * environment plus one hop, the lists span every environment of the app.
+	 * A card with a 47px header and no rollup is half the pattern, though, and
+	 * this was the only one of the three on this page missing one.
+	 *
+	 * The resolution is a number whose scope IS the drawing: distinct service
+	 * names in the box, minus this one. It cannot contradict the lists because
+	 * it does not claim to be a total of anything — a reader can count the
+	 * boxes and get the same answer, which is the test a rollup has to pass.
+	 * The promotion line is collapsed by NAME so seven environments of one
+	 * service are one service, not seven.
+	 */
+	const otherServicesDrawn = $derived(
+		Math.max(0, new Set(localNetwork.nodes.map((n) => n.name)).size - 1)
+	);
 
 	/** The env identity theme for a tier, for the graph's chips. */
 	const networkThemeOf = $derived((env: string) => {
@@ -1095,7 +1182,7 @@
 <div class="mx-auto w-full px-4 py-6 sm:px-6">
 	{#if rolloutQuery.isLoading}
 		<StillTryingNotice failureCount={rolloutQuery.failureCount} />
-		<div class="grid gap-4 xl:grid-cols-[3fr_minmax(22rem,2fr)] xl:items-start">
+		<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
 			<div class="h-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 			<div class="h-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
 		</div>
@@ -1129,7 +1216,9 @@
 					<h1 class="flex min-w-0 flex-wrap items-baseline gap-2">
 						<span class="t-display-id min-w-0 truncate text-gray-900 dark:text-white">{name}</span>
 						{#if appTitle !== name}
-							<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400">{appTitle}</span>
+							<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400"
+								>{appTitle}</span
+							>
 						{/if}
 					</h1>
 					{#if currentEnv}
@@ -1199,45 +1288,34 @@
 					</AlertPanel>
 				{/if}
 
-				<!-- ══ THE MAP, BEFORE THE LISTS ═══════════════════════════════
-				     The two cards below answer *"what blocks me"* and *"what do
-				     I block"* — both are lists of this rollout's neighbours. A
-				     list of neighbours is not a map, and the human asked for the
-				     map twice. This is the SAME component `/dependencies`
-				     renders the fleet with, focused on this node, so the reader
-				     learns one geometry once.
+				<!-- ══ MAIN HOLDS WHAT HAS TO MOVE; THE RAIL HOLDS WHERE THINGS
+				     ARE. (2026-09-18 redesign — the human's complaint was *"the
+				     page looks too messy … a held banner, a mostly empty graph
+				     card with a floating label, and two dense lists."*)
 
-				     It renders only when this rollout is actually in the network.
-				     A service with no contracts gets no empty graph frame — the
-				     norm is not drawn. -->
-				{#if localNetwork.edges.length > 0}
-					<Card icon={ShareNodesSolid} title="In the network" class="mb-4">
-						{#snippet rollup()}
-							<!-- HIDDEN BELOW `sm`: at 390 the verdict and the link together
-							     pushed `In the network` to `In the netw…`, and a clipped card
-							     title is a hard defect. The banner above already states the
-							     block, so the phone loses nothing. -->
-							<span
-								class="hidden text-xs font-medium whitespace-nowrap sm:inline {localVerdict.tone === 'held'
-									? 'text-orange-800 dark:text-orange-300'
-									: localVerdict.tone === 'adverse'
-										? 'text-red-700 dark:text-red-400'
-										: 'text-gray-500 dark:text-gray-400'}">{localVerdict.text}</span
-							>
-							<a
-								href="/dependencies"
-								class="nav-link !py-0 whitespace-nowrap text-blue-600 dark:text-blue-400"
-								>Whole network ›</a
-							>
-						{/snippet}
-						<DependencyNetwork
-							graph={localNetwork}
-							focus={focusId}
-							themeOf={networkThemeOf}
-							compact
-						/>
-					</Card>
-				{/if}
+				     `Waiting on other services` and `Services waiting on this`
+				     are TASK LISTS whose rows are sentences with a `BlockReason`
+				     under them — they need the wide track for the same reason
+				     the Overview tab's timeline does. `In the network` and
+				     `Where it's running` are both LOCATORS: they answer *where
+				     am I*, not *what do I do*, and they are made of chips and a
+				     drawing, neither of which wants more than the rail. This is
+				     the same rail the rollout detail page fills with External
+				     Links / Health Checks / Resources — a stack of small
+				     complete answers.
+
+				     The map used to be a standalone full-width band ABOVE this
+				     grid (`class="mb-4"`). Deleted: at
+				     1920 its body was 1570px against a drawing whose natural
+				     width is ~226px (a rollout's local neighbourhood is usually
+				     two nodes in one environment, one dagre rank, so
+				     `fillWidth`'s stretch branch never fires) — 29% ink, and the
+				     *"mostly empty graph card"* the human named. It is not
+				     removed, it is RE-PARENTED into the rail below, sized to a track that
+				     is 352–660px instead of 1024–1600px. See `DependencyNetwork`
+				     and `GraphCanvasInner` for the frame/legend/rollup changes
+				     that made a rail-width map read as full rather than
+				     starved. -->
 
 				<!-- TWO COLUMNS FROM `xl`, NOT `lg`: at 1280 with the 176px sidebar
 				     a 360px right column leaves the left one ~650px, which is where
@@ -1280,34 +1358,54 @@
 				     measure even though the block is not. -->
 				<div
 					class="grid gap-4 {twoColumns
-						? 'xl:grid-cols-[3fr_minmax(22rem,2fr)] xl:items-start'
+						? 'lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start'
 						: ''}"
 				>
-					{#if hasContracts}
-						<!-- ── AXIS 2 · CONTRACT GATES ─────────────────────────────
+					<!-- ⚠️ Svelte will not compile a `<div>` whose opening and closing
+					     tags sit in different `{#if}` blocks — each column wrapper
+					     below opens and closes inside ONE `{#if}`. -->
+					{#if hasContracts || hasDependents}
+						<!-- MAIN — the column that holds SENTENCES and TASKS. -->
+						<div class="grid min-w-0 content-start gap-4 {twoColumns ? '' : 'max-w-[44rem]'}">
+							{#if hasContracts}
+								<!-- ── AXIS 2 · CONTRACT GATES ─────────────────────────────
 						     FIRST, and the reason is the growth curve: this card is
 						     bounded by the number of contracts a service consumes,
 						     while the chain grows with the number of environments
 						     (thirteen on `edge-mesh`). The bounded, gate-carrying card
 						     stays above the fold at 390 at every N. -->
-						<Card
-							icon={ShareNodesSolid}
-							title="Waiting on other services"
-							verdict={heldTags.size > 0
-								? `${heldTags.size} build${heldTags.size === 1 ? '' : 's'} held`
-								: 'Nothing held'}
-							verdictTone={heldTags.size > 0 ? 'adverse' : 'neutral'}
-							verdictTitle={heldTags.size > 0
-								? 'Builds this app has that a contract will not let it deploy'
-								: 'No build this app has is being held by a contract'}
-							padded={false}
-							class="min-w-0 {twoColumns ? '' : 'max-w-[44rem]'}"
-						>
-							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
-								{#each blocks as b (b.key)}
-									{@const drawn = drawsRelation(b)}
-									<li class="px-4 py-4">
-										<!-- SUBJECT LINE. The provider is what you are waiting
+								<!-- ⭐ 2026-09-18 · THE HEADER ROLLUP — WAS `4 builds held` /
+						     `adverse`. Two reasons it changed:
+						     1. `4 builds held` was the banner's headline verbatim, 40px
+						        above it. A rollup that restates the banner costs a slot
+						        and adds nothing. `2 of 3 holding` is the reference page's
+						        own ratio idiom (`3/3 healthy`, `10/10 ready`) and states a
+						        fact the banner does not have: one of the three services
+						        this rollout waits on is fine.
+						     2. `verdictTone` moves from `adverse` (red) to `held` (orange)
+						        — `Card` already exports the tone with the comment *"held —
+						        needs a person or another deploy; the product's orange, not
+						        red."* Every chip in this card is orange; the rollup was the
+						        only red thing in it. Closing a latent inconsistency, not
+						        adding a new colour. -->
+								<Card
+									icon={ShareNodesSolid}
+									title="Waiting on other services"
+									verdict={heldProviders.length > 0
+										? `${heldProviders.length} of ${providerCount} holding`
+										: `${providerCount} provider${providerCount === 1 ? '' : 's'}`}
+									verdictTone={heldProviders.length > 0 ? 'held' : 'neutral'}
+									verdictTitle={heldProviders.length > 0
+										? `${heldProviders.join(', ')} will not let a newer build of this app deploy`
+										: 'No service this app waits on is holding a build'}
+									padded={false}
+									class="min-w-0 {twoColumns ? '' : 'max-w-[44rem]'}"
+								>
+									<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+										{#each blocks as b (b.key)}
+											{@const drawn = drawsRelation(b)}
+											<li class="px-4 py-4">
+												<!-- SUBJECT LINE. The provider is what you are waiting
 										     on, so it is the subject and it is the link; the
 										     contract and the version it is on are ONE joined
 										     badge in the `[word][identifier]` form every
@@ -1315,23 +1413,23 @@
 										     what replaced `NEEDS api` — a bare `NEEDS` names a
 										     mechanism and carries no number, and the number is
 										     the whole of "is it far enough along yet". -->
-										<div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-											<ServerSolid
-												class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
-												aria-hidden="true"
-											/>
-											<a
-												href={providerHref(b)}
-												class="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-gray-900 hover:underline dark:text-white"
-												title="Open the {b.providerName} rollout"
-											>
-												<span class="min-w-0 truncate">{b.providerName}</span>
-												<ArrowUpRightFromSquareOutline
-													class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
-													aria-hidden="true"
-												/>
-											</a>
-											<!-- ⛔ ONLY WHERE THE HELD ROW BELOW DOES NOT DRAW IT.
+												<div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+													<ServerSolid
+														class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+														aria-hidden="true"
+													/>
+													<a
+														href={providerHref(b)}
+														class="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+														title="Open the {b.providerName} rollout"
+													>
+														<span class="min-w-0 truncate">{b.providerName}</span>
+														<ArrowUpRightFromSquareOutline
+															class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
+															aria-hidden="true"
+														/>
+													</a>
+													<!-- ⛔ ONLY WHERE THE HELD ROW BELOW DOES NOT DRAW IT.
 											     See `drawsRelation`: when the relation is drawn,
 											     `[API|1.66.0]` is already the left operand of
 											     `⇄ hello-api-app [API|1.66.0] → [^1.67.0]` 60px
@@ -1339,29 +1437,29 @@
 											     its served version appear three times in one
 											     card. One fact drawn twice is worse than one fact
 											     narrated once. -->
-											{#if b.providedVersion && !b.providedVaries && !drawn}
-												<!-- ⛔ `shortenVersion`, NOT THE RAW STRING. A contract
-												     version is whatever the provider deployed, and on a
-												     fleet that versions by commit that is a 40-character
-												     SHA. `Chip` truncates with an ellipsis rather than
-												     overflowing, so the raw value did not break the box —
-												     it filled it with `9f3c1ab2e4d5…` and pushed the
-												     row's own rollup off the card. The 7-char form is
-												     what every other surface prints (`/envs/<name>`, the
-												     dependency graph, `RepoLedgerCard`); the full value
-												     stays one hover away, which is the same contract
-												     `shortenVersion`'s other call sites keep. -->
-												<Chip
-													role="count"
-													label={b.contract}
-													value={shortenVersion(b.providedVersion)}
-													wide
-													title="{b.providerName} has deployed {b.contract} {b.providedVersion}"
-													valueTitle="Contract version {b.providerName} is serving — {b.providedVersion}"
-													class="shrink-0"
-												/>
-											{/if}
-											<!-- THE ROW'S OWN RIGHT-ALIGNED ROLLUP — the reference
+													{#if b.providedVersion && !b.providedVaries && !drawn}
+														<!-- ⛔ `shortenVersion`, NOT THE RAW STRING. A contract
+														     version is whatever the provider deployed, and on a
+														     fleet that versions by commit that is a 40-character
+														     SHA. `Chip` truncates with an ellipsis rather than
+														     overflowing, so the raw value did not break the box —
+														     it filled it with `9f3c1ab2e4d5…` and pushed the
+														     row's own rollup off the card. The 7-char form is
+														     what every other surface prints (`/envs/<name>`, the
+														     dependency graph, `RepoLedgerCard`); the full value
+														     stays one hover away, which is the same contract
+														     `shortenVersion`'s other call sites keep. -->
+														<Chip
+															role="count"
+															label={b.contract}
+															value={shortenVersion(b.providedVersion)}
+															wide
+															title="{b.providerName} has deployed {b.contract} {b.providedVersion}"
+															valueTitle="Contract version {b.providerName} is serving — {b.providedVersion}"
+															class="shrink-0"
+														/>
+													{/if}
+													<!-- THE ROW'S OWN RIGHT-ALIGNED ROLLUP — the reference
 											     page's `2/2 pods` / `10/10 ready` idiom, applied to
 											     the one thing a contract can be asymmetric about.
 											     WHERE the contract applies is the most interesting
@@ -1370,111 +1468,116 @@
 											     along an 11px evidence line. It is `ml-auto`, not
 											     `justify-between`, so a long provider name
 											     truncates instead of shoving it off the row. -->
-											{#if hasChain}
-												<!-- ⛔ ONLY WHEN THIS APP HAS ENVIRONMENTS. A rollout
+													{#if hasChain}
+														<!-- ⛔ ONLY WHEN THIS APP HAS ENVIRONMENTS. A rollout
 												     bound to no `Environment` has exactly one place and
 												     no tier, so `in 1 environment` would be inventing an
 												     identity it does not have — DESIGN.md's rule that a
 												     rollout with no `Environment` must not be shown as
 												     having one. -->
-												<span
-													class="ml-auto shrink-0 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
-													title={b.ungated > 0
-														? `No ${b.contract} gate exists in ${b.ungatedEnvs.join(', ')}`
-														: `Every environment of this app is gated on ${b.contract}`}
-												>
-													{#if b.ungated > 0}
-														in {b.entries.length} of {b.entries.length + b.ungated}
-														environments
-													{:else}
-														in {b.entries.length}
-														{b.entries.length === 1 ? 'environment' : 'environments'}
+														<span
+															class="ml-auto shrink-0 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+															title={b.ungated > 0
+																? `No ${b.contract} gate exists in ${b.ungatedEnvs.join(', ')}`
+																: `Every environment of this app is gated on ${b.contract}`}
+														>
+															{#if b.ungated > 0}
+																in {b.entries.length} of {b.entries.length + b.ungated}
+																environments
+															{:else}
+																in {b.entries.length}
+																{b.entries.length === 1 ? 'environment' : 'environments'}
+															{/if}
+														</span>
 													{/if}
-												</span>
-											{/if}
-										</div>
+												</div>
 
-										<!-- THE EVIDENCE LINE. Everything here is a HANDLE — a
+												<!-- THE EVIDENCE LINE. Everything here is a HANDLE — a
 										     tag, a namespace, a count — never a verdict, and every
 										     clause prints only when it has something to say.
 										     NOTHING DRAWS `Satisfied=True`. -->
-										<p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-											{#if b.providedVaries}
-												<!-- THE PROVIDERS DISAGREE, so there is no single
+												<p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+													{#if b.providedVaries}
+														<!-- THE PROVIDERS DISAGREE, so there is no single
 												     number and the page does not invent one. This is
 												     the case the old first-non-null fold rendered as
 												     one version for all of them. -->
-												Each environment waits on its own copy of {b.providerName}.
-											{:else if b.providedTag && drawn}
-												<!-- THE ONE FACT THE DRAWING DOES NOT CARRY: which
+														Each environment waits on its own copy of {b.providerName}.
+													{:else if b.providedTag && drawn}
+														<!-- THE ONE FACT THE DRAWING DOES NOT CARRY: which
 												     release line the served version came off. The
 												     version itself is the drawn clause's left
 												     operand, so the sentence is what is LEFT of it,
 												     in the same `From <tag>` form the mirror card
 												     one column over already prints. -->
-												From <span class="t-code-sm">{b.providedTag}</span>
-											{:else if b.providedTag}
-												Now on {b.contract}
-												<span class="t-code-sm" title={b.providedVersion}
-													>{shortenVersion(b.providedVersion)}</span
-												>, from
-												<span class="t-code-sm">{b.providedTag}</span>
-											{:else if !b.providedVersion}
-												<!-- NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent
+														From <span class="t-code-sm">{b.providedTag}</span>
+													{:else if b.providedTag}
+														Now on {b.contract}
+														<span class="t-code-sm" title={b.providedVersion}
+															>{shortenVersion(b.providedVersion)}</span
+														>, from
+														<span class="t-code-sm">{b.providedTag}</span>
+													{:else if !b.providedVersion}
+														<!-- NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent
 												     `providedVersion` says the gate has not read one;
 												     it does not say the provider is behind. -->
-												No version of {b.contract} has been read from {b.providerName} yet
-											{/if}
-											{#if b.providerNamespace && b.providerNamespace !== namespace}
-												· runs in <span class="t-code-sm">{b.providerNamespace}</span>
-											{/if}
-											{#if b.ungated > 0}
-												<!-- WHICH ONES, IN WORDS — the count is already stated
-												     by the row's rollup, so this names the exception
-												     rather than restating the number. It is NOT a row
-												     of chips: measured on the seven-environment
-												     fixture, a contract gating ONE environment printed
-												     SIX chips saying "not here", an object that grows
-												     with the environments it is NOT about. -->
-												· not needed in {b.ungatedEnvs.join(', ')}
-											{/if}
-											{#if b.pastTags.length > 0}
-												<!-- COUNTED ONCE, NEVER SILENT. These are held builds
+														No version of {b.contract} has been read from {b.providerName} yet
+													{/if}
+													{#if b.providerNamespace && b.providerNamespace !== namespace}
+														· runs in <span class="t-code-sm">{b.providerNamespace}</span>
+													{/if}
+													<!-- ⭐ 2026-09-18 · `· not needed in {b.ungatedEnvs.join(', ')}`
+											     IS DELETED, NOT LOST. On `search-api` it printed
+											     `· not needed in staging, prod-af-south-1,
+											     prod-ap-southeast-2, prod-eu-central, prod-us-east-1,
+											     prod-us-east-2` — three wrapped 11px gray lines under
+											     a row whose own rollup already says `in 1 of 7
+											     environments`. The names are not lost: the rollup's
+											     `title` attribute a few lines up already carries
+											     `No ${b.contract} gate exists in
+											     ${b.ungatedEnvs.join(', ')}`, which is the product's
+											     own "fold in text, keep the full set in a `title`"
+											     idiom (`Card.titleTooltip`, `.svc-line-caption`) — the
+											     same argument this file already makes for not drawing
+											     six "not here" chips, applied to the comma list that
+											     replaced them. -->
+													{#if b.pastTags.length > 0}
+														<!-- COUNTED ONCE, NEVER SILENT. These are held builds
 												     already BEHIND what every environment that would
 												     take them runs — the gate working on candidates
 												     nobody will deploy. Drawing them would make the page
 												     cry wolf on every load; dropping them without a
 												     number would hide a controller fact. -->
-												· also holds {b.pastTags.length} older
-												{b.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying to deploy
-											{/if}
-										</p>
+														· also holds {b.pastTags.length} older
+														{b.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying to deploy
+													{/if}
+												</p>
 
-										{#if b.providedVaries}
-											<!-- ONE ROW PER ENVIRONMENT, ONLY BECAUSE THEY DIFFER.
+												{#if b.providedVaries}
+													<!-- ONE ROW PER ENVIRONMENT, ONLY BECAUSE THEY DIFFER.
 											     When they agree this whole block is a single badge on
 											     the subject line — the norm, drawn once. -->
-											<ul class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-												{#each providerRows(b) as e (e.env)}
-													<li class="flex min-w-0 items-center gap-2">
-														<Chip
-															role="env"
-															theme={themeFor(e.env)}
-															label={shortEnvLabel(themeFor(e.env)) || e.env}
-															title={e.env}
-															wide
-														/>
-														<span
-															class="t-code-sm text-gray-500 dark:text-gray-400"
-															title="{b.contract} {e.providedVersion}"
-															>{b.contract} {shortenVersion(e.providedVersion)}</span
-														>
-													</li>
-												{/each}
-											</ul>
-										{/if}
+													<ul class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+														{#each providerRows(b) as e (e.env)}
+															<li class="flex min-w-0 items-center gap-2">
+																<Chip
+																	role="env"
+																	theme={themeFor(e.env)}
+																	label={shortEnvLabel(themeFor(e.env)) || e.env}
+																	title={e.env}
+																	wide
+																/>
+																<span
+																	class="t-code-sm text-gray-500 dark:text-gray-400"
+																	title="{b.contract} {e.providedVersion}"
+																	>{b.contract} {shortenVersion(e.providedVersion)}</span
+																>
+															</li>
+														{/each}
+													</ul>
+												{/if}
 
-										<!-- THE ONLY ROW IN THIS CARD THAT SPENDS COLOUR, AND IT IS
+												<!-- THE ONLY ROW IN THIS CARD THAT SPENDS COLOUR, AND IT IS
 										     ORANGE, NOT RED. (2026-09-03) A gate correctly refusing a
 										     candidate is `held`, not adverse — `Chip`'s own ruling,
 										     see its `held: TRAILING` note — so this left rule takes
@@ -1482,85 +1585,172 @@
 										     product already resolves `held` to, not the red `failing`/
 										     `diverged`/`blocked` share. Every other row is neutral or
 										     an identity chip, so a quiet card means nothing is
-										     held. -->
-										{#each b.blocked as w (w.key)}
-											<div class="mt-3 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40">
-												<!-- ⛔ P4, OPERATOR-WALK FINDING (2026-09-03): THIS ROW HAD
-												     NO SUBJECT, AND THE ROW ABOVE IT DOES.
-												     `b.providerName` ("hello-api-app") headlines this
-												     card and `From {b.providedTag}` right above states
-												     THAT service's own served version — so a `held`
-												     chip with no subject of its own, sitting directly
-												     under both, reads as one more fact about the
-												     provider. It is the opposite: `w` comes from
-												     `dep.status.blockedReleases`, which is a release of
-												     THIS rollout (the consumer `name` this whole page is
-												     about) that the provider's contract has refused. The
-												     subject is named explicitly now, the same
-												     "subject verb" shape `BlockingStoryLines` uses on
-												     every other held row in the product. -->
-												<p class="text-xs text-gray-500 dark:text-gray-400">
-													<span class="font-medium text-gray-700 dark:text-gray-300">{name}</span>
-													is held
-												</p>
-												<div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
-													<Chip
-														role="held"
-														label="held"
-														value={w.display}
-														valueTitle={w.tag}
-														wide
-														title="{name} is held on {w.tag} in {w.envs.join(', ')}"
-														class="shrink-0"
-													/>
-													{#if hasChain && w.envs.length > 0}
-														<!-- WHERE IT IS HELD, only when there is a chain to
-														     name into. An unbound rollout has one place and
-														     no tier, so `in <namespace>` would print the
-														     page's own subject back at it wearing an
-														     environment chip's clothes. -->
-														<span class="text-xs text-gray-500 dark:text-gray-400">in</span>
-														{#each w.envs as env (env)}
-															<Chip
-																role="env"
-																theme={themeFor(env)}
-																label={shortEnvLabel(themeFor(env)) || env}
-																title={env}
-																wide
-															/>
-														{/each}
-													{/if}
-												</div>
-												<!-- WHY, AS A CONSEQUENCE. `BlockReason` owns this
-												     wording for the whole product: the sentence first,
-												     then the generated gate name and the controller's
-												     own open-string `reason` BELOW it, in muted mono,
-												     prefixed `rule:` so neither can be mistaken for an
-												     explanation again. The semver constraint is printed
-												     VERBATIM inside the sentence — a bare version is an
-												     EXACT match in Masterminds semver, so "at least
-												     1.1.0" would be a lie with better grammar. -->
-												<BlockReason
-													class="mt-1.5"
-													reason={contractBlockReason({
-														provider: b.providerName,
-														contract: b.contract,
-														requiredVersion: w.requiredVersion,
-														providedVersion: b.providedVersion,
-														gateName: b.entries[0]?.dep?.status?.gateName ?? null,
-														reason: w.reason
-													})}
-												/>
-											</div>
-										{/each}
-									</li>
-								{/each}
-							</ul>
-						</Card>
-					{/if}
+										     held.
+										
+										     ⭐ 2026-09-18 · ONE GROUP, ONE TABLE — the main change of
+										     this redesign. BEFORE, the four lines below (subject, held
+										     chip + env chips, `BlockReason`) repeated ONCE PER HELD
+										     BUILD — three times under `payments-svc`, differing only
+										     in a version and a constraint. AFTER: one orange rule
+										     around the WHOLE GROUP, one subject line, one row per
+										     build, one `BlockReason`. What is deleted, and why it is
+										     safe: the per-build repetition of (a) the `{name} is held`
+										     subject line, (b) the `in` word on the env-chip row, (c)
+										     the `BlockReason` sentence. Every fact survives — the
+										     subject is stated once for the group with its count, the
+										     env chips are still per build, the constraint is still per
+										     build, and the sentence is still there for the build it
+										     names.
+										
+										     `BlockReason` is rendered ONCE per provider, built from
+										     `newest.requiredVersion` — `b.blocked` is newest-first, and
+										     the newest held build is the one a person is actually
+										     trying to deploy. Each row still carries its own constraint
+										     VERBATIM in the `needs` column (a bare version is an exact
+										     match in Masterminds semver), so no fact is lost and none
+										     is repeated — the prior three copies of `BlockReason`
+										     differed only in that one token. The `› 1 rule` disclosure
+										     `BlockReason` owns therefore appears once per provider
+										     instead of once per build; the `rule:` demotion ruling is
+										     untouched, the gate name still rides with the sentence, it
+										     is just not printed three times. -->
+												{#if b.blocked.length > 0}
+													<div
+														class="mt-3 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40"
+													>
+														<!-- ⛔ THE SUBJECT IS MARKUP TEXT, NOT A TERNARY OF TEMPLATE
+													     LITERALS. The string census reads the markup; a sentence
+													     assembled inside a `{...}` expression is invisible to it,
+													     and a sentence the census cannot see is one nothing checks
+													     for the product's vocabulary rulings. -->
+														<p class="text-xs text-gray-500 dark:text-gray-400">
+															<span class="font-medium text-gray-700 dark:text-gray-300"
+																>{name}</span
+															>
+															{#if b.blocked.length === 1}
+																is held on this build
+															{:else}
+																is held on {b.blocked.length} builds
+															{/if}
+														</p>
 
-					{#if hasDependents}
-						<!-- ── AXIS 3 · WHAT THIS ROLLOUT IS HOLDING ───────────────
+														<!-- ⛔ ONE SENTENCE PER DISTINCT `reason`, NEVER ONE PER PROVIDER.
+													     `reason` is an open string and one dependency can report
+													     `ConstraintNotSatisfied` for one release and
+													     `ProviderVersionTooOld` for another; quoting the newest
+													     build's cause for all of them is a confident falsehood.
+													     See `byReason`'s own doc. Rows that differ only in their
+													     reason render under their own reason line. -->
+														<!-- ⛔ ONE GRID FOR THE WHOLE BRACKET, NOT ONE PER REASON
+													     GROUP. `grid-cols-[max-content_max-content_1fr]` sizes
+													     its columns from ITS OWN rows, so a grid per group gave
+													     each group a different `needs` width and started the
+													     environment chips at a different x — two ragged column
+													     stacks inside one orange rule, which is the alignment the
+													     compaction existed to buy. One grid holds every row; the
+													     reason sentences are full-width items inside it
+													     (`sm:col-span-3`), so they interleave without breaking
+													     the columns above and below them.
+
+													     ⚠️ `sm:contents` + THE 3-COLUMN GRID IS WHAT ALIGNS THE
+													     COLUMNS. Each row `<li>` MUST render exactly three
+													     children ALWAYS — the `needs` span and the env span render
+													     EMPTY rather than being `{#if}`-ed away, or the grid shears
+													     (a `<li>` with `display: contents` hands its children
+													     straight to the grid, so two children instead of three
+													     shifts every column after it). Below `sm` the `<li>` is a
+													     plain wrapping flex row instead. DO NOT "tidy" the empty
+													     spans away.
+
+													     SPACING: the grid's own `gap-y-1.5` is 6px. A reason
+													     sentence adds 2 (8px above a reason); the first row of a
+													     LATER group adds 6 (12px above a new row group), which is
+													     what makes two groups read as two rather than as one list
+													     interrupted. -->
+														<ul
+															class="mt-1.5 flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
+														>
+															{#each byReason(b.blocked) as g, gi (g.reason ?? '')}
+																{#if gi > 0}
+																	<!-- The second cause gets its own one-line lead so the
+																     two groups read as two. The bracket's subject line
+																     above states the subject and the total once; this
+																     says only what is different about these rows. -->
+																	<li
+																		class="mt-1.5 text-xs text-gray-500 sm:col-span-3 dark:text-gray-400"
+																	>
+																		{#if g.rows.length === 1}
+																			1 more, held for a different reason
+																		{:else}
+																			{g.rows.length} more, held for a different reason
+																		{/if}
+																	</li>
+																{/if}
+																{#each g.rows as w, ri (w.key)}
+																	{@const top = gi > 0 && ri === 0 ? 'mt-1.5' : ''}
+																	<li
+																		class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents"
+																	>
+																		<Chip
+																			role="held"
+																			label="held"
+																			value={w.display}
+																			valueTitle={w.tag}
+																			wide
+																			title="{name} is held on {w.tag} in {w.envs.join(', ')}"
+																			class="shrink-0 {top}"
+																		/>
+																		<span
+																			class="text-xs whitespace-nowrap text-gray-500 {top} dark:text-gray-400"
+																		>
+																			{#if w.requiredVersion}needs <span class="t-code-sm"
+																					>{w.requiredVersion}</span
+																				>{/if}
+																		</span>
+																		<!-- ⛔ NO `ml-auto` ON THE ENV CHIPS — tried it: at 1920 it
+																     put the chips 460px from the build they belong to, the
+																     same proximity inversion `StageChain`'s right-aligned
+																     badge caused (DESIGN.md's reason the chain card is
+																     capped at 360px). -->
+																		<span class="flex min-w-0 flex-wrap items-center gap-1 {top}">
+																			{#if hasChain && w.envs.length > 0}
+																				{#each w.envs as env (env)}
+																					<Chip
+																						role="env"
+																						theme={themeFor(env)}
+																						label={shortEnvLabel(themeFor(env)) || env}
+																						title={env}
+																						wide
+																					/>
+																				{/each}
+																			{/if}
+																		</span>
+																	</li>
+																{/each}
+																<li class="mt-0.5 sm:col-span-3">
+																	<BlockReason
+																		reason={contractBlockReason({
+																			provider: b.providerName,
+																			contract: b.contract,
+																			requiredVersion: g.rows[0].requiredVersion,
+																			providedVersion: b.providedVersion,
+																			gateName: b.entries[0]?.dep?.status?.gateName ?? null,
+																			reason: g.reason
+																		})}
+																	/>
+																</li>
+															{/each}
+														</ul>
+													</div>
+												{/if}
+											</li>
+										{/each}
+									</ul>
+								</Card>
+							{/if}
+
+							{#if hasDependents}
+								<!-- ── AXIS 3 · WHAT THIS ROLLOUT IS HOLDING ───────────────
 						     ⛔ THIS IS NOT THE CONTRACT CARD MIRRORED, AND THE
 						     DIFFERENCE IS WHERE THE SUBJECT LIVES.
 
@@ -1582,27 +1772,27 @@
 						     rollout, read off a release that is genuinely deployed
 						     (`requires`), so a person about to change the version can
 						     see what is standing on the current one. -->
-						<Card
-							icon={CodeForkSolid}
-							title="Services waiting on this"
-							verdict={providedVerdict}
-							verdictTone={heldRolloutCount > 0 ? 'adverse' : 'neutral'}
-							verdictTitle={heldRolloutCount > 0
-								? 'Rollouts with a build they cannot deploy until this rollout ships a newer contract'
-								: 'Rollouts held on the contract version this rollout has deployed'}
-							padded={false}
-							class="min-w-0 {twoColumns ? '' : 'max-w-[44rem]'}"
-						>
-							<ul class="divide-y divide-gray-200 dark:divide-gray-700">
-								{#each provided as c (c.key)}
-									<li class="px-4 py-4">
-										<!-- THE SUBJECT LINE — OUR OWN NUMBER, ONCE. The word
+								<Card
+									icon={CodeForkSolid}
+									title="Services waiting on this"
+									verdict={providedVerdict}
+									verdictTone={heldRolloutCount > 0 ? 'held' : 'neutral'}
+									verdictTitle={heldRolloutCount > 0
+										? 'Rollouts with a build they cannot deploy until this rollout ships a newer contract'
+										: 'Rollouts held on the contract version this rollout has deployed'}
+									padded={false}
+									class="min-w-0 {twoColumns ? '' : 'max-w-[44rem]'}"
+								>
+									<ul class="divide-y divide-gray-200 dark:divide-gray-700">
+										{#each provided as c (c.key)}
+											<li class="px-4 py-4">
+												<!-- THE SUBJECT LINE — OUR OWN NUMBER, ONCE. The word
 										     carries the verb and the joined badge carries the
 										     `[contract][version]` pair in the same form the
 										     contract card uses for a provider's, so a reader who
 										     has learned one has learned both. -->
-										<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
-											<!-- ⛔ `Serving` IS A 12px CAPTION, NOT A 14px HEADING, AND
+												<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
+													<!-- ⛔ `Serving` IS A 12px CAPTION, NOT A 14px HEADING, AND
 											     THAT IS THE HIERARCHY FIX. Measured on the live provider
 											     page at 1440: with the word at 14px/600 it matched the
 											     CONSUMER NAMES below it exactly, so the card had two
@@ -1612,66 +1802,68 @@
 											     this body that have it. The premise keeps its WEIGHT in
 											     the chip, which is a bordered box and reads without
 											     borrowing type size. -->
-											<span class="text-xs text-gray-500 dark:text-gray-400">Serving</span>
-											{#if c.providedVersion && !c.providedVaries}
-												<!-- Same 40-char-SHA truncation as the provider chip
-												     above; see its note. -->
-												<Chip
-													role="count"
-													label={c.contract}
-													value={shortenVersion(c.providedVersion)}
-													wide
-													title="This rollout has deployed {c.contract} {c.providedVersion}"
-													valueTitle="The contract version every service below is gated on — {c.providedVersion}"
-													class="shrink-0"
-												/>
-											{:else}
-												<span class="t-code-sm text-gray-500 dark:text-gray-400">{c.contract}</span>
-											{/if}
-										</div>
+													<span class="text-xs text-gray-500 dark:text-gray-400">Serving</span>
+													{#if c.providedVersion && !c.providedVaries}
+														<!-- Same 40-char-SHA truncation as the provider chip
+														     above; see its note. -->
+														<Chip
+															role="count"
+															label={c.contract}
+															value={shortenVersion(c.providedVersion)}
+															wide
+															title="This rollout has deployed {c.contract} {c.providedVersion}"
+															valueTitle="The contract version every service below is gated on — {c.providedVersion}"
+															class="shrink-0"
+														/>
+													{:else}
+														<span class="t-code-sm text-gray-500 dark:text-gray-400"
+															>{c.contract}</span
+														>
+													{/if}
+												</div>
 
-										<!-- THE CONSEQUENCE, ONCE PER CONTRACT. It is what makes
+												<!-- THE CONSEQUENCE, ONCE PER CONTRACT. It is what makes
 										     this card a warning rather than a task list, and it
 										     is definitionally true of a `RolloutDependency` — it
 										     names no cause it cannot evidence. -->
-										<p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-											{#if c.providedVaries}
-												<!-- The gates disagree about what they have read from
+												<p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+													{#if c.providedVaries}
+														<!-- The gates disagree about what they have read from
 												     this one rollout, so there is no single number and
 												     the page does not pick one. Each row prints its
 												     own below. -->
-												The rules have read different versions from this rollout.
-											{:else if c.providedTag}
-												From <span class="t-code-sm">{c.providedTag}</span> ·
-											{:else if !c.providedVersion}
-												<!-- NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent
+														The rules have read different versions from this rollout.
+													{:else if c.providedTag}
+														From <span class="t-code-sm">{c.providedTag}</span> ·
+													{:else if !c.providedVersion}
+														<!-- NEVER NAME A CAUSE YOU CANNOT EVIDENCE. An absent
 												     `providedVersion` says the gate has read none; it
 												     does not say this rollout has deployed nothing. -->
-												No version of {c.contract} has been read from this rollout yet ·
-											{/if}
-											{#if !c.providedVaries}
-												what this serves decides which versions they can run
-											{/if}
-										</p>
+														No version of {c.contract} has been read from this rollout yet ·
+													{/if}
+													{#if !c.providedVaries}
+														what this serves decides which versions they can run
+													{/if}
+												</p>
 
-										<ul class="mt-4 space-y-4">
-											{#each c.dependents as d (d.key)}
-												{@const unresolved = d.places.some((p) => p.state?.requiresUnresolved)}
-												{@const nowhere = d.places.every((p) => p.state?.neverDeployed)}
-												<li class="min-w-0">
-													<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
-														<a
-															href={consumerHref(d)}
-															class="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-gray-900 hover:underline dark:text-white"
-															title="Open {d.name} and see this same relation from its side"
-														>
-															<span class="min-w-0 truncate">{d.name}</span>
-															<ArrowUpRightFromSquareOutline
-																class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
-																aria-hidden="true"
-															/>
-														</a>
-														<!-- WHERE IT RUNS. A consumer bound to an
+												<ul class="mt-4 space-y-4">
+													{#each c.dependents as d (d.key)}
+														{@const unresolved = d.places.some((p) => p.state?.requiresUnresolved)}
+														{@const nowhere = d.places.every((p) => p.state?.neverDeployed)}
+														<li class="min-w-0">
+															<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+																<a
+																	href={consumerHref(d)}
+																	class="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+																	title="Open {d.name} and see this same relation from its side"
+																>
+																	<span class="min-w-0 truncate">{d.name}</span>
+																	<ArrowUpRightFromSquareOutline
+																		class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
+																		aria-hidden="true"
+																	/>
+																</a>
+																<!-- WHERE IT RUNS. A consumer bound to an
 														     `Environment` wears its tier; one that is not
 														     wears its NAMESPACE as a handle, because a
 														     rollout with no Environment has no tier and
@@ -1694,37 +1886,37 @@
 														     with ONE place always names it: a count of one
 														     is not a fact, and it would leave the row with
 														     no location at all. -->
-														{#if d.places.length > 1 && d.holds.length > 0}
-															<span
-																class="ml-auto shrink-0 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
-																title="Held on this in {d.places
-																	.map((p) => p.namespace)
-																	.join(', ')}"
-															>
-																in {d.places.length} places
-															</span>
-														{:else}
-															{#each d.places as p (p.namespace)}
-																{@const th = placeTheme(p.namespace, d.name)}
-																{#if th}
-																	<Chip
-																		role="env"
-																		theme={th}
-																		label={shortEnvLabel(th) || p.namespace}
-																		title="{d.name} in {p.namespace}"
-																		wide
-																	/>
-																{:else}
+																{#if d.places.length > 1 && d.holds.length > 0}
 																	<span
-																		class="t-code-sm text-gray-500 dark:text-gray-400"
-																		title="{d.name} in {p.namespace}">{p.namespace}</span
+																		class="ml-auto shrink-0 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400"
+																		title="Held on this in {d.places
+																			.map((p) => p.namespace)
+																			.join(', ')}"
 																	>
+																		in {d.places.length} places
+																	</span>
+																{:else}
+																	{#each d.places as p (p.namespace)}
+																		{@const th = placeTheme(p.namespace, d.name)}
+																		{#if th}
+																			<Chip
+																				role="env"
+																				theme={th}
+																				label={shortEnvLabel(th) || p.namespace}
+																				title="{d.name} in {p.namespace}"
+																				wide
+																			/>
+																		{:else}
+																			<span
+																				class="t-code-sm text-gray-500 dark:text-gray-400"
+																				title="{d.name} in {p.namespace}">{p.namespace}</span
+																			>
+																		{/if}
+																	{/each}
 																{/if}
-															{/each}
-														{/if}
-													</div>
+															</div>
 
-													<!-- ⭐ THE FLOOR UNDER THIS ROLLOUT, AS AN
+															<!-- ⭐ THE FLOOR UNDER THIS ROLLOUT, AS AN
 													     OBSERVATION. `requires` is read off the release
 													     the consumer HAS DEPLOYED, so this is a fact
 													     about a running system and not a warning the UI
@@ -1734,93 +1926,238 @@
 													     witness — an unreachable consumer says so, an
 													     unreadable manifest says so, and neither is
 													     rendered as "it needs nothing". -->
-													<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-														{#if d.unobserved}
-															This dashboard cannot see {d.name} to say what it is running
-														{:else if d.runningVaries}
-															Each place runs its own version of {d.name}
-														{:else if d.running}
-															Running <span class="t-code-sm">{d.running}</span
-															>{#if d.requires && !d.requiresVaries}, which needs {c.contract}
-																<span class="t-code-sm">{d.requires}</span
-																>{:else if d.requiresVaries}, and its places ask different things of {c.contract}{:else if unresolved},
-																and what it needs of {c.contract} could not be read{/if}
-														{:else if nowhere}
-															Has deployed nothing here yet
-														{/if}
-														{#if d.pastTags.length > 0}
-															<!-- Counted once, never drawn. These are held
+															<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+																{#if d.unobserved}
+																	This dashboard cannot see {d.name} to say what it is running
+																{:else if d.runningVaries}
+																	Each place runs its own version of {d.name}
+																{:else if d.running}
+																	Running <span class="t-code-sm">{d.running}</span
+																	>{#if d.requires && !d.requiresVaries}, which needs {c.contract}
+																		<span class="t-code-sm">{d.requires}</span
+																		>{:else if d.requiresVaries}, and its places ask different
+																		things of {c.contract}{:else if unresolved}, and what it needs
+																		of {c.contract} could not be read{/if}
+																{:else if nowhere}
+																	Has deployed nothing here yet
+																{/if}
+																{#if d.pastTags.length > 0}
+																	<!-- Counted once, never drawn. These are held
 															     builds the consumer is already PAST — the gate
 															     working on candidates nobody will deploy. -->
-															· also holds {d.pastTags.length} older
-															{d.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying to
-															deploy
-														{/if}
-													</p>
-
-													<!-- THE ONLY ROW HERE THAT SPENDS COLOUR, SAME ORANGE AS
-													     THE CONTRACT CARD ABOVE, NOT RED — see that card's
-													     own note. Same mark, same sentence and same left
-													     rule: one relation stated identically from both
-													     ends. -->
-													{#each d.holds as h (h.key)}
-														<div
-															class="mt-2 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40"
-														>
-															<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
-																<Chip
-																	role="held"
-																	label="held"
-																	value={h.display}
-																	valueTitle={h.tag}
-																	wide
-																	title="{d.name} is held on {h.tag} until this rollout serves a newer {c.contract}"
-																	class="shrink-0"
-																/>
-																{#if d.places.length > 1}
-																	<span class="text-xs text-gray-500 dark:text-gray-400">in</span>
-																	{#each h.places as ns (ns)}
-																		{@const th = placeTheme(ns, d.name)}
-																		{#if th}
-																			<Chip
-																				role="env"
-																				theme={th}
-																				label={shortEnvLabel(th) || ns}
-																				title={ns}
-																				wide
-																			/>
-																		{:else}
-																			<span class="t-code-sm text-gray-500 dark:text-gray-400"
-																				>{ns}</span
-																			>
-																		{/if}
-																	{/each}
+																	· also holds {d.pastTags.length} older
+																	{d.pastTags.length === 1 ? 'version' : 'versions'} nobody is trying
+																	to deploy
 																{/if}
-															</div>
-															<BlockReason
-																class="mt-1.5"
-																reason={contractBlockReason({
-																	provider: name,
-																	contract: c.contract,
-																	requiredVersion: h.requiredVersion,
-																	providedVersion: c.providedVersion,
-																	gateName: gateNameOf(d),
-																	reason: h.reason
-																})}
-															/>
-														</div>
+															</p>
+
+															<!-- THE ONLY ROW HERE THAT SPENDS COLOUR, SAME ORANGE AS
+													     THE CONTRACT CARD ABOVE, NOT RED — see that card's own
+													     note. Same mark, same sentence and same left rule: one
+													     relation stated identically from both ends.
+													
+													     ⭐ 2026-09-18 · §3c's GROUPING, APPLIED HERE EXACTLY AS
+													     WRITTEN THERE — the identical defect, on the identical
+													     data, one card down. Measured on `payments-svc`, this card
+													     used to render, for `checkout-api` alone, three copies of
+													     the held chip + env chips + `BlockReason` block, differing
+													     only in a version and a constraint. It becomes one orange
+													     rule, one `{d.name} is held on N builds` line, N aligned
+													     rows, one `BlockReason` built from `d.holds[0]`'s own
+													     constraint — see §3c's comment for the full argument (why
+													     newest-first, why `sm:contents` needs three children
+													     always, why no `ml-auto` on the place chips). -->
+															{#if d.holds.length > 0}
+																<div
+																	class="mt-2 border-l-2 border-orange-700/40 pl-3 dark:border-orange-400/40"
+																>
+																	<!-- Markup text, not a ternary of template literals, and one
+																     sentence per distinct `reason` — see §3c's two notes for
+																     both arguments; this card has the identical shape. -->
+																	<p class="text-xs text-gray-500 dark:text-gray-400">
+																		<span class="font-medium text-gray-700 dark:text-gray-300"
+																			>{d.name}</span
+																		>
+																		{#if d.holds.length === 1}
+																			is held on this build
+																		{:else}
+																			is held on {d.holds.length} builds
+																		{/if}
+																	</p>
+																	<!-- One grid for the whole bracket, reason sentences as
+																     full-width items inside it — see §3c's note for both
+																     arguments and the spacing rule; this card has the
+																     identical shape. -->
+																	<ul
+																		class="mt-1.5 flex flex-col gap-1.5 sm:grid sm:grid-cols-[max-content_max-content_1fr] sm:items-center sm:gap-x-3 sm:gap-y-1.5"
+																	>
+																		{#each byReason(d.holds) as g, gi (g.reason ?? '')}
+																			{#if gi > 0}
+																				<li
+																					class="mt-1.5 text-xs text-gray-500 sm:col-span-3 dark:text-gray-400"
+																				>
+																					{#if g.rows.length === 1}
+																						1 more, held for a different reason
+																					{:else}
+																						{g.rows.length} more, held for a different reason
+																					{/if}
+																				</li>
+																			{/if}
+																			{#each g.rows as h, ri (h.key)}
+																				{@const top = gi > 0 && ri === 0 ? 'mt-1.5' : ''}
+																				<li
+																					class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents"
+																				>
+																					<Chip
+																						role="held"
+																						label="held"
+																						value={h.display}
+																						valueTitle={h.tag}
+																						wide
+																						title="{d.name} is held on {h.tag} until this rollout serves a newer {c.contract}"
+																						class="shrink-0 {top}"
+																					/>
+																					<span
+																						class="text-xs whitespace-nowrap text-gray-500 {top} dark:text-gray-400"
+																					>
+																						{#if h.requiredVersion}needs <span class="t-code-sm"
+																								>{h.requiredVersion}</span
+																							>{/if}
+																					</span>
+																					<!-- ⛔ NO `ml-auto` ON THE PLACE CHIPS — same proximity-
+																			     inversion argument as §3c's identical note. -->
+																					<span
+																						class="flex min-w-0 flex-wrap items-center gap-1 {top}"
+																					>
+																						{#if d.places.length > 1}
+																							{#each h.places as ns (ns)}
+																								{@const th = placeTheme(ns, d.name)}
+																								{#if th}
+																									<Chip
+																										role="env"
+																										theme={th}
+																										label={shortEnvLabel(th) || ns}
+																										title={ns}
+																										wide
+																									/>
+																								{:else}
+																									<span
+																										class="t-code-sm text-gray-500 dark:text-gray-400"
+																										>{ns}</span
+																									>
+																								{/if}
+																							{/each}
+																						{/if}
+																					</span>
+																				</li>
+																			{/each}
+																			<li class="mt-0.5 sm:col-span-3">
+																				<BlockReason
+																					reason={contractBlockReason({
+																						provider: name,
+																						contract: c.contract,
+																						requiredVersion: g.rows[0].requiredVersion,
+																						providedVersion: c.providedVersion,
+																						gateName: gateNameOf(d),
+																						reason: g.reason
+																					})}
+																				/>
+																			</li>
+																		{/each}
+																	</ul>
+																</div>
+															{/if}
+														</li>
 													{/each}
-												</li>
-											{/each}
-										</ul>
-									</li>
-								{/each}
-							</ul>
-						</Card>
+												</ul>
+											</li>
+										{/each}
+									</ul>
+								</Card>
+							{/if}
+						</div>
 					{/if}
 
-					{#if hasChain}
-						<!-- ── AXIS 1 · THE PROMOTION CHAIN ────────────────────────
+					{#if hasNetwork || hasChain}
+						<!-- RAIL — the column that holds LOCATORS: where things are,
+						     not what to do. Map first, then chain — the map is the
+						     card the human called empty and the one the film needs in
+						     the first screenful's top-right, balancing the banner's
+						     weight; the chain is the compact, always-present locator
+						     and reads naturally as the rail's floor. -->
+						<div class="grid min-w-0 content-start gap-4">
+							{#if hasNetwork}
+								<!-- ── AXIS 4 · THE LOCAL NETWORK ──────────────────────────
+						     Re-parented from a full-width band above this grid — see
+						     the comment above the grid's opening tag. Renders only
+						     when this rollout is actually in the network; a service
+						     with no contracts gets no empty graph frame. -->
+								<Card icon={ShareNodesSolid} title="In the network" class="min-w-0">
+									{#snippet rollup()}
+										<!--
+									⭐ 2026-09-18 · THE SLOT LOSES ITS VERDICT, AND THE
+									TL ASKED FOR THE ARGUMENT IN WRITING (§5e):
+
+									1. `1 of 1 links not read` sat 40px under a banner
+									   saying `4 builds held`, and a reader cannot
+									   reconcile them — the rollup counts EDGES, everything
+									   else on the page counts BUILDS and SERVICES.
+									2. It is worse than incomparable, it is SMALLER. The
+									   map is scoped to this rollout's own environment; the
+									   lists are scoped to the whole app. On `checkout-api`
+									   the map draws 1 of the 3 providers the card below
+									   lists, because the other two gate the dev and
+									   staging rollouts — a count in the map's rollup
+									   asserts a total the page contradicts 400px away.
+									3. `"not read"` is the ABSENCE of an observation. The
+									   page's own standing rule is that an absent record is
+									   not an observation; it is certainly not a card's
+									   headline answer.
+									4. The picture IS the rollup. Every other card rolls up
+									   because you would otherwise have to read its rows;
+									   you do not read a two-node drawing, you see it.
+									5. The rail card is 352–470px wide. The verdict was
+									   already `hidden … sm:inline` because it clipped the
+									   title — a rollup that disappears at the width it is
+									   most needed is not carrying the slot.
+
+									The slot is not empty: `Whole network ›` fills it as a
+									`.nav-link`, the reference page's own pattern for an
+									action in a card header. `localVerdict` /
+									`networkVerdict` stay in the view-model — `/dependencies`
+									still uses them.
+								-->
+										<!-- ⛔ ONE ROLLUP SPEC ON ALL THREE CARDS ON THIS PAGE.
+										     `Card`'s own verdict is `.t-card-rollup` — 12px/500 —
+										     and this slot was rendering `.nav-link`, which is
+										     14px/500. Two sibling cards at 12 and one at 14 is the
+										     header reading as two sizes down one rail. Both marks
+										     here take `.t-card-rollup`; the count takes the
+										     neutral verdict ink `Card` itself uses, so the only
+										     thing separating them is the link's blue. -->
+										<span
+											class="t-card-rollup shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400"
+											title="Other services drawn in this map — this rollout's own environment and one hop of contract neighbours. The lists below span every environment of the app, so this is not a total."
+											>{otherServicesDrawn}
+											{otherServicesDrawn === 1 ? 'other service' : 'other services'}</span
+										>
+										<a
+											href="/dependencies"
+											class="t-card-rollup shrink-0 whitespace-nowrap text-blue-600 hover:underline dark:text-blue-400"
+											>Whole network ›</a
+										>
+									{/snippet}
+									<DependencyNetwork
+										graph={localNetwork}
+										focus={focusId}
+										themeOf={networkThemeOf}
+										compact
+									/>
+								</Card>
+							{/if}
+
+							{#if hasChain}
+								<!-- ── AXIS 1 · THE PROMOTION CHAIN ────────────────────────
 						     `StageChain` — the product's existing object for exactly
 						     this question, shipped on `/apps/[name]`. Reusing it means
 						     ZERO new visual vocabulary: it draws a status dot only for
@@ -1831,7 +2168,7 @@
 						     The card's rollup is `UpToDate`, which is the same object
 						     and the same words `/apps` uses for "is this thing
 						     current" — WORDING reuse, so a reader learns it once. -->
-						<!-- ⛔ THE CAP HOLDS IN BOTH SHAPES, AND THAT IS NOT COSMETIC.
+								<!-- ⛔ THE CAP HOLDS IN BOTH SHAPES, AND THAT IS NOT COSMETIC.
 						     In the two-column form the track is already 360px and the
 						     class is a no-op; with no contract card the grid has no
 						     template and this card stretched to the full 1024px, which
@@ -1840,30 +2177,35 @@
 						     wide card is the same proximity inversion the `/apps`
 						     convergence bar was rebuilt to fix. Measured on
 						     `hello-world-app`, which has a chain and no contracts. -->
-						<Card
-							icon={ServerSolid}
-							title="Where it's running"
-							padded={true}
-							class="min-w-0 {twoColumns ? '' : 'max-w-[360px]'}"
-						>
-							{#snippet rollup()}
-								<UpToDate
-									onHead={chainRollup.onHead}
-									deployed={chainRollup.deployed}
-									total={chainRollup.total}
-									spread={chainRollup.spread}
-									pending={chainRollup.pending}
-									unknown={chainRollup.unknown}
-									caption=""
-									title="Environments of this app that are on its newest version"
-								/>
-							{/snippet}
-							<StageChain
-								nodes={chainNodes}
-								hops={chainHops}
-								emptyLabel="This rollout is not part of a promotion chain"
-							/>
-						</Card>
+								<Card
+									icon={ServerSolid}
+									title="Where it's running"
+									padded={true}
+									class="min-w-0 {twoColumns ? '' : 'max-w-[360px]'}"
+								>
+									{#snippet rollup()}
+										<!-- `rollup`: the card-header spec (12px/500), not the
+										     14px `/apps` row spec — see `UpToDate`'s own prop doc. -->
+										<UpToDate
+											rollup
+											onHead={chainRollup.onHead}
+											deployed={chainRollup.deployed}
+											total={chainRollup.total}
+											spread={chainRollup.spread}
+											pending={chainRollup.pending}
+											unknown={chainRollup.unknown}
+											caption=""
+											title="Environments of this app that are on its newest version"
+										/>
+									{/snippet}
+									<StageChain
+										nodes={chainNodes}
+										hops={chainHops}
+										emptyLabel="This rollout is not part of a promotion chain"
+									/>
+								</Card>
+							{/if}
+						</div>
 					{/if}
 				</div>
 			{/if}

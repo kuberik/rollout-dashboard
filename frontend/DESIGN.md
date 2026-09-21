@@ -1416,6 +1416,43 @@ History and Logs tabs are untouched — the only shared files changed are `Block
 (additive: one optional prop, one new exported function; its four existing call sites render
 identically) and `view-models/dependencies.ts`, which no other page imports.
 
+### ⭐ N1 — THE CANVAS GROUND, AND WHY THE DOT GRID CARRIES THE BOUNDARY (2026-09-20)
+
+The map's frame used to be `rounded-lg border border-gray-200 bg-gray-50/40` **inside** a
+`Card` that already draws a 1px border at 8px radius. That is a box inside a box, and on this
+page neither box was full: the outer card was the rail's width and the inner frame was the
+drawing's. Two concentric rectangles, 12px apart, is the shape a reader reads as "something
+failed to load".
+
+**The border is deleted and the GROUND stays.** The card owns the boundary; the canvas owns the
+surface. The surface is not decoration — it is the one mark that says *this region is pannable
+and zoomable*, which no other region on this page is. A canvas with no ground reads as markup
+that happens to contain boxes; a canvas with a ground reads as a plane the boxes sit on, and a
+plane is the thing you expect to be able to drag.
+
+⛔ **AND THE DOT GRID IS WHY THAT WORKS WITHOUT A BORDER.** `bg-gray-50/60` alone against a
+white card is a ~2% luminance step — under any threshold at which an edge is reliably seen, and
+invisible on a projector or a phone in sunlight. The dot grid is what makes the region legible:
+it is a TEXTURE, and a texture boundary is perceptible at a fraction of the contrast a flat
+tonal boundary needs, because the eye is reading the presence or absence of pattern rather than
+a step in lightness. The dots also do the panning work the border used to imply — they are the
+only thing on the page that MOVES when you drag, so the surface announces its own affordance.
+
+Consequences, all three load-bearing:
+
+1. **The ground may never be flat.** If the dot grid is ever removed "for cleanliness", the
+   border has to come back in the same change, because nothing else marks the region.
+2. **The ground's tint is a floor, not a preference.** It is one step, and it exists so the
+   dots have something to sit in; the dots carry the edge.
+3. **In dark the same rule holds at `bg-gray-900/40`** against a `gray-800` card — a step in the
+   *other* direction from light, and again below a reliable flat-edge threshold on its own. The
+   dots are doing the same job in both themes, which is why one texture and two tints is the
+   whole spec and there is no third value.
+
+⚠️ **This is a boundary drawn by texture, and it is the only one in the product.** Every other
+region here is bounded by a 1px border. Stated so the next pass does not "unify" it — the thing
+being unified away would be the only surface a reader is meant to grab.
+
 ## ⛔ AN ENVIRONMENT'S LABEL IS ITS OWN NAME. NEVER THE PRESET WORD. (2026-08-28)
 
 **Do not "fix" this back to the preset label.** `resolveThemeLabel` in
