@@ -47,6 +47,12 @@ const (
 
 	breakerBaseCooldown = 15 * time.Second
 	breakerMaxCooldown  = 5 * time.Minute
+
+	// breakerProbeTimeout is how long a half-open probe may stay reserved
+	// before allow() treats it as leaked and admits another. Must be a
+	// little longer than spokeRefreshTimeout (the SWR fetch bound) so a
+	// still-running probe is not stolen.
+	breakerProbeTimeout = 10 * time.Second
 )
 
 // errSpokeCircuitOpen is what a refused call returns. It wraps the last real
@@ -58,8 +64,15 @@ type errSpokeCircuitOpen struct {
 }
 
 func (e *errSpokeCircuitOpen) Error() string {
-	return fmt.Sprintf("circuit open for %s (last error: %v)",
-		time.Until(e.until).Round(time.Second), e.lastErr)
+	remaining := time.Until(e.until).Round(time.Second)
+	if remaining > 0 {
+		return fmt.Sprintf("circuit open, retry in %s (last error: %v)", remaining, e.lastErr)
+	}
+	// Cooldown already elapsed: either a probe is in flight, or a leaked
+	// probe left probing=true. Never render a negative duration (SRE-753
+	// showed "circuit open for -1h36m15s" and skipped a live spoke until
+	// the hub pod was deleted).
+	return fmt.Sprintf("circuit open, probe in flight (last error: %v)", e.lastErr)
 }
 
 func (e *errSpokeCircuitOpen) Unwrap() error { return e.lastErr }
@@ -102,7 +115,12 @@ func (b *spokeBreakers) allow(spokeURL string) (bool, error) {
 	}
 	// Cooldown elapsed — half-open. Exactly one probe at a time.
 	if e.probing {
-		return false, &errSpokeCircuitOpen{lastErr: e.lastErr, until: e.openUntil}
+		if now.Sub(e.openUntil) < breakerProbeTimeout {
+			return false, &errSpokeCircuitOpen{lastErr: e.lastErr, until: e.openUntil}
+		}
+		// The admitted probe never called success/failure (SRE-753:
+		// an HTTP 401/decode on the probe left probing=true forever).
+		e.probing = false
 	}
 	e.probing = true
 	return true, nil
