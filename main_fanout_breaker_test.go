@@ -209,3 +209,99 @@ func TestOnlyTransportErrorsTripTheBreaker(t *testing.T) {
 		t.Fatal("a success did not close the breaker")
 	}
 }
+
+// A half-open probe that gets HTTP 401 (oauth2-proxy) must close the breaker,
+// not leave probing=true forever.
+func TestBreakerHalfOpenHTTPErrorUnsticks(t *testing.T) {
+	now := time.Now()
+	b := newTestBreakers(func() time.Time { return now })
+	for i := 0; i < breakerThreshold; i++ {
+		b.failure("https://spoke", errors.New("i/o timeout"))
+	}
+	now = now.Add(breakerBaseCooldown + time.Second)
+
+	ok, _ := b.allow("https://spoke")
+	if !ok {
+		t.Fatal("half-open did not admit a probe")
+	}
+	if b.m["https://spoke"] == nil || !b.m["https://spoke"].probing {
+		t.Fatal("probe should be marked in flight")
+	}
+
+	prev := breakers
+	breakers = b
+	recordSpokeOutcome("https://spoke", fmt.Errorf("HTTP 401"))
+	breakers = prev
+
+	if b.m["https://spoke"] != nil {
+		t.Fatal("HTTP error on probe should close the breaker via success()")
+	}
+	if ok, _ := b.allow("https://spoke"); !ok {
+		t.Fatal("breaker refused after HTTP error unstuck the probe")
+	}
+}
+
+func TestBreakerErrorStringNeverNegative(t *testing.T) {
+	err := &errSpokeCircuitOpen{
+		lastErr: errors.New("i/o timeout"),
+		until:   time.Now().Add(-2 * time.Hour),
+	}
+	msg := err.Error()
+	if msg == "" {
+		t.Fatal("empty error string")
+	}
+	if msg != fmt.Sprintf("circuit open, probe in flight (last error: %v)", err.lastErr) {
+		t.Fatalf("unexpected message (must not show negative duration): %q", msg)
+	}
+	if containsNegativeDuration(msg) {
+		t.Fatalf("error string contains negative duration: %q", msg)
+	}
+}
+
+func containsNegativeDuration(s string) bool {
+	return len(s) > 0 && (s[0] == '-' || containsSubstring(s, "-1h") || containsSubstring(s, "-"))
+}
+
+func containsSubstring(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+// If a probe reservation is never cleared, allow() reclaims it after breakerProbeTimeout.
+func TestBreakerLeakedProbeIsReclaimed(t *testing.T) {
+	now := time.Now()
+	b := newTestBreakers(func() time.Time { return now })
+	for i := 0; i < breakerThreshold; i++ {
+		b.failure("https://spoke", errors.New("timeout"))
+	}
+	openUntil := b.m["https://spoke"].openUntil
+	now = openUntil.Add(time.Second)
+
+	ok, _ := b.allow("https://spoke")
+	if !ok {
+		t.Fatal("half-open did not admit first probe")
+	}
+
+	// Still within probe timeout: second caller refused, no new probe.
+	now = openUntil.Add(breakerProbeTimeout / 2)
+	refused := 0
+	for i := 0; i < 5; i++ {
+		if ok, _ := b.allow("https://spoke"); !ok {
+			refused++
+		}
+	}
+	if refused != 5 {
+		t.Fatalf("expected all concurrent callers refused while probe in flight, got %d refusals", refused)
+	}
+
+	// Past probe timeout: leaked reservation reclaimed; a new probe is admitted.
+	now = openUntil.Add(breakerProbeTimeout + time.Second)
+	ok, probeErr := b.allow("https://spoke")
+	if !ok {
+		t.Fatalf("leaked probe should be reclaimed after %v: %v", breakerProbeTimeout, probeErr)
+	}
+}

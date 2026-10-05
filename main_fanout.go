@@ -340,7 +340,12 @@ func recordSpokeOutcome(spokeURL string, err error) {
 	case errors.As(err, &terr):
 		breakers.failure(spokeURL, err)
 	default:
-		// Reached the host; leave the breaker alone.
+		// The host answered (HTTP 401, SSO HTML, decode failure). That
+		// is reachability, so close the breaker. Leaving it alone used
+		// to leak probing=true after a half-open probe got a non-
+		// transport error, and allow() then refused the spoke forever
+		// with a negative "circuit open for -XhYm" (SRE-753).
+		breakers.success(spokeURL)
 	}
 }
 
