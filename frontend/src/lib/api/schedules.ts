@@ -27,7 +27,7 @@ import { apiPath } from './urls';
 
 type ScheduleLike = {
 	metadata?: { name?: string; annotations?: Record<string, string> };
-	spec?: { action?: 'Allow' | 'Deny' };
+	spec?: { action?: 'Allow' | 'Deny'; timezone?: string };
 	status?: { active?: boolean; nextTransition?: string };
 };
 
@@ -192,7 +192,10 @@ export async function fetchScheduleObjects(
 		rolloutSchedules?: { items?: ScheduleObject[] };
 		clusterRolloutSchedules?: { items?: ScheduleObject[] };
 	}>(apiPath(cluster, `/rollouts/${namespace}/${name}/schedules`));
-	return [...(data?.rolloutSchedules?.items ?? []), ...(data?.clusterRolloutSchedules?.items ?? [])];
+	return [
+		...(data?.rolloutSchedules?.items ?? []),
+		...(data?.clusterRolloutSchedules?.items ?? [])
+	];
 }
 
 /**
@@ -249,4 +252,76 @@ export async function fetchNetworkSchedules(
 		})
 	);
 	return new Map(names.map((cluster, i) => [cluster, results[i]]));
+}
+
+/**
+ * `formatAbsoluteReopen`, with the day in front when the instant is not today
+ * in the schedule's zone: `Fri 14:00 Europe/Zurich (12:00 UTC)`. A bare
+ * `14:00` two days out reads as this afternoon. Past a week a weekday is
+ * ambiguous, so it becomes the date (`16 Oct 14:00 …`).
+ */
+export function formatTransitionAt(
+	iso: string,
+	timezone: string | null | undefined,
+	now: Date = new Date()
+): string {
+	const absolute = formatAbsoluteReopen(iso, timezone);
+	if (!absolute) return '';
+	const zone = timezone && timezone.trim() ? timezone : 'UTC';
+	const target = new Date(iso);
+	const day = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: zone });
+	if (day(target) === day(now)) return absolute;
+	const withinWeek = target.getTime() - now.getTime() < 6 * 24 * 60 * 60 * 1000;
+	const prefix = target.toLocaleDateString(
+		'en-GB',
+		withinWeek
+			? { weekday: 'short', timeZone: zone }
+			: { day: 'numeric', month: 'short', timeZone: zone }
+	);
+	return `${prefix} ${absolute}`;
+}
+
+/**
+ * The one-line meta row ScheduleStatus prints beside the version when nothing
+ * is waiting. The sentence depends on the schedule's ACTION as well as its
+ * state: an Allow window that is open closes next, a closed one reopens; a
+ * Deny freeze that is idle starts next, an active one ends. Wording every
+ * schedule as an Allow window ("Deploys pause outside the Weekend Deploy
+ * Freeze deploy window · reopens 12:00 UTC") told readers an idle freeze was
+ * closed and called its START a reopening.
+ */
+export function scheduleMetaText(schedules: ScheduleLike[], now: Date = new Date()): string | null {
+	if (schedules.length === 0) return null;
+
+	let next: ScheduleLike | null = null;
+	let nextAt = Infinity;
+	for (const s of schedules) {
+		const t = s.status?.nextTransition ? new Date(s.status.nextTransition).getTime() : NaN;
+		if (Number.isFinite(t) && t < nextAt) {
+			next = s;
+			nextAt = t;
+		}
+	}
+	const when = next
+		? formatTransitionAt(next.status!.nextTransition!, next.spec?.timezone, now)
+		: '';
+
+	if (schedules.length > 1) {
+		const clause = schedules.some(isBlocking)
+			? 'Deploys held by this rollout’s deploy windows'
+			: `${schedules.length} deploy windows apply to this rollout`;
+		return when ? `${clause} · next change ${when}` : clause;
+	}
+
+	const s = schedules[0];
+	const label = prettyName(s);
+	const active = s.status?.active === true;
+	if (s.spec?.action === 'Deny') {
+		if (active)
+			return when ? `Deploys held by ${label} · reopens ${when}` : `Deploys held by ${label}`;
+		return when ? `Deploys pause for ${label} from ${when}` : `${label} is not in effect`;
+	}
+	const clause = `Deploys pause outside the ${label} deploy window`;
+	if (!when) return clause;
+	return `${clause} · ${active ? 'closes' : 'reopens'} ${when}`;
 }
