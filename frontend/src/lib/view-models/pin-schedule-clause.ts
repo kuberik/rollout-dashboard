@@ -22,6 +22,7 @@
  */
 import type { Rollout } from '../../types';
 import { classifyGate, type BlockingStory, type GateContext } from './blocking-story';
+import { formatAbsoluteReopen } from '../api/schedules';
 
 /**
  * `story`, unchanged unless `story.pinnedTo` AND one of the rollout's other
@@ -49,11 +50,8 @@ export function withPinScheduleClause(
 	}
 	if (!earliest) return story;
 	// Same format `heldCauseText` (`$lib/rollout-cards`) already prints a
-	// clock's reopening time in — `1:00 PM`, not an absolute date-time.
-	const time = new Date(earliest.clearsAt).toLocaleTimeString([], {
-		hour: 'numeric',
-		minute: '2-digit'
-	});
+	// clock's reopening time in — `13:00 CEST`, not an absolute date-time.
+	const time = formatAbsoluteReopen(earliest.clearsAt);
 	return {
 		...story,
 		consequence: `${story.consequence.replace(/\.\s*$/, '')}, and ${earliest.label} reopens ${time}.`

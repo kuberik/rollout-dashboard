@@ -1,6 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { displayTimeZone } from '$lib/timezone.svelte';
+	import { startOfDayMs, zonedYMD } from '$lib/display-time';
 	import {
 		getDisplayVersion,
 		formatTimeAgoCompact,
@@ -245,21 +247,25 @@
 	type DayGroup = { label: string; key: string; entries: ActivityEntry[] };
 	function dayKey(ts: string): string {
 		const d = new Date(ts);
-		return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+		const { year, month, day } = zonedYMD(d);
+		return `${year}-${month}-${day}`;
 	}
 	function dayLabel(ts: string, refNow: Date): string {
 		const d = new Date(ts);
-		const today = new Date(refNow.getFullYear(), refNow.getMonth(), refNow.getDate());
-		const that = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-		const days = Math.round((today.getTime() - that.getTime()) / 86_400_000);
+		const days = Math.round((startOfDayMs(refNow) - startOfDayMs(d)) / 86_400_000);
 		if (days === 0) return 'Today';
 		if (days === 1) return 'Yesterday';
-		if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
-		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+		const timeZone = displayTimeZone();
+		if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long', timeZone });
+		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone });
 	}
 	function hourLabel(ts: string): string {
 		const d = new Date(ts);
-		return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+		return d.toLocaleTimeString(undefined, {
+			hour: '2-digit',
+			minute: '2-digit',
+			timeZone: displayTimeZone()
+		});
 	}
 
 	/**

@@ -19,6 +19,7 @@ import {
 } from './source-dashboard';
 import type { BlockingStory } from './view-models/blocking-story';
 import { displayVersionForTag } from './version-utils';
+import { formatAbsoluteReopen } from './api/schedules';
 
 export type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
 
@@ -546,10 +547,7 @@ export function heldCauseText(story: BlockingStory): string | null {
 	// the X deploy window` (short's own wording) restates what `held`
 	// already says; `reopens <time>` is the fact `held` does not carry.
 	if (g.clears === 'clock' && g.clearsAt) {
-		const time = new Date(g.clearsAt).toLocaleTimeString([], {
-			hour: 'numeric',
-			minute: '2-digit'
-		});
+		const time = formatAbsoluteReopen(g.clearsAt);
 		// ⛔ "ON ITS OWN" IS LOAD-BEARING, NOT DECORATION. (2026-09-03,
 		// coordinator relay, operator-walk item) The Held section's own
 		// header said EVERY held card "will not move on their own" — true of

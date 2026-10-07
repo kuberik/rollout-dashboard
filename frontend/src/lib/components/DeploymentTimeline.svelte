@@ -2,6 +2,8 @@
 	// One vocabulary for the deploy states — see `bake-status.ts`. This dot
 	// label used to say `still baking`, the product's own field name, inside
 	// the accessible name of every in-flight dot on `/activity`.
+	import { displayTimeZone } from '$lib/timezone.svelte';
+	import { formatTimestamp } from '$lib/display-time';
 	import { BAKE_WORD } from '$lib/bake-status';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import {
@@ -74,7 +76,7 @@
 						: (e.bakeStatus ?? 'unknown outcome').toLowerCase();
 		const when = (() => {
 			const t = new Date(e.timestamp);
-			return isNaN(t.getTime()) ? '' : `, ${t.toLocaleString()}`;
+			return isNaN(t.getTime()) ? '' : `, ${formatTimestamp(t)}`;
 		})();
 		const subject = e.subject ? `${e.subject} in ` : '';
 		const act = e.mark === 'rollback' ? ', rolled back' : '';
@@ -782,8 +784,13 @@
 			const x = LABEL_W + ratio * plotW;
 			const d = new Date(t);
 			const label = showTime
-				? d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-				: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+				? d.toLocaleTimeString('en-US', {
+						hour: '2-digit',
+						minute: '2-digit',
+						hour12: false,
+						timeZone: displayTimeZone()
+					})
+				: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: displayTimeZone() });
 			ticks.push({ x, label });
 			t += iv;
 		}
@@ -797,7 +804,8 @@
 			month: 'short',
 			day: 'numeric',
 			hour: '2-digit',
-			minute: '2-digit'
+			minute: '2-digit',
+			timeZone: displayTimeZone()
 		});
 	}
 

@@ -10,6 +10,7 @@ import { BAKE_WORD } from './bake-status';
 // import time if a cycle does not resolve.
 import { promotionBlock, blockNeedsPerson } from './view-models/promotion';
 import type { GateContext } from './view-models/blocking-story';
+import { displayTimeZone } from './timezone.svelte';
 
 
 export function formatDate(dateString: string): string {
@@ -19,7 +20,8 @@ export function formatDate(dateString: string): string {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: displayTimeZone()
     });
 }
 

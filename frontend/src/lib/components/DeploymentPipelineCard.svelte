@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { formatTimestamp } from '$lib/display-time';
 	import { Button, Modal, Spinner, Tooltip } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
@@ -992,7 +993,7 @@
 				{#if !latestEntry.message && !latestEntry.triggeredBy}
 					<p class="text-sm text-gray-500 dark:text-gray-400">
 						Deployment initiated{#if latestEntry.timestamp}
-							{' '}at {new Date(latestEntry.timestamp).toLocaleString()}{/if}.
+							{' '}at {formatTimestamp(latestEntry.timestamp)}{/if}.
 					</p>
 				{/if}
 			</div>

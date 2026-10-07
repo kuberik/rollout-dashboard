@@ -21,6 +21,7 @@
 	 * record is the thing that draws a gate at two scales; the mark belongs to
 	 * the same object.
 	 */
+	import { formatTimestamp } from '$lib/display-time';
 	import {
 		UserCircleSolid,
 		CalendarWeekSolid,
@@ -170,7 +171,7 @@
 			// literals with a regex and a backtick inside a `${}` inside a
 			// backtick comes back to it as the fragment `…${until ?` — a census
 			// entry nobody can read, for a message that does not exist.
-			const stamp = new Date(g.clearsAt).toLocaleString();
+			const stamp = formatTimestamp(g.clearsAt);
 			const until = untilFor(g);
 			facts.push({ label: 'When', value: until ? `${stamp} · ${until}` : stamp });
 		}

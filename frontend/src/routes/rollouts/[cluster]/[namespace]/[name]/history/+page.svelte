@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { displayTimeZone } from '$lib/timezone.svelte';
 	import type {
 		Rollout,
 		Kustomization,
@@ -468,7 +469,8 @@
 			day: 'numeric',
 			hour: '2-digit',
 			minute: '2-digit',
-			hour12: false
+			hour12: false,
+			timeZone: displayTimeZone()
 		});
 	}
 

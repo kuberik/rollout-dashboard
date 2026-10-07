@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { formatTimestamp } from '$lib/display-time';
 	import type { Rollout, Environment, RolloutDependency } from '../../types';
 	import { Modal, Alert, Badge, Button, Toggle, Toast } from 'flowbite-svelte';
 	import {
@@ -1715,7 +1716,7 @@
 														<code>{commit.sha.slice(0, 7)}</code>
 														{#if commit.commitDate}
 															<span>·</span>
-															<span title={new Date(commit.commitDate).toLocaleString()}>
+															<span title={formatTimestamp(commit.commitDate)}>
 																{formatTimeAgo(commit.commitDate)}
 															</span>
 														{/if}

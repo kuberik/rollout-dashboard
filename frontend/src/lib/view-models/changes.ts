@@ -48,6 +48,7 @@ import { cellReasonText, frontierUsuallyLabelForCell } from '../pr-cell-copy';
 import { changePath } from '../pr-ref';
 import { changeBuildPath, envFamilyWord } from '../version-utils';
 import type { Change } from '../api/changes';
+import { startOfDayMs, zonedYMD } from '../display-time';
 
 // ── THE SHORT VERDICT WORD, §2b ───────────────────────────────────────────
 
@@ -527,17 +528,17 @@ const MONTH_ABBR = [
 
 export function changeDayLabel(iso: string, now: Date): string {
 	const d = new Date(iso);
-	const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-	const today = startOfDay(now);
+	const today = startOfDayMs(now);
 	const yesterday = today - 86_400_000;
-	const day = startOfDay(d);
+	const day = startOfDayMs(d);
 	if (day === today) return 'Today';
 	if (day === yesterday) return 'Yesterday';
 	// ⛔ NOT `toLocaleDateString`'s default ordering — `undefined` resolves to
 	// the RUNTIME's own locale (en-US in this environment, "Sep 1"), not the
 	// "8 Sep" day-then-month form §3 asks for. Built explicitly so the format
 	// is the same in every environment this runs in, dev machine or CI.
-	return `${d.getDate()} ${MONTH_ABBR[d.getMonth()]}`;
+	const { day: dom, month } = zonedYMD(d);
+	return `${dom} ${MONTH_ABBR[month]}`;
 }
 
 export type DayGroup<T> = { label: string; rows: T[] };

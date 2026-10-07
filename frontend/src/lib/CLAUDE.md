@@ -635,6 +635,21 @@ icon disc, kept — the human asked to keep the pulse, only ever complaining abo
 
 ## The clock's absolute half is formatted against the SCHEDULE's own zone, never the reader's (P2, 2026-09-03, P9 second re-check)
 
+⛔ **SUPERSEDED 2026-10-07 — the zone is a READER PREFERENCE now, Local or UTC.** From the human:
+*"add also somewhere a setting to change timezone (UTC vs local). grafana has a feature like that
+for example and is very useful for oncall people"*, after `Fri 14:00 Europe/Zurich (12:00 UTC)`
+on the prod weekend freeze read to them as "still UTC". P2's actual defect (a clock with no zone
+named) stays fixed; its remedy (schedule zone + UTC, two clocks for one instant) is gone. The
+navbar's `Local`/`UTC` toggle (`$lib/timezone.svelte`, localStorage, default Local) picks the zone
+for EVERY instant the product prints — deploy history, timeline axis, logs, activity, schedule
+transitions — and each instant is one clock with its zone named (`Fri 14:00 CEST`,
+`Fri 12:00 UTC`; `displayTimeZoneName` in `$lib/display-time`). A schedule RULE as written
+(`14:00–00:00 Europe/Zurich` in the popover) keeps the spec's zone: that is the rule, not an
+instant. Day buckets (`Today`, `Yesterday`, per-day counts) bucket by the display zone's day via
+`startOfDayMs`, so a 23:30 UTC deploy is filed under the day its printed clock says.
+**Any new date/time `toLocale*String` must pass `timeZone: displayTimeZone()`** — one without it
+silently prints browser time while the navbar says UTC.
+
 `blocking-story.ts`'s clock loop and `ScheduleStatus.svelte`'s own fallback branches used
 to hand `clearsAt` to `new Date(iso).toLocaleString()` / `.toLocaleTimeString()` — both
 silently defer to whatever timezone the READER's machine happens to be in. Measured live: a
