@@ -8,9 +8,13 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout } from '$lib/types';
 	import AlertPanel from './AlertPanel.svelte';
-	import { prettyNameOf, type BlockingStory } from '$lib/view-models/blocking-story';
+	import type { BlockingStory } from '$lib/view-models/blocking-story';
 	import { iconForStory } from './BlockingStoryPanel.svelte';
-	import { formatAbsoluteReopen, scheduleWindowQueryKey } from '$lib/api/schedules';
+	import {
+		formatAbsoluteReopen,
+		scheduleMetaText,
+		scheduleWindowQueryKey
+	} from '$lib/api/schedules';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { apiJson, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { apiPath } from '$lib/api/urls';
@@ -149,7 +153,10 @@
 			rolloutSchedules?: { items?: RolloutSchedule[] };
 			clusterRolloutSchedules?: { items?: ClusterRolloutSchedule[] };
 		}>(apiPath(clusterName, `/rollouts/${namespace}/${name}/schedules`));
-		return [...(data.rolloutSchedules?.items ?? []), ...(data.clusterRolloutSchedules?.items ?? [])];
+		return [
+			...(data.rolloutSchedules?.items ?? []),
+			...(data.clusterRolloutSchedules?.items ?? [])
+		];
 	}
 
 	const schedulesQuery = createQuery(() => ({
@@ -250,9 +257,19 @@
 	 * multi-schedule one it is still correct, because the zone printed is
 	 * the zone of the window that is actually about to change.
 	 */
-	function scheduleForTransition(iso: string | null): RolloutSchedule | ClusterRolloutSchedule | null {
+	function scheduleForTransition(
+		iso: string | null
+	): RolloutSchedule | ClusterRolloutSchedule | null {
 		if (!iso) return null;
-		return allSchedules.find((s) => s.status.nextTransition === iso) ?? null;
+		// Compare instants, not strings: the API sends `…T12:00:00Z` and
+		// `nextChange` is `toISOString()`'s `…T12:00:00.000Z`, which never matched,
+		// so every caller lost the schedule's zone and printed UTC only.
+		const t = new Date(iso).getTime();
+		return (
+			allSchedules.find(
+				(s) => !!s.status.nextTransition && new Date(s.status.nextTransition).getTime() === t
+			) ?? null
+		);
 	}
 
 	let blockingSchedulesFull = $derived(
@@ -399,28 +416,13 @@
 	);
 
 	/**
-	 * ⛔ THE WINDOW IS NAMED FROM THE DATA, NOT FROM THE FIXTURE IT WAS WRITTEN
-	 * AGAINST. (2026-09-10) `metaText` hard-coded the words "business hours",
-	 * which is the name of ONE schedule on the `hello-world` demo cluster
-	 * (`Business Hours Only`). Any other window — a weekend freeze, a release
-	 * train, a maintenance hour — was announced as business hours, and this is
-	 * the surface that tells a reader WHICH rule pauses their deploys.
-	 *
-	 * `lib/CLAUDE.md`'s vocabulary rule already settles the shape: the pretty
-	 * name leads a rendered clause, `deploy window` is the kind word, and
-	 * `blocking-story.ts` builds exactly this label the same way
-	 * (`prettyNameOf(metadata) || metadata.name`) — reused here rather than
-	 * spelled a second time, so the meta row and the gate clause cannot drift.
-	 * Past one window there is no single name to lead with, so it states the
-	 * kind in the plural instead of picking one arbitrarily.
+	 * ⛔ THE WINDOW IS NAMED FROM THE DATA, AND WORDED BY ITS ACTION.
+	 * (2026-09-10) The name comes from the schedule's pretty name, never a
+	 * fixture's. (2026-10-07) The sentence comes from `spec.action` + state:
+	 * an idle Deny freeze was announced as a closed Allow window that
+	 * "reopens" when the freeze actually starts. `scheduleMetaText` in
+	 * `api/schedules.ts` owns the wording and its tests.
 	 */
-	let windowClause = $derived.by(() => {
-		if (allSchedules.length === 0) return null;
-		if (allSchedules.length > 1) return 'Deploys pause outside this rollout’s deploy windows';
-		const s = allSchedules[0];
-		const label = prettyNameOf(s.metadata) || s.metadata.name;
-		return `Deploys pause outside the ${label} deploy window`;
-	});
 
 	/**
 	 * ⭐ THE ONE-LINE FORM `nothingWaiting` PRINTS INSTEAD OF A BANNER.
@@ -437,10 +439,8 @@
 	 * `formatAbsoluteReopen`'s own comment.
 	 */
 	let metaText = $derived.by(() => {
-		if (!nothingWaiting || !windowClause) return null;
-		return nextChange
-			? `${windowClause} · reopens ${formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}`
-			: windowClause;
+		if (!nothingWaiting) return null;
+		return scheduleMetaText(allSchedules);
 	});
 
 	$effect(() => {
@@ -542,7 +542,8 @@
 		if (!s) return '';
 		if (s.gates.length === 1 && s.clock.length === 1 && s.clearsAt) {
 			const n = s.candidateCount;
-			const lead = n > 0 ? `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} waiting. ` : '';
+			const lead =
+				n > 0 ? `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} waiting. ` : '';
 			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} — ${formatAbsoluteReopen(s.clearsAt, s.clock[0].timezone)}.`;
 		}
 		return s.consequence;
@@ -561,7 +562,10 @@
 				Automatic deploys resume in <span class="text-gray-600 dark:text-gray-300"
 					>{formatTimeUntil(nextChange)}</span
 				>
-				· {formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}
+				· {formatAbsoluteReopen(
+					nextChange,
+					scheduleForTransition(nextChange)?.spec.timezone ?? null
+				)}
 			{:else}
 				<!-- (2026-09-03, vocabulary pass) The generic obstacle noun is
 				     `rule` everywhere — this used to say `1 schedule` while the
@@ -705,8 +709,12 @@
 						{#if schedule.spec.rules?.length}
 							<ul class="space-y-1">
 								{#each schedule.spec.rules as rule}
-									<li class="flex items-start gap-2 text-xs text-amber-800/90 dark:text-amber-200/85">
-										<ClockSolid class="mt-0.5 h-3 w-3 shrink-0 text-amber-500/80 dark:text-amber-400/80" />
+									<li
+										class="flex items-start gap-2 text-xs text-amber-800/90 dark:text-amber-200/85"
+									>
+										<ClockSolid
+											class="mt-0.5 h-3 w-3 shrink-0 text-amber-500/80 dark:text-amber-400/80"
+										/>
 										<span class="break-words">{formatRule(rule, schedule.spec.timezone)}</span>
 									</li>
 								{/each}
@@ -717,7 +725,10 @@
 								Automatic deploys resume in <span class="font-medium"
 									>{formatTimeUntil(schedule.status.nextTransition)}</span
 								>
-								· {formatAbsoluteReopen(schedule.status.nextTransition, schedule.spec.timezone ?? null)}
+								· {formatAbsoluteReopen(
+									schedule.status.nextTransition,
+									schedule.spec.timezone ?? null
+								)}
 							</p>
 						{/if}
 					</li>
