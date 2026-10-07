@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { startOfDayMs } from '$lib/display-time';
 	import type { Rollout } from '../../types';
 	import { now } from '$lib/stores/time';
 
@@ -41,9 +42,7 @@
 			}
 		} else {
 			const day = 24 * 60 * 60 * 1000;
-			const d = new Date($now);
-			d.setHours(0, 0, 0, 0);
-			const todayStart = d.getTime();
+			const todayStart = startOfDayMs(new Date($now));
 			for (const r of rollouts) {
 				for (const h of r.status?.history ?? []) {
 					if (!h.timestamp) continue;

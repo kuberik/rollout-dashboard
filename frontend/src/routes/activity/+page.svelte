@@ -68,6 +68,8 @@
 	 * the state word printed in plain English on every row that is not the
 	 * norm, and the banner.
 	 */
+	import { displayTimeZone } from '$lib/timezone.svelte';
+	import { startOfDayMs } from '$lib/display-time';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
@@ -459,7 +461,11 @@
 	 *  header and made two rollbacks an hour apart byte-identical; the clock
 	 *  is the one thing the header does not say. `title` keeps the full date. */
 	function clockOf(iso: string): string {
-		return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		return new Date(iso).toLocaleTimeString([], {
+			hour: '2-digit',
+			minute: '2-digit',
+			timeZone: displayTimeZone()
+		});
 	}
 
 	// ── ONE LANE PER ENVIRONMENT ───────────────────────────────────────────
@@ -748,13 +754,13 @@
 		const d = new Date(ts);
 		const ageMs = refNow.getTime() - d.getTime();
 		if (ageMs < 60 * 60 * 1000) return 'In the last hour';
-		const today = new Date(refNow.getFullYear(), refNow.getMonth(), refNow.getDate());
-		const yesterday = new Date(today.getTime() - 86_400_000);
-		const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-		if (dayStart.getTime() === today.getTime()) return 'Today';
-		if (dayStart.getTime() === yesterday.getTime()) return 'Yesterday';
-		const daysAgo = Math.floor((today.getTime() - dayStart.getTime()) / 86_400_000);
-		if (daysAgo < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+		const today = startOfDayMs(refNow);
+		const dayStart = startOfDayMs(d);
+		if (dayStart === today) return 'Today';
+		if (dayStart === today - 86_400_000) return 'Yesterday';
+		const daysAgo = Math.floor((today - dayStart) / 86_400_000);
+		if (daysAgo < 7)
+			return d.toLocaleDateString(undefined, { weekday: 'long', timeZone: displayTimeZone() });
 		return 'Earlier';
 	}
 

@@ -428,7 +428,7 @@
 		if (classified.clearsAt) {
 			facts.push({
 				label: 'When',
-				value: `opens ${formatAbsoluteReopen(classified.clearsAt, classified.timezone)}`
+				value: `opens ${formatAbsoluteReopen(classified.clearsAt)}`
 			});
 		}
 		return facts;

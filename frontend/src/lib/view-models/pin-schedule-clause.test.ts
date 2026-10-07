@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import type { Rollout } from '../../types';
 import { blockingStory, buildGateContext, withSchedules, EMPTY_GATE_CONTEXT } from './blocking-story';
 import { withPinScheduleClause } from './pin-schedule-clause';
+import { setDisplayTimeZone } from '../timezone.svelte';
+
+// Clocks print in the reader's display zone; pin it so the expected strings
+// do not depend on the machine running the suite.
+beforeEach(() => setDisplayTimeZone('utc'));
 
 // The live fixture this finding was filed against: a pinned rollout that
 // ALSO carries a schedule-owned gate — `blockingStory`'s pin branch never
@@ -49,7 +54,7 @@ describe('withPinScheduleClause (2026-09-03, operator-walk P10)', () => {
 
 		const augmented = withPinScheduleClause(story, rollout, ctx);
 		expect(augmented.consequence).toBe(
-			'2 newer builds are available and none of them will deploy while the pin is set, and Business Hours Only reopens 1:00 PM.'
+			'2 newer builds are available and none of them will deploy while the pin is set, and Business Hours Only reopens 13:00 UTC.'
 		);
 		// Nothing else about the story moved — the pin is still what outranks
 		// every gate, this only adds a clause to the sentence.
@@ -80,7 +85,7 @@ describe('withPinScheduleClause (2026-09-03, operator-walk P10)', () => {
 		expect(story.consequence).toBe('Automatic updates are off here until the pin is cleared.');
 		const augmented = withPinScheduleClause(story, rollout, ctx);
 		expect(augmented.consequence).toBe(
-			'Automatic updates are off here until the pin is cleared, and Business Hours Only reopens 1:00 PM.'
+			'Automatic updates are off here until the pin is cleared, and Business Hours Only reopens 13:00 UTC.'
 		);
 	});
 });

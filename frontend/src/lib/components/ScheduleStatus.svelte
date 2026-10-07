@@ -244,34 +244,6 @@
 		return earliestTransition ? earliestTransition.toISOString() : null;
 	});
 
-	/**
-	 * ⭐ THE ZONE BELONGS TO A SCHEDULE, NOT TO `nextChange`. (P2,
-	 * operator-walk finding) `nextChange` is the earliest transition across
-	 * every schedule this rollout carries — a page-level reduction with no
-	 * timezone of its own. Formatting it against the reader's machine (the
-	 * old `toLocaleString()`/`toLocaleTimeString()` behaviour) is exactly
-	 * the ambiguity this fix removes, so the absolute clock is always
-	 * printed against the SCHEDULE that owns the transition — found here by
-	 * matching the ISO instant back to the object it came from. On the
-	 * ordinary one-schedule rollout this is unambiguous; on the rare
-	 * multi-schedule one it is still correct, because the zone printed is
-	 * the zone of the window that is actually about to change.
-	 */
-	function scheduleForTransition(
-		iso: string | null
-	): RolloutSchedule | ClusterRolloutSchedule | null {
-		if (!iso) return null;
-		// Compare instants, not strings: the API sends `…T12:00:00Z` and
-		// `nextChange` is `toISOString()`'s `…T12:00:00.000Z`, which never matched,
-		// so every caller lost the schedule's zone and printed UTC only.
-		const t = new Date(iso).getTime();
-		return (
-			allSchedules.find(
-				(s) => !!s.status.nextTransition && new Date(s.status.nextTransition).getTime() === t
-			) ?? null
-		);
-	}
-
 	let blockingSchedulesFull = $derived(
 		allSchedules.filter((s) => {
 			const { active } = s.status;
@@ -532,11 +504,9 @@
 	 * `formatAbsoluteReopen` is that fix, shared with `blocking-story.ts`'s
 	 * own clock loop so the two cannot drift back apart the way `formatTime`
 	 * and `formatClockTime` already had (one with seconds, one without, both
-	 * silently local). Every call site below now hands it the ZONE off the
-	 * schedule the instant belongs to — `scheduleForTransition` for the
-	 * page-level `nextChange` figure, the gate's own carried `.timezone` for
-	 * `shapedConsequence`, and the schedule object directly inside the
-	 * popover's per-schedule loop.
+	 * silently local). (2026-10-07) It formats in the reader's display
+	 * timezone (`$lib/timezone.svelte`, Local / UTC in the navbar) and names
+	 * that zone, so every call site below passes only the instant.
 	 */
 	function shapedConsequence(s: BlockingStory | null | undefined): string {
 		if (!s) return '';
@@ -544,7 +514,7 @@
 			const n = s.candidateCount;
 			const lead =
 				n > 0 ? `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} waiting. ` : '';
-			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} — ${formatAbsoluteReopen(s.clearsAt, s.clock[0].timezone)}.`;
+			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} — ${formatAbsoluteReopen(s.clearsAt)}.`;
 		}
 		return s.consequence;
 	}
@@ -562,10 +532,7 @@
 				Automatic deploys resume in <span class="text-gray-600 dark:text-gray-300"
 					>{formatTimeUntil(nextChange)}</span
 				>
-				· {formatAbsoluteReopen(
-					nextChange,
-					scheduleForTransition(nextChange)?.spec.timezone ?? null
-				)}
+				· {formatAbsoluteReopen(nextChange)}
 			{:else}
 				<!-- (2026-09-03, vocabulary pass) The generic obstacle noun is
 				     `rule` everywhere — this used to say `1 schedule` while the
@@ -650,7 +617,7 @@
 			message={story?.blocked
 				? shapedConsequence(story)
 				: nextChange
-					? `Nothing promotes itself for another ${formatTimeUntil(nextChange)} — ${formatAbsoluteReopen(nextChange, scheduleForTransition(nextChange)?.spec.timezone ?? null)}. A deploy you start by hand still applies immediately.`
+					? `Nothing promotes itself for another ${formatTimeUntil(nextChange)} — ${formatAbsoluteReopen(nextChange)}. A deploy you start by hand still applies immediately.`
 					: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
 			footnote={story?.blocked ? story.resolution : undefined}
 			icon={story?.blocked ? iconForStory(story) : CalendarWeekSolid}
@@ -725,10 +692,7 @@
 								Automatic deploys resume in <span class="font-medium"
 									>{formatTimeUntil(schedule.status.nextTransition)}</span
 								>
-								· {formatAbsoluteReopen(
-									schedule.status.nextTransition,
-									schedule.spec.timezone ?? null
-								)}
+								· {formatAbsoluteReopen(schedule.status.nextTransition)}
 							</p>
 						{/if}
 					</li>
@@ -739,7 +703,7 @@
 		<AlertPanel
 			severity="warning"
 			title="Automatic deploys pause soon"
-			message={`Nothing will promote itself after ${formatTimeUntil(nextChange!)} — ${formatAbsoluteReopen(nextChange!, scheduleForTransition(nextChange!)?.spec.timezone ?? null)}. Deploys you start by hand are not affected.`}
+			message={`Nothing will promote itself after ${formatTimeUntil(nextChange!)} — ${formatAbsoluteReopen(nextChange!)}. Deploys you start by hand are not affected.`}
 			icon={ClockSolid}
 		>
 			{#snippet actions()}

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { displayTimeZone } from '$lib/timezone.svelte';
 	import { page } from '$app/state';
 	import { replaceState, afterNavigate } from '$app/navigation';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -1969,10 +1970,15 @@
 								datetime={new Date(query.dataUpdatedAt).toISOString()}
 								title="Change stream disconnected; showing data fetched at {new Date(
 									query.dataUpdatedAt
-								).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"
+								).toLocaleTimeString([], {
+									hour: '2-digit',
+									minute: '2-digit',
+									timeZone: displayTimeZone()
+								})}"
 								>{new Date(query.dataUpdatedAt).toLocaleTimeString([], {
 									hour: '2-digit',
-									minute: '2-digit'
+									minute: '2-digit',
+									timeZone: displayTimeZone()
 								})}</time
 							>, stream down
 						{/if}

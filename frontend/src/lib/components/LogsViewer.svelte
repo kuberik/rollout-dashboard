@@ -1,6 +1,8 @@
 <svelte:options runes={true} />
 
 <script module lang="ts">
+	import { displayTimeZone } from '$lib/timezone.svelte';
+	import { formatTimestamp } from '$lib/display-time';
 	import type { PodInfo } from '$lib/api/logs';
 
 	/**
@@ -684,7 +686,22 @@
 		return text.replace(regex, '<mark class="bg-yellow-300 dark:bg-yellow-600">$1</mark>');
 	}
 
-	// Flatten for virtual list - formatted timestamp comes from web worker
+	// The row clock is formatted here, not taken from the worker's
+	// `formattedTimestamp`: the worker formats once on arrival, so a line already
+	// on screen would keep its old zone after the navbar's Local/UTC toggle flips.
+	// Only the visible rows render, so one cached formatter per zone is cheap.
+	const logClock = $derived(
+		new Intl.DateTimeFormat('en-US', {
+			hour12: false,
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			fractionalSecondDigits: 3,
+			timeZone: displayTimeZone()
+		})
+	);
+
+	// Flatten for virtual list
 	const allLogLines = $derived.by(() => {
 		// Optimization: Avoid re-mapping if unnecessary, but standard map is usually fast enough for 2k-10k items
 		return filteredLogs.map((log, index) => ({
@@ -1697,8 +1714,8 @@
 							>
 							{#if visibleColumns.has('timestamp')}
 								<!-- `gray-400`, not 500: on the gray-900 pane 500 measured 3.67:1. -->
-				<span class="shrink-0 text-gray-400" title={new Date(logItem.timestamp).toLocaleString()}
-					>{logItem.formattedTimestamp}</span
+				<span class="shrink-0 text-gray-400" title={formatTimestamp(logItem.timestamp)}
+					>{logClock.format(logItem.timestamp)}</span
 				>
 							{/if}
 							{#if visibleColumns.has('pod')}

@@ -24,6 +24,8 @@
 
 import { apiJson } from './errors';
 import { apiPath } from './urls';
+import { displayTimeZone } from '$lib/timezone.svelte';
+import { displayTimeZoneName } from '$lib/display-time';
 
 type ScheduleLike = {
 	metadata?: { name?: string; annotations?: Record<string, string> };
@@ -109,57 +111,40 @@ export function formatTimeUntil(iso: string, now: Date = new Date()): string | n
 }
 
 /**
- * ⭐ THE ABSOLUTE INSTANT, IN THE SCHEDULE'S OWN ZONE — NOT THE BROWSER'S.
- * (P2, operator-walk finding) `clearsAt` used to reach the screen as
- * `new Date(iso).toLocaleString()` or `.toLocaleTimeString([], {...})` —
- * both silently defer to whatever timezone the READER's machine happens to
- * be in, print in US date order, and (the `toLocaleString()` form) carry
- * seconds nobody asked for on a schedule boundary. Measured live: a rule
- * whose own label says `9 AM - 5 PM EST` reopened at `(9/3/2026, 1:00:00
- * PM)` with no zone printed at all — a reader in any OTHER zone has no way
- * to tell whose 1:00 PM that is, and `EST` in September is itself wrong
- * (the US is on daylight time) — the schedule's OWN `spec.timezone` (an
- * IANA name, `America/New_York`) is authoritative and is what this
- * formats against, never a hand-typed abbreviation.
- *
- * 24-hour, no AM/PM ambiguity, no seconds: `09:00 America/New_York (13:00
- * UTC)`. The UTC figure rides along unconditionally — it is the one
- * reading every reader can convert from without knowing the IANA name's
- * own offset — and is dropped only when the schedule's zone already IS
- * UTC, where repeating it would say the same clock time twice.
+ * ⭐ THE ABSOLUTE INSTANT, IN THE READER'S CHOSEN ZONE, ZONE NAMED.
+ * (P2, operator-walk finding) `clearsAt` used to reach the screen as a bare
+ * `toLocaleString()` — browser time with no zone printed, so nobody could
+ * tell whose 1:00 PM it was. P2 answered with the schedule's own zone plus
+ * UTC (`09:00 America/New_York (13:00 UTC)`), which printed two clocks for
+ * one instant and read as "UTC" to the people it was meant for.
+ * (2026-10-07) The display timezone is now a reader preference
+ * (`$lib/timezone.svelte`, Local / UTC in the navbar), and an instant is one
+ * clock in that zone with its name beside it: `14:00 CEST`, `12:00 UTC`.
+ * 24-hour, no seconds. The schedule's own zone stays where it is the rule as
+ * written (`14:00–00:00 Europe/Zurich` in the popover), not here.
  */
-export function formatAbsoluteReopen(iso: string, timezone: string | null | undefined): string {
+export function formatAbsoluteReopen(iso: string): string {
 	const target = new Date(iso);
 	if (Number.isNaN(target.getTime())) return '';
-	const zone = timezone && timezone.trim() ? timezone : null;
-	const clock = (tz: string) =>
-		target.toLocaleTimeString('en-GB', {
-			hour: '2-digit',
-			minute: '2-digit',
-			hour12: false,
-			timeZone: tz
-		});
-	if (!zone || zone === 'UTC') return `${clock('UTC')} UTC`;
-	return `${clock(zone)} ${zone} (${clock('UTC')} UTC)`;
+	const clock = target.toLocaleTimeString('en-GB', {
+		hour: '2-digit',
+		minute: '2-digit',
+		hour12: false,
+		timeZone: displayTimeZone()
+	});
+	return `${clock} ${displayTimeZoneName(target)}`;
 }
 
 /**
- * `reopens in 7h 21m — 09:00 America/New_York (13:00 UTC)` — the relative
- * figure LEADS (it is the number a reader actually acts on) and the
- * absolute clock trails it, joined by an em dash rather than parentheses:
- * this pass's own finding is that a parenthetical absolute time reads as a
- * footnote nobody has to check, when it is the one thing that disambiguates
- * WHOSE clock the relative figure is counting down on. Returns just the
- * absolute form once the countdown has expired (`formatTimeUntil` false),
- * so a caller never has to special-case "the moment has passed."
+ * `reopens in 7h 21m — 09:00 CEST` — the relative figure LEADS (it is the
+ * number a reader actually acts on) and the absolute clock trails it, joined
+ * by an em dash rather than parentheses. Returns just the absolute form once
+ * the countdown has expired (`formatTimeUntil` false), so a caller never has
+ * to special-case "the moment has passed."
  */
-export function formatReopensAt(
-	iso: string,
-	timezone: string | null | undefined,
-	now: Date = new Date()
-): string {
+export function formatReopensAt(iso: string, now: Date = new Date()): string {
 	const until = formatTimeUntil(iso, now);
-	const absolute = formatAbsoluteReopen(iso, timezone);
+	const absolute = formatAbsoluteReopen(iso);
 	return until ? `reopens in ${until} — ${absolute}` : `reopens ${absolute}`;
 }
 
@@ -256,27 +241,21 @@ export async function fetchNetworkSchedules(
 
 /**
  * `formatAbsoluteReopen`, with the day in front when the instant is not today
- * in the schedule's zone: `Fri 14:00 Europe/Zurich (12:00 UTC)`. A bare
- * `14:00` two days out reads as this afternoon. Past a week a weekday is
- * ambiguous, so it becomes the date (`16 Oct 14:00 …`).
+ * in the display zone: `Fri 14:00 CEST`. A bare `14:00` two days out reads as
+ * this afternoon. Past a week a weekday is ambiguous, so it becomes the date
+ * (`16 Oct 14:00 CEST`).
  */
-export function formatTransitionAt(
-	iso: string,
-	timezone: string | null | undefined,
-	now: Date = new Date()
-): string {
-	const absolute = formatAbsoluteReopen(iso, timezone);
+export function formatTransitionAt(iso: string, now: Date = new Date()): string {
+	const absolute = formatAbsoluteReopen(iso);
 	if (!absolute) return '';
-	const zone = timezone && timezone.trim() ? timezone : 'UTC';
+	const timeZone = displayTimeZone();
 	const target = new Date(iso);
-	const day = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: zone });
+	const day = (d: Date) => d.toLocaleDateString('en-CA', { timeZone });
 	if (day(target) === day(now)) return absolute;
 	const withinWeek = target.getTime() - now.getTime() < 6 * 24 * 60 * 60 * 1000;
 	const prefix = target.toLocaleDateString(
 		'en-GB',
-		withinWeek
-			? { weekday: 'short', timeZone: zone }
-			: { day: 'numeric', month: 'short', timeZone: zone }
+		withinWeek ? { weekday: 'short', timeZone } : { day: 'numeric', month: 'short', timeZone }
 	);
 	return `${prefix} ${absolute}`;
 }
@@ -302,9 +281,7 @@ export function scheduleMetaText(schedules: ScheduleLike[], now: Date = new Date
 			nextAt = t;
 		}
 	}
-	const when = next
-		? formatTransitionAt(next.status!.nextTransition!, next.spec?.timezone, now)
-		: '';
+	const when = next ? formatTransitionAt(next.status!.nextTransition!, now) : '';
 
 	if (schedules.length > 1) {
 		const clause = schedules.some(isBlocking)

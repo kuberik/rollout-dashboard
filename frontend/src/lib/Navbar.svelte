@@ -7,6 +7,8 @@
 	import LogoDark from '$lib/assets/logo-rotate-dark.svg?raw';
 	import LogoLight from '$lib/assets/logo-rotate-light.svg?raw';
 	import { theme } from '$lib/stores/theme';
+	import { setDisplayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
+	import { displayTimeZoneName } from '$lib/display-time';
 	import type { Rollout } from '../types';
 	import { Badge } from 'flowbite-svelte';
 	import { ChevronSortOutline } from 'flowbite-svelte-icons';
@@ -22,6 +24,11 @@
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
+	const timeZoneTitle = $derived(
+		timeZonePreference.zone === 'utc'
+			? 'Times shown in UTC. Switch to local time'
+			: `Times shown in local time (${displayTimeZoneName()}). Switch to UTC`
+	);
 	let switcherOpen = $state(false);
 	let isMac = $state(false);
 
@@ -308,6 +315,18 @@
 				<SearchOutline class="h-5 w-5" />
 			</button>
 			<GithubConnectButton />
+			<!-- Grafana's "Browser time / UTC" switch: one tap flips every clock the
+			     dashboard prints, for on-call reading deploys against alerts in UTC.
+			     See `$lib/timezone.svelte`. -->
+			<button
+				type="button"
+				class="h-9 rounded-lg bg-gray-100 px-2.5 text-xs font-semibold text-gray-800 tabular-nums transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+				onclick={() => setDisplayTimeZone(timeZonePreference.zone === 'utc' ? 'local' : 'utc')}
+				aria-label={timeZoneTitle}
+				title={timeZoneTitle}
+			>
+				{timeZonePreference.zone === 'utc' ? 'UTC' : 'Local'}
+			</button>
 			<button
 				class="rounded-lg bg-gray-100 p-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
 				onclick={() => theme.toggle()}

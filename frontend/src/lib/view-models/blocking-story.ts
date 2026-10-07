@@ -1442,7 +1442,7 @@ export function blockingStory(
 		// it so no reader has to already know what that zone means.
 		parts.push(
 			until
-				? `${g.clause} in ${until} — ${formatAbsoluteReopen(g.clearsAt!, g.timezone)}`
+				? `${g.clause} in ${until} — ${formatAbsoluteReopen(g.clearsAt!)}`
 				: g.clause
 		);
 	}

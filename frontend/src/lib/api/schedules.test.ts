@@ -1,5 +1,9 @@
-import { describe, expect, test } from 'vitest';
-import { formatTransitionAt, scheduleMetaText } from './schedules';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { formatAbsoluteReopen, formatTransitionAt, scheduleMetaText } from './schedules';
+import { setDisplayTimeZone } from '$lib/timezone.svelte';
+
+beforeEach(() => setDisplayTimeZone('utc'));
+afterEach(() => setDisplayTimeZone('local'));
 
 // Wednesday 2026-10-07 10:00 UTC.
 const now = new Date('2026-10-07T10:00:00Z');
@@ -25,13 +29,13 @@ const businessHours = (active: boolean, nextTransition?: string) => ({
 describe('scheduleMetaText', () => {
 	test('idle Deny freeze names when it starts, not a reopening', () => {
 		expect(scheduleMetaText([freeze(false, '2026-10-09T12:00:00Z')], now)).toBe(
-			'Deploys pause for Weekend Deploy Freeze from Fri 14:00 Europe/Zurich (12:00 UTC)'
+			'Deploys pause for Weekend Deploy Freeze from Fri 12:00 UTC'
 		);
 	});
 
 	test('active Deny freeze reopens when it ends', () => {
 		expect(scheduleMetaText([freeze(true, '2026-10-11T22:00:00Z')], now)).toBe(
-			'Deploys held by Weekend Deploy Freeze · reopens Mon 00:00 Europe/Zurich (22:00 UTC)'
+			'Deploys held by Weekend Deploy Freeze · reopens Sun 22:00 UTC'
 		);
 	});
 
@@ -62,15 +66,29 @@ describe('scheduleMetaText', () => {
 });
 
 describe('formatTransitionAt', () => {
-	test('same day in the schedule zone has no day prefix', () => {
-		expect(formatTransitionAt('2026-10-07T12:00:00Z', 'Europe/Zurich', now)).toBe(
-			'14:00 Europe/Zurich (12:00 UTC)'
-		);
+	test('same day in the display zone has no day prefix', () => {
+		expect(formatTransitionAt('2026-10-07T12:00:00Z', now)).toBe('12:00 UTC');
+	});
+
+	test('the day is the display zone day, not the browser day', () => {
+		// 23:30 UTC Wednesday is Thursday in Zurich; in UTC it is still today.
+		expect(formatTransitionAt('2026-10-07T23:30:00Z', now)).toBe('23:30 UTC');
 	});
 
 	test('more than a week out uses the date', () => {
-		expect(formatTransitionAt('2026-10-16T12:00:00Z', 'Europe/Zurich', now)).toBe(
-			'16 Oct 14:00 Europe/Zurich (12:00 UTC)'
-		);
+		expect(formatTransitionAt('2026-10-16T12:00:00Z', now)).toBe('16 Oct 12:00 UTC');
+	});
+});
+
+describe('formatAbsoluteReopen', () => {
+	test('local follows the browser zone and names it', () => {
+		setDisplayTimeZone('local');
+		const iso = '2026-10-09T12:00:00Z';
+		const clock = new Date(iso).toLocaleTimeString('en-GB', {
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false
+		});
+		expect(formatAbsoluteReopen(iso).startsWith(`${clock} `)).toBe(true);
 	});
 });
