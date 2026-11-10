@@ -169,3 +169,20 @@ describe('QA #23: superseded vs custom', () => {
 		expect(stops.filter((s) => s.custom).map((s) => s.build)).toEqual(['cX']);
 	});
 });
+
+/* landing v5 (2026-11-10): the ledger listed the places of one stop alphabetically, so the waiting prod region came last of five. Within a
+   stop the order is the product's one severity order (state-words SEVERITY); places of one rank keep their order. */
+describe('ledger: the place that needs reading leads its stop', () => {
+	const hb = (build: string) => ({ build, title: null, author: null, created: '2026-01-02T00:00:00Z', here: true });
+	const mk = (name: string, state: string, extra: Record<string, unknown> = {}) => ({ wave: null, env: name, label: name, place: name, tier: 'prod', state, href: `/x/${name}`, deployedBuild: 'b0', holdReason: null, gate: null, heldBuilds: [hb('b1')], runs: null, ...extra }) as never;
+	it('failing, waiting for approval, held, checking, deploying, then at rest; ties keep their order', () => {
+		const places = [mk('a-rest', 'healthy', { heldBuilds: [] }), mk('b-deploying', 'deploying'), mk('c-checking', 'checking'), mk('d-held', 'held-by-rule'), mk('e-approval', 'awaiting-approval'), mk('f-failed', 'failed'), mk('g-approval', 'awaiting-approval')];
+		const stop = ledgerOf(places).find((s) => s.build === 'b0')!;
+		expect(stop.places.map((p) => p.place)).toEqual(['f-failed', 'e-approval', 'g-approval', 'd-held', 'c-checking', 'b-deploying', 'a-rest']);
+	});
+	it('a healthy place a promotion gate holds a newer build from ranks with the held places, above one at rest', () => {
+		const places = [mk('a-rest', 'healthy', { heldBuilds: [] }), mk('b-waits', 'healthy', { holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '' } }), mk('c-deploying', 'deploying')];
+		const stop = ledgerOf(places).find((s) => s.build === 'b0')!;
+		expect(stop.places.map((p) => p.place)).toEqual(['b-waits', 'c-deploying', 'a-rest']);
+	});
+});
