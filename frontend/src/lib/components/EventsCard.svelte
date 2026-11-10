@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	import { ExclamationCircleSolid, InfoCircleSolid, CalendarWeekSolid } from 'flowbite-svelte-icons';
-	import { formatTimeAgo, formatTimeAgoCompact } from '$lib/utils';
+	import { formatAgoCompact, formatTimeAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import Card from './Card.svelte';
 
@@ -110,7 +110,7 @@
 								>{#each identParts_ as part, pi (pi)}{part}{#if pi < identParts_.length - 1}<wbr
 									/>{/if}{/each}</span
 							>
-							<span class="t-meta ml-auto shrink-0 tabular-nums text-fg-subtle">{formatTimeAgo(event.lastTimestamp, $now)}</span>
+							<span class="t-meta ml-auto shrink-0 tabular-nums text-fg-subtle">{formatAgoCompact(event.lastTimestamp, $now)}</span>
 						</div>
 						<p class="t-meta mt-0.5 text-fg-muted">{event.message}</p>
 					</div>

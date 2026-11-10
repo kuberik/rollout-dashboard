@@ -297,6 +297,15 @@ export const stopWord = (s: Pick<Stop, 'index' | 'custom'>): string => (s.custom
 /** r2 apps fix 8: the stop's lag as the ledger's 64px right track prints it ("Newest", "5 behind"); the full words ("5 builds behind") stay in the row's title and aria-label */
 export const stopShort = (s: Pick<Stop, 'index' | 'custom'>): string => (s.custom ? 'Custom' : s.index === 0 ? 'Newest' : `${s.index ?? 0} behind`);
 
+/** The wave clause of a place row: "wave 2" / "follows eu-west-1", null where the tier has one wave and no follower (nothing to say).
+ *  The row prints it after the state word as `Healthy · wave 2`: a real space, then the dot GLUED to the clause (non-breaking), so a wrap never strands the dot at a line end. */
+export function waveFactOf(w: { site: string; leader: boolean; follows: string | null; multi: boolean; wave: number } | null | undefined): string | null {
+	if (!w || w.site === '') return null;
+	if (!w.leader) return `follows ${w.follows ?? 'its leader'}`;
+	return w.multi ? `wave ${w.wave}` : null;
+}
+/** the separator + clause as drawn: dot and clause joined by a non-breaking space */
+export const waveClause = (fact: string): string => `\u00b7\u00a0${fact}`;
 /** the place's ONE state word, the strip cell's own (never "Live"): at rest "Healthy"; a place the pin holds says the tab's cause, "Held by the pin" */
 export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = false): string {
 	if (pinned) return 'Held by the pin';
