@@ -11,7 +11,6 @@ import { buildRolloutCards } from '$lib/rollout-cards';
 import type { RolloutCard } from '$lib/rollout-cards';
 import { buildGateContext } from './blocking-story';
 import { buildRolloutGraph, contractHoldsForRollout } from './dependency-graph';
-import { offerableDeploy } from './offerable-deploy';
 import type { Environment, Rollout, RolloutDependency } from '../../types';
 
 type List = {

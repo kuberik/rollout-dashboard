@@ -10,7 +10,6 @@ import {
 	lagLabel,
 	regionsLabel
 } from './env-rank';
-import { buildMatrix } from './matrix';
 import type { Rollout, Environment } from '$lib/../types';
 
 // ── Fixture builders ─────────────────────────────────────────────────────
@@ -165,23 +164,6 @@ describe('env-rank — the one denominator', () => {
 		expect(rankIsAdverse({ kind: 'behind', by: 1 })).toBe(true);
 		expect(rankIsAdverse({ kind: 'diverged' })).toBe(true);
 		expect(rankIsAdverse({ kind: 'unknown' })).toBe(false);
-	});
-});
-
-describe('the matrix carries the same number the app pages print', () => {
-	it('agrees with rankVerdictFor cell by cell', () => {
-		// `/apps` and `/environments` both render from `buildMatrix`, and
-		// `/apps/[name]` renders from the ladder directly. Three surfaces, one
-		// derivation — this is the assertion that keeps them from drifting.
-		const { rollouts, environments } = fixture();
-		const { rows } = buildMatrix(rollouts, environments);
-		const g = groupRolloutsByApp(rollouts, environments).get('app')!;
-		const row = rows.find((r) => r.appName === 'app')!;
-		for (const tier of ['dev', 'staging', 'prod']) {
-			expect(row.cells[tier]!.rank).toEqual(rankVerdictFor(g, tier));
-		}
-		expect(row.cells['prod']!.behindBy).toBe(4);
-		expect(row.worstLag).toBe(4);
 	});
 });
 

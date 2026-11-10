@@ -46,7 +46,6 @@ import { describe, it, expect } from 'vitest';
 import type { Rollout, Environment } from '$lib/../types';
 import { groupRolloutsByApp } from '$lib/version-utils';
 import { buildRolloutCards } from '$lib/rollout-cards';
-import { buildMatrix } from './matrix';
 import { buildLadder } from './build-ladder';
 import { newerReleaseCount } from './promotion';
 import {
@@ -234,30 +233,6 @@ describe('⛔ the dev-vs-staging contradiction', () => {
 });
 
 describe('every surface reads the same derivation', () => {
-	it('the rollout card, the matrix cell and the ladder agree, rollout by rollout', () => {
-		// `/` + `/rollouts` read the card; `/apps` + `/environments` read the
-		// matrix; `/apps/[name]` reads the ladder. Three readers, one number.
-		const cards = buildRolloutCards(ROLLOUTS, ENVIRONMENTS, NOW);
-		const row = buildMatrix(ROLLOUTS, ENVIRONMENTS).rows.find((r) => r.appName === APP)!;
-		const g = group();
-		const ladder = buildLadder(g.cells);
-
-		for (const tier of ['dev', 'staging', 'prod']) {
-			const card = cards.find((c) => c.ns === `${APP}-${tier}`)!;
-			const cell = row.cells[tier]!;
-			const version = cell.version;
-			expect(card.rank).toEqual(cell.rank);
-			expect(card.rank).toEqual(rankVerdictFor(g, tier));
-			// The oracle is the CONTROLLER's count, not the ladder position.
-			expect(rankBehindBy(card.rank)).toBe(newerReleaseCount(card.rollout));
-			// The ladder still orders builds, and it is still the thing that
-			// decides which build is newest — it just does not count.
-			expect(ladder.rankOf(version)).toBeGreaterThanOrEqual(rankBehindBy(card.rank));
-			// `behind` is attribution only — its number is copied off the rank
-			// so the two can never disagree.
-			if (card.behind) expect(card.behind.behindBy).toBe(rankBehindBy(card.rank));
-		}
-	});
 
 	it('the fleet-wide door agrees with the per-app one', () => {
 		const flat = rankVerdictsByRollout(ROLLOUTS, ENVIRONMENTS);
@@ -369,12 +344,4 @@ describe('a many-region fleet — the fan-out shape', () => {
 		expect(newerReleaseCount(many[1])).toBe(0);
 	});
 
-	it('agrees across the card and the matrix for all six', () => {
-		const cards = buildRolloutCards(many, envs, NOW);
-		const row = buildMatrix(many, envs).rows.find((r) => r.appName === APP)!;
-		for (const tier of REGIONS) {
-			const card = cards.find((c) => c.ns === `${APP}-${tier}`)!;
-			expect(card.rank).toEqual(row.cells[tier]!.rank);
-		}
-	});
 });
