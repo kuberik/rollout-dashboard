@@ -106,7 +106,11 @@ func TestRolloutListWithGateKinds_OnlyAddsKind(t *testing.T) {
 			if m["kind"] != "approval" {
 				t.Fatalf("kind = %v", m["kind"])
 			}
+			if m["displayName"] != "Business hours" {
+				t.Fatalf("displayName = %v", m["displayName"])
+			}
 			delete(m, "kind")
+			delete(m, "displayName")
 		}
 	}
 	if !reflect.DeepEqual(a, b) {
@@ -150,5 +154,36 @@ func TestRolloutWithKindsJSON_MirrorsEveryUpstreamField(t *testing.T) {
 	}
 	check("Rollout", reflect.TypeOf(rolloutv1alpha1.Rollout{}), reflect.TypeOf(rolloutWithKindsJSON{}))
 	check("RolloutStatus", reflect.TypeOf(rolloutv1alpha1.RolloutStatus{}), reflect.TypeOf(rolloutStatusWithKinds{}))
+	check("RolloutGateStatusSummary", reflect.TypeOf(rolloutv1alpha1.RolloutGateStatusSummary{}), reflect.TypeOf(gateSummaryWithKind{}))
+	extra := map[string]bool{}
+	jsonFieldNames(reflect.TypeOf(gateSummaryWithKind{}), extra)
+	for _, k := range []string{"kind", "displayName"} {
+		if !extra[k] {
+			t.Errorf("gate summary mirror lacks the added %q field", k)
+		}
+	}
 	check("RolloutList", reflect.TypeOf(rolloutv1alpha1.RolloutList{}), reflect.TypeOf(rolloutListJSON{}))
+}
+
+func TestNewGateKindIndex_DisplayNameFromPrettyNameAnnotation(t *testing.T) {
+	named := gateWith(nil, "RolloutSchedule")
+	named.Name = "named"
+	named.Annotations = map[string]string{"gate.kuberik.com/pretty-name": "Business hours"}
+	bare := gateWith(nil, "RolloutSchedule")
+	bare.Name = "bare"
+	idx := NewGateKindIndex([]rolloutv1alpha1.RolloutGate{*named, *bare})
+	if got := idx.Lookup("ns", "named").DisplayName; got != "Business hours" {
+		t.Errorf("named displayName = %q", got)
+	}
+	if got := idx.Lookup("ns", "bare").DisplayName; got != "" {
+		t.Errorf("bare displayName = %q, want empty (never invented)", got)
+	}
+	l := &rolloutv1alpha1.RolloutList{Items: []rolloutv1alpha1.Rollout{{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "app"},
+		Status:     rolloutv1alpha1.RolloutStatus{Gates: []rolloutv1alpha1.RolloutGateStatusSummary{{Name: "bare"}}},
+	}}}
+	b, _ := json.Marshal(RolloutListWithGateKinds{RolloutList: l, Kinds: idx})
+	if strings.Contains(string(b), "displayName") {
+		t.Fatalf("displayName must be omitted without an annotation: %s", b)
+	}
 }
