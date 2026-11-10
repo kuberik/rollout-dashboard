@@ -82,6 +82,7 @@
 	import { modEnterHint } from '$lib/shortcut-hint';
 	import { apiPath } from '$lib/api/urls';
 	import { href } from '$lib/paths';
+	import { recoveryModeReason } from '$lib/view-models/change-version-entry';
 
 	interface Props {
 		open: boolean;
@@ -169,9 +170,9 @@
 		 * round 6 — AD round 4, item 2.) `RecoveryModeWarningModal` asks for
 		 * consent first; the confirm that follows says it once more as one
 		 * `t-meta` line inside the callout, so the reader confirming never has
-		 * to remember the previous dialog. `undefined` derives it the way the
-		 * page's own `recoveryModeReason()` does for its first branch (the
-		 * running build FAILED); a caller that also knows about unhealthy
+		 * to remember the previous dialog. `undefined` derives it with the same
+		 * `recoveryModeReason()` helper, with no health checks known (so only
+		 * the running-build-FAILED branch); a caller that also knows about unhealthy
 		 * checks passes it explicitly.
 		 */
 		recoveryMode?: boolean;
@@ -1893,7 +1894,7 @@
 	 */
 	type TileState = { word: string; ink: string } | null;
 	const inRecoveryMode = $derived(
-		recoveryMode ?? rollout?.status?.history?.[0]?.bakeStatus === 'Failed'
+		recoveryMode ?? recoveryModeReason(rollout, []) !== null
 	);
 	const fromTileMark = $derived<NodeState>(
 		fromTileRole === 'failing'

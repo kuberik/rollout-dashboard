@@ -29,7 +29,7 @@
 	import RecoveryModeWarningModal from './RecoveryModeWarningModal.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
-	import { apiPath } from '$lib/api/urls';
+	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import type { HealthCheck, Rollout } from '../../types';
 	import type { AutoDeployState } from '$lib/view-models/auto-deploy';
@@ -60,7 +60,7 @@
 		rollout: Rollout | null | undefined;
 		cluster: string;
 		/** The page's own visible checks; omitted → fetched here. */
-		healthChecks?: HealthCheck[];
+		healthChecks?: HealthCheck[] | null;
 		autoDeploy?: AutoDeployState | null;
 		isPinVersionMode?: boolean;
 		initialSelectedVersion?: string | null;
@@ -77,25 +77,42 @@
 
 	// Same key and fetch as the Overview's own `healthChecksQuery`, so the
 	// two share one cache entry. Only runs when the page passed no list.
+	// A failed load is retried as the flow opens; the loading dialog covers it.
+	let refetching = $state(false);
+	// `null` from the page = its own load failed: the flow asks the shared cache
+	// itself (and refetches as it opens) rather than trusting the page's list.
 	const healthChecksQuery = createQuery(() => ({
-		queryKey: ['health-checks', namespace, name, cluster],
-		queryFn: async () => {
-			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/health-checks`));
-			if (!res.ok) return { healthChecks: [] };
-			return res.json();
-		},
-		enabled: healthChecks === undefined && Boolean(rollout?.spec?.healthCheckSelector),
+		...healthChecksQueryOptions(namespace, name, cluster),
+		enabled: !healthChecks && Boolean(rollout?.spec?.healthCheckSelector),
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 
-	const checks = $derived<HealthCheck[]>(
+	// `null` = the fetch failed (non-2xx or thrown): unknown, not "no checks".
+	const checks = $derived<HealthCheck[] | null>(
 		healthChecks ??
-			visibleHealthChecksFor(rollout, (healthChecksQuery.data?.healthChecks as HealthCheck[]) ?? [])
+			(healthChecksQuery.isError
+				? null
+				: visibleHealthChecksFor(
+						rollout,
+						(healthChecksQuery.data?.healthChecks as HealthCheck[]) ?? []
+					))
+	);
+	// The verdict depends on checks this component fetches and they have not
+	// landed yet: deciding now would skip the Unhealthy consent step.
+	const checksPending = $derived(
+		!healthChecks &&
+			// A failed running build already decides it; no need to wait.
+			recoveryModeReason(rollout, []) === null &&
+			Boolean(rollout?.spec?.healthCheckSelector) &&
+			healthChecksQuery.data === undefined &&
+			!healthChecksQuery.isError ||
+		refetching
 	);
 	const reason = $derived<RecoveryReason | null>(recoveryModeReason(rollout, checks));
 
 	let showWarning = $state(false);
 	let showPicker = $state(false);
+	let waiting = $state(false);
 	let warningReason = $state<RecoveryReason>('previous-failed');
 
 	// `open` turning true starts the flow; the reason is read once, at that
@@ -105,11 +122,34 @@
 		if (!open) return;
 		untrack(() => {
 			if (showWarning || showPicker) return;
+			if (healthChecksQuery.isError && recoveryModeReason(rollout, []) === null) {
+				refetching = true;
+				healthChecksQuery.refetch().finally(() => (refetching = false));
+			}
 			const r = reason;
-			if (r) {
+			if (checksPending) {
+				warningReason = 'unhealthy-health-checks';
+				waiting = true;
+				showWarning = true;
+			} else if (r) {
 				warningReason = r;
 				showWarning = true;
 			} else {
+				showPicker = true;
+			}
+		});
+	});
+	// Checks settled while the loading warning is up: decide now, in place.
+	$effect(() => {
+		if (!waiting || checksPending) return;
+		const r = reason;
+		untrack(() => {
+			waiting = false;
+			if (!showWarning) return;
+			if (r) {
+				warningReason = r;
+			} else {
+				showWarning = false;
 				showPicker = true;
 			}
 		});
@@ -127,7 +167,7 @@
 </script>
 
 <ChangeVersionModal
-	recoveryMode={reason !== null}
+	recoveryMode={reason !== null && reason !== 'health-checks-unavailable'}
 	bind:open={showPicker}
 	rollout={rollout ?? null}
 	{autoDeploy}
@@ -145,6 +185,7 @@
 <RecoveryModeWarningModal
 	bind:open={showWarning}
 	reason={warningReason}
+	loading={waiting}
 	versionDisplay={selectedVersionDisplay(rollout, initialSelectedVersion)}
 	previousVersionDisplay={previousVersionDisplay(rollout)}
 	rollout={rollout ?? null}

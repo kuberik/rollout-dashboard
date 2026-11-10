@@ -98,3 +98,24 @@ export function healthChecksByRollout(
 	}
 	return out;
 }
+
+
+/**
+ * THE ONE FETCH OF ONE ROLLOUT'S HEALTH CHECKS (`/rollouts/:ns/:name/health-checks`).
+ * Overview, Gates and `ChangeVersionFlow` share this key, so they share one
+ * cache entry. It THROWS on a non-2xx: a page that resolved a 500 to
+ * `{healthChecks: []}` poisoned the entry for every other page ("no checks"
+ * instead of "could not load"), and the recovery-mode warning was skipped.
+ * `retry: false`: the poll is the retry; an error should surface now.
+ */
+export function healthChecksQueryOptions(namespace: string, name: string, cluster: string) {
+	return {
+		queryKey: ['health-checks', namespace, name, cluster] as const,
+		queryFn: async (): Promise<{ healthChecks: HealthCheck[] }> => {
+			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/health-checks`));
+			if (!res.ok) throw new Error(`health checks: HTTP ${res.status}`);
+			return res.json();
+		},
+		retry: false as const
+	};
+}

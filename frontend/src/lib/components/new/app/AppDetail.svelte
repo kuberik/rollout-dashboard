@@ -39,7 +39,7 @@
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
 	import StarToggle from '$lib/components/StarToggle.svelte';
 	import PromotionLane from '$lib/components/PromotionLane.svelte';
-	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import ChangeVersionFlow from '$lib/components/ChangeVersionFlow.svelte';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import { CodeBranchOutline, ClockOutline, ChevronRightOutline, UndoOutline, CheckOutline, PlaySolid } from 'flowbite-svelte-icons';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
@@ -335,7 +335,7 @@
 		</div>
 	</div>
 
-	<ChangeVersionModal bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster} />
+	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} />
 {/if}
 
 <style>

@@ -155,3 +155,12 @@ describe('fleet health checks — unknown is never "none" (hc-v2, backend contra
 		expect(rolloutHealthChecks(res(['prod/other-ns', 'other-ns']))).toHaveLength(2);
 	});
 });
+
+import { healthChecksQueryOptions } from './health-checks';
+describe('healthChecksQueryOptions', () => {
+	it('a non-2xx THROWS: it must never cache "no checks" for the other pages', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 500 })));
+		await expect(healthChecksQueryOptions('orders', 'api', 'hub').queryFn()).rejects.toThrow(/500/);
+		vi.unstubAllGlobals();
+	});
+});

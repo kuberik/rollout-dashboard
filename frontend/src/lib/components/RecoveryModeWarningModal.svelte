@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	/**
 	 * ROLE: the one-sentence consent step that opens before a deploy or a
 	 * rollback which will run in RECOVERY MODE (the controller waits for
@@ -35,11 +36,13 @@
 	import type { Rollout } from '../../types';
 	import { deployIntent } from '$lib/view-models/deploy-risk';
 
-	type Reason = 'previous-failed' | 'unhealthy-health-checks';
+	type Reason = import('$lib/view-models/change-version-entry').RecoveryReason;
 
 	interface Props {
 		open: boolean;
 		reason: Reason;
+		/** Health checks the verdict depends on are still loading: skeleton in place of the sentence, Continue disabled. */
+		loading?: boolean;
 		/** The build about to deploy, as displayed (`3f1ed09`). */
 		versionDisplay?: string | null;
 		/** The build that failed (`history[0]`), as displayed. */
@@ -61,6 +64,7 @@
 	let {
 		open = $bindable(),
 		reason,
+		loading = false,
 		versionDisplay = null,
 		previousVersionDisplay = null,
 		rollout = null,
@@ -103,8 +107,10 @@
 	const isRollback = $derived(intent?.direction === 'rollback');
 	const act = $derived(isRollback ? 'rollback' : 'deploy');
 
+	// The SAME title whether the verdict is loading, unavailable or decided, so
+	// the dialog's heading does not change under the reader (Deploy and Roll back alike).
 	const title = $derived.by(() => {
-		if (!versionDisplay || !intent) return `Deploy to ${where} in recovery mode`;
+		if (!versionDisplay || !intent) return `Deploy to ${where}`;
 		return isRollback
 			? `Roll back ${where} to ${versionDisplay}`
 			: `Deploy ${versionDisplay} to ${where}`;
@@ -112,12 +118,20 @@
 
 	/** ONE sentence: why recovery mode applies, and what it does next. */
 	const summary = $derived.by(() => {
+		if (reason === 'health-checks-unavailable') {
+			return `Health checks couldn't be loaded, so the dashboard can't tell whether this ${act} runs in recovery mode.`;
+		}
+		const prev = previousVersionDisplay;
 		const cause =
 			reason === 'previous-failed'
-				? previousVersionDisplay
-					? `${previousVersionDisplay} failed`
-					: 'The last deploy failed'
-				: 'Health checks are unhealthy';
+				? prev ? `${prev} failed` : 'The last deploy failed'
+				: reason === 'previous-cancelled'
+					? prev ? `${prev} was cancelled before it finished` : 'The last deploy was cancelled before it finished'
+					: reason === 'previous-unfinished'
+						? prev
+							? `${prev} hasn't finished (it is still deploying or baking)`
+							: "The current deployment hasn't finished (it is still deploying or baking)"
+						: 'Health checks are unhealthy';
 		return `${cause}, so this ${act} runs in recovery mode: it waits for health checks to recover instead of failing on them.`;
 	});
 
@@ -164,7 +178,14 @@
 			     `[data-autofocus]` first, so the open lands here (no ring on
 			     Cancel) and Tab still reaches Cancel → Continue in order. -->
 			<div class="px-4 py-4 outline-none" data-autofocus tabindex="-1">
-				<p id="rmw-summary" class="t-body text-fg-muted">{summary}</p>
+				{#if loading}
+					<div id="rmw-summary" class="space-y-2" aria-busy="true">
+						<SkeletonBar width="w-full" height="h-[15px]" />
+						<SkeletonBar width="w-2/3" height="h-[15px]" />
+					</div>
+				{:else}
+					<p id="rmw-summary" class="t-body text-fg-muted">{summary}</p>
+				{/if}
 			</div>
 		</div>
 
@@ -186,6 +207,7 @@
 				<button
 					type="button"
 					class="btn btn-primary btn-sm max-sm:min-h-11 max-sm:flex-1 max-sm:basis-0"
+					disabled={loading}
 					onclick={() => {
 						open = false;
 						onContinue();

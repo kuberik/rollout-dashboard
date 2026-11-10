@@ -11,13 +11,28 @@
  * the warning's sentence needs, and `ChangeVersionFlow.svelte` is the one
  * component that mounts the warning and the picker together.
  *
- * The predicate is the Overview's, moved verbatim (including its 2026-09-13
- * fix: only `Failed` is a failure; an in-flight deploy is not).
+ * The predicate started as the Overview's and now predicts the CONTROLLER
+ * (rollout_controller.go:1188-1189): every bake status but `Succeeded` on the
+ * running entry enters recovery mode, worded per status: `Failed` is failed,
+ * `Cancelled` was cancelled, `Deploying`/`InProgress` has not finished. (The
+ * page still DRAWS only `Failed` as failing; that rule is separate.)
  */
 import type { HealthCheck, Rollout } from '../../types';
 import { getDisplayVersion } from '$lib/utils';
 
-export type RecoveryReason = 'previous-failed' | 'unhealthy-health-checks';
+export type RecoveryReason =
+	| 'previous-failed'
+	/** Cancelled: a newer deploy cut its bake short. Not a failure. */
+	| 'previous-cancelled'
+	/** Deploying / InProgress: still baking. Not a failure, and the controller
+	 *  (rollout_controller.go:1188-1189) still enters recovery mode. */
+	| 'previous-unfinished'
+	| 'unhealthy-health-checks'
+	/** The checks could not be loaded, so the dashboard cannot tell. The
+	 *  controller (rollout_controller.go setBakeFailureDisabledForNewDeploy)
+	 *  decides recovery mode itself and does not enter it when it cannot list
+	 *  checks either, so this reason never claims recovery mode. */
+	| 'health-checks-unavailable';
 
 /**
  * The cutoff before which a failing check's last error no longer counts: the
@@ -60,9 +75,20 @@ export function visibleHealthChecksFor(
  */
 export function recoveryModeReason(
 	rollout: Rollout | null | undefined,
-	visibleHealthChecks: HealthCheck[]
+	visibleHealthChecks: HealthCheck[] | null
 ): RecoveryReason | null {
-	if (rollout?.status?.history?.[0]?.bakeStatus === 'Failed') return 'previous-failed';
+	// The controller's rule (rollout_controller.go setBakeFailureDisabledForNewDeploy):
+	// ANY bake status other than Succeeded on the running entry is a recovery
+	// trigger, not only 'Failed'. This predicts the controller; how the page
+	// DRAWS a failed state is a separate rule (only 'Failed' reads as failing).
+	const bake = rollout?.status?.history?.[0]?.bakeStatus;
+	// Statuses (rollout_types.go:423-427): Failed -> failed; Cancelled -> cancelled;
+	// Deploying/InProgress (and any future non-Succeeded value) -> unfinished.
+	if (bake === 'Failed') return 'previous-failed';
+	if (bake === 'Cancelled') return 'previous-cancelled';
+	if (bake && bake !== 'Succeeded') return 'previous-unfinished';
+	// `null` = the list could not be loaded. Never read that as "no checks".
+	if (visibleHealthChecks === null) return 'health-checks-unavailable';
 	if (visibleHealthChecks.some((hc) => hc.status?.status === 'Unhealthy')) {
 		return 'unhealthy-health-checks';
 	}
@@ -85,4 +111,19 @@ export function selectedVersionDisplay(
 	if (!selectedTag) return null;
 	const release = rollout?.status?.availableReleases?.find((ar) => ar.tag === selectedTag);
 	return release ? getDisplayVersion(release) : selectedTag;
+}
+
+/**
+ * What a page hands `ChangeVersionFlow` / `FailurePanel` as `healthChecks`.
+ * `null` = the load FAILED (the flow says it cannot tell); `undefined` = still
+ * loading or never asked (the flow fetches/waits itself, so an unloaded list
+ * is never read as "no checks"); an array = the page's visible checks.
+ */
+export function flowHealthChecksFor(
+	q: { hasSelector: boolean; isSuccess: boolean; isError: boolean },
+	visible: HealthCheck[]
+): HealthCheck[] | null | undefined {
+	if (!q.hasSelector) return visible;
+	if (q.isError) return null;
+	return q.isSuccess ? visible : undefined;
 }

@@ -5,7 +5,8 @@
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
 	import { PlaySolid, UndoOutline } from 'flowbite-svelte-icons';
 	import StatementBanner from './StatementBanner.svelte';
-	import ChangeVersionModal from './ChangeVersionModal.svelte';
+	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
+	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import RetryTestsModal from './RetryTestsModal.svelte';
 	import RetryConfirmModal from './RetryConfirmModal.svelte';
 	import { getDisplayVersion } from '$lib/utils';
@@ -26,7 +27,8 @@
 		open?: boolean;
 		rollout: Rollout;
 		failedHCList: Array<{ name: string; namespace?: string; message?: string }>;
-		healthChecks: HealthCheck[];
+		/** `null` = the load failed, `undefined` = still loading (see `flowHealthChecksFor`). */
+		healthChecks: HealthCheck[] | null | undefined;
 		failedStepTests: Array<{ test: RolloutTest; kruiseRolloutName: string }>;
 		stalledKruiseRollout: KruiseRollout | null | undefined;
 		canUpdate: boolean;
@@ -94,7 +96,7 @@
 	});
 	const rollout = $derived(held.rollout);
 	const failedHCList = $derived(held.failedHCList);
-	const healthChecks = $derived(held.healthChecks);
+	const healthChecks = $derived(held.healthChecks ?? []);
 	const failedStepTests = $derived(held.failedStepTests);
 	const stalledKruiseRollout = $derived(held.stalledKruiseRollout);
 
@@ -336,13 +338,14 @@
 	onSkipTests={() => onRetry(retryTests[0]?.kruiseRolloutName, 'skip')}
 />
 
-<ChangeVersionModal
+<ChangeVersionFlow
 	bind:open={showRollbackModal}
 	{rollout}
+	healthChecks={held.healthChecks ? visibleHealthChecksFor(rollout, held.healthChecks) : held.healthChecks}
 	isPinVersionMode={true}
 	initialSelectedVersion={rollbackVersionTag}
 	initialExplanation={rollbackExplanation}
-	{cluster}
+	cluster={cluster ?? ''}
 	{onSuccess}
 	{onError}
 />
