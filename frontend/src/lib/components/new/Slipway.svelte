@@ -26,7 +26,7 @@
 	import ActRow, { type Act } from '$lib/components/ActRow.svelte';
 	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, newestBuild, pathPosition, stepDetail, healthChecks, healthTally, checkClock, waitingBuild, approvalScope, approvalTarget, bakeDuration, holdSince, type TRow, type HomeState } from './data';
 	import { approveAct } from './approvals.svelte';
-	import { slipwayTitle, actionHref, actionLabel, approvalFact, envTheme, VIEWER } from './rollout-view';
+	import { slipwayTitle, slipwayLeadSplit, actionHref, actionLabel, approvalFact, envTheme, VIEWER } from './rollout-view';
 
 	let { row, hs = 'incident', action = null, compact = false, nested = false, class: className = '' }: { row: TRow; hs?: HomeState; action?: TRow['action']; /** r5 R20: drawn as a bounded nested card (border, radius 8, the card's surface) that closes before the next row; the caller owns the margin around it */ nested?: boolean; /** r34 v2 r4 (Y8): embedded in another page's list (/apps/<name>, /envs/<name>): the build is 14px mono, the rail is as tall as its steps (the pane owns the divider), and the check line is not drawn (the page's own statement carries it) */ compact?: boolean; class?: string } = $props();
 
@@ -101,6 +101,7 @@
 	const done = $derived(row.steps.filter((s) => s.state === 'done').length);
 	/* the lead's actions (content only; ActRow lays them out: a phone gets Details + the one action on one row, Open rollout is the row above's link) */
 	const lead = $derived<Act | null>(action ? (action.kind === 'approve' ? (approveAct(approvalTarget(row, hs), { key: 'slipway-action' }) ?? { label: 'Approve', href: actionHref(action), key: 'slipway-action' }) : { label: actionLabel(action), href: actionHref(action), icon: UndoOutline, key: 'slipway-action' }) : null);
+	const split = $derived(slipwayLeadSplit(lead, { failing, approve: action?.kind === 'approve' }));
 	const detailsAct = $derived<Act>({ label: more ? 'Hide details' : 'Details', onclick: () => (more = !more), icon: ChevronDownOutline, iconAfter: true, iconTurn: more, phoneOnly: true, key: 'slipway-details', data: { 'aria-expanded': String(more) } });
 	const openAct = $derived<Act>({ label: 'Open rollout', href: row.href, desktopOnly: true, key: 'slipway-open' });
 </script>
@@ -178,7 +179,7 @@
 						{#if reach && !(ap && sameBuild)}<div class="sw-r" data-slipway-facts><dt class="t-meta text-fg-muted">{reach.label}</dt><dd class="t-ui text-fg">{#if reach.build}<span class="t-code tabular-nums">{reach.build}</span>{' '}{/if}{reach.value}</dd></div>{/if}
 					</dl>
 					</div>
-			<div class="sw-actions" data-slipway-actions><ActRow align="end" primary={failing ? (lead ?? undefined) : undefined} secondary={[...(!compact ? [detailsAct, openAct] : []), ...(!failing && lead ? [{ ...lead, lead: true }] : [])]} /></div>
+			<div class="sw-actions" data-slipway-actions><ActRow align="end" primary={split.primary} secondary={[...(!compact ? [detailsAct, openAct] : []), ...split.leadSecondary]} /></div>
 		</div>
 </PipelineCard>
 
