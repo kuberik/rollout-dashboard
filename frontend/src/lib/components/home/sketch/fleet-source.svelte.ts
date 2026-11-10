@@ -9,8 +9,9 @@
  */
 import type { Change } from '$lib/api/changes';
 import type { RolloutHealthChecks } from '$lib/api/health-checks';
-import type { NetworkSchedules } from '$lib/api/schedules';
 import type { Environment, KruiseRollout, Kustomization, Rollout, RolloutDependency } from '../../../../types';
+
+import type { NetworkSchedules } from '$lib/api/schedules';
 
 export type GithubFacts = { configured: boolean | null; connected: boolean; login?: string; avatarUrl?: string };
 export type FleetSource = {
