@@ -1046,11 +1046,11 @@ lib/components/RetryTestsModal.svelte	text	Retry tests
 lib/components/RetryTestsModal.svelte	text	Skip tests
 lib/components/RetryTestsModal.svelte	code	Unknown test
 lib/components/RolloutNeighbourhood.svelte	text	… … here
-lib/components/RolloutNeighbourhood.svelte	code	… held
+lib/components/RolloutNeighbourhood.svelte	code	… held downstream
 lib/components/RolloutNeighbourhood.svelte	text	… never deployed …
 lib/components/RolloutNeighbourhood.svelte	text	… runs
+lib/components/RolloutNeighbourhood.svelte	text	Downstream ·
 lib/components/RolloutNeighbourhood.svelte	text	Gated by ·
-lib/components/RolloutNeighbourhood.svelte	text	Gates ·
 lib/components/RolloutNeighbourhood.svelte	aria-label	Gates of … in …
 lib/components/RolloutNeighbourhood.svelte	code	Holding …
 lib/components/RolloutNeighbourhood.svelte	code	Holding … here
