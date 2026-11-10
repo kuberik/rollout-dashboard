@@ -48,8 +48,11 @@ func getK8sReadClient(c *gin.Context) (*kubernetes.Client, bool) {
 // authorized as the actual signed-in operator (their OIDC bearer token). Use
 // this for every mutating route and every SelfSubjectAccessReview — never
 // downgrade these to getK8sReadClient's shared service-account identity.
+// writeClientFn is the write-client constructor; tests swap it for a fake.
+var writeClientFn = kubernetes.GetWriteClient
+
 func getK8sWriteClient(c *gin.Context) (*kubernetes.Client, bool) {
-	k8sClient, err := kubernetes.GetWriteClient(c)
+	k8sClient, err := writeClientFn(c)
 	if err != nil {
 		log.Printf("Failed to get Kubernetes write client: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -144,7 +147,7 @@ func writeUpstreamError(c *gin.Context, message string, err error) {
 // never the operator's write client: that would be a live cross-namespace LIST
 // under the user's RBAC. If the read client is unavailable every kind is
 // "unknown" (field still present).
-func rolloutWithGateKinds(c *gin.Context, _ *kubernetes.Client, r *rolloutv1alpha1.Rollout) interface{} {
+func rolloutWithGateKinds(c *gin.Context, r *rolloutv1alpha1.Rollout) interface{} {
 	if r == nil {
 		return r
 	}

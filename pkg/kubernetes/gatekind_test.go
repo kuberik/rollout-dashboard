@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
@@ -9,7 +10,9 @@ import (
 )
 
 func gateWith(labels map[string]string, owners ...string) *rolloutv1alpha1.RolloutGate {
+	av := []string{}
 	g := &rolloutv1alpha1.RolloutGate{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "g", Labels: labels}}
+	g.Spec.AllowedVersions = &av
 	for _, k := range owners {
 		g.OwnerReferences = append(g.OwnerReferences, metav1.OwnerReference{Kind: k, Name: "o"})
 	}
@@ -24,6 +27,11 @@ func TestGateKind(t *testing.T) {
 	}{
 		{"nil", nil, GateKindUnknown},
 		{"ownerless unlabelled is approval", gateWith(nil), GateKindApproval},
+		{"ownerless kill-switch with no allowedVersions is unknown", func() *rolloutv1alpha1.RolloutGate {
+			g := gateWith(nil)
+			g.Spec.AllowedVersions = nil
+			return g
+		}(), GateKindUnknown},
 		{"unrelated labels still approval", gateWith(map[string]string{"app": "x"}), GateKindApproval},
 		{"RolloutSchedule owner", gateWith(map[string]string{"gate.kuberik.com/schedule-name": "s"}, "RolloutSchedule"), GateKindSchedule},
 		{"ClusterRolloutSchedule owner", gateWith(nil, "ClusterRolloutSchedule"), GateKindSchedule},
@@ -77,5 +85,30 @@ func TestRolloutListWithGateKinds_InjectsKindOnEverySummary(t *testing.T) {
 	}
 	if len(out.Items[0].Status.Gates) != 3 {
 		t.Fatalf("gates = %d", len(out.Items[0].Status.Gates))
+	}
+}
+
+// The typed encoder must be the plain encoding plus kind, nothing else.
+func TestRolloutListWithGateKinds_OnlyAddsKind(t *testing.T) {
+	l, idx := benchList(5)
+	plain, _ := json.Marshal(l)
+	withKinds, err := json.Marshal(RolloutListWithGateKinds{RolloutList: l, Kinds: idx})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a, b map[string]interface{}
+	_ = json.Unmarshal(plain, &a)
+	_ = json.Unmarshal(withKinds, &b)
+	for _, it := range b["items"].([]interface{}) {
+		for _, g := range it.(map[string]interface{})["status"].(map[string]interface{})["gates"].([]interface{}) {
+			m := g.(map[string]interface{})
+			if m["kind"] != "approval" {
+				t.Fatalf("kind = %v", m["kind"])
+			}
+			delete(m, "kind")
+		}
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Fatalf("encoding differs beyond kind:\n%s\n%s", plain, withKinds)
 	}
 }

@@ -800,7 +800,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": rolloutWithGateKinds(c, k8sClient, updatedRollout),
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -841,7 +841,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": rolloutWithGateKinds(c, k8sClient, updatedRollout),
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -875,7 +875,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": rolloutWithGateKinds(c, k8sClient, updatedRollout),
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -920,7 +920,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": rolloutWithGateKinds(c, k8sClient, updatedRollout),
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -943,7 +943,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": rolloutWithGateKinds(c, k8sClient, updatedRollout),
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -977,7 +977,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": rolloutWithGateKinds(c, k8sClient, updatedRollout),
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 

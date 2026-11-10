@@ -3,10 +3,10 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -39,14 +39,15 @@ const (
 //     tier / previous wave"). Any other owner -> unknown.
 //  2. labels: gate.kuberik.com/schedule-name|schedule-kind -> schedule,
 //     gate.kuberik.com/dependency-name -> dependency.
-//  3. No owner and none of those labels -> approval.
+//  3. No owner, no schedule/dependency label, and spec.allowedVersions set
+//     (non-nil, possibly empty: the field the Approve action edits) ->
+//     approval. Anything else ownerless (kill-switch gates, custom-controller
+//     gates with no allowedVersions) -> unknown.
 //
 // There is NO explicit approval marker anywhere in the controllers (grepped
 // rollout-, environment-, deploy-, datadog-, prometheus-controller), so
-// "approval" is defined by absence: a hand-authored, ownerless, unlabelled gate
-// (the allowedVersions grant that the dashboard's Approve button edits).
-// Consequently a hand-authored ownerless gate of another purpose also reads as
-// approval; that is the accepted trade-off, not a guess about an owner.
+// "approval" is inferred from shape: ownerless, unlabelled, and carrying the
+// allowedVersions list that the dashboard's Approve button edits.
 //
 // The contract has no "check" or "github-deployment": no controller creates a
 // gate recognisable as either (the "ghd-" gates are Environment-owned
@@ -71,7 +72,7 @@ func GateKind(gate *rolloutv1alpha1.RolloutGate) string {
 	if gate.Labels[gateLabelDependencyName] != "" {
 		return GateKindDependency
 	}
-	if len(gate.OwnerReferences) == 0 {
+	if len(gate.OwnerReferences) == 0 && gate.Spec.AllowedVersions != nil {
 		return GateKindApproval
 	}
 	return GateKindUnknown
@@ -110,6 +111,39 @@ func (c *Client) GateKindIndex(ctx context.Context) GateKindIndex {
 	return NewGateKindIndex(gates.Items)
 }
 
+// The wrappers below encode in ONE typed pass: a shadow struct embeds the real
+// type and overrides only status.gates (the shallower field wins in
+// encoding/json), so no re-marshal / generic-map round trip is needed.
+
+type gateSummaryWithKind struct {
+	rolloutv1alpha1.RolloutGateStatusSummary
+	Kind string `json:"kind"`
+}
+
+type rolloutStatusWithKinds struct {
+	rolloutv1alpha1.RolloutStatus
+	Gates []gateSummaryWithKind `json:"gates,omitempty"`
+}
+
+type rolloutWithKindsJSON struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              rolloutv1alpha1.RolloutSpec `json:"spec,omitempty"`
+	Status            rolloutStatusWithKinds      `json:"status,omitempty"`
+}
+
+func toKindJSON(r *rolloutv1alpha1.Rollout, kinds GateKindIndex) rolloutWithKindsJSON {
+	out := rolloutWithKindsJSON{TypeMeta: r.TypeMeta, ObjectMeta: r.ObjectMeta, Spec: r.Spec}
+	out.Status.RolloutStatus = r.Status
+	if len(r.Status.Gates) > 0 {
+		out.Status.Gates = make([]gateSummaryWithKind, len(r.Status.Gates))
+		for i, g := range r.Status.Gates {
+			out.Status.Gates[i] = gateSummaryWithKind{RolloutGateStatusSummary: g, Kind: kinds.Lookup(r.Namespace, g.Name)}
+		}
+	}
+	return out
+}
+
 // RolloutListWithGateKinds marshals like the wrapped RolloutList but adds
 // "kind" to every status.gates[] entry.
 type RolloutListWithGateKinds struct {
@@ -121,11 +155,15 @@ func (l RolloutListWithGateKinds) MarshalJSON() ([]byte, error) {
 	if l.RolloutList == nil {
 		return []byte("null"), nil
 	}
-	raw, err := json.Marshal(l.RolloutList)
-	if err != nil {
-		return nil, err
+	out := struct {
+		metav1.TypeMeta `json:",inline"`
+		metav1.ListMeta `json:"metadata,omitempty"`
+		Items           []rolloutWithKindsJSON `json:"items"`
+	}{TypeMeta: l.TypeMeta, ListMeta: l.ListMeta, Items: make([]rolloutWithKindsJSON, len(l.Items))}
+	for i := range l.Items {
+		out.Items[i] = toKindJSON(&l.Items[i], l.Kinds)
 	}
-	return injectGateKinds(raw, l.Kinds, true)
+	return json.Marshal(out)
 }
 
 // RolloutWithGateKinds is the single-rollout counterpart.
@@ -138,76 +176,5 @@ func (r RolloutWithGateKinds) MarshalJSON() ([]byte, error) {
 	if r.Rollout == nil {
 		return []byte("null"), nil
 	}
-	raw, err := json.Marshal(r.Rollout)
-	if err != nil {
-		return nil, err
-	}
-	return injectGateKinds(raw, r.Kinds, false)
-}
-
-func injectGateKinds(raw []byte, kinds GateKindIndex, list bool) ([]byte, error) {
-	top := map[string]json.RawMessage{}
-	if err := json.Unmarshal(raw, &top); err != nil {
-		return nil, fmt.Errorf("gate kinds: %w", err)
-	}
-	if !list {
-		patched, err := patchRollout(raw, kinds)
-		if err != nil {
-			return nil, err
-		}
-		return patched, nil
-	}
-	var items []json.RawMessage
-	if len(top["items"]) == 0 || json.Unmarshal(top["items"], &items) != nil {
-		return raw, nil
-	}
-	for i := range items {
-		p, err := patchRollout(items[i], kinds)
-		if err != nil {
-			return nil, err
-		}
-		items[i] = p
-	}
-	b, err := json.Marshal(items)
-	if err != nil {
-		return nil, err
-	}
-	top["items"] = b
-	return json.Marshal(top)
-}
-
-func patchRollout(raw []byte, kinds GateKindIndex) ([]byte, error) {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return nil, err
-	}
-	var meta struct {
-		Namespace string `json:"namespace"`
-	}
-	_ = json.Unmarshal(obj["metadata"], &meta)
-	var status map[string]json.RawMessage
-	if json.Unmarshal(obj["status"], &status) != nil || len(status["gates"]) == 0 {
-		return raw, nil
-	}
-	var gates []map[string]json.RawMessage
-	if json.Unmarshal(status["gates"], &gates) != nil {
-		return raw, nil
-	}
-	for _, g := range gates {
-		var name string
-		_ = json.Unmarshal(g["name"], &name)
-		k, _ := json.Marshal(kinds.Lookup(meta.Namespace, name))
-		g["kind"] = k
-	}
-	gb, err := json.Marshal(gates)
-	if err != nil {
-		return nil, err
-	}
-	status["gates"] = gb
-	sb, err := json.Marshal(status)
-	if err != nil {
-		return nil, err
-	}
-	obj["status"] = sb
-	return json.Marshal(obj)
+	return json.Marshal(toKindJSON(r.Rollout, r.Kinds))
 }

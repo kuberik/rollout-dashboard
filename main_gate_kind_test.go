@@ -21,6 +21,10 @@ func gateKindFixture() []client.Object {
 	mk := func(name, owner string) *rolloutv1alpha1.RolloutGate {
 		g := &rolloutv1alpha1.RolloutGate{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: name}}
 		g.Spec.RolloutRef = &corev1.LocalObjectReference{Name: "app"}
+		if owner == "" {
+			av := []string{}
+			g.Spec.AllowedVersions = &av
+		}
 		if owner != "" {
 			g.OwnerReferences = []metav1.OwnerReference{{Kind: owner, Name: "o", APIVersion: "x/v1", UID: "u"}}
 		}
@@ -96,7 +100,9 @@ func TestRolloutPin_ResponseGateSummariesCarryKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(kubernetes.SetReadClientForTest(fc))
-	t.Cleanup(kubernetes.SetWriteClientForTest(fc))
+	prev := writeClientFn
+	writeClientFn = func(*gin.Context) (*kubernetes.Client, error) { return fc, nil }
+	t.Cleanup(func() { writeClientFn = prev })
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/rollouts/team-a/app/pin", strings.NewReader(`{"version":"v1"}`))
