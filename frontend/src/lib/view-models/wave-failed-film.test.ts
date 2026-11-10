@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { fixtureSource } from '$lib/components/home/sketch/home-data';
 import { environmentsPage } from '$lib/components/new/environments-page';
+import { bakeFailedOn, placeHolds } from '$lib/components/new/data';
 import { plural } from '$lib/components/new/envs-model';
 import { behindOfStatus } from '$lib/view-models/behind';
 import { newerReleaseCountLive } from '$lib/view-models/failed-builds';
@@ -63,5 +64,10 @@ describe('landing film worlds: the Production tile wave line, exact strings', ()
 	});
 	it('t=33: while us-east-1 still runs the failed build the wave-2 regions already do not count it', () => {
 		for (const s of WAVE2) expect(behindOfStatus(roOf(w33, s), fleetOf(w33))).toBe(0);
+	});
+	it('bakeFailedOn: us-east-1 failed 4.46.0-46 at t=33 (still runs it) but at t=46 (rolled back, retained Failed entry) it fails nothing', () => {
+		const at = (w: W) => { render(w); return bakeFailedOn(placeHolds('checkout-api', 'incident').find((p) => p.label === 'us-east-1')!, '4.46.0-46'); };
+		expect(at(w33)).toBe(true);
+		expect(at(w46)).toBe(false);
 	});
 });
