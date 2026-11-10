@@ -421,7 +421,8 @@ describe('healthHolds — the shared predicate detail and the Gates tab both rea
  * batch4 #6: a Pending check printed the controller's message under the
  * Pending chip — prometheus-controller's "No alerts firing for labels …" reads
  * as a healthy verdict on a check that has not been evaluated. Pending rows
- * print the product's own sentence and never the controller message.
+ * keep the controller message (it can be real information: alert pending,
+ * NoData) and drop it only when the WHOLE message is a complete healthy form.
  */
 describe('pendingRowText — Pending keeps real information, drops only text that reads healthy', () => {
 	const base = new Date('2026-09-21T12:00:00Z');
@@ -516,6 +517,13 @@ describe('readsHealthy — only a WHOLE message that is a complete healthy form 
 		'unknown',
 		'ready',
 		'no errors but latency high',
-		'0 errors in the last minute, 5 timeouts'
+		'0 errors in the last minute, 5 timeouts',
+		'No alerts firing for labels map[app:x]; 2 alerts pending',
+		'No alerts firing for labels map[app:x] but HighErrorRate is pending',
+		'No alerts firing for labels map[app:x] \u2014 evaluation failed',
+		'No alerts firing for labels map[app:x] (stale data)',
+		'No alerts firing for labels map[app:x]\nprometheus unreachable',
+		'No alerts firing for labels',
+		'No alerts firing for labels anything at all'
 	])('keeps: %j', (m) => expect(readsHealthy(m)).toBe(false));
 });

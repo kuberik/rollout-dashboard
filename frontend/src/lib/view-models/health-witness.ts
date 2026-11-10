@@ -351,7 +351,7 @@ export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
  * collapsed, trailing period removed.
  */
 const HEALTHY_FORMS: RegExp[] = [
-	/^no alerts firing( for labels( .*)?)?$/,
+	/^no alerts firing( for labels map\[[^\]]*\])?$/,
 	/^0 errors$/,
 	/^([1-9]\d*)(\/| of )\1 ready$/,
 	/^all [1-9]\d* resources ready$/,

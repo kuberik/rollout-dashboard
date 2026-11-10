@@ -106,7 +106,11 @@ describe('HealthChecksCard — one status grammar', () => {
 
 	test('a pending row never prints the controller message as a verdict (batch4 #6)', () => {
 		render(HealthChecksCard, {
-			props: { healthChecks: [hc('probe', 'Pending', { message: 'No alerts firing for labels' })] }
+			props: {
+				healthChecks: [
+					hc('probe', 'Pending', { message: 'No alerts firing for labels map[app:x]' })
+				]
+			}
 		});
 		const row = document.querySelector('[data-testid="hc-row"]')!;
 		expect(row.textContent).not.toMatch(/No alerts firing/);
