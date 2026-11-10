@@ -30,6 +30,9 @@
 	import Chip from './Chip.svelte';
 	import FailedCheckLine from './FailedCheckLine.svelte';
 	import HeldGlyph from './HeldGlyph.svelte';
+	import ObservationFigure from './ObservationFigure.svelte';
+	import { failingLead } from '$lib/view-models/attention';
+	import type { HealthObservation } from '$lib/../types';
 	import { canHover } from '$lib/can-hover.svelte';
 	import { blur } from 'svelte/transition';
 	import { Tooltip } from 'flowbite-svelte';
@@ -43,6 +46,7 @@
 		title,
 		check,
 		checkInk = true,
+		observations = null,
 		message,
 		messageDesktopOnly = false,
 		place,
@@ -77,6 +81,8 @@
 		title: string;
 		/** the failing check: printed as the tab prints it (red mark · name · message) */
 		check?: { name: string; message?: string };
+		/** the failing check's HealthCheck observations: a failed banner leads with the first drawable one as a figure (as the failure cards do) and the check line keeps its name + the budget */
+		observations?: HealthObservation[] | null;
 		checkInk?: boolean;
 		/** one sentence under the title (what the wait or hold means) */
 		message?: string;
@@ -135,12 +141,16 @@
 	);
 	const acts = $derived<Act[]>(severity === 'failed' && !primary && !secondary.length && openHref ? [{ label: 'Open rollout', href: openHref, after: true, key: 'open-rollout' }] : secondary);
 	const hasActions = $derived(!!primary || acts.length > 0);
-	const hasBody = $derived(!!(check || place || since || build || cause || fact || message || body));
+	/* the failure cards' rule (attention.ts): a measured figure leads, and the check line then says the name + the budget instead of repeating the figure in its message */
+	const figure = $derived(severity === 'failed' && check ? (() => { const l = failingLead(check, observations); return l.kind === 'check' ? null : l; })() : null);
+	const shownCheck = $derived(check && figure?.budget ? { name: check.name, message: figure.budget } : check);
+	const hasBody = $derived(!!(figure || check || place || since || build || cause || fact || message || body));
 </script>
 
 {#snippet bodySnip()}
 			<div class="flex min-w-0 flex-col gap-2" data-statement-body>
-				{#if check && !checkAfterMeta}<FailedCheckLine {check} danger ink={checkInk} />{/if}
+				{#if figure}<ObservationFigure fig={figure} />{/if}
+				{#if shownCheck && !checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} />{/if}
 				{#if place || since || build || cause || fact}
 					<!-- one .dot-list row at every width and in every banner (no fixed tracks: a track left a 50px hole between the sha and the badge) -->
 					<div class="dot-list min-w-0" data-statement-meta>
@@ -159,7 +169,7 @@
 						</div>
 					</div>
 				{/if}
-				{#if check && checkAfterMeta}<FailedCheckLine {check} danger ink={checkInk} />{/if}
+				{#if shownCheck && checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} />{/if}
 				{#if message}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{message}</p>{/if}
 				{#if body}{@render body()}{/if}
 			</div>

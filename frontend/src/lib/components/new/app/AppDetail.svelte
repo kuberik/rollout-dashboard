@@ -308,7 +308,7 @@
 			{/if}
 			{#if failRow}
 				<div data-ad-statement>
-					<StatementBanner severity="failed" title="Deployment failed" check={failCheck ?? undefined}
+					<StatementBanner severity="failed" title="Deployment failed" check={failCheck ?? undefined} observations={failRow.failure?.observations}
 						primary={failAct ? { label: 'Roll back', href: actionHref(failAct), icon: UndoOutline, key: 'rollback' } : undefined}
 						secondary={[
 							{ label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },
