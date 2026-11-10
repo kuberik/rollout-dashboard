@@ -90,6 +90,8 @@
 	});
 	/* installed BEFORE the children render, so their first derivation already reads the live source */
 	$effect.pre(() => { if (src) installLiveSource(src); });
+	/* the live source never outlives its gate: a stale snapshot must not shadow the route that mounts next (batch4 #3b M1) */
+	$effect(() => () => installLiveSource(null));
 	const ready = $derived(!!src && liveSource() === src);
 </script>
 

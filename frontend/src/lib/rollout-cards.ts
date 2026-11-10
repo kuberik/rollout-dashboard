@@ -364,6 +364,8 @@ export type RolloutCard = {
 	 * a perfectly ordinary rollout — see the note on `computeBehind`.
 	 */
 	behind: { fromEnv: string; version: string; behindBy: number | null } | null;
+	/** the "N newer builds" count the cards, palette and lanes print: `behindOfRollout` over this build's own fleet lists, so a build that failed upstream in its wave chain is not counted (batch4 #3b) */
+	behindCount?: number;
 	/**
 	 * ⛔ "1 BEHIND" AND "1 BEHIND, AND STUCK THERE" LOOK IDENTICAL WITHOUT
 	 * THIS. `rank`/`behind` only say a newer build exists; they say nothing
@@ -614,6 +616,7 @@ export function buildRolloutCards(
 			checkFailure: checkFailure(r),
 			rank,
 			behind,
+			behindCount: behindOfRollout(r, rank, { environments, rollouts }),
 			held: heldCardVerdict.held,
 			heldCause: heldCardVerdict.cause,
 			// ⭐ qa12 (squad-rollout gates-2 follow-up, 2026-10-11): the
@@ -703,7 +706,7 @@ export function buildRolloutCards(
  * env chip and ONE `[verdict][build]` chip, and that is the whole budget.
  */
 export function cardVerdict(
-	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held' | 'rank' | 'rollout'>>,
+	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held' | 'rank' | 'rollout' | 'behindCount'>>,
 	rankWord: string,
 	rankSentence: string
 ): { label: string; title: string } {
@@ -713,7 +716,7 @@ export function cardVerdict(
 	// upgrade path's size, and beside "no rule lets it through yet" it read
 	// as a contradiction. For a held row the number is how many are WAITING.
 	if (mark?.kind === 'held') {
-		const n = c.rank ? behindOfRollout(c.rollout, c.rank) : 0;
+		const n = c.rank ? (c.behindCount ?? behindOfRollout(c.rollout, c.rank)) : 0;
 		const waiting =
 			n > 0 ? ` ${n} newer build${n === 1 ? ' is' : 's are'} waiting.` : '';
 		return { label: rankWord, title: `${mark.title}${waiting}` };

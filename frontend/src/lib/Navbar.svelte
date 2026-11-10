@@ -2,7 +2,6 @@
 
 <script lang="ts">
 	import { isApplePlatform } from '$lib/shortcut-hint';
-	import { setWaveEnvironments } from '$lib/view-models/wave-environments.svelte';
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { page } from '$app/state';
@@ -176,8 +175,6 @@
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
 	const allEnvironments = $derived<Environment[]>(allRolloutsQuery.data?.environments?.items || []);
-	/* batch4 #3b: the shell holds the fleet's Environments on EVERY route (rollout tabs, palette, cards), so no count reads a build that failed upstream in a place's wave chain (failed-builds.ts) */
-	$effect(() => { setWaveEnvironments(allEnvironments); return () => setWaveEnvironments(null); });
 	// ⛔ U-2 CLASS FIX (2026-10-09). The command palette's `cardNeedsYou`
 	// filter reads `RolloutCard.stuck`, which now runs the same
 	// `detectRolloutStuck` join every list surface does — see

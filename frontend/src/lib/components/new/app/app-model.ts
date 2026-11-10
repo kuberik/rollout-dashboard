@@ -324,7 +324,7 @@ export type PlaceWait = { on: string; fact: string };
 /** the places a waiting place waits on (placeWait's rule), by name; null when it is not waiting */
 function waitingOn(p: PlaceHold, places: PlaceHold[]): { on: PlaceHold[]; name: string } | null {
 	const w = p.wave;
-	if (!w || p.state !== 'healthy' || p.holdReason !== 'rule' || holdWord(p) || !(p.heldBuilds.length || p.waveFailed)) return null;
+	if (!w || p.state !== 'healthy' || p.holdReason !== 'rule' || holdWord(p) || !(p.heldBuilds.length || p.upstreamFailed)) return null;
 	let on: PlaceHold[];
 	let name: string;
 	if (!w.leader) {
@@ -347,7 +347,7 @@ export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
 	const o = waitingOn(p, places);
 	if (!o || !p.heldBuilds.length) return null; /* a place held only by a build that failed upstream has no build waiting: the sentence is waveHold's */
 	const started = o.on.some((q) => q.state === 'checking') ? 'finish checking' : o.on.some((q) => q.state === 'deploying') ? 'finish deploying' : 'deploy';
-	return { on: o.name, fact: `to ${started} ${p.heldBuilds[0]?.build ?? p.waveFailed}` };
+	return { on: o.name, fact: `to ${started} ${p.heldBuilds[0]?.build ?? p.upstreamFailed}` };
 }
 /**
  * batch4 #3 (landing v5 R5): the same wait, with its CAUSE. After a wave-1 catch (us-east-1 failed the bake) the wave-2 places the environment
@@ -357,7 +357,7 @@ export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
 export function waveHold(p: PlaceHold, places: PlaceHold[], failedAt: (q: PlaceHold, build: string) => boolean = bakeFailedOn): { on: string; failed: string | null } | null {
 	const o = waitingOn(p, places);
 	if (!o) return null;
-	const build = p.heldBuilds[0]?.build ?? p.waveFailed!;
+	const build = p.heldBuilds[0]?.build ?? p.upstreamFailed!;
 	const f = o.on.filter((q) => failedAt(q, build)).map((q) => q.label);
 	return { on: o.name, failed: f.length ? [...new Set(f)].join(', ') : null };
 }

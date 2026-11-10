@@ -15,7 +15,7 @@ describe('environmentsPage', () => {
 			}
 			if (P.prod) {
 				const m = envsModel(hs);
-				expect(P.prod.regions!.cells.length + P.prod.regions!.healthy + (P.prod.regions!.held?.regions ?? 0)).toBe(m.busy.length + m.rest.length + (m.base ? 1 : 0));
+				expect(P.prod.regions!.cells.length + P.prod.regions!.healthy + (P.prod.regions!.held?.regions ?? 0) + (P.prod.regions!.waiting?.regions ?? 0)).toBe(m.busy.length + m.rest.length + (m.base ? 1 : 0));
 			}
 		});
 	}
@@ -72,17 +72,18 @@ describe('QA2 #5: a held build is not arriving', () => {
 });
 
 describe('batch4 #3: regions a wave holds are not plain "healthy"', () => {
-	it('calm: af-south-1 (healthy, waiting on the regions before it) is counted held, not healthy; the two sum to the old healthy count', async () => {
+	it('calm: af-south-1 (healthy, waiting its wave turn) is counted WAITING (neutral, nothing failed), not held and not healthy; the two sum to the old healthy count', async () => {
 		const { envsModel } = await import('./envs-model');
 		const { regionCells, environmentsPage } = await import('./environments-page');
 		const old = regionCells(envsModel('calm')).healthy;
 		const r = environmentsPage('calm').prod!.regions!;
-		expect(r.held, 'a held region is said').toMatchObject({ regions: 1, because: 'waiting for 3 prod regions' });
-		expect(r.healthy + r.held!.regions).toBe(old);
+		expect(r.held ?? null, 'nothing failed upstream: not held').toBeNull();
+		expect(r.waiting, 'a waiting region is said, neutrally').toMatchObject({ regions: 1, because: 'waiting for 3 prod regions' });
+		expect(r.healthy + r.waiting!.regions).toBe(old);
 	});
 	it('the held phrase says who failed the bake', async () => {
 		const { waveHeldPhrase } = await import('./environments-page');
 		expect(waveHeldPhrase(4, 'us-east-1', 'us-east-1')).toBe('4 regions held · us-east-1 failed the bake');
-		expect(waveHeldPhrase(1, '3 prod regions', null)).toBe('1 region held · waiting for 3 prod regions');
+		expect(waveHeldPhrase(1, '3 prod regions', null)).toBe('1 region waiting for 3 prod regions');
 	});
 });

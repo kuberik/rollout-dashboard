@@ -24,7 +24,7 @@ export type EnvTile = {
 	mark: TileMark; lead: StatePart & { ink: Ink }; parts: StatePart[]; calm: boolean; label: string;
 	arriving: { builds: number; apps: string[] };
 	last: TileLast | null;
-	regions: { cells: RegionCell[]; healthy: number; /** regions healthy on the old build that a wave holds (batch4 #3), with the cause in words; `healthy` excludes them */ held?: { regions: number; because: string } | null } | null;
+	regions: { cells: RegionCell[]; healthy: number; /** regions healthy on the old build that a wave holds (batch4 #3), with the cause in words; `healthy` excludes them */ held?: { regions: number; because: string } | null; /** regions only waiting their wave's turn (plain order, nothing failed): neutral ink */ waiting?: { regions: number; because: string } | null } | null;
 };
 export type Arrival = { key: string; app: string; build: string | null; place: string; age: string; href: string };
 export type EnvironmentsPage = { tiles: EnvTile[]; prod: EnvTile | null; arrivals: Arrival[]; window: string; empty: boolean };
@@ -58,29 +58,40 @@ export function regionCells(m: ReturnType<typeof envsModel>): { cells: RegionCel
 	return { cells: adverse, healthy: all.length - adverse.length };
 }
 
-/** "4 regions held · us-east-1 failed the bake" / "1 region held · waiting for 3 prod regions": the wave's hold, in the product's words (waiting for = the cause, held = the state) */
-export const waveHeldPhrase = (n: number, on: string, failed: string | null): string => `${plural(n, 'region')} held · ${failed ? `${failed} failed the bake` : `waiting for ${on}`}`;
-/** the healthy production regions a wave holds: regions where some app's place is healthy on an older build but its wave has not been let through (app-model waveHold, placeWait's rule), counted once per region, named by the first cause */
-export function waveHeldRegions(hs: HomeState, healthy: Set<string>, holdsOf: (app: string) => PlaceHold[] = (a) => placeHolds(a, hs), appNames: string[] = apps(hs).items.map((a) => a.app), failedAt?: (q: PlaceHold, build: string) => boolean): { labels: Set<string>; because: string } | null {
-	const labels = new Set<string>();
-	let on = '', failed: string | null = null;
+/** "4 regions held · us-east-1 failed the bake" (held ink: a failure upstream holds them) / "1 region waiting for 3 prod regions" (neutral: plain wave order, normal progress) */
+export const waveHeldPhrase = (n: number, on: string, failed: string | null): string => failed ? `${plural(n, 'region')} held · ${failed} failed the bake` : `${plural(n, 'region')} waiting for ${on}`;
+type WaveGroup = { labels: Set<string>; because: string };
+/**
+ * the healthy production regions a wave keeps from a newer build (app-model waveHold, placeWait's rule), counted once per region, in TWO groups:
+ * `held` = a failure upstream holds them (batch4 #3, only while the failing site still runs the failed build); `waiting` = plain wave order, normal
+ * progress with nothing wrong. A region some app's failure holds is `held` only. Each group's `because` names only what holds ITS regions
+ * (the failing sites of the apps that hold them, or the first thing they wait on), never one app's failure borrowed for the others.
+ */
+export function waveHeldRegions(hs: HomeState, healthy: Set<string>, holdsOf: (app: string) => PlaceHold[] = (a) => placeHolds(a, hs), appNames: string[] = apps(hs).items.map((a) => a.app), failedAt?: (q: PlaceHold, build: string) => boolean): { held: WaveGroup | null; waiting: WaveGroup | null } {
+	const failedBy = new Map<string, Set<string>>(), waitsOn = new Map<string, string>();
 	for (const app of appNames) {
 		const P = holdsOf(app);
 		for (const p of P) {
 			if (p.tier !== 'prod' || !healthy.has(p.label)) continue;
 			const h = waveHold(p, P, failedAt);
 			if (!h) continue;
-			if (!labels.size || (!failed && h.failed)) { on = h.on; failed = h.failed; }
-			labels.add(p.label);
+			if (h.failed) { const set = failedBy.get(p.label) ?? new Set<string>(); h.failed.split(', ').forEach((x) => set.add(x)); failedBy.set(p.label, set); }
+			else if (!waitsOn.has(p.label)) waitsOn.set(p.label, h.on);
 		}
 	}
-	return labels.size ? { labels, because: waveHeldPhrase(labels.size, on, failed).replace(/^.*? held · /, '') } : null;
+	const failedNames = [...new Set([...failedBy.values()].flatMap((x) => [...x]))];
+	const waiting = [...waitsOn.keys()].filter((l) => !failedBy.has(l));
+	return {
+		held: failedBy.size ? { labels: new Set(failedBy.keys()), because: `${failedNames.join(', ')} failed the bake` } : null,
+		waiting: waiting.length ? { labels: new Set(waiting), because: `waiting for ${waitsOn.get(waiting[0])}` } : null
+	};
 }
 
 function withWaveHold(rc: ReturnType<typeof regionCells>, hs: HomeState, m: ReturnType<typeof envsModel>): EnvTile['regions'] {
 	if (!rc.cells.length && !rc.healthy) return null;
-	const hold = rc.healthy ? waveHeldRegions(hs, new Set(m.rest.map((r) => r.label))) : null;
-	return hold ? { cells: rc.cells, healthy: rc.healthy - hold.labels.size, held: { regions: hold.labels.size, because: hold.because } } : rc;
+	const g = rc.healthy ? waveHeldRegions(hs, new Set(m.rest.map((r) => r.label))) : { held: null, waiting: null };
+	if (!g.held && !g.waiting) return rc;
+	return { cells: rc.cells, healthy: rc.healthy - (g.held?.labels.size ?? 0) - (g.waiting?.labels.size ?? 0), held: g.held ? { regions: g.held.labels.size, because: g.held.because } : null, waiting: g.waiting ? { regions: g.waiting.labels.size, because: g.waiting.because } : null };
 }
 
 export function environmentsPage(hs: HomeState): EnvironmentsPage {
