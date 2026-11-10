@@ -219,7 +219,8 @@ export function rolloutNeighbourhood(args: {
 		gates,
 		heldLinks,
 		total: upstream.length + downstream.length + gates.length,
-		holding: heldLinks + gates.filter((g) => g.state === 'blocked').length,
+		// A downstream link is a gate on ANOTHER rollout: it never "holds" this one.
+		holding: gatesOnThisRollout({ upstream, downstream, gates }).holding,
 		heldBuilds: [
 			...new Set([
 				...upstream.filter((l) => !l.chainPredecessor).flatMap((l) => l.held),
@@ -315,4 +316,27 @@ export function reconcileNeighbourhoodHolds(
 	});
 	const holding = reconciled.filter((l) => l.state === 'blocked' && !l.chainPredecessor).length;
 	return { upstream: reconciled, holding };
+}
+
+/**
+ * ⭐ THE ONE PREDICATE FOR "N of M gates holding" (batch4 #2). A gate holds
+ * THIS rollout only when its own condition stops this rollout's build: an
+ * upstream non-chain link or one of the focus's own gate boxes. A downstream
+ * link is a gate on ANOTHER rollout (a region held behind this one, by a wave
+ * or by this rollout's failure) and a chain predecessor is plain sequencing;
+ * neither is a gate here, in the numerator or the denominator. The Gates tab
+ * header, the card rollup and `hood.holding` all read this, so they cannot
+ * disagree with the per-gate "Nothing held" lines. Pass the RECONCILED
+ * upstream (`reconcileNeighbourhoodHolds`) when the breakdown is known.
+ */
+export function gatesOnThisRollout(h: {
+	upstream: readonly NeighbourLink[];
+	downstream: readonly NeighbourLink[];
+	gates: readonly GateBox[];
+}): { total: number; holding: number } {
+	const up = h.upstream.filter((l) => !l.chainPredecessor);
+	return {
+		total: up.length + h.gates.length,
+		holding: up.filter((l) => l.state === 'blocked').length + h.gates.filter((g) => g.state === 'blocked').length
+	};
 }

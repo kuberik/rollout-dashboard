@@ -128,7 +128,8 @@
 	} from '$lib/view-models/held';
 	import {
 		rolloutNeighbourhood,
-		reconcileNeighbourhoodHolds
+		reconcileNeighbourhoodHolds,
+		gatesOnThisRollout
 	} from '$lib/view-models/rollout-neighbourhood';
 	import { rolloutGateBoxes } from '$lib/view-models/rollout-gates';
 	import { deployWindowStart, healthQuietState } from '$lib/view-models/health-witness';
@@ -1235,11 +1236,11 @@
 	 * the focus holds on someone else, or its own deploy-window/approval
 	 * gates). Replaces `hood.holding` everywhere this tab states that count.
 	 */
-	const reconciledHolding = $derived(
-		reconciled.holding +
-			hood.downstream.filter((l) => l.state === 'blocked').length +
-			hood.gates.filter((g) => g.state === 'blocked').length
+	const gatesHere = $derived(
+		gatesOnThisRollout({ upstream: reconciled.upstream, downstream: hood.downstream, gates: hood.gates })
 	);
+	const reconciledHolding = $derived(gatesHere.holding);
+
 	/**
 	 * ⭐ THE REAL GATE TOTAL (qa11b correction, squad-rollout gates-2
 	 * follow-up, 2026-10-11). `hood.total` counts every upstream link,
@@ -1251,9 +1252,7 @@
 	 * from the denominator too, so "1 of 2" never again names a gate that
 	 * was never going to hold anything here in the first place.
 	 */
-	const realGateTotal = $derived(
-		hood.total - hood.upstream.filter((l) => l.chainPredecessor).length
-	);
+	const realGateTotal = $derived(gatesHere.total);
 
 	/**
 	 * The Gates header's one fact (rollout-tabs gates2, 2026-10-25; recovered
@@ -1482,6 +1481,19 @@
 	</li>
 {/snippet}
 
+<!-- batch4 #2: this tab's story is the build the gates are holding, so while one
+     is genuinely held HERE the title names the newest held build (`reallyHeldHere[0]`,
+     the same array the lead row and the card read), never the running one, and the DEPLOYED chip (the running build's state) is dropped so
+     it cannot sit beside a build that is not deployed. Nothing
+     held: no override, the shared header keeps the deployed build. Same slot and
+     nowrap group as the diff page's `diffTitle`. -->
+{#snippet heldTitle()}
+	<span class="inline-flex items-baseline gap-x-3 whitespace-nowrap" data-held-title>
+		<span class="t-title text-fg-disabled" aria-hidden="true">/</span>
+		<span class="t-code-lg text-fg-muted">{reallyHeldHere[0].build}</span>
+	</span>
+{/snippet}
+
 <svelte:head>
 	<!-- ⭐ (2026-10-09, integration round 3, item 4) `pageTitle()` — ONE
 	     DOCUMENT-TITLE FORMAT, PRODUCT-WIDE (`page-title.ts`'s own doc
@@ -1650,7 +1662,14 @@
 				banner's own disclosure trigger, etc.); this tab is the one
 				named exception.
 			-->
-			<RolloutTabHeader {name} {rollout} quietRollback subtitleOnPhone={false}>
+			<RolloutTabHeader
+				{name}
+				{rollout}
+				quietRollback
+				subtitleOnPhone={false}
+				titleAfter={reallyHeldHere.length > 0 ? heldTitle : undefined}
+				chip={reallyHeldHere.length > 0 ? null : undefined}
+			>
 				{#snippet meta()}
 					<!-- ⭐ ONE GATE FACT, ONE COUNT SOURCE (rollout-tabs gates2,
 					     2026-10-25; the sr-gates2 line the coordinator ruled on
