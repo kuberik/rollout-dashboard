@@ -11,6 +11,8 @@ import type { Change } from '$lib/api/changes';
 import type { RolloutHealthChecks } from '$lib/api/health-checks';
 import type { Environment, KruiseRollout, Kustomization, Rollout, RolloutDependency, RolloutTest } from '../../../../types';
 
+import type { NetworkSchedules } from '$lib/api/schedules';
+
 export type GithubFacts = { configured: boolean | null; connected: boolean; login?: string; avatarUrl?: string };
 export type FleetSource = {
 	rollouts: Rollout[];
@@ -28,6 +30,8 @@ export type FleetSource = {
 	/** lower-cased GitHub login of the signed-in viewer ('' when GitHub is not connected) */
 	me: string;
 	now: Date;
+	/** the RolloutSchedule / ClusterRolloutSchedule objects per cluster (`GET /api/schedules?namespace=all`, `''` = the hub): the join that lets a closed deploy window read as a window, not as a gate or a check. Optional: absent = not asked. */
+	schedules?: ReadonlyMap<string, NetworkSchedules> | null;
 };
 
 let installed = $state.raw<FleetSource | null>(null);

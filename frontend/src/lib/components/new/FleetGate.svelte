@@ -21,6 +21,7 @@
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { fleetHealthChecksQuery, rolloutHealthChecks } from '$lib/api/health-checks';
+	import { fetchNetworkSchedules } from '$lib/api/schedules';
 	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
 	import { changesQueryOptions, FetchChangesError } from '$lib/api/changes';
 	import { installLiveSource, liveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
@@ -39,6 +40,15 @@
 		rolloutsListQueryOptions({ options: { staleTime: staleTimeWhenHealthy(10000, 30000), refetchInterval: pollWhenHealthy(10000, 60000) } })
 	);
 	const hcQuery = createQuery(() => fleetHealthChecksQuery());
+	/* ONE /api/schedules request per cluster (the hub '' + the spokes), the join that lets a closed deploy window read as a window (data.ts windowCause) */
+	const clusterNames = $derived(['', ...(query.data?.clusters ?? []).map((c) => c.name)]);
+	const schedulesQuery = createQuery(() => ({
+		queryKey: ['network-schedules', clusterNames],
+		queryFn: () => fetchNetworkSchedules(clusterNames),
+		staleTime: staleTimeWhenHealthy(15000, 30000),
+		refetchInterval: pollWhenHealthy(30000, 60000),
+		enabled: !!query.data
+	}));
 	const ghStatus = createQuery(() => ({ queryKey: githubStatusQueryKey, queryFn: fetchGithubStatus, staleTime: 300_000, refetchInterval: false as const }));
 	const connected = $derived(!!ghStatus.data?.connected);
 	const changesQuery = createQuery(() => changesQueryOptions({ days: 30, enabled: connected }));
@@ -72,6 +82,7 @@
 			changes: changesQuery.data?.changes ?? [],
 			changesState,
 			healthChecks: hcQuery.data ? rolloutHealthChecks(hcQuery.data) : null,
+			schedules: schedulesQuery.data ?? null,
 			github: { configured: ghStatus.data?.configured ?? null, connected, login: ghStatus.data?.login, avatarUrl: ghStatus.data?.avatarUrl },
 			me: connected ? (ghStatus.data?.login ?? '').toLowerCase() : '',
 			now: clock

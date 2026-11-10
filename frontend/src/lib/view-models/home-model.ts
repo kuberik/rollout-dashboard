@@ -65,6 +65,7 @@ import type {
 	KruiseRollout
 } from '../../types';
 import type { Change } from '../api/changes';
+import type { NetworkSchedules } from '../api/schedules';
 import { healthChecksByRollout, type RolloutHealthChecks } from '../api/health-checks';
 import { buildRolloutCards, type RolloutCard } from '../rollout-cards';
 import { deployActs } from '../history-marks';
@@ -133,7 +134,7 @@ export type NeedsYouEntry = {
 	 *  `provider`: on a `'dependency'` hold, the one service its refusing
 	 *  dependency gates wait on (`payments-svc`), read off the same gates
 	 *  `EnvChange.waitsOn` is; absent when none or several. */
-	facts: { reason: HoldReason; checks?: string[]; provider?: string };
+	facts: { reason: HoldReason; checks?: string[]; provider?: string; window?: { label: string; opensAt: string | null } };
 	href: string;
 };
 
@@ -334,6 +335,8 @@ export type HomeModelInput = {
 	 *  either way, so no claim comes from absence. Absent or null: no check signals
 	 *  (a backend without the endpoint). */
 	healthChecks?: readonly RolloutHealthChecks[] | null;
+	/** the fleet's schedule objects per cluster (`fetchNetworkSchedules`): joined into the gate context so a closed deploy window classifies as a clock (`Deploy window opens Mon 09:00`), not as a nameless gate or a failing check. Absent: no join (`schedulesExpected: false`). */
+	schedulesByCluster?: Map<string, NetworkSchedules>;
 };
 
 const SKIP_STATES: readonly PrState[] = ['not-built', 'cancelled', 'queued', 'promoting'];
@@ -892,6 +895,10 @@ function needsYouFacts(c: RolloutCard, holdOf?: HoldNamer): NeedsYouEntry['facts
 		const checks = holdOf?.(c).checks;
 		return checks ? { reason, checks } : { reason };
 	}
+	if (reason === 'clock') {
+		const window = holdOf?.(c).window;
+		return window ? { reason, window } : { reason };
+	}
 	if (reason === 'dependency') {
 		const provider = holdOf?.(c).provider;
 		return provider ? { reason, provider } : { reason };
@@ -958,7 +965,7 @@ function needsYouCategory(c: RolloutCard): string {
  *  `'dependency'` hold's provider when its refusing dependency gates name
  *  exactly one (`classifyGate`'s RolloutDependency join, `subjectKind:
  *  'service'`, the same subject `EnvChange.waitsOn` reads off `PrCell`). */
-type HoldNamer = (c: RolloutCard) => { checks?: string[]; provider?: string };
+type HoldNamer = (c: RolloutCard) => { checks?: string[]; provider?: string; window?: { label: string; opensAt: string | null } };
 
 function holdNamer(
 	gateContext: GateContext,
@@ -978,7 +985,9 @@ function holdNamer(
 					.map((g) => g.subject as string)
 			)
 		];
+		const win = story.gates.find((g) => g.clears === 'clock');
 		return {
+			...(win ? { window: { label: win.label ?? 'deploy window', opensAt: win.clearsAt } } : {}),
 			...(checks.length ? { checks } : {}),
 			...(providers.length === 1 ? { provider: providers[0] } : {})
 		};
@@ -1200,7 +1209,8 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
 		rollouts,
 		environments: { items: environments },
 		rolloutDependencies: rolloutDependencies ?? null,
-		schedulesExpected: false
+		schedulesByCluster: input.schedulesByCluster,
+		schedulesExpected: input.schedulesByCluster != null
 	});
 	const cards = withHealthWitness(
 		buildRolloutCards(rollouts, environments, now, cardCtx.gateContext, cardCtx.contractHoldsFor)
