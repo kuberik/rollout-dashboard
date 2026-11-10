@@ -37,4 +37,13 @@ describe('DeploymentPipelineCard Health checks row on a failed load', () => {
 		expect(container.textContent).toContain('Unavailable');
 		expect(container.textContent).not.toContain('Healthy');
 	});
+	test('a failed load PLUS a failed bake reads Failed and names the recorded checks', () => {
+		const failedEntry = { bakeStatus: 'Failed', timestamp: new Date().toISOString(), version: { tag: 't' }, failedHealthChecks: [{ name: 'error-rate' }, { name: 'p99-latency' }] };
+		const { container } = render(DeploymentPipelineCard, {
+			props: base({ healthChecksUnavailable: true, latestEntry: failedEntry, rollout: { metadata: { name: 'r', namespace: 'ns' }, spec: { healthCheckSelector: { matchLabels: { a: 'b' } } }, status: { history: [failedEntry] } } }) as any
+		});
+		expect(container.textContent).not.toContain('Unavailable');
+		expect(container.textContent).toContain('Failed');
+		expect(container.textContent).toContain('error-rate, p99-latency');
+	});
 });

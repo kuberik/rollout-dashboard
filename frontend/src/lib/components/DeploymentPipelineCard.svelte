@@ -177,6 +177,11 @@
 	let bakeIsInProgress = $derived(allStagesDone && latestEntry.bakeStatus === 'InProgress');
 	let bakeIsSucceeded = $derived(allStagesDone && latestEntry.bakeStatus === 'Succeeded');
 	let bakeIsFailed = $derived(allStagesDone && latestEntry.bakeStatus === 'Failed');
+	let recordedFailedCheckNames = $derived<string[]>(
+		((latestEntry?.failedHealthChecks ?? []) as Array<{ name?: string }>)
+			.map((c) => c?.name ?? '')
+			.filter(Boolean)
+	);
 	let hasHCSelector = $derived(Boolean(rollout.spec?.healthCheckSelector));
 	let allHCHealthy = $derived(
 		healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')
@@ -563,6 +568,9 @@
 
 	let finalHCStatus = $derived<{ status: NodeStatus; label: string }>(
 		(() => {
+			// The recorded failure wins over an unreadable LIVE list: "Unavailable"
+			// describes only the current load, never the history's verdict.
+			if (bakeIsFailed && healthChecksUnavailable) return { status: 'failed', label: 'Failed' };
 			if (healthChecksUnavailable)
 				return { status: 'pending', label: HEALTH_CHECKS_UNAVAILABLE.label };
 			if (bakeIsFailed && !allHCHealthy) return { status: 'failed', label: 'Failed' };
@@ -827,6 +835,11 @@
 				<span class="t-meta flex-shrink-0 text-fg-subtle">{label}</span>
 			{/if}
 		</div>
+
+		{#if extra === 'hc' && status === 'failed' && recordedFailedCheckNames.length > 0}
+			<!-- The history's own snapshot names what failed, so it survives an unreadable live list. -->
+			<p class="t-meta mt-1 pl-5 text-fg-subtle">{recordedFailedCheckNames.join(', ')}</p>
+		{/if}
 
 		{#if extra === 'tests' && sd}
 			{#if sd.hasTests}
