@@ -1170,7 +1170,9 @@ export function waveInfoOfHref(href: string): WaveInfo | null {
 }
 /** true when `build` (as the tab names it) failed its bake in the place a rollout href names: a Failed entry in its history (batch4 #3: "us-east-1 failed the bake") */
 export function bakeFailedOn(q: { href: string }, build: string): boolean {
-	return (rawOf(q.href)?.status.history ?? []).some((h) => h.bakeStatus === 'Failed' && [h.version.version, h.version.tag, h.version.revision].some((x) => x && shortBuild(x) === build));
+	const st = rawOf(q.href)?.status;
+	const entry = (st?.history ?? []).find((h) => [h.version.version, h.version.tag, h.version.revision].some((x) => x && shortBuild(x) === build));
+	return !!entry && failedHere(st as never, entry.version); /* the ONE failed-build rule (failed-builds.ts): that build's latest attempt here failed */
 }
 export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; heldBuilds: ReturnType<typeof candidateBuilds>; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.
