@@ -8,7 +8,7 @@
  * runs HEALTHY in the tier upstream of it, for a place no approval or rule holds.
  */
 import { approvalWord, severity } from '../state-words';
-import { tabPill, deployedHistory, streamBuilds, newestBuild, ago, buildIdentity, type PlaceHold, type GateInfo, type TRow, type TierKey } from '../data';
+import { tabPill, deployedHistory, bakeFailedOn, streamBuilds, newestBuild, ago, buildIdentity, type PlaceHold, type GateInfo, type TRow, type TierKey } from '../data';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 
 const ORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
@@ -321,10 +321,10 @@ export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = f
  * Only a HEALTHY place a promotion gate keeps a newer build from: one a real rule, an approval or a failing check holds has its own word.
  */
 export type PlaceWait = { on: string; fact: string };
-export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
+/** the places a waiting place waits on (placeWait's rule), by name; null when it is not waiting */
+function waitingOn(p: PlaceHold, places: PlaceHold[]): { on: PlaceHold[]; name: string } | null {
 	const w = p.wave;
 	if (!w || p.state !== 'healthy' || p.holdReason !== 'rule' || holdWord(p) || !p.heldBuilds.length) return null;
-	const build = p.heldBuilds[0].build;
 	let on: PlaceHold[];
 	let name: string;
 	if (!w.leader) {
@@ -341,9 +341,25 @@ export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
 			name = t ?? '';
 		}
 	}
-	if (!on.length) return null;
-	const started = on.some((q) => q.state === 'checking') ? 'finish checking' : on.some((q) => q.state === 'deploying') ? 'finish deploying' : 'deploy';
-	return { on: name, fact: `to ${started} ${build}` };
+	return on.length ? { on, name } : null;
+}
+export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
+	const o = waitingOn(p, places);
+	if (!o) return null;
+	const started = o.on.some((q) => q.state === 'checking') ? 'finish checking' : o.on.some((q) => q.state === 'deploying') ? 'finish deploying' : 'deploy';
+	return { on: o.name, fact: `to ${started} ${p.heldBuilds[0].build}` };
+}
+/**
+ * batch4 #3 (landing v5 R5): the same wait, with its CAUSE. After a wave-1 catch (us-east-1 failed the bake) the wave-2 places the environment
+ * controller refuses read plain "healthy" on Environments. They are healthy on the old build, but a wave holds them, and the page says so:
+ * `on` = who they wait on (placeWait's own name, one blocker source), `failed` = the site(s) among them that failed the held build, else null.
+ */
+export function waveHold(p: PlaceHold, places: PlaceHold[], failedAt: (q: PlaceHold, build: string) => boolean = bakeFailedOn): { on: string; failed: string | null } | null {
+	const o = waitingOn(p, places);
+	if (!o) return null;
+	const build = p.heldBuilds[0].build;
+	const f = o.on.filter((q) => failedAt(q, build)).map((q) => q.label);
+	return { on: o.name, failed: f.length ? [...new Set(f)].join(', ') : null };
 }
 /** the places a "Pinned to <build> in <place>" hold (data.ts holds) names, by PlaceHold.place */
 export const pinnedPlaces = (holds: string[]): Set<string> => new Set(holds.map((h) => /^Pinned to \S+ in (.+)$/.exec(h)?.[1]).filter((x): x is string => !!x));

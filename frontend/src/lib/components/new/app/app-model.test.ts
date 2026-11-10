@@ -214,3 +214,23 @@ describe('placeWait: a healthy place its rollout order has not reached', () => {
 		expect(placeWait(mk('a', 2, false, { wave: null }), ps)).toBeNull();
 	});
 });
+
+/* batch4 #3: the wave hold, with its cause: wave 1 caught the build (us-east-1 failed the bake) and the wave-2 places are held by it. */
+import { waveHold } from './app-model';
+describe('waveHold: why a healthy place its wave has not reached is held', () => {
+	const hb = (build: string) => ({ build, title: null, author: null, created: '2026-01-02T00:00:00Z', here: true });
+	const mk = (site: string, wave: number, leader: boolean, over: Record<string, unknown> = {}) => ({ wave: { site, wave, leader, follows: leader ? null : 'ap-southeast-2', multi: true }, env: site, label: site, place: site, tier: 'prod', state: 'healthy', href: `/rollouts/prod/${site}/checkout-api`, deployedBuild: '4.45.0-45', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '' }, heldBuilds: [hb('4.46.0-46')], runs: '4.45.0-45', ...over }) as never;
+	const places = () => [mk('us-east-1', 1, true, { state: 'rolled-back', holdReason: null, heldBuilds: [] }), mk('ap-southeast-2', 2, true), mk('eu-central-1', 2, false)];
+	it('names the wave-1 site that failed the held build', () => {
+		const ps = places();
+		expect(waveHold(ps[1], ps, (q, b) => q.label === 'us-east-1' && b === '4.46.0-46')).toEqual({ on: 'us-east-1', failed: 'us-east-1' });
+	});
+	it('without a failure it is a plain wait on the earlier wave', () => {
+		const ps = places();
+		expect(waveHold(ps[1], ps, () => false)).toEqual({ on: 'us-east-1', failed: null });
+	});
+	it('null for a place that is not waiting', () => {
+		const ps = places();
+		expect(waveHold(ps[0], ps, () => true)).toBeNull();
+	});
+});

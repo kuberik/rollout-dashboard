@@ -10,7 +10,8 @@
  */
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { envsModel, plural, type Mark } from './envs-model';
-import { inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
+import { waveHold } from './app/app-model';
+import { apps, placeHolds, inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
 
 export type Ink = 'danger' | 'held' | 'active' | 'muted';
 export type StatePart = { text: string; you?: string };
@@ -23,7 +24,7 @@ export type EnvTile = {
 	mark: TileMark; lead: StatePart & { ink: Ink }; parts: StatePart[]; calm: boolean; label: string;
 	arriving: { builds: number; apps: string[] };
 	last: TileLast | null;
-	regions: { cells: RegionCell[]; healthy: number } | null;
+	regions: { cells: RegionCell[]; healthy: number; /** regions healthy on the old build that a wave holds (batch4 #3), with the cause in words; `healthy` excludes them */ held?: { regions: number; because: string } | null } | null;
 };
 export type Arrival = { key: string; app: string; build: string | null; place: string; age: string; href: string };
 export type EnvironmentsPage = { tiles: EnvTile[]; prod: EnvTile | null; arrivals: Arrival[]; window: string; empty: boolean };
@@ -57,6 +58,31 @@ export function regionCells(m: ReturnType<typeof envsModel>): { cells: RegionCel
 	return { cells: adverse, healthy: all.length - adverse.length };
 }
 
+/** "4 regions held · us-east-1 failed the bake" / "1 region held · waiting for 3 prod regions": the wave's hold, in the product's words (waiting for = the cause, held = the state) */
+export const waveHeldPhrase = (n: number, on: string, failed: string | null): string => `${plural(n, 'region')} held · ${failed ? `${failed} failed the bake` : `waiting for ${on}`}`;
+/** the healthy production regions a wave holds: regions where some app's place is healthy on an older build but its wave has not been let through (app-model waveHold, placeWait's rule), counted once per region, named by the first cause */
+export function waveHeldRegions(hs: HomeState, healthy: Set<string>): { labels: Set<string>; because: string } | null {
+	const labels = new Set<string>();
+	let on = '', failed: string | null = null;
+	for (const a of apps(hs).items) {
+		const P = placeHolds(a.app, hs);
+		for (const p of P) {
+			if (p.tier !== 'prod' || !healthy.has(p.label)) continue;
+			const h = waveHold(p, P);
+			if (!h) continue;
+			if (!labels.size || (!failed && h.failed)) { on = h.on; failed = h.failed; }
+			labels.add(p.label);
+		}
+	}
+	return labels.size ? { labels, because: waveHeldPhrase(labels.size, on, failed).replace(/^.*? held · /, '') } : null;
+}
+
+function withWaveHold(rc: ReturnType<typeof regionCells>, hs: HomeState, m: ReturnType<typeof envsModel>): EnvTile['regions'] {
+	if (!rc.cells.length && !rc.healthy) return null;
+	const hold = rc.healthy ? waveHeldRegions(hs, new Set(m.rest.map((r) => r.label))) : null;
+	return hold ? { cells: rc.cells, healthy: rc.healthy - hold.labels.size, held: { regions: hold.labels.size, because: hold.because } } : rc;
+}
+
 export function environmentsPage(hs: HomeState): EnvironmentsPage {
 	const m = envsModel(hs);
 	const tiles = m.tiers.map((t): EnvTile => {
@@ -78,7 +104,7 @@ export function environmentsPage(hs: HomeState): EnvironmentsPage {
 			label: `${t.places} places: ${c.failing} failing, ${c.waiting} waiting, ${c.moving} ${movingWord}, ${c.rest} healthy`,
 			arriving: { builds: inb.length, apps: [...new Set(inb.map((x) => x.app))] },
 			last,
-			regions: t.key === 'prod' ? (regionCells(m).cells.length || regionCells(m).healthy ? regionCells(m) : null) : null
+			regions: t.key === 'prod' ? withWaveHold(regionCells(m), hs, m) : null
 		};
 	});
 	return {
