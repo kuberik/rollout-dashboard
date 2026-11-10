@@ -143,6 +143,18 @@
 		.env-cell + .env-cell::before { display: none; }
 		.env-region { display: none; }
 	}
+	/* PHONE (2026-11-10, landing found "prod" wrapping alone onto its own line at 350-390): the ORDER is the statement, so below 380px the
+	   boxes keep name + state mark + state word and drop the trailing facts (lag, "k of N regions"; both stay in the box's title and on
+	   the page's own rows), lose their 72px floor and pull the gaps in. The row wraps only when the names and words alone do not fit. */
+	@container (max-width: 379.98px) {
+		.env-row { --env-min: 0px; --env-gap: 6px; column-gap: 6px; }
+		.env-row--l { --env-pad: 6px; }
+		.env-fact { display: none; }
+	}
+	/* a 269px tile (a 350px phone) cannot hold three boxes AND a word: the mark carries the state, the tile's own sentence names it */
+	@container (max-width: 300px) {
+		.env-word { display: none; }
+	}
 	.env-box {
 		position: relative;
 		z-index: 1;
