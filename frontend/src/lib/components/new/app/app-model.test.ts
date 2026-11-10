@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { placeHolds, gatesOf, apps, tabPill, newestBuild } from '../data';
-import { buildsOf, holdSentences, deployTargets, holdRows, nextOf, pillOf, currencyOf, ledgerOf, foldLedger, tabLag, placeNote, stopWord, stopShort, weekSummary, placeWord, pinnedPlaces } from './app-model';
+import { buildsOf, holdSentences, deployTargets, holdRows, nextOf, pillOf, currencyOf, ledgerOf, foldLedger, tabLag, placeNote, stopWord, stopShort, weekSummary, placeWord, pinnedPlaces, placeWait } from './app-model';
 
 describe('app-model on the demo apps', () => {
 	const P = placeHolds('invoice-api', 'incident');
@@ -160,5 +160,40 @@ describe('QA #23: superseded vs custom', () => {
 		const x = stops.find((s) => s.build === 'cX')!;
 		expect(x.custom).toBe(true); /* nothing knows cX: custom */
 		expect(stops.filter((s) => s.custom).map((s) => s.build)).toEqual(['cX']);
+	});
+});
+
+/* landing v5 (2026-11-10): "Healthy · follows ap-southeast-2" on a place holding a newer build. It waits: say on whom and for which build. */
+describe('placeWait: a healthy place its rollout order has not reached', () => {
+	const hb = (build: string) => ({ build, title: null, author: null, created: '2026-01-02T00:00:00Z', here: true });
+	const mk = (site: string, wave: number, leader: boolean, over: Record<string, unknown> = {}, tier = 'prod') => ({ wave: { site, wave, leader, follows: leader ? null : 'ap-southeast-2', multi: true }, env: site, label: site, place: site, tier, state: 'healthy', href: `/x/${site}`, deployedBuild: 'b0', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '' }, heldBuilds: [hb('4.46.0-46')], runs: null, ...over }) as never;
+	const us1 = () => mk('us-east-1', 1, true, { holdReason: 'approval', state: 'awaiting-approval' });
+	const places = () => [us1(), mk('ap-southeast-2', 2, true), mk('eu-central-1', 2, false), mk('us-east-2', 2, false)];
+	it('a follower waits for its leader to deploy the newer build', () => {
+		const ps = places();
+		expect(placeWait(ps[2], ps)).toEqual({ on: 'ap-southeast-2', fact: 'to deploy 4.46.0-46' });
+	});
+	it('a wave-2 leader waits for the wave before it', () => {
+		const ps = places();
+		expect(placeWait(ps[1], ps)).toEqual({ on: 'us-east-1', fact: 'to deploy 4.46.0-46' });
+	});
+	it('says finish checking / finish deploying once that site has started the build', () => {
+		const ps = places();
+		ps[0] = us1(); (ps[0] as { state: string }).state = 'checking';
+		expect(placeWait(ps[1], ps)?.fact).toBe('to finish checking 4.46.0-46');
+		(ps[0] as { state: string }).state = 'deploying';
+		expect(placeWait(ps[1], ps)?.fact).toBe('to finish deploying 4.46.0-46');
+	});
+	it('a wave-1 leader waits for the tier before it', () => {
+		const ps = [mk('stg', 1, true, { holdReason: null, heldBuilds: [] }, 'staging'), mk('us-east-1', 1, true)];
+		expect(placeWait(ps[1], ps)).toEqual({ on: 'staging', fact: 'to deploy 4.46.0-46' });
+	});
+	it('nothing for a place nothing newer waits for, a place an approval or a real rule holds, a failing place, or a place with no wave facts', () => {
+		const ps = places();
+		expect(placeWait(mk('a', 2, false, { heldBuilds: [] }), ps)).toBeNull();
+		expect(placeWait(ps[0], ps)).toBeNull();
+		expect(placeWait(mk('a', 2, false, { gate: { name: 'Business hours', sentence: '' } }), ps)).toBeNull();
+		expect(placeWait(mk('a', 2, false, { state: 'failed', holdReason: 'failed' }), ps)).toBeNull();
+		expect(placeWait(mk('a', 2, false, { wave: null }), ps)).toBeNull();
 	});
 });

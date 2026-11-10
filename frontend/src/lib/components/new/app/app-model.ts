@@ -295,6 +295,39 @@ export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = f
 	/* detail pass 2026-11-08: one approval word on every page (approvalWord): "Needs your approval" when the viewer can give it */
 	return ({ failed: 'Failing', 'awaiting-approval': approvalWord(yours), 'held-by-rule': 'Held', deploying: 'Deploying', checking: 'Checking', 'rolled-back': 'Rolled back' } as Record<string, string>)[p.state] ?? 'Healthy';
 }
+/**
+ * landing v5 (2026-11-10): a place that runs a build older than the newest while its rollout order has not reached it was printed
+ * "Healthy · follows ap-southeast-2" (health, and a fact that reads as "in step"): the word contradicted the state. It is WAITING, and the
+ * product's sentence names the build and on whom (state-words vocabulary (a): "waiting for X" is the cause, "held" the state).
+ * `on` = the site it waits for (a follower: its wave's leader; a wave leader: the nearest earlier wave of its tier, else the tier before it),
+ * `fact` = what it will do and to which build ("to deploy 4.46.0-46"; "to finish checking ..." once that site has started it).
+ * Only a HEALTHY place a promotion gate keeps a newer build from: one a real rule, an approval or a failing check holds has its own word.
+ */
+export type PlaceWait = { on: string; fact: string };
+export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
+	const w = p.wave;
+	if (!w || p.state !== 'healthy' || p.holdReason !== 'rule' || holdWord(p) || !p.heldBuilds.length) return null;
+	const build = p.heldBuilds[0].build;
+	let on: PlaceHold[];
+	let name: string;
+	if (!w.leader) {
+		on = places.filter((q) => q.tier === p.tier && q.wave?.site === w.follows);
+		name = w.follows ?? 'its leader';
+	} else {
+		const before = places.filter((q) => q.tier === p.tier && q.wave && q.wave.wave < w.wave);
+		const top = Math.max(...before.map((q) => q.wave!.wave));
+		on = before.filter((q) => q.wave!.wave === top);
+		name = placesPhrase(on.map((q) => q.wave!.site), on.map((q) => q.tier));
+		if (!on.length) {
+			const t = upstreamTier(places, p.tier);
+			on = t ? places.filter((q) => q.tier === t) : [];
+			name = t ?? '';
+		}
+	}
+	if (!on.length) return null;
+	const started = on.some((q) => q.state === 'checking') ? 'finish checking' : on.some((q) => q.state === 'deploying') ? 'finish deploying' : 'deploy';
+	return { on: name, fact: `to ${started} ${build}` };
+}
 /** the places a "Pinned to <build> in <place>" hold (data.ts holds) names, by PlaceHold.place */
 export const pinnedPlaces = (holds: string[]): Set<string> => new Set(holds.map((h) => /^Pinned to \S+ in (.+)$/.exec(h)?.[1]).filter((x): x is string => !!x));
 
