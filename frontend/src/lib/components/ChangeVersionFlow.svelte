@@ -92,10 +92,19 @@
 		healthChecks ??
 			visibleHealthChecksFor(rollout, (healthChecksQuery.data?.healthChecks as HealthCheck[]) ?? [])
 	);
+	// The verdict depends on checks this component fetches and they have not
+	// landed yet: deciding now would skip the Unhealthy consent step.
+	const checksPending = $derived(
+		healthChecks === undefined &&
+			Boolean(rollout?.spec?.healthCheckSelector) &&
+			healthChecksQuery.data === undefined &&
+			!healthChecksQuery.isError
+	);
 	const reason = $derived<RecoveryReason | null>(recoveryModeReason(rollout, checks));
 
 	let showWarning = $state(false);
 	let showPicker = $state(false);
+	let waiting = $state(false);
 	let warningReason = $state<RecoveryReason>('previous-failed');
 
 	// `open` turning true starts the flow; the reason is read once, at that
@@ -106,10 +115,29 @@
 		untrack(() => {
 			if (showWarning || showPicker) return;
 			const r = reason;
-			if (r) {
+			if (checksPending) {
+				warningReason = 'unhealthy-health-checks';
+				waiting = true;
+				showWarning = true;
+			} else if (r) {
 				warningReason = r;
 				showWarning = true;
 			} else {
+				showPicker = true;
+			}
+		});
+	});
+	// Checks settled while the loading warning is up: decide now, in place.
+	$effect(() => {
+		if (!waiting || checksPending) return;
+		const r = reason;
+		untrack(() => {
+			waiting = false;
+			if (!showWarning) return;
+			if (r) {
+				warningReason = r;
+			} else {
+				showWarning = false;
 				showPicker = true;
 			}
 		});
@@ -145,6 +173,7 @@
 <RecoveryModeWarningModal
 	bind:open={showWarning}
 	reason={warningReason}
+	loading={waiting}
 	versionDisplay={selectedVersionDisplay(rollout, initialSelectedVersion)}
 	previousVersionDisplay={previousVersionDisplay(rollout)}
 	rollout={rollout ?? null}

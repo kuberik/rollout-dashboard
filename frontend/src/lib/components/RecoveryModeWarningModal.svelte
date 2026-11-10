@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	/**
 	 * ROLE: the one-sentence consent step that opens before a deploy or a
 	 * rollback which will run in RECOVERY MODE (the controller waits for
@@ -40,6 +41,8 @@
 	interface Props {
 		open: boolean;
 		reason: Reason;
+		/** Health checks the verdict depends on are still loading: skeleton in place of the sentence, Continue disabled. */
+		loading?: boolean;
 		/** The build about to deploy, as displayed (`3f1ed09`). */
 		versionDisplay?: string | null;
 		/** The build that failed (`history[0]`), as displayed. */
@@ -61,6 +64,7 @@
 	let {
 		open = $bindable(),
 		reason,
+		loading = false,
 		versionDisplay = null,
 		previousVersionDisplay = null,
 		rollout = null,
@@ -104,6 +108,7 @@
 	const act = $derived(isRollback ? 'rollback' : 'deploy');
 
 	const title = $derived.by(() => {
+		if (loading) return isRollback ? `Roll back ${where}${versionDisplay ? ` to ${versionDisplay}` : ''}` : `Deploy to ${where}`;
 		if (!versionDisplay || !intent) return `Deploy to ${where} in recovery mode`;
 		return isRollback
 			? `Roll back ${where} to ${versionDisplay}`
@@ -164,7 +169,14 @@
 			     `[data-autofocus]` first, so the open lands here (no ring on
 			     Cancel) and Tab still reaches Cancel → Continue in order. -->
 			<div class="px-4 py-4 outline-none" data-autofocus tabindex="-1">
-				<p id="rmw-summary" class="t-body text-fg-muted">{summary}</p>
+				{#if loading}
+					<div id="rmw-summary" class="space-y-2" aria-busy="true">
+						<SkeletonBar width="w-full" height="h-[15px]" />
+						<SkeletonBar width="w-2/3" height="h-[15px]" />
+					</div>
+				{:else}
+					<p id="rmw-summary" class="t-body text-fg-muted">{summary}</p>
+				{/if}
 			</div>
 		</div>
 
@@ -186,6 +198,7 @@
 				<button
 					type="button"
 					class="btn btn-primary btn-sm max-sm:min-h-11 max-sm:flex-1 max-sm:basis-0"
+					disabled={loading}
 					onclick={() => {
 						open = false;
 						onContinue();

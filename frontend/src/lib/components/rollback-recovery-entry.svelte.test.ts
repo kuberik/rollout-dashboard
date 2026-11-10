@@ -1,6 +1,7 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi, afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
+import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 import FailurePanel from './FailurePanel.svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 
@@ -49,5 +50,28 @@ describe('failure banner Roll back, recovery mode', () => {
 		await fireEvent.click(container.querySelector('#failure-rollback-btn') as HTMLElement);
 		await waitFor(() => expect(screen.getByText(/runs in recovery mode/)).toBeInTheDocument());
 		expect(screen.getByText(/Health checks are unhealthy/)).toBeInTheDocument();
+	});
+});
+
+describe('ChangeVersionFlow with checks that arrive after open (AppDetail cold cache)', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	test('the consent step waits for the checks and still appears when they resolve Unhealthy', async () => {
+		let release: (v: unknown) => void = () => {};
+		const gate = new Promise((r) => (release = r));
+		vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+			if (String(url).includes('/health-checks')) {
+				await gate;
+				return new Response(JSON.stringify({ healthChecks: [unhealthy] }), { status: 200 });
+			}
+			return new Response('{}', { status: 200 });
+		}));
+		const r = { ...rollout, spec: { healthCheckSelector: { matchLabels: { app: 'orders' } } } };
+		render(WithQueryClient, {
+			props: { component: ChangeVersionFlow as never, props: { open: true, rollout: r, cluster: 'hub', initialSelectedVersion: '1.0.0' } as never }
+		});
+		// While loading: the dialog is the warning shell in its loading state, never the picker.
+		await waitFor(() => expect(document.querySelector('#rmw-summary[aria-busy="true"]')).not.toBeNull());
+		release(null);
+		await waitFor(() => expect(screen.getByText(/Health checks are unhealthy/)).toBeInTheDocument());
 	});
 });
