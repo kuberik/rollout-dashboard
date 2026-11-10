@@ -294,3 +294,35 @@ describe('Home\'s held text on the demo fleet — calm, incident, wide', () => {
 		});
 	}
 });
+
+describe('fleetFacts — a pinned app is held by a person, not a rule (crash regression)', () => {
+	const pinnedRollout = (name: string, namespace: string) =>
+		mkRollout(name, namespace, {
+			spec: { wantedVersion: OLD.tag },
+			status: {
+				availableReleases: [OLD, NEW],
+				releaseCandidates: [NEW],
+				history: [{ version: OLD, bakeStatus: 'Succeeded', timestamp: '2026-10-10T10:00:00Z' }]
+			}
+		});
+
+	it('mapped: one pinned app with a held node does not throw and is not rule-held', () => {
+		const env = mkEnv('pin-app', 'pin-app-staging', 'staging');
+		const r = pinnedRollout('pin-app', 'pin-app-staging');
+		const gateContext = buildGateContext({ environments: { items: [env] } });
+		const cards = buildRolloutCards([r], [env], new Date(NOW), gateContext);
+		expect(cards[0].pinnedVersion).not.toBeNull();
+		expect(cards[0].held).toBe(false);
+		const f = fleetFacts(cards, [r], NOW, '24h', { gateContext });
+		expect(f.held.ruleApps).toBe(0);
+		expect(f.held.ruleSingle).toBeNull();
+	});
+
+	it('unmapped (no Environment): one pinned app does not throw and is not rule-held', () => {
+		const r = pinnedRollout('pin-app', 'pin-app-ns');
+		const cards = buildRolloutCards([r], [], new Date(NOW), buildGateContext({ environments: { items: [] } }));
+		const f = fleetFacts(cards, [r], NOW, '24h', {});
+		expect(f.held.ruleApps).toBe(0);
+		expect(f.held.ruleSingle).toBeNull();
+	});
+});
