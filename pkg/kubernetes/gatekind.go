@@ -79,8 +79,9 @@ func GateKind(gate *rolloutv1alpha1.RolloutGate) string {
 }
 
 // gateAnnotationPrettyName is the display-name annotation the controllers
-// stamp on gates (rollout-controller rolloutschedule_helpers.go:384, 434;
-// environment-controller githubenvironment_controller.go:1326) and the
+// stamp on gates (rollout-controller rolloutschedule_helpers.go:384, 434 and
+// rolloutdependency_controller.go:287; environment-controller
+// githubenvironment_controller.go:1326) and the
 // frontend reads (view-models/gate-name.ts PRETTY_NAME_KEY).
 const gateAnnotationPrettyName = "gate.kuberik.com/pretty-name"
 
