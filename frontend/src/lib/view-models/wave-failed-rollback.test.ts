@@ -28,7 +28,7 @@ const twoPhase = (phase: 'catch' | 'rolledBack') => {
 	const older = firstRaw.status.currentVersion;
 	const wave2 = new Set(P.filter((p) => p.wave?.wave === 2).map((p) => `${part(p.href).ns}/${part(p.href).name}`));
 	const rollouts = rolloutsRaw.map((r) => {
-		if (wave2.has(`${r.metadata.namespace}/${r.metadata.name}`)) return { ...r, status: { ...r.status, releaseCandidates: [failedV], gates: [{ name: 'promotion-staging', passing: false, allowedVersions: ['b-44'] }] } };
+		if (wave2.has(`${r.metadata.namespace}/${r.metadata.name}`)) return { ...r, status: { ...r.status, releaseCandidates: [failedV], gates: [{ name: 'promotion-staging', passing: true, allowedVersions: ['b-44'] }] } };
 		if (r === leadRaw) return { ...r, status: { ...r.status, releaseCandidates: [failedV] } };
 		if (r === firstRaw) return { ...r, status: { ...r.status, currentVersion: phase === 'catch' ? (failedV.tag ?? failedV.version) : older, releaseCandidates: [failedV], history: [...(phase === 'rolledBack' ? [{ bakeStatus: 'Succeeded', version: (r.status.history ?? [])[0]?.version ?? failedV, timestamp: new Date().toISOString() }] : []), { bakeStatus: 'Failed', version: failedV, timestamp: new Date(Date.now() - 60000).toISOString() }, ...(r.status.history ?? [])] } };
 		return r;
