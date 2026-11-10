@@ -171,6 +171,8 @@
 	} from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { apiPath } from '$lib/api/urls';
+	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { pageTitle } from '$lib/page-title';
 
 	// Params (runes)
@@ -1029,12 +1031,7 @@
 
 	// Query for health checks
 	const healthChecksQuery = createQuery(() => ({
-		queryKey: ['health-checks', namespace, name, cluster],
-		queryFn: async () => {
-			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/health-checks`));
-			if (!res.ok) return { healthChecks: [] };
-			return res.json();
-		},
+		...healthChecksQueryOptions(namespace, name, cluster),
 		enabled: Boolean(rollout?.spec?.healthCheckSelector),
 		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `health-checks` is in
 		// `ROLLOUT_SCOPED_KEY_TAGS`; `cluster` rides the key (see
@@ -1082,6 +1079,19 @@
 					return new Date(lastErrorTime) >= errorCutoff!;
 				})
 			: healthChecks
+	);
+
+	/** What the failure banner and the change-version flow are told: `null` when
+	 *  the load failed (unknown, not "no checks"), `undefined` while it loads. */
+	const flowHealthChecks = $derived(
+		flowHealthChecksFor(
+			{
+				hasSelector: Boolean(rollout?.spec?.healthCheckSelector),
+				isSuccess: healthChecksQuery.isSuccess,
+				isError: healthChecksQuery.isError
+			},
+			visibleHealthChecks
+		)
 	);
 
 	/**
@@ -3343,7 +3353,7 @@
 						open={isFailed}
 						{rollout}
 						{failedHCList}
-						healthChecks={visibleHealthChecks}
+						healthChecks={flowHealthChecks}
 						{failedStepTests}
 						{stalledKruiseRollout}
 						canUpdate={canUpdate || !permissionsKnown}
@@ -4956,7 +4966,7 @@
 	bind:open={showChangeVersionModal}
 	{rollout}
 	{cluster}
-	healthChecks={visibleHealthChecks}
+	healthChecks={flowHealthChecks}
 	{autoDeploy}
 	{isPinVersionMode}
 	initialSelectedVersion={selectedVersion}

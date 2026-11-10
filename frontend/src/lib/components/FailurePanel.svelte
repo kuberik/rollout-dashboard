@@ -27,7 +27,8 @@
 		open?: boolean;
 		rollout: Rollout;
 		failedHCList: Array<{ name: string; namespace?: string; message?: string }>;
-		healthChecks: HealthCheck[];
+		/** `null` = the load failed, `undefined` = still loading (see `flowHealthChecksFor`). */
+		healthChecks: HealthCheck[] | null | undefined;
 		failedStepTests: Array<{ test: RolloutTest; kruiseRolloutName: string }>;
 		stalledKruiseRollout: KruiseRollout | null | undefined;
 		canUpdate: boolean;
@@ -95,7 +96,7 @@
 	});
 	const rollout = $derived(held.rollout);
 	const failedHCList = $derived(held.failedHCList);
-	const healthChecks = $derived(held.healthChecks);
+	const healthChecks = $derived(held.healthChecks ?? []);
 	const failedStepTests = $derived(held.failedStepTests);
 	const stalledKruiseRollout = $derived(held.stalledKruiseRollout);
 
@@ -340,7 +341,7 @@
 <ChangeVersionFlow
 	bind:open={showRollbackModal}
 	{rollout}
-	healthChecks={visibleHealthChecksFor(rollout, healthChecks)}
+	healthChecks={held.healthChecks ? visibleHealthChecksFor(rollout, held.healthChecks) : held.healthChecks}
 	isPinVersionMode={true}
 	initialSelectedVersion={rollbackVersionTag}
 	initialExplanation={rollbackExplanation}

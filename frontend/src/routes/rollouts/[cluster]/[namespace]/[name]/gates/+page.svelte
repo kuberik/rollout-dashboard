@@ -147,6 +147,7 @@
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import { fetchRolloutSchedules, scheduleWindowQueryKey } from '$lib/api/schedules';
 	import { apiPath } from '$lib/api/urls';
+	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import RolloutNeighbourhood from '$lib/components/RolloutNeighbourhood.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
@@ -203,12 +204,7 @@
 	 * `healthChecksQuery` uses, so the two pages share one cache entry.
 	 */
 	const healthChecksQuery = createQuery(() => ({
-		queryKey: ['health-checks', namespace, name, cluster],
-		queryFn: async () => {
-			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/health-checks`));
-			if (!res.ok) return { healthChecks: [] };
-			return res.json();
-		},
+		...healthChecksQueryOptions(namespace, name, cluster),
 		enabled: Boolean(rolloutQuery.data?.rollout?.spec?.healthCheckSelector),
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));

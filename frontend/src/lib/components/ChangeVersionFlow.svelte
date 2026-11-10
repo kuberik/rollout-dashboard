@@ -29,7 +29,7 @@
 	import RecoveryModeWarningModal from './RecoveryModeWarningModal.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
-	import { apiPath } from '$lib/api/urls';
+	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import type { HealthCheck, Rollout } from '../../types';
 	import type { AutoDeployState } from '$lib/view-models/auto-deploy';
@@ -60,7 +60,7 @@
 		rollout: Rollout | null | undefined;
 		cluster: string;
 		/** The page's own visible checks; omitted → fetched here. */
-		healthChecks?: HealthCheck[];
+		healthChecks?: HealthCheck[] | null;
 		autoDeploy?: AutoDeployState | null;
 		isPinVersionMode?: boolean;
 		initialSelectedVersion?: string | null;
@@ -77,15 +77,13 @@
 
 	// Same key and fetch as the Overview's own `healthChecksQuery`, so the
 	// two share one cache entry. Only runs when the page passed no list.
+	// A failed load is retried as the flow opens; the loading dialog covers it.
+	let refetching = $state(false);
+	// `null` from the page = its own load failed: the flow asks the shared cache
+	// itself (and refetches as it opens) rather than trusting the page's list.
 	const healthChecksQuery = createQuery(() => ({
-		queryKey: ['health-checks', namespace, name, cluster],
-		queryFn: async () => {
-			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/health-checks`));
-			if (!res.ok) throw new Error(`health checks: HTTP ${res.status}`);
-			return res.json();
-		},
-		retry: false,
-		enabled: healthChecks === undefined && Boolean(rollout?.spec?.healthCheckSelector),
+		...healthChecksQueryOptions(namespace, name, cluster),
+		enabled: !healthChecks && Boolean(rollout?.spec?.healthCheckSelector),
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 
@@ -102,12 +100,13 @@
 	// The verdict depends on checks this component fetches and they have not
 	// landed yet: deciding now would skip the Unhealthy consent step.
 	const checksPending = $derived(
-		healthChecks === undefined &&
+		!healthChecks &&
 			// A failed running build already decides it; no need to wait.
 			recoveryModeReason(rollout, []) === null &&
 			Boolean(rollout?.spec?.healthCheckSelector) &&
 			healthChecksQuery.data === undefined &&
-			!healthChecksQuery.isError
+			!healthChecksQuery.isError ||
+		refetching
 	);
 	const reason = $derived<RecoveryReason | null>(recoveryModeReason(rollout, checks));
 
@@ -123,6 +122,10 @@
 		if (!open) return;
 		untrack(() => {
 			if (showWarning || showPicker) return;
+			if (healthChecksQuery.isError && recoveryModeReason(rollout, []) === null) {
+				refetching = true;
+				healthChecksQuery.refetch().finally(() => (refetching = false));
+			}
 			const r = reason;
 			if (checksPending) {
 				warningReason = 'unhealthy-health-checks';

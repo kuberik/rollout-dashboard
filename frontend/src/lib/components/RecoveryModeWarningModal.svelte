@@ -107,19 +107,10 @@
 	const isRollback = $derived(intent?.direction === 'rollback');
 	const act = $derived(isRollback ? 'rollback' : 'deploy');
 
+	// The SAME title whether the verdict is loading, unavailable or decided, so
+	// the dialog's heading does not change under the reader (Deploy and Roll back alike).
 	const title = $derived.by(() => {
-		if (loading) {
-			const to = versionDisplay ? ' to ' + versionDisplay : '';
-			return isRollback ? 'Roll back ' + where + to : 'Deploy to ' + where;
-		}
-		if (reason === 'health-checks-unavailable') {
-			return !versionDisplay || !intent
-				? `Deploy to ${where}`
-				: isRollback
-					? `Roll back ${where} to ${versionDisplay}`
-					: `Deploy ${versionDisplay} to ${where}`;
-		}
-		if (!versionDisplay || !intent) return `Deploy to ${where} in recovery mode`;
+		if (!versionDisplay || !intent) return `Deploy to ${where}`;
 		return isRollback
 			? `Roll back ${where} to ${versionDisplay}`
 			: `Deploy ${versionDisplay} to ${where}`;

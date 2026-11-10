@@ -47,6 +47,7 @@ lib/api/github.ts	code	GitHub is not connected for this dashboard.
 lib/api/github.ts	code	No access to this repository
 lib/api/github.ts	code	No response from the server
 lib/api/github.ts	code	You do not have access to this repository
+lib/api/health-checks.ts	code	health checks: HTTP …
 lib/api/logs.ts	code	Stream closed
 lib/api/pulls.ts	code	Connect GitHub to see this pull request
 lib/api/pulls.ts	code	Failed to fetch pull request
@@ -193,7 +194,6 @@ lib/components/ChangeList.svelte	text	Recorded note
 lib/components/ChangeList.svelte	text	See the diff on GitHub
 lib/components/ChangeList.svelte	text	See the full diff on GitHub
 lib/components/ChangeList.svelte	code	Your GitHub account cannot read this repository.
-lib/components/ChangeVersionFlow.svelte	code	health checks: HTTP …
 lib/components/ChangeVersionModal.svelte	code	… — … has not shipped it
 lib/components/ChangeVersionModal.svelte	text	… … … … Connect your GitHub account to see which commits will … .
 lib/components/ChangeVersionModal.svelte	code	… … back
@@ -1019,12 +1019,9 @@ lib/components/RecoveryModeWarningModal.svelte	code	… failed
 lib/components/RecoveryModeWarningModal.svelte	code	…, so this … runs in recovery mode: it waits for health checks to recover instead of failing on them.
 lib/components/RecoveryModeWarningModal.svelte	code	(max-width: 639px)
 lib/components/RecoveryModeWarningModal.svelte	code	Deploy … to …
-lib/components/RecoveryModeWarningModal.svelte	code	Deploy to
 lib/components/RecoveryModeWarningModal.svelte	code	Deploy to …
-lib/components/RecoveryModeWarningModal.svelte	code	Deploy to … in recovery mode
 lib/components/RecoveryModeWarningModal.svelte	code	Health checks are unhealthy
 lib/components/RecoveryModeWarningModal.svelte	code	Health checks couldn't be loaded, so the dashboard can't tell whether this … runs in recovery mode.
-lib/components/RecoveryModeWarningModal.svelte	code	Roll back
 lib/components/RecoveryModeWarningModal.svelte	code	Roll back … to …
 lib/components/RecoveryModeWarningModal.svelte	code	The last deploy failed
 lib/components/RecoveryModeWarningModal.svelte	code	this environment

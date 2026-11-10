@@ -3,6 +3,8 @@ import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 import FailurePanel from './FailurePanel.svelte';
+import { QueryClient } from '@tanstack/svelte-query';
+import { healthChecksQueryOptions } from '$lib/api/health-checks';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 
 // jsdom has neither the Web Animations API nor a working <dialog>.
@@ -101,4 +103,81 @@ describe('ChangeVersionFlow with checks that arrive after open (AppDetail cold c
 			expect(screen.queryByText(/Recovery mode:/)).toBeNull();
 		});
 	}
+});
+
+const unavailableText = /Health checks couldn't be loaded, so the dashboard can't tell whether this (?:deploy|rollback) runs in recovery mode/;
+const sel = { ...rollout, spec: { healthCheckSelector: { matchLabels: { app: 'orders' } } } };
+const stub500 = () =>
+	vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+		String(url).includes('/health-checks') ? new Response('boom', { status: 500 }) : new Response('{}', { status: 200 })
+	));
+
+describe('entry points that pass their own list, under a 500 (batch4 #8, QA7)', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	test('Overview header Roll back: the page passes null, the flow says it cannot tell', async () => {
+		stub500();
+		render(WithQueryClient, {
+			props: { component: ChangeVersionFlow as never, props: { open: true, rollout: sel, cluster: 'hub', healthChecks: null, isPinVersionMode: true, initialSelectedVersion: '1.0.0' } as never }
+		});
+		await waitFor(() => expect(screen.getByText(unavailableText)).toBeInTheDocument());
+	});
+
+	test('failure banner Roll back with null checks: the warning names the unavailable reason', async () => {
+		stub500();
+		const { container } = render(WithQueryClient, {
+			props: {
+				component: FailurePanel as never,
+				props: {
+					rollout: sel, healthChecks: null, failedHCList: [], failedStepTests: [], stalledKruiseRollout: null,
+					canUpdate: true, canModify: true, isDashboardManagingWantedVersion: true, onRetry: () => {}, cluster: 'hub'
+				} as never
+			}
+		});
+		await fireEvent.click(container.querySelector('#failure-rollback-btn') as HTMLElement);
+		await waitFor(() => expect(screen.getByText(unavailableText)).toBeInTheDocument());
+	});
+
+	test('a failed load is refetched as the flow opens, and a recovered fetch decides', async () => {
+		let calls = 0;
+		vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+			if (!String(url).includes('/health-checks')) return new Response('{}', { status: 200 });
+			calls++;
+			return calls === 1 ? new Response('boom', { status: 500 }) : new Response(JSON.stringify({ healthChecks: [unhealthy] }), { status: 200 });
+		}));
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+		await client.fetchQuery(healthChecksQueryOptions('orders', 'orders-api', 'hub')).catch(() => {});
+		render(WithQueryClient, {
+			props: { client, component: ChangeVersionFlow as never, props: { open: true, rollout: sel, cluster: 'hub', healthChecks: null, initialSelectedVersion: '1.0.0' } as never }
+		});
+		await waitFor(() => expect(screen.getByText(/Health checks are unhealthy/)).toBeInTheDocument());
+		expect(calls).toBeGreaterThan(1);
+	});
+});
+
+describe('cross-page cache: Overview 500, then History opens the flow', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	test('History (no list passed) still says unavailable, not "no checks"', async () => {
+		stub500();
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+		// What the Overview's query does on a 500, through the shared options.
+		await client.fetchQuery(healthChecksQueryOptions('orders', 'orders-api', 'hub')).catch(() => {});
+		render(WithQueryClient, {
+			props: { client, component: ChangeVersionFlow as never, props: { open: true, rollout: sel, cluster: 'hub', initialSelectedVersion: '1.0.0' } as never }
+		});
+		await waitFor(() => expect(screen.getByText(unavailableText)).toBeInTheDocument());
+	});
+});
+
+describe('a failed running build skips the wait', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	test('previous-failed shows at once while the checks are still loading', async () => {
+		vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+		const failed = { ...sel, status: { history: [{ ...rollout.status.history[0], bakeStatus: 'Failed' }] } };
+		render(WithQueryClient, {
+			props: { component: ChangeVersionFlow as never, props: { open: true, rollout: failed, cluster: 'hub', initialSelectedVersion: '1.0.0' } as never }
+		});
+		await waitFor(() => expect(screen.getByText(/runs in recovery mode/)).toBeInTheDocument());
+		expect(document.querySelector('#rmw-summary[aria-busy="true"]')).toBeNull();
+	});
 });

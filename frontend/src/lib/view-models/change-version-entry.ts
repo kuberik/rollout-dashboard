@@ -69,7 +69,12 @@ export function recoveryModeReason(
 	rollout: Rollout | null | undefined,
 	visibleHealthChecks: HealthCheck[] | null
 ): RecoveryReason | null {
-	if (rollout?.status?.history?.[0]?.bakeStatus === 'Failed') return 'previous-failed';
+	// The controller's rule (rollout_controller.go setBakeFailureDisabledForNewDeploy):
+	// ANY bake status other than Succeeded on the running entry is a recovery
+	// trigger, not only 'Failed'. This predicts the controller; how the page
+	// DRAWS a failed state is a separate rule (only 'Failed' reads as failing).
+	const bake = rollout?.status?.history?.[0]?.bakeStatus;
+	if (bake && bake !== 'Succeeded') return 'previous-failed';
 	// `null` = the list could not be loaded. Never read that as "no checks".
 	if (visibleHealthChecks === null) return 'health-checks-unavailable';
 	if (visibleHealthChecks.some((hc) => hc.status?.status === 'Unhealthy')) {
@@ -94,4 +99,19 @@ export function selectedVersionDisplay(
 	if (!selectedTag) return null;
 	const release = rollout?.status?.availableReleases?.find((ar) => ar.tag === selectedTag);
 	return release ? getDisplayVersion(release) : selectedTag;
+}
+
+/**
+ * What a page hands `ChangeVersionFlow` / `FailurePanel` as `healthChecks`.
+ * `null` = the load FAILED (the flow says it cannot tell); `undefined` = still
+ * loading or never asked (the flow fetches/waits itself, so an unloaded list
+ * is never read as "no checks"); an array = the page's visible checks.
+ */
+export function flowHealthChecksFor(
+	q: { hasSelector: boolean; isSuccess: boolean; isError: boolean },
+	visible: HealthCheck[]
+): HealthCheck[] | null | undefined {
+	if (!q.hasSelector) return visible;
+	if (q.isError) return null;
+	return q.isSuccess ? visible : undefined;
 }
