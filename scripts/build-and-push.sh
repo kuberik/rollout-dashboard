@@ -116,8 +116,9 @@ publish_dep_image() {
 # Publish one hello-dep release pair.
 #
 # The ordinal is the commit height of the kuberik-testing repo, which advances
-# on every iteration AND across runs. Deriving it from the loop index instead
-# would pin the tags to rel-1..rel-N, so a second run would republish the same
+# on every iteration AND across runs, or one past the highest rel-N already in
+# the registry when that is higher (the repo is recreated after a cleanup).
+# Deriving it from the loop index instead would pin the tags to rel-1..rel-N, so a second run would republish the same
 # tags and the rollouts would never see a new release — the same reason
 # hello-world keys its tags off the commit sha rather than the iteration.
 #
@@ -127,8 +128,18 @@ publish_dep_image() {
 # ordering being demonstrated, and it now happens continuously rather than once.
 publish_dep_releases() {
     local revision=$1
-    local seq
+    local seq reg_max
     seq=$(git rev-list --count HEAD)
+    # The repo is deleted on cleanup and its commit count restarts, but the
+    # ghcr packages keep their tags. A restarted count would publish rel-10
+    # beside rel-83, which no policy ever treats as newer. Continue from the
+    # registry's highest ordinal instead.
+    reg_max=$(gh api "/user/packages/container/hello-dep%2Fapi/versions" --paginate \
+        --jq '.[].metadata.container.tags[]' 2>/dev/null \
+      | sed -n 's/^rel-\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1 || true)
+    if [ -n "${reg_max}" ] && [ "${reg_max}" -ge "${seq}" ]; then
+        seq=$((reg_max + 1))
+    fi
 
     # Contract versions advance with the ordinal so they are monotonic across
     # runs, which is what the gate compares.
