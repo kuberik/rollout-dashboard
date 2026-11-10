@@ -7,7 +7,7 @@
  * allowance (allowedVersions stays inside rawOf). `deployTargets` derives it: the newest build a place still lacks that
  * runs HEALTHY in the tier upstream of it, for a place no approval or rule holds.
  */
-import { approvalWord } from '../state-words';
+import { approvalWord, severity } from '../state-words';
 import { tabPill, deployedHistory, streamBuilds, newestBuild, ago, buildIdentity, type PlaceHold, type GateInfo, type TRow, type TierKey } from '../data';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 
@@ -230,6 +230,14 @@ export function currencyOf(href: string, app = ''): { behind: number; word: stri
  */
 export type Stop = { key: string; build: string; title: string | null; author: string | null; created: string | null; age: string; pr: number | null; /** index in the sequence = builds behind the newest; null for a custom build */ index: number | null; custom: boolean; places: PlaceHold[]; deployTo: PlaceHold[] };
 export const lagWord = (n: number): string => (n === 0 ? 'Up to date' : `${n} build${n === 1 ? '' : 's'} behind`);
+/**
+ * Where a place sits among the places of ONE stop: THE ONE SEVERITY ORDER (state-words `severity`: failing, waiting for approval, held,
+ * checking, deploying, rolled back, healthy), so the place that needs reading is the first row under its build, never the last of five
+ * regions alphabetised. A healthy place a promotion gate holds a newer build from (it waits on its wave) ranks with the held places, not at rest.
+ * Array.sort is stable: places of one rank keep the order they came in.
+ */
+export const placeRank = (p: PlaceHold): number => (p.state === 'healthy' && p.holdReason === 'rule' && p.heldBuilds.length ? severity('held-by-rule') : severity(p.state));
+export const bySeverity = (places: PlaceHold[]): PlaceHold[] => [...places].sort((a, b) => placeRank(a) - placeRank(b));
 export function ledgerOf(places: PlaceHold[]): Stop[] {
 	if (!places.length) return [];
 	const spinePlace = [...places].sort((a, b) => b.heldBuilds.length - a.heldBuilds.length)[0];
@@ -248,7 +256,7 @@ export function ledgerOf(places: PlaceHold[]): Stop[] {
 	const targets = deployTargets(places);
 	const mk = (build: string, index: number | null, custom: boolean): Stop => {
 		const i = info.get(build);
-		return { key: build, build, title: i?.title ?? null, author: i?.author ?? null, created: i?.created ?? null, age: ago(i?.created), pr: buildIdentity(build, places[0]?.href)?.pr ?? null, index, custom, places: places.filter((p) => p.deployedBuild === build), deployTo: targets.get(build) ?? [] };
+		return { key: build, build, title: i?.title ?? null, author: i?.author ?? null, created: i?.created ?? null, age: ago(i?.created), pr: buildIdentity(build, places[0]?.href)?.pr ?? null, index, custom, places: bySeverity(places.filter((p) => p.deployedBuild === build)), deployTo: targets.get(build) ?? [] };
 	};
 	const stops = seq.map((b, i) => mk(b, i, false));
 	const outside = [...new Set(places.map((p) => p.deployedBuild).filter((b): b is string => !!b && !seq.includes(b)))];
