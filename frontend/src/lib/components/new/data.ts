@@ -1169,14 +1169,13 @@ export function waveInfoOfHref(href: string): WaveInfo | null {
 	const follows = node.isLeader ? null : (upstreamOf(topo, node)[0]?.site ?? null);
 	return { site: node.site, wave: node.wave, leader: node.isLeader, follows, multi: tier.waves.length > 1 };
 }
-/** true when `build` (as the tab names it) failed its bake in the place a rollout href names: a Failed entry in its history (batch4 #3: "us-east-1 failed the bake") */
+/** true when `build` (as the tab names it) failed its latest attempt in the place a rollout href names (failedHereVerdict, the ONE rule): "us-east-1 failed the bake".
+   Deliberately NOT gated on "still runs it": the only caller (waveHold) asks about the build a place is held on, and a build a site rolled back from is no
+   candidate anywhere (failed-builds.ts), so it never reaches here; a guard would have no rendered effect (batch4 #3d, QA8 M3). */
 export function bakeFailedOn(q: { href: string }, build: string): boolean {
 	const st = rawOf(q.href)?.status;
 	const entry = (st?.history ?? []).find((h) => [h.version.version, h.version.tag, h.version.revision].some((x) => x && shortBuild(x) === build));
-	/* the ONE failed-build rule (failed-builds.ts): that build's latest attempt here failed AND this place still RUNS it (nothing replaced it in history).
-	   A site that rolled back to an older healthy build holds nobody, whatever its retained Failed entry says (batch4 #3d). */
-	const v = entry ? failedHereVerdict({ status: st } as never, entry.version) : null;
-	return !!entry && v?.kind === 'failed' && v.rolledBackAt == null;
+	return !!entry && failedHereVerdict({ status: st } as never, entry.version).kind === 'failed';
 }
 export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; heldBuilds: ReturnType<typeof candidateBuilds>; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.

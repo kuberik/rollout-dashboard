@@ -26,7 +26,7 @@ export function liveOf<T extends BuildRef>(st: Status, xs: readonly T[], waveRev
 	return xs.filter((x) => !failedHere(st, x, waveRevs));
 }
 
-/** the fleet lists a place's wave chain lives in: a route's own list query, or (default) the installed live source */
+/** the fleet lists a place's wave chain lives in: always the caller's (a route's list query, or the source it reads); no fleet means no subtraction */
 export type Fleet = { environments?: readonly Environment[] | null; rollouts?: readonly unknown[] | null };
 
 /** a build whose bake failed upstream in a place's wave chain; `rolledBack` = the failing site has since replaced it (failedHereVerdict.rolledBackAt) */
@@ -112,12 +112,15 @@ export function liveForPlace<T extends BuildRef>(rollout: RolloutLike | null | u
 }
 
 /**
- * `newerReleaseCount` (promotion.ts: the controller's own count, validated against availableReleases) minus the candidates that failed here or upstream
- * in the wave chain: THE count the rank verdict (`rankVerdicts`: Apps, Environments, palette, ledger, namespaces) and the cards read. null stays null.
+ * THE ONE "HOW MANY BUILDS BEHIND" COUNT (batch4 #3d). `newerReleaseCount` (promotion.ts: the controller's own count, validated against
+ * availableReleases) minus the builds in THAT SAME list that failed here or upstream in the wave chain. The list is `releaseCandidates`, or, when the
+ * payload omits it (omitempty), the newest `n` entries of `availableReleases`, the very slice newerReleaseCount counted. behindOfStatus (header,
+ * History, tiles) delegates here, so the header, the strip and the rank cannot drift. null stays null.
  */
 export function newerReleaseCountLive(rollout: (RolloutLike & { status?: unknown }) | null | undefined, fleet?: Fleet | null): number | null {
 	const n = newerReleaseCount(rollout as never);
-	const st = rollout?.status as { releaseCandidates?: BuildRef[] } | null | undefined;
-	if (n === null || !n || !Array.isArray(st?.releaseCandidates)) return n;
-	return Math.max(0, n - (st!.releaseCandidates.length - liveForPlace(rollout, st!.releaseCandidates, fleet).length));
+	if (n === null || !n) return n;
+	const st = rollout?.status as { releaseCandidates?: BuildRef[]; availableReleases?: BuildRef[] } | null | undefined;
+	const counted = Array.isArray(st?.releaseCandidates) ? st!.releaseCandidates : (st?.availableReleases ?? []).slice(-n);
+	return Math.max(0, n - (counted.length - liveForPlace(rollout, counted, fleet).length));
 }

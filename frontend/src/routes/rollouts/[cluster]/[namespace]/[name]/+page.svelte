@@ -142,7 +142,7 @@
 		rowShowsFailed
 	} from '$lib/view-models/deploy-risk';
 	import { blockingGateNames, promotionCandidates } from '$lib/view-models/promotion';
-	import { behindOfStatus } from '$lib/view-models/behind';
+	import { behindWhenSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
@@ -1167,7 +1167,7 @@
 	);
 	const newestCandidate = $derived(newerBuilds[0] ?? null);
 	/* the header's "N newer builds": the ONE behind rule (behind.ts), the same subtraction History's current-row chip makes (batch4 #3d): a build that failed here or upstream in the wave chain is not counted. The deploy-anyway "Newer builds" card below lists what a person CAN deploy and keeps its own list. */
-	const headerNewer = $derived(behindOfStatus(rollout, { environments: listQuery.data?.environments?.items, rollouts: listQuery.data?.rollouts?.items }));
+	const headerNewer = $derived(behindWhenSettled(rollout, { environments: listQuery.data?.environments?.items, rollouts: listQuery.data?.rollouts?.items }, listQuery.isSuccess || listQuery.isError) ?? 0); /* 0 = no chip until the fleet has answered: the number never changes after load */
 	// Newer builds ledger fold (r34 AD r3 TB6): the newest + the first NB_FOLD older builds are drawn;
 	// the rest sit behind a footer that expands in place. `nbOpen` = narrow-card rows opened by a tap.
 	// TB14/TB22/TB24 (r5): the fold is a phone/tablet thing. At >=1024 NO fold: every older row shows (the

@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { fixtureSource } from '$lib/components/home/sketch/home-data';
 import { environmentsPage } from '$lib/components/new/environments-page';
-import { bakeFailedOn, placeHolds } from '$lib/components/new/data';
+import { placeHolds } from '$lib/components/new/data';
+import { waveHold } from '$lib/components/new/app/app-model';
 import { plural } from '$lib/components/new/envs-model';
 import { behindOfStatus } from '$lib/view-models/behind';
 import { newerReleaseCountLive } from '$lib/view-models/failed-builds';
@@ -65,9 +66,20 @@ describe('landing film worlds: the Production tile wave line, exact strings', ()
 	it('t=33: while us-east-1 still runs the failed build the wave-2 regions already do not count it', () => {
 		for (const s of WAVE2) expect(behindOfStatus(roOf(w33, s), fleetOf(w33))).toBe(0);
 	});
-	it('bakeFailedOn: us-east-1 failed 4.46.0-46 at t=33 (still runs it) but at t=46 (rolled back, retained Failed entry) it fails nothing', () => {
-		const at = (w: W) => { render(w); return bakeFailedOn(placeHolds('checkout-api', 'incident').find((p) => p.label === 'us-east-1')!, '4.46.0-46'); };
-		expect(at(w33)).toBe(true);
-		expect(at(w46)).toBe(false);
+	it('t=33 the wave line names us-east-1; at t=46 (rolled back, retained Failed entry) no place prints any failed-wave sentence', () => {
+		const lines = (w: W) => { render(w); const P = placeHolds('checkout-api', 'incident'); return P.map((p) => waveHold(p, P)).filter(Boolean); };
+		expect(lines(w33).some((h) => h!.failed === 'us-east-1')).toBe(true);
+		expect(lines(w46).filter((h) => h!.failed)).toEqual([]);
+	});
+	it('t=33 with a NEWER b-47 awaiting approval in every wave-2 place: the approval hold does not mask us-east-1 failure (failure first)', () => {
+		const REV47 = 'f'.repeat(40);
+		const cand = { tag: 'b-47', version: '4.47.0-47', revision: REV47, created: '2026-11-10T09:30:00.000Z' };
+		const withB47 = (w: W): W => ({ ...w, rollouts: (w.rollouts as any[]).map((r) => WAVE2.some((s) => r.metadata.namespace.endsWith(s))
+			? { ...r, status: { ...r.status, releaseCandidates: [cand, ...r.status.releaseCandidates], gates: [...r.status.gates, { name: 'release-approval', allowedVersions: ['b-44', 'b-45', 'b-46'], message: 'Waiting for approval' }].filter((g, i, a) => a.findIndex((x) => x.name === g.name) === i || g.message === 'Waiting for approval') } }
+			: r) }) as W;
+		expect(render(withB47(w33))).toEqual(['4 regions held · us-east-1 failed the bake']);
+		const P = placeHolds('checkout-api', 'incident'), ap = P.find((p) => p.label === 'ap-southeast-2')!;
+		expect(ap.heldBuilds.map((b) => b.build)).toContain('4.47.0-47');
+		expect(waveHold(ap, P)!.failed).toBe('us-east-1');
 	});
 });

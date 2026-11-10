@@ -1,7 +1,7 @@
 <script lang="ts">
 	import NotFound from '$lib/components/NotFound.svelte';
 	import { currentRowChip } from '$lib/view-models/history-current-chip';
-	import { behindOfRollout } from '$lib/view-models/behind';
+	import { behindWhenSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
 	import { displayTimeZone } from '$lib/timezone.svelte';
@@ -129,7 +129,7 @@
 	/** QA2 #9: the current row's position chip says CURRENCY when healthy, else its state (`currentRowChip`), never the retired state word "Live". */
 	/** the fleet's Environments and rollouts: a build that failed upstream in this place's wave chain is not "behind" (batch4 #3b) */
 	const fleetQuery = createQuery(() => rolloutsListQueryOptions({ options: { staleTime: 30000 } }));
-	const currencyBehind = $derived(behindOfRollout(rollout, null, { environments: fleetQuery.data?.environments?.items, rollouts: fleetQuery.data?.rollouts?.items }));
+	const currencyBehind = $derived(behindWhenSettled(rollout, { environments: fleetQuery.data?.environments?.items, rollouts: fleetQuery.data?.rollouts?.items }, fleetQuery.isSuccess || fleetQuery.isError));
 
 	/**
 	 * ⭐ "Changes" IS AN ORPHAN LABEL WHEN GITHUB ISN'T CONNECTED (AD round
