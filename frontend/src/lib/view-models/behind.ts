@@ -4,12 +4,12 @@
  * carries no such list (`releaseCandidates` absent) falls back to its position in `availableReleases`, and then to the cross-peer rank.
  */
 import { rankBehindBy, type RankVerdict } from './env-rank';
-import { failedBuildKeys, failedHere } from './failed-builds';
+import { liveOf } from './failed-builds';
 
 type Status = { releaseCandidates?: unknown[]; currentVersion?: string; availableReleases?: { tag?: string; version?: string; revision?: string }[]; history?: { bakeStatus?: string | null; version?: { tag?: string; version?: string; revision?: string } | null }[] } | null | undefined;
 
 /** candidates minus the builds that failed in this place and were rolled back from (failed-builds.ts) */
-const live = <T>(st: NonNullable<Status>, xs: T[]): T[] => { const f = failedBuildKeys(st.history); return f.size ? xs.filter((x) => !failedHere(x as never, f)) : xs; };
+const live = <T>(st: NonNullable<Status>, xs: T[]): T[] => liveOf(st, xs as never) as unknown as T[];
 
 export function behindOfStatus(st: Status): number {
 	if (!st) return 0;

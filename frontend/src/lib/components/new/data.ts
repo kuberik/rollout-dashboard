@@ -36,7 +36,7 @@
 import { formatTimeAgoCompact } from '$lib/utils';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus } from '$lib/view-models/behind';
-import { failedBuildKeys, failedHere } from '$lib/view-models/failed-builds';
+import { failedHere, liveOf } from '$lib/view-models/failed-builds';
 import { waveReady } from '$lib/view-models/sites-waves';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
@@ -1296,15 +1296,14 @@ export type Inbound = { app: string; build: string; from: TierKey | null; reason
 /** (aa) Builds NOT yet running in an environment: the app's newest build runs elsewhere (upstream) but no place of this tier runs it; `reason` is why the tier holds it. A build already checking in the tier belongs to its row. */
 /** the place's release candidates minus the builds that failed here and were rolled back from (view-models/failed-builds.ts): THE "Newer builds" list every count and hold reads */
 function liveCands<C extends { tag?: string; version?: string; revision?: string }>(st: { releaseCandidates?: C[]; history?: RawEntry[] } | null | undefined): C[] | undefined {
-	const f = failedBuildKeys(st?.history);
-	return f.size ? st?.releaseCandidates?.filter((c) => !failedHere(c, f)) : st?.releaseCandidates;
+	return st?.releaseCandidates ? liveOf(st as never, st.releaseCandidates) : undefined;
 }
-/** every build that failed its bake in the place a rollout href names: its history's Failed entries plus the Environment's own `WaitingFor bake failed on <rev>` blocker (view-models/failed-builds.ts) */
-function failedKeysOfPlace(href: string): Set<string> {
+/** the short shas the place's Environment names in `WaitingFor bake failed on <rev>` (view-models/failed-builds.ts waveRevs) */
+function waveRevsOfPlace(href: string): string[] {
 	const h = hrefParts(href);
 	const env = h ? (source().environments as unknown as Environment[]).find((e) => e.metadata?.namespace === h.ns && e.spec?.rolloutRef?.name === h.name) : null;
 	const b = env ? waveReady(env).blocker : null;
-	return failedBuildKeys(rawOf(href)?.status.history, b && b.kind === 'member' && b.outcome === 'failed' && b.rev ? [b.rev] : []);
+	return b && b.kind === 'member' && b.outcome === 'failed' && b.rev ? [b.rev] : [];
 }
 export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 	const causes = heldCauses(state);
@@ -1316,7 +1315,7 @@ export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 		const newest = ps[0]?.newest;
 		if (!newest || here.some((p) => p.version === newest)) continue;
 		/* batch4 #1: a build that failed in a place of this tier (history, or the wave's own `bake failed on <rev>`) and was rolled back is not inbound while the tier runs its rollback target */
-		if (here.some((p) => failedHere(newest, failedKeysOfPlace(p.href)))) continue;
+		if (here.some((p) => failedHere(rawOf(p.href)?.status as never, { tag: newest, version: newest, revision: newest }, waveRevsOfPlace(p.href)))) continue;
 		const up = ps.filter((p) => p.version === newest && p.state !== 'failed').map((p) => p.tier).sort((x, y) => RANK_T[y] - RANK_T[x])[0] ?? null;
 		const hold = here.map((p) => causes.find((c) => c.rows.some((r) => r.href === p.href))).find(Boolean);
 		out.push({ app: a.app, build: buildName(a.app, newest) ?? newest, from: up, reason: hold?.cause ?? null, href: here[0].href });

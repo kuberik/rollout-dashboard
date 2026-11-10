@@ -1,6 +1,5 @@
 import type { Rollout } from '$lib/../types';
 import { getDisplayVersion } from '$lib/utils';
-import { failedBuildKeys, failedHere } from './failed-builds';
 // ⛔ THIS IMPORT IS CIRCULAR, AND THAT IS DELIBERATE — SEE THE NOTE ON
 // `detectStuckPromotion` BELOW. `blocking-story.ts` imports `promotionBlock`/
 // `promotionCandidates` FROM this file; this file imports only the pure
@@ -223,10 +222,7 @@ export function promotionCandidates(rollout: Rollout | null | undefined): Releas
 	// unknowable we must not claim anything, blocked or otherwise.
 	if (newerReleaseCount(rollout) === null) return [];
 
-	// batch4 #1: a build that failed its bake here and was rolled back from is published, but nothing is coming for it (failed-builds.ts)
-	const failed = failedBuildKeys(status.history);
-	const live = (xs: ReleaseRef[]): ReleaseRef[] => (failed.size ? xs.filter((x) => !failedHere(x as never, failed)) : xs);
-	if (Array.isArray(status.releaseCandidates)) return live(status.releaseCandidates);
+	if (Array.isArray(status.releaseCandidates)) return status.releaseCandidates;
 
 	const count = newerReleaseCount(rollout);
 	if (count && count > 0 && Array.isArray(status.availableReleases) && status.history?.[0]) {
@@ -234,7 +230,7 @@ export function promotionCandidates(rollout: Rollout | null | undefined): Releas
 		const idx = status.availableReleases.findIndex((r) => getDisplayVersion(r) === cur);
 		// availableReleases is OLDEST-FIRST; the tail after idx is everything
 		// newer than current. Reversed so this function has ONE contract.
-		return idx >= 0 ? live(status.availableReleases.slice(idx + 1).reverse()) : [];
+		return idx >= 0 ? status.availableReleases.slice(idx + 1).reverse() : [];
 	}
 	return [];
 }

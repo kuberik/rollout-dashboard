@@ -139,13 +139,29 @@ export type FailedHereVerdict =
 	| { kind: 'clean' }
 	| { kind: 'failed'; failedAt: string | null; rolledBackAt: string | null };
 
+export type BuildRef = { tag?: string | null; version?: string | null; revision?: string | null };
+const isHex7 = (v: string): boolean => /^[0-9a-f]{7,40}$/.test(v);
+/**
+ * THE ONE "is this the same build" match (batch4 #1 rework). Exact on tag, on version, or on the FULL revision; a short sha (a wave blocker's
+ * `bake failed on <rev>`) matches only as a hex prefix of length >= 7 against a REVISION, never against a tag or version, so an all-digit tag
+ * (20261110) can never hide its neighbour (20261111).
+ */
+export function sameBuild(a: BuildRef | null | undefined, b: BuildRef | null | undefined): boolean {
+	if (!a || !b) return false;
+	if ((a.tag && a.tag === b.tag) || (a.version && a.version === b.version) || (a.revision && a.revision === b.revision)) return true;
+	return false;
+}
+/** a short sha (>= 7 hex) names this build when it prefixes the build's revision */
+export const shaNamesBuild = (short: string, b: BuildRef | null | undefined): boolean => isHex7(short) && !!b?.revision && b.revision.startsWith(short);
+
 export function failedHereVerdict(
 	rollout: Rollout | null | undefined,
-	tag: string | null
+	tagOrRef: string | BuildRef | null
 ): FailedHereVerdict {
-	if (!tag) return { kind: 'clean' };
+	if (!tagOrRef) return { kind: 'clean' };
+	const ref: BuildRef = typeof tagOrRef === 'string' ? { tag: tagOrRef } : tagOrRef;
 	const history = rollout?.status?.history ?? [];
-	const idx = history.findIndex((h) => h?.version?.tag === tag);
+	const idx = history.findIndex((h) => sameBuild(h?.version, ref));
 	if (idx === -1) return { kind: 'clean' };
 	const entry = history[idx];
 	if (entry?.bakeStatus !== 'Failed') return { kind: 'clean' };

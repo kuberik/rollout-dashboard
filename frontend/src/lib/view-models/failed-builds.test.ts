@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { behindOfRollout, behindOfStatus } from './behind';
 import { promotionCandidates } from './promotion';
-import { failedBuildKeys, failedHere } from './failed-builds';
+import { failedHere, liveOf } from './failed-builds';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { fixtureSource } from '$lib/components/home/sketch/home-data';
 import { inbound, isArriving, placesOf } from '$lib/components/new/data';
@@ -23,13 +23,23 @@ const rolledBack = {
 	]
 };
 
-describe('failed-builds helper', () => {
-	it('names a failed build by tag, version and sha; a blocker revision counts too', () => {
-		const f = failedBuildKeys(rolledBack.history);
-		expect(failedHere(v46, f)).toBe(true);
-		expect(failedHere('4.46.0-46', f)).toBe(true);
-		expect(failedHere(v45, f)).toBe(false);
-		expect(failedHere({ revision: 'ccccccc3333333' }, failedBuildKeys([], ['ccccccc3333333']))).toBe(true);
+describe('failed-builds helper (a wrapper over failedHereVerdict: the latest attempt)', () => {
+	it('names a failed build by tag, version, full revision; a wave blocker names it by a short sha', () => {
+		expect(failedHere(rolledBack, v46)).toBe(true);
+		expect(failedHere(rolledBack, { version: '4.46.0-46' })).toBe(true);
+		expect(failedHere(rolledBack, v45)).toBe(false);
+		expect(failedHere({ history: [] }, v46, ['bbbbbbb'])).toBe(true);
+	});
+	it('all-digit tags never collide: 20261110 failed does not hide 20261111', () => {
+		const st = { history: [{ bakeStatus: 'Failed', version: { tag: '20261110', revision: 'aaaaaaaaaaaa' } }] };
+		expect(failedHere(st, { tag: '20261110' })).toBe(true);
+		expect(failedHere(st, { tag: '20261111', revision: 'bbbbbbbbbbbb' })).toBe(false);
+		expect(failedHere({ history: [] }, { tag: '20261111' }, ['2026111'])).toBe(false); /* a short sha only prefixes a revision, never a tag */
+		expect(liveOf(st, [{ tag: '20261110' }, { tag: '20261111' }]).map((x) => x.tag)).toEqual(['20261111']);
+	});
+	it('a retried build that later succeeded counts normally', () => {
+		const st = { history: [{ bakeStatus: 'Succeeded', version: v46 }, { bakeStatus: 'Failed', version: v46 }, { bakeStatus: 'Succeeded', version: v45 }] };
+		expect(failedHere(st, v46)).toBe(false);
 	});
 });
 
@@ -70,11 +80,12 @@ describe('Environments: a failed, rolled-back build is not arriving', () => {
 	});
 });
 
-describe('the shared candidate set (held / waiting states read it)', () => {
-	it('promotionCandidates drops the failed, rolled-back build and keeps a genuinely newer one', () => {
+/* the controller keeps a failed build as a candidate; clearing a pin (or deploying it again) really redeploys it, so those surfaces must still list it */
+describe('promotionCandidates is NOT filtered (clear-pin, auto-deploy, the rollout detail row still list the failed build)', () => {
+	it('the failed, rolled-back build stays a promotion candidate', () => {
 		const v47 = { tag: 'b-47', version: '4.47.0-47', revision: 'ddddddd4444444' };
 		const ro = (cands: unknown[]) => ({ status: { ...rolledBack, availableReleases: [v45, v46, v47], releaseCandidates: cands } }) as never;
-		expect(promotionCandidates(ro([v46]))).toEqual([]);
-		expect(promotionCandidates(ro([v47, v46])).map((c) => c.tag)).toEqual(['b-47']);
+		expect(promotionCandidates(ro([v46])).map((c) => c.tag)).toEqual(['b-46']);
+		expect(promotionCandidates(ro([v47, v46])).map((c) => c.tag)).toEqual(['b-47', 'b-46']);
 	});
 });
