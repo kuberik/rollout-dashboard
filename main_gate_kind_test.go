@@ -21,6 +21,9 @@ func gateKindFixture() []client.Object {
 	mk := func(name, owner string) *rolloutv1alpha1.RolloutGate {
 		g := &rolloutv1alpha1.RolloutGate{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: name}}
 		g.Spec.RolloutRef = &corev1.LocalObjectReference{Name: "app"}
+		if name == "sched" {
+			g.Annotations = map[string]string{"gate.kuberik.com/pretty-name": "Business hours"}
+		}
 		if owner == "" {
 			av := []string{}
 			g.Spec.AllowedVersions = &av
@@ -41,6 +44,13 @@ func assertGateKinds(t *testing.T, gates []interface{}) {
 	}
 	for _, g := range gates {
 		m := g.(map[string]interface{})
+		wantName := ""
+		if m["name"] == "sched" {
+			wantName = "Business hours"
+		}
+		if got, _ := m["displayName"].(string); got != wantName {
+			t.Errorf("gate %v displayName = %q, want %q", m["name"], got, wantName)
+		}
 		if m["kind"] != want[m["name"].(string)] {
 			t.Errorf("gate %v kind = %v, want %v", m["name"], m["kind"], want[m["name"].(string)])
 		}

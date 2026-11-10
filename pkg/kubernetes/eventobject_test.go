@@ -355,7 +355,7 @@ func TestEventHub_LoadTwentyClientsTwoHundredEvents_WithEmbeddedObjects(t *testi
 func TestAttachObjects_RolloutEventCarriesGateKinds(t *testing.T) {
 	av := []string{}
 	gate := &rolloutv1alpha1.RolloutGate{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "manual"},
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "manual", Annotations: map[string]string{"gate.kuberik.com/pretty-name": "Manual approval"}},
 		Spec:       rolloutv1alpha1.RolloutGateSpec{AllowedVersions: &av},
 	}
 	rollout := &rolloutv1alpha1.Rollout{
@@ -371,13 +371,13 @@ func TestAttachObjects_RolloutEventCarriesGateKinds(t *testing.T) {
 	})
 	var got struct {
 		Status struct {
-			Gates []struct{ Name, Kind string } `json:"gates"`
+			Gates []struct{ Name, Kind, DisplayName string } `json:"gates"`
 		} `json:"status"`
 	}
 	if err := json.Unmarshal(out[0].Object, &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Status.Gates) != 1 || got.Status.Gates[0].Kind != "approval" {
+	if len(got.Status.Gates) != 1 || got.Status.Gates[0].Kind != "approval" || got.Status.Gates[0].DisplayName != "Manual approval" {
 		t.Fatalf("SSE rollout gates = %+v, want kind approval", got.Status.Gates)
 	}
 }

@@ -18,7 +18,7 @@ func benchList(n int) (*rolloutv1alpha1.RolloutList, GateKindIndex) {
 		for g := 0; g < 4; g++ {
 			name := fmt.Sprintf("gate-%d-%d", i, g)
 			r.Status.Gates = append(r.Status.Gates, rolloutv1alpha1.RolloutGateStatusSummary{Name: name, AllowedVersions: []string{"v1", "v2"}, Message: "Gate is passing"})
-			idx[ns+"/"+name] = GateKindApproval
+			idx[ns+"/"+name] = GateInfo{Kind: GateKindApproval, DisplayName: "Business hours"}
 		}
 		l.Items = append(l.Items, r)
 	}

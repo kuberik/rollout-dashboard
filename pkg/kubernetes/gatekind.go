@@ -78,23 +78,38 @@ func GateKind(gate *rolloutv1alpha1.RolloutGate) string {
 	return GateKindUnknown
 }
 
-// GateKindIndex maps "namespace/name" of a RolloutGate to its kind.
-type GateKindIndex map[string]string
+// gateAnnotationPrettyName is the display-name annotation the controllers
+// stamp on gates (rollout-controller rolloutschedule_helpers.go:384, 434 and
+// rolloutdependency_controller.go:287; environment-controller
+// githubenvironment_controller.go:1326) and the
+// frontend reads (view-models/gate-name.ts PRETTY_NAME_KEY).
+const gateAnnotationPrettyName = "gate.kuberik.com/pretty-name"
+
+// GateInfo is what a gate summary is enriched with: its kind and, when the
+// RolloutGate carries a pretty-name annotation, its display name (empty means
+// "omit the field", never an invented name).
+type GateInfo struct {
+	Kind        string
+	DisplayName string
+}
+
+// GateKindIndex maps "namespace/name" of a RolloutGate to its GateInfo.
+type GateKindIndex map[string]GateInfo
 
 // Lookup returns the kind of the gate named in a rollout summary, "unknown"
 // when the gate is not in the index.
-func (i GateKindIndex) Lookup(namespace, name string) string {
+func (i GateKindIndex) Lookup(namespace, name string) GateInfo {
 	if k, ok := i[namespace+"/"+name]; ok {
 		return k
 	}
-	return GateKindUnknown
+	return GateInfo{Kind: GateKindUnknown}
 }
 
 // NewGateKindIndex indexes gates by namespace/name.
 func NewGateKindIndex(gates []rolloutv1alpha1.RolloutGate) GateKindIndex {
 	idx := make(GateKindIndex, len(gates))
 	for i := range gates {
-		idx[gates[i].Namespace+"/"+gates[i].Name] = GateKind(&gates[i])
+		idx[gates[i].Namespace+"/"+gates[i].Name] = GateInfo{Kind: GateKind(&gates[i]), DisplayName: gates[i].Annotations[gateAnnotationPrettyName]}
 	}
 	return idx
 }
@@ -117,7 +132,8 @@ func (c *Client) GateKindIndex(ctx context.Context) GateKindIndex {
 
 type gateSummaryWithKind struct {
 	rolloutv1alpha1.RolloutGateStatusSummary
-	Kind string `json:"kind"`
+	Kind        string `json:"kind"`
+	DisplayName string `json:"displayName,omitempty"`
 }
 
 type rolloutStatusWithKinds struct {
@@ -138,7 +154,8 @@ func toKindJSON(r *rolloutv1alpha1.Rollout, kinds GateKindIndex) rolloutWithKind
 	if len(r.Status.Gates) > 0 {
 		out.Status.Gates = make([]gateSummaryWithKind, len(r.Status.Gates))
 		for i, g := range r.Status.Gates {
-			out.Status.Gates[i] = gateSummaryWithKind{RolloutGateStatusSummary: g, Kind: kinds.Lookup(r.Namespace, g.Name)}
+			info := kinds.Lookup(r.Namespace, g.Name)
+			out.Status.Gates[i] = gateSummaryWithKind{RolloutGateStatusSummary: g, Kind: info.Kind, DisplayName: info.DisplayName}
 		}
 	}
 	return out
