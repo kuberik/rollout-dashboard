@@ -555,6 +555,7 @@ lib/components/new/app/app-model.ts	code	next … · ready to deploy
 lib/components/new/app/app-model.ts	code	On the newest build
 lib/components/new/app/app-model.ts	code	Releases when the check starts passing
 lib/components/new/app/app-model.ts	code	Rolled back
+lib/components/new/app/app-model.ts	code	Then … more … follow….
 lib/components/new/app/app-model.ts	code	to … …
 lib/components/new/app/app-model.ts	code	Up to date
 lib/components/new/app/AppActivity.svelte	code	… of …
@@ -967,6 +968,7 @@ lib/components/new/Slipway.svelte	text	Next build
 lib/components/new/Slipway.svelte	code	Open rollout
 lib/components/new/Slipway.svelte	code	reached … of … place…
 lib/components/new/Slipway.svelte	code	reached all … places
+lib/components/new/Slipway.svelte	code	Rolled back from
 lib/components/new/Slipway.svelte	code	Your approval
 lib/components/new/Slipway.svelte	text	Your change
 lib/components/new/state-words.ts	code	… … approval

@@ -26,10 +26,13 @@ describe('Toast position', () => {
 		expect(cls).toContain('sm:w-[380px]');
 	});
 
-	it('a confirmation is one line on a phone; a danger toast may wrap', () => {
-		const ok = root({ tone: 'success' }).querySelector('.t-body') as HTMLElement;
-		expect(ok.className).toContain('max-sm:truncate');
-		expect(ok.getAttribute('title')).toBe('Deployment retry initiated');
+	it('a confirmation is never truncated: it wraps on a phone, like a danger toast', () => {
+		const msg = 'Approved 4.46.0-46';
+		const desc = 'checkout-api is deploying to 5 prod regions';
+		const ok = root({ tone: 'success', message: msg, description: desc }).querySelector('.t-body') as HTMLElement;
+		expect(ok.className).not.toContain('truncate');
+		expect(ok.getAttribute('title')).toBeNull();
+		expect(ok.textContent).toContain(desc);
 		const bad = root({ tone: 'danger', message: 'Retry failed: the rollout was deleted' }).querySelector('.t-body') as HTMLElement;
 		expect(bad.className).not.toContain('truncate');
 	});

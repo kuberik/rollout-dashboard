@@ -167,10 +167,14 @@ kubectl -n kuberik-system create configmap kuberik-cluster-info "${cm_args[@]}" 
 # their /api calls with the user's cookie forwarded), so they need no callback:
 #   https://<hub-host>/api/auth/github/callback
 if [ -n "${GITHUB_APP_CLIENT_ID:-}" ] && [ -n "${GITHUB_APP_CLIENT_SECRET:-}" ]; then
+  # Tracing off: the client secret is expanded on the command line.
+  { set +x; } 2>/dev/null
+  echo "+ creating github-app-credentials"
   kubectl -n kuberik-system create secret generic github-app-credentials \
     --from-literal=clientId="${GITHUB_APP_CLIENT_ID}" \
     --from-literal=clientSecret="${GITHUB_APP_CLIENT_SECRET}" \
     -o yaml --dry-run=client | kubectl apply -f -
+  set -x
 else
   echo "GITHUB_APP_CLIENT_ID/GITHUB_APP_CLIENT_SECRET not set — skipping github-app-credentials Secret (commit changelist features will be disabled)"
 fi

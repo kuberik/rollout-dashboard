@@ -168,3 +168,13 @@ export function checkShort(app: string, check: string | null): string | null {
 	const pre = `${app}-`;
 	return check.startsWith(pre) && check.length > pre.length ? check.slice(pre.length) : check;
 }
+
+/**
+ * Slipway's lead action is the PRIMARY when it is Approve (the one blue, as on Facia / AttentionCard / the confirm popover) or when the
+ * place is failing (the Roll back lead); any other lead (a held place's non-approve action) is an equal among the secondaries and only
+ * carries the phone's `lead` flag.
+ */
+export function slipwayLeadSplit<A extends object>(lead: A | null, o: { failing: boolean; approve: boolean }): { primary: A | undefined; leadSecondary: (A & { lead: true })[] } {
+	if (!lead) return { primary: undefined, leadSecondary: [] };
+	return o.failing || o.approve ? { primary: lead, leadSecondary: [] } : { primary: undefined, leadSecondary: [{ ...lead, lead: true }] };
+}

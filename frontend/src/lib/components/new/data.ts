@@ -133,6 +133,19 @@ export function lastHealthy(row: Pick<RolloutRow, 'state' | 'href'>): { build: s
 	/* the tab prints the version tag when the app uses tags (2.64.0-64), a short SHA otherwise */
 	return e ? { build: shortBuild(e.version.version ?? e.version.tag ?? e.version.revision) ?? '', at: e.timestamp } : null;
 }
+/** What the place's current deploy replaced, for the facts line "Replaces <build>". Normally the last healthy build before this one. After a ROLLBACK the
+ *  controller writes the older version as a NEW history entry, so that older healthy entry is the SAME build the place runs now ("X replaces X");
+ *  then the line names the entry the rollback displaced (the build that ran just before it), flagged `rolledBack` so the label
+ *  reads "Rolled back from <build>" — the product's one rollback phrasing (history tab, activity) — instead of "Replaces". null when there is nothing different to name. */
+type HistV = { version: { version?: string | null; tag?: string | null; revision?: string | null }; timestamp: string; bakeStatus?: string | null };
+export function replacedFrom(hist: HistV[], lh: { build: string; at: string } | null): { build: string; at: string; rolledBack?: true } | null {
+	const id = (e: HistV) => shortBuild(e.version.version ?? e.version.tag ?? e.version.revision) ?? '';
+	const cur = hist[0] ? id(hist[0]) : null;
+	if (!lh || cur === null || lh.build !== cur) return lh;
+	const e = hist.slice(1).find((h) => id(h) !== cur);
+	return e ? { build: id(e), at: e.timestamp, rolledBack: true } : null;
+}
+export const replacedBuild = (row: Pick<RolloutRow, 'state' | 'href'>) => replacedFrom((rawOf(row.href)?.status.history ?? []) as HistV[], lastHealthy(row));
 /** The Gates tab's Runs-in rollup, word for word (up-to-date.ts): the tab counts by BUILD, so a failing place on the newest build counts.
  *  Apps' own `onNewest` is a different rule on purpose (the app page says "2 of 3 · 1 failed"). */
 export function pathPosition(row: Pick<RolloutRow, 'app'>, state: HomeState = 'incident'): string {
@@ -1148,7 +1161,7 @@ export function buildPlaces(app: string, build: string, state: HomeState = 'inci
 	const want = buildName(app, build) ?? build;
 	return placesOf(state, app).filter((p) => buildName(app, p.version) === want).map((p) => ({ place: placeLabel({ tier: p.tier, regions: [p.label] }), href: p.href, state: p.state }));
 }
-export type GateInfo = { name: string; kind: 'approval' | 'dependency' | 'check' | 'schedule' | 'promotion' | 'other'; sentence: string; holding: boolean; places: string[]; held: string[]; releasedBy: string; /** the held-HERE count is not known yet (the place's detail has not answered): print a pending state, never `held.length` */ heldPending: boolean };
+export type GateInfo = { /** identity, unique per gate: the gate's resource name (dependency gates folded). `name` is only a display name and repeats (every generated `ghd-xxxxx` reads "Gate"). */ id: string; name: string; kind: 'approval' | 'dependency' | 'check' | 'schedule' | 'promotion' | 'other'; sentence: string; holding: boolean; places: string[]; held: string[]; releasedBy: string; /** the held-HERE count is not known yet (the place's detail has not answered): print a pending state, never `held.length` */ heldPending: boolean };
 /** A detail page's OWN gates, approvals included (the list pages exclude approvals by rule): each gate once, the places it guards, the builds it holds, who/what releases it. */
 export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] {
 	const out = new Map<string, GateInfo>();
@@ -1160,7 +1173,7 @@ export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] 
 			if (kind === 'promotion') continue; /* sequencing, not a hold anyone releases */
 			const holding = g.allowedVersions != null && cands.length > 0 && cands.every((c) => !g.allowedVersions!.includes(c));
 			const k = g.name.replace(/^dependency-.*-needs-/, 'dependency-');
-			const e = out.get(k) ?? { name: gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : kind === 'check' ? 'the check passes' : 'the rule allows it' };
+			const e = out.get(k) ?? { id: k, name: gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : kind === 'check' ? 'the check passes' : 'the rule allows it' };
 			e.places.push(placeLabel({ tier: p.tier, regions: [p.label] }));
 			const hh = holding ? heldHere(p.href) : null;
 			if (holding && !hh) e.heldPending = true;
