@@ -45,7 +45,7 @@
 	/* a gated lead puts the build that WAITS in focus (the one Approve releases, held here per the Gates tab); the build it replaces is the line beside it */
 	const build = $derived(wb ? wb.build : buildTitle(row));
 	const healthy = $derived(lastHealthy(gatedRow ? { state: 'healthy', href: row.href } : row));
-	/* after a rollback the last healthy entry is the build now running: "Replaces" names the build the rollback displaced instead */
+	/* after a rollback the last healthy entry is the build now running: the line names the build the rollback displaced, as "Rolled back from <build>" */
 	const replaced = $derived(failing || gatedRow ? healthy : replacedBuild(row));
 	const commit = $derived(wb ? { title: wb.title ?? '', author: wb.author } : deployedCommit(row));
 	const own = $derived(commit?.author === VIEWER);
@@ -73,7 +73,7 @@
 	]);
 	const DOT = { ok: 'bg-success-solid', bad: 'bg-danger-solid', wait: 'bg-progress-solid animate-pulse', pending: 'bg-line-strong' } as const;
 	/* U9: the dl's rows. prev = the build this one replaces / the last healthy one; reach = the tab's Runs-in rollup (compact: the tab header's newer-builds sentence) split into label + value */
-	const prev = $derived(wb ? { label: 'Replaces', build: buildTitle(row), age: `${ago(row.deployedAt)} ago` } : replaced ? { label: failing ? 'Last healthy' : 'Replaces', build: replaced.build, age: `${failing ? 'deployed ' : ''}${ago(replaced.at)} ago` } : null);
+	const prev = $derived(wb ? { label: 'Replaces', build: buildTitle(row), age: `${ago(row.deployedAt)} ago` } : replaced ? { label: failing ? 'Last healthy' : 'rolledBack' in replaced ? 'Rolled back from' : 'Replaces', build: replaced.build, age: `${failing ? 'deployed ' : ''}${ago(replaced.at)} ago` } : null);
 	const reach = $derived.by(() => {
 		if (compact) { const n = newestBuild(row); if (!n || failing) return null; return { label: 'Newer builds', build: null as string | null, value: n.sentence.replace(/^(\d+) newer builds?/, '$1') }; /* lead r9: the tab's own sentence, count first ('2 · held: waiting for approval'), never 'N, held:' */ }
 		if (!facts) return null;

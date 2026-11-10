@@ -135,14 +135,15 @@ export function lastHealthy(row: Pick<RolloutRow, 'state' | 'href'>): { build: s
 }
 /** What the place's current deploy replaced, for the facts line "Replaces <build>". Normally the last healthy build before this one. After a ROLLBACK the
  *  controller writes the older version as a NEW history entry, so that older healthy entry is the SAME build the place runs now ("X replaces X");
- *  then the line names the entry the rollback displaced (the build that ran just before it). null when there is nothing different to name. */
+ *  then the line names the entry the rollback displaced (the build that ran just before it), flagged `rolledBack` so the label
+ *  reads "Rolled back from <build>" — the product's one rollback phrasing (history tab, activity) — instead of "Replaces". null when there is nothing different to name. */
 type HistV = { version: { version?: string | null; tag?: string | null; revision?: string | null }; timestamp: string; bakeStatus?: string | null };
-export function replacedFrom(hist: HistV[], lh: { build: string; at: string } | null): { build: string; at: string } | null {
+export function replacedFrom(hist: HistV[], lh: { build: string; at: string } | null): { build: string; at: string; rolledBack?: true } | null {
 	const id = (e: HistV) => shortBuild(e.version.version ?? e.version.tag ?? e.version.revision) ?? '';
 	const cur = hist[0] ? id(hist[0]) : null;
 	if (!lh || cur === null || lh.build !== cur) return lh;
 	const e = hist.slice(1).find((h) => id(h) !== cur);
-	return e ? { build: id(e), at: e.timestamp } : null;
+	return e ? { build: id(e), at: e.timestamp, rolledBack: true } : null;
 }
 export const replacedBuild = (row: Pick<RolloutRow, 'state' | 'href'>) => replacedFrom((rawOf(row.href)?.status.history ?? []) as HistV[], lastHealthy(row));
 /** The Gates tab's Runs-in rollup, word for word (up-to-date.ts): the tab counts by BUILD, so a failing place on the newest build counts.
