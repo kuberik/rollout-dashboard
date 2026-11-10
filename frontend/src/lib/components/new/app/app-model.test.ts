@@ -106,14 +106,14 @@ describe('r34 builds-lag: the Sounding ledger (lag = position in THIS app\'s own
 		expect(c[0].index).toBeNull();
 		expect(L.filter((s) => !s.custom).map((s) => s.index)).toEqual([0, 1, 2, 3].slice(0, L.length - 1));
 	});
-	it('checkout-api: af-south-1 is 5 builds behind and says the tab\'s cause, "Held by the pin"', () => {
+	it('checkout-api: af-south-1 is 4 builds behind (4.41.0-41 failed there and was rolled back: batch4 #1) and says the tab\'s cause, "Held by the pin"', () => {
 		const P = placeHolds('checkout-api', 'incident');
 		const item = apps('incident').items.find((a) => a.app === 'checkout-api')!;
 		const pins = pinnedPlaces(item.holds);
 		const af = P.find((p) => p.label === 'af-south-1')!;
 		expect(pins.has(af.place)).toBe(true);
 		expect(placeWord(af, pins.has(af.place))).toBe('Held by the pin');
-		expect(ledgerOf(P).find((s) => s.places.includes(af))!.index).toBe(5);
+		expect(ledgerOf(P).find((s) => s.places.includes(af))!.index).toBe(4);
 		expect(P.filter((p) => pins.has(p.place)).length).toBe(1);
 	});
 	it('runs of 4 or more unused builds fold into one row (never the first or last stop); expanding shows them', () => {
