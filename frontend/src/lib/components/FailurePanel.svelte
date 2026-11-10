@@ -19,6 +19,8 @@
 	import { historyEntrySince } from '$lib/view-models/event-age';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import { failingLead } from '$lib/view-models/attention';
+	import type { HealthObservation } from '$lib/../types';
 
 	interface Props {
 		open?: boolean;
@@ -238,6 +240,15 @@
 	const failureSince = $derived(
 		checkFailure(rollout)?.since ?? historyEntrySince(rollout.status?.history?.[0])
 	);
+	/* the same figure the app page's banner and the failure cards lead with: the first drawable observation of the failing check (the live HealthCheck first, the history snapshot otherwise) */
+	const observations = $derived<HealthObservation[]>(
+		((failingNow[0]?.status as { observations?: HealthObservation[] } | undefined)?.observations
+			?? (failedHCList[0] as { observations?: HealthObservation[] } | undefined)?.observations
+			?? []) as HealthObservation[]
+	);
+	const figure = $derived.by(() => { const l = failingLead(null, observations); return l.kind === 'check' ? null : l; });
+	/* with a figure the sentence keeps the check's NAME and the budget; the number is not said twice */
+	const bannerMessage = $derived(figure?.budget && failedHCList.length === 1 ? `${findDisplayName(failedHCList[0])}: ${figure.budget}` : summaryLine);
 	const failureAgo = $derived(failureSince ? formatTimeAgoCompact(failureSince, $now) : null);
 	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
 </script>
@@ -278,7 +289,8 @@
 	class="mb-4"
 	severity="failed"
 	title="Deployment failed"
-	message={failureAgo ? `${summaryLine} · ${failureAgo} ago` : summaryLine}
+	{observations}
+	message={failureAgo ? `${bannerMessage} · ${failureAgo} ago` : bannerMessage}
 	footnoteLabel="Details"
 	pulse
 	primary={rollbackShown ? { label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback } : undefined}
