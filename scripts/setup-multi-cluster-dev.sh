@@ -23,7 +23,9 @@ HUB_HOSTNAME="kuberik.${HOST_IP}.nip.io"
 SPOKE_HOSTNAME="kuberik-spoke.${HOST_IP}.nip.io"
 
 echo "==> Writing haproxy SNI router config"
-cat > /tmp/kuberik-haproxy.cfg <<EOF
+HAPROXY_CFG_DIR="${HOME}/.local/state/kuberik-dev"
+mkdir -p "${HAPROXY_CFG_DIR}"
+cat >| "${HAPROXY_CFG_DIR}/haproxy.cfg" <<EOF
 global
   log stdout format raw local0
   maxconn 4096
@@ -54,6 +56,12 @@ EOF
 
 echo "==> Stopping old socat router if running"
 docker compose -f "${PROJECT_ROOT}/docker-compose.socat.yaml" down 2>/dev/null || true
+# A router started by an older version of this setup (other compose project
+# name, /tmp config mount) holds the container name; replace it.
+if docker inspect sni-router >/dev/null 2>&1 && \
+   [ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' sni-router)" != "kuberik-sni" ]; then
+  docker rm -f sni-router
+fi
 
 echo "==> Starting haproxy SNI router on host:443"
 docker compose -f "${PROJECT_ROOT}/docker-compose.sni-proxy.yaml" up --wait

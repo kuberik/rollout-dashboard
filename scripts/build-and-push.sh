@@ -37,7 +37,7 @@ REPO_NAME="${GITHUB_USER}/${REPO_SUFFIX}"
 REGISTRY="ghcr.io/${GITHUB_USER}"
 
 # Authenticate Docker with GitHub Container Registry
-echo "$(gh auth token)" | docker login ghcr.io -u "$GITHUB_USER" --password-stdin
+gh auth token | docker login ghcr.io -u "$GITHUB_USER" --password-stdin
 
 # Check if repository exists, create if it doesn't
 if ! gh repo view "$REPO_NAME" &>/dev/null; then

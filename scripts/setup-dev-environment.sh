@@ -3,7 +3,10 @@ set -e
 set -x
 
 SCRIPT_DIR=$(dirname "$0")
+# Tracing is paused wherever the token is expanded, so it never lands in a set -x log.
+{ set +x; } 2>/dev/null
 GITHUB_TOKEN=${GITHUB_TOKEN:-$(gh auth token)}
+set -x
 
 # GitHub App credentials come from rollout-dashboard/.env (gitignored) so a cluster
 # reset keeps the GitHub login without exporting them by hand. The .env held the
@@ -88,7 +91,9 @@ helm template trust-manager oci://quay.io/jetstack/charts/trust-manager \
 
 kubectl wait --for=condition=Available --timeout=300s deployment/trust-manager -n cert-manager
 
-kubectl apply -f - <<EOF
+# trust-manager reports Available before its validating webhook serves, so the
+# first Bundle apply can fail with "connection refused". Retry for up to 2 min.
+CUSTOM_CA_BUNDLE=$(cat <<EOF
 apiVersion: trust.cert-manager.io/v1alpha1
 kind: Bundle
 metadata:
@@ -103,13 +108,27 @@ spec:
     configMap:
       key: "ca-certificates.crt"
 EOF
+)
+for attempt in $(seq 1 24); do
+  if printf '%s\n' "${CUSTOM_CA_BUNDLE}" | kubectl apply -f -; then break; fi
+  if [ "${attempt}" = 24 ]; then echo "trust-manager webhook never became ready" >&2; exit 1; fi
+  sleep 5
+done
 
 # Apply rollout CRDs
 kubectl apply -f https://raw.githubusercontent.com/DataDog/datadog-operator/refs/heads/main/config/crd/bases/v1/datadoghq.com_datadogmonitors.yaml
 
+# Controllers are deployed from sibling checkouts. KUBERIK_SRC_DIR defaults to
+# the directory that holds this repo; set it when running from a worktree that
+# lives elsewhere. A missing checkout used to be skipped silently, leaving a
+# cluster without that controller.
+KUBERIK_SRC_DIR="${KUBERIK_SRC_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 for repo in rollout-controller environment-controller openkruise-controller prometheus-controller; do
-  if [ -d "$SCRIPT_DIR/../../$repo" ]; then
-    (cd "$SCRIPT_DIR/../../$repo" && KIND_CLUSTER_NAME="${CLUSTER_NAME}" KIND_CLUSTER="${CLUSTER_NAME}" make dev-deploy)
+  if [ -d "$KUBERIK_SRC_DIR/$repo" ]; then
+    (cd "$KUBERIK_SRC_DIR/$repo" && KIND_CLUSTER_NAME="${CLUSTER_NAME}" KIND_CLUSTER="${CLUSTER_NAME}" make dev-deploy)
+  else
+    echo "ERROR: $KUBERIK_SRC_DIR/$repo not found; set KUBERIK_SRC_DIR to the directory holding the kuberik checkouts" >&2
+    exit 1
   fi
 done
 
@@ -304,8 +323,11 @@ for env in ${APP_ENVS}; do
     # assuming ${app}-${env}.
     applied=$(kustomize build "example/${app}/cd/deployments/${env}" | kubectl apply -o name -f -)
     for ns in $(printf '%s\n' "${applied}" | sed -n 's#^namespace/##p'); do
+      { set +x; } 2>/dev/null
+      echo "+ creating github-token and github-registry-credentials in ${ns}"
       kubectl -n "${ns}" create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
       kubectl -n "${ns}" create secret docker-registry github-registry-credentials --docker-server=ghcr.io --docker-username=${GITHUB_USER} --docker-password=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
+      set -x
       # Bind the imagePullSecret to the namespace's default ServiceAccount so every
       # pod in the namespace can pull from ghcr without per-deployment plumbing.
       # Rollouts often promote images that weren't kind-loaded (newer tags published

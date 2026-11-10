@@ -15,7 +15,7 @@ kind delete cluster --name rollout-dev
 
 # Stop the haproxy SNI router
 docker compose -f "${PROJECT_ROOT}/docker-compose.sni-proxy.yaml" down
-rm -f /tmp/kuberik-haproxy.cfg
+rm -f "${HOME}/.local/state/kuberik-dev/haproxy.cfg" /tmp/kuberik-haproxy.cfg
 
 # delete the test repositories
 gh repo delete LittleChimera/kuberik-testing --yes || true
