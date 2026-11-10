@@ -9,7 +9,7 @@
  */
 import type { Change } from '$lib/api/changes';
 import type { RolloutHealthChecks } from '$lib/api/health-checks';
-import type { Environment, KruiseRollout, Kustomization, Rollout, RolloutDependency } from '../../../../types';
+import type { Environment, KruiseRollout, Kustomization, Rollout, RolloutDependency, RolloutTest } from '../../../../types';
 
 export type GithubFacts = { configured: boolean | null; connected: boolean; login?: string; avatarUrl?: string };
 export type FleetSource = {
@@ -22,6 +22,8 @@ export type FleetSource = {
 	/** why `changes` is empty when it is: GitHub not connected / not configured / the read failed. `ok` = the list is the answer. */
 	changesState: 'ok' | 'not_connected' | 'not_configured' | 'error' | 'loading';
 	healthChecks: readonly RolloutHealthChecks[] | null;
+	/** the RolloutTest objects of the fleet (spec.rolloutName = the KruiseRollout, spec.stepIndex = the canary step, status.phase). Optional: a source that omits it draws no Tests row. */
+	rolloutTests?: readonly RolloutTest[] | null;
 	github: GithubFacts;
 	/** lower-cased GitHub login of the signed-in viewer ('' when GitHub is not connected) */
 	me: string;
