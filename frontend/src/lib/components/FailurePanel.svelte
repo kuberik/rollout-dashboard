@@ -5,7 +5,8 @@
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
 	import { PlaySolid, UndoOutline } from 'flowbite-svelte-icons';
 	import StatementBanner from './StatementBanner.svelte';
-	import ChangeVersionModal from './ChangeVersionModal.svelte';
+	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
+	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import RetryTestsModal from './RetryTestsModal.svelte';
 	import RetryConfirmModal from './RetryConfirmModal.svelte';
 	import { getDisplayVersion } from '$lib/utils';
@@ -336,13 +337,14 @@
 	onSkipTests={() => onRetry(retryTests[0]?.kruiseRolloutName, 'skip')}
 />
 
-<ChangeVersionModal
+<ChangeVersionFlow
 	bind:open={showRollbackModal}
 	{rollout}
+	healthChecks={visibleHealthChecksFor(rollout, healthChecks)}
 	isPinVersionMode={true}
 	initialSelectedVersion={rollbackVersionTag}
 	initialExplanation={rollbackExplanation}
-	{cluster}
+	cluster={cluster ?? ''}
 	{onSuccess}
 	{onError}
 />
