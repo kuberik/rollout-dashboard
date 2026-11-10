@@ -355,15 +355,10 @@ export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
  *     alerts firing" is a negation of a BAD word (firing), so rule 1 does not
  *     see it, and it reads healthy as it should.
  */
-const GOOD = '(?:ok|okay|passing|healthy|ready|reconciled|available)';
-const NEGATED_GOOD = new RegExp(
-	`\\b(?:not|never|no longer|isn't|aren't|wasn't|weren't)\\b(?:\\s+\\w+){0,2}?\\s+${GOOD}\\b|\\bun${GOOD}\\b`,
-	'i'
-);
-const READS_GOOD = new RegExp(
-	`\\b(?:no alerts?(?: are)? firing|not firing|0 (?:errors?|alerts?|issues?)|no (?:errors?|issues?|problems?)|ok|okay|passing|healthy|reconciled|all\\b[^.]*\\bready|(\\d+)/\\1 ready)\\b`,
-	'i'
-);
+const NEGATED_GOOD =
+	/\b(?:not|never|no longer|isn't|aren't|wasn't|weren't)\b(?:\s+\w+){0,2}?\s+(?:ok|okay|passing|healthy|ready|reconciled|available)\b|\bun(?:ok|okay|passing|healthy|ready|reconciled|available)\b/i;
+const READS_GOOD =
+	/\b(?:no alerts?(?: are)? firing|not firing|0 (?:errors?|alerts?|issues?)|no (?:errors?|issues?|problems?)|ok|okay|passing|healthy|reconciled|all\b[^.]*\bready|(\d+)\/\1 ready)\b/i;
 
 export function readsHealthy(message: string): boolean {
 	return !NEGATED_GOOD.test(message) && READS_GOOD.test(message);
