@@ -74,10 +74,13 @@ kubectl create clusterrolebinding oidc-rollout-viewer \
   --user=admin@example.com \
   --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
 
-kubectl -n hello-world-prod create rolebinding oidc-admin \
-  --clusterrole=cluster-admin \
-  --user=admin@example.com \
-  --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
+# hello-world prod is split into sites (hello-world-prod-<site>); bind in each.
+for ns in $(kubectl get namespaces -o name 2>/dev/null | sed -n 's#^namespace/\(hello-world-prod.*\)$#\1#p'); do
+  kubectl -n "${ns}" create rolebinding oidc-admin \
+    --clusterrole=cluster-admin \
+    --user=admin@example.com \
+    --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
+done
 
 
 echo ""
