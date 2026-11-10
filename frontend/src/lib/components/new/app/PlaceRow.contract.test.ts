@@ -8,8 +8,8 @@ describe('PlaceRow never clips', () => {
 		expect(src).toContain('class:pl-mid--long={label.length > 8}');
 		expect(src).toContain('.pl-mid--long { grid-template-columns: minmax(0, 1fr); }');
 	});
-	it('the state word + wave fact wraps instead of ellipsising, in a 200px track', () => {
+	it('the state word + wave fact wraps instead of ellipsising, in a track at least 200px wide', () => {
 		expect(src).not.toContain('text-overflow: ellipsis');
-		expect(src).toContain('168px 200px minmax(0, 1fr) 64px');
+		expect(src).toContain('168px minmax(200px, max-content) minmax(0, 1fr) 64px');
 	});
 });
