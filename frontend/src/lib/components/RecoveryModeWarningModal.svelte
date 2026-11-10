@@ -36,7 +36,7 @@
 	import type { Rollout } from '../../types';
 	import { deployIntent } from '$lib/view-models/deploy-risk';
 
-	type Reason = 'previous-failed' | 'unhealthy-health-checks';
+	type Reason = import('$lib/view-models/change-version-entry').RecoveryReason;
 
 	interface Props {
 		open: boolean;
@@ -108,7 +108,17 @@
 	const act = $derived(isRollback ? 'rollback' : 'deploy');
 
 	const title = $derived.by(() => {
-		if (loading) return isRollback ? `Roll back ${where}${versionDisplay ? ` to ${versionDisplay}` : ''}` : `Deploy to ${where}`;
+		if (loading) {
+			const to = versionDisplay ? ' to ' + versionDisplay : '';
+			return isRollback ? 'Roll back ' + where + to : 'Deploy to ' + where;
+		}
+		if (reason === 'health-checks-unavailable') {
+			return !versionDisplay || !intent
+				? `Deploy to ${where}`
+				: isRollback
+					? `Roll back ${where} to ${versionDisplay}`
+					: `Deploy ${versionDisplay} to ${where}`;
+		}
 		if (!versionDisplay || !intent) return `Deploy to ${where} in recovery mode`;
 		return isRollback
 			? `Roll back ${where} to ${versionDisplay}`
@@ -117,6 +127,9 @@
 
 	/** ONE sentence: why recovery mode applies, and what it does next. */
 	const summary = $derived.by(() => {
+		if (reason === 'health-checks-unavailable') {
+			return `Health checks couldn't be loaded, so the dashboard can't tell whether this ${act} runs in recovery mode.`;
+		}
 		const cause =
 			reason === 'previous-failed'
 				? previousVersionDisplay

@@ -81,21 +81,30 @@
 		queryKey: ['health-checks', namespace, name, cluster],
 		queryFn: async () => {
 			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/health-checks`));
-			if (!res.ok) return { healthChecks: [] };
+			if (!res.ok) throw new Error(`health checks: HTTP ${res.status}`);
 			return res.json();
 		},
+		retry: false,
 		enabled: healthChecks === undefined && Boolean(rollout?.spec?.healthCheckSelector),
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 
-	const checks = $derived<HealthCheck[]>(
+	// `null` = the fetch failed (non-2xx or thrown): unknown, not "no checks".
+	const checks = $derived<HealthCheck[] | null>(
 		healthChecks ??
-			visibleHealthChecksFor(rollout, (healthChecksQuery.data?.healthChecks as HealthCheck[]) ?? [])
+			(healthChecksQuery.isError
+				? null
+				: visibleHealthChecksFor(
+						rollout,
+						(healthChecksQuery.data?.healthChecks as HealthCheck[]) ?? []
+					))
 	);
 	// The verdict depends on checks this component fetches and they have not
 	// landed yet: deciding now would skip the Unhealthy consent step.
 	const checksPending = $derived(
 		healthChecks === undefined &&
+			// A failed running build already decides it; no need to wait.
+			recoveryModeReason(rollout, []) === null &&
 			Boolean(rollout?.spec?.healthCheckSelector) &&
 			healthChecksQuery.data === undefined &&
 			!healthChecksQuery.isError
@@ -155,7 +164,7 @@
 </script>
 
 <ChangeVersionModal
-	recoveryMode={reason !== null}
+	recoveryMode={reason !== null && reason !== 'health-checks-unavailable'}
 	bind:open={showPicker}
 	rollout={rollout ?? null}
 	{autoDeploy}

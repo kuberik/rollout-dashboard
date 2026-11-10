@@ -17,7 +17,14 @@
 import type { HealthCheck, Rollout } from '../../types';
 import { getDisplayVersion } from '$lib/utils';
 
-export type RecoveryReason = 'previous-failed' | 'unhealthy-health-checks';
+export type RecoveryReason =
+	| 'previous-failed'
+	| 'unhealthy-health-checks'
+	/** The checks could not be loaded, so the dashboard cannot tell. The
+	 *  controller (rollout_controller.go setBakeFailureDisabledForNewDeploy)
+	 *  decides recovery mode itself and does not enter it when it cannot list
+	 *  checks either, so this reason never claims recovery mode. */
+	| 'health-checks-unavailable';
 
 /**
  * The cutoff before which a failing check's last error no longer counts: the
@@ -60,9 +67,11 @@ export function visibleHealthChecksFor(
  */
 export function recoveryModeReason(
 	rollout: Rollout | null | undefined,
-	visibleHealthChecks: HealthCheck[]
+	visibleHealthChecks: HealthCheck[] | null
 ): RecoveryReason | null {
 	if (rollout?.status?.history?.[0]?.bakeStatus === 'Failed') return 'previous-failed';
+	// `null` = the list could not be loaded. Never read that as "no checks".
+	if (visibleHealthChecks === null) return 'health-checks-unavailable';
 	if (visibleHealthChecks.some((hc) => hc.status?.status === 'Unhealthy')) {
 		return 'unhealthy-health-checks';
 	}

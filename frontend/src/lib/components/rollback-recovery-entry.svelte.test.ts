@@ -73,5 +73,32 @@ describe('ChangeVersionFlow with checks that arrive after open (AppDetail cold c
 		await waitFor(() => expect(document.querySelector('#rmw-summary[aria-busy="true"]')).not.toBeNull());
 		release(null);
 		await waitFor(() => expect(screen.getByText(/Health checks are unhealthy/)).toBeInTheDocument());
+		// Positive control: the picker after Continue carries recovery mode.
+		await fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+		await waitFor(() => expect(screen.getByText(/Recovery mode:/)).toBeInTheDocument());
 	});
+
+	for (const [label, impl] of [
+		['P500: a 500 is not "no checks"', async () => new Response('boom', { status: 500 })],
+		['THROW: a network error is not "no checks"', async () => { throw new Error('network'); }]
+	] as const) {
+		test(label, async () => {
+			vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+				if (String(url).includes('/health-checks')) return impl();
+				return new Response('{}', { status: 200 });
+			}));
+			const r = { ...rollout, spec: { healthCheckSelector: { matchLabels: { app: 'orders' } } } };
+			render(WithQueryClient, {
+				props: { component: ChangeVersionFlow as never, props: { open: true, rollout: r, cluster: 'hub', initialSelectedVersion: '1.0.0' } as never }
+			});
+			await waitFor(() => expect(screen.getByText(/Health checks couldn't be loaded, so the dashboard can't tell whether this (?:deploy|rollback) runs in recovery mode/)).toBeInTheDocument());
+			expect(screen.queryByText(/Health checks are unhealthy/)).toBeNull();
+			await fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+			// The picker opens and does NOT claim recovery mode (the controller decides it).
+			// (The warning's outro stays in jsdom: the Web Animations API is stubbed.)
+			await waitFor(() => expect(document.querySelector('[data-autofocus]')).not.toBeNull());
+			await new Promise((r) => setTimeout(r, 300));
+			expect(screen.queryByText(/Recovery mode:/)).toBeNull();
+		});
+	}
 });
