@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Rollout, Environment, RolloutDependency } from '../../types';
 import { buildRolloutGraph, hasDependencyLinks } from './dependency-graph';
-import { rolloutNeighbourhood } from './rollout-neighbourhood';
+import { rolloutNeighbourhood, gatesOnThisRollout } from './rollout-neighbourhood';
 
 const ANN = 'rollout-dashboard.kuberik.com/source-cluster';
 
@@ -265,6 +265,22 @@ describe('rolloutNeighbourhood', () => {
 		expect(h.downstream[0].held).toEqual(['r3']);
 		// The focus itself holds nothing of its own.
 		expect(h.heldBuilds).toEqual([]);
+	});
+
+	it('batch4 #2: a held DOWNSTREAM link is not a gate holding the focus (no "1 of 1 gates holding" over "Nothing held")', () => {
+		const graph = buildRolloutGraph({
+			rollouts: [
+				rollout({ name: 'app', ns: 'app-staging', candidates: ['r3'] }),
+				rollout({ name: 'api', ns: 'app-staging' })
+			],
+			environments: [],
+			dependencies: [dep({ ns: 'app-staging', consumer: 'app', provider: 'api', blocked: ['r3'] })],
+			envOrder: []
+		});
+		const h = rolloutNeighbourhood({ graph, at: at('app-staging', 'api') });
+		expect(h.downstream[0].state).toBe('blocked');
+		expect(h.holding).toBe(0);
+		expect(gatesOnThisRollout(h)).toEqual({ total: 0, holding: 0 });
 	});
 
 	it('matches the focus on cluster, not namespace and name alone', () => {
