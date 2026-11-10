@@ -15,6 +15,7 @@
 	 */
 	import { onMount, tick } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
+	import { approvePlace } from './approve-place';
 	import Toast from '$lib/components/Toast.svelte';
 	import { approvalUi, cancelApprove, confirmApprove, undoApprove, dismissDone, askSentence, doneWords } from './approvals.svelte';
 
@@ -28,10 +29,10 @@
 	const style = $derived.by(() => {
 		const a = ask?.anchor;
 		if (phone || !a) return '';
-		const W = 320;
-		const left = Math.max(8, Math.min(a.right - W, vw - W - 8));
-		const below = a.bottom + 8 + 150 < vh;
-		return `left:${left}px;width:${W}px;${below ? `top:${a.bottom + 8}px` : `bottom:${vh - a.top + 8}px`}`;
+		const m = typeof document === 'undefined' ? null : document.querySelector('main')?.getBoundingClientRect();
+		const p = approvePlace(a, vw, vh, m && m.width > 0 ? { left: m.left, right: m.right } : null);
+		const below = 'top' in p;
+		return `left:${p.left}px;width:${p.width}px;${below ? `top:${p.top}px` : `bottom:${p.bottom}px`}`;
 	});
 
 	$effect(() => {
