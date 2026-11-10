@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { rollouts, approvalTarget, grantApproval, revokeApproval, appHolds, apps, heldCauses, stateVerb, type TRow } from './data';
 import { source, resetHomeModel } from '$lib/components/home/sketch/home-data';
-import { askSentence } from './approvals.svelte';
+import { askSentence, doneWords } from './approvals.svelte';
 
 /* r34 r3-approve: Approve acts in place. The target names the build and every region whose own gate refuses it; granting moves
    those places out of the approval group on EVERY derivation (rows, changes, apps), and revoking restores them exactly. */
@@ -44,14 +44,15 @@ describe('approving in place', () => {
 		try {
 			const before = rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort();
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
-			expect(t.waitsOn, 'approvalTarget computes waitsOn itself').toBeTruthy();
+			expect(t.waitsOn, 'approvalTarget computes waitsOn itself').toBe('payments-svc');
+			expect(doneWords(t).detail).toBe(`payments-core waits on payments-svc for ${t.where}`);
 			grantApproval(t);
 			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
 			expect(mine.length, 'the prod row survives').toBeGreaterThan(0);
 			expect(t.places.every((p) => mine.some((r) => r.href === p.href || r.regions.includes(p.label))), 'every place is still covered by a row').toBe(true);
 			expect(mine.some((r) => r.state === 'deploying' || r.state === 'checking' || r.state === 'awaiting-approval')).toBe(false);
 			const hc = heldCauses('incident').map((c) => c.cause);
-			expect(hc.some((c) => /^Waiting on /.test(c)), JSON.stringify(hc)).toBe(true);
+			expect(hc, 'the row names the same provider as the toast').toContain(`Waiting on ${t.waitsOn}`);
 			expect(stateVerb(mine[0], 'incident').text).toMatch(/waits on/i);
 			const item = apps('incident').items.find((a) => a.app === 'payments-core')!;
 			expect(appHolds(item, 'incident').some((h) => /Waiting on|waits on/i.test(h.text) && !h.approval)).toBe(true);
