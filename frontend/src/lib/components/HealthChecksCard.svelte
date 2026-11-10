@@ -12,7 +12,7 @@
 		ClockSolid,
 		ClockArrowOutline
 	} from 'flowbite-svelte-icons';
-	import { formatTimeAgo } from '$lib/utils';
+	import { formatAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import {
 		classifyCheck,
@@ -83,7 +83,7 @@
 		healthChecks.filter((hc) => classifyCheck(hc, windowStart) === 'passing')
 	);
 	function errorAgo(hc: HealthCheck): string {
-		return hc.status?.lastErrorTime ? formatTimeAgo(hc.status.lastErrorTime, $now) : 'earlier';
+		return hc.status?.lastErrorTime ? formatAgoCompact(hc.status.lastErrorTime, $now) : 'earlier';
 	}
 
 	/**
@@ -342,7 +342,7 @@
 							<!-- The state and its age sit under the name (AD round 3 nit):
 							     a right-hand column squeezed the description to 4 lines. -->
 							<span class="t-meta block text-danger"
-								>failing{#if hc.status?.lastChangeTime}{' · '}{formatTimeAgo(hc.status.lastChangeTime, $now)}{/if}</span
+								>failing{#if hc.status?.lastChangeTime}{' · '}{formatAgoCompact(hc.status.lastChangeTime, $now)}{/if}</span
 							>
 						{/if}
 						{#if failing && hc.status?.message}
@@ -421,7 +421,7 @@
 						{:else if passingRow}
 							{#if hc.status?.lastChangeTime}
 								<span class="t-meta text-fg-subtle tabular-nums"
-									>{formatTimeAgo(hc.status.lastChangeTime, $now)}</span
+									>{formatAgoCompact(hc.status.lastChangeTime, $now)}</span
 								>
 							{/if}
 						{:else}

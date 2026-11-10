@@ -17,7 +17,7 @@
 	import Slipway from '../Slipway.svelte';
 	import { ago, approvalTarget, deployedBuild, truthAttrs, type TRow, type HomeState, type PlaceHold } from '../data';
 	import { markOf, envTheme, tabEnv, actionHref } from '../rollout-view';
-	import { placeWord } from './app-model';
+	import { placeWord, waveFactOf, waveClause } from './app-model';
 
 	let { row, place, pinned = false, note = null, approve = null, open = false, nested = false, toggle = null, hs = 'incident', slipAction = null }: { row: TRow; place: PlaceHold; pinned?: boolean; note?: string | null; /** the Approve this place owns (>= 640 only; the phone's lives in the banner) */ approve?: TRow['action']; open?: boolean; nested?: boolean; toggle?: (() => void) | null; hs?: HomeState; slipAction?: TRow['action'] } = $props();
 
@@ -25,12 +25,7 @@
 	const word = $derived(placeWord(place, pinned, !!row.needsYou));
 	const label = $derived(tabEnv(row) === 'production' ? 'prod' : tabEnv(row));
 	/** "wave 2" / "wave 1 · leader" / "follows eu-west-1": only where the tier has several waves (or a follower), so a one-wave tier prints nothing. */
-	const waveFact = $derived.by(() => {
-		const w = place.wave;
-		if (!w || w.site === '') return null;
-		if (!w.leader) return `follows ${w.follows ?? 'its leader'}`;
-		return w.multi ? `wave ${w.wave}` : null;
-	});
+	const waveFact = $derived(waveFactOf(place.wave));
 	const adverse = $derived(row.group === 'failed' || row.group === 'approval');
 </script>
 
@@ -39,7 +34,7 @@
 		<span class="pl-mark flex h-5 items-center">{#if pinned}<HeldGlyph size={16} class="text-fg-muted" title="Held by the pin" />{:else if row.group === 'rest'}<span class="flex h-5 w-4 items-center justify-center"><span class="h-1.5 w-1.5 rounded-full bg-fg-disabled"></span></span>{:else if markOf(row) === 'held'}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{:else}<StatusMark state={markOf(row)} />{/if}</span>
 		<span class="pl-mid">
 			<a href={row.href} class="tap-link pl-chip flex min-w-0 items-center" aria-label="{row.app} in {label}"><Chip role="env" theme={envTheme(row.tier)} {label} wide /></a>
-			<span class="pl-word t-ui-sm min-w-0 truncate {adverse ? 'text-fg' : 'text-fg-muted'}" data-place-word>{word}{#if waveFact}<span class="t-meta ml-1 text-fg-subtle" data-place-wave>· {waveFact}</span>{/if}</span>
+			<span class="pl-word t-ui-sm min-w-0 truncate {adverse ? 'text-fg' : 'text-fg-muted'}" data-place-word>{word}{#if waveFact}{' '}<span class="t-meta text-fg-subtle" data-place-wave>{waveClause(waveFact)}</span>{/if}</span>
 			<span class="pl-note t-meta min-w-0 truncate text-fg-subtle" data-place-currency={note ? '' : undefined}>{note ?? ''}</span>
 			<span class="pl-since t-meta whitespace-nowrap text-right tabular-nums text-fg-subtle">{age}</span>
 		</span>

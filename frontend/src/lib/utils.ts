@@ -292,6 +292,11 @@ export function formatTimeAgoCompact(start: string, end: Date = new Date()): str
     return `${Math.floor(mo / 12)}y`;
 }
 
+/** The compact idiom with its "ago": `40s ago`, `1m ago`, `3h ago`. The rollout detail's cards (Health checks, Recent events) print it, so a view that already says `Since 25s` / `20m ago` never mixes in `40 seconds ago`. */
+export function formatAgoCompact(start: string, end: Date = new Date()): string {
+    return `${formatTimeAgoCompact(start, end)} ago`;
+}
+
 export function formatDuration(timestamp: string, now: Date = new Date()): string {
     const date = new Date(timestamp);
     return formatDurationMs(now.getTime() - date.getTime());

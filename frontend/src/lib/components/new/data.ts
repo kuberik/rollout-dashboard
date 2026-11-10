@@ -34,6 +34,7 @@
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
 import { formatTimeAgoCompact } from '$lib/utils';
+import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus } from '$lib/view-models/behind';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
@@ -1423,7 +1424,7 @@ export function bakeDuration(row: Pick<RolloutRow, 'href'>): string | null {
 	const e = rawOf(row.href)?.status.history?.[0];
 	if (!e?.bakeStartTime || !e.bakeEndTime) return null;
 	const s = Math.max(0, Math.round((Date.parse(e.bakeEndTime) - Date.parse(e.bakeStartTime)) / 1000));
-	return `${Math.floor(s / 60)}m ${s % 60}s`;
+	return formatShortDuration(s * 1000);
 }
 // apps-12 (AT7): the builds a place has deployed, newest first, as the Builds card prints them when nothing newer exists (title and author as the tab's History headline)
 export function deployedHistory(href: string, n = 8): { build: string; title: string | null; author: string | null; at: string | null }[] {
