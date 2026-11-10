@@ -17,24 +17,24 @@
 	import Slipway from '../Slipway.svelte';
 	import { ago, approvalTarget, deployedBuild, truthAttrs, type TRow, type HomeState, type PlaceHold } from '../data';
 	import { markOf, envTheme, tabEnv, actionHref } from '../rollout-view';
-	import { placeWord, waveFactOf, waveClause } from './app-model';
+	import { placeWord, waveFactOf, waveClause, type PlaceWait } from './app-model';
 
-	let { row, place, pinned = false, note = null, approve = null, open = false, nested = false, toggle = null, hs = 'incident', slipAction = null }: { row: TRow; place: PlaceHold; pinned?: boolean; note?: string | null; /** the Approve this place owns (>= 640 only; the phone's lives in the banner) */ approve?: TRow['action']; open?: boolean; nested?: boolean; toggle?: (() => void) | null; hs?: HomeState; slipAction?: TRow['action'] } = $props();
+	let { row, place, pinned = false, note = null, wait = null, approve = null, open = false, nested = false, toggle = null, hs = 'incident', slipAction = null }: { row: TRow; place: PlaceHold; pinned?: boolean; note?: string | null; /** a healthy place its rollout order has not reached: "Waiting for ap-southeast-2" + "to deploy 4.46.0-46" (app-model placeWait) */ wait?: PlaceWait | null; /** the Approve this place owns (>= 640 only; the phone's lives in the banner) */ approve?: TRow['action']; open?: boolean; nested?: boolean; toggle?: (() => void) | null; hs?: HomeState; slipAction?: TRow['action'] } = $props();
 
 	const age = $derived(ago(deployedBuild(row)?.at ?? row.since));
 	const word = $derived(placeWord(place, pinned, !!row.needsYou));
 	const label = $derived(tabEnv(row) === 'production' ? 'prod' : tabEnv(row));
 	/** "wave 2" / "wave 1 · leader" / "follows eu-west-1": only where the tier has several waves (or a follower), so a one-wave tier prints nothing. */
-	const waveFact = $derived(waveFactOf(place.wave));
+	const waveFact = $derived(wait && !pinned ? wait.fact : waveFactOf(place.wave));
 	const adverse = $derived(row.group === 'failed' || row.group === 'approval');
 </script>
 
 <li class="min-w-0" {...truthAttrs(row)} data-truth-kind="rollout" data-truth-group={row.group} data-truth-app={row.app} data-truth-href={row.href} data-open={open ? '' : undefined}>
 	<div class="pl tap-zone px-4 transition-colors hover:bg-hover" data-place-row>
 		<span class="pl-mark flex h-5 items-center">{#if pinned}<HeldGlyph size={16} class="text-fg-muted" title="Held by the pin" />{:else if row.group === 'rest'}<span class="flex h-5 w-4 items-center justify-center"><span class="h-1.5 w-1.5 rounded-full bg-fg-disabled"></span></span>{:else if markOf(row) === 'held'}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{:else}<StatusMark state={markOf(row)} />{/if}</span>
-		<span class="pl-mid">
+		<span class="pl-mid" class:pl-mid--long={label.length > 8}>
 			<a href={row.href} class="tap-link pl-chip flex min-w-0 items-center" aria-label="{row.app} in {label}"><Chip role="env" theme={envTheme(row.tier)} {label} wide /></a>
-			<span class="pl-word t-ui-sm min-w-0 truncate {adverse ? 'text-fg' : 'text-fg-muted'}" data-place-word>{word}{#if waveFact}{' '}<span class="t-meta text-fg-subtle" data-place-wave>{waveClause(waveFact)}</span>{/if}</span>
+			<span class="pl-word t-ui-sm min-w-0 truncate {adverse ? 'text-fg' : 'text-fg-muted'}" data-place-word>{#if wait && !pinned}Waiting for <span class="whitespace-nowrap">{wait.on}</span>{:else}{word}{/if}{#if waveFact}{' '}<span class="t-meta text-fg-subtle {wait && !pinned ? 'whitespace-nowrap' : ''}" data-place-wave>{wait && !pinned ? waveFact : waveClause(waveFact)}</span>{/if}</span>
 			<span class="pl-note t-meta min-w-0 truncate text-fg-subtle" data-place-currency={note ? '' : undefined}>{note ?? ''}</span>
 			<span class="pl-since t-meta whitespace-nowrap text-right tabular-nums text-fg-subtle">{age}</span>
 		</span>
@@ -52,20 +52,23 @@
 	.pl-mid { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; column-gap: 8px; row-gap: 2px; min-width: 0; }
 	/* phone: the word may wrap inside its track ("Waiting for approval" is never cut to "Waiting for app…") */
 	.pl-word { white-space: normal; overflow: visible; text-overflow: clip; }
+	/* a chip that names a region (PROD | ap-southeast-2, ~160px) does not fit the 88px track: on a phone it takes the row's width and the state word sits under it, so neither is clipped */
+	.pl-mid--long { grid-template-columns: minmax(0, 1fr); }
 	.pl-note, .pl-since { display: none; }
 	.pl-note:empty { display: none; }
 	.pl-mark { grid-column: 1; } .pl-mid { grid-column: 2; } .pl-act { grid-column: 3; display: flex; justify-content: flex-end; } .pl-tog { grid-column: 4; justify-self: end; margin-block: -8px; margin-right: -6px; }
 	@container (min-width: 560px) {
-		.pl-word { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+		/* the state word + wave fact ("Healthy · follows eu-central-1") is never cut: a 200px track, and it wraps rather than ellipsising */
+		.pl-word { white-space: normal; overflow: visible; text-overflow: clip; }
 		.pl { grid-template-columns: 16px minmax(0, 1fr) auto 28px; padding-block: 2px; min-height: 32px; }
-		.pl-mid { display: grid; grid-template-columns: 168px 144px minmax(0, 1fr); column-gap: 8px; }
+		.pl-mid { display: grid; grid-template-columns: 168px minmax(200px, max-content) minmax(0, 1fr); column-gap: 8px; }
 		.pl-note { display: block; }
 		.pl-note:empty { display: block; }
 		.pl-tog { margin-block: 0; margin-right: -6px; }
 	}
 	/* the time in state is a 1440-only column: it needs a main column of ~700px (the rail takes the rest at 1280+) */
 	@container (min-width: 640px) {
-		.pl-mid { grid-template-columns: 168px 144px minmax(0, 1fr) 64px; } /* QA #19: the state word needs ~140px; the note column gets the rest, never a squeezed "U…" */
+		.pl-mid { grid-template-columns: 168px minmax(200px, max-content) minmax(0, 1fr) 64px; } /* QA #19: the state word needs ~140px; the note column gets the rest, never a squeezed "U…" */
 		.pl-since { display: block; }
 	}
 </style>

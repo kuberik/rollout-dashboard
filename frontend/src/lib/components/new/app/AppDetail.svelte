@@ -57,7 +57,7 @@
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
 	import { approvalWord } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
-	import { waitingSentence, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
+	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
 	let { state: scenario, name }: { state: HomeState; name: string } = $props();
 
@@ -202,7 +202,7 @@
 	const checkLeft = $derived(checkingNow && stateRow ? checkClock({ href: stateRow.href, state: 'checking', group: 'rest' } as never) : null);
 	/* round 2 B5: the count is what the place's hold refuses HERE (heldHere), not every candidate queued for it */
 	const heldN = $derived(stateRow ? (heldHere(stateRow.href)?.count ?? null) : null);
-	const waitMessage = $derived(checkingNow ? (checkLeft ?? 'The health checks are running.') : waitsOnApproval ? waitingSentence(heldN) : cause);
+	const waitMessage = $derived(checkingNow ? (checkLeft ?? 'The health checks are running.') : waitsOnApproval ? approvalMessage(heldN, places.find((p) => p.href === stateRow?.href) ?? null, places) : cause);
 
 	/* the statement = the Apps tile's own: the failing place (the lead, else the first), its check line, Roll back (+ Retry, as the tab offers) + Open rollout */
 	const failRow = $derived(failing.find((r) => r.lead) ?? failing[0] ?? null);

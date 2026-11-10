@@ -24,9 +24,9 @@
 	import TraySteps from './TraySteps.svelte';
 	import PipelineCard from './PipelineCard.svelte';
 	import ActRow, { type Act } from '$lib/components/ActRow.svelte';
-	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, newestBuild, pathPosition, stepDetail, healthChecks, healthTally, checkClock, waitingBuild, approvalScope, approvalTarget, bakeDuration, holdSince, type TRow, type HomeState } from './data';
+	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, replacedBuild, newestBuild, pathPosition, stepDetail, healthChecks, healthTally, testsSub, checkClock, waitingBuild, approvalScope, approvalTarget, bakeDuration, holdSince, type TRow, type HomeState } from './data';
 	import { approveAct } from './approvals.svelte';
-	import { slipwayTitle, actionHref, actionLabel, approvalFact, envTheme, VIEWER } from './rollout-view';
+	import { slipwayTitle, slipwayLeadSplit, actionHref, actionLabel, approvalFact, envTheme, VIEWER } from './rollout-view';
 
 	let { row, hs = 'incident', action = null, compact = false, nested = false, class: className = '' }: { row: TRow; hs?: HomeState; action?: TRow['action']; /** r5 R20: drawn as a bounded nested card (border, radius 8, the card's surface) that closes before the next row; the caller owns the margin around it */ nested?: boolean; /** r34 v2 r4 (Y8): embedded in another page's list (/apps/<name>, /envs/<name>): the build is 14px mono, the rail is as tall as its steps (the pane owns the divider), and the check line is not drawn (the page's own statement carries it) */ compact?: boolean; class?: string } = $props();
 
@@ -45,6 +45,8 @@
 	/* a gated lead puts the build that WAITS in focus (the one Approve releases, held here per the Gates tab); the build it replaces is the line beside it */
 	const build = $derived(wb ? wb.build : buildTitle(row));
 	const healthy = $derived(lastHealthy(gatedRow ? { state: 'healthy', href: row.href } : row));
+	/* after a rollback the last healthy entry is the build now running: the line names the build the rollback displaced, as "Rolled back from <build>" */
+	const replaced = $derived(failing || gatedRow ? healthy : replacedBuild(row));
 	const commit = $derived(wb ? { title: wb.title ?? '', author: wb.author } : deployedCommit(row));
 	const own = $derived(commit?.author === VIEWER);
 	const runsIn = $derived(pathPosition(row, hs));
@@ -65,13 +67,16 @@
 	/* r5 R1/R16: the tab's words, with its tally ("Waiting · 1 pending · 0 passing") and the bake clock ("Checking · 5 min left") */
 	const clock = $derived(checkClock(row));
 	const checkingGate = $derived(row.group === 'approval' && row.stillChecking && !!clock);
+	/* the Overview card's per-stage Tests row (Passed / Running / Pending / Failed), drawn only when the place has RolloutTests */
+	const ts = $derived(testsSub(row));
 	const subs = $derived<Sub[]>([
+		...(ts ? [{ title: 'Tests', label: ts.label, tone: ts.label === 'Passed' ? 'ok' : ts.label === 'Failed' ? 'bad' : ts.label === 'Running' ? 'wait' : 'pending' } as Sub] : []),
 		{ title: 'Health checks', label: hcFailing || sd.healthChecks === 'Failed' ? 'Failed' : sd.healthChecks === 'Healthy' ? 'Healthy' : (sd.healthChecks === 'Pending' ? healthTally(row) : `${sd.healthChecks} · ${healthTally(row)}`), tone: hcFailing || sd.healthChecks === 'Failed' ? 'bad' : sd.healthChecks === 'Healthy' ? 'ok' : 'wait' },
 		{ title: 'Check timer', label: sd.checkTimer === 'Checking' && clock ? (checkingGate ? clock : `Checking · ${clock}`) : sd.checkTimer, tone: sd.checkTimer === 'Done' ? 'ok' : sd.checkTimer === 'Checking' ? 'wait' : 'pending' }
 	]);
 	const DOT = { ok: 'bg-success-solid', bad: 'bg-danger-solid', wait: 'bg-progress-solid animate-pulse', pending: 'bg-line-strong' } as const;
 	/* U9: the dl's rows. prev = the build this one replaces / the last healthy one; reach = the tab's Runs-in rollup (compact: the tab header's newer-builds sentence) split into label + value */
-	const prev = $derived(wb ? { label: 'Replaces', build: buildTitle(row), age: `${ago(row.deployedAt)} ago` } : healthy ? { label: failing ? 'Last healthy' : 'Replaces', build: healthy.build, age: `${failing ? 'deployed ' : ''}${ago(healthy.at)} ago` } : null);
+	const prev = $derived(wb ? { label: 'Replaces', build: buildTitle(row), age: `${ago(row.deployedAt)} ago` } : replaced ? { label: failing ? 'Last healthy' : 'rolledBack' in replaced ? 'Rolled back from' : 'Replaces', build: replaced.build, age: `${failing ? 'deployed ' : ''}${ago(replaced.at)} ago` } : null);
 	const reach = $derived.by(() => {
 		if (compact) { const n = newestBuild(row); if (!n || failing) return null; return { label: 'Newer builds', build: null as string | null, value: n.sentence.replace(/^(\d+) newer builds?/, '$1') }; /* lead r9: the tab's own sentence, count first ('2 · held: waiting for approval'), never 'N, held:' */ }
 		if (!facts) return null;
@@ -101,6 +106,7 @@
 	const done = $derived(row.steps.filter((s) => s.state === 'done').length);
 	/* the lead's actions (content only; ActRow lays them out: a phone gets Details + the one action on one row, Open rollout is the row above's link) */
 	const lead = $derived<Act | null>(action ? (action.kind === 'approve' ? (approveAct(approvalTarget(row, hs), { key: 'slipway-action' }) ?? { label: 'Approve', href: actionHref(action), key: 'slipway-action' }) : { label: actionLabel(action), href: actionHref(action), icon: UndoOutline, key: 'slipway-action' }) : null);
+	const split = $derived(slipwayLeadSplit(lead, { failing, approve: action?.kind === 'approve' }));
 	const detailsAct = $derived<Act>({ label: more ? 'Hide details' : 'Details', onclick: () => (more = !more), icon: ChevronDownOutline, iconAfter: true, iconTurn: more, phoneOnly: true, key: 'slipway-details', data: { 'aria-expanded': String(more) } });
 	const openAct = $derived<Act>({ label: 'Open rollout', href: row.href, desktopOnly: true, key: 'slipway-open' });
 </script>
@@ -178,7 +184,7 @@
 						{#if reach && !(ap && sameBuild)}<div class="sw-r" data-slipway-facts><dt class="t-meta text-fg-muted">{reach.label}</dt><dd class="t-ui text-fg">{#if reach.build}<span class="t-code tabular-nums">{reach.build}</span>{' '}{/if}{reach.value}</dd></div>{/if}
 					</dl>
 					</div>
-			<div class="sw-actions" data-slipway-actions><ActRow align="end" primary={failing ? (lead ?? undefined) : undefined} secondary={[...(!compact ? [detailsAct, openAct] : []), ...(!failing && lead ? [{ ...lead, lead: true }] : [])]} /></div>
+			<div class="sw-actions" data-slipway-actions><ActRow align="end" primary={split.primary} secondary={[...(!compact ? [detailsAct, openAct] : []), ...split.leadSecondary]} /></div>
 		</div>
 </PipelineCard>
 
@@ -255,6 +261,22 @@
 	@container (min-width: 960px) {
 		/* rollouts-12 W33: the two lists are capped and left-aligned, so at 1920 their columns are never ~500px apart */
 :global(.sw:not(.sw-compact)) .sw-facts { grid-template-columns: minmax(0, 420px) minmax(0, 520px); column-gap: 48px; justify-content: start; }
+	}
+	/* 2026-11-10 (landing audit): a compact pane (/apps/<name>, /envs/<name>) put its facts INSIDE the pane beside the rail, so the pane out-grew the 2-3 steps and left a tall empty rail under them.
+	   From the same 640px the compact card now hangs its facts under BOTH columns, as the lead and the Overview's card do: rail | step detail, then the facts full width, then the actions. */
+	@container (min-width: 640px) {
+:global(.sw-compact) :global(.pc-body) { display: grid; grid-template-columns: min(300px, 40%) minmax(0, 1fr); grid-template-areas: 'rail info' 'facts facts' 'act act'; }
+		:global(.sw-compact) :global(.pc-pane), :global(.sw-compact) .sw-pane { display: contents; }
+		:global(.sw-compact) .sw-pane::before { content: none; }
+		:global(.sw-compact) :global(.pc-rail) { grid-area: rail; order: 0; align-self: stretch; border-top: 0; border-bottom: 0; border-right: 1px solid var(--k-line-subtle); }
+		:global(.sw-compact) .sw-info { grid-area: info; padding: 24px; }
+		:global(.sw-compact) .sw-facts { grid-area: facts; display: grid; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--k-line-subtle); }
+		:global(.sw-compact) :is(.sw-b1, .sw-b2) { grid-area: auto; }
+		:global(.sw-compact) .sw-actions { grid-area: act; margin: 0; padding: 0 24px 16px; align-self: auto; }
+		:global(.sw-compact) .sw-actions:not(:has(*)) { display: none; }
+	}
+	@container (min-width: 960px) {
+:global(.sw-compact) .sw-facts { grid-template-columns: minmax(0, 420px) minmax(0, 520px); column-gap: 48px; justify-content: start; }
 	}
 	/* rollouts-8 V4: on a phone the lead's STEPS come straight after the check line (the page's drawn object is in the first screen), then the actions, then the facts */
 	@media (max-width: 639px) {
