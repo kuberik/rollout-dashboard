@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
@@ -111,4 +112,43 @@ func TestRolloutListWithGateKinds_OnlyAddsKind(t *testing.T) {
 	if !reflect.DeepEqual(a, b) {
 		t.Fatalf("encoding differs beyond kind:\n%s\n%s", plain, withKinds)
 	}
+}
+
+// jsonFieldNames returns every JSON key a struct type encodes, flattening
+// anonymous (inline / untagged embedded) structs the way encoding/json does.
+func jsonFieldNames(t reflect.Type, into map[string]bool) {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("json")
+		name := strings.Split(tag, ",")[0]
+		if tag == "-" {
+			continue
+		}
+		if f.Anonymous && name == "" && f.Type.Kind() == reflect.Struct {
+			jsonFieldNames(f.Type, into)
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		into[name] = true
+	}
+}
+
+// The gate-kind encoder mirrors the Rollout field layout by hand. A field added
+// upstream would otherwise be dropped from API responses silently.
+func TestRolloutWithKindsJSON_MirrorsEveryUpstreamField(t *testing.T) {
+	check := func(label string, upstream, mirror reflect.Type) {
+		want, got := map[string]bool{}, map[string]bool{}
+		jsonFieldNames(upstream, want)
+		jsonFieldNames(mirror, got)
+		for name := range want {
+			if !got[name] {
+				t.Errorf("%s: upstream json field %q is not covered by the gate-kind mirror", label, name)
+			}
+		}
+	}
+	check("Rollout", reflect.TypeOf(rolloutv1alpha1.Rollout{}), reflect.TypeOf(rolloutWithKindsJSON{}))
+	check("RolloutStatus", reflect.TypeOf(rolloutv1alpha1.RolloutStatus{}), reflect.TypeOf(rolloutStatusWithKinds{}))
+	check("RolloutList", reflect.TypeOf(rolloutv1alpha1.RolloutList{}), reflect.TypeOf(rolloutListJSON{}))
 }

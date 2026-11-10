@@ -144,6 +144,12 @@ func toKindJSON(r *rolloutv1alpha1.Rollout, kinds GateKindIndex) rolloutWithKind
 	return out
 }
 
+type rolloutListJSON struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []rolloutWithKindsJSON `json:"items"`
+}
+
 // RolloutListWithGateKinds marshals like the wrapped RolloutList but adds
 // "kind" to every status.gates[] entry.
 type RolloutListWithGateKinds struct {
@@ -155,11 +161,7 @@ func (l RolloutListWithGateKinds) MarshalJSON() ([]byte, error) {
 	if l.RolloutList == nil {
 		return []byte("null"), nil
 	}
-	out := struct {
-		metav1.TypeMeta `json:",inline"`
-		metav1.ListMeta `json:"metadata,omitempty"`
-		Items           []rolloutWithKindsJSON `json:"items"`
-	}{TypeMeta: l.TypeMeta, ListMeta: l.ListMeta, Items: make([]rolloutWithKindsJSON, len(l.Items))}
+	out := rolloutListJSON{TypeMeta: l.TypeMeta, ListMeta: l.ListMeta, Items: make([]rolloutWithKindsJSON, len(l.Items))}
 	for i := range l.Items {
 		out.Items[i] = toKindJSON(&l.Items[i], l.Kinds)
 	}

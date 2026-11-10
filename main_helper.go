@@ -44,13 +44,13 @@ func getK8sReadClient(c *gin.Context) (*kubernetes.Client, bool) {
 	return k8sClient, true
 }
 
+// writeClientFn is the write-client constructor; tests swap it for a fake.
+var writeClientFn = kubernetes.GetWriteClient
+
 // getK8sWriteClient is the handler-side helper for a per-request client
 // authorized as the actual signed-in operator (their OIDC bearer token). Use
 // this for every mutating route and every SelfSubjectAccessReview — never
 // downgrade these to getK8sReadClient's shared service-account identity.
-// writeClientFn is the write-client constructor; tests swap it for a fake.
-var writeClientFn = kubernetes.GetWriteClient
-
 func getK8sWriteClient(c *gin.Context) (*kubernetes.Client, bool) {
 	k8sClient, err := writeClientFn(c)
 	if err != nil {
