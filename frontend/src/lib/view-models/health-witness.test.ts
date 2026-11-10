@@ -450,11 +450,10 @@ describe('pendingRowText — Pending keeps real information, drops only text tha
 
 	it.each([
 		'No alerts firing for labels map[alertname:X]',
-		'alert is not firing',
+		'No alerts firing',
 		'Healthy',
 		'OK',
-		'Kustomization is reconciled · 1/1 ready',
-		'all pods ready'
+		'3/3 ready'
 	])('drops healthy-sounding %j on a Pending check', (m) => {
 		expect(pendingRowText(hc(m), base)).toBe('Not evaluated yet');
 		expect(pendingRowText(hc(m, probe), base)).toBe('next probe in 5s');
@@ -466,13 +465,18 @@ describe('pendingRowText — Pending keeps real information, drops only text tha
 	});
 });
 
-describe('readsHealthy — negation of a healthy word is not healthy; negation of a bad word is', () => {
+describe('readsHealthy — only a WHOLE message that is a complete healthy form drops', () => {
 	it.each([
 		'No alerts firing for labels map[alertname:X]',
+		'No alerts firing',
+		'  No alerts firing for labels map[app:x].  ',
 		'0 errors',
+		'3/3 ready',
+		'3 of 3 ready',
 		'all 3 resources ready',
-		'alert is not firing',
-		'Healthy'
+		'Healthy',
+		'OK',
+		'ok.'
 	])('reads healthy: %j', (m) => expect(readsHealthy(m)).toBe(true));
 
 	it.each([
@@ -480,9 +484,38 @@ describe('readsHealthy — negation of a healthy word is not healthy; negation o
 		'not passing',
 		'no longer healthy',
 		"isn't ready",
+		'Health isn’t ready',
+		'monitor isn’t healthy',
 		'never became ready',
 		'unhealthy',
+		'status: unready',
 		'2 of 3 not ready',
-		'alert pending: HighErrorRate'
-	])('does not read healthy: %j', (m) => expect(readsHealthy(m)).toBe(false));
+		'alert pending: HighErrorRate',
+		'Alert pending for labels map[app:checkout]',
+		'Alert pending (not firing yet)',
+		'2/3 healthy',
+		'2/3 passing',
+		'1/3 ready',
+		'0 of 3 ready',
+		'12/1 ready',
+		'1 of 3 checks passing',
+		'Waiting for all pods to be ready (1/3)',
+		'not all ready',
+		'all 3 pods ready but one restarting',
+		'HTTP 200 OK but p99 latency 3.2s over budget',
+		'healthy: false',
+		'ok=false',
+		'OK (stale)',
+		'3 Datadog monitors OK',
+		'Warn: error rate 0.8% near 1% budget',
+		'No Data',
+		'Pending resources: ns/web (Ready: 1/3)',
+		'Kustomization pending: generation 4 not yet observed',
+		'Test job is pending',
+		'not yet healthy',
+		'unknown',
+		'ready',
+		'no errors but latency high',
+		'0 errors in the last minute, 5 timeouts'
+	])('keeps: %j', (m) => expect(readsHealthy(m)).toBe(false));
 });

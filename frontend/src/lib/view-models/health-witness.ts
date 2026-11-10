@@ -343,25 +343,30 @@ export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
 }
 
 /**
- * Text that reads as a healthy verdict. A Pending check has not settled, so
- * "No alerts firing for labels …" under a Pending chip (prometheus-controller)
- * is read as "fine".
- *
- * Two rules, in order:
- *  1. NEGATED GOOD IS NOT HEALTHY. A negation directly (≤ 2 words) before a
- *     GOOD word — "not ok", "no longer healthy", "isn't ready", "never became
- *     ready", "2 of 3 not ready" — or an `un-` form of one ("unhealthy").
- *  2. Otherwise, a GOOD word or a "nothing bad" phrase reads healthy. "No
- *     alerts firing" is a negation of a BAD word (firing), so rule 1 does not
- *     see it, and it reads healthy as it should.
+ * A Pending message is dropped ONLY when the WHOLE message, normalised, is one
+ * of a short allow-list of complete healthy forms. Anything else is kept:
+ * a keyword heuristic ("ok", "healthy", negation guards) dropped real
+ * problems ("HTTP 200 OK but p99 over budget", "healthy: false", "2/3 healthy").
+ * Normalised = trimmed, lowercase, curly apostrophes straightened, whitespace
+ * collapsed, trailing period removed.
  */
-const NEGATED_GOOD =
-	/\b(?:not|never|no longer|isn't|aren't|wasn't|weren't)\b(?:\s+\w+){0,2}?\s+(?:ok|okay|passing|healthy|ready|reconciled|available)\b|\bun(?:ok|okay|passing|healthy|ready|reconciled|available)\b/i;
-const READS_GOOD =
-	/\b(?:no alerts?(?: are)? firing|not firing|0 (?:errors?|alerts?|issues?)|no (?:errors?|issues?|problems?)|ok|okay|passing|healthy|reconciled|all\b[^.]*\bready|(\d+)\/\1 ready)\b/i;
+const HEALTHY_FORMS: RegExp[] = [
+	/^no alerts firing( for labels( .*)?)?$/,
+	/^0 errors$/,
+	/^([1-9]\d*)(\/| of )\1 ready$/,
+	/^all [1-9]\d* resources ready$/,
+	/^healthy$/,
+	/^ok$/
+];
 
 export function readsHealthy(message: string): boolean {
-	return !NEGATED_GOOD.test(message) && READS_GOOD.test(message);
+	const m = message
+		.trim()
+		.toLowerCase()
+		.replace(/[‘’]/g, "'")
+		.replace(/\s+/g, ' ')
+		.replace(/\.$/, '');
+	return HEALTHY_FORMS.some((re) => re.test(m));
 }
 
 /**
