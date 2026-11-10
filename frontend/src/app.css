@@ -559,6 +559,25 @@ textarea {
 	}
 }
 
+/* ⭐ REDUCED MOTION IS PRODUCT-WIDE, NOT PER-COMPONENT. (2026-11-10, landing
+   audit: spinners kept spinning under `prefers-reduced-motion: reduce`.) Every
+   looping motion in the product comes from a Tailwind utility (`animate-spin`
+   in StatusSpinner, TraySteps, MiniPipeline, the pipeline cards; `animate-pulse`
+   on skeletons and live dots; `animate-ping` on the live halo) or from the two
+   decorative border keyframes. One unlayered rule stops them all, so a new
+   spinner cannot forget the guard. The arc/dot stays drawn: STATE is carried by
+   its colour and its label, motion was only ever the second channel. */
+@media (prefers-reduced-motion: reduce) {
+	.animate-spin,
+	.animate-pulse,
+	.animate-ping,
+	.animate-bounce,
+	.animate-border,
+	.animate-gradient-rotate {
+		animation: none !important;
+	}
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    TYPE ROLES MOVED. The closed role list (`t-title` … `t-code-lg`) and the
    legacy aliases (`t-display`, `t-dense`, `t-micro`, `t-chip`, …) live in
