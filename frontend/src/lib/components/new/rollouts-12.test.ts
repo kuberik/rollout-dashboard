@@ -24,3 +24,13 @@ it('W33: an opened failing lead has no state word of its own in the slot (the ro
 	const f = D.rollouts('incident').rows.find((x) => x.group === 'failed' && x.failure?.check)!;
 	expect(stateWordOf(f, 'incident', true, true)).toBeNull();
 });
+it('Slipway approval facts: Place = the environment and Scope = the shared region count for a multi-region approval', () => {
+	const r = D.rollouts('incident').rows.find((x) => x.app === 'payments-core' && x.group === 'approval')!;
+	const sc = D.approvalScope(r, 'incident');
+	expect(sc.scope).toBe('5 of 6 regions');
+	expect(sc.place).toBe('production');
+	expect(sc.n).toBe(5);
+	const ti = D.rollouts('incident').rows.find((x) => x.app === 'telemetry-indexer' && x.group === 'approval')!;
+	expect(D.approvalScope(ti, 'incident').scope).toBeNull();
+	expect(D.approvalScope(ti, 'incident').place).toBe(D.approvalScope(ti, 'incident').acts);
+});

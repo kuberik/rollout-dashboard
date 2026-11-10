@@ -1173,7 +1173,7 @@ export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] 
 }
 /** ONE approval-scope rule: the viewer's Approve acts on the place the row links to (the first of a folded row's regions). `sentence` is what the row and the change print;
  *  `others` says what the remaining regions do: "N other regions wait on their own approvals" only when each one's own gate refuses the build, else "N other regions hold this build". */
-export function approvalScope(row: Pick<RolloutRow, 'app' | 'tier' | 'regions' | 'href' | 'needsYou' | 'where'>, state: HomeState = 'incident'): { sentence: string; acts: string; n: number; of: number; others: string | null } {
+export function approvalScope(row: Pick<RolloutRow, 'app' | 'tier' | 'regions' | 'href' | 'needsYou' | 'where'>, state: HomeState = 'incident'): { sentence: string; acts: string; /** the Place fact: the environment when the approval spans several regions, else where the viewer acts */ place: string; /** the Scope fact ("5 regions", "5 of 6 regions"), null for a single place */ scope: string | null; n: number; of: number; others: string | null } {
 	const of = Math.max(1, row.regions.length);
 	const acts = row.regions[0] ?? row.where;
 	const actsLabel = row.tier === 'prod' && acts !== 'prod' ? `prod-${acts}` : acts === 'prod' ? 'production' : acts;
@@ -1184,7 +1184,7 @@ export function approvalScope(row: Pick<RolloutRow, 'app' | 'tier' | 'regions' |
 	const sts = row.tier === 'prod' ? regionStates(row.app, state) : [];
 	const k = sts.filter((r) => r.ink === 'waiting').length;
 	const scope = sts.length > 1 && k ? (k === sts.length ? `${k} regions` : `${k} of ${sts.length} regions`) : null;
-	return { sentence: `${sharedWord('approval', { yours: row.needsYou })} · ${scope ?? actsLabel}`, acts: actsLabel, n: 1, of, others };
+	return { sentence: `${sharedWord('approval', { yours: row.needsYou })} · ${scope ?? actsLabel}`, acts: actsLabel, place: scope && row.tier === 'prod' ? 'production' : actsLabel, scope, n: k || 1, of, others };
 }
 /* ═══ approving in place (r34 r3-approve) ═══ */
 /** What one Approve press releases: the build, the places (a folded prod row = every region whose own gate refuses it), and the tag each rollout is asked to allow.

@@ -948,7 +948,6 @@ lib/components/new/Rollouts.svelte	text	Open rollout ›
 lib/components/new/Rollouts.svelte	text	Roll back
 lib/components/new/Rollouts.svelte	text	Rollouts appear here as soon as one is deployed.
 lib/components/new/Slipway.svelte	code	…… ago
-lib/components/new/Slipway.svelte	text	1 of … regions
 lib/components/new/Slipway.svelte	code	Check timer
 lib/components/new/Slipway.svelte	code	Checking · …
 lib/components/new/Slipway.svelte	code	Final check

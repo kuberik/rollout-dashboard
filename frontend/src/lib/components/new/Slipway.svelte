@@ -150,8 +150,8 @@
 					<dl class="sw-b1 sw-dl min-w-0" data-slipway-dl>
 						{#if ap}
 							<div class="sw-r" data-slipway-approval><dt class="t-meta text-fg-muted">Approval</dt><dd class="t-ui text-fg">{apWord}</dd></div>
-							<div class="sw-r"><dt class="t-meta text-fg-muted">Place</dt><dd class="flex min-w-0 items-center"><Chip role="env" theme={envTheme(row.tier)} label={ap.acts} wide /></dd></div>
-							{#if ap.of > 1}<div class="sw-r"><dt class="t-meta text-fg-muted">Scope</dt><dd class="t-ui text-fg">1 of {ap.of} regions</dd></div>{/if}
+							<div class="sw-r"><dt class="t-meta text-fg-muted">Place</dt><dd class="flex min-w-0 items-center"><Chip role="env" theme={envTheme(row.tier)} label={ap.place} wide /></dd></div>
+							{#if ap.scope}<div class="sw-r"><dt class="t-meta text-fg-muted">Scope</dt><dd class="t-ui text-fg">{ap.scope}</dd></div>{/if}
 						{:else}
 							{#if approval}<div class="sw-r" data-slipway-approval><dt class="t-meta text-fg-muted">Approval</dt><dd class="t-ui text-fg">{approval}</dd></div>{/if}
 							<div class="sw-r"><dt class="t-meta text-fg-muted">{wb ? 'Next build' : 'Build'}</dt><dd><span class="t-code tabular-nums text-fg" data-slipway-build>{build}</span></dd></div>
