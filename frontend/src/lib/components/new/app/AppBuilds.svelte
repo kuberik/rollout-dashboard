@@ -78,32 +78,32 @@
 <style>
 	.ledger { padding-block: 4px; }
 	/* the History spine: a 1px line-strong rule through the 16px mark column (x 24) */
-	.ledger::before { content: ''; position: absolute; left: 23.5px; top: 22px; bottom: 22px; width: 1px; background: var(--color-line-strong); }
+	.ledger::before { content: ''; position: absolute; left: 23.5px; top: 22px; bottom: 22px; width: 1px; background: var(--k-line-strong); }
 	.stop-li { position: relative; }
 	.stop-li.occ { margin-top: 4px; }
-	.stop-li.occ:not(:first-child)::before { content: ''; position: absolute; left: 44px; right: 0; top: -4px; border-top: 1px solid var(--color-line-subtle); }
+	.stop-li.occ:not(:first-child)::before { content: ''; position: absolute; left: 44px; right: 0; top: -4px; border-top: 1px solid var(--k-line-subtle); }
 	.stop { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 16px; column-gap: 8px; align-items: center; width: 100%; min-height: 40px; padding: 4px 16px; text-align: left; position: relative; }
-	.stop:hover { background: var(--color-hover, transparent); }
-	.dot { width: 8px; height: 8px; border-radius: 999px; justify-self: center; background: var(--color-fg); box-shadow: 0 0 0 3px var(--color-surface, transparent); position: relative; z-index: 1; }
-	.stop.empty .dot { background: var(--color-surface, transparent); box-shadow: inset 0 0 0 1px var(--color-line-strong), 0 0 0 3px var(--color-surface, transparent); }
-	.stop.custom .dot { background: var(--color-surface, transparent); box-shadow: inset 0 0 0 1px var(--color-fg-muted), 0 0 0 3px var(--color-surface, transparent); }
+	.stop:hover { background: var(--k-hover, transparent); }
+	.dot { width: 8px; height: 8px; border-radius: 999px; justify-self: center; background: var(--k-fg); box-shadow: 0 0 0 3px var(--k-surface, transparent); position: relative; z-index: 1; }
+	.stop.empty .dot { background: var(--k-surface, transparent); box-shadow: inset 0 0 0 1px var(--k-line-strong), 0 0 0 3px var(--k-surface, transparent); }
+	.stop.custom .dot { background: var(--k-surface, transparent); box-shadow: inset 0 0 0 1px var(--k-fg-muted), 0 0 0 3px var(--k-surface, transparent); }
 	.stop.empty { min-height: 32px; }
 	.s-main { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; row-gap: 0; min-width: 0; margin-left: 4px; }
-	.s-id { color: var(--color-fg); }
-	.stop.empty .s-id { color: var(--color-fg-subtle); }
-	.s-lag { color: var(--color-fg-subtle); white-space: nowrap; }
+	.s-id { color: var(--k-fg); }
+	.stop.empty .s-id { color: var(--k-fg-subtle); }
+	.s-lag { color: var(--k-fg-subtle); white-space: nowrap; }
 	.stop { grid-template-rows: auto; }
 	.s-main { grid-column: 2; grid-row: 1; }
 	.s-age { grid-column: 3; grid-row: 1; }
 	.stop :global(.s-cv) { grid-column: 4; grid-row: 1; }
 	/* phone: the title is its own line under id · lag, at the id's x, clamped to 2 lines (never silently dropped) */
-	.s-ttl { grid-column: 2 / 4; grid-row: 2; margin-left: 4px; color: var(--color-fg-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; min-width: 0; overflow-wrap: anywhere; }
-	.stop.empty .s-ttl { color: var(--color-fg-subtle); }
-	.s-age { color: var(--color-fg-muted); text-align: right; min-width: 32px; }
-	.stop :global(.s-cv) { color: var(--color-fg-subtle); }
+	.s-ttl { grid-column: 2 / 4; grid-row: 2; margin-left: 4px; color: var(--k-fg-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; min-width: 0; overflow-wrap: anywhere; }
+	.stop.empty .s-ttl { color: var(--k-fg-subtle); }
+	.s-age { color: var(--k-fg-muted); text-align: right; min-width: 32px; }
+	.stop :global(.s-cv) { color: var(--k-fg-subtle); }
 	.disc { display: grid; gap: 4px; justify-items: start; padding: 0 16px 8px 48px; }
-	.fold-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; min-height: 32px; padding: 0 16px; background: var(--color-subtle); }
-	.fold-dash { width: 8px; height: 1px; justify-self: center; background: var(--color-fg-disabled); }
+	.fold-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; min-height: 32px; padding: 0 16px; background: var(--k-subtle); }
+	.fold-dash { width: 8px; height: 1px; justify-self: center; background: var(--k-fg-disabled); }
 	@container (min-width: 560px) {
 		.stop { grid-template-columns: 16px 96px minmax(0, 1fr) 64px 40px 16px; }
 		.s-main { display: contents; }
