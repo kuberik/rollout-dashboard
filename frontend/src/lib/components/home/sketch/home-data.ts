@@ -14,6 +14,7 @@ import { buildHomeModel, type HomeModel } from '$lib/view-models/home-model';
 import { homeInput, FIXTURE_NOW, FIXTURE_ME } from '$lib/view-models/home/fixture';
 import { calmModel, quietModel } from './sketch-home';
 import { approvalRev } from '$lib/components/new/approval-rev.svelte';
+import type { NetworkSchedules } from '$lib/api/schedules';
 import { liveSource, type FleetSource } from './fleet-source.svelte';
 
 /** the clock the pages count ages from: the live source's `now`, the fixture's capture instant when nothing is installed. A Date, so every `NOW.getTime()` / `NOW.toISOString()` reads the current source. */
@@ -85,7 +86,7 @@ export function homeModel(state: HomeState): HomeModel {
 	if (!m) {
 		m = buildHomeModel({
 			changes: s.changes, rollouts: s.rollouts, environments: s.environments, rolloutDependencies: s.rolloutDependencies,
-			kustomizations: s.kustomizations, kruiseRollouts: s.kruiseRollouts, me: s.me, now: s.now, healthChecks: s.healthChecks
+			kustomizations: s.kustomizations, kruiseRollouts: s.kruiseRollouts, me: s.me, now: s.now, healthChecks: s.healthChecks, schedulesByCluster: (s.schedules ?? undefined) as Map<string, NetworkSchedules> | undefined
 		});
 		built.set(s, m);
 	}

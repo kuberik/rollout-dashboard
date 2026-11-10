@@ -41,6 +41,7 @@ import { heldHereOf, heldKeyOfHref } from '$lib/view-models/held-here.svelte';
 import { displayVersionForTag } from '$lib/version-utils';
 import { gatePrettyOf } from '$lib/view-models/gate-pretty.svelte';
 import { githubAbsenceSentence } from '$lib/api/github';
+import { formatTransitionAt } from '$lib/api/schedules';
 import { deployReason, deployMark } from '$lib/view-models/activity-note';
 import { avatarForLogin } from '$lib/github-avatar';
 import { respondGithub } from '$lib/demo/github-data';
@@ -1360,6 +1361,10 @@ export function arrivals(state: HomeState): TArrival[] {
 		return { ...a, build: e ? buildName(a.app, e.version) : null, href: e?.href ?? null };
 	});
 }
+/** A closed deploy window says the window and its clock, as every schedule does elsewhere (`formatTransitionAt`: "Mon 09:00 UTC"): "Deploy window opens Mon 09:00 UTC"; with no published transition, "Waiting for the deploy window". */
+export function windowCause(w: { label: string; opensAt: string | null } | undefined, now: Date = new Date()): string {
+	return w?.opensAt ? `Deploy window opens ${formatTransitionAt(w.opensAt, now)}` : 'Waiting for the deploy window';
+}
 export type HeldCause = { key: string; cause: string; places: string[]; rows: TRow[] };
 /** One entry per hold cause, from the model's needsYou facts: "Waiting for approval", "Waiting on payments-svc", "Waiting on Integration tests" (a check is named as the Gates tab prints its gate). */
 export function heldCauses(state: HomeState, tier?: TierKey): HeldCause[] {
@@ -1376,7 +1381,7 @@ export function heldCauses(state: HomeState, tier?: TierKey): HeldCause[] {
 			: f?.reason === 'dependency' ? (f.provider ? `Waiting on ${f.provider}` : 'Waiting on a dependency')
 			: f?.reason === 'check' ? (f.checks?.length ? `Waiting on ${f.checks.map((c) => gateDisplayName(c)).join(', ')}` : 'Waiting on a check')
 			: f?.reason === 'pinned' ? 'Pinned'
-			: f?.reason === 'clock' ? 'Waiting for the deploy window'
+			: f?.reason === 'clock' ? windowCause(f.window)
 			: r.word.startsWith('Waits on') ? r.word.replace('Waits on', 'Waiting on') : 'Held by a rule';
 		const e = out.get(cause) ?? { key: cause, cause, places: [], rows: [] };
 		e.places.push(`${r.app} · ${r.place}`);
