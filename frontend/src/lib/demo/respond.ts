@@ -17,6 +17,7 @@
  * ⛔ NOTHING NODE-SPECIFIC MAY ENTER THIS FILE — see `./mock-data.ts`.
  */
 
+import { applySlicesMode } from './mock-slices';
 import {
 	NAMESPACE,
 	ROLLOUT_NAME,
@@ -470,9 +471,8 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 	// unscenario'd exports, and serving them here would put a `Failed`
 	// rollout back on every page even while `calm` is active.
 	if (url === '/api/rollouts') {
-		return json({
-			rollouts: {
-				items: withLiveOverrides([
+		// Some rollouts are served in slices mode (see ./mock-slices.ts).
+		const slicesMode = applySlicesMode(withLiveOverrides([
 					mockRolloutResponse.rollout,
 					...getScenarioFleetRollouts(),
 					...getScenarioDepRollouts(),
@@ -480,8 +480,11 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 					// scenario's chain (mock-promote.ts). No FLEET placeholder to
 					// override; these ARE the live fixtures already.
 					...getHwEnvRollouts()
-				]).map(stampSourceCluster)
-			},
+				]));
+		return json({
+			rollouts: { items: slicesMode.rollouts.map(stampSourceCluster) },
+			releaseSources: { items: slicesMode.sources.map((x) => stampSourceCluster(x as any)) },
+			releaseSlices: { items: slicesMode.slices.map((x) => stampSourceCluster(x as any)) },
 			environments: {
 				items: [
 					...mockFleetEnvironments,

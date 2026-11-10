@@ -1,3 +1,4 @@
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { Environment, Rollout } from '$lib/../types';
 import {
 	groupRolloutsByApp,
@@ -396,7 +397,7 @@ function contextFor(group: AppGroup): ServiceCtx {
 		if (label && tag && !tagByVersion.has(label)) tagByVersion.set(label, tag);
 	};
 	for (const c of group.cells) {
-		for (const rel of c.rollout.status?.availableReleases ?? []) note(rel);
+		for (const rel of availableReleases(c.rollout) ?? []) note(rel);
 		for (const h of c.rollout.status?.history ?? []) note(h.version);
 	}
 	return {

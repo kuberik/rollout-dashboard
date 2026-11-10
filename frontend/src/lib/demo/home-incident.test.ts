@@ -7,6 +7,7 @@ import {
 	withObservationSnapshots,
 	type HomeFixture
 } from './home-incident';
+import { applySlicesMode } from './mock-slices';
 
 const fixture = JSON.parse(
 	readFileSync(new URL('../view-models/home/fixtures/incident-input.json', import.meta.url), 'utf8')
@@ -62,7 +63,8 @@ describe('respondHomeIncident', () => {
 			/* r39: the served list also carries the failing checks' observations on the head history entry (withObservationSnapshots) */
 			const served = rebasedHomeFixture(withObservationSnapshots(fixture), now);
 			const plain = (items: { metadata: { name: string } }[]) => items.filter((r) => !/^(invoice-api|hello-frontend-app)/.test(r.metadata.name));
-			expect(plain(body.rollouts.items)).toEqual(plain(served.rollouts));
+			/* the served list is the fixture with the serve-time slices conversion applied (./mock-slices.ts) */
+			expect(plain(body.rollouts.items)).toEqual(plain(applySlicesMode(served.rollouts).rollouts));
 			expect(body.rollouts.items.map((r: { metadata: { name: string } }) => r.metadata.name)).toEqual(rebasedHomeFixture(fixture, now).rollouts.map((r) => r.metadata.name));
 			expect(body.environments.items).toHaveLength(fixture.environments.length);
 			expect(body.rolloutDependencies.items).toHaveLength(fixture.rolloutDependencies.length);

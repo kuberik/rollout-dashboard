@@ -70,6 +70,11 @@ export interface components {
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description RolloutSpec defines the desired state of Rollout. */
             spec?: {
+                /** @description ReleaseSourceRef names the ReleaseSource this rollout reads its catalogue from.
+                 *     HAND-ADDED (release-controller D4); not yet regenerated from the CRD. */
+                releaseSourceRef?: {
+                    name: string;
+                };
                 /**
                  * Format: int32
                  * @description AvailableReleasesMinCount defines the minimum number of available releases to always keep
@@ -166,6 +171,27 @@ export interface components {
             };
             /** @description RolloutStatus defines the observed state of Rollout. */
             status?: {
+                /** @description Candidates is the working set of releases for slices mode (newest first).
+                 *     HAND-ADDED (release-controller D4); not yet regenerated from the CRD. */
+                candidates?: {
+                    blockedBy?: string[];
+                    /** Format: date-time */
+                    created?: string;
+                    /** Format: date-time */
+                    firstSeen?: string;
+                    gated: boolean;
+                    tag: string;
+                }[];
+                /** @description ReleaseSource summarises the ReleaseSource named by spec.releaseSourceRef.
+                 *     HAND-ADDED (release-controller D4); not yet regenerated from the CRD. */
+                releaseSource?: {
+                    count?: number;
+                    name: string;
+                    newest?: string;
+                    /** Format: date-time */
+                    observedAt?: string;
+                    ready: boolean;
+                };
                 /** @description ArtifactType is the media/artifact type of the image extracted from the manifest.
                  *     This includes OCI artifact types, container image types, and other media types.
                  *     This field is set once for the entire rollout based on the latest available release. */

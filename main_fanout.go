@@ -415,8 +415,11 @@ func doFetchSpokeClusterName(ctx context.Context, spokeURL, token string) (strin
 // rolloutDependencies is here for the same reason rollouts is: a consumer, its
 // provider and their dependency always live in one namespace on one cluster, and
 // flattening two clusters' dependencies into an unattributed list makes them
-// indistinguishable.
-var mergedKeys = []string{"rollouts", "environments", "kustomizations", "kruiseRollouts", "rolloutDependencies"}
+// indistinguishable. releaseSources/releaseSlices (release-controller's
+// catalogue) are stamped the same way: the dashboard keys a source's merged
+// catalogue by (cluster, namespace, source), so two clusters' same-named
+// sources must stay separate.
+var mergedKeys = []string{"rollouts", "environments", "kustomizations", "kruiseRollouts", "rolloutDependencies", "releaseSources", "releaseSlices"}
 
 // fanoutSpec describes one hub fan-in list: the path every spoke is asked
 // for, the SWR cache its payloads live in, and the response keys that are
@@ -441,15 +444,27 @@ var rolloutsFanout = fanoutSpec{
 
 // fanOutRollouts fans out GET /api/rollouts to all discovered spoke dashboards
 // and merges the results with localData. localData values must be json.RawMessage.
-// Returns merged data, cluster list, and per-cluster errors.
+// Returns merged data, cluster list, and per-cluster errors; use
+// fanOutRolloutsWithPartials when the spokes' partialReads are needed too.
 func fanOutRollouts(
 	ctx context.Context,
 	localData map[string]json.RawMessage,
 	localURL string,
 	token string,
 ) (map[string]json.RawMessage, []ClusterInfo, []ClusterError) {
-	merged, clusters, clusterErrors, _ := fanOut(ctx, rolloutsFanout, localData, localData["environments"], localURL, token)
+	merged, clusters, clusterErrors, _ := fanOutRolloutsWithPartials(ctx, localData, localURL, token)
 	return merged, clusters, clusterErrors
+}
+
+// fanOutRolloutsWithPartials is fanOutRollouts plus every answering spoke's own
+// partialReads entries, qualified "<cluster>/<key>".
+func fanOutRolloutsWithPartials(
+	ctx context.Context,
+	localData map[string]json.RawMessage,
+	localURL string,
+	token string,
+) (map[string]json.RawMessage, []ClusterInfo, []ClusterError, []string) {
+	return fanOut(ctx, rolloutsFanout, localData, localData["environments"], localURL, token)
 }
 
 // clusterNameForURL is the name local items are stamped with

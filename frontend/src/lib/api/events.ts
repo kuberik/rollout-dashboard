@@ -43,6 +43,8 @@
 
 import { createEventSource, type EventSourceClient } from 'eventsource-client';
 import type { QueryClient } from '@tanstack/svelte-query';
+import { removeReleaseSlice, upsertReleaseSlice } from '../releases/registry.svelte';
+import type { ReleaseSliceObject } from '../releases/catalogue';
 import type { RolloutsListResponse, RolloutResponse, DeploymentChildrenResponse } from './rollouts';
 import { deploymentChildrenQueryKey } from './rollouts';
 import { SOURCE_CLUSTER_ANNOTATION, sourceClusterName } from '../source-dashboard';
@@ -228,8 +230,14 @@ const FLEET_LIST_KINDS = new Set([
 	'Kustomization',
 	'Environment',
 	'KruiseRollout',
-	'RolloutDependency'
+	'RolloutDependency',
+	'ReleaseSource',
+	'ReleaseSlice'
 ]);
+
+/** release-controller kinds (D4): they ride in the fleet list as
+ * `releaseSources` / `releaseSlices` and feed the release-catalogue registry. */
+const RELEASE_CATALOGUE_KINDS = new Set(['ReleaseSource', 'ReleaseSlice']);
 
 /** Each has its OWN endpoint/key and nothing else should invalidate it. */
 const HEALTH_CHECK_KINDS = new Set(['HealthCheck']);
@@ -348,6 +356,8 @@ const SCHEDULE_KINDS = new Set(['RolloutSchedule', 'ClusterRolloutSchedule']);
 const KNOWN_KINDS = new Set([
 	'Rollout',
 	'RolloutDependency',
+	'ReleaseSource',
+	'ReleaseSlice',
 	'RolloutGate',
 	'RolloutSchedule',
 	'ClusterRolloutSchedule',
@@ -391,7 +401,9 @@ const FLEET_LIST_FIELD: Partial<Record<string, keyof RolloutsListResponse>> = {
 	Kustomization: 'kustomizations',
 	Environment: 'environments',
 	KruiseRollout: 'kruiseRollouts',
-	RolloutDependency: 'rolloutDependencies'
+	RolloutDependency: 'rolloutDependencies',
+	ReleaseSource: 'releaseSources',
+	ReleaseSlice: 'releaseSlices'
 };
 
 /**
@@ -959,7 +971,24 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 		// KruiseRollout/RolloutDependency event must reach them.
 		if (FLEET_LIST_KINDS.has(ev.kind) && ev.namespace) {
 			if (patchable) patchFleetListCaches(queryClient, ev);
-			else fleetNamespaces.add(ev.namespace);
+			else if (RELEASE_CATALOGUE_KINDS.has(ev.kind)) {
+				// Slices can churn on every sync of a busy source: throttled
+				// like the other high-churn kinds. The refetch's response
+				// re-enters the registry through the catalogue feed.
+				throttledInvalidate(queryClient, `release-catalogue|${ev.cluster}|${ev.namespace}`, CHURN_THROTTLE_MS, () => {
+					queryClient.invalidateQueries({ queryKey: ['rollouts', 'all'] });
+					queryClient.invalidateQueries({ queryKey: ['rollouts', 'namespace', ev.namespace] });
+				});
+			} else fleetNamespaces.add(ev.namespace);
+			// Registry upsert/remove: patchFleetListCaches above notifies the
+			// QueryCache (the feed re-ingests), but a list cache may not exist
+			// (e.g. only a detail page is open), so write the registry directly.
+			if (ev.kind === 'ReleaseSlice') {
+				if (ev.type === 'delete') removeReleaseSlice(ev.cluster, ev.namespace, ev.name);
+				else if (ev.object) {
+					upsertReleaseSlice(stampSourceCluster(ev.object as K8sObject, ev.cluster) as unknown as ReleaseSliceObject);
+				}
+			}
 		}
 
 		if (ROLLOUT_EXACT_KINDS.has(ev.kind) && ev.namespace && ev.name) {

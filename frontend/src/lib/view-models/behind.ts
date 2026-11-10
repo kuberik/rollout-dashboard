@@ -3,10 +3,13 @@
  * app page's strip and ledger, Environments, the palette and the matrix all print the SAME number, from this function. Only a rollout that
  * carries no such list (`releaseCandidates` absent) falls back to its position in `availableReleases`, and then to the cross-peer rank.
  */
+import type { Rollout } from '$lib/../types';
+import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import { rankBehindBy, type RankVerdict } from './env-rank';
 import { liveForPlace, newerReleaseCountLive, type Fleet } from './failed-builds';
 
-type Status = { releaseCandidates?: unknown[]; currentVersion?: string; availableReleases?: { tag?: string; version?: string; revision?: string }[]; history?: { bakeStatus?: string | null; version?: { tag?: string; version?: string; revision?: string } | null }[] } | null | undefined;
+type Rel = { tag?: string; version?: string; revision?: string };
+type Status = { currentVersion?: string; history?: { bakeStatus?: string | null; version?: { tag?: string; version?: string; revision?: string } | null }[] } | null | undefined;
 
 type Ro = { metadata?: { name?: string; namespace?: string } | null; status?: unknown } | null | undefined;
 /** candidates minus the builds that failed here (latest attempt) or upstream in this place's wave chain (failed-builds.ts: the ONE rule) */
@@ -18,8 +21,9 @@ export function behindOfStatus(rollout: Ro, fleet?: Fleet | null): number {
 	if (!st) return 0;
 	const n = newerReleaseCountLive(rollout as never, fleet); /* the ONE count: shared with the rank, so no surface can disagree */
 	if (n !== null) return n;
-	if (Array.isArray(st.releaseCandidates)) return live(rollout, st.releaseCandidates, fleet).length;
-	const rel = st.availableReleases ?? [];
+	const cands = releaseCandidates(rollout as unknown as Rollout);
+	if (Array.isArray(cands)) return live(rollout, cands, fleet).length;
+	const rel = (availableReleases(rollout as unknown as Rollout) ?? []) as Rel[];
 	const idx = rel.findIndex((r) => r.tag === st.currentVersion || r.version === st.currentVersion);
 	return idx < 0 ? 0 : live(rollout, rel.slice(idx + 1), fleet).length;
 }
@@ -27,7 +31,8 @@ export function behindOfStatus(rollout: Ro, fleet?: Fleet | null): number {
 /** a rollout card / matrix cell: its own list when it has one, else the rank's distance */
 export function behindOfRollout(rollout: Ro, rank?: RankVerdict | null, fleet?: Fleet | null): number {
 	const st = rollout?.status as Status;
-	if (st && Array.isArray(st.releaseCandidates)) return live(rollout, st.releaseCandidates, fleet).length;
+	const cands = releaseCandidates(rollout as unknown as Rollout);
+	if (st && Array.isArray(cands)) return live(rollout, cands, fleet).length;
 	return rank ? rankBehindBy(rank) : behindOfStatus(rollout, fleet);
 }
 

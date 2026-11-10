@@ -5,6 +5,7 @@
  * Role: the Gates tab ("Waiting for staging" vs "Skipped by staging") and the detail banner lead; lane B's app page has its own `streamBuilds`
  * for the same fact on the Builds ledger, which ranks by the release stream; this one ranks by `created` because it has no ledger.
  */
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { Rollout } from '$lib/../types';
 import { rolloutEnvironmentName } from './deploy-risk';
 
@@ -15,7 +16,7 @@ export function stageBuilds(rollout: Rollout | null | undefined, fleet: readonly
 	const out = new Map<string, Rel>();
 	const name = rollout?.metadata?.name;
 	if (!rollout || !name) return out;
-	const rels = (rollout.status?.availableReleases ?? []) as Rel[];
+	const rels = (availableReleases(rollout) ?? []) as Rel[];
 	for (const r of fleet ?? []) {
 		if (r.metadata?.name !== name || r.metadata?.namespace === rollout.metadata?.namespace) continue;
 		const cur = r.status?.history?.[0]?.version as Rel | undefined;
@@ -31,7 +32,7 @@ export function skippedPredicate(
 	rollout: Rollout | null | undefined,
 	stages: ReadonlyMap<string, Rel>
 ): (entry: { tag: string }, stage: string) => boolean {
-	const rels = (rollout?.status?.availableReleases ?? []) as Rel[];
+	const rels = (availableReleases(rollout) ?? []) as Rel[];
 	return (entry, stage) => {
 		const running = stages.get(stage);
 		const cand = rels.find((x) => x.tag === entry.tag || x.version === entry.tag);

@@ -79,6 +79,7 @@
  * and the tests all read one answer.
  */
 
+import { availableReleases } from '$lib/releases/registry.svelte';
 import { gateAllows } from './promotion';
 import type { Rollout } from '../../types';
 import { getEnvironmentRank } from '$lib/env-order';
@@ -261,7 +262,7 @@ export function gatesAllow(rollout: Rollout | null | undefined, tag: string | nu
 /** Oldest-first index of a tag in this rollout's own release list. `-1` if absent. */
 export function releaseIndex(rollout: Rollout | null | undefined, tag: string | null): number {
 	if (!tag) return -1;
-	return (rollout?.status?.availableReleases ?? []).findIndex((r) => r.tag === tag);
+	return (availableReleases(rollout) ?? []).findIndex((r) => r.tag === tag);
 }
 
 /**
@@ -321,7 +322,7 @@ export function deployIntent(
 	environmentName?: string | null
 ): DeployIntent {
 	const environment = rolloutEnvironmentName(rollout, environmentName);
-	const releases = rollout?.status?.availableReleases ?? [];
+	const releases = availableReleases(rollout) ?? [];
 	return {
 		direction: deployDirection(rollout, tag),
 		production: isProductionTarget(environment),
@@ -749,7 +750,7 @@ export function rollbackTarget(rollout: Rollout | null | undefined): RollbackTar
 		}
 	}
 
-	const releases = rollout?.status?.availableReleases ?? [];
+	const releases = availableReleases(rollout) ?? [];
 	const currentIdx = releaseIndex(rollout, currentTag);
 	if (currentIdx > 0) {
 		const r = releases[currentIdx - 1];

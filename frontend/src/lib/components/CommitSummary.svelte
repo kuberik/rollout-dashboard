@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { availableReleases } from '$lib/releases/registry.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { CodeBranchSolid, ChevronRightOutline, UndoOutline } from 'flowbite-svelte-icons';
 	import {
@@ -187,7 +188,7 @@
 	}));
 	const releaseShasEffective = $derived<string[]>(
 		releaseShas ??
-			((rolloutQuery.data?.rollout?.status?.availableReleases ?? [])
+			((availableReleases(rolloutQuery.data?.rollout) ?? [])
 				.map((r) => r.revision)
 				.filter((s): s is string => !!s) as string[])
 	);

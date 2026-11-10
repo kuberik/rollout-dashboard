@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { releaseCandidates } from '$lib/releases/registry.svelte';
 	/**
 	 * r34 v2 AD — APP DETAIL (/apps/<name>): "Where does this app run, which build is where, what is failing or waiting, and
 	 * what is the next build to arrive?" The list's object (the Apps lead Facia) reappears at page scale; the tabs' grammar
@@ -247,7 +248,7 @@
 		const key = keyOf(pl.href);
 		const r = live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === key);
 		if (!r) return;
-		const cand = (r.status?.releaseCandidates ?? []).find((c) => c.tag === buildId || shortBuild(c.version ?? c.tag ?? '') === buildId);
+		const cand = (releaseCandidates(r) ?? []).find((c) => c.tag === buildId || shortBuild(c.version ?? c.tag ?? '') === buildId);
 		modalRollout = r;
 		modalVersion = cand?.tag ?? null;
 		modalExplanation = `Deploy ${buildId} to ${pl.place}.`;

@@ -6,6 +6,8 @@
  * v2 r4: ONE count per page (`countsOf`), every place's state/build/age is the TAB's current deploy (`currentAt`), a place the change does
  * not reach is listed as "not affected", the History spine keeps every place's current deploy and waiting events read in the tab's own age.
  */
+import type { Rollout } from '$lib/../types';
+import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import {
 	changes, candidateBuilds, shortBuild, placesOfChange, historyOfChange, changeCommits, runsIn, rowsOf, rollouts, heldBehind, lastHealthy, ago,
 	waitingBuild, deployedBuild, stepsOf, buildTitle, pathPosition, buildCommitOf,
@@ -83,7 +85,7 @@ export function classified(c: TChange, scenario: HomeState): { all: Unit[]; plac
 		if (u.containsChange) { const first = mine.find((h) => h.outcome === 'Succeeded') ?? mine[0]; places.push({ ...u, kind: 'running', since: first?.at ?? null, build: u.current, at: currentAt(u.href) ?? first?.at ?? null }); continue; }
 		if (u.row && (u.group === 'approval' || u.group === 'held')) {
 			/* CE2: the wait is THIS change's build: the OLDEST candidate that carries it (c0d3e88, "Held by a rule · 4h" on the tab), never the newest build behind it (f4a2c19 is the labelled "Newer build") */
-			const cand = (rawOf(u.href)?.status.releaseCandidates ?? []).filter((x) => carriesBuild(c, x)).sort((a, b) => (a.created ?? '').localeCompare(b.created ?? ''))[0];
+			const cand = ((releaseCandidates(rawOf(u.href) as unknown as Rollout) as RawC[] | undefined) ?? []).filter((x) => carriesBuild(c, x)).sort((a, b) => (a.created ?? '').localeCompare(b.created ?? ''))[0];
 			if (cand) places.push({ ...u, kind: 'waiting', since: cand.created ?? u.row.since, build: shortBuild(cand.version ?? cand.tag ?? cand.revision), at: cand.created ?? u.row.since });
 		}
 	}
@@ -297,7 +299,7 @@ export function carrierRange(c: TChange, scenario: HomeState): CarrierRange | nu
 		if (!j) return null;
 		const all = (j.commits ?? []).map((k) => ({ sha: k.sha.slice(0, 7), title: String(k.message ?? '').split('\n')[0], author: k.author ?? null }));
 		/* the tab keeps only the commits that are themselves an available release (CommitSummary's releaseShas): "1 commit deployed", not the range's filler commits */
-		const rel = ((rawOf(u.href)?.status as { availableReleases?: { tag?: string; version?: string; revision?: string }[] } | undefined)?.availableReleases ?? []).flatMap((r) => [r.revision, r.tag, r.version]).filter((x): x is string => !!x).map((x) => x.toLowerCase());
+		const rel = ((availableReleases(rawOf(u.href) as unknown as Rollout) as { tag?: string; version?: string; revision?: string }[] | undefined) ?? []).flatMap((r) => [r.revision, r.tag, r.version]).filter((x): x is string => !!x).map((x) => x.toLowerCase());
 		const own = all.filter((k) => rel.some((r) => r.startsWith(k.sha.toLowerCase()) || k.sha.toLowerCase().startsWith(r)));
 		const cs = own.length ? own : all;
 		const hc = cs[cs.length - 1];

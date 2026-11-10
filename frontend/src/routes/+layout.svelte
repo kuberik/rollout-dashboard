@@ -9,8 +9,9 @@
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { queryRetry, queryRetryDelay, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { startEventStream } from '$lib/api/events';
+	import { installReleaseCatalogueFeed } from '$lib/releases/feed';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { provideShellChrome } from '$lib/shell-chrome.svelte';
 	import { ScrollDirectionTracker } from '$lib/scroll-direction.svelte';
 	import { scrollMemoryKey, saveScrollPosition, getScrollPosition } from '$lib/scroll-memory';
@@ -341,6 +342,12 @@
 	// invalidate the query keys above — see $lib/api/events' own doc comment
 	// for the reconnect/hidden-tab/backpressure story. No-ops under SSR.
 	startEventStream(queryClient);
+	// Feeds the release-catalogue registry from every rollouts-list response
+	// (ReleaseSlices ride in the same payload as the rollouts). See $lib/releases/feed.
+	if (typeof window !== 'undefined') {
+		const stopReleaseFeed = installReleaseCatalogueFeed(queryClient);
+		onDestroy(stopReleaseFeed);
+	}
 
 	// ⭐ DEMO BUILD ONLY — the embed contract kuberik.com's showcases drive
 	// (`window.kuberikDemo`, the `kuberik-demo-ready` postMessage). See

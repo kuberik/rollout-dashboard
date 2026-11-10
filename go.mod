@@ -38,6 +38,7 @@ require (
 	github.com/go-openapi/swag/stringutils v0.24.0 // indirect
 	github.com/go-openapi/swag/typeutils v0.24.0 // indirect
 	github.com/go-openapi/swag/yamlutils v0.24.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -122,3 +123,9 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+// LOCAL-ONLY until rollout-controller v0.11 is released: the dashboard serves
+// typed Rollouts, so it needs the reader branch's new fields
+// (spec.releaseSourceRef, status.releaseSource, status.candidates). Must be
+// swapped for a released version before merge.
+replace github.com/kuberik/rollout-controller => ../wt-rollout-release-reader

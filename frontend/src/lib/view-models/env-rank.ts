@@ -1,3 +1,4 @@
+import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import type { Rollout, Environment } from '$lib/../types';
 import type { AppGroup, AppCell } from '$lib/version-utils';
 import { groupRolloutsByApp } from '$lib/version-utils';
@@ -201,7 +202,7 @@ export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 		//     is. Does not occur on any live rollout.
 		const st = cell.rollout?.status;
 		const publishesNothing =
-			!Array.isArray(st?.availableReleases) && !Array.isArray(st?.releaseCandidates);
+			!Array.isArray(availableReleases(cell.rollout)) && !Array.isArray(releaseCandidates(cell.rollout));
 		if (!publishesNothing) {
 			out.set(cell, { kind: 'unknown' });
 			continue;

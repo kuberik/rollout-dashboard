@@ -1,3 +1,4 @@
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { AppCell } from '$lib/version-utils';
 import { getDisplayVersion } from '$lib/utils';
 import { getEnvironmentRank } from '$lib/env-order';
@@ -188,7 +189,7 @@ export function buildLadder(cells: AppCell[]): BuildLadder {
 	// such no matter which environment's history also happens to mention it.
 	let onReleaseLine = true;
 	for (const c of cells) {
-		const releases = c.rollout.status?.availableReleases ?? [];
+		const releases = availableReleases(c.rollout) ?? [];
 		releases.forEach((r, i) => {
 			absorb(r as Raw);
 			const v = displayOf(r as Raw);

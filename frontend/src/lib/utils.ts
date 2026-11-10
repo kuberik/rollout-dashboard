@@ -1,3 +1,4 @@
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { Rollout, Kustomization, OCIRepository } from "../types";
 import { BAKE_WORD } from './bake-status';
 // ⛔ THIS IMPORT IS CIRCULAR, AND IT IS DELIBERATE — SEE THE NOTE ON
@@ -124,7 +125,7 @@ function compareByReleaseOrder(
     otherV: string
 ): RolloutRelation | null {
     for (const r of [myRollout, otherRollout]) {
-        const releases = r.status?.availableReleases;
+        const releases = availableReleases(r);
         if (!Array.isArray(releases) || releases.length === 0) continue;
         const myIdx = releases.findIndex((rel) => getDisplayVersion(rel) === myV);
         const otherIdx = releases.findIndex((rel) => getDisplayVersion(rel) === otherV);

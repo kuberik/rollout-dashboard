@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 	import { kruiseStatusIsPreviousDeploy, freshestKruise } from '$lib/pipeline';
 	import { sourceDashboardURL } from '$lib/source-dashboard';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
@@ -2002,21 +2003,22 @@
 
 	// Computed property to determine if current version is custom (not in available releases)
 	const isCurrentVersionCustom = $derived.by(() => {
-		if (!rollout?.status?.history?.[0] || !rollout?.status?.availableReleases) return false;
+		const releases = availableReleases(rollout);
+		if (!rollout?.status?.history?.[0] || !releases) return false;
 		const currentVersionTag = rollout.status.history[0].version.tag;
-		return !rollout.status.availableReleases.some((ar) => ar.tag === currentVersionTag);
+		return !releases.some((ar) => ar.tag === currentVersionTag);
 	});
 
 	// Computed property to determine if pinned version (wantedVersion) is custom
 	const isPinnedVersionCustom = $derived.by(() => {
-		if (!rollout?.spec?.wantedVersion || !rollout?.status?.availableReleases) return false;
+		if (!rollout?.spec?.wantedVersion || !availableReleases(rollout)) return false;
 		const pinnedVersionTag = toTag(rollout.spec.wantedVersion);
 		return isSelectedVersionCustom(pinnedVersionTag);
 	});
 
 	function isOlderThanCurrent(selectedTag: string): boolean {
 		const currentTag = rollout?.status?.history?.[0]?.version?.tag;
-		const releases = rollout?.status?.availableReleases;
+		const releases = availableReleases(rollout);
 		if (!currentTag || !releases) return false;
 		const currentIdx = releases.findIndex((r) => r.tag === currentTag);
 		const selectedIdx = releases.findIndex((r) => r.tag === selectedTag);
@@ -2026,8 +2028,9 @@
 	}
 
 	function isSelectedVersionCustom(selectedTag: string): boolean {
-		if (!rollout?.status?.availableReleases) return false;
-		return !rollout.status.availableReleases.some((ar) => ar.tag === selectedTag);
+		const releases = availableReleases(rollout);
+		if (!releases) return false;
+		return !releases.some((ar) => ar.tag === selectedTag);
 	}
 
 	function toTag(version: string | { tag: string } | undefined): string {
@@ -2085,7 +2088,7 @@
 		const historyEntry = rollout.status?.history?.find(
 			(entry) => entry.version?.tag === versionTag
 		);
-		const availableRelease = rollout.status?.availableReleases?.find((ar) => ar.tag === versionTag);
+		const availableRelease = availableReleases(rollout)?.find((ar) => ar.tag === versionTag);
 
 		// Collect all possible version identifiers to match against
 		const versionIdentifiers = new Set<string>([versionTag]);
@@ -2251,7 +2254,7 @@
 		isReconciling = true;
 
 		// Capture current state to detect changes
-		const previousReleaseTags = new Set(rollout.status?.availableReleases?.map((r) => r.tag) ?? []);
+		const previousReleaseTags = new Set(availableReleases(rollout)?.map((r) => r.tag) ?? []);
 
 		// Show persistent toast with spinner while checking
 		showToast = true;
@@ -2298,7 +2301,7 @@
 					scanCompleted = true;
 				}
 
-				const currentReleases = rolloutQuery.data?.rollout?.status?.availableReleases ?? [];
+				const currentReleases = availableReleases(rolloutQuery.data?.rollout) ?? [];
 				const currentTags = new Set(currentReleases.map((r: { tag: string }) => r.tag));
 
 				// Check if we have new versions
@@ -4890,17 +4893,16 @@
 							<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
 								<CodeOutline class="text-fg-subtle h-4 w-4" aria-hidden="true" />
 								<h2 class="t-card-title text-fg">Newer builds</h2>
-								{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}<span
+								{#if (releaseCandidates(rollout)?.length ?? 0) > 0}<span
 										class="t-ui-sm text-fg-subtle ml-auto tabular-nums"
-										>{rollout.status?.releaseCandidates?.length} build{rollout.status
-											?.releaseCandidates?.length === 1
+										>{releaseCandidates(rollout)?.length} build{releaseCandidates(rollout)?.length === 1
 											? ''
 											: 's'}</span
 									>{/if}
 							</div>
-							{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}
+							{#if (releaseCandidates(rollout)?.length ?? 0) > 0}
 								<ul class="divide-line-subtle divide-y">
-									{#each rollout.status?.releaseCandidates?.slice(0, 5) ?? [] as rc}
+									{#each releaseCandidates(rollout)?.slice(0, 5) ?? [] as rc}
 										<li class="flex items-center justify-between gap-3 px-4 py-3">
 											<span class="t-code text-fg">{getDisplayVersion(rc)}</span>
 											{#if rc.created}

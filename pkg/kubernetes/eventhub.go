@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
 	"log"
 	"sync"
 	"time"
@@ -391,6 +392,8 @@ var objectCarryingKinds = map[string]func() client.Object{
 	"RolloutDependency":      func() client.Object { return &rolloutv1alpha1.RolloutDependency{} },
 	"RolloutSchedule":        func() client.Object { return &rolloutv1alpha1.RolloutSchedule{} },
 	"ClusterRolloutSchedule": func() client.Object { return &rolloutv1alpha1.ClusterRolloutSchedule{} },
+	"ReleaseSource":          func() client.Object { return &releasev1alpha1.ReleaseSource{} },
+	"ReleaseSlice":           func() client.Object { return &releasev1alpha1.ReleaseSlice{} },
 	"Deployment":             func() client.Object { return &appsv1.Deployment{} },
 	"ReplicaSet":             func() client.Object { return &appsv1.ReplicaSet{} },
 }

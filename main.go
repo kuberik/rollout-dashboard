@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
 	"log"
 	"net/http"
 	"os"
@@ -299,7 +300,14 @@ func setupRouter() *gin.Engine {
 				environments        *envv1alpha1.EnvironmentList
 				kruiseRollouts      *kruiserolloutv1beta1.RolloutList
 				rolloutDependencies *rolloutv1alpha1.RolloutDependencyList
-				rolloutsErr         error
+				releaseSources      *releasev1alpha1.ReleaseSourceList
+				releaseSlices       *releasev1alpha1.ReleaseSliceList
+				// Set only when the list failed for a reason other than the CRD
+				// being absent; reported in partialReads below. Each is written
+				// by exactly one goroutine and read after g.Wait().
+				releaseSourcesFailed bool
+				releaseSlicesFailed  bool
+				rolloutsErr          error
 			)
 
 			// Fan out the 5 cluster LISTs in parallel. Only rollouts is fatal —
@@ -382,6 +390,48 @@ func setupRouter() *gin.Engine {
 				}
 				return nil
 			})
+			// release-controller's catalogue (ReleaseSource/ReleaseSlice). Same
+			// optional-CRD contract as rolloutDependencies: an absent CRD is the
+			// ordinary answer on a cluster without release-controller and yields
+			// null. Unlike rolloutDependencies, a REAL failure is distinguished
+			// and named in partialReads, so the client does not read "could not
+			// list" as "no catalogue" and drop to the legacy status fields.
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					releaseSources, err = k8sClient.GetReleaseSourcesAllNamespaces(gctx)
+				} else {
+					releaseSources, err = k8sClient.GetReleaseSources(gctx, namespace)
+				}
+				if err != nil {
+					releaseSources = nil
+					if !kubernetes.IsCRDNotInstalled(err) {
+						log.Printf("Error fetching release sources: %v", err)
+						releaseSourcesFailed = true
+					}
+				} else {
+					kubernetes.SortByNamespaceName(releaseSources.Items)
+				}
+				return nil
+			})
+			g.Go(func() error {
+				var err error
+				if allNamespaces {
+					releaseSlices, err = k8sClient.GetReleaseSlicesAllNamespaces(gctx)
+				} else {
+					releaseSlices, err = k8sClient.GetReleaseSlices(gctx, namespace)
+				}
+				if err != nil {
+					releaseSlices = nil
+					if !kubernetes.IsCRDNotInstalled(err) {
+						log.Printf("Error fetching release slices: %v", err)
+						releaseSlicesFailed = true
+					}
+				} else {
+					kubernetes.SortByNamespaceName(releaseSlices.Items)
+				}
+				return nil
+			})
 			_ = g.Wait()
 
 			// ⭐ WHICH SUPPORTING LISTS DID NOT ANSWER, NAMED RATHER THAN
@@ -416,6 +466,12 @@ func setupRouter() *gin.Engine {
 			var partialReads []string
 			if kustomizations == nil {
 				partialReads = append(partialReads, "kustomizations")
+			}
+			if releaseSourcesFailed {
+				partialReads = append(partialReads, "releaseSources")
+			}
+			if releaseSlicesFailed {
+				partialReads = append(partialReads, "releaseSlices")
 			}
 			if environments == nil {
 				partialReads = append(partialReads, "environments")
@@ -465,6 +521,16 @@ func setupRouter() *gin.Engine {
 						nsSet[d.Namespace] = struct{}{}
 					}
 				}
+				if releaseSources != nil {
+					for _, rs := range releaseSources.Items {
+						nsSet[rs.Namespace] = struct{}{}
+					}
+				}
+				if releaseSlices != nil {
+					for _, rs := range releaseSlices.Items {
+						nsSet[rs.Namespace] = struct{}{}
+					}
+				}
 				namespaces := make([]string, 0, len(nsSet))
 				for ns := range nsSet {
 					namespaces = append(namespaces, ns)
@@ -490,6 +556,12 @@ func setupRouter() *gin.Engine {
 				if rolloutDependencies != nil {
 					rolloutDependencies.Items = kubernetes.FilterByNamespace(rolloutDependencies.Items, func(d rolloutv1alpha1.RolloutDependency) string { return d.Namespace }, allowedNS)
 				}
+				if releaseSources != nil {
+					releaseSources.Items = kubernetes.FilterByNamespace(releaseSources.Items, func(rs releasev1alpha1.ReleaseSource) string { return rs.Namespace }, allowedNS)
+				}
+				if releaseSlices != nil {
+					releaseSlices.Items = kubernetes.FilterByNamespace(releaseSlices.Items, func(rs releasev1alpha1.ReleaseSlice) string { return rs.Namespace }, allowedNS)
+				}
 			}
 
 			// If we're already serving a fan-out leg (header set by the calling hub),
@@ -510,6 +582,8 @@ func setupRouter() *gin.Engine {
 					"environments":        environments,
 					"kruiseRollouts":      kruiseRollouts,
 					"rolloutDependencies": rolloutDependencies,
+					"releaseSources":      releaseSources,
+					"releaseSlices":       releaseSlices,
 				}
 				// A spoke's own partial read has to reach the hub, or the hub
 				// merges a silently-short list and reports it as complete.
@@ -527,10 +601,12 @@ func setupRouter() *gin.Engine {
 				"kustomizations":      marshalToRaw(kustomizations),
 				"kruiseRollouts":      marshalToRaw(kruiseRollouts),
 				"rolloutDependencies": marshalToRaw(rolloutDependencies),
+				"releaseSources":      marshalToRaw(releaseSources),
+				"releaseSlices":       marshalToRaw(releaseSlices),
 			}
 			localURL := localDashboardURL(c)
 			token := auth.GetTokenFromContext(c)
-			merged, clusters, clusterErrors := fanOutRollouts(c.Request.Context(), localData, localURL, token)
+			merged, clusters, clusterErrors, spokePartialReads := fanOutRolloutsWithPartials(c.Request.Context(), localData, localURL, token)
 
 			response := gin.H{
 				"rollouts":            merged["rollouts"],
@@ -538,6 +614,8 @@ func setupRouter() *gin.Engine {
 				"environments":        merged["environments"],
 				"kruiseRollouts":      merged["kruiseRollouts"],
 				"rolloutDependencies": merged["rolloutDependencies"],
+				"releaseSources":      merged["releaseSources"],
+				"releaseSlices":       merged["releaseSlices"],
 			}
 			if len(clusters) > 0 {
 				response["clusters"] = clusters
@@ -545,6 +623,9 @@ func setupRouter() *gin.Engine {
 			if len(clusterErrors) > 0 {
 				response["clusterErrors"] = clusterErrors
 			}
+			// Hub's own bare keys plus each spoke's, qualified "<cluster>/<key>":
+			// a spoke whose list failed must not look like an empty list.
+			partialReads = append(partialReads, spokePartialReads...)
 			if len(partialReads) > 0 {
 				response["partialReads"] = partialReads
 			}

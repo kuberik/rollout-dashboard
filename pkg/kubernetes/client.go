@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
 	"io"
 	"os"
 	"path/filepath"

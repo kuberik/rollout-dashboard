@@ -33,6 +33,7 @@
  *  8 step names                              -> stepsOf(): 'Started', 'Stage N', 'Check' exactly as the tab (DeploymentPipelineCard.shortLabel)
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
+import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import { formatTimeAgoCompact } from '$lib/utils';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
@@ -84,6 +85,10 @@ type RawEntry = { message?: string; triggeredBy?: { kind?: string; name?: string
 type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; releaseCandidates?: { tag?: string; version?: string; revision?: string; created?: string }[]; availableReleases?: { tag?: string; version?: string; revision?: string; created?: string }[]; wantedVersion?: string; currentVersion?: string } };
 const raws = (): RawRollout[] => source().rollouts as unknown as RawRollout[];
 const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean); return p[0] === 'rollouts' ? { cluster: p[1], ns: p[2], name: p[3] } : null; };
+/* D4: every release list goes through the catalogue accessors (slices when the rollout reads a ReleaseSource, else the old status fields). */
+type RawRel = { tag?: string; version?: string; revision?: string; created?: string };
+const relsOf = (r: RawRollout | null | undefined) => availableReleases(r as unknown as Rollout) as RawRel[] | undefined;
+const candsOf = (r: RawRollout | null | undefined) => releaseCandidates(r as unknown as Rollout) as RawRel[] | undefined;
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
 
 /* ═══ steps (defects 7, 8) ═══ */
@@ -156,7 +161,7 @@ export function pathPosition(row: Pick<RolloutRow, 'app'>, state: HomeState = 'i
 	const p = placesOf(state, row.app);
 	/* r6 T1: the Gates tab's "Runs in" counts a place as on the newest when it runs the NEWEST BUILD OF THE APP'S LADDER (the last of the rollout's availableReleases,
 	   which can be a build no place runs yet: hello-world staging "0 of 3"), not the newest build a place happens to run. Same rule as `runsIn`/`behindCount`. */
-	const ladder = p.map((x) => rawOf(x.href)?.status as { availableReleases?: { tag?: string; version?: string; revision?: string }[] } | undefined).find((s) => s?.availableReleases?.length)?.availableReleases;
+	const ladder = p.map((x) => relsOf(rawOf(x.href))).find((s) => s?.length);
 	const top = ladder?.[ladder.length - 1];
 	const topIds = top ? [top.tag, top.version, top.revision?.slice(0, 7)].filter(Boolean).map((x) => shortBuild(x)) : null;
 	const onHead = topIds ? p.filter((x) => !!x.version && topIds.includes(x.version)).length : p.filter((x) => x.onBuild).length;
@@ -637,7 +642,7 @@ const outcomeOf = (w: TRow): string =>
 	: `${w.word.startsWith('Waits on') ? w.word : 'Held'} in ${w.where}`;
 /** QA #23: the place's release stream, oldest first, as the builds are named everywhere (`status.availableReleases`). A build in it is a RELEASE of the app, whatever place runs it today. */
 export function streamBuilds(href: string): string[] {
-	const rel = (rawOf(href)?.status as { availableReleases?: { tag?: string; version?: string; revision?: string }[] } | undefined)?.availableReleases ?? [];
+	const rel = relsOf(rawOf(href)) ?? [];
 	return rel.map((r) => shortBuild(r.version ?? r.tag ?? r.revision) ?? '').filter(Boolean);
 }
 /** the published pretty name of a gate on the rollout at `href` (cluster + namespace scoped), or null until its detail was fetched */
@@ -647,8 +652,7 @@ const prettyOfGate = (href: string, gate: string): string | null => { const h = 
 export { behindOfStatus };
 /** how many releases a place is behind (the tab's "N behind"); null when its build is not in the release list */
 function behindCount(href: string, version: string | null): number | null {
-	const st = rawOf(href)?.status as { releaseCandidates?: unknown[]; currentVersion?: string; availableReleases?: { tag?: string; version?: string; revision?: string }[] } | undefined;
-	const rel = st?.availableReleases ?? [];
+	const rel = relsOf(rawOf(href)) ?? [];
 	const idx = rel.findIndex((r) => [r.tag, r.version, r.revision?.slice(0, 7)].some((x) => x && shortBuild(x) === version));
 	return idx < 0 ? null : behindOfStatus(rawOf(href), envsOfSource());
 }
@@ -801,9 +805,9 @@ export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>)
 }
 /** "7 newer builds · held: waiting for health checks": the newest-build line of the tab header. null when the place is on the newest. */
 export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'word'>): { count: number; sentence: string; newest: string | null } | null {
-	const st = rawOf(row.href)?.status as { availableReleases?: { tag?: string; version?: string }[] } | undefined;
+	const st = rawOf(row.href)?.status;
 	const cur = rawOf(row.href)?.status.currentVersion;
-	const rel = st?.availableReleases ?? [];
+	const rel = relsOf(rawOf(row.href)) ?? [];
 	const count = behindOfStatus(rawOf(row.href) as never, envsOfSource());
 	if (!count) return null;
 	const why = row.state === 'awaiting-approval' ? 'waiting for approval' : row.state === 'held-by-rule' ? row.word.replace(/^Waits on /, 'waiting on ') : row.state === 'failed' ? 'waiting for health checks' : null;
@@ -866,7 +870,7 @@ export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'
 	if (row.state !== 'awaiting-approval' && row.state !== 'held-by-rule') return null;
 	const st = rawOf(row.href)?.status;
 	/* a place whose only candidates failed upstream still has the gate that refuses them: name it from the published list when no live candidate is left (batch4 #3c M2) */
-	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version ?? st?.releaseCandidates?.[0]?.tag ?? st?.releaseCandidates?.[0]?.version;
+	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version ?? candsOf(rawOf(row.href))?.[0]?.tag ?? candsOf(rawOf(row.href))?.[0]?.version;
 	const gs = st?.gates ?? [];
 	const holding = gs.filter((g) => g.allowedVersions != null && !!cand && !g.allowedVersions.includes(cand));
 	if (!holding.length) holding.push(...gs.filter((g) => g.passing === false));
@@ -921,7 +925,7 @@ function identities(): Map<string, BuildIdentity> {
 export function buildIdentity(build: string | null | undefined, href?: string): BuildIdentity | null {
 	if (!build) return null;
 	let sha = /^[0-9a-f]{7,40}$/.test(build) ? build.slice(0, 7) : null;
-	if (!sha && href) { const r = (rawOf(href)?.status.availableReleases ?? []).find((x) => x.tag === build || x.version === build); sha = r?.revision?.slice(0, 7) ?? null; }
+	if (!sha && href) { const r = (relsOf(rawOf(href)) ?? []).find((x) => x.tag === build || x.version === build); sha = r?.revision?.slice(0, 7) ?? null; }
 	return sha ? identities().get(sha) ?? null : null;
 }
 
@@ -929,7 +933,7 @@ export function buildIdentity(build: string | null | undefined, href?: string): 
  *  Author, diffstat and commit list depend on exactly that pair, so every helper below goes through here. */
 function tabRange(href: string, tag: string): { title: string; author: string | null; additions: number; deletions: number; files: number; commits: { sha: string; title: string; author: string | null }[] } | null {
 	const h = hrefParts(href);
-	const rel = rawOf(href)?.status.availableReleases ?? [];
+	const rel = relsOf(rawOf(href)) ?? [];
 	const i = rel.findIndex((r) => r.tag === tag || r.version === tag);
 	if (!h || i < 0) return null;
 	const head = rel[i].revision ?? rel[i].tag ?? tag;
@@ -953,7 +957,7 @@ export function commitHeadline(href: string, build: string | null | undefined): 
 	const st = rawOf(href)?.status;
 	const src = /^github\.com\/([^/]+)\/(.+)$/.exec(st?.source ?? '');
 	if (!src) return null;
-	const rel = (st?.availableReleases ?? []).find((x) => x.tag === build || x.version === build || (x.revision ?? '').startsWith(build));
+	const rel = (relsOf(rawOf(href)) ?? []).find((x) => x.tag === build || x.version === build || (x.revision ?? '').startsWith(build));
 	const sha = rel?.revision ?? (/^[0-9a-f]{7,40}$/.test(build) ? build : null);
 	if (!sha) return null;
 	try {
@@ -1142,7 +1146,7 @@ export function cleared(state: HomeState): Cleared[] {
 export function buildName(app: string, build: string | null | undefined): string | null {
 	if (!build) return null;
 	for (const r of raws()) if (r.metadata.name === app)
-		for (const x of r.status.availableReleases ?? []) if ([x.tag, x.version, x.revision, x.revision?.slice(0, 7)].includes(build) || x.revision?.startsWith(build)) return shortBuild(x.version ?? x.tag) ?? build;
+		for (const x of relsOf(r) ?? []) if ([x.tag, x.version, x.revision, x.revision?.slice(0, 7)].includes(build) || x.revision?.startsWith(build)) return shortBuild(x.version ?? x.tag) ?? build;
 	return shortBuild(build);
 }
 /** The fleet's newest deploy (any kind): app, place, author, time and the History link of that rollout. */
@@ -1190,7 +1194,7 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const held = candidateBuilds({ app, href: p.href });
 		const gs = rawOf(p.href)?.status.gates ?? [];
 		/* batch4 #3b/#3c: a build that failed upstream in the wave chain, while its failing site still RUNS it, is no candidate here but the gates still refuse it: the place is held BY THE WAVE (`upstreamFailed` names the build), with no build waiting. Once the failing site has rolled back from it nothing holds the wave (failed-builds.ts waveBlockingRevisions). */
-		const rawC = rawOf(p.href)?.status.releaseCandidates ?? [], liveC = liveCands(rawOf(p.href)?.status) ?? [];
+		const rawC = candsOf(rawOf(p.href)) ?? [], liveC = liveCands(rawOf(p.href)?.status) ?? [];
 		const blocking = waveBlockingRevisions(rawOf(p.href) as never, envsOfSource());
 		const failedC = blocking.length ? rawC.find((c) => !liveC.includes(c) && blocking.some((r) => shaNamesBuild(r, c))) : undefined;
 		const upstreamFailed = failedC ? (shortBuild(failedC.version ?? failedC.tag) ?? null) : null;
@@ -1288,12 +1292,14 @@ export function grantApproval(t: ApprovalTarget): void {
 		if (!r) continue;
 		snaps.push({ r, status: structuredClone(r.status) });
 		const st = r.status;
-		const held = (st.releaseCandidates ?? []).map((c) => c.tag ?? c.version ?? '');
+		const held = (candsOf(r) ?? []).map((c) => c.tag ?? c.version ?? '');
 		for (const g of st.gates ?? []) if (/approval/.test(g.name) && g.allowedVersions != null) g.allowedVersions = [...new Set([...g.allowedVersions, ...held])];
 		/* something other than the approval (a dependency, another rule: `t.waitsOn`, the same predicate as the toast) still refuses the build:
 		   it stays a held candidate, which the product already renders as that hold, and nothing is claimed to be deploying */
 		if (t.waitsOn) continue;
-		st.releaseCandidates = (st.releaseCandidates ?? []).filter((c) => (c.tag ?? c.version) !== p.tag);
+		const sliceCands = (st as { candidates?: { tag: string }[] }).candidates;
+		if (Array.isArray(sliceCands)) (st as { candidates?: { tag: string }[] }).candidates = sliceCands.filter((c) => c.tag !== p.tag);
+		else st.releaseCandidates = (st.releaseCandidates ?? []).filter((c) => (c.tag ?? c.version) !== p.tag);
 		st.history = [{ version: { tag: p.tag, version: p.tag, revision: p.tag }, timestamp: RD.NOW.toISOString(), bakeStatus: 'Deploying', bakeStartTime: RD.NOW.toISOString(), triggeredBy: { kind: 'User', name: viewerLogin() } }, ...(st.history ?? [])];
 	}
 	SNAPS.set(t.key, snaps);
@@ -1316,9 +1322,11 @@ export type Inbound = { app: string; build: string; from: TierKey | null; reason
 /** the fleet lists the wave chain of every place lives in (live source, else the pinned fixture) */
 const envsOfSource = () => ({ environments: source().environments as unknown as Environment[], rollouts: source().rollouts as unknown[] });
 /** the place's release candidates minus the builds that failed here or upstream in its wave chain (view-models/failed-builds.ts, ONE rule): THE "Newer builds" list every count reads. `st` is a place's status (found back in the rollouts by identity) */
-function liveCands<C extends { tag?: string; version?: string; revision?: string }>(st: { releaseCandidates?: C[]; history?: RawEntry[] } | null | undefined): C[] | undefined {
-	if (!st?.releaseCandidates) return undefined;
-	return liveForPlace(raws().find((r) => r.status === (st as unknown)) as never, st.releaseCandidates, envsOfSource());
+function liveCands(st: RawRollout['status'] | null | undefined): RawRel[] | undefined {
+	const ro = raws().find((r) => r.status === (st as unknown));
+	const cands = candsOf(ro);
+	if (!cands) return undefined;
+	return liveForPlace(ro as never, cands, envsOfSource());
 }
 export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 	const causes = heldCauses(state);
@@ -1487,7 +1495,7 @@ void ago;
  *  short name the tab prints ("a11c202", "4.45.0-45"). null when the rollout has no such release or the mock has no range. A BUILD is the subject: the person is the commit's author. */
 export function buildCommitOf(href: string, build: string | null | undefined): { title: string; author: string | null; sha: string; commits: { sha: string; title: string; author: string | null }[] } | null {
 	if (!build) return null;
-	const rel = (rawOf(href)?.status as { availableReleases?: { tag?: string; version?: string; revision?: string }[] } | undefined)?.availableReleases ?? [];
+	const rel = relsOf(rawOf(href)) ?? [];
 	const r = rel.find((x) => x.tag === build || x.version === build || (x.revision ?? '').startsWith(build));
 	const tag = r?.tag ?? r?.version ?? build;
 	const range = tabRange(href, tag);

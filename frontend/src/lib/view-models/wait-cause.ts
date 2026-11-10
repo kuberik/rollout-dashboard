@@ -22,6 +22,7 @@
  * hold the card's own precomputed `held`/`heldCause` (the shared held rule).
  * Moved out of `ControlCenter.svelte`, where round Q improvised it inline.
  */
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 import type { KApp, KPlateModel } from '$lib/view-models/kstairs';
 import { computeBakeProgress } from './bake-progress';
@@ -104,7 +105,7 @@ export function waitCause(m: KApp, ctx: WaitCauseCtx): WaitCause | null {
 		}
 		// The first place: its upstream is CI. The newest release it has been offered.
 		if (!behind) continue;
-		const rel = [...(behind.card.rollout.status?.availableReleases ?? [])].sort((a, b) => Date.parse(b.created ?? '') - Date.parse(a.created ?? ''))[0];
+		const rel = [...(availableReleases(behind.card.rollout) ?? [])].sort((a, b) => Date.parse(b.created ?? '') - Date.parse(a.created ?? ''))[0];
 		const waited = rel?.created ? ctx.now.getTime() - Date.parse(rel.created) : null;
 		if (waited == null || waited <= cycleMs) return { kind: 'cycle', place, usualMs: cycleMs, waitedMs: waited };
 		return { kind: 'stalled', place, id: ctx.idOf(rel?.version ?? rel?.tag ?? null), forMs: waited };

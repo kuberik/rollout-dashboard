@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { availableReleases } from '$lib/releases/registry.svelte';
 	import HeldGlyph from './HeldGlyph.svelte';
 	import Avatar from './Avatar.svelte';
 	import { formatTimestamp } from '$lib/display-time';
@@ -898,7 +899,7 @@
 		contractHeldVersions === undefined && (selfHeldGraphErrored || selfHeldNodeMissing)
 	);
 
-	const availableReleases = $derived(rollout?.status?.availableReleases ?? []);
+	const releaseList = $derived(availableReleases(rollout) ?? []);
 	const currentTag = $derived(rollout?.status?.history?.[0]?.version?.tag ?? null);
 	/**
 	 * ⭐ THE TITLE NAMES WHERE THIS LANDS. (operator walk, 2026-09-03)
@@ -1101,7 +1102,7 @@
 	}
 
 	async function loadAnnotationsOnDemand(versionTag: string): Promise<void> {
-		const isKnownRelease = availableReleases.some((entry) => entry.tag === versionTag);
+		const isKnownRelease = releaseList.some((entry) => entry.tag === versionTag);
 		if (!isKnownRelease && !annotations[versionTag]) {
 			await getAnnotations(versionTag);
 		}
@@ -1125,17 +1126,17 @@
 	// Unified newest-first version list: available releases plus any extra
 	// repository tags not already covered, when "show all" is toggled on.
 	const allVersionsForDisplay = $derived.by(() => {
-		const standardReleases = [...availableReleases].reverse();
+		const standardReleases = [...releaseList].reverse();
 		if (!showAllTags) return standardReleases;
 		const additionalTags = allRepositoryTags.filter(
-			(tag) => !availableReleases.some((ar) => ar.tag === tag)
+			(tag) => !releaseList.some((ar) => ar.tag === tag)
 		);
 		return [...standardReleases, ...additionalTags];
 	});
 
 	/** Registry tags the release list does not already carry — what "show all" adds. */
 	const extraTagCount = $derived(
-		allRepositoryTags.filter((tag) => !availableReleases.some((ar) => ar.tag === tag)).length
+		allRepositoryTags.filter((tag) => !releaseList.some((ar) => ar.tag === tag)).length
 	);
 
 	const filteredVersionsForDisplay = $derived(
@@ -1196,12 +1197,12 @@
 
 	// --- Direction + changelist -------------------------------------------
 	const selectedRelease = $derived(
-		availableReleases.find((r) => r.tag === selectedVersion) ?? null
+		releaseList.find((r) => r.tag === selectedVersion) ?? null
 	);
 	// The currently-deployed release's own `VersionInfo` — the OTHER half
 	// `requirementsChangedSentence` needs. Separate from `currentTag` (a bare
 	// string): this is the object `releaseRequires` reads `requires` off.
-	const currentRelease = $derived(availableReleases.find((r) => r.tag === currentTag) ?? null);
+	const currentRelease = $derived(releaseList.find((r) => r.tag === currentTag) ?? null);
 	const selectedRevision = $derived(
 		selectedRelease?.revision ||
 			annotations[selectedVersion ?? '']?.['org.opencontainers.image.revision'] ||
@@ -1445,7 +1446,7 @@
 	 * endpoint's own 6-commit display cap the way one single request
 	 * spanning the WHOLE ladder would be.
 	 */
-	const pickerTagPairs = $derived(consecutiveTagPairs(availableReleases.map((r) => r.tag)));
+	const pickerTagPairs = $derived(consecutiveTagPairs(releaseList.map((r) => r.tag)));
 	const pickerTitleQueries = createQueries(() => ({
 		queries: pickerTagPairs.map(({ base, head }) => {
 			const o = commitsQueryOptions({
@@ -1500,8 +1501,8 @@
 	 * named it ("3f1ed09 Bump connection pool size"). The same lookup now
 	 * titles that one row too, so the picker and the comparison agree.
 	 */
-	const rootReleaseTag = $derived(availableReleases[0]?.tag ?? null);
-	const rootReleaseSha = $derived(revisionSha(availableReleases[0]?.revision));
+	const rootReleaseTag = $derived(releaseList[0]?.tag ?? null);
+	const rootReleaseSha = $derived(revisionSha(releaseList[0]?.revision));
 	const rootCommitQuery = createQuery(() =>
 		commitQueryOptions({
 			owner: sourceOwnerRepo?.owner ?? '',
@@ -2751,7 +2752,7 @@
 									{groupLabel}
 								</div>
 							{/if}
-							{@const availableRelease = availableReleases.find((ar) => ar.tag === versionTag)}
+							{@const availableRelease = releaseList.find((ar) => ar.tag === versionTag)}
 							{@const commitTitle =
 								pickerTitleBySha.get(versionTag) ??
 								(versionTag === rootReleaseTag ? buildTitle(rootCommitQuery.data) : null)}

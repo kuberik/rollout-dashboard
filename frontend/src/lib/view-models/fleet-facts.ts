@@ -101,6 +101,7 @@
  * and regions appear only as an explicit "in N places" or as region names in
  * a cell — never folded silently into an apps count, and vice versa.
  */
+import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import { siteCount, regionsPhrase } from './regions';
 import type { Rollout } from '../../types';
 import type { RolloutCard } from '$lib/rollout-cards';
@@ -285,9 +286,9 @@ export function waitingSince(card: RolloutCard): number | null {
 	const r = card.rollout;
 	const v0 = r.status?.history?.[0]?.version;
 	const cur = v0 ? getDisplayVersion(v0) || null : null;
-	const rel = r.status?.availableReleases ?? [];
+	const rel = availableReleases(r) ?? [];
 	const curIdx = rel.findIndex((x) => !!x && (x.version === cur || x.tag === cur));
-	const newer = (r.status?.releaseCandidates?.length ? r.status.releaseCandidates : rel.slice(curIdx + 1)).filter(
+	const newer = (releaseCandidates(r)?.length ? releaseCandidates(r)! : rel.slice(curIdx + 1)).filter(
 		(x) => !!x?.created
 	);
 	const ms = newer.reduce((m, x) => Math.min(m, new Date(x.created!).getTime()), Infinity);
