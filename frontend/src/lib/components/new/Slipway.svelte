@@ -262,6 +262,22 @@
 		/* rollouts-12 W33: the two lists are capped and left-aligned, so at 1920 their columns are never ~500px apart */
 :global(.sw:not(.sw-compact)) .sw-facts { grid-template-columns: minmax(0, 420px) minmax(0, 520px); column-gap: 48px; justify-content: start; }
 	}
+	/* 2026-11-10 (landing audit): a compact pane (/apps/<name>, /envs/<name>) put its facts INSIDE the pane beside the rail, so the pane out-grew the 2-3 steps and left a tall empty rail under them.
+	   From the same 640px the compact card now hangs its facts under BOTH columns, as the lead and the Overview's card do: rail | step detail, then the facts full width, then the actions. */
+	@container (min-width: 640px) {
+:global(.sw-compact) :global(.pc-body) { display: grid; grid-template-columns: min(300px, 40%) minmax(0, 1fr); grid-template-areas: 'rail info' 'facts facts' 'act act'; }
+		:global(.sw-compact) :global(.pc-pane), :global(.sw-compact) .sw-pane { display: contents; }
+		:global(.sw-compact) .sw-pane::before { content: none; }
+		:global(.sw-compact) :global(.pc-rail) { grid-area: rail; order: 0; align-self: stretch; border-top: 0; border-bottom: 0; border-right: 1px solid var(--k-line-subtle); }
+		:global(.sw-compact) .sw-info { grid-area: info; padding: 24px; }
+		:global(.sw-compact) .sw-facts { grid-area: facts; display: grid; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--k-line-subtle); }
+		:global(.sw-compact) :is(.sw-b1, .sw-b2) { grid-area: auto; }
+		:global(.sw-compact) .sw-actions { grid-area: act; margin: 0; padding: 0 24px 16px; align-self: auto; }
+		:global(.sw-compact) .sw-actions:not(:has(*)) { display: none; }
+	}
+	@container (min-width: 960px) {
+:global(.sw-compact) .sw-facts { grid-template-columns: minmax(0, 420px) minmax(0, 520px); column-gap: 48px; justify-content: start; }
+	}
 	/* rollouts-8 V4: on a phone the lead's STEPS come straight after the check line (the page's drawn object is in the first screen), then the actions, then the facts */
 	@media (max-width: 639px) {
 		/* rollouts-9 W9: the opened lead is SHORT on a phone: no card header (the row above names the place, the pane title names the step), tighter gaps, so the next failing rows are in the first screen */
