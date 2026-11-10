@@ -181,3 +181,21 @@ describe('a failed running build skips the wait', () => {
 		expect(document.querySelector('#rmw-summary[aria-busy="true"]')).toBeNull();
 	});
 });
+
+describe('the warning is honest about WHY, per bake status', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	test.each([
+		['Failed', /1\.1\.0 failed, so this (?:deploy|rollback) runs in recovery mode/],
+		['Cancelled', /1\.1\.0 was cancelled before it finished, so this (?:deploy|rollback) runs in recovery mode/],
+		['InProgress', /1\.1\.0 hasn't finished \(it is still deploying or baking\), so this (?:deploy|rollback) runs in recovery mode/],
+		['Deploying', /1\.1\.0 hasn't finished \(it is still deploying or baking\), so this (?:deploy|rollback) runs in recovery mode/]
+	])('%s', async (bake, text) => {
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+		const r = { ...rollout, status: { history: [{ ...rollout.status.history[0], bakeStatus: bake }] } };
+		render(WithQueryClient, {
+			props: { component: ChangeVersionFlow as never, props: { open: true, rollout: r, cluster: 'hub', initialSelectedVersion: '1.0.0' } as never }
+		});
+		await waitFor(() => expect(screen.getByText(text)).toBeInTheDocument());
+		if (bake !== 'Failed') expect(screen.queryByText(/failed/)).toBeNull();
+	});
+});

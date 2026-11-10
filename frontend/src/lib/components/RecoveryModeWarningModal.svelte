@@ -121,12 +121,17 @@
 		if (reason === 'health-checks-unavailable') {
 			return `Health checks couldn't be loaded, so the dashboard can't tell whether this ${act} runs in recovery mode.`;
 		}
+		const prev = previousVersionDisplay;
 		const cause =
 			reason === 'previous-failed'
-				? previousVersionDisplay
-					? `${previousVersionDisplay} failed`
-					: 'The last deploy failed'
-				: 'Health checks are unhealthy';
+				? prev ? `${prev} failed` : 'The last deploy failed'
+				: reason === 'previous-cancelled'
+					? prev ? `${prev} was cancelled before it finished` : 'The last deploy was cancelled before it finished'
+					: reason === 'previous-unfinished'
+						? prev
+							? `${prev} hasn't finished (it is still deploying or baking)`
+							: "The current deployment hasn't finished (it is still deploying or baking)"
+						: 'Health checks are unhealthy';
 		return `${cause}, so this ${act} runs in recovery mode: it waits for health checks to recover instead of failing on them.`;
 	});
 

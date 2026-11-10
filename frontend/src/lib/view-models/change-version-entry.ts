@@ -19,6 +19,11 @@ import { getDisplayVersion } from '$lib/utils';
 
 export type RecoveryReason =
 	| 'previous-failed'
+	/** Cancelled: a newer deploy cut its bake short. Not a failure. */
+	| 'previous-cancelled'
+	/** Deploying / InProgress: still baking. Not a failure, and the controller
+	 *  (rollout_controller.go:1188-1189) still enters recovery mode. */
+	| 'previous-unfinished'
 	| 'unhealthy-health-checks'
 	/** The checks could not be loaded, so the dashboard cannot tell. The
 	 *  controller (rollout_controller.go setBakeFailureDisabledForNewDeploy)
@@ -74,7 +79,11 @@ export function recoveryModeReason(
 	// trigger, not only 'Failed'. This predicts the controller; how the page
 	// DRAWS a failed state is a separate rule (only 'Failed' reads as failing).
 	const bake = rollout?.status?.history?.[0]?.bakeStatus;
-	if (bake && bake !== 'Succeeded') return 'previous-failed';
+	// Statuses (rollout_types.go:423-427): Failed -> failed; Cancelled -> cancelled;
+	// Deploying/InProgress (and any future non-Succeeded value) -> unfinished.
+	if (bake === 'Failed') return 'previous-failed';
+	if (bake === 'Cancelled') return 'previous-cancelled';
+	if (bake && bake !== 'Succeeded') return 'previous-unfinished';
 	// `null` = the list could not be loaded. Never read that as "no checks".
 	if (visibleHealthChecks === null) return 'health-checks-unavailable';
 	if (visibleHealthChecks.some((hc) => hc.status?.status === 'Unhealthy')) {
