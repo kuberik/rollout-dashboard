@@ -3737,6 +3737,7 @@
 									{pipelineValidRollouts}
 									{pipelineValidTests}
 									healthChecks={visibleHealthChecks}
+									healthChecksUnavailable={healthChecksQuery.isError}
 									{canUpdate}
 									{namespace}
 									{name}

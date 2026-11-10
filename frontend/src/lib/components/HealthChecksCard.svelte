@@ -19,6 +19,7 @@
 		recoveredLabel,
 		recoveredTitle,
 		pendingRowText,
+		HEALTH_CHECKS_UNAVAILABLE,
 		type CheckState
 	} from '$lib/view-models/health-witness';
 
@@ -247,10 +248,10 @@
 {#if loadError}
 	<!-- UNKNOWN is not NONE: the same fact the change-version dialog states when
 	     it cannot load the checks. Retry is the same control `PartialDataNotice` draws. -->
-	<Card icon={HeartOutline} title="Health checks" verdict="unavailable" padded={false}>
+	<Card icon={HeartOutline} title="Health checks" verdict={HEALTH_CHECKS_UNAVAILABLE.verdict} padded={false}>
 		<div class="flex items-center justify-between gap-3 px-4 py-3">
 			<p class="t-meta min-w-0 text-fg-subtle">
-				Health checks couldn't be loaded, so the dashboard can't tell whether any select this rollout.
+				{HEALTH_CHECKS_UNAVAILABLE.sentence}
 			</p>
 			{#if onRetry}
 				<button

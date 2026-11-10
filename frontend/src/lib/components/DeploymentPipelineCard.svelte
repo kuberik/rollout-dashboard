@@ -33,6 +33,7 @@
 		extractDatadogInfoFromContainers,
 		formatDate } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import { HEALTH_CHECKS_UNAVAILABLE } from '$lib/view-models/health-witness';
 	import { stageAdvance, type StageAdvance } from '$lib/view-models/stage-advance';
 	import { href } from '$lib/paths';
 	import type { Rollout, RolloutTest, HealthCheck, KruiseRollout } from '../../types';
@@ -75,6 +76,8 @@
 		pipelineValidRollouts: ValidKruiseRollout[];
 		pipelineValidTests: RolloutTest[];
 		healthChecks: HealthCheck[];
+		/** The health-checks load failed: the checks are unknown, never Healthy. */
+		healthChecksUnavailable?: boolean;
 		canUpdate: boolean;
 		namespace: string;
 		name: string;
@@ -88,6 +91,7 @@
 		pipelineValidRollouts,
 		pipelineValidTests,
 		healthChecks,
+		healthChecksUnavailable = false,
 		canUpdate,
 		namespace,
 		name,
@@ -559,6 +563,8 @@
 
 	let finalHCStatus = $derived<{ status: NodeStatus; label: string }>(
 		(() => {
+			if (healthChecksUnavailable)
+				return { status: 'pending', label: HEALTH_CHECKS_UNAVAILABLE.label };
 			if (bakeIsFailed && !allHCHealthy) return { status: 'failed', label: 'Failed' };
 			// Once any bake activity has started, report checks as healthy as soon
 			// as they actually are — don't keep showing "Waiting" just because the

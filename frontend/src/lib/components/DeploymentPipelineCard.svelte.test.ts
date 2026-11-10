@@ -18,3 +18,23 @@ describe('DeploymentPipelineCard auto selection', () => {
 		expect(container.textContent).not.toContain('Final check');
 	});
 });
+
+/* batch4: a failed health-checks load is UNKNOWN. The step row must not say Healthy. */
+describe('DeploymentPipelineCard Health checks row on a failed load', () => {
+	const base = (extra: object) => ({
+		rollout: { metadata: { name: 'r', namespace: 'ns' }, spec: { healthCheckSelector: { matchLabels: { a: 'b' } } }, status: { history: [{ bakeStatus: 'Succeeded' }] } } as any,
+		latestEntry: { bakeStatus: 'Succeeded', timestamp: new Date().toISOString(), version: { tag: 't' } },
+		pipelineValidRollouts: [], pipelineValidTests: [], healthChecks: [], canUpdate: false, namespace: 'ns', name: 'r', onContinue: () => {},
+		...extra
+	});
+	test('positive control: an empty, loaded list reads Healthy', () => {
+		const { container } = render(DeploymentPipelineCard, { props: base({}) as any });
+		expect(container.textContent).toContain('Healthy');
+	});
+	test('healthChecksUnavailable reads Unavailable, never Healthy', () => {
+		const { container } = render(DeploymentPipelineCard, { props: base({ healthChecksUnavailable: true }) as any });
+		expect(container.textContent).toContain('Health checks');
+		expect(container.textContent).toContain('Unavailable');
+		expect(container.textContent).not.toContain('Healthy');
+	});
+});

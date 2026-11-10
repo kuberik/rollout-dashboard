@@ -46,7 +46,8 @@ import {
 	healthGateHolding,
 	healthGateCountsLabel,
 	pendingProbeClause,
-	pendingRowText
+	pendingRowText,
+	HEALTH_CHECKS_UNAVAILABLE
 } from '$lib/view-models/health-witness';
 import { upToDateHeadline, upToDateCaption } from '$lib/view-models/up-to-date';
 import {
@@ -2130,6 +2131,11 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 			status: { status: 'Pending', message: 'No alerts firing for labels map[app:x]' }
 		} as unknown as Parameters<typeof pendingRowText>[0];
 		says(pendingRowText(pending, new Date('2026-09-21T12:00:00Z')), 'Not evaluated yet');
+	});
+
+	test('a failed load is unknown, and says so in the card and the step row alike (batch4)', () => {
+		says(HEALTH_CHECKS_UNAVAILABLE.sentence, /couldn't be loaded/);
+		saw(HEALTH_CHECKS_UNAVAILABLE.verdict, HEALTH_CHECKS_UNAVAILABLE.label);
 	});
 
 	test('DeploymentBlocked True is the join; False and absent are not', () => {

@@ -453,3 +453,17 @@ export function healthQuietState(
 	if (counts.pending > 0) return 'pending';
 	return 'passing';
 }
+
+/**
+ * THE ONE STATEMENT OF "THE HEALTH CHECKS COULD NOT BE LOADED" for the Overview
+ * (batch4): the Health checks card and the pipeline's Health checks step row
+ * both read it, so neither can say "none select this rollout" or "Healthy"
+ * about a list that never arrived. `verdict` is the card's header word,
+ * `label` the step row's state word, `sentence` the card's body.
+ */
+export const HEALTH_CHECKS_UNAVAILABLE = {
+	verdict: 'unavailable',
+	label: 'Unavailable',
+	sentence:
+		"Health checks couldn't be loaded, so the dashboard can't tell whether any select this rollout."
+} as const;

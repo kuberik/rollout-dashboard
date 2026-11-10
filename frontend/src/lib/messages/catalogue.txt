@@ -433,7 +433,6 @@ lib/components/HealthChecksCard.svelte	text	… pending … · … passing
 lib/components/HealthChecksCard.svelte	text	failing … … … …
 lib/components/HealthChecksCard.svelte	code	health check
 lib/components/HealthChecksCard.svelte	title	Health checks
-lib/components/HealthChecksCard.svelte	text	Health checks couldn't be loaded, so the dashboard can't tell whether any select this rollout.
 lib/components/HealthChecksCard.svelte	text	No health checks select this rollout, so a deploy counts as done when its steps finish.
 lib/components/HistorySummaryCard.svelte	text	Last failure
 lib/components/HistorySummaryCard.svelte	text	Median …
@@ -1479,6 +1478,7 @@ lib/view-models/health-witness.ts	code	… is passing now, but it errored … �
 lib/view-models/health-witness.ts	code	… pending
 lib/view-models/health-witness.ts	code	A health check
 lib/view-models/health-witness.ts	code	Health check …
+lib/view-models/health-witness.ts	code	Health checks couldn't be loaded, so the dashboard can't tell whether any select this rollout.
 lib/view-models/health-witness.ts	code	next probe in …s
 lib/view-models/health-witness.ts	code	Not evaluated yet
 lib/view-models/health-witness.ts	code	passing, last errored …
