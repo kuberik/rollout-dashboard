@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -43,12 +44,15 @@ func getK8sReadClient(c *gin.Context) (*kubernetes.Client, bool) {
 	return k8sClient, true
 }
 
+// writeClientFn is the write-client constructor; tests swap it for a fake.
+var writeClientFn = kubernetes.GetWriteClient
+
 // getK8sWriteClient is the handler-side helper for a per-request client
 // authorized as the actual signed-in operator (their OIDC bearer token). Use
 // this for every mutating route and every SelfSubjectAccessReview — never
 // downgrade these to getK8sReadClient's shared service-account identity.
 func getK8sWriteClient(c *gin.Context) (*kubernetes.Client, bool) {
-	k8sClient, err := kubernetes.GetWriteClient(c)
+	k8sClient, err := writeClientFn(c)
 	if err != nil {
 		log.Printf("Failed to get Kubernetes write client: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -134,4 +138,22 @@ func writeUpstreamError(c *gin.Context, message string, err error) {
 		status = http.StatusConflict
 	}
 	c.JSON(status, gin.H{"error": message, "details": err.Error()})
+}
+
+// rolloutWithGateKinds wraps a Rollout returned by a mutation handler so its
+// status.gates[] carry "kind" exactly like the read endpoints do.
+//
+// The gate lookup always goes through the shared informer-cache read client,
+// never the operator's write client: that would be a live cross-namespace LIST
+// under the user's RBAC. If the read client is unavailable every kind is
+// "unknown" (field still present).
+func rolloutWithGateKinds(c *gin.Context, r *rolloutv1alpha1.Rollout) interface{} {
+	if r == nil {
+		return r
+	}
+	kinds := kubernetes.GateKindIndex{}
+	if rc, err := kubernetes.GetReadClient(c); err == nil {
+		kinds = rc.GateKindIndex(c.Request.Context())
+	}
+	return kubernetes.RolloutWithGateKinds{Rollout: r, Kinds: kinds}
 }

@@ -351,3 +351,33 @@ func TestEventHub_LoadTwentyClientsTwoHundredEvents_WithEmbeddedObjects(t *testi
 		}
 	}
 }
+
+func TestAttachObjects_RolloutEventCarriesGateKinds(t *testing.T) {
+	av := []string{}
+	gate := &rolloutv1alpha1.RolloutGate{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "manual"},
+		Spec:       rolloutv1alpha1.RolloutGateSpec{AllowedVersions: &av},
+	}
+	rollout := &rolloutv1alpha1.Rollout{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "app-1"},
+		Status:     rolloutv1alpha1.RolloutStatus{Gates: []rolloutv1alpha1.RolloutGateStatusSummary{{Name: "manual"}}},
+	}
+	fakeClient, err := NewTestClient(rollout, gate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := AttachObjects(context.Background(), fakeClient, []ChangeEvent{
+		{Type: "update", Kind: "Rollout", Namespace: "team-a", Name: "app-1"},
+	})
+	var got struct {
+		Status struct {
+			Gates []struct{ Name, Kind string } `json:"gates"`
+		} `json:"status"`
+	}
+	if err := json.Unmarshal(out[0].Object, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Status.Gates) != 1 || got.Status.Gates[0].Kind != "approval" {
+		t.Fatalf("SSE rollout gates = %+v, want kind approval", got.Status.Gates)
+	}
+}

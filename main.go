@@ -494,9 +494,18 @@ func setupRouter() *gin.Engine {
 
 			// If we're already serving a fan-out leg (header set by the calling hub),
 			// return local data only — fanning out again would create a cycle.
+			// Every gate summary (status.gates[]) carries its kind, derived from
+			// the RolloutGate in the informer cache; spoke legs do it too, so the
+			// hub's merged list has the field from every cluster.
+			gateKinds := k8sClient.GateKindIndex(c.Request.Context())
+			var rolloutsOut interface{} = rollouts
+			if rollouts != nil {
+				rolloutsOut = kubernetes.RolloutListWithGateKinds{RolloutList: rollouts, Kinds: gateKinds}
+			}
+
 			if c.GetHeader(fanoutHeader) != "" {
 				leg := gin.H{
-					"rollouts":            rollouts,
+					"rollouts":            rolloutsOut,
 					"kustomizations":      kustomizations,
 					"environments":        environments,
 					"kruiseRollouts":      kruiseRollouts,
@@ -513,7 +522,7 @@ func setupRouter() *gin.Engine {
 
 			// Fan out to discovered spoke dashboards and merge results.
 			localData := map[string]json.RawMessage{
-				"rollouts":            marshalToRaw(rollouts),
+				"rollouts":            marshalToRaw(rolloutsOut),
 				"environments":        marshalToRaw(environments),
 				"kustomizations":      marshalToRaw(kustomizations),
 				"kruiseRollouts":      marshalToRaw(kruiseRollouts),
@@ -673,8 +682,12 @@ func setupRouter() *gin.Engine {
 				kustomizations = kubernetes.FilterKustomizationsByRolloutAnnotation(kustomizationsRaw, oci, name)
 			}
 
+			var rolloutOut interface{} = rollout
+			if rollout != nil {
+				rolloutOut = kubernetes.RolloutWithGateKinds{Rollout: rollout, Kinds: k8sClient.GateKindIndex(c.Request.Context())}
+			}
 			writeJSONWithETag(c, http.StatusOK, gin.H{
-				"rollout":           rollout,
+				"rollout":           rolloutOut,
 				"kustomizations":    kustomizations,
 				"ociRepositories":   ociRepositories,
 				"rolloutGates":      rolloutGates,
@@ -787,7 +800,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": updatedRollout,
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -828,7 +841,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": updatedRollout,
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -862,7 +875,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": updatedRollout,
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -907,7 +920,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": updatedRollout,
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -930,7 +943,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": updatedRollout,
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 
@@ -964,7 +977,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"rollout": updatedRollout,
+				"rollout": rolloutWithGateKinds(c, updatedRollout),
 			})
 		})
 

@@ -1415,7 +1415,7 @@ func (c *Client) GetRolloutGatesByRolloutReference(ctx context.Context, namespac
 	// Filter gates that reference the specific rollout
 	var filteredGates []rolloutv1alpha1.RolloutGate
 	for _, gate := range rolloutGates.Items {
-		if gate.Spec.RolloutRef.Name == rolloutName {
+		if gate.Spec.RolloutRef != nil && gate.Spec.RolloutRef.Name == rolloutName {
 			filteredGates = append(filteredGates, gate)
 		}
 	}

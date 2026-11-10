@@ -444,6 +444,9 @@ func AttachObjects(ctx context.Context, k8sClient *Client, events []ChangeEvent)
 		return events
 	}
 	out := make([]ChangeEvent, len(events))
+	// One cached gate-kind index per batch, built on first Rollout event, so
+	// the SSE-embedded Rollout carries status.gates[].kind like every read.
+	var kinds GateKindIndex
 	for i, ev := range events {
 		out[i] = ev
 		if ev.Type == "delete" {
@@ -470,7 +473,14 @@ func AttachObjects(ctx context.Context, k8sClient *Client, events []ChangeEvent)
 		if gvks, _, err := k8sClient.client.Scheme().ObjectKinds(obj); err == nil && len(gvks) > 0 {
 			obj.GetObjectKind().SetGroupVersionKind(gvks[0])
 		}
-		data, err := json.Marshal(obj)
+		var toMarshal interface{} = obj
+		if ro, isRollout := obj.(*rolloutv1alpha1.Rollout); isRollout {
+			if kinds == nil {
+				kinds = k8sClient.GateKindIndex(ctx)
+			}
+			toMarshal = RolloutWithGateKinds{Rollout: ro, Kinds: kinds}
+		}
+		data, err := json.Marshal(toMarshal)
 		if err != nil || len(data) > maxEventObjectBytes {
 			continue
 		}
