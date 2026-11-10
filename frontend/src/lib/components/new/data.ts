@@ -1226,7 +1226,14 @@ export function approvalScope(row: Pick<RolloutRow, 'app' | 'tier' | 'regions' |
 /* ═══ approving in place (r34 r3-approve) ═══ */
 /** What one Approve press releases: the build, the places (a folded prod row = every region whose own gate refuses it), and the tag each rollout is asked to allow.
  *  The wire contract (src/lib/api/approvals.ts): one `POST /api/rollouts/<ns>/<name>/approve {version}` per place. */
-export type ApprovalTarget = { key: string; app: string; build: string; where: string; count: number; places: { href: string; label: string; tag: string }[]; href: string };
+export type ApprovalTarget = { key: string; app: string; build: string; where: string; count: number; places: { href: string; label: string; tag: string }[]; href: string; /** what STILL holds the build once approved (a dependency's provider, another rule's name); null when nothing else does, i.e. the build really deploys */ waitsOn?: string | null };
+type GateLite = { name: string; allowedVersions?: string[] | null; passing?: boolean | null };
+/** The gate other than the approval that still refuses `tag` after the approval is given (null: the approval was the only hold). A dependency gate is named by its provider. */
+export function stillHeldAfterApproval(gates: readonly GateLite[], tag: string, provider: string | null, pretty: (name: string) => string = (n) => n): string | null {
+	const g = gates.find((x) => !/approval/.test(x.name) && x.allowedVersions != null && !x.allowedVersions.includes(tag));
+	if (!g) return null;
+	return /^dependency-/.test(g.name) && provider ? provider : pretty(g.name);
+}
 export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | 'regions'>, state: HomeState = 'incident'): ApprovalTarget | null {
 	const own = placesOf(state, row.app).filter((p) => p.tier === row.tier && approvalHold(p.href) > 0 && (p.href === row.href || !row.regions.length || row.regions.includes(p.label)));
 	const ps = own.length ? own : approvalHold(row.href) > 0 ? placesOf(state, row.app).filter((p) => p.href === row.href) : [];
@@ -1239,7 +1246,9 @@ export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | '
 	}).filter((p) => p.tag);
 	if (!places.length) return null;
 	const where = placeLabel({ tier: row.tier as TierKey, regions: places.map((p) => p.label) });
-	return { key: `${row.app}|${row.tier}|${places.map((p) => p.href).sort().join(',')}`, app: row.app, build: wb?.build ?? places[0].tag, where, count: places.length, places, href: row.href };
+	const provider = homeModel(state).fleet.needsYou.find((n) => n.app === row.app && n.facts?.provider)?.facts?.provider ?? null;
+	const waitsOn = places.map((p) => stillHeldAfterApproval(rawOf(p.href)?.status.gates ?? [], p.tag, provider, (n) => gateDisplayName(n, prettyOfGate(p.href, n)))).find((x) => !!x) ?? null;
+	return { key: `${row.app}|${row.tier}|${places.map((p) => p.href).sort().join(',')}`, app: row.app, build: wb?.build ?? places[0].tag, where, count: places.length, places, href: row.href, waitsOn };
 }
 type Snap = { r: RawRollout; status: RawRollout['status'] };
 const SNAPS = new Map<string, Snap[]>();
