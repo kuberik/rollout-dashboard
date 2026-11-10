@@ -45,16 +45,16 @@ describe('failed-builds helper (a wrapper over failedHereVerdict: the latest att
 
 describe("History's 'N behind' ignores a failed, rolled-back build", () => {
 	it('a rolled-back place with only its failed build published is not behind', () => {
-		expect(behindOfStatus(rolledBack)).toBe(0);
+		expect(behindOfStatus({ status: rolledBack })).toBe(0);
 		expect(behindOfRollout({ status: rolledBack })).toBe(0);
 	});
 	it('a genuinely newer build still counts beside it', () => {
 		const v47 = { tag: 'b-47', version: '4.47.0-47', revision: 'ddddddd4444444' };
-		expect(behindOfStatus({ ...rolledBack, releaseCandidates: [v47, v46] })).toBe(1);
+		expect(behindOfStatus({ status: { ...rolledBack, releaseCandidates: [v47, v46] } })).toBe(1);
 	});
 	it('the availableReleases fallback agrees', () => {
 		const st = { currentVersion: 'b-45', availableReleases: [v45, v46], history: rolledBack.history };
-		expect(behindOfStatus(st)).toBe(0);
+		expect(behindOfStatus({ status: st })).toBe(0);
 	});
 });
 
