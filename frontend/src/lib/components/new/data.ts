@@ -1174,7 +1174,7 @@ export function bakeFailedOn(q: { href: string }, build: string): boolean {
 	const entry = (st?.history ?? []).find((h) => [h.version.version, h.version.tag, h.version.revision].some((x) => x && shortBuild(x) === build));
 	return !!entry && failedHere(st as never, entry.version); /* the ONE failed-build rule (failed-builds.ts): that build's latest attempt here failed */
 }
-export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; heldBuilds: ReturnType<typeof candidateBuilds>; runs: string | null };
+export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ waveFailed?: string | null; heldBuilds: ReturnType<typeof candidateBuilds>; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.
  *  invoice-api: eu-west failed (health), us-east and us-west held by the manual-approval gate (allowed a11c404 only). */
 export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHold[] {
@@ -1182,11 +1182,15 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const approval = approvalHold(p.href) > 0;
 		const held = candidateBuilds({ app, href: p.href });
 		const gs = rawOf(p.href)?.status.gates ?? [];
-		const cand = liveCands(rawOf(p.href)?.status)?.[0]?.tag;
+		/* batch4 #3b: a build that failed upstream in the wave chain is no candidate here, but the gates still refuse it: the place is held BY THE WAVE (`waveFailed` names the build), with no build waiting */
+		const rawC = rawOf(p.href)?.status.releaseCandidates ?? [], liveC = liveCands(rawOf(p.href)?.status) ?? [];
+		const failedC = rawC.find((c) => !liveC.includes(c));
+		const waveFailed = failedC ? (shortBuild(failedC.version ?? failedC.tag) ?? null) : null;
+		const cand = liveC[0]?.tag ?? failedC?.tag;
 		const rule = !approval && !!cand && gs.some((g) => g.allowedVersions != null && !g.allowedVersions.includes(cand));
 		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
 		const g = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
-		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, heldBuilds: held, runs: p.version };
+		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, waveFailed, heldBuilds: held, runs: p.version };
 	});
 }
 /** Where a build already runs (the Builds list's "live in us-east, us-west"): the app's places whose deployed build is `build` (tab name, tag or SHA). */

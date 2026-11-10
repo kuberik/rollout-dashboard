@@ -65,3 +65,53 @@ describe('data.ts surfaces read the same rule (Runs-in / newer builds / Newer-bu
 		expect(newestBuild(row)?.count ?? 0).toBeLessThan(before);
 	});
 });
+
+/* #83 x #85: a place the wave holds on a build that failed upstream has NO candidate (heldBuilds empty) yet is still held by the wave. */
+import { waveHold, placeWait } from '$lib/components/new/app/app-model';
+import { waveHeldRegions } from '$lib/components/new/environments-page';
+describe('Production still says "N regions held · <region> failed the bake" with no build waiting', () => {
+	const mk = (site: string, wave: number, leader: boolean, over: Record<string, unknown> = {}) => ({ wave: { site, wave, leader, follows: leader ? null : 'ap-southeast-2', multi: true }, env: site, label: site, place: site, tier: 'prod', state: 'healthy', href: `/rollouts/prod/${site}/app`, deployedBuild: '4.45.0-45', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '' }, waveFailed: '4.46.0-46', heldBuilds: [], runs: '4.45.0-45', ...over }) as never;
+	const P = () => [mk('us-east-1', 1, true, { state: 'rolled-back', holdReason: null, waveFailed: null }), mk('ap-southeast-2', 2, true), mk('eu-central-1', 2, false), mk('eu-west-1', 2, false), mk('us-west-2', 2, false)];
+	const failedAt = (q: { label: string }, b: string) => q.label === 'us-east-1' && b === '4.46.0-46';
+	it('waveHold names the failing site even though heldBuilds is empty; placeWait (a waiting build) is null', () => {
+		const ps = P();
+		expect(waveHold(ps[1], ps, failedAt)).toEqual({ on: 'us-east-1', failed: 'us-east-1' });
+		expect(placeWait(ps[1], ps)).toBeNull();
+	});
+	it('the Production tile counts the four wave-2 regions held, by the failed bake', () => {
+		const labels = new Set(['ap-southeast-2', 'eu-central-1', 'eu-west-1', 'us-west-2']);
+		const r = waveHeldRegions('incident', labels, () => P(), ['app'], failedAt)!;
+		expect(r.labels.size).toBe(4);
+		expect(r.because).toBe('us-east-1 failed the bake');
+	});
+});
+
+describe('placeHolds on the data side', () => {
+	afterEach(() => installLiveSource(null));
+	it('a place whose only newer build failed upstream: no held build, waveFailed names it, still held by the rule', () => {
+		const fx = fixtureSource();
+		const P0 = placeHolds('checkout-api', 'incident').find((p) => p.label === 'ap-southeast-2')!;
+		const [, , ns, name] = P0.href.split('/').filter(Boolean);
+		const raw = (fx.rollouts as any[]).find((r) => r.metadata.namespace === ns && r.metadata.name === name);
+		const rev = 'eeeeeee0000000';
+		const rollouts = (fx.rollouts as any[]).map((r) => (r === raw ? { ...r, status: { ...r.status, releaseCandidates: [{ ...raw.status.releaseCandidates[0], revision: rev }] } } : r));
+		const environments = (fx.environments as any[]).map((e) => (e.metadata.namespace === ns && e.spec?.rolloutRef?.name === name
+			? { ...e, status: { ...e.status, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'bake failed' }], wave: { ...(e.status?.wave ?? {}), blocker: { reason: 'WaitingFor', environment: 'prod', site: 'us-east-1', waitingOn: 'Bake', revision: rev, outcome: 'Failed' } } } }
+			: e));
+		installLiveSource({ ...fx, rollouts, environments } as any);
+		const p = placeHolds('checkout-api', 'incident').find((x) => x.label === 'ap-southeast-2')!;
+		expect(p.heldBuilds).toEqual([]);
+		expect(p.waveFailed).toBeTruthy();
+	});
+});
+
+import { setWaveEnvironments } from './wave-environments.svelte';
+describe('every route: the shell installs the fleet Environments (Navbar), no explicit envs needed', () => {
+	afterEach(() => setWaveEnvironments(null));
+	it('a follower on a route with no FleetSource still does not count the failed build', () => {
+		expect(behindOfRollout(ro('eu-west-1'))).toBe(1); /* before the shell has the Environments */
+		setWaveEnvironments(envs());
+		expect(behindOfRollout(ro('eu-west-1'))).toBe(0);
+		expect(promotionCandidates(ro('us-west-2'))).toEqual([]);
+	});
+});

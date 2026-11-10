@@ -11,7 +11,7 @@
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { envsModel, plural, type Mark } from './envs-model';
 import { waveHold } from './app/app-model';
-import { apps, placeHolds, inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
+import { apps, placeHolds, type PlaceHold, inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
 
 export type Ink = 'danger' | 'held' | 'active' | 'muted';
 export type StatePart = { text: string; you?: string };
@@ -61,14 +61,14 @@ export function regionCells(m: ReturnType<typeof envsModel>): { cells: RegionCel
 /** "4 regions held · us-east-1 failed the bake" / "1 region held · waiting for 3 prod regions": the wave's hold, in the product's words (waiting for = the cause, held = the state) */
 export const waveHeldPhrase = (n: number, on: string, failed: string | null): string => `${plural(n, 'region')} held · ${failed ? `${failed} failed the bake` : `waiting for ${on}`}`;
 /** the healthy production regions a wave holds: regions where some app's place is healthy on an older build but its wave has not been let through (app-model waveHold, placeWait's rule), counted once per region, named by the first cause */
-export function waveHeldRegions(hs: HomeState, healthy: Set<string>): { labels: Set<string>; because: string } | null {
+export function waveHeldRegions(hs: HomeState, healthy: Set<string>, holdsOf: (app: string) => PlaceHold[] = (a) => placeHolds(a, hs), appNames: string[] = apps(hs).items.map((a) => a.app), failedAt?: (q: PlaceHold, build: string) => boolean): { labels: Set<string>; because: string } | null {
 	const labels = new Set<string>();
 	let on = '', failed: string | null = null;
-	for (const a of apps(hs).items) {
-		const P = placeHolds(a.app, hs);
+	for (const app of appNames) {
+		const P = holdsOf(app);
 		for (const p of P) {
 			if (p.tier !== 'prod' || !healthy.has(p.label)) continue;
-			const h = waveHold(p, P);
+			const h = waveHold(p, P, failedAt);
 			if (!h) continue;
 			if (!labels.size || (!failed && h.failed)) { on = h.on; failed = h.failed; }
 			labels.add(p.label);
