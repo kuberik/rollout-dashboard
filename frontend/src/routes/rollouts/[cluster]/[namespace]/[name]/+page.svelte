@@ -4774,6 +4774,9 @@
 									healthChecks={visibleHealthChecks}
 									windowStart={errorCutoff}
 									emptyState
+									loadError={healthChecksQuery.isError}
+									onRetry={() => healthChecksQuery.refetch()}
+									isRetrying={healthChecksQuery.isFetching}
 								/>
 							{/if}
 							{#if !managedResourcesKnown}

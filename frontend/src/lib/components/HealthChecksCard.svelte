@@ -46,12 +46,19 @@
 	let {
 		healthChecks,
 		windowStart = null,
-		emptyState = false
+		emptyState = false,
+		loadError = false,
+		onRetry = null,
+		isRetrying = false
 	}: {
 		healthChecks: HealthCheck[];
 		windowStart?: Date | null;
 		/** Draw a one-line "no health checks" card instead of nothing (Overview). */
 		emptyState?: boolean;
+		/** The load failed: the list is UNKNOWN, never "no checks". Wins over `healthChecks`. */
+		loadError?: boolean;
+		onRetry?: (() => void) | null;
+		isRetrying?: boolean;
 	} = $props();
 
 	let expandedMessages = $state<Set<string>>(new Set());
@@ -237,7 +244,27 @@
 	>
 {/snippet}
 
-{#if healthChecks.length > 0}
+{#if loadError}
+	<!-- UNKNOWN is not NONE: the same fact the change-version dialog states when
+	     it cannot load the checks. Retry is the same control `PartialDataNotice` draws. -->
+	<Card icon={HeartOutline} title="Health checks" verdict="unavailable" padded={false}>
+		<div class="flex items-center justify-between gap-3 px-4 py-3">
+			<p class="t-meta min-w-0 text-fg-subtle">
+				Health checks couldn't be loaded, so the dashboard can't tell whether any select this rollout.
+			</p>
+			{#if onRetry}
+				<button
+					type="button"
+					class="btn btn-secondary btn-sm shrink-0"
+					onclick={() => onRetry?.()}
+					disabled={isRetrying}
+				>
+					{isRetrying ? 'Checking…' : 'Try again'}
+				</button>
+			{/if}
+		</div>
+	</Card>
+{:else if healthChecks.length > 0}
 	<Card
 		icon={HeaderIcon}
 		iconClass={headerIconClass}
