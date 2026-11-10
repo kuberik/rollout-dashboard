@@ -26,6 +26,16 @@ describe('approving in place', () => {
 		revokeApproval(t);
 		expect(rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort()).toEqual(before);
 	});
+	it('a build something else still holds is not shown as deploying after the approval; undo restores it', () => {
+		const before = rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort();
+		const t = { ...approvalTarget(row('payments-core')!, 'incident')!, waitsOn: 'payments-svc' };
+		grantApproval(t);
+		const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && t.places.some((p) => p.href === r.href));
+		expect(mine.some((r) => r.state === 'deploying' || r.state === 'checking')).toBe(false);
+		expect(mine.some((r) => r.state === 'awaiting-approval')).toBe(false);
+		revokeApproval(t);
+		expect(rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort()).toEqual(before);
+	});
 	it('a hold says which kind it is without its words being parsed', () => {
 		const a = apps('incident').items.find((x) => x.approval)!;
 		const h = appHolds(a, 'incident');

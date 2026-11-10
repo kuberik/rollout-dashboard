@@ -1253,7 +1253,7 @@ export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | '
 }
 type Snap = { r: RawRollout; status: RawRollout['status'] };
 const SNAPS = new Map<string, Snap[]>();
-/** Apply an approval to the fixture in place (the optimistic step): each place's approval gate allows its held builds and the named build starts deploying. */
+/** Apply an approval to the fixture in place (the optimistic step): each place's approval gate allows its held builds and the named build starts deploying, unless another hold (`t.waitsOn`) still refuses it: then it stays a held candidate. */
 export function grantApproval(t: ApprovalTarget): void {
 	const snaps: Snap[] = [];
 	for (const p of t.places) {
@@ -1263,6 +1263,9 @@ export function grantApproval(t: ApprovalTarget): void {
 		const st = r.status;
 		const held = (st.releaseCandidates ?? []).map((c) => c.tag ?? c.version ?? '');
 		for (const g of st.gates ?? []) if (/approval/.test(g.name) && g.allowedVersions != null) g.allowedVersions = [...new Set([...g.allowedVersions, ...held])];
+		/* something other than the approval (a dependency, another rule: `t.waitsOn`, the same predicate as the toast) still refuses the build:
+		   it stays a held candidate, which the product already renders as that hold, and nothing is claimed to be deploying */
+		if (t.waitsOn) continue;
 		st.releaseCandidates = (st.releaseCandidates ?? []).filter((c) => (c.tag ?? c.version) !== p.tag);
 		st.history = [{ version: { tag: p.tag, version: p.tag, revision: p.tag }, timestamp: RD.NOW.toISOString(), bakeStatus: 'Deploying', bakeStartTime: RD.NOW.toISOString(), triggeredBy: { kind: 'User', name: viewerLogin() } }, ...(st.history ?? [])];
 	}
