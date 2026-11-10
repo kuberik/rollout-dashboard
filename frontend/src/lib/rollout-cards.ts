@@ -3,6 +3,7 @@
 // so stuck/behind/failure classification logic lives in exactly one place.
 
 import { behindOfRollout } from './view-models/behind';
+import { newerReleaseCountLive, type Fleet } from './view-models/failed-builds';
 import type { Rollout, Environment } from '../types';
 import { getRolloutEnvironmentTheme, shortEnvLabel } from './environment-theme';
 import {
@@ -15,7 +16,6 @@ import {
 import type { StuckReason } from './utils';
 import { compareEnvironmentNames } from './env-order';
 import {
-	newerReleaseCount,
 	promotionBlock,
 	blockNeedsPerson,
 	detectStuckPromotion
@@ -469,7 +469,8 @@ function buildAppIndex(
 function computeBehind(
 	r: Rollout,
 	envName: string,
-	appIndex: Map<string, { envName: string; rollout: Rollout }[]>
+	appIndex: Map<string, { envName: string; rollout: Rollout }[]>,
+	fleet?: Fleet
 ): { fromEnv: string; version: string; behindBy: number | null } | null {
 	if (r.spec?.wantedVersion) return null;
 	const peers = appIndex.get(r.metadata?.name ?? '');
@@ -483,7 +484,7 @@ function computeBehind(
 		if (!best || (candidate.behindBy ?? 0) > (best.behindBy ?? 0)) best = candidate;
 	}
 
-	const myNewer = newerReleaseCount(r);
+	const myNewer = newerReleaseCountLive(r as never, fleet); /* the ONE behind rule: a failed or rolled-back build is no lag */
 	// `null` = lag is unknowable (current version aged out of its own
 	// availableReleases). Say nothing rather than something false, and leave
 	// whatever compareRollouts managed to work out.
@@ -497,7 +498,7 @@ function computeBehind(
 	let ahead: { envName: string; version: string; newer: number } | null = null;
 	for (const peer of peers) {
 		if (peer.envName === envName) continue;
-		const peerNewer = newerReleaseCount(peer.rollout);
+		const peerNewer = newerReleaseCountLive(peer.rollout as never, fleet);
 		if (peerNewer === null || peerNewer >= myNewer) continue; // not ahead of me
 		const peerV = peer.rollout.status?.history?.[0]?.version
 			? getDisplayVersion(peer.rollout.status.history[0].version)
@@ -555,7 +556,7 @@ export function buildRolloutCards(
 		const rank: RankVerdict = ranks.get(r) ?? { kind: 'unknown' };
 		// Attribution keeps its peer; the NUMBER comes off the ladder so the
 		// card and the app row cannot print two answers for one rollout.
-		const attribution = envName ? computeBehind(r, envName, appIndex) : null;
+		const attribution = envName ? computeBehind(r, envName, appIndex, { environments, rollouts }) : null;
 		const behind = attribution ? { ...attribution, behindBy: rankBehindBy(rank) } : null;
 		const peers = (appIndex.get(r.metadata?.name ?? '') ?? []).filter(
 			(p) => p.envName !== envName

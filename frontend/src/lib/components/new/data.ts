@@ -37,6 +37,7 @@ import { formatTimeAgoCompact } from '$lib/utils';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus } from '$lib/view-models/behind';
 import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } from '$lib/view-models/failed-builds';
+import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
 import { heldHereOf, heldKeyOfHref } from '$lib/view-models/held-here.svelte';
@@ -1172,7 +1173,10 @@ export function waveInfoOfHref(href: string): WaveInfo | null {
 export function bakeFailedOn(q: { href: string }, build: string): boolean {
 	const st = rawOf(q.href)?.status;
 	const entry = (st?.history ?? []).find((h) => [h.version.version, h.version.tag, h.version.revision].some((x) => x && shortBuild(x) === build));
-	return !!entry && failedHere(st as never, entry.version); /* the ONE failed-build rule (failed-builds.ts): that build's latest attempt here failed */
+	/* the ONE failed-build rule (failed-builds.ts): that build's latest attempt here failed AND this place still RUNS it (nothing replaced it in history).
+	   A site that rolled back to an older healthy build holds nobody, whatever its retained Failed entry says (batch4 #3d). */
+	const v = entry ? failedHereVerdict({ status: st } as never, entry.version) : null;
+	return !!entry && v?.kind === 'failed' && v.rolledBackAt == null;
 }
 export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; heldBuilds: ReturnType<typeof candidateBuilds>; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.
@@ -1185,7 +1189,7 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		/* batch4 #3b/#3c: a build that failed upstream in the wave chain, while its failing site still RUNS it, is no candidate here but the gates still refuse it: the place is held BY THE WAVE (`upstreamFailed` names the build), with no build waiting. Once the failing site has rolled back from it nothing holds the wave (failed-builds.ts waveBlockingRevisions). */
 		const rawC = rawOf(p.href)?.status.releaseCandidates ?? [], liveC = liveCands(rawOf(p.href)?.status) ?? [];
 		const blocking = waveBlockingRevisions(rawOf(p.href) as never, envsOfSource());
-		const failedC = blocking.length ? rawC.find((c) => !liveC.includes(c) && blocking.some((r) => !!c.revision && c.revision.startsWith(r))) : undefined;
+		const failedC = blocking.length ? rawC.find((c) => !liveC.includes(c) && blocking.some((r) => shaNamesBuild(r, c))) : undefined;
 		const upstreamFailed = failedC ? (shortBuild(failedC.version ?? failedC.tag) ?? null) : null;
 		const cand = liveC[0]?.tag ?? failedC?.tag;
 		const rule = !approval && !!cand && gs.some((g) => g.allowedVersions != null && !g.allowedVersions.includes(cand));

@@ -357,9 +357,22 @@ export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
 export function waveHold(p: PlaceHold, places: PlaceHold[], failedAt: (q: PlaceHold, build: string) => boolean = bakeFailedOn): { on: string; failed: string | null } | null {
 	const o = waitingOn(p, places);
 	if (!o) return null;
-	const build = p.heldBuilds[0]?.build ?? p.upstreamFailed!;
-	const f = o.on.filter((q) => failedAt(q, build)).map((q) => q.label);
+	const build = p.heldBuilds[0]?.build ?? p.upstreamFailed;
+	if (!build) return null; /* nothing is held here (a rolled-back failure holds nobody): no wave line at all */
+	const f = failedAlong(p, build, places, failedAt);
 	return { on: o.name, failed: f.length ? [...new Set(f)].join(', ') : null };
+}
+/**
+ * batch4 #3d (H-new): the sites that failed `build` anywhere along `p`'s wave chain. A follower waits on its LEADER, and a leader held by an upstream
+ * failure is held by it too, so the failure is followed leader by leader (a place is "held by the failure" when it carries `upstreamFailed` or still
+ * lists the build as held). A plain wave-order wait, with no failure anywhere upstream, resolves to [].
+ */
+function failedAlong(p: PlaceHold, build: string, places: PlaceHold[], failedAt: (q: PlaceHold, build: string) => boolean, depth = 0): string[] {
+	const o = waitingOn(p, places);
+	if (!o || depth > 6) return [];
+	const direct = o.on.filter((q) => failedAt(q, build)).map((q) => q.label);
+	if (direct.length) return direct;
+	return o.on.filter((q) => q.upstreamFailed === build || q.heldBuilds.some((b) => b.build === build)).flatMap((q) => failedAlong(q, build, places, failedAt, depth + 1));
 }
 /** the places a "Pinned to <build> in <place>" hold (data.ts holds) names, by PlaceHold.place */
 export const pinnedPlaces = (holds: string[]): Set<string> => new Set(holds.map((h) => /^Pinned to \S+ in (.+)$/.exec(h)?.[1]).filter((x): x is string => !!x));

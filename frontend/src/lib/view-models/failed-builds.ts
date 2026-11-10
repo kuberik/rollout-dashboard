@@ -6,8 +6,8 @@
  * `waveRevs` = the short shas an Environment's own `bake failed on <rev>` blocker names (the wave chain, batch4 #3b).
  */
 import type { Environment } from '../../types';
-import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { failedHereVerdict, shaNamesBuild, type BuildRef } from './deploy-risk';
+import { newerReleaseCount } from './promotion';
 import { buildTopology, deployNameOf, siteNodeOf, upstreamOf, waveReady, type AppTopology, type SiteNode } from './sites-waves';
 
 type Hist = { bakeStatus?: string | null; timestamp?: string | null; version?: BuildRef | null };
@@ -45,12 +45,13 @@ const topologyOf = (all: readonly Environment[]): ReturnType<typeof buildTopolog
  * resolved from the blocking SITE's own history with the one rule (failedHereVerdict): that site's latest attempt at the revision failed.
  * A site this dashboard cannot see falls back to the blocker's outcome. The chain is walked from a place to its leader and to the wave(s)
  * before it, for every place that is not ready, so a wave-3 leader with no member blocker of its own still reads what failed in wave 1.
- * `envs` / `rollouts` are EXPLICIT (a route's fleet list) or the installed live source's: there is no hidden registry.
+ * `envs` / `rollouts` are EXPLICIT (a route's fleet list): there is no hidden registry, no fleet means no subtraction.
  * batch4 #3c: `rolledBack` says the failing site has since replaced the build (failedHereVerdict.rolledBackAt): it then holds nobody.
  */
 export function waveFailures(rollout: RolloutLike | null | undefined, fleet?: Fleet | null): WaveFailure[] {
-	const all = (fleet?.environments ?? liveSource()?.environments ?? []) as Environment[];
-	const ros = (fleet?.rollouts ?? liveSource()?.rollouts ?? []) as readonly RolloutLike[];
+	/* no hidden registry: the fleet is the caller's; without one there is no wave chain to read and nothing is subtracted */
+	const all = (fleet?.environments ?? []) as Environment[];
+	const ros = (fleet?.rollouts ?? []) as readonly RolloutLike[];
 	const name = rollout?.metadata?.name, ns = rollout?.metadata?.namespace;
 	if (!name || !ns || !all.length) return [];
 	const env = all.find((e) => e.metadata?.namespace === ns && e.spec?.rolloutRef?.name === name);
@@ -82,6 +83,22 @@ export function waveFailures(rollout: RolloutLike | null | undefined, fleet?: Fl
 		for (const up of upstreamOf(topo, node)) if (up.env && up.tier === node.tier) walk(up.env, up, depth + 1);
 	};
 	walk(env, siteNodeOf(topo as AppTopology | undefined, env), 0);
+	/* batch4 #3d: the controller CLEARS the leader's blocker once the failing site rolls back, so the blocker alone forgets the failure. Every site of
+	   an EARLIER wave in this tier keeps its own history: a build whose latest attempt there failed is a failed upstream build for this place too
+	   (rolledBack once that site no longer runs it). */
+	const me = siteNodeOf(topo as AppTopology | undefined, env);
+	if (topo && me) for (const site of topo.tiers.find((t) => t.tier === me.tier)?.waves.filter((w) => w.wave < me.wave).flatMap((w) => w.sites) ?? []) {
+		const ref = site.env?.spec?.rolloutRef?.name;
+		const ro = ref ? ros.find((r) => r.metadata?.name === ref && r.metadata?.namespace === site.env!.metadata?.namespace) : null;
+		for (const h of ro?.status?.history ?? []) {
+			const rev = h?.version?.revision;
+			if (!rev || h.bakeStatus !== 'Failed') continue;
+			const v = failedHereVerdict(ro as never, h.version!);
+			if (v.kind !== 'failed') continue;
+			const key = [...out.keys()].find((k) => rev.startsWith(k) || k.startsWith(rev)) ?? rev; /* the blocker names a short sha: one revision, one entry */
+			out.set(key, (out.get(key) ?? true) && v.rolledBackAt != null);
+		}
+	}
 	return [...out].map(([rev, rolledBack]) => ({ rev, rolledBack }));
 }
 /** the revisions that failed upstream, rolled back from or not: a COUNT (behind / arriving / waiting) never reads them */
@@ -92,4 +109,15 @@ export const waveBlockingRevisions = (r: RolloutLike | null | undefined, fleet?:
 /** a place's candidates minus what failed here or upstream in its wave chain: THE list behind every "behind" / "arriving" / "waiting" count */
 export function liveForPlace<T extends BuildRef>(rollout: RolloutLike | null | undefined, xs: readonly T[], fleet?: Fleet | null): T[] {
 	return liveOf(rollout?.status, xs, waveFailedRevisions(rollout, fleet));
+}
+
+/**
+ * `newerReleaseCount` (promotion.ts: the controller's own count, validated against availableReleases) minus the candidates that failed here or upstream
+ * in the wave chain: THE count the rank verdict (`rankVerdicts`: Apps, Environments, palette, ledger, namespaces) and the cards read. null stays null.
+ */
+export function newerReleaseCountLive(rollout: (RolloutLike & { status?: unknown }) | null | undefined, fleet?: Fleet | null): number | null {
+	const n = newerReleaseCount(rollout as never);
+	const st = rollout?.status as { releaseCandidates?: BuildRef[] } | null | undefined;
+	if (n === null || !n || !Array.isArray(st?.releaseCandidates)) return n;
+	return Math.max(0, n - (st!.releaseCandidates.length - liveForPlace(rollout, st!.releaseCandidates, fleet).length));
 }
