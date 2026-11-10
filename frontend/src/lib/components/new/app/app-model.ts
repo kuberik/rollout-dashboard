@@ -7,7 +7,7 @@
  * allowance (allowedVersions stays inside rawOf). `deployTargets` derives it: the newest build a place still lacks that
  * runs HEALTHY in the tier upstream of it, for a place no approval or rule holds.
  */
-import { approvalWord } from '../state-words';
+import { approvalWord, severity } from '../state-words';
 import { tabPill, deployedHistory, streamBuilds, newestBuild, ago, buildIdentity, type PlaceHold, type GateInfo, type TRow, type TierKey } from '../data';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 
@@ -230,6 +230,14 @@ export function currencyOf(href: string, app = ''): { behind: number; word: stri
  */
 export type Stop = { key: string; build: string; title: string | null; author: string | null; created: string | null; age: string; pr: number | null; /** index in the sequence = builds behind the newest; null for a custom build */ index: number | null; custom: boolean; places: PlaceHold[]; deployTo: PlaceHold[] };
 export const lagWord = (n: number): string => (n === 0 ? 'Up to date' : `${n} build${n === 1 ? '' : 's'} behind`);
+/**
+ * Where a place sits among the places of ONE stop: THE ONE SEVERITY ORDER (state-words `severity`: failing, waiting for approval, held,
+ * checking, deploying, rolled back, healthy), so the place that needs reading is the first row under its build, never the last of five
+ * regions alphabetised. A healthy place a promotion gate holds a newer build from (it waits on its wave) ranks with the held places, not at rest.
+ * Array.sort is stable: places of one rank keep the order they came in.
+ */
+export const placeRank = (p: PlaceHold): number => (p.state === 'healthy' && p.holdReason === 'rule' && p.heldBuilds.length ? severity('held-by-rule') : severity(p.state));
+export const bySeverity = (places: PlaceHold[]): PlaceHold[] => [...places].sort((a, b) => placeRank(a) - placeRank(b));
 export function ledgerOf(places: PlaceHold[]): Stop[] {
 	if (!places.length) return [];
 	const spinePlace = [...places].sort((a, b) => b.heldBuilds.length - a.heldBuilds.length)[0];
@@ -248,7 +256,7 @@ export function ledgerOf(places: PlaceHold[]): Stop[] {
 	const targets = deployTargets(places);
 	const mk = (build: string, index: number | null, custom: boolean): Stop => {
 		const i = info.get(build);
-		return { key: build, build, title: i?.title ?? null, author: i?.author ?? null, created: i?.created ?? null, age: ago(i?.created), pr: buildIdentity(build, places[0]?.href)?.pr ?? null, index, custom, places: places.filter((p) => p.deployedBuild === build), deployTo: targets.get(build) ?? [] };
+		return { key: build, build, title: i?.title ?? null, author: i?.author ?? null, created: i?.created ?? null, age: ago(i?.created), pr: buildIdentity(build, places[0]?.href)?.pr ?? null, index, custom, places: bySeverity(places.filter((p) => p.deployedBuild === build)), deployTo: targets.get(build) ?? [] };
 	};
 	const stops = seq.map((b, i) => mk(b, i, false));
 	const outside = [...new Set(places.map((p) => p.deployedBuild).filter((b): b is string => !!b && !seq.includes(b)))];
@@ -295,6 +303,39 @@ export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = f
 	/* detail pass 2026-11-08: one approval word on every page (approvalWord): "Needs your approval" when the viewer can give it */
 	return ({ failed: 'Failing', 'awaiting-approval': approvalWord(yours), 'held-by-rule': 'Held', deploying: 'Deploying', checking: 'Checking', 'rolled-back': 'Rolled back' } as Record<string, string>)[p.state] ?? 'Healthy';
 }
+/**
+ * landing v5 (2026-11-10): a place that runs a build older than the newest while its rollout order has not reached it was printed
+ * "Healthy · follows ap-southeast-2" (health, and a fact that reads as "in step"): the word contradicted the state. It is WAITING, and the
+ * product's sentence names the build and on whom (state-words vocabulary (a): "waiting for X" is the cause, "held" the state).
+ * `on` = the site it waits for (a follower: its wave's leader; a wave leader: the nearest earlier wave of its tier, else the tier before it),
+ * `fact` = what it will do and to which build ("to deploy 4.46.0-46"; "to finish checking ..." once that site has started it).
+ * Only a HEALTHY place a promotion gate keeps a newer build from: one a real rule, an approval or a failing check holds has its own word.
+ */
+export type PlaceWait = { on: string; fact: string };
+export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
+	const w = p.wave;
+	if (!w || p.state !== 'healthy' || p.holdReason !== 'rule' || holdWord(p) || !p.heldBuilds.length) return null;
+	const build = p.heldBuilds[0].build;
+	let on: PlaceHold[];
+	let name: string;
+	if (!w.leader) {
+		on = places.filter((q) => q.tier === p.tier && q.wave?.site === w.follows);
+		name = w.follows ?? 'its leader';
+	} else {
+		const before = places.filter((q) => q.tier === p.tier && q.wave && q.wave.wave < w.wave);
+		const top = Math.max(...before.map((q) => q.wave!.wave));
+		on = before.filter((q) => q.wave!.wave === top);
+		name = placesPhrase(on.map((q) => q.wave!.site), on.map((q) => q.tier));
+		if (!on.length) {
+			const t = upstreamTier(places, p.tier);
+			on = t ? places.filter((q) => q.tier === t) : [];
+			name = t ?? '';
+		}
+	}
+	if (!on.length) return null;
+	const started = on.some((q) => q.state === 'checking') ? 'finish checking' : on.some((q) => q.state === 'deploying') ? 'finish deploying' : 'deploy';
+	return { on: name, fact: `to ${started} ${build}` };
+}
 /** the places a "Pinned to <build> in <place>" hold (data.ts holds) names, by PlaceHold.place */
 export const pinnedPlaces = (holds: string[]): Set<string> => new Set(holds.map((h) => /^Pinned to \S+ in (.+)$/.exec(h)?.[1]).filter((x): x is string => !!x));
 
@@ -331,3 +372,23 @@ export function weekSummary(rollouts: WeekRollout[], days: number, nowMs: number
 
 /** the approval banner's line: the count only once the place's held-HERE answer is known; while it is pending the sentence carries no number (never a guess that flips) */
 export const waitingSentence = (heldN: number | null): string => (heldN == null ? 'Newer builds are waiting here.' : `${heldN} newer build${heldN === 1 ? ' is' : 's are'} waiting here.`);
+
+/**
+ * landing v5 (2026-11-10): an approval at the head of a rollout order opens the order, it does not finish it. The places that come AFTER a
+ * place in its tier's rollout order (sites and waves: every later wave, and the followers of its own wave when it leads), counted off the
+ * app's own places. Empty when the place has no wave facts (a tier of one place, an unbound rollout) or nothing comes after it.
+ */
+export function placesAfter(p: Pick<PlaceHold, 'tier' | 'wave'>, places: PlaceHold[]): PlaceHold[] {
+	const w = p.wave;
+	if (!w) return [];
+	return places.filter((q) => q.wave && q.tier === p.tier && q.wave.site !== w.site && (q.wave.wave > w.wave || (w.leader && q.wave.wave === w.wave && !q.wave.leader)));
+}
+/** "Then 4 more regions follow." (prod places are regions, the product's word for several prod sites; any other tier says places). null when none follow. */
+export function followSentence(after: readonly Pick<PlaceHold, 'tier'>[]): string | null {
+	const n = after.length;
+	if (!n) return null;
+	const noun = after.every((q) => q.tier === 'prod') ? (n === 1 ? 'region' : 'regions') : n === 1 ? 'place' : 'places';
+	return `Then ${n} more ${noun} follow${n === 1 ? 's' : ''}.`;
+}
+/** the approval banner's message for the place it names: what waits here, then what comes after it ("1 newer build is waiting here. Then 4 more regions follow.") */
+export const approvalMessage = (heldN: number | null, focus: PlaceHold | null, places: PlaceHold[]): string => [waitingSentence(heldN), focus ? followSentence(placesAfter(focus, places)) : null].filter(Boolean).join(' ');
