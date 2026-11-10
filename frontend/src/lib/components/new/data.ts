@@ -1230,11 +1230,18 @@ export function approvalScope(row: Pick<RolloutRow, 'app' | 'tier' | 'regions' |
 export type ApprovalTarget = { key: string; app: string; build: string; where: string; count: number; places: { href: string; label: string; tag: string }[]; href: string; /** what STILL holds the build once approved (a dependency's provider, another rule's name); null when nothing else does, i.e. the build really deploys */ waitsOn?: string | null };
 type GateLite = { name: string; allowedVersions?: string[] | null; passing?: boolean | null };
 /** The gate other than the approval that still refuses `tag` after the approval is given (null: the approval was the only hold). A dependency gate is named by its provider. */
-export function stillHeldAfterApproval(gates: readonly GateLite[], tag: string, provider: string | null, pretty: (name: string) => string = (n) => n): string | null {
+export function stillHeldAfterApproval(gates: readonly GateLite[], tag: string, provider: string | null | ((gateName: string) => string | null), pretty: (name: string) => string = (n) => n): string | null {
 	const g = gates.find((x) => !/approval/.test(x.name) && x.allowedVersions != null && !x.allowedVersions.includes(tag));
 	if (!g) return null;
-	return /^dependency-/.test(g.name) && provider ? provider : pretty(g.name);
+	const p = typeof provider === 'function' ? provider(g.name) : provider;
+	return /^dependency-/.test(g.name) && p ? p : pretty(g.name);
 }
+/** The provider a `dependency-<name>` gate waits on, from the RolloutDependency join (namespace + `status.gateName`; `spec.providerRef.name`): the SAME source the held row's "Waits on <provider>" is built from (blocking-story's `ctx.dependency`). */
+const dependencyProviderOf = (href: string, gateName: string): string | null => {
+	const ns = hrefParts(href)?.ns;
+	const items = ((source() as unknown as { rolloutDependencies?: { items?: { metadata?: { namespace?: string }; spec?: { providerRef?: { name?: string } }; status?: { gateName?: string } }[] } }).rolloutDependencies?.items) ?? [];
+	return items.find((d) => d.metadata?.namespace === ns && d.status?.gateName === gateName)?.spec?.providerRef?.name ?? null;
+};
 export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | 'regions'>, state: HomeState = 'incident'): ApprovalTarget | null {
 	const own = placesOf(state, row.app).filter((p) => p.tier === row.tier && approvalHold(p.href) > 0 && (p.href === row.href || !row.regions.length || row.regions.includes(p.label)));
 	const ps = own.length ? own : approvalHold(row.href) > 0 ? placesOf(state, row.app).filter((p) => p.href === row.href) : [];
@@ -1248,12 +1255,12 @@ export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | '
 	if (!places.length) return null;
 	const where = placeLabel({ tier: row.tier as TierKey, regions: places.map((p) => p.label) });
 	const provider = homeModel(state).fleet.needsYou.find((n) => n.app === row.app && n.facts?.provider)?.facts?.provider ?? null;
-	const waitsOn = places.map((p) => stillHeldAfterApproval(rawOf(p.href)?.status.gates ?? [], p.tag, provider, (n) => gateDisplayName(n, prettyOfGate(p.href, n)))).find((x) => !!x) ?? null;
+	const waitsOn = places.map((p) => stillHeldAfterApproval(rawOf(p.href)?.status.gates ?? [], p.tag, (g) => dependencyProviderOf(p.href, g) ?? provider, (n) => gateDisplayName(n, prettyOfGate(p.href, n)))).find((x) => !!x) ?? null;
 	return { key: `${row.app}|${row.tier}|${places.map((p) => p.href).sort().join(',')}`, app: row.app, build: wb?.build ?? places[0].tag, where, count: places.length, places, href: row.href, waitsOn };
 }
 type Snap = { r: RawRollout; status: RawRollout['status'] };
 const SNAPS = new Map<string, Snap[]>();
-/** Apply an approval to the fixture in place (the optimistic step): each place's approval gate allows its held builds and the named build starts deploying. */
+/** Apply an approval to the fixture in place (the optimistic step): each place's approval gate allows its held builds and the named build starts deploying, unless another hold (`t.waitsOn`) still refuses it: then it stays a held candidate. */
 export function grantApproval(t: ApprovalTarget): void {
 	const snaps: Snap[] = [];
 	for (const p of t.places) {
@@ -1263,6 +1270,9 @@ export function grantApproval(t: ApprovalTarget): void {
 		const st = r.status;
 		const held = (st.releaseCandidates ?? []).map((c) => c.tag ?? c.version ?? '');
 		for (const g of st.gates ?? []) if (/approval/.test(g.name) && g.allowedVersions != null) g.allowedVersions = [...new Set([...g.allowedVersions, ...held])];
+		/* something other than the approval (a dependency, another rule: `t.waitsOn`, the same predicate as the toast) still refuses the build:
+		   it stays a held candidate, which the product already renders as that hold, and nothing is claimed to be deploying */
+		if (t.waitsOn) continue;
 		st.releaseCandidates = (st.releaseCandidates ?? []).filter((c) => (c.tag ?? c.version) !== p.tag);
 		st.history = [{ version: { tag: p.tag, version: p.tag, revision: p.tag }, timestamp: RD.NOW.toISOString(), bakeStatus: 'Deploying', bakeStartTime: RD.NOW.toISOString(), triggeredBy: { kind: 'User', name: viewerLogin() } }, ...(st.history ?? [])];
 	}
