@@ -47,11 +47,11 @@ frontend https
 
 backend hub
   mode tcp
-  server hub host.docker.internal:5173
+  server hub ${HOST_IP}:5173
 
 backend spoke
   mode tcp
-  server spoke host.docker.internal:8081
+  server spoke ${HOST_IP}:8081
 EOF
 
 echo "==> Stopping old socat router if running"
@@ -64,7 +64,15 @@ if docker inspect sni-router >/dev/null 2>&1 && \
 fi
 
 echo "==> Starting haproxy SNI router on host:443"
-docker compose -f "${PROJECT_ROOT}/docker-compose.sni-proxy.yaml" up --wait
+docker compose -f "${PROJECT_ROOT}/docker-compose.sni-proxy.yaml" up --wait --force-recreate
+# `up --wait` returns before haproxy has parsed its config (no healthcheck), so a
+# router that exits at once would go unnoticed. Require it to stay up.
+sleep 5
+if [ "$(docker inspect -f '{{.State.Running}} {{.RestartCount}}' sni-router)" != "true 0" ]; then
+  docker logs --tail 20 sni-router >&2
+  echo "sni-router is not running; see its log above" >&2
+  exit 1
+fi
 
 echo "==> Creating HUB cluster (rollout-prod, port 8080, prod env)"
 CLUSTER_NAME="rollout-prod" \
