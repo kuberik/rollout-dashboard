@@ -4,14 +4,17 @@
 	import Sidebar from '../lib/Sidebar.svelte';
 	import MobileTabBar from '../lib/MobileTabBar.svelte';
 	import LiveRegion from '$lib/components/LiveRegion.svelte';
+	import FleetAppNames from '$lib/components/FleetAppNames.svelte';
+	import ApprovalLayer from '$lib/components/new/ApprovalLayer.svelte';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { queryRetry, queryRetryDelay, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { startEventStream } from '$lib/api/events';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { provideShellChrome } from '$lib/shell-chrome.svelte';
 	import { ScrollDirectionTracker } from '$lib/scroll-direction.svelte';
 	import { scrollMemoryKey, saveScrollPosition, getScrollPosition } from '$lib/scroll-memory';
+	import { toastVisibility } from '$lib/stores/toast-visibility.svelte';
 
 	// ⭐ FIX PASS ITEM 7 (2026-09-10). Namespaces a document-scroller entry
 	// apart from an `<main>`-scroller entry for the SAME url — see the
@@ -83,6 +86,12 @@
 	// overflow-hidden`), so `window.scrollY` stays 0 and this tracker never
 	// reports hidden there; `.header-group`'s own media query is still what
 	// makes that state inert, this is just cheap to leave running unguarded.
+	//
+	// qa9 B2: `data-hidden` below also checks `toastVisibility.count` — a
+	// floating `Toast` docks at this bar's position on a phone, so while one
+	// is open the bar must stay revealed no matter what `headerScroll` says,
+	// or the toast ends up over content instead of chrome. See
+	// `$lib/stores/toast-visibility.svelte`'s doc comment.
 	const headerScroll = new ScrollDirectionTracker(24);
 	let headerGroupEl: HTMLElement | undefined = $state();
 
@@ -332,9 +341,23 @@
 	// invalidate the query keys above — see $lib/api/events' own doc comment
 	// for the reconnect/hidden-tab/backpressure story. No-ops under SSR.
 	startEventStream(queryClient);
+
+	// ⭐ DEMO BUILD ONLY — the embed contract kuberik.com's showcases drive
+	// (`window.kuberikDemo`, the `kuberik-demo-ready` postMessage). See
+	// `$lib/demo/embed`. `import.meta.env.VITE_DEMO` is a build-time literal,
+	// so a normal build drops this branch and never loads the module.
+	if (import.meta.env.VITE_DEMO) {
+		onMount(() => {
+			import('$lib/demo/embed').then(({ installDemoEmbed, announceDemoReady }) => {
+				installDemoEmbed();
+				announceDemoReady();
+			});
+		});
+	}
 </script>
 
 <QueryClientProvider client={queryClient}>
+	<FleetAppNames />
 	<!-- ⭐ TWO SCROLL MODELS, ONE BREAKPOINT. (2026-09-04, from the human: "we
 	     broke how desktop looks like when we recently changed scrolling
 	     behaviour … navbar / sidebar bounces on chrome scrolling. it should be
@@ -347,67 +370,31 @@
 	     the chrome, and the sidebar spans the viewport instead of ending at
 	     its last link. `sm` is the breakpoint because it is where the sidebar
 	     appears and the tab bar leaves: one width, one model each side. -->
-	<div class="flex flex-col bg-white sm:h-dvh sm:overflow-hidden dark:bg-gray-900">
-		<!-- ⭐ SKIP LINK. Measured before it existed: EVERY page cost a keyboard
-		     user 10 identical tab stops (logo, breadcrumb, theme, six sidebar
-		     links, collapse) before the first thing on the page. On `/activity`
-		     the eleventh stop was still not content — it was the first of forty
-		     chart marks. The link is `sr-only` at rest, so nothing on `/`,
-		     `/rollouts` or rollout detail changes visually until it has focus,
-		     which is the one exception the craft rules grant. -->
+	<!-- ⭐ SHELL REDESIGN (design language, 2026-10-08): the sidebar is a full-height
+	     column; the top bar (`Navbar`) and a route's tab strip live INSIDE the content
+	     column beside it. Scroll model unchanged: below `sm` the document scrolls
+	     and `.header-group` auto-hides; from `sm` up `<main>` is the one scroller. -->
+	<div class="flex flex-col bg-ground sm:h-dvh sm:flex-row sm:overflow-hidden">
 		<a
 			href="#main-content"
-			class="sr-only rounded bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-lg focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[200] dark:bg-gray-800 dark:text-white"
+			class="t-ui sr-only rounded-sm bg-overlay px-3 py-2 text-fg focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[200]"
 		>
 			Skip to main content
 		</a>
-		<!-- ⭐ THE HEADER GROUP: `Navbar` ONLY AT `sm`+, `Navbar` + THE TAB
-		     STRIP BELOW IT. (2026-09-05, regression fix) The strip used to
-		     render in here at every width, which put it ABOVE the
-		     `Sidebar + <main>` row and made it span the FULL shell width —
-		     the sidebar's own row then started one strip-height too low,
-		     with an empty band above it and the strip's padded content
-		     sitting over nothing. Below `sm` there is no sidebar, so
-		     spanning the full width is correct and this is still where the
-		     strip belongs, jointly auto-hiding with `Navbar` as one
-		     `position: fixed` unit (`.header-group` in `app.css`). At `sm`+
-		     the strip moves to the main column below (`isDesktop`) — this
-		     div is `Navbar`-only there, so the sidebar's top edge is always
-		     exactly the navbar's bottom edge, tab strip or not. -->
-		<div bind:this={headerGroupEl} class="header-group" data-hidden={headerScroll.hidden}>
-			<Navbar />
-			{#if shellChrome.tabStrip && !isDesktop}
-				<div class="shrink-0">
-					{@render shellChrome.tabStrip()}
-				</div>
-			{/if}
-		</div>
-		<div class="flex min-w-0 flex-row sm:min-h-0 sm:flex-1">
-			<Sidebar />
-			<!--
-				⭐ `<main>` IS A PLAIN BLOCK NOW — THE DOCUMENT IS THE SCROLLER.
-				(2026-09-03, scroll model rewrite — see `app.css`'s "THE DOCUMENT
-				SCROLLS" for the full account and why.) This used to be `flex-1
-				overflow-y-auto` with its own `scrollbar-gutter: stable`, the ONE
-				thing in the whole product that ever scrolled, inside a shell
-				pinned to exactly `h-screen`. That made every native phone scroll
-				behaviour (rubber-banding, pull-to-refresh, Back's own scroll
-				restore, an anchor's `scrollIntoView`) act on a document that
-				never moved. `scrollbar-gutter: stable` is on `html` now, so the
-				content box is still one width whether or not the page scrolls —
-				same fix, same reasoning, moved to where the scrolling happens.
-			-->
-			<!-- ⭐ THIS COLUMN, NOT `.header-group`, IS WHERE THE TAB STRIP
-			     LIVES AT `sm`+. (2026-09-05, regression fix) It is a sibling
-			     of `<main>` inside `Sidebar`'s OWN row, so it only ever
-			     occupies the width `<main>` occupies — never the sidebar's
-			     column, never the full shell width — with no separate
-			     `--sidebar-w` offset math needed: whatever pushes `<main>`
-			     right of the sidebar pushes this the same amount, because
-			     they share this flex column. Below `sm` the strip renders in
-			     `.header-group` instead (`isDesktop` above), so this
-			     `{#if}` is simply empty there. -->
-			<div class="flex min-w-0 flex-1 flex-col sm:min-h-0">
+		<Sidebar />
+		<div class="flex min-w-0 flex-1 flex-col sm:min-h-0">
+			<div
+				bind:this={headerGroupEl}
+				class="header-group"
+				data-hidden={headerScroll.hidden && toastVisibility.count === 0}
+			>
+				<Navbar />
+				{#if shellChrome.tabStrip && !isDesktop}
+					<div class="shrink-0">
+						{@render shellChrome.tabStrip()}
+					</div>
+				{/if}
+			</div>
 				{#if shellChrome.tabStrip && isDesktop}
 					<div class="shrink-0">
 						{@render shellChrome.tabStrip()}
@@ -423,9 +410,9 @@
 						{@render children?.()}
 					</div>
 				</main>
-			</div>
 		</div>
 		<MobileTabBar />
 		<LiveRegion />
+		<ApprovalLayer />
 	</div>
 </QueryClientProvider>

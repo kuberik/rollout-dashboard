@@ -140,6 +140,9 @@ export function cellStateSentence(
 			// `PipelineRow.svelte` appends "· <name>" once its own lazy
 			// fetch (which DOES carry `rolloutGates`) confirms the guess and
 			// resolves a pretty name.
+			// The shared cause first (holdCausePhrase via pr-pipeline), so this
+			// row reads the same cause as Home and the Overview.
+			if (cell.holdCause) return cell.holdCause;
 			return cell.gateLabel
 				? `held by ${cell.gateLabel}`
 				: cell.gateApprovalGuess

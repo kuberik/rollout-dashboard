@@ -3,23 +3,29 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import {
-		ObjectsColumnSolid,
+		ObjectsColumnOutline,
 		ClockArrowOutline,
-		ShareNodesSolid,
-		TerminalOutline
+		TerminalOutline,
+		ShareNodesOutline
 	} from 'flowbite-svelte-icons';
 	import { type Snippet } from 'svelte';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { rolloutQueryOptions, rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import {
+		rolloutQueryOptions,
+		rolloutsListQueryOptions,
+		clusterInfoQueryOptions
+	} from '$lib/api/rollouts';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { getShellChrome } from '$lib/shell-chrome.svelte';
+	import { href as toHref, appPath } from '$lib/paths';
+	import { rolloutTabs } from '$lib/view-models/rollout-tabs';
 
 	let { children }: { children: Snippet } = $props();
 
 	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
 	const name = $derived(page.params.name as string);
-	const activeUrl = $derived(page.url.pathname);
+	const activeUrl = $derived(appPath(page.url.pathname));
 	// Base path (cluster embedded) shared by every tab.
 	const base = $derived(`/rollouts/${cluster}/${namespace}/${name}`);
 
@@ -67,50 +73,61 @@
 
 	const environment = $derived(rolloutQuery.data?.environment);
 
-	const hasEnvironment = $derived(
-		environment?.status?.environmentInfos && environment.status.environmentInfos.length > 0
+	/**
+	 * ⭐ NO STRIP ON A ROLLOUT THAT DOES NOT EXIST (squad-rollout Lane G
+	 * round 5, 2026-10-10, minimal edit per the coordinator). `rolloutQuery`
+	 * resolving successfully with no `.rollout` on the payload is the exact
+	 * 404 shape every tab's own `NotFound` branch already reads (the gates
+	 * tab's `{:else if !rollout}`, history's identical branch) — the strip
+	 * used to render regardless, four tab links pointing at a page that
+	 * does not exist, above a `NotFound` body one scroll away saying so.
+	 */
+	const notFound = $derived(rolloutQuery.isSuccess && !rolloutQuery.data?.rollout);
+
+	/**
+	 * ⭐ ONE TRUTH FOR "DOES THIS ROLLOUT HAVE A GATES TAB" (squad-rollout
+	 * coordinator ruling, 2026-10-09) — `rolloutTabs` (`lib/view-models/
+	 * rollout-tabs.ts`) is now the single derivation of the OLD
+	 * `hasEnvironment || hasDependencies || hasOwnGates` predicate (the
+	 * promotion edge, the contract edge, or a gate of any other kind — a
+	 * deploy window, an external approval, health checks that apply here
+	 * whether or not one is failing right now, or `DeploymentBlocked=True`
+	 * with no other source naming why). Its own doc comment and the git
+	 * history behind it (2026-09-04 through 2026-10-08) carry the full
+	 * reasoning for each clause; this file only supplies the inputs now.
+	 * The command palette ("This rollout" → Gates) reads the SAME function,
+	 * so the two can no longer drift the way they had — the palette's own
+	 * older, narrower copy never saw `rolloutDependencies` at all.
+	 */
+	const clusterInfoQuery = createQuery(() => clusterInfoQueryOptions());
+	const tabsVisibility = $derived(
+		rolloutTabs({
+			rollout: rolloutQuery.data?.rollout,
+			rolloutGates: rolloutQuery.data?.rolloutGates,
+			environment,
+			cluster,
+			localCluster: clusterInfoQuery.data?.name || undefined,
+			namespace,
+			name,
+			environments: listQuery.data?.environments?.items ?? [],
+			rolloutDependencies: listQuery.data?.rolloutDependencies?.items ?? []
+		})
 	);
 
 	/**
-	 * ⭐ HAS THE EVIDENCE FOR `hasEnvironment`/`hasDependencies` ITSELF
-	 * ARRIVED YET? (2026-09-04, load-state audit finding 3: "Three tabs then
-	 * four: `Logs` moves +147px at 1440; at 390 the `flex-1` tabs re-width
-	 * 114→86 so `History` moves −42px and a finger over it lands on
-	 * `Dependencies`.") `hasEnvironment` rides `rolloutQuery` and
-	 * `hasDependencies` rides `listQuery` — two different requests that do
-	 * not resolve in the same frame, so the strip painted 3 tabs, then
-	 * silently became 4 once the slower one landed. `depsKnown` is `true`
-	 * only once BOTH have answered, which is what `tabs` below reads to
-	 * decide whether the Dependencies tab is `pending` (reserve the slot,
-	 * disabled), `active` (a real fourth tab) or `hidden` (this rollout
-	 * genuinely has neither — the pre-existing, correct final state).
+	 * ⭐ HAS THE EVIDENCE FOR `tabsVisibility` ITSELF ARRIVED YET? (2026-09-04,
+	 * load-state audit finding 3: "Three tabs then four: `Logs` moves +147px
+	 * at 1440; at 390 the `flex-1` tabs re-width 114→86 so `History` moves
+	 * −42px and a finger over it lands on `Dependencies`.") `rolloutQuery`
+	 * and `listQuery` are two different requests that do not resolve in the
+	 * same frame, so the strip painted 3 tabs, then silently became 4 once
+	 * the slower one landed. `depsKnown` is `true` only once BOTH have
+	 * answered, which is what `tabs` below reads to decide whether the
+	 * Gates tab is `pending` (reserve the slot, disabled), `active` (a real
+	 * fourth tab) or `hidden` (this rollout genuinely has neither — the
+	 * pre-existing, correct final state).
 	 */
 	const depsKnown = $derived(rolloutQuery.data !== undefined && listQuery.data !== undefined);
-
-	/**
-	 * ⭐ A `RolloutDependency` IS AN EDGE AND IT HAS TWO ENDS. THIS USED TO
-	 * MATCH ONE.
-	 *
-	 * The predicate was `rolloutRef.name === name` — the CONSUMER end only —
-	 * which is the same bug one grade up from the one above it: a rollout that
-	 * PROVIDES a contract and consumes none has no `rolloutRef` pointing at it
-	 * anywhere, so if it also had no `Environment` binding the tab did not
-	 * appear at all. `hello-api-app` is exactly that rollout on the live
-	 * cluster, and it is the one whose owner most needs to know somebody is
-	 * gated on it before they roll back.
-	 *
-	 * `providerRef.namespace` is resolved server-side, but it is defaulted here
-	 * too: the CRD lets it be empty, in which case it means the dependency's
-	 * own namespace.
-	 */
-	const hasDependencies = $derived(
-		(listQuery.data?.rolloutDependencies?.items ?? []).some(
-			(d) =>
-				(d.spec?.rolloutRef?.name === name && d.metadata?.namespace === namespace) ||
-				(d.spec?.providerRef?.name === name &&
-					(d.spec?.providerRef?.namespace || d.metadata?.namespace) === namespace)
-		)
-	);
 
 	/**
 	 * ⭐ ARITY-STABLE: ALWAYS FOUR ENTRIES, NEVER THREE-THEN-FOUR.
@@ -127,8 +144,13 @@
 	 * them. See the template below for how each `state` renders.
 	 */
 	const tabs = $derived([
-		{ label: 'Overview', href: base, icon: ObjectsColumnSolid, state: 'active' as const },
-		{ label: 'History', href: `${base}/history`, icon: ClockArrowOutline, state: 'active' as const },
+		{ label: 'Overview', href: base, icon: ObjectsColumnOutline, state: 'active' as const },
+		{
+			label: 'History',
+			href: `${base}/history`,
+			icon: ClockArrowOutline,
+			state: 'active' as const
+		},
 		// ⛔ THE ICON IS A GRAPH, NOT A STACK. `LayersSolid` was chosen when this
 		// tab was called `Environments` — stacked layers read as stacked
 		// environments — and it survived the rename. For a relation BETWEEN two
@@ -138,10 +160,12 @@
 		// contract branch and the dependencies page's own banner both draw it.
 		// Zero new vocabulary.
 		{
-			label: 'Dependencies',
-			href: `${base}/dependencies`,
-			icon: ShareNodesSolid,
-			state: (!depsKnown ? 'pending' : hasEnvironment || hasDependencies ? 'active' : 'hidden') as
+			label: 'Gates',
+			href: `${base}/gates`,
+			// The Gates page's own card icon (`ShareNodesOutline`). Not the held
+			// glyph: a tab names a place, not a state (held glyph v3, 2026-10-09).
+			icon: ShareNodesOutline,
+			state: (!depsKnown ? 'pending' : tabsVisibility.gates ? 'active' : 'hidden') as
 				| 'pending'
 				| 'active'
 				| 'hidden'
@@ -151,6 +175,9 @@
 
 	const isActive = (href: string) => {
 		if (href === base) return activeUrl === href;
+		// A build's diff is reached from History and belongs to it: the
+		// History tab stays current on `/diff/<version>`.
+		if (href === `${base}/history` && activeUrl.startsWith(`${base}/diff`)) return true;
 		return activeUrl.startsWith(href);
 	};
 
@@ -205,7 +232,8 @@
 	const shellChrome = getShellChrome();
 
 	$effect(() => {
-		shellChrome.tabStrip = tabStripSnippet;
+		// `notFound` (round 5): no strip over a `NotFound` body.
+		shellChrome.tabStrip = notFound ? null : tabStripSnippet;
 		return () => {
 			if (shellChrome.tabStrip === tabStripSnippet) shellChrome.tabStrip = null;
 		};
@@ -304,10 +332,7 @@
 	edge. See the root layout's own comments at both render sites.
 -->
 {#snippet tabStripSnippet()}
-	<nav
-		class="shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-		aria-label="Rollout sections"
-	>
+	<nav class="border-line bg-ground shrink-0 border-b" aria-label="Rollout sections">
 		<!--
 			⛔ FOUR ANONYMOUS 16px GLYPHS IN 97px CELLS, ABOVE A BOTTOM NAV THAT
 			LABELS ALL SIX OF ITS OWN ITEMS. (defect #6, 2026-09-02) `hidden
@@ -338,8 +363,10 @@
 		     detail tabs") but had never been wired to this strip. Containing the
 		     overflow here — a strip that scrolls internally instead of stretching
 		     its parent — keeps every tab reachable without widening the page. -->
-		<div bind:this={tabStripEl}
-			class="mx-auto flex w-full items-stretch overflow-x-auto px-4 no-scrollbar sm:justify-start sm:gap-0 sm:px-6">
+		<div
+			bind:this={tabStripEl}
+			class="no-scrollbar mx-auto flex w-full items-stretch overflow-x-auto px-4 sm:justify-start sm:gap-1 sm:px-3"
+		>
 			<!--
 				⭐ NO `.filter()` HERE ANY MORE — SEE `tabs`' OWN COMMENT. All four
 				entries render on every paint; `state` decides the TREATMENT, not
@@ -371,18 +398,18 @@
 				{@const pending = t.state === 'pending'}
 				{@const hidden = false}
 				<a
-					href={t.state === 'active' ? t.href : undefined}
+					href={t.state === 'active' ? toHref(t.href) : undefined}
 					aria-current={active ? 'page' : undefined}
 					aria-disabled={pending ? 'true' : undefined}
 					aria-hidden={hidden ? 'true' : undefined}
 					tabindex={t.state === 'active' ? undefined : -1}
 					title={t.label}
-					class="group flex flex-1 flex-col items-center justify-center gap-0.5 border-b-2 px-1 py-2 text-[10px] font-medium transition-colors sm:flex-initial sm:shrink-0 sm:flex-row sm:gap-2 sm:px-3 sm:py-2.5 sm:text-sm
+					class="group t-ui flex flex-1 flex-col items-center justify-center gap-0.5 border-b-2 px-1 py-2 transition-colors sm:h-11 sm:flex-initial sm:shrink-0 sm:flex-row sm:gap-2 sm:px-3 sm:py-0
 						{hidden ? 'invisible' : ''}
 						{pending ? 'cursor-default opacity-40' : ''}
 						{active
-							? 'border-gray-900 text-gray-900 dark:border-white dark:text-white'
-							: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
+						? 'border-accent text-fg'
+						: 'text-fg-muted hover:border-line-strong hover:text-fg border-transparent'}"
 				>
 					<t.icon class="h-4 w-4 shrink-0" />
 					<span class="max-w-full truncate leading-tight">{t.label}</span>

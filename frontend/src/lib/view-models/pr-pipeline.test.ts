@@ -508,7 +508,7 @@ describe('buildPrPipeline', () => {
 
 	/**
 	 * ⭐ FIX PASS ITEM 4 (2026-09-10) — "QUEUED, NOT WAITING-UPSTREAM". A gate
-	 * joined to an environment-controller PROMOTION relationship
+	 * joined to an environment-controller PROMOTION edge
 	 * (`subjectKind: 'environment'`, `classifyGate`'s own `kind: 'promotion'`
 	 * branch) is a NORMAL promotion-order wait — "staging hasn't been given
 	 * its turn because dev hasn't deployed yet", nobody stuck, nothing
@@ -516,7 +516,7 @@ describe('buildPrPipeline', () => {
 	 * stuck dependency (`waiting-upstream`, amber field/ring); `queued` is
 	 * its own state now so `LandingMark`/`PipelineRow` can draw it neutral.
 	 */
-	it('queued, not waiting-upstream: a promotion-relationship gate (subjectKind environment) is a normal order wait', () => {
+	it('queued, not waiting-upstream: a promotion-order gate (subjectKind environment) is a normal order wait', () => {
 		const rollout = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-staging',
@@ -530,13 +530,13 @@ describe('buildPrPipeline', () => {
 		const env = {
 			metadata: { name: 'widget-app-staging', namespace: 'widget-staging' },
 			spec: {
+				name: 'widget-app',
 				environment: 'staging',
-				rolloutRef: { name: 'widget-app' },
-				relationship: { environment: 'dev', type: 'After' }
+				rolloutRef: { name: 'widget-app' }
 			},
 			status: { rolloutGateRef: { name: 'ghd-p2fld' } }
 		} as unknown as Environment;
-		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+		const vm = buildPrPipeline(meta(), [rollout], [{ metadata: { name: 'widget-app-dev', namespace: 'widget-dev' }, spec: { name: 'widget-app', environment: 'dev', rolloutRef: { name: 'widget-app' } }, status: {} } as unknown as Environment, env], { items: [] }, NOW);
 		const cell = vm.services[0].cells[0];
 		expect(cell.state).toBe('queued');
 		expect(cell.state).not.toBe('waiting-upstream');
@@ -574,13 +574,13 @@ describe('buildPrPipeline', () => {
 		const env = {
 			metadata: { name: 'widget-app-prod', namespace: 'widget-prod' },
 			spec: {
+				name: 'widget-app',
 				environment: 'prod',
-				rolloutRef: { name: 'widget-app' },
-				relationship: { environment: 'staging', type: 'After' }
+				rolloutRef: { name: 'widget-app' }
 			},
 			status: { rolloutGateRef: { name: 'ghd-p2fld' } }
 		} as unknown as Environment;
-		const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
+		const vm = buildPrPipeline(meta(), [rollout], [{ metadata: { name: 'widget-app-staging', namespace: 'widget-staging' }, spec: { name: 'widget-app', environment: 'staging', rolloutRef: { name: 'widget-app' } }, status: {} } as unknown as Environment, env], { items: [] }, NOW);
 		const cell = vm.services[0].cells[0];
 		expect(cell.state).toBe('gated');
 		expect(cell.state).not.toBe('queued');
@@ -1009,7 +1009,7 @@ describe('buildPrPipeline', () => {
 			const env = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 			const vm = buildPrPipeline(meta(), [rollout], [env], { items: [] }, NOW);
 			// ⭐ RULING 7 (2026-09-10 fix pass): family words, never a bare count.
-			expect(vm.services[0].furthestCompact).toBe('held in prd');
+			expect(vm.services[0].furthestCompact).toBe('held in prod');
 		});
 
 		// ⭐ ROUND 3 (2026-09-10 ruling A): retired. A service with EVERY cell
@@ -1250,7 +1250,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 		});
 	});
 
-	it('earliest env-rank wins over "worst progressed": a dev hold outranks a prod hold in the verdict', () => {
+	it('ROUND 2 ("worst-wins", 2026-10-09) — a prod failure outranks a dev hold in the verdict, reversing the old rule', () => {
 		const dev = mkRollout({
 			name: 'widget-app',
 			namespace: 'widget-dev',
@@ -1259,7 +1259,7 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
 				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
 			]
-			// no gates — "promoting", the LEAST progressed of the two non-live states below
+			// no gates — "promoting", the LEAST severe of the two non-live states below
 		});
 		const prod = mkRollout({
 			name: 'widget-app',
@@ -1271,9 +1271,42 @@ describe('buildChangeVerdict (CHANGES-2026-09-10 fix pass, ruling 3 — "ONE VER
 		const envDev = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
 		const envProd = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
 		const vm = buildPrPipeline(meta(), [dev, prod], [envDev, envProd], { items: [] }, NOW);
-		// dev is the FRONTIER (lowest rank, not live) even though prod's own
-		// state (`failed`) is louder — the old "worst-progressed" rule would
-		// have picked prod here.
+		// ⭐ SUPERSEDES THIS TEST'S OWN FORMER EXPECTATION (`'widget-app
+		// promoting in dev'`) — the coordinator's round-2 ruling ("worst-wins",
+		// `rollout-cards.ts`'s `worstChangeCell`): severity now outranks env
+		// rank. Prod's `failed` is strictly worse than dev's mere `promoting`,
+		// so prod is the frontier even though dev has the lower env rank —
+		// exactly the live bug (wide PR #20: failed in prod, checking in dev,
+		// the title chip read "Deploying") this round fixes.
+		expect(vm.verdict).toBe('widget-app failed in prod');
+		expect(vm.verdictTone).toBe('failed');
+	});
+
+	it('ROUND 2 — within the SAME severity tier, env rank still breaks the tie', () => {
+		const dev = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-dev',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			]
+			// no gates — "promoting" in both envs: the SAME severity tier.
+		});
+		const prod = mkRollout({
+			name: 'widget-app',
+			namespace: 'widget-prod',
+			history: [{ revision: 'old-1', timestamp: '2026-08-20T00:00:00Z', bakeStatus: 'Succeeded' }],
+			availableReleases: [
+				{ revision: 'old-1', tag: 'old-1', created: '2026-08-20T00:00:00Z' },
+				{ revision: 'c0ffee1', tag: 'build-42', created: '2026-09-02T00:00:00Z' }
+			]
+		});
+		const envDev = mkEnv({ app: 'widget-app', envName: 'dev', namespace: 'widget-dev' });
+		const envProd = mkEnv({ app: 'widget-app', envName: 'prod', namespace: 'widget-prod' });
+		const vm = buildPrPipeline(meta(), [dev, prod], [envDev, envProd], { items: [] }, NOW);
+		// Same severity tier on both — the tiebreak (env rank) still applies,
+		// and dev still wins it, exactly as before this round.
 		expect(vm.verdict).toBe('widget-app promoting in dev');
 	});
 });

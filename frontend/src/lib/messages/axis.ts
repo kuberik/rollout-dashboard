@@ -207,7 +207,9 @@ export const CLAIMS: Claim[] = [
 	{ id: 'rank title', re: /can still take \d+ newer build/, readFirst: true },
 	{
 		id: 'deploy state word',
-		re: /^(deploy succeeded|deploy failed|checking|deploying|stopped|no deploy yet)$/
+		// Plus `activityVerb`'s in-flight and failed verbs, which `ActivitySentence`
+		// renders between the actor and the app ("kuberik is checking checkout-api").
+		re: /^ ?(deploy succeeded|deploy failed|checking|deploying|stopped|no deploy yet|failed to deploy|is deploying|is checking)$/
 	},
 	{ id: 'health failure title', re: /Health check .* is failing/, readFirst: true },
 	/**

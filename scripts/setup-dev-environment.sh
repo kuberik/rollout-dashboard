@@ -332,6 +332,13 @@ spec:
       kind: HTTPRoute
       name: rollout-dashboard
   extAuth:
+    # Envoy Gateway only forwards these client headers to oauth2-proxy.
+    # Without Cookie, the session cookie set by /oauth2/callback never reaches
+    # oauth2-proxy and the dashboard loops back to Dex after every sign-in.
+    # Authorization carries bearer tokens (vite dev proxy, hub->spoke fan-out).
+    headersToExtAuth:
+      - Cookie
+      - Authorization
     http:
       backendRefs:
         - name: oauth2-proxy

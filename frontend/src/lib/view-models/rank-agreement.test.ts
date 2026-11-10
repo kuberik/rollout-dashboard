@@ -108,7 +108,11 @@ function rollout(tier: string, list: number[], currentRank: number, deployedAgoM
 function environment(tier: string): Environment {
 	return {
 		metadata: { name: APP, namespace: `${APP}-${tier}` },
-		spec: { environment: tier, name: APP, rolloutRef: { name: APP } }
+		// A region is a SITE of prod (`prod-eu-central-1` -> prod / eu-central-1); its place key
+		// is the same string, so the fixture's names do not move.
+		spec: tier.startsWith('prod-')
+			? { environment: 'prod', site: tier.slice(5), wave: 1, name: APP, rolloutRef: { name: APP } }
+			: { environment: tier, name: APP, rolloutRef: { name: APP } }
 	} as unknown as Environment;
 }
 
@@ -192,9 +196,9 @@ describe('⛔ the dev-vs-staging contradiction', () => {
 	it('prints ONE spelling of the rank, and it is `N behind`', () => {
 		const cards = buildRolloutCards(ROLLOUTS, ENVIRONMENTS, NOW);
 		const byNs = (tier: string) => cards.find((c) => c.ns === `${APP}-${tier}`)!;
-		expect(rankLabel(byNs('dev').rank)).toBe('15 behind');
-		expect(rankLabel(byNs('staging').rank)).toBe('14 behind');
-		expect(rankLabel(byNs('prod').rank)).toBe('19 behind');
+		expect(rankLabel(byNs('dev').rank)).toBe('15 builds behind');
+		expect(rankLabel(byNs('staging').rank)).toBe('14 builds behind');
+		expect(rankLabel(byNs('prod').rank)).toBe('19 builds behind');
 		// ⛔ Not `−19`. A signed integer beside a build id reads as a diff and
 		// names no unit; `/` and `/rollouts` were the last two pages spelling
 		// it that way.
@@ -351,7 +355,7 @@ describe('a many-region fleet — the fan-out shape', () => {
 		const regions = REGIONS.slice(2);
 		expect(many.slice(2).map(newerReleaseCount)).toEqual([6, 2, 4, 1]);
 		expect(regions.map((r) => rankBehindBy(rankVerdictFor(g, r)))).toEqual([6, 2, 4, 1]);
-		expect(rankLabel(rankVerdictFor(g, 'prod-sa-east-1'))).toBe('1 behind');
+		expect(rankLabel(rankVerdictFor(g, 'prod-sa-east-1'))).toBe('1 build behind');
 	});
 
 	it('still ranks the promotion line above the fan-out', () => {

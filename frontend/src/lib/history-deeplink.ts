@@ -117,6 +117,32 @@ export function findDeployIndex(
  * changes nothing about the row, and claiming "expanded" for a state that did
  * not change is the kind of small lie `truth.test.ts` exists over.
  */
+/**
+ * ⭐ INCIDENT PRESENCE, WITHOUT A SCROLL (Logs AD round 9, item D1, binding,
+ * 2026-10-12): "History must open at scroll 0. The rule 'open the failed
+ * live entry expanded by default' means expanded in place, never scrolled
+ * to." The page calls this to decide which index to silently add to its
+ * own expanded set on mount — never `revealEntry` (defined in the page
+ * itself), which also scrolls and announces, reserved for an action the
+ * reader actually took (a `?deploy=` link, a chart click). Pure and
+ * testable on its own, the same way `findDeployIndex` is, rather than only
+ * provable by reading the page's own `$effect`.
+ *
+ * Returns `null` — "do nothing" — whenever an explicit `?deploy=` link is
+ * present (the item's own "respect an explicit ?deploy= deep link": that
+ * link owns the arrival, scroll included, even if it points at a different
+ * entry than the failed live one) or the live entry has not itself failed.
+ * Otherwise `0` — the live entry is always `history[0]`.
+ */
+export function autoExpandFailedLiveIndex(
+	history: readonly { bakeStatus?: string | null }[] | null | undefined,
+	hasDeployParam: boolean
+): number | null {
+	if (hasDeployParam) return null;
+	if (!history || history.length === 0) return null;
+	return history[0]?.bakeStatus === 'Failed' ? 0 : null;
+}
+
 export function deployAnnouncement(args: {
 	version: string;
 	when: string;

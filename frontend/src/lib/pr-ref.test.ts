@@ -159,3 +159,14 @@ describe('parseChangeSlug', () => {
 		expect(parseChangeSlug([])).toBeNull();
 	});
 });
+
+import { changeSlugTitle } from './pr-ref';
+describe('changeSlugTitle (QA2 #12)', () => {
+	it('a pull request names its repo and number', () => {
+		expect(changeSlugTitle(['github.com', 'littlechimera', 'kuberik-testing', 'pull', '1'])).toEqual({ title: 'kuberik-testing #1', repo: 'littlechimera/kuberik-testing', ref: '#1' });
+	});
+	it('a commit names its repo and short sha', () => {
+		expect(changeSlugTitle(['github.com', 'o', 'r', 'a1b2c3d4e5f6'])?.title).toBe('r a1b2c3d');
+	});
+	it('a slug that names no repo is null', () => expect(changeSlugTitle(['1'])).toBeNull());
+});

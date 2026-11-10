@@ -2,6 +2,7 @@
 	// One vocabulary for the deploy states — see `bake-status.ts`. This dot
 	// label used to say `still baking`, the product's own field name, inside
 	// the accessible name of every in-flight dot on `/activity`.
+	import type { Snippet } from 'svelte';
 	import { displayTimeZone } from '$lib/timezone.svelte';
 	import { formatTimestamp } from '$lib/display-time';
 	import { BAKE_WORD } from '$lib/bake-status';
@@ -99,9 +100,10 @@
 		onEntryClick = undefined as ((serviceId: string, index: number) => void) | undefined,
 		onRangeChange = undefined as ((range: TimeRange) => void) | undefined,
 		labelWidth = 130,
-		labelEmptyLanes = false,
 		fanOverlaps = false,
-		rowHeight = 52
+		rowHeight = 52,
+		labelWidthCapFraction = 0.38,
+		extraControls = undefined as Snippet | undefined
 	}: {
 		services: ServiceRow[];
 		timeRange?: TimeRange;
@@ -122,11 +124,12 @@
 		 */
 		labelWidth?: number;
 		/**
-		 * Draw `No deployments in this period` on EVERY empty lane, not just
-		 * the current one. Opt-in: the history page has one lane and states
-		 * this only for the service being viewed, and that must not change.
+		 * ⛔ `labelEmptyLanes` IS GONE (2026-09-13). It existed to print `No
+		 * deployments in this period` on EVERY empty lane, which is what made
+		 * that sentence the loudest text on `/activity` — see the draw site.
+		 * An empty lane now states itself with a dashed track, which needs no
+		 * opt-in because it is right for one lane and for twenty.
 		 */
-		labelEmptyLanes?: boolean;
 		/**
 		 * Fan colliding marks apart vertically inside their lane — see
 		 * `spreadOverlaps`. OPT-IN, and deliberately so: it is right for a lane
@@ -145,6 +148,28 @@
 		 * ~24px of lane, so the caller drops to ~26 when it has many.
 		 */
 		rowHeight?: number;
+		/**
+		 * ⭐ THE 38% GUTTER CEILING IS A PHONE-WITH-MANY-LANES NUMBER. (2026-10-
+		 * 08, TL review round 3.) `LABEL_W`'s own note below derived 38% from
+		 * `/activity`'s 22-region fleet, where the plot's own resolution is
+		 * worth protecting from the gutter. The History tab draws 1-4 lanes,
+		 * so there is no busy plot to protect and the default cap instead
+		 * truncated `checkout-worker (dev)` to `checkout-…(dev)` at 390 for no
+		 * resolution gained — measured, the plot was mostly empty axis either
+		 * way. Callers with few lanes raise this; `/activity` leaves it at
+		 * its default.
+		 */
+		labelWidthCapFraction?: number;
+		/**
+		 * ⭐ A CALLER'S OWN TOGGLES, ON THIS ROW. (2026-10-08, TL review round
+		 * 3.) The History tab's "Show environments"/"Compare namespace"
+		 * pills used to sit on their OWN row above the range pills — two
+		 * filter rows stacked where one would do, and the same `.pill`
+		 * grammar both rows already share made the split read as an
+		 * accident. Rendered here, right-aligned, they join the one row the
+		 * chart already draws for its own range pills.
+		 */
+		extraControls?: Snippet;
 	} = $props();
 
 	/** Set the window on the reader's behalf and tell the caller it was them. */
@@ -168,7 +193,30 @@
 
 	// Layout constants
 	const PAD_R = 24;
-	const PAD_T = 16;
+	/** The top padding a chart WITHOUT a `now` marker needs — see `PAD_T`. */
+	const PAD_T_BASE = 16;
+	/**
+	 * ⭐ THE `now` LABEL GETS ITS OWN BAND, NOT THE FIRST LANE'S. (2026-09-13)
+	 *
+	 * Measured on `/activity` at 1D and 7D, 1920 and 390: the label was drawn
+	 * at `PAD_T + 10` — INSIDE the first lane, whose centre is `PAD_T + ROW_H/2`
+	 * (29px at the 26px lane height a 22-environment fleet uses). The newest
+	 * marks in a chart are by definition the ones nearest `now`, so the first
+	 * lane's right-most marks land on exactly those pixels: a red `7` count
+	 * bubble and a blue `10` sat on top of the word at 7D, and a `5` and a
+	 * live blue dot at 1D. The label paints later than the marks, so what a
+	 * reader actually saw was three glyphs of gray text over two coloured
+	 * discs — not a label, a smear.
+	 *
+	 * Reserving 12px above the lanes is the fix, rather than moving the label
+	 * DOWN the rule (which only relocates the collision to another lane) or
+	 * drawing it below the axis (where it would compete with the tick labels
+	 * that already name times). The band is spent only when the marker is
+	 * actually drawn — see `showsNow`, which is false for any data-fit or
+	 * brushed window — so a chart without a `now` edge is unchanged to the
+	 * pixel.
+	 */
+	const NOW_BAND = 12;
 	const PAD_B = 38;
 	const R_NORMAL = 5;
 	const R_ACTIVE = 8;
@@ -254,7 +302,45 @@
 		}
 		return Number.isFinite(best) ? best : null;
 	});
-	const isCompact = $derived(totalPoints > 0 && totalPoints < 3);
+	/**
+	 * ⭐ ZERO POINTS GETS THE COMPACT ROW TOO, NOT A BARE AXIS. (2026-10-08,
+	 * TL review round 3.) The guard used to read `totalPoints > 0`, so a
+	 * rollout with NO retained history fell through to the full chart branch
+	 * — pill row, "now" line, an empty plot with nothing on it — the exact
+	 * "composed, not blank" defect item 6 already closed for 1-2 points,
+	 * left open for 0. The compact row below already handles `totalPoints
+	 * === 0` honestly (no track, no "ago" clause — see `compactEntries` and
+	 * its render site).
+	 */
+	const isCompact = $derived(totalPoints < 3);
+
+	/**
+	 * ⭐ THE COMPACT ROW DRAWS A (TINY) TRACK, NOT JUST TWO WORDS. (2026-10-08,
+	 * TL review.) The text-only line this replaces left the card's whole body
+	 * blank under the "Deployment timeline" header on a rollout with one or
+	 * two retained deploys — the incident fixture's own `checkout-worker`
+	 * measured ~120px of empty surface under "2 deploys · 3m ago". A chart
+	 * with nothing to show a TREND of is still right to skip (the comment
+	 * `isCompact` is named for), but the card that holds it is not exempt
+	 * from looking composed. This draws the same marks the real chart would,
+	 * evenly spaced (there is no span worth a time axis at 1-2 points — see
+	 * `computeBounds`'s own "under 3 points" branch), oldest to newest, in
+	 * their status fill — the honest, small version of the real thing rather
+	 * than a sentence standing in for it.
+	 *
+	 * Scoped to the CURRENT lane only (falls back to the first lane), same
+	 * discipline the empty-period label already applies: this is the History
+	 * tab's own rollout, and a sibling comparison lane with no points of its
+	 * own has nothing to draw here regardless.
+	 */
+	const compactEntries = $derived.by(() => {
+		const svc = services.find((s) => s.isCurrent) ?? services[0];
+		if (!svc) return [];
+		return svc.history
+			.map((e) => ({ ts: new Date(e.timestamp).getTime(), bakeStatus: e.bakeStatus }))
+			.filter((e) => Number.isFinite(e.ts))
+			.sort((a, b) => a.ts - b.ts);
+	});
 
 	const bounds = $derived(computeBounds(timeRange));
 	const startMs = $derived(bounds.startMs);
@@ -265,19 +351,37 @@
 	    is very often NOT now, and labelling it so would be a lie the axis
 	    tells about its own scale. */
 	const showsNow = $derived(Math.abs(endMs - now.getTime()) < 1000);
+	/** The lanes start below the `now` label's own band when there is one. */
+	const PAD_T = $derived(showsNow ? PAD_T_BASE + NOW_BAND : PAD_T_BASE);
 	/**
 	 * ⚠️ THE GUTTER IS A CEILING, NOT A CONSTANT. At 390 the whole chart is
 	 * ~310px and a 130px lane-name gutter took 42% of it, so the plot — i.e.
 	 * the resolution, i.e. the only reason the chart exists — got what was
-	 * left. Capped at 30% of the container, the name truncates a little
+	 * left. Capped at a fraction of the container, the name truncates a little
 	 * sooner on a phone and the axis gets a quarter more room. Desktop is
-	 * unchanged: 30% of a 1,000px card is well above any caller's request.
+	 * unchanged: the cap on a 1,000px card is well above any caller's request.
+	 *
+	 * ⛔ THE FRACTION WAS 30% AND THAT LOST THE NAMES ENTIRELY ON A PHONE.
+	 * (2026-09-13) Both callers size their request from their own longest lane
+	 * name, so the cap only ever bites when the names are genuinely long —
+	 * which on `/activity` is the 22-region production fleet. Measured at 390:
+	 * 30% of a 310px card is 93px, i.e. 11 glyphs, and SIX lanes then drew the
+	 * IDENTICAL string — `prod-ap-so…` for both `prod-ap-south` and
+	 * `prod-ap-south-1`, `prod-us-ea…` for three more. A lane label that cannot
+	 * tell two lanes apart is not a truncation, it is a wrong answer. 38% (118px,
+	 * 15 glyphs) plus the middle elision below separates every name in that
+	 * fleet and costs the plot 25px it can afford; desktop is untouched, where
+	 * the request (143px on `/activity`) is far under either cap.
 	 */
-	const LABEL_W = $derived(Math.max(40, Math.min(labelWidth, Math.round(containerWidth * 0.3))));
+	const LABEL_W = $derived(
+		Math.max(40, Math.min(labelWidth, Math.round(containerWidth * labelWidthCapFraction)))
+	);
 	const ROW_H = $derived(rowHeight);
-	/** Characters that fit the gutter. `ui-monospace` at 11px measures ~6.6px
-	    per glyph, and the label is right-anchored 10px in from `LABEL_W`. */
-	const LABEL_CHARS = $derived(Math.max(6, Math.floor((LABEL_W - 14) / 6.7)));
+	/** Characters that fit the gutter. Inter at 12px (the lane label's own
+	    size, since the label fix to §6 — see the lane `<text>`'s own note)
+	    measures ~6.8px per average glyph, and the label is right-anchored
+	    10px in from `LABEL_W`. */
+	const LABEL_CHARS = $derived(Math.max(6, Math.floor((LABEL_W - 14) / 6.8)));
 	const plotW = $derived(Math.max(100, containerWidth - LABEL_W - PAD_R));
 	const chartH = $derived(PAD_T + Math.max(1, services.length) * ROW_H + PAD_B);
 
@@ -313,13 +417,28 @@
 	function statusFill(s?: string): string {
 		switch (s) {
 			case 'Failed':
-				return 'fill-red-700 dark:fill-red-400';
+				return 'fill-danger';
 			case 'InProgress':
-				return 'fill-yellow-700 dark:fill-yellow-400';
+				return 'fill-progress';
 			case 'Deploying':
-				return 'fill-blue-700 dark:fill-blue-400';
+				return 'fill-active';
 			default:
-				return 'fill-gray-500 dark:fill-gray-400';
+				return 'fill-fg-subtle';
+		}
+	}
+
+	/** A cluster bubble's ring: the worst member's state as a LINE, never a
+	 *  fill; a calm cluster's ring is the strong line. */
+	function clusterRing(s?: string): string {
+		switch (s) {
+			case 'Failed':
+				return 'stroke-danger';
+			case 'InProgress':
+				return 'stroke-progress';
+			case 'Deploying':
+				return 'stroke-active';
+			default:
+				return 'stroke-line-strong';
 		}
 	}
 
@@ -327,26 +446,26 @@
 	function statusInk(s?: string): string {
 		switch (s) {
 			case 'Failed':
-				return 'bg-red-700 dark:bg-red-400';
+				return 'bg-danger-solid';
 			case 'InProgress':
-				return 'bg-yellow-700 dark:bg-yellow-400';
+				return 'bg-progress-solid';
 			case 'Deploying':
-				return 'bg-blue-700 dark:bg-blue-400';
+				return 'bg-active-solid';
 			default:
-				return 'bg-gray-500 dark:bg-gray-400';
+				return 'bg-fg-subtle';
 		}
 	}
 
 	function statusText(s?: string): string {
 		switch (s) {
 			case 'Failed':
-				return 'text-red-700 dark:text-red-400';
+				return 'text-danger';
 			case 'InProgress':
-				return 'text-yellow-700 dark:text-yellow-400';
+				return 'text-progress';
 			case 'Deploying':
-				return 'text-blue-700 dark:text-blue-400';
+				return 'text-active';
 			default:
-				return 'text-gray-500 dark:text-gray-400';
+				return 'text-fg-subtle';
 		}
 	}
 
@@ -809,8 +928,39 @@
 		});
 	}
 
-	function truncate(s: string, n: number) {
-		return s.length > n ? s.slice(0, n - 1) + '…' : s;
+	/**
+	 * ⭐ THE LANE NAME ELIDES ITS MIDDLE, NOT ITS TAIL. (2026-09-13)
+	 *
+	 * A tail cut keeps the part these names SHARE and drops the part that
+	 * tells them apart: measured at 390 on `/activity`'s production fleet,
+	 * `prod-ap-south`, `prod-ap-south-1` and `prod-ap-southeast-2` all drew as
+	 * `prod-ap-so…`, and `prod-us-east`/`-1`/`-2` as `prod-us-ea…` — six lanes,
+	 * two strings. Region names are distinguished by their suffix, and so is
+	 * the History tab's `hello-world (dev)` lane, whose parenthesised
+	 * environment is the entire reason two of its lanes differ. Keeping both
+	 * ends is the only cut that survives either shape.
+	 *
+	 * The tail gets the odd glyph, deliberately: `-1` and `-2` are one
+	 * character of signal each and they are always at the end.
+	 *
+	 * ⛔ U-27 (2026-10-08, polish pass) — the 50/50 split above still lost
+	 * the signal at a tight budget. `prod-ap-northeast-1` and
+	 * `prod-ap-southeast-2` share an 8-char prefix (`prod-ap-`) and a common
+	 * 9-char suffix shape (`...east-N`); splitting their ~17-char budget
+	 * evenly put the head/tail boundary RIGHT ON `north`/`south` — both cuts
+	 * landed inside the one word that tells the two lanes apart, so both
+	 * drew `prod-ap-…theast-1`/`…theast-2`, legible only by the final
+	 * digit. The split is now 60/40 (head/tail): the differentiator word
+	 * typically sits right after a shared prefix, which the larger head
+	 * share is more likely to reach, while the tail still keeps enough
+	 * characters for the trailing `-N` or `(env)` this function's own doc
+	 * above exists to protect.
+	 */
+	function elide(s: string, n: number): string {
+		if (s.length <= n) return s;
+		const keep = n - 1;
+		const head = Math.ceil(keep * 0.6);
+		return s.slice(0, head) + '…' + s.slice(s.length - (keep - head));
 	}
 </script>
 
@@ -824,14 +974,30 @@
 			`deploy` is the act"); `ago` always carries its own number, never a
 			bare one.
 		-->
-		<div
-			class="flex min-h-[52px] items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400"
-		>
-			<span class="text-gray-700 dark:text-gray-200"
-				>{totalPoints} deploy{totalPoints === 1 ? '' : 's'}</span
-			>
+		<div class="flex min-h-[52px] flex-wrap items-center gap-3">
+			<span class="t-ui-sm shrink-0 text-fg">{totalPoints} deploy{totalPoints === 1 ? '' : 's'}</span>
+			{#if compactEntries.length > 0}
+				<div class="relative h-6 min-w-[60px] flex-1" aria-hidden="true">
+					<div class="absolute top-1/2 right-0 left-0 h-px -translate-y-1/2 bg-line"></div>
+					<div class="relative flex h-full items-center justify-between">
+						{#each compactEntries as e, idx (idx)}
+							<span class="h-2.5 w-2.5 rounded-full ring-2 ring-surface {statusInk(e.bakeStatus)}"></span>
+						{/each}
+					</div>
+				</div>
+			{/if}
 			{#if latestPointMs !== null}
-				<span>· {formatTimeAgoCompact(new Date(latestPointMs).toISOString(), now)} ago</span>
+				<span class="t-meta shrink-0 text-fg-subtle">
+					{formatTimeAgoCompact(new Date(latestPointMs).toISOString(), now)} ago
+				</span>
+			{/if}
+			{#if extraControls}
+				<!-- The compact row keeps the caller's own toggles reachable
+				     too — a rollout with little history of its own is
+				     exactly when "Compare namespace" is most useful. -->
+				<div class="ml-auto flex flex-wrap items-center gap-2">
+					{@render extraControls()}
+				</div>
 			{/if}
 		</div>
 	{:else}
@@ -852,65 +1018,41 @@
 	     control strip already uses one section down, for the identical
 	     reason (see that file's comment above its `mb-4 flex flex-wrap …
 	     gap-y-3`) — reused, not reinvented. -->
-	<div class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-3">
-		<!-- THE LOUDEST OBJECT IN THE PRODUCT WAS THIS BUTTON (2026-08-27,
-		     colour audit §2a). Selected, it was `bg-blue-600 #155dfc` at
-		     presence 207.8 — louder than the `stuck` alarm chip anywhere
-		     (204.1 light / 155.5 dark) and dEok 0.0591 from `Deploying`
-		     `blue-700`, i.e. below the JND. The loudest mark on `/activity`
-		     wore a STATUS hue and meant "you clicked this".
-		     It broke three more rules at once: `rounded-md` (banned radius),
-		     `px-2.5 py-1` (two off-scale spacing values) and a 12px type size
-		     that is not one of the nine roles. All four are fixed here by
-		     adopting the near-neutral selected state the `ALL / DEPLOYS /
-		     IN PROGRESS / FAILURES` row 30px below already uses, so the two
-		     filter rows are one control language instead of two.
-
-		     ⛔ AND A FIFTH ONE SURVIVED THAT PASS: `text-[11px] font-semibold
-		     uppercase tracking-wider` is a THIRD ad hoc uppercase size next to
-		     `/activity`'s own `KIND_FILTERS` row 30px below (`t-label`,
-		     10px/600) — one pixel apart, at the SAME radius, weight and
-		     padding, which reads as an accident rather than a decision.
-		     `app.css`'s own note above `.t-label` already closed this budget
-		     ("the old 9/10/11px sprawl collapses to exactly `t-label` and
-		     `t-micro`"); this row moves onto the documented role instead of
-		     widening it. (2026-09-02)
-		     ⛔ AND THE SELECTED PILL WAS 2PX SHORTER THAN ITS NEIGHBOURS. The
-		     unselected state carries a 1px border and the selected one had
-		     none, so on a border-box button the border-less one is 2px
-		     smaller in both axes at identical padding.
-		     `border-gray-900`/`border-gray-100` match the fill exactly, so
-		     the border is invisible and the box is the same size either
-		     way.
-		     ⛔ AND `py-1` MADE IT 2PX TALLER THAN THE ENV CHIPS ON `/activity`'S
-		     OWN CONTROL STRIP (F16, DESIGN PASS 5) — this row shares the exact
-		     class string with `/activity`'s `KIND_FILTERS` row by design (see
-		     that file's matching comment), so the fix travels with it: `py-1`
-		     → `py-[3px]` puts the pill at the env chip's hard 20px (`.chip` in
-		     app.css), instead of 22px. -->
-
-		{#each TIME_RANGES as { value, label }}
-			<button
-				class="pill-btn t-label rounded border px-3 py-[3px] transition-colors {isPreset(timeRange) &&
-				timeRange === value
-					? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
-					: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
-				onclick={() => pickRange(value)}
-			>
-				{label}
-			</button>
-		{/each}
+	<div class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-3" data-tour="range-switch">
+		<!-- ⭐ A SEGMENTED CONTROL, NOT A `.pill` FILTER ROW (round 5 review,
+		     2026-10-09). `.pill` + `aria-pressed` is this product's MULTI-SELECT
+		     filter idiom (§3.8) — the env/kind rows beside this chart, where
+		     "no selection" is a real, meaningful state ("everything"). A time
+		     range is the opposite shape: exactly one is always active, and
+		     "All" is just the widest preset, not an absence of filtering —
+		     drawing it as a `.pill` made the DEFAULT range look like a pressed
+		     filter chip sitting alone in its row. The `Pods`/`Tests` toggle in
+		     `LogsViewer.svelte` is the product's existing single-select
+		     reference: `role="group"` + `.btn.btn-ghost.btn-xs` with
+		     `aria-pressed`, reused verbatim here. -->
+		<div class="flex flex-wrap items-center gap-1" role="group" aria-label="Time range">
+			{#each TIME_RANGES as { value, label }}
+				<button
+					data-tour="range-{value}"
+					type="button"
+					class="btn btn-ghost btn-xs"
+					aria-pressed={isPreset(timeRange) && timeRange === value}
+					onclick={() => pickRange(value)}
+				>
+					{label}
+				</button>
+			{/each}
+		</div>
 		{#if !isPreset(timeRange)}
-			<div
-				class="ml-2 flex items-center gap-1 rounded border border-gray-200 bg-transparent px-3 py-1 text-[11px] font-medium text-gray-600 dark:border-gray-700 dark:text-gray-300"
-			>
-				<span class="font-mono">
+			<div class="t-meta ml-2 flex items-center gap-1 rounded-sm border border-line px-3 py-1 text-fg-muted">
+				<span class="t-code-sm">
 					{fmtTooltipDate(new Date(timeRange.start).toISOString())} – {fmtTooltipDate(
 						new Date(timeRange.end).toISOString()
 					)}
 				</span>
 				<button
-					class="pill-btn rounded px-1 hover:bg-gray-100 dark:hover:bg-gray-700"
+					type="button"
+					class="rounded-xs px-1 hover:bg-hover"
 					onclick={() => {
 						timeRange = '7d';
 					}}
@@ -921,21 +1063,22 @@
 				</button>
 			</div>
 		{:else}
-			<span class="ml-2 hidden text-xs text-gray-500 sm:inline dark:text-gray-400">
-				drag to zoom
-			</span>
+			<span class="t-meta ml-2 hidden text-fg-subtle sm:inline"> drag to zoom </span>
+		{/if}
+		{#if extraControls}
+			<div class="ml-auto flex flex-wrap items-center gap-2">
+				{@render extraControls()}
+			</div>
 		{/if}
 	</div>
 
 	<!-- Chart container -->
 	<div
 		bind:this={chartWrapperEl}
-		class="relative overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+		class="relative overflow-hidden rounded-md border border-line bg-surface"
 	>
 		{#if services.length === 0}
-			<div class="flex h-24 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-				No data
-			</div>
+			<div class="t-body flex h-24 items-center justify-center text-fg-subtle">No data</div>
 		{:else}
 			<svg
 				style="width: 100%; display: block; touch-action: none; cursor: {brushStartX !== null
@@ -954,7 +1097,13 @@
 				aria-label="Deployment timeline — one mark per deploy, newest to the right. Every mark is also a row in the list below. Each lane is one tab stop; left and right arrows move between the marks in a lane."
 
 			>
-				<!-- Row backgrounds -->
+				<!-- Row backgrounds. The current lane is `bg-selected` (the
+				     product's one "this is the one of interest" wash — the
+				     same mark the current nav item and the history list's own
+				     selected row use), not a blue tint: blue is `Deploying`'s
+				     own reserved hue, and this lane is not necessarily
+				     deploying — see the lane-label note below for the sibling
+				     fix to this same defect. -->
 				{#each services as svc, i}
 					{@const y = PAD_T + i * ROW_H}
 					<rect
@@ -963,10 +1112,10 @@
 						width={containerWidth}
 						height={ROW_H}
 						class={svc.isCurrent
-							? 'fill-blue-50 dark:fill-blue-950/20'
+							? 'fill-selected'
 							: i % 2 === 0
 								? 'fill-transparent'
-								: 'fill-gray-50 dark:fill-gray-800/30'}
+								: 'fill-subtle'}
 					/>
 				{/each}
 
@@ -979,9 +1128,34 @@
 						y2={PAD_T + services.length * ROW_H}
 						stroke-width={0.5}
 						stroke-dasharray="3 3"
-						class="stroke-gray-200 dark:stroke-gray-700"
+						class="stroke-line"
 					/>
 				{/each}
+
+				<!-- ⛔ U-27 (2026-10-08, polish pass) — "NOW" LINE PAINTS BEHIND
+				     THE LANES, NOT ON TOP. This `<line>` used to live after the
+				     per-lane loop below, which — since later SVG elements paint
+				     ON TOP of earlier ones — drew its dashes straight across any
+				     cluster-count bubble that happened to sit near the right
+				     edge (the common case: the newest, "now"-adjacent cell is
+				     exactly where several deploys cluster). Measured live at
+				     1440: the `platform-prod` and `dev` lanes' own count bubbles
+				     ("2", "33") both read as sliced through by the dashed rule.
+				     Moved ahead of the lanes so an opaque bubble fill (drawn
+				     after this) now sits visually on top of the line instead of
+				     under it — the "now" label text (below, outside every lane's
+				     own y-range) is unaffected either way and stays where it was. -->
+				{#if showsNow}
+					<line
+						x1={containerWidth - PAD_R}
+						y1={PAD_T - NOW_BAND + 3}
+						x2={containerWidth - PAD_R}
+						y2={PAD_T + services.length * ROW_H}
+						stroke-width={1.5}
+						stroke-dasharray="4 2"
+						class="stroke-fg-subtle"
+					/>
+				{/if}
 
 				<!-- Per-service swimlanes -->
 				{#each lanes as { svc, entries, order, xs, dys, hitBoxes: laneHitBoxes, clusterOf, clusters, clusterRuns: laneClusterRuns }, i}
@@ -1000,18 +1174,22 @@
 					     name on this page prints; the lane stays visually
 					     distinguished from its siblings by WEIGHT (darker than the
 					     muted `gray-500` non-current rows), not by borrowing a
-					     colour that already means something else. -->
+					     colour that already means something else.
+
+					     ⛔ AND IT WAS MONO. (2026-10-08, TL review.) A lane label
+					     is a ROLLOUT/SERVICE NAME (plus its parenthesised
+					     environment on `/activity`) — principle 3 reserves mono
+					     for what a machine minted, never a name. Set in the same
+					     sans stack the axis's own tick labels already use a few
+					     lines down, so the one SVG chart in the product does not
+					     run a second type system from its text labels. -->
 					<text
 						x={LABEL_W - 10}
 						y={cy + 4}
 						text-anchor="end"
-						font-size="11"
-						font-family="ui-monospace, 'Cascadia Code', Menlo, monospace"
-						class={svc.isCurrent
-							? 'fill-gray-900 dark:fill-white'
-							: 'fill-gray-500 dark:fill-gray-400'}
+						class="chart-text-meta {svc.isCurrent ? 'fill-fg' : 'fill-fg-subtle'}"
 					>
-						{truncate(svc.name, LABEL_CHARS)}
+						{elide(svc.name, LABEL_CHARS)}
 					</text>
 
 					<!-- Separator after label -->
@@ -1021,19 +1199,28 @@
 						x2={LABEL_W - 4}
 						y2={PAD_T + (i + 1) * ROW_H}
 						stroke-width={1}
-						class="stroke-gray-200 dark:stroke-gray-700"
+						class="stroke-line"
 					/>
 
-					<!-- Horizontal swim-lane track -->
+					<!-- Horizontal swim-lane track.
+					     ⭐ AN EMPTY LANE'S TRACK IS DASHED, AND THAT IS THE WHOLE
+					     STATEMENT. (2026-09-13) See the deleted sentence below for
+					     what this replaces: the track is already drawn across every
+					     lane, so breaking it into dashes says "nothing landed here"
+					     in the mark the lane already had, at zero new ink and zero
+					     new words. -->
+					<!-- ⛔ NOT A BLUE TRACK ANY MORE — see the row-background note
+					     above; `isCurrent` is told by WEIGHT (1.5px vs 1px), the
+					     same resolution the lane-label fix already settled on,
+					     not by borrowing `Deploying`'s own hue. -->
 					<line
 						x1={LABEL_W}
 						y1={cy}
 						x2={containerWidth - PAD_R}
 						y2={cy}
 						stroke-width={svc.isCurrent ? 1.5 : 1}
-						class={svc.isCurrent
-							? 'stroke-blue-300 dark:stroke-blue-700'
-							: 'stroke-gray-200 dark:stroke-gray-700'}
+						stroke-dasharray={entries.length === 0 ? '2 4' : undefined}
+						class={svc.isCurrent ? 'stroke-line-strong' : 'stroke-line'}
 					/>
 
 					<!-- Deployment dots.
@@ -1062,12 +1249,7 @@
 							     already grows on hover, so the halo only has to say WHICH
 							     one and can be neutral. -->
 							{#if active}
-								<circle
-									cx={x}
-									cy={dy}
-									r={r + 5}
-									class="fill-gray-900/10 dark:fill-gray-100/15"
-								/>
+								<circle cx={x} cy={dy} r={r + 5} class="fill-fg/10" />
 							{/if}
 
 							<!-- THE ROLLBACK RING. A deploy that went backwards is the one
@@ -1084,7 +1266,7 @@
 									fill="none"
 									stroke-width={1.5}
 									pointer-events="none"
-									class="stroke-gray-900 dark:stroke-gray-100"
+									class="stroke-fg"
 								/>
 							{/if}
 
@@ -1161,7 +1343,7 @@
 								aria-hidden="true"
 								class={merged
 									? 'fill-transparent stroke-transparent'
-									: `stroke-white dark:stroke-gray-800 ${statusFill(e.bakeStatus)}`}
+									: `stroke-surface ${statusFill(e.bakeStatus)}`}
 							/>
 						{/each}
 
@@ -1209,27 +1391,52 @@
 								     chart and the one number a merged mark exists to make
 								     legible — shrinking it below the floor to fit the
 								     bubble was solving the wrong side of the equation.
-								     `R_CLUSTER` grew by 0.5 instead. -->
-								{@const cr = c.count > 9 ? R_CLUSTER + 2 : R_CLUSTER}
+								     `R_CLUSTER` grew by 0.5 instead.
+								     ⛔ D-24 (2026-10-08, polish pass) — a TWO-digit count
+								     ("33") still overran that disc. Two causes, both fixed
+								     here: the `+2` bump was sized for the WORST case being
+								     exactly two digits, never three (bump now scales with
+								     digit count, `digits - 1`, so a rare 3-digit cluster
+								     gets the same margin a 2-digit one does today); and the
+								     numeral had no `font-family`, so it fell through to the
+								     page's default sans body font — wider per digit, bold,
+								     than the monospace face this chart's own lane labels
+								     already use a few lines up. Same face here now, so two
+								     digits measure predictably inside the disc instead of
+								     against an inherited, wider one. -->
+								{@const clusterDigits = String(c.count).length}
+								{@const cr = clusterDigits > 1 ? R_CLUSTER + 1.5 * (clusterDigits - 1) : R_CLUSTER}
 								{@const run = laneClusterRuns[ci]}
 								<circle
 									cx={c.cx}
 									cy={cy}
 									r={cr}
-									stroke-width={1}
+									stroke-width={1.5}
 									pointer-events="none"
 									aria-hidden="true"
-									class="stroke-white dark:stroke-gray-800 {statusFill(c.status)}"
+									class="fill-surface {clusterRing(c.status)}"
 								/>
+								<!-- ⭐ A CLUSTER IS A NEUTRAL DISC; ITS STATE IS THE RING.
+								     (design rollout, 2026-10-08) It was a disc FILLED with
+								     the worst member's status solid and a white count —
+								     status as area, and a solid YELLOW disc for a checking
+								     cluster ("yellow never fills", §2.5). Now: surface fill,
+								     the state in a 1.5px ring, the count in Inter 11px in
+								     the fg ink (danger ink when the worst member failed). -->
+								<!-- `.chart-text-label` = `t-label`'s own 11/600 +6%
+								     tracking (round 5/6 review: "11px t-label" is the one
+								     role this size may be). A FIGURE, not a word, so
+								     `uppercase` is a no-op and skipped; the size/weight/
+								     tracking are the role's, so two digits still measure
+								     predictably against `cr`'s own digit-count margin. -->
 								<text
 									x={c.cx}
-									y={cy + 3.5}
+									y={cy + 4}
 									text-anchor="middle"
-									font-size="10"
-									font-weight="600"
+									style="font-variant-numeric: tabular-nums"
 									pointer-events="none"
 									aria-hidden="true"
-									class="fill-white dark:fill-gray-900"
+									class="chart-text-label {c.status === 'Failed' ? 'fill-danger' : 'fill-fg'}"
 								>
 									{c.count}
 								</text>
@@ -1267,14 +1474,31 @@
 						{/each}
 					</g>
 
-					<!-- Empty period label -->
-					{#if entries.length === 0 && (svc.isCurrent || labelEmptyLanes)}
+					<!-- Empty period label.
+					     ⛔ IT WAS THE LOUDEST TEXT IN THE CHART, ONCE PER EMPTY LANE.
+					     (2026-09-13) Measured on `/activity` at 1D, 1920 and 390:
+					     THREE lanes each printed `No deployments in this period`
+					     centred in the plot — a 29-character sentence at the axis
+					     labels' own size and ink, repeated, saying the same thing
+					     the absence of any mark already says. It is the five-swatch
+					     legend this file deleted in 2026-08 arriving as prose: *"a
+					     page that needs a legend to explain a missing element is a
+					     page whose encoding is not carrying"*. The lane's own track
+					     goes dashed instead (above), and `laneLabel` — the lane's
+					     accessible name, which already ends `— no deploys in this
+					     period` — is untouched, so nothing is lost to a reader who
+					     cannot see the dashes.
+					     ⚠️ IT SURVIVES FOR `isCurrent`, AND ONLY THERE. That is the
+					     History tab, where the chart is ONE lane: with no marks and
+					     no sibling lanes the whole card would otherwise be an empty
+					     box, and there is no repetition to cause. `/activity` never
+					     sets `isCurrent` on a lane, so its 20-odd lanes stay quiet. -->
+					{#if entries.length === 0 && svc.isCurrent}
 						<text
 							x={LABEL_W + plotW / 2}
 							y={cy + 4}
 							text-anchor="middle"
-							font-size="11"
-							class="fill-gray-500 dark:fill-gray-400"
+							class="chart-text-meta fill-fg-subtle"
 						>
 							No deployments in this period
 						</text>
@@ -1288,7 +1512,7 @@
 					x2={containerWidth - PAD_R}
 					y2={PAD_T + services.length * ROW_H}
 					stroke-width={1}
-					class="stroke-gray-500 dark:stroke-gray-400"
+					class="stroke-fg-subtle"
 				/>
 
 				<!-- X-axis ticks + labels -->
@@ -1299,15 +1523,13 @@
 						x2={tick.x}
 						y2={PAD_T + services.length * ROW_H + 5}
 						stroke-width={1}
-						class="stroke-gray-500 dark:stroke-gray-400"
+						class="stroke-fg-subtle"
 					/>
 					<text
 						x={tick.x}
 						y={PAD_T + services.length * ROW_H + 18}
 						text-anchor="middle"
-						font-size="11"
-						font-family="ui-sans-serif, system-ui, sans-serif"
-						class="fill-gray-500 dark:fill-gray-400"
+						class="chart-text-meta fill-fg-subtle"
 					>
 						{tick.label}
 					</text>
@@ -1324,37 +1546,39 @@
 				     marker only when `endMs` is (within a second of) the
 				     actual current time. -->
 				{#if showsNow}
-					<line
-						x1={containerWidth - PAD_R}
-						y1={PAD_T}
-						x2={containerWidth - PAD_R}
-						y2={PAD_T + services.length * ROW_H}
-						stroke-width={1.5}
-						stroke-dasharray="4 2"
-						class="stroke-gray-500 dark:stroke-gray-400"
-					/>
-					<!-- Was 9px — under the product's 10px floor, and the only other
+					<!-- The rule itself now draws ahead of the lanes (see the
+					     U-27 note above, before the swimlane loop) — only the
+					     label stays here. It still starts conceptually in the
+					     label's own band (`NOW_BAND`) so the dash and the word
+					     read as one mark, even though they are no longer drawn
+					     back-to-back in DOM order.
+					     Was 9px — under the product's 10px floor, and the only other
 					     offender in this chart besides the cluster-bubble numeral
-					     above. (2026-09-02) -->
+					     above. (2026-09-02)
+					     ⛔ AND IT USED TO SIT AT `PAD_T + 10`, I.E. IN THE FIRST LANE.
+					     See `NOW_BAND` for the measurement; the label now sits in the
+					     band reserved above the lanes, 4px clear of the top mark. -->
 					<text
 						x={containerWidth - PAD_R - 4}
-						y={PAD_T + 10}
+						y={PAD_T - NOW_BAND + 1}
 						text-anchor="end"
-						font-size="11"
-						class="fill-gray-500 dark:fill-gray-400"
+						class="chart-text-meta fill-fg-subtle"
 					>
 						now
 					</text>
 				{/if}
 
-				<!-- Brush overlay (drag-to-zoom) -->
+				<!-- Brush overlay (drag-to-zoom) — the accent hue is right here:
+				     this is the reader's own in-progress selection, the same
+				     family as the focus ring and the primary button, not a
+				     deploy state. -->
 				{#if brushStartX !== null && brushEndX !== null}
 					<rect
 						x={Math.min(brushStartX, brushEndX)}
 						y={PAD_T}
 						width={Math.abs(brushEndX - brushStartX)}
 						height={services.length * ROW_H}
-						class="fill-blue-500/15 stroke-blue-500"
+						class="fill-active/15 stroke-active"
 						stroke-width="1"
 						stroke-dasharray="3 3"
 						pointer-events="none"
@@ -1367,37 +1591,37 @@
 	<!-- Tooltip (outside chart wrapper to avoid overflow clipping) -->
 	{#if tooltipEntry}
 		{@const { entry, svcName } = tooltipEntry}
+		<!-- REFERENCE REGION: `Toast`'s own overlay surface — `rounded-md
+		     bg-overlay` plus the product's one overlay shadow token — so a
+		     floating popover reads the same whether it is a toast or a
+		     chart tooltip. -->
 		<div
-			class="pointer-events-none absolute z-50 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm dark:border-gray-700 dark:bg-gray-800/95"
+			class="pointer-events-none absolute z-50 rounded-md border border-line bg-overlay p-3 backdrop-blur-sm"
 			style="left: {tipLeft}px; top: {tipTop}px; width: {TOOLTIP_W}px; transform: {tipAboveDot
 				? 'translateY(-100%)'
-				: 'translateY(0)'};"
+				: 'translateY(0)'}; box-shadow: var(--k-shadow-overlay);"
 		>
 			<div class="mb-1.5 flex items-center gap-2">
-				<span
-					class="h-2.5 w-2.5 flex-shrink-0 rounded-full {statusInk(entry.bakeStatus)}"
-				></span>
-				<span class="font-mono text-xs font-semibold text-gray-900 dark:text-white">
+				<span class="h-2.5 w-2.5 shrink-0 rounded-full {statusInk(entry.bakeStatus)}"></span>
+				<span class="t-code-sm text-fg">
 					{entry.version.version || entry.version.revision?.slice(0, 12) || entry.version.tag}
 				</span>
 			</div>
 			{#if entry.subject}
-				<div class="text-xs font-medium text-gray-700 dark:text-gray-200">{entry.subject}</div>
+				<div class="t-meta text-fg-muted">{entry.subject}</div>
 			{/if}
-			<div class="text-xs text-gray-500 dark:text-gray-400">{fmtTooltipDate(entry.timestamp)}</div>
+			<div class="t-meta text-fg-subtle">{fmtTooltipDate(entry.timestamp)}</div>
 			{#if svcName}
-				<div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{svcName}</div>
+				<div class="t-meta mt-1 text-fg-subtle">{svcName}</div>
 			{/if}
-			<div class="mt-1 text-xs font-medium {statusText(entry.bakeStatus)}">
+			<div class="t-meta mt-1 {statusText(entry.bakeStatus)}">
 				{entry.bakeStatus || 'Unknown'}
 			</div>
 			{#if entry.mark === 'rollback'}
-				<div class="mt-1 text-xs font-semibold text-gray-900 dark:text-white">
-					Rolled back to an older release
-				</div>
+				<div class="t-meta mt-1 text-fg">Rolled back to an older release</div>
 			{/if}
 			{#if entry.triggeredBy}
-				<div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+				<div class="t-meta mt-0.5 text-fg-subtle">
 					{entry.triggeredBy.kind === 'User' ? entry.triggeredBy.name : 'System'}
 				</div>
 			{/if}
@@ -1415,3 +1639,30 @@
 	     deploy that is not finished or not fine", which needs no key. -->
 	{/if}
 </div>
+
+<style>
+	/* ⭐ THE TWO SVG TYPE ROLES, DECLARED ONCE (round 6 review, 2026-10-09:
+	   "no stray font-family/size literals left" — this chart's five `<text>`
+	   elements each repeated the same `font-size`/`font-family` presentation
+	   attributes by hand, which is exactly how one of them drifted to the
+	   page's default sans before (see the lane-label `<text>`'s own history
+	   above). `var(--font-sans)` is the token `language.css` already
+	   defines (Inter + the system fallback stack) — SVG `<text>` takes CSS
+	   `class` the same as HTML, so the role is ONE declaration now, applied
+	   five times, instead of five independent copies of the same four
+	   properties. `t-meta` (12/400) covers every text label in this chart
+	   except the cluster-bubble count, which is `t-label`'s own 11/600 +6%
+	   tracking — a FIGURE, not a word, so `text-transform: uppercase` is
+	   left off (a no-op on digits) rather than carried for form's sake. */
+	.chart-text-meta {
+		font-family: var(--font-sans);
+		font-size: 12px;
+		font-weight: 400;
+	}
+	.chart-text-label {
+		font-family: var(--font-sans);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+	}
+</style>

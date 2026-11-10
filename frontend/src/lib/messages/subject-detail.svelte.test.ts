@@ -51,7 +51,7 @@ async function mount(Comp: unknown, params: Record<string, string>, fetcher?: an
 	const payload = fleet();
 	vi.stubGlobal('fetch', vi.fn(fetcher ?? respond(payload)));
 	const r = render(WithQueryClient, { props: { component: Comp as any } });
-	await waitFor(() => expect(screen.getAllByText(/alpha-app|r1aaaaa/i).length).toBeGreaterThan(0), {
+	await waitFor(() => expect(screen.getAllByText(/alpha-app|r1aaaaa|invoice-api|checkout-edge/i).length).toBeGreaterThan(0), {
 		timeout: 5000
 	});
 	return r;
@@ -123,9 +123,11 @@ const CASES: Array<{
 	Comp: unknown;
 	params: Record<string, string>;
 	fetcher?: any;
+	/** the page prints none of the claims under test (r39 /envs/<name> says state words, not blocking sentences): the violations check still runs, the `checked > 0` guard does not */
+	noClaims?: boolean;
 }> = [
 	{ route: '/apps/[name]', Comp: AppDetail, params: { name: 'alpha-app' } },
-	{ route: '/envs/[name]', Comp: EnvDetail, params: { name: 'dev' } },
+	{ route: '/envs/[name]', Comp: EnvDetail, params: { name: 'dev' }, noClaims: true },
 	{
 		route: '/rollouts/[cluster]/[namespace]/[name]',
 		Comp: RolloutDetail,
@@ -160,7 +162,7 @@ describe('a page that is about one thing fixes that axis, and still names the re
 						`\n\n  ${spec.why}\n`
 				);
 			}
-			expect(checked, `${c.route} rendered none of the claims under test`).toBeGreaterThan(0);
+			if (!c.noClaims) expect(checked, `${c.route} rendered none of the claims under test`).toBeGreaterThan(0);
 		});
 	}
 
@@ -225,11 +227,16 @@ describe('rollout detail and the app page give the same answer about one rollout
 		const escalates = (t: string) => /This will not clear on its own/.test(t);
 		const selfClears = (t: string) => /clears on its own|Nobody has to approve anything/.test(t);
 
-		expect(
-			escalates(appText),
-			'the app page and rollout detail disagree about whether a person is needed'
-		).toBe(escalates(detailText));
-		expect(selfClears(appText)).toBe(selfClears(detailText));
+		/* 2026-11-09: the r34 app page draws a hold as a `Holding` rollup of rules ("3 holding"), not a self-clears / will-not-clear sentence -- it makes no claim either way, so the test is contradiction-only: a page that DOES say it may not disagree with rollout detail. */
+		if (escalates(appText)) {
+			expect(escalates(detailText), 'the app page says a person is needed, rollout detail does not').toBe(true);
+		}
+		if (escalates(detailText)) {
+			expect(selfClears(appText), 'rollout detail says a person is needed, the app page says it clears on its own').toBe(false);
+		}
+		if (selfClears(detailText)) {
+			expect(escalates(appText), 'rollout detail says it clears on its own, the app page says a person is needed').toBe(false);
+		}
 	});
 });
 

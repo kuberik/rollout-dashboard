@@ -53,11 +53,11 @@ export type MarkTone = 'live' | 'stuck' | 'active' | 'queued' | 'none' | 'failed
 
 /** One collapsed mark — one family, worst state among the regions it holds. */
 export type LandingMarkVM = {
-	/** `DEV` / `STG` / `PRD` / `TEST`, or a 3-letter fallback. Never the raw env name. */
+	/** `DEV` / `STAGING` / `PROD` / `TEST`, or the env's own uppercased name. Never abbreviated, never the raw (non-uppercased) env name. */
 	family: string;
 	/**
 	 * ⭐ RULING 6. Canonical tier position (`env-order.ts`'s own dev → test →
-	 * staging → prod, 0-indexed) so a column layout can align DEV/STG/PRD
+	 * staging → prod, 0-indexed) so a column layout can align DEV/STAGING/PROD
 	 * across rows even when one service's own family list has a gap (no
 	 * TEST tier, say) — the caller places this mark in column `familyOrder`
 	 * rather than the next free slot. An unmatched/fallback family (§2a's
@@ -75,6 +75,14 @@ export type LandingMarkVM = {
 	href: string;
 	/** Ring + word ink. `null` when no region in the mark carries a theme. */
 	theme: EnvironmentTheme | null;
+	/**
+	 * ⭐ shared/approval-words (2026-10-12). `true` exactly when the worst
+	 * region's own `PrCell.approvalWait` is `true` — carried through
+	 * unchanged from `PrCell` (that field's own doc comment has the full
+	 * reasoning), never re-derived here. Only meaningful alongside `state
+	 * === 'gated'`; `false` on every other state.
+	 */
+	approvalWait: boolean;
 };
 
 /** The closed vocabulary a service's own worst state folds to — used both
@@ -183,7 +191,7 @@ export function classify(state: PrState): LandingVerdictWord {
  *  know about), but the mark's own tone must not reuse `active`'s hue,
  *  which is `deploying`/`baking`/`retrying`'s "something is moving right
  *  now" — a queued cell is the opposite of that. */
-function toneOf(state: PrState): MarkTone {
+export function toneOf(state: PrState): MarkTone {
 	if (state === 'queued') return 'queued';
 	switch (classify(state)) {
 		case 'held':
@@ -200,7 +208,7 @@ function toneOf(state: PrState): MarkTone {
  *  vocabulary (`envFamilyWord`'s closed set) — an unmatched/fallback family
  *  (e.g. `CAN` for `canary`) sorts after every named tier, not before or
  *  interleaved with one. */
-const FAMILY_ORDER: Record<string, number> = { DEV: 0, TEST: 1, STG: 2, PRD: 3 };
+const FAMILY_ORDER: Record<string, number> = { DEV: 0, TEST: 1, STAGING: 2, PROD: 3 };
 
 function familyOrderFor(family: string): number {
 	return FAMILY_ORDER[family] ?? Object.keys(FAMILY_ORDER).length;
@@ -241,7 +249,8 @@ function collapseFamilies(cells: readonly PrCell[], now: Date, builtElsewhere: b
 			tone: toneOf(worst.state),
 			sentence,
 			href: rolloutPath(worst.cluster, worst.namespace, worst.rolloutName),
-			theme: worst.theme
+			theme: worst.theme,
+			approvalWait: worst.state === 'gated' && worst.approvalWait === true
 		} satisfies LandingMarkVM;
 	});
 }

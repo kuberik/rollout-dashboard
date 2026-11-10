@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { historyTicks } from './deploy-history';
+import { historyTicks, isHistoryCurrentlyFailed } from './deploy-history';
 
-const h = (bakeStatus: string) => ({ timestamp: '2026-07-19T00:00:00Z', version: { tag: 'v' }, bakeStatus }) as any;
+const h = (bakeStatus: string, timestamp = '2026-07-19T00:00:00Z') =>
+  ({ timestamp, version: { tag: 'v' }, bakeStatus }) as any;
 
 describe('historyTicks', () => {
   it('pads to length with none on the left', () => {
@@ -18,5 +19,29 @@ describe('historyTicks', () => {
   });
   it('handles empty/undefined', () => {
     expect(historyTicks(undefined, 2)).toEqual(['none', 'none']);
+  });
+});
+
+describe('isHistoryCurrentlyFailed — qa9 B1: red only while the newest entry is the failure', () => {
+  it('true when the newest (first-with-timestamp) entry is Failed', () => {
+    expect(isHistoryCurrentlyFailed([h('Failed')])).toBe(true);
+  });
+
+  it('false when the failure is older than the current (succeeded) entry', () => {
+    // history is newest-first: index 0 is current.
+    expect(isHistoryCurrentlyFailed([h('Succeeded'), h('Failed')])).toBe(false);
+  });
+
+  it('an older failure stays resolved even when a NEWER entry also failed (not the same one)', () => {
+    expect(isHistoryCurrentlyFailed([h('Failed'), h('Succeeded'), h('Failed')])).toBe(true);
+  });
+
+  it('skips a leading entry with no timestamp yet (not the newest)', () => {
+    expect(isHistoryCurrentlyFailed([h('Succeeded', ''), h('Failed')])).toBe(true);
+  });
+
+  it('false for empty/undefined history', () => {
+    expect(isHistoryCurrentlyFailed(undefined)).toBe(false);
+    expect(isHistoryCurrentlyFailed([])).toBe(false);
   });
 });

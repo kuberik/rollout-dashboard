@@ -188,3 +188,31 @@ export function regionLabel(envName: string | null | undefined): string {
 		.trim();
 	return stripped || raw;
 }
+
+/**
+ * QA #10 — ONE place that decides whether "regions" may be said. Regions are SITES (`sites-waves.ts`: one cluster's instance of a tier),
+ * never environments, rollouts or deploy events: three rollouts of an app that all sit in the one default site are ONE site, and one
+ * site has no region wording at all. `labels` are the place labels of the places being counted (an unlabelled place is the default site).
+ */
+const TIER_WORDS = new Set(['dev', 'development', 'test', 'testing', 'qa', 'staging', 'stage', 'preprod', 'prod', 'production', 'default']);
+/** ONE normalisation: a site label that is empty or just a tier word ("prod", "production") is the DEFAULT site; every other label is a named site. */
+export const siteKey = (l: string | null | undefined): string => {
+	const k = (l ?? '').trim().toLowerCase();
+	return !k || TIER_WORDS.has(k) ? 'default' : k;
+};
+export function siteCount(labels: readonly (string | null | undefined)[]): number {
+	return new Set(labels.map(siteKey)).size;
+}
+/** "3 prod regions" only when more than one SITE is involved; null otherwise (say the place's own name, never a count). */
+export function regionsPhrase(sites: number, tier = ''): string | null {
+	return sites > 1 ? `${sites} ${tier ? tier + ' ' : ''}regions` : null;
+}
+
+/**
+ * The prod cell's count ("3 regions", "1 of 3 regions") — said in regions ONLY when more than one SITE is involved (the site rule above); several prod
+ * entries on one default site are "3 prod" / "1 of 3 prod", never "regions" (QA2). `off` = the entries sharing the worst state, or null when nothing is off.
+ */
+export function prodCountPhrase(envs: readonly (string | null | undefined)[], off: readonly unknown[] | null): string {
+	const noun = siteCount(envs) > 1 ? 'regions' : 'prod';
+	return off ? `${off.length} of ${envs.length} ${noun}` : `${envs.length} ${noun}`;
+}

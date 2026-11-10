@@ -34,16 +34,19 @@
 	// two-theme product, which `DESIGN.md` counts as a defect on its own.
 	// The steps are the ones `BakeStatusIcon.TONE` already declares, so the
 	// spinning yellow and the settled yellow are one colour. Zero new values.
+	// ⭐ MIGRATED TO THE DESIGN LANGUAGE'S STATUS HUES. (2026-10-08) `yellow`
+	// is `progress` (checking/baking), `blue` is `active` (deploying), `red`
+	// is `danger`, `green` is `success`, `orange` stays its own held-family
+	// hue for the one caller (`ClearPinModal`) that still asks for it
+	// explicitly as `orange` rather than through a status role.
 	const colorClass = $derived(
 		{
-			yellow:
-				'border-yellow-700/30 border-t-yellow-700 dark:border-yellow-400/30 dark:border-t-yellow-400',
-			blue: 'border-blue-500/30 border-t-blue-500',
-			orange:
-				'border-orange-700/30 border-t-orange-700 dark:border-orange-400/30 dark:border-t-orange-400',
-			red: 'border-red-500/30 border-t-red-500',
-			green: 'border-green-700/30 border-t-green-700 dark:border-green-400/30 dark:border-t-green-400',
-			gray: 'border-gray-400/30 border-t-gray-500 dark:border-gray-500/30 dark:border-t-gray-300',
+			yellow: 'border-progress-line border-t-progress',
+			blue: 'border-active-line border-t-active',
+			orange: 'border-held-line border-t-held',
+			red: 'border-danger-line border-t-danger',
+			green: 'border-success-line border-t-success',
+			gray: 'border-line-strong border-t-fg-subtle',
 			white: 'border-white/40 border-t-white'
 		}[color]
 	);

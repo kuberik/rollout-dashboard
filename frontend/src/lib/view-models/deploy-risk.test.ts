@@ -5,10 +5,12 @@ import {
 	deployActionLabel,
 	deployDirection,
 	deployIntent,
+	failedHereVerdict,
 	gatesAllow,
 	isProductionTarget,
 	rollbackTarget,
 	rolloutEnvironmentName,
+	rowShowsFailed,
 	retryConsequences,
 	retryIntent,
 	retryTag,
@@ -16,6 +18,7 @@ import {
 	targetPhrase,
 	typedPrompt
 } from './deploy-risk';
+import { blockingGateNames } from './promotion';
 import type { Rollout } from '../../types';
 
 /**
@@ -249,11 +252,18 @@ describe('confirmLevel — THE SAFETY RULE', () => {
 });
 
 describe('copy', () => {
-	it('names production in the notice and on the button', () => {
+	// ⭐ ROUND 5 (squad-fleet, SPEC ruling "one place name… never
+	// 'production'") — `targetPhrase` now prints the environment's real
+	// name always ("prod"), never the generic word "production", so every
+	// sentence built on it reads the same place name the row/map/header
+	// that opened this dialog already used.
+	it('names prod (the real place name, never "production") in the notice and on the button', () => {
 		const intent = deployIntent(rollout(), NEWEST);
-		expect(confirmNotice(intent)).toContain('production');
-		expect(deployActionLabel(intent)).toBe('Deploy to production');
-		expect(typedPrompt(intent)).toContain('production');
+		expect(confirmNotice(intent)).toContain('prod');
+		expect(confirmNotice(intent)).not.toContain('production');
+		expect(deployActionLabel(intent)).toBe('Deploy to prod');
+		expect(typedPrompt(intent)).toContain('prod');
+		expect(typedPrompt(intent)).not.toContain('production');
 	});
 
 	it('names the environment the cluster names when it is not production', () => {
@@ -264,8 +274,11 @@ describe('copy', () => {
 
 	it('a rollback button says roll back, and the notice says it pins', () => {
 		const intent = deployIntent(rollout(), OLDEST);
-		expect(deployActionLabel(intent)).toBe('Roll back production');
-		expect(confirmNotice(intent, true)).toContain('pins production');
+		// U-11, ledger: the confirm button is bare `Roll back` now — the
+		// dialog's own TITLE carries the target ("Roll back prod to
+		// <build>"), so the button does not repeat it.
+		expect(deployActionLabel(intent)).toBe('Roll back');
+		expect(confirmNotice(intent, true)).toContain('pins prod');
 	});
 
 	it('says nothing at all when the level is none', () => {
@@ -402,8 +415,8 @@ describe('⚠️ retry risk — the rule decides, and it is the SAME rule', () =
 		expect(intent.production).toBe(true);
 		expect(intent.vouched).toBe(false);
 		expect(confirmLevel(intent)).toBe('typed');
-		expect(deployActionLabel(intent)).toBe('Redeploy to production');
-		expect(typedPrompt(intent)).toBe('Nothing has vouched for this build in production. Type');
+		expect(deployActionLabel(intent)).toBe('Redeploy to prod');
+		expect(typedPrompt(intent)).toBe('Nothing has vouched for this build in prod. Type');
 	});
 
 	it('⛔ SUPERSEDED 2026-09-03 (B3): a vouched retry in production is `typed` too now', () => {
@@ -461,9 +474,9 @@ describe('⚠️ retry consequences — it says production, and it says what it 
 		const lines = retryConsequences(retryIntent(rollout()), facts, RUNNING);
 		expect(lines).toHaveLength(4);
 		expect(lines[0]).toContain(RUNNING);
-		expect(lines[0]).toContain('production');
+		expect(lines[0]).toContain('prod');
 		expect(lines[0]).toContain('the same build whose last deploy here failed');
-		expect(lines[1]).toContain('No rule here currently allows this build');
+		expect(lines[1]).toContain('A rule here is still holding this build back');
 		// The critique's exact charge: no statement that the check which just
 		// failed is still failing.
 		expect(lines[2]).toBe(
@@ -475,9 +488,9 @@ describe('⚠️ retry consequences — it says production, and it says what it 
 		expect(lines[3]).toContain('clears the failure detail');
 	});
 
-	it('every line names production somewhere a reader will hit it', () => {
+	it('every line names the real place (prod) somewhere a reader will hit it', () => {
 		const lines = retryConsequences(retryIntent(rollout()), facts, RUNNING);
-		expect(lines.join(' ')).toContain('production');
+		expect(lines.join(' ')).toContain('prod');
 	});
 
 	it('claims no erasure when there is no health check to erase', () => {
@@ -519,4 +532,227 @@ describe('⚠️ retry consequences — it says production, and it says what it 
 	it('says nothing at all when the rule says one click', () => {
 		expect(retryConsequences(retryIntent(devRolloutVouched()), facts, RUNNING)).toEqual([]);
 	});
+});
+
+/**
+ * U-4, ledger, 2026-10-08 — TL ruling, coordinator decision: a build whose
+ * last attempt on THIS rollout failed must never be offered as `Ready` with
+ * a plain `Deploy`, derived from `rollout.status.history` alone, no
+ * mock-only flag. The three cases the TL named explicitly.
+ */
+describe('failedHereVerdict (U-4, ledger)', () => {
+	const FAILED_BUILD = 'main-1784664084-a02f1c4';
+	const CURRENT_BUILD = 'main-1784664999-3f1ed09';
+	const NEVER_DEPLOYED = 'main-1784665555-b46rc1';
+
+	it('failed, then rolled back — `failed`, with the failure time and the rollback time', () => {
+		const r = rollout({
+			status: {
+				availableReleases: [
+					{ tag: CURRENT_BUILD, version: '3f1ed09' },
+					{ tag: FAILED_BUILD, version: 'a02f1c4' }
+				],
+				history: [
+					// newest first: the rollback deploy, then the failed attempt
+					// it replaced, then what was running before that.
+					{
+						version: { tag: CURRENT_BUILD, version: '3f1ed09' },
+						bakeStatus: 'Succeeded',
+						timestamp: '2026-10-08T09:00:00Z'
+					},
+					{
+						version: { tag: FAILED_BUILD, version: 'a02f1c4' },
+						bakeStatus: 'Failed',
+						timestamp: '2026-10-08T08:52:00Z'
+					},
+					{
+						version: { tag: CURRENT_BUILD, version: '3f1ed09' },
+						bakeStatus: 'Succeeded',
+						timestamp: '2026-10-08T08:00:00Z'
+					}
+				]
+			}
+		});
+		const v = failedHereVerdict(r, FAILED_BUILD);
+		expect(v.kind).toBe('failed');
+		if (v.kind === 'failed') {
+			expect(v.failedAt).toBe('2026-10-08T08:52:00Z');
+			// the deploy that REPLACED the failed attempt — i.e. when it was
+			// rolled back — is the entry one step newer than it.
+			expect(v.rolledBackAt).toBe('2026-10-08T09:00:00Z');
+		}
+	});
+
+	it('failed, still running (nothing has replaced it yet) — `failed`, no rollback time', () => {
+		const r = rollout({
+			status: {
+				history: [
+					{
+						version: { tag: FAILED_BUILD, version: 'a02f1c4' },
+						bakeStatus: 'Failed',
+						timestamp: '2026-10-08T08:52:00Z'
+					},
+					{
+						version: { tag: CURRENT_BUILD, version: '3f1ed09' },
+						bakeStatus: 'Succeeded',
+						timestamp: '2026-10-08T08:00:00Z'
+					}
+				]
+			}
+		});
+		const v = failedHereVerdict(r, FAILED_BUILD);
+		expect(v.kind).toBe('failed');
+		if (v.kind === 'failed') expect(v.rolledBackAt).toBeNull();
+	});
+
+	it('failed, then a LATER retry of the same build succeeded — `clean`, it is fine again', () => {
+		const r = rollout({
+			status: {
+				history: [
+					// newest first: the retry that succeeded is closer to the
+					// front than the original failure.
+					{
+						version: { tag: FAILED_BUILD, version: 'a02f1c4' },
+						bakeStatus: 'Succeeded',
+						timestamp: '2026-10-08T09:10:00Z'
+					},
+					{
+						version: { tag: FAILED_BUILD, version: 'a02f1c4' },
+						bakeStatus: 'Failed',
+						timestamp: '2026-10-08T08:52:00Z'
+					}
+				]
+			}
+		});
+		expect(failedHereVerdict(r, FAILED_BUILD)).toEqual({ kind: 'clean' });
+	});
+
+	it('never deployed here — `clean`', () => {
+		expect(failedHereVerdict(rollout(), NEVER_DEPLOYED)).toEqual({ kind: 'clean' });
+	});
+
+	it('no tag, or no rollout — `clean`', () => {
+		expect(failedHereVerdict(rollout(), null)).toEqual({ kind: 'clean' });
+		expect(failedHereVerdict(null, FAILED_BUILD)).toEqual({ kind: 'clean' });
+	});
+
+	it('deployIntent sets knownFailedHere from the SAME derivation', () => {
+		const r = rollout({
+			status: {
+				history: [
+					{
+						version: { tag: FAILED_BUILD, version: 'a02f1c4' },
+						bakeStatus: 'Failed',
+						timestamp: '2026-10-08T08:52:00Z'
+					}
+				]
+			}
+		});
+		expect(deployIntent(r, FAILED_BUILD).knownFailedHere).toBe(true);
+		expect(deployIntent(r, CURRENT_BUILD).knownFailedHere).toBe(false);
+	});
+
+	it('a known-failed build is `typed` even in a non-production, otherwise-vouched environment', () => {
+		// `devRollout`'s own default gate vouches for `MID`/`NEWEST` — used
+		// here as the "failed build" tag so `vouched` is genuinely true and
+		// the only thing making this `typed` is `knownFailedHere`.
+		const r = devRollout({
+			status: {
+				history: [
+					// `RUNNING` is what's live now; `MID` is the forward
+					// candidate under test, offered again after its own
+					// earlier attempt failed.
+					{ version: { tag: RUNNING, version: '205a312' }, bakeStatus: 'Succeeded' },
+					{
+						version: { tag: MID, version: '3cc206c' },
+						bakeStatus: 'Failed',
+						timestamp: '2026-10-08T08:52:00Z'
+					}
+				]
+			}
+		});
+		const intent = deployIntent(r, MID);
+		expect(intent.production).toBe(false);
+		expect(intent.vouched).toBe(true);
+		expect(confirmLevel(intent)).toBe('typed');
+		expect(deployActionLabel(intent)).toBe('Deploy anyway');
+		expect(typedPrompt(intent)).toBe('This build already failed here. Type');
+	});
+
+	it('a retry never becomes `typed` through this signal — `knownFailedHere` is deliberately false for retry', () => {
+		// `retryTag` is `history[0]`, which is `Failed` on essentially every
+		// ordinary retry; `retryIntent` must not run that through
+		// `failedHereVerdict`, or one click in dev would stop being one click.
+		const r = devRollout({
+			status: {
+				history: [{ version: { tag: RUNNING, version: '205a312' }, bakeStatus: 'Failed' }]
+			}
+		});
+		const intent = retryIntent(r);
+		expect(intent.knownFailedHere).toBe(false);
+	});
+});
+
+/**
+ * ⭐ U-9, 2026-10-08 (QA): FAILED TAKES THE ROW, EVEN WHILE A GATE ALSO HOLDS
+ * THE SAME BUILD. Before this fix, rollout detail's inline `justFailed =
+ * !isBlocked && failedHere.kind === 'failed'` silently flipped to `false`
+ * the moment a gate ALSO held the candidate — the exact scenario this suite
+ * exercises, combining `rowShowsFailed` with `blockingGateNames` (the U-5
+ * fix, `promotion.ts`) on one fixture where both facts are true at once.
+ */
+describe('rowShowsFailed — U-9, FAILED outranks a gate hold on the same row', () => {
+	const FAILED_BUILD = 'main-1784664084-a02f1c4';
+	const CURRENT_BUILD = 'main-1784664999-3f1ed09';
+
+	function failedAndHeldRollout(): Rollout {
+		return rollout({
+			status: {
+				availableReleases: [
+					{ tag: CURRENT_BUILD, version: '3f1ed09' },
+					{ tag: FAILED_BUILD, version: 'a02f1c4' }
+				],
+				history: [
+					{
+						version: { tag: CURRENT_BUILD, version: '3f1ed09' },
+						bakeStatus: 'Succeeded',
+						timestamp: '2026-10-08T09:00:00Z'
+					},
+					{
+						version: { tag: FAILED_BUILD, version: 'a02f1c4' },
+						bakeStatus: 'Failed',
+						timestamp: '2026-10-08T08:52:00Z'
+					}
+				],
+				// A real gate ALSO refuses this exact build — the co-occurring
+				// case the old `!isBlocked &&` guard mishandled.
+				gates: [{ name: 'promotion-prod-us-east-2', passing: true, allowedVersions: [CURRENT_BUILD] }]
+			}
+		});
+	}
+
+	it('true when the build failed here, independent of whether a gate also holds it', () => {
+		const r = failedAndHeldRollout();
+		const failedHere = failedHereVerdict(r, FAILED_BUILD);
+		expect(failedHere.kind).toBe('failed');
+		// The same build IS ALSO gate-held — the fact `isBlocked` used to be
+		// built from, and used to suppress `justFailed`.
+		expect(blockingGateNames(r, FAILED_BUILD)).toEqual(['promotion-prod-us-east-2']);
+		// FAILED still takes the row.
+		expect(rowShowsFailed(failedHere)).toBe(true);
+	});
+
+	it('false for a clean build, gate-held or not', () => {
+		const r = failedAndHeldRollout();
+		const failedHere = failedHereVerdict(r, CURRENT_BUILD);
+		expect(failedHere.kind).toBe('clean');
+		expect(rowShowsFailed(failedHere)).toBe(false);
+	});
+});
+
+import { holdersPhrase } from './deploy-risk';
+describe('holdersPhrase (QA #22 / round 2): the notice counts, the rule list names', () => {
+	it('one', () => expect(holdersPhrase(['Manual approval'])).toBe('a rule is still holding back'));
+	it('several', () => expect(holdersPhrase(['A', 'B', 'C'])).toBe('3 rules are still holding back'));
+	it('none known', () => expect(holdersPhrase([])).toBe('a rule is still holding back'));
 });

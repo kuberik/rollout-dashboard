@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	/**
 	 * ⭐ "WHAT CHANGED" — AND IT NEVER EXPANDS TO NOTHING.
 	 *
@@ -237,7 +238,7 @@
 			aria-expanded={open}
 			aria-controls={panelId}
 			aria-label={`What changed in ${name}${head ? ` at ${head.slice(0, 7)}` : ''}`}
-			class="hit-32 t-micro inline-flex shrink-0 items-center gap-1 rounded text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+			class="hit-32 t-meta inline-flex shrink-0 items-center gap-1 rounded-xs text-fg-subtle transition-colors hover:text-fg"
 		>
 			<CodeBranchSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
 			{triggerLabel}
@@ -268,54 +269,50 @@
 			     a button, keeps every commit subject selectable again. -->
 			<div
 				id={panelId}
-				class="relative z-[1] mt-2 w-full basis-full rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40"
+				class="relative z-[1] mt-2 w-full basis-full rounded-md border border-line bg-subtle p-3"
 			>
 				<!-- ⭐ THE DEPLOY'S OWN RECORD, ABOVE THE COMMIT BLOCK — the two
 				     facts belong to THIS deploy, not to the GitHub range, so they
 				     render whatever the query below does (loading, erroring, or a
 				     real commit list). (2026-09-03, operator walk, P5) -->
 				{#if note !== undefined || actor}
-					<div
-						class="mb-2 flex flex-col gap-1 border-b border-gray-200 pb-2 dark:border-gray-700"
-					>
+					<div class="mb-2 flex flex-col gap-1 border-b border-line pb-2">
 						{#if note !== undefined}
 							{#if note && !isSystemDefaultNote(note)}
-								<div class="flex items-baseline gap-1.5 text-xs">
-									<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Recorded note</span>
-									<span class="text-gray-600 dark:text-gray-200">{note}</span>
+								<div class="t-meta flex items-baseline gap-1.5">
+									<span class="flex-shrink-0 text-fg-subtle">Recorded note</span>
+									<span class="text-fg-muted">{note}</span>
 								</div>
 							{:else}
-								<div class="flex items-baseline gap-1.5 text-xs">
-									<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">Recorded note</span>
-									<span class="text-gray-400 italic dark:text-gray-500">no note recorded</span>
+								<div class="t-meta flex items-baseline gap-1.5">
+									<span class="flex-shrink-0 text-fg-subtle">Recorded note</span>
+									<span class="text-fg-disabled italic">no note recorded</span>
 								</div>
 								{#if note && isSystemDefaultNote(note)}
-									<div class="flex items-baseline gap-1.5 text-xs">
-										<span class="flex-shrink-0 text-gray-500 dark:text-gray-400">System</span>
-										<span class="text-gray-600 dark:text-gray-200">{systemNoteDescription(note)}</span
+									<div class="t-meta flex items-baseline gap-1.5">
+										<span class="flex-shrink-0 text-fg-subtle">System</span>
+										<span class="text-fg-muted">{systemNoteDescription(note)}</span
 										>
 									</div>
 								{/if}
 							{/if}
 						{/if}
 						{#if actor}
-							<div class="flex items-baseline gap-1.5 text-xs">
-								<span class="flex-shrink-0 text-gray-500 dark:text-gray-400"
+							<div class="t-meta flex items-baseline gap-1.5">
+								<span class="flex-shrink-0 text-fg-subtle"
 									>{actorKind === 'System' ? 'Triggered by' : 'By'}</span
 								>
-								<span class="text-gray-600 dark:text-gray-200">{actor}</span>
+								<span class="text-fg-muted">{actor}</span>
 							</div>
 						{/if}
 					</div>
 				{/if}
 				{#if query.isLoading}
-					<span
-						class="inline-block h-3 w-40 max-w-full animate-pulse rounded bg-gray-200 dark:bg-gray-700"
-						aria-hidden="true"
+					<span class="skel-block inline-block h-3 w-40 max-w-full" aria-hidden="true"
 					></span>
 				{:else if query.isError}
 					<!-- THE BRANCH THAT USED TO RENDER NOTHING. -->
-					<p class="t-dense text-gray-700 dark:text-gray-200">{reason}</p>
+					<p class="t-meta text-fg-muted">{reason}</p>
 					<!-- ⭐ ONE DESTINATION, ONE TREATMENT. (2026-09-02) `See the diff
 					     on GitHub` was a `.btn` in THIS branch and a plain text link
 					     in the success branch ninety lines below — the same URL
@@ -331,18 +328,15 @@
 							</a>
 						{/if}
 						{#if canConnect}
-							<button type="button" class="btn btn-secondary" onclick={() => connectGithub()}>
-								<GithubSolid aria-hidden="true" />
-								Connect GitHub
-							</button>
+							<ConnectGithubAction />
 						{/if}
 					</div>
 				{:else if commits.length === 0}
-					<p class="t-dense text-gray-700 dark:text-gray-200">
+					<p class="t-meta text-fg-muted">
 						Nothing changed in the source between these two versions.
 					</p>
 				{:else}
-					<p class="t-micro mb-2 text-gray-500 dark:text-gray-400">
+					<p class="t-meta mb-2 text-fg-subtle">
 						{commits.length} commit{commits.length === 1 ? '' : 's'} went live here
 					</p>
 					<ul class="space-y-1">
@@ -352,14 +346,14 @@
 									href={c.url}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="ident t-code-sm shrink-0 text-blue-700 hover:underline dark:text-blue-400"
+									class="ident t-code-sm shrink-0 text-accent-text hover:underline"
 									>{(c.sha ?? '').slice(0, 7)}</a
 								>
-								<span class="t-micro min-w-0 flex-1 truncate text-gray-700 dark:text-gray-200"
+								<span class="t-meta min-w-0 flex-1 truncate text-fg-muted"
 									>{formatCommitMessage(c.message)}</span
 								>
 								{#if c.author}
-									<span class="t-micro shrink-0 text-gray-500 dark:text-gray-400">{c.author}</span>
+									<span class="t-meta shrink-0 text-fg-subtle">{c.author}</span>
 								{/if}
 							</li>
 						{/each}
@@ -369,7 +363,7 @@
 							href={compareUrl}
 							target="_blank"
 							rel="noopener noreferrer"
-							class="t-micro mt-2 inline-flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+							class="t-meta mt-2 inline-flex items-center gap-1 text-fg-subtle hover:text-fg"
 						>
 							<GithubSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
 							See the full diff on GitHub

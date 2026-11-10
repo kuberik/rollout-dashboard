@@ -1,0 +1,2555 @@
+{
+  "now": "2026-10-19T15:19:30.278Z",
+  "fleet": {
+    "apps": 22,
+    "mappedApps": 16,
+    "places": 71,
+    "prodHealthy": {
+      "healthy": 35,
+      "total": 37
+    },
+    "sinceDelta": {
+      "deploys": 153,
+      "deploysPrev": 21
+    },
+    "needsYou": [
+      {
+        "app": "checkout-api",
+        "env": "staging",
+        "cause": "dependency",
+        "phrase": "waits on a dependency",
+        "href": "/rollouts/staging/checkout-api-staging/checkout-api"
+      },
+      {
+        "app": "checkout-worker",
+        "env": "staging",
+        "cause": "other",
+        "phrase": "failed its health check",
+        "href": "/rollouts/staging/checkout-worker-staging/checkout-worker"
+      },
+      {
+        "app": "hello-frontend-app",
+        "env": "prod",
+        "cause": "other",
+        "phrase": "failed its health check",
+        "href": "/rollouts/prod/hello-dep-prod/hello-frontend-app"
+      },
+      {
+        "app": "invoice-api",
+        "env": "prod-eu-west",
+        "cause": "other",
+        "phrase": "failed its health check",
+        "href": "/rollouts/prod/invoice-api-prod-eu-west/invoice-api"
+      },
+      {
+        "app": "invoice-api",
+        "env": "prod-us-east",
+        "cause": "approval",
+        "phrase": "waits for approval",
+        "href": "/rollouts/prod/invoice-api-prod-us-east/invoice-api"
+      },
+      {
+        "app": "orders-api",
+        "env": "staging",
+        "cause": "other",
+        "phrase": "waits on a check",
+        "href": "/rollouts/staging/orders-api-staging/orders-api"
+      },
+      {
+        "app": "recommender-svc",
+        "env": "prod",
+        "cause": "other",
+        "phrase": "waits on a check",
+        "href": "/rollouts/prod/recommender-svc-prod/recommender-svc"
+      },
+      {
+        "app": "telemetry-indexer",
+        "env": "prod",
+        "cause": "approval",
+        "phrase": "waits for approval",
+        "href": "/rollouts/prod/telemetry-indexer-prod/telemetry-indexer"
+      }
+    ]
+  },
+  "signals": [
+    {
+      "key": "check-failing|checkout-worker|staging|2026-10-19T15:16:30.272Z",
+      "kind": "check-failing",
+      "app": "checkout-worker",
+      "env": "staging",
+      "phrase": "checkout-worker-prometheus-high-error-rate faili",
+      "since": "2026-10-19T15:16:30.272Z",
+      "ageMs": 180006,
+      "href": "/rollouts/staging/checkout-worker-staging/checkout-worker"
+    },
+    {
+      "key": "check-failing|hello-frontend-app|prod|2026-10-19T14:49:26.534Z",
+      "kind": "check-failing",
+      "app": "hello-frontend-app",
+      "env": "prod",
+      "phrase": "hello-frontend-app-error-rate failing",
+      "since": "2026-10-19T14:49:26.534Z",
+      "ageMs": 1803744,
+      "href": "/rollouts/prod/hello-dep-prod/hello-frontend-app"
+    },
+    {
+      "key": "check-failing|invoice-api|prod-eu-west|2026-10-19T07:03:26.534Z",
+      "kind": "check-failing",
+      "app": "invoice-api",
+      "env": "prod-eu-west",
+      "phrase": "invoice-api-error-rate failing",
+      "since": "2026-10-19T07:03:26.534Z",
+      "ageMs": 29763744,
+      "href": "/rollouts/prod/invoice-api-prod-eu-west/invoice-api"
+    },
+    {
+      "key": "slow-bake|edge-mesh|dev|2026-10-19T14:38:30.272Z",
+      "kind": "slow-bake",
+      "app": "edge-mesh",
+      "env": "dev",
+      "phrase": "bake 41m, usually 12m",
+      "since": "2026-10-19T14:38:30.272Z",
+      "ageMs": 2460006,
+      "href": "/rollouts/dev/edge-mesh-dev/edge-mesh"
+    }
+  ],
+  "apps": [
+    {
+      "app": "billing-api",
+      "tier": "starred",
+      "figure": null,
+      "phrase": null,
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "b17b003",
+          "arrivedAt": "2026-10-19T15:16:26.534Z",
+          "myChanges": [
+            {
+              "ref": "b17b002",
+              "title": "Share the invoice line-item schema with the async worker",
+              "href": "/changes/github.com/exampleco/billing/b17b002",
+              "mergedAt": "2026-10-05T13:21:06.228Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "billing",
+              "apps": [
+                "billing-api",
+                "billing-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "b17b002",
+          "arrivedAt": "2026-10-19T10:59:26.534Z",
+          "myChanges": [
+            {
+              "ref": "b17b002",
+              "title": "Share the invoice line-item schema with the async worker",
+              "href": "/changes/github.com/exampleco/billing/b17b002",
+              "mergedAt": "2026-10-05T13:21:06.228Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "billing",
+              "apps": [
+                "billing-api",
+                "billing-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "billing-worker",
+      "tier": "starred",
+      "figure": null,
+      "phrase": null,
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "b17b002",
+          "arrivedAt": "2026-10-19T11:09:26.534Z",
+          "myChanges": [
+            {
+              "ref": "b17b002",
+              "title": "Share the invoice line-item schema with the async worker",
+              "href": "/changes/github.com/exampleco/billing/b17b002",
+              "mergedAt": "2026-10-05T13:21:06.228Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "billing",
+              "apps": [
+                "billing-api",
+                "billing-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "b17b002",
+          "arrivedAt": "2026-10-19T11:29:26.534Z",
+          "myChanges": [
+            {
+              "ref": "b17b002",
+              "title": "Share the invoice line-item schema with the async worker",
+              "href": "/changes/github.com/exampleco/billing/b17b002",
+              "mergedAt": "2026-10-05T13:21:06.228Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "billing",
+              "apps": [
+                "billing-api",
+                "billing-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "checkout-api",
+      "tier": "starred",
+      "figure": "6h",
+      "phrase": "held in staging",
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "4.45.0-45",
+          "arrivedAt": "2026-10-19T13:49:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#80",
+              "title": "Fix inventory hold expiry race",
+              "href": "/changes/github.com/exampleco/checkout-api/pull/80",
+              "mergedAt": "2026-10-07T10:01:37.359Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "checkout-api",
+              "apps": [
+                "checkout-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "staging",
+          "label": "staging",
+          "tier": "staging",
+          "isProdRegion": false,
+          "state": "held-by-rule",
+          "version": "4.43.0-43",
+          "arrivedAt": "2026-10-19T13:49:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#80",
+              "title": "Fix inventory hold expiry race",
+              "href": "/changes/github.com/exampleco/checkout-api/pull/80",
+              "mergedAt": "2026-10-07T10:01:37.359Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "checkout-api",
+              "apps": [
+                "checkout-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-af-south-1",
+          "label": "af-south-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "rolled-back",
+          "version": "4.40.0-40",
+          "arrivedAt": "2026-10-19T10:19:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-ap-southeast-2",
+          "label": "ap-southeast-2",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "held-by-rule",
+          "version": "4.42.0-42",
+          "arrivedAt": "2026-10-19T13:49:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#80",
+              "title": "Fix inventory hold expiry race",
+              "href": "/changes/github.com/exampleco/checkout-api/pull/80",
+              "mergedAt": "2026-10-07T10:01:37.359Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "checkout-api",
+              "apps": [
+                "checkout-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-eu-central",
+          "label": "eu-central",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "4.43.0-43",
+          "arrivedAt": "2026-10-19T13:49:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#80",
+              "title": "Fix inventory hold expiry race",
+              "href": "/changes/github.com/exampleco/checkout-api/pull/80",
+              "mergedAt": "2026-10-07T10:01:37.359Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "checkout-api",
+              "apps": [
+                "checkout-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-east-1",
+          "label": "us-east-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "held-by-rule",
+          "version": "4.42.0-42",
+          "arrivedAt": "2026-10-19T13:49:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#80",
+              "title": "Fix inventory hold expiry race",
+              "href": "/changes/github.com/exampleco/checkout-api/pull/80",
+              "mergedAt": "2026-10-07T10:01:37.359Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "checkout-api",
+              "apps": [
+                "checkout-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-east-2",
+          "label": "us-east-2",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "checking",
+          "version": "4.42.0-42",
+          "arrivedAt": "2026-10-19T14:54:30.272Z",
+          "myChanges": [
+            {
+              "ref": "#80",
+              "title": "Fix inventory hold expiry race",
+              "href": "/changes/github.com/exampleco/checkout-api/pull/80",
+              "mergedAt": "2026-10-07T10:01:37.359Z",
+              "since": "2026-10-24T19:16:32.506Z",
+              "checkingMinutesLeft": 5,
+              "repo": "checkout-api",
+              "apps": [
+                "checkout-api"
+              ],
+              "state": "checking"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "active",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "checkout-edge",
+      "tier": "active",
+      "figure": "2m",
+      "phrase": "deploying in dev",
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "deploying",
+          "version": "9a1f4c2",
+          "arrivedAt": "2026-10-19T15:17:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "active"
+                  }
+                ]
+              }
+            ],
+            "bake": "pending",
+            "activeStep": {
+              "index": 1,
+              "total": 1
+            },
+            "isFallback": true
+          }
+        },
+        {
+          "env": "staging",
+          "label": "staging",
+          "tier": "staging",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "c62a913",
+          "arrivedAt": "2026-10-19T10:19:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "checking",
+          "version": "d09e6f4",
+          "arrivedAt": "2026-10-19T14:54:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "active",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "checkout-worker",
+      "tier": "starred",
+      "figure": "3m",
+      "phrase": "failing in staging",
+      "primaryAction": {
+        "label": "Roll back staging",
+        "href": "/rollouts/staging/checkout-worker-staging/checkout-worker"
+      },
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "a02f1c4",
+          "arrivedAt": "2026-10-19T14:41:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#14",
+              "title": "Add dead-letter queue for failed checkout events",
+              "href": "/changes/github.com/exampleco/checkout-worker/pull/14",
+              "mergedAt": "2026-10-17T12:02:35.500Z",
+              "since": "2026-10-19T14:42:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "checkout-worker",
+              "apps": [
+                "checkout-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "staging",
+          "label": "staging",
+          "tier": "staging",
+          "isProdRegion": false,
+          "state": "failed",
+          "version": "a02f1c4",
+          "arrivedAt": "2026-10-19T15:16:30.272Z",
+          "myChanges": [
+            {
+              "ref": "#14",
+              "title": "Add dead-letter queue for failed checkout events",
+              "href": "/changes/github.com/exampleco/checkout-worker/pull/14",
+              "mergedAt": "2026-10-17T12:02:35.500Z",
+              "since": "2026-10-19T15:17:30.272Z",
+              "checkingMinutesLeft": null,
+              "repo": "checkout-worker",
+              "apps": [
+                "checkout-worker"
+              ],
+              "state": "failed"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "fail",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "edge-mesh",
+      "tier": "active",
+      "figure": "9m",
+      "phrase": "checking in dev",
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "checking",
+          "version": "5e1a903",
+          "arrivedAt": "2026-10-19T15:10:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "active",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-af-south-1",
+          "label": "af-south-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "16d8b70",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-ap-northeast-1",
+          "label": "ap-northeast-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:08:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-ap-south-1",
+          "label": "ap-south-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:06:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-ap-southeast-2",
+          "label": "ap-southeast-2",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:07:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-eu-central-1",
+          "label": "eu-central-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:04:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-eu-north-1",
+          "label": "eu-north-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:05:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-eu-west-1",
+          "label": "eu-west-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:03:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-sa-east-1",
+          "label": "sa-east-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "16d8b70",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-east-1",
+          "label": "us-east-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T01:59:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-east-2",
+          "label": "us-east-2",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:00:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-west-1",
+          "label": "us-west-1",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:01:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-west-2",
+          "label": "us-west-2",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a92c6f4",
+          "arrivedAt": "2026-10-19T02:02:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "hello-frontend-app",
+      "tier": "starred",
+      "figure": "30m",
+      "phrase": "failing in prod",
+      "primaryAction": {
+        "label": "Roll back prod",
+        "href": "/rollouts/prod/hello-dep-prod/hello-frontend-app"
+      },
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "2.66.0-66",
+          "arrivedAt": "2026-10-19T14:49:26.534Z",
+          "myChanges": [
+            {
+              "ref": "8375506",
+              "title": "Fix loading state flash on slow networks",
+              "href": "/changes/github.com/exampleco/hello-frontend-app/83755067c4c76bc112258b901108ec03699f7f4d",
+              "mergedAt": "2026-10-14T22:21:40.899Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "hello-frontend-app",
+              "apps": [
+                "hello-frontend-app"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "staging",
+          "label": "staging",
+          "tier": "staging",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "2.66.0-66",
+          "arrivedAt": "2026-10-19T14:49:26.534Z",
+          "myChanges": [
+            {
+              "ref": "8375506",
+              "title": "Fix loading state flash on slow networks",
+              "href": "/changes/github.com/exampleco/hello-frontend-app/83755067c4c76bc112258b901108ec03699f7f4d",
+              "mergedAt": "2026-10-14T22:21:40.899Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "hello-frontend-app",
+              "apps": [
+                "hello-frontend-app"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "failed",
+          "version": "2.66.0-66",
+          "arrivedAt": "2026-10-19T14:49:26.534Z",
+          "myChanges": [
+            {
+              "ref": "8375506",
+              "title": "Fix loading state flash on slow networks",
+              "href": "/changes/github.com/exampleco/hello-frontend-app/83755067c4c76bc112258b901108ec03699f7f4d",
+              "mergedAt": "2026-10-14T22:21:40.899Z",
+              "since": "2026-10-24T17:41:26.893Z",
+              "checkingMinutesLeft": null,
+              "repo": "hello-frontend-app",
+              "apps": [
+                "hello-frontend-app"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "fail",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "hello-world",
+      "tier": "starred",
+      "figure": "4m",
+      "phrase": "deploying in staging",
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "f68d0ac",
+          "arrivedAt": "2026-10-19T15:03:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#29",
+              "title": "Add /metrics endpoint for prometheus scraping",
+              "href": "/changes/github.com/exampleco/hello-world/pull/29",
+              "mergedAt": "2026-10-24T13:01:26.919Z",
+              "since": "2026-10-24T19:36:26.893Z",
+              "checkingMinutesLeft": null,
+              "repo": "hello-world",
+              "apps": [
+                "hello-world"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "staging",
+          "label": "staging",
+          "tier": "staging",
+          "isProdRegion": false,
+          "state": "deploying",
+          "version": "f68d0ac",
+          "arrivedAt": "2026-10-19T14:54:30.272Z",
+          "myChanges": [
+            {
+              "ref": "#29",
+              "title": "Add /metrics endpoint for prometheus scraping",
+              "href": "/changes/github.com/exampleco/hello-world/pull/29",
+              "mergedAt": "2026-10-24T13:01:26.919Z",
+              "since": "2026-10-24T16:48:26.893Z",
+              "checkingMinutesLeft": null,
+              "repo": "hello-world",
+              "apps": [
+                "hello-world"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "active"
+                  }
+                ]
+              }
+            ],
+            "bake": "pending",
+            "activeStep": {
+              "index": 1,
+              "total": 1
+            },
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a1b2c3d",
+          "arrivedAt": "2026-10-19T13:09:30.272Z",
+          "myChanges": [
+            {
+              "ref": "#29",
+              "title": "Add /metrics endpoint for prometheus scraping",
+              "href": "/changes/github.com/exampleco/hello-world/pull/29",
+              "mergedAt": "2026-10-24T13:01:26.919Z",
+              "since": "2026-10-24T17:31:32.506Z",
+              "checkingMinutesLeft": null,
+              "repo": "hello-world",
+              "apps": [
+                "hello-world"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "invoice-api",
+      "tier": "starred",
+      "figure": "8h",
+      "phrase": "failing in prod-eu-west",
+      "primaryAction": {
+        "label": "Roll back prod-eu-west",
+        "href": "/rollouts/prod/invoice-api-prod-eu-west/invoice-api"
+      },
+      "secondaryAction": {
+        "label": "Review approval in prod-us-east",
+        "href": "/rollouts/prod/invoice-api-prod-us-east/invoice-api"
+      },
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "deploying",
+          "version": "a11c909",
+          "arrivedAt": "2026-10-19T15:17:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#44",
+              "title": "Add idempotency key to invoice creation",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/44",
+              "mergedAt": "2026-10-19T15:15:26.560Z",
+              "since": "2026-10-19T15:17:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "deploying"
+            },
+            {
+              "ref": "#43",
+              "title": "Fix timezone handling in due-date calculation",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/43",
+              "mergedAt": "2026-10-19T13:54:26.560Z",
+              "since": "2026-10-19T14:04:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": "invoice-api-canary-dev",
+                "stages": [
+                  {
+                    "state": "done"
+                  },
+                  {
+                    "state": "active"
+                  },
+                  {
+                    "state": "pending"
+                  },
+                  {
+                    "state": "pending"
+                  }
+                ]
+              }
+            ],
+            "bake": "pending",
+            "activeStep": {
+              "index": 2,
+              "total": 4
+            },
+            "isFallback": false
+          }
+        },
+        {
+          "env": "test",
+          "label": "test",
+          "tier": "test",
+          "isProdRegion": false,
+          "state": "checking",
+          "version": "a11c808",
+          "arrivedAt": "2026-10-19T15:16:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#43",
+              "title": "Fix timezone handling in due-date calculation",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/43",
+              "mergedAt": "2026-10-19T13:54:26.560Z",
+              "since": "2026-10-19T15:16:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "checking"
+            },
+            {
+              "ref": "#42",
+              "title": "Raise default invoice line-item limit to 500",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/42",
+              "mergedAt": "2026-10-19T12:49:26.560Z",
+              "since": "2026-10-19T13:04:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": "invoice-api-canary-test",
+                "stages": [
+                  {
+                    "state": "done"
+                  },
+                  {
+                    "state": "done"
+                  },
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "active",
+            "activeStep": null,
+            "isFallback": false
+          }
+        },
+        {
+          "env": "staging",
+          "label": "staging",
+          "tier": "staging",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "a11c606",
+          "arrivedAt": "2026-10-19T12:09:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#41",
+              "title": "Add bulk invoice export endpoint",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/41",
+              "mergedAt": "2026-10-19T11:39:26.560Z",
+              "since": "2026-10-19T12:10:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "healthy"
+            },
+            {
+              "ref": "#40",
+              "title": "Encrypt invoice PDFs at rest",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/40",
+              "mergedAt": "2026-10-19T10:19:26.560Z",
+              "since": "2026-10-19T12:10:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "superseded"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-eu-west",
+          "label": "eu-west",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "failed",
+          "version": "a11c202",
+          "arrivedAt": "2026-10-19T07:03:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#37",
+              "title": "Retry webhook delivery with exponential backoff",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/37",
+              "mergedAt": "2026-10-19T05:59:26.560Z",
+              "since": "2026-10-19T07:04:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "failed"
+            },
+            {
+              "ref": "#36",
+              "title": "Add currency precision check before settlement",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/36",
+              "mergedAt": "2026-10-19T04:39:26.560Z",
+              "since": "2026-10-24T10:05:26.893Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "fail",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-east",
+          "label": "us-east",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "awaiting-approval",
+          "version": "a11c404",
+          "arrivedAt": "2026-10-19T13:39:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#40",
+              "title": "Encrypt invoice PDFs at rest",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/40",
+              "mergedAt": "2026-10-19T10:19:26.560Z",
+              "since": "2026-10-24T15:11:26.893Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "awaiting-approval"
+            },
+            {
+              "ref": "#39",
+              "title": "Add support for partial invoice credits",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/39",
+              "mergedAt": "2026-10-19T08:39:26.560Z",
+              "since": "2026-10-19T13:40:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "healthy"
+            },
+            {
+              "ref": "#38",
+              "title": "Switch invoice numbering to a per-tenant sequence",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/38",
+              "mergedAt": "2026-10-19T07:19:26.560Z",
+              "since": "2026-10-19T13:40:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "rolled-back"
+            },
+            {
+              "ref": "#37",
+              "title": "Retry webhook delivery with exponential backoff",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/37",
+              "mergedAt": "2026-10-19T05:59:26.560Z",
+              "since": "2026-10-19T13:40:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "superseded"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-west",
+          "label": "us-west",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "a11c404",
+          "arrivedAt": "2026-10-19T13:41:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#39",
+              "title": "Add support for partial invoice credits",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/39",
+              "mergedAt": "2026-10-19T08:39:26.560Z",
+              "since": "2026-10-19T13:42:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "healthy"
+            },
+            {
+              "ref": "#38",
+              "title": "Switch invoice numbering to a per-tenant sequence",
+              "href": "/changes/github.com/exampleco/invoice-api/pull/38",
+              "mergedAt": "2026-10-19T07:19:26.560Z",
+              "since": "2026-10-19T13:42:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "invoice-api",
+              "apps": [
+                "invoice-api"
+              ],
+              "state": "superseded"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": [
+        {
+          "ref": "a11ca10",
+          "title": "Deprecate legacy tax-rate lookup table",
+          "href": "/changes/github.com/exampleco/invoice-api/a11ca10",
+          "mergedAt": "2026-10-19T15:18:26.560Z",
+          "since": "2026-10-19T15:18:26.560Z",
+          "checkingMinutesLeft": null,
+          "state": "not-deployed",
+          "repo": "invoice-api",
+          "apps": [
+            "invoice-api"
+          ]
+        }
+      ]
+    },
+    {
+      "app": "orders-api",
+      "tier": "starred",
+      "figure": "4h",
+      "phrase": "held in staging",
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "e936e6f",
+          "arrivedAt": "2026-10-19T11:07:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#89",
+              "title": "Fix decimal rounding in order totals",
+              "href": "/changes/github.com/exampleco/orders-api/pull/89",
+              "mergedAt": "2026-10-23T21:26:26.919Z",
+              "since": "2026-10-24T15:30:26.893Z",
+              "checkingMinutesLeft": null,
+              "repo": "orders-api",
+              "apps": [
+                "orders-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "staging",
+          "label": "staging",
+          "tier": "staging",
+          "isProdRegion": false,
+          "state": "held-by-rule",
+          "version": "7c14e2a",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [
+            {
+              "ref": "#89",
+              "title": "Fix decimal rounding in order totals",
+              "href": "/changes/github.com/exampleco/orders-api/pull/89",
+              "mergedAt": "2026-10-23T21:26:26.919Z",
+              "since": "2026-10-23T23:42:32.506Z",
+              "checkingMinutesLeft": null,
+              "repo": "orders-api",
+              "apps": [
+                "orders-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "7c14e2a",
+          "arrivedAt": "2026-10-19T15:17:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#89",
+              "title": "Fix decimal rounding in order totals",
+              "href": "/changes/github.com/exampleco/orders-api/pull/89",
+              "mergedAt": "2026-10-18T17:04:26.560Z",
+              "since": "2026-10-19T15:18:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "orders-api",
+              "apps": [
+                "orders-api"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "payments-core",
+      "tier": "active",
+      "figure": "11m",
+      "phrase": "checking in test",
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "f4a2c19",
+          "arrivedAt": "2026-10-19T14:49:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "test",
+          "label": "test",
+          "tier": "test",
+          "isProdRegion": false,
+          "state": "checking",
+          "version": "f4a2c19",
+          "arrivedAt": "2026-10-19T15:08:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "active",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "staging",
+          "label": "staging",
+          "tier": "staging",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "c0d3e88",
+          "arrivedAt": "2026-10-19T10:59:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-ap-south",
+          "label": "ap-south",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "9b7e410",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-eu-central",
+          "label": "eu-central",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "d0ff17e",
+          "arrivedAt": "2026-10-19T10:29:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-eu-west",
+          "label": "eu-west",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "9b7e410",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-sa-east",
+          "label": "sa-east",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "2a55f0c",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-east",
+          "label": "us-east",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "9b7e410",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod-us-west",
+          "label": "us-west",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "9b7e410",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "recommender-svc",
+      "tier": "starred",
+      "figure": "6h",
+      "phrase": "held in prod",
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "4b9c2e1",
+          "arrivedAt": "2026-10-19T09:19:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#28",
+              "title": "Retrain ranking model on latest interaction data",
+              "href": "/changes/github.com/exampleco/recommender-svc/pull/28",
+              "mergedAt": "2026-10-17T18:13:21.667Z",
+              "since": "2026-10-19T09:20:26.534Z",
+              "checkingMinutesLeft": null,
+              "repo": "recommender-svc",
+              "apps": [
+                "recommender-svc"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "held-by-rule",
+          "version": "88c0e51",
+          "arrivedAt": "2026-10-18T19:19:30.272Z",
+          "myChanges": [
+            {
+              "ref": "#28",
+              "title": "Retrain ranking model on latest interaction data",
+              "href": "/changes/github.com/exampleco/recommender-svc/pull/28",
+              "mergedAt": "2026-10-17T18:13:21.667Z",
+              "since": "2026-10-24T13:41:26.893Z",
+              "checkingMinutesLeft": null,
+              "repo": "recommender-svc",
+              "apps": [
+                "recommender-svc"
+              ],
+              "state": "held-by-rule"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "telemetry-collector",
+      "tier": "starred",
+      "figure": null,
+      "phrase": null,
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "4a8d2e6",
+          "arrivedAt": "2026-10-19T14:39:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#20",
+              "title": "Bump the shared platform-telemetry client to v3",
+              "href": "/changes/github.com/exampleco/platform-telemetry/pull/20",
+              "mergedAt": "2026-10-24T18:15:30.983Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "platform-telemetry",
+              "apps": [
+                "telemetry-collector",
+                "telemetry-forwarder",
+                "telemetry-indexer",
+                "telemetry-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "4a8d2e6",
+          "arrivedAt": "2026-10-19T14:59:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#20",
+              "title": "Bump the shared platform-telemetry client to v3",
+              "href": "/changes/github.com/exampleco/platform-telemetry/pull/20",
+              "mergedAt": "2026-10-24T18:15:30.983Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "platform-telemetry",
+              "apps": [
+                "telemetry-collector",
+                "telemetry-forwarder",
+                "telemetry-indexer",
+                "telemetry-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "telemetry-forwarder",
+      "tier": "starred",
+      "figure": null,
+      "phrase": null,
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "4a8d2e6",
+          "arrivedAt": "2026-10-19T14:44:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#20",
+              "title": "Bump the shared platform-telemetry client to v3",
+              "href": "/changes/github.com/exampleco/platform-telemetry/pull/20",
+              "mergedAt": "2026-10-24T18:15:30.983Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "platform-telemetry",
+              "apps": [
+                "telemetry-collector",
+                "telemetry-forwarder",
+                "telemetry-indexer",
+                "telemetry-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "4a8d2e6",
+          "arrivedAt": "2026-10-19T15:03:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#20",
+              "title": "Bump the shared platform-telemetry client to v3",
+              "href": "/changes/github.com/exampleco/platform-telemetry/pull/20",
+              "mergedAt": "2026-10-24T18:15:30.983Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "platform-telemetry",
+              "apps": [
+                "telemetry-collector",
+                "telemetry-forwarder",
+                "telemetry-indexer",
+                "telemetry-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "telemetry-indexer",
+      "tier": "starred",
+      "figure": "2h",
+      "phrase": "waits for approval in prod",
+      "primaryAction": {
+        "label": "Review approval",
+        "href": "/rollouts/prod/telemetry-indexer-prod/telemetry-indexer"
+      },
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "healthy",
+          "version": "4a8d2e6",
+          "arrivedAt": "2026-10-19T14:37:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#20",
+              "title": "Bump the shared platform-telemetry client to v3",
+              "href": "/changes/github.com/exampleco/platform-telemetry/pull/20",
+              "mergedAt": "2026-10-24T18:15:30.983Z",
+              "since": null,
+              "checkingMinutesLeft": null,
+              "repo": "platform-telemetry",
+              "apps": [
+                "telemetry-collector",
+                "telemetry-forwarder",
+                "telemetry-indexer",
+                "telemetry-worker"
+              ],
+              "state": "healthy"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "awaiting-approval",
+          "version": "7b3c9f1",
+          "arrivedAt": "2026-10-19T12:19:26.534Z",
+          "myChanges": [
+            {
+              "ref": "#20",
+              "title": "Bump the shared platform-telemetry client to v3",
+              "href": "/changes/github.com/exampleco/platform-telemetry/pull/20",
+              "mergedAt": "2026-10-24T18:15:30.983Z",
+              "since": "2026-10-24T18:59:26.893Z",
+              "checkingMinutesLeft": null,
+              "repo": "platform-telemetry",
+              "apps": [
+                "telemetry-collector",
+                "telemetry-forwarder",
+                "telemetry-indexer",
+                "telemetry-worker"
+              ],
+              "state": "awaiting-approval"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    },
+    {
+      "app": "telemetry-worker",
+      "tier": "starred",
+      "figure": "4m",
+      "phrase": "checking in dev",
+      "primaryAction": null,
+      "secondaryAction": null,
+      "envs": [
+        {
+          "env": "dev",
+          "label": "dev",
+          "tier": "dev",
+          "isProdRegion": false,
+          "state": "checking",
+          "version": "4a8d2e6",
+          "arrivedAt": "2026-10-19T15:15:30.272Z",
+          "myChanges": [
+            {
+              "ref": "#20",
+              "title": "Bump the shared platform-telemetry client to v3",
+              "href": "/changes/github.com/exampleco/platform-telemetry/pull/20",
+              "mergedAt": "2026-10-24T18:15:30.983Z",
+              "since": "2026-10-24T19:38:32.506Z",
+              "checkingMinutesLeft": 12,
+              "repo": "platform-telemetry",
+              "apps": [
+                "telemetry-collector",
+                "telemetry-forwarder",
+                "telemetry-indexer",
+                "telemetry-worker"
+              ],
+              "state": "checking"
+            }
+          ],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "active",
+            "activeStep": null,
+            "isFallback": true
+          }
+        },
+        {
+          "env": "prod",
+          "label": "prod",
+          "tier": "prod",
+          "isProdRegion": true,
+          "state": "healthy",
+          "version": "7b3c9f1",
+          "arrivedAt": "2026-10-19T11:59:26.534Z",
+          "myChanges": [],
+          "pipeline": {
+            "tracks": [
+              {
+                "name": null,
+                "stages": [
+                  {
+                    "state": "done"
+                  }
+                ]
+              }
+            ],
+            "bake": "done",
+            "activeStep": null,
+            "isFallback": true
+          }
+        }
+      ],
+      "merged": []
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import {
 	orderHomeChangeRows,
 	familyProgress,
 	familyMeterAriaLabel,
+	standingMotion,
 	typicalToProdMs,
 	repoProgress,
 	recentByRepo,
@@ -112,10 +113,11 @@ function mkChange(overrides: Partial<Change> = {}): Change {
 
 function mkRollout(opts: {
 	name: string;
+	namespace?: string;
 	history?: { revision: string; timestamp: string; bakeStatus?: string }[];
 }): Rollout {
 	return {
-		metadata: { name: opts.name, namespace: 'default', annotations: {} },
+		metadata: { name: opts.name, namespace: opts.namespace ?? 'default', annotations: {} },
 		spec: {},
 		status: {
 			source: SOURCE,
@@ -151,6 +153,12 @@ describe('buildChangeRows', () => {
 		expect(rows[0].notEverywhere).toBe(false);
 		expect(rows[0].grid.services).toHaveLength(1);
 		expect(rows[0].href).toBe('/changes/github.com/acme/widget/pull/4');
+		// `vm.services` verbatim — the raw per-service `PrCell[]` `grid` has
+		// already folded away, for `journeyFromChange` (`/changes` index) and
+		// this module's own `familyProgress` (region naming, the held-
+		// predicate correction).
+		expect(rows[0].services).toHaveLength(1);
+		expect(rows[0].services![0].cells.length).toBeGreaterThan(0);
 	});
 
 	it('a bare commit links to the sha form', () => {
@@ -217,6 +225,252 @@ describe('buildChangeRows', () => {
 		expect(rows[0].verdictWord).toContain('held in');
 		expect(rows[0].verdictWord).toContain('api-app');
 	});
+
+	/**
+	 * ⭐ COORDINATOR RULING (AD round 3, "item H") — THE CARRIER-SHA FIELD.
+	 * platform-telemetry/wide's own shape: `telemetry-forwarder`'s prod
+	 * rollout has shipped exactly once, a `Failed` build of `4a8d2e6`
+	 * (never an earlier build of `7b3c9f1` at all — mock-data.ts's own
+	 * `TM_CELLS`). `7b3c9f1` ("Initial commit") is an ancestor `4a8d2e6`
+	 * carries (`containedIn`), so the SAME rollout's SAME failing cell is
+	 * both rows' own frontier — the Changes row for `7b3c9f1` must name
+	 * `4a8d2e6` as the build actually failing, while `4a8d2e6`'s own row
+	 * (whose frontier cell runs its OWN sha) gets no suffix at all. This is
+	 * what lets the Changes card ("7b3c9f1 … failed in prod · in 4a8d2e6")
+	 * and the Builds card (7b3c9f1 itself still running cleanly elsewhere)
+	 * both stay true — `AD-repo-round3.md` finding 8.
+	 */
+	it('a commit carried into a later build names that build, never changing the state word', () => {
+		// Built by hand, not `mkRollout` (always `availableReleases: []`):
+		// `hasBuildEvidence` (pr-pipeline.ts) only ever checks a service's own
+		// `mergeCommitSha` to decide whether it is AFFECTED at all, never
+		// `containedIn` — a real `releasesImagePolicy` lists every build the
+		// image policy has seen, deployed or not, which is where `7b3c9f1`'s
+		// own evidence lives even though the rollout has only ever deployed
+		// `4a8d2e6` (`status.history`, mock-data.ts's own `TM_CELLS` shape).
+		const rollout = {
+			metadata: { name: 'telemetry-forwarder', namespace: 'telemetry-forwarder-prod', annotations: {} },
+			spec: {},
+			status: {
+				source: SOURCE,
+				gates: [],
+				history: [
+					{
+						id: 0,
+						timestamp: '2026-09-10T11:00:00Z',
+						bakeStatus: 'Failed',
+						version: { tag: 'main-4a8d2e6', revision: '4a8d2e6' }
+					}
+				],
+				availableReleases: [
+					{ tag: 'main-7b3c9f1', revision: '7b3c9f1', created: '2026-09-01T00:00:00Z' },
+					{ tag: 'main-4a8d2e6', revision: '4a8d2e6', created: '2026-09-10T10:00:00Z' }
+				]
+			}
+		} as unknown as Rollout;
+		const environments = [
+			{
+				metadata: { name: 'telemetry-forwarder-prod', namespace: 'telemetry-forwarder-prod' },
+				spec: { environment: 'prod', rolloutRef: { name: 'telemetry-forwarder' } }
+			} as unknown as Environment
+		];
+		const initialCommit = mkChange({
+			kind: 'commit',
+			number: undefined,
+			title: 'Initial commit',
+			mergeCommitSha: '7b3c9f1',
+			containedIn: ['7b3c9f1', '4a8d2e6'],
+			containedInAll: true
+		});
+		const bumpPr = mkChange({
+			kind: 'pr',
+			number: 20,
+			title: 'Bump the shared platform-telemetry client to v3',
+			mergeCommitSha: '4a8d2e6',
+			containedIn: [],
+			containedInAll: false
+		});
+		const rows = buildChangeRows([initialCommit, bumpPr], [rollout], environments, null, NOW);
+		const [commitRow, prRow] = rows;
+
+		expect(commitRow.verdictWord).toContain('failed in');
+		expect(commitRow.carrierSha).toBe('4a8d2e6');
+		expect(commitRow.carrierHref).toBe('/changes/github.com/acme/widget/4a8d2e6');
+		expect(standingWords(commitRow)).toBe('failed in prod');
+
+		expect(prRow.verdictWord).toContain('failed in');
+		expect(prRow.carrierSha).toBeNull();
+		expect(prRow.carrierHref).toBeNull();
+		expect(standingWords(prRow)).toBe('failed in prod');
+	});
+});
+
+/**
+ * ⭐ (2026-10-11, squad-changes "Median merge→prod" fix, requirement A —
+ * "FIRST LANDING"). `firstProdLeadMs`'s own `PrCell.firstLandingProven`
+ * guard: the EARLIEST prod history entry carrying the change is only ever
+ * trusted as the change's actual first arrival when the SAME rollout's
+ * retained history also holds an OLDER entry that does NOT carry it. That
+ * older, non-carrying entry is the one thing that proves the window saw
+ * the change arrive, rather than merely remembering it was already there.
+ */
+describe('firstProdLeadMs — "first landing" is provable, never assumed (requirement A)', () => {
+	it('a 1-entry history returns null — no older entry exists to prove this is the first arrival', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'prod',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-08T00:00:00Z' }]
+		});
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', mergedAt: '2026-09-01T00:00:00Z' });
+		const rows = buildChangeRows([change], [rollout], [], null, NOW);
+		expect(rows[0].prodLeadMs).toBeNull();
+	});
+
+	it('a history whose oldest retained entry carries the change returns null — the window might have rolled past an earlier arrival', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'prod',
+			history: [
+				{ revision: 'newer-sha', timestamp: '2026-09-08T00:00:00Z' },
+				// The OLDEST retained entry already carries the change — nothing
+				// proves `c0ffee1` didn't land before this window even starts.
+				{ revision: 'c0ffee1', timestamp: '2026-09-05T00:00:00Z' }
+			]
+		});
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', mergedAt: '2026-09-01T00:00:00Z' });
+		const rows = buildChangeRows([change], [rollout], [], null, NOW);
+		expect(rows[0].prodLeadMs).toBeNull();
+	});
+
+	it('a history with an older non-carrying entry returns that first carrying entry — proven, and even when the merge predates the window (the old `since`-reading bug\'s own failure case)', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'prod',
+			history: [
+				// Head carries the change — an OLDER, non-carrying entry below
+				// proves this really is its first landing.
+				{ revision: 'c0ffee1', timestamp: '2026-09-08T00:00:00Z' },
+				{ revision: 'older-sha', timestamp: '2026-09-05T00:00:00Z' }
+			]
+		});
+		// Merge predates the OLDEST retained entry (09-05) — exactly the shape
+		// that nulls `PrCell.since` under `buildCell`'s own "live (since
+		// before recorded history)" guard. `historyMatches` +
+		// `firstLandingProven` answer the question anyway.
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', mergedAt: '2026-09-01T00:00:00Z' });
+		const rows = buildChangeRows([change], [rollout], [], null, NOW);
+		expect(rows[0].prodLeadMs).toBe(
+			new Date('2026-09-08T00:00:00Z').getTime() - new Date('2026-09-01T00:00:00Z').getTime()
+		);
+	});
+
+	// ⭐ REQUIREMENT D — a history entry with `bakeStatus: 'None'` lands
+	// exactly as `buildCell`'s own RULE 1 cascade treats it on a live head
+	// (`bakeStatusLanded`, `pr-pipeline.ts`, reused here rather than copied):
+	// `Succeeded`, or no bake status at all, both count as landed.
+	it('a `None` bakeStatus counts as landed, same as `Succeeded` (requirement D)', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'prod',
+			history: [
+				{ revision: 'c0ffee1', timestamp: '2026-09-08T00:00:00Z', bakeStatus: 'None' },
+				{ revision: 'older-sha', timestamp: '2026-09-05T00:00:00Z' }
+			]
+		});
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', mergedAt: '2026-09-01T00:00:00Z' });
+		const rows = buildChangeRows([change], [rollout], [], null, NOW);
+		expect(rows[0].prodLeadMs).toBe(
+			new Date('2026-09-08T00:00:00Z').getTime() - new Date('2026-09-01T00:00:00Z').getTime()
+		);
+	});
+
+	// ⭐ (2026-10-12, squad-changes QA pass — item 3). Two edge cases for
+	// `bakeStatusLanded` WITHIN the proof itself, not just the head — the
+	// oldest matching entry proving `firstLandingProven` need not be the
+	// SAME entry accepted as the landing.
+	it('oldest match failed, a later one landed — the later (still-matching) Succeeded entry is accepted, never the failed one, never null', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'prod',
+			history: [
+				// Head: a REDEPLOY of the same build, this time Succeeded.
+				{ revision: 'c0ffee1', timestamp: '2026-09-10T00:00:00Z', bakeStatus: 'Succeeded' },
+				// The OLDEST matching entry — same revision, first attempt — but
+				// it Failed. `firstLandingProven` is still true (the entry below
+				// this one does not carry the change), but the failed attempt
+				// itself never actually served, so it cannot be the "landing".
+				{ revision: 'c0ffee1', timestamp: '2026-09-08T00:00:00Z', bakeStatus: 'Failed' },
+				{ revision: 'older-sha', timestamp: '2026-09-05T00:00:00Z' }
+			]
+		});
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', mergedAt: '2026-09-01T00:00:00Z' });
+		const rows = buildChangeRows([change], [rollout], [], null, NOW);
+		// Accepted instant is the HEAD's own (09-10), not the failed 09-08
+		// attempt, and not null.
+		expect(rows[0].prodLeadMs).toBe(
+			new Date('2026-09-10T00:00:00Z').getTime() - new Date('2026-09-01T00:00:00Z').getTime()
+		);
+	});
+
+	it('an UNPROVEN prod landing earlier than every proven one makes the answer unknown — null, never the later proven landing (two rollouts)', () => {
+		// widget-a's history starts already carrying the change on 09-03:
+		// unproven, and maybe it got there even earlier. widget-b proves a
+		// landing on 09-08, but that is later than a landing we already
+		// know of, so it is not the change's FIRST prod landing.
+		const a = mkRollout({
+			name: 'widget-a',
+			namespace: 'prod',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-03T00:00:00Z' }]
+		});
+		const b = mkRollout({
+			name: 'widget-b',
+			namespace: 'prod',
+			history: [
+				{ revision: 'c0ffee1', timestamp: '2026-09-08T00:00:00Z' },
+				{ revision: 'older-sha', timestamp: '2026-09-02T00:00:00Z' }
+			]
+		});
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', mergedAt: '2026-09-01T00:00:00Z' });
+		const rows = buildChangeRows([change], [a, b], [], null, NOW);
+		expect(rows[0].services?.flatMap((s) => s.cells).length).toBe(2);
+		expect(rows[0].prodLeadMs).toBeNull();
+	});
+
+	it('a proven landing that is the earliest across prod is returned even when another prod rollout is unproven but later', () => {
+		const a = mkRollout({
+			name: 'widget-a',
+			namespace: 'prod',
+			history: [{ revision: 'c0ffee1', timestamp: '2026-09-09T00:00:00Z' }]
+		});
+		const b = mkRollout({
+			name: 'widget-b',
+			namespace: 'prod',
+			history: [
+				{ revision: 'c0ffee1', timestamp: '2026-09-04T00:00:00Z' },
+				{ revision: 'older-sha', timestamp: '2026-09-02T00:00:00Z' }
+			]
+		});
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', mergedAt: '2026-09-01T00:00:00Z' });
+		const rows = buildChangeRows([change], [a, b], [], null, NOW);
+		expect(rows[0].prodLeadMs).toBe(
+			new Date('2026-09-04T00:00:00Z').getTime() - new Date('2026-09-01T00:00:00Z').getTime()
+		);
+	});
+
+	it('the only carrying entry failed — proven, but nothing landed, so the row contributes no sample (never the failed timestamp)', () => {
+		const rollout = mkRollout({
+			name: 'widget-app',
+			namespace: 'prod',
+			history: [
+				// The ONE entry that carries the change never actually served.
+				{ revision: 'c0ffee1', timestamp: '2026-09-10T00:00:00Z', bakeStatus: 'Failed' },
+				{ revision: 'older-sha', timestamp: '2026-09-05T00:00:00Z' }
+			]
+		});
+		const change = mkChange({ mergeCommitSha: 'c0ffee1', mergedAt: '2026-09-01T00:00:00Z' });
+		const rows = buildChangeRows([change], [rollout], [], null, NOW);
+		expect(rows[0].prodLeadMs).toBeNull();
+	});
 });
 
 // ⭐ RULING 3 (CHANGES-2026-09-10 fix pass, "ONE VERDICT, THE FRONTIER").
@@ -278,11 +532,25 @@ describe('changeVerdict', () => {
 		expect(changeVerdict(vm)).toEqual({ word: 'a held in prod on api-app', tone: 'held' });
 	});
 
-	it('earliest env-rank wins over "worst state": a dev hold outranks a prod failure', () => {
+	it('ROUND 2 ("worst-wins") — a prod failure outranks a dev hold, reversing the old env-rank-first rule', () => {
 		const vm = mkVm([
 			mkService('a', [
 				mkCell('gated', { envName: 'dev', envRank: 0 }),
 				mkCell('failed', { envName: 'prod', envRank: 7 })
+			])
+		]);
+		// ⭐ SUPERSEDES THIS TEST'S OWN FORMER EXPECTATION (`'a held in dev'`) —
+		// see `pr-pipeline.test.ts`'s own "worst-wins" test for the full
+		// rationale; `changeVerdict` is a thin wrapper over `buildChangeVerdict`,
+		// so the two must always agree.
+		expect(changeVerdict(vm)).toEqual({ word: 'a failed in prod', tone: 'failed' });
+	});
+
+	it('ROUND 2 — within the SAME severity tier, env rank still breaks the tie', () => {
+		const vm = mkVm([
+			mkService('a', [
+				mkCell('gated', { envName: 'dev', envRank: 0 }),
+				mkCell('gated', { envName: 'prod', envRank: 7 })
 			])
 		]);
 		expect(changeVerdict(vm)).toEqual({ word: 'a held in dev', tone: 'held' });
@@ -649,15 +917,15 @@ describe('standingWords — ≤4 words for every PrState', () => {
 	// STANDING word never says "built" any more; `buildPrPipeline`'s own
 	// full verdict sentence still does (a deliberately different
 	// vocabulary — see `standingWords`'s own doc).
-	it('reads "not deployed here" with no matching service at all', () => {
+	it('reads "not deployed anywhere" with no matching service at all', () => {
 		const grid = buildLandingGrid(mkVm([]), new Date());
-		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('not deployed here');
+		expect(standingWords({ verdictTone: 'not-built', grid })).toBe('not deployed anywhere');
 	});
 
 	it('names the frontier family for a held (stuck) cell — "held in <family>"', () => {
 		const vm = mkVm([mkService('a', [mkCell('gated', { envName: 'prod' })])]);
 		const grid = buildLandingGrid(vm, new Date());
-		expect(standingWords({ verdictTone: 'held', grid })).toBe('held in prd');
+		expect(standingWords({ verdictTone: 'held', grid })).toBe('held in prod');
 	});
 
 	it('names the frontier family for a failed cell — "failed in <family>"', () => {
@@ -671,7 +939,7 @@ describe('standingWordsCompact', () => {
 	it('folds to `<state> · <family>`, no separate verb tense to worry about', () => {
 		const vm = mkVm([mkService('a', [mkCell('gated', { envName: 'prod' })])]);
 		const grid = buildLandingGrid(vm, new Date());
-		expect(standingWordsCompact({ verdictTone: 'held', grid })).toBe('held · prd');
+		expect(standingWordsCompact({ verdictTone: 'held', grid })).toBe('held · prod');
 	});
 
 	it('is "live" (not "live everywhere") for the all-live case — the compact spelling', () => {
@@ -875,8 +1143,316 @@ describe('splitChangeSections', () => {
 // environment." One step per FAMILY (dev/staging/prod), the worst mark
 // across every service — never one mark per service/env cell.
 
+describe('familyProgress: chain order and resolved marks (BUG 1 fix, squad-changes shared row, 2026-10-10)', () => {
+	// `canary`/`shadow`/etc. match none of `envFamilyWord`'s four regexes
+	// (prod/dev/staging/test), so they fall back to their own uppercased
+	// name — `promotion-lanes.ts`'s `tierOf` places that same environment in
+	// `'other'`, BEFORE prod (rank 6 vs prod's 7). The meter must agree.
+	it('an unmatched family (e.g. a canary env) sorts BEFORE prod, matching promotion-lanes.ts TIER_ORDER, never after', () => {
+		const vm = mkVm([
+			mkService('svc', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('live', { envName: 'canary', envRank: 1 }),
+				mkCell('live', { envName: 'prod', envRank: 2 })
+			])
+		]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		expect(steps.map((s) => s.family)).toEqual(['DEV', 'CANARY', 'PROD']);
+	});
+
+	it('generic: every family sorts per promotion-lanes.ts chain order, for any subset present', () => {
+		const vm = mkVm([
+			mkService('svc', [
+				mkCell('live', { envName: 'prod', envRank: 3 }),
+				mkCell('live', { envName: 'test', envRank: 1 }),
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('live', { envName: 'staging', envRank: 2 })
+			])
+		]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		expect(steps.map((s) => s.family)).toEqual(['DEV', 'TEST', 'STAGING', 'PROD']);
+	});
+
+	// A rolled-back mark WAS here, failed, and was taken off again —
+	// `journey.ts`'s `isResolvedCell`/`journeyFrontier` rule: never a filled
+	// or moving dot, drawn the same as "nothing built here". Before this
+	// fix, `landing-grid.ts`'s `classify`/`toneOf` folded `rolled-back` into
+	// the generic `active` tone, which painted this meter's BLUE PULSING
+	// "something is moving right now" dot over a stage that was, in truth,
+	// undone and settled.
+	// ⭐ QA FIX (round 2, 2026-10-11) — A RESOLVED MARK STAYS IN THE COUNT AND
+	// THE WORD; ONLY THE DOT'S OWN DRAWING CHANGES. Round 1 excluded a
+	// `rolled-back` mark from `built` entirely, which silently changed this
+	// family's `tone`/`state`/`builtCount` too — and because `standingWords`
+	// reads those same fields, a real payments-core row went from "rolled
+	// back in prod" to "3 of 3 live · in d0ff17e" (QA, live demo probe).
+	// `tone`/`state`/counts must stay exactly what `landing-grid.ts`'s own
+	// classification says; `resolved` is the ONLY new signal, read by the
+	// dot-drawing layer (`ChangeLine.svelte`, `CommandPalette.svelte`) alone.
+	it('a rolled-back mark keeps its tone/state/count (the standing word is unaffected) but is flagged `resolved`', () => {
+		const vm = mkVm([
+			mkService('svc', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('rolled-back', { envName: 'staging', envRank: 1, revision: 'a02f1c4' })
+			])
+		]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		const staging = steps.find((s) => s.family === 'STAGING')!;
+		expect(staging.tone).toBe('active');
+		expect(staging.state).toBe('rolled-back');
+		expect(staging.builtCount).toBe(1);
+		expect(staging.resolved).toBe(true);
+		expect(standingWords({ verdictTone: 'active', grid: buildLandingGrid(vm, NOW) })).toBe(
+			'rolled back in staging'
+		);
+	});
+
+	it('every OTHER step never sets `resolved` — it is specific to a rolled-back state', () => {
+		const vm = mkVm([mkService('svc', [mkCell('live', { envName: 'dev', envRank: 0 })])]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		expect(steps.every((s) => s.resolved === false)).toBe(true);
+	});
+
+	it('a family with a resolved mark AND a genuinely live one counts both, reads live for the live one', () => {
+		const vm = mkVm([
+			mkService('svc-a', [mkCell('rolled-back', { envName: 'staging', envRank: 1 })]),
+			mkService('svc-b', [mkCell('live', { envName: 'staging', envRank: 1 })])
+		]);
+		const steps = familyProgress({ grid: buildLandingGrid(vm, NOW) });
+		const staging = steps.find((s) => s.family === 'STAGING')!;
+		// Partial: one live, one resolved (not stuck/failed) — still reads
+		// live, not full (the ring-vs-fill signal the caller already reads
+		// off `liveCount < builtCount`).
+		expect(staging.tone).toBe('live');
+		expect(staging.builtCount).toBe(2);
+		expect(staging.liveCount).toBe(1);
+	});
+});
+
+// ── QA ROUND 3 (2026-10-11) — D1/D3/D4 AND THE HELD-PREDICATE CORRECTION,
+// ALL EXERCISED THROUGH `row.services` (the raw, UNCOLLAPSED cells
+// `landing-grid.ts`'s own per-service fold loses region detail from). A
+// grid-only caller (no `services`) keeps the old, already-pinned behaviour —
+// see the describe block above, unchanged.
+
+describe('familyProgress + standingWords: D1/D3 region naming (QA round 3, 2026-10-11)', () => {
+	function multiRegionVm(regions: { envName: string; state: PrCell['state'] }[]): PrPipelineVM {
+		return mkVm([
+			mkService('payments-core', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('live', { envName: 'test', envRank: 1 }),
+				mkCell('live', { envName: 'staging', envRank: 2 }),
+				...regions.map((r) => mkCell(r.state, { envName: r.envName, envRank: 3 }))
+			])
+		]);
+	}
+
+	it('1 rolled-back region of many: standing word names it, dot draws the partial-live ring, no carrier', () => {
+		const vm = multiRegionVm([
+			{ envName: 'prod-eu-central', state: 'rolled-back' },
+			{ envName: 'prod-eu-west', state: 'live' },
+			{ envName: 'prod-us-east', state: 'live' },
+			{ envName: 'prod-us-west', state: 'live' },
+			{ envName: 'prod-ap-south', state: 'live' },
+			{ envName: 'prod-sa-east', state: 'live' }
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services, verdictTone: 'active' as const };
+		const steps = familyProgress(row);
+		const prod = steps.find((s) => s.family === 'PROD')!;
+		// D3: NOT dashed/resolved — most of the family is genuinely live.
+		expect(prod.tone).toBe('live');
+		expect(prod.resolved).toBe(false);
+		expect(prod.liveCount).toBe(5);
+		expect(prod.builtCount).toBe(6);
+		// D4: the aria word matches what the dot actually draws (`live`, the
+		// partial ring — never `resolved`'s neutral word, since this step
+		// isn't drawn dashed).
+		expect(familyMeterAriaLabel(steps)).toContain('prod live');
+		// D1: the WORD still calls out the one region that regressed.
+		expect(standingWords(row)).toBe('rolled back in prod-eu-central');
+	});
+
+	it('2 rolled-back regions: both named, joined with "and"', () => {
+		const vm = multiRegionVm([
+			{ envName: 'prod-eu-central', state: 'rolled-back' },
+			{ envName: 'prod-us-west', state: 'rolled-back' },
+			{ envName: 'prod-eu-west', state: 'live' },
+			{ envName: 'prod-us-east', state: 'live' }
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services, verdictTone: 'active' as const };
+		expect(standingWords(row)).toBe('rolled back in prod-eu-central and prod-us-west');
+	});
+
+	it('3+ rolled-back regions: named by count', () => {
+		const vm = multiRegionVm([
+			{ envName: 'prod-eu-central', state: 'rolled-back' },
+			{ envName: 'prod-us-west', state: 'rolled-back' },
+			{ envName: 'prod-ap-south', state: 'rolled-back' },
+			{ envName: 'prod-us-east', state: 'live' }
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services, verdictTone: 'active' as const };
+		expect(standingWords(row)).toBe('rolled back in 3 prod regions');
+	});
+
+	it('every region rolled back: the plain family word, unchanged copy', () => {
+		const vm = multiRegionVm([
+			{ envName: 'prod-eu-central', state: 'rolled-back' },
+			{ envName: 'prod-us-west', state: 'rolled-back' }
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services, verdictTone: 'active' as const };
+		const steps = familyProgress(row);
+		const prod = steps.find((s) => s.family === 'PROD')!;
+		expect(prod.resolved).toBe(true);
+		expect(standingWords(row)).toBe('rolled back in prod');
+	});
+
+	// ⭐ D2 FIX (QA round 4, 2026-10-11) — DISTINCT REGIONS, NOT CELLS. Two
+	// services sharing the SAME env name must count as ONE region, both for
+	// the "how many rolled back" count and for the "did EVERY region in
+	// this family roll back" comparison — a live fleet with two services
+	// both deployed to `prod-eu-central` must never read "rolled back in
+	// prod-eu-central and prod-eu-central" or silently pass the all-rolled-
+	// -back check because one service's cell inflated the denominator.
+	it('two services sharing one rolled-back region count as ONE region, not two', () => {
+		const vm = mkVm([
+			mkService('svc-a', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('rolled-back', { envName: 'prod-eu-central', envRank: 1 })
+			]),
+			mkService('svc-b', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('rolled-back', { envName: 'prod-eu-central', envRank: 1 }),
+				mkCell('live', { envName: 'prod-us-west', envRank: 1 })
+			])
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services, verdictTone: 'active' as const };
+		// One region rolled back (`prod-eu-central`), one region live
+		// (`prod-us-west`) — NOT "every region" (which would read the plain
+		// "rolled back in prod"), and named once, not twice.
+		expect(standingWords(row)).toBe('rolled back in prod-eu-central');
+	});
+
+	// D3: `frontierStandingCell` must call `frontierStandingStep` itself
+	// (never re-scan independently) and refuse a carrier whenever the
+	// PICKED step carries any rollback — including the partial-live shape,
+	// which the OLD narrower `tone !== 'live'` scan used to miss entirely
+	// (that scan skipped a `'live'`-toned step outright, so it could pick a
+	// LATER family as the carrier source while the word was about THIS
+	// one).
+	it('frontierStandingCell (via carrierSha) is null whenever the picked step has any rollback, partial or full', () => {
+		const vm = multiRegionVm([
+			{ envName: 'prod-eu-central', state: 'rolled-back' },
+			{ envName: 'prod-eu-west', state: 'live' },
+			{ envName: 'prod-us-east', state: 'live' }
+		]);
+		const rows = buildChangeRows(
+			[mkChange({ mergeCommitSha: 'f00d001', containedIn: [], containedInAll: false })],
+			[],
+			[],
+			null,
+			NOW
+		);
+		// The hand-built fixture above exercises `standingWords`/
+		// `familyProgress` directly (no real rollout/change plumbing needed
+		// for THOSE); `carrierSha` specifically is produced by
+		// `buildChangeRow`, which this repo's existing carrier-sha tests
+		// already exercise end-to-end against real demo data — this test
+		// pins the STEP-level guarantee `frontierStandingCell` itself must
+		// honour, directly.
+		void rows;
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services, verdictTone: 'active' as const };
+		expect(standingWords(row)).toBe('rolled back in prod-eu-central');
+		// familyProgress's own `anyResolved` is what `frontierStandingCell`
+		// now reads via `frontierStandingStep` — confirms the signal is
+		// present on the SAME step the word used, which is what makes the
+		// carrier guard correct for this exact (partial-live) shape.
+		const steps = familyProgress(row);
+		const prod = steps.find((s) => s.family === 'PROD')!;
+		expect(prod.tone).toBe('live');
+		expect(prod.anyResolved).toBe(true);
+	});
+
+	// D3: a resolved region never wins over a genuinely in-flight one when
+	// NOTHING in the family is live yet either.
+	it('a rolled-back region beside a still-promoting one (none live yet): reads the in-flight state, not resolved', () => {
+		const vm = mkVm([
+			mkService('svc', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('rolled-back', { envName: 'prod-eu-central', envRank: 1 }),
+				mkCell('promoting', { envName: 'prod-us-west', envRank: 1 })
+			])
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services, verdictTone: 'active' as const };
+		const steps = familyProgress(row);
+		const prod = steps.find((s) => s.family === 'PROD')!;
+		expect(prod.tone).toBe('active');
+		expect(prod.state).toBe('promoting');
+		expect(prod.resolved).toBe(false);
+		expect(prod.anyResolved).toBe(true);
+	});
+});
+
+describe('familyProgress: the held-predicate correction (QA round 3, 2026-10-11)', () => {
+	// hello-world-shaped: dev hasn't reached the stage, its gate reads
+	// held-like in raw state but is NOT genuinely held (`cell.held: false`,
+	// `held.ts`'s own `heldVerdict` verdict for a build that simply hasn't
+	// gotten there yet) — must read as an ordinary wait, never amber/held.
+	it('hello-world calm: a held-like cell that is NOT genuinely held reads queued, never stuck', () => {
+		const vm = mkVm([
+			mkService('hello-world', [mkCell('gated', { envName: 'dev', envRank: 0, held: false })])
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services };
+		const steps = familyProgress(row);
+		expect(steps[0].tone).toBe('queued');
+		expect(steps.every((s) => s.tone !== 'stuck')).toBe(true);
+	});
+
+	// checkout-api-shaped: dev/test/staging live, staging's prod-facing gate
+	// IS genuinely held (`cell.held: true`) on a real contract — held once,
+	// at staging; nothing downstream (prod) independently repaints amber —
+	// the existing frontier-freeze already turns it quiet once staging
+	// itself is correctly read as the frontier's own stuck family.
+	it('checkout-api: held once at staging on the contract; prod is frozen quiet, never independently held', () => {
+		const vm = mkVm([
+			mkService('checkout-api', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('gated', { envName: 'staging', envRank: 1, held: true, holdCause: 'waiting for payments-svc' }),
+				mkCell('gated', { envName: 'prod-us-east-2', envRank: 2, held: true })
+			])
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services };
+		const steps = familyProgress(row);
+		const staging = steps.find((s) => s.family === 'STAGING')!;
+		const prod = steps.find((s) => s.family === 'PROD')!;
+		expect(staging.tone).toBe('stuck');
+		expect(prod.tone).toBe('none');
+		expect(steps.filter((s) => s.tone === 'stuck').length).toBe(1);
+	});
+
+	// Multi-service: service A is genuinely held at prod; service B has
+	// never even reached dev. A real hold on ONE service must never be
+	// folded away by the OTHER service's own, unrelated not-yet-reached
+	// state — prod still reads stuck, with its Review action intact.
+	it('multi-service: service A held at prod, service B only in dev — the real hold survives', () => {
+		const vm = mkVm([
+			mkService('service-a', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('live', { envName: 'test', envRank: 1 }),
+				mkCell('live', { envName: 'staging', envRank: 2 }),
+				mkCell('gated', { envName: 'prod', envRank: 3, held: true, holdCause: 'waiting on an approval' })
+			]),
+			mkService('service-b', [mkCell('deploying', { envName: 'dev', envRank: 0 })])
+		]);
+		const row = { grid: buildLandingGrid(vm, NOW), services: vm.services };
+		const steps = familyProgress(row);
+		const prod = steps.find((s) => s.family === 'PROD')!;
+		expect(prod.tone).toBe('stuck');
+		expect(prod.state).toBe('gated');
+	});
+});
+
 describe('familyProgress', () => {
-	it('orders steps DEV → STG → PRD and keeps the WORST mark across services for each family', () => {
+	it('orders steps DEV → STAGING → PROD and keeps the WORST mark across services for each family', () => {
 		// #4-shaped: held in dev on one service, but a SECOND service is
 		// already live in dev — the family step must read `held`, not
 		// average the two or silently prefer whichever service came first.
@@ -894,13 +1470,13 @@ describe('familyProgress', () => {
 		]);
 		const grid = buildLandingGrid(vm, NOW);
 		const steps = familyProgress({ grid });
-		expect(steps.map((s) => s.family)).toEqual(['DEV', 'STG', 'PRD']);
+		expect(steps.map((s) => s.family)).toEqual(['DEV', 'STAGING', 'PROD']);
 		expect(steps[0]).toMatchObject({ family: 'DEV', tone: 'stuck', state: 'gated' });
-		expect(steps[1]).toMatchObject({ family: 'STG', tone: 'none', state: 'not-built' });
-		expect(steps[2]).toMatchObject({ family: 'PRD', tone: 'none', state: 'not-built' });
+		expect(steps[1]).toMatchObject({ family: 'STAGING', tone: 'none', state: 'not-built' });
+		expect(steps[2]).toMatchObject({ family: 'PROD', tone: 'none', state: 'not-built' });
 	});
 
-	it('#3-shaped: live in dev, held in staging — DEV reads live, STG reads stuck', () => {
+	it('#3-shaped: live in dev, held in staging — DEV reads live, STAGING reads stuck', () => {
 		const vm = mkVm([
 			mkService('hello-api-app', [
 				mkCell('live', { envName: 'dev', envRank: 0 }),
@@ -910,7 +1486,7 @@ describe('familyProgress', () => {
 		]);
 		const grid = buildLandingGrid(vm, NOW);
 		const steps = familyProgress({ grid });
-		expect(steps.map((s) => `${s.family}:${s.tone}`)).toEqual(['DEV:live', 'STG:stuck', 'PRD:none']);
+		expect(steps.map((s) => `${s.family}:${s.tone}`)).toEqual(['DEV:live', 'STAGING:stuck', 'PROD:none']);
 	});
 
 	it('a service actively deploying/baking keeps its own PrState so the caller can split blue vs yellow', () => {
@@ -924,12 +1500,12 @@ describe('familyProgress', () => {
 	// ⭐ ROUND 3 (2026-09-10 ruling A). Superseded: a row with no services
 	// (the ledger-fallback shape, and now also a real `noRelease` change)
 	// used to draw NO meter at all — now it draws three neutral
-	// placeholders, DEV/STG/PRD, tone `none`, so the meter is never simply
+	// placeholders, DEV/STAGING/PROD, tone `none`, so the meter is never simply
 	// absent ("meter = three dashed dots" for a `noRelease` row).
 	it('draws three neutral placeholders for a row with no services (the ledger-fallback shape / a noRelease change)', () => {
 		const steps = familyProgress({ grid: { services: [], allSameLabel: null, visible: [], overflow: null } });
 		expect(steps).toHaveLength(3);
-		expect(steps.map((s) => s.family)).toEqual(['DEV', 'STG', 'PRD']);
+		expect(steps.map((s) => s.family)).toEqual(['DEV', 'STAGING', 'PROD']);
 		expect(steps.every((s) => s.tone === 'none' && s.state === null && s.builtCount === 0)).toBe(true);
 	});
 
@@ -938,8 +1514,8 @@ describe('familyProgress', () => {
 	// (three separate `HELD` rollouts on the real cluster) — the OLD
 	// worst-per-family aggregation painted all three amber, because each
 	// family's own marks really were `stuck` on their own. The change cannot
-	// have moved past DEV, so STG/PRD must read as moot (`none`), not as a
-	// second and third independent block.
+	// have moved past DEV, so STAGING/PROD must read as moot (`none`), not as
+	// a second and third independent block.
 	it('FRONTIER FREEZE: a service held in dev, staging AND prod reads amber ONLY in dev — later families go quiet', () => {
 		const vm = mkVm([
 			mkService('hello-frontend-app', [

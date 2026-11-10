@@ -45,6 +45,28 @@ export type DependencyNodeData = {
 		 */
 		pending?: boolean;
 	}[];
+	/**
+	 * ⭐ D-20b ROUND 2 (coordinator decision, 2026-10-09) — WHERE A HELD
+	 * CONSTRAINT IS NOW READ. Edge labels caused unbounded label-collision
+	 * work on a dense canvas and never reached zero; the fix is structural,
+	 * not a better placement algorithm — stop putting the constraint text
+	 * on the edge at all. Each BLOCKED inbound contract edge becomes one
+	 * quiet line on the CONSUMER node (`DependencyNode`'s own template),
+	 * same role `holds` already plays for a gate with no second rollout —
+	 * this is its counterpart for a gate that DOES have one, which used to
+	 * live only on the edge. An open (non-blocked) contract carries no
+	 * entry here, same "mark the deviation, never the norm" rule `holds`
+	 * already follows.
+	 */
+	heldConstraints: {
+		/** The contract name, e.g. `payments`. Never `null` on the wire —
+		 *  `DependencyNetwork` already falls back to `'contract'`. */
+		contract: string;
+		/** What the held candidate asks of it, e.g. `~2.9.0`. */
+		requiredVersion: string | null;
+		/** What the provider actually serves here, e.g. `2.4.1`. */
+		providedVersion: string | null;
+	}[];
 	href: string | null;
 	focused: boolean;
 	title: string;

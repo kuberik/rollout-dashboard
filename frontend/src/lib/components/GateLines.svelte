@@ -115,33 +115,24 @@
 			     pixels. It is an ADDITION to the popover, never a substitute for
 			     it — a `title` is not reachable on a phone. -->
 			<li
-				class="t-micro flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-gray-500 dark:text-gray-400"
+				class="t-meta flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-fg-subtle"
 				title="The rule holding this: {g.id}"
 			>
 				<span class="flex min-w-0 items-center gap-1.5">
-					<Icon class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+					<Icon class="h-4 w-4 shrink-0" aria-hidden="true" />
 					{#if drawn && subjectHref && g.subject === subjectLabel}
 						<!-- THE OBJECT THAT HAS TO MOVE, AT FULL INK — AND NOW THE
 						     ZONE'S ONE `.tap-link` TOO. Same classes, same ink, the
 						     only addition is the anchor itself; a reader who does
 						     not notice it is a link loses nothing they had before. -->
-						<a
-							href={subjectHref}
-							class="{g.subjectKind === 'schedule'
-								? 't-micro font-medium'
-								: 't-code-sm'} tap-link min-w-0 truncate text-gray-900 dark:text-white">{g.subject}</a
-						>
+						<a href={subjectHref} class="t-ui-sm tap-link min-w-0 truncate text-fg">{g.subject}</a>
 					{:else if drawn}
-						<!-- THE OBJECT THAT HAS TO MOVE, AT FULL INK. It was the
-						     fourth word of a gray sentence; it is the thing the
-						     reader is looking for. Mono for a Kubernetes object
-						     name (a service, an environment), sans for a
-						     human-authored window label. -->
-						<span
-							class="{g.subjectKind === 'schedule'
-								? 't-micro font-medium'
-								: 't-code-sm'} min-w-0 truncate text-gray-900 dark:text-white">{g.subject}</span
-						>
+						<!-- ⛔ THE MONO ENV-NAME BUG. (design language pass) `g.subject`
+						     is a NAME — a service, an environment, or a window label —
+						     never a machine id, so it is sans (`t-ui-sm`) in every case,
+						     not mono for some kinds and sans for others. Mono is for a
+						     sha/version/tag/k8s path, never a name (§5.3). -->
+						<span class="t-ui-sm min-w-0 truncate text-fg">{g.subject}</span>
 					{:else}
 						<!-- NO SHAPE, SO THE SENTENCE STAYS. See the header. -->
 						<span class="min-w-0">{g.short}</span>
@@ -166,7 +157,7 @@
 							title="{g.subject} serves {g.contract} {g.have}"
 						/>
 						<ArrowRightOutline
-							class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
+							class="h-4 w-4 shrink-0 text-fg-subtle"
 							aria-hidden="true"
 						/>
 						<Chip

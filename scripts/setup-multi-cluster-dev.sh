@@ -79,6 +79,12 @@ HUB_URL="https://${HUB_HOSTNAME}" \
 SKIP_PROXY="true" \
   "${SCRIPT_DIR}/setup-dev-environment.sh"
 
+# Dex's CA must be identical on every cluster. Regenerating it during the second
+# cluster's setup would leave the first stale; push the current CA to every
+# consumer (configmaps, oauth2-proxy, kube-apiservers) on both clusters.
+echo "==> Syncing Dex CA to both clusters"
+"${SCRIPT_DIR}/sync-dex-ca.sh" rollout-prod rollout-dev
+
 echo "==> Multi-cluster dev setup complete"
 echo ""
 echo "Hub:   https://${HUB_HOSTNAME}   (kind: rollout-prod, prod envs)"

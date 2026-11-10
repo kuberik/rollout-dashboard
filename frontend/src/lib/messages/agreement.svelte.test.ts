@@ -3,8 +3,6 @@ import { describe, test, expect, vi, afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
-import ControlCenter from '$lib/ControlCenter.svelte';
-import RolloutGrid from '$lib/RolloutGrid.svelte';
 import Apps from '../../routes/apps/+page.svelte';
 import Environments from '../../routes/environments/+page.svelte';
 import Activity from '../../routes/activity/+page.svelte';
@@ -29,8 +27,7 @@ import { BAKE_WORD } from '$lib/bake-status';
 afterEach(() => vi.unstubAllGlobals());
 
 const PAGES: Array<[string, unknown]> = [
-	['/', ControlCenter],
-	['/rollouts', RolloutGrid],
+	/* 2026-11-09: `/` and `/rollouts` (ControlCenter, RolloutGrid) deleted with the old pages; the new routes do not render this fleet fixture's names */
 	['/apps', Apps],
 	['/environments', Environments],
 	['/activity', Activity]
@@ -39,7 +36,7 @@ const PAGES: Array<[string, unknown]> = [
 async function mount(Comp: unknown, payload = fleet()) {
 	vi.stubGlobal('fetch', vi.fn(respond(payload)));
 	const r = render(WithQueryClient, { props: { component: Comp as any } });
-	await waitFor(() => expect(screen.getAllByText(/alpha-app|r1aaaaa/i).length).toBeGreaterThan(0), {
+	await waitFor(() => expect(screen.getAllByText(/alpha-app|r1aaaaa|invoice-api|checkout-edge|\d+ places? · \d+ apps?/i).length).toBeGreaterThan(0), {
 		timeout: 5000
 	});
 	return r;
@@ -173,25 +170,5 @@ describe('adjacent surfaces do not contradict each other about one fleet', () =>
 	 * own verdict is still `Succeeded`. Four list surfaces read the deploy's
 	 * verdict and printed the word `healthy`.
 	 */
-	test('a failing check is attention on every list surface, not healthy on any', async () => {
-		const payload = fleet((app, tier) => ({
-			hold: 'none',
-			at: 2,
-			failingCheck: app === 'alpha-app' && tier === 'prod' ? 'payment-latency' : null
-		}));
-
-		for (const [name, Comp] of [PAGES[0], PAGES[1]] as Array<[string, unknown]>) {
-			const { container, unmount } = await mount(Comp, payload);
-			const text = (container.textContent ?? '').replace(/\s+/g, ' ');
-			expect(text, `${name} counted a blown SLO as nothing to look at`).not.toMatch(
-				/Attention 0|Needs you now 0/
-			);
-			// And the reason is on the page, in the check's own words.
-			expect(container.innerHTML, `${name} never names the failing check`).toMatch(
-				/payment-latency/
-			);
-			unmount();
-			vi.unstubAllGlobals();
-		}
-	});
+	/* 2026-11-09: `a failing check is attention on every list surface` is retired -- it asserted `/` and `/rollouts` (ControlCenter, RolloutGrid) name the failing check and never print `Attention 0`; both pages are deleted and the new Home's Attention cards are held by the home model tests and truth.mjs. */
 });

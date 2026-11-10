@@ -1,0 +1,92 @@
+<svelte:options runes={true} />
+
+<script lang="ts">
+	/**
+	 * r34 r3-approve — THE ONE APPROVE CONFIRM AND ITS AFTER-STATE. Mounted once in the root layout; every Approve button in the product
+	 * (`ApproveButton`, or an `Act` from `approveAct`) opens it.
+	 *
+	 * Role: one confirmation step, in the same surface, naming the build and the places ("Approve f4a2c19 for 5 prod regions?"), then the
+	 * after-state: the item has already moved to Deploying on every page, and a toast says "Approved f4a2c19 · payments-core is deploying to 5 prod
+	 * regions" with Undo for 8 s. Why no existing component fits: ActRow's "⋯" menu is a list of verbs, Toast is a confirmation of something done
+	 * (it is reused here for the after-state), and the product has no confirm-with-a-sentence popover; the deploy dialog is a different job
+	 * (an approval never opens it: approval-never-deploys.test.ts). References: the overlay surface of Toast / ActRow's menu (`bg-overlay`,
+	 * 8px radius, overlay shadow), `.btn-primary` + `.btn-secondary` for Approve / Cancel, `t-ui` / `t-meta` for the sentence and its detail.
+	 * Desktop (>= 640): anchored under (or over, near the viewport foot) the pressed control. Phone: a bottom sheet with 44px buttons.
+	 */
+	import { onMount, tick } from 'svelte';
+	import { fade, fly } from 'svelte/transition';
+	import Toast from '$lib/components/Toast.svelte';
+	import { approvalUi, cancelApprove, confirmApprove, undoApprove, dismissDone, askSentence, doneWords } from './approvals.svelte';
+
+	const ask = $derived(approvalUi.ask);
+	const done = $derived(approvalUi.done);
+	let panel: HTMLElement | undefined = $state();
+	let vw = $state(1024);
+	let vh = $state(800);
+	const phone = $derived(vw < 640);
+
+	const style = $derived.by(() => {
+		const a = ask?.anchor;
+		if (phone || !a) return '';
+		const W = 320;
+		const left = Math.max(8, Math.min(a.right - W, vw - W - 8));
+		const below = a.bottom + 8 + 150 < vh;
+		return `left:${left}px;width:${W}px;${below ? `top:${a.bottom + 8}px` : `bottom:${vh - a.top + 8}px`}`;
+	});
+
+	$effect(() => {
+		if (ask) tick().then(() => panel?.querySelector<HTMLButtonElement>('[data-action="approve-confirm"]')?.focus());
+	});
+	onMount(() => {
+		const away = (e: PointerEvent) => { if (approvalUi.ask && panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[data-approve-open]')) cancelApprove(); };
+		document.addEventListener('pointerdown', away, true);
+		return () => document.removeEventListener('pointerdown', away, true);
+	});
+	function key(e: KeyboardEvent) {
+		if (e.key === 'Escape' && approvalUi.ask) { e.stopPropagation(); cancelApprove(); }
+	}
+</script>
+
+<svelte:window bind:innerWidth={vw} bind:innerHeight={vh} onkeydown={key} />
+
+{#if ask}
+	{@const t = ask.target}
+	{#if phone}<div class="fixed inset-0 z-[69] bg-black/40" transition:fade={{ duration: 120 }} aria-hidden="true"></div>{/if}
+	<div
+		bind:this={panel}
+		role="dialog"
+		aria-modal={phone ? 'true' : undefined}
+		aria-label={askSentence(t)}
+		data-approve-confirm
+		class="fixed z-[70] flex flex-col gap-3 bg-overlay p-4 {phone ? 'inset-x-2 bottom-2 rounded-lg pb-[calc(env(safe-area-inset-bottom,0px)+16px)]' : 'rounded-md'}"
+		style="box-shadow: var(--k-shadow-overlay); {style}"
+		transition:fly={{ y: phone ? 24 : 6, duration: 140 }}
+	>
+		<div class="min-w-0">
+			<div class="t-ui font-medium text-fg">{askSentence(t)}</div>
+			<div class="t-meta mt-0.5 text-fg-muted">{t.app} · {t.places.map((p) => (p.label === 'prod' ? 'production' : p.label)).join(', ')}</div>
+		</div>
+		<div class="flex items-center justify-end gap-2">
+			<button type="button" class="btn btn-secondary btn-sm {phone ? 'min-h-11 flex-1' : ''}" data-action="approve-cancel" onclick={cancelApprove}>Cancel</button>
+			<button type="button" class="btn btn-primary btn-sm {phone ? 'min-h-11 flex-1' : ''}" data-action="approve-confirm" onclick={() => confirmApprove()}>Approve</button>
+		</div>
+	</div>
+{/if}
+
+{#if done}
+	{@const w = doneWords(done.target)}
+	<Toast
+		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
+		tone={done.error ? 'danger' : 'success'}
+		message={done.error ? `Could not approve ${done.target.build}` : `${w.title} · ${w.detail}`}
+		description={done.error ?? ''}
+	>
+		{#snippet action()}
+			{#if done.error}
+				<button type="button" class="nav-link" data-action="approve-dismiss" onclick={dismissDone}>Dismiss</button>
+			{:else}
+				<button type="button" class="nav-link" data-action="approve-undo" onclick={() => undoApprove()}>Undo</button>
+			{/if}
+		{/snippet}
+	</Toast>
+{/if}

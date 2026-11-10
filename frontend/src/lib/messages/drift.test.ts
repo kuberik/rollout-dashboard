@@ -140,3 +140,27 @@ describe('every sentence module is fully reached', () => {
 		}
 	});
 });
+
+/**
+ * ⭐ shared/age-lag-total, ONE LAG UNIT (2026-10-12). A build-distance count
+ * must read "N builds behind"; a region count must read "N of M regions on
+ * newest"; neither may ever reach a screen as a bare "N behind" with no
+ * denominator (that is exactly how `env-rank.ts`'s own `rankLabel` drifted
+ * from `−N` to `N behind` in 2026-08-30 without saying what the number
+ * counted). A literal with an INTERPOLATED count collapses to `scan.ts`'s
+ * `HOLE` character before it ever reaches `catalogue.txt`, so this can only
+ * catch a count written as a literal digit in source (the one shape that
+ * slips past every other guard in this file) — `routes/design/+page.svelte`'s
+ * showcase strings are exactly where it did.
+ */
+describe('one lag unit — never a bare "N behind"', () => {
+	test('no catalogued string says a bare count is behind with no unit', () => {
+		const bare = catalogue.filter((line) => /\b\d+ behind\b/.test(line) && !line.includes('builds'));
+		expect(
+			bare,
+			`${bare.length} catalogued string(s) say "N behind" with no unit:\n${bare
+				.map((l) => `    ${l}`)
+				.join('\n')}\n  Route the count through env-rank.ts's lagLabel({ builds }) (a build-\n  distance count) or regionsLabel({ onNewest, of }) (a region count), or\n  name the unit directly if it is neither.`
+		).toEqual([]);
+	});
+});

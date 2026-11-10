@@ -2,8 +2,20 @@
 
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Button } from 'flowbite-svelte';
+	import { outageEscalation } from '$lib/view-models/outage-escalation.svelte';
 	import LogsViewer from '$lib/components/LogsViewer.svelte';
+	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
+	import NotFound from '$lib/components/NotFound.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
+	import { createQuery } from '@tanstack/svelte-query';
+	import { rolloutQueryOptions } from '$lib/api/rollouts';
+	import { pollWhenHealthy } from '$lib/api/errors';
+	import type { Rollout } from '../../../../../../types';
+	import { pageTitle } from '$lib/page-title';
+	import { formatTimeAgoCompact } from '$lib/utils';
+	import { now } from '$lib/stores/time';
+	import { href } from '$lib/paths';
 
 	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
@@ -11,10 +23,39 @@
 
 	// Support ?tab=tests or ?tab=pods query parameter
 	const tabFromUrl = $derived(page.url.searchParams.get('tab'));
-	const initialTab = $derived.by(() => {
-		if (tabFromUrl === 'tests') return 'tests';
-		return 'pods';
-	});
+
+	// The header's build + state pill: the same cache entry the layout and
+	// the Overview read, so this costs no extra request.
+	const rolloutQuery = createQuery(() =>
+		rolloutQueryOptions({
+			namespace,
+			name,
+			cluster,
+			options: { refetchInterval: pollWhenHealthy(5000, 300_000, cluster) }
+		})
+	);
+	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
+
+	/**
+	 * ⭐ NOT FOUND, LIKE THE SIBLING History TAB (squad-rollout coordinator,
+	 * 2026-10-09). Before this, a missing rollout left `rollout` `undefined`
+	 * forever — `LogsViewer` doesn't know or care whether its own name/
+	 * namespace props point at a real object, so its "Connecting to pods…"
+	 * spinner just span, honestly reporting a connection that was never
+	 * going to open. `loading`/`error`/`!rollout` is the exact three-way
+	 * split `history/+page.svelte` already uses on the SAME query shape
+	 * (`rolloutQueryOptions` resolves a missing rollout to `{ rollout: null
+	 * }`, not a thrown error — a 404 is not a fetch failure).
+	 */
+	// PALROW r8 (AD palette r7 item 3): a full outage escalates to ErrorState
+	// after two failed answers instead of retrying on the skeleton forever
+	// (`view-models/outage-escalation.svelte.ts`).
+	const outage = outageEscalation(
+		() => rolloutQuery,
+		() => `${cluster}/${namespace}/${name}`
+	);
+	const rolloutLoading = $derived(outage.loading);
+	const rolloutError = $derived(outage.error);
 
 	let activeTab = $state<'pods' | 'tests'>('pods');
 
@@ -25,127 +66,123 @@
 		}
 	});
 
-	// The rollup sentence ("2,031 lines · 2 pods · Streaming") LogsViewer
-	// computes from the counts it owns, SPLIT at its own joint — `count` is
-	// the leading figure, `rest` is everything after it — so the head row
-	// below can print them at two type roles instead of one. See
-	// `LogsSummary` in LogsViewer.svelte for why: the sr-only `h1` note there
-	// explains what used to live in this slot. `errorCount`/`errorsFiltered`/
-	// `toggleErrorFilter` are the same bound-out shape for the error rollup
-	// (finding #3c) — mirrored here rather than imported because
-	// `LogsSummary` lives in `LogsViewer.svelte`'s instance script, not its
-	// `module` context, so it isn't an importable type.
-	let summary = $state<{
-		count: number;
-		rest: string;
-		errorCount: number;
-		errorsFiltered: boolean;
-		toggleErrorFilter: () => void;
-	}>({ count: 0, rest: '', errorCount: 0, errorsFiltered: false, toggleErrorFilter: () => {} });
+	/**
+	 * ⭐ REFERENCE REGION: `PageHeader` object form, the same header History
+	 * and the Overview open with, so the title stays in one place across tab
+	 * switches (TL review round 3). The name comes from the URL; no query.
+	 */
+
+	/**
+	 * ⭐ THE HEADER META: "1 pod · 3m ago". `podCount` is reported UP from
+	 * `LogsViewer` (see its own `onPodCount` doc comment) rather than
+	 * re-derived here, so the page head and the Sources pane can never
+	 * disagree about how many pods are in view. The build itself is
+	 * deliberately NOT repeated here — `RolloutTabHeader`'s title line
+	 * already prints it (`/ build`) a few pixels above this row, and
+	 * restating it would be exactly the "one fact, once" violation the
+	 * design language calls out.
+	 *
+	 * ⭐ `formatTimeAgoCompact` + "ago", NOT "since … ago" (art director
+	 * round 1, must-fix #10: "the Overview meta says '28m ago'; Logs says
+	 * 'since 28 minutes ago'. Use the same relative-time format as the
+	 * Overview"). `formatTimeAgo`'s own spelled-out "28 minutes ago" was a
+	 * SECOND relative-time vocabulary for the exact same fact the title
+	 * bar's sibling tab already states in `formatTimeAgoCompact`'s "28m"
+	 * — this is that same function, same word order, same tab strip.
+	 */
+	let podCount = $state(0);
+	const sinceLabel = $derived.by((): string | null => {
+		const latest = rollout?.status?.history?.[0];
+		const since = latest?.bakeStartTime || latest?.timestamp;
+		return since ? `${formatTimeAgoCompact(since, $now)} ago` : null;
+	});
 </script>
 
 <svelte:head>
-	<title>kuberik | {name} ({namespace}) Logs</title>
+	<title>{pageTitle(`${name} (${namespace}) Logs`)}</title>
 </svelte:head>
 
-<!-- ⭐ `min-h-0 flex-1`, NOT `h-full`. The rollout layout's scroller is a flex
-     column now (the tab strip moved inside it so the strip and the page are
-     centred in the SAME content box), and `height: 100%` in there resolves
-     against the scroller's full height — which would make this tab exactly one
-     tab strip taller than its pane and give the only tab that must not scroll a
-     49px scrollbar. As a flex item it takes the remainder instead. -->
-<div class="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 py-6 dark:bg-gray-900 sm:px-6">
-	<div class="mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-2 sm:mb-4">
-		<!-- ⛔ THIS `h1` SAID "Logs" DIRECTLY UNDER A TAB STRIP WHOSE ACTIVE TAB
-		     ALREADY SAYS "Logs" — the same duplicate-heading defect `/apps`,
-		     `/activity` and this rollout's own History tab were fixed for.
-		     `sr-only`, not deleted: the skip link lands on `main` and the page
-		     outline still needs a level-1 heading. What fills the visible slot
-		     is the rollup LogsViewer already prints, promoted up — the one
-		     thing the tab strip does not say.
-
-		     ⛔ AND THE VISIBLE SLOT WAS THE WRONG TYPE ROLE. (defect #2) A
-		     bare `t-headline` (17/600) put the whole sentence — count and
-		     qualifiers alike — one size below `/activity`, `/versions`,
-		     `/dependencies`, `/rollouts` and this rollout's own sibling
-		     `/history` tab, every one of which leads this exact slot with a
-		     `t-display` (24px) figure and carries the rest of the sentence at
-		     `t-dense` on its baseline. `LogsViewer` now hands back `summary`
-		     split at that joint instead of one joined string. -->
-		<h1 class="sr-only">Logs</h1>
-		<div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-			<span class="t-display tabular-nums text-gray-900 dark:text-white"
-				>{summary.count.toLocaleString()}</span
-			>
-			<p class="t-dense min-w-0 text-gray-500 dark:text-gray-400">{summary.rest || 'Logs'}</p>
-			<!-- ⭐ THE ERROR COUNT, ALSO HERE. (2026-09-03, design pass 6,
-			     operator-walk finding #3c) `LogsViewer`'s own Card rollup
-			     carries the same control right beside the log pane; this
-			     copy is the one a reader sees FIRST, before scrolling past
-			     the tab strip to the pane itself — both toggle the identical
-			     `Level` filter via the same `toggleErrorFilter` callback
-			     `LogsViewer` binds out through `summary`, so the two can
-			     never disagree about whether the filter is on. -->
-			{#if summary.errorCount > 0}
-				<button
-					type="button"
-					class="nav-link text-red-600 dark:text-red-400"
-					aria-pressed={summary.errorsFiltered}
-					onclick={summary.toggleErrorFilter}
-				>
-					{summary.errorCount} error{summary.errorCount === 1 ? '' : 's'}
-				</button>
-			{/if}
+{#if rolloutLoading}
+	<!-- Same skeleton vocabulary as the sibling Overview/History tabs
+	     (2026-09-04, load-state audit finding 11) — a reader who switches
+	     tabs mid-load should see one loading language, not a bare spinner
+	     here and a full composition next door. -->
+	<div class="mx-auto w-full px-4 py-6 sm:px-6">
+		<div class="mb-5 flex flex-col gap-2" aria-hidden="true">
+			<span class="skel-block h-6 w-48"></span>
+			<span class="skel-block h-3.5 w-64"></span>
 		</div>
-		<!-- Tab buttons inline on mobile.
-		     ⛔ `py-1.5` MADE THIS 28PX AGAINST THE FILTER DROPDOWNS' 34PX, 60PX
-		     BELOW IN THE SAME PANE. (2026-09-03, design pass 6, finding #12)
-		     Flowbite's `Button size="xs"` (`LogsViewer`'s Source/Level/Columns
-		     triggers) is `px-3 py-2 text-xs` plus a 1px border each side — 34px.
-		     This segmented control carried the border on the WRAPPER, not each
-		     button, so matching the wrapper's own padding to `py-1.5` undershot
-		     by 6px: `py-1.5`(12) + `text-xs` line-height(16) = 28, +2 border on
-		     the wrapper = 30, still short. `py-2` unconditionally (dropping the
-		     `sm:py-2` duplicate — it is no longer a step up from anything) gives
-		     16+16=32 per button, +2 wrapper border = 34, matching exactly. -->
-		<!-- `aria-pressed`, not `role="tab"`. A tablist commits a keyboard
-		     contract this control does not implement (arrow-key roving focus
-		     between tabs per the ARIA APG) — adding the role without it would
-		     announce a pattern that then does not work. `aria-pressed` on a
-		     plain two-button toggle group needs no extra keyboard wiring: Tab
-		     already reaches both buttons and Enter/Space already activates
-		     them. (2026-09-03, design pass 6, operator-walk finding #2.) -->
-		<div class="flex rounded border border-gray-200 dark:border-gray-700">
-			<button
-				aria-pressed={activeTab === 'pods'}
-				class="px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm {activeTab === 'pods'
-					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-l"
-				onclick={() => (activeTab = 'pods')}
-			>
-				Pods
-			</button>
-			<button
-				aria-pressed={activeTab === 'tests'}
-				class="px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm {activeTab === 'tests'
-					? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
-					: 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'} rounded-r"
-				onclick={() => (activeTab = 'tests')}
-			>
-				Tests
-			</button>
-		</div>
+		<CardSkeleton titleWidth="w-28" rollupWidth="w-32" bodyHeight={420} />
 	</div>
+{:else if rolloutError}
+	<!-- ⭐ ITEM 1 (AD palette round 8): NO WRAPPER HERE — see History's
+	     identical note. `ErrorState` supplies its own rollout-page inset. -->
+	<ErrorState
+		error={rolloutError}
+		subject="this rollout's logs"
+		backHref={href('/rollouts')}
+		backLabel="Back to all rollouts"
+		onRetry={() => rolloutQuery.refetch()}
+	/>
+{:else if !rollout}
+	<!-- The calm not-found composition the Overview/History tabs use
+	     (NotFound.svelte): same object, same words, same way out — no
+	     banner, no hue. A missing rollout is not an incident. -->
+	<NotFound
+		eyebrow="Rollout"
+		title={name}
+		headline="This rollout does not exist"
+		nextStep="It may have been deleted, or the address may be wrong."
+		facts={[
+			{ label: 'Rollout', value: `${namespace}/${name}`, handle: true },
+			...(cluster ? [{ label: 'Cluster', value: cluster, handle: true }] : []),
+			{ label: 'Server answered', value: 'not found' }
+		]}
+		backHref={href('/rollouts')}
+		backLabel="Back to all rollouts"
+	/>
+{:else}
+	<!-- ⭐ `min-h-0 flex-1`, NOT `h-full`. The rollout layout's scroller is a flex
+	     column now (the tab strip moved inside it so the strip and the page are
+	     centred in the SAME content box), and `height: 100%` in there resolves
+	     against the scroller's full height — which would make this tab exactly one
+	     tab strip taller than its pane and give the only tab that must not scroll a
+	     49px scrollbar. As a flex item it takes the remainder instead. -->
+	<div class="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6">
+		<!-- No env chip after the title: the breadcrumb names the environment
+		     and the Overview / History headers carry none (one fact, once). -->
+		<RolloutTabHeader {name} {rollout} quietRollback class="mb-6 shrink-0">
+			{#snippet meta()}
+				{#if podCount > 0}
+					<span>{podCount} pod{podCount === 1 ? '' : 's'}</span>
+				{/if}
+				{#if sinceLabel}
+					<!-- No age on the phone meta line beside another fact (r11, item 5). -->
+					<span class={podCount > 0 ? 'max-lg:hidden' : ''}>{sinceLabel}</span>
+				{/if}
+			{/snippet}
+		</RolloutTabHeader>
 
-	<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-
-		<!-- Tab content -->
+		<!-- ⭐ ONE PERSISTENT `LogsViewer`, NOT A REMOUNT PER TAB (TL review
+		     round 3: "switching must keep keyboard focus on the control — it
+		     currently drops to BODY on remount"). Pods↔Tests used to be a
+		     `{#if}`/`{:else}` swap between two separately-mounted instances,
+		     which is exactly what dropped focus: the DOM node carrying it was
+		     destroyed. `filterType` is a plain reactive prop now; `LogsViewer`
+		     resets its own per-stream state on a genuine prop change (see its
+		     own `resetStreamState`/`lastFilterType` — the "clean slate" behaviour
+		     survives, just without a remount to ride in on), so the SAME button
+		     the reader just clicked is still focused afterwards. -->
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-			{#if activeTab === 'pods'}
-				<LogsViewer {namespace} {name} {cluster} filterType="pod" bind:summary />
-			{:else}
-				<LogsViewer {namespace} {name} {cluster} filterType="test" bind:summary />
-			{/if}
+			<LogsViewer
+				{namespace}
+				{name}
+				{cluster}
+				{rollout}
+				filterType={activeTab === 'pods' ? 'pod' : 'test'}
+				onSelectView={(v) => (activeTab = v === 'test' ? 'tests' : 'pods')}
+				onPodCount={(n) => (podCount = n)}
+			/>
 		</div>
 	</div>
-</div>
+{/if}

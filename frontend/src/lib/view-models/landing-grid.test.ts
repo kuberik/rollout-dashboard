@@ -133,7 +133,7 @@ describe('buildLandingGrid — all 12 states', () => {
 		}
 	});
 
-	it('familyOrder aligns DEV/TEST/STG/PRD across services, in canonical tier order', () => {
+	it('familyOrder aligns DEV/TEST/STAGING/PROD across services, in canonical tier order', () => {
 		const cells = [
 			mkCell({ envName: 'dev', state: 'live' }),
 			mkCell({ envName: 'staging', state: 'live' }),
@@ -141,8 +141,8 @@ describe('buildLandingGrid — all 12 states', () => {
 		];
 		const grid = buildLandingGrid(mkVm([mkService('svc', cells)]), NOW);
 		const byFamily = new Map(grid.services[0].marks.map((m) => [m.family, m.familyOrder]));
-		expect(byFamily.get('DEV')).toBeLessThan(byFamily.get('STG')!);
-		expect(byFamily.get('STG')).toBeLessThan(byFamily.get('PRD')!);
+		expect(byFamily.get('DEV')).toBeLessThan(byFamily.get('STAGING')!);
+		expect(byFamily.get('STAGING')).toBeLessThan(byFamily.get('PROD')!);
 	});
 
 	it('an unmatched family (fallback 3-letter name) sorts after every named tier', () => {
@@ -205,32 +205,35 @@ describe('buildLandingGrid — family collapse (regions)', () => {
 		const grid = buildLandingGrid(mkVm([mkService('svc', cells)]), NOW);
 		expect(grid.services[0].marks).toHaveLength(1);
 		const mark = grid.services[0].marks[0];
-		expect(mark.family).toBe('PRD');
+		expect(mark.family).toBe('PROD');
 		expect(mark.count).toBe(3);
 		// Worst state wins the collapse — two live, one gated (held-like).
 		expect(mark.state).toBe('gated');
 	});
 
-	it('never lets a 19-character env name appear in a mark\'s visible text', () => {
+	// ⛔ 2026-10-08 (U-13 vocabulary fix) — the mark's family word is no
+	// longer length-bounded to an abbreviation; it is the full, matched
+	// family name (`STAGING`/`PROD`), never the raw per-service env name
+	// (`hello-world-staging`/`hello-world-prod`) the pattern folded it from.
+	it('never lets the raw per-service env name (not the matched family) appear in a mark\'s visible text', () => {
 		const cells = [
 			mkCell({ envName: 'hello-world-staging', state: 'live' }),
 			mkCell({ envName: 'hello-world-prod', state: 'live' })
 		];
 		const grid = buildLandingGrid(mkVm([mkService('svc', cells)]), NOW);
 		const families = grid.services[0].marks.map((m) => m.family);
-		expect(families).toEqual(['STG', 'PRD']);
+		expect(families).toEqual(['STAGING', 'PROD']);
 		for (const m of grid.services[0].marks) {
-			expect(m.family.length).toBeLessThanOrEqual(4);
 			expect(m.family).not.toContain('hello-world');
 		}
 		// The full name still survives in `sentence` (the mark's `title`).
 		expect(grid.services[0].marks[0].sentence).toContain('hello-world-staging');
 	});
 
-	it('falls back to the first 3 letters, uppercased, for an unmatched env name', () => {
+	it('falls back to the env name, uppercased in full (never truncated), for an unmatched env name', () => {
 		const cells = [mkCell({ envName: 'canary', state: 'live' })];
 		const grid = buildLandingGrid(mkVm([mkService('svc', cells)]), NOW);
-		expect(grid.services[0].marks[0].family).toBe('CAN');
+		expect(grid.services[0].marks[0].family).toBe('CANARY');
 	});
 
 	it('stages never collapse — dev and prod stay two separate marks', () => {
@@ -239,7 +242,7 @@ describe('buildLandingGrid — family collapse (regions)', () => {
 			mkCell({ envName: 'prod', state: 'live' })
 		];
 		const grid = buildLandingGrid(mkVm([mkService('svc', cells)]), NOW);
-		expect(grid.services[0].marks.map((m) => m.family)).toEqual(['DEV', 'PRD']);
+		expect(grid.services[0].marks.map((m) => m.family)).toEqual(['DEV', 'PROD']);
 	});
 });
 

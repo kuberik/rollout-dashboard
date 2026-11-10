@@ -47,7 +47,7 @@
 {#if shown}
 	<div
 		aria-live="polite"
-		class="{className} flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"
+		class="{className} t-meta flex items-center gap-2 text-fg-muted"
 	>
 		<RefreshOutline class="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
 		{#if failureCount > 0}

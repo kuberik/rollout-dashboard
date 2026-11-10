@@ -110,7 +110,17 @@ vi.mock('$lib/api/rollouts', async (importOriginal) => {
 import LogsViewer, {
 	normalizePodsPayload,
 	computeLineFreshness,
-	FRESH_LINE_WINDOW_MS
+	FRESH_LINE_WINDOW_MS,
+	truncateAtWordBoundary,
+	lineCountLabel,
+	applyNonSearchFilters,
+	applySearchFilter,
+	parseStructuredFields,
+	structuredFieldTone,
+	stripLogLinePrefix,
+	truncateMiddle,
+	podValueLabel,
+	withSourceFields
 } from './LogsViewer.svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 
@@ -197,10 +207,19 @@ describe('LogsViewer: a null pods payload does not crash the Tests tab, and does
 		await waitFor(() => expect(capturedOnPodsUpdate).not.toBeNull());
 		capturedOnPodsUpdate!(null);
 
+		// LOGOPEN (AD round 5, item 2): the `pods` snapshot always arrives a
+		// beat before the backlog, so "no lines" is not a fact the moment it
+		// lands. The pane holds its loaded-shape placeholder first and never
+		// claims "nothing written" before the quiet grace has passed.
+		await waitFor(() => expect(screen.getByText('Reading recent lines…')).toBeInTheDocument());
+		expect(screen.queryByText('No log lines yet')).not.toBeInTheDocument();
+		expect(screen.queryByText(/written nothing/)).not.toBeInTheDocument();
 		// A `pods` event — even an honestly empty one — is proof the stream is
 		// live, so the pane stops claiming it is still "connecting" and settles
 		// on the informative empty state instead of spinning forever.
-		await waitFor(() => expect(screen.getByText('No log lines yet')).toBeInTheDocument());
+		await waitFor(() => expect(screen.getByText('No log lines yet')).toBeInTheDocument(), {
+			timeout: 3000
+		});
 		expect(screen.queryByText('Connecting to pods…')).not.toBeInTheDocument();
 		// And the closed-stream caption must not appear either: the connection
 		// is open, just quiet. Only one of the three captions may ever be true.
@@ -221,7 +240,9 @@ describe('LogsViewer: a null pods payload does not crash the Tests tab, and does
 		// defect #5's literal reported bug: a rollout with zero test PODS but a
 		// completed test RUN read "the pods have written nothing", which is
 		// both the wrong noun and, once a run is known, the wrong claim.
-		await waitFor(() => expect(screen.getByText('No test output yet')).toBeInTheDocument());
+		await waitFor(() => expect(screen.getByText('No test output yet')).toBeInTheDocument(), {
+			timeout: 3000
+		});
 		expect(screen.queryByText(/the pods have written nothing/)).not.toBeInTheDocument();
 		expect(screen.queryByText('No log lines yet')).not.toBeInTheDocument();
 		expect(screen.queryByText('Connecting to test runs…')).not.toBeInTheDocument();
@@ -266,8 +287,9 @@ describe('LogsViewer: a null pods payload does not crash the Tests tab, and does
 		capturedOnPodsUpdate!(null);
 
 		// The name and a relative "ago" — not a claim that no run exists.
-		await waitFor(() => expect(screen.getByText('hello-python-test')).toBeInTheDocument());
-		expect(screen.getByText(/finished .*ago/)).toBeInTheDocument();
+		// (LOGOPEN: the empty state now waits out the quiet grace first.)
+		const sentence = await screen.findByText(/finished .*ago/, {}, { timeout: 3000 });
+		expect(sentence.textContent).toMatch(/hello-python-test/);
 	});
 
 	test('the Tests view empty state stays honest when no completed run is known', async () => {
@@ -281,7 +303,9 @@ describe('LogsViewer: a null pods payload does not crash the Tests tab, and does
 		await waitFor(() => expect(capturedOnPodsUpdate).not.toBeNull());
 		capturedOnPodsUpdate!(null);
 
-		await waitFor(() => expect(screen.getByText('No test output yet')).toBeInTheDocument());
+		await waitFor(() => expect(screen.getByText('No test output yet')).toBeInTheDocument(), {
+			timeout: 3000
+		});
 		// No fabricated run name or time — the honest empty, not a lie dressed
 		// up as a fact.
 		expect(screen.queryByText(/finished .*ago/)).not.toBeInTheDocument();
@@ -334,34 +358,6 @@ Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
 	}
 });
 
-/**
- * flowbite-svelte's `Popper` (behind `Dropdown`, used by the `Source`
- * filter this suite drives) calls the native Popover API (`showPopover`/
- * `hidePopover`) and animates its fade transition with `Element.animate`
- * on open/close — neither exists in jsdom. Without these no-op stubs the
- * dropdown opening in the test below throws asynchronously (outside the
- * test's own try/catch, since it fires from a transition lifecycle
- * callback), which vitest reports as an unhandled error and fails the
- * whole file even though every assertion passed. Unrelated to the
- * virtualizer bug this file exists to catch — just jsdom's usual gap
- * around anything the real browser does natively.
- */
-if (!HTMLElement.prototype.showPopover) {
-	HTMLElement.prototype.showPopover = function () {};
-	HTMLElement.prototype.hidePopover = function () {};
-}
-if (!Element.prototype.animate) {
-	const stubAnimate = () =>
-		({
-			finished: Promise.resolve(undefined as unknown as Animation),
-			cancel: () => {},
-			play: () => {},
-			pause: () => {},
-			addEventListener: () => {},
-			removeEventListener: () => {}
-		}) as unknown as Animation;
-	Element.prototype.animate = stubAnimate;
-}
 
 describe('LogsViewer: selecting one pod actually narrows the rendered rows', () => {
 	const PODS = ['pod-alpha', 'pod-beta', 'pod-gamma', 'pod-delta'];
@@ -411,7 +407,7 @@ describe('LogsViewer: selecting one pod actually narrows the rendered rows', () 
 	 * moment `scrollTop` changes; jsdom needs it spelled out.
 	 */
 	function nudgeVirtualizer(container: HTMLElement) {
-		const pane = container.querySelector('.overflow-auto');
+		const pane = container.querySelector('.overflow-y-auto');
 		if (pane) fireEvent.scroll(pane);
 	}
 
@@ -459,29 +455,32 @@ describe('LogsViewer: selecting one pod actually narrows the rendered rows', () 
 			expect(renderedRowPods(container).size).toBe(PODS.length);
 		});
 
-		// The exact control the live bug was found through: the `Source`
-		// dropdown's per-pod checkbox, labelled by its wrapping `<label>`.
-		// flowbite-svelte's `Dropdown`/`Popper` only renders its items once
-		// opened, and it opens on `mousedown` (its click-trigger toggles on
-		// `mousedown`, not `click` — see `Popper.svelte`'s `_open_popover`).
-		await fireEvent.mouseDown(screen.getByRole('button', { name: /Source/ }));
+		// ⭐ THE CONTROL IS A `.pill` NOW, NOT A DROPDOWN CHECKBOX
+		// (2026-10-08, design-language pass). Pods/containers/levels/columns
+		// moved from Flowbite `Dropdown`+`Checkbox` menus to direct
+		// `.pill` + `aria-pressed` buttons — one per pod, always visible, no
+		// popover to open first. The pod's own name is the pill's
+		// accessible name (the colour dot beside it carries no text).
+		//
+		// ⭐ TWO BUTTONS NOW SHARE THIS NAME (SPEC.md §2, Sources pane,
+		// 2026-10-09): the `lg:hidden` toolbar pill AND the ≥1024 sidebar
+		// row both name themselves after the pod — one is the mobile/
+		// tablet fallback, the other the desktop master/detail, and only
+		// one is ever actually visible at a given viewport (CSS this jsdom
+		// environment does not evaluate, so both sit in the a11y tree at
+		// once). `aria-pressed` is still what tells them apart: only the
+		// `.pill` carries it, same as before this pane had a second control
+		// with the identical name.
 		const target = PODS[0];
-		// `Popper`'s click trigger is debounced 200ms (`DEFAULT_TRIGGER_DELAY`,
-		// via `requestAnimationFrame` polling in `createMutualDebounce`) before
-		// `isOpen` actually flips — comfortably under 1s alone, but tight
-		// against the default `findByRole` timeout when the whole suite is
-		// running and rAF ticks are competing for CPU. A generous explicit
-		// timeout avoids flaking on load rather than on this test's own logic.
-		const checkbox = await screen.findByRole(
-			'checkbox',
-			{ name: target },
-			{ timeout: 5000 }
-		);
+		const pill = screen
+			.getAllByRole('button', { name: target })
+			.find((el) => el.hasAttribute('aria-pressed'))!;
+		expect(pill).toHaveAttribute('aria-pressed', 'false');
 
 		// This used to throw `Cannot read properties of undefined (reading
 		// 'formattedTimestamp')` synchronously out of the click — see the
 		// comment above. A regression here means the crash is back.
-		expect(() => fireEvent.click(checkbox)).not.toThrow();
+		expect(() => fireEvent.click(pill)).not.toThrow();
 
 		await waitFor(() => {
 			nudgeVirtualizer(container);
@@ -490,9 +489,8 @@ describe('LogsViewer: selecting one pod actually narrows the rendered rows', () 
 			expect(pods.has(target)).toBe(true);
 		});
 
-		// The badge and the checkbox both agree with the rows.
-		expect(screen.getByText('1')).toBeInTheDocument();
-		expect(checkbox).toBeChecked();
+		// The pill's own pressed state agrees with the rows.
+		expect(pill).toHaveAttribute('aria-pressed', 'true');
 
 		// defect #7 (2026-09-03): one pod selected is one pod in view — the
 		// header's own rollup already carries the count, so the row collapses
@@ -554,7 +552,14 @@ describe('LogsViewer: the header states the freshness of the DATA, not only the 
 		return container.querySelector('.card-header-rollup span.rounded-full');
 	}
 
-	test('a newest line 3 hours old renders a hollow dot and "last line … ago", not a bare live claim', async () => {
+	// ⭐ UPDATED (art director round 2, must-fix: "'Live' uses a solid
+	// success dot"). The hollow-vs-filled ring that used to carry the
+	// stale/fresh distinction is gone — ONE dot now, always solid, always
+	// `bg-success-solid` while connected. The stale-aware sentence
+	// (`rollupDot.label`) survives entirely on the `title` attribute,
+	// which is what these two tests assert now instead of a class
+	// difference that no longer exists.
+	test('a newest line 3 hours old still carries "last line … ago" on the dot\'s title, not a bare live claim', async () => {
 		const { container } = render(WithQueryClient, {
 			props: {
 				component: LogsViewer as never,
@@ -580,16 +585,11 @@ describe('LogsViewer: the header states the freshness of the DATA, not only the 
 			expect(dot).not.toBeNull();
 			expect(dot?.getAttribute('title')).toMatch(/Streaming — last line .+ ago/);
 		});
-
-		// Hollow (a ring), not filled: `stale` and `streaming` share a hue but
-		// not a fill — this is the whole point of the tone (see
-		// `ROLLUP_DOT_CLASS` in LogsViewer.svelte).
 		const dot = findRollupDot(container)!;
-		expect(dot.className).toContain('border-green-500');
-		expect(dot.className).not.toContain('bg-green-500');
+		expect(dot.className).toContain('bg-success-solid');
 	});
 
-	test('a newest line that just arrived renders the plain filled "Streaming" dot, no age', async () => {
+	test('a newest line that just arrived renders the plain "Streaming" title, no age', async () => {
 		const { container } = render(WithQueryClient, {
 			props: {
 				component: LogsViewer as never,
@@ -614,14 +614,13 @@ describe('LogsViewer: the header states the freshness of the DATA, not only the 
 			expect(dot?.getAttribute('title')).toBe('Streaming');
 		});
 		const dot = findRollupDot(container)!;
-		expect(dot.className).toContain('bg-green-500');
-		expect(dot.className).not.toContain('border-green-500');
+		expect(dot.className).toContain('bg-success-solid');
 	});
 });
 
 describe('LogsViewer: the error count and its filter toggle', () => {
 	function nudge(container: HTMLElement) {
-		const pane = container.querySelector('.overflow-auto');
+		const pane = container.querySelector('.overflow-y-auto');
 		if (pane) fireEvent.scroll(pane);
 	}
 
@@ -675,7 +674,14 @@ describe('LogsViewer: the error count and its filter toggle', () => {
 			nudge(container);
 			const rows = Array.from(container.querySelectorAll('[data-index]'));
 			expect(rows.length).toBe(1);
-			expect(rows[0].textContent).toMatch(/ERROR: traceback follows/);
+			// ⭐ UPDATED (squad-rollout coordinator review, 2026-10-09): the
+			// level word now lives in its OWN column (`stripLogLinePrefix`),
+			// not repeated inline in the message — the row's textContent is
+			// "error" (the level cell) + "traceback follows" (the message
+			// cell, "ERROR: " stripped off the front), not the original raw
+			// line's "ERROR: traceback follows" as one unbroken string.
+			expect(rows[0].textContent).toMatch(/error/i);
+			expect(rows[0].textContent).toMatch(/traceback follows/);
 		});
 		expect(errorButton).toHaveAttribute('aria-pressed', 'true');
 
@@ -714,5 +720,942 @@ describe('LogsViewer: the error count and its filter toggle', () => {
 			expect(container.querySelectorAll('[data-index]').length).toBeGreaterThan(0);
 		});
 		expect(screen.queryByRole('button', { name: /error/ })).not.toBeInTheDocument();
+	});
+});
+
+describe('LogsViewer: a FAILED rollout opens on its errors (logs round 9, item 2)', () => {
+	function nudge(container: HTMLElement) {
+		const pane = container.querySelector('.overflow-y-auto');
+		if (pane) fireEvent.scroll(pane);
+	}
+
+	const failedRollout = {
+		status: { history: [{ bakeStatus: 'Failed', version: { tag: 'b-9' } }] }
+	} as never;
+
+	const calmRollout = {
+		status: { history: [{ bakeStatus: 'Succeeded', version: { tag: 'b-9' } }] }
+	} as never;
+
+	test('a FAILED rollout auto-applies the Error filter and shows the state line, anchored at the latest error', async () => {
+		const { container } = render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: {
+					namespace: 'hello-world-prod',
+					name: 'hello-world-app',
+					filterType: 'pod',
+					rollout: failedRollout
+				}
+			}
+		});
+
+		await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+		capturedResolveLogs!([
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'starting up',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:00'
+			},
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'ERROR: traceback follows',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:01'
+			},
+			{
+				pod: 'pod-b',
+				container: 'app',
+				type: 'pod',
+				line: 'still fine',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:02'
+			}
+		]);
+
+		// The filter applied itself — no click needed — and the rollup
+		// button reflects that it is already on.
+		const errorButton = await screen.findByRole('button', { name: '1 error' });
+		await waitFor(() => expect(errorButton).toHaveAttribute('aria-pressed', 'true'));
+
+		// The state line names the count and offers the way out.
+		// LOGOPEN round 7, item 3: one count, in the footer, with the way out.
+		expect(await screen.findByText(/^Errors only · 3 lines$/)).toBeInTheDocument();
+		const showAll = screen.getByRole('button', { name: 'Show all lines' });
+
+		await waitFor(() => {
+			nudge(container);
+			const rows = Array.from(container.querySelectorAll('[data-index]'));
+			expect(rows.length).toBe(1);
+			expect(rows[0].textContent).toMatch(/traceback follows/);
+		});
+
+		// "Show all lines" clears the filter, same as toggling the rollup
+		// button itself.
+		await fireEvent.click(showAll);
+		await waitFor(() => {
+			nudge(container);
+			expect(container.querySelectorAll('[data-index]').length).toBe(3);
+		});
+		expect(errorButton).toHaveAttribute('aria-pressed', 'false');
+	});
+
+	test('a calm, healthy build opens on all lines — the Error filter stays off', async () => {
+		const { container } = render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: {
+					namespace: 'hello-world-prod',
+					name: 'hello-world-app',
+					filterType: 'pod',
+					rollout: calmRollout
+				}
+			}
+		});
+
+		await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+		capturedResolveLogs!([
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'ERROR: a transient blip, already recovered',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:00'
+			},
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'all good here',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:01'
+			}
+		]);
+
+		const errorButton = await screen.findByRole('button', { name: '1 error' });
+		expect(errorButton).toHaveAttribute('aria-pressed', 'false');
+		expect(screen.queryByRole('button', { name: 'Show all lines' })).not.toBeInTheDocument();
+
+		await waitFor(() => {
+			nudge(container);
+			expect(container.querySelectorAll('[data-index]').length).toBe(2);
+		});
+	});
+
+	test('clicking the rollup "N errors" control shows the same state line a FAILED rollout opens with', async () => {
+		render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: {
+					namespace: 'hello-world-prod',
+					name: 'hello-world-app',
+					filterType: 'pod',
+					rollout: calmRollout
+				}
+			}
+		});
+
+		await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+		capturedResolveLogs!([
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'ERROR: boom',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:00'
+			},
+			{
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: 'all good',
+				timestamp: Date.now(),
+				formattedTimestamp: '00:00:01'
+			}
+		]);
+
+		const errorButton = await screen.findByRole('button', { name: '1 error' });
+		await fireEvent.click(errorButton);
+
+		expect(await screen.findByText(/^Errors only · 2 lines$/)).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Show all lines' })).toBeInTheDocument();
+	});
+});
+
+/**
+ * ⭐ L5 "the log viewer survives a 60fps capture" (2026-09-12). Long lines
+ * used to hard-clip at the pane's right edge mid-token, relying on the
+ * pane's own horizontal scrollbar (easy to miss, invisible in a fixed-frame
+ * video capture) to reach the rest. `truncateAtWordBoundary` is the pure cut
+ * — the row's own rendered width feeds `maxChars` live (see the `$effect` in
+ * `LogsViewer.svelte`), this only owns "given a budget, where does the
+ * ellipsis land."
+ */
+describe('truncateAtWordBoundary — the unwrapped message column never shears a word', () => {
+	test('text within budget is returned unchanged', () => {
+		expect(truncateAtWordBoundary('short line', 80)).toBe('short line');
+	});
+
+	test('text exactly at the budget is returned unchanged', () => {
+		expect(truncateAtWordBoundary('exactly ten', 11)).toBe('exactly ten');
+	});
+
+	test('a long sentence cuts at the last whole word before budget, never mid-word', () => {
+		const text = 'Failed to connect to redis at redis-master.cache.svc.cluster.local:6379';
+		const result = truncateAtWordBoundary(text, 30);
+		expect(result.endsWith('…')).toBe(true);
+		expect(result.length).toBeLessThanOrEqual(30);
+		// The character right before the ellipsis is never mid-word: the
+		// text with the ellipsis stripped is a PREFIX of the original that
+		// ends exactly where a space did in the source.
+		const withoutEllipsis = result.slice(0, -1);
+		expect(text.startsWith(withoutEllipsis)).toBe(true);
+		const nextChar = text[withoutEllipsis.length];
+		expect(nextChar === ' ' || nextChar === undefined).toBe(true);
+	});
+
+	test('one long unbroken token with no whitespace hard-cuts at budget (the one case with no boundary to honour)', () => {
+		const text = 'a'.repeat(100);
+		const result = truncateAtWordBoundary(text, 20);
+		expect(result).toBe(`${'a'.repeat(19)}…`);
+		expect(result.length).toBe(20);
+	});
+
+	test('an empty budget does not throw and returns the text unchanged', () => {
+		expect(() => truncateAtWordBoundary('anything', 0)).not.toThrow();
+	});
+});
+
+/**
+ * The search box's own result count — "2 of 214 lines" — shares this exact
+ * sentence with the panel's existing footer stat (`lineCountLabel`), so the
+ * two can never drift into two spellings of "how many lines match."
+ */
+describe('lineCountLabel — one sentence, shared by the search count and the footer', () => {
+	test('the canonical shape', () => {
+		expect(lineCountLabel(2, 214)).toBe('2 of 214 lines');
+	});
+
+	test('singular noun only when the TOTAL is exactly one', () => {
+		expect(lineCountLabel(1, 1)).toBe('1 of 1 line');
+	});
+
+	test('zero matches is still a true sentence, not hidden', () => {
+		expect(lineCountLabel(0, 42)).toBe('0 of 42 lines');
+	});
+
+	test('large counts get locale grouping, same as every other figure in this file', () => {
+		expect(lineCountLabel(2, 2140)).toBe('2 of 2,140 lines');
+	});
+});
+
+/**
+ * `applyNonSearchFilters`/`applySearchFilter` are `filteredLogs` split at its
+ * own joint (see the module-script comment) so the search box can report its
+ * own scope. Covered directly here because the render-level pod-filter tests
+ * above already exercise them indirectly, but not the search predicate or
+ * the split itself.
+ */
+describe('applyNonSearchFilters / applySearchFilter — the search box measures against its own scope', () => {
+	function getLevel(line: string): 'error' | 'warn' | 'info' | 'debug' | null {
+		const upper = line.toUpperCase();
+		if (upper.includes('ERROR')) return 'error';
+		if (upper.includes('WARN')) return 'warn';
+		return null;
+	}
+
+	const lines = [
+		{ pod: 'pod-a', container: 'app', line: 'INFO all good' },
+		{ pod: 'pod-a', container: 'app', line: 'ERROR redis unavailable' },
+		{ pod: 'pod-b', container: 'sidecar', line: 'WARN retrying' },
+		{ pod: 'pod-b', container: 'app', line: 'ERROR timeout' }
+	];
+
+	test('no filters is a pass-through', () => {
+		const result = applyNonSearchFilters(
+			lines,
+			{ pods: new Set(), containers: new Set(), levels: new Set() },
+			getLevel
+		);
+		expect(result).toEqual(lines);
+	});
+
+	test('pod, container and level filters AND together', () => {
+		const result = applyNonSearchFilters(
+			lines,
+			{ pods: new Set(['pod-b']), containers: new Set(), levels: new Set(['error']) },
+			getLevel
+		);
+		expect(result).toEqual([{ pod: 'pod-b', container: 'app', line: 'ERROR timeout' }]);
+	});
+
+	test('search matches the line, pod, or container, case-insensitively', () => {
+		expect(applySearchFilter(lines, 'error')).toHaveLength(2);
+		expect(applySearchFilter(lines, 'SIDECAR')).toEqual([lines[2]]);
+		expect(applySearchFilter(lines, '')).toEqual(lines);
+	});
+
+	test('the count is of MATCHING LINES, not occurrences — a line matching twice still counts once', () => {
+		const repeated = [{ pod: 'p', container: 'c', line: 'ERROR ERROR ERROR' }];
+		expect(applySearchFilter(repeated, 'error')).toHaveLength(1);
+	});
+
+	test('search narrows what non-search filters already scoped to, not the raw unfiltered set', () => {
+		const scoped = applyNonSearchFilters(
+			lines,
+			{ pods: new Set(['pod-a']), containers: new Set(), levels: new Set() },
+			getLevel
+		);
+		expect(scoped).toHaveLength(2);
+		const searched = applySearchFilter(scoped, 'error');
+		expect(searched).toEqual([{ pod: 'pod-a', container: 'app', line: 'ERROR redis unavailable' }]);
+	});
+});
+
+/**
+ * ⭐ Render-level: the search box reports its own count once a query is
+ * typed, and the footer no longer restates the identical fact when search is
+ * the only active filter (2026-09-12, L5).
+ */
+describe('LogsViewer: the search box reports "N of M lines" once a query is typed', () => {
+	test('typing a query renders the inline count beside the input, and the footer stays silent (search-only case)', async () => {
+		render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+			}
+		});
+
+		await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+		capturedResolveLogs!([
+			{ pod: 'pod-a', container: 'app', type: 'pod', line: 'all good here', timestamp: 1, formattedTimestamp: '00:00:01' },
+			{ pod: 'pod-a', container: 'app', type: 'pod', line: 'ERROR something broke', timestamp: 2, formattedTimestamp: '00:00:02' },
+			{ pod: 'pod-b', container: 'app', type: 'pod', line: 'still fine', timestamp: 3, formattedTimestamp: '00:00:03' }
+		]);
+
+		// No result label before anything is typed.
+		expect(screen.queryByText(/of \d+ lines?/)).not.toBeInTheDocument();
+
+		const search = screen.getByLabelText('Search logs');
+		await fireEvent.input(search, { target: { value: 'ERROR' } });
+
+		await waitFor(() => {
+			expect(screen.getByText('1 of 3 lines')).toBeInTheDocument();
+		});
+
+		// Search is the ONLY active filter: the footer's own combined-filter
+		// stat must not also render the same fact a second time.
+		expect(screen.queryByText('1/3 lines')).not.toBeInTheDocument();
+	});
+});
+
+/**
+ * ⭐ squad-rollout coordinator addendum (2026-10-09): the structured-line
+ * expand popover and the log-volume histogram, both pure-function tested
+ * the same way the rest of this file's parsing/formatting logic is — see
+ * `parseStructuredFields`/`computeHistogramBuckets`'s own doc comments in
+ * the module script for why each shape was chosen.
+ */
+describe('parseStructuredFields — the structured-line expand trigger', () => {
+	test('a logfmt line with 2+ key=value pairs parses in order', () => {
+		expect(
+			parseStructuredFields('GET /checkout/session 200 11ms | request_id=req_a0119f | cache=HIT')
+		).toEqual([
+			// LOGOPEN, item 6: the access-log head is parsed into fields too.
+			{ key: 'method', value: 'GET' },
+			{ key: 'path', value: '/checkout/session' },
+			{ key: 'status', value: '200' },
+			{ key: 'latency', value: '11ms' },
+			{ key: 'request_id', value: 'req_a0119f' },
+			{ key: 'cache', value: 'HIT' }
+		]);
+	});
+
+	test('a single key=value pair is not enough to call it structured', () => {
+		expect(parseStructuredFields('threshold=200ms')).toBeNull();
+	});
+
+	test('an embedded JSON object parses into its own fields, nested values re-stringified', () => {
+		const line = 'Processing webhook payload: {"event":"order.completed","amount":149.99,"meta":{"source":"web"}}';
+		expect(parseStructuredFields(line)).toEqual([
+			{ key: 'event', value: 'order.completed' },
+			{ key: 'amount', value: '149.99' },
+			{ key: 'meta', value: '{"source":"web"}' }
+		]);
+	});
+
+	test('a plain prose line with no pairs and no JSON has nothing to expand', () => {
+		expect(parseStructuredFields('Ready to accept connections on 0.0.0.0:8080')).toBeNull();
+	});
+
+	test('malformed JSON-looking text falls back to the logfmt attempt instead of throwing', () => {
+		expect(() => parseStructuredFields('config={not: valid, json} level=info')).not.toThrow();
+	});
+});
+
+describe('structuredFieldTone — only an adverse HTTP status earns danger ink', () => {
+	test('a status field at or above 500 is danger', () => {
+		expect(structuredFieldTone({ key: 'status', value: '503' })).toBe('danger');
+		expect(structuredFieldTone({ key: 'status_code', value: '500' })).toBe('danger');
+	});
+
+	test('a status field below 500 is not danger', () => {
+		expect(structuredFieldTone({ key: 'status', value: '200' })).toBeNull();
+	});
+
+	test('a non-status field is never coloured, even if its value happens to be a big number', () => {
+		expect(structuredFieldTone({ key: 'order_id', value: '509' })).toBeNull();
+	});
+});
+
+describe('withSourceFields — pod and container in the expand (logs round 9, item 3)', () => {
+	test('prepends pod and container ahead of the line\'s own parsed fields', () => {
+		expect(
+			withSourceFields(
+				{ pod: 'hello-world-abc123', container: 'app' },
+				[{ key: 'request_id', value: 'req_a0119f' }]
+			)
+		).toEqual([
+			{ key: 'pod', value: 'hello-world-abc123' },
+			{ key: 'container', value: 'app' },
+			{ key: 'request_id', value: 'req_a0119f' }
+		]);
+	});
+
+	test('still prepends pod and container when the line parsed no fields of its own', () => {
+		expect(withSourceFields({ pod: 'pod-a', container: 'test-runner' }, [])).toEqual([
+			{ key: 'pod', value: 'pod-a' },
+			{ key: 'container', value: 'test-runner' }
+		]);
+	});
+});
+
+/**
+ * ⭐ THE HISTOGRAM INSIDE THE CONSOLE (designer, 2026-10-10). The strip's
+ * own math (window, buckets, drag) is unit-tested in
+ * LogHistogram.svelte.test.ts; these tests pin its WIRING: a drag or click
+ * filters the stream, Clear restores it, it follows the level filter, and
+ * it survives a filter that hides every line. The window ends at NOW, so
+ * the fixture's lines are stamped relative to the real clock.
+ *
+ * jsdom has no layout, so the strip resolves the slot under the pointer
+ * with `document.elementFromPoint` (mocked here to return the bar the
+ * test's synthetic pointer should land on).
+ */
+describe('LogsViewer: the histogram filters the stream to a time window', () => {
+	function recentLogLines(count: number, level = 'INFO'): LogLine[] {
+		const now = Date.now();
+		return Array.from({ length: count }, (_, i) => ({
+			pod: 'pod-a',
+			container: 'app',
+			type: 'pod',
+			line: `${i % 4 === 0 ? 'ERROR' : level} line ${i}`,
+			timestamp: now - (count - i) * 1000,
+			formattedTimestamp: `00:00:${String(i).padStart(2, '0')}`
+		}));
+	}
+
+	function nudge(container: HTMLElement) {
+		const pane = container.querySelector('.overflow-y-auto');
+		if (pane) fireEvent.scroll(pane);
+	}
+
+	function stubElementFromPoint(target: Element) {
+		if (!('elementFromPoint' in document)) {
+			(document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint =
+				() => null;
+		}
+		return vi.spyOn(document, 'elementFromPoint').mockReturnValue(target);
+	}
+
+	async function renderWithLines(lines: LogLine[]) {
+		const utils = render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+			}
+		});
+		await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+		capturedResolveLogs!(lines);
+		await waitFor(() => {
+			nudge(utils.container);
+			expect(utils.container.querySelectorAll('[data-index]').length).toBeGreaterThan(0);
+		});
+		return utils;
+	}
+
+	function filledBars(container: HTMLElement): HTMLElement[] {
+		return Array.from(container.querySelectorAll<HTMLElement>('[data-histogram-bar]')).filter(
+			(b) => Number(b.dataset.total) > 0
+		);
+	}
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	test('a drag from one bar to another narrows the stream; Clear (outside the plot) restores it', async () => {
+		const { container } = await renderWithLines(recentLogLines(40));
+		const bars = await waitFor(() => {
+			const found = filledBars(container);
+			expect(found.length).toBeGreaterThan(10);
+			return found;
+		});
+
+		expect(screen.getByText(/^40 lines$/)).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: /Clear time window/ })).not.toBeInTheDocument();
+
+		const spy = stubElementFromPoint(bars[bars.length - 5]);
+		await fireEvent.pointerDown(bars[5], { clientX: 10, clientY: 10, pointerId: 1, button: 0 });
+		await fireEvent.pointerMove(document, { clientX: 200, clientY: 10, pointerId: 1 });
+		await fireEvent.pointerUp(document, { clientX: 200, clientY: 10, pointerId: 1 });
+		spy.mockRestore();
+
+		const clear = await screen.findByRole('button', { name: /Clear time window/ });
+		// Clear is in the right gutter, not inside the plot.
+		expect(clear.closest('[role="slider"]')).toBeNull();
+		await waitFor(() => {
+			expect(screen.getByText(/in this window$/).textContent).toMatch(/^\d+ lines? in this window$/); // LOGOPEN r7: the count follows the window
+		});
+		expect(container.querySelector('[data-histogram-band]')).not.toBeNull();
+
+		await fireEvent.click(clear);
+		await waitFor(() => {
+			expect(screen.getByText(/^40 lines$/)).toBeInTheDocument();
+			expect(container.querySelector('[data-histogram-band]')).toBeNull();
+		});
+	});
+
+	test('a plain click (no movement) selects the one bucket it landed on', async () => {
+		const { container } = await renderWithLines(recentLogLines(40));
+		const bars = await waitFor(() => {
+			const found = filledBars(container);
+			expect(found.length).toBeGreaterThan(10);
+			return found;
+		});
+		const spy = stubElementFromPoint(bars[10]);
+		await fireEvent.pointerDown(bars[10], { clientX: 10, clientY: 10, pointerId: 1, button: 0 });
+		await fireEvent.pointerUp(document, { clientX: 10, clientY: 10, pointerId: 1 });
+		spy.mockRestore();
+
+		await screen.findByRole('button', { name: /Clear time window/ });
+		expect(screen.getByText(/in this window$/).textContent).toMatch(/^\d+ lines? in this window$/); // LOGOPEN r7: the count follows the window
+	});
+
+	test('LOGOPEN r8: the Error filter changes the stream, never the chart', async () => {
+		const { container } = await renderWithLines(recentLogLines(40));
+		const totals = () =>
+			Array.from(container.querySelectorAll<HTMLElement>('[data-histogram-bar]')).map((b) => b.dataset.total);
+		await waitFor(() => expect(container.querySelector('[data-segment="total"]')).not.toBeNull());
+		const before = totals();
+
+		await fireEvent.click(screen.getByRole('button', { name: /^Error/ }));
+		await waitFor(() => expect(screen.getByRole('button', { name: /^Error/ })).toHaveAttribute('aria-pressed', 'true'));
+		expect(totals()).toEqual(before);
+		// One neutral fill, never a stacked error segment.
+		expect(container.querySelector('[data-segment="error"]')).toBeNull();
+	});
+
+	test('it survives a search that hides every line: the strip stays, bars and all', async () => {
+		const { container } = await renderWithLines(recentLogLines(40));
+		await waitFor(() => expect(filledBars(container).length).toBeGreaterThan(10));
+
+		await fireEvent.input(screen.getByLabelText('Search logs'), {
+			target: { value: 'no-line-says-this' }
+		});
+		await waitFor(() => {
+			expect(screen.getByText('No lines match the current filters')).toBeInTheDocument();
+		});
+		expect(container.querySelector('[data-log-histogram]')).not.toBeNull();
+		expect(filledBars(container).length).toBeGreaterThan(10);
+	});
+});
+
+/**
+ * ⭐ squad-rollout coordinator review (2026-10-09): the Level column strips
+ * a leading ISO timestamp + level word off the raw line, so the message
+ * column never repeats either.
+ */
+describe('stripLogLinePrefix — the Level column, not a second timestamp', () => {
+	test('a timestamp + level prefix is stripped; the level is lifted out', () => {
+		expect(stripLogLinePrefix('2026-10-09T16:44:37.341Z INFO Starting server on :8080')).toEqual({
+			level: 'info',
+			message: 'Starting server on :8080'
+		});
+	});
+
+	test('FATAL and CRITICAL both classify as error, same as getLogLevel', () => {
+		expect(stripLogLinePrefix('2026-10-09T00:00:00.000Z FATAL out of memory').level).toBe('error');
+		expect(stripLogLinePrefix('2026-10-09T00:00:00.000Z CRITICAL disk full').level).toBe('error');
+	});
+
+	test('WARN and WARNING both classify as warn', () => {
+		expect(stripLogLinePrefix('WARN retrying').level).toBe('warn');
+		expect(stripLogLinePrefix('WARNING retrying').level).toBe('warn');
+	});
+
+	test('a level word with no leading timestamp still strips', () => {
+		expect(stripLogLinePrefix('ERROR: traceback follows')).toEqual({
+			level: 'error',
+			message: 'traceback follows'
+		});
+	});
+
+	test('a line with neither a timestamp nor a level word is returned unchanged, level null', () => {
+		expect(stripLogLinePrefix('Ready to accept connections on 0.0.0.0:8080')).toEqual({
+			level: null,
+			message: 'Ready to accept connections on 0.0.0.0:8080'
+		});
+	});
+
+	test('a level word mentioned mid-sentence (not front-anchored) is NOT lifted out', () => {
+		// Front-anchored only — see this function's own doc comment for why
+		// ("retrying after an ERROR" should not grow a badge and lose its
+		// own leading words).
+		expect(stripLogLinePrefix('Retrying after an ERROR occurred').level).toBeNull();
+	});
+});
+
+/**
+ * ⭐ art director round 1, must-fix #7: a test run's own name keeps its
+ * distinguishing tail (the sha/retry suffix) instead of losing it to a
+ * trailing `truncate`.
+ */
+describe('truncateMiddle — a test run name keeps its own distinguishing tail', () => {
+	test('a name within budget is returned unchanged', () => {
+		expect(truncateMiddle('short-name', 22)).toBe('short-name');
+	});
+
+	test('a long name keeps its tail, not just its head', () => {
+		const result = truncateMiddle('hello-world-test-f68d0ac-retry-2', 22);
+		expect(result.length).toBeLessThanOrEqual(22);
+		expect(result.endsWith('retry-2')).toBe(true);
+		expect(result).toContain('…');
+	});
+
+	test('the tail length is honoured even for a short budget', () => {
+		const result = truncateMiddle('abcdefghijklmnopqrstuvwxyz', 12, 8);
+		expect(result.endsWith('stuvwxyz')).toBe(true);
+	});
+});
+
+/**
+ * ⭐ THE CONSOLE OPENS AT ITS NEWEST LINE (LOGOPEN, AD round 5, items 1, 3
+ * and 9). Frame traces at 1440 showed the well painting at `scrollTop` 0
+ * (the OLDEST line) and only moving when the next streamed line arrived,
+ * 3.7s/5.6s later, and the catch-up leaving the newest row 21-36px under
+ * the footer. jsdom has no layout, so the well's box is stubbed: 100 rows
+ * of 20px in a 400px well, the bottom being exactly `scrollTop` 1600.
+ * `scrollTop` is a stored value here (jsdom does not clamp it), clamped to
+ * the real range the way a browser does.
+ */
+describe('LogsViewer: opening and staying at the latest (LOGOPEN)', () => {
+	const WELL_SCROLL_HEIGHT = 2000;
+	const WELL_CLIENT_HEIGHT = 400;
+	const stored = new WeakMap<Element, number>();
+	const isWell = (el: Element) => el.hasAttribute('data-log-well');
+	const original = {
+		scrollHeight: Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight'),
+		clientHeight: Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight'),
+		scrollTop: Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+	};
+	function stubWell() {
+		Object.defineProperty(Element.prototype, 'scrollHeight', {
+			configurable: true,
+			get() {
+				return isWell(this) ? WELL_SCROLL_HEIGHT : 0;
+			}
+		});
+		Object.defineProperty(Element.prototype, 'clientHeight', {
+			configurable: true,
+			get() {
+				return isWell(this) ? WELL_CLIENT_HEIGHT : 0;
+			}
+		});
+		Object.defineProperty(Element.prototype, 'scrollTop', {
+			configurable: true,
+			get() {
+				return stored.get(this) ?? 0;
+			},
+			set(v: number) {
+				const max = isWell(this) ? WELL_SCROLL_HEIGHT - WELL_CLIENT_HEIGHT : 0;
+				stored.set(this, Math.max(0, Math.min(max, v)));
+			}
+		});
+	}
+	function restoreWell() {
+		for (const [k, d] of Object.entries(original)) {
+			if (d) Object.defineProperty(Element.prototype, k, d);
+		}
+	}
+
+	function lines(n: number, errorEvery = 0): LogLine[] {
+		return Array.from({ length: n }, (_, i) => ({
+			pod: i % 2 ? 'pod-a' : 'pod-b',
+			container: 'app',
+			type: 'pod',
+			line: errorEvery && i % errorEvery === 0 ? `ERROR line ${i}` : `INFO line ${i}`,
+			timestamp: Date.now() - (n - i) * 1000,
+			formattedTimestamp: ''
+		}));
+	}
+
+	const failedRollout = {
+		status: { history: [{ bakeStatus: 'Failed', version: { tag: 'b-9' } }] }
+	} as never;
+
+	test('the first batch lands at the newest line, before the well is shown', async () => {
+		stubWell();
+		try {
+			const { container } = render(WithQueryClient, {
+				props: {
+					component: LogsViewer as never,
+					props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+				}
+			});
+			await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+			capturedResolveLogs!(lines(100));
+			await waitFor(() => {
+				const well = container.querySelector('[data-log-well]') as HTMLElement;
+				expect(well).not.toBeNull();
+				// Flush with the bottom: the newest row's bottom edge on the
+				// well's bottom edge, not a partial row under the footer.
+				expect(well.scrollTop).toBe(WELL_SCROLL_HEIGHT - WELL_CLIENT_HEIGHT);
+				expect(well.style.visibility).not.toBe('hidden');
+			});
+			// At the latest, there is no "Jump to latest" control.
+			expect(screen.queryByRole('button', { name: /Jump to latest/ })).not.toBeInTheDocument();
+		} finally {
+			restoreWell();
+		}
+	});
+
+	test('a FAILED build opens its Error view at the NEWEST error', async () => {
+		stubWell();
+		try {
+			const { container } = render(WithQueryClient, {
+				props: {
+					component: LogsViewer as never,
+					props: {
+						namespace: 'hello-world-prod',
+						name: 'hello-world-app',
+						filterType: 'pod',
+						rollout: failedRollout
+					}
+				}
+			});
+			await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+			capturedResolveLogs!(lines(300, 3));
+			await screen.findByText(/^Errors only · 300 lines$/);
+			await waitFor(() => {
+				const well = container.querySelector('[data-log-well]') as HTMLElement;
+				expect(well.scrollTop).toBe(WELL_SCROLL_HEIGHT - WELL_CLIENT_HEIGHT);
+			});
+		} finally {
+			restoreWell();
+		}
+	});
+
+	test('any filter change re-anchors at the newest match (the rollup "N errors" tap too)', async () => {
+		stubWell();
+		try {
+			const { container } = render(WithQueryClient, {
+				props: {
+					component: LogsViewer as never,
+					props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+				}
+			});
+			await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+			capturedResolveLogs!(lines(300, 3));
+			const well = () => container.querySelector('[data-log-well]') as HTMLElement;
+			await waitFor(() => expect(well().scrollTop).toBe(1600));
+			// The reader scrolls to the top (a real gesture, so Follow pauses).
+			await fireEvent.wheel(well());
+			well().scrollTop = 0;
+			await fireEvent.scroll(well());
+			expect(await screen.findByRole('button', { name: /Jump to latest/ })).toBeInTheDocument();
+			// The rollup's "100 errors" is a filter change: newest match.
+			await fireEvent.click(screen.getByRole('button', { name: /^\d+ errors$/ }));
+			await waitFor(() => expect(well().scrollTop).toBe(1600));
+			await waitFor(() =>
+				expect(screen.queryByRole('button', { name: /Jump to latest/ })).not.toBeInTheDocument()
+			);
+		} finally {
+			restoreWell();
+		}
+	});
+
+	test('round 7: while loading, no counts and no Live, and a failed build has Error on from the first frame', async () => {
+		render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: {
+					namespace: 'hello-world-prod',
+					name: 'hello-world-app',
+					filterType: 'pod',
+					rollout: failedRollout
+				}
+			}
+		});
+		await waitFor(() => expect(capturedOnPodsUpdate).not.toBeNull());
+		const error = screen.getAllByRole('button').find((b) => b.classList.contains('pill') && /Error/.test(b.textContent ?? ''))!;
+		expect(error).toHaveAttribute('aria-pressed', 'true');
+		expect(error.textContent).not.toMatch(/\d/);
+		expect(screen.queryByText('Live')).not.toBeInTheDocument();
+		expect(screen.queryByText(/\d+ lines?$/)).not.toBeInTheDocument();
+	});
+
+	test('LOGOPEN r8: on the phone an open line pauses Follow and freezes the list; new lines wait behind "N new"', async () => {
+		const innerWidth = window.innerWidth;
+		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+		const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+		try {
+			const { container } = render(WithQueryClient, {
+				props: {
+					component: LogsViewer as never,
+					props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+				}
+			});
+			await waitFor(() => expect(capturedPushLogs).not.toBeNull());
+			const base = Array.from({ length: 5 }, (_, i) => ({
+				pod: 'pod-a',
+				container: 'app',
+				type: 'pod',
+				line: `GET /checkout/session 200 ${i}ms | request_id=r${i} | cache=HIT`,
+				timestamp: Date.now() - (5 - i) * 1000,
+				formattedTimestamp: ''
+			}));
+			capturedPushLogs!(base);
+			await waitFor(() => expect(container.querySelectorAll('[data-phone-row]').length).toBe(5));
+			// Tap the row: a structured row is one button, time line included.
+			await fireEvent.click(container.querySelectorAll('[data-phone-row] > button')[2]);
+			await waitFor(() => expect(container.querySelector('[data-phone-row] dl')).not.toBeNull());
+			expect(screen.getByText('Paused')).toBeInTheDocument();
+
+			capturedPushLogs!([
+				...base,
+				{ ...base[0], line: 'GET /checkout/session 200 99ms | request_id=new | cache=HIT', timestamp: Date.now() }
+			]);
+			const pill = await screen.findByRole('button', { name: 'Show 1 new line' });
+			// Frozen: the new line is counted, not inserted above the open one.
+			expect(container.querySelectorAll('[data-phone-row]').length).toBe(5);
+			await fireEvent.click(pill);
+			await waitFor(() => expect(container.querySelectorAll('[data-phone-row]').length).toBe(6));
+			expect(container.querySelector('[data-phone-row] dl')).not.toBeNull();
+		} finally {
+			scrollTo.mockRestore();
+			Object.defineProperty(window, 'innerWidth', { configurable: true, value: innerWidth });
+		}
+	});
+
+	test('the phone lists newest first and never scrolls the document on open', async () => {
+		const innerWidth = window.innerWidth;
+		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+		const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+		try {
+			const { container } = render(WithQueryClient, {
+				props: {
+					component: LogsViewer as never,
+					props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+				}
+			});
+			await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+			capturedResolveLogs!(lines(20));
+			await waitFor(() => {
+				const rows = container.querySelectorAll('[data-phone-row]');
+				expect(rows.length).toBe(20);
+				expect(rows[0].textContent).toMatch(/line 19\b/);
+				expect(rows[19].textContent).toMatch(/line 0\b/);
+			});
+			expect(scrollTo).not.toHaveBeenCalled();
+		} finally {
+			scrollTo.mockRestore();
+			Object.defineProperty(window, 'innerWidth', { configurable: true, value: innerWidth });
+		}
+	});
+
+	/** Renders the phone viewer at 390 with `n` lines; returns helpers. */
+	async function phoneWith(n: number, errorEvery: number, structured = false) {
+		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+		const { container } = render(WithQueryClient, {
+			props: {
+				component: LogsViewer as never,
+				props: { namespace: 'hello-world-prod', name: 'hello-world-app', filterType: 'pod' }
+			}
+		});
+		await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+		capturedResolveLogs!(
+			lines(n, errorEvery).map((l, i) =>
+				structured ? { ...l, line: `${l.line} | request_id=r${i} | cache=HIT` } : l
+			)
+		);
+		const rows = () => container.querySelectorAll('[data-phone-row]');
+		return { container, rows };
+	}
+
+	test('the phone list is bounded: 100 rows and a fold; the fold reveals the next 100; a filter resets it', async () => {
+		const innerWidth = window.innerWidth;
+		const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+		try {
+			const { rows } = await phoneWith(400, 2);
+			await waitFor(() => expect(rows().length).toBe(100));
+			const fold = await screen.findByRole('button', { name: /Show 100 earlier lines/ });
+			expect(fold.textContent).toMatch(/\(of 400 total\)/);
+			await fireEvent.click(fold);
+			await waitFor(() => expect(rows().length).toBe(200));
+			// A filter is a new list: back to the first page of it (200 errors).
+			await fireEvent.click(screen.getByRole('button', { name: /^200 errors$/ }));
+			await waitFor(() => expect(rows().length).toBe(100));
+			expect(screen.getByRole('button', { name: /Show 100 earlier lines/ }).textContent).toMatch(
+				/\(of 200 total\)/
+			);
+		} finally {
+			scrollTo.mockRestore();
+			Object.defineProperty(window, 'innerWidth', { configurable: true, value: innerWidth });
+		}
+	});
+
+	test('phone: "Show in context" with a filter on clears it and the frozen list shows the unfiltered lines', async () => {
+		const innerWidth = window.innerWidth;
+		const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+		Element.prototype.scrollIntoView = vi.fn();
+		try {
+			const { rows } = await phoneWith(400, 3, true);
+			await waitFor(() => expect(rows().length).toBe(100));
+			await fireEvent.click(screen.getByRole('button', { name: /^134 errors$/ }));
+			await waitFor(() => expect(rows().length).toBe(100));
+			expect([...rows()].every((r) => /ERROR/.test(r.textContent ?? ''))).toBe(true);
+			// Open an error: this freezes the list (a snapshot of the FILTERED rows).
+			await fireEvent.click(rows()[3].querySelector('button')!);
+			await waitFor(() => expect(rows()[3].querySelector('dl')).not.toBeNull());
+			await fireEvent.click(await screen.findByRole('button', { name: /Show in context/ }));
+			await waitFor(() =>
+				expect([...rows()].some((r) => /INFO line/.test(r.textContent ?? ''))).toBe(true)
+			);
+			// The opened line is still open, in the unfiltered list.
+			expect(document.querySelector('[data-phone-row] dl')).not.toBeNull();
+		} finally {
+			scrollTo.mockRestore();
+			Object.defineProperty(window, 'innerWidth', { configurable: true, value: innerWidth });
+		}
+	});
+});
+
+describe('podValueLabel — the pod value is its distinguishing suffix (LOGOPEN r9, item 4)', () => {
+	test('a pod name shows only its last segment, behind an ellipsis', () => {
+		expect(podValueLabel('checkout-worker-a02f1c4-5d6f7b9c8-n9p1v')).toBe('…n9p1v');
+	});
+	test('a name without a dash is shown whole', () => {
+		expect(podValueLabel('standalone')).toBe('standalone');
+	});
+	test('a trailing dash is not an empty suffix', () => {
+		expect(podValueLabel('odd-')).toBe('odd-');
 	});
 });

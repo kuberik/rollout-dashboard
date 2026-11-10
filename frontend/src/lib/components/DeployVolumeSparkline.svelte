@@ -1,9 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { startOfDayMs } from '$lib/display-time';
 	import type { Rollout } from '../../types';
 	import { now } from '$lib/stores/time';
+	import { dayDeployBuckets } from '$lib/view-models/deploy-buckets';
 
 	let {
 		rollouts,
@@ -41,17 +41,12 @@
 				}
 			}
 		} else {
-			const day = 24 * 60 * 60 * 1000;
-			const todayStart = startOfDayMs(new Date($now));
-			for (const r of rollouts) {
-				for (const h of r.status?.history ?? []) {
-					if (!h.timestamp) continue;
-					const ts = new Date(h.timestamp).getTime();
-					const daysAgo = Math.floor((todayStart - ts) / day);
-					const idx = bucketCount - 1 - daysAgo;
-					if (idx >= 0 && idx < bucketCount) out[idx]++;
-				}
-			}
+			// ⭐ SHARED, DAY-ALIGNED BUCKETING (round 5 fix, `deploy-buckets.ts`):
+			// see that module's own doc comment for the bug this replaced —
+			// every "today" bar on every page using this component was silently
+			// zero, regardless of how many deploys actually happened today.
+			const dayBuckets = dayDeployBuckets(rollouts, bucketCount, nowMs);
+			for (let i = 0; i < bucketCount; i++) out[i] = dayBuckets[i].count;
 		}
 		return out;
 	});
@@ -85,8 +80,8 @@
 			     one, and a lighter one than the status glyph it sits beside. -->
 			<span
 				class="flex-1 {count > 0
-					? 'bg-green-700 dark:bg-green-400'
-					: 'bg-gray-200 dark:bg-gray-700'}"
+					? 'bg-success-solid'
+					: 'bg-subtle'}"
 				style="height: {count === 0 ? '20%' : Math.max(30, (count / max) * 100)}%"
 				title={`${count} deploy${count === 1 ? '' : 's'} ${label(i)}`}
 			></span>

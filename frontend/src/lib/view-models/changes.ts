@@ -35,20 +35,28 @@ import type { Rollout, Environment, RolloutDependency } from '../../types';
 import {
 	buildPrPipeline,
 	buildChangeVerdict,
+	firstProdLanding,
 	type PrPipelineMeta,
 	type PrPipelineVM,
 	type PrCell,
+	type PrService,
 	type PrState,
-	type ChangeVerdictTone
+	type ChangeVerdictTone,
+	ShaSet,
+	prPipelineGraph
 } from './pr-pipeline';
-import { buildLandingGrid, type LandingGridVM, type LandingMarkVM, type MarkTone } from './landing-grid';
+import type { RolloutGraph } from './dependency-graph';
+import { buildLandingGrid, toneOf, type LandingGridVM, type LandingMarkVM, type MarkTone } from './landing-grid';
 import { buildRevisionLedger } from './revision-ledger';
+import { worstChangeCell, isEnvHeld } from '../rollout-cards';
 import { median } from './lead-time';
 import { cellReasonText, frontierUsuallyLabelForCell } from '../pr-cell-copy';
 import { changePath } from '../pr-ref';
 import { changeBuildPath, envFamilyWord } from '../version-utils';
 import type { Change } from '../api/changes';
 import { startOfDayMs, zonedYMD } from '../display-time';
+import { tierOf, TIER_ORDER } from './promotion-lanes';
+import { revisionSha } from '../git-ref';
 
 // ── THE SHORT VERDICT WORD, §2b ───────────────────────────────────────────
 
@@ -124,14 +132,17 @@ export type ChangeRowVM = {
 	notEverywhere: boolean;
 	/**
 	 * ⭐ ROUND 2, R2.2 ("Typical to prod"). merge → first-prod-deploy, in ms,
-	 * or `null` when unmeasurable — no service reached a PRD-family
-	 * environment yet, or its `since` was not recorded. Reads `PrCell.since`
-	 * on a `live` cell in a `PRD`-family environment (the earliest across
-	 * every service), the same instant `cellStateSentence`'s own "live
-	 * since" reads — never a second, independently-derived timestamp.
-	 * `changesSummary` folds this across the whole feed into one median;
-	 * kept per-row (not just the aggregate) so a future caller can print an
-	 * individual change's own trip without recomputing it.
+	 * or `null` when unmeasurable — no service's PROD-family history ever
+	 * PROVABLY landed a build carrying this change (see `firstProdLeadMs`'s
+	 * own doc comment for what "provably" rules out). Reads
+	 * `PrCell.historyMatches` (every retained history entry that carries
+	 * this change, in any PROD-family environment, across every service)
+	 * and `PrCell.firstLandingProven`, never `PrCell.since` (a different
+	 * fact, about the cell's CURRENT standing, not about when this change
+	 * itself first landed). `changesSummary` folds this across the whole
+	 * feed into one median; kept per-row (not just the aggregate) so a
+	 * future caller can print an individual change's own trip without
+	 * recomputing it.
 	 */
 	prodLeadMs: number | null;
 	/**
@@ -179,26 +190,57 @@ export type ChangeRowVM = {
 	 * produces.
 	 */
 	noRelease: boolean;
+	/**
+	 * ⭐ COORDINATOR RULING (AD round 3, repo finding 8 / "item H") — THE
+	 * CARRIER-SHA SUFFIX. Both the Changes row ("7b3c9f1 … failed in prod")
+	 * and the Builds row ("7b3c9f1 … running in prod") can be true at once:
+	 * this commit is CONTAINED IN a later build (`4a8d2e6`) that is the one
+	 * actually failing, while no service literally running `7b3c9f1` itself
+	 * is down. Rather than changing either row's truth, the Changes row
+	 * names the carrier: `pickFrontierCell` (below) already is the worst
+	 * cell — the SAME one `frontierReason`/`frontierSince` already read, not
+	 * a second pick — and when that cell's own `revision` differs from this
+	 * row's `sha`, THAT revision is what is actually live/failing/held, and
+	 * the row owes the reader that name. `null` whenever the frontier cell
+	 * runs this commit's own sha (the ordinary case), so most rows are
+	 * unaffected. Optional — a hand-built fixture elsewhere that predates
+	 * this field still type-checks and simply renders no suffix;
+	 * `buildChangeRow` (the one real producer) always sets it.
+	 */
+	carrierSha?: string | null;
+	/** `changePath` address for `carrierSha`'s own build page — `null`/unset iff `carrierSha` is. */
+	carrierHref?: string | null;
+	/**
+	 * `vm.services` verbatim — the raw per-service `PrCell[]` `grid` has
+	 * already folded away (family collapse, service fold) for the compact
+	 * landing grid. `/changes` index (`journeyFromChange`) and this module's
+	 * own `familyProgress` (the held-predicate correction, region naming for
+	 * a partial rollback) both need the UNCOLLAPSED cells `grid` cannot give
+	 * back. Optional so a hand-built fixture elsewhere that predates this
+	 * field still type-checks and degrades to the old grid-only behaviour;
+	 * `buildChangeRow` (the one real producer) always sets it.
+	 */
+	services?: PrService[];
 };
 
 /** THE ONE FRONTIER-PICKING PRECEDENCE, restated from `buildChangeVerdict`
  *  (`pr-pipeline.ts`) because that function returns only the fused
  *  sentence, never the cell itself — `frontierReasonFor` and this row's own
  *  `frontierSince` both need the CELL, not just its words, so they share
- *  this one selection rather than each re-deriving it (and, before this,
- *  disagreeing were the tie-break ever to drift). Two ties break
- *  differently on purpose elsewhere in this codebase (`landing-grid.ts`'s
- *  own module doc makes the same call for the same reason) — restating the
- *  four lines here is cheaper than exporting a cell handle across a lane
- *  boundary for two readers in the same file. */
+ *  this one selection rather than each re-deriving it. ⭐ ROUND 2 ("worst-wins",
+ *  2026-10-09): both now read the SAME shared severity ranking
+ *  (`worstChangeCell`, `rollout-cards.ts`) rather than each re-sorting by env
+ *  rank alone — the two selections disagreeing was exactly the bug this
+ *  round fixed (the two must never drift again, by construction: there is
+ *  now only one sort to drift from). */
 function pickFrontierCell(vm: PrPipelineVM): PrCell | null {
 	const withBuild = vm.services.flatMap((s) => s.cells).filter((c) => c.state !== 'not-built');
 	if (withBuild.length === 0) return null;
 	if (withBuild.every((c) => c.state === 'live')) return null;
 	const candidates = withBuild
 		.filter((c) => c.state !== 'live')
-		.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
-	return candidates[0] ?? null;
+		.map((cell) => ({ cell }));
+	return worstChangeCell(candidates)?.cell ?? null;
 }
 
 /** `frontierReason`'s own computation off an already-picked frontier cell
@@ -254,29 +296,125 @@ function frontierFamilySince(vm: PrPipelineVM, grid: LandingGridVM): string | nu
 }
 
 /**
- * `prodLeadMs`'s own computation — see the field's doc comment. `null`
- * whenever the delta cannot be trusted as a real trip: no PRD-family `live`
- * cell with a recorded `since`, an unparseable timestamp on either end, or a
- * non-positive delta (the same "not a lead time for this hop" guard
- * `lead-time.ts`'s own `leadTime` applies to a build seen downstream before
- * up).
+ * ⭐ QA FIX (round 2, "take the suffix from the SAME cell as the standing
+ * word"). `carrierSha`'s own source cell — the SAME family step
+ * `frontierFamilySince`/`frontierStandingStep`/`standingWords` already
+ * picked (first non-live family in the frontier-freeze walk), never
+ * `pickFrontierCell`'s own flat worst-cell ranking, which can name a
+ * different service/family on a multi-service row and disagree with the
+ * word printed right next to the suffix. Shares `frontierFamilySince`'s own
+ * family/`matches` selection (duplicated rather than refactored together —
+ * that function has its own tests pinning its current behaviour) but adds
+ * ONE more exclusion on top: a RESOLVED cell (`rolled-back`) is never the
+ * carrier — it is an OLDER build now running again, never something
+ * carrying this change forward. Picks the most-recently-updated matching
+ * cell, same tie-break as `frontierFamilySince`.
  */
-function firstProdLeadMs(vm: PrPipelineVM, mergedAtIso: string): number | null {
-	const mergedMs = new Date(mergedAtIso).getTime();
-	if (!Number.isFinite(mergedMs)) return null;
-	let earliestProdMs: number | null = null;
+function frontierStandingCell(vm: PrPipelineVM, grid: LandingGridVM): PrCell | null {
+	// ⭐ QA FIX (round 4, 2026-10-11) — THE SAME PICK THE WORD USES, NOT A
+	// SECOND SCAN. This used to run its OWN `findIndex(s => s.tone !==
+	// 'live')` — narrower than `frontierStandingStep`'s own `tone !== 'live'
+	// || liveCount < builtCount`, so a PARTIAL rollback (tone `'live'`,
+	// `liveCount < builtCount` — the D3 shape) was invisible to THIS scan
+	// while `standingWords` still picked that exact family for its text,
+	// via `frontierStandingStep`. The two could land on different families
+	// and disagree about which one the carrier suffix was even about.
+	// Calling `frontierStandingStep` directly means there is only one pick
+	// to drift from.
+	const step = frontierStandingStep({ grid, services: vm.services });
+	if (!step || step.builtCount === 0) return null;
+	// ⭐ D1/D3 FIX (QA round 3+4, 2026-10-11, coordinator's rule) — A STEP
+	// WITH ANY ROLLBACK NEVER CARRIES A CARRIER SUFFIX, whether the whole
+	// family resolved (`step.resolved`) or only some of its regions did
+	// (`step.anyResolved`, the D3 partial-live-ring shape). The step itself
+	// is already the regression being named ("rolled back in
+	// prod-eu-central"); naming a DIFFERENT build as its "carrier" in the
+	// same breath reads as two disagreeing facts about the same row.
+	if (step.anyResolved) return null;
+
+	const matches = (state: PrState): boolean => {
+		if (state === 'rolled-back') return false;
+		if (step.tone === 'stuck') return HELD_LIKE_PR_STATES.has(state);
+		if (step.tone === 'failed') return state === 'failed';
+		return state !== 'not-built';
+	};
+
+	let best: PrCell | null = null;
+	let bestMs = -Infinity;
 	for (const service of vm.services) {
 		for (const cell of service.cells) {
-			if (cell.state !== 'live' || !cell.since) continue;
-			if (envFamilyWord(cell.envName) !== 'PRD') continue;
-			const ms = new Date(cell.since).getTime();
-			if (!Number.isFinite(ms)) continue;
-			if (earliestProdMs == null || ms < earliestProdMs) earliestProdMs = ms;
+			if (envFamilyWord(cell.envName) !== step.family) continue;
+			if (!matches(cell.state)) continue;
+			const ms = cell.since ? new Date(cell.since).getTime() : -Infinity;
+			if (best === null || ms >= bestMs) {
+				best = cell;
+				bestMs = ms;
+			}
 		}
 	}
-	if (earliestProdMs == null) return null;
-	const delta = earliestProdMs - mergedMs;
-	return delta > 0 ? delta : null;
+	return best;
+}
+
+/**
+ * `prodLeadMs`'s own computation — see the field's doc comment. `null`
+ * whenever the delta cannot be trusted as a real trip: no PROD-family
+ * history entry PROVABLY landed this change first (below), an unparseable
+ * timestamp on either end, or a non-positive delta (the same "not a lead
+ * time for this hop" guard `lead-time.ts`'s own `leadTime` applies to a
+ * build seen downstream before up).
+ *
+ * ⭐ FIX (2026-10-11, squad-changes "Median merge→prod" fix). Used to read
+ * `cell.since` on a `state === 'live'` PROD cell — but `since` answers a
+ * DIFFERENT question ("when did the cell's CURRENT standing begin", for the
+ * row's own "live since" sentence) and `buildCell` (`pr-pipeline.ts`)
+ * deliberately NULLS it whenever the merge predates the OLDEST entry this
+ * rollout's retained history still remembers (`'live (since before
+ * recorded history)'` — a defensive guard against claiming a landing date
+ * earlier than the window can prove). A live fleet measured this against
+ * `orders-api` #89: merged 2026-10-02, prod's own retained history's oldest
+ * entry is a `01ab7c9` redeploy from 2026-10-05 — three days AFTER the
+ * merge — so the guard fired and nulled `since` even though the cell's own
+ * `historyMatches` (every retained history entry that carries THIS change,
+ * independent of `since`/`state`) has exactly one entry for `7c14e2a`
+ * itself, `Succeeded`, with a perfectly good timestamp.
+ *
+ * This reads `historyMatches` directly instead — "the first prod history
+ * entry whose version contains the change, not the latest redeploy" — but
+ * NEVER accepts the oldest matching entry on faith alone, because the same
+ * failure mode cuts both ways: a rollout whose retained history happens to
+ * START already carrying the change (the window rolled past its real
+ * arrival) would make THIS entry look like "the first landing" when it is
+ * really just "the oldest one still remembered". `PrCell.firstLandingProven`
+ * (`pr-pipeline.ts`) is the guard — `true` only when an OLDER retained
+ * entry in the SAME rollout exists and (by construction) does not carry the
+ * change, which is the one thing that actually proves this is where the
+ * change first arrived, not merely where the window's memory happens to
+ * end. A cell that fails this guard contributes no sample at all, same as
+ * one with no match — never a loosened, unproven guess.
+ *
+ * Within a proven cell, the entry accepted is the EARLIEST (oldest)
+ * `historyMatches` entry whose `bakeStatus` is landed —
+ * `bakeStatusLanded` (`pr-pipeline.ts`), the SAME `Succeeded`-or-`'None'`
+ * rule `buildCell`'s own RULE 1 cascade already applies to a cell's current
+ * head, reused rather than re-derived here so the two can never drift. An
+ * in-flight/failed/cancelled attempt that happened to carry the change but
+ * never actually served does not count as a landing.
+ *
+ * Works whether or not the cell's CURRENT state happens to be `live` (a
+ * later build superseding/rolling back the one that landed this change
+ * does not erase the fact that it once reached prod).
+ *
+ * ⭐ (2026-10-12, squad-changes QA pass — item 2, "ONE FIRST-LANDING
+ * SOURCE"). The walk itself now lives in `pr-pipeline.ts`'s own exported
+ * `firstProdLanding(vm, mergedAtIso)` — this is a thin unwrap (`.ms`, or
+ * `null`) so every OTHER caller of this function keeps its existing
+ * `number | null` shape. A second surface needing the LANDING INSTANT
+ * itself (not just the span), e.g. a page's own "first deployed" line,
+ * should call `firstProdLanding` directly rather than re-deriving `at`
+ * from `mergedAtIso + prodLeadMs`.
+ */
+function firstProdLeadMs(vm: PrPipelineVM, mergedAtIso: string): number | null {
+	return firstProdLanding(vm, mergedAtIso)?.ms ?? null;
 }
 
 function buildChangeRow(
@@ -284,7 +422,8 @@ function buildChangeRow(
 	rollouts: Rollout[],
 	environments: Environment[],
 	rolloutDependencies: { items?: RolloutDependency[] } | null | undefined,
-	now: Date
+	now: Date,
+	graph?: RolloutGraph
 ): ChangeRowVM {
 	const meta: PrPipelineMeta = {
 		owner: change.owner,
@@ -304,7 +443,7 @@ function buildChangeRow(
 		// "not built yet" over a HELD release that genuinely exists.
 		containmentKnown: true
 	};
-	const vm = buildPrPipeline(meta, rollouts, environments, rolloutDependencies, now);
+	const vm = buildPrPipeline(meta, rollouts, environments, rolloutDependencies, now, { graph });
 	// ⭐ ROUND 3 (2026-09-10 ruling A). Read `vm`'s OWN word/tone/`noRelease`
 	// directly rather than `changeVerdict(vm)` — that wrapper re-derives its
 	// verdict purely from `vm.services` (kept that way on purpose; see its
@@ -322,6 +461,29 @@ function buildChangeRow(
 		change.kind === 'pr' && change.number != null
 			? changePath(change.owner, change.repo, { number: change.number })
 			: changePath(change.owner, change.repo, { sha: change.mergeCommitSha });
+	// See `ChangeRowVM.carrierSha`'s own doc — the SAME cell the standing
+	// word's own frontier step picked (`frontierStandingCell`, not
+	// `pickFrontierCell`'s unrelated flat ranking), named only when its
+	// revision both (a) is NOT this row's own commit — `ShaSet`/`revisionSha`
+	// compare by actual sha, not raw string equality, so a 40-char revision
+	// and a 7-char merge sha for the IDENTICAL commit are never read as two
+	// different builds (QA round 2: this alone produced a false "· in
+	// <own-sha>" suffix on the large majority of in-flight rows) — and (b)
+	// IS one of the shas GitHub has already verified this change is
+	// contained in (`change.containedIn`), so this never points at an
+	// unrelated build that merely happens to differ in sha.
+	const standingCell = frontierStandingCell(vm, grid);
+	const carrierRevision = (() => {
+		const sha = revisionSha(standingCell?.revision) || standingCell?.revision || null;
+		if (!sha) return null;
+		if (new ShaSet([change.mergeCommitSha]).has(sha)) return null;
+		if (!new ShaSet(change.containedIn).has(sha)) return null;
+		return sha;
+	})();
+	const carrierSha = carrierRevision ? carrierRevision.slice(0, 7) : null;
+	const carrierHref = carrierRevision
+		? changePath(change.owner, change.repo, { sha: carrierRevision })
+		: null;
 
 	return {
 		owner: change.owner,
@@ -343,7 +505,10 @@ function buildChangeRow(
 		prodLeadMs: firstProdLeadMs(vm, change.mergedAt),
 		frontierReason: frontierReasonFor(frontier, now),
 		frontierSince: frontierFamilySince(vm, grid),
-		noRelease: vm.noRelease
+		noRelease: vm.noRelease,
+		carrierSha,
+		carrierHref,
+		services: vm.services
 	};
 }
 
@@ -356,7 +521,11 @@ export function buildChangeRows(
 	rolloutDependencies: { items?: RolloutDependency[] } | null | undefined,
 	now: Date = new Date()
 ): ChangeRowVM[] {
-	return changes.map((c) => buildChangeRow(c, rollouts, environments, rolloutDependencies, now));
+	if (changes.length === 0) return [];
+	// The contract-hold graph depends only on the cluster inputs: build it
+	// once for every row, never once per change (Home round 1, 26082260).
+	const graph = prPipelineGraph(rollouts, environments, rolloutDependencies);
+	return changes.map((c) => buildChangeRow(c, rollouts, environments, rolloutDependencies, now, graph));
 }
 
 // ── FILTERS — ALL URL-BACKED (`?mine`, `?repo=`, `?pending`, `?q=`) ───────
@@ -626,7 +795,14 @@ const HELD_LIKE_PR_STATES = new Set<PrState>(['gated', 'waiting-upstream', 'pinn
  *  handled by their own branches ahead of this one). */
 const STANDING_VERB: Partial<Record<PrState, { verb: string; prep: string }>> = {
 	deploying: { verb: 'deploying', prep: 'to' },
-	baking: { verb: 'baking', prep: 'in' },
+	// ⭐ QA FIX (round 6, 2026-10-12) — "CHECKING", NOT "BAKING". The product's
+	// own word for a health-check-in-progress stage is "checking" (the
+	// status chip, `StatusMark`, `ChangeLine`'s own leading glyph title all
+	// already say it) — "baking" was the one place in the change-row copy
+	// still using the internal state name as if it were the reader-facing
+	// word. The internal `PrState` literal (`'baking'`, this object's own
+	// KEY) is UNCHANGED — only the rendered verb text moves.
+	baking: { verb: 'checking', prep: 'in' },
 	retrying: { verb: 'retrying', prep: 'in' },
 	promoting: { verb: 'promoting', prep: 'to' },
 	queued: { verb: 'queued', prep: 'for' },
@@ -656,18 +832,169 @@ function capWords(s: string, max = 4): string {
  * nothing to name but a count, which is exactly the "prefer the services
  * that ARE live over the consequential holds" the human asked for.
  */
-function frontierStandingStep(row: Pick<ChangeRowVM, 'grid'>): FamilyProgressStep | null {
+/**
+ * The step the standing phrase names: the WORST one, not the first unfinished
+ * one (worstChangeCell's rule: failed > held/stuck > in flight > queued). A
+ * change that failed in staging while dev has not taken it yet reads "failed
+ * in staging", never "queued for dev" (squad-changes, incident #14).
+ */
+/**
+ * ⭐ QA FIX (round 6, 2026-10-12) — THE PICK FOLLOWS THE FURTHEST LIVE
+ * STAGE, NOT THE FIRST NOT-YET-REACHED ONE. `d0ff17e` (payments-core) is
+ * the real shape this exists for: dev/test/staging all read `queued` (a
+ * NEWER build superseded this one there before it ever deployed), while
+ * ONE prod region is genuinely `live` — this build reached further than
+ * dev ever did. The OLD `findIndex(tone !== 'live' || …)` scan walked
+ * forward from the START and stopped at the first gap, so it named "queued
+ * for dev" — technically true of dev, but not the furthest point this
+ * build actually reached, and actively misleading (it reads as "nothing
+ * has happened yet"). Mirrors `journey.ts`'s own `pickFrontier` — the
+ * furthest-reached stop, not the first unreached one — restated here at
+ * the family-step grain: scan forward and remember the LAST step with any
+ * live cell; if that step is itself not fully live, it IS the frontier.
+ * Only when nothing anywhere has gone live yet does this fall back to the
+ * old "first not-yet-reached" reading (a normal row simply hasn't started).
+ */
+function frontierStandingStep(row: Pick<ChangeRowVM, 'grid' | 'services'>): FamilyProgressStep | null {
 	const steps = familyProgress(row);
+	const failed = steps.find((s) => s.tone === 'failed');
+	if (failed) return failed;
+	const stuck = steps.find((s) => s.tone === 'stuck');
+	if (stuck) return stuck;
+
+	let frontierIdx = -1;
+	for (let i = 0; i < steps.length; i++) {
+		if (steps[i].liveCount > 0) frontierIdx = i;
+	}
+	if (frontierIdx !== -1 && steps[frontierIdx].liveCount < steps[frontierIdx].builtCount) {
+		return steps[frontierIdx];
+	}
+
 	const idx = steps.findIndex((s) => s.tone !== 'live' || s.liveCount < s.builtCount);
 	return idx === -1 ? null : steps[idx];
 }
 
-function totalLiveBuilt(row: Pick<ChangeRowVM, 'grid'>): { live: number; built: number } {
+function totalLiveBuilt(row: Pick<ChangeRowVM, 'grid' | 'services'>): { live: number; built: number } {
 	const steps = familyProgress(row);
 	return steps.reduce(
 		(acc, s) => ({ live: acc.live + s.liveCount, built: acc.built + s.builtCount }),
 		{ live: 0, built: 0 }
 	);
+}
+
+/**
+ * ⭐ D1 FIX (QA round 3, 2026-10-11, coordinator's rule) — THE ROLLBACK
+ * REGION-NAMING COPY. Fires whenever `step.anyResolved` (at least one raw
+ * cell in this family rolled back, whether the family as a whole is fully
+ * live, partially live, or fully resolved):
+ *
+ *   - exactly ALL of the family's built cells rolled back → the plain
+ *     family word, unchanged copy ("rolled back in prod").
+ *   - 1–2 regions rolled back (out of a larger, otherwise-fine family) →
+ *     name them by their real env name, both if two ("rolled back in
+ *     prod-eu-central", "rolled back in prod-eu-central and prod-us-west").
+ *   - more than 2 → the count ("rolled back in 3 prod regions").
+ *
+ * `null` without `row.services` (no raw per-region data to name regions
+ * from) or when the step is not actually `anyResolved` — the caller falls
+ * back to its own normal phrase in either case.
+ */
+function rolledBackPhrase(row: Pick<ChangeRowVM, 'services'>, step: FamilyProgressStep): string | null {
+	if (!row.services || !step.anyResolved) return null;
+	const cells: PrCell[] = [];
+	for (const service of row.services) {
+		for (const cell of service.cells) {
+			if (envFamilyWord(cell.envName) === step.family) cells.push(cell);
+		}
+	}
+	const built = cells.filter((c) => c.state !== 'not-built');
+	const rolledBack = built.filter((c) => c.state === 'rolled-back');
+	if (rolledBack.length === 0) return null;
+	// ⭐ QA FIX (round 4, 2026-10-11) — DISTINCT REGIONS, NOT CELLS. Two
+	// SERVICES can both carry a cell for the same env name (e.g. both
+	// deployed to `prod-eu-central`) — counting raw cells would double-name
+	// or over-count the SAME region. `built`/`rolledBack` are de-duplicated
+	// by `envName` before anything downstream compares counts or lengths,
+	// including the "did EVERY region in this family roll back" check.
+	const builtRegions = [...new Set(built.map((c) => c.envName))];
+	const rolledBackRegions = [...new Set(rolledBack.map((c) => c.envName))];
+	if (rolledBackRegions.length === builtRegions.length) {
+		return `rolled back in ${step.family.toLowerCase()}`;
+	}
+	if (rolledBackRegions.length <= 2) {
+		return `rolled back in ${rolledBackRegions.join(' and ')}`;
+	}
+	return `rolled back in ${rolledBackRegions.length} ${step.family.toLowerCase()} regions`;
+}
+
+/**
+ * ⭐ COORDINATOR RULING (QA round 4, 2026-10-11) — A PARTIAL-LIVE FAMILY
+ * NAMES ITS OWN MOTION. `edge-mesh #77`'s own shape: 11 of 13 live overall,
+ * because PROD is 10-of-12 live — the other two regions are not resolved
+ * (D1/D3 take priority there), they are simply still `promoting`. The dot
+ * already draws the correct partial-live ring (D3); this is the WORD half —
+ * "11 of 13 live · promoting to 2" — so the reader knows the remaining two
+ * are MOVING, not stuck or silently dropped. `null` whenever the picked
+ * step is not a partial-live family, carries a rollback (`anyResolved` — D1
+ * always wins that precedence), or none of its own non-live cells are a
+ * state `STANDING_VERB` has a verb for. The count is DISTINCT REGIONS in
+ * the DOMINANT state among the family's own non-live cells (the same
+ * "regions, not cells" rule D2 applies to `rolledBackPhrase`) — ties break
+ * on whichever state's cells were seen first.
+ */
+function inFlightMotionForStep(
+	row: Pick<ChangeRowVM, 'services'>,
+	step: FamilyProgressStep
+): { verb: string; prep: string; count: number } | null {
+	if (!row.services || step.tone !== 'live' || step.liveCount >= step.builtCount || step.anyResolved) {
+		return null;
+	}
+	const cells: PrCell[] = [];
+	for (const service of row.services) {
+		for (const cell of service.cells) {
+			if (envFamilyWord(cell.envName) === step.family) cells.push(cell);
+		}
+	}
+	const nonLive = cells.filter((c) => c.state !== 'not-built' && c.state !== 'live' && c.state !== 'rolled-back');
+	if (nonLive.length === 0) return null;
+
+	let bestState: PrState | null = null;
+	let bestCount = 0;
+	const seenOrder: PrState[] = [];
+	const counts = new Map<PrState, number>();
+	for (const c of nonLive) {
+		if (!counts.has(c.state)) seenOrder.push(c.state);
+		counts.set(c.state, (counts.get(c.state) ?? 0) + 1);
+	}
+	for (const s of seenOrder) {
+		const n = counts.get(s)!;
+		if (n > bestCount) {
+			bestCount = n;
+			bestState = s;
+		}
+	}
+	if (!bestState || !STANDING_VERB[bestState]) return null;
+	const vp = STANDING_VERB[bestState]!;
+	const distinctRegions = new Set(nonLive.filter((c) => c.state === bestState).map((c) => c.envName));
+	return { verb: vp.verb, prep: vp.prep, count: distinctRegions.size };
+}
+
+/**
+ * ⭐ COORDINATOR RULING (QA round 4) — `ChangeLine.svelte`'s OWN ENTRY POINT
+ * for the motion clause, so it can wrap the COUNT alone in a span that
+ * drops below 420px of container width (the same rule `.cl-carrier`
+ * already follows) while the verb itself ("promoting") stays — the reader
+ * still learns something is moving even when there is no room for "to 2".
+ * `standingWords` calls the SAME underlying computation (`
+ * inFlightMotionForStep`) for its own full-string reading, so the two can
+ * never name a different verb or count for the same row.
+ */
+export function standingMotion(
+	row: Pick<ChangeRowVM, 'grid' | 'services'>
+): { verb: string; prep: string; count: number } | null {
+	const step = frontierStandingStep(row);
+	if (!step) return null;
+	return inFlightMotionForStep(row, step);
 }
 
 /**
@@ -679,7 +1006,7 @@ function totalLiveBuilt(row: Pick<ChangeRowVM, 'grid'>): { live: number; built: 
  * on `row.grid`/`row.verdictTone`, computed once at `buildChangeRow` time.
  */
 export function standingWords(
-	row: Pick<ChangeRowVM, 'verdictTone' | 'grid'> & { noRelease?: boolean }
+	row: Pick<ChangeRowVM, 'verdictTone' | 'grid' | 'services'> & { noRelease?: boolean }
 ): string {
 	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built" is retired copy — checked
 	// FIRST, ahead of `verdictTone`, so this reads correctly however the
@@ -698,13 +1025,33 @@ export function standingWords(
 		// `buildPrPipeline`, which never produces this shape for real) reads
 		// the same "no release" `noRelease` does, rather than a THIRD
 		// phrase for a case the real pipeline cannot produce.
-		return row.grid.services.length === 0 ? 'not deployed here' : 'no release';
+		//
+		// ⛔ U-18 (2026-10-08, polish pass). "not deployed here" leaves
+		// "here" undefined — nothing on screen names a place for it to
+		// point at. "not deployed anywhere" needs no caller-supplied
+		// referent: it is true of every environment there is, full stop.
+		return row.grid.services.length === 0 ? 'not deployed anywhere' : 'no release';
 	}
 
 	const step = frontierStandingStep(row);
 	if (step) {
 		if (step.tone === 'failed') return capWords(`failed in ${step.family.toLowerCase()}`);
-		if (step.tone === 'stuck') return capWords(`held in ${step.family.toLowerCase()}`);
+		if (step.tone === 'stuck') {
+			// ⭐ shared/approval-words (2026-10-12, coordinator ruling). An
+			// approval wait is NOT a rule hold — see `held.ts`'s own doc
+			// comment. This is the one line every reader mistook for "held
+			// in prod" (six blind reads, this ruling's own motivation); the
+			// phrase runs 5 words, one over the ≤4-word budget every other
+			// branch here keeps, which is why it is spelled out directly
+			// rather than routed through `capWords`.
+			if (step.approvalWait) return `waits for you in ${step.family.toLowerCase()}`;
+			return capWords(`held in ${step.family.toLowerCase()}`);
+		}
+		// ⭐ D1 FIX — a rolled-back region is named even when the family is
+		// otherwise live/partial (never capped to 4 words — the design asks
+		// for the real env name(s), which can run longer than that budget).
+		const rollback = rolledBackPhrase(row, step);
+		if (rollback) return rollback;
 		if (step.state && STANDING_VERB[step.state]) {
 			const vp = STANDING_VERB[step.state]!;
 			return capWords(`${vp.verb} ${vp.prep} ${step.family.toLowerCase()}`);
@@ -712,8 +1059,17 @@ export function standingWords(
 	}
 
 	const { live, built } = totalLiveBuilt(row);
-	if (live > 0 && built > 0) return capWords(`${live} of ${built} live`);
-	return built > 0 ? capWords(`${built} in progress`) : 'not deployed here';
+	if (live > 0 && built > 0) {
+		const base = capWords(`${live} of ${built} live`);
+		// ⭐ COORDINATOR RULING (QA round 4) — the motion clause is never
+		// capped to 4 words, same exemption `rolledBackPhrase` already gets:
+		// the count can run past the base budget ("11 of 13 live · promoting
+		// to 2" is 7 words) and that is fine, it is additive detail, not a
+		// replacement for the base phrase's own brevity.
+		const motion = step ? inFlightMotionForStep(row, step) : null;
+		return motion ? `${base} · ${motion.verb} ${motion.prep} ${motion.count}` : base;
+	}
+	return built > 0 ? capWords(`${built} in progress`) : 'not deployed anywhere';
 }
 
 /**
@@ -722,7 +1078,7 @@ export function standingWords(
  * `standingWords`, worded to the family alone: `<short state> · <family>`.
  */
 export function standingWordsCompact(
-	row: Pick<ChangeRowVM, 'verdictTone' | 'grid'> & { noRelease?: boolean }
+	row: Pick<ChangeRowVM, 'verdictTone' | 'grid' | 'services'> & { noRelease?: boolean }
 ): string {
 	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built" retired — see
 	// `standingWords`'s own doc for the full reasoning; this is its
@@ -734,7 +1090,11 @@ export function standingWordsCompact(
 	const step = frontierStandingStep(row);
 	if (step) {
 		if (step.tone === 'failed') return `failed · ${step.family.toLowerCase()}`;
-		if (step.tone === 'stuck') return `held · ${step.family.toLowerCase()}`;
+		if (step.tone === 'stuck') {
+			// Same ruling as `standingWords` — never "held" for an approval wait.
+			if (step.approvalWait) return `waits for you · ${step.family.toLowerCase()}`;
+			return `held · ${step.family.toLowerCase()}`;
+		}
 		if (step.state && STANDING_VERB[step.state]) {
 			return `${STANDING_VERB[step.state]!.verb} · ${step.family.toLowerCase()}`;
 		}
@@ -1011,6 +1371,43 @@ export type FamilyProgressStep = {
 	/** Every contributing mark's own sentence, joined — for the step's
 	 *  `title`/tooltip. */
 	sentence: string;
+	/**
+	 * ⭐ shared/approval-words (2026-10-12). `true` exactly when `tone ===
+	 * 'stuck'` AND the stuck mark it is drawn from is held on a PERSON —
+	 * `LandingMarkVM.approvalWait`, carried through unchanged (never
+	 * re-derived). `false` on every other tone, and on a `stuck` step whose
+	 * hold is a rule rather than an approval. `standingWords`/
+	 * `standingWordsCompact` read this to pick "waits for you" over "held".
+	 */
+	approvalWait: boolean;
+	/**
+	 * ⭐ QA FIX (squad-changes shared row, round 2, 2026-10-11) — DRAWING ONLY.
+	 * `true` when this step's own representative `state` is a RESOLVED one
+	 * (today, `rolled-back` — a build that WAS here, failed or was undone,
+	 * and is gone again). Earlier round wrongly took this out of `builtCount`
+	 * entirely, which also changed `standingWords`'/`frontierStandingStep`'s
+	 * own pick ("3 of 3 live · in d0ff17e" instead of "rolled back in
+	 * prod") — counts and words must stay exactly as `tone`/`state` already
+	 * say. This flag exists ONLY so a caller drawing the compact meter's dot
+	 * (`ChangeLine.svelte`, `CommandPalette.svelte` — both read this same
+	 * function) can draw it neutral/dashed instead of `tone`'s own `active`
+	 * (blue, pulsing — "something is moving right now", the opposite of
+	 * resolved) WITHOUT touching the tone/state/counts every other reader
+	 * depends on. */
+	resolved: boolean;
+	/**
+	 * ⭐ D1/D3 FIX (QA round 3, 2026-10-11) — `true` when ANY cell in this
+	 * family rolled back, even a family that is otherwise mostly/fully live
+	 * (`resolved` above is `true` only when EVERY built cell did — the dot's
+	 * own drawing rule; this is the WORD's rule, which must call the
+	 * regression out even while the dot still draws the live ring because
+	 * most of the family is fine). `standingWords` reads this to NAME the
+	 * regressed region(s) — `coordinator`: "rolled back in prod-eu-central"
+	 * (1–2 regions, both named), "rolled back in N prod regions" (more), or
+	 * the plain family word only once EVERY region in it rolled back. Always
+	 * `false` without `row.services` (no raw per-region data to find this
+	 * from — a grid-only fixture keeps today's behaviour). */
+	anyResolved: boolean;
 };
 
 /** §"AMBER IS THE FRONTIER, NOT EVERY STUCK CELL". `gated`/`pinned`/
@@ -1050,8 +1447,28 @@ export type FamilyProgressStep = {
  * marks, already computed once at `buildChangeRow` time), so this can never
  * disagree with what the SAME row's own `ChangeCard` landing grid draws in
  * full two sections down.
+ *
+ * ⭐ THE HELD-PREDICATE CORRECTION (2026-10-11, coordinator ruling —
+ * "refused here vs not reached yet"). `landing-grid.ts`'s `toneOf` folds
+ * EVERY held-like `PrState` (`gated`/`pinned`/`waiting-upstream`) into
+ * `'stuck'`, with no notion of "did the stage before this one actually
+ * clear first" — a service genuinely held on a real gate at `staging` while
+ * `dev` has not even reached it yet used to draw loud amber at `dev` too
+ * (one stage not yet offered the build, read as a SECOND independent
+ * hold). `PrCell.held` is now ALWAYS the correct, already-computed answer
+ * (`pr-pipeline.ts`'s `buildCell` call site reads `held.ts`'s `heldVerdict`
+ * directly — see that field's own doc) — `isEnvHeld` (the SAME predicate
+ * every other list surface reads, never re-derived here) is what this walk
+ * consults, via `row.services`' raw cells, before trusting a family's own
+ * `stuck` mark. No local held/waits-for inference: when `row.services` is
+ * present, a `stuck` mark only stands if some RAW cell in that family is
+ * genuinely held per `isEnvHeld`; otherwise it falls through to the
+ * active/queued branch exactly as a plain not-yet-reached wait would. A
+ * caller with no `row.services` (a hand-built grid-only fixture) keeps the
+ * OLD mark-only reading — this is additive, never a behaviour change for
+ * marks alone.
  */
-export function familyProgress(row: Pick<ChangeRowVM, 'grid'>): FamilyProgressStep[] {
+export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): FamilyProgressStep[] {
 	const byFamily = new Map<string, LandingMarkVM[]>();
 	for (const service of row.grid.services) {
 		for (const mark of service.marks) {
@@ -1061,86 +1478,296 @@ export function familyProgress(row: Pick<ChangeRowVM, 'grid'>): FamilyProgressSt
 		}
 	}
 
+	// Raw cells, grouped the SAME way (`envFamilyWord`) — `null` when the
+	// caller handed no `services` (grid-only fixture), in which case every
+	// genuine-held check below trusts the mark as before.
+	const rawByFamily: Map<string, PrCell[]> | null = row.services
+		? (() => {
+				const m = new Map<string, PrCell[]>();
+				for (const service of row.services!) {
+					for (const cell of service.cells) {
+						const fam = envFamilyWord(cell.envName);
+						(m.get(fam) ?? m.set(fam, []).get(fam)!).push(cell);
+					}
+				}
+				return m;
+			})()
+		: null;
+
 	// ⭐ ROUND 3 (2026-09-10 ruling A). `grid.services` is `[]` for BOTH
 	// zero-service shapes — a `noRelease` change and the repo-mismatch case
 	// — so the meter still draws SOMETHING rather than nothing: three
-	// neutral placeholders, `DEV`/`STG`/`PRD`, tone `none`, no service/state
-	// to name. This is the "three dashed dots" the design doc asks a
-	// `noRelease` row's meter to show.
+	// neutral placeholders, `DEV`/`STAGING`/`PROD`, tone `none`, no
+	// service/state to name. This is the "three dashed dots" the design doc
+	// asks a `noRelease` row's meter to show.
+	// ⛔ 2026-10-08 (U-13 vocabulary fix) — `STG`/`PRD` renamed to the full
+	// words; see `version-utils.ts`'s `FAMILY_WORD`.
 	if (byFamily.size === 0) {
 		return [
-			{ family: 'DEV', familyOrder: 0, tone: 'none', state: null, builtCount: 0, liveCount: 0, sentence: '' },
-			{ family: 'STG', familyOrder: 2, tone: 'none', state: null, builtCount: 0, liveCount: 0, sentence: '' },
-			{ family: 'PRD', familyOrder: 3, tone: 'none', state: null, builtCount: 0, liveCount: 0, sentence: '' }
+			{
+				family: 'DEV',
+				familyOrder: 0,
+				tone: 'none',
+				state: null,
+				builtCount: 0,
+				liveCount: 0,
+				sentence: '',
+				approvalWait: false,
+				resolved: false,
+				anyResolved: false
+			},
+			{
+				family: 'STAGING',
+				familyOrder: 2,
+				tone: 'none',
+				state: null,
+				builtCount: 0,
+				liveCount: 0,
+				sentence: '',
+				approvalWait: false,
+				resolved: false,
+				anyResolved: false
+			},
+			{
+				family: 'PROD',
+				familyOrder: 3,
+				tone: 'none',
+				state: null,
+				builtCount: 0,
+				liveCount: 0,
+				sentence: '',
+				approvalWait: false,
+				resolved: false,
+				anyResolved: false
+			}
 		];
 	}
 
-	const families = [...byFamily.entries()].sort((a, b) => a[1][0].familyOrder - b[1][0].familyOrder);
+	// ⭐ BUG 1 FIX (squad-changes shared row, round 1 2026-10-10, revised round
+	// 2 2026-10-11) — CHAIN ORDER MUST MATCH `promotion-lanes.ts`'s
+	// `TIER_ORDER` (dev → test → staging → other → prod), the SAME chain
+	// order `journey.ts`'s adapters use. Sorting by `landing-grid.ts`'s own
+	// `familyOrder` metadata put an unmatched/fallback family (an env name
+	// none of `envFamilyWord`'s four regexes match, e.g. `canary`) AFTER
+	// prod — `familyOrderFor`'s fallback is `Object.keys(FAMILY_ORDER)
+	// .length`, one past `PROD`'s own `3` — while `promotion-lanes.ts`'s
+	// `tierOf` places that same environment in `'other'`, rank 6, BEFORE
+	// prod (which starts at rank 7). The full `LandingGrid` never actually
+	// hits this: it draws marks in first-appearance order, already
+	// rank-correct from `pr-pipeline.ts` (`collapseFamilies`'s own doc).
+	// This explicit re-sort is the one place that can visibly disagree with
+	// the chain. ROUND 2: reads `tierOf` DIRECTLY off the family word rather
+	// than through a second hand-written `family → number` table (QA found
+	// the round-1 `CHAIN_ORDER` map was itself just another string table,
+	// with its own chance to drift from `promotion-lanes.ts`). A mark's
+	// `family` is EITHER one of the four canonical words (`DEV`/`TEST`/
+	// `STAGING`/`PROD`, `version-utils.ts`'s `FAMILY_WORD`) or, for an
+	// unmatched env, that env's OWN name uppercased (`envFamilyWord`'s
+	// fallback) — so lower-casing it and handing it to `tierOf` IS "the
+	// minimum tier over this family's cells": the four canonical words
+	// resolve to their own tier by definition, and a fallback family is the
+	// literal env name `tierOf` would already rank.
+	const families = [...byFamily.entries()].sort(
+		(a, b) => TIER_ORDER.indexOf(tierOf(a[0].toLowerCase())) - TIER_ORDER.indexOf(tierOf(b[0].toLowerCase()))
+	);
 
 	const steps: FamilyProgressStep[] = [];
 	let frozen = false;
 	for (const [family, marks] of families) {
 		const familyOrder = marks[0].familyOrder;
 		const sentence = marks.map((m) => m.sentence).join('; ');
-		const built = marks.filter((m) => m.tone !== 'none');
-		const liveCount = built.filter((m) => m.tone === 'live').length;
+		const rawCells = rawByFamily?.get(family);
 
-		// The NATURAL classification for this family, on its own — computed
-		// regardless of `frozen`, so a frozen family's `state` still says
-		// what is honestly true of it (`not-built` if nothing ever built
-		// here, the real stuck/active state otherwise), even though `tone`
-		// below gets overridden to the quiet `none` the frontier freeze
-		// requires.
+		// ⭐ D1/D3 FIX (QA round 3, 2026-10-11) — PER-REGION DETAIL NEEDS RAW
+		// CELLS, NOT MARKS. `landing-grid.ts`'s `collapseFamilies` already
+		// folds every region of a family into ONE worst-of mark BEFORE this
+		// function ever sees it — so a single-service row with 6 prod
+		// regions, 5 live and 1 rolled back, arrived here as ONE mark
+		// (`rolled-back`, because `STATE_RANK` ranks it worse than `live`),
+		// losing the other 5 entirely. That is why a 5-of-6-live family used
+		// to read as fully resolved ("3 of 3 live · in <sha>", then "rolled
+		// back in prod" with no partial ring). When `row.services` is
+		// available (every real row; a grid-only fixture is not), this walk
+		// classifies straight off the UNCOLLAPSED cells instead — the marks
+		// path below is kept only as the fallback for those fixtures.
+		let built: { tone: MarkTone; state: PrState }[];
+		let liveCount: number;
 		let tone: MarkTone;
 		let state: PrState | null;
-		if (built.length === 0) {
-			tone = 'none';
-			state = 'not-built';
-		} else if (liveCount === built.length) {
-			tone = 'live';
-			state = null;
-		} else {
-			const failedMark = built.find((m) => m.tone === 'failed');
-			const stuckMark = built.find((m) => m.tone === 'stuck');
-			if (failedMark) {
-				tone = 'failed';
-				state = failedMark.state;
-			} else if (stuckMark) {
-				tone = 'stuck';
-				state = stuckMark.state;
-			} else if (liveCount > 0) {
-				// Partial: some live, none stuck/failed — still green, just
-				// not full (`liveCount < builtCount` is the caller's own
-				// ring-vs-fill signal; no second tone invented for it).
+		let approvalWait = false;
+		let anyResolved = false;
+
+		if (rawCells && rawCells.length > 0) {
+			const builtCells = rawCells.filter((c) => c.state !== 'not-built');
+			built = builtCells.map((c) => ({ tone: toneOf(c.state), state: c.state }));
+			liveCount = builtCells.filter((c) => c.state === 'live').length;
+			anyResolved = builtCells.some((c) => c.state === 'rolled-back');
+
+			if (builtCells.length === 0) {
+				tone = 'none';
+				state = 'not-built';
+			} else if (liveCount === builtCells.length) {
 				tone = 'live';
 				state = null;
 			} else {
-				const activeMark =
-					built.find((m) => m.tone === 'active') ?? built.find((m) => m.tone === 'queued') ?? built[0];
-				tone = activeMark.tone === 'queued' ? 'queued' : 'active';
-				state = activeMark.state;
+				const failedCell = builtCells.find((c) => toneOf(c.state) === 'failed');
+				// ⭐ THE HELD-PREDICATE CORRECTION — see this function's own doc.
+				// `isEnvHeld` reads `PrCell.held`, now `held.ts`'s own
+				// `heldVerdict` verbatim (`pr-pipeline.ts`'s `buildCell`), so a
+				// held-like cell only counts here when it is GENUINELY refused,
+				// never merely "hasn't reached this stage yet".
+				const heldCell = builtCells.find((c) => toneOf(c.state) === 'stuck' && isEnvHeld(c));
+				if (failedCell) {
+					tone = 'failed';
+					state = failedCell.state;
+				} else if (heldCell) {
+					tone = 'stuck';
+					state = heldCell.state;
+					// ⭐ shared/approval-words (2026-10-12) — carried through
+					// unchanged from the cell; see `FamilyProgressStep.approvalWait`'s
+					// own doc comment.
+					approvalWait = heldCell.approvalWait ?? false;
+				} else if (liveCount > 0) {
+					// Partial: some live, none stuck/failed — still green, just
+					// not full. D3: this is exactly the "5 of 6 regions live,
+					// 1 rolled back" shape — the dot draws the partial-live
+					// ring, never dashed, because the family is NOT settled.
+					tone = 'live';
+					state = null;
+				} else {
+					// ⭐ D3 — A RESOLVED CELL IS NEVER PREFERRED OVER A
+					// GENUINELY IN-FLIGHT ONE when nothing is live yet either.
+					const nonResolvedActive = builtCells.find(
+						(c) => c.state !== 'rolled-back' && toneOf(c.state) === 'active'
+					);
+					const queuedCell = builtCells.find((c) => toneOf(c.state) === 'queued');
+					const downgradedHeld = builtCells.find((c) => toneOf(c.state) === 'stuck');
+					if (nonResolvedActive) {
+						tone = 'active';
+						state = nonResolvedActive.state;
+					} else if (queuedCell) {
+						tone = 'queued';
+						state = queuedCell.state;
+					} else if (downgradedHeld) {
+						// Held-like, but not genuinely held — an ordinary
+						// not-yet-reached wait, neutral, never amber/blue.
+						tone = 'queued';
+						state = downgradedHeld.state;
+					} else {
+						// Every built cell is resolved — the family's own
+						// `resolved` flag (below) is what draws this
+						// neutral/dashed, not this tone/state pair.
+						tone = 'active';
+						state = 'rolled-back';
+					}
+				}
+			}
+		} else {
+			// ⭐ QA FIX (round 2) — A RESOLVED MARK (`rolled-back`) STAYS
+			// "BUILT". The first round of this fix excluded it from `built`
+			// entirely, which changed the row's WORDS, not just its dot — see
+			// `carrier-sha.test.ts` / `changes.test.ts` for the live example.
+			// Counts/tone/state are exactly what they were before BUG 1.
+			const builtMarks = marks.filter((m) => m.tone !== 'none');
+			built = builtMarks;
+			liveCount = builtMarks.filter((m) => m.tone === 'live').length;
+			anyResolved = builtMarks.some((m) => m.state === 'rolled-back');
+
+			if (builtMarks.length === 0) {
+				tone = 'none';
+				state = 'not-built';
+			} else if (liveCount === builtMarks.length) {
+				tone = 'live';
+				state = null;
+			} else {
+				const failedMark = builtMarks.find((m) => m.tone === 'failed');
+				const stuckMark = builtMarks.find((m) => m.tone === 'stuck');
+				const genuinelyHeld = stuckMark ? true : false; // no raw cells — trust the mark, as before
+				if (failedMark) {
+					tone = 'failed';
+					state = failedMark.state;
+				} else if (stuckMark && genuinelyHeld) {
+					tone = 'stuck';
+					state = stuckMark.state;
+					// ⭐ shared/approval-words (2026-10-12) — carried through
+					// unchanged from the mark; see `FamilyProgressStep.approvalWait`'s
+					// own doc comment.
+					approvalWait = stuckMark.approvalWait;
+				} else if (liveCount > 0) {
+					tone = 'live';
+					state = null;
+				} else {
+					const nonResolvedActive = builtMarks.find((m) => m.tone === 'active' && m.state !== 'rolled-back');
+					const queuedMark = builtMarks.find((m) => m.tone === 'queued');
+					if (nonResolvedActive) {
+						tone = 'active';
+						state = nonResolvedActive.state;
+					} else if (queuedMark) {
+						tone = 'queued';
+						state = queuedMark.state;
+					} else {
+						const resolvedMark = builtMarks.find((m) => m.state === 'rolled-back') ?? builtMarks[0];
+						tone = 'active';
+						state = resolvedMark.state;
+					}
+				}
 			}
 		}
+
+		// ⭐ QA FIX (round 2) — DRAWING-ONLY RESOLVED FLAG. `rolled-back` is
+		// the one `PrState` this meter needs to call out for its own dot:
+		// the build WAS here and is gone again, never a filled or moving
+		// (blue/pulsing) dot, matching `journey.ts`'s resolved-failure rule
+		// — but `tone`/`state`/counts above are untouched, so the standing
+		// word and the "N of M live" tally stay exactly what they were.
+		const resolved = state === 'rolled-back';
 
 		if (frozen) {
 			// §"THE CHANGE CANNOT HAVE MOVED FURTHER" — this family's own
 			// classification is moot once an upstream one is stuck/failed;
 			// draw it quiet regardless of what it would have said on its own.
-			steps.push({ family, familyOrder, tone: 'none', state, builtCount: built.length, liveCount, sentence });
+			steps.push({
+				family,
+				familyOrder,
+				tone: 'none',
+				state,
+				builtCount: built.length,
+				liveCount,
+				sentence,
+				// Frozen (the change cannot have moved further than its own
+				// frontier): the family's own `approvalWait` is moot here, same
+				// as its `tone` — nothing downstream reads amber or "waits for
+				// you" for a family the walk has already passed.
+				approvalWait: false,
+				resolved,
+				anyResolved
+			});
 			continue;
 		}
 
-		steps.push({ family, familyOrder, tone, state, builtCount: built.length, liveCount, sentence });
+		steps.push({
+			family,
+			familyOrder,
+			tone,
+			state,
+			builtCount: built.length,
+			liveCount,
+			sentence,
+			approvalWait,
+			resolved,
+			anyResolved
+		});
 		if (tone === 'stuck' || tone === 'failed') frozen = true;
 	}
 	return steps;
 }
 
-/** `DEV`/`STG`/`PRD`/`TEST` → the full lowercase word the accessible label
- *  reads — `landing-grid.ts`'s own family-word vocabulary, spelled out
- *  rather than abbreviated (an abbreviation is a visual-budget concession,
- *  not something a screen reader should have to decode). */
-const FAMILY_FULL_WORD: Record<string, string> = { DEV: 'dev', TEST: 'test', STG: 'staging', PRD: 'prod' };
+/** `DEV`/`STAGING`/`PROD`/`TEST` → the lowercase word the accessible label
+ *  reads — `landing-grid.ts`'s own family-word vocabulary (2026-10-08: the
+ *  visible word and the aria word are now the SAME spelling — `STG`/`PRD`
+ *  were retired as abbreviations everywhere, not only here — so this map is
+ *  a case-fold, not a spell-out). */
+const FAMILY_FULL_WORD: Record<string, string> = { DEV: 'dev', TEST: 'test', STAGING: 'staging', PROD: 'prod' };
 
 const STEP_ARIA_WORD: Record<MarkTone, string> = {
 	live: 'live',
@@ -1155,7 +1782,19 @@ const STEP_ARIA_WORD: Record<MarkTone, string> = {
  *  A `live` step whose `liveCount < builtCount` (partial) still reads plain
  *  `live`: the count is a visual nicety the label does not need to spell
  *  out, and "partly live" is not a phrase a reader unfamiliar with the
- *  meter would parse faster than the simple word. */
+ *  meter would parse faster than the simple word.
+ *
+ *  ⭐ D4 FIX (QA round 3, 2026-10-11) — THE LABEL NAMES THE SAME WORD THE DOT
+ *  DRAWS. A `resolved` step (`FamilyProgressStep.resolved`) draws the
+ *  neutral dashed ring (`ChangeLine.svelte`/`CommandPalette.svelte`'s own
+ *  `step.resolved` check), not `tone`'s own `active` — the label used to say
+ *  "active" over a dot that visibly was not, which is exactly the kind of
+ *  disagreement between the picture and its own description an `aria-label`
+ *  exists to prevent. Reads the SAME `'not yet'` word `tone === 'none'`
+ *  already uses, since a resolved family's dot is visually identical to a
+ *  not-built one. */
 export function familyMeterAriaLabel(steps: readonly FamilyProgressStep[]): string {
-	return steps.map((s) => `${FAMILY_FULL_WORD[s.family] ?? s.family.toLowerCase()} ${STEP_ARIA_WORD[s.tone]}`).join(' · ');
+	return steps
+		.map((s) => `${FAMILY_FULL_WORD[s.family] ?? s.family.toLowerCase()} ${s.resolved ? STEP_ARIA_WORD.none : STEP_ARIA_WORD[s.tone]}`)
+		.join(' · ');
 }

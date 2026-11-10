@@ -9,7 +9,7 @@ import {
 import { getDisplayVersion, detectStuck } from '$lib/utils';
 import { buildLadder, divergedFromLine, type BuildLadder } from './build-ladder';
 import { isDeployable, promotionBlock, promotionCandidates } from './promotion';
-import { rankVerdicts, rankBehindBy, type RankVerdict } from './env-rank';
+import { rankVerdicts, rankBehindBy, lagLabel, type RankVerdict } from './env-rank';
 import { compareEnvironmentNames } from '$lib/env-order';
 import { bakeWord, bakeTitle } from '$lib/bake-status';
 // TYPE-ONLY — see `repoDeviation`'s own doc comment for why this does not
@@ -337,7 +337,8 @@ type ServiceCtx = {
 };
 
 function envTierOf(cell: AppCell): string {
-	return cell.environment?.spec?.environment || cell.envName || '';
+	// The PLACE (`placeKey`): the identity the ledger groups and links by.
+	return cell.envName || '';
 }
 
 /**
@@ -880,7 +881,9 @@ export function rankSentence(service: RevisionService): { rank: string; of: stri
 	// 6f9524e of 32` on `/versions/<rev>`, a page whose other three rank chips
 	// already said `19 behind`. Same chip, same role, same geometry.
 	return {
-		rank: service.rank === 0 ? 'newest' : `${service.rank} behind`,
+		// ⭐ shared/age-lag-total: ONE LAG UNIT — `lagLabel`, never a bare
+		// `${service.rank} behind`.
+		rank: service.rank === 0 ? 'newest' : lagLabel({ builds: service.rank }),
 		// ⛔ WAS A BARE `of ${n}` — A NUMBER WITH NO NOUN. (2026-09-03, operator
 		// walk, P4) `/versions/<rev>`'s service row printed `NEWEST 064b655
 		// of 33` and left the reader to guess "33 what" — the row's own `title`
@@ -1177,9 +1180,16 @@ export function repoDeviation(
 		notYetSlots.filter((s) => !s.slot.onRevision).map((s) => s.appName)
 	).size;
 	if (notYetServices > 0) {
+		// ⭐ shared/age-lag-total: this counts SERVICES, not builds — never
+		// `lagLabel` (a build-distance count) and never a bare `${n} behind`
+		// either; the noun says what the number actually is.
 		return {
 			severity: 1,
-			chip: { role: 'rank', label: `${notYetServices} behind`, count: notYetServices },
+			chip: {
+				role: 'rank',
+				label: `${notYetServices} service${notYetServices === 1 ? '' : 's'} behind`,
+				count: notYetServices
+			},
 			backlog
 		};
 	}

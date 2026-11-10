@@ -527,9 +527,9 @@
 		<!-- On the type scale (`t-micro`, 11/400) and the 4px spacing scale.
 		     The calendar glyph is gone: it needed a 2px optical nudge that
 		     exists on no scale, and the sentence already says "window". -->
-		<p class="t-micro text-gray-500 dark:text-gray-400">
+		<p class="t-meta text-fg-subtle">
 			{#if nextChange}
-				Automatic deploys resume in <span class="text-gray-600 dark:text-gray-300"
+				Automatic deploys resume in <span class="text-fg-muted"
 					>{formatTimeUntil(nextChange)}</span
 				>
 				· {formatAbsoluteReopen(nextChange)}
@@ -567,86 +567,92 @@
 		comment), so the ONE banner for a pinned rollout is the caller's, not
 		this popover's — `!story?.pinnedTo` is the guard.
 	-->
+	<!--
+		⛔ THIS BANNER USED TO SAY SOMETHING FALSE, AND IT WAS FALSE FOR
+		EXACTLY THE ACTION THE READER WAS ABOUT TO TAKE.
+
+		It said *"Deployments currently blocked. Will be allowed in 2d 1h."*
+		A live UX critique read that, pressed the blue `Deploy` twelve pixels
+		below it, typed the sha, and **production changed immediately** — and
+		the page then rendered the new version `Deploying` with this banner
+		still above it.
+
+		The controller is unambiguous about why
+		(`rollout_controller.go`, gating logic):
+
+		    if !r.hasManualDeployment(&rollout) && len(history) > 0 {
+		        if !gatesPassing { return }   // nothing happens
+		    }
+
+		and `hasManualDeployment` is true whenever `spec.wantedVersion` is set
+		or the `force-deploy` annotation is present — i.e. for every deploy a
+		person starts from this page. **A gate holds back AUTOMATIC PROMOTION
+		ONLY.** So the banner names what is actually paused, and the second
+		line states the other half rather than leaving the reader to discover
+		it by changing production.
+
+		Composition is untouched: same `AlertPanel`, same calendar glyph, same
+		chip on the right. Only the words moved.
+	-->
+	<!-- ⭐ THE WORDS COME FROM THE PAGE'S STORY WHEN THERE IS ONE. Same
+	     `AlertPanel`, same glyph, same chip — only the sentence widens from
+	     "a window is closed" to every gate actually holding this rollout,
+	     each with whether it clears on a clock, on another deploy, or on a
+	     person. The fallback below is the schedule-only wording, which is
+	     still correct on a surface that hands down no story.
+
+	     ⭐ ALWAYS THE SAME HUE HERE NOW, AND IT IS `pinned` (held/orange),
+	     NOT `warning` (amber/stuck). (F2, second re-check, 2026-09-03;
+	     corrected to the design language's hue grammar 2026-10-08) A
+	     schedule gate is a RULE this rollout is WAITING ON, the same family
+	     as a pin or an upstream dependency — `warning`/amber in the new
+	     language is reserved for a rollout that is genuinely STUCK, which
+	     this is not: it clears on its own, on a clock. See
+	     `nothingWaiting`'s own comment for the live measurement that caught
+	     this branch rendering the SAME gate two different hues depending on
+	     whether anything happened to be queued — hue is a function of KIND
+	     (held) now, never of queue state. The `nothingWaiting` case no
+	     longer reaches this branch at all (guarded above): it has no
+	     candidate to name and no verdict to print, so it is not a banner,
+	     it is `metaText`, handed to the parent to print beside the version
+	     instead. -->
+	<!-- `open`, not the `{#if}` below: when a candidate appears or leaves (a
+	     promote) this banner collapses in place instead of jumping the page —
+	     see `AlertPanel`'s `open`. -->
+	<AlertPanel
+		open={isBlocked && !story?.pinnedTo && !nothingWaiting}
+		severity="pinned"
+		title={story?.blocked ? story.headline : 'Automatic deploys are paused'}
+		message={story?.blocked
+			? shapedConsequence(story)
+			: nextChange
+				? `Nothing promotes itself for another ${formatTimeUntil(nextChange)} — ${formatAbsoluteReopen(nextChange)}. A deploy you start by hand still applies immediately.`
+				: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
+		footnote={story?.blocked ? story.resolution : undefined}
+		icon={story?.blocked ? iconForStory(story) : CalendarWeekSolid}
+		pulse
+	>
+		{#snippet actions()}
+			<button type="button" id="schedule-details" class="btn btn-secondary btn-sm">
+				<!-- (2026-09-03, vocabulary pass) Was `N schedule(s)` — the
+				     generic obstacle noun is `rule` everywhere; see the
+				     compact-form note above. -->
+				{blockingSchedules.length} rule{blockingSchedules.length > 1 ? 's' : ''}
+			</button>
+		{/snippet}
+	</AlertPanel>
 	{#if isBlocked && !story?.pinnedTo && !nothingWaiting}
-		<!--
-			⛔ THIS BANNER USED TO SAY SOMETHING FALSE, AND IT WAS FALSE FOR
-			EXACTLY THE ACTION THE READER WAS ABOUT TO TAKE.
-
-			It said *"Deployments currently blocked. Will be allowed in 2d 1h."*
-			A live UX critique read that, pressed the blue `Deploy` twelve pixels
-			below it, typed the sha, and **production changed immediately** — and
-			the page then rendered the new version `Deploying` with this banner
-			still above it.
-
-			The controller is unambiguous about why
-			(`rollout_controller.go`, gating logic):
-
-			    if !r.hasManualDeployment(&rollout) && len(history) > 0 {
-			        if !gatesPassing { return }   // nothing happens
-			    }
-
-			and `hasManualDeployment` is true whenever `spec.wantedVersion` is set
-			or the `force-deploy` annotation is present — i.e. for every deploy a
-			person starts from this page. **A gate holds back AUTOMATIC PROMOTION
-			ONLY.** So the banner names what is actually paused, and the second
-			line states the other half rather than leaving the reader to discover
-			it by changing production.
-
-			Composition is untouched: same `AlertPanel`, same `warning`, same
-			calendar glyph, same chip on the right. Only the words moved.
-		-->
-		<!-- ⭐ THE WORDS COME FROM THE PAGE'S STORY WHEN THERE IS ONE. Same
-		     `AlertPanel`, same glyph, same chip — only the sentence widens from
-		     "a window is closed" to every gate actually holding this rollout,
-		     each with whether it clears on a clock, on another deploy, or on a
-		     person. The fallback below is the schedule-only wording, which is
-		     still correct on a surface that hands down no story.
-
-		     ⭐ ALWAYS `warning` HERE NOW. (F2, second re-check, 2026-09-03) A
-		     schedule gate is a RULE, and hue is a function of KIND, never of
-		     "is anything queued behind it" — see `nothingWaiting`'s own
-		     comment for the live measurement that caught this branch
-		     rendering the SAME gate amber on one rollout and blue on another.
-		     The `nothingWaiting` case no longer reaches this branch at all
-		     (guarded above): it has no candidate to name and no verdict to
-		     print, so it is not a banner, it is `metaText`, handed to the
-		     parent to print beside the version instead. -->
-		<AlertPanel
-			severity="warning"
-			title={story?.blocked ? story.headline : 'Automatic deploys are paused'}
-			message={story?.blocked
-				? shapedConsequence(story)
-				: nextChange
-					? `Nothing promotes itself for another ${formatTimeUntil(nextChange)} — ${formatAbsoluteReopen(nextChange)}. A deploy you start by hand still applies immediately.`
-					: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
-			footnote={story?.blocked ? story.resolution : undefined}
-			icon={story?.blocked ? iconForStory(story) : CalendarWeekSolid}
-			pulse
-		>
-			{#snippet actions()}
-				<button
-					type="button"
-					id="schedule-details"
-					class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-800/10 px-3 py-1.5 text-xs font-medium text-amber-900 ring-1 ring-amber-400/30 transition hover:bg-amber-800/15 hover:ring-amber-400/50 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15"
-				>
-					<!-- (2026-09-03, vocabulary pass) Was `N schedule(s)` — the
-					     generic obstacle noun is `rule` everywhere; see the
-					     compact-form note above. -->
-					{blockingSchedules.length} rule{blockingSchedules.length > 1 ? 's' : ''}
-				</button>
-			{/snippet}
-		</AlertPanel>
 		<Popover
 			triggeredBy="#schedule-details"
 			placement="bottom-end"
 			arrow={false}
 			defaultClass=""
-			class="z-20 w-96 max-w-[90vw] rounded-xl border border-amber-300/70 bg-gradient-to-br from-amber-50 via-white to-amber-50 p-0 text-amber-950 shadow-2xl shadow-amber-300/30 dark:border-amber-700/60 dark:from-amber-950 dark:via-amber-900/80 dark:to-amber-950 dark:text-amber-50 dark:shadow-amber-950/50"
+			class="z-20 w-96 max-w-[90vw] rounded-lg border border-held-line bg-surface p-0 text-fg"
 		>
-			<div class="border-b border-amber-200/70 px-4 py-3 dark:border-amber-800/60">
+			<div class="border-b border-line-subtle px-4 py-3">
 				<div class="flex items-center gap-2">
-					<CalendarWeekSolid class="h-4 w-4 text-amber-600 dark:text-amber-300" />
-					<p class="text-sm font-semibold tracking-tight">
+					<CalendarWeekSolid class="h-4 w-4 text-held" />
+					<p class="t-card-title">
 						<!-- (2026-09-03, vocabulary pass) `deploy window` is the KIND
 						     word this product uses for a schedule gate everywhere
 						     else (`GateRecord`'s `Kind` field, `BlockReason`'s
@@ -658,17 +664,17 @@
 					</p>
 				</div>
 			</div>
-			<ul class="divide-y divide-amber-200/60 dark:divide-amber-800/40">
+			<ul class="divide-y divide-line-subtle">
 				{#each blockingSchedulesFull as schedule}
 					<li class="px-4 py-3">
 						<div class="mb-2 flex items-center justify-between gap-2">
-							<span class="truncate text-sm font-medium text-amber-900 dark:text-amber-100">
+							<span class="t-card-title truncate text-fg">
 								{schedule.metadata.name}
 							</span>
 							<span
-								class="chip t-chip shrink-0 {schedule.spec.action === 'Deny'
-									? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
-									: 'border-gray-200 text-green-700 dark:border-gray-700 dark:text-green-400'}"
+								class="chip t-label shrink-0 {schedule.spec.action === 'Deny'
+									? 'border-danger-line text-danger'
+									: 'border-success-line text-success'}"
 							>
 								{schedule.spec.action}
 							</span>
@@ -677,10 +683,10 @@
 							<ul class="space-y-1">
 								{#each schedule.spec.rules as rule}
 									<li
-										class="flex items-start gap-2 text-xs text-amber-800/90 dark:text-amber-200/85"
+										class="t-meta flex items-start gap-2 text-fg-muted"
 									>
 										<ClockSolid
-											class="mt-0.5 h-3 w-3 shrink-0 text-amber-500/80 dark:text-amber-400/80"
+											class="mt-0.5 h-3 w-3 shrink-0 text-fg-subtle"
 										/>
 										<span class="break-words">{formatRule(rule, schedule.spec.timezone)}</span>
 									</li>
@@ -688,8 +694,8 @@
 							</ul>
 						{/if}
 						{#if schedule.status?.nextTransition}
-							<p class="mt-2 text-xs text-amber-700/80 dark:text-amber-300/70">
-								Automatic deploys resume in <span class="font-medium"
+							<p class="t-meta mt-2 text-fg-subtle">
+								Automatic deploys resume in <span class="text-fg-muted"
 									>{formatTimeUntil(schedule.status.nextTransition)}</span
 								>
 								· {formatAbsoluteReopen(schedule.status.nextTransition)}
@@ -701,7 +707,7 @@
 		</Popover>
 	{:else if isAllowed && isClosingSoon && !isWarningDismissed}
 		<AlertPanel
-			severity="warning"
+			severity="pinned"
 			title="Automatic deploys pause soon"
 			message={`Nothing will promote itself after ${formatTimeUntil(nextChange!)} — ${formatAbsoluteReopen(nextChange!)}. Deploys you start by hand are not affected.`}
 			icon={ClockSolid}
@@ -710,10 +716,10 @@
 				<button
 					type="button"
 					onclick={dismissWarning}
-					class="inline-flex items-center rounded-lg p-1.5 text-amber-700 transition hover:bg-amber-200/60 dark:text-amber-300 dark:hover:bg-amber-800/40"
+					class="btn btn-ghost btn-icon btn-sm"
 					aria-label="Dismiss"
 				>
-					<CloseOutline class="h-5 w-5" />
+					<CloseOutline />
 				</button>
 			{/snippet}
 		</AlertPanel>

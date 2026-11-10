@@ -105,12 +105,87 @@ export type DeployIntent = {
 	custom: boolean;
 	/** The environment's own name, as the cluster spells it (`prod`, `staging`). */
 	environment: string;
+	/**
+	 * This exact tag's OWN last attempt, on THIS rollout, failed — see
+	 * `failedHereVerdict`. Decided by the TL (U-4, ledger, 2026-10-08):
+	 * deploying it again is `typed` regardless of the environment's own
+	 * risk tier — the risk here is the BUILD's own track record, not the
+	 * target.
+	 */
+	knownFailedHere: boolean;
 };
+
+/**
+ * ⭐ A BUILD'S OWN TRACK RECORD ON THIS ROLLOUT, NOT A MOCK-ONLY FLAG. (U-4,
+ * ledger, 2026-10-08 — TL ruling, coordinator decision.) A rollback (or a
+ * fresh deploy) can leave an already-failed build sitting in
+ * `releaseCandidates` again — still newer by release-list position, offered
+ * as if nothing had happened. The question this answers is narrow and
+ * entirely derived from `rollout.status.history`, this rollout's own
+ * attempt log, NEWEST FIRST:
+ *
+ *   · never attempted here → `clean`;
+ *   · the MOST RECENT attempt at this tag succeeded (even if an OLDER
+ *     attempt at the same tag once failed — a retry that then passed is
+ *     fine again) → `clean`;
+ *   · the most recent attempt failed → `failed`, with the failure's own
+ *     timestamp and — when something has already replaced it in history —
+ *     the timestamp of the deploy that did, i.e. "when this got rolled
+ *     back". `rolledBackAt` is `null` while the failed attempt is STILL the
+ *     one running (nothing has replaced it yet; that state is
+ *     `FailurePanel`'s to narrate, not this chip's).
+ */
+export type FailedHereVerdict =
+	| { kind: 'clean' }
+	| { kind: 'failed'; failedAt: string | null; rolledBackAt: string | null };
+
+export function failedHereVerdict(
+	rollout: Rollout | null | undefined,
+	tag: string | null
+): FailedHereVerdict {
+	if (!tag) return { kind: 'clean' };
+	const history = rollout?.status?.history ?? [];
+	const idx = history.findIndex((h) => h?.version?.tag === tag);
+	if (idx === -1) return { kind: 'clean' };
+	const entry = history[idx];
+	if (entry?.bakeStatus !== 'Failed') return { kind: 'clean' };
+	// Newest-first: the entry one step CLOSER to history[0] is whatever
+	// replaced this failed attempt, if anything has yet.
+	const replacedBy = idx > 0 ? history[idx - 1] : null;
+	return {
+		kind: 'failed',
+		failedAt: entry.timestamp ?? null,
+		rolledBackAt: replacedBy?.timestamp ?? null
+	};
+}
+
+/**
+ * ⭐ U-9, 2026-10-08 (QA): FAILED TAKES THE ROW, EVEN WHEN A GATE OR
+ * CONTRACT ALSO HOLDS THE SAME BUILD. Rollout detail's release-candidate row
+ * used to compute `justFailed = !isBlocked && failedHere.kind === 'failed'`
+ * — the comment beside it already claimed "the FAILED fact takes the row
+ * (it is the more urgent one)", but the code said the opposite: a build that
+ * is BOTH gate-held and the thing that just failed here rendered plain
+ * `Held by a gate`, never `failed here`, because the gate hold silently
+ * suppressed the failure before the render chain ever got to choose.
+ *
+ * `failedHere` and "is this held" (`blockingGateNames`/`promotion.ts`,
+ * `contractHoldFor` on the page) are two INDEPENDENT facts about a build — a
+ * gate reopening does not make a build that already failed its own last
+ * attempt here trustworthy again, so the held-ness of a candidate must never
+ * suppress its own failure. Exported (rather than left as an inline `{@const
+ * justFailed = failedHere.kind === 'failed'}`) so the precedence itself is a
+ * named, tested contract a future edit cannot silently invert again the way
+ * the inline `!isBlocked &&` guard did.
+ */
+export function rowShowsFailed(failedHere: FailedHereVerdict): boolean {
+	return failedHere.kind === 'failed';
+}
 
 /**
  * THE ENVIRONMENT NAME, FROM WHATEVER THE CALLER ACTUALLY HAS.
  *
- * Rollout detail holds the `Environment` object and passes `spec.environment`.
+ * Rollout detail holds the `Environment` object and passes `spec.environment` (the TIER; the site is not part of the name, so a prod site is prod).
  * Every other call site — `/apps/<name>`, `/versions/<rev>`, `FailurePanel` —
  * holds only the rollout, so this reads the label the fixtures and the live
  * cluster both set, then the theme annotations, then the namespace.
@@ -174,6 +249,39 @@ export function releaseIndex(rollout: Rollout | null | undefined, tag: string | 
 }
 
 /**
+ * ⭐ `N back` / `N newer`, relative to the version RUNNING NOW — this
+ * rollout's own oldest-first `availableReleases`, the same list the delta
+ * summary and `env-rank.ts`'s own `N behind` both count from. `null` for the
+ * current row itself (already the green `Current` badge) and for anything
+ * not in this rollout's own list (a "show all repo tags" extra, or a version
+ * this rollout has aged out of tracking) — a rank next to a build this list
+ * cannot place would be inventing a distance.
+ *
+ * ⭐ ITEM 3 (coordinator, 2026-10-09). MOVED HERE FROM
+ * `ChangeVersionModal.svelte`'s OWN `pickerRankLabel` — it closed over the
+ * component's `rollout` prop, which made it a component-local function no
+ * test outside the component could call, so `newer-builds-agreement.test.ts`
+ * had to reimplement its arithmetic by hand (`dialogNewerCount`) rather than
+ * call the real thing — the same gap `graphNodeForRollout` closed by moving
+ * into `app-tasks.ts`. `rollout` is now a parameter rather than a closed-over
+ * prop; `ChangeVersionModal.svelte` calls this export directly, so the
+ * dialog and the agreement test read the identical function, not two
+ * descriptions of it that can drift apart.
+ */
+export function pickerRankLabel(
+	rollout: Rollout | null | undefined,
+	versionTag: string
+): string | null {
+	const currentTag = rollout?.status?.history?.[0]?.version?.tag ?? null;
+	if (!rollout || !currentTag || versionTag === currentTag) return null;
+	const curIdx = releaseIndex(rollout, currentTag);
+	const idx = releaseIndex(rollout, versionTag);
+	if (curIdx === -1 || idx === -1) return null;
+	const diff = idx - curIdx;
+	return diff > 0 ? `${diff} newer` : `${-diff} back`;
+}
+
+/**
  * Forward, backward, or nowhere — measured against the rollout's OWN release
  * list, which is the same list `Change Version` shows and the same one
  * `env-rank.ts` counts `N behind` from.
@@ -203,7 +311,8 @@ export function deployIntent(
 		production: isProductionTarget(environment),
 		vouched: gatesAllow(rollout, tag),
 		custom: !!tag && releases.length > 0 && releaseIndex(rollout, tag) === -1,
-		environment
+		environment,
+		knownFailedHere: failedHereVerdict(rollout, tag).kind === 'failed'
 	};
 }
 
@@ -237,7 +346,22 @@ export function retryIntent(
 		vouched: gatesAllow(rollout, retryTag(rollout)),
 		// A retry cannot be a custom tag: it re-sends what is already deployed.
 		custom: false,
-		environment
+		environment,
+		// ⛔ DELIBERATELY `false`, NEVER DERIVED. (U-4, ledger, 2026-10-08) A
+		// retry's own target (`retryTag`) is `history[0]` — which is
+		// `bakeStatus: 'Failed'` on EVERY ordinary retry (that is the whole
+		// reason `Retry` is on screen) — so running it through
+		// `failedHereVerdict` would make `knownFailedHere` true on almost
+		// every retry and `confirmLevel` `typed` on every one, which this
+		// file's own header note exists to prevent ("one click in dev …
+		// is a requirement, not an oversight"). The failure a retry is
+		// about is already carried end-to-end by `retryConsequences`/
+		// `RetryConfirmModal` — a separate, already-complete mechanism;
+		// `knownFailedHere` is for the OTHER path, a forward `Deploy` on a
+		// `releaseCandidates` row picking a build that failed on a PAST
+		// attempt, which `ChangeVersionModal`'s generic flow does not
+		// otherwise see coming.
+		knownFailedHere: false
 	};
 }
 
@@ -282,6 +406,13 @@ export function confirmLevel(intent: DeployIntent): ConfirmLevel {
 	// wave through the exact act this module exists to slow down.
 	if (intent.direction === 'same') return 'none';
 	if (intent.custom) return 'typed';
+	// ⭐ A BUILD'S OWN FAILURE OUTRANKS THE TARGET'S TIER. (U-4, ledger,
+	// 2026-10-08, TL ruling.) The risk here is the BUILD — it already
+	// failed its checks on THIS rollout — not where it is going; a dev
+	// redeploy of a build that just failed here gets the same ceremony a
+	// production one would, which a plain `intent.production` check alone
+	// would miss.
+	if (intent.knownFailedHere) return 'typed';
 	if (intent.production) return 'typed';
 	if (intent.direction === 'rollback') return 'notice';
 	return intent.vouched ? 'none' : 'notice';
@@ -330,7 +461,7 @@ export function retryConsequences(intent: DeployIntent, facts: RetryFacts, tag?:
 	out.push(
 		intent.vouched
 			? `Every rule here allows this build, so this is the attempt the controller would make on its own.`
-			: `No rule here currently allows this build. It applies immediately and ${where} starts serving it.`
+			: `A rule here is still holding this build back. It applies immediately and ${where} starts serving it.`
 	);
 
 	if (facts.failingChecks.length === 1) {
@@ -360,9 +491,30 @@ export function retryConsequences(intent: DeployIntent, facts: RetryFacts, tag?:
 	return out;
 }
 
-/** How the target is named in prose. `production` is a word the modal owed its reader. */
+/**
+ * WHAT HOLDS THE BUILD, IN WORDS (QA #22). Names the gates that disagree, never a generic "a rule" when the gate data says which:
+ * "Manual approval is holding back", "A and B are holding back", "3 rules are holding back". A generated id that has no readable
+ * name arrives as the plain word "Gate" and reads as "a rule".
+ */
+export function holdersPhrase(names: readonly string[]): string {
+	// QA #14 round 2: the notice COUNTS the holders; the rule list directly below it NAMES them (once, in the one name every surface uses),
+	// so "A and B are still holding back" no longer repeats them inside a sentence.
+	const n = Math.max(names.length, 1);
+	return n === 1 ? 'a rule is still holding back' : `${n} rules are still holding back`;
+}
+
+/**
+ * How the target is named in prose. ⭐ ROUND 5 (squad-fleet, SPEC ruling
+ * "one place name… never 'production'") — this used to collapse EVERY
+ * production-tier target to the generic word "production" ("Deploy to
+ * production", "Roll back production"), even though `intent.environment`
+ * already carries the real, specific name ("prod", "prod-us-east") every
+ * other surface in the product prints. A reader confirming a deploy to one
+ * prod region read a dialog that named a different, bigger thing than the
+ * row they clicked. The environment name, as written, always — the same
+ * rule `/envs/<name>`'s own header and `/apps/<name>`'s map already follow.
+ */
 export function targetPhrase(intent: DeployIntent): string {
-	if (intent.production) return 'production';
 	return intent.environment || 'this environment';
 }
 
@@ -390,7 +542,9 @@ export function confirmNotice(
 	 * count: a rollback whose distance could not be resolved, or a
 	 * same-build edge case, states the fact it can prove and no more.
 	 */
-	stepsBack?: number | null
+	stepsBack?: number | null,
+	/** Display names of the gates that do NOT allow this build (QA #22): the sentence names what actually holds it. */
+	holders: readonly string[] = []
 ): string | null {
 	const level = confirmLevel(intent);
 	if (level === 'none') return null;
@@ -409,7 +563,7 @@ export function confirmNotice(
 	if (intent.production) {
 		return intent.vouched
 			? `This changes ${where}. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.${pinNote}`
-			: `This ships to ${where} a build that no rule currently allows. It applies immediately and ${where} starts serving it; nothing checks it first.${pinNote}`;
+			: `This deploys to ${where} a build that ${holdersPhrase(holders)}. It applies immediately and ${where} starts serving it; nothing checks it first.${pinNote}`;
 	}
 	// ⛔ THIS SENTENCE USED TO END `Production is not touched.` AND THAT WAS
 	// FALSE — in exactly the case it was printed. (2026-08-31)
@@ -425,11 +579,11 @@ export function confirmNotice(
 	// OWN. The reassurance was strongest precisely where the risk was.
 	//
 	// ⚠️ AND IT MAY NOT BE REPLACED BY THE OPPOSITE CLAIM. `DeployIntent` does
-	// not know whether any environment declares `relationship: After` this one,
+	// not know whether any environment promotes after this one (a later tier or wave),
 	// so "this will reach production" would be the same defect with the sign
 	// flipped. `can become allowed` is modal and true either way: it states the
 	// mechanism that exists without asserting a consequence we cannot see.
-	return `This overrides the rules holding ${where}, which do not currently allow this build. It applies immediately. It does not deploy to production — but a build that deploys and passes its checks here can become allowed in whatever environment promotes after ${where}.${pinNote}`;
+	return `This overrides the rules holding ${where}, which do not currently allow this build. It applies immediately. It does not deploy to prod — but a build that deploys and passes its checks here can become allowed in whatever environment promotes after ${where}.${pinNote}`;
 }
 
 /**
@@ -451,14 +605,24 @@ export function splitLeadSentence(text: string): { lead: string; rest: string } 
 
 /** The label above the type-to-confirm box, when there is one. */
 export function typedPrompt(intent: DeployIntent): string {
-	// ⭐ EVERY CHANGE IS TYPED. (2026-09-03, from the human: "any time we change
-	// the version we must ask for confirmation.") `confirmLevel` still grades
-	// the alert — none / notice / typed decide its colour and sentence — but
-	// the typed field itself no longer waits for `typed`; the caller shows it
-	// for every direction but `same`. Below `typed` the prompt claims nothing
-	// about vouching or tiers, because nothing adverse is being asserted.
+	// ⛔ SUPERSEDED, 2026-10-08 (U-23, ledger). This used to read "every
+	// change is typed" and return `'Type'` even when `confirmLevel` graded
+	// `none`/`notice` — the caller showed the field for every direction but
+	// `same`. See `ChangeVersionModal.svelte`'s own `needsTypedConfirmation`
+	// note: the field now appears ONLY at `typed`, so this function is never
+	// called below that level any more and the early-return is dead code
+	// kept only as a defensive default.
 	if (confirmLevel(intent) !== 'typed') return 'Type';
 	if (intent.custom) return 'This version is not in the release list. Type';
+	// ⭐ A BUILD'S OWN FAILURE IS A THIRD CLAIM, DISTINCT FROM BOTH OF THESE.
+	// (U-4, ledger, 2026-10-08) Checked before `rollback`/vouching below —
+	// `knownFailedHere` can be true on a FORWARD redeploy of a build this
+	// rollout already tried and failed, which is neither "nothing has
+	// vouched for this" (something tried it and it failed — stronger than
+	// silence) nor the rollback tier's "already ran here successfully".
+	if (intent.knownFailedHere) {
+		return `This build already failed here. Type`;
+	}
 	// ⭐ A ROLLBACK IS A DIFFERENT CLAIM. (B3, 2026-09-03) `production` now
 	// reaches `typed` on a rollback too (see `confirmLevel`'s own note), and
 	// "nothing has vouched for this build" is false of it: the build already
@@ -476,14 +640,32 @@ export function typedPrompt(intent: DeployIntent): string {
  * THE BUTTON SAYS WHERE IT LANDS. The critique's exact charge was that the
  * modal *"never says production"* — so the primary does, and so does the
  * notice above it.
+ *
+ * ⛔ SUPERSEDED IN PART, 2026-10-08 (U-11, ledger — canonical vocabulary,
+ * decided by the TL). A rollback confirm used to repeat the target
+ * (`Roll back production`) — the dialog's own TITLE now carries that
+ * ("Roll back production to 3f1ed09", `ChangeVersionModal`'s own
+ * `dialogTitle`), so the confirm button is bare `Roll back`: the title names
+ * where and to what, the button names the act. Forward deploy is
+ * UNCHANGED — its title is "Deploy <build> to <environment>" too, but the
+ * confirm button still repeats the target (`Deploy to production`) per the
+ * same TL ruling, because `Deploy` alone reads as "deploy something,
+ * unspecified" where `Roll back` alone does not (there is only ever one
+ * place to roll back TO: back).
  */
 export function deployActionLabel(intent: DeployIntent): string {
-	const where = intent.production
-		? 'production'
-		: intent.environment
-			? intent.environment
-			: null;
-	if (intent.direction === 'rollback') return where ? `Roll back ${where}` : 'Roll back';
+	// ⭐ ROUND 5 (squad-fleet, SPEC ruling "never 'production'") — see
+	// `targetPhrase`'s own note, above: the real environment name, always.
+	const where = intent.environment || null;
+	if (intent.direction === 'rollback') return 'Roll back';
+	// ⭐ `Deploy anyway`. (U-4, ledger, 2026-10-08, TL ruling.) A forward
+	// redeploy of a build that already failed here is not an ordinary
+	// `Deploy to <env>` — the button names the override, matching the
+	// quiet/secondary weight the row already demotes it to (`+page.svelte`'s
+	// `justFailed` branch) and the `typed` ceremony `confirmLevel` now
+	// grades it. Checked before the retry/forward branches below so it wins
+	// over both.
+	if (intent.knownFailedHere) return 'Deploy anyway';
 	// THE RETRY BUTTON SAYS WHERE IT LANDS TOO. `Retry` named the act and hid
 	// the target, which is how a production redeploy read as a page refresh.
 	if (intent.direction === 'retry') return where ? `Redeploy to ${where}` : 'Redeploy';

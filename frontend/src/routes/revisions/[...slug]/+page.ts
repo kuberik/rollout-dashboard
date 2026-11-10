@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { href } from '$lib/paths';
 import type { PageLoad } from './$types';
 
 /**
@@ -12,5 +13,5 @@ import type { PageLoad } from './$types';
  * its own, so nothing here can chain a second redirect.
  */
 export const load: PageLoad = ({ params }) => {
-	redirect(308, `/changes/${params.slug}`);
+	redirect(308, href(`/changes/${params.slug}`));
 };

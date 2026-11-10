@@ -1,4 +1,5 @@
 import { ApiError, apiJson } from './errors';
+import { githubAskHeld, githubKnownDisconnected, githubStatusSettled, githubStatusStarted, recordGithubStatus } from './github-gate.svelte';
 import { apiPath } from './urls';
 
 export type CommitInfo = {
@@ -50,7 +51,10 @@ export class FetchCommitsError extends ApiError {
 
 export type GithubStatus = {
 	// Whether the server has GitHub App user-auth configured at all.
-	configured: boolean;
+	// `null` (AD palette round 8, item 4): the request to find out never
+	// reached the server — unknown, not a server-sent "no". See
+	// `fetchGithubStatus`'s own comment.
+	configured: boolean | null;
 	// Whether the current user has connected their GitHub account.
 	connected: boolean;
 	login?: string;
@@ -176,19 +180,43 @@ export function githubAbsenceSentence(
 	status: GithubStatus | null | undefined,
 	opts: { unreachable?: boolean } = {}
 ): string {
-	if (opts.unreachable) return 'GitHub did not answer.';
+	// `configured === null` (AD palette round 8, item 4): the status request
+	// itself never reached the server — the same fact a caller's own
+	// `opts.unreachable` names, now also carried on the object itself.
+	if (opts.unreachable || status?.configured === null) return 'GitHub did not answer.';
 	if (status?.configured) return 'GitHub is not connected for this dashboard.';
 	return 'GitHub is not configured for this dashboard.';
 }
 
 export async function fetchGithubStatus(): Promise<GithubStatus> {
-	// Not being able to ask IS the answer here: "GitHub is not available to
-	// you". There is nothing for the reader to do about it and nothing to
-	// print, so this one legitimately swallows.
-	return apiJson<GithubStatus>('/api/auth/github/status').catch(() => ({
-		configured: false,
+	// ⛔ USED TO SWALLOW EVERY FAILURE INTO `{ configured: false }` — INCLUDING
+	// A DEAD SERVER. (AD palette round 8, item 4) "Not being able to ask IS
+	// the answer" is true for a genuine `configured: false` answer the
+	// server actually sent, but a request that never reached the server (a
+	// 503 outage, offline, DNS) is a DIFFERENT fact wearing the same costume:
+	// measured during an outage, the 390 header showed a dashed "Not set up"
+	// chip and the 1440 sidebar said "Not configured" — a confident claim
+	// about GitHub's setup made entirely out of GitHub being unreachable.
+	//
+	// ⛔ STILL SWALLOWED, ON PURPOSE — NOT RETHROWN. This query has ~10 call
+	// sites, none of which pass `retry: false`; letting it reach `isError`
+	// routes it through the shared bounded-retry policy (`queryRetry`),
+	// which is new work it was never doing before and which held up OTHER
+	// pages' own error-state transition behind it (measured: `/changes`'
+	// outage test, which gates on this query too, went from <250ms to
+	// timing out past 1s). So the query still always resolves — only the
+	// SHAPE of the fallback changes: `configured: null` is "unknown",
+	// distinct from the real, server-sent `configured: false`.
+	// `GithubConnectButton.svelte` is the one surface the AD named and the
+	// one place this distinction is read; every other caller's `?? false`/
+	// truthy check already treats `null` exactly like `false` — unchanged.
+	githubStatusStarted();
+	const st = await apiJson<GithubStatus>('/api/auth/github/status').catch(() => ({
+		configured: null,
 		connected: false
-	}));
+	}) as GithubStatus);
+	recordGithubStatus(st);
+	return st;
 }
 
 // Full-page navigation to start the OAuth flow (a 302 to GitHub can't be
@@ -301,8 +329,13 @@ export function commitsQueryOptions(args: {
 	const rangeOk = !!namespace && !!name && !!base && !!head && base !== head;
 	return {
 		queryKey: commitsQueryKey(namespace, name, base ?? '', head ?? '', cluster),
-		queryFn: () => fetchCommits(namespace, name, base!, head!, cluster),
-		enabled: enabled && rangeOk,
+		queryFn: async () => {
+			/* the first load can ask before the status has answered: settle it here, so a not-connected dashboard never sends the request (QA2 #4) */
+			if (!githubStatusSettled()) await fetchGithubStatus();
+			if (githubKnownDisconnected()) throw new FetchCommitsError('not_connected', 'GitHub is not connected', 401);
+			return fetchCommits(namespace, name, base!, head!, cluster);
+		},
+		enabled: enabled && rangeOk && !githubAskHeld(),
 		staleTime: immutable ? Infinity : 5 * 60_000,
 		gcTime: immutable ? 60 * 60_000 : 5 * 60_000,
 		refetchInterval: false as const,

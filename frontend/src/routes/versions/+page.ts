@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { href } from '$lib/paths';
 
 /**
  * `/versions` → `/changes`.
@@ -16,5 +17,5 @@ import { redirect } from '@sveltejs/kit';
  * the move is durable.
  */
 export const load = () => {
-	redirect(308, '/changes');
+	redirect(308, href('/changes'));
 };

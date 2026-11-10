@@ -72,9 +72,35 @@ export function kruiseRolloutsForRollout(
 	return out;
 }
 
+/**
+ * QA #5 (2026-11-09): right after Deploy the KruiseRollout still carries the
+ * PREVIOUS deploy's canaryStatus (e.g. step 4/4 Completed) until kruise
+ * starts the new rollout, so the pipeline read "4/5 done" while the canary
+ * was at step 1. A KruiseRollout whose last status update is OLDER than the
+ * current history entry's start, while that entry is still `Deploying`, has
+ * not begun this deploy: none of its steps count. Shared by the list glyph
+ * (`derivePipeline`) and the detail card (the page neutralises the same KRs
+ * through this predicate) so both always agree.
+ */
+export function kruiseStatusIsPreviousDeploy(
+	kr: KruiseRollout,
+	rollout: Pick<Rollout, 'status'> | null | undefined
+): boolean {
+	const head = rollout?.status?.history?.[0];
+	if (!head || head.bakeStatus !== 'Deploying' || !head.timestamp) return false;
+	const updated = (kr.status as any)?.canaryStatus?.lastUpdateTime;
+	if (!updated) return false;
+	const u = Date.parse(updated);
+	const t = Date.parse(head.timestamp as unknown as string);
+	return Number.isFinite(u) && Number.isFinite(t) && u < t;
+}
+
 // Derive the per-step state of a single KruiseRollout — same conditions
 // DeploymentPipelineCard.svelte uses.
-function trackStagesForKR(kr: KruiseRollout): StageState[] {
+function trackStagesForKR(kr: KruiseRollout, rollout?: Rollout): StageState[] {
+	if (rollout && kruiseStatusIsPreviousDeploy(kr, rollout)) {
+		return ((kr.spec as any)?.strategy?.canary?.steps ?? []).map((): StageState => 'pending');
+	}
 	const steps = (kr.spec as any)?.strategy?.canary?.steps ?? [];
 	const currentStepIndex = (kr.status as any)?.canaryStatus?.currentStepIndex;
 	const currentStepState = (kr.status as any)?.canaryStatus?.currentStepState;
@@ -100,7 +126,8 @@ function trackStagesForKR(kr: KruiseRollout): StageState[] {
 }
 
 // Has this single KruiseRollout finished all of its canary steps?
-function isKrCompleted(kr: KruiseRollout): boolean {
+function isKrCompleted(kr: KruiseRollout, rollout?: Rollout): boolean {
+	if (rollout && kruiseStatusIsPreviousDeploy(kr, rollout)) return false;
 	const currentStepState = (kr.status as any)?.canaryStatus?.currentStepState;
 	return currentStepState === 'Completed';
 }
@@ -119,7 +146,7 @@ export function derivePipeline(rollout: Rollout, krs: KruiseRollout[]): Pipeline
 		return { tracks: [{ name: '', stages: [deploy] }], bake };
 	}
 
-	const allStagesDone = krs.every(isKrCompleted);
+	const allStagesDone = krs.every((kr) => isKrCompleted(kr, rollout));
 	let bake: StageState = 'pending';
 	if (allStagesDone) {
 		if (bakeStatus === 'Succeeded') bake = 'done';
@@ -131,7 +158,7 @@ export function derivePipeline(rollout: Rollout, krs: KruiseRollout[]): Pipeline
 
 	const tracks: PipelineTrack[] = krs.map((kr) => ({
 		name: kr.metadata?.name ?? '',
-		stages: trackStagesForKR(kr)
+		stages: trackStagesForKR(kr, rollout)
 	}));
 
 	return { tracks, bake };
@@ -154,4 +181,17 @@ function deployBakeStates(rollout: Rollout): [StageState, StageState] {
 		return ['done', 'fail'];
 	}
 	return ['pending', 'pending'];
+}
+
+/**
+ * QA round 2, A1/A2. The detail card read its KruiseRollouts from the `managed-resources` query while `/rollouts` read the SAME objects from the
+ * fleet list; the list is patched by every KruiseRollout stream event, the managed-resources copy only on a throttled refetch, so during a
+ * deploy the list said "Stage 2" while the detail sat on "Stage 1 pending". One current-stage fact: of two copies of the same KruiseRollout,
+ * the one whose `canaryStatus.lastUpdateTime` is newer wins (ties keep the first).
+ */
+export function freshestKruise(a: KruiseRollout, b: KruiseRollout | null | undefined): KruiseRollout {
+	if (!b) return a;
+	const ta = Date.parse((a.status as any)?.canaryStatus?.lastUpdateTime ?? '') || 0;
+	const tb = Date.parse((b.status as any)?.canaryStatus?.lastUpdateTime ?? '') || 0;
+	return tb > ta ? b : a;
 }

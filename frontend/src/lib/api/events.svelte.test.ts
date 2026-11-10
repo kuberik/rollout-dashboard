@@ -61,14 +61,17 @@ function fakeQueryClient() {
 describe('startEventStream — connection lifecycle', () => {
 	let startEventStream: typeof import('./events').startEventStream;
 	let _resetEventStreamForTests: typeof import('./events')._resetEventStreamForTests;
+	let CONNECT_SETTLE_MS: typeof import('./events').CONNECT_SETTLE_MS;
 
 	beforeEach(async () => {
 		vi.resetModules();
+		vi.useFakeTimers();
 		capturedOptions = null;
 		createEventSourceMock.mockClear();
 		const mod = await import('./events');
 		startEventStream = mod.startEventStream;
 		_resetEventStreamForTests = mod._resetEventStreamForTests;
+		CONNECT_SETTLE_MS = mod.CONNECT_SETTLE_MS;
 	});
 
 	afterEach(() => {
@@ -88,16 +91,45 @@ describe('startEventStream — connection lifecycle', () => {
 		const qc = fakeQueryClient();
 		startEventStream(qc as never);
 		capturedOptions!.onConnect!();
+		vi.advanceTimersByTime(CONNECT_SETTLE_MS);
 		expect(qc.invalidateQueries).not.toHaveBeenCalledWith();
 	});
 
-	it('a RECONNECT (second onConnect) invalidates everything once, to reconcile whatever was missed', () => {
+	it('a RECONNECT that SETTLES (stays up past CONNECT_SETTLE_MS) invalidates everything once', () => {
 		const qc = fakeQueryClient();
 		startEventStream(qc as never);
 		capturedOptions!.onConnect!(); // first connect
+		vi.advanceTimersByTime(CONNECT_SETTLE_MS); // settles: connectedOnce = true, no invalidate yet
 		capturedOptions!.onDisconnect!(); // dropped
 		capturedOptions!.onConnect!(); // reconnected
+		vi.advanceTimersByTime(CONNECT_SETTLE_MS); // and this one STAYS up
 		expect(qc.invalidateQueries).toHaveBeenCalledWith();
+	});
+
+	/**
+	 * ⭐ ITEM 2 FOLLOW-UP (squad-rollout coordinator, 2026-10-11). Pins the
+	 * actual outage shape: `eventsource-client`'s `onFetchResponse` fires
+	 * `onConnect()` for ANY HTTP response, including a 503 that resolves and
+	 * closes in the same tick — so a dead `/api` produced a `connect →
+	 * invalidateQueries() → disconnect` cycle roughly every 2 seconds before
+	 * this fix. A connection that dies before `CONNECT_SETTLE_MS` must never
+	 * reach `invalidateQueries()`, no matter how many times it repeats.
+	 */
+	it('a FAILED reconnect (dies before CONNECT_SETTLE_MS) does not invalidate — not once, not on repeat', () => {
+		const qc = fakeQueryClient();
+		startEventStream(qc as never);
+		capturedOptions!.onConnect!(); // first connect
+		vi.advanceTimersByTime(CONNECT_SETTLE_MS); // settles — connectedOnce = true now
+
+		// Three failed reconnect attempts in a row, each dying immediately —
+		// the shape of a dead `/api` under `eventsource-client`'s own ~2s loop.
+		for (let i = 0; i < 3; i++) {
+			capturedOptions!.onConnect!();
+			capturedOptions!.onDisconnect!();
+			vi.advanceTimersByTime(CONNECT_SETTLE_MS);
+		}
+
+		expect(qc.invalidateQueries).not.toHaveBeenCalled();
 	});
 
 	it('a "changes" message applies its invalidations through the same path applyChangeEvents uses', async () => {
@@ -118,8 +150,10 @@ describe('startEventStream — connection lifecycle', () => {
 				}
 			])
 		});
-		// Let the pump's microtask/await chain run.
-		await new Promise((r) => setTimeout(r, 0));
+		// Let the pump's microtask/await chain run. Fake timers are active in
+		// this describe block (for `CONNECT_SETTLE_MS`), so advance them
+		// rather than waiting on a real `setTimeout` that will never fire.
+		await vi.advanceTimersByTimeAsync(0);
 		expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['rollouts', 'all'] });
 	});
 });

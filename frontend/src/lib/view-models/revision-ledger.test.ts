@@ -587,7 +587,7 @@ describe('repoDeviation — craft review item 3 (lead with the deviation)', () =
 		]);
 		expect(repoDeviation({ pending: [] }, cov)).toEqual({
 			severity: 1,
-			chip: { role: 'rank', label: '2 behind', count: 2 },
+			chip: { role: 'rank', label: '2 services behind', count: 2 },
 			backlog: 0
 		});
 	});

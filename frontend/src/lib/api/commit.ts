@@ -17,7 +17,9 @@
  * common "no PR" path.
  */
 import { apiPath } from './urls';
+import { githubAskHeld, githubKnownDisconnected, githubStatusSettled } from './github-gate.svelte';
 import { ApiError } from './errors';
+import { fetchGithubStatus } from './github';
 
 export type Commit = {
 	sha: string;
@@ -131,8 +133,12 @@ export function commitQueryOptions(args: {
 	const { owner, repo, sha, cluster, enabled = true } = args;
 	return {
 		queryKey: commitQueryKey(owner, repo, sha, cluster),
-		queryFn: () => fetchCommit(owner, repo, sha, cluster),
-		enabled: enabled && !!owner && !!repo && !!sha,
+		queryFn: async () => {
+			if (!githubStatusSettled()) await fetchGithubStatus();
+			if (githubKnownDisconnected()) throw new FetchCommitError('not_connected', 'GitHub is not connected', 401);
+			return fetchCommit(owner, repo, sha, cluster);
+		},
+		enabled: enabled && !!owner && !!repo && !!sha && !githubAskHeld(),
 		staleTime: 5 * 60_000,
 		gcTime: 60 * 60_000,
 		refetchInterval: false as const,

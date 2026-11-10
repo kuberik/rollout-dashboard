@@ -6,7 +6,7 @@
 	 * render this component still cannot re-derive the sentence.
 	 *
 	 * `/apps`'s page banner is that caller. It is an `AlertPanel` — a filled
-	 * amber field — and this component's prose is deliberately `gray-500` on a
+	 * amber field — and this component's prose is deliberately muted on a
 	 * white card, so DROPPING THE COMPONENT INTO THE BANNER WOULD BE WRONG
 	 * TWICE: muted gray on amber, and a second unfilled thing inside the one
 	 * object on the page that is allowed a fill. What the banner needs is the
@@ -498,9 +498,9 @@
 	<!-- ⛔ NO LONGER `flex-wrap` WITH THE HANDLE BESIDE THE SENTENCE. It is a
 	     COLUMN now: the control has to sit UNDER the sentence, and a wrap row
 	     cannot give it a line of its own. -->
-	<div class="t-micro flex min-w-0 flex-col gap-y-0.5 {className}">
-		<span class="inline-flex min-w-0 items-baseline gap-1.5 text-gray-500 dark:text-gray-400">
-			<Icon class="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden="true" />
+	<div class="t-meta flex min-w-0 flex-col gap-y-0.5 {className}">
+		<span class="inline-flex min-w-0 items-baseline gap-1.5 text-fg-muted">
+			<Icon class="h-3 w-3 shrink-0 translate-y-px" aria-hidden="true" />
 			<span class="min-w-0">{reason.short}</span>
 		</span>
 		{#if ruleNames.length > 0}
@@ -512,24 +512,24 @@
 	<div class="flex min-w-0 flex-col gap-y-0.5 {className}">
 		<span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 			<span class="flex min-w-0 items-center gap-1.5">
-				<Icon class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+				<Icon class="h-3 w-3 shrink-0 text-fg-muted" aria-hidden="true" />
 				{#if drawsVersions && reason.subject && subjectHref}
 					<!-- THE PROVIDER, LINKED. Same ink as the bare span below —
 					     `.tap-link` outside a `.tap-zone` picks up `app.css`'s own
 					     32px hit-slop, so no bespoke geometry is needed here. -->
 					<a
 						href={subjectHref}
-						class="t-code-sm tap-link min-w-0 truncate text-gray-900 hover:underline dark:text-white"
+						class="t-code-sm tap-link min-w-0 truncate text-fg hover:underline"
 						>{reason.subject}</a
 					>
 				{:else if drawsVersions && reason.subject}
 					<!-- THE PROVIDER, AT FULL INK. It was the fifth word of a gray
 					     sentence; it is the object somebody has to go and ship. -->
-					<span class="t-code-sm min-w-0 truncate text-gray-900 dark:text-white"
+					<span class="t-code-sm min-w-0 truncate text-fg"
 						>{reason.subject}</span
 					>
 				{:else}
-					<span class="t-micro min-w-0 text-gray-500 dark:text-gray-400">{reason.line}</span>
+					<span class="t-meta min-w-0 text-fg-muted">{reason.line}</span>
 				{/if}
 			</span>
 			{#if drawsVersions}
@@ -550,7 +550,7 @@
 						title="{reason.subject} serves {reason.contract} {reason.have}"
 					/>
 					<ArrowRightOutline
-						class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400"
+						class="h-3 w-3 shrink-0 text-fg-muted"
 						aria-hidden="true"
 					/>
 					<Chip

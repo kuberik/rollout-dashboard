@@ -1,0 +1,64 @@
+/*
+ * CHART MARKS — the one marker + Now-edge vocabulary for every time axis
+ * (DeployBars, DeployLanes, DeployStrip). design-rollout ruling 2026-10-09:
+ * three charts copying the same marker CSS is how dialects start, so the
+ * marks live here once and every chart imports this file. A release marker
+ * is neutral; failed is danger ink; a rollback is an action, not a state,
+ * so it is neutral too (held orange means "waiting on a gate" only).
+ * Global on purpose (imported from script); every class is `db-` prefixed.
+ */
+.db-mline {
+	stroke: var(--k-line-strong);
+	stroke-dasharray: 1 3;
+}
+.db-pill {
+	fill: var(--k-surface);
+	stroke: var(--k-line);
+}
+.db-ptext {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	fill: var(--k-fg-muted);
+}
+.db-ptext-sans {
+	font-family: var(--font-sans);
+	font-weight: 500;
+}
+.db-m-failed .db-mline {
+	stroke: var(--k-danger-solid);
+}
+.db-m-failed .db-pill {
+	stroke: var(--k-danger-line);
+}
+.db-m-failed .db-ptext {
+	fill: var(--k-danger-fg);
+}
+/* A rollback is an action, not a state: neutral ink like activityVerb's
+   `rolled back` (tone null). Held orange means "waiting on a gate" and
+   nothing else; a stronger line than a release keeps it findable. */
+.db-m-rolledBack .db-mline {
+	stroke: var(--k-fg-muted);
+}
+.db-m-rolledBack .db-pill {
+	stroke: var(--k-line-strong);
+}
+.db-m-rolledBack .db-ptext {
+	fill: var(--k-fg);
+}
+.db-marker a:hover .db-pill {
+	stroke: var(--k-fg-subtle);
+}
+.db-now {
+	stroke: var(--k-fg-subtle);
+}
+/* A resolved failure or rollback: history, not alarm (neutral ink, dashed). */
+.db-m-resolved .db-mline {
+	stroke: var(--k-line-strong);
+	stroke-dasharray: 1 3;
+}
+.db-m-resolved .db-pill {
+	stroke: var(--k-line);
+}
+.db-m-resolved .db-ptext {
+	fill: var(--k-fg-subtle);
+}

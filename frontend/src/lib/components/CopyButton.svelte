@@ -28,14 +28,28 @@
 	 * - falls back to `execCommand('copy')` before giving up;
 	 * - says so out loud on BOTH outcomes, in the live region and on screen.
 	 */
-	import { Button } from 'flowbite-svelte';
 	import {
-		ClipboardCleanSolid,
+		ClipboardCleanOutline,
 		CheckOutline,
 		ExclamationCircleOutline
 	} from 'flowbite-svelte-icons';
 	import { announce } from '$lib/stores/announce.svelte';
 
+	/**
+	 * ⭐ D-13 (2026-10-08, "system" lane): THE BUTTON NOW USES `.btn`'S OWN
+	 * LADDER INSTEAD OF A SEPARATE flowbite SIZE SCALE. `size="xs"`
+	 * rendered 28px tall next to a 36px `Deploy` and a hand-rolled 24px
+	 * `Refresh` on the same Overview card — three heights sharing one row.
+	 * `xs`/`sm`/`md` here now map 1:1 to `app.css`'s `.btn-xs`/`.btn-sm`/
+	 * `.btn` (28/32/36px, ONE radius at every step), so a caller sitting
+	 * beside `.btn-primary` (Deploy, 36px) picks `size="md"` and the two
+	 * controls line up exactly; the icon-only call sites that used to pass
+	 * `class="!p-1.5"` to fight flowbite's padding can drop that override
+	 * — `.btn-icon` already gives a square box at the chosen size. Existing
+	 * call sites (`xs`, the default) are UNCHANGED in height (28px) and
+	 * only trade their old box-model for the same numbers drawn from one
+	 * shared class instead of a second, uncoordinated one.
+	 */
 	interface Props {
 		/** The exact string placed on the clipboard. */
 		value: string;
@@ -46,12 +60,28 @@
 		label: string;
 		/** Optional visible text. Omit for the icon-only form. */
 		text?: string;
+		/** `.btn-xs` (28px, default — dense rows) / `.btn-sm` (32px) / `.btn` (36px — beside a `.btn-primary` row). */
 		size?: 'xs' | 'sm' | 'md';
-		color?: 'light' | 'alternative' | 'primary';
+		/** `light`/`alternative` both render `.btn-secondary`; `primary` renders
+		 *  `.btn-primary`; `ghost` renders `.btn-ghost` (a row/card-header
+		 *  utility action with no box until hover — round 2, 2026-10-08). */
+		color?: 'light' | 'alternative' | 'primary' | 'ghost';
 		class?: string;
 	}
 
 	let { value, label, text, size = 'xs', color = 'light', class: className = '' }: Props = $props();
+
+	const SIZE_CLASS: Record<NonNullable<Props['size']>, string> = {
+		xs: 'btn-xs',
+		sm: 'btn-sm',
+		md: ''
+	};
+	const sizeClass = $derived(SIZE_CLASS[size]);
+	/** §3.6: a button icon is 12px at the 28px height, 16px above it. */
+	const iconClass = $derived(size === 'xs' ? 'h-3 w-3' : 'h-4 w-4');
+	const colorClass = $derived(
+		color === 'primary' ? 'btn-primary' : color === 'ghost' ? 'btn-ghost' : 'btn-secondary'
+	);
 
 	type State = 'idle' | 'copied' | 'failed';
 	let state = $state<State>('idle');
@@ -107,24 +137,21 @@
 	);
 </script>
 
-<Button
-	{size}
-	{color}
-	class="gap-2 {className}"
+<button
+	type="button"
+	class="btn {colorClass} {sizeClass} {text ? '' : 'btn-icon'} {className}"
 	onclick={copy}
 	aria-label={accessibleName}
 	title={accessibleName}
 >
 	{#if state === 'copied'}
-		<CheckOutline class="h-3.5 w-3.5 {text ? 'mr-1 h-3 w-3' : ''}" />
+		<CheckOutline class={iconClass} />
 		{#if text}Copied{/if}
 	{:else if state === 'failed'}
-		<ExclamationCircleOutline
-			class="h-3.5 w-3.5 text-red-600 dark:text-red-400 {text ? 'mr-1 h-3 w-3' : ''}"
-		/>
+		<ExclamationCircleOutline class="{iconClass} text-danger" />
 		{#if text}Copy failed{/if}
 	{:else}
-		<ClipboardCleanSolid class="h-3.5 w-3.5 {text ? 'mr-1 h-3 w-3' : ''}" />
+		<ClipboardCleanOutline class={iconClass} />
 		{#if text}{text}{/if}
 	{/if}
-</Button>
+</button>

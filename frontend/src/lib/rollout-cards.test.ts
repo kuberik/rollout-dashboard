@@ -2,12 +2,20 @@ import { describe, it, expect } from 'vitest';
 import {
 	buildRolloutCards,
 	detectRollback,
+	detectRolloutStuck,
 	cardVerdict,
 	cardStateMark,
-	heldCauseText
+	heldCauseText,
+	CHANGE_STATE_RANK,
+	changeStateRankFor,
+	worstChangeCell,
+	isEnvHeld
 } from './rollout-cards';
+import type { PrCell, PrState } from './view-models/pr-pipeline';
 import { rankBehindBy, rankLabel } from './view-models/env-rank';
 import type { BlockingStory, ClassifiedGate } from './view-models/blocking-story';
+import { buildGateContext } from './view-models/blocking-story';
+import type { Rollout, Environment, RolloutDependency } from '../types';
 
 // Fixtures reproduce the live `hello-world-app` shape that exposed the bug:
 // prod is 24 releases and 32 days behind, but its current version has already
@@ -149,7 +157,7 @@ describe('computeBehind (via buildRolloutCards)', () => {
 		const pinnedCards = buildRolloutCards([dev, staging, pinned], ENVIRONMENTS, NOW);
 		const c = cardFor('hello-world-prod', pinnedCards);
 		expect(c.rank).toEqual({ kind: 'behind', by: 24 });
-		expect(rankLabel(c.rank)).toBe('24 behind');
+		expect(rankLabel(c.rank)).toBe('24 builds behind');
 	});
 
 	// QA correctly flagged the previous version of this test as a TAUTOLOGY: it
@@ -273,12 +281,12 @@ describe('detectRollback', () => {
  * that the other fact survives in the title rather than being deleted.
  */
 describe('cardVerdict', () => {
-	const rank = ['24 behind', 'prod is 24 versions behind the newest'] as const;
+	const rank = ['24 builds behind', 'prod is 24 versions behind the newest'] as const;
 	const back = { from: 'aa17645', to: '51b976a', by: 7 };
 
 	it('passes the rank straight through when nothing happened to it', () => {
 		const v = cardVerdict({ rolledBack: null, pinnedVersion: null }, ...rank);
-		expect(v.label).toBe('24 behind');
+		expect(v.label).toBe('24 builds behind');
 		expect(v.title).toBe(rank[1]);
 	});
 
@@ -294,14 +302,14 @@ describe('cardVerdict', () => {
 	 */
 	it('KEEPS THE RANK IN THE CHIP when the rollout was rolled back', () => {
 		const v = cardVerdict({ rolledBack: back, pinnedVersion: null }, ...rank);
-		expect(v.label).toBe('24 behind');
+		expect(v.label).toBe('24 builds behind');
 		expect(v.title).toContain('Rolled back 7 versions');
 		expect(v.title).toContain(rank[1]);
 	});
 
 	it('KEEPS THE RANK IN THE CHIP when the rollout is pinned', () => {
 		const v = cardVerdict({ rolledBack: null, pinnedVersion: 'main-abc' }, ...rank);
-		expect(v.label).toBe('24 behind');
+		expect(v.label).toBe('24 builds behind');
 		expect(v.title).toContain('main-abc');
 		expect(v.title).toContain('automatic deploys are paused');
 		expect(v.title).toContain(rank[1]);
@@ -408,7 +416,7 @@ describe('cardVerdict', () => {
 		const c = cardFor('hello-world-prod', cs);
 		expect(c.rolledBack).not.toBeNull();
 		const v = cardVerdict(c, rankLabel(c.rank), 'sentence');
-		expect(v.label).toBe('24 behind');
+		expect(v.label).toBe('24 builds behind');
 		expect(cardStateMark(c)!.kind).toBe('rolled-back');
 	});
 });
@@ -480,5 +488,301 @@ describe('heldCauseText', () => {
 		const worst = gate({ subject: 'hello-api-app', need: '^1.67.0' });
 		const other = gate({ clears: 'clock', clearsAt: '2026-09-03T13:00:00Z' });
 		expect(heldCauseText(story([worst, other]))).toBe('waiting on hello-api-app ^1.67.0');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// `detectRolloutStuck` — THE ONE PREDICATE (U-2 class, 2026-10-09).
+//
+// Reproduces the exact shape of the checkout-api bug: `/apps/checkout-api`
+// showed five environments `STUCK` while Home showed none of them, because
+// `buildRolloutCards` (what Home / `/rollouts` / the command palette all
+// read `.stuck` from) only ever ran the own-rollout baking/deploying
+// detector — never the promotion or peer-behind detectors `/apps/[name]`
+// already composed locally. These tests pin the join this predicate now
+// does for every surface, and the edge cases a caller must get right:
+// held by a gate, pinned, failed, deploying recently, and no newer build.
+// ─────────────────────────────────────────────────────────────────────────
+describe('detectRolloutStuck', () => {
+	const NOW = new Date('2026-08-22T00:00:00Z');
+
+	function mk(opts: {
+		currentVersion: string;
+		timestamp?: string;
+		bakeStatus?: string;
+		wantedVersion?: string;
+		releaseCandidates?: { version: string; tag?: string; created?: string }[];
+		availableReleases?: { version: string; tag?: string }[];
+		gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null }[];
+	}): Rollout {
+		const status: any = {
+			history: [
+				{
+					version: { version: opts.currentVersion },
+					timestamp: opts.timestamp ?? '2026-08-21T23:00:00Z',
+					bakeStatus: opts.bakeStatus ?? 'Succeeded'
+				}
+			],
+			gates: opts.gates ?? []
+		};
+		if (opts.releaseCandidates) status.releaseCandidates = opts.releaseCandidates;
+		if (opts.availableReleases) status.availableReleases = opts.availableReleases;
+		return {
+			metadata: { name: 'checkout-api', namespace: 'x' },
+			spec: opts.wantedVersion ? { wantedVersion: opts.wantedVersion } : {},
+			status
+		} as unknown as Rollout;
+	}
+
+	function peer(envName: string, r: Rollout) {
+		return { envName, rollout: r };
+	}
+
+	it('own: baking (InProgress) past 1h is stuck, with no peers and no gates needed', () => {
+		const r = mk({
+			currentVersion: 'b-45',
+			bakeStatus: 'InProgress',
+			timestamp: new Date(NOW.getTime() - 90 * 60 * 1000).toISOString() // 90m ago
+		});
+		const reason = detectRolloutStuck(r, [], { now: NOW });
+		expect(reason?.kind).toBe('baking');
+	});
+
+	it('EDGE CASE — deploying recently (under 1h) is not stuck', () => {
+		const r = mk({
+			currentVersion: 'b-45',
+			bakeStatus: 'Deploying',
+			timestamp: new Date(NOW.getTime() - 10 * 60 * 1000).toISOString() // 10m ago
+		});
+		expect(detectRolloutStuck(r, [], { now: NOW })).toBeNull();
+	});
+
+	it('EDGE CASE — no newer build anywhere: not stuck (nothing to be behind)', () => {
+		const r = mk({ currentVersion: 'b-45' });
+		const samePeer = peer('staging', mk({ currentVersion: 'b-45' }));
+		expect(detectRolloutStuck(r, [samePeer], { now: NOW })).toBeNull();
+	});
+
+	it('EDGE CASE — failed bake, no gate block, no stale peer: not stuck (failure is tracked by statusKey, not this predicate)', () => {
+		const r = mk({ currentVersion: 'b-40', bakeStatus: 'Failed' });
+		expect(detectRolloutStuck(r, [], { now: NOW })).toBeNull();
+	});
+
+	it('EDGE CASE — pinned: never stuck, even behind a peer that advanced over 24h ago', () => {
+		const pinned = mk({ currentVersion: 'b-40', wantedVersion: 'b-40' });
+		const aheadPeer = peer(
+			'dev',
+			mk({
+				currentVersion: 'b-45',
+				timestamp: new Date(NOW.getTime() - 41 * 24 * 60 * 60 * 1000).toISOString()
+			})
+		);
+		expect(detectRolloutStuck(pinned, [aheadPeer], { now: NOW })).toBeNull();
+	});
+
+	// `ghd-x`: environment controller's promotion gate (owned, upstream).
+	const envGate: Environment = {
+		metadata: { namespace: 'x' },
+		status: { rolloutGateRef: { name: 'ghd-x' } },
+		spec: { name: 'x', environment: 'staging' }
+	} as unknown as Environment;
+	const devSibling: Environment = {
+		metadata: { namespace: 'x-dev' },
+		status: {},
+		spec: { name: 'x', environment: 'dev' }
+	} as unknown as Environment;
+	// `dependency-checkout-needs-payments`: RolloutDependency contract gate.
+	const depGate: RolloutDependency = {
+		metadata: { namespace: 'x' },
+		status: {
+			gateName: 'dependency-checkout-needs-payments',
+			providedVersion: '1.0.0',
+			blockedReleases: [{ requiredVersion: '^1.1.0' }]
+		},
+		spec: { providerRef: { name: 'payments-svc' } }
+	} as unknown as RolloutDependency;
+
+	it('EDGE CASE — held by a gate that does not need a person (upstream/dependency): not stuck, even far past every threshold', () => {
+		const held = mk({
+			currentVersion: 'b-43',
+			timestamp: '2026-07-01T00:00:00Z',
+			releaseCandidates: [{ version: 'b-44', tag: 'b-44', created: '2026-07-01T00:00:00Z' }],
+			gates: [
+				{ name: 'ghd-x', passing: true, allowedVersions: [] },
+				{ name: 'dependency-checkout-needs-payments', passing: true, allowedVersions: ['b-43'] }
+			]
+		});
+		const ctx = buildGateContext({
+			environments: { items: [devSibling, envGate] },
+			rolloutDependencies: { items: [depGate] }
+		});
+		const aheadPeer = peer(
+			'dev',
+			mk({
+				currentVersion: 'b-45',
+				timestamp: new Date(NOW.getTime() - 41 * 24 * 60 * 60 * 1000).toISOString()
+			})
+		);
+		// Both the promotion-level question AND the peer-behind question
+		// must come back excused — this is the exact `detectRolloutStuck`
+		// shape (guard BETWEEN them), not two independent calls.
+		expect(detectRolloutStuck(held, [aheadPeer], { now: NOW, gateContext: ctx })).toBeNull();
+	});
+
+	it('EDGE CASE — held by a hand-authored approval gate (needs a person): stuck via promotion', () => {
+		const held = mk({
+			currentVersion: 'b-43',
+			timestamp: '2026-07-01T00:00:00Z',
+			releaseCandidates: [{ version: 'b-44', tag: 'b-44', created: '2026-07-01T00:00:00Z' }],
+			gates: [{ name: 'checkout-manual-approval', passing: true, allowedVersions: [] }]
+		});
+		const ctx = buildGateContext({ environments: { items: [] }, rolloutDependencies: { items: [] } });
+		const reason = detectRolloutStuck(held, [], { now: NOW, gateContext: ctx });
+		expect(reason?.kind).toBe('promotion');
+	});
+
+	// ── THE CHECKOUT-API REPRO ───────────────────────────────────────────
+	// `staging` is behind `dev` by one release; `dev` advanced long ago;
+	// NOTHING blocks staging (its own promotion gate vacuously passes once
+	// dev has already deployed the newer build — the live fixture's own
+	// shape). This is "no progress for 41d and nothing is holding it on
+	// purpose" — genuinely stuck, gatelessly, and the fact Home used to
+	// miss entirely.
+	it('THE CHECKOUT-API REPRO — gateless staleness behind a peer is stuck, with no gate at all', () => {
+		// Shared `availableReleases` (oldest-first) is what lets
+		// `compareRollouts` place `b-43` before `b-45` — exactly the join
+		// the live fixture's `CK_RELEASES` list provides.
+		const releases = [{ version: 'b-43' }, { version: 'b-44' }, { version: 'b-45' }];
+		const staging = mk({ currentVersion: 'b-43', availableReleases: releases });
+		const dev = mk({
+			currentVersion: 'b-45',
+			availableReleases: releases,
+			timestamp: new Date(NOW.getTime() - 41 * 24 * 60 * 60 * 1000).toISOString()
+		});
+		const reason = detectRolloutStuck(staging, [peer('dev', dev)], { now: NOW });
+		expect(reason?.kind).toBe('behind');
+		if (reason?.kind === 'behind') {
+			expect(reason.peerEnv).toBe('dev');
+		}
+	});
+});
+
+// ── WORST-WINS CHANGE VERDICT (squad-changes round 2, 2026-10-09) ──────────
+//
+// `changeStateRankFor`/`worstChangeCell` — see their own doc comments in
+// `rollout-cards.ts` for the coordinator's ruling. These build the minimal
+// `Pick<PrCell, 'state' | 'stuck' | 'held' | 'envRank' | 'cluster'>` shape
+// both functions actually read, never a full `PrCell` literal (the real
+// shape's other ~25 fields are irrelevant to ranking).
+
+type RankCell = Pick<PrCell, 'state' | 'stuck' | 'held' | 'envRank' | 'cluster'>;
+
+function rc(state: PrState, envRank: number, extra: Partial<RankCell> = {}): RankCell {
+	// `stuck`/`held` default to `undefined`, same as a real `PrCell` that
+	// never ran the real pipeline — `isEnvHeld`'s own fallback then reads
+	// `state` (`gated`/`pinned`/`waiting-upstream`) exactly as the pre-round-2
+	// `changeHeld` check did.
+	return { state, envRank, cluster: 'hub', ...extra };
+}
+
+describe('changeStateRankFor / worstChangeCell — worst-wins change verdict', () => {
+	it('orders failed > stuck > held > deploying/checking > queued, matching NeedsYouCard', () => {
+		expect(changeStateRankFor(rc('failed', 0))).toBeLessThan(
+			changeStateRankFor(rc('deploying', 0, { stuck: true }))
+		);
+		expect(changeStateRankFor(rc('deploying', 0, { stuck: true }))).toBeLessThan(
+			changeStateRankFor(rc('gated', 0))
+		);
+		expect(changeStateRankFor(rc('gated', 0))).toBeLessThan(changeStateRankFor(rc('deploying', 0)));
+		expect(changeStateRankFor(rc('deploying', 0))).toBeLessThan(changeStateRankFor(rc('queued', 0)));
+		expect(changeStateRankFor(rc('queued', 0))).toBeLessThan(changeStateRankFor(rc('live', 0)));
+
+		// ⭐ NeedsYouCard's own `KIND_RANK` (home-v2's file, not switched to
+		// import this module — see the coordinator's ruling) must never
+		// drift from this order for the three kinds it shares. Copied by
+		// hand with this comment naming the twin, since NeedsYouCard does
+		// not export its constant: `const KIND_RANK: Record<Kind, number> =
+		// { failed: 0, stuck: 1, held: 2 }` (`NeedsYouCard.svelte`).
+		const NEEDS_YOU_KIND_RANK = { failed: 0, stuck: 1, held: 2 };
+		expect(CHANGE_STATE_RANK.failed).toBeLessThan(CHANGE_STATE_RANK.stuck);
+		expect(CHANGE_STATE_RANK.stuck).toBeLessThan(CHANGE_STATE_RANK.held);
+		expect(
+			[NEEDS_YOU_KIND_RANK.failed, NEEDS_YOU_KIND_RANK.stuck, NEEDS_YOU_KIND_RANK.held]
+		).toEqual(
+			[...[NEEDS_YOU_KIND_RANK.failed, NEEDS_YOU_KIND_RANK.stuck, NEEDS_YOU_KIND_RANK.held]].sort(
+				(a, b) => a - b
+			)
+		);
+		// The two orders are the SAME relative order (failed < stuck < held),
+		// even though the numeric values differ once `deploying`/`queued`/
+		// `live` are added on this side.
+		expect(Math.sign(CHANGE_STATE_RANK.stuck - CHANGE_STATE_RANK.failed)).toBe(
+			Math.sign(NEEDS_YOU_KIND_RANK.stuck - NEEDS_YOU_KIND_RANK.failed)
+		);
+		expect(Math.sign(CHANGE_STATE_RANK.held - CHANGE_STATE_RANK.stuck)).toBe(
+			Math.sign(NEEDS_YOU_KIND_RANK.held - NEEDS_YOU_KIND_RANK.stuck)
+		);
+	});
+
+	// THE WIDE PR #20 REPRO — failed in prod, held in prod (a second
+	// service), checking in dev. The old "earliest env rank" rule picked
+	// dev's checking cell (rank 1) over prod's failure (rank 7+) and the
+	// title chip read "Deploying" with no banner at all.
+	it('wide PR #20 — failed in prod outranks held in prod and checking in dev', () => {
+		const devChecking = { cell: rc('baking', 1, { cluster: 'hub' }), appName: 'api' };
+		const prodHeld = { cell: rc('gated', 9, { cluster: 'hub' }), appName: 'worker' };
+		const prodFailed = { cell: rc('failed', 9, { cluster: 'hub' }), appName: 'telemetry-forwarder' };
+		const worst = worstChangeCell([devChecking, prodHeld, prodFailed]);
+		expect(worst?.appName).toBe('telemetry-forwarder');
+		expect(worst?.cell.state).toBe('failed');
+	});
+
+	it('calm — a single held cell is its own worst, real state', () => {
+		const onlyCandidate = { cell: rc('gated', 3), appName: 'hello-world-app' };
+		const worst = worstChangeCell([onlyCandidate]);
+		expect(worst?.cell.state).toBe('gated');
+	});
+
+	it('a tie in severity breaks on env rank — the earlier environment wins', () => {
+		const laterEnv = { cell: rc('gated', 9, { cluster: 'hub' }), appName: 'prod-service' };
+		const earlierEnv = { cell: rc('gated', 3, { cluster: 'hub' }), appName: 'dev-service' };
+		const worst = worstChangeCell([laterEnv, earlierEnv]);
+		expect(worst?.appName).toBe('dev-service');
+		expect(worst?.cell.envRank).toBe(3);
+	});
+
+	it('held is `promotionHoldBreakdown(...).allHeld`, not a bare gated/pinned/waiting-upstream guess', () => {
+		// A cell whose STATE looks held but whose real pipeline run says only
+		// an older build is held (`allHeld: false`) must not outrank a
+		// genuine failure elsewhere — `held` explicitly set `false` is
+		// trusted over the state-based fallback.
+		const notReallyHeld = { cell: rc('gated', 0, { held: false }), appName: 'api' };
+		const genuinelyFailed = { cell: rc('failed', 9, { held: false }), appName: 'worker' };
+		const worst = worstChangeCell([notReallyHeld, genuinelyFailed]);
+		expect(worst?.appName).toBe('worker');
+	});
+
+	it('worstChangeCell returns null for an empty list', () => {
+		expect(worstChangeCell([])).toBeNull();
+	});
+
+	// ⛔ LIVE REGRESSION (incident PR #30, found in the 2x2 screenshots): a
+	// `queued` cell (a bare promotion-order wait — gates ALLOW it, nothing is
+	// refusing it) with `held: true` set at the ROLLOUT level
+	// (`promotionHoldBreakdown(...).allHeld` answers "is every candidate for
+	// this rollout held", a different, broader question than "is the ONE
+	// candidate carrying THIS change held") must NOT read as held — the title
+	// chip (`frontierTone`, pr-pipeline.ts) only ever reads `gated`/`pinned`/
+	// `waiting-upstream` as held, and the banner must never disagree with it.
+	it('a queued cell is never held, even when `held: true` is set at the rollout level', () => {
+		const queuedButRolloutHeld = rc('queued', 3, { held: true });
+		expect(isEnvHeld(queuedButRolloutHeld)).toBe(false);
+		expect(changeStateRankFor(queuedButRolloutHeld)).toBe(CHANGE_STATE_RANK.queued);
+	});
+
+	it('a gated cell with `held: true` IS held — the state already said so, `held` confirms it', () => {
+		const genuinelyHeld = rc('gated', 3, { held: true });
+		expect(isEnvHeld(genuinelyHeld)).toBe(true);
+		expect(changeStateRankFor(genuinelyHeld)).toBe(CHANGE_STATE_RANK.held);
 	});
 });

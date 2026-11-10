@@ -469,20 +469,24 @@ export interface components {
                      */
                     type: "github";
                 };
-                /** @description Environment is the environment name (e.g., "production", "staging") */
-                environment?: string;
+                /**
+                 * @description Environment is the tier this Environment belongs to. Tiers have a fixed
+                 *     order, earliest first: dev, test, staging, prod. Aliases of one tier are the same environment.
+                 * @enum {string}
+                 */
+                environment: "dev" | "development" | "test" | "qa" | "staging" | "stage" | "preprod" | "prod" | "production";
+                /** @description Lockstep, when true, stops the wave-1 leader from selecting a new version
+                 *     until every wave of this environment has baked the currently selected one. */
+                lockstep?: boolean;
                 /** @description Name is the name of the GitHub deployment (the "kuberik" prefix will be automatically added for GitHub backend if not already present) */
                 name: string;
-                /** @description Relationship defines how this environment relates to another environment */
-                relationship?: {
-                    /** @description Environment is the environment name this environment relates to */
-                    environment: string;
-                    /**
-                     * @description Type is the type of relationship: "After" or "Parallel"
-                     * @enum {string}
-                     */
-                    type: "After" | "Parallel";
-                };
+                /** @description Site identifies where this instance of the environment runs (e.g. "eu-west-1"). Defaults to "default". */
+                site?: string;
+                /**
+                 * Format: int32
+                 * @description Wave is the rollout wave of this site within its environment. Defaults to 1.
+                 */
+                wave?: number;
                 /** @description RequeueInterval specifies how often the controller should reconcile this Environment
                  *     If not specified, defaults to 1 minute. Must be a valid duration string (e.g., "1m", "30s", "5m"). */
                 requeueInterval?: string;
@@ -544,7 +548,7 @@ export interface components {
                 /** @description CurrentVersion is the current version being deployed */
                 currentVersion?: string;
                 /** @description EnvironmentInfos tracks deployment information for each environment.
-                 *     Each environment has environment URL and relationships (not per version). */
+                 *     Each environment has an environment URL (not per version). */
                 environmentInfos?: {
                     /** @description Environment is the environment name */
                     environment: string;
@@ -630,22 +634,60 @@ export interface components {
                             version?: string;
                         };
                     }[];
-                    /** @description Relationship defines how this environment relates to another environment */
-                    relationship?: {
-                        /** @description Environment is the environment name this environment relates to */
-                        environment: string;
-                        /**
-                         * @description Type is the type of relationship: "After" or "Parallel"
-                         * @enum {string}
-                         */
-                        type: "After" | "Parallel";
-                    };
                 }[];
                 /**
                  * Format: date-time
                  * @description LastStatusChangeTime is the last time the status was updated (only updated when status changes)
                  */
                 lastStatusChangeTime?: string;
+                /** @description Wave describes the site/wave view the controller used for the last gate decision. */
+                wave?: {
+                    /** @description Site is the effective site of this Environment. */
+                    site: string;
+                    /** @description Environment is the environment name this site was registered under in GitHub. */
+                    environment?: string;
+                    /** @description Name is the deployment name as written to GitHub (with the kuberik prefix). */
+                    name?: string;
+                    /**
+                     * Format: int32
+                     * @description Wave is the effective wave of this Environment.
+                     */
+                    wave: number;
+                    /**
+                     * @description Role is Leader or Follower within (environment, wave).
+                     * @enum {string}
+                     */
+                    role?: "Leader" | "Follower";
+                    /** @description Leader is the site leading this (environment, wave). */
+                    leader?: string;
+                    /** @description SelectedRevision is the revision the leader of this wave currently selected. */
+                    selectedRevision?: string;
+                    /** @description Blocker is the structured cause while WaveReady is False (controller PR #6; field names provisional). Absent when ready. */
+                    blocker?: {
+                        reason?: string;
+                        environment?: string;
+                        site?: string;
+                        waitingOn?: "Selection" | "Bake" | "Candidate" | "Sites";
+                        outcome?: "Failed" | "Cancelled";
+                        revision?: string;
+                        pinnedVersion?: string;
+                        selectedVersion?: string;
+                        owner?: { cluster?: string; namespace?: string; name?: string };
+                        waves?: number[];
+                        missingWaves?: number[];
+                        names?: string[];
+                    };
+                    /** @description Members are the sites of this environment and of its upstream environment. */
+                    members?: {
+                        environment: string;
+                        site: string;
+                        /** Format: int32 */
+                        wave: number;
+                        revision?: string;
+                        bakeStatus?: string;
+                        deregistered?: boolean;
+                    }[];
+                };
                 /** @description RolloutGateRef is a reference to the RolloutGate that was created/updated */
                 rolloutGateRef?: {
                     /**

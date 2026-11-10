@@ -57,8 +57,18 @@ import { deployActs, historyAtLimit, type DeployAct } from '$lib/history-marks';
 import { rolloutPath } from '$lib/source-dashboard';
 import type { EnvironmentTheme } from '$lib/environment-theme';
 import { gateAllows } from './promotion';
-import { buildGateContext, classifyGate, type GateContext } from './blocking-story';
+import {
+	blockingStory,
+	buildGateContext,
+	classifyGate,
+	holdCausePhrase,
+	type GateContext
+} from './blocking-story';
+import { heldVerdict } from './held';
 import { median, leadTime, type LeadEnv, type LeadDeploy } from './lead-time';
+import { detectRolloutStuck, worstChangeCell } from '../rollout-cards';
+import { buildRolloutGraph, contractHoldsForRollout, type RolloutGraph } from './dependency-graph';
+import { historyEntrySince } from './event-age';
 
 export type PrState =
 	| 'not-built'
@@ -223,7 +233,7 @@ export type PrCell = {
 	 * three times: the held banner (14px), this cell's own reason paragraph
 	 * (11px), and again inside "Why is it held?". `have` (`pick.have`,
 	 * `dep.providedVersion` in `blocking-story.ts`) is the ONE fragment of
-	 * that sentence that genuinely differs row to row (DEV/STG/PRD can each
+	 * that sentence that genuinely differs row to row (DEV/STAGING/PROD can each
 	 * be a version behind the provider's head by a different amount); the
 	 * rest of the sentence is the SAME clause the banner already prints.
 	 * Carried through so `PipelineRow` can state "on 1.67.0" beside its env
@@ -289,6 +299,89 @@ export type PrCell = {
 	/** `rollout.spec.versionHistoryLimit`, or the controller's own default —
 	 *  the number `ChangeHistoryCard`'s retention caveat names. */
 	versionHistoryLimit?: number;
+	/**
+	 * ⭐ (2026-10-11, squad-changes "Median merge→prod" fix). `true` when
+	 * this cell's OLDEST `historyMatches` entry (`historyMatches[length -
+	 * 1]`, since both arrays share `status.history`'s own newest-first
+	 * order) is PROVABLY this change's first arrival here: the retained
+	 * history has an entry OLDER than it, and — because this is by
+	 * construction the oldest entry that carries the change — that older
+	 * entry cannot itself carry it. `false` when the oldest matching entry
+	 * IS the oldest entry retained at all (a 1-entry history included): the
+	 * window may simply have rolled past an even earlier arrival, so
+	 * calling this one "first" would be a fact about the window, not about
+	 * the change. `changes.ts`'s own `firstProdLeadMs` is the one reader —
+	 * see its doc comment for why the distinction matters. Optional for the
+	 * same reason `historyMatches` is: hand-built `PrCell` fixtures outside
+	 * this lane never set it, and a missing value reads as `false` there.
+	 */
+	firstLandingProven?: boolean;
+	/**
+	 * ⭐ ROUND 2 (squad-changes, "worst-wins", 2026-10-09). `true` when the
+	 * SAME shared predicate every other list surface reads
+	 * (`detectRolloutStuck`, `rollout-cards.ts`) finds this exact rollout
+	 * wedged — run here, once, on the real `Rollout` + its peer environments
+	 * (`buildPrPipeline` has both; `rollout-cards.ts`'s own `worstChangeCell`
+	 * does not, and must never re-derive it). Optional/`undefined` on a
+	 * hand-built fixture that skips it (`changes.test.ts`,
+	 * `change-lanes.test.ts`'s own literals) — `changeStateRankFor` reads a
+	 * missing value as `false`, never as "unknown, treat as stuck".
+	 */
+	stuck?: boolean;
+	/**
+	 * ⭐ (held-predicate, 2026-10-11, coordinator ruling — "refused here vs
+	 * not reached yet") `held.ts`'s ONE shared predicate, `heldVerdict(story,
+	 * cell.envName).held` — the SAME call `rollout-cards.ts`'s
+	 * `buildRolloutCards` makes for its own cards. `true` only when the
+	 * build has passed every earlier stage of its own chain and THIS stage
+	 * genuinely refuses it (an approval, a contract, a same-tier order gate,
+	 * a schedule, or a check) — never merely "hasn't reached this stage yet"
+	 * (that reads `waitsForEnv`, below, instead). Superseded the OLD
+	 * `promotionHoldBreakdown(rollout, ctx).allHeld` read, which could not
+	 * tell the two apart and read a build still working through dev as
+	 * "held" at every later stage it had never been offered to.
+	 * `rollout-cards.ts`'s `changeStateRankFor` reads this directly rather
+	 * than re-deriving "held" from `state` — see that module's own doc
+	 * comment. Optional/`undefined` on a hand-built fixture that skips it —
+	 * and there it is NOT read as `false` (unlike `stuck`): `isEnvHeld` lets
+	 * the cell's own held-like state (gated / pinned / waiting-upstream)
+	 * stand, because `held` only ever NARROWS that state (a gated cell some
+	 * other candidate can get past is not held). A non-held-like state is
+	 * never held, whatever this says.
+	 */
+	held?: boolean;
+	/**
+	 * Why this cell is held, as the shared cause predicate without its subject
+	 * ("waiting on an approval", "waiting for payments-svc ~2.9.0", "waiting
+	 * on promotion order"): `holdCausePhrase`, the phrase Home and the Overview
+	 * print. Null when the cell is not held (or on a hand-built fixture).
+	 */
+	holdCause?: string | null;
+	/**
+	 * ⭐ shared/approval-words (2026-10-12, coordinator ruling). `true` exactly
+	 * when this cell is held on a PERSON, never a rule that clears on its
+	 * own — the SAME shared predicate `held.ts`'s `heldVerdict`/
+	 * `isHeldByApproval` reads elsewhere (`cause === 'person'`), read off the
+	 * SAME `BlockingStory` this cell's own `holdCause` is built from, so the
+	 * two can never disagree. Falls back to `gateApprovalGuess` (this VM's
+	 * own pre-resolution guess, `gatePending`'s doc) only when `held` itself
+	 * is `false` — a cell can be individually `gated` without EVERY
+	 * deployable candidate being held (`PrCell.held`'s own doc) and still
+	 * deserves the approval wording rather than a bare "held". `false`
+	 * (never `undefined`-as-true) on a hand-built fixture that skips it.
+	 */
+	approvalWait?: boolean;
+	/**
+	 * ⭐ (held-predicate) Set exactly when NOT held because an earlier-tier
+	 * promotion gate (this app's own chain) has not delivered the candidate
+	 * here yet — the upstream environment's raw name, `held.ts`'s
+	 * `heldVerdict(story, envName).waitsForEnv` verbatim. `null` when held
+	 * (nothing to wait for) and `null` when not held for any other reason
+	 * (nothing blocking at all). The "waits for staging" copy a caller draws
+	 * for a not-yet-reached stage reads this field directly — never a second,
+	 * locally re-derived "what's in front of me" guess.
+	 */
+	waitsForEnv?: string | null;
 };
 
 /** One matched `status.history` entry — see `PrCell.historyMatches`. */
@@ -449,8 +542,28 @@ export type PrPipelineMeta = {
 
 type ReleaseLike = { tag: string; version?: string; revision?: string; created?: string };
 
+/**
+ * A set of git shas that matches by PREFIX as git does: a release's revision
+ * may be the full 40-char sha while a change names its 7-char short sha (or
+ * the reverse). Exact membership first; then either side being a prefix of
+ * the other (7 chars minimum, so a stray short string never matches).
+ */
+export class ShaSet extends Set<string> {
+	override has(value: string): boolean {
+		if (super.has(value)) return true;
+		if (!value || value.length < 7) return false;
+		const v = value.toLowerCase();
+		for (const s of this) {
+			if (s.length < 7) continue;
+			const t = s.toLowerCase();
+			if (t.startsWith(v) || v.startsWith(t)) return true;
+		}
+		return false;
+	}
+}
+
 function buildContainedSet(meta: PrPipelineMeta): Set<string> {
-	const set = new Set<string>();
+	const set = new ShaSet();
 	if (meta.mergeCommitSha) set.add(meta.mergeCommitSha);
 	for (const sha of meta.containedIn) set.add(sha);
 	return set;
@@ -590,6 +703,103 @@ const NOTHING: Pick<
 	providerHasNoBuild: false
 };
 
+/**
+ * Whether a `status.history` entry's `bakeStatus` means the build it
+ * recorded actually served, rather than only attempting to. THE ONE truth
+ * table — `buildCell`'s own RULE 1 cascade below calls this directly (both
+ * `earlierLanded`'s own search and the combined "an earlier build already
+ * landed, the head's own status doesn't" guard), rather than keeping a
+ * second, hand-listed copy of the same five statuses that could silently
+ * drift from this one (2026-10-12, QA: `earlierLanded` used to check only
+ * `=== 'Succeeded'`, so an earlier `None`-status match didn't count as
+ * landed even though a live HEAD with that exact status does). An
+ * in-flight `Deploying`/`InProgress`/`BakeTimeRetrying`, or a build that
+ * never served at all, `Failed`/`Cancelled`, is not landed; everything
+ * else — `Succeeded`, or no bake status at all, `'None'` — is. Exported so
+ * a caller OUTSIDE this module (`changes.ts`'s own `firstProdLeadMs`,
+ * reading a `historyMatches` entry rather than the current head) asks the
+ * same question without re-deriving this cascade as a THIRD copy.
+ */
+export function bakeStatusLanded(bakeStatus: string): boolean {
+	return (
+		bakeStatus !== 'Deploying' &&
+		bakeStatus !== 'InProgress' &&
+		bakeStatus !== 'BakeTimeRetrying' &&
+		bakeStatus !== 'Failed' &&
+		bakeStatus !== 'Cancelled'
+	);
+}
+
+/** `firstProdLanding`'s own return shape — `at` the ISO instant the change
+ *  is PROVEN to have first reached a PROD-family environment, `ms` the
+ *  merge→landing span (always positive — see the function's own doc). */
+export type FirstProdLanding = { at: string; ms: number };
+
+/**
+ * ⭐ (2026-10-12, squad-changes QA pass — item 2, "ONE FIRST-LANDING
+ * SOURCE"). THE ONE PLACE "did this change first reach prod, and when" is
+ * computed — `changes.ts`'s own `firstProdLeadMs` (the `/changes` index
+ * and rail) and the PR detail page's own "first deployed" line (still
+ * reading `PrCell.since` as of this writing — a KNOWN, SEPARATE
+ * disagreement QA's own probe caught, `qa7-first.test.ts`'s "KPI-vs-PAGE"
+ * mismatches) are two different questions about the SAME fact, and a
+ * fixture or a future edit that only fixes one of them re-opens the gap.
+ * Both must call THIS function once the page lane points its own line at
+ * it (tracked separately — this module does not own that route).
+ *
+ * Walks every PROD-family cell's `historyMatches`, exactly as
+ * `changes.ts`'s own `firstProdLeadMs` used to inline: a cell contributes
+ * only when `firstLandingProven` is `true` (`PrCell`'s own doc — an older,
+ * non-carrying retained entry PROVES this is the change's first arrival,
+ * never merely the window's own memory limit), and then only the EARLIEST
+ * `historyMatches` entry whose `bakeStatus` is landed (`bakeStatusLanded`
+ * — `Succeeded`, or no bake status at all). The EARLIEST such instant
+ * across every PROD cell, service, and rollout `vm.services` carries wins.
+ * `null` when no cell can prove a landing, when `mergedAtIso` does not
+ * parse, or when the computed span would be non-positive (the same
+ * "not a lead time for this hop" guard `lead-time.ts`'s own `leadTime`
+ * applies to a build seen downstream before up) — `ms` is NEVER returned
+ * zero or negative.
+ */
+export function firstProdLanding(vm: PrPipelineVM, mergedAtIso: string): FirstProdLanding | null {
+	const mergedMs = new Date(mergedAtIso).getTime();
+	if (!Number.isFinite(mergedMs)) return null;
+	// The EARLIEST landed carrying entry across EVERY prod cell decides —
+	// proven or not. An unproven cell's oldest carrying entry is only a
+	// lower bound on when the change got there (the window may have rolled
+	// past an earlier arrival), so if it is earlier than every proven
+	// landing, nothing here is provably "first": return null rather than a
+	// later proven landing dressed up as the first one.
+	let earliestProdMs: number | null = null;
+	let earliestProven = false;
+	for (const service of vm.services) {
+		for (const cell of service.cells) {
+			if (envFamilyWord(cell.envName) !== 'PROD') continue;
+			const matches = cell.historyMatches ?? [];
+			let landedOldest: (typeof matches)[number] | undefined;
+			for (let i = matches.length - 1; i >= 0; i--) {
+				if (bakeStatusLanded(matches[i].bakeStatus)) {
+					landedOldest = matches[i];
+					break;
+				}
+			}
+			if (!landedOldest) continue;
+			const ms = new Date(landedOldest.timestamp).getTime();
+			if (!Number.isFinite(ms)) continue;
+			const proven = !!cell.firstLandingProven;
+			if (earliestProdMs == null || ms < earliestProdMs || (ms === earliestProdMs && proven)) {
+				earliestProdMs = ms;
+				earliestProven = proven;
+			}
+		}
+	}
+	if (!earliestProven) return null;
+	if (earliestProdMs == null) return null;
+	const delta = earliestProdMs - mergedMs;
+	if (delta <= 0) return null;
+	return { at: new Date(earliestProdMs).toISOString(), ms: delta };
+}
+
 function buildCell(
 	rollout: Rollout,
 	envName: string,
@@ -632,6 +842,22 @@ function buildCell(
 		return out;
 	}, []);
 
+	// ⭐ (2026-10-11, squad-changes "Median merge→prod" fix, requirement A)
+	// `firstLandingProven` — see `PrCell`'s own doc comment for the field.
+	// Walk `history` from oldest to newest to find the oldest entry that
+	// carries the change; it is provably the change's first arrival here
+	// exactly when an older entry also exists (which, by construction,
+	// cannot itself carry the change — see the field's doc comment).
+	let oldestMatchIdx: number | null = null;
+	for (let i = history.length - 1; i >= 0; i--) {
+		const rev = history[i]?.version?.revision;
+		if (rev && set.has(rev)) {
+			oldestMatchIdx = i;
+			break;
+		}
+	}
+	const firstLandingProven = oldestMatchIdx != null && oldestMatchIdx < history.length - 1;
+
 	const cell = (
 		partial: Omit<
 			PrCell,
@@ -646,6 +872,7 @@ function buildCell(
 			| 'historyMatches'
 			| 'historyAtLimit'
 			| 'versionHistoryLimit'
+			| 'firstLandingProven'
 		>
 	): PrCell => ({
 		cluster,
@@ -659,6 +886,7 @@ function buildCell(
 		historyMatches,
 		historyAtLimit: historyAtLimit(rollout),
 		versionHistoryLimit: rollout.spec?.versionHistoryLimit ?? 10,
+		firstLandingProven,
 		...partial
 	});
 
@@ -715,7 +943,7 @@ function buildCell(
 		 */
 		const earlierLanded = historyMatches
 			.slice(1)
-			.find((m) => m.bakeStatus === 'Succeeded');
+			.find((m) => bakeStatusLanded(m.bakeStatus));
 		/**
 		 * ⛔ AND A HEAD THAT *FAILED* UNDOES IT LEAST OF ALL. (2026-09-18,
 		 * reported from `/changes`: *"these PRs did not fail — I think it's
@@ -747,14 +975,7 @@ function buildCell(
 		 * cell stays `failed` — which is exactly right, and is the case the
 		 * reader must not lose.
 		 */
-		if (
-			earlierLanded &&
-			(bakeStatus === 'Deploying' ||
-				bakeStatus === 'InProgress' ||
-				bakeStatus === 'BakeTimeRetrying' ||
-				bakeStatus === 'Failed' ||
-				bakeStatus === 'Cancelled')
-		) {
+		if (earlierLanded && !bakeStatusLanded(bakeStatus)) {
 			return cell({
 				...NOTHING,
 				state: 'live',
@@ -775,50 +996,58 @@ function buildCell(
 			});
 		}
 
-		if (bakeStatus === 'Deploying') {
-			return cell({
-				...NOTHING,
-				state: 'deploying',
-				reason: 'deploying now',
-				since: head?.timestamp ?? null,
-				bakeLeftMs: deadlineLeftMs(head?.timestamp, rollout.spec?.deployTimeout, now),
-				releaseLabel,
-				revision: headRevision
-			});
-		}
-		if (bakeStatus === 'InProgress') {
-			return cell({
-				...NOTHING,
-				state: 'baking',
-				reason: rollout.spec?.bakeTime ? 'baking' : 'baking, no timer',
-				since: head?.bakeStartTime ?? head?.timestamp ?? null,
-				bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now),
-				releaseLabel,
-				revision: headRevision
-			});
-		}
-		if (bakeStatus === 'BakeTimeRetrying') {
-			return cell({
-				...NOTHING,
-				state: 'retrying',
-				reason: head?.bakeStatusMessage || 'retrying the bake',
-				since: head?.bakeStartTime ?? head?.timestamp ?? null,
-				bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now),
-				releaseLabel,
-				revision: headRevision
-			});
-		}
-		if (bakeStatus === 'Failed') {
-			return cell({
-				...NOTHING,
-				state: 'failed',
-				reason: head?.bakeStatusMessage || 'the bake failed',
-				since: head?.bakeEndTime ?? head?.timestamp ?? null,
-				releaseLabel,
-				revision: headRevision
-			});
-		}
-		if (bakeStatus === 'Cancelled') {
+		// ⭐ (2026-10-12, QA) ONE GATE, `bakeStatusLanded` — the five branches
+		// below only ever run when it says `bakeStatus` is NOT landed; they
+		// dispatch on WHICH not-landed status it is (each needs its own
+		// reason/state), never redefine the set itself. The exhaustive-looking
+		// list this used to be (duplicated again in the combined guard above)
+		// is gone — see `bakeStatusLanded`'s own doc for why that drifted.
+		if (!bakeStatusLanded(bakeStatus)) {
+			if (bakeStatus === 'Deploying') {
+				return cell({
+					...NOTHING,
+					state: 'deploying',
+					reason: 'deploying now',
+					since: head?.timestamp ?? null,
+					bakeLeftMs: deadlineLeftMs(head?.timestamp, rollout.spec?.deployTimeout, now),
+					releaseLabel,
+					revision: headRevision
+				});
+			}
+			if (bakeStatus === 'InProgress') {
+				return cell({
+					...NOTHING,
+					state: 'baking',
+					reason: rollout.spec?.bakeTime ? 'baking' : 'baking, no timer',
+					since: head?.bakeStartTime ?? head?.timestamp ?? null,
+					bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now),
+					releaseLabel,
+					revision: headRevision
+				});
+			}
+			if (bakeStatus === 'BakeTimeRetrying') {
+				return cell({
+					...NOTHING,
+					state: 'retrying',
+					reason: head?.bakeStatusMessage || 'retrying the bake',
+					since: head?.bakeStartTime ?? head?.timestamp ?? null,
+					bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now),
+					releaseLabel,
+					revision: headRevision
+				});
+			}
+			if (bakeStatus === 'Failed') {
+				return cell({
+					...NOTHING,
+					state: 'failed',
+					reason: head?.bakeStatusMessage || 'the bake failed',
+					since: historyEntrySince(head),
+					releaseLabel,
+					revision: headRevision
+				});
+			}
+			// bakeStatus === 'Cancelled' — the only remaining case
+			// `bakeStatusLanded` excludes.
 			// ⛔ NEITHER LIVE NOR ROLLED BACK. The head still contains the PR —
 			// the deploy that would have superseded it never finished baking.
 			return cell({
@@ -831,6 +1060,7 @@ function buildCell(
 			});
 		}
 
+		// `bakeStatusLanded(bakeStatus)` is true here, by construction —
 		// Succeeded, or no bake status at all (`None`) — live.
 		const oldestTs = history.length ? history[history.length - 1]?.timestamp : null;
 		let since: string | null = head?.bakeEndTime ?? head?.timestamp ?? null;
@@ -1149,9 +1379,10 @@ function hasBuildEvidence(rollout: Rollout, meta: PrPipelineMeta): boolean {
 	if (!meta.mergeCommitSha) return false;
 	const status = rollout.status ?? {};
 	const history = status.history ?? [];
-	if (history.some((h) => h.version?.revision === meta.mergeCommitSha)) return true;
+	const sha = new ShaSet([meta.mergeCommitSha]);
+	if (history.some((h) => !!h.version?.revision && sha.has(h.version.revision))) return true;
 	for (const r of status.availableReleases ?? []) {
-		if (r.revision === meta.mergeCommitSha) return true;
+		if (r.revision && sha.has(r.revision)) return true;
 	}
 	return false;
 }
@@ -1413,12 +1644,13 @@ export function buildChangeVerdict(services: PrService[]): {
 	if (withBuild.every((x) => x.cell.state === 'live'))
 		return { word: 'live everywhere', tone: 'live' };
 
-	const candidates = withBuild
-		.filter((x) => x.cell.state !== 'live')
-		.sort(
-			(a, b) => a.cell.envRank - b.cell.envRank || a.cell.cluster.localeCompare(b.cell.cluster)
-		);
-	const frontier = candidates[0];
+	// ⭐ ROUND 2 ("worst-wins", coordinator ruling) — severity first
+	// (`worstChangeCell`/`changeStateRankFor`, `rollout-cards.ts`), env rank
+	// only as the tiebreak within one severity tier. Supersedes the old
+	// "earliest env-rank cell" rule, which let a failure in prod read
+	// "Deploying" because a dev cell merely checking had the lower rank.
+	const candidates = withBuild.filter((x) => x.cell.state !== 'live');
+	const frontier = worstChangeCell(candidates)!;
 	const subject = frontierSubject(frontier.cell);
 	const base = subject
 		? `${frontier.appName} ${FRONTIER_VERB[frontier.cell.state]} in ${frontier.cell.envName} ${subject}`
@@ -1588,18 +1820,66 @@ function withBuiltElsewhere(services: readonly PrService[]): PrService[] {
  * THE ONE ENTRY POINT. Everything above is private machinery this function
  * assembles per app whose `status.source` names the PR's own repository.
  */
+/** `holdCausePhrase` without its subject: "prod is waiting on an approval" →
+ *  "waiting on an approval". Exported for its test. */
+export function holdCausePredicate(story: Parameters<typeof holdCausePhrase>[0], place: string): string | null {
+	const phrase = holdCausePhrase(story, { place });
+	if (!phrase) return null;
+	const prefix = `${place} is `;
+	return phrase.startsWith(prefix) ? phrase.slice(prefix.length) : phrase;
+}
+
+/**
+ * The rollout graph `buildPrPipeline` reads contract holds from. It depends
+ * only on the cluster inputs, never on the change, so a caller building many
+ * changes over the same inputs (`buildChangeRows`, Home) builds it once and
+ * hands it to each call as `opts.graph` instead of once per change.
+ */
+export function prPipelineGraph(
+	rollouts: Rollout[],
+	environments: Environment[],
+	rolloutDependencies: { items?: RolloutDependency[] } | null | undefined
+): RolloutGraph {
+	return buildRolloutGraph({
+		rollouts,
+		environments,
+		dependencies: rolloutDependencies?.items ?? [],
+		envOrder: [],
+		gates: buildGateContext({ environments: { items: environments }, rolloutDependencies })
+	});
+}
+
 export function buildPrPipeline(
 	meta: PrPipelineMeta,
 	rollouts: Rollout[],
 	environments: Environment[],
 	rolloutDependencies: { items?: RolloutDependency[] } | null | undefined,
-	now: Date = new Date()
+	now: Date = new Date(),
+	/** `graph`: `prPipelineGraph()` over these same inputs, built once by a caller with many changes. */
+	opts: { graph?: RolloutGraph } = {}
 ): PrPipelineVM {
 	const set = buildContainedSet(meta);
 	const gateCtx = buildGateContext({
 		environments: { items: environments },
 		rolloutDependencies
 	});
+	// ⭐ THE HOLD-ONE-RULE (design/rollout 69941ab, squad-rollout) — "held"
+	// now means a GATE or a CONTRACT holds the build. `promotionHoldBreakdown`
+	// only knows about a contract hold when it is handed one
+	// (`options.contractHolds`), built from a `RolloutGraph` exactly the way
+	// `ControlCenter.svelte`'s own `providerNetwork` builds it — ONE graph
+	// per `buildPrPipeline` call, never per cell (the graph is the same for
+	// every cell this call produces; `contractHoldsForRollout` is the only
+	// per-rollout lookup).
+	const graph =
+		opts.graph ??
+		buildRolloutGraph({
+			rollouts,
+			environments,
+			dependencies: rolloutDependencies?.items ?? [],
+			envOrder: [],
+			gates: gateCtx
+		});
 	// ⭐ RULING 1. See `PrPipelineMeta.containmentKnown`'s own doc — the
 	// default reads an unpopulated bare-sha stub as UNKNOWN, never as
 	// "verified empty".
@@ -1630,8 +1910,8 @@ export function buildPrPipeline(
 		}
 
 		const cells = matching
-			.map((c) =>
-				buildCell(
+			.map((c, i) => {
+				const built = buildCell(
 					c.rollout,
 					c.envName,
 					c.sourceCluster,
@@ -1641,8 +1921,70 @@ export function buildPrPipeline(
 					gateCtx,
 					now,
 					containmentKnown
-				)
-			)
+				);
+				// ⭐ ROUND 2 ("worst-wins", see `PrCell.stuck`'s own doc) — the
+				// SAME shared predicate every list surface reads, run on THIS
+				// cell's real rollout against its peers (every OTHER env this
+				// same app deploys to, within this PR's matching set).
+				const peers = matching
+					.filter((_, j) => j !== i)
+					.map((m) => ({ envName: m.envName, rollout: m.rollout }));
+				const stuck = !!detectRolloutStuck(c.rollout, peers, { now, gateContext: gateCtx });
+				// ⭐ ROUND 2 — squad-rollout's own `allHeld`: every deployable
+				// candidate is held, not merely an older one while a newer
+				// build could still move. THE HOLD-ONE-RULE: `allHeld` now
+				// reads "held" as a GATE *or* a CONTRACT — `contractHolds`
+				// (`contractHoldsForRollout`, off the ONE `graph` built above)
+				// is what lets it see the contract half. See `PrCell.held`'s
+				// own doc comment.
+				const contractHolds = contractHoldsForRollout(
+					graph,
+					c.rollout,
+					c.rollout.metadata?.namespace,
+					c.sourceCluster
+				);
+				// ⭐ (held-predicate, 2026-10-11, coordinator ruling — "refused
+				// here vs not reached yet") `held`/`waitsForEnv` now come from
+				// `held.ts`'s ONE shared predicate, `heldVerdict`, run against
+				// this cell's own `BlockingStory` and raw env name — the SAME
+				// call `rollout-cards.ts`'s `buildRolloutCards` makes for its
+				// own cards. `promotionHoldBreakdown(...).allHeld` (the OLD
+				// read) could not tell a chain-refused candidate ("hasn't
+				// reached this stage yet") from a genuinely refused one ("the
+				// stage ahead of it is done, THIS one says no") — a build still
+				// working its way through dev read "held · 1 rule" at every
+				// later stage it had never even been offered to. Every reader
+				// of `PrCell.held` (`isEnvHeld`, `nodeStateFromCell`,
+				// `familyProgress`) inherits the fix automatically; none of
+				// them re-derives "held" themselves.
+				const story = blockingStory(c.rollout, gateCtx, { place: built.envName, now, contractHolds });
+				const heldCardVerdict = heldVerdict(story, built.envName);
+				const held = heldCardVerdict.held;
+				// The ONE cause phrase Home and the Overview print (squad-rollout's
+				// holdCausePhrase), only for a cell that is actually held. Reuses
+				// the SAME `story` above, never a second `blockingStory` call for
+				// the same rollout/place/instant.
+				const holdCause = held ? holdCausePredicate(story, built.envName) : null;
+				// Set only for the NOT-held, chain-refused case — the raw
+				// upstream env name `waitsFor`-style copy names ("waits for
+				// staging"). `null` when held (nothing to wait for) and `null`
+				// when not held for any other reason (nothing blocked at all).
+				const waitsForEnv = heldCardVerdict.waitsForEnv;
+				// ⭐ shared/approval-words (2026-10-12). The SAME `heldCardVerdict`
+				// above (`heldVerdict`'s own `cause === 'person'`) — never a
+				// second guess at "is this an approval", never a second
+				// `blockingStory` call. `cause` is only ever non-null when
+				// `held` is true (`held.ts`'s own `NOT_HELD` constant), so this
+				// naturally falls through to the `gateApprovalGuess` fallback
+				// whenever this exact candidate isn't (yet) the one held — the
+				// same pre-resolution guess `cellStateSentence`'s own `gated`
+				// branch already trusts for the identical shape.
+				const approvalWait =
+					heldCardVerdict.cause === 'person'
+						? true
+						: built.state === 'gated' && built.gateApprovalGuess === true;
+				return { ...built, stuck, held, holdCause, waitsForEnv, approvalWait };
+			})
 			.map(remapForIncludedService)
 			.sort((a, b) => a.envRank - b.envRank || a.cluster.localeCompare(b.cluster));
 

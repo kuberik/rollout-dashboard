@@ -412,3 +412,17 @@ describe('buildMergedChangeIndex', () => {
 		expect(entries[0].href).toBe('/changes/github.com/kuberik/kuberik-testing/pull/4');
 	});
 });
+
+import { fieldMatch } from './palette-index';
+describe('fieldMatch — multi-word queries (QA #24)', () => {
+	it('the whole phrase scores 1', () => expect(fieldMatch('hello world app', 'hello world')).toBe(1));
+	it('every word present, in any order, scores below the phrase but above nothing', () => {
+		expect(fieldMatch('hello-world-app prod', 'prod hello')).toBe(0.6);
+		expect(fieldMatch('hello second app staging', 'hello staging')).toBe(0.6);
+	});
+	it('a missing word is no match', () => expect(fieldMatch('hello-world-app', 'hello prod')).toBe(0));
+	it('single words unchanged', () => {
+		expect(fieldMatch('hello', 'hel')).toBe(1);
+		expect(fieldMatch('hello', 'x')).toBe(0);
+	});
+});

@@ -55,7 +55,8 @@
  * SAME `/api/rollouts` payload** and never from the gate's name:
  *
  *   · `Environment.status.rolloutGateRef.name`  → the promotion gate, and
- *     `Environment.spec.relationship` says which environment must go first.
+ *     the app's topology (`sites-waves.ts`: tier, wave, leader) says which
+ *     sites must go first; the `WaveReady` condition says what it waits for.
  *   · `RolloutDependency.status.gateName`       → the contract gate, and
  *     `spec.providerRef`/`spec.contract` say which service must ship.
  *   · anything else that is merely not passing  → a schedule or a check;
@@ -79,10 +80,25 @@
  */
 
 import type { Rollout, Environment, RolloutDependency, RolloutGate } from '$lib/../types';
-import { promotionBlock, promotionCandidates, type PromotionBlock } from './promotion';
+import { heldBuilds } from './held';
+import { promotionBlock, promotionCandidates, blockingGateNames, type PromotionBlock } from './promotion';
 import { formatTimeUntil, formatAbsoluteReopen } from '$lib/api/schedules';
 import { displayVersionForTag } from '$lib/version-utils';
 import { countLabel } from '$lib/disclosure';
+import { stateWord } from '$lib/components/new/state-words';
+import {
+	DEFAULT_SITE,
+	buildTopology,
+	deployNameOf,
+	placeKeyOfSite,
+	siteNodeOf,
+	upstreamOf,
+	waveReady,
+	type AppTopology,
+	type Tier,
+	type WaveBlocker,
+	type WaveReady
+} from './sites-waves';
 
 /**
  * HOW A GATE STOPS BEING A PROBLEM.
@@ -131,6 +147,124 @@ import { countLabel } from '$lib/disclosure';
  * never tells anyone to go and find a person who does not exist.
  */
 export type GateClears = 'clock' | 'check' | 'upstream' | 'person' | 'unknown';
+
+/**
+ * ⭐ THE HOLD-ONE-RULE SHAPE. (2026-10-09, coordinator ruling, design-rollout
+ * TL.) "Held" = refused by a gate OR held by a dependency-contract, per
+ * build — a `RolloutDependency` contract hold is very often NOT published on
+ * `rollout.status.gates` at all (see `ckGates()`'s own comment in
+ * `lib/demo/mock-data.ts`: "because publishing it flips blockingStory's
+ * banner too"), so a reader of `rollout.status.gates` alone cannot see it.
+ *
+ * This is deliberately leaner than `ClassifiedGate` — it is read off a
+ * `GraphEdge` (`dependency-graph.ts`'s own join against the live
+ * `RolloutDependency` object), not off a `RolloutGate` CRD, so there is no
+ * gate id, no owner reference, nothing to classify. `provider` is the other
+ * rollout's own name (`GraphEdge.from`'s node); `required`/`has` are the
+ * edge's own `requiredVersion`/`providedVersion`, verbatim — undefined
+ * exactly when the edge itself does not carry one.
+ *
+ * Keyed on the DISPLAY version (`GraphEdge.held` is already in that form) —
+ * the same key `promotionHoldBreakdown`'s own `build` field uses, so a
+ * caller building this map off `contractHoldsForRollout`
+ * (`dependency-graph.ts`) and a caller reading `promotionHoldBreakdown`'s
+ * `held[].build` are talking about the same string.
+ */
+export type ContractHold = {
+	provider: string;
+	required?: string;
+	has?: string;
+	/**
+	 * The `RolloutGate` the dependency owns (`GraphEdge.gate`, i.e. the
+	 * dependency's `status.gateName`). Identity of the cause: a status gate with
+	 * this name IS this hold, whether or not a join could name its provider.
+	 */
+	gate?: string;
+};
+
+/**
+ * ⭐ EVERY CONTRACT HOLDING ONE DISPLAY VERSION, NOT JUST THE LAST ONE SEEN.
+ * (2026-10-10, QA finding.) Two `RolloutDependency` objects can both refuse
+ * the SAME consumer build — `payments-svc ~2.9.0` and `auth ~1.4` both
+ * holding `4.43.0-43` back at once is a real live shape, not a corner case —
+ * and a map keyed on the bare `ContractHold` silently kept only whichever
+ * edge `dependency-graph.ts`'s join visited last. The value is therefore
+ * always the LIST of holds on that version, newest-write-wins nowhere.
+ */
+export type ContractHolds = ReadonlyMap<string, readonly ContractHold[]>;
+
+/**
+ * ⭐ THE ONE SENTENCE FOR A CONTRACT HOLD, REUSED EVERYWHERE ONE IS NAMED.
+ * (2026-10-09) Byte-identical in shape to the Overview row's own wording
+ * (`routes/.../[name]/+page.svelte`: `Needs {providerName} {requiredVersion}
+ * · has {providedVersion}`) and the Gates tab's "Held builds" row — so a
+ * reader who has learned this sentence on either tab reads the identical
+ * one here, rather than a fourth spelling of the same fact.
+ */
+export function contractHoldClause(hold: ContractHold): string {
+	return contractHoldSlots(hold).join(' · ');
+}
+
+/** The same sentence as two SLOTS ("Needs payments-svc ~2.9.0" | "has 2.4.1"), for surfaces that draw
+ *  the separator in CSS (`.dot-list`) instead of typing a "·". */
+export function contractHoldSlots(hold: ContractHold): string[] {
+	const required = hold.required ? ` ${hold.required}` : '';
+	const slots = [`Needs ${hold.provider}${required}`];
+	if (hold.has) slots.push(`has ${hold.has}`);
+	return slots;
+}
+
+/**
+ * ONE CONTRACT HOLD, CLASSIFIED into the same shape `classifyGate` produces
+ * for a status gate — so it can ride in the same `gates`/`upstream` arrays
+ * and the existing worst-first sort, headline and consequence machinery
+ * never has to know this one did not come from `rollout.status.gates`.
+ *
+ * `id` is synthetic (`contract:<provider>`) — there is no `RolloutGate`
+ * object backing this hold, so there is no handle to print in `ruleHandle`'s
+ * footnote; callers that disclose gate ids should skip these.
+ */
+function classifyContractHold(hold: ContractHold): ClassifiedGate {
+	return {
+		id: `contract:${hold.provider}`,
+		kind: 'dependency',
+		clears: 'upstream',
+		label: `depends on ${hold.provider}`,
+		// The noun-clause form every other `upstream` clause already uses
+		// (`classifyGate`'s own dependency branch: "X ships Y") — composed
+		// here from `ContractHold`'s own fields rather than `GateContext`'s
+		// join, since this hold never had a `RolloutGate` object to join.
+		clause: hold.required ? `${hold.provider} ships ${hold.required}` : `${hold.provider} ships a newer version`,
+		short: contractHoldClause(hold),
+		clearsAt: null,
+		timezone: null,
+		...NOTHING_TO_DRAW,
+		subject: hold.provider,
+		subjectKind: 'service',
+		predicate: hold.required ? `ships ${hold.required}` : 'ships a newer version',
+		contract: null,
+		have: hold.has ?? null,
+		need: hold.required ?? null
+	};
+}
+
+/**
+ * A gate the controller wrote for a `RolloutDependency` (classified
+ * `dependency`, by join or by owner reference) that one of `contracts` already
+ * names: the dependency's own gate (same gate name), or a joined gate with the
+ * same provider. A nameless gate is never absorbed by an unrelated contract.
+ */
+export function isDependencyGateCoveredBy(
+	gate: { kind: ClassifiedGate['kind']; id?: string; subject?: string | null },
+	contracts: readonly ContractHold[]
+): boolean {
+	if (gate.kind !== 'dependency') return false;
+	// The gate IS the dependency's own gate: same object, same cause.
+	if (gate.id && contracts.some((c) => c.gate === gate.id)) return true;
+	// A joined gate names its provider; a nameless one (owner reference only)
+	// is covered by nothing but its own dependency's gate, never by "any contract".
+	return !!gate.subject && contracts.some((c) => c.provider === gate.subject);
+}
 
 /**
  * ⭐ THE GLYPH IS A FUNCTION OF THE STORY, COMPUTED ONCE, HERE. (2026-09-03)
@@ -183,6 +317,13 @@ export type ClassifiedGate = {
 	 */
 	label: string;
 	/**
+	 * The gate's display name, resolved by `gate-name.ts` exactly as the Gates
+	 * tab prints it (published pretty name, else humanised, else "Gate").
+	 * Set by `classifyGate`; optional only because `classifyGateInner` builds
+	 * the rest of the record first.
+	 */
+	displayName?: string;
+	/**
 	 * ⭐ THE `until …` FORM, and it is deliberately a NOUN CLAUSE, lowercase,
 	 * never a sentence. Every clause composes behind ONE opener — *"Nothing
 	 * promotes itself until …"*, the rollout detail page's own words — so the
@@ -198,6 +339,13 @@ export type ClassifiedGate = {
 	 * banner above it cannot disagree.
 	 */
 	short: string;
+	/**
+	 * A topology fault (DuplicateSite, InvalidTopology): the configuration is wrong, not merely waiting.
+	 * It earns the error tone and a headline of its own instead of "waiting on an approval".
+	 */
+	fault?: boolean;
+	/** The headline this gate states when it is the only one (waves: the fact, not "waiting on an approval"). */
+	headline?: string;
 	/** ISO instant this clears, when `clears === 'clock'`. */
 	clearsAt: string | null;
 	/**
@@ -287,6 +435,15 @@ export type ClassifiedGate = {
 	 * `classifyGate` that can produce it.
 	 */
 	pending?: boolean;
+	/**
+	 * `promotion` only — the CANONICAL TIER of the sites this gate waits on
+	 * (`staging` for a wave-1 leader, the leader's own tier for a follower or a
+	 * later wave). `held.ts` reads it to tell chain sequencing (an earlier tier:
+	 * not reached yet) from a same-tier order hold, which the gate's `subject`
+	 * (`wave 1 (eu-west-1, us-east-1)`, `eu-west-1`) can no longer say by name.
+	 * Null/absent when the gate names no tier.
+	 */
+	upstreamTier?: string | null;
 };
 
 /** The five drawing fields, off. Spread by every branch that draws no object. */
@@ -300,13 +457,39 @@ const NOTHING_TO_DRAW = {
 } as const;
 
 /**
+ * What the environment controller's promotion gate means for one Environment,
+ * joined by `status.rolloutGateRef` and read off the app's topology.
+ *
+ * `upstream` are place keys (the same strings `ChainEnv.upstream` carries);
+ * `upstreamSites` are the bare site names, which is what a sentence names.
+ * `via` is how the version arrives: from the previous tier (`tier`), from the
+ * previous wave of this tier (`wave`) or from this wave's leader (`follow`).
+ * `ready` is the WaveReady condition, parsed: the controller's own reason for
+ * holding wins over the topology's generic "after X".
+ */
+export type PromotionJoin = {
+	tier: Tier | null;
+	site: string;
+	wave: number;
+	role: 'Leader' | 'Follower';
+	upstream: string[];
+	upstreamSites: string[];
+	upstreamTier: Tier | null;
+	upstreamWave: number | null;
+	via: 'tier' | 'wave' | 'follow' | null;
+	/** The wave's selected revision, 7 characters. */
+	selected: string | null;
+	ready: WaveReady | null;
+};
+
+/**
  * The join table, built ONCE per `/api/rollouts` response and passed down.
  * Keys are `namespace/gateName`: gate names are namespace-scoped and
  * `dependency-hello-frontend-needs-api` genuinely exists in three namespaces
  * at once on the live cluster.
  */
 export type GateContext = {
-	promotion: Map<string, { after: string | null; relType: 'After' | 'Parallel' | null }>;
+	promotion: Map<string, PromotionJoin>;
 	dependency: Map<
 		string,
 		{
@@ -349,6 +532,8 @@ export type GateContext = {
 	 * rather than silently re-opening "needs a person" for its gates.
 	 */
 	sources: { environments: boolean; dependencies: boolean };
+	/** Gate key (`ns/name`) -> the pretty-name annotation of its RolloutGate object, when it has one (QA round 2 A4). */
+	pretty?: Map<string, string>;
 	/**
 	 * ⭐ WAS `/schedules` EVER CONSULTED FOR THIS JOIN? (2026-09-04,
 	 * load-state audit finding 4: "Wrong gate kind until `/schedules`
@@ -390,8 +575,41 @@ export const EMPTY_GATE_CONTEXT: GateContext = {
 const key = (namespace: string | undefined, gate: string) => `${namespace ?? ''}/${gate}`;
 
 /** `main-1787999329-991829b…` is not a name. Neither is `ghd-p2fld`. */
+import { prettyNameOf as sharedPrettyNameOf } from './gate-name';
+import { gateDisplayName } from './gate-name';
 export function prettyNameOf(meta?: { annotations?: Record<string, string> }): string | null {
-	return meta?.annotations?.['gate.kuberik.com/pretty-name'] || null;
+	return sharedPrettyNameOf(meta);
+}
+
+function promotionJoinOf(env: Environment, topologies: Map<string, AppTopology>): PromotionJoin {
+	const topo = topologies.get(deployNameOf(env));
+	const node = siteNodeOf(topo, env);
+	const ready = waveReady(env);
+	const base: PromotionJoin = {
+		tier: node?.tier ?? null,
+		site: node?.site ?? env?.spec?.site ?? DEFAULT_SITE,
+		wave: node?.wave ?? env?.spec?.wave ?? 1,
+		role: node?.role ?? 'Leader',
+		upstream: [],
+		upstreamSites: [],
+		upstreamTier: null,
+		upstreamWave: null,
+		via: null,
+		selected: null,
+		ready: ready.ready === null && !ready.raw ? null : ready
+	};
+	if (!topo || !node) return base;
+	const up = upstreamOf(topo, node);
+	base.upstream = up.map((u) => placeKeyOfSite(topo, u));
+	base.upstreamSites = up.map((u) => u.site);
+	if (up.length) {
+		base.upstreamTier = up[0].tier;
+		base.upstreamWave = up[0].wave;
+		base.via = !node.isLeader ? 'follow' : up[0].tier === node.tier ? 'wave' : 'tier';
+	}
+	const wave = topo.tiers.find((t) => t.tier === node.tier)?.waves.find((w) => w.wave === node.wave);
+	base.selected = wave?.selectedRevision ? wave.selectedRevision.slice(0, 7) : null;
+	return base;
 }
 
 /**
@@ -418,6 +636,7 @@ export function buildGateContext(payload: {
 		dependency: new Map(),
 		schedule: new Map(),
 		owners: new Map(),
+		pretty: new Map(),
 		// ⛔ `!= null` AND NOT A TRUTHINESS TEST. `{ items: [] }` is a source we
 		// consulted and found empty; `null` is a source that was never served.
 		// Collapsing the two is exactly how "no join matched" became "a person
@@ -437,20 +656,20 @@ export function buildGateContext(payload: {
 		const name = gate?.metadata?.name;
 		if (!name) continue;
 		const owner = (gate?.metadata?.ownerReferences ?? []).find((o) => o?.controller === true);
+		const pretty = sharedPrettyNameOf(gate?.metadata);
+		if (pretty) ctx.pretty!.set(key(gate?.metadata?.namespace, name), pretty);
 		ctx.owners.set(key(gate?.metadata?.namespace, name), {
 			kind: owner?.kind ?? null,
 			name: owner?.name ?? null
 		});
 	}
 
-	for (const env of payload?.environments?.items ?? []) {
+	const envItems = payload?.environments?.items ?? [];
+	const topologies = buildTopology(envItems);
+	for (const env of envItems) {
 		const gate = env?.status?.rolloutGateRef?.name;
 		if (!gate) continue;
-		const rel = env?.spec?.relationship ?? null;
-		ctx.promotion.set(key(env?.metadata?.namespace, gate), {
-			after: rel?.environment ?? null,
-			relType: rel?.type ?? null
-		});
+		ctx.promotion.set(key(env?.metadata?.namespace, gate), promotionJoinOf(env, topologies));
 	}
 
 	for (const dep of payload?.rolloutDependencies?.items ?? []) {
@@ -508,13 +727,10 @@ export function withSchedules(
 		status?: { active?: boolean; nextTransition?: string; managedGates?: string[] };
 	}>
 ): GateContext {
+	// QA round 3: SPREAD the context, so a field added to `GateContext` (`pretty` was dropped here) can never be silently lost again.
 	const next: GateContext = {
-		promotion: ctx.promotion,
-		dependency: ctx.dependency,
+		...ctx,
 		schedule: new Map(ctx.schedule),
-		owners: ctx.owners,
-		schedulesExpected: ctx.schedulesExpected,
-		sources: ctx.sources,
 		schedulesLoaded: true
 	};
 	for (const s of schedules ?? []) {
@@ -542,6 +758,275 @@ export function withSchedules(
 
 type GateSummary = { name?: string; passing?: boolean; allowedVersions?: string[] | null };
 
+const shortRev = (rev: string | undefined): string => (rev ? rev.slice(0, 7) : '');
+
+/** `eu-west-1`, or the tier when the site is the unnamed `default` of ANOTHER tier. */
+function siteName(site: string, tier: string, ownTier: string | null): string {
+	return site === DEFAULT_SITE && tier !== ownTier ? tier : site;
+}
+
+/** The blocker's wording. Every string here is a fact the controller's WaveReady message carries. */
+function blockerGate(id: string, b: WaveBlocker, ownTier: string | null): ClassifiedGate {
+	const none = { clearsAt: null, timezone: null, ...NOTHING_TO_DRAW } as const;
+	switch (b.kind) {
+		case 'member': {
+			const who = siteName(b.site, b.tier, ownTier);
+			const rev = shortRev(b.rev);
+			if (b.what === 'selection') {
+				return {
+					id,
+					kind: 'promotion',
+					clears: 'upstream',
+					label: 'after ' + who + ' picks',
+					clause: who + ' picks a build',
+					short: 'Waiting for ' + who + ' to pick a build',
+					...none,
+					subject: who,
+					subjectKind: 'environment',
+					predicate: 'picks a build'
+				};
+			}
+			if (b.outcome) {
+				// `Failing` is the product's word for a failed check; the sentence keeps the controller's own verb.
+				const ended = b.outcome === 'failed' ? 'failed' : 'was cancelled';
+				const text = who + "'s check " + ended + (rev ? ' on ' + rev : '');
+				return {
+					id,
+					kind: 'promotion',
+					clears: 'upstream',
+					label: who + ' is ' + (stateWord('failed') ?? 'failing').toLowerCase(),
+					clause: text,
+					short: text,
+					...none,
+					subject: who,
+					subjectKind: 'environment',
+					predicate: 'check ' + ended
+				};
+			}
+			const finishing = 'finish ' + (stateWord('checking') ?? 'checking').toLowerCase() + ' ' + (rev || 'the build');
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'upstream',
+				label: who + ' is ' + (stateWord('checking') ?? 'checking').toLowerCase(),
+				clause: who + ' to ' + finishing,
+				short: 'Waiting for ' + who + ' to ' + finishing,
+				...none,
+				subject: who,
+				subjectKind: 'environment',
+				predicate: 'to ' + finishing
+			};
+		}
+		case 'noSites':
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'person',
+				label: b.tier + ' has no sites',
+				clause: 'a site registers in ' + b.tier,
+				short: 'Waiting for a site to register in ' + b.tier,
+				...none
+			};
+		case 'candidate':
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'upstream',
+				label: 'waiting for ' + shortRev(b.rev),
+				clause: shortRev(b.rev) + ' is available on this cluster',
+				short: 'Waiting for ' + shortRev(b.rev) + ' to become available on this cluster',
+				...none
+			};
+		case 'pinned':
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'person',
+				label: 'pinned to ' + shortRev(b.pinned),
+				clause: 'the pin on ' + shortRev(b.pinned) + ' is cleared',
+				short: 'Pinned to ' + shortRev(b.pinned) + ', the wave selected ' + shortRev(b.selected),
+				...none
+			};
+		case 'gap': {
+			let text: string;
+			if (b.missing.length > 0) {
+				const n = b.missing.length;
+				text = b.tier + ' has no wave' + (n === 1 ? ' ' : 's ') + b.missing.join(', ');
+			} else {
+				text = b.tier + ' waves start at ' + (b.waves.length ? Math.min(...b.waves) : '?') + ', not 1';
+			}
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'person',
+				label: text,
+				clause: text + ' (fix the wave numbers)',
+				short: text,
+				...none
+			};
+		}
+		case 'lockstep': {
+			const who = siteName(b.site, b.tier, ownTier);
+			const rev = shortRev(b.rev);
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'upstream',
+				label: 'lockstep with ' + who,
+				clause: 'lockstep: ' + who + ' finishes ' + rev,
+				short: 'Lockstep: waiting for ' + who + ' to finish ' + rev,
+				...none,
+				subject: who,
+				subjectKind: 'environment',
+				predicate: 'to finish ' + rev
+			};
+		}
+		case 'duplicate': {
+			const o = b.owner;
+			const where = (o.cluster ? o.cluster + '/' : '') + (o.namespace ? o.namespace + '/' : '') + o.name;
+			const text = 'Held: another Environment, ' + where + ', owns site ' + b.site + ' of ' + b.tier;
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'person',
+				label: 'duplicate site ' + b.site,
+				clause: where + ' gives up site ' + b.site + ' of ' + b.tier + ', or this Environment is annotated environments.kuberik.com/take-over-site=true to take it over',
+				short: text + '. Annotate this Environment with environments.kuberik.com/take-over-site=true to take it over.',
+				...none
+			};
+		}
+		case 'selfUpstream':
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'person',
+				label: b.tier + ' is its own upstream',
+				clause: b.tier + ' stops being its own upstream',
+				short: b.tier + ' is its own upstream',
+				...none
+			};
+		case 'aliasTier': {
+			const text = b.names.join(', ').replace(/, ([^,]*)$/, ' and $1') + ' are the same tier (' + b.tier + ')';
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'person',
+				label: text,
+				clause: 'one name is used per tier (split with sites and waves)',
+				short: text + '. Use one name per tier; split with sites and waves.',
+				...none
+			};
+		}
+		case 'unknownTier': {
+			const text = b.name + ' is not a known tier';
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'person',
+				label: text,
+				clause: b.name + ' is renamed to dev, test, staging or prod',
+				short: text + '. Use dev, test, staging or prod.',
+				...none
+			};
+		}
+		case 'unparsed':
+		default:
+			return {
+				id,
+				kind: 'promotion',
+				clears: 'unknown',
+				label: b.raw || b.reason,
+				clause: b.raw || b.reason,
+				short: b.raw || b.reason,
+				...none
+			};
+	}
+}
+
+/** The headline, and whether it is a fault, for the blockers that are not "someone approves it". */
+function waveFault(b: WaveBlocker, g: ClassifiedGate): Pick<ClassifiedGate, 'headline' | 'fault'> {
+	switch (b.kind) {
+		case 'duplicate':
+			return { headline: 'Site ' + b.site + ' of ' + b.tier + ' is owned by another Environment', fault: true };
+		case 'gap':
+		case 'selfUpstream':
+			return { headline: g.short, fault: true };
+		case 'aliasTier':
+		case 'unknownTier':
+			return { headline: g.label, fault: true };
+		case 'pinned':
+		case 'noSites':
+			return { headline: g.short };
+		default:
+			return {};
+	}
+}
+
+/**
+ * The environment controller's promotion gate, in words. Order of authority:
+ * the controller's own WaveReady reason (what it is waiting for right now),
+ * then the shape of the topology (who this site follows).
+ *
+ *   wave-1 leader   after staging                    (the previous tier)
+ *   wave-N leader   after wave 1 (eu-west-1, us-east-1)
+ *   follower        follows eu-west-1's pick (abc1234)
+ *
+ * With no upstream and no reported reason the gate "has nothing to compare
+ * against yet", which is a real state and is said as one.
+ */
+function classifyPromotion(id: string, promo: PromotionJoin): ClassifiedGate {
+	const b = promo.ready && promo.ready.ready === false ? promo.ready.blocker : null;
+	if (b) {
+		const t = b.kind === 'member' || b.kind === 'lockstep' ? b.tier : b.kind === 'candidate' ? promo.tier : null;
+		const g = blockerGate(id, b, promo.tier);
+		return { ...g, ...waveFault(b, g), upstreamTier: t };
+	}
+
+	const base = { id, kind: 'promotion', clears: 'upstream', clearsAt: null, timezone: null } as const;
+	const names = promo.upstreamSites.map((x) => siteName(x, promo.upstreamTier ?? '', promo.tier));
+	if (promo.via === 'follow') {
+		const leader = names[0] ?? promo.site;
+		const pick = promo.selected ? ' (' + promo.selected + ')' : '';
+		return {
+			...base,
+			upstreamTier: promo.tier,
+			label: 'follows ' + leader + "'s pick" + pick,
+			clause: promo.selected ? leader + "'s pick (" + promo.selected + ') reaches it' : leader + ' picks a build',
+			short: promo.selected
+				? "Following " + leader + "'s pick (" + promo.selected + ')'
+				: 'Waiting for ' + leader + ' to pick a build',
+			...NOTHING_TO_DRAW,
+			subject: leader,
+			subjectKind: 'environment',
+			predicate: promo.selected ? "pick (" + promo.selected + ') reaches it' : 'picks a build'
+		};
+	}
+	let subject: string | null = null;
+	if (promo.via === 'wave') {
+		subject = 'wave ' + promo.upstreamWave + ' (' + names.join(', ') + ')';
+	} else if (promo.via === 'tier') {
+		subject = promo.upstreamTier;
+	}
+	// ⭐ `clause` IS BUILT FROM `subject` + `predicate` IN BOTH BRANCHES, so
+	// the drawn row and the banner sentence are the same two words in the
+	// same order and cannot drift.
+	const named = subject ?? 'its upstream environment';
+	const predicate = subject ? 'deploys it first' : 'deploys this build';
+	return {
+		...base,
+		upstreamTier: promo.via === 'wave' ? promo.tier : promo.upstreamTier,
+		label: subject ? 'after ' + subject : 'after its upstream environment',
+		clause: named + ' ' + predicate,
+		short: subject
+			? 'Waiting for ' + subject + ' to deploy it first'
+			: 'Waiting for its upstream environment to deploy this build',
+		...NOTHING_TO_DRAW,
+		subject: named,
+		subjectKind: 'environment',
+		predicate
+	};
+}
+
 /**
  * ONE GATE, CLASSIFIED. The order of the branches is the order of the joins,
  * and the fallthrough is the LAST branch rather than the first — a gate we
@@ -553,41 +1038,21 @@ export function classifyGate(
 	namespace: string | undefined,
 	ctx: GateContext = EMPTY_GATE_CONTEXT
 ): ClassifiedGate {
+	const out = classifyGateInner(gate, namespace, ctx);
+	const id = gate?.name ?? 'a rule';
+	return { ...out, displayName: gateDisplayName(id, ctx.pretty?.get(key(namespace, id)) ?? null) };
+}
+
+function classifyGateInner(
+	gate: GateSummary,
+	namespace: string | undefined,
+	ctx: GateContext = EMPTY_GATE_CONTEXT
+): ClassifiedGate {
 	const id = gate?.name ?? 'a rule';
 	const k = key(namespace, id);
 
 	const promo = ctx.promotion.get(k);
-	if (promo) {
-		// The environment controller's own description, in the product's words:
-		// *"passing only for those versions that have been successfully deployed
-		// after the <env> environment"*. With no relationship published the gate
-		// exists but has nothing to compare against yet, which is a real state
-		// (`prettyName = "Relationship not ready yet"`) and is said as one.
-		const verb = promo.relType === 'Parallel' ? 'deploys it alongside' : 'deploys it first';
-		const noun = promo.relType === 'Parallel' ? 'deploy it alongside' : 'deploy it first';
-		// ⭐ `clause` IS BUILT FROM `subject` + `predicate` IN BOTH BRANCHES, so
-		// the drawn row and the banner sentence are the same two words in the
-		// same order and cannot drift. The un-related branch used to be one
-		// literal; splitting it changes no output.
-		const subject = promo.after ?? 'its upstream environment';
-		const predicate = promo.after ? verb : 'deploys this build';
-		return {
-			id,
-			kind: 'promotion',
-			clears: 'upstream',
-			label: promo.after ? `after ${promo.after}` : 'after its upstream environment',
-			clause: `${subject} ${predicate}`,
-			short: promo.after
-				? `Waiting for ${promo.after} to ${noun}`
-				: 'Waiting for its upstream environment to deploy this build',
-			clearsAt: null,
-			timezone: null,
-			...NOTHING_TO_DRAW,
-			subject,
-			subjectKind: 'environment',
-			predicate
-		};
-	}
+	if (promo) return classifyPromotion(id, promo);
 
 	const dep = ctx.dependency.get(k);
 	if (dep) {
@@ -897,7 +1362,7 @@ export type BlockingStory = {
 	 * story itself renders, and the gate kind (`iconKind`) is the only thing
 	 * that may vary the GLYPH; it never touches this field.
 	 */
-	severity: 'warning' | 'info';
+	severity: 'warning' | 'info' | 'error';
 	/** Which glyph this story earns. See `StoryIconKind`'s own note. */
 	iconKind: StoryIconKind;
 	/**
@@ -916,6 +1381,18 @@ export type BlockingStory = {
 	 * claim being made — means the claim is final for the data given.
 	 */
 	kindPending: boolean;
+	/**
+	 * ⭐ EVERY CANDIDATE, PER-BUILD, NEWEST FIRST — `promotionHoldBreakdown`'s
+	 * OWN `perBuild`, carried onto the story so `heldVerdict` (`held.ts`)
+	 * can apply its frontier rule without a second
+	 * `promotionHoldBreakdown` call (qa12, squad-rollout gates-2 follow-up,
+	 * 2026-10-11, tl-integrate ruling). Every other field on this type
+	 * (`gates`/`person`/`upstream`/… and the prose built from them) is
+	 * still the WHOLE-ROLLOUT blend `promotionBlock`'s own "can this
+	 * promote at all" question needs — `candidates` is additive, read by
+	 * `heldVerdict` ALONE, and never folded back into those blended fields.
+	 */
+	candidates?: PromotionHoldBreakdown['perBuild'];
 };
 
 export const NOT_BLOCKED: BlockingStory = {
@@ -940,7 +1417,9 @@ export const NOT_BLOCKED: BlockingStory = {
 	// concrete value beats leaving the one non-optional field on the type
 	// without one where `NOT_BLOCKED` is spread as a base.
 	iconKind: 'check',
-	kindPending: false
+	kindPending: false,
+	// frozen: every spread of this constant would otherwise share one array
+	candidates: Object.freeze([]) as never[]
 };
 
 const COUNT_WORD = ['no', 'One', 'Two', 'Three', 'Four', 'Five', 'Six'];
@@ -1142,8 +1621,12 @@ export function upstreamVerdict(gates: ClassifiedGate[]): string {
 	// of a coordination.
 	const shipClauses = dependencies.map((g) => {
 		const provider = g.subject ?? 'the service it depends on';
-		const contract = g.contract ?? 'a newer version';
-		return g.need ? `ship ${contract} ${g.need} from ${provider}` : `ship a newer ${contract} from ${provider}`;
+		// A contract hold with no contract NAME (`classifyContractHold` — see
+		// its own comment) still has a provider and often a range; say that
+		// plainly rather than the grammatically odd "ship a newer version
+		// ~2.9.0 from payments-svc".
+		if (!g.contract) return g.need ? `ship ${g.need} from ${provider}` : `ship a newer version from ${provider}`;
+		return g.need ? `ship ${g.contract} ${g.need} from ${provider}` : `ship a newer ${g.contract} from ${provider}`;
 	});
 	const then = promotion ? ', then the deploy in front of it has to land' : '';
 	return `No approval will unblock this. Someone has to ${joinClauses(shipClauses)}${then}; until then the only way forward is a hand-started deploy, which bypasses the check.`;
@@ -1172,9 +1655,22 @@ export function upstreamVerdict(gates: ClassifiedGate[]): string {
  * not a copy of it.
  */
 function upstreamHeadline(upstream: ClassifiedGate[], subjectLead: string, isVerb: string): string {
-	const dep = upstream.find((g) => g.kind === 'dependency' && g.subject && g.contract);
+	const dep = upstream.find((g) => g.kind === 'dependency' && g.subject);
 	if (!dep) return `${subjectLead} ${isVerb} waiting on another deploy`;
-	const verb = dep.need ? `ship ${dep.contract} ${dep.need}` : `ship a newer ${dep.contract}`;
+	// ⭐ A CONTRACT HOLD HAS NO `contract` NAME ON THIS OBJECT — see
+	// `classifyContractHold`'s own comment: it is read off a `GraphEdge`, not
+	// off `GateContext.dependency`'s join, so it never learned the contract's
+	// own name (`api`, `payments`), only the version range. `dep.contract`
+	// null still names the PROVIDER and the range when `need` is known —
+	// never silently falls back to the generic "waiting on another deploy"
+	// sentence when there IS something more specific to say.
+	const verb = dep.contract
+		? dep.need
+			? `ship ${dep.contract} ${dep.need}`
+			: `ship a newer ${dep.contract}`
+		: dep.need
+			? `ship ${dep.need}`
+			: 'ship a newer version';
 	return `${subjectLead} ${isVerb} waiting for ${dep.subject} to ${verb}`;
 }
 
@@ -1271,13 +1767,36 @@ function orderedUpstream(upstream: ClassifiedGate[]): ClassifiedGate[] {
 export function blockingStory(
 	rollout: Rollout | null | undefined,
 	ctx: GateContext = EMPTY_GATE_CONTEXT,
-	options: { place?: string | null; subject?: StorySubject | null; now?: Date } = {}
+	options: {
+		place?: string | null;
+		subject?: StorySubject | null;
+		now?: Date;
+		/**
+		 * ⭐ THE HOLD-ONE-RULE'S OTHER HALF. (2026-10-09, coordinator ruling.)
+		 * "Held" = refused by a gate OR held by a contract, per build —
+		 * `block` below reads `rollout.status.gates` alone and cannot see a
+		 * `RolloutDependency` contract the controller never published there.
+		 * `promotionHoldBreakdown` is given this SAME map so the two can never
+		 * disagree about which candidates are held. Built off the dependency
+		 * graph by `contractHoldsForRollout` (`dependency-graph.ts`); `undefined`
+		 * on a caller with no graph in hand, which keeps this byte-identical to
+		 * every existing gate-only call site. Keyed on a LIST per version — see
+		 * `ContractHolds`' own doc for why one build can be held by more than
+		 * one contract at once.
+		 */
+		contractHolds?: ContractHolds;
+		/** See `heldBuilds`' `skipped` (QA round 2 A8). */
+		skipped?: (entry: { tag: string }, stage: string) => boolean;
+	} = {}
 ): BlockingStory {
 	const namespace = rollout?.metadata?.namespace;
 	const block: PromotionBlock = promotionBlock(rollout);
 	const pinnedTo = rollout?.spec?.wantedVersion ?? null;
 	const candidateCount = promotionCandidates(rollout).length;
-	const place = options.place ? options.place.toUpperCase() : null;
+	// An environment is a NAME, set as written, never uppercased (design
+	// language principle 11; uppercase is for state labels only). Was
+	// `toUpperCase()`: "hello-world in PROD", "PROD-EU-" / "CENTRAL" at 390.
+	const place = options.place ? options.place : null;
 	/**
 	 * ⭐ THE SUBJECT IS THE CALLER'S, BECAUSE WHAT IDENTIFIES A ROLLOUT
 	 * DEPENDS ON THE PAGE. (2026-08-31)
@@ -1318,6 +1837,7 @@ export function blockingStory(
 		const pinnedToDisplay = displayVersionForTag(rollout, pinnedTo) || pinnedTo;
 		return {
 			...NOT_BLOCKED,
+			candidates: [],
 			blocked: candidateCount > 0,
 			candidateCount,
 			pinnedTo,
@@ -1337,25 +1857,80 @@ export function blockingStory(
 		};
 	}
 
-	if (!block.blocked || block.blockingGates.length === 0) {
-		return { ...NOT_BLOCKED, candidateCount };
+	// ⭐ THE HOLD-ONE-RULE: "BLOCKED" IS THE UNION, NEVER `block.blocked` ALONE.
+	// (2026-10-09, coordinator ruling.) `block` (`promotionBlock`, above) reads
+	// `rollout.status.gates` only, so a candidate held purely by a dependency
+	// contract the controller never publishes there (`ckGates()`'s own fixture
+	// comment, `mock-data.ts`) reads as "deployable" to `block` alone — the
+	// exact defect this ruling exists to close. `promotionHoldBreakdown` is the
+	// SAME per-build read the Overview's "Newer builds" rows and the Gates tab
+	// already use, given the SAME `contractHolds` map, so this verdict can
+	// never disagree with either.
+	const breakdown = promotionHoldBreakdown(rollout, ctx, { contractHolds: options.contractHolds });
+	if (!breakdown.allHeld) {
+		// ⭐ qa12: `candidates` STILL CARRIES THE REAL PER-BUILD READ HERE,
+		// even though nothing refuses every candidate at once (`allHeld` is
+		// the OLD single-cause question — "can this promote at all"). A
+		// caller running `heldVerdict`'s frontier rule over this story still
+		// needs the real `perBuild` list to find whether the newest
+		// ELIGIBLE candidate is held or merely queued; leaving it empty
+		// here would silently hide a genuine "waits for `<stage>`" fact
+		// whenever an OLDER candidate happens to be fully deployable.
+		return { ...NOT_BLOCKED, candidateCount, candidates: breakdown.perBuild };
 	}
 
 	// The gate OBJECTS, not the names: `promotionBlock` publishes names only, so
 	// re-select the summaries it attributed the block to. Same predicate, so the
 	// two cannot disagree about which gates are holding it.
-	const holding = new Set(block.blockingGates);
-	const gates = (rollout?.status?.gates ?? [])
-		.filter((g) => g?.name && holding.has(g.name))
-		.map((g) => classifyGate(g, namespace, ctx))
-		.sort((a, b) => {
-			// Worst first: a person, then a rule we cannot attribute, then
-			// another deploy, then a clock. The reader's question is "is this
-			// mine", so the answer leads — and "we cannot tell" ranks second
-			// because it is the only other answer that might be yes.
-			const rank = { person: 0, unknown: 1, upstream: 2, check: 3, clock: 4 } as const;
-			return rank[a.clears] - rank[b.clears] || a.id.localeCompare(b.id);
-		});
+	//
+	// ⛔ `block.blockingGates` CAN BE EMPTY HERE AND STILL BE RIGHT. It is
+	// "gates that refuse EVERY candidate" (plus `promotionBlock`'s own
+	// newest-candidate fallback) — a GATE-ONLY read. When the union above is
+	// what makes `allHeld` true (a contract holds the one candidate no status
+	// gate touches), no single status gate need refuse all of them, so this
+	// falls back to the union of every held candidate's OWN blocking gate
+	// names — still gate names actually published on `rollout.status.gates`,
+	// never invented.
+	const holdingNames =
+		block.blockingGates.length > 0
+			? new Set(block.blockingGates)
+			: new Set(breakdown.held.flatMap((h) => h.gateNames));
+	const allStatusGates = (rollout?.status?.gates ?? [])
+		.filter((g) => g?.name && holdingNames.has(g.name))
+		.map((g) => classifyGate(g, namespace, ctx));
+	// A dependency-owned gate no join could name (nameless) is the same cause as
+	// the contract hold that does name it: keep the contract, never both.
+	const allContracts = breakdown.held.flatMap((h) => h.contracts);
+	const statusGates = allStatusGates.filter(
+		(g) => !(g.kind === 'dependency' && !g.subject && isDependencyGateCoveredBy(g, allContracts))
+	);
+
+	// ⭐ THE CONTRACT HOLDS, AS THEIR OWN CLASSIFIED ENTRIES. (2026-10-09)
+	// Deduped by provider — a `RolloutDependency` contract hold is ONE fact
+	// regardless of how many candidates it holds back (`4.43.0-43` and
+	// `4.44.0-44` behind the SAME `payments-svc ~2.9.0` read as one gate, not
+	// two). Skipped when a status gate ALREADY named this exact provider as a
+	// `dependency` (the ordinary case where the controller did publish the
+	// contract gate) — never doubling the same cause under two entries.
+	const existingDependencyProviders = new Set(
+		statusGates.filter((g) => g.kind === 'dependency' && g.subject).map((g) => g.subject as string)
+	);
+	const contractHoldsByProvider = new Map<string, ContractHold>();
+	for (const h of breakdown.held) {
+		for (const c of h.contracts) contractHoldsByProvider.set(c.provider, c);
+	}
+	const contractGates = [...contractHoldsByProvider.values()]
+		.filter((h) => !existingDependencyProviders.has(h.provider))
+		.map((h) => classifyContractHold(h));
+
+	const gates = [...statusGates, ...contractGates].sort((a, b) => {
+		// Worst first: a person, then a rule we cannot attribute, then
+		// another deploy, then a clock. The reader's question is "is this
+		// mine", so the answer leads — and "we cannot tell" ranks second
+		// because it is the only other answer that might be yes.
+		const rank = { person: 0, unknown: 1, upstream: 2, check: 3, clock: 4 } as const;
+		return rank[a.clears] - rank[b.clears] || a.id.localeCompare(b.id);
+	});
 
 	const person = gates.filter((g) => g.clears === 'person');
 	const unknown = gates.filter((g) => g.clears === 'unknown');
@@ -1387,6 +1962,8 @@ export function blockingStory(
 		headline = bucketHeadline;
 	} else if (gates.length > 1) {
 		headline = `${countWord(gates.length)} things are holding ${subjectObject}`;
+	} else if (gates.length === 1 && gates[0].headline) {
+		headline = gates[0].headline;
 	} else if (person.length === 1) {
 		headline = `${subjectLead} ${isVerb} waiting on an approval`;
 	} else if (unknown.length === 1) {
@@ -1452,9 +2029,24 @@ export function blockingStory(
 	// same sentence here with N causes behind it instead of one. It is also
 	// what makes every clause a lowercase noun clause, so the sentence never
 	// capitalises an environment name to start itself.
+	// QA (TL, 2026-11-09): the lead must count the builds THESE holds refuse here, the same per-build predicate the Gates tab's "Held builds"
+	// list uses (`verdictForGates` on each build's own gates). A candidate that has not cleared an earlier stage is "waiting for <stage>",
+	// not held by this approval: saying "5 newer builds are waiting" beside "3 held here" claimed an approval would release 5.
+	const hb = heldBuilds(breakdown, options.place, options.skipped);
+	const heldHere = hb.held.length;
+	const notYet = hb.waiting.find((w) => w.stage)?.stage ?? null;
+	const skippedStage = hb.skipped[0]?.stage ?? null;
+	const plural = (n: number) => `build${n === 1 ? '' : 's'}`;
+	const nWait = hb.waiting.length;
+	const nSkip = hb.skipped.length;
 	const lead =
 		candidateCount > 0
-			? `${candidateCount} newer build${candidateCount === 1 ? '' : 's'} ${candidateCount === 1 ? 'is' : 'are'} waiting. `
+			? heldHere > 0 && heldHere < candidateCount && (notYet || skippedStage)
+				? `${heldHere} newer ${plural(heldHere)} ${heldHere === 1 ? 'is' : 'are'} waiting here` +
+					(nWait > 0 && notYet ? `; ${nWait} more ${nWait === 1 ? "hasn't" : "haven't"} reached ${notYet} yet` : '') +
+					(nSkip > 0 && skippedStage ? `; ${nSkip} ${nSkip === 1 ? 'was' : 'were'} skipped by ${skippedStage}, which runs a newer ${plural(1)}` : '') +
+					'. '
+				: `${candidateCount} newer build${candidateCount === 1 ? '' : 's'} ${candidateCount === 1 ? 'is' : 'are'} waiting. `
 			: '';
 	const consequence = `${lead}Nothing promotes itself until ${joinClauses(parts)}.`;
 
@@ -1541,9 +2133,10 @@ export function blockingStory(
 		// clears on its own. `selfClearing` answers "does this need a
 		// person", a different question this field no longer conflates with
 		// colour.
-		severity: 'warning',
+		severity: gates.some((g) => g.fault) ? 'error' : 'warning',
 		iconKind,
-		kindPending
+		kindPending,
+		candidates: breakdown.perBuild
 	};
 }
 
@@ -1621,6 +2214,301 @@ export function contractRuleCountLabel(story: BlockingStory): string {
 	if (contracts === 0) return ruleCountLabel(story);
 	if (contracts === story.gates.length) return countLabel(contracts, 'contract');
 	return `${countLabel(contracts, 'contract')} of ${ruleCountLabel(story)}`;
+}
+
+/**
+ * ⭐ PER-BUILD HELD, BESIDE `blockingStory`'S PER-ROLLOUT VERDICT. (New,
+ * additive — squad-rollout coordinator, 2026-10-09, cleared with the
+ * design-rollout TL as a pure helper beside `blockingStory`, not a change
+ * to its contract.)
+ *
+ * `blockingStory` answers "can THIS ROLLOUT promote AT ALL right now" —
+ * true (`blocked`) only when EVERY candidate is refused (`promotionBlock`'s
+ * own rule: `deployableCount === 0`). That is the right question for a
+ * banner, and it is RIGHT to say nothing when an older candidate can still
+ * deploy even though a newer one cannot. Measured live,
+ * `checkout-api/prod-us-east-2` (CHECKING): `4.43.0-43`/`4.44.0-44`/
+ * `4.45.0-45` are each held behind `payments-svc`, `4.42.0-42` (the one
+ * currently applying) is not — the Overview correctly shows no banner
+ * there, and the rollout is not stuck; nobody has promoted past what IS
+ * available yet.
+ *
+ * A caller that needs the OTHER true fact — "which of my candidates are
+ * individually held, and by what" (the Overview's own "Newer builds" rows,
+ * the Gates tab's lead sentence, the Change Version picker's row glyphs) —
+ * reads THIS function instead of inventing a second read of
+ * `rollout.status.gates`. It is built from the exact same shared
+ * primitives the Overview's per-row read already uses —
+ * `promotionCandidates`, `blockingGateNames` (`promotion.ts`'s own "ONE
+ * SHARED PREDICATE FOR is this build held, and by what" doc comment) and
+ * `classifyGate` — so the build ids and the gate clauses this names can
+ * never disagree with what the Overview's row already shows for the same
+ * build.
+ *
+ * `allHeld` IS `blockingStory(...).blocked` for the promotion case: the
+ * environment is held (the banner) only when no candidate can move. It
+ * carries no prose: a caller that needs the sentence takes `blockingStory`'s
+ * words when `allHeld`, and composes the mixed case from `held`/`deployable`
+ * on its own page (the words live with the page that prints them).
+ *
+ * ⭐ THE HOLD-ONE-RULE: "HELD" = REFUSED BY A GATE *OR* HELD BY A CONTRACT.
+ * (2026-10-09, coordinator ruling.) `gateNames`/`clauses` alone, read off
+ * `rollout.status.gates`, miss a `RolloutDependency` contract whose gate the
+ * controller never publishes there (`ckGates()`'s own fixture comment).
+ * `options.contractHolds` — built by `contractHoldsForRollout`
+ * (`dependency-graph.ts`), off the SAME graph the Overview/Gates tab already
+ * read — is the other half of the same join: a candidate is held when
+ * EITHER source says so, and `allHeld` is the union, never the gate-only
+ * read alone.
+ */
+export type PromotionHoldBreakdown = {
+	/** Every promotion candidate at least one gate OR contract refuses, newest first. */
+	held: {
+		build: string;
+		tag: string;
+		gateNames: string[];
+		clauses: string[];
+		/**
+		 * The FIRST contract holding this build back, when `options.contractHolds`
+		 * named at least one — kept for callers that only ever expected one.
+		 * Prefer `contracts` (below), which never drops a second provider.
+		 */
+		contract?: ContractHold;
+		/** Every contract holding this build back. Empty, never undefined. */
+		contracts: ContractHold[];
+		/**
+		 * ⭐ THIS BUILD'S OWN GATES, CLASSIFIED — status gates named in
+		 * `gateNames` PLUS this build's own `contracts` (above), each run
+		 * through `classifyGate`/`classifyContractHold` exactly as
+		 * `blockingStory`'s whole-rollout `gates` field is built, just
+		 * scoped to this one candidate rather than unioned across every
+		 * held candidate. (squad-rollout gates-2 follow-up, 2026-10-11)
+		 *
+		 * This is what `held.ts`'s `verdictForGates` reads to tell a
+		 * chain-refused candidate ("waits for staging", not yet reached)
+		 * apart from one this environment genuinely refuses — `gateNames`/
+		 * `clauses` are names and prose, not classified gates, and cannot
+		 * answer "is this a same-tier order gate or an earlier-tier chain
+		 * link" on their own.
+		 */
+		classifiedGates: ClassifiedGate[];
+	}[];
+	/** Every candidate every gate AND every contract allows, newest first — display build ids. */
+	deployable: string[];
+	/** True once `held.length > 0` — what the Gates header/rollup count against. */
+	anyHeld: boolean;
+	/** True when EVERY candidate is held — the case that must agree with `blockingStory`. */
+	allHeld: boolean;
+	/**
+	 * ⭐ EVERY CANDIDATE, HELD AND DEPLOYABLE ALIKE, NEWEST FIRST — THE ONE
+	 * ORDERED LIST `heldVerdict`'s FRONTIER RULE WALKS. (qa12, squad-rollout
+	 * gates-2 follow-up, 2026-10-11, tl-integrate ruling.) `held`/`deployable`
+	 * above are both filtered VIEWS of this same array — this is the array
+	 * itself, unfiltered, in `promotionCandidates`' own newest-first order.
+	 * `held.ts`'s `frontierVerdict` finds the newest entry here that has
+	 * cleared every earlier stage (not chain-refused by its own
+	 * `classifiedGates`) and reports THAT one's own verdict as the place's
+	 * — never a blend of every held candidate's causes into one list, which
+	 * is the exact defect (a newer chain-refused candidate's gate silently
+	 * outranking an older candidate's real, local hold) this field exists
+	 * to let `heldVerdict` stop reproducing.
+	 */
+	perBuild: {
+		build: string;
+		tag: string;
+		gateNames: string[];
+		clauses: string[];
+		contract?: ContractHold;
+		contracts: ContractHold[];
+		classifiedGates: ClassifiedGate[];
+	}[];
+};
+
+export function promotionHoldBreakdown(
+	rollout: Rollout | null | undefined,
+	ctx: GateContext = EMPTY_GATE_CONTEXT,
+	options: {
+		place?: string | null;
+		subject?: StorySubject | null;
+		now?: Date;
+		/** Keyed on the DISPLAY version — see `ContractHolds`' own doc comment. */
+		contractHolds?: ContractHolds;
+	} = {}
+): PromotionHoldBreakdown {
+	const namespace = rollout?.metadata?.namespace;
+	const candidates = promotionCandidates(rollout);
+	const statusGates = rollout?.status?.gates ?? [];
+	const contractHolds = options.contractHolds;
+
+	const perBuild = candidates.map((c) => {
+		const tag = c.tag ?? c.version ?? '';
+		const build = displayVersionForTag(rollout, tag) || tag;
+		const gateNames = blockingGateNames(rollout, tag || null);
+		const held = new Set(gateNames);
+		const contracts = [...(contractHolds?.get(build) ?? [])];
+		// ⭐ A DEPENDENCY'S RolloutGate AND ITS CONTRACT HOLD ARE ONE CAUSE. The
+		// controller writes a RolloutGate (owner RolloutDependency) on every
+		// consumer; `contractHolds` names the same dependency from the graph.
+		// The contract entry carries the richer fact (required range + what the
+		// provider has), so the gate that is the same dependency is dropped from
+		// `clauses` and from `classifiedGates`, never listed beside it.
+		const classifiedStatusGates = statusGates
+			.filter((g) => g?.name && held.has(g.name))
+			.map((g) => classifyGate(g, namespace, ctx))
+			.filter((g) => !isDependencyGateCoveredBy(g, contracts));
+		const clauses = [...new Set(classifiedStatusGates.map((g) => g.clause))];
+		// Same dedupe `blockingStory` applies at the whole-rollout level
+		// (above, `existingDependencyProviders`), scoped to this build: a
+		// contract the controller already published AS a status gate for
+		// THIS candidate is not counted a second time.
+		const existingDependencyProviders = new Set(
+			classifiedStatusGates.filter((g) => g.kind === 'dependency' && g.subject).map((g) => g.subject as string)
+		);
+		const contractGates = contracts
+			.filter((c) => !existingDependencyProviders.has(c.provider))
+			.map((c) => classifyContractHold(c));
+		const classifiedGates = [...classifiedStatusGates, ...contractGates];
+		return { build, tag, gateNames, clauses, contract: contracts[0], contracts, classifiedGates };
+	});
+
+	const held = perBuild.filter((b) => b.gateNames.length > 0 || b.contracts.length > 0);
+	const deployable = perBuild
+		.filter((b) => b.gateNames.length === 0 && b.contracts.length === 0)
+		.map((b) => b.build);
+	const allHeld = candidates.length > 0 && deployable.length === 0 && held.length > 0;
+
+	if (held.length === 0) {
+		return { held: [], deployable, anyHeld: false, allHeld: false, perBuild };
+	}
+
+	return { held, deployable, anyHeld: true, allHeld, perBuild };
+}
+
+/**
+ * ⭐ ONE CAUSE PHRASE, EVERY SURFACE THAT NAMES WHY A HOLD EXISTS. (2026-10-10,
+ * coordinator ruling, design-rollout TL commit "held-cause-phrase".)
+ *
+ * ── THE DEFECT ────────────────────────────────────────────────────────────
+ *
+ * The changes page's `HeldBanner` titled itself `${subject} is held` and drew
+ * a person glyph for EVERY hold that was not on a schedule — a promotion-order
+ * hold and a contract hold (neither of which any person can approve) both
+ * wore the same face as an actual approval gate. The same fact, read off the
+ * identical `BlockingStory`, printed `"${place} is waiting on an approval"`
+ * on Home for a rollout the Overview's own banner at the time still spelled
+ * generically. Two surfaces, two different confidences about the same cause.
+ *
+ * ── THE FIX ───────────────────────────────────────────────────────────────
+ *
+ * One function, FACT + CAUSE, nothing else — no KIND/RULE dump (that still
+ * sits behind the `› Details` disclosure every banner already has; this
+ * function never replaces it, only the headline above it):
+ *
+ *   `prod-us-east-2 is waiting on promotion order`   — a bare promotion gate
+ *   `prod-us-east-2 is waiting for payments-svc ~2.9.0` — a dependency contract
+ *   `prod-us-east-2 is waiting on an approval`       — a person gate
+ *
+ * RANK, WORST-FIRST, THE SAME ORDER `blockingStory`'s own `iconKind` already
+ * picks (a person gate outranks everything; `unknown` outranks a named cause
+ * because "we cannot tell" might still mean "a person", exactly as that
+ * field's own doc argues): `person` → `unknown` → `dependency` (a contract
+ * LEADS over a bare promotion order, the same rule `upstreamVerdict`'s own
+ * "THE CONTRACT LEADS" doc already established for the verdict sentence,
+ * applied here to the headline) → `promotion` → the generic fallback for a
+ * lone `clock`/`check` hold, which names no second party worth a headline of
+ * its own (see `sameBucketHeadline`'s identical carve-out).
+ *
+ * Deliberately a NEW sentence, not a repoint of `story.headline` — changing
+ * `headline` itself would rewrite every surface that already prints it
+ * (`truth.test.ts`'s fixtures, `axis.ts`'s glance-line regex, the catalogue)
+ * for a wording only THIS pass's callers asked for. `holdCausePhrase` is
+ * additive beside it, the same way `shortStory` sits beside `headline`
+ * without replacing it.
+ *
+ * ── THE SECOND INPUT SHAPE ───────────────────────────────────────────────
+ *
+ * A caller naming a SPECIFIC held BUILD (Home's Needs-you sentence, which
+ * must name the build `promotionHoldBreakdown` says is actually held, never
+ * the rollout's currently-running one — see that type's own doc) passes one
+ * of ITS entries, or the breakdown itself (its first held entry is read),
+ * rather than the whole-rollout `BlockingStory`.
+ *
+ * ⚠️ A bare `PromotionHoldBreakdown` entry carries NO gate classification —
+ * no `kind`, no `clears` (see that type's own doc: it is read off
+ * `blockingGateNames`, names only, never joined against `GateContext`) — so
+ * it cannot distinguish an approval gate from a promotion-order gate by name
+ * alone. Its `gateNames` with no `contract` reads as the more common case,
+ * `promotion order`; a caller that needs the precise kind for a possibly-
+ * approval hold passes the `BlockingStory` instead, which HAS the
+ * classification.
+ */
+export function holdCausePhrase(
+	input: BlockingStory | PromotionHoldBreakdown,
+	options: { place?: string | null } = {}
+): string | null {
+	const subject = options.place ?? 'this service';
+
+	// A `BlockingStory` is the only one of the two shapes that carries
+	// `gates` — `PromotionHoldBreakdown` has no field by that name.
+	if ('gates' in input) {
+		// ⭐ `null`, NEVER `''`. (2026-10-10, QA finding.) `BlockingStoryPanel`'s
+		// own `title={titleOverride ?? story.headline}` only falls back when
+		// `titleOverride` is NULLISH — `''` is not, so a caller handing this
+		// straight to that prop during the banner's collapse (the rollout
+		// detail page's Overview banner) printed a BLANK headline the instant
+		// `blocked` flipped false, instead of keeping the frozen story's own
+		// `headline` through the collapse. `''` claimed "no title", which is
+		// not what "nothing is held" means to a nullable prop.
+		if (!input.blocked) return null;
+		// A topology fault or wave wait states its own fact ("Site us-east-1 of prod is owned by another Environment"), never an approval.
+		if (input.gates.length === 1 && input.gates[0].headline) return input.gates[0].headline;
+		if (input.person.length > 0) return `${subject} is waiting on an approval`;
+		// ⛔ NOT "waiting on an approval" — see `blockingStory`'s own `unknown`
+		// branch: we do not know what clears this, and guessing a remedy is the
+		// wrong instruction, not merely an imprecise one.
+		if (input.unknown.length > 0) return `${subject} is waiting on a rule this dashboard cannot attribute`;
+		// ⭐ THE CONTRACT LEADS, same rule as `upstreamHeadline`/`upstreamVerdict`.
+		// ⭐ NAMES EVERY PROVIDER, NOT JUST THE FIRST. (2026-10-10, QA finding.)
+		// `payments-svc ~2.9.0` and `auth ~1.4` can both hold the SAME build at
+		// once (`ContractHolds`' own doc) — `joinClauses` is the house list
+		// joiner every multi-item sentence in this module already uses, so two
+		// providers read "X and Y" and three or more read "X, Y and Z".
+		const contracts = input.upstream.filter((g) => g.kind === 'dependency' && g.subject);
+		if (contracts.length > 0) {
+			const clauses = contracts.map((g) => {
+				const need = g.need ? ` ${g.need}` : '';
+				return `${g.subject}${need}`;
+			});
+			return `${subject} is waiting for ${joinClauses(clauses)}`;
+		}
+		if (input.upstream.some((g) => g.kind === 'promotion')) {
+			return `${subject} is waiting on promotion order`;
+		}
+		// A lone clock/check hold names no second party — same carve-out
+		// `sameBucketHeadline` already makes for the full headline.
+		return `${subject} is held`;
+	}
+
+	// A `PromotionHoldBreakdown` — see this function's own doc for what a
+	// bare entry cannot tell. THE CONTRACT LEADS here too, same rule as the
+	// `BlockingStory` branch above: a held build with no contract of its
+	// own (refused only by a promotion-order gate) does not get to hide a
+	// SIBLING held build's contract — `checkout-api/prod-us-east-2`'s own
+	// shape, where the newest candidates are promotion-gate-held and the
+	// contract sits on an older one `held[0]` would otherwise skip.
+	const held = input.held.find((h) => h.contracts.length > 0) ?? input.held[0];
+	if (!held) return null;
+	if (held.contracts.length > 0) {
+		// Same list joiner as the `BlockingStory` branch above — a build held
+		// by two contracts at once names both.
+		const clauses = held.contracts.map((c) => {
+			const required = c.required ? ` ${c.required}` : '';
+			return `${c.provider}${required}`;
+		});
+		return `${subject} is waiting for ${joinClauses(clauses)}`;
+	}
+	if (held.gateNames.length > 0) return `${subject} is waiting on promotion order`;
+	return `${subject} is held`;
 }
 
 export function shortStory(story: BlockingStory): string | null {

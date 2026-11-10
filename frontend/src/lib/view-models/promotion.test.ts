@@ -6,6 +6,7 @@ import {
 	detectStuckPromotion,
 	blockNeedsPerson,
 	gateAllows,
+	blockingGateNames,
 	promotionCandidates,
 	newestDeployableCandidate,
 	isDeployable
@@ -185,6 +186,58 @@ describe('gateAllows', () => {
 	});
 	it('null allowedVersions + passing:false -> false', () => {
 		expect(gateAllows({ allowedVersions: null, passing: false }, 'a')).toBe(false);
+	});
+});
+
+/**
+ * ⭐ U-5, 2026-10-08: the shared "is this build held, by what" predicate.
+ * Must count a status-gate entry whose CRD object is missing from the
+ * payload — the exact defect that let `checkout-api`/`prod-us-east-2`'s
+ * `promotion-prod-us-east-2` gate (`allowedVersions: [b-40..b-43]`, no
+ * matching `RolloutGate` object) read `Ready` on Overview and in the
+ * Change Version dialog while the Gates tab correctly read it as held.
+ */
+describe('blockingGateNames — U-5, the shared held-by-status-gate predicate', () => {
+	it('names a gate that refuses the tag by allow-list, with NO RolloutGate object required', () => {
+		const r = rollout({
+			currentVersion: 'b-40',
+			gates: [{ name: 'promotion-prod-us-east-2', passing: true, allowedVersions: ['b-40', 'b-41', 'b-42', 'b-43'] }]
+		});
+		// b-45 is not in the allow-list — the status gate alone is enough.
+		expect(blockingGateNames(r, 'b-45')).toEqual(['promotion-prod-us-east-2']);
+	});
+
+	it('does not name a gate that allows the tag', () => {
+		const r = rollout({
+			currentVersion: 'b-40',
+			gates: [{ name: 'promotion-prod-us-east-2', passing: true, allowedVersions: ['b-43'] }]
+		});
+		expect(blockingGateNames(r, 'b-43')).toEqual([]);
+	});
+
+	it('names every gate that refuses, not just the first', () => {
+		const r = rollout({
+			currentVersion: 'b-40',
+			gates: [
+				{ name: 'a', passing: false },
+				{ name: 'b', passing: true, allowedVersions: ['only-this-one'] },
+				{ name: 'c', passing: true, allowedVersions: null }
+			]
+		});
+		expect(blockingGateNames(r, 'b-45').sort()).toEqual(['a', 'b']);
+	});
+
+	it('empty with no tag, no gates, or a rollout/gates list of null', () => {
+		expect(blockingGateNames(rollout({ currentVersion: 'b-40', gates: [] }), 'b-45')).toEqual([]);
+		expect(blockingGateNames(rollout({ currentVersion: 'b-40' }), null)).toEqual([]);
+		expect(blockingGateNames(null, 'b-45')).toEqual([]);
+	});
+
+	it('agrees with gateAllows (deploy-risk.ts`s gatesAllow) and candidatesHeldByGate (the Gates tab) on the same gate', () => {
+		const gate = { name: 'promotion-prod-us-east-2', passing: true, allowedVersions: ['b-40'] };
+		const r = rollout({ currentVersion: 'b-40', gates: [gate] });
+		expect(blockingGateNames(r, 'b-45')).toEqual(['promotion-prod-us-east-2']);
+		expect(gateAllows(gate, 'b-45')).toBe(false);
 	});
 });
 
@@ -418,7 +471,12 @@ describe('detectStuckPromotion — routed through blocking-story.ts classificati
 	const envGate: Environment = {
 		metadata: { namespace: 'x' },
 		status: { rolloutGateRef: { name: 'ghd-5b2wn' } },
-		spec: { relationship: { environment: 'staging', type: 'After' } }
+		spec: { name: 'x', environment: 'prod' }
+	} as unknown as Environment;
+	const stagingSibling: Environment = {
+		metadata: { namespace: 'x-staging' },
+		status: {},
+		spec: { name: 'x', environment: 'staging' }
 	} as unknown as Environment;
 
 	// `dependency-hello-frontend-needs-api`: the RolloutDependency contract
@@ -460,7 +518,7 @@ describe('detectStuckPromotion — routed through blocking-story.ts classificati
 
 	it('with the join, a block held ENTIRELY by upstream gates is NOT stuck — the hello-frontend-app/prod fix', () => {
 		const ctx = buildGateContext({
-			environments: { items: [envGate] },
+			environments: { items: [stagingSibling, envGate] },
 			rolloutDependencies: { items: [depGate] }
 		});
 		expect(detectStuckPromotion(upstreamBlockedRollout(), { now: NOW, gateContext: ctx })).toBeNull();
@@ -480,7 +538,7 @@ describe('detectStuckPromotion — routed through blocking-story.ts classificati
 		// an absent one) but no owner and no join for the second gate — it is
 		// a hand-authored approval and classifies `person`.
 		const ctx = buildGateContext({
-			environments: { items: [envGate] },
+			environments: { items: [stagingSibling, envGate] },
 			rolloutDependencies: { items: [] }
 		});
 		const reason = detectStuckPromotion(r, { now: NOW, gateContext: ctx });
@@ -509,7 +567,7 @@ describe('detectStuckPromotion — routed through blocking-story.ts classificati
 
 	it('a purely upstream block is not stuck even long past the threshold (staleness alone is not enough)', () => {
 		const ctx = buildGateContext({
-			environments: { items: [envGate] },
+			environments: { items: [stagingSibling, envGate] },
 			rolloutDependencies: { items: [depGate] }
 		});
 		// candidate `created` is 2026-07-01; NOW is 2026-08-22 — 52 days past
@@ -535,7 +593,12 @@ describe('blockNeedsPerson', () => {
 	const envGate: Environment = {
 		metadata: { namespace: 'x' },
 		status: { rolloutGateRef: { name: 'ghd-5b2wn' } },
-		spec: { relationship: { environment: 'staging', type: 'After' } }
+		spec: { name: 'x', environment: 'prod' }
+	} as unknown as Environment;
+	const stagingSibling: Environment = {
+		metadata: { namespace: 'x-staging' },
+		status: {},
+		spec: { name: 'x', environment: 'staging' }
 	} as unknown as Environment;
 
 	const depGate: RolloutDependency = {
@@ -588,7 +651,7 @@ describe('blockNeedsPerson', () => {
 
 	it('a fully-joined upstream block (environment + dependency) does not need a person', () => {
 		const ctx = buildGateContext({
-			environments: { items: [envGate] },
+			environments: { items: [stagingSibling, envGate] },
 			rolloutDependencies: { items: [depGate] }
 		});
 		const r = upstreamBlockedRollout();

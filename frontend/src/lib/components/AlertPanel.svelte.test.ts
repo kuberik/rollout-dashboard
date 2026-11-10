@@ -4,7 +4,6 @@ import { render, screen } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
 import AlertPanel from './AlertPanel.svelte';
 import BlockingStoryPanel from './BlockingStoryPanel.svelte';
-import BlockingStoryLines from './BlockingStoryLines.svelte';
 import { blockingStory, buildGateContext } from '$lib/view-models/blocking-story';
 import { rollbackWent, rollbackNext, rollbackStory } from '$lib/view-models/auto-deploy';
 
@@ -365,17 +364,14 @@ describe('the banner and the card are one affordance over one content', () => {
 		return container.querySelector(SUMMARY)?.textContent?.trim() ?? '';
 	}
 
-	test('both scales spell the trigger the same way, over the same gates', () => {
+	test('the banner spells the trigger as a count of rules (the card scale, BlockingStoryLines, is retired)', () => {
 		const story = blockingStory(rollout, ctx, { subject: 'DEV' });
 		expect(story.blocked).toBe(true);
 		const banner = render(BlockingStoryPanel, { props: { story } });
 		expect(summaryText(banner.container)).toBe('1 rule');
-		banner.unmount();
-		const card = render(BlockingStoryLines, { props: { story } });
-		expect(summaryText(card.container)).toBe('1 rule');
 	});
 
-	test('both scales hold a RECORD, and the gate handle is in both', () => {
+	test('the banner holds a RECORD, and the gate handle is in it', () => {
 		const story = blockingStory(rollout, ctx, { subject: 'DEV' });
 		const banner = render(BlockingStoryPanel, { props: { story } });
 		const bannerRecord = banner.container.querySelector('details');
@@ -386,12 +382,5 @@ describe('the banner and the card are one affordance over one content', () => {
 		// record holds what the banner does not: `consequence` already carries
 		// every gate's clause, so no gate gets a `Clears` row at banner scale.
 		expect(bannerRecord?.textContent).not.toContain('Clears');
-		banner.unmount();
-
-		const card = render(BlockingStoryLines, { props: { story } });
-		const cardRecord = card.container.querySelector('details');
-		expect(cardRecord?.open).toBe(false);
-		expect(cardRecord?.querySelector('dl')).not.toBeNull();
-		expect(cardRecord?.textContent).toContain('dependency-hello-frontend-needs-api');
 	});
 });

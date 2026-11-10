@@ -1,10 +1,12 @@
-import type { Rollout, Environment } from '$lib/../types';
+import { behindOfRollout } from './behind';
+import type { Rollout, Environment, RolloutDependency } from '$lib/../types';
 import { groupRolloutsByApp } from '$lib/version-utils';
 import type { AppGroup } from '$lib/version-utils';
 import { sortEnvironmentNames } from '$lib/env-order';
 import { getDisplayVersion } from '$lib/utils';
 import { buildRolloutCards } from '$lib/rollout-cards';
 import type { StatusKey } from '$lib/rollout-cards';
+import { cardContext } from './card-context';
 import { rankVerdicts, rankBehindBy } from './env-rank';
 import type { RankVerdict } from './env-rank';
 
@@ -50,22 +52,43 @@ export type MatrixRow = {
 // `−17` for a rollout `/apps/[name]` printed `−19` for, in the same chip.
 export function buildMatrix(
 	rollouts: Rollout[],
-	environments: Environment[]
+	environments: Environment[],
+	/**
+	 * ⭐ shared/cards-join (2026-10-11). Optional, raw list-payload shape
+	 * (`{ items?: [...] } | null`, same convention as `cardContext`'s own
+	 * `rolloutDependencies` — see that module's doc on why it is not a flat
+	 * array). `statusKey` below is bakeStatus-only and reads nothing off the
+	 * join either way, so omitting this is a no-op TODAY — it exists so a
+	 * future cell that reads `held`/`stuck` off these cards builds that join
+	 * the SAME way every other list surface does, not a new one.
+	 */
+	rolloutDependencies?: { items?: RolloutDependency[] } | null
 ): { envTiers: string[]; rows: MatrixRow[] } {
 	const groups = groupRolloutsByApp(rollouts, environments);
 
 	// Reuse the same per-rollout statusKey logic the Rollouts list uses,
 	// keyed by rollout identity so each matrix cell can look its card up
 	// without recomputing the succeeded|failed|active|pending classification.
-	const cards = buildRolloutCards(rollouts, environments, new Date());
+	const ctx = cardContext({
+		rollouts,
+		environments: { items: environments },
+		rolloutDependencies: rolloutDependencies ?? null
+	});
+	const cards = buildRolloutCards(
+		rollouts,
+		environments,
+		new Date(),
+		ctx.gateContext,
+		ctx.contractHoldsFor
+	);
 	const statusByRollout = new Map<Rollout, StatusKey>();
 	for (const card of cards) statusByRollout.set(card.rollout, card.statusKey);
 
 	const tierSet = new Set<string>();
 	for (const group of groups.values()) {
 		for (const cell of group.cells) {
-			const tier = cell.environment?.spec?.environment;
-			if (tier) tierSet.add(tier);
+			// The PLACE (`placeKey`): two prod sites are two columns.
+			if (cell.environment?.spec?.environment) tierSet.add(cell.envName);
 		}
 	}
 	const envTiers = sortEnvironmentNames([...tierSet]);
@@ -90,7 +113,7 @@ function buildRow(
 	const ranks = rankVerdicts(group);
 
 	for (const tier of envTiers) {
-		const cell = group.cells.find((c) => c.environment?.spec?.environment === tier);
+		const cell = group.cells.find((c) => c.environment?.spec?.environment && c.envName === tier);
 		if (!cell) {
 			cells[tier] = null;
 			continue;
@@ -103,7 +126,7 @@ function buildRow(
 		const version = versionInfo ? getDisplayVersion(versionInfo) : '';
 		const statusKey = statusByRollout.get(cell.rollout) ?? 'pending';
 		const rank = ranks.get(cell) ?? ({ kind: 'unknown' } as RankVerdict);
-		const behindBy = rankBehindBy(rank);
+		const behindBy = behindOfRollout(cell.rollout, rank);
 		const bakeStatus = latestHistory?.bakeStatus;
 
 		cells[tier] = { envName: cell.envName, version, statusKey, rank, behindBy, bakeStatus };

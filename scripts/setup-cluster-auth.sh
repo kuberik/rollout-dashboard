@@ -142,7 +142,11 @@ until kubectl get --raw=/readyz >/dev/null 2>&1; do sleep 2; done
 echo "kube-apiserver ready"
 
 # Client secret + cookie secret
-COOKIE_SECRET=$(openssl rand -base64 32 | tr -- '+/' '-_' | head -c 32)
+# Keep the existing cookie secret on reruns: regenerating it changes the Secret
+# without restarting oauth2-proxy, so the next pod restart would invalidate every
+# session. Only generate one when the Secret does not exist yet.
+COOKIE_SECRET=$(kubectl -n auth-system get secret oauth2-proxy-secrets -o jsonpath='{.data.cookie-secret}' 2>/dev/null | base64 -d 2>/dev/null || true)
+[ -n "${COOKIE_SECRET}" ] || COOKIE_SECRET=$(openssl rand -base64 32 | tr -- '+/' '-_' | head -c 32)
 
 kubectl create secret generic oauth2-proxy-secrets \
   --from-literal=client-secret="${OIDC_CLIENT_SECRET}" \
@@ -161,19 +165,11 @@ kubectl create configmap dex-ca-cert \
 # routes directly (multi-cluster hub→spoke fan-out, CI jobs, vite dev ROPC).
 # --cookie-domain shares the session across any subdomain of the canonical host.
 #
-# TODO: this Deployment spec is static, so `kubectl apply` sees it as
-# unchanged across reruns even when dex-ca-cert or oauth2-proxy-secrets
-# below get regenerated (e.g. Dex CA rotates on a rerun). The running pod
-# then keeps serving with whatever CA/secret it loaded at its OWN startup,
-# silently going stale — it can run for hours holding a CA that no longer
-# matches Dex, with no restart ever triggered. Bit us on 2026-07-14: dex-ca
-# rotated, oauth2-proxy kept rejecting every bearer token with a bare
-# "certificate signed by unknown authority" until we noticed and ran
-# `kubectl rollout restart deployment/oauth2-proxy -n auth-system` by hand.
-# Fix: add a `spec.template.metadata.annotations` entry here with a hash of
-# dex-ca.crt (and/or the client secret) computed from the file(s) at script
-# run time, e.g. `checksum/dex-ca: $(sha256sum "${OUTPUT_DIR}/dex-ca.crt")`,
-# so any content change forces a real rolling restart automatically.
+# The pod template carries checksum/dex-ca (hash of dex-ca.crt) so a rotated CA
+# changes the spec and forces a real rolling restart; a static spec would keep
+# the old CA loaded forever (bit us 2026-07-14). sync-dex-ca.sh maintains the
+# same annotation when it propagates a CA to already-running clusters.
+DEX_CA_SUM=$(sha256sum "${OUTPUT_DIR}/dex-ca.crt" | cut -d' ' -f1)
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -189,6 +185,8 @@ spec:
     metadata:
       labels:
         app: oauth2-proxy
+      annotations:
+        checksum/dex-ca: "${DEX_CA_SUM}"
     spec:
       containers:
       - name: oauth2-proxy
@@ -213,6 +211,10 @@ spec:
         - --reverse-proxy=true
         - --provider-ca-file=/etc/ssl/dex/ca.crt
         - --skip-jwt-bearer-tokens=true
+        # Unauthenticated /api/* calls get a plain 401 instead of a 302 to Dex:
+        # fetch/XHR cannot follow a cross-origin redirect (CORS-blocked), so the UI
+        # would say "cannot reach the server" instead of "session expired".
+        - --api-route=^/api/
         env:
         - name: OAUTH2_PROXY_CLIENT_SECRET
           valueFrom:
@@ -248,10 +250,13 @@ spec:
     targetPort: 4180
 EOF
 
-# HTTPRoute for /oauth2/*. No hostname filter — inherits all gateway hostnames,
-# so /oauth2/start and /oauth2/callback resolve on whichever subdomain the
-# user is on. The Gateway lives in kuberik-system but accepts routes from all
-# namespaces (see setup-dev-environment.sh).
+# HTTPRoute for /oauth2/*, pinned to this cluster's canonical host. Without
+# spec.hostnames the route also matches every other gateway hostname, so on a
+# shared gateway the dashboard route (same host, PathPrefix /) and this one
+# compete for /oauth2/callback and the CSRF cookie check fails. With the host
+# pinned, the longer /oauth2 prefix wins unambiguously for that host.
+# The Gateway lives in kuberik-system but accepts routes from all namespaces
+# (see setup-dev-environment.sh).
 cat <<EOF | kubectl apply -f -
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -262,6 +267,8 @@ spec:
   parentRefs:
     - name: rollout-dashboard-gateway
       namespace: kuberik-system
+  hostnames:
+    - ${HOST}
   rules:
     - matches:
         - path:

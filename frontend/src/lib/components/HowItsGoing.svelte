@@ -79,6 +79,7 @@
 		CloseCircleSolid,
 		CodeBranchOutline
 	} from 'flowbite-svelte-icons';
+	import { href } from '$lib/paths';
 
 	type VerdictTone = 'neutral' | 'good' | 'adverse' | 'active';
 
@@ -146,7 +147,11 @@
 
 		/** `undefined` omits the row. `{ entry: null, title }` renders the
 		 *  green em dash — nothing is behind. */
-		furthestBehind = undefined
+		furthestBehind = undefined,
+
+		/** Forwarded to the underlying `Card`'s own `dataTour` prop — read by the
+		 *  landing page's guided tour to find this card by a stable id. `undefined` is a no-op. */
+		dataTour = undefined
 	}: {
 		scope: HowItsGoingScope;
 		verdict?: string | null;
@@ -167,17 +172,25 @@
 		failed?: { count: number; title: string };
 		furthestBehind?: { entry: FurthestBehind | null; title: string };
 		historyMayBeIncomplete?: boolean;
+		dataTour?: string;
 	} = $props();
 
 	const INCOMPLETE_NOTE =
 		'At least one rollout counted here has hit its version history retention limit, so earlier deploys have already been evicted from the API — this count is a floor, not a total.';
 </script>
 
-<Card icon={ChartMixedOutline} title="How it’s going" {verdict} {verdictTone} {verdictTitle}>
+<Card
+	icon={ChartMixedOutline}
+	title="How it’s going"
+	{verdict}
+	{verdictTone}
+	{verdictTitle}
+	{dataTour}
+>
 	<dl class="space-y-3">
 		<div class="flex items-baseline justify-between gap-3">
-			<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-				<RocketSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Deploys · {windowLabel}{population
+			<dt class="t-meta flex items-center gap-1.5 text-fg-subtle">
+				<RocketSolid class="h-4 w-4 shrink-0" aria-hidden="true" />Deploys · {windowLabel}{population
 					? ` · ${population}`
 					: ''}
 			</dt>
@@ -195,7 +208,7 @@
 						buckets={sparklineBuckets}
 					/>
 				{/if}
-				<span class="t-figure text-gray-900 tabular-nums dark:text-white"
+				<span class="t-heading tabular-nums text-fg"
 					>{historyMayBeIncomplete ? '≥ ' : ''}{deploys}</span
 				>
 			</dd>
@@ -203,11 +216,11 @@
 
 		{#if typicalDeployMs !== undefined}
 			<div class="flex items-baseline justify-between gap-3">
-				<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-					<ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical deploy
+				<dt class="t-meta flex items-center gap-1.5 text-fg-subtle">
+					<ClockOutline class="h-4 w-4 shrink-0" aria-hidden="true" />Typical deploy
 				</dt>
 				<dd
-					class="t-figure text-gray-900 tabular-nums dark:text-white"
+					class="t-heading tabular-nums text-fg"
 					title={typicalDeployTitle}
 				>
 					{typicalDeployMs === null ? '—' : compactSpan(typicalDeployMs)}
@@ -217,23 +230,23 @@
 
 		{#if typicalToProd}
 			<div class="flex items-baseline justify-between gap-3">
-				<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-					<HourglassOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Typical to prod
+				<dt class="t-meta flex items-center gap-1.5 text-fg-subtle">
+					<HourglassOutline class="h-4 w-4 shrink-0" aria-hidden="true" />Typical to prod
 				</dt>
 				<dd
-					class="flex items-baseline justify-end gap-1.5 text-gray-900 tabular-nums dark:text-white"
+					class="flex items-baseline justify-end gap-1.5 text-fg tabular-nums"
 					title={typicalToProd.title}
 				>
 					{#if typicalToProd.ms === null}
 						<!-- `—` ALONE READS AS A RENDERING BUG, NOT AN ANSWER. Every
 						     page gets the caption now, not just the two that already
 						     shipped it. -->
-						<span class="t-figure text-gray-500 dark:text-gray-400">—</span>
-						<span class="t-micro whitespace-nowrap text-gray-500 dark:text-gray-400"
+						<span class="t-heading text-fg-subtle">—</span>
+						<span class="t-meta whitespace-nowrap text-fg-subtle"
 							>no measured trip yet</span
 						>
 					{:else}
-						<span class="t-figure">{compactSpan(typicalToProd.ms)}</span>
+						<span class="t-heading tabular-nums">{compactSpan(typicalToProd.ms)}</span>
 					{/if}
 				</dd>
 			</div>
@@ -241,8 +254,9 @@
 
 		{#if failed}
 			<div class="flex items-baseline justify-between gap-3">
-				<dt class="t-dense flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-					<CloseCircleSolid class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Failed · {windowLabel}
+				<dt class="t-meta flex items-center gap-1.5 text-fg-subtle">
+					<!-- envdetail-12 EW7: the hue is the mark's (the icon), never the figure's: a count is ink (RULES "no coloured text for counts") -->
+					<CloseCircleSolid class="h-4 w-4 shrink-0 {failed.count > 0 ? 'text-danger' : ''}" aria-hidden="true" />Failed · {windowLabel}
 				</dt>
 				<!-- THE INK MARKS THE DEVIATION AND NOTHING ELSE. A zero is the
 				     norm and takes the same near-black every other figure on this
@@ -250,9 +264,9 @@
 				     green for the zero — green would be a second mark for
 				     "everything is fine", which the whole page already is. -->
 				<dd
-					class="t-figure tabular-nums {failed.count > 0
-						? 'text-red-700 dark:text-red-400'
-						: 'text-gray-900 dark:text-white'}"
+					class="t-heading tabular-nums {failed.count > 0
+						? 'text-fg'
+						: 'text-fg-subtle'}"
 					title={historyMayBeIncomplete ? `${failed.title} ${INCOMPLETE_NOTE}` : failed.title}
 				>
 					{failed.count}
@@ -262,24 +276,24 @@
 
 		{#if furthestBehind}
 			<div class="flex items-baseline justify-between gap-3">
-				<dt class="t-dense flex min-w-0 items-center gap-1.5 text-gray-500 dark:text-gray-400">
-					<CodeBranchOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+				<dt class="t-meta flex min-w-0 items-center gap-1.5 text-fg-subtle">
+					<CodeBranchOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
 					<span class="shrink-0 whitespace-nowrap">Furthest behind</span>
 					{#if furthestBehind.entry}
 						<a
-							href="/apps/{furthestBehind.entry.appName}"
-							class="min-w-0 truncate font-mono text-[11px] text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+							href={href(`/apps/${furthestBehind.entry.appName}`)}
+							class="t-meta min-w-0 truncate text-fg-muted hover:text-fg"
 							>{furthestBehind.entry.appName}</a
 						>
 					{/if}
 				</dt>
 				<dd class="shrink-0" title={furthestBehind.title}>
 					{#if furthestBehind.entry}
-						<span class="t-figure text-gray-900 tabular-nums dark:text-white"
+						<span class="t-heading tabular-nums text-fg"
 							>{furthestBehind.entry.by}</span
 						>
 					{:else}
-						<span class="t-figure text-green-700 dark:text-green-400">—</span>
+						<span class="t-heading text-success">—</span>
 					{/if}
 				</dd>
 			</div>

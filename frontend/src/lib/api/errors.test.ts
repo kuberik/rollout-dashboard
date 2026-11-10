@@ -17,11 +17,19 @@ import {
 	errorConsequence,
 	errorFacts,
 	MAX_RETRIES,
-	RECOVERY_POLL_MS
+	RECOVERY_POLL_MS,
+	_resetQueryRetryStateForTests
 } from './errors';
 
 const err = (status: number, detail = '') =>
 	new ApiError(status, 'boom', detail, '/api/rollouts/x/y');
+
+// `queryRetry`'s "a confirmed outage skips the within-cycle retry cascade"
+// mark (squad-rollout coordinator, 2026-10-12) is module-level state set by
+// `pollWhenHealthy` — reset it before every test so one test's own call
+// into an `error` state can never change what a LATER, unrelated test's
+// `queryRetry(...)` assertion sees.
+beforeEach(() => _resetQueryRetryStateForTests());
 
 describe('isRetryable — the policy, stated as tests', () => {
 	it('never retries a 404: the answer cannot change by asking again', () => {
@@ -117,6 +125,50 @@ describe('pollWhenHealthy — a dead URL must stop costing requests', () => {
 
 	it('backs off instead of stopping when the failure might heal', () => {
 		expect(poll({ state: { status: 'error', error: err(503) } })).toBe(RECOVERY_POLL_MS);
+	});
+});
+
+/**
+ * ⭐ SQUAD-ROLLOUT COORDINATOR, 2026-10-12: a confirmed outage still ran its
+ * full 1s/2s retry cascade every scheduled `RECOVERY_POLL_MS` cycle instead
+ * of one request. Two bugs, both pinned here:
+ *
+ * 1. `refetchInterval` is re-evaluated on every query state change,
+ *    including the `'pending'` moment a retry attempt WITHIN that very
+ *    cycle starts — the old code reset the outage mark on anything that
+ *    was not literally `'error'`, `'pending'` included, undoing its own
+ *    gate mid-cascade.
+ * 2. TanStack's own retryer evaluates `retry(failureCount, error)` BEFORE
+ *    incrementing its counter, so the first-ever failure of a fetch is
+ *    asked about with `failureCount === 0` — a `failureCount >= 1` gate let
+ *    that first failure of every cycle through once regardless of
+ *    confirmation.
+ */
+describe('a confirmed outage survives a `pending` re-evaluation mid-cascade', () => {
+	it('pollWhenHealthy("pending") does not reset the mark queryRetry just set from an "error"', () => {
+		const poll = pollWhenHealthy(5000);
+		// Cycle 1: a fetch confirms the outage.
+		expect(poll({ state: { status: 'error', error: err(503) } })).toBe(RECOVERY_POLL_MS);
+
+		// Cycle 2's single attempt starts — TanStack flips to `pending` and
+		// re-evaluates the interval before this attempt has even failed once.
+		poll({ state: { status: 'pending', error: null } });
+
+		// That attempt's FIRST failure is `failureCount === 0` (TanStack's own
+		// retryer asks before incrementing) — the exact case the old
+		// `failureCount >= 1` gate let through once per cycle. Must refuse.
+		expect(queryRetry(0, err(503))).toBe(false);
+		expect(queryRetry(1, err(503))).toBe(false);
+	});
+
+	it('only a real success clears the mark — the NEXT failure gets its retry cushion back', () => {
+		_resetQueryRetryStateForTests();
+		const poll = pollWhenHealthy(5000);
+		expect(poll({ state: { status: 'error', error: err(503) } })).toBe(RECOVERY_POLL_MS);
+		expect(queryRetry(1, err(503))).toBe(false); // still confirmed
+
+		poll({ state: { status: 'success', error: null } }); // the backend answered
+		expect(queryRetry(1, err(503))).toBe(true); // a fresh failure, fresh cushion
 	});
 });
 

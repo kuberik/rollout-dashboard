@@ -24,15 +24,9 @@
 	 * padlock on `/dependencies` and a person on `/versions/<rev>` while this
 	 * banner drew a share-node for it.
 	 */
-	import {
-		UserCircleSolid,
-		CalendarWeekSolid,
-		ShieldCheckSolid,
-		ShareNodesSolid,
-		ChevronDoubleRightOutline,
-		LockSolid,
-		QuestionCircleSolid
-	} from 'flowbite-svelte-icons';
+	import { LockSolid, ExclamationCircleSolid } from 'flowbite-svelte-icons';
+	import HeldGlyph from './HeldGlyph.svelte';
+	import type { Component } from 'svelte';
 	import type { BlockingStory as Story, StoryIconKind } from '$lib/view-models/blocking-story';
 
 	/**
@@ -60,15 +54,26 @@
 	 * and the `/dependencies` graph's, `ChevronDoubleRightOutline` is the
 	 * `Promotion pipeline` card header's on `/apps/<name>`.
 	 */
-	const ICON_FOR_KIND: Record<StoryIconKind, typeof UserCircleSolid> = {
+	/**
+	 * ⭐ ONE HELD MARK, THE CAUSE IN THE WORDS. (Design language consistency
+	 * review, 2026-10-08.) The disc used to change picture by cause — a
+	 * person, share-nodes, double chevron, calendar, shield, question mark —
+	 * so the SAME state (held) wore six faces across pages, and the reader
+	 * had to learn a legend for a banner whose headline already names the
+	 * cause ("waiting on an approval", "waiting for hello-api-app to ship
+	 * api ^1.67.0"). Every hold is `HeldGlyph` (a gate) now, the mark rows,
+	 * lanes and the Gates tab use. `pinned` keeps the lock: a pin is its own
+	 * state (a person's choice), drawn as a lock everywhere it appears.
+	 */
+	const ICON_FOR_KIND: Record<StoryIconKind, Component> = {
 		pinned: LockSolid,
-		person: UserCircleSolid,
-		unknown: QuestionCircleSolid,
-		dependency: ShareNodesSolid,
-		promotion: ChevronDoubleRightOutline,
-		clock: CalendarWeekSolid,
-		check: ShieldCheckSolid,
-		pending: QuestionCircleSolid
+		person: HeldGlyph,
+		unknown: HeldGlyph,
+		dependency: HeldGlyph,
+		promotion: HeldGlyph,
+		clock: HeldGlyph,
+		check: HeldGlyph,
+		pending: HeldGlyph
 	};
 
 	export function iconForKind(kind: StoryIconKind) {
@@ -76,6 +81,9 @@
 	}
 
 	export function iconForStory(story: Story) {
+		// A fault (DuplicateSite, a wave gap, a self-upstream) is an error, not a hold: the error
+		// tone's own glyph, the one AlertPanel defaults to.
+		if (story.severity === 'error') return ExclamationCircleSolid;
 		return iconForKind(story.iconKind);
 	}
 </script>
@@ -107,7 +115,21 @@
 	import type { Snippet } from 'svelte';
 
 	let {
-		story,
+		story: liveStory,
+		/**
+		 * ⭐ THE FACT+CAUSE TITLE, WHEN THE CALLER HAS ONE. (2026-10-10,
+		 * design-rollout TL commit "held-cause-phrase".) Optional, additive —
+		 * every existing caller (`/apps/<name>`, `/environments`, `/envs/<name>`,
+		 * `/dependencies`, `ControlCenter`) omits it and keeps printing
+		 * `story.headline` byte-identical to before. Only the rollout detail
+		 * page's own Overview banner passes `holdCausePhrase(story, { place })`
+		 * here — the one surface this pass is scoped to — so the KIND/RULE dump
+		 * a bare count headline ("Two things are holding PROD") used to lead
+		 * with becomes the actual fact+cause sentence, while every other
+		 * caller's banner is unchanged. The disclosed `› Details` record below
+		 * is untouched either way; this only ever picks the headline.
+		 */
+		title: titleOverride = null,
 		/** Extra controls in the banner's right-hand slot (e.g. a details popover). */
 		actions,
 		/**
@@ -138,14 +160,37 @@
 		 * else on this panel to go.
 		 */
 		secondaryFact,
-		class: className = 'mb-4'
+		class: className = 'mb-4',
+		/**
+		 * The caller's own condition for this banner. Pass it here rather than
+		 * wrapping the panel in `{#if}`, so the banner COLLAPSES out when it
+		 * stops being true instead of vanishing in one frame — see
+		 * `AlertPanel`'s `open`.
+		 */
+		open = true
 	}: {
 		story: BlockingStory;
+		title?: string | null;
 		actions?: Snippet;
 		showRules?: boolean;
 		secondaryFact?: string | null;
+		open?: boolean;
 		class?: string;
 	} = $props();
+
+	const shownOpen = $derived(open && !!(liveStory.pinnedTo || liveStory.blocked));
+	/**
+	 * The story the banner was telling, held while it collapses out: this
+	 * panel's message and record are snippets that read `story` live, so on
+	 * the way out they would re-render from the cleared story (no rules, a
+	 * different consequence) under the reader. See `AlertPanel`'s `open`.
+	 */
+	// svelte-ignore state_referenced_locally
+	let story = $state.raw<Story>(liveStory);
+	$effect.pre(() => {
+		const next = liveStory;
+		if (shownOpen) story = next;
+	});
 
 	const icon = $derived(iconForStory(story));
 
@@ -200,6 +245,12 @@
 	 * lives now (see its own doc comment in `blocking-story.ts`) — a caller
 	 * that re-derives colour from `pinnedTo` can drift from it exactly as
 	 * this one did.
+	 *
+	 * ⭐ DESIGN LANGUAGE (2026-10-08): the view-model's `warning` means "a
+	 * RULE is holding this", and a rule hold is HELD — orange, AlertPanel's
+	 * `pinned` palette. Amber (`warning`) now means STUCK and nothing else, so
+	 * the mapping happens here, at the one place the story becomes colour.
+	 * `info` (a person's choice, the pin) passes through unchanged.
 	 */
 </script>
 
@@ -249,28 +300,27 @@
 	{/if}
 {/snippet}
 
-{#if story.pinnedTo || story.blocked}
-	<!-- ⚠️ THE SNIPPET IS PASSED CONDITIONALLY, NOT GUARDED INSIDE ITSELF. A
-	     snippet reference is always truthy, so handing one over unconditionally
-	     would give `AlertPanel` a body it must render — and with no gates that
-	     is a labelled control opening onto nothing, which is the empty
-	     disclosure its own test file forbids. With no gates the story still has
-	     a `resolution`, so it falls back to the sentence form and `Details`. -->
-	<AlertPanel
-		severity={story.severity}
-		title={story.headline}
-		message={story.kindPending || hasSecondaryFact ? undefined : story.consequence}
-		messageBody={story.kindPending
-			? consequencePending
-			: hasSecondaryFact
-				? consequenceWithSecondaryFact
-				: undefined}
-		footnote={gates.length === 0 ? story.resolution : undefined}
-		footnoteBody={gates.length === 0 ? undefined : gateBody}
-		footnoteCount={gates.length === 0 ? undefined : gates.length}
-		{icon}
-		{actions}
-		class={className}
-		pulse={story.severity === 'warning'}
-	/>
-{/if}
+<!-- ⚠️ THE SNIPPET IS PASSED CONDITIONALLY, NOT GUARDED INSIDE ITSELF. A
+     snippet reference is always truthy, so handing one over unconditionally
+     would give `AlertPanel` a body it must render — and with no gates that
+     is a labelled control opening onto nothing, which is the empty
+     disclosure its own test file forbids. With no gates the story still has
+     a `resolution`, so it falls back to the sentence form and `Details`. -->
+<AlertPanel
+	severity={story.severity === 'warning' ? 'pinned' : story.severity}
+	title={titleOverride ?? story.headline}
+	message={story.kindPending || hasSecondaryFact ? undefined : story.consequence}
+	messageBody={story.kindPending
+		? consequencePending
+		: hasSecondaryFact
+			? consequenceWithSecondaryFact
+			: undefined}
+	footnote={gates.length === 0 ? story.resolution : undefined}
+	footnoteBody={gates.length === 0 ? undefined : gateBody}
+	footnoteCount={gates.length === 0 ? undefined : gates.length}
+	{icon}
+	{actions}
+	class={className}
+	pulse={story.severity === 'warning'}
+	open={shownOpen}
+/>

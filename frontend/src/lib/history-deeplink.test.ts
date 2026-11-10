@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { DEPLOY_PARAM, deployKey, findDeployIndex } from './history-deeplink';
+import { DEPLOY_PARAM, deployKey, findDeployIndex, autoExpandFailedLiveIndex } from './history-deeplink';
 
 /**
  * The cases here are the live `hello-world-prod/hello-world-app` history read
@@ -70,5 +70,48 @@ describe('findDeployIndex', () => {
 
 	test('the parameter name is stable, because it ships in URLs people paste', () => {
 		expect(DEPLOY_PARAM).toBe('deploy');
+	});
+});
+
+/**
+ * (Logs AD round 9, item D1, binding, 2026-10-12) "History must open at
+ * scroll 0. The rule 'open the failed live entry expanded by default'
+ * means expanded in place, never scrolled to." The page never calls
+ * `revealEntry` (which scrolls) for this case — it mutates its own
+ * `expandedIdx` directly, keyed on exactly this function's return value.
+ * `window.scrollY` is not a meaningful assertion in jsdom (there is no
+ * layout/scroll engine under it — `scrollIntoView` is an unimplemented
+ * no-op there and `scrollY` reads 0 unconditionally regardless of what the
+ * code does), so this tests the actual DECISION the page's own `$effect`
+ * is built on instead: WHICH index it silently expands, and that an
+ * explicit `?deploy=` always defers to the normal, scrolling path
+ * (`revealEntry`, exercised separately via `findDeployIndex` above) rather
+ * than this one.
+ */
+describe('autoExpandFailedLiveIndex', () => {
+	const failedLive = [{ bakeStatus: 'Failed' }, { bakeStatus: 'Succeeded' }];
+	const healthyLive = [{ bakeStatus: 'Succeeded' }, { bakeStatus: 'Succeeded' }];
+
+	test('the live entry failed, no ?deploy= param: expands index 0 (the auto-expand path — never scrolled to)', () => {
+		expect(autoExpandFailedLiveIndex(failedLive, false)).toBe(0);
+	});
+
+	test('a ?deploy= param is present: defers entirely, even though the live entry failed (the deep link keeps its own scroll)', () => {
+		expect(autoExpandFailedLiveIndex(failedLive, true)).toBeNull();
+	});
+
+	test('the live entry is healthy: nothing to auto-expand', () => {
+		expect(autoExpandFailedLiveIndex(healthyLive, false)).toBeNull();
+	});
+
+	test('no history yet (direct load, query still in flight): nothing to auto-expand', () => {
+		expect(autoExpandFailedLiveIndex([], false)).toBeNull();
+		expect(autoExpandFailedLiveIndex(null, false)).toBeNull();
+		expect(autoExpandFailedLiveIndex(undefined, false)).toBeNull();
+	});
+
+	test('a failed PAST entry (not the live one) does not auto-expand anything', () => {
+		const resolved = [{ bakeStatus: 'Succeeded' }, { bakeStatus: 'Failed' }];
+		expect(autoExpandFailedLiveIndex(resolved, false)).toBeNull();
 	});
 });

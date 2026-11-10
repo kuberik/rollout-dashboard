@@ -113,6 +113,42 @@ export function gateAllows(
 	return gate.passing !== false; // no allow-list published — fall back to passing
 }
 
+/**
+ * ⭐ THE ONE SHARED PREDICATE FOR "IS THIS BUILD HELD, AND BY WHAT". (U-5,
+ * 2026-10-08.) Every NAME in `rollout.status.gates` that refuses `tag` —
+ * read straight off the controller's own published status, same as
+ * `gateAllows` above. Deliberately returns NAMES, never requiring a
+ * `RolloutGate` CRD object to exist for a name to count.
+ *
+ * ⛔ THE DEFECT THIS CLOSES. Rollout detail's own `getBlockingGates` used to
+ * map each blocking status-gate entry to a `RolloutGate` object from the
+ * page's `rolloutGates` fetch and DROP any entry it could not match —
+ * so a status gate whose CRD object the API didn't return (or that has
+ * none — a promotion-order gate, on the live cluster) silently vanished
+ * from every "is this held" read built on top of it. Measured on
+ * `checkout-api`/`prod-us-east-2`: `promotion-prod-us-east-2`
+ * (`allowedVersions: [b-40..b-43]`) held `4.44.0-44`/`4.45.0-45` back, the
+ * Gates tab (which reads `status.gates` directly via `candidatesHeldByGate`
+ * below, never through a CRD object) said so, and the Overview tab's
+ * "Newer builds" row and the Change Version dialog both said `Ready` —
+ * because their shared root, `getBlockingGates`, required an object this
+ * payload never had.
+ *
+ * Every caller that needs "is X held" — the Gates tab's `rolloutGateBoxes`
+ * (via `candidatesHeldByGate`, below), `deploy-risk.ts`'s `gatesAllow`
+ * (via `gateAllows`), `ChangeVersionModal`'s `isDeployable` (below), and
+ * rollout detail's own `getBlockingGates`/`classifyBlockingGates` — reads
+ * this exact rule now. A RolloutGate CRD object is only ever used for
+ * DISPLAY (a pretty name, a description annotation) downstream of this,
+ * never to decide whether a name belongs in the list.
+ */
+export function blockingGateNames(rollout: Rollout | null | undefined, tag: string | null): string[] {
+	if (!tag) return [];
+	return (rollout?.status?.gates ?? [])
+		.filter((g) => g?.name && !gateAllows(g, tag))
+		.map((g) => g!.name as string);
+}
+
 // ReleaseRef declares `tag` optional (per the API contract), but
 // getDisplayVersion's signature requires it — real payload objects always
 // have it. Delegates to getDisplayVersion rather than reimplementing it.
@@ -236,6 +272,23 @@ export function isDeployable(rollout: Rollout | null | undefined, tag: string | 
 	const gates = rollout?.status?.gates ?? [];
 	if (!promotionCandidates(rollout).some((c) => gateKeyOf(c) === tag)) return false;
 	return gates.every((g) => gateAllows(g, tag));
+}
+
+/**
+ * THE CANDIDATES ONE NAMED GATE IS REFUSING, newest first — "which builds is
+ * this edge holding". Same `gateAllows`/`gateKeyOf` rule `promotionBlock`
+ * uses, applied to one gate instead of all of them, so a dependency edge and
+ * the rollout's own block verdict cannot disagree about a build. Empty when
+ * the rollout has not published the gate (an unread instrument is not a
+ * refusal).
+ */
+export function candidatesHeldByGate(
+	rollout: Rollout | null | undefined,
+	gateName: string
+): ReleaseRef[] {
+	const gate = (rollout?.status?.gates ?? []).find((g) => g?.name === gateName);
+	if (!gate) return [];
+	return promotionCandidates(rollout).filter((c) => !gateAllows(gate, gateKeyOf(c)));
 }
 
 export function promotionBlock(rollout: Rollout | null | undefined): PromotionBlock {

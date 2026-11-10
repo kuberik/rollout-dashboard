@@ -1,4 +1,5 @@
 import type { Environment, Rollout } from '../types';
+import { canonicalTier } from './view-models/sites-waves';
 
 export const ENVIRONMENT_THEME_ANNOTATION = 'dashboard.rollout.kuberik.com/theme';
 export const ENVIRONMENT_THEME_COLOR_ANNOTATION = 'dashboard.rollout.kuberik.com/theme-color';
@@ -165,18 +166,48 @@ export type EnvironmentTheme = Omit<ThemePreset, 'ramp'> &
  *
  * Do not re-solve either by nudging these four values. That is the loop this
  * revert exists to exit.
+ *
+ * ── 2026-10-08 · THE ACCENT STRIPE IS A SUPPORTING-VALUE CONSUMER, NEVER THE
+ * SEED ──────────────────────────────────────────────────────────────────
+ *
+ * `getEnvironmentThemeStyle`'s `--rollout-theme-accent` IS the seed
+ * (`theme.color`, unchanged — `utils.test.ts` still pins it literally) and
+ * stays exactly what it has always been; nothing above is reopened. But
+ * `Navbar`'s 4px `.environment-theme-accent` top stripe used to PAINT with
+ * that seed directly, which on prod means a solid `#d97706` bar — full seed
+ * saturation, not the chip's already-dimmed `borderColor` step — across the
+ * top of every healthy prod page. Amber at that strength is this product's
+ * ONE alarm colour (`stuck`), so a page that is not stuck opened with a
+ * warning-coloured bar for no reason (U-35). The stripe now paints with
+ * `--rollout-theme-border` / `--rollout-theme-dark-border` instead — CSS
+ * variables this function ALREADY emits, carrying `theme.borderColor` /
+ * `theme.darkBorderColor`, a value this file ALREADY chose for exactly this
+ * hue family, several steps quieter than the seed (amber-200 light /
+ * amber-800 dark vs the seed's amber-600) — the same steps the chip's own
+ * border already paints with. No new variable, no new colour value: the
+ * stripe (`app.css`'s `.environment-theme-accent`) just reads the OTHER
+ * variable this function already produced. `--rollout-theme-accent` (the
+ * seed) is untouched and still reaches every other consumer — the chip
+ * identity, `oklabChroma`'s own measurements, `utils.test.ts`'s literal
+ * assertion — exactly as before. The stripe is kept (it is the dashboard
+ * feature #12 the human asked for), only painted with the quieter member of
+ * a pair this file already had, so a healthy prod page no longer reads as
+ * an alarm.
  */
 const PRESET_RAMPS = {
 	/** green-700 / green-300 / green-50 · green-950 / green-800 / green-200 */
+	// ⭐ DESIGN LANGUAGE (2026-10-08): IDENTITY NEVER WEARS A STATUS HUE.
+	// Green is `success`, so DEV moved to TEAL (Tailwind teal ramp, h≈185),
+	// which also ends the DEV-ink = `newest`-green = `Succeeded`-glyph collision
+	// Chip.svelte spent a page measuring.
 	dev: {
-		textColor: '#008236',
-		borderColor: '#7bf1a8',
-		surfaceColor: '#f0fdf4',
-		darkSurfaceColor: '#032e15',
-		darkBorderColor: '#016630',
-		darkTextColor: '#b9f8cf'
+		textColor: '#00786f',
+		borderColor: '#46ecd5',
+		surfaceColor: '#f0fdfa',
+		darkSurfaceColor: '#022f2e',
+		darkBorderColor: '#005f5a',
+		darkTextColor: '#96f7e4'
 	},
-	/** violet-800 / violet-300 / violet-50 · violet-950 / violet-900 / violet-200 */
 	staging: {
 		textColor: '#5d0ec0',
 		borderColor: '#c4b4ff',
@@ -186,15 +217,34 @@ const PRESET_RAMPS = {
 		darkTextColor: '#ddd6ff'
 	},
 	/** amber-900 / amber-200 / amber-50 · amber-950 / amber-800 / amber-100 */
+	// ⭐ DESIGN LANGUAGE (2026-10-08): PROD IS FUCHSIA, NOT AMBER. Amber is
+	// `stuck` and nothing else; a healthy production page must not open in the
+	// alarm colour.
+	//
+	// ⛔ "≥60° from red and from violet STAGING" (the line that used to sit
+	// here) WAS NEVER MEASURED. (2026-10-11, demo/chain-order — the human
+	// found staging's and prod's identity dots reading as one colour at
+	// 6-8px.) The identity dot (`PRESET_THEMES.prod.color`, not this ramp)
+	// is what actually carries that hue at dot size; measured in OKLCH, the
+	// old `#c800de` sat only ~30° from staging's `#7c3aed` (H 322.8 vs
+	// 293.0), CIEDE2000 12.4 at the dot's own rendered (chroma-capped)
+	// colour — well inside "same colour" at that size. The dot is now
+	// `#ed00ab` (OKLCH H 345.7, 52.7° from staging). `.chip-env-dot`
+	// (app.css) caps the dot's rendered chroma at 0.14 regardless of the
+	// seed's; measured at THAT capped colour (what actually reaches the
+	// screen): dE2000 20.65 from staging's capped colour, and ≥20 from
+	// every capped state hue (danger closest at 20.1; warning/held/
+	// progress/active/success all ≥30). This ramp (borders/fills at card
+	// size, where contrast carries legibility instead of hue separation)
+	// is unchanged.
 	prod: {
-		textColor: '#7b3306',
-		borderColor: '#fee685',
-		surfaceColor: '#fffbeb',
-		darkSurfaceColor: '#461901',
-		darkBorderColor: '#973c00',
-		darkTextColor: '#fef3c6'
+		textColor: '#a800b7',
+		borderColor: '#f4a8ff',
+		surfaceColor: '#fdf4ff',
+		darkSurfaceColor: '#4b004f',
+		darkBorderColor: '#8a0194',
+		darkTextColor: '#f6cfff'
 	},
-	/** cyan-700 / cyan-300 / cyan-50 · cyan-950 / cyan-800 / cyan-200 */
 	test: {
 		textColor: '#007595',
 		borderColor: '#53eafd',
@@ -206,10 +256,10 @@ const PRESET_RAMPS = {
 } satisfies Record<string, EnvironmentRamp>;
 
 const PRESET_THEMES: Record<string, ThemePreset> = {
-	dev: { label: 'Development', color: '#16a34a', ramp: PRESET_RAMPS.dev },
-	development: { label: 'Development', color: '#16a34a', ramp: PRESET_RAMPS.dev },
-	prod: { label: 'Production', color: '#d97706', ramp: PRESET_RAMPS.prod },
-	production: { label: 'Production', color: '#d97706', ramp: PRESET_RAMPS.prod },
+	dev: { label: 'Development', color: '#009689', ramp: PRESET_RAMPS.dev },
+	development: { label: 'Development', color: '#009689', ramp: PRESET_RAMPS.dev },
+	prod: { label: 'Production', color: '#ed00ab', ramp: PRESET_RAMPS.prod },
+	production: { label: 'Production', color: '#ed00ab', ramp: PRESET_RAMPS.prod },
 	stage: { label: 'Staging', color: '#7c3aed', ramp: PRESET_RAMPS.staging },
 	staging: { label: 'Staging', color: '#7c3aed', ramp: PRESET_RAMPS.staging },
 	test: { label: 'Test', color: '#0891b2', ramp: PRESET_RAMPS.test },
@@ -400,18 +450,48 @@ function buildEnvironmentTheme(
 	};
 }
 
+/**
+ * `placeLabel` is the Environment's PLACE (`sites-waves.ts` `placeLabel`: the
+ * tier while it has one live site, `prod-eu-west-1` once it has several). The
+ * THEME (colour, preset) comes from the canonical TIER, so every site of a
+ * tier wears the tier's colour; the LABEL is the place, so two sites of one
+ * tier are two distinguishable marks. Callers that hold only one Environment
+ * and no fleet omit it and get the Environment's own `spec.environment`.
+ */
 export function getRolloutEnvironmentTheme(
 	rollout?: Rollout | null,
-	environment?: Environment | string | null
+	environment?: Environment | string | null,
+	placeLabel?: string | null
 ): EnvironmentTheme | null {
 	const annotations = rollout?.metadata?.annotations;
-	const environmentName = typeof environment === 'string' ? environment : environment?.spec?.environment;
+	// ⭐ U-11 FALLBACK, AT THE SOURCE (design rollout, 2026-10-08). An
+	// Environment can carry `spec.label` but no `spec.environment`
+	// (checkout-worker-staging): the chip then vanished from the breadcrumb and
+	// every page header except the Overview, which had its own fallback via
+	// `deploy-risk.ts`'s `rolloutEnvironmentName`. The rollout's own
+	// `metadata.labels.environment` is the same fact; read it here so every
+	// consumer of the theme gets it, not one call site.
+	//
+	// ONLY WHEN AN ENVIRONMENT MATCHED (QA 2, 2026-10-08). A rollout with no
+	// Environment record at all (`hello-world-manifests`, labelled env=dev but
+	// unbound) must stay theme-less: `hasEnvironment()` and /rollouts'
+	// `isUnlinked` read "no theme" as "not in a promotion chain".
+	const specName = typeof environment === 'string' ? environment : environment?.spec?.environment;
+	const environmentName =
+		(typeof environment === 'object' && environment && specName ? placeLabel : undefined) ||
+		specName ||
+		(environment && typeof environment === 'object'
+			? rollout?.metadata?.labels?.environment?.trim()
+			: undefined) ||
+		undefined;
 
 	const themeValue = annotations?.[ENVIRONMENT_THEME_ANNOTATION]?.trim();
 	const colorValue = annotations?.[ENVIRONMENT_THEME_COLOR_ANNOTATION]?.trim();
 	if (!themeValue && !colorValue && !environmentName) return null;
 
-	const inferredPresetName = environmentName ? presetNameFromEnvironmentName(environmentName) : null;
+	// The preset follows the TIER, not the place: `prod-eu-west-1` is prod's colour.
+	const presetSource = canonicalTier(specName) ?? environmentName;
+	const inferredPresetName = presetSource ? presetNameFromEnvironmentName(presetSource) : null;
 	const themeName = themeValue
 		? normalizeThemeName(themeValue)
 		: (inferredPresetName ?? (colorValue ? 'custom' : ''));

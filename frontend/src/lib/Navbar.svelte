@@ -1,16 +1,18 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { isApplePlatform } from '$lib/shortcut-hint';
 	import { onMount } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { MoonSolid, SunSolid, SearchOutline } from 'flowbite-svelte-icons';
+	import { parseChangeSlug } from '$lib/pr-ref';
+	import { MoonOutline, SunOutline, SearchOutline } from 'flowbite-svelte-icons';
 	import LogoDark from '$lib/assets/logo-rotate-dark.svg?raw';
 	import LogoLight from '$lib/assets/logo-rotate-light.svg?raw';
 	import { theme } from '$lib/stores/theme';
 	import { setDisplayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
 	import { displayTimeZoneName } from '$lib/display-time';
 	import type { Rollout } from '../types';
-	import { Badge } from 'flowbite-svelte';
 	import { ChevronSortOutline } from 'flowbite-svelte-icons';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutsListQueryOptions, rolloutQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
@@ -22,6 +24,9 @@
 	import { getEnvironmentThemeStyle, getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import type { Environment } from '../types';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
+	import { href, appPath } from '$lib/paths';
+	import type { GateContext } from '$lib/view-models/blocking-story';
+	import { cardContext } from '$lib/view-models/card-context';
 
 	let currentTheme = $state<'light' | 'dark'>('light');
 	const timeZoneTitle = $derived(
@@ -32,36 +37,59 @@
 	let switcherOpen = $state(false);
 	let isMac = $state(false);
 
+	/**
+	 * ⛔ U-26 — THE BREADCRUMB ENV CHIP UNCAPS ONLY WHERE THERE IS ROOM.
+	 * (2026-10-08.) The chip below was deliberately NOT `wide` (see its own
+	 * comment) because at a narrow width — right at `sm`, where this crumb
+	 * first appears — a long namespace/name pair and a 147px region chip on
+	 * one non-wrapping row genuinely do compete for space. But that reasoning
+	 * does not hold at 1440, where the finding measured ~350px sitting empty
+	 * while `PROD-US-EAST-2` clipped to `PROD-US…` for no width reason at
+	 * all. `lg` (1024px) is the floor the rollout layout itself already
+	 * treats as "plenty of room" (`.dpc-desktop`'s own master-detail split).
+	 */
+	const roomForWideEnvChip = new MediaQuery('(min-width: 1024px)', false);
+
 	theme.subscribe((value) => {
 		currentTheme = value;
 	});
 
 	onMount(() => {
 		theme.init();
-		isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+		isMac = isApplePlatform(navigator.platform);
 	});
 
-	const isRolloutPage = $derived(page.url.pathname.match(/^\/rollouts\/[^/]+\/[^/]+/) !== null);
-	const appDetailMatch = $derived(page.url.pathname.match(/^\/apps\/([^/]+)/));
-	const envDetailMatch = $derived(page.url.pathname.match(/^\/envs\/([^/]+)/));
-	const nsDetailMatch = $derived(page.url.pathname.match(/^\/namespaces\/([^/]+)/));
+	const isRolloutPage = $derived(appPath(page.url.pathname).match(/^\/rollouts\/[^/]+\/[^/]+/) !== null);
+	const appDetailMatch = $derived(appPath(page.url.pathname).match(/^\/apps\/([^/]+)/));
+	const envDetailMatch = $derived(appPath(page.url.pathname).match(/^\/envs\/([^/]+)/));
+	const nsDetailMatch = $derived(appPath(page.url.pathname).match(/^\/namespaces\/([^/]+)/));
+	// /changes/<host>/<owner>/<repo>/(pull/<n> | <sha>): the crumb names the change by its short ref ("#14", "a1b2c3d").
+	const changeRef = $derived.by(() => {
+		const m = appPath(page.url.pathname).match(/^\/changes\/(.+)$/);
+		if (!m) return null;
+		const parsed = parseChangeSlug(m[1].split('/').filter(Boolean).map((s) => { try { return decodeURIComponent(s); } catch { return s; } }));
+		if (!parsed) return null;
+		return parsed.ref.kind === 'pull' ? `#${parsed.ref.number}` : parsed.ref.sha.slice(0, 7);
+	});
 
 	// Section breadcrumb: every page belongs to a section. Render as a
 	// plain static link (no dropdown) — sidebar is the section switcher.
+	// `base` is a build-time constant, so resolving `href()` once here (not
+	// per-render) is safe.
 	type Section = { key: string; label: string; href: string };
 	const SECTIONS: readonly Section[] = [
-		{ key: 'control', label: 'Home', href: '/' },
-		{ key: 'rollouts', label: 'Rollouts', href: '/rollouts' },
-		{ key: 'apps', label: 'Apps', href: '/apps' },
-		{ key: 'environments', label: 'Environments', href: '/environments' },
-		{ key: 'activity', label: 'Activity', href: '/activity' },
-		{ key: 'changes', label: 'Changes', href: '/changes' },
+		{ key: 'control', label: 'Home', href: href('/') },
+		{ key: 'rollouts', label: 'Rollouts', href: href('/rollouts') },
+		{ key: 'apps', label: 'Apps', href: href('/apps') },
+		{ key: 'environments', label: 'Environments', href: href('/environments') },
+		{ key: 'activity', label: 'Activity', href: href('/activity') },
+		{ key: 'changes', label: 'Changes', href: href('/changes') },
 		// Reached from a rollout's Dependencies tab ("Whole network ›"), not from
 		// the sidebar — so the crumb is the only thing on the page that names it.
-		{ key: 'dependencies', label: 'Dependencies', href: '/dependencies' }
+		{ key: 'dependencies', label: 'Dependencies', href: href('/dependencies') }
 	];
 	const currentSection = $derived.by<Section>(() => {
-		const p = page.url.pathname;
+		const p = appPath(page.url.pathname);
 		if (p.startsWith('/apps')) return SECTIONS[2];
 		if (p.startsWith('/environments') || p.startsWith('/envs/')) return SECTIONS[3];
 		if (p.startsWith('/activity')) return SECTIONS[4];
@@ -82,6 +110,7 @@
 		if (appDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(appDetailMatch[1]), mono: false };
 		if (envDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(envDetailMatch[1]), mono: false };
 		if (nsDetailMatch) return { kind: 'item' as const, item: decodeURIComponent(nsDetailMatch[1]), mono: false };
+		if (changeRef) return { kind: 'item' as const, item: changeRef, mono: true };
 		return null;
 	});
 
@@ -146,6 +175,27 @@
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	const allRollouts = $derived(allRolloutsQuery.data?.rollouts?.items || []);
 	const allEnvironments = $derived<Environment[]>(allRolloutsQuery.data?.environments?.items || []);
+	// ⛔ U-2 CLASS FIX (2026-10-09). The command palette's `cardNeedsYou`
+	// filter reads `RolloutCard.stuck`, which now runs the same
+	// `detectRolloutStuck` join every list surface does — see
+	// `rollout-cards.ts`'s own doc comment. Without a real `GateContext` the
+	// palette would (conservatively) over-count rather than silently
+	// under-count like before, but every surface should supply the same
+	// join rather than lean on that fallback.
+	//
+	// ⛔ shared/cards-join (2026-10-11): this used to stop at `gateContext`,
+	// with no `contractHoldsFor` passed down to `CommandPalette` at all — a
+	// rollout held ONLY by a `RolloutDependency` contract read `held: false`
+	// in the palette while `/` correctly called it held. `cardContext` is
+	// Home's own construction, lifted — see that module's own doc.
+	const paletteCardCtx = $derived(
+		cardContext({
+			rollouts: allRollouts,
+			environments: allRolloutsQuery.data?.environments ?? null,
+			rolloutDependencies: allRolloutsQuery.data?.rolloutDependencies ?? null
+		})
+	);
+	const paletteGateContext = $derived<GateContext>(paletteCardCtx.gateContext);
 	const rolloutTheme = $derived(
 		rollout ? getRolloutEnvironmentTheme(rollout, rolloutQuery.data?.environment) : null
 	);
@@ -175,7 +225,7 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <nav
-	class="environment-theme-scope relative sticky top-0 z-50 w-full border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+	class="environment-theme-scope relative sticky top-0 z-50 w-full bg-ground {isRolloutPage ? '' : 'border-b border-line'}"
 	style={rolloutThemeStyle}
 	aria-label="Global"
 >
@@ -183,12 +233,14 @@
 	     it. As a 4px block it made the navbar 57px on rollout detail and 53px
 	     everywhere else, so every sidebar item and the page under it dropped
 	     4px the moment you opened a rollout and rose again when you left. -->
-	{#if rolloutTheme}
-		<div class="absolute inset-x-0 top-0 h-1 environment-theme-accent" aria-hidden="true"></div>
-	{/if}
-	<div class="flex w-full flex-wrap items-center justify-between px-2 py-2 sm:px-4">
+	<!-- ⛔ THE 4px ENVIRONMENT STRIPE IS GONE (design language, 2026-10-08,
+	     coordinator review). Identity is quiet: a full-width band in the
+	     environment's hue made PROD's fuchsia the loudest hue on every prod
+	     rollout page. The environment is named by the neutral env chip in the
+	     breadcrumb and the page header. -->
+	<div class="flex min-h-[52px] w-full flex-wrap items-center justify-between px-2 py-2 sm:px-6">
 		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-			<a href="/" class="flex shrink-0 items-center space-x-2 sm:space-x-3 rtl:space-x-reverse">
+			<a href={href('/')} class="flex shrink-0 items-center space-x-2 sm:hidden rtl:space-x-reverse">
 				<div class="flex h-7 w-7 items-center justify-center sm:h-8 sm:w-8">
 					<div
 						class="h-full w-full [&>svg]:h-full [&>svg]:max-h-full [&>svg]:w-full [&>svg]:max-w-full"
@@ -196,7 +248,7 @@
 						{@html currentTheme === 'dark' ? LogoDark : LogoLight}
 					</div>
 				</div>
-				<span class="hidden font-montserrat text-xl font-thin text-gray-600 dark:text-gray-400 sm:inline"
+				<span class="t-heading hidden text-fg-muted sm:inline"
 					>kuberik</span
 				>
 			</a>
@@ -205,9 +257,13 @@
 			     page; item chevron opens the unified CommandPalette scoped
 			     to that kind. Same palette everywhere. Hidden on the home page —
 			     the logo is the home affordance, no named crumb. -->
-			{#if currentSection.key !== 'control'}
+			{#if currentSection.key === 'control'}
+				<!-- From `sm` up the bar is the page's location; Home names itself
+				     (the logo is the home affordance only on the phone). -->
+				<span class="t-ui hidden px-2 text-fg sm:inline">Home</span>
+			{:else}
 			<div class="flex min-w-0 items-center gap-1">
-				<span class="hidden h-5 w-px bg-gray-300 dark:bg-gray-600 sm:block"></span>
+				
 				<!-- Below `sm` the SECTION word yields to the ITEM when there is one.
 				     (operator walk, 2026-09-03) At 390 the two crumbs split ~100px
 				     and both ellipsised — `R… / hello…` on a rollout, `Enviro… / p…`
@@ -216,81 +272,95 @@
 				     one thing only this bar can say, so it gets the width. -->
 				<a
 					href={currentSection.href}
-					class="truncate rounded px-2 py-1 text-base font-light text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700/60 sm:text-lg {detailContext
+					class="truncate rounded px-2 py-1 t-ui text-fg transition-colors hover:bg-hover {detailContext
 						? 'hidden sm:inline'
 						: ''}"
 				>{currentSection.label}</a>
 
 				{#if detailContext?.kind === 'rollout' && rollout}
-					<span class="hidden select-none text-base text-gray-500 sm:inline dark:text-gray-400" aria-hidden="true">/</span>
+					<span class="t-body hidden select-none text-fg-disabled sm:inline" aria-hidden="true">/</span>
 					<button
 						type="button"
 						onclick={() => { paletteScope = 'rollout'; switcherOpen = true; }}
-						class="group flex min-w-0 items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700/60"
+						class="group flex min-w-0 items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-hover"
 						aria-haspopup="dialog"
 						aria-expanded={switcherOpen}
-						aria-label="Switch rollout (⌘K)"
+						aria-label={isMac ? 'Switch rollout (⌘K)' : 'Switch rollout (Ctrl K)'}
 						title={isMac ? 'Switch rollout (⌘K)' : 'Switch rollout (Ctrl K)'}
 					>
 						<span class="flex min-w-0 items-baseline gap-1.5">
-							<span class="hidden truncate text-sm text-gray-500 dark:text-gray-400 sm:inline">
+							<span class="t-body hidden truncate text-fg-subtle sm:inline">
 								{rollout.metadata?.namespace}
 							</span>
-							<span class="hidden text-gray-500 dark:text-gray-400 sm:inline">/</span>
-							<span class="truncate text-sm font-semibold text-gray-900 dark:text-white">
+							<span class="t-body hidden text-fg-disabled sm:inline">/</span>
+							<span class="t-ui truncate text-fg">
 								{rollout.metadata?.name}
 							</span>
 							{#if rolloutTheme}
 								<span class="hidden shrink-0 sm:inline-flex">
-									<!-- DELIBERATELY NOT `wide` (2026-08-26). Every other env chip in the
-									     product was widened in the clipping pass; this one and the two in
-									     `CommandPalette` were not. This is CHROME, not content: the breadcrumb
-									     prints the namespace and the rollout name in full immediately to its
-									     left, and the bar is a SINGLE NON-WRAPPING ROW, so a 147px region chip
-									     here takes its width straight out of the rollout name -- the exact
-									     row-eating the 12ch cap exists to prevent. The full name is in `title`,
-									     and the rollout page’s own H1 chip, 60px below it, IS `wide`. -->
+									<!-- NOT `wide` BELOW `lg` (2026-08-26, reversed in part
+									     2026-10-08 — see `roomForWideEnvChip`). Every other env
+									     chip in the product was widened in the clipping pass;
+									     this one and the two in `CommandPalette` were kept
+									     capped, because at `sm` the breadcrumb prints the
+									     namespace and the rollout name in full immediately to
+									     its left on a SINGLE NON-WRAPPING ROW, and a 147px
+									     region chip there takes its width straight out of the
+									     rollout name -- the exact row-eating the 12ch cap
+									     exists to prevent.
+									     ⛔ U-26 — BUT THAT TRADE DOES NOT HOLD AT 1440, where the
+									     finding measured ~350px sitting empty while
+									     `PROD-US-EAST-2` clipped to `PROD-US…` regardless. Wide
+									     only from `lg`, where the row has the room this
+									     component cannot see for itself. The full name is still
+									     in `title` below `lg`, and the rollout page's own H1
+									     chip, 60px below it, has always been `wide`. -->
 									<Chip
 										role="env"
 										theme={rolloutTheme}
 										label={shortEnvLabel(rolloutTheme) || rolloutTheme.label}
 										title={rolloutTheme.label}
+										wide={roomForWideEnvChip.current}
 									/>
 								</span>
 							{/if}
 						</span>
-						<kbd class="t-micro hidden shrink-0 font-mono text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200 md:inline-block">
+						<!-- U-26: `self-center leading-none` — the kbd's own line box (15.4px
+						     at this `t-micro` size) sat slightly below the 14px chevron icon
+						     beside it even under the row's `items-center`; pinning both to the
+						     same cross-axis centre and collapsing the kbd's line-height removes
+						     the half-pixel-scale drift. -->
+						<kbd class="t-code-sm hidden shrink-0 self-center leading-none text-fg-subtle transition-colors group-hover:text-fg-muted md:inline-block">
 							{isMac ? '⌘K' : 'Ctrl K'}
 						</kbd>
-						<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
+						<ChevronSortOutline class="h-3 w-3 shrink-0 text-fg-subtle transition-colors group-hover:text-fg" />
 					</button>
 				{:else if detailContext?.kind === 'item'}
-					<span class="hidden select-none text-base text-gray-500 sm:inline dark:text-gray-400" aria-hidden="true">/</span>
+					<span class="t-body hidden select-none text-fg-disabled sm:inline" aria-hidden="true">/</span>
 					{@const itemScope = appDetailMatch ? 'app' : envDetailMatch ? 'env' : nsDetailMatch ? 'namespace' : null}
 					<button
 						type="button"
 						onclick={() => { if (itemScope) { paletteScope = itemScope; switcherOpen = true; } }}
 						disabled={!itemScope}
-						class="group flex min-w-0 items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-gray-100 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-gray-700/60 dark:disabled:hover:bg-transparent"
+						class="group flex min-w-0 items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent"
 						aria-haspopup={itemScope ? 'dialog' : undefined}
 						aria-expanded={itemScope ? switcherOpen : undefined}
-						aria-label={`Switch ${currentSection.label.toLowerCase()}`}
+						aria-label={itemScope ? `Switch ${currentSection.label.toLowerCase()}` : undefined}
 					>
-						<span class="truncate text-sm font-semibold text-gray-900 dark:text-white {detailContext.mono ? 'font-mono' : ''}" title={detailContext.item}>
+						<span class="truncate text-fg {detailContext.mono ? 't-code' : 't-ui'}" title={detailContext.item}>
 							{detailContext.item}
 						</span>
 						{#if itemScope}
-							<ChevronSortOutline class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-colors group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
+							<ChevronSortOutline class="h-3 w-3 shrink-0 text-fg-subtle transition-colors group-hover:text-fg" />
 						{/if}
 					</button>
 				{/if}
 			</div>
 			{/if}
 		</div>
-		<div class="flex shrink-0 items-center gap-2 sm:gap-2.5">
-			{#if import.meta.env.VITE_APP_VERSION}
-				<Badge color="gray" class="hidden bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400 sm:inline-flex">{import.meta.env.VITE_APP_VERSION}</Badge>
-			{/if}
+		<!-- From `sm` up these live in the sidebar's footer; the phone keeps them here. -->
+		<div class="flex shrink-0 items-center gap-2 sm:hidden">
+
 			<!-- ⭐ THE ONLY WAY TO OPEN THE PALETTE, ON THE HOME PAGE, AT ANY
 			     WIDTH, WAS A PHYSICAL KEYBOARD SHORTCUT. (P8 follow-on,
 			     2026-09-03) The breadcrumb's item chevron only renders on
@@ -300,9 +370,16 @@
 			     imported into this file and never rendered. At 390 there is no
 			     physical keyboard to press ⌘K/Ctrl K on, so this button is the
 			     ONLY way in on a phone, not a convenience. -->
+			<!-- ⛔ ITEM 10 (integration round 3): was its own `rounded-lg
+			     bg-gray-100 p-2` box — a FILLED pill with no border, a
+			     different shape from every other icon button this bar now
+			     draws. `.btn .btn-secondary .btn-icon` is the one 36px
+			     square (height, radius, border token) `Deploy`/`View on
+			     GitHub` already use; icon buttons never invent a second
+			     one. -->
 			<button
 				type="button"
-				class="rounded-lg bg-gray-100 p-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+				class="btn btn-ghost btn-icon"
 				onclick={() => {
 					paletteScope = null;
 					switcherOpen = true;
@@ -312,7 +389,7 @@
 				aria-label={isMac ? 'Search (⌘K)' : 'Search (Ctrl K)'}
 				title={isMac ? 'Search (⌘K)' : 'Search (Ctrl K)'}
 			>
-				<SearchOutline class="h-5 w-5" />
+				<SearchOutline class="h-5 w-5" strokeWidth="1.75" />
 			</button>
 			<GithubConnectButton />
 			<!-- Grafana's "Browser time / UTC" switch: one tap flips every clock the
@@ -320,23 +397,30 @@
 			     See `$lib/timezone.svelte`. -->
 			<button
 				type="button"
-				class="h-9 rounded-lg bg-gray-100 px-2.5 text-xs font-semibold text-gray-800 tabular-nums transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+				class="btn btn-ghost btn-sm"
 				onclick={() => setDisplayTimeZone(timeZonePreference.zone === 'utc' ? 'local' : 'utc')}
 				aria-label={timeZoneTitle}
 				title={timeZoneTitle}
 			>
 				{timeZonePreference.zone === 'utc' ? 'UTC' : 'Local'}
 			</button>
+			<!-- ⛔ D-13 (integrate-fixa, 2026-10-08) — SunSolid/MoonSolid were the
+			     only solid glyphs among this bar's icon buttons (Search is
+			     `SearchOutline`, the breadcrumb's chevrons are `ChevronSortOutline`);
+			     swapped to the outline pair so every icon button in the top bar
+			     draws from the same glyph family. Box/size unchanged. -->
+			<!-- ITEM 10: same `.btn-secondary.btn-icon` box as Search above —
+			     see that button's own comment. -->
 			<button
-				class="rounded-lg bg-gray-100 p-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+				class="btn btn-ghost btn-icon"
 				onclick={() => theme.toggle()}
 				aria-label={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
 				title={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
 			>
 				{#if currentTheme === 'dark'}
-					<SunSolid class="h-5 w-5" />
+					<SunOutline class="h-5 w-5" strokeWidth="1.75" />
 				{:else}
-					<MoonSolid class="h-5 w-5" />
+					<MoonOutline class="h-5 w-5" strokeWidth="1.75" />
 				{/if}
 			</button>
 		</div>
@@ -348,10 +432,13 @@
 	bind:scope={paletteScope}
 	rollouts={allRollouts}
 	environments={allEnvironments}
+	gateContext={paletteGateContext}
+	contractHoldsFor={paletteCardCtx.contractHoldsFor}
 	{localClusterName}
 	currentNamespace={namespace}
 	currentName={name}
 	loading={allRolloutsQuery.isLoading}
 	{myPulls}
+	rolloutDependencies={allRolloutsQuery.data?.rolloutDependencies?.items ?? []}
 />
 

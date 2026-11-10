@@ -2,130 +2,85 @@
 
 <script lang="ts">
 	/**
-	 * ══ `/activity` — THE COMPOSITION PASS AND THE NOVICE PASS, TOGETHER ═════
-	 *
-	 * This page had received NEITHER. Six pages got titled cards, icons, a
-	 * filled banner and real buttons; six pages then had their vocabulary
-	 * rewritten. `/activity` got a colour fix and nothing else, and a live UX
-	 * critique named it **the page with the worst attention ordering in the
-	 * product**. Five findings, all reproducible on the live cluster, and what
-	 * each one became:
-	 *
-	 * ── 1. THE LOUDEST OBJECT WAS A FILTER BUTTON ───────────────────────────
-	 * The `7d` pill measured 207.8 presence — louder than the `stuck` alarm
-	 * anywhere in the product — and sat 0.059 dEok from `Deploying` blue, so a
-	 * CONTROL wore a STATE's hue. Fixed in the 2026-08-27 colour pass for the
-	 * state-pill rows; the env chip row was left on record here as "VERIFIED"
-	 * while its own selected state was still a 40%-alpha `ring`, not a fill —
-	 * a fourth re-check (F1, 2026-09-03) caught the gap between what this
-	 * comment claimed and what shipped. `.env-filter-selected` (app.css) now
-	 * gives the pressed env chip the same solid `gray-900`/`gray-100` fill,
-	 * so this sentence is finally true: every filter row on this page shares
-	 * one near-neutral selected state, and nothing is allowed to be louder
-	 * than a failed deploy.
-	 *
-	 * ── 2. `Show changes` EXPANDED TO NOTHING ───────────────────────────────
-	 * See `ChangeList.svelte`. The control is `What changed` now and every
-	 * branch of it renders an answer, including the branch where kuberik has
-	 * no GitHub token — which on this cluster is every branch.
-	 *
-	 * ── 3. ROWS FOR DIFFERENT ENVIRONMENTS WERE BYTE-IDENTICAL ──────────────
-	 * THIS WAS A GUARD, NOT A DATA GAP, AND THE PAGE ALREADY HAD THE ANSWER.
-	 * The env chip was rendered `{#if entry.envName}`, and `envName` comes only
-	 * from a matching `Environment` OBJECT. Three `hello-world-manifests`
-	 * rollouts have no `Environment`; they carry
-	 * `dashboard.rollout.kuberik.com/theme: prod|dev|staging` instead, which
-	 * the page was ALREADY using to tint the row's `environment-theme-scope`.
-	 * So the product knew the environment, coloured the row with it, and
-	 * refused to print it — three rows reading
-	 * `rollout-controller deployed hello-world-manifests 56d1725 was f368353`,
-	 * for three different places. The guard is `entry.theme || entry.envName`
-	 * now, and the label falls back through `shortEnvLabel(theme)`.
-	 * A SECOND disambiguator backs it up: when two events in view share an app
-	 * name AND an environment, the row prints its NAMESPACE. On this cluster
-	 * that fires zero times, which is the point — it appears only when the
-	 * chip is not enough.
-	 *
-	 * ── 4. THE CHART WAS EMPTY BY DEFAULT ───────────────────────────────────
-	 * A fixed `7d` default against a cluster whose whole history is one day:
-	 * 39 deploys as one dot at `now` across ~1100px of empty grid. The window
-	 * is COMPUTED to fit the data now (smallest preset that contains the
-	 * oldest event) and stops being computed the moment the reader touches a
-	 * button. And the chart earned its space by changing what it plots: it was
-	 * ONE lane called `All deploys` — a strip plot of a list that is already
-	 * below it — and it is now ONE LANE PER ENVIRONMENT, which is a question
-	 * the feed cannot answer at a glance: did prod get these deploys too, and
-	 * how long after dev?
-	 *
-	 * ── 5. THERE WAS A LEGEND ON THIS PAGE ──────────────────────────────────
-	 * `DeploymentTimeline`'s five-swatch key was deleted on 2026-08-27 and did
-	 * not come back — verified in the DOM. The only remaining LEGEND-SHAPED
-	 * object was the row of env chips floating at the right of the filter bar,
-	 * which are controls that looked like a key. They sit in ONE control strip
-	 * with the state filters now, they carry `aria-pressed`, and each says
-	 * what it does on hover. Its job is done instead by: the day card's
-	 * right-aligned rollup (`12 deploys · all fine` / `9 deploys · 1 failed`),
-	 * the state word printed in plain English on every row that is not the
-	 * norm, and the banner.
+	 * ══ `/activity` — squad-changes, lane D ═════════════════════════════════
+	 * The fleet's deploy feed: `DeployBars` (design-rollout's shared chart
+	 * primitive, `lib/components/charts/DeployBars.svelte`) over a feed of
+	 * `ActivitySentence` rows. Replaced the 25-lane environment dot strip
+	 * and the one-pill-per-region filter row.
 	 */
+	import FilterChip from '$lib/components/FilterChip.svelte';
 	import { displayTimeZone } from '$lib/timezone.svelte';
+	import { formatClockTime } from '$lib/display-time';
 	import { startOfDayMs } from '$lib/display-time';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions } from '$lib/api/rollouts';
 	import { rolloutMatchesEnvironment, sourceClusterName, rolloutPath } from '$lib/source-dashboard';
-	import { changeBuildPath, repoKeyFromSource } from '$lib/version-utils';
 	import {
 		formatTimeAgoCompact,
 		formatTimeAgo,
-		formatDate,
 		getDisplayVersion,
 		shortenVersion
 	} from '$lib/utils';
-	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
-	import { getStatusCircleClass, BAKE_WORD, bakeTitle } from '$lib/bake-status';
+	import { actorFrom, type Actor } from '$lib/actor';
+	import { activityVerb, type ActivityKind } from '$lib/view-models/activity-verb';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
 		shortEnvLabel
 	} from '$lib/environment-theme';
-	import { compareEnvironmentNames } from '$lib/env-order';
+	import { compareEnvironmentNames, getEnvironmentRank } from '$lib/env-order';
+	import { activityKindOf } from '$lib/view-models/activity-kind';
 	import { now } from '$lib/stores/time';
 	import {
-		ClockSolid,
-		CalendarMonthSolid,
-		ChartLineUpOutline,
+		ClockOutline,
+		CalendarMonthOutline,
+		ChartOutline,
 		ExclamationCircleSolid,
-		UndoOutline
+		ListOutline,
+		RocketSolid,
+		UndoOutline,
+		ArrowsRepeatOutline
 	} from 'flowbite-svelte-icons';
 	import { deployActs, type DeployAct } from '$lib/history-marks';
+	import { historyEntrySince } from '$lib/view-models/event-age';
+	import { entryKey } from '$lib/activity-deeplink';
+	import { tierOf, TIER_ORDER, type Tier } from '$lib/view-models/promotion-lanes';
+	import { canonicalTier } from '$lib/view-models/sites-waves';
 	import {
-		ACTIVITY_DEPLOY_PARAM,
-		activityAnnouncement,
-		entryKey,
-		findEntryIndex
-	} from '$lib/activity-deeplink';
-	import { announce } from '$lib/stores/announce.svelte';
-	import { tick } from 'svelte';
+		groupActivityEntries,
+		type GroupableEntry,
+		type ActivityGroup
+	} from '$lib/view-models/activity-groups';
+	import { bucketize, type DeployBucket, type DeployMarker } from '$lib/view-models/deploy-bars';
+	import { pickDefaultRange } from '$lib/view-models/activity-range';
+	import { deployReason, deployMark } from '$lib/view-models/activity-note';
+	import { inFlightRollouts, deployRateSub, isInFlightEntry } from '$lib/view-models/activity-figures';
+	import { medianTimeToProdMs as medianTimeToProdMsOf } from '$lib/view-models/activity-time-to-prod';
+	import { reachedProdTimestamps } from '$lib/view-models/reached-prod';
 
 	/** The one member of `DeployAct` this page ever attaches to a row. */
 	type RollbackAct = Extract<DeployAct, { kind: 'rollback' }>;
-	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
-	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
+	import DeployBars from '$lib/components/charts/DeployBars.svelte';
+	import DeployLegend from '$lib/components/charts/DeployLegend.svelte';
+	import FeedRow from '$lib/components/activity/FeedRow.svelte';
+	import ListCard from '$lib/components/new/ListCard.svelte';
+	import SectionHeader from '$lib/components/SectionHeader.svelte';
+	import AppGlyph from '$lib/components/AppGlyph.svelte';
+	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import ChangeList from '$lib/components/ChangeList.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import Card from '$lib/components/Card.svelte';
-	import NextStep from '$lib/components/NextStep.svelte';
-	import Chip from '$lib/components/Chip.svelte';
-	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
+	import KpiTile, { type KpiDelta } from '$lib/components/KpiTile.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { Environment } from '../../types';
 	import { rememberShape, recallShape } from '$lib/skeleton-hints';
+	import { pageTitle } from '$lib/page-title';
 
 	const rolloutsQuery = createQuery(() =>
 		rolloutsListQueryOptions({
@@ -144,7 +99,6 @@
 	const environments = $derived<Environment[]>(rolloutsQuery.data?.environments?.items || []);
 
 	type PresetRange = '1h' | '6h' | '1d' | '7d' | '30d' | 'all';
-	type TimeRange = PresetRange | { start: number; end: number };
 
 	const RANGE_MS: Record<string, number> = {
 		'1h': 3_600_000,
@@ -153,10 +107,11 @@
 		'7d': 604_800_000,
 		'30d': 2_592_000_000
 	};
-	/** Smallest first — the auto window picks the first one that fits. */
-	const RANGE_ORDER: PresetRange[] = ['1h', '6h', '1d', '7d', '30d'];
 
 	type ActivityEntry = {
+		/** `entryKey`'s own string — also `GroupableEntry`'s `key`, so this
+		 *  type can feed `groupActivityEntries` without a second id. */
+		key: string;
 		rolloutName: string;
 		rolloutNamespace: string;
 		displayName: string;
@@ -169,6 +124,11 @@
 		versionInfo: { tag: string; version?: string; revision?: string };
 		previousVersion: string | null;
 		bakeStatus: string;
+		/** The controller's own failure message — `categorizeFailure`'s
+		 *  input, the same field `rollout-cards.ts`'s `failureCategory`
+		 *  reads, so a grouped row's "failed to deploy" vs "failed its
+		 *  health check" never drifts from the Needs-you row's. */
+		bakeStatusMessage: string | null;
 		timestamp: string;
 		href: string;
 		actor: string;
@@ -193,7 +153,9 @@
 		cluster: string | undefined;
 		/**
 		 * This row is the rollout's CURRENT deploy — its newest history entry.
-		 * The only row a rank may be attached to; see `ranks`.
+		 * Weights the name (`t-card-title` vs `t-body`) the way `ActivityRail`
+		 * does; carries no rank any more (see the course-correction note
+		 * where `allEntries` used to read `rankVerdictsByRollout`, below).
 		 */
 		isLive: boolean;
 		rollout: (typeof rollouts)[number];
@@ -220,23 +182,24 @@
 	};
 
 	/**
-	 * ⭐ THE FEED LED WITH THE SHA AND CARRIED NO RELATIVE SIGNAL. (2026-09-01)
+	 * ⭐ THE FEED LED WITH THE SHA AND CARRIED NO RELATIVE SIGNAL, AND THEN
+	 * THE FIX GREW A THIRD EMPHASIS. (2026-09-01, course-corrected round 2
+	 * review 2026-10-08.)
 	 *
 	 * `DESIGN-INTENT.md`'s standing rule is that the RELATIVE version is the
-	 * signal and the sha is usually noise, and this page printed sixty shas and
-	 * nothing else. The joined `[verdict][sha]` chip `/` and `/rollouts` draw is
-	 * the reference form and `env-rank.ts` is the one derivation.
+	 * signal and the sha is usually noise, and this page used to print sixty
+	 * shas and nothing else — the first fix was a joined `[verdict][sha]`
+	 * chip on the live row, `env-rank.ts`'s one derivation.
 	 *
-	 * ⛔ IT GOES ON THE LIVE ROW AND NOWHERE ELSE. A rank is a fact about an
-	 * environment's upgrade path AS IT IS NOW; a deploy from Tuesday has no
-	 * distance from today's head, and printing one would attach a number that
-	 * moves when some OTHER rollout deploys to a row that has not changed. The
-	 * newest history entry of each rollout IS the present tense, so it takes the
-	 * verdict unchanged; every older row keeps the plain `prev → new` pair. The
-	 * chip's presence is therefore also what says "this is still what is
-	 * running" — one mark, two jobs, no legend. Same ruling as `ActivityRail`.
+	 * ⛔ BUT A RANK CHIP, EVEN ON ONLY ONE ROW, IS A THIRD EMPHASIS — the row
+	 * already spends its two on the NAME and ONE state word. `ActivityRail`
+	 * reached the same page and reversed it on 2026-10-08 (see that file's
+	 * own note above `versionSnippet`): no rank chip anywhere, live row
+	 * included. The relative signal survives as the plain `prev → new` pair
+	 * every row already carries — the live row's own POSITION (sorted
+	 * newest first, one row per entry) is what says "this is current", not
+	 * a second encoding on top of it.
 	 */
-	const ranks = $derived(rankVerdictsByRollout(rollouts, environments));
 
 	// ── EVERY EVENT, UNFILTERED ────────────────────────────────────────────
 	const allEntries = $derived.by<ActivityEntry[]>(() => {
@@ -286,6 +249,11 @@
 					}
 				}
 				entries.push({
+					key: entryKey({
+						rolloutNamespace: rollout.metadata?.namespace || '',
+						rolloutName: rollout.metadata?.name || '',
+						timestamp: h.timestamp
+					}),
 					rolloutName: rollout.metadata?.name || '',
 					rolloutNamespace: rollout.metadata?.namespace || '',
 					displayName: rollout.metadata?.name || '',
@@ -296,7 +264,16 @@
 					versionInfo: h.version,
 					previousVersion,
 					bakeStatus: h.bakeStatus || 'None',
-					timestamp: h.timestamp,
+					bakeStatusMessage: h.bakeStatusMessage ?? null,
+					// ⭐ shared/age-lag-total: ONE AGE PER EVENT. A Failed row used to
+					// show the deploy's own START (`h.timestamp`) here — this page has
+					// its own entry list (never `ActivityRail.svelte`, which Home's
+					// rail uses), so it needed the identical fix separately or it
+					// would keep disagreeing with every other surface for the exact
+					// row the banner above names. `entryKey` above is left reading
+					// the raw `h.timestamp` on purpose — deep links into this page are
+					// keyed by the real history entry, not by the display instant.
+					timestamp: h.bakeStatus === 'Failed' ? (historyEntrySince(h) ?? h.timestamp) : h.timestamp,
 					href: rolloutPath(
 						sourceClusterName(rollout) || localClusterName,
 						rollout.metadata?.namespace || '',
@@ -321,6 +298,20 @@
 		);
 	});
 
+	/** `activityKindOf`'s own `firstEnvRank` — the lowest environment rank
+	 *  this APP (by display name) is seen deploying to anywhere in the
+	 *  fleet, so "promoted" can tell a build carried forward PAST the app's
+	 *  own starting tier from a build that is simply arriving at it. */
+	const firstEnvRankByApp = $derived.by(() => {
+		const out = new Map<string, number>();
+		for (const e of allEntries) {
+			const rank = getEnvironmentRank(e.envKey || e.envLabel);
+			const cur = out.get(e.displayName);
+			if (cur === undefined || rank < cur) out.set(e.displayName, rank);
+		}
+		return out;
+	});
+
 	// ── FILTERS ────────────────────────────────────────────────────────────
 	// Synced with ?env=&app=&ns=&kind= so a filtered feed is deeplinkable —
 	// paste "the four that need attention", refresh, and Back all have to
@@ -332,6 +323,44 @@
 	const appFilter = $derived(page.url.searchParams.get('app'));
 	const nsFilter = $derived(page.url.searchParams.get('ns'));
 
+	/**
+	 * ⭐ TIER PILLS, NOT ONE PILL PER REGION (squad-changes, lane D). The old
+	 * env-chip row floated one `.pill` per `Environment` object — up to 25 on
+	 * a real fleet, scrolling off the right edge of the strip. `tierOf`
+	 * (`promotion-lanes.ts`, the same classifier Home's fleet track uses)
+	 * folds every region into dev/test/staging/prod, so `prod-us-east-2` and
+	 * `prod-ap-northeast-1` are one pill: `prod`. `envFilter` (`?env=`) stays
+	 * — `/envs/[name]` deep-links here with a specific region — but nothing
+	 * on this page draws a pill for it any more; it shows as a "Showing
+	 * only" chip instead, same as `app`/`ns`.
+	 */
+	const tierFilter = $derived<Tier | null>(
+		(() => {
+			const raw = page.url.searchParams.get('tier');
+			// Aliases ("production", "development", "stage") name the same tier.
+			return canonicalTier(raw);
+		})()
+	);
+	const TIER_FILTERS: { key: Tier; label: string }[] = [
+		{ key: 'dev', label: 'dev' },
+		{ key: 'test', label: 'test' },
+		{ key: 'staging', label: 'staging' },
+		{ key: 'prod', label: 'prod' }
+	];
+	function setTierFilter(next: Tier) {
+		setParam('tier', next === tierFilter ? null : next);
+	}
+
+	/** `DeployBars`' range pills — the chart renders no toggles of its own. */
+	const CHART_RANGES: { value: PresetRange; label: string }[] = [
+		{ value: '1h', label: '1h' },
+		{ value: '6h', label: '6h' },
+		{ value: '1d', label: '1d' },
+		{ value: '7d', label: '7d' },
+		{ value: '30d', label: '30d' },
+		{ value: 'all', label: 'All' }
+	];
+
 	function setParam(key: string, next: string | null) {
 		const params = new URLSearchParams(page.url.searchParams);
 		if (next) params.set(key, next);
@@ -340,11 +369,12 @@
 		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
 	}
 	function clearAllFilters() {
+		selectedBucket = null;
 		goto('?', { replaceState: false, noScroll: true, keepFocus: true });
 	}
 
 	const activeFilterCount = $derived(
-		(envFilter ? 1 : 0) + (appFilter ? 1 : 0) + (nsFilter ? 1 : 0)
+		(envFilter ? 1 : 0) + (appFilter ? 1 : 0) + (nsFilter ? 1 : 0) + (tierFilter ? 1 : 0)
 	);
 
 	// FOUR STATES, NOT THREE. The old row was `All / Deploys / In progress /
@@ -370,21 +400,40 @@
 			return raw === 'in_flight' || raw === 'failed' || raw === 'rolled_back' ? raw : 'all';
 		})()
 	);
+	/**
+	 * ⭐ NO `all` PILL (round 4 review, 2026-10-09) — the owner's standing
+	 * rule for every filter row in the product (`/rollouts`, the env row
+	 * right here): no selection IS all, so there is nothing for an `All`
+	 * pill to do that clicking the pressed pill again does not already do.
+	 * `setKindFilter` toggles now — pressing the ACTIVE pill clears back to
+	 * `all` — which is the only way back to "everything" with the pill gone.
+	 */
 	function setKindFilter(next: KindFilter) {
-		setParam('kind', next === 'all' ? null : next);
+		setParam('kind', next === kindFilter ? null : next === 'all' ? null : next);
 	}
-	const KIND_FILTERS: { key: KindFilter; label: string; title: string }[] = [
-		{ key: 'all', label: 'All', title: 'Every deploy in this window' },
+	const KIND_FILTERS: {
+		key: Exclude<KindFilter, 'all'>;
+		label: string;
+		title: string;
+		dot: string;
+	}[] = [
+		{
+			key: 'failed',
+			label: 'Failed',
+			title: 'Deploys that did not finish cleanly',
+			dot: 'bg-danger-solid'
+		},
 		{
 			key: 'in_flight',
 			label: 'In flight',
-			title: 'Deploys still going out or still being checked'
+			title: 'Deploys still going out or still being checked',
+			dot: 'bg-active-solid'
 		},
-		{ key: 'failed', label: 'Failed', title: 'Deploys that did not finish cleanly' },
 		{
 			key: 'rolled_back',
 			label: 'Rolled back',
-			title: 'Deploys that moved a rollout to an OLDER build than it was already running'
+			title: 'Deploys that moved a rollout to an OLDER build than it was already running',
+			dot: 'bg-fg-subtle'
 		}
 	];
 	// ⛔ TAKES THE ENTRY, NOT JUST `bakeStatus`, NOW. A rollback IS a
@@ -395,315 +444,335 @@
 		if (kindFilter === 'all') return true;
 		if (kindFilter === 'failed') return e.bakeStatus === 'Failed';
 		if (kindFilter === 'rolled_back') return isRolledBack(e);
-		return e.bakeStatus === 'InProgress' || e.bakeStatus === 'Deploying';
+		return isInFlightEntry(e);
 	}
 
-	/** Everything the reader has scoped to, WITHOUT the time window. */
-	const scoped = $derived(
-		allEntries
+	/** Every filter but the one axis a pill count needs to ignore — so
+	 *  pressing `Failed` doesn't also erase `Failed`'s own count from the
+	 *  pill row. `/apps`' `statusPills` is the reference for this shape. */
+	function applyFilters(
+		entries: ActivityEntry[],
+		opts: { skipKind?: boolean; skipTier?: boolean } = {}
+	): ActivityEntry[] {
+		return entries
 			.filter((e) => !envFilter || e.envKey === envFilter)
 			.filter((e) => !appFilter || e.rolloutName === appFilter)
 			.filter((e) => !nsFilter || e.rolloutNamespace === nsFilter)
-			.filter((e) => matchesKind(e))
-	);
+			.filter((e) => opts.skipTier || !tierFilter || tierOf(e.envKey || e.envLabel) === tierFilter)
+			.filter((e) => opts.skipKind || matchesKind(e));
+	}
 
-	// ── THE WINDOW, COMPUTED TO FIT THE DATA ───────────────────────────────
-	// `Date.now()` and not `$now`: this must recompute when the DATA changes,
-	// not once a second. A ticking clock here would fight the reader for the
-	// control every time the second hand moved.
-	const autoRange = $derived.by<PresetRange>(() => {
-		let oldest = Number.POSITIVE_INFINITY;
-		for (const e of allEntries) {
-			const t = new Date(e.timestamp).getTime();
-			if (t < oldest) oldest = t;
-		}
-		if (!Number.isFinite(oldest)) return '1d';
-		const age = Date.now() - oldest;
-		return RANGE_ORDER.find((k) => RANGE_MS[k] >= age) ?? 'all';
-	});
+	/** Everything the reader has scoped to, WITHOUT the time window. */
+	const scoped = $derived(applyFilters(allEntries));
+	const scopedNoKind = $derived(applyFilters(allEntries, { skipKind: true }));
+	const scopedNoTier = $derived(applyFilters(allEntries, { skipTier: true }));
 
+	// ── THE WINDOW ──────────────────────────────────────────────────────────
+	/**
+	 * ⭐ THE DEFAULT RANGE COMES FROM THE DATA (round 4 review, 2026-10-09,
+	 * AD finding 1(a)): "choose the default range from the data: the
+	 * narrowest of 1d/7d/30d that holds at least 80% of the window's
+	 * deploys, so the plot is never two-thirds empty." A fixed `7d` default
+	 * — tried in round 2 to stop `All` from opening on a mostly-empty
+	 * 30-day plot — traded one empty-plot shape for another: a burst of
+	 * activity inside the last day still opened on a `7d` window that was
+	 * 6/7 baseline. Picking the NARROWEST range that already contains most
+	 * of the window's own deploys means the plot opens dense, whatever the
+	 * fleet's actual rhythm is.
+	 */
 	let rangeTouched = $state(false);
-	let timelineRange = $state<TimeRange>('1d');
+	let timelineRange = $state<PresetRange>('7d');
+	/**
+	 * Recomputes on every `allEntries` change while untouched — a poll that
+	 * brings in a burst of new deploys can legitimately change which preset
+	 * is narrowest-and-dense. Stops recomputing, permanently, the instant
+	 * the reader presses a pill (`rangeTouched`) — their choice is never
+	 * overridden, even by fresh data. `pickDefaultRange` itself is pure,
+	 * tested in isolation (`$lib/view-models/activity-range.test.ts`).
+	 */
 	$effect(() => {
-		const auto = autoRange;
 		if (rangeTouched) return;
-		if (timelineRange !== auto) timelineRange = auto;
+		const next = pickDefaultRange(
+			allEntries.map((e) => new Date(e.timestamp).getTime()),
+			Date.now()
+		);
+		if (timelineRange !== next) timelineRange = next;
 	});
 
+	/**
+	 * ⛔ `Date.now()`, NOT `$now` — FOUND DURING ROUND 2 REVIEW, 2026-10-08.
+	 * `$now` (`$lib/stores/time`) is a `readable` whose INITIAL value is
+	 * whatever `new Date()` returned the moment that module was first
+	 * imported (module-eval time, which in a test is before `vi.useFakeTimers`
+	 * ever runs) — it only becomes accurate once its own 100ms `setInterval`
+	 * has ticked at least once. Reading it here meant `windowed` could go
+	 * empty against a STALE clock for that first ~100ms of a render, which a
+	 * message test (`rollback-mark.svelte.test.ts`) surfaced the moment this
+	 * page gained a second always-rendered match for its assertion's text
+	 * query and stopped incidentally retrying long enough for `$now` to
+	 * self-correct. The one behaviour this gives
+	 * up: a "last 1h" window no longer silently drops a row the SECOND it
+	 * ages out while the tab sits open — it still ages out on the next poll
+	 * (15-60s, `pollWhenHealthy`), which recomputes `allEntries` and this
+	 * derivation with it.
+	 */
 	function inRange(ts: string): boolean {
 		const t = new Date(ts).getTime();
 		if (timelineRange === 'all') return true;
-		if (typeof timelineRange === 'object')
-			return t >= timelineRange.start && t <= timelineRange.end;
-		return t >= $now.getTime() - (RANGE_MS[timelineRange] ?? Number.POSITIVE_INFINITY);
+		return t >= Date.now() - (RANGE_MS[timelineRange] ?? Number.POSITIVE_INFINITY);
 	}
 	const rangeLabel = $derived(
 		timelineRange === 'all'
 			? 'all time'
-			: typeof timelineRange === 'object'
-				? 'the selected window'
-				: ({
-						'1h': 'the last hour',
-						'6h': 'the last 6 hours',
-						'1d': 'the last day',
-						'7d': 'the last 7 days',
-						'30d': 'the last 30 days'
-					}[timelineRange] ?? '')
+			: ({
+					'1h': 'the last hour',
+					'6h': 'the last 6 hours',
+					'1d': 'the last day',
+					'7d': 'the last 7 days',
+					'30d': 'the last 30 days'
+				}[timelineRange] ?? '')
 	);
 
 	// UNCAPPED — the chart card's own rollup (below) has to answer for the
 	// whole window, not just the sixty rows the list renders. `feed` stays
-	// the list's own cap, unchanged.
+	// the list's own cap, unchanged. A clicked bar (`selectedBucket`, below)
+	// narrows `feed` further, never the window's own totals — those answer
+	// for the window the chart's pills set, not for one bucket of it.
 	const windowed = $derived(scoped.filter((e) => inRange(e.timestamp)));
-	const feed = $derived(windowed.slice(0, 60));
+
+	/** Pill counts (round 2 review, 2026-10-09: "put the zero/non-zero
+	 *  counts in each pill, as on /rollouts"). Each counts the WINDOW with
+	 *  every filter applied except its own axis, same reason `scopedNoKind`/
+	 *  `scopedNoTier` exist. */
+	const windowedNoKind = $derived(scopedNoKind.filter((e) => inRange(e.timestamp)));
+	const windowedNoTier = $derived(scopedNoTier.filter((e) => inRange(e.timestamp)));
+	const kindCounts = $derived({
+		failed: windowedNoKind.filter(isFailed).length,
+		in_flight: windowedNoKind.filter(isInFlight).length,
+		rolled_back: windowedNoKind.filter(isRolledBack).length
+	});
+	const tierCounts = $derived.by<Record<Tier, number>>(() => {
+		const counts: Record<Tier, number> = { dev: 0, test: 0, staging: 0, other: 0, prod: 0 };
+		for (const e of windowedNoTier) counts[tierOf(e.envKey || e.envLabel)]++;
+		return counts;
+	});
+	const feed = $derived(
+		windowed.filter((e) => inSelectedBucket(e.timestamp)).slice(0, 60)
+	);
 
 	/** The row's own time. Rows sit under a DAY header, so "1d" restated the
 	 *  header and made two rollbacks an hour apart byte-identical; the clock
-	 *  is the one thing the header does not say. `title` keeps the full date. */
-	function clockOf(iso: string): string {
-		return new Date(iso).toLocaleTimeString([], {
-			hour: '2-digit',
-			minute: '2-digit',
-			timeZone: displayTimeZone()
-		});
-	}
-
-	// ── ONE LANE PER ENVIRONMENT ───────────────────────────────────────────
-	// The chart used to be a single lane labelled `All deploys`, which is a
-	// strip plot of the list directly beneath it. Split by environment it
-	// answers something the list cannot: whether prod got the same deploys,
-	// and how far behind. Ordered dev → staging → prod by the product's one
-	// rank (`env-order.ts`), so the lanes read as the promotion direction.
-	const chartServices = $derived.by(() => {
-		const lanes = new Map<
-			string,
-			{
-				id: string;
-				name: string;
-				history: {
-					timestamp: string;
-					bakeStatus?: string;
-					version: { tag: string; version?: string; revision?: string };
-					subject?: string;
-					triggeredBy?: { kind: 'User' | 'System'; name: string };
-					mark?: 'rollback';
-					// ⭐ THE FEED-CORRELATION KEY'S TWO HALVES. (2026-09-04) A chart
-					// click hands `onEntryClick` a lane id and an index into THIS
-					// array — the lane is the ENVIRONMENT (`key` below), not the
-					// rollout, and several rollouts share one lane. Without these
-					// two fields there is nothing in a chart history entry that
-					// names WHICH rollout a mark belongs to, so the click handler
-					// could not build `entryKey` (`activity-deeplink.ts`) to find
-					// the matching feed row. Not part of `DeploymentTimeline`'s own
-					// `HistoryEntry` type — it only draws with what it declares —
-					// but structurally compatible (extra fields on a wider object).
-					rolloutNamespace: string;
-					rolloutName: string;
-				}[];
-				isCurrent: boolean;
-			}
-		>();
-		for (const e of scoped) {
-			const key = e.envLabel || e.rolloutNamespace || 'no environment';
-			let lane = lanes.get(key);
-			if (!lane) {
-				lane = { id: key, name: key, history: [], isCurrent: false };
-				lanes.set(key, lane);
-			}
-			lane.history.push({
-				timestamp: e.timestamp,
-				bakeStatus: e.bakeStatus,
-				version: e.versionInfo,
-				subject: e.displayName,
-				triggeredBy: { kind: e.actorKind, name: e.actor },
-				// ⭐ WIRES UP `DeploymentTimeline`'s OWN ROLLBACK RING — it has
-				// drawn one (a neutral-ink circle round the dot) since
-				// 2026-09-02, but nothing on this page ever passed `mark`, so
-				// it never fired here. One fact, one ink, in the chart AND the
-				// list now — see the colour note on `statusFill` for why the
-				// list's green disc stays (a dated, quoted human ruling), and
-				// `BakeStatusIcon`'s own rollback glyph swap below.
-				mark: e.rollbackAct ? ('rollback' as const) : undefined,
-				rolloutNamespace: e.rolloutNamespace,
-				rolloutName: e.rolloutName
-			});
-		}
-		return [...lanes.values()].sort((a, b) => compareEnvironmentNames(a.name, b.name));
-	});
-
-	// THE CHART SIZES ITSELF TO ITS OWN LANES, and both numbers were found by
-	// running the page against the 22-environment fixture:
-	//   · the gutter was 92px against `prod-ap-northeast-1`, so the label ran
-	//     off the left edge of the SVG;
-	//   · 22 lanes at 52px is a 1,144px chart — the whole viewport before the
-	//     reader reaches one event.
-	const chartLabelWidth = $derived(
-		Math.min(
-			168,
-			Math.max(72, 16 + chartServices.reduce((m, s) => Math.max(m, s.name.length), 0) * 6.7)
-		)
-	);
-	const chartRowHeight = $derived(chartServices.length > 6 ? 26 : 52);
-
-	// ── SELECTION: A CHART MARK AND A FEED ROW ARE THE SAME OBJECT ─────────
-	// `entryKey`/`findEntryIndex` (`$lib/activity-deeplink`) are the shared
-	// correlation key — see that file's header for why it is rollout identity
-	// + timestamp and not the revision `history-deeplink.ts` uses on the
-	// single-rollout History tab.
-
-	/** Element refs for scroll-to-entry, keyed by the SAME string `?deploy=`
-	    and a chart click both resolve against. */
-	const listEntryEls = new Map<string, HTMLElement>();
-	function registerEntry(node: HTMLElement, key: string) {
-		listEntryEls.set(key, node);
-		return {
-			update(newKey: string) {
-				listEntryEls.set(newKey, node);
-			},
-			destroy() {
-				listEntryEls.delete(key);
-			}
-		};
-	}
-
-	let selectedKey = $state<string | null>(null);
-
-	/** `selectedKey` translated into `DeploymentTimeline`'s own `{serviceId,
-	    index}` shape — its lane id is the ENVIRONMENT (`chartServices[i].id`),
-	    not the rollout, so this has to search rather than parse the key. */
-	const chartSelectedEntry = $derived.by(() => {
-		if (!selectedKey) return null;
-		for (const lane of chartServices) {
-			const index = lane.history.findIndex((h) => entryKey(h) === selectedKey);
-			if (index !== -1) return { serviceId: lane.id, index };
-		}
-		return null;
-	});
-
-	/** Smallest preset that contains an event this old — `autoRange`'s own
-	    formula, reused so revealing a row outside the CURRENT window widens
-	    it to the smallest one that actually shows the row, rather than
-	    selecting a row nothing on screen can scroll to. */
-	function presetContaining(ageMs: number): PresetRange {
-		return RANGE_ORDER.find((k) => RANGE_MS[k] >= ageMs) ?? 'all';
-	}
-
-	/**
-	 * ⭐ ONE WAY TO REVEAL A ROW, TWO THINGS THAT CALL IT — the same shape as
-	 * rollout detail's `revealEntry` (`history/+page.svelte`), ported to a
-	 * feed spanning many rollouts instead of one.
+	 *  is the one thing the header does not say. `title` keeps the full date.
 	 *
-	 * `focus` is the same deliberate split that page's version makes: a
-	 * `?deploy=` ARRIVAL moves focus onto the row, since nothing else on the
-	 * page has the reader's attention yet; a CHART CLICK leaves focus in the
-	 * chart, where the reader is still working — pulling it into the list
-	 * would break arrow-key traversal of the control they're using.
-	 */
-	function revealFeedEntry(key: string, opts: { focus?: boolean } = {}) {
-		const idx = findEntryIndex(scoped, key);
-		if (idx < 0) return;
-		const entry = scoped[idx];
-		const wasAlreadySelected = selectedKey === key;
-		selectedKey = key;
+	 *  ⛔ D-10 (2026-10-08, polish pass) — this used to be a bare
+	 *  `toLocaleTimeString` with no `hour12: false`, so a locale-default
+	 *  AM/PM reader ("06:49 AM") wrapped onto two lines in the 390 time
+	 *  column. `formatClockTime` is the one 24h clock-time formatter
+	 *  (`lib/display-time.ts`, the "system" lane's D-10/D-17 ruling). */
+	function clockOf(iso: string): string {
+		return formatClockTime(iso);
+	}
 
-		// ⚠️ THE ROW MAY SIT OUTSIDE THE CURRENT TIME WINDOW. `chartServices`
-		// (and so any mark a click can name) is filter-scoped but NOT
-		// time-windowed; `feed`/`groupedByDay` are both. A merged bubble's
-		// "select the newest member" fallback (`DeploymentTimeline`'s own
-		// `clusterActivation`, under its zoom-span floor) fires without
-		// moving `timeRange` — only a ZOOM does that — so its target can
-		// legitimately be just outside the window the reader is looking at.
-		// Widen to the smallest preset that includes it rather than leaving
-		// `selectedKey` pointed at a row nothing rendered.
-		if (!windowed.some((e) => entryKey(e) === key)) {
-			rangeTouched = true;
-			timelineRange = presetContaining(Date.now() - new Date(entry.timestamp).getTime());
+	// ── DEPLOY VOLUME BUCKETS — `DeployBars`' own `bucketize` (design-rollout's
+	// shared chart primitive, `$lib/view-models/deploy-bars`). This page
+	// keeps only the ONE thing that view-model doesn't decide for it: how
+	// many buckets a given preset range gets (its own bucketing algorithm is
+	// used as-is, never a second copy of it). `scoped` (filter-scoped, not
+	// time-windowed) is the chart's own input — its range buttons set the
+	// window, so it has to see further back than `windowed` to size `all`
+	// correctly.
+	const BUCKET_WIDTH_MS: Record<Exclude<PresetRange, 'all'>, number> = {
+		'1h': 5 * 60_000,
+		'6h': 15 * 60_000,
+		'1d': 3_600_000,
+		'7d': 6 * 3_600_000,
+		'30d': 86_400_000
+	};
+	/** Smallest-first — `all`'s own width steps up until the bucket count is sane. */
+	const ALL_BUCKET_WIDTHS = [
+		5 * 60_000,
+		15 * 60_000,
+		3_600_000,
+		6 * 3_600_000,
+		86_400_000,
+		7 * 86_400_000
+	];
+	const MAX_ALL_BUCKETS = 60;
+	function bucketWidthFor(range: PresetRange, spanMs: number): number {
+		if (range !== 'all') return BUCKET_WIDTH_MS[range];
+		for (const w of ALL_BUCKET_WIDTHS) if (spanMs / w <= MAX_ALL_BUCKETS) return w;
+		return ALL_BUCKET_WIDTHS[ALL_BUCKET_WIDTHS.length - 1];
+	}
+	const oldestScopedMs = $derived.by(() => {
+		let oldest = Number.POSITIVE_INFINITY;
+		for (const e of scoped) {
+			const t = new Date(e.timestamp).getTime();
+			if (t < oldest) oldest = t;
 		}
-
-		// Polite, not assertive — the reader's own action landing, not an
-		// alarm. The sentence itself lives in `activity-deeplink.ts` so the
-		// words have a test rather than only a render.
-		announce(
-			activityAnnouncement({
-				version: entry.version,
-				subject: entry.displayName,
-				envLabel: entry.envLabel || entry.envKey || null,
-				timestamp: entry.timestamp,
-				wasAlreadySelected
-			})
+		return Number.isFinite(oldest) ? oldest : null;
+	});
+	/** The window `DeployBars` plots — its own `startMs`/`endMs`/bucket count. */
+	const chartWindow = $derived.by(() => {
+		const end = Date.now();
+		const span =
+			timelineRange === 'all'
+				? Math.max(oldestScopedMs !== null ? end - oldestScopedMs : 0, BUCKET_WIDTH_MS['1h'])
+				: RANGE_MS[timelineRange];
+		let start = end - span;
+		let boundedEnd = end;
+		if (timelineRange === '30d') {
+			// ⭐ CALENDAR-ALIGNED DAY BUCKETS (round 6 review, 2026-10-09: "the
+			// bucket pill and the feed disagree"). At 30d the bucket width is
+			// a day; without this a bucket spans e.g. 14:32→14:32, which never
+			// matches the feed's own midnight-to-midnight day groups. Snap
+			// both edges to local midnight so bucket `i` IS calendar day `i`.
+			start = startOfDayMs(new Date(start));
+			boundedEnd = startOfDayMs(new Date(end)) + 86_400_000;
+		}
+		const count = Math.max(1, Math.ceil((boundedEnd - start) / bucketWidthFor(timelineRange, span)));
+		return { start, end: boundedEnd, count };
+	});
+	/**
+	 * ⭐ REACHED-PROD DEPTH (round 7 review, 2026-10-10): Home's own bucket
+	 * grid marks the bar a build first reached a prod-tier environment in,
+	 * drawn darker by the shared `DeployBars` — this chart draws it too now.
+	 * Pure logic lives in `$lib/view-models/reached-prod`, tested in
+	 * isolation; this just finds which bucket each timestamp falls in and
+	 * flips `emphasis`, the same grid `volumeBuckets` itself is built on.
+	 */
+	const volumeBuckets = $derived.by<DeployBucket[]>(() => {
+		const buckets = bucketize(
+			scoped.map((e) => new Date(e.timestamp).getTime()),
+			chartWindow.start,
+			chartWindow.end,
+			chartWindow.count
 		);
-
-		// ⚠️ THE ROW MAY NOT BE MOUNTED YET — widening the window above (or a
-		// direct load still waiting on the query) means it may not exist in
-		// the DOM this tick. `tick()` flushes the pending re-render; the frame
-		// after it is when `registerEntry` has the element — the same
-		// two-step `history/+page.svelte`'s version uses.
-		tick().then(() => {
-			const el = listEntryEls.get(key);
-			if (!el) return;
-			requestAnimationFrame(() => {
-				// Same arrival rules as the History tab (`lib/CLAUDE.md`,
-				// "Arriving is not the same interaction as clicking"): `start`
-				// on a deliberate arrival, so a row already just inside the
-				// viewport still gets pulled fully into view instead of
-				// `nearest` moving nothing and the fold slicing it; `nearest`
-				// for a chart click, where the reader can already see the whole
-				// page around the mark they clicked and hauling the list under
-				// it is disorienting. Not animated on arrival, for the same
-				// reason as that page's version — the reader never saw the
-				// position being animated away from.
-				el.scrollIntoView({
-					behavior: opts.focus ? 'auto' : 'smooth',
-					block: opts.focus ? 'start' : 'nearest'
-				});
-				if (opts.focus) {
-					el.querySelector<HTMLElement>('.tap-link')?.focus();
-				}
-			});
-		});
-	}
-
-	function handleChartEntryClick(serviceId: string, index: number) {
-		const lane = chartServices.find((s) => s.id === serviceId);
-		const entry = lane?.history[index];
-		if (!entry) return;
-		const key = entryKey(entry);
-		revealFeedEntry(key);
-		// Keeps the URL in step so a reload lands on the same row — the same
-		// idiom `setParam` already gives `?env=`/`?app=`/`?ns=`/`?kind=`.
-		setParam(ACTIVITY_DEPLOY_PARAM, key);
-		// ⚠️ PRE-LATCHED, NOT LEFT FOR THE DEEP-LINK EFFECT BELOW TO DISCOVER.
-		// That effect also watches `page.url`, and `setParam`'s `goto` changes
-		// it — without this it would see a NEW `?deploy=` value next tick and
-		// fire a SECOND `revealFeedEntry(key, { focus: true })`, yanking focus
-		// out of the chart the reader is still using (the exact thing `focus`
-		// exists to keep a plain chart click from doing). Same key, so the
-		// effect's own `deepLinkHandled === key` guard reads this as already
-		// handled and does nothing.
-		deepLinkHandled = `${page.url.pathname}?${key}`;
-	}
+		if (buckets.length === 0) return buckets;
+		const reached = reachedProdTimestamps(
+			scoped.map((e) => ({
+				releaseKey: `${e.displayName}::${e.version}`,
+				timestampMs: new Date(e.timestamp).getTime(),
+				isProd: tierOf(e.envKey || e.envLabel) === 'prod',
+				isRollback: isRolledBack(e)
+			}))
+		);
+		const width = (chartWindow.end - chartWindow.start) / buckets.length;
+		for (const ts of reached) {
+			if (ts < chartWindow.start || ts >= chartWindow.end) continue;
+			const idx = Math.min(buckets.length - 1, Math.floor((ts - chartWindow.start) / width));
+			buckets[idx].emphasis = true;
+		}
+		return buckets;
+	});
 
 	/**
-	 * ⭐ THE DEEP LINK, AND IT HAS TO SURVIVE A DIRECT LOAD — same shape as
-	 * `history/+page.svelte`'s own effect. `deepLinkHandled` latches on the
-	 * URL value, not a boolean, so following a second link (or the same one
-	 * again after clearing the selection) fires again, while this page's 15s
-	 * rollout poll re-running the effect does not re-steal focus from a
-	 * reader who has since clicked elsewhere.
+	 * ⭐ GHOST BARS — the previous window, bucketed on the SAME grid (round 2
+	 * addendum, craft study D3: "previous period grey, this period
+	 * coloured"). Passing `chartWindow.count` again gives bucket `i` of one
+	 * array the same width and relative position as bucket `i` of the
+	 * other. `null` for `all`: there is no equivalent "previous all time"
+	 * to draw.
 	 */
-	let deepLinkHandled = $state<string | null>(null);
-	$effect(() => {
-		const want = page.url.searchParams.get(ACTIVITY_DEPLOY_PARAM);
-		if (!want) return;
-		if (allEntries.length === 0) return;
-		const key = `${page.url.pathname}?${want}`;
-		if (deepLinkHandled === key) return;
-		// ⛔ NOT LATCHED BEFORE THIS CHECK. A key that names nothing in `scoped`
-		// right now may resolve once the next poll lands, or once a filter
-		// clears — same guard as `history/+page.svelte`.
-		if (findEntryIndex(scoped, want) < 0) return;
-		deepLinkHandled = key;
-		revealFeedEntry(want, { focus: true });
+	const previousVolumeBuckets = $derived.by<DeployBucket[] | null>(() => {
+		const span = chartWindow.end - chartWindow.start;
+		if (timelineRange === 'all') return null;
+		const end = chartWindow.start;
+		const start = end - span;
+		const timestamps = scoped
+			.filter((e) => {
+				const t = new Date(e.timestamp).getTime();
+				return t >= start && t < end;
+			})
+			.map((e) => new Date(e.timestamp).getTime());
+		return bucketize(timestamps, start, end, chartWindow.count);
+	});
+
+	/**
+	 * ⭐ FAILURE/ROLLBACK MARKERS — labelled dotted lines on the time axis
+	 * (round 2 addendum, craft study D4: PlanetScale's `#1369` deploy
+	 * marker). `DeployBars`' own `placeMarkerLabels` handles crowding (drops
+	 * a colliding label, keeps its dotted line), so this just supplies every
+	 * marker in the window rather than pre-capping them.
+	 */
+	const chartMarkers = $derived.by<DeployMarker[]>(() => {
+		const out: DeployMarker[] = [];
+		for (const e of windowed) {
+			const where = e.envLabel ? ` in ${e.envLabel}` : '';
+			const clock = formatClockTime(e.timestamp);
+			if (isFailed(e)) {
+				out.push({
+					key: entryKey(e),
+					tsMs: new Date(e.timestamp).getTime(),
+					// ⭐ THE APP NAMES ITSELF ON THE AXIS (round 6 review,
+					// 2026-10-09): a sha means nothing at a glance — the app
+					// is what a reader needs to spot a marker's story. The
+					// sha stays, in the hover title, for whoever needs it.
+					label: e.displayName,
+					tone: 'failed',
+					// ⭐ ENV + TIME IN THE PILL ITSELF (round 7 review,
+					// 2026-10-10, AD finding 5: "markers lack env + time" —
+					// matching Home's "checkout-worker failed in staging ·
+					// 12:05"). `DeployBars`' own `markerText()` already
+					// builds this exact sentence from `where`/`when`; just
+					// supplying them, not reinventing the format. `font:
+					// 'sans'` matches Home too (round 7 lead message,
+					// 2026-10-10) — the label is a NAME here, not a sha.
+					where: e.envLabel || undefined,
+					when: clock,
+					resolved: !e.isLive,
+					font: 'sans',
+					href: e.href,
+					title: `${e.displayName}${where} failed on ${e.version}`
+				});
+			} else if (isRolledBack(e)) {
+				out.push({
+					key: entryKey(e),
+					tsMs: new Date(e.timestamp).getTime(),
+					label: e.displayName,
+					tone: 'rolledBack',
+					where: e.envLabel || undefined,
+					when: clock,
+					resolved: !e.isLive,
+					font: 'sans',
+					href: e.href,
+					title: `${e.displayName}${where} rolled back to ${e.version}`
+				});
+			}
+		}
+		return out;
+	});
+
+	/** A clicked bar narrows the FEED to its bucket — a removable pill above
+	 *  the list, not a second time-range control. Cleared whenever the
+	 *  reader changes the range/filters out from under it. */
+	let selectedBucket = $state<{ startMs: number; endMs: number } | null>(null);
+	function handleBucketClick(bucket: { startMs: number; endMs: number }) {
+		selectedBucket =
+			selectedBucket?.startMs === bucket.startMs && selectedBucket?.endMs === bucket.endMs
+				? null
+				: { startMs: bucket.startMs, endMs: bucket.endMs };
+	}
+	function clearBucketSelection() {
+		selectedBucket = null;
+	}
+	function inSelectedBucket(ts: string): boolean {
+		if (!selectedBucket) return true;
+		const t = new Date(ts).getTime();
+		return t >= selectedBucket.startMs && t < selectedBucket.endMs;
+	}
+	const selectedBucketLabel = $derived.by(() => {
+		if (!selectedBucket) return '';
+		const span = selectedBucket.endMs - selectedBucket.startMs;
+		if (span >= 20 * 60 * 60 * 1000) {
+			return new Date(selectedBucket.startMs).toLocaleDateString(undefined, {
+				month: 'short',
+				day: 'numeric',
+				timeZone: displayTimeZone()
+			});
+		}
+		return `${formatClockTime(new Date(selectedBucket.startMs).toISOString())}–${formatClockTime(
+			new Date(selectedBucket.endMs).toISOString()
+		)}`;
 	});
 
 	// ── THE ENV CONTROL STRIP ──────────────────────────────────────────────
@@ -725,32 +794,23 @@
 	 *  `knownEnvs`, which is built from the feed the filter just emptied). */
 	const envFilterLabel = $derived(knownEnvs.find((e) => e.key === envFilter)?.label ?? envFilter);
 
-	// ── DISAMBIGUATION, ONLY WHERE IT IS NEEDED ────────────────────────────
-	// The env chip carries identity for almost every row. It cannot when two
-	// events in view share BOTH an app name and an environment and differ only
-	// by namespace — then, and only then, the namespace prints. Marking the
-	// norm here would put a namespace on all sixty rows.
-	const ambiguous = $derived.by(() => {
-		const seen = new Map<string, Set<string>>();
-		for (const e of feed) {
-			const k = `${e.displayName}::${e.envLabel}`;
-			if (!seen.has(k)) seen.set(k, new Set());
-			seen.get(k)!.add(e.rolloutNamespace);
-		}
-		const out = new Set<string>();
-		for (const [k, namespaces] of seen) if (namespaces.size > 1) out.add(k);
-		return out;
-	});
-	function needsNamespace(e: ActivityEntry): boolean {
-		return ambiguous.has(`${e.displayName}::${e.envLabel}`);
-	}
 
 	// ── TIME CLUSTERS ──────────────────────────────────────────────────────
 	type DayGroup = {
 		label: string;
 		entries: ActivityEntry[];
 	};
-	function clusterLabel(ts: string, refNow: Date): string {
+	/**
+	 * `exact`: names the actual day instead of collapsing everything past a
+	 * week into one "Earlier" catch-all (round 7 review, 2026-10-10, AD
+	 * finding 6: "the filtered group reads 'Earlier', not the day"). The
+	 * collapse exists so an unfiltered 30-day feed isn't 23 separate day
+	 * cards — but a reader who clicked ONE bar on the chart is already
+	 * looking at exactly one day's worth of rows; "Earlier" tells them
+	 * nothing a date wouldn't, and the chart's own bucket pill already
+	 * proved which day it is.
+	 */
+	function clusterLabel(ts: string, refNow: Date, exact = false): string {
 		const d = new Date(ts);
 		const ageMs = refNow.getTime() - d.getTime();
 		if (ageMs < 60 * 60 * 1000) return 'In the last hour';
@@ -761,15 +821,30 @@
 		const daysAgo = Math.floor((today - dayStart) / 86_400_000);
 		if (daysAgo < 7)
 			return d.toLocaleDateString(undefined, { weekday: 'long', timeZone: displayTimeZone() });
+		if (exact)
+			return d.toLocaleDateString(undefined, {
+				weekday: 'short',
+				month: 'short',
+				day: 'numeric',
+				timeZone: displayTimeZone()
+			});
 		return 'Earlier';
 	}
 
 	const groupedByDay = $derived.by<DayGroup[]>(() => {
-		const refNow = $now;
+		// `new Date()`, not `$now` — the same fix and the same reason as
+		// `inRange`'s own note above: `$now`'s INITIAL value is stale until
+		// its first 100ms tick, which merged two adjacent fixture days into
+		// one "Earlier" bucket for exactly as long as that staleness lasted
+		// (round 2 review, 2026-10-08). `groupedByDay` still recomputes
+		// every time `feed` changes (new poll data), so "Today"/"Yesterday"
+		// still roll over within a poll cycle; it only stops re-labelling
+		// on its own every 100ms while nothing else changes.
+		const refNow = new Date();
 		const groups: DayGroup[] = [];
 		let currentLabel = '';
 		for (const entry of feed) {
-			const label = clusterLabel(entry.timestamp, refNow);
+			const label = clusterLabel(entry.timestamp, refNow, !!selectedBucket);
 			if (label !== currentLabel) {
 				groups.push({ label, entries: [] });
 				currentLabel = label;
@@ -778,6 +853,83 @@
 		}
 		return groups;
 	});
+
+	/**
+	 * ⭐ ONE ROW PER RELEASE (round 4 review, 2026-10-09 — the owner's own
+	 * complaint: "6 consecutive checkout-api rows at 21:36 for one
+	 * release"). `groupActivityEntries` (`$lib/view-models/activity-groups`)
+	 * collapses same app + same release + same minute into one group; this
+	 * page feeds `ActivitySentence` the joined env text, unchanged
+	 * component. `toGroupable` is the one-line adapter from this page's own
+	 * `ActivityEntry` to the view-model's narrower shape.
+	 */
+	function toGroupable(entry: ActivityEntry): GroupableEntry {
+		return {
+			key: entryKey(entry),
+			rolloutName: entry.rolloutName,
+			rolloutNamespace: entry.rolloutNamespace,
+			displayName: entry.displayName,
+			envLabel: entry.envLabel,
+			envKey: entry.envKey,
+			version: entry.version,
+			previousVersion: entry.previousVersion,
+			timestamp: entry.timestamp,
+			href: entry.href,
+			bakeStatus: entry.bakeStatus,
+			bakeStatusMessage: entry.bakeStatusMessage,
+			isRollback: !!entry.rollbackAct
+		};
+	}
+	function releaseGroupsFor(dayGroup: DayGroup): ActivityGroup<ActivityEntry>[] {
+		return groupActivityEntries(dayGroup.entries.map(toGroupable)).map((g) => ({
+			...g,
+			members: g.members.map((m) => dayGroup.entries.find((e) => entryKey(e) === m.key)!)
+		}));
+	}
+
+	/**
+	 * ⭐ GROUPS CAP AT 20 ROWS, NEVER A ONE-ROW FOLD (round 4 review,
+	 * 2026-10-09: "a fold for one row costs more than the row"). Capping
+	 * AFTER grouping — not before — is what makes "`Today` shows 41 rows"
+	 * become "`Today` shows 9 releases" in the first place.
+	 */
+	const GROUP_ROW_CAP = 20;
+	let expandedGroups = $state<Set<string>>(new Set());
+	function groupRows(dayGroup: DayGroup): ActivityGroup<ActivityEntry>[] {
+		const groups = releaseGroupsFor(dayGroup);
+		if (expandedGroups.has(dayGroup.label)) return groups;
+		const hidden = groups.length - GROUP_ROW_CAP;
+		const cap = hidden === 1 ? GROUP_ROW_CAP + 1 : GROUP_ROW_CAP;
+		return groups.slice(0, cap);
+	}
+	function expandGroup(label: string) {
+		expandedGroups = new Set(expandedGroups).add(label);
+	}
+
+	/**
+	 * ⭐ "DETAILS" ON EVERY ROW OR NONE (round 4 review, 2026-10-09): row
+	 * heights alternated 45/69px because some rows carried an always-open
+	 * second line (the `ChangeList` trigger) and others didn't. A group's
+	 * own member list AND any member's `ChangeList` both now live behind
+	 * ONE row-level "Details" toggle, collapsed by default — every row's
+	 * collapsed height is the single-line `ActivitySentence` height, full
+	 * stop. A group earns the toggle when it has more than one member (the
+	 * environments it reached) or when its one member has a changelist to
+	 * show; a row with neither renders no toggle and nothing to expand.
+	 */
+	let detailsOpen = $state<Set<string>>(new Set());
+	function toggleDetails(key: string) {
+		const next = new Set(detailsOpen);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		detailsOpen = next;
+	}
+	function hasChangeList(e: ActivityEntry): boolean {
+		return !!(e.source && e.revision && e.previousRevision);
+	}
+	function groupHasDetails(group: ActivityGroup<ActivityEntry>): boolean {
+		return group.members.length > 1 || group.members.some(hasChangeList) || group.members.some((m) => !!deployReason(m.note));
+	}
 
 	/**
 	 * ⭐ THE REMEMBERED SHAPE. (2026-09-04, load-state audit finding 3 +
@@ -896,7 +1048,7 @@
 		return e.bakeStatus === 'Failed';
 	}
 	function isInFlight(e: ActivityEntry) {
-		return e.bakeStatus === 'InProgress' || e.bakeStatus === 'Deploying';
+		return isInFlightEntry(e);
 	}
 	function isRolledBack(e: ActivityEntry) {
 		return !!e.rollbackAct;
@@ -931,7 +1083,14 @@
 	 * on the page explaining why the count moved.
 	 */
 	function groupRollup(entries: ActivityEntry[]) {
-		const failed = entries.filter(isFailed).length;
+		const failedEntries = entries.filter(isFailed);
+		const failed = failedEntries.length;
+		// ⭐ RESOLVED READS NEUTRAL, NOT ADVERSE (round 8 review, 2026-10-10,
+		// same ruling §3.something already applied to the headline KPI tile
+		// and the banner — this per-day rollup line was the one place left
+		// still painting a calm scenario's resolved-since failure in alarm
+		// ink: "colour only where something needs a person").
+		const unresolvedFailed = failedEntries.filter((e) => e.isLive).length;
 		const flying = entries.filter(isInFlight).length;
 		const rolledBack = entries.filter(isRolledBack).length;
 		const mayBeIncomplete = entries.some((e) => e.retentionCut);
@@ -939,8 +1098,18 @@
 		const noun = mayBeIncomplete
 			? `at least ${n} deploy${n === 1 ? '' : 's'}`
 			: `${n} deploy${n === 1 ? '' : 's'}`;
-		let out: { text: string; tone: 'adverse' | 'active' | 'neutral' | 'good' };
-		if (failed > 0) out = { text: `${noun} · ${failed} failed`, tone: 'adverse' };
+		// ⭐ NO `good` TONE. (round 2 review, 2026-10-08) `Card`'s rollup CAN
+		// spend success green — the rollout Overview's "3/3 healthy" is the
+		// reference — but that is ONE card stating ONE verdict. This rollup
+		// repeats down every day card AND the chart card above them; a
+		// cluster having a calm week would paint five or six green "all
+		// fine" headers in one glance, the exact "norm repeated as colour"
+		// defect `RestGlyph` exists to stop one level up. A calm fact is
+		// `neutral` ink; only a fact that needs a person spends a hue.
+		let out: { text: string; tone: 'adverse' | 'active' | 'neutral' };
+		if (unresolvedFailed > 0)
+			out = { text: `${noun} · ${unresolvedFailed} failed`, tone: 'adverse' };
+		else if (failed > 0) out = { text: `${noun} · ${failed} failed, resolved`, tone: 'neutral' };
 		else if (flying > 0) out = { text: `${noun} · ${flying} still going`, tone: 'active' };
 		else if (rolledBack > 0) out = { text: `${noun} · ${rolledBack} rolled back`, tone: 'neutral' };
 		// ⛔ `n > 0 &&`, NOT A BARE `.every()`. (2026-09-03, operator-walk P7)
@@ -950,14 +1119,86 @@
 		// set (see the note above `chartServices.length > 0` below), which a
 		// widened window control makes reachable for the first time.
 		else if (n > 0 && entries.every((e) => e.bakeStatus === 'Succeeded'))
-			out = { text: `${noun} · all fine`, tone: 'good' };
+			out = { text: `${noun} · all fine`, tone: 'neutral' };
 		else out = { text: noun, tone: 'neutral' };
-		return { ...out, mayBeIncomplete };
+		// the SectionHeader's rollup parts: the count, then the one adverse fact in its ink (only a live failure is red)
+		const rest = out.text.slice(noun.length).replace(/^ · /, '');
+		const parts: (string | { text: string; ink?: 'danger' })[] = [noun];
+		if (rest) parts.push(out.tone === 'adverse' ? { text: rest, ink: 'danger' } : rest);
+		return { ...out, parts, mayBeIncomplete };
 	}
 
-	const failedCount = $derived(feed.filter(isFailed).length);
-	const flyingCount = $derived(feed.filter(isInFlight).length);
-	const rolledBackCount = $derived(feed.filter(isRolledBack).length);
+	/**
+	 * ⛔ THESE THREE COUNTED THE 60-ROW CAP UNDER A BAND THAT COUNTS THE
+	 * WINDOW. (2026-09-13) `appCount` below was moved onto `windowed` in the
+	 * 2026-09-07 operator walk for exactly this reason and these three were
+	 * left behind, so the head band read `149 deploys in the last 30 days ·
+	 * 47 rollouts · latest 60 shown · 3 failed` where `3` was the failures
+	 * among the SIXTY NEWEST rows and `149` was the window — two subjects in
+	 * one sentence, and the chart card's own rollup 200px below (`groupRollup(
+	 * windowed)`, uncapped) is the window's. The numbers agreed only while
+	 * every failure happened to be recent; a 30-day window over a fixture with
+	 * three failures spread across it is exactly the case that breaks it, and
+	 * the two objects would then have printed different counts of the same
+	 * thing on one screen. Same subject as the band, the chart and the banner
+	 * now: the window.
+	 *
+	 * `Press Failed below to see all N` stays true — pressing `Failed`
+	 * re-scopes `windowed` to the failures, and 3 of them fit the 60-row cap.
+	 */
+	const failures = $derived(windowed.filter(isFailed));
+	const failedCount = $derived(failures.length);
+	/**
+	 * ⭐ "UNRESOLVED" MEANS the failed rollout's CURRENT state is still
+	 * failed (round 4 review, 2026-10-09, AD finding: a red banner in the
+	 * CALM scenario, naming a failure the fixture had since redeployed
+	 * past). `failures` is every failed HISTORY entry in the window — a
+	 * permanent record, right for the count/pill/figure, which all answer
+	 * "how many failed deploys happened" (a historical fact that does not
+	 * un-happen). The BANNER answers a different question — "is something
+	 * broken right now" — so it reads only the subset whose failure is also
+	 * `isLive` (the rollout's newest entry): a failure three deploys ago
+	 * that has since gone green is resolved, and the page says nothing
+	 * about it at banner scale.
+	 */
+	const unresolvedFailures = $derived(failures.filter((e) => e.isLive));
+	const unresolvedFailedCount = $derived(unresolvedFailures.length);
+	/** The 4th KPI tile (round 7 review, 2026-10-10, AD finding 2: CFR folds
+	 *  into the Failed tile's subline, freeing this slot — matching Home's
+	 *  own four-tile set, where the fourth tile is a fact the first three
+	 *  don't already carry). */
+	const rolledBackCount = $derived(windowed.filter(isRolledBack).length);
+	/**
+	 * ⭐ THE 4TH TILE'S FALLBACK FACT (round 8 review, 2026-10-10): AD asked
+	 * for "Held for" (median wait at gates) OR "Rolled back only when > 0,
+	 * [something] otherwise". Home's own held-duration computation isn't in
+	 * this worktree yet — grepped for a held-since timestamp anywhere in the
+	 * rollout/history model this page reads and found none, so a "Held for"
+	 * figure here would be invented, not measured. Flagging this to the
+	 * lead; in the meantime this tile shows Rolled back when it's non-zero
+	 * (the more actionable fact), and falls back to In flight — a count
+	 * this page already computes correctly — rather than a fabricated
+	 * duration.
+	 */
+	/** QA #21: in flight is counted in ROLLOUTS (what Home and /rollouts count), not in history rows. */
+	const inFlight = $derived(
+		inFlightRollouts(
+			windowed.filter(isInFlight).map((e) => ({ rolloutKey: `${e.rolloutNamespace}/${e.rolloutName}`, bakeStatus: e.bakeStatus ?? '' }))
+		)
+	);
+	const flyingCount = $derived(inFlight.total);
+	/** The In flight tile's own subline — the SAME split the feed's own rows
+	 *  already name ("is checking" / "is deploying"), round 9 review,
+	 *  2026-10-10: "give In flight a subline". */
+	const inFlightSub = $derived.by(() => {
+		if (flyingCount === 0) return undefined;
+		const checking = inFlight.checking;
+		const deploying = inFlight.deploying;
+		const parts: string[] = [];
+		if (checking > 0) parts.push(`${checking} checking`);
+		if (deploying > 0) parts.push(`${deploying} deploying`);
+		return parts.length ? parts.join(' · ') : undefined;
+	});
 	// ⛔ COUNTS THE WINDOW, NOT THE 60-ROW CAP. (operator walk, 2026-09-07) The
 	// band said "60 deploys · 16 rollouts" over a chart saying 69 and a home
 	// rail saying 69: `feed` is `windowed.slice(0, 60)`.
@@ -966,29 +1207,352 @@
 	);
 
 	/**
-	 * ⭐ THE CHART CARD'S VERDICT — the answer, not the window. (2026-09-02)
-	 * It used to print `rangeLabel` (`the last 7 days`), which is the SAME
-	 * fact the `7D` pill 50px below already states, and it is the one card
-	 * rollup on this page that is not a verdict — every other card on the
-	 * product answers "how did it go", not "what am I looking at". Over
-	 * `windowed`, UNCAPPED, because the chart's own window can hold more than
-	 * the sixty rows the list renders. `rangeLabel` still rides in the
-	 * title — it is a real fact, just not the headline one.
+	 * ⭐ THE PAGE HEADER'S SUMMARY, CAPPED AT THREE FACTS. (round 2 review,
+	 * 2026-10-08) `§3.2`: a `PageHeader` list summary carries at most three
+	 * facts, the adverse one in its ink — this used to print up to five
+	 * ("… in all time · 50 rollouts with activity · latest 60 shown · 3
+	 * still going · 1 rolled back"), wrapping to two lines at 390.
+	 * `appCount` ("N rollouts with activity") moved to the rail's own
+	 * `Deploys` row (it is already a window-scoped count, the rail's whole
+	 * subject); `latest N shown` moved to a quiet fold line at the end of
+	 * the list, where a reader who has scrolled that far is the one who
+	 * needs it. What is left is the base fact (deploys in the window) plus
+	 * up to two STATE facts, worst first — failed, then still going, then
+	 * rolled back — so a calm week prints one fact and a bad one prints
+	 * three, never five.
 	 */
-	const windowRollup = $derived(groupRollup(windowed));
+	/**
+	 * ⭐ ADVERSE FIRST, AND `failed` IS BACK (round 4 review, 2026-10-09):
+	 * "The header summary is adverse first: '1 failed · 4 in flight · 1
+	 * rolled back'." Round 5's old reasoning — the banner already states it
+	 * — no longer holds now that the headline figure (below) is ALSO the
+	 * outcome, not the volume; the header summary is the one place a reader
+	 * gets the full adverse picture in one line without reading the figure,
+	 * the banner AND the pills. The banner's own sentence still carries the
+	 * NAMED detail (which app, which env); this is the count.
+	 */
+	/**
+	 * ⭐ SCOPE, NOT COUNTS (round 6 review, 2026-10-09: "drop counts, keep
+	 * scope"). Failed/Deploys/flying/rolled-back counts all now live in the
+	 * KPI head or the filter pills — restating them here was the "169
+	 * appears three times" problem again, one level up. The header states
+	 * only WHERE the page is looking ("last 30 days · 58 rollouts") plus,
+	 * when something actually needs a person, ONE adverse sentence in
+	 * danger ink — never a list of three counts.
+	 */
+	const summaryScope = $derived(
+		`${rangeLabel}${appCount > 0 ? ` · ${appCount} rollout${appCount === 1 ? '' : 's'}` : ''}`
+	);
+
+	/**
+	 * ⭐ THE CHART CARD'S HEADLINE FIGURE (round 2 review, 2026-10-09): the
+	 * window's own deploy count, failures in danger ink, against the SAME
+	 * duration immediately before it — `windowDeltaPct` null for `all`
+	 * (nothing to compare an unbounded window to) and when the previous
+	 * window is empty (a `+∞%` claim is not a fact).
+	 */
+	const windowSpanMs = $derived(timelineRange === 'all' ? null : RANGE_MS[timelineRange]);
+	const previousWindowCount = $derived.by<number | null>(() => {
+		const span = windowSpanMs;
+		if (!span) return null;
+		const end = Date.now() - span;
+		const start = end - span;
+		return scoped.filter((e) => {
+			const t = new Date(e.timestamp).getTime();
+			return t >= start && t < end;
+		}).length;
+	});
+	const windowDeltaPct = $derived.by<number | null>(() => {
+		if (previousWindowCount === null || previousWindowCount === 0) return null;
+		return Math.round(((windowed.length - previousWindowCount) / previousWindowCount) * 100);
+	});
+	/** The Deploys tile's own delta, Home's form ("↑ 7.7×" / "↑ 12%"), always
+	 *  neutral ink — more or fewer deploys is not itself good or bad. */
+	/** "vs 3" names what it's against (round 7 review, 2026-10-10, AD
+	 *  nitpick: "'vs 3' at 30d has no noun") — the SAME span the chart's own
+	 *  ghost bars are drawn against, in Home's "the 7 days before" words. */
+	const previousSpanNoun: Record<PresetRange, string> = {
+		'1h': 'the hour before',
+		'6h': 'the 6 hours before',
+		'1d': 'the day before',
+		'7d': 'the 7 days before',
+		'30d': 'the 30 days before',
+		all: ''
+	};
+	const deploysDelta = $derived.by<KpiDelta | null>(() => {
+		if (windowDeltaPct === null || previousWindowCount === null) return null;
+		const dir: 'up' | 'down' = windowDeltaPct >= 0 ? 'up' : 'down';
+		const noun = previousSpanNoun[timelineRange];
+		if (previousWindowCount < 5) {
+			const text = noun ? `vs ${previousWindowCount} ${noun}` : `vs ${previousWindowCount}`;
+			return { text, tone: 'neutral', dir };
+		}
+		if (Math.abs(windowDeltaPct) > 300) {
+			const mult = Math.round((windowed.length / previousWindowCount) * 10) / 10;
+			return { text: `${mult}×`, tone: 'neutral', dir };
+		}
+		return { text: `${Math.abs(windowDeltaPct)}%`, tone: 'neutral', dir };
+	});
+	/**
+	 * ⭐ WHAT THE CHART DOESN'T SHOW (round 4 review, 2026-10-09, "one fact,
+	 * once"): the rail used to repeat the filter pills' own Failed/In
+	 * flight/Rolled back counts — deleted, since the pills already state
+	 * them. In their place, figures nothing else on the page answers:
+	 *
+	 * - MEDIAN TIME TO PROD: for each (app, release) pair that reached a
+	 *   prod-tier environment inside the window, the gap between its
+	 *   EARLIEST deploy anywhere and its earliest prod deploy; the median
+	 *   across those releases. `null` when nothing in the window reached
+	 *   prod — the dt/dd pair is omitted rather than claiming "0s".
+	 * - CHANGE FAILURE RATE: failed deploys as a share of all deploys in
+	 *   the window (the DORA metric by the same name) — folded into the
+	 *   Failed tile's own subline now (round 7, below), not a standalone
+	 *   tile — see `failedSub`'s doc comment.
+	 */
+	/** Pure logic + the "never print 0 seconds" rule both live in
+	 *  `$lib/view-models/activity-time-to-prod` now, tested in isolation. */
+	const medianTimeToProdMs = $derived(
+		medianTimeToProdMsOf(
+			windowed.map((e) => ({
+				releaseKey: `${e.displayName}::${e.version}`,
+				timestampMs: new Date(e.timestamp).getTime(),
+				isProd: tierOf(e.envKey || e.envLabel) === 'prod'
+			}))
+		)
+	);
+	/** `KpiTile`'s own `parts` shape ("4h 15m", Home's unit typography) —
+	 *  `formatDurationMs`'s single spelled-out unit ("8 hours") was a
+	 *  different grammar for the same fact (round 7 review, 2026-10-10, AD
+	 *  finding 3: "'8 hours' vs Home's '4h 15m'"). Minutes only below an
+	 *  hour, hours+minutes below a day, days+hours beyond. */
+	function durationParts(ms: number): { v: string; u: string }[] {
+		const totalMin = Math.round(ms / 60_000);
+		if (totalMin < 60) return [{ v: `${totalMin}`, u: 'm' }];
+		const totalHr = Math.floor(totalMin / 60);
+		const min = totalMin % 60;
+		if (totalHr < 24) return min > 0 ? [{ v: `${totalHr}`, u: 'h' }, { v: `${min}`, u: 'm' }] : [{ v: `${totalHr}`, u: 'h' }];
+		const days = Math.floor(totalHr / 24);
+		const hr = totalHr % 24;
+		return hr > 0 ? [{ v: `${days}`, u: 'd' }, { v: `${hr}`, u: 'h' }] : [{ v: `${days}`, u: 'd' }];
+	}
+	const medianTimeToProdParts = $derived(
+		medianTimeToProdMs !== null ? durationParts(medianTimeToProdMs) : null
+	);
+	/** Apps counted in `medianTimeToProdMs` — the same release set, just
+	 *  counted by app instead of reduced to a median, for the tile's own
+	 *  "median trip · N apps" subline (Home's exact grammar). */
+	const appsToProdCount = $derived(
+		new Set(
+			windowed
+				.filter((e) => tierOf(e.envKey || e.envLabel) === 'prod')
+				.map((e) => e.displayName)
+		).size
+	);
+	/** One decimal, like Home's own CFR tile ("1.2%"), not a rounded integer. */
+	const changeFailureRatePct = $derived.by<number | null>(() => {
+		if (windowed.length === 0) return null;
+		return Math.round((failedCount / windowed.length) * 1000) / 10;
+	});
+	/**
+	 * ⭐ CFR FOLDS INTO THE FAILED TILE'S SUBLINE, HOME'S OWN GRAMMAR (round 7
+	 * review, 2026-10-10, AD finding 2: "two red 32px figures for one fact" —
+	 * CFR painted danger even in the calm scenario's 0.8%, alarming over a
+	 * healthy rate. Home never gives CFR its own tile; it is the Failed
+	 * tile's caption, "1.2% of deploys · last 7 days", always neutral ink
+	 * (the figure already carries the alarm). `resolved` detail folds in
+	 * alongside it rather than replacing it — the figure's own `resolved`
+	 * prop (below) handles the "resolved" word and the ink; this only adds
+	 * the unresolved COUNT when it's a partial one. */
+	/** ⭐ ONE FACT, NEVER THE WINDOW (round 8 review, 2026-10-10): the header
+	 *  already states the range ("the last 30 days") — repeating it on every
+	 *  tile's own subline was the SAME fact four times, just smaller. Partial
+	 *  unresolved is the more urgent fact when it's true (someone needs to
+	 *  look at exactly those N); CFR otherwise, the tile's steady-state
+	 *  caption. */
+	const failedSub = $derived.by(() => {
+		if (unresolvedFailedCount > 0 && unresolvedFailedCount !== failedCount) {
+			return `${unresolvedFailedCount} of ${failedCount} unresolved`;
+		}
+		return changeFailureRatePct !== null ? `${changeFailureRatePct}% of deploys` : undefined;
+	});
+	/** The Deploys section's rollup: the window's count, then the one adverse fact in its ink (only an unresolved failure is red). */
+	const deploysRollup = $derived<(string | { text: string; ink?: 'danger' })[]>([
+		`${windowed.length} deploy${windowed.length === 1 ? '' : 's'}`,
+		...(unresolvedFailedCount > 0 ? [{ text: `${unresolvedFailedCount} failing`, ink: 'danger' as const }] : [])
+	]);
+	/** Deploys tile subline — a rate, not the range (round 8). */
+	/** ⭐ NOT A TAUTOLOGY AT 1D (round 9 review, 2026-10-10): "103 a day" at
+	 *  the 1d range IS the figure above it restated, since the window and
+	 *  the rate denominator are the same day. Below a day of span this
+	 *  switches to an HOURLY rate instead — a genuinely different number
+	 *  from the headline count at every range short enough for the daily
+	 *  one to degenerate into it. */
+	const deploysPerDaySub = $derived.by(() => {
+		return deployRateSub(windowed.length, windowSpanMs, oldestScopedMs, Date.now());
+	});
+
+	/**
+	 * ⭐ THE RAIL'S "MOST ACTIVE" LIST — top APPS by event count in the SAME
+	 * scoped-and-windowed set `windowRollup` answers for (round 6 review,
+	 * 2026-10-09: "repeats the app once per environment" — `checkout-worker`
+	 * showed up to three times, once per env, burying the actual ranking).
+	 * Grouped by app now; the envs it fired in join inline on the same row
+	 * ("staging, prod"), newest/most-active env first. Over the window, not
+	 * the 60-row `feed` cap, for the same reason `failedCount`/`flyingCount`/
+	 * `appCount` read `windowed`. Capped at 5 — a rail card, not a second feed.
+	 */
+	const mostActive = $derived.by(() => {
+		const apps = new Map<
+			string,
+			{ name: string; href: string; count: number; envs: Set<string> }
+		>();
+		for (const e of windowed) {
+			// ⭐ APP, NOT ROLLOUT CR (round 6 fix, 2026-10-10): this product
+			// names one Rollout CR per environment ("checkout-edge" in the
+			// dev/staging/prod namespaces are THREE objects sharing one
+			// `displayName`) — grouping by `${namespace}/${rolloutName}` was
+			// still one row per env, the exact bug this round set out to
+			// fix. `displayName` alone is the app's shared identity.
+			const key = e.displayName;
+			let cur = apps.get(key);
+			if (!cur) {
+				cur = { name: e.displayName, href: e.href, count: 0, envs: new Set() };
+				apps.set(key, cur);
+			}
+			cur.count++;
+			if (e.envLabel) cur.envs.add(e.envLabel);
+		}
+		return [...apps.values()]
+			.sort((a, b) => b.count - a.count)
+			.slice(0, 5)
+			.map((a) => ({
+				name: a.name,
+				href: a.href,
+				count: a.count,
+				// ⭐ TIER-COLLAPSED, SAME GRAMMAR AS THE FEED'S OWN GROUP ROWS
+				// (`groupActivityEntries`'s `envText`, round 6 fix: the
+				// `wide` scenario's 13-region app overflowed this row and
+				// overlapped the count when every label was joined raw).
+				// 3+ envs in a tier collapse to "N prod regions"; fewer list
+				// by name.
+				envLabel: tierCountText(a.envs)
+			}));
+	});
+	/** ⭐ A TIER COUNT, NOT A LIST AT ALL (round 8 review, 2026-10-10): round
+	 *  7's tier-collapsed join ("dev · staging · 5 prod") still truncated at
+	 *  the rail's own 280px width once a few tiers were in play — any list
+	 *  long enough to be interesting is also long enough to ellipsize in a
+	 *  sidebar. "N tiers" never wraps or truncates at any width and still
+	 *  answers the only question this row needs to: how WIDE did this app's
+	 *  activity spread, not which exact regions. */
+	function tierCountText(envs: Set<string>): string {
+		const tiers = new Set<Tier>();
+		for (const label of envs) tiers.add(tierOf(label));
+		return `${tiers.size} tier${tiers.size === 1 ? '' : 's'}`;
+	}
 
 	// ── THE PAGE'S ONE BLOCKING FACT ───────────────────────────────────────
 	// A deploy that failed will not clear itself. Nothing else on this page
 	// qualifies: a deploy in flight resolves on its own, and a succeeded one
 	// is the norm.
+	/**
+	 * ⭐ THE HEADLINE SAID THREE AND THE BODY NAMED ONE. (2026-09-13)
+	 *
+	 * `3 deploys failed` over `checkout-worker in staging failed 10 minutes
+	 * ago, on a02f1c4.` is the loudest object on the page disagreeing with
+	 * itself: a reader who trusts the count then has to go and find the other
+	 * two, and the only pointer they got was a footnote telling them to press
+	 * a filter — *"showing a problem without offering the action is an
+	 * unfinished design"*, answered with an instruction. All of them are named
+	 * and linked now, newest first, each one its own destination.
+	 *
+	 * THREE IS THE CAP, and it is not arbitrary: a banner is the page's ONE
+	 * blocking fact, not its list, and three short items still fit one line at
+	 * 1440. Past three the count is the fact and the footnote's `Press Failed`
+	 * is the right answer again — so that sentence survives, scoped to the
+	 * case it is actually true of.
+	 */
+	const NAMED_FAILURES = 3;
 	const blocker = $derived.by(() => {
-		const worst = feed.find(isFailed);
+		const worst = unresolvedFailures[0];
 		if (!worst) return null;
 		const where = worst.envLabel ? ` in ${worst.envLabel}` : '';
+		/**
+		 * ⭐ ONE SENTENCE, EVEN FOR MANY FAILURES (round 4 review, 2026-10-09,
+		 * §3.12). This used to leave `message` empty past one failure and
+		 * print the set as an always-visible `messageBody` list instead — a
+		 * banner with three styled rows, links and all, which is a LIST at
+		 * banner scale, not a sentence. §3.12 is explicit: one sentence
+		 * printed, the rest under `Details`. The subjects (up to
+		 * `NAMED_FAILURES`, "and N more" past that) now join into the ONE
+		 * message sentence; the per-item list with its links/sha/time moves
+		 * into `footnoteBody`, disclosed — same split `FailurePanel` already
+		 * uses for its own per-check list.
+		 */
+		const multiSubjects = unresolvedFailures.slice(0, NAMED_FAILURES).map((e) => {
+			const place = e.envLabel ? ` in ${e.envLabel}` : '';
+			return `${e.displayName}${place}`;
+		});
+		const multiMore =
+			unresolvedFailedCount > NAMED_FAILURES
+				? `, and ${unresolvedFailedCount - NAMED_FAILURES} more`
+				: '';
 		return {
-			title: failedCount === 1 ? 'A deploy failed' : `${failedCount} deploys failed`,
-			message: `${worst.displayName}${where} failed ${formatTimeAgo(worst.timestamp, $now)}, on ${worst.version}.`,
-			footnote: failedCount > 1 ? `Press Failed below to see all ${failedCount}.` : undefined,
+			title:
+				unresolvedFailedCount === 1 ? 'A deploy failed' : `${unresolvedFailedCount} deploys failed`,
+			/**
+			 * ONE failure keeps the printed sentence, unchanged — a banner with
+			 * a single subject reads as prose, not as a list of one.
+			 */
+			// ⭐ THE BODY DOESN'T RESTATE THE HEADLINE (round 7 review,
+			// 2026-10-10, AD nitpick: the wide scenario's body read "2
+			// deploys failed: checkout-worker in staging, ..." directly
+			// under a title that already says "2 deploys failed" — the
+			// same four words twice in two lines. The title states the
+			// COUNT; the body just names WHO, without re-counting.
+			message:
+				unresolvedFailedCount === 1
+					? `${worst.displayName}${where} failed ${formatTimeAgo(worst.timestamp, $now)}, on ${worst.version}.`
+					: `${multiSubjects.join(', ')}${multiMore}.`,
+			/** The disclosed set: `footnoteBody`'s own list, below — never
+			    printed at banner scale past one failure. */
+			list:
+				unresolvedFailedCount === 1
+					? []
+					: unresolvedFailures.slice(0, NAMED_FAILURES).map((e) => {
+							/**
+							 * ⚠️ THE PLACE AND THE CLOCK ARE ONE STRING, BUILT HERE, IN
+							 * TWO STEPS.
+							 *
+							 * ONE string because Svelte trims literal whitespace at a
+							 * block's edge: `{#if f.env}<span> in {f.env}</span>{/if}`
+							 * rendered `checkout-workerin staging` on the live page —
+							 * the identical trap this file's head band already carries
+							 * a note about. A string an expression returns is not
+							 * template whitespace and survives.
+							 *
+							 * TWO steps because `lib/messages/scan.ts` cannot read a
+							 * NESTED template literal: spelled inline, the census came
+							 * back holding `${e.envLabel ?` and `: ''} · … ago` — two
+							 * entries nobody can read, for a message that does not
+							 * exist. `lib/CLAUDE.md` states the rule ("Build the parts
+							 * first"); this is it being followed.
+							 */
+							const place = e.envLabel ? ` in ${e.envLabel}` : '';
+							const ago = formatTimeAgoCompact(e.timestamp, $now);
+							return {
+								key: entryKey(e),
+								app: e.displayName,
+								meta: `${place} · ${ago} ago`,
+								sha: shortenVersion(e.version),
+								shaTitle: e.version,
+								href: e.href
+							};
+						}),
+			footnote:
+				unresolvedFailedCount > NAMED_FAILURES
+					? `Press Failed below to see all ${unresolvedFailedCount}.`
+					: undefined,
 			href: worst.href,
 			app: worst.displayName,
 			/**
@@ -1005,482 +1569,295 @@
 		};
 	});
 
-	/**
-	 * ── THE VOCABULARY ─────────────────────────────────────────────────────
-	 * `deployed X was Y` states the MECHANISM. So does `bake`. Every word here
-	 * states the CONSEQUENCE instead, and `Succeeded` states NOTHING — it is
-	 * the norm, it was printed 39 times on one screen, and the disc beside it
-	 * already says so. The row's own version pair (`f368353 → 56d1725`) is
-	 * what a succeeded deploy actually changed.
-	 */
-	/**
-	 * ⚠️ `InProgress` LOST ITS PHRASE, AND THAT IS THE POINT (2026-08-30).
-	 * This page shipped `live, being checked` while five other surfaces still
-	 * said `baking` — one state, two spellings, which is the split the
-	 * `N behind` pass cost a day to close. The word is `bake-status.ts`'s now
-	 * and the phrase survives as the row's `title`, where a sentence belongs.
-	 *
-	 * ⛔ AND `Deploying` FOLLOWED IT THE SAME DAY. `going live` was the last
-	 * private spelling on this page: every other surface — `/`, `/rollouts`,
-	 * rollout detail, `ActivityRail`, `/apps`, `/envs` — says `deploying`.
-	 * It is a smaller class of defect than `baking` was, because `going live`
-	 * is ordinary English and a novice can act on it, so it was logged and
-	 * scoped out once. But the defect it leaves is the same shape and it is
-	 * not smaller for the reader: a product that calls ONE state two names on
-	 * two adjacent pages is teaching the operator that there are two states.
-	 * The ruling is the `checking` ruling, applied again — the WORD is
-	 * `bake-status.ts`'s and the SENTENCE rides in the `title`, where
-	 * `BAKE_TITLE.Deploying` already spells the consequence `going live` was
-	 * carrying (*"The new version is still going out"*). The blue/yellow hue
-	 * split between `deploying` and `checking` is untouched; both verbs stay
-	 * distinct, which is the whole reason this table has two rows for them.
-	 */
-	const STATE_WORD: Record<string, string | null> = {
-		Succeeded: null,
-		Deploying: BAKE_WORD.Deploying,
-		InProgress: BAKE_WORD.InProgress,
-		Failed: BAKE_WORD.Failed,
-		Cancelled: BAKE_WORD.Cancelled,
-		None: 'no result yet'
-	};
-	const STATE_INK: Record<string, string> = {
-		Deploying: 'text-blue-700 dark:text-blue-400',
-		InProgress: 'text-yellow-700 dark:text-yellow-400',
-		Failed: 'text-red-700 dark:text-red-400',
-		Cancelled: 'text-gray-500 dark:text-gray-400',
-		None: 'text-gray-500 dark:text-gray-400'
-	};
+	/** `ActivitySentence`'s `kind` for a GROUPED row — `$lib/view-models/
+	 *  activity-kind`'s `activityKindOf`, the one classifier shared with
+	 *  Home/ActivityRail and the fleet pages (squad-fleet), so "promoted"
+	 *  vs "deployed" is decided once, not re-derived per page. No local
+	 *  bakeStatus→kind mapping here any more. Its own worst member's state
+	 *  (bakeStatus) and "did any member roll back" (a group can have a
+	 *  rollback in one environment and plain successes in the rest; the
+	 *  group still says so), keyed on the lead member's environment. */
+	function activityKindForGroup(group: ActivityGroup<ActivityEntry>, actor: Actor): ActivityKind {
+		const lead = group.members[0];
+		const envRank = getEnvironmentRank(lead.envKey || lead.envLabel);
+		return activityKindOf({
+			bakeStatus: group.worstBakeStatus,
+			bakeStatusMessage: group.worstBakeStatusMessage,
+			isRollback: group.members.some((m) => m.rollbackAct),
+			actorKind: actor.kind,
+			envRank,
+			firstEnvRank: firstEnvRankByApp.get(group.displayName) ?? envRank
+		});
+	}
 </script>
 
 <svelte:head>
-	<title>kuberik | Activity</title>
+	<title>{pageTitle('Activity')}</title>
 </svelte:head>
 
-<!-- ⭐ THE ROLLBACK MARK'S ICON, SHARED BY EVERY ROW. (DESIGN PASS 2)
-     `Chip`'s `icon` prop takes a snippet, not a component reference, so one
-     definition here replaces the private `<UndoOutline>` literal that used to
-     sit inside the now-deleted filled pill below. Same glyph, same product's
-     word for "went backwards" — nothing about the icon changed, only the box
-     around it. -->
-{#snippet rollbackIcon()}
-	<UndoOutline class="mr-[3px] h-[11px] w-[11px] shrink-0" aria-hidden="true" />
+<!-- THE BANNER'S FAILURE LIST, DISCLOSED NOT PRINTED (kept from round 4): only reachable under `Details`; the AlertPanel's own ink, no colour spelled here. -->
+{#snippet failureFootnote()}
+	<ul class="list-disc space-y-0.5 pl-4">
+		{#each blocker?.list ?? [] as f (f.key)}
+			<li class="break-words">
+				<!-- `text-fg-muted`, not `opacity-80` (round 5 review,
+				     2026-10-09): measured 4.44:1 in light, under 4.5:1. A
+				     token ink clears the floor in both themes; a flat alpha
+				     over whatever's behind it does not. -->
+				<a href={f.href} class="hit-32 text-fg underline-offset-2 hover:underline">{f.app}</a
+				><span class="text-fg-muted">{f.meta}</span><span
+					class="t-code-sm ml-1.5 text-fg-muted"
+					title={f.shaTitle}>{f.sha}</span
+				>
+			</li>
+		{/each}
+	</ul>
+	{#if blocker?.footnote}
+		<p class="mt-1">{blocker.footnote}</p>
+	{/if}
 {/snippet}
 
-<!-- ⭐ ONE CONTAINER FOR THE PRODUCT: `mx-auto max-w-7xl px-4 py-6 sm:px-6`.
-     ⛔ THIS PAGE WAS `max-w-5xl`. Measured at 1440 it made the content column
-     976px wide against every other page's 1216 — a **128px jump on each side**
-     every time an operator entered or left `/activity`, which is what the human
-     meant by *"pages have slightly different content margins so navigating
-     between pages feels jittery"*. The narrow measure was never justified by
-     line length: nothing on this page is prose. The widest object is the
-     `When deploys happened` chart, which is a time axis and wants MORE room,
-     and the event rows are three-column grids (mark · what · when) whose right
-     column was being crushed, not protected. A reading measure is a legitimate
-     exception; this was not one, so it is gone rather than documented. -->
-<div class="mx-auto w-full px-4 py-6 sm:px-6">
-	<!-- ══ HEADER ═══════════════════════════════════════════════════════════
-	     THE 24H SPARKLINE IS CUT. It sat 40px above a chart of the same array
-	     at higher resolution, and on this cluster it drew nothing at all while
-	     printing `LAST 24H 0 deploys` — a dead object stating a number that
-	     contradicted the 39 events below it. This is the `DeployHistoryStrip`
-	     rule: an object that reads the same array as the object beside it is
-	     cut, not shrunk. -->
-	<!-- ⭐ THE `h1` IS `sr-only` AND THE ROLLUP TOOK ITS SLOT. (2026-09-01)
-	     From the human: *"i think i don't like that we have a title on the page
-	     when it's already in the navbar."* The navbar's own `Activity` item and
-	     this page's `h1` were the same word, 40px apart, and the 24px slot — the
-	     top of a type range this page otherwise does not have — was spent
-	     restating it.
-
-	     ⛔ DELETING THE HEADING WAS NOT AN OPTION AND IS NOT WHAT HAPPENED. The
-	     skip link lands on `main` and a11y asserts a level-1 heading exists, so
-	     it is `sr-only` — the mechanism `/` already uses, a 1px clip, zero
-	     pixels — and the WORD is still announced first to a screen reader.
-
-	     WHAT FILLS THE SLOT IS THE ROLLUP, NOT MORE WORDS. Same sentence as
-	     before, character for character; only the count is promoted to the
-	     display role so the page leads with its own answer instead of with its
-	     own name. `/namespaces/<name>` deliberately keeps its visible `h1`: the
-	     navbar there says the SECTION and the page names the NAMESPACE, so
-	     that one is not a duplicate. -->
-	<h1 class="sr-only">Activity</h1>
-	<div class="mb-5 min-w-0">
-		{#if rolloutsQuery.isLoading}
-			<!-- ⭐ RESERVED, NOT OMITTED. (2026-09-04, load-state audit finding
-			     2: "the pill row must not move (today +373/+441 px): reserve
-			     the head band and the 325px chart card.") The status-pill row
-			     20 lines below already renders unconditionally — its own move
-			     was never ITS gate, it was everything above it (this head
-			     band, the chart card) skipping straight to nothing until data
-			     arrived. -->
-			<HeadBandSkeleton leadWidth="w-8" rollupWidth="w-64" />
-		{:else if !rolloutsQuery.isError}
-			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
-				<span class="t-display text-gray-900 tabular-nums dark:text-white">{windowed.length}</span>
-				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-					<!--
-						⛔ THE ROLLUP NUMBER DID NOT CARRY THE ACTIVE FILTER. (2026-09-03,
-						operator-walk finding 19.) With the FAILED chip pressed this said
-						`0 deploys in all time` — true of the count, silent about WHY it
-						is zero, indistinguishable from "nothing has deployed" when the
-						real answer is "nothing has FAILED". `kindFilter` already scopes
-						`feed`; the noun now names what it was scoped TO.
-
-						Branches, not a ternary collapsed into one text node: the census
-						scanner cannot see a literal that shares its text node with an
-						adjacent interpolation and no separating prose, and this exact
-						wording is what the operator-walk finding is about.
-
-						⚠️ THE SEPARATING SPACE IS ITS OWN HOLE, NOT TRAILING TEMPLATE
-						WHITESPACE. Svelte trims literal whitespace sitting at a block's
-						edge, so `{#if …}failed {:else …}` silently rendered
-						`faileddeploys` — verified on the live page. A JS-expression space
-						survives because the compiler only trims TEMPLATE whitespace, not
-						a string an expression returns.
-					-->
-					{#if kindFilter === 'failed'}failed{:else if kindFilter === 'in_flight'}in-flight{:else if kindFilter === 'rolled_back'}rolled-back{/if}{kindFilter !==
-					'all'
-						? ' '
-						: ''}deploy{windowed.length === 1 ? '' : 's'} in {rangeLabel}
-					{#if appCount > 0}
-						· {appCount} rollout{appCount === 1 ? '' : 's'}
-					{/if}
-					{#if windowed.length > feed.length}
-						<!-- The band counts the WINDOW; the list below is capped. Saying so
-						     is what keeps "60 deploys" from contradicting the chart's 69. -->
-						· latest {feed.length} shown
-					{/if}
-					{#if failedCount > 0 && kindFilter !== 'failed'}
-						· <span class="font-medium text-gray-700 dark:text-gray-200">{failedCount} failed</span>
-					{/if}
-					{#if flyingCount > 0 && kindFilter !== 'in_flight'}
-						· {flyingCount} still going
-					{/if}
-					{#if rolledBackCount > 0 && kindFilter !== 'rolled_back'}
-						· {rolledBackCount} rolled back
-					{/if}
-				</p>
-			</div>
-		{/if}
+{#snippet rangeControl(cls: string)}
+	<!-- ONE window control, single-select, in the first section header's action slot (controls sit on a section header's right).
+	     It governs the chart, the KPIs, the rail and the feed. `.btn.btn-ghost.btn-xs` + `aria-pressed`, as before. -->
+	<div class="items-center gap-0.5 {cls}" role="group" aria-label="Time range">
+		{#each CHART_RANGES as r (r.value)}
+			<button
+				type="button"
+				class="btn btn-ghost btn-xs {cls.includes('grid') ? 'justify-center' : ''}"
+				disabled={allEntries.length === 0}
+				aria-pressed={timelineRange === r.value}
+				onclick={() => {
+					rangeTouched = true;
+					timelineRange = r.value;
+				}}>{r.label}</button
+			>
+		{/each}
 	</div>
+{/snippet}
 
-	{#if blocker}
-		<AlertPanel
-			severity="error"
-			icon={ExclamationCircleSolid}
-			title={blocker.title}
-			message={blocker.message}
-			footnote={blocker.footnote}
-			class="mb-5"
-		>
-			{#snippet extra()}
-				{#if blocker.entry?.version}
-					{@const rank = ranks.get(blocker.entry.rollout) ?? { kind: 'unknown' as const }}
-					<Chip
-						role={rankRole(rank)}
-						label={rankLabel(rank)}
-						title={rankTitle(rank, blocker.entry.displayName)}
-						value={shortenVersion(blocker.entry.version)}
-						valueTitle={blocker.entry.version}
-						class="min-w-0"
-					/>
+{#snippet dayRowDetails(group: ActivityGroup<ActivityEntry>)}
+	<ul class="space-y-2">
+		{#each group.members as entry (entry.key)}
+			<li>
+				<a href={entry.href} class="t-ui-sm nav-link">{entry.envLabel || entry.envKey}</a>
+				<span class="t-meta ml-2 text-fg-subtle">{clockOf(entry.timestamp)}</span>
+				{#if deployReason(entry.note)}
+					<p class="t-meta mt-1 text-fg-muted" data-deploy-reason><span class="text-fg-subtle">Reason</span> {deployReason(entry.note)}</p>
 				{/if}
-			{/snippet}
-			{#snippet actions()}
-				<NextStep step="open" href={blocker.href} label="Open {blocker.app}" />
-			{/snippet}
-		</AlertPanel>
-	{/if}
+				{#if entry.source && entry.revision && entry.previousRevision}
+					<div class="mt-1">
+						<ChangeList
+							namespace={entry.rolloutNamespace}
+							name={entry.rolloutName}
+							cluster={entry.cluster}
+							base={entry.previousRevision}
+							head={entry.revision}
+							source={entry.source}
+							note={entry.note}
+							actor={entry.actor}
+							actorKind={entry.actorKind}
+						/>
+					</div>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+{/snippet}
 
-	<!-- ══ WHEN THEY HAPPENED ═══════════════════════════════════════════════
-	     A TITLED CARD, not a bordered box. The rollup is the ANSWER now
-	     (`49 deploys · 1 rolled back`, `all fine`) — never the window, which
-	     the `7D` pill 50px below already states and which used to be this
-	     card's whole rollup. The window still rides in the title: it is a
-	     real fact, and the buttons inside this card govern the feed below
-	     it too, so a reader hovering the verdict still finds it. -->
-	<!-- ⛔ THE GATE WAS `chartServices.length > 0`, WHICH HID THE ONLY COPY OF
-	     THE WINDOW CONTROL. (2026-09-03, operator-walk P7) `chartServices` is
-	     built from `scoped` (env/app/ns/kind, no time window) — so a filter
-	     combination with zero matches EVER (`?kind=failed&env=prod` on a
-	     cluster with no failed prod deploys) hid this whole card, and the
-	     empty state 300px below still said "Widen the window above" —
-	     pointing at a control that no longer existed on the page.
-	     `DeploymentTimeline` already draws its range-pill row unconditionally
-	     and only swaps its OWN chart body for a `No data` placeholder when
-	     `services.length === 0` (see that file), so the card only needs to
-	     stop hiding itself: `allEntries.length > 0` — this fleet has SOME
-	     history at all — is the only real precondition for a window control
-	     to mean anything. A cluster with zero deploys ever is the one case
-	     that still hides it, because there is no window to set. -->
-	{#if rolloutsQuery.isLoading}
-		<!-- ⭐ THE CHART CARD, RESERVED, AT ITS OWN MEASURED HEIGHT PER WIDTH.
-		     (2026-09-04, load-state audit finding 2) `allEntries.length > 0`
-		     — this card's real gate — is unknowable before the fleet's
-		     history has answered, so `main` dropped straight from the head
-		     band to the pill row with no placeholder at all: chrome the
-		     audit measured as part of the +373/+441px the pill row jumped.
-		     `CardSkeleton`'s own 47px header plus one `bodyHeight` block
-		     reproduces this card's shape — but `DeploymentTimeline`'s own
-		     range-pill row wraps at narrow widths (measured live: 325px
-		     total ≥640, 375px at 390), so ONE fixed `bodyHeight` undershoots
-		     on a phone by the same 50px the pill row was still off by.
-		     Two instances, CSS-toggled at the SAME `sm` breakpoint the real
-		     card's own row uses, rather than a single number that can only
-		     be right at one width. -->
-		<CardSkeleton
-			titleWidth="w-40"
-			rollupWidth="w-32"
-			bodyHeight={246}
-			class="mb-5 hidden sm:block"
-		/>
-		<CardSkeleton titleWidth="w-40" rollupWidth="w-32" bodyHeight={296} class="mb-5 sm:hidden" />
-	{:else if allEntries.length > 0}
-		<Card
-			icon={ChartLineUpOutline}
-			title="When deploys happened"
-			verdict={windowRollup.text}
-			verdictTone={windowRollup.tone}
-			verdictTitle="{windowRollup.text}, in {rangeLabel} — the window these buttons set. It also scopes the feed below."
-			class="mb-5"
-		>
-			<DeploymentTimeline
-				services={chartServices}
-				bind:timeRange={timelineRange}
-				onRangeChange={() => (rangeTouched = true)}
-				labelWidth={chartLabelWidth}
-				rowHeight={chartRowHeight}
-				labelEmptyLanes
-				onEntryClick={handleChartEntryClick}
-				selectedEntry={chartSelectedEntry}
-			/>
-		</Card>
-	{/if}
-
-	<!-- ══ ONE CONTROL STRIP ════════════════════════════════════════════════
-	     THE ENV CHIPS USED TO FLOAT AT THE FAR RIGHT OF THIS ROW, which is
-	     exactly where a colour key goes, and the human has had two legends
-	     deleted. They are controls, so they sit in the control strip, after a
-	     divider, in the same pressed/unpressed language as the state filters,
-	     and each one says what it does. -->
-	<!-- `gap-y-3`, not `gap-y-2`: the status-pill and env-chip groups wrap onto
-	     two lines at 390 (each is `flex-nowrap`, so only the OUTER wrap can
-	     break between them). Design pass 6's touch-target fix gives every
-	     pill an invisible 32px hit box on coarse pointers (`.pill-btn` in
-	     `app.css`) — at the old 8px gap that box overlaps the next line's by
-	     4px (6px of slop each side, 8 - 6 - 6 < 0). 12px leaves the two
-	     expanded boxes exactly touching, never overlapping.
-
-	     ⭐ `bind:this={controlStripEl}` + `--activity-strip-min-h*`. (load-
-	     state audit finding 3, remembered shape) This row is NOT gated on
-	     `rolloutsQuery.isLoading` — it always renders — but its OWN height
-	     still grows once `knownEnvs` populates and the env-chip group
-	     inserts, which is the actual cause of the day groups' +96px drop
-	     the audit measured (the chart card's own reservation already
-	     matches). `SHAPE_KEY`'s `$effect` above measures this element live
-	     and remembers it per width; the inline custom properties plus the
-	     scoped style rule below apply it — an inline `min-height`
-	     directly would win at every width, not just its own, the same
-	     reason `BannerSkeleton` stopped taking a class override. Zero
-	     (no reservation) on a first-ever visit, when nothing is
-	     remembered yet. -->
-	<div
-		bind:this={controlStripEl}
-		class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3"
-		style="--activity-strip-min-h: {shapeHint?.controlStripHMobile ?? 0}px; --activity-strip-min-h-sm: {shapeHint?.controlStripHDesktop ??
-			0}px"
-		data-activity-strip
-	>
-		<!-- ⛔ THIS ROW AND THE CHART'S `1H 6H 1D 7D 30D ALL` ROW WERE TWO
-		     ALMOST-IDENTICAL PILLS ONE TYPE SIZE APART. (2026-09-02) This one
-		     is `t-label` (10px/600); `DeploymentTimeline`'s presets are an ad
-		     hoc `text-[11px] font-semibold uppercase tracking-wider` — a
-		     THIRD uppercase size, against app.css's own note above `t-label`
-		     that the product's old 9/10/11px sprawl was deliberately closed
-		     to exactly `t-label` (10px) and `t-micro` (11px, not uppercase).
-		     Moving THIS row up to 11px would reopen that budget; `Deployment
-		     Timeline` moves down to `t-label` instead — see the matching
-		     comment there.
-		     ⛔ AND THE SELECTED PILL WAS 2PX SHORTER. Its unselected sibling
-		     carries a 1px border; the selected state had none, so on a
-		     border-box element a border-less button IS 2px smaller in both
-		     axes at identical padding. `border-gray-900`/`border-gray-100`
-		     match the fill exactly, so the border is invisible and the box is
-		     the same size as its neighbours either way.
-		     ⛔ AND THIS ROW WAS TALLER THAN THE ENV CHIPS BESIDE IT (F16,
-		     DESIGN PASS 5). Measured at 1440: this pill's `t-label` line box
-		     (12px) + `py-1` (8px) + its 1px border each side (2px) = 22px,
-		     against the env chip's `.chip` (app.css), which is a HARD 20px —
-		     tops landed 1px apart on the shared `items-center` baseline. `py-1`
-		     → `py-[3px]` closes exactly that 2px, so both groups share one
-		     height and one baseline; nothing shrank below the chip's own
-		     20px floor, which is already the product's control size for this
-		     row (see `RolloutGrid`'s identical env-chip filter buttons). -->
-		<!-- ⭐ TWO GROUPS, EACH `nowrap`, NOT ONE FLAT ROW OF BUTTONS. (DESIGN
-		     PASS 2, defect #4) At 390 the bare divider between the status
-		     filters and the env filters used to wrap to the END of row 1 —
-		     the flex-wrap parent breaks between individual BUTTONS, with no
-		     concept that the four status pills are one group and the env
-		     chips are another. Measured: `DEV` landed on row 1 (right after
-		     the divider) while `STAGING PROD` wrapped to row 2, splitting one
-		     group of chips across two lines.
-
-		     Each group is its own `flex flex-nowrap` unit now, so the OUTER
-		     `flex-wrap` can only break BETWEEN groups, never inside one — the
-		     env chips move together or not at all. The divider is `hidden
-		     sm:inline-block`: below `sm` the two groups routinely do not fit
-		     one line together (this row's own reason for existing), so a
-		     divider that sometimes strands itself between the last status pill
-		     and a WRAPPED env group is worse than no divider; above `sm` the
-		     measured case, both groups fit and it draws as before. -->
-		<div class="flex flex-nowrap items-center gap-x-2">
-			{#each KIND_FILTERS as f (f.key)}
-				<button
-					type="button"
-					aria-pressed={kindFilter === f.key}
-					title={f.title}
-					onclick={() => setKindFilter(f.key)}
-					class="pill-btn t-label rounded border px-3 py-[3px] transition-colors
-						{kindFilter === f.key
-						? 'border-gray-900 bg-gray-900 text-white dark:border-gray-100 dark:bg-gray-100 dark:text-gray-900'
-						: 'border-gray-200 bg-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}"
-					>{f.label}</button
-				>
-			{/each}
-		</div>
-		{#if knownEnvs.length > 0}
-			<span
-				class="mx-1 hidden h-4 w-px bg-gray-200 sm:inline-block dark:bg-gray-700"
-				aria-hidden="true"
-			></span>
-			<div class="flex flex-nowrap items-center gap-x-2">
-				{#each knownEnvs as e (e.key)}
-					<!-- ⛔ THE RING WAS THE ONLY "SELECTED" ON THIS ROW THAT CHANGED
-					     NOTHING SOLID (2026-09-03, activity/touch lane, F1). A 40%-
-					     alpha 2px ring on a 20px chip against the state-pill group
-					     four columns left, which fills gray-900/gray-100 SOLID for
-					     its own selected member — two different "selected" grammars
-					     on one strip. `.env-filter-selected` (app.css, declared right
-					     after `.chip-env`) gives the pressed env chip the SAME solid
-					     fill; the identity hue is deliberately lost while pressed,
-					     which is documented there rather than guessed at here. -->
-					<button
-						type="button"
-						aria-pressed={envFilter === e.key}
-						title={envFilter === e.key ? `Stop showing only ${e.label}` : `Show only ${e.label}`}
-						onclick={() => setParam('env', envFilter === e.key ? null : e.key)}
-						class="pill-btn environment-theme-scope inline-flex items-center rounded transition-opacity
-							{envFilter === e.key
-							? 'env-filter-selected'
-							: envFilter === null
-								? ''
-								: 'opacity-45 hover:opacity-100'}"
-						style={e.theme ? getEnvironmentThemeStyle(e.theme) : undefined}
-						><Chip role="env" theme={e.theme} label={e.label} wide /></button
-					>
-				{/each}
-			</div>
+<!-- /activity, detail pass (2026-11-08): the page template the list pages use. No page title and no headline count (LANGUAGE §1): alert band
+     (the failed deploys in the window, AlertPanel as on /changes) → Deploys (section header + the KPI/chart card; the window control sits on the
+     header's right) → the feed, one section per day (SectionHeader + ONE list card of FeedRows) with the filter chips above it → on ≥1024 the
+     tab's 3fr / minmax(22rem, 2fr) split with "This window" in the side column. Full width, no max-w. -->
+<div class="w-full px-4 py-6 sm:px-6" data-page="activity">
+	<h1 class="sr-only">Activity</h1>
+	<div class="flex min-w-0 flex-col gap-8">
+		{#if blocker}
+			<AlertPanel
+				severity="error"
+				title={blocker.title}
+				message={blocker.message}
+				footnoteLabel="Details"
+				footnoteBody={blocker.list.length > 0 ? failureFootnote : undefined}
+				dataTour="deploys-failed"
+				class=""
+			>
+				{#snippet actions()}
+					<a href={blocker.href} class="btn btn-secondary" data-action="open">Open rollout ›</a>
+				{/snippet}
+			</AlertPanel>
 		{/if}
-	</div>
 
-	{#if appFilter || nsFilter}
-		<div class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3">
-			<span class="t-micro text-gray-500 dark:text-gray-400">Showing only:</span>
-			{#if appFilter}
-				<button
-					type="button"
-					onclick={() => setParam('app', null)}
-					class="pill-btn t-label inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-200 dark:hover:bg-gray-700"
-					title="Stop showing only {appFilter}"
-				>
-					rollout
-					<span class="t-code-sm normal-case">{appFilter}</span>
-					<span aria-hidden="true">×</span>
-				</button>
-			{/if}
-			{#if nsFilter}
-				<button
-					type="button"
-					onclick={() => setParam('ns', null)}
-					class="pill-btn t-label inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-200 dark:hover:bg-gray-700"
-					title="Stop showing only {nsFilter}"
-				>
-					namespace
-					<span class="t-code-sm normal-case">{nsFilter}</span>
-					<span aria-hidden="true">×</span>
-				</button>
-			{/if}
-			{#if activeFilterCount >= 2}
-				<button
-					type="button"
-					onclick={clearAllFilters}
-					class="pill-btn t-micro ml-1 text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-					>Clear all</button
-				>
-			{/if}
-		</div>
-	{/if}
+		<div class="flex min-w-0 flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)] lg:items-start lg:gap-x-6">
+			<div class="flex min-w-0 flex-col gap-8">
+				<!-- ══ DEPLOYS ═════════════════════════════════════════════════════ -->
+				{#if rolloutsQuery.isLoading}
+					<section aria-hidden="true">
+						<div class="flex h-8 items-center gap-2"><SkeletonBar width="w-4" height="h-4" /><SkeletonBar width="w-20" height="h-4" /></div>
+						<div class="skel-card mt-3 hidden h-[330px] rounded-lg border border-line bg-surface sm:block"></div>
+						<div class="skel-card mt-3 h-[470px] rounded-lg border border-line bg-surface sm:hidden"></div>
+					</section>
+				{:else if allEntries.length > 0}
+					<section id="deploys" data-section="deploys" data-tour="activity-chart">
+						<SectionHeader title="Deploys" icon={ChartOutline} rollup={deploysRollup}>
+							{#snippet action()}{@render rangeControl('hidden sm:flex')}{/snippet}
+						</SectionHeader>
+						<div class="act-chart rounded-lg border border-line bg-surface p-4 lg:px-3.5">
+							<!-- KPI head: Home's KpiTile, flat inside the card. Phone: a 2×2 grid (every figure at full size, none clipped);
+							     ≥640: one row of four with hairline dividers. -->
+							<!-- phone: the window control leaves the header (it would squeeze the rollup out) and sits as six equal buttons at the top of the card -->
+							{@render rangeControl('mb-4 grid grid-cols-6 sm:hidden')}
+							<div class="act-kpis mb-4 grid grid-cols-2 gap-y-4 sm:grid-cols-4" role="group" aria-label="Deploy stats">
+								<div class="min-w-0 pr-4">
+									<KpiTile
+										icon={ExclamationCircleSolid}
+										iconClass={unresolvedFailedCount > 0 ? 'text-danger' : 'text-fg-subtle'}
+										label="Failed"
+										value={failedCount}
+										valueClass={unresolvedFailedCount > 0 ? 'text-danger' : 'text-fg'}
+										resolved={failedCount > 0 && unresolvedFailedCount === 0}
+										sub={failedSub}
+										href={failedCount > 0 ? '?kind=failed' : undefined}
+									/>
+								</div>
+								<div class="min-w-0 border-l border-line-subtle pl-4 sm:px-4">
+									<KpiTile icon={RocketSolid} label="Deploys" value={windowed.length} delta={deploysDelta} sub={deploysPerDaySub} />
+								</div>
+								<div class="min-w-0 pr-4 sm:border-l sm:border-line-subtle sm:px-4">
+									<KpiTile
+										icon={ClockOutline}
+										label="Median to prod"
+										parts={medianTimeToProdParts ?? undefined}
+										value={medianTimeToProdParts ? undefined : '—'}
+										sub={medianTimeToProdParts ? `${appsToProdCount} app${appsToProdCount === 1 ? '' : 's'}` : undefined}
+									/>
+								</div>
+								<div class="min-w-0 border-l border-line-subtle pl-4">
+									{#if rolledBackCount > 0}
+										<KpiTile icon={UndoOutline} label="Rolled back" value={rolledBackCount} valueClass="text-fg" />
+									{:else}
+										<KpiTile icon={ArrowsRepeatOutline} label="In flight" value={flyingCount} sub={inFlightSub} />
+									{/if}
+								</div>
+							</div>
+							<DeployBars
+								buckets={volumeBuckets}
+								previous={previousVolumeBuckets}
+								previousLabel={previousSpanNoun[timelineRange] || 'the period before'}
+								emphasisLabel="Reached prod"
+								observedFromMs={oldestScopedMs}
+								markers={chartMarkers}
+								startMs={chartWindow.start}
+								endMs={chartWindow.end}
+								selected={selectedBucket}
+								onBucketClick={handleBucketClick}
+								ariaLabel="Deploy volume — one bar per time bucket, newest to the right"
+							/>
+							<div class="mt-3 flex justify-end">
+								<DeployLegend
+									buckets={volumeBuckets}
+									previous={previousVolumeBuckets}
+									previousLabel={previousSpanNoun[timelineRange] || 'the period before'}
+								/>
+							</div>
+						</div>
+					</section>
+				{/if}
 
-	<!--
-		⭐ THE HUB FAILS SOFT. `/api/rollouts` answers 200 with the spokes that
-		replied and names the ones that did not in `clusterErrors`, so this page
-		can be PARTLY true — and until now only `/` and `/rollouts` said so.
-		A rollout on an unreachable spoke is absent from every count here, and
-		absent is not healthy. Renders nothing when every cluster answered.
-	-->
-	<PartialDataNotice
-		errors={rolloutsQuery.data?.clusterErrors ?? []}
-		subject="this feed"
-		onRetry={() => rolloutsQuery.refetch()}
-		isRetrying={rolloutsQuery.isFetching}
-	/>
+				<!-- ══ FEED ════════════════════════════════════════════════════════ -->
+				<div class="min-w-0">
+					<div
+						bind:this={controlStripEl}
+						class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
+						style="--activity-strip-min-h: {shapeHint?.controlStripHMobile ?? 0}px; --activity-strip-min-h-sm: {shapeHint?.controlStripHDesktop ?? 0}px"
+						data-activity-strip
+					>
+						<div class="flex min-w-0 flex-wrap items-center gap-1.5">
+							<div class="flex shrink-0 items-center gap-1.5">
+								{#each KIND_FILTERS.filter((f) => kindCounts[f.key] > 0 || kindFilter === f.key) as f (f.key)}
+									<!-- the failed dot is danger only while a failure is unresolved: colour only where something needs a person -->
+									<FilterChip selected={kindFilter === f.key} title={f.title} onclick={() => setKindFilter(f.key)} dot={f.key === 'failed' && unresolvedFailedCount === 0 ? 'bg-fg-subtle' : f.dot} label={f.label} count={kindCounts[f.key]} />
+								{/each}
+							</div>
+							<div class="flex shrink-0 items-center gap-1.5">
+								{#each TIER_FILTERS.filter((t) => tierCounts[t.key] > 0 || tierFilter === t.key) as t (t.key)}
+									<FilterChip selected={tierFilter === t.key} title={tierFilter === t.key ? `Stop showing only ${t.label}` : `Show only ${t.label}`} onclick={() => setTierFilter(t.key)} label={t.label} count={tierCounts[t.key]} />
+								{/each}
+							</div>
+							{#if selectedBucket}
+								<div class="flex shrink-0 items-center">
+									<FilterChip removable title="Stop showing only {selectedBucketLabel}" onclick={clearBucketSelection} label={selectedBucketLabel} />
+								</div>
+							{/if}
+						</div>
+					</div>
 
-	{#if rolloutsQuery.isLoading}
-		<StillTryingNotice failureCount={rolloutsQuery.failureCount} />
-		<!-- ⭐ THE SAME `Card` SHAPE THE DAY GROUPS DRAW — 47px header, rows at
-		     their REAL 48px (measured live; the audit's own "~40px" is this
-		     row, not the old 52px `h-[3.25rem]` guess), `padded={false}` so
-		     rows sit flush exactly like the loaded `<ul class="divide-y">`
-		     does. Card COUNT and each card's ROW COUNT are unknowable before
-		     the feed answers (some days have one deploy, some have thirty) —
-		     per the same rule the blocking banner follows, that is content,
-		     not chrome, so it is approximated, never asserted as a real
-		     rollup. `skelDayGroups` is this feed's own PER-DAY remembered row
-		     counts, not the fixed `[3, 5]` guess or one averaged count applied
-		     to every day. -->
-		<div class="flex flex-col gap-4">
-			{#each skelDayGroups as g (g.key)}
-				<CardSkeleton
-					titleWidth="w-28"
-					rollupWidth="w-40"
-					rows={g.rows}
-					rowHeight={skelRowHeight}
-					padded={false}
-				/>
-			{/each}
-		</div>
-	{:else if rolloutsQuery.isError}
-		<!--
-			⛔ AN EMPTY ACTIVITY FEED IS THE MOST DANGEROUS BLANK IN THE PRODUCT:
-			"nothing has happened" is a perfectly ordinary state here, so a failed
-			request wearing the same blankness reads as calm. It must say, in
-			words, that this is a failure and not a quiet night.
-		-->
-		<ErrorState
-			error={rolloutsQuery.error}
-			subject="the activity feed"
-			backHref="/"
-			backLabel="Go to Home"
-			onRetry={() => rolloutsQuery.refetch()}
-			isRetrying={rolloutsQuery.isFetching}
-			class="py-2"
-		/>
-	{:else if feed.length === 0}
+					{#if envFilter || appFilter || nsFilter}
+						<div class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3">
+							<span class="t-meta text-fg-subtle">Showing only:</span>
+							{#if envFilter}
+								<FilterChip removable title="Stop showing only {envFilterLabel}" onclick={() => setParam('env', null)}>env <span class="t-code-sm">{envFilterLabel}</span></FilterChip>
+							{/if}
+							{#if appFilter}
+								<FilterChip removable title="Stop showing only {appFilter}" onclick={() => setParam('app', null)}>rollout <span class="t-code-sm">{appFilter}</span></FilterChip>
+							{/if}
+							{#if nsFilter}
+								<FilterChip removable title="Stop showing only {nsFilter}" onclick={() => setParam('ns', null)}>namespace <span class="t-code-sm">{nsFilter}</span></FilterChip>
+							{/if}
+							{#if activeFilterCount >= 2}
+								<button type="button" onclick={clearAllFilters} class="pill-btn t-meta ml-1 text-fg-subtle underline-offset-2 hover:text-fg hover:underline">Clear all</button>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- The hub fails soft: a spoke that did not answer is absent from every count here, and absent is not healthy. -->
+					<PartialDataNotice
+						errors={rolloutsQuery.data?.clusterErrors ?? []}
+						subject="this feed"
+						onRetry={() => rolloutsQuery.refetch()}
+						isRetrying={rolloutsQuery.isFetching}
+					/>
+
+					{#if rolloutsQuery.isLoading}
+						<StillTryingNotice failureCount={rolloutsQuery.failureCount} />
+						<!-- reserved at the loaded geometry: a 32px section header over a list card of 48px rows (per-day counts remembered from the last visit) -->
+						<div class="flex flex-col gap-8" aria-hidden="true">
+							{#each skelDayGroups as g (g.key)}
+								<section>
+									<div class="flex h-8 items-center gap-2"><SkeletonBar width="w-4" height="h-4" /><SkeletonBar width="w-24" height="h-4" /></div>
+									<div class="skel-card mt-3 rounded-lg border border-line bg-surface" style="height: {g.rows * skelRowHeight}px"></div>
+								</section>
+							{/each}
+						</div>
+					{:else if rolloutsQuery.isError}
+						<!-- an empty feed is the most dangerous blank in the product: a failed request must say so in words, not read as a quiet night -->
+						<ErrorState
+							error={rolloutsQuery.error}
+							subject="the activity feed"
+							backHref="/"
+							backLabel="Go to Home"
+							onRetry={() => rolloutsQuery.refetch()}
+							isRetrying={rolloutsQuery.isFetching}
+							class="py-2"
+						/>
+					{:else if feed.length === 0}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
-			<ClockSolid class="mb-3 h-10 w-10 text-gray-500 dark:text-gray-400" />
-			{#if activeFilterCount > 0 || kindFilter !== 'all'}
-				<p class="t-body font-semibold text-gray-900 dark:text-white">
-					Nothing matches these filters
+			<!-- `ClockOutline`, not `ClockSolid` (round 6 review): §3.15's
+			     empty state is a structural glyph, not a status disc. -->
+			<ClockOutline class="mb-3 h-10 w-10 text-fg-disabled" />
+			{#if activeFilterCount > 0 || kindFilter !== 'all' || selectedBucket || allEntries.length > 0}
+				<!-- ⛔ `allEntries.length > 0` ADDED TO THE GATE (round 2 review,
+				     2026-10-09). The range default is now a FIXED `7d`
+				     (previously fit-to-data — see `timelineRange`'s own note),
+				     so a fleet whose newest deploy is 8+ days old shows an
+				     empty window with NO filter active — this branch used to
+				     require one, so that case fell to "Nothing has deployed
+				     yet" below, which is false: the fleet has history, just
+				     not inside this window. -->
+				<p class="t-ui text-fg">
+					{allEntries.length > 0 && activeFilterCount === 0 && kindFilter === 'all' && !selectedBucket
+						? 'Nothing in this window'
+						: 'Nothing matches these filters'}
 				</p>
 				<!-- ⛔ "WIDEN THE WINDOW ABOVE" NAMED A CONTROL THAT COULD BE
 				     ENTIRELY OFF SCREEN. (2026-09-03, operator-walk P7) With
@@ -1498,7 +1875,7 @@
 				     narrow window is the OTHER thing that can cause this, and
 				     there is no way to tell which from here without just
 				     trying it. -->
-				<p class="t-dense mt-1 text-gray-500 dark:text-gray-400">
+				<p class="t-meta mt-1 text-fg-subtle">
 					Try widening the window, or clearing one filter at a time.
 				</p>
 				<div class="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -1506,15 +1883,37 @@
 						<button
 							type="button"
 							onclick={() => {
-								timelineRange = '30d';
 								rangeTouched = true;
+								timelineRange = '30d';
 							}}
 							class="btn btn-secondary">Widen to 30 days</button
+						>
+					{/if}
+					{#if timelineRange !== 'all'}
+						<button
+							type="button"
+							onclick={() => {
+								rangeTouched = true;
+								timelineRange = 'all';
+							}}
+							class="btn btn-secondary">Widen to all time</button
 						>
 					{/if}
 					{#if kindFilter !== 'all'}
 						<button type="button" onclick={() => setKindFilter('all')} class="btn btn-secondary"
 							>Clear “{KIND_FILTERS.find((f) => f.key === kindFilter)?.label}”</button
+						>
+					{/if}
+					{#if selectedBucket}
+						<button type="button" onclick={clearBucketSelection} class="btn btn-secondary"
+							>Clear “{selectedBucketLabel}”</button
+						>
+					{/if}
+					{#if tierFilter}
+						<button
+							type="button"
+							onclick={() => setParam('tier', null)}
+							class="btn btn-secondary">Clear “{tierFilter}”</button
 						>
 					{/if}
 					{#if envFilter}
@@ -1536,319 +1935,121 @@
 							>Clear “{nsFilter}”</button
 						>
 					{/if}
-					{#if activeFilterCount + (kindFilter !== 'all' ? 1 : 0) > 1}
+					{#if activeFilterCount + (kindFilter !== 'all' ? 1 : 0) + (selectedBucket ? 1 : 0) > 1}
 						<button type="button" onclick={clearAllFilters} class="btn btn-secondary"
 							>Clear all filters</button
 						>
 					{/if}
 				</div>
 			{:else}
-				<p class="t-body font-semibold text-gray-900 dark:text-white">Nothing has deployed yet</p>
-				<p class="t-dense mt-1 max-w-sm text-gray-500 dark:text-gray-400">
+				<p class="t-ui text-fg">Nothing has deployed yet</p>
+				<p class="t-meta mt-1 max-w-sm text-fg-subtle">
 					Every version a rollout puts live shows up here, newest first.
 				</p>
 			{/if}
 		</div>
-	{:else}
-		<div class="flex flex-col gap-4">
-			{#each groupedByDay as dayGroup (dayGroup.label)}
-				{@const rollup = groupRollup(dayGroup.entries)}
-				<!-- THE HEADER ICON TAKES INK ONLY FOR THE DEVIATION. The reference
-				     page tints its card icons with the card's own state, and that is
-				     right there because it has four cards with four different answers.
-				     A 7-day feed is SEVEN cards, so a green clock on each would be the
-				     norm drawn at header scale — the defect this file's own
-				     `Succeeded` column already records. Red only, and only when the
-				     group holds a failure. -->
-				<!-- ══ ONE TIME CLUSTER, ONE TITLED CARD ═══════════════════════
-				     MEMBERSHIP OF THE CARD IS THE ONLY GROUPING MARK. Rows inside
-				     a card with a failure are byte-identical to rows in any other
-				     card; the moment one row can be styled differently from its
-				     neighbour, the gray attention band comes back under a new
-				     name. -->
-				<Card
-					icon={dayGroup.label === 'In the last hour' ? ClockSolid : CalendarMonthSolid}
-					iconClass={rollup.tone === 'adverse'
-						? 'text-red-700 dark:text-red-400'
-						: 'text-gray-500 dark:text-gray-400'}
-					title={dayGroup.label}
-					verdict={rollup.text}
-					verdictTone={rollup.tone}
-					verdictTitle={rollup.mayBeIncomplete
-						? 'How many deploys landed in this window, and how many of them failed. At least one rollout here has hit its retention limit (spec.versionHistoryLimit), so earlier deploys that day may have already been evicted — this count is a floor, not a total.'
-						: 'How many deploys landed in this window, and how many of them failed'}
-					padded={false}
-				>
-					<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-						{#each dayGroup.entries as entry (entryKey(entry))}
-							<!-- ⚠️ `?? STATE_WORD.None` WOULD BE WRONG HERE. `Succeeded` maps
-							     to `null` ON PURPOSE — the norm says nothing — and `??`
-							     only falls through on null, so every succeeded row printed
-							     `no result yet`. The table is looked up by KEY. -->
-							{@const word =
-								entry.bakeStatus in STATE_WORD ? STATE_WORD[entry.bakeStatus] : STATE_WORD.None}
-							<!-- ⭐ THE SAME KEY THE CHART AND `?deploy=` RESOLVE AGAINST —
-							     see `activity-deeplink.ts`. `registerEntry` is this page's
-							     own copy of `history/+page.svelte`'s element registry, and
-							     `isSelected` reuses that page's exact highlight
-							     (`bg-blue-50/50 dark:bg-blue-900/20`) rather than inventing
-							     a second "you are looking at this" idiom. -->
-							{@const key = entryKey(entry)}
-							{@const isSelected = selectedKey === key}
-							<li
-								use:registerEntry={key}
-								class="environment-theme-scope scroll-mt-20 transition-colors {isSelected
-									? 'bg-blue-50/50 dark:bg-blue-900/20'
-									: ''}"
-								style={entry.theme ? getEnvironmentThemeStyle(entry.theme) : undefined}
-							>
-								<!-- ⭐ `.tap-zone` ON THE ROW, NOT ON THE `<li>`. (2026-09-01)
-								     This row already had the RIGHT IDEA — a stretched
-								     `::after` on the name link rather than a wrapping `<a>`,
-								     which would nest a button inside an anchor — but it was
-								     HAND-ROLLED: the overlay was an `after:absolute
-								     after:inset-0` utility pair, so the focus ring drew on the
-								     link itself, inside a `truncate` box, which is
-								     `overflow: hidden` and clips it on all four sides. Every
-								     sibling that had to stay clickable carried its own
-								     `relative` / `z-[1]`. `.tap-zone` / `.tap-link` is the
-								     same geometry with the ring on the `::after` and the
-								     raising done by rule — see the block in `app.css`.
+					{:else}
+						<div class="flex flex-col gap-8">
+							{#each groupedByDay as dayGroup (dayGroup.label)}
+								{@const rollup = groupRollup(dayGroup.entries)}
+								{@const allGroups = releaseGroupsFor(dayGroup)}
+								{@const rows = groupRows(dayGroup)}
+								<section data-section="day" data-day={dayGroup.label}>
+									<SectionHeader
+										title={dayGroup.label}
+										icon={dayGroup.label === 'In the last hour' ? ClockOutline : CalendarMonthOutline}
+										rollup={rollup.parts}
+									/>
+									<ListCard>
+										<ul class="lc-rows">
+											{#each rows as group (group.key)}
+												{@const lead = group.members[0]}
+												{@const actor = actorFrom({ kind: lead.actorKind, name: lead.actor })}
+												{@const kind = activityKindForGroup(group, actor)}
+												{@const vb = activityVerb(kind)}
+												{@const single = group.members.length === 1}
+												<FeedRow
+													app={group.displayName}
+													href={group.href}
+													verb={vb.appVerb}
+													tone={vb.tone}
+													live={group.members.some((m) => m.isLive)}
+													chip={single ? group.envText || null : null}
+													theme={single ? lead.theme : null}
+													envText={single ? null : group.envText || null}
+													from={group.previousVersion}
+													to={group.version ? shortenVersion(group.version) : null}
+													actor={actor.kind === 'person' ? actor : null}
+													age={clockOf(group.timestamp)}
+													expandable={groupHasDetails(group)}
+													open={detailsOpen.has(group.key)}
+													ontoggle={() => toggleDetails(group.key)}
+													toggleLabel={group.members.length > 1 ? `Show ${group.members.length} environments` : 'Show details'}
+													outcome={kind === 'deployed' ? 'deploy succeeded' : null}
+													mark={deployMark({ actorKind: actor.kind })}
+												>
+													{@render dayRowDetails(group)}
+												</FeedRow>
+											{/each}
+										</ul>
+										<!-- never a one-row fold: `groupRows` folds the hidden count up by one when exactly one group would hide -->
+										{#if allGroups.length > rows.length}
+											<div class="border-t border-line-subtle px-4 py-3">
+												<button type="button" class="btn btn-secondary btn-sm" onclick={() => expandGroup(dayGroup.label)}>Show {allGroups.length - rows.length} more</button>
+											</div>
+										{/if}
+									</ListCard>
+								</section>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			</div>
 
-								     ⛔ AND THE ZONE STOPS AT THE ROW. The `What changed`
-								     disclosure below is deliberately OUTSIDE it: a tap zone
-								     makes its own text unselectable, and that panel is a list
-								     of commit subjects an operator copies. -->
-								<!-- ⛔ SUPERSEDED (F5, DESIGN PASS 5). This grid used to carry a
-								     FOURTH column (`sm:grid-cols-[…_auto]`) that pinned the
-								     version pair flush right, independent of how much the
-								     sentence in column 3 actually used. Measured: first-line
-								     gaps up to 817px (68% of a 1199px row) between the sentence's
-								     own end and the pinned pair. There is no fourth column now —
-								     the pair joins the sentence itself (below), so the row packs
-								     left and wraps like any other sentence instead of holding a
-								     reserved lane for an object that is not always as wide as the
-								     lane. -->
-								<div
-									class="tap-zone grid grid-cols-[28px_2.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-2.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30"
-								>
-									<span
-										class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full {getStatusCircleClass(
-											entry.bakeStatus
-										)}"
-									>
-										<!-- ⭐ THE DISC CARRIES THE ROLLBACK, SAME AS `/`'s.
-										     (2026-09-02) `rollout-cards.ts`'s `cardStateMark`
-										     swaps this glyph for `UndoOutline` on `/` and
-										     `/rollouts`; this row used to always draw the plain
-										     tick, even on the entry where production went
-										     backwards — a green disc reading `deploy succeeded`
-										     on a rollback nobody could see. Same component, same
-										     `state`/`stateWord` contract, same hue: the deploy
-										     DID succeed, only the shape changes. -->
-										<BakeStatusIcon
-											bakeStatus={entry.bakeStatus}
-											size="small"
-											state={entry.rollbackAct ? 'rolled-back' : null}
-											stateWord="rolled back"
-										/>
-									</span>
-
-									<span
-										class="t-code-sm text-gray-500 tabular-nums dark:text-gray-400"
-										title={formatDate(entry.timestamp)}
-										>{clockOf(entry.timestamp)}</span
-									>
-
-									<!-- ── THE SUBJECT ─────────────────────────────────
-									     `[ENV] name · state · prev → new`. The actor is
-									     printed ONLY when a PERSON triggered it:
-									     `rollout-controller` was the first word of all
-									     39 rows, i.e. the norm, restated 39 times. -->
-									<span class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-										{#if entry.theme || entry.envLabel}
-											<Chip
-												role="env"
-												theme={entry.theme}
-												label={entry.envLabel || entry.envKey}
-												wide
-												class="shrink-0"
-											/>
-										{/if}
-										<a
-											href={entry.href}
-											class="tap-link t-dense min-w-0 truncate font-semibold text-gray-900 dark:text-white"
-											>{entry.displayName}</a
-										>
-										{#if needsNamespace(entry)}
-											<span class="t-micro truncate text-gray-500 dark:text-gray-400"
-												>in {entry.rolloutNamespace}</span
-											>
-										{/if}
-										{#if word}
-											<!-- The one-word state, with its sentence in the
-											     `title` — this is the second half of the
-											     `bake-status.ts` ruling. The word has to decline
-											     into a four-item baseline row, so it cannot be a
-											     phrase; the consequence that distinguishes
-											     `checking` from `deploying` (already serving vs
-											     still going out) is what `bakeTitle` carries. -->
-											<span
-												class="t-micro {STATE_INK[entry.bakeStatus] ?? ''}"
-												title={bakeTitle(entry.bakeStatus)}>{word}</span
-											>
-										{/if}
-										{#if entry.rollbackAct}
-											<!-- THE WORD, AT REST — the same `Chip` every other domain
-										     status on this row already uses, from the SAME
-										     `history-marks.ts` object (`entry.rollbackAct.word` /
-										     `.sentence`), so a rollback cannot be spelled two ways
-										     between the two surfaces that both read `deployActs`.
-										     This is the row `defect #2` names: it used to read
-										     `064b655 → 1 BEHIND 0afab6f` with a green dot and no
-										     mark at all, above a day rollup that called the whole
-										     day `all fine`.
-
-										     ⛔ SUPERSEDED (DESIGN PASS 2). This used to be a
-										     hand-rolled `bg-gray-900` filled pill — the SAME fill
-										     as the `7d` window pill and the `All` status filter
-										     30 and 90px above it, so the loudest object on the
-										     page meant "you clicked this" twice and "this deploy
-										     went backwards" once. A domain STATUS may not share a
-										     fill with a SELECTION state. `role="count"` is the
-										     neutral, text-only tone `HELD`/`PINNED`/`1 BEHIND`
-										     already use product-wide — going backwards is still a
-										     fact about the deploy, not an alarm about it; only the
-										     geometry moved onto the shared `.chip` (20px, 4px
-										     radius — the SAME height every other chip on this row
-										     draws, closing the 19px-vs-20px mismatch) instead of a
-										     private `rounded-full` box. -->
-											<Chip
-												role="count"
-												label={entry.rollbackAct.word}
-												icon={rollbackIcon}
-												title={entry.rollbackAct.sentence}
-											/>
-										{/if}
-										<!-- ── WHAT IT CHANGED ─────────────────────────────
-										     `prev → new`, the same pair `ActivityRail` prints.
-										     ⛔ SUPERSEDED (F5, DESIGN PASS 5). This used to be its
-										     own grid column, pinned flush right by a reserved
-										     `auto` track independent of the sentence beside it —
-										     measured up to 817px of empty row between the two.
-										     It joins the sentence now, right where a reader
-										     reading left to right expects "what changed": after
-										     the name and the rollback mark, before who did it.
-
-										     ⛔ AND (F7) THIS GROUP GETS `flex-wrap`, NOT
-										     `shrink-0`. A first attempt gave the group `shrink-0`
-										     to stop the CHIP inside it (`.chip-value` is
-										     `min-width:0` and clips under shrink pressure) from
-										     being individually squeezed — which fixed the
-										     mid-token clip but, on a row carrying BOTH a struck
-										     `prev` sha and a joined `[N BEHIND][sha]` badge (the
-										     widest case: ~220px of content in a ~213px column at
-										     390), traded it for the group overflowing the CARD's
-										     own edge instead — same visual symptom, uncaught by a
-										     `shrink-0` sanity check because nothing shrank. The
-										     group is a nested flex-wrap box now: when the parent
-										     sentence gives it less room than it wants, ITS OWN
-										     children wrap onto a second sub-line (`prev →` above,
-										     the chip below) instead of either the group
-										     overflowing or the chip's value half compressing.
-										     `min-w-0` stays so the group CAN be handed less than
-										     its own content width; `shrink-0` on the CHIP itself
-										     (`class="min-w-0 shrink-0"` below) is what stops the
-										     shrink pressure from reaching inside the chip once
-										     it, in turn, is alone on its own sub-line. -->
-										{#if entry.previousVersion || entry.version}
-											<span class="flex min-w-0 flex-wrap items-center gap-1">
-												{#if entry.previousVersion}
-													<span class="t-code-sm text-gray-500 line-through dark:text-gray-400"
-														>{entry.previousVersion}</span
-													>
-													<span class="t-micro text-gray-500 dark:text-gray-400">→</span>
-												{/if}
-												{#if entry.version && entry.isLive}
-													<!-- ⭐ THE VERDICT FIRST — the joined `[verdict][sha]`
-													     unit `/` and `/rollouts` draw, from `env-rank.ts`.
-													     ONLY on the row that is still live; see `ranks`. -->
-													{@const rank = ranks.get(entry.rollout) ?? { kind: 'unknown' as const }}
-													<Chip
-														role={rankRole(rank)}
-														label={rankLabel(rank)}
-														title={rankTitle(rank, entry.displayName)}
-														value={shortenVersion(entry.version)}
-														valueHref={changeBuildPath(
-															repoKeyFromSource(entry.source, entry.rolloutName),
-															entry.revision,
-															entry.version
-														)}
-														valueTitle={entry.version}
-														class="min-w-0 shrink-0"
-													/>
-												{:else if entry.version}
-													<a
-														href={changeBuildPath(
-															repoKeyFromSource(entry.source, entry.rolloutName),
-															entry.revision,
-															entry.version
-														)}
-														class="ident rev-sha t-code-sm text-gray-700 hover:underline dark:text-gray-200"
-														>{entry.version}</a
-													>
-												{/if}
-											</span>
-										{/if}
-										{#if entry.actorKind === 'User'}
-											<span class="t-micro text-gray-500 dark:text-gray-400">by {entry.actor}</span>
-										{/if}
-										<!-- ── THE QUESTION THE OPERATOR ACTUALLY ASKS ─────────
-										     ⛔ SUPERSEDED (DESIGN PASS 2, defect #2). This used to
-										     be its own block BELOW the whole row, indented
-										     `pl-[5.25rem]` — a second line on every entry that had
-										     one, whatever room line 1 had to spare. Measured: the
-										     largest gap between a row's first and last ink ran up
-										     to 49% of a 1199px row, and the second line alone made
-										     these rows 83px tall. It renders INLINE now, the row's
-										     last first-line fact — `ChangeList`'s own `contents`
-										     wrapper lets its trigger sit here while its panel (once
-										     opened) still forces a full-width line via
-										     `basis-full`. Renders nothing at all when there is no
-										     prior revision to compare — an affordance for a
-										     question with no answer is the defect this control
-										     exists to close. -->
-										{#if entry.source && entry.revision && entry.previousRevision}
-											<ChangeList
-												namespace={entry.rolloutNamespace}
-												name={entry.rolloutName}
-												cluster={entry.cluster}
-												base={entry.previousRevision}
-												head={entry.revision}
-												source={entry.source}
-												note={entry.note}
-												actor={entry.actor}
-												actorKind={entry.actorKind}
-											/>
-										{/if}
-									</span>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				</Card>
-			{/each}
+			<!-- NEW BY DESIGN: "This window". ROLE: the side column's one summary card, who is busiest in the SAME scoped-and-windowed set the main column
+			     shows. Why not HowItsGoing: three of its five rows need per-step timing this page never parses and `Furthest behind` is a rank this page
+			     dropped. Borrows the Card's 47px header and the Home Fleet card's row (glyph · name · meta ... count). Sticky under the 52px top bar. -->
+			<div class="min-w-0 lg:sticky lg:top-[68px]">
+				{#if rolloutsQuery.isLoading}
+					<CardSkeleton titleWidth="w-28" rollupWidth="w-20" rows={4} rowHeight={32} />
+				{:else}
+					<Card icon={ListOutline} title="This window" verdict={rangeLabel}>
+						{#if mostActive.length > 0}
+							<p class="t-label mb-2 text-fg-subtle">Most active</p>
+							<ul class="flex flex-col">
+								{#each mostActive as m (m.href)}
+									<li class="flex min-h-8 items-center gap-2 py-1">
+										<AppGlyph name={m.name} size={20} />
+										<a href={m.href} class="tap-link t-card-title min-w-0 shrink truncate text-fg">{m.name}</a>
+										{#if m.envLabel}<span class="t-meta min-w-0 flex-1 truncate text-fg-subtle">{m.envLabel}</span>{:else}<span class="flex-1"></span>{/if}
+										<span class="t-meta shrink-0 tabular-nums text-fg-subtle">{m.count} deploy{m.count === 1 ? '' : 's'}</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</Card>
+				{/if}
+			</div>
 		</div>
-	{/if}
+	</div>
 </div>
 
 <style>
-	/* ⭐ THE CONTROL STRIP'S REMEMBERED MIN-HEIGHT. (2026-09-04, load-state
-	   audit finding 3.) Same reason `BannerSkeleton`/`RolloutGrid`'s chip
-	   block moved off a `!important` class override: an inline `style`
-	   attribute sets the two custom properties (this row's own last real
-	   measurement, or 0 on a first-ever visit) and this component-scoped
-	   rule applies them per breakpoint. */
+	/* The KPI tiles are flat inside the chart card: `KpiTile` is shared and keeps its own internals; this page only disowns the .tile shell. */
+	.act-kpis :global(.tile.kpi) {
+		border: none;
+		border-radius: 0;
+		background: transparent;
+		padding: 0;
+	}
+
+	/* Chart annotations: colour = state on the line and the words only. The shared kit draws each failed marker as a red-outlined box
+	   (chart-marks.css, also used by Home); on this page the pill keeps its neutral outline and the red stays on the dotted line and text. */
+	:global(.act-chart .db-m-failed .db-pill) {
+		stroke: var(--k-line);
+	}
+
+	/* the control strip's remembered min-height (per breakpoint) so a chip row never moves after first paint */
 	[data-activity-strip] {
 		min-height: var(--activity-strip-min-h);
 	}

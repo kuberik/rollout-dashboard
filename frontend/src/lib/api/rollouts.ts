@@ -20,6 +20,13 @@ export type RolloutResponse = {
     environment?: Environment;
     kruiseRollout?: KruiseRollout | null;
     rolloutTests?: { items: RolloutTest[] };
+    /**
+     * RFC 3339 instant of the bound ImageRepository's last scan, or `''` when
+     * there is none (main.go's rollout GET handler). Rollout detail's
+     * "Check for new versions" compares it before/after a reconcile request
+     * to know the scan really ran.
+     */
+    imageRepoScanTime?: string;
 };
 
 export type ClusterInfo = {
@@ -31,6 +38,10 @@ export type ClusterError = {
     url: string;
     name: string;
     error: string;
+    /** true: the hub still merged this cluster's LAST-KNOWN items (not current); absent: its items are missing entirely. */
+    stale?: boolean;
+    /** when the stale items were last fetched OK (RFC3339) */
+    lastSeen?: string;
 };
 
 export type RolloutsListResponse = {

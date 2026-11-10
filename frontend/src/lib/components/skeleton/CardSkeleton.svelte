@@ -5,7 +5,7 @@
 	 * ⭐ THE PRIMITIVE OTHER LANES IMPORT. Keep the API small.
 	 *
 	 * Renders the SAME container/border/radius/header geometry as
-	 * `Card.svelte` — `rounded-lg` (8px), a 1px neutral border, a 47px
+	 * `Card.svelte` — `rounded-md` (8px), a 1px neutral border, a 47px
 	 * header (16px icon square, a title bar, an optional right-aligned
 	 * rollup bar) — so the flip from skeleton to loaded page moves nothing.
 	 * See `../../CLAUDE.md`'s "Loading states" section (audit findings 1, 5,
@@ -73,12 +73,12 @@
 </script>
 
 <section
-	class="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {className}"
+	class="flex flex-col overflow-hidden rounded-md border border-line bg-surface {className}"
 	aria-hidden="true"
 	data-skel-card
 >
 	<header
-		class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+		class="flex min-h-[47px] shrink-0 items-center justify-between gap-2.5 border-b border-line px-4 py-3"
 		data-skel-header
 	>
 		<div class="flex min-w-0 items-center gap-2.5">

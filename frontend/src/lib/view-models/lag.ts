@@ -2,14 +2,26 @@ import type { AppGroup, AppCell } from '$lib/version-utils';
 import { compareEnvironmentNames } from '$lib/env-order';
 import { getDisplayVersion } from '$lib/utils';
 import { newerReleaseCount } from './promotion';
+import { TIERS } from './sites-waves';
 
 // Order an app's cells into promotion order (upstream/newest environments
-// first, e.g. dev, staging, prod). `Environment.spec.relationship` doesn't
-// exist in the current CRD schema, so env-order rank is both the primary
-// signal and the fallback for now; if an explicit `After` edge is ever added
-// to the schema, wire it in here ahead of the rank comparison.
+// first, e.g. dev, staging, prod). The controller's own order is tier, then
+// wave (leader before followers), then site (`sites-waves.ts` `comparePlaces`);
+// a cell whose tier cannot be placed falls back to env-order's name rank.
 function orderedCells(group: AppGroup): AppCell[] {
-	return [...group.cells].sort((a, b) => compareEnvironmentNames(a.envName, b.envName));
+	return [...group.cells].sort((a, b) => {
+		if (a.tier && b.tier) {
+			const t = TIERS.indexOf(a.tier) - TIERS.indexOf(b.tier);
+			if (t) return t;
+			const w = (a.wave ?? 1) - (b.wave ?? 1);
+			if (w) return w;
+			const la = a.role === 'Follower' ? 1 : 0;
+			const lb = b.role === 'Follower' ? 1 : 0;
+			if (la !== lb) return la - lb;
+			return (a.site ?? '') < (b.site ?? '') ? -1 : (a.site ?? '') > (b.site ?? '') ? 1 : 0;
+		}
+		return compareEnvironmentNames(a.envName, b.envName);
+	});
 }
 
 function cellVersion(cell: AppCell): string | null {

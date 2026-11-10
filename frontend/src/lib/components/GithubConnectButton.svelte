@@ -45,6 +45,14 @@
 
 	const shape = $derived.by((): Shape | null => {
 		if (!status) return null;
+		// ⭐ ITEM 4 (AD palette round 8): `configured === null` means the status
+		// request itself never reached the server — unknown, not the server's
+		// own "no". Treated the same as still-loading (`null` here too): the
+		// width-reserving ghost below holds the slot and nothing visible
+		// claims a setup state the outage made up. `status.configured ===
+		// false` (a real answer) is the only thing that earns the dashed
+		// "Not configured" button.
+		if (status.configured === null) return null;
 		if (!status.configured) return 'unconfigured';
 		return status.connected ? 'account' : 'connect';
 	});
@@ -89,6 +97,13 @@
 -->
 
 {#snippet accountShape(ghost: boolean, login: string, avatarUrl: string | null)}
+	<!-- ⛔ ITEM 10 (integration round 3): this used to override
+	     `.btn-secondary`'s own border to `!border-transparent` and fill it
+	     `!bg-gray-100` — a filled pill, the one icon button in the bar NOT
+	     drawing the same bordered-white box `Deploy`/`View on GitHub` do.
+	     Height (`!h-9` = 36px) was already right; only the chrome needed to
+	     drop back to `.btn-secondary`'s own border token, same as
+	     `connectShape` below already does. -->
 	<button
 		type="button"
 		id={ghost ? undefined : menuId}
@@ -96,7 +111,7 @@
 		aria-hidden={ghost ? 'true' : undefined}
 		inert={ghost || undefined}
 		disabled={ghost || undefined}
-		class="t-button flex items-center gap-2 rounded bg-gray-100 p-1 pr-2 text-gray-800 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 {ghost
+		class="btn btn-ghost btn-sm {ghost
 			? 'invisible'
 			: ''}"
 		aria-label="GitHub account"
@@ -122,7 +137,7 @@
 		aria-hidden={ghost ? 'true' : undefined}
 		inert={ghost || undefined}
 		disabled={ghost || undefined}
-		class="t-button flex items-center gap-2 rounded border border-gray-200 bg-transparent px-3 py-1 text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700 {ghost
+		class="btn btn-secondary btn-sm max-sm:h-9 max-sm:w-9 max-sm:justify-center max-sm:!border-transparent max-sm:!bg-transparent max-sm:px-0 {ghost
 			? 'invisible'
 			: ''}"
 		onclick={ghost ? undefined : () => connectGithub()}
@@ -130,7 +145,7 @@
 		title="Connect your GitHub account to see deployed changes"
 	>
 		<GithubSolid class="h-4 w-4" />
-		<span class="sm:hidden">Connect</span>
+		<!-- icon-only on a phone: the label cost ~60px that the breadcrumb needs (QA #24: "orders-api" read "or…"); the name is the aria-label -->
 		<span class="hidden sm:inline">Connect GitHub</span>
 	</button>
 {/snippet}
@@ -148,7 +163,7 @@
 		aria-hidden={ghost ? 'true' : undefined}
 		inert={ghost || undefined}
 		disabled={ghost || undefined}
-		class="t-button flex cursor-help items-center gap-2 rounded border border-dashed border-gray-200 bg-transparent px-3 py-1 text-gray-400 transition-colors hover:border-gray-300 hover:text-gray-500 dark:border-gray-700 dark:text-gray-500 dark:hover:border-gray-600 dark:hover:text-gray-400 {ghost
+		class="btn btn-secondary btn-sm cursor-help !border-dashed !text-fg-subtle {ghost
 			? 'invisible'
 			: ''}"
 		aria-label={ghost || !status ? undefined : githubAbsenceSentence(status)}
@@ -160,8 +175,11 @@
 {/snippet}
 
 <div class="grid">
-	{#if status === undefined && hint}
-		<!-- One ghost, the remembered shape, holds the slot while loading. -->
+	{#if (status === undefined || status?.configured === null) && hint}
+		<!-- One ghost, the remembered shape, holds the slot while loading — or
+		     while the status request itself failed (`configured === null`,
+		     AD palette round 8 item 4): the slot stays reserved, but nothing
+		     visible claims a setup state the outage made up. -->
 		<div class="col-start-1 row-start-1 flex items-center" aria-hidden="true">
 			{#if hint === 'account'}
 				{@render accountShape(true, '', null)}
@@ -177,24 +195,33 @@
 		{#if status?.configured}
 			{#if status.connected}
 				{@render accountShape(false, status.login ?? '', status.avatarUrl ?? null)}
-				<Dropdown triggeredBy={`#${menuId}`} simple class="w-44">
-					<DropdownItem class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-						<GithubSolid class="h-3.5 w-3.5" />
+				<Dropdown
+					triggeredBy={`#${menuId}`}
+					simple
+					class="w-44 rounded-lg border border-line bg-overlay [box-shadow:var(--k-shadow-overlay)]"
+				>
+					<DropdownItem class="t-meta flex items-center gap-2 text-fg-subtle">
+						<GithubSolid class="h-3 w-3" />
 						Connected as {status.login}
 					</DropdownItem>
-					<DropdownItem onclick={handleDisconnect} class="text-sm">Disconnect GitHub</DropdownItem>
+					<DropdownItem onclick={handleDisconnect} class="t-ui text-fg">Disconnect GitHub</DropdownItem>
 				</Dropdown>
 			{:else}
 				{@render connectShape(false)}
 			{/if}
-		{:else if status && !status.configured}
+		{:else if status && status.configured === false}
 			{@render unconfiguredShape(false)}
-			<Popover triggeredBy="#github-unconfigured" trigger="click" class="w-72 text-sm" title="GitHub is not configured">
-				<p class="text-gray-600 dark:text-gray-300">
+			<Popover
+				triggeredBy="#github-unconfigured"
+				trigger="click"
+				class="w-72 rounded-lg border border-line bg-overlay [box-shadow:var(--k-shadow-overlay)] t-body"
+				title="GitHub is not configured"
+			>
+				<p class="text-fg-muted">
 					This dashboard has no GitHub App credentials, so there is nothing to sign in to and
 					commit lists stay empty.
 				</p>
-				<p class="mt-2 text-gray-600 dark:text-gray-300">
+				<p class="mt-2 text-fg-muted">
 					Set <code class="t-code-sm">GITHUB_APP_CLIENT_ID</code> and
 					<code class="t-code-sm">GITHUB_APP_CLIENT_SECRET</code> on the dashboard — the secret
 					<code class="t-code-sm">github-app-credentials</code> in its namespace — and restart it.

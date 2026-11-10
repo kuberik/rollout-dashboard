@@ -1,12 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, test, expect, vi, afterEach } from 'vitest';
+import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
-import ControlCenter from '$lib/ControlCenter.svelte';
-import RolloutGrid from '$lib/RolloutGrid.svelte';
 import Apps from '../../routes/apps/+page.svelte';
-import Environments from '../../routes/environments/+page.svelte';
 import Activity from '../../routes/activity/+page.svelte';
 import { fleet, respond, CLUSTERS } from './fleet-fixture';
 import { SURFACES, AXES, type Axis } from './registry';
@@ -62,7 +59,20 @@ import { subjectViolations, applyPending, formatViolation, type Pending } from '
  * is why three audits of a two-app cluster kept missing it.
  */
 
-afterEach(() => vi.unstubAllGlobals());
+// ⭐ THE CLOCK IS PINNED NEAR THE FIXTURE'S OWN DATES (design rollout,
+// 2026-10-09). `fleet-fixture` stamps its holds in late August 2026; read
+// against the real clock they are weeks old, and since every surface now
+// shares `detectRolloutStuck`, a person-owned hold that old is STUCK — a
+// different claim from the hold sentence these cases exist to check. Only
+// `Date` is faked, so `waitFor`'s timers still run.
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(new Date('2026-08-31T02:00:00Z'));
+});
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllGlobals();
+});
 
 type Case = {
 	surface: string;
@@ -84,29 +94,19 @@ type Case = {
  * file for each, in the convention `truth.test.ts` already uses for the
  * `unknown`-rank-under-Steady question.
  */
-const PENDING: Record<string, Pending[]> = {
-	'/': [
-		{
-			claim: 'health failure title',
-			axis: 'environment',
-			why:
-				"`checkFailureTitle` renders as a Chip tooltip and reads *Health check payment-latency " +
-				'is failing … Automatic deploys HERE are held until it passes*. On `/` the word ' +
-				'`here` has no antecedent inside the tooltip and the card names its environment ' +
-				'AFTER the chip, so a reader who hovers -- or a screen-reader user who is handed ' +
-				'the accessible name alone -- is told a check is failing somewhere. On ' +
-				'`/rollouts` the same tooltip is fine: the namespace group header is above it. ' +
-				'The fix is a `subject` argument on `checkFailureTitle`, which changes a sentence ' +
-				'pinned by `truth.test.ts` on the LANDING PAGE -- an owner decision, not a test one.'
-		}
-	]
-};
+// The `/` exemption (the health-failure tooltip naming no place) is RESOLVED:
+// Home's redesign states a failing check in a banner whose title names the
+// rollout and its environment (design language, 2026-10-08).
+//
+// `/activity`'s grouped-row question (round 4 review, 2026-10-09) is RESOLVED
+// too, by design-rollout: `registry.ts`'s `/activity` surface now declares
+// `aggregates: { 'deploy state word': ['environment'] }` — scoped to that one
+// claim, not a page-wide or guard-wide exemption. See that file's own note.
+const PENDING: Record<string, Pending[]> = {};
 
 const LIST_SURFACES: Case[] = [
-	{ surface: '/', Comp: ControlCenter, hold: 'approval', check: true },
-	{ surface: '/rollouts', Comp: RolloutGrid, hold: 'approval', check: true },
 	{ surface: '/apps', Comp: Apps, hold: 'approval' },
-	{ surface: '/environments', Comp: Environments, hold: 'approval' },
+	/* 2026-11-09: /environments and the /apps dependency hold removed -- the r34/r39 pages draw tiles and place cells ("2 waiting", "Waiting on beta-app"), not the retired banner/Needs-you claim sentences this extractor scans, so they render no claim to check; their wording is held by truth.mjs and the home/apps/env model tests. */
 	{ surface: '/activity', Comp: Activity, hold: 'approval', check: true },
 	/**
 	 * ⭐ THE STATE IN THE SCREENSHOT. `upstream` -- a `RolloutDependency`
@@ -118,27 +118,6 @@ const LIST_SURFACES: Case[] = [
 	 * case it got wrong. That is the third reason this suite passed while the
 	 * defect it was written for shipped.
 	 */
-	{ surface: '/apps', Comp: Apps, hold: 'dependency', label: 'blocked on another deploy' },
-	{
-		surface: '/environments',
-		Comp: Environments,
-		hold: 'dependency',
-		label: 'blocked on another deploy'
-	},
-	{
-		surface: '/',
-		Comp: ControlCenter,
-		hold: 'dependency',
-		check: true,
-		label: 'blocked on another deploy'
-	},
-	{
-		surface: '/rollouts',
-		Comp: RolloutGrid,
-		hold: 'dependency',
-		check: true,
-		label: 'blocked on another deploy'
-	}
 ];
 
 async function renderSurface(Comp: unknown, c: Case) {
@@ -150,9 +129,13 @@ async function renderSurface(Comp: unknown, c: Case) {
 	}));
 	vi.stubGlobal('fetch', vi.fn(respond(payload)));
 	const r = render(WithQueryClient, { props: { component: Comp as any } });
-	await waitFor(() => expect(screen.getAllByText(/alpha-app|r1aaaaa/i).length).toBeGreaterThan(0), {
+	await waitFor(() => expect(screen.getAllByText(/alpha-app|r1aaaaa|invoice-api|checkout-edge/i).length).toBeGreaterThan(0), {
 		timeout: 5000
 	});
+	// `$lib/stores/time`'s `now` starts with the date it was IMPORTED at (the
+	// real clock, before the pinned one applies) and re-reads `Date` every
+	// 100ms; let one tick land so every derivation sees the pinned clock.
+	await new Promise((res) => setTimeout(res, 250));
 	return r;
 }
 
@@ -211,40 +194,6 @@ describe('every operator claim names its subject for the surface it renders on',
 	}
 });
 
-describe('the cluster is legible where it is the only discriminator', () => {
-	function twinFleet() {
-		const base = fleet();
-		const twinR = JSON.parse(JSON.stringify(base.rollouts.items[0]));
-		const twinE = JSON.parse(JSON.stringify(base.environments.items[0]));
-		for (const o of [twinR, twinE])
-			o.metadata.annotations['rollout-dashboard.kuberik.com/source-cluster'] = CLUSTERS[1];
-		base.rollouts.items.push(twinR);
-		base.environments.items.push(twinE);
-		return base;
-	}
-
-	test('/rollouts draws the twins as two groups, and names the cluster in each', async () => {
-		vi.stubGlobal('fetch', vi.fn(respond(twinFleet())));
-		const { container } = render(WithQueryClient, { props: { component: RolloutGrid as any } });
-		await waitFor(() => expect(screen.getAllByText('alpha-dev').length).toBe(2), { timeout: 5000 });
-
-		const headers = screen.getAllByText('alpha-dev').map((h) => h.parentElement!);
-		const texts = headers.map((h) => (h.textContent ?? '').replace(/\s+/g, ' ').trim());
-
-		// A group header that says the word `cluster` and no name is a label
-		// that names nothing -- and its own tooltip then reads
-		// `Cluster  — the Kubernetes cluster these rollouts run on`.
-		for (const t of texts) {
-			expect(
-				/cluster\s+\S/.test(t),
-				`a /rollouts group header reads ${JSON.stringify(t)} — it says "cluster" and then nothing. ` +
-					`Two namespaces with the same name on two clusters are then indistinguishable.`
-			).toBe(true);
-		}
-		expect(texts[0], 'the two alpha-dev groups render identically').not.toBe(texts[1]);
-	});
-});
-
 /**
  * ⭐ THE HEADLINE AGREES WITH ITS OWN SUBJECT. (2026-09-02, from the
  * coordinator: *"the grammatical subject is the singular app, so 'are' is
@@ -272,77 +221,28 @@ describe('the cluster is legible where it is the only discriminator', () => {
  * folding into `subject`.
  */
 describe('the plural-cause headline still agrees with its singular subject', () => {
-	for (const [surface, Comp] of [
-		['/apps', Apps],
-		['/environments', Environments]
-	] as const) {
-		test(`${surface} — "<app> is …" not "<app> in … environments ARE …" when one cause holds every environment`, async () => {
-			const { container } = await renderSurface(Comp, { surface, Comp, hold: 'dependency' });
-			const headline = container.querySelector('.t-headline')?.textContent?.trim() ?? '';
-			expect(
-				headline,
-				`headline was ${JSON.stringify(headline)} -- expected the singular app to stay the ` +
-					`sentence's subject ("<app> is waiting for beta-app to ship a newer api ^1.67.0 in ` +
-					`all 3 environments"), not the environment set ("<app> in all 3 environments ARE ` +
-					`waiting…").`
-			).toMatch(
-				/^alpha-app is waiting for beta-app to ship a newer api \^1\.67\.0 in all 3 environments$/
-			);
-		});
-	}
-});
+	/* 2026-11-09: the /environments plural-cause banner case is retired with the banner -- the r34 Environments page prints tiles ("2 waiting"), no `<app> is waiting for … in all N environments` headline, so there is no singular-subject sentence to lock. */
 
-/**
- * FAILING AND NAMED ON PURPOSE -- A PRODUCT DECISION, NOT A BUG TO PAPER
- * OVER.
- *
- * The `unhealthy` chip on `/` carries `checkFailureTitle` as its tooltip and
- * therefore as its accessible description. The sentence names the CHECK
- * (`payment-latency`) and then says *"Automatic deploys **here** are paused"*
- * -- and `here` is a word the sentence never defines. Everything that would
- * define it (the rollout name, the environment chip) sits AFTER the chip in
- * the card, so a person hovering, and a screen reader announcing the name on
- * its own, both get a failure with no place attached. Fifteen rows on that
- * page can be in this state at once.
- *
- * `/rollouts` renders the identical tooltip and is fine, because the
- * namespace group header is above it. So this is not a bug in the sentence,
- * it is a missing ARGUMENT: `checkFailureTitle(f, { subject })`, the same
- * shape `blockingStory` already takes and the same fix `/apps`'s banner just
- * had. It changes a string pinned by `truth.test.ts`, on the landing page,
- * and it is the owner's call whether the tooltip should carry
- * `alpha-app in DEV` or whether `/`'s cards should name the environment
- * before the chip instead. Named here rather than decided inside a test.
- */
-describe('DECISION NEEDED — the health-check tooltip on / names no place', () => {
-	test.skip('DECISION NEEDED: the unhealthy chip tooltip on / names its environment', async () => {
-		const { container } = await renderSurface(ControlCenter, {
-			surface: '/',
-			Comp: ControlCenter,
-			hold: 'approval',
-			check: true
-		});
-		const { violations } = subjectViolations(container, {
-			row: ['app', 'environment'],
-			readFirst: ['app', 'environment']
-		});
-		expect(violations.filter((v) => v.claim === 'health failure title')).toEqual([]);
-	});
-
-	test('the status quo, encoded so the decision above is visible and not silent', async () => {
-		const { container } = await renderSurface(ControlCenter, {
-			surface: '/',
-			Comp: ControlCenter,
-			hold: 'approval',
-			check: true
-		});
-		const { violations } = subjectViolations(container, {
-			row: ['app', 'environment'],
-			readFirst: ['app', 'environment']
-		});
+	/**
+	 * ⭐ /apps HAS NO PAGE-LEVEL GATE BANNER AT ALL NOW (TL whole-product
+	 * consistency review, dr7). A self-clearing `RolloutDependency` hold
+	 * still draws nothing — nobody on /apps can act on it, and the lane's
+	 * own held node already states it, same as before (TL review round 2,
+	 * item 8). What changed is the APPROVAL case: it no longer gets a
+	 * one-banner-per-fleet collapse either — it is a `NeedsYouCard` row,
+	 * one per held rollout, the same object a failed or stuck rollout gets.
+	 * `/environments` above is unchanged and keeps the plural-cause banner.
+	 */
+	test('/apps — a self-clearing dependency hold renders no banner at all', async () => {
+		const { container } = await renderSurface(Apps, { surface: '/apps', Comp: Apps, hold: 'dependency' });
 		expect(
-			violations.some((v) => v.claim === 'health failure title' && v.axis === 'environment'),
-			'the tooltip started naming its environment — delete the PENDING entry and un-skip the test above'
-		).toBe(true);
+			container.querySelector('.ap-headline-row .t-heading'),
+			'a dependency hold is self-clearing — nobody on /apps can act on it, so it must not draw a ' +
+				"banner (the lane's own held node still carries the fact)."
+		).toBeNull();
 	});
+
+	/* 2026-11-09: the /apps Needs-you-row case is retired with the row -- the r34 Apps page (Nothing needs attention / In flight / At rest, place cells) draws no "Waiting on an approval in <env>" <li>; the approval word is held by approvalWord's own tests. */
 });
+
+/* 2026-11-09: the old `/` (ControlCenter) and `/rollouts` (RolloutGrid) render targets are deleted with those pages; the new Home and Rollouts are drawn from the home model, not this fleet fixture, and render no claim here. Retired cases: the two list surfaces, the twin-cluster group headers, the health-check claim on `/`. */

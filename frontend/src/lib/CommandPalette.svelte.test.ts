@@ -207,7 +207,15 @@ describe('P8 — a scoped switcher preselects the object you are already on', ()
  * `modalFocusReturn` takes its own snapshot.
  */
 describe('nit 12 — focus return after close, regardless of trigger', () => {
-	test('nothing focused on open (⌘K trigger): closing returns focus to the Search button, not <body>', async () => {
+	/**
+	 * ⭐ PALROW (AD round 5, 2026-10-10): THE ASSERTION CHANGED ON PURPOSE.
+	 * This used to require focus to land on the sidebar Search button when
+	 * ⌘K fired with nothing focused. The AD measured the result: a blue
+	 * focus-visible ring on a button the reader never touched. The palette
+	 * now returns to the exact prior state, Linear/Raycast style: nothing
+	 * focused before means the Search button is NOT focused after.
+	 */
+	test('nothing focused on open (⌘K trigger): closing does not move focus onto the Search button', async () => {
 		const searchButton = document.createElement('button');
 		searchButton.setAttribute('aria-label', 'Search (Ctrl K)');
 		document.body.appendChild(searchButton);
@@ -228,7 +236,7 @@ describe('nit 12 — focus return after close, regardless of trigger', () => {
 			await fireEvent.keyDown(window, { key: 'Escape' });
 			await waitForFocusRestore();
 
-			expect(document.activeElement).toBe(searchButton);
+			expect(document.activeElement).not.toBe(searchButton);
 		} finally {
 			searchButton.remove();
 		}
@@ -542,12 +550,21 @@ describe('title matches rank below rollouts/apps/environments, capped at 3', () 
 });
 
 /**
- * ⭐ CHANGES-2026-09-10.md, item 3 — the fifth Browse tile, "Your changes".
+ * ⭐ CHANGES-2026-09-10.md, item 3 — the last "Jump to" row, "Your changes".
  * It NAVIGATES to `/changes?mine` rather than scoping (there is no
  * client-side change index to browse into).
+ *
+ * ⭐ LANE P, §5 (2026-10-09): THE ROW TEXT CHANGED, NOT THE BEHAVIOUR. The
+ * spec's "Jump to" anatomy is "icon · name t-ui · count t-meta tabular-nums
+ * right" for every row — same shape `Rollouts (59)`/`Apps (13)` print, no
+ * sentence. The old "N changes merged in the last 30 days" explanation now
+ * lives in the row's `title` (a hover/long-press tooltip), same place every
+ * other Jump to row would put a longer explanation were it ever needed, so
+ * no information is lost — this test now reads it off `title` instead of
+ * `textContent`.
  */
-describe('the "Your changes" Browse tile', () => {
-	test('renders as the fifth tile, with the merged-in-30-days count, and navigates on click', async () => {
+describe('the "Your changes" Jump to row', () => {
+	test('renders with the merged-in-30-days count, and navigates on click', async () => {
 		// ⛔ FIX PASS ITEM 6/8, 2026-09-10 — `myChangesCount` off
 		// `changesQueryOptions()`'s own fetch (ruling 5), the SAME function
 		// and cache `YourChangesCard` reads on Home, not the `myPulls` prop
@@ -564,7 +581,7 @@ describe('the "Your changes" Browse tile', () => {
 			expect(el.textContent).toContain('2');
 			return el;
 		});
-		expect(tile.textContent).toContain('merged in the last 30 days');
+		expect(tile.getAttribute('title')).toContain('merged in the last 30 days');
 
 		await fireEvent.click(tile);
 		expect(goto).toHaveBeenCalledWith('/changes?mine');

@@ -115,7 +115,14 @@ describe('HowItsGoing: the same dt/dd shape across all four scopes', () => {
 			});
 		});
 
-		test(`${name}: every dt is .t-dense and every figure is .t-figure`, () => {
+		// ⭐ DESIGN-LANGUAGE MIGRATION (2026-10-08, lang-home lane) — `t-dense`/
+		// `t-figure` were the LEGACY role names this test used to assert;
+		// `language.css` keeps them as aliases for back-compat, but new code
+		// (this component, converted in this pass) uses the closed-list
+		// replacements directly: `t-dense` (12.5px/400) → `t-meta` (12/400),
+		// `t-figure` (16px/600) → `t-heading` (16/600). Same geometry, the
+		// role's real name now.
+		test(`${name}: every dt is .t-meta and every figure is .t-heading`, () => {
 			const { container } = render(HowItsGoing, {
 				props: { scope, windowLabel, ...props }
 			});
@@ -123,14 +130,14 @@ describe('HowItsGoing: the same dt/dd shape across all four scopes', () => {
 			const dts = container.querySelectorAll('dl > div > dt');
 			expect(dts.length).toBeGreaterThan(0);
 			for (const dt of dts) {
-				expect(dt.className).toContain('t-dense');
+				expect(dt.className).toContain('t-meta');
 			}
 
 			// The defect this test exists to catch: a `dd` figure escaping the
 			// one declared role via a private `text-base font-semibold` pair, or
 			// via `t-headline` (declared, but the wrong one — see `app.css`'s
 			// `.t-figure` note).
-			expect(container.querySelectorAll('.t-figure').length).toBeGreaterThan(0);
+			expect(container.querySelectorAll('.t-heading').length).toBeGreaterThan(0);
 			expect(container.innerHTML).not.toContain('t-headline');
 			expect(container.innerHTML).not.toContain('text-base font-semibold');
 		});
@@ -184,7 +191,8 @@ describe('HowItsGoing: the same dt/dd shape across all four scopes', () => {
 				furthestBehind: { entry: null, title: 'nothing behind' }
 			}
 		});
-		const dash = container.querySelector('.t-figure.text-green-700');
+		// `text-green-700` → `text-success`, the semantic status utility.
+		const dash = container.querySelector('.t-heading.text-success');
 		expect(dash?.textContent?.trim()).toBe('—');
 	});
 
@@ -199,7 +207,11 @@ describe('HowItsGoing: the same dt/dd shape across all four scopes', () => {
 				failed: { count: 2, title: 'two failed' }
 			}
 		});
-		const figure = container.querySelector('.t-figure.text-red-700');
+		// envdetail-12 EW7: the figure is ink (a count never takes a hue); the hue is the mark's, `text-danger` on the icon.
+		const figure = container.querySelector('dd[title="two failed"]');
+		expect(figure?.className).toContain('text-fg');
+		expect(figure?.className).not.toContain('text-danger');
 		expect(figure?.textContent?.trim()).toBe('2');
+		expect(container.querySelector('svg.text-danger')).not.toBeNull();
 	});
 });

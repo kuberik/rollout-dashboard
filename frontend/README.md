@@ -60,3 +60,50 @@ GITHUB_DEV_TOKEN=ghp_xxx npm run dev
 
 Unset by default — nothing changes for a `GITHUB_DEV_TOKEN`-less `npm run
 dev`. See `dev-auth.ts`'s own header comment for the exact mechanics.
+
+## The demo build (`/demo/`, embedded by kuberik.com)
+
+`scripts/build-demo.sh` produces a static dashboard that runs entirely in the
+browser on mock data, with **no backend, no cluster, no login and no GitHub**.
+kuberik.com's landing page serves it under `/demo/` and embeds it in an iframe
+per showcase, so the "interactive showcase" on the front page is the real
+dashboard rather than a screenshot.
+
+```bash
+# builds into frontend/build-demo, then copies it to ../../website/static/demo
+./scripts/build-demo.sh
+```
+
+Three things make it work, and nothing else about the app changes:
+
+- **The mock is a module, not a server.** `src/lib/demo/mock-data.ts` holds the
+  fixtures and `src/lib/demo/respond.ts` maps a request line to a JSON body or
+  a stream. `dev-mock-api.ts` (the `MOCK_API=1 vite dev` middleware) and
+  `src/lib/demo/install.ts` (the demo build's `fetch` shim) are two thin
+  adapters over that one routing table — change a fixture once and both move.
+  The shim covers SSE too: `eventsource-client` reads `globalThis.fetch`, so a
+  `Response` with a `ReadableStream` body *is* an event stream to it.
+- **`VITE_DEMO=1`** makes `src/hooks.client.ts` install that shim before the
+  router starts. In a normal build the flag is a build-time literal, the branch
+  is unreachable, and Rollup drops the fixtures entirely — verified: no fixture
+  string appears in `build/`.
+- **`DEMO_BASE=/demo`** sets `paths.base`, so every asset and route resolves
+  under the sub-path. GitHub Pages cannot rewrite `/demo/rollouts/...` to
+  `index.html`, so each showcase opens **`/demo/?page=<app path>`** and the
+  root layout's `load` redirects before anything renders.
+
+### The embed contract
+
+On mount, the demo build sets exactly this and nothing more:
+
+```ts
+window.kuberikDemo = { goto(path: string): Promise<void>, ready: Promise<void> }
+window.parent.postMessage({ type: 'kuberik-demo-ready' }, '*')   // once
+```
+
+`goto` takes an app path without the base. The parent is same-origin, so it
+reads the iframe's DOM itself to place tour hotspots — that is deliberate, and
+the reason there is no hotspot API here.
+
+`?theme=light` / `?theme=dark` on any dashboard URL (not just the demo) sets
+the theme the same way the toggle does, before the first paint.

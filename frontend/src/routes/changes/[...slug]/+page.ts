@@ -1,4 +1,7 @@
 import { redirect } from '@sveltejs/kit';
+import { href } from '$lib/paths';
+import { scenarioOf } from '$lib/components/new/scenario';
+import { canonicalSlug } from '$lib/components/new/change/detail-model';
 import type { PageLoad } from './$types';
 
 /**
@@ -29,10 +32,17 @@ import type { PageLoad } from './$types';
  * `+page.svelte`'s own resolution (repo page, then `parseChangeSlug`, then
  * "not found") is unchanged for every other case.
  */
-export const load: PageLoad = ({ params }) => {
+export const load: PageLoad = ({ params, url }) => {
 	const raw = params.slug ?? '';
 	const segments = raw.split('/').filter((s) => s.length > 0);
+	const search = url?.search ?? '';
+	/* CE8 (2026-11-02): the SHORT address `<repo>/pull/<n>` (no owner) was rewritten to `github.com/<repo>/pull/<n>` — an owner-less
+	   path no change has. It resolves to the owner the Changes list links to; the query (?quiet=1 / ?calm=1) is kept. */
+	if (segments.length === 3 && segments[1] === 'pull' && !segments[0].includes('.')) {
+		const canon = canonicalSlug(raw, url ? scenarioOf(url) : 'incident');
+		if (canon) redirect(308, href(`/changes/${canon}${search}`));
+	}
 	if (segments.length >= 3 && !segments[0].includes('.')) {
-		redirect(308, `/changes/github.com/${raw}`);
+		redirect(308, href(`/changes/github.com/${raw}${search}`));
 	}
 };

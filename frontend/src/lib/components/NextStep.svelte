@@ -1,6 +1,17 @@
 <svelte:options runes={true} />
 
 <script module lang="ts">
+	import {
+		SearchOutline,
+		RocketSolid,
+		UndoOutline,
+		LockOutline,
+		LockOpenOutline,
+		ChevronRightOutline,
+		BadgeCheckOutline
+	} from 'flowbite-svelte-icons';
+	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
+
 	export type Step =
 		/** A rule refuses every available version. Only a person moves it. */
 		| 'approve'
@@ -16,6 +27,56 @@
 		| 'unpin'
 		/** Nothing is wrong; this is navigation, not an action. */
 		| 'open';
+
+	// ⭐ P9 — ONE VERB FOR THE UNPIN ACTION, EVERYWHERE. (2026-09-03) This was
+	// its own literal, `'Release the hold'` — the third of four spellings a
+	// single action collected across a trigger, a dialog title and a confirm
+	// button. `pin-copy.ts` is now the one place that spells it; see its own
+	// header for the full account.
+	const STEP: Record<Step, { label: string; icon: typeof SearchOutline }> = {
+		approve: { label: 'Review approval', icon: BadgeCheckOutline },
+		promote: { label: 'Deploy newest', icon: RocketSolid },
+		investigate: { label: 'Investigate', icon: SearchOutline },
+		rollback: { label: 'Roll back', icon: UndoOutline },
+		unblock: { label: "See what's blocking", icon: LockOutline },
+		unpin: { label: CLEAR_PIN_LABEL, icon: LockOpenOutline },
+		open: { label: 'Open', icon: ChevronRightOutline }
+	};
+
+	/**
+	 * ⭐ §3.19 — THE LABEL TABLE, CALLABLE WITHOUT THE COMPONENT.
+	 *
+	 * The ruling (`DESIGN-LANGUAGE.md` §3.19, revised qa11b 2026-10-11): a
+	 * control about a build that waits for a person's approval reads
+	 * "Review approval in <env>", or plain "Review approval" when the row or
+	 * card around it already names the environment, and it NAVIGATES to the
+	 * rollout's Gates tab, where the waiting rule is named. It never opens
+	 * the deploy dialog: there is no approval action in the dashboard yet,
+	 * and deploying a held build is an override, not an approval. "Approve"
+	 * returns only with a real approval endpoint.
+	 *
+	 * Every caller passes the STATE (`step`, optionally `env`), never a
+	 * string — this table is the one place that spells the words, so a
+	 * palette row, a Gates tile and this component's own `<a>`/`<button>`
+	 * agree without retyping them. `env` is ignored for every step but
+	 * `approve`; `navigate` no longer changes any reading (kept so existing
+	 * callers compile).
+	 */
+	export function stepLabel(step: Step, opts?: { env?: string | null; navigate?: boolean }): string {
+		if (step === 'approve') {
+			// ⛔ NO "Approve" UNTIL AN APPROVAL ENDPOINT EXISTS (qa11b, 2026-10-11).
+			// The dashboard has no route that records an approval (an
+			// approval is a hand-authored RolloutGate's `allowedVersions`,
+			// and nothing here writes one). Every "Approve" control opened
+			// the deploy dialog, which deploys PAST the rule: an approval
+			// turned into a bypass. So the approve step is the navigate
+			// reading only, always — it takes the reader to the rollout's
+			// Gates tab where the waiting rule is named. `navigate` is kept
+			// for callers but no longer changes the words.
+			return opts?.env ? `Review approval in ${opts.env}` : STEP.approve.label;
+		}
+		return STEP[step].label;
+	}
 </script>
 
 <script lang="ts">
@@ -93,31 +154,6 @@
 	 * tab stop to a destination the reader could already reach by pressing the
 	 * row. Both were deleted rather than restyled.
 	 */
-	import {
-		SearchOutline,
-		RocketSolid,
-		UndoOutline,
-		LockOutline,
-		LockOpenOutline,
-		ChevronRightOutline,
-		BadgeCheckOutline
-	} from 'flowbite-svelte-icons';
-	import { CLEAR_PIN_LABEL } from '$lib/components/pin-copy';
-
-	// ⭐ P9 — ONE VERB FOR THE UNPIN ACTION, EVERYWHERE. (2026-09-03) This was
-	// its own literal, `'Release the hold'` — the third of four spellings a
-	// single action collected across a trigger, a dialog title and a confirm
-	// button. `pin-copy.ts` is now the one place that spells it; see its own
-	// header for the full account.
-	const STEP: Record<Step, { label: string; icon: typeof SearchOutline }> = {
-		approve: { label: 'Choose a version', icon: BadgeCheckOutline },
-		promote: { label: 'Deploy newest', icon: RocketSolid },
-		investigate: { label: 'Investigate', icon: SearchOutline },
-		rollback: { label: 'Go back a version', icon: UndoOutline },
-		unblock: { label: "See what's blocking", icon: LockOutline },
-		unpin: { label: CLEAR_PIN_LABEL, icon: LockOpenOutline },
-		open: { label: 'Open', icon: ChevronRightOutline }
-	};
 
 	let {
 		step,
@@ -126,6 +162,12 @@
 		primary = false,
 		/** Overrides the table's label. For naming the thing: `Deploy 4.45.0-45`. */
 		label = null,
+		/**
+		 * `approve` only (§3.19): the environment this acts on, when nothing
+		 * nearby already names it. Passed through to `stepLabel` — it has no
+		 * effect on any other step and no effect once `label` overrides it.
+		 */
+		env = null,
 		/**
 		 * ⭐ WHAT THE VERB ACTS ON, FOR THE ACCESSIBLE NAME ONLY.
 		 *
@@ -139,6 +181,9 @@
 		 */
 		subject = null,
 		title,
+		/** §3.6 heights: `md` 36 (a page or card action row), `sm` 32 (a
+		 *  banner, a card body), `xs` 28 (a list row). */
+		size = 'md',
 		class: className = ''
 	}: {
 		step: Step;
@@ -146,14 +191,19 @@
 		onclick?: (() => void) | null;
 		primary?: boolean;
 		label?: string | null;
+		env?: string | null;
 		subject?: string | null;
 		title?: string;
+		size?: 'md' | 'sm' | 'xs';
 		class?: string;
 	} = $props();
 
 	const spec = $derived(STEP[step]);
-	const text = $derived(label ?? spec.label);
+	// `navigate: !!href` mirrors the component's own href/onclick split
+	// (§3.19: "Review" only where the control genuinely navigates away).
+	const text = $derived(label ?? stepLabel(step, { env, navigate: !!href }));
 	const ariaLabel = $derived(subject ? `${text} — ${subject}` : undefined);
+	const sizeCls = $derived(size === 'xs' ? 'btn-xs' : size === 'sm' ? 'btn-sm' : '');
 	const actionCls = $derived(`btn ${primary ? 'btn-primary' : 'btn-secondary'} ${className}`);
 </script>
 
@@ -171,12 +221,12 @@
 {:else}
 	<button
 		type="button"
-		class={actionCls}
+		class="{actionCls} {sizeCls}"
 		{title}
 		aria-label={ariaLabel}
 		onclick={() => onclick?.()}
 	>
-		<spec.icon class="h-4 w-4 shrink-0" aria-hidden="true" />
+		<spec.icon class="{size === 'xs' ? 'h-3 w-3' : 'h-4 w-4'} shrink-0" aria-hidden="true" />
 		{text}
 	</button>
 {/if}
