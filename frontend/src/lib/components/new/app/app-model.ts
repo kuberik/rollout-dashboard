@@ -339,3 +339,23 @@ export function weekSummary(rollouts: WeekRollout[], days: number, nowMs: number
 
 /** the approval banner's line: the count only once the place's held-HERE answer is known; while it is pending the sentence carries no number (never a guess that flips) */
 export const waitingSentence = (heldN: number | null): string => (heldN == null ? 'Newer builds are waiting here.' : `${heldN} newer build${heldN === 1 ? ' is' : 's are'} waiting here.`);
+
+/**
+ * landing v5 (2026-11-10): an approval at the head of a rollout order opens the order, it does not finish it. The places that come AFTER a
+ * place in its tier's rollout order (sites and waves: every later wave, and the followers of its own wave when it leads), counted off the
+ * app's own places. Empty when the place has no wave facts (a tier of one place, an unbound rollout) or nothing comes after it.
+ */
+export function placesAfter(p: Pick<PlaceHold, 'tier' | 'wave'>, places: PlaceHold[]): PlaceHold[] {
+	const w = p.wave;
+	if (!w) return [];
+	return places.filter((q) => q.wave && q.tier === p.tier && q.wave.site !== w.site && (q.wave.wave > w.wave || (w.leader && q.wave.wave === w.wave && !q.wave.leader)));
+}
+/** "Then 4 more regions follow." (prod places are regions, the product's word for several prod sites; any other tier says places). null when none follow. */
+export function followSentence(after: readonly Pick<PlaceHold, 'tier'>[]): string | null {
+	const n = after.length;
+	if (!n) return null;
+	const noun = after.every((q) => q.tier === 'prod') ? (n === 1 ? 'region' : 'regions') : n === 1 ? 'place' : 'places';
+	return `Then ${n} more ${noun} follow${n === 1 ? 's' : ''}.`;
+}
+/** the approval banner's message for the place it names: what waits here, then what comes after it ("1 newer build is waiting here. Then 4 more regions follow.") */
+export const approvalMessage = (heldN: number | null, focus: PlaceHold | null, places: PlaceHold[]): string => [waitingSentence(heldN), focus ? followSentence(placesAfter(focus, places)) : null].filter(Boolean).join(' ');

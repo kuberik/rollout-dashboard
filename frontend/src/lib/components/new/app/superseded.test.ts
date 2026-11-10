@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 vi.mock('../data', async (orig) => ({ ...(await orig<typeof import('../data')>()), streamBuilds: () => ['c0', 'c1', 'c2', 'c3'], deployedHistory: () => [] }));
-import { ledgerOf, nextOf, waitingSentence } from './app-model';
+import { ledgerOf, nextOf, waitingSentence, approvalMessage, followSentence, placesAfter } from './app-model';
 
 /* QA #23: a release of the app that a place still runs but the spine no longer lists was SUPERSEDED: it keeps its place in the sequence (counted), never "Custom". */
 const hb = (build: string) => ({ build, title: null, author: null, created: null, here: true });
@@ -24,4 +24,25 @@ it('waitingSentence: pending carries no count; a known count is exact', () => {
 	expect(waitingSentence(null)).toBe('Newer builds are waiting here.');
 	expect(waitingSentence(5)).toBe('5 newer builds are waiting here.');
 	expect(waitingSentence(1)).toBe('1 newer build is waiting here.');
+});
+
+/* landing v5 (2026-11-10): the approval for wave 1 must say the other regions come after it */
+describe('approvalMessage: the approval says what follows it', () => {
+	const mk = (site: string, wave: number, leader: boolean, tier = 'prod') => ({ tier, wave: { site, wave, leader, follows: leader ? null : 'ap-southeast-2', multi: true } }) as never;
+	const places = [mk('us-east-1', 1, true), mk('ap-southeast-2', 2, true), mk('eu-central-1', 2, false), mk('eu-west-1', 2, false), mk('us-east-2', 2, false), { tier: 'staging', wave: null }] as never[];
+	it('the wave-1 leader: the other four regions follow', () => {
+		expect(approvalMessage(1, places[0], places)).toBe('1 newer build is waiting here. Then 4 more regions follow.');
+	});
+	it('a wave-2 leader counts its own followers, not the wave before it or the other tiers', () => {
+		expect(followSentence(placesAfter(places[1], places))).toBe('Then 3 more regions follow.');
+	});
+	it('the last place of the order, an unplaced place and a lone follower say nothing', () => {
+		expect(followSentence(placesAfter(places[2], places))).toBeNull();
+		expect(approvalMessage(null, { tier: 'staging', wave: null } as never, places)).toBe('Newer builds are waiting here.');
+		expect(approvalMessage(2, null, places)).toBe('2 newer builds are waiting here.');
+	});
+	it('one place after is singular; a non-prod tier says places', () => {
+		expect(followSentence([{ tier: 'prod' }])).toBe('Then 1 more region follows.');
+		expect(followSentence([{ tier: 'staging' }, { tier: 'staging' }])).toBe('Then 2 more places follow.');
+	});
 });
