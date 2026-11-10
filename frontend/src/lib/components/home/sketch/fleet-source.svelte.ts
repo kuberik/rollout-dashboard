@@ -23,12 +23,12 @@ export type FleetSource = {
 	/** why `changes` is empty when it is: GitHub not connected / not configured / the read failed. `ok` = the list is the answer. */
 	changesState: 'ok' | 'not_connected' | 'not_configured' | 'error' | 'loading';
 	healthChecks: readonly RolloutHealthChecks[] | null;
-	/** the RolloutSchedule / ClusterRolloutSchedule objects per cluster (`GET /api/schedules?namespace=all`, `''` = the hub): the join that lets a closed deploy window read as a window, not as a gate or a check. Optional: absent = not asked. */
-	schedules?: ReadonlyMap<string, NetworkSchedules> | null;
 	github: GithubFacts;
 	/** lower-cased GitHub login of the signed-in viewer ('' when GitHub is not connected) */
 	me: string;
 	now: Date;
+	/** the RolloutSchedule / ClusterRolloutSchedule objects per cluster (`GET /api/schedules?namespace=all`, `''` = the hub): the join that lets a closed deploy window read as a window, not as a gate or a check. Optional: absent = not asked. */
+	schedules?: ReadonlyMap<string, NetworkSchedules> | null;
 };
 
 let installed = $state.raw<FleetSource | null>(null);
