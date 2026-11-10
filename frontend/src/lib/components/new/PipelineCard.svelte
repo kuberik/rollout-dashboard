@@ -30,6 +30,7 @@
 	 * failure (/needs-you), Folio (/changes lead).
 	 */
 	import { ExclamationCircleSolid, CheckCircleSolid, CodePullRequestSolid, ChevronDoubleRightOutline } from 'flowbite-svelte-icons';
+	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import type { Snippet } from 'svelte';
 
@@ -79,7 +80,7 @@
 	<header class="pc-head flex min-h-[47px] items-center gap-2 border-b border-line px-4 py-3">
 		{#if mute}<ChevronDoubleRightOutline class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />
 		{:else if st === 'failed'}<ExclamationCircleSolid class="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
-		{:else if st === 'deploying' || st === 'checking'}<span aria-hidden="true" class="h-4 w-4 shrink-0 animate-spin rounded-full border-2 {st === 'checking' ? 'border-progress-solid/40 border-t-progress-solid' : 'border-active-solid/40 border-t-active-solid'}"></span>
+		{:else if st === 'deploying' || st === 'checking'}<StatusSpinner size="4" color={st === 'checking' ? 'yellow' : 'blue'} />
 		{:else if st === 'done'}<CheckCircleSolid class="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
 		{:else if st === 'held'}<StatusMark state={'held' as never} />
 		{:else}<CodePullRequestSolid class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />{/if}
