@@ -539,8 +539,8 @@ export function fleetFacts(
 		}
 		unmappedWorst.set(name, best!);
 	}
-	const unmappedHeldApps = unmappedAppNames.filter((n) => unmappedWorst.get(n)!.state === 'held');
-	const unmappedBehindApps = unmappedAppNames.filter((n) => unmappedWorst.get(n)!.state === 'behind');
+	const unmappedHeldApps = unmappedAppNames.filter((n) => unmappedWorst.get(n)?.state === 'held');
+	const unmappedBehindApps = unmappedAppNames.filter((n) => unmappedWorst.get(n)?.state === 'behind');
 	// `plates` — the map's own unit, app × stage, production ONE plate
 	// (home-map's shipped `heldFor`: "places are the map's held blocks").
 	// Counted per LANE regardless of the lane's overall state (a held place
@@ -576,8 +576,9 @@ export function fleetFacts(
 	// raw held-PLACE tally and the overall median/longest, unchanged by this
 	// ruling (only the app-level counts widen).
 	for (const name of unmappedHeldApps) {
-		const cause = classifyHold(unmappedWorst.get(name)!.card, opts);
-		causeApps[cause].add(name);
+		const rep = unmappedWorst.get(name)?.card;
+		if (!rep) continue;
+		causeApps[classifyHold(rep, opts)].add(name);
 	}
 
 	// ── HELD BY A RULE (shared/held-label) — a sub-population of the SAME
@@ -586,7 +587,11 @@ export function fleetFacts(
 	// `classifyHold`'s GateContext-joined bucket: an approval is `person`,
 	// everything else (`order`/`dependency`/`unknown`/`clock`/`check`) is a
 	// rule. ──
-	const ruleHeldCards = heldCardsGated.filter((c) => c.heldCause !== 'person');
+	// `c.held` is the shared verdict that a RULE refuses every candidate. A
+	// PINNED card is a `nodeState` 'held' too (`isHeld` shares the bucket) but a
+	// pin is a person's choice, not a rule, and its `c.held` is false — so it
+	// must not count here, or `ruleSingle` below finds no appCards for it.
+	const ruleHeldCards = heldCardsGated.filter((c) => c.held && c.heldCause !== 'person');
 	// Unmapped rule-held apps (same coordinator ruling as `causeApps` above)
 	// join the SAME population `ruleApps`/`ruleSingle`/`ruleLongestMs` read —
 	// an app with no Environment held on a dependency contract waits on a
@@ -594,7 +599,10 @@ export function fleetFacts(
 	// (no Environment means no approval gate to publish one), so its own
 	// `heldCause` is already never `person` in practice, but the same guard
 	// is kept for symmetry with the mapped filter above.
-	const unmappedRuleHeldApps = unmappedHeldApps.filter((n) => unmappedWorst.get(n)!.card.heldCause !== 'person');
+	const unmappedRuleHeldApps = unmappedHeldApps.filter((n) => {
+		const c = unmappedWorst.get(n)?.card;
+		return c != null && c.held && c.heldCause !== 'person';
+	});
 	const ruleHeldAppNames = new Set([...ruleHeldCards.map((c) => c.name), ...unmappedRuleHeldApps]);
 	const ruleWaits: number[] = [];
 	for (const c of ruleHeldCards) {
@@ -602,7 +610,8 @@ export function fleetFacts(
 		if (since != null) ruleWaits.push(Math.max(0, nowMs - since));
 	}
 	for (const name of unmappedRuleHeldApps) {
-		const since = waitingSince(unmappedWorst.get(name)!.card);
+		const rep = unmappedWorst.get(name)?.card;
+		const since = rep ? waitingSince(rep) : null;
 		if (since != null) ruleWaits.push(Math.max(0, nowMs - since));
 	}
 	const ruleLongestMs = ruleWaits.length > 0 ? Math.max(...ruleWaits) : null;
@@ -665,8 +674,8 @@ export function fleetFacts(
 			// name, so `env` is `''` and `heldLabel` drops the "held in <env>"
 			// clause rather than print an empty one (coordinator ruling,
 			// 2026-10-11: "no env phrase when the app has none").
-			const rep = unmappedWorst.get(appName)!.card;
-			ruleSingle = { app: appName, env: '', causeLabel: rep.heldCauseLabel ?? 'a rule' };
+			const rep = unmappedWorst.get(appName)?.card;
+			ruleSingle = { app: appName, env: '', causeLabel: rep?.heldCauseLabel ?? 'a rule' };
 		}
 	}
 
