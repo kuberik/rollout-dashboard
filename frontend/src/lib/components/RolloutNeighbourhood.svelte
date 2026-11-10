@@ -323,7 +323,7 @@
 			const what = l.held.length > 0 ? shortList(l.held) : 'newer builds';
 			// Upstream: the build is the FOCUS's, and this link holds it.
 			// Downstream: the build is the BOX's own, held on the focus.
-			return l.side === 'upstream' ? `Holding ${what}` : `${what} held`;
+			return l.side === 'upstream' ? `Holding ${what}` : `${what} held downstream`;
 		}
 		if (l.state === 'unknown') return 'State not reported';
 		return 'Nothing held';
@@ -843,12 +843,14 @@
 			</div>
 
 			<div class="hood-down min-w-0" class:hood-col--empty={downstream.length === 0}>
-				<!-- "Gates · N", not "Gating N" (squad-rollout Lane G round 2, item
-				     3): this tab's own noun is "gate" (the allowlisted exception) —
-				     the column head is the noun form, matching "Gated by" opposite
-				     it, not a verb form that read like a third spelling. -->
+				<!-- batch4 #2 follow-up: "Downstream · N", not "Gates · N". These boxes
+				     are other rollouts that wait on THIS one; they are not gates of
+				     this rollout and are excluded from the "N of M gates holding"
+				     count (`gatesOnThisRollout`), so the head must not call them
+				     gates. Their held line reads "<build> held downstream": the
+				     downstream place's own hold, never this rollout's gate. -->
 				<p class="hood-label t-label text-fg-subtle">
-					Gates · <span class="tabular-nums">{hood.downstream.length}</span>
+					Downstream · <span class="tabular-nums">{hood.downstream.length}</span>
 				</p>
 				{@render downstreamColumn(downstream)}
 			</div>

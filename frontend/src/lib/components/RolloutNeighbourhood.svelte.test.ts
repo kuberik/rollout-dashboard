@@ -154,6 +154,30 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		expect(el?.textContent).not.toContain('identity-svc (identity)');
 	});
 
+	test('batch4 #2 follow-up: the downstream column is not titled "Gates" and its held mark reads as downstream\'s own hold', () => {
+		const held: NeighbourLink = {
+			key: 'promotion:eu',
+			side: 'downstream',
+			writer: 'promotion',
+			state: 'blocked',
+			node: node('checkout-api', 'prod'),
+			held: ['4.45.0-45', '4.44.0-44'],
+			contract: null,
+			requiredVersion: null,
+			providedVersion: null,
+			cyclic: false,
+			gate: 'promotion-prod',
+			chainPredecessor: false
+		};
+		const hood: Hood = { focus, upstream: [], downstream: [held], gates: [], heldLinks: 1, total: 1, holding: 0, heldBuilds: [] };
+		const { container } = render(RolloutNeighbourhood, { props: { hood } });
+		const text = container.textContent ?? '';
+		expect(text).toContain('Downstream · 1');
+		expect(text).not.toMatch(/Gates · \d/);
+		const el = container.querySelector('[data-hood-link="downstream"]');
+		expect(el?.textContent).toContain('held downstream');
+	});
+
 	test('a gate box carries the link box shell, not a link, with no destination today', () => {
 		const hood: Hood = {
 			focus,
