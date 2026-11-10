@@ -17,7 +17,8 @@
 	 * under it reserves end-of-page clearance (the rollout Overview's
 	 * `TOAST_DOCK_CLEARANCE`). On a phone: over the fixed APP BAR, 4px below
 	 * the safe area, 8px gutters. The 44px one-line toast fits inside the 52px
-	 * bar, so at rest it covers only the bar's controls. Once the header has
+	 * bar, so at rest it covers only the bar's controls; a longer
+	 * confirmation WRAPS to a second line and is never truncated. Once the header has
 	 * auto-hidden on scroll, it sits over the top of the content instead
 	 * (qa8 S1): briefly, and never over the row the reader acted on, which is
 	 * below where they tapped. Both
@@ -132,17 +133,11 @@
 				<StatusSpinner size="4" color="blue" />
 			{/if}
 		</span>
-		<!-- On a phone the toast lives inside the 52px app bar, so a
-		     confirmation is ONE line (full text in `title`); only a danger
-		     toast may wrap, because its words are the thing to read. -->
-		<div
-			class="t-body min-w-0 flex-1 text-fg {floating && tone !== 'danger' ? 'max-sm:truncate' : ''}"
-			title={floating && tone !== 'danger' && message
-				? description
-					? `${message} · ${description}`
-					: message
-				: undefined}
-		>
+		<!-- A confirmation of a person's action is never cut (2026-11-10, landing
+		     found: "Approved 4.46.0-46 · checkout-api is deploying to 5 prod
+		     regions" ended in an ellipsis at 390). On a phone it wraps to a
+		     second line; the toast is allowed to be taller than the app bar. -->
+		<div class="t-body min-w-0 flex-1 text-fg">
 			{#if children}{@render children()}{:else}{message}{#if description}<span class="text-fg-muted"
 						> · {description}</span
 					>{/if}{/if}
