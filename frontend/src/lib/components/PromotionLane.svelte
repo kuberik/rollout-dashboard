@@ -19,7 +19,7 @@
 	import { now } from '$lib/stores/time';
 	import { lagLabel } from '$lib/view-models/env-rank';
 	import EnvRow, { type EnvCell } from '$lib/components/EnvRow.svelte';
-	import { approvalWord } from '$lib/components/new/state-words';
+	import { approvalWord, stateWord } from '$lib/components/new/state-words';
 	import { atoms } from '$lib/components/atoms/atoms-context';
 	import type { Bead } from '$lib/view-models/bead';
 
@@ -165,6 +165,7 @@
 			style: n.card.theme ? getEnvironmentThemeStyle(n.card.theme) : undefined,
 			mark: withProgress(markOf(n), n),
 			word: wordOf(n) || undefined,
+			wordShort: n.state === 'held' && n.card.heldCause === 'person' && words ? stateWord('approval', { compact: true }) ?? undefined : undefined,
 			wordInk: INK[n.state],
 			hot: MARKED.has(n.state),
 			fact: n.behind > 0 ? (size === 'M' ? `${n.behind} behind` : lagLabel({ builds: n.behind })) : undefined,

@@ -17,11 +17,18 @@ describe('EnvRow on a phone', () => {
 		expect(container.querySelectorAll('.env-fact').length).toBe(2);
 		expect(container.querySelectorAll('.env-word').length).toBe(2);
 	});
+	it('a cell with a short state word prints both forms (the container picks)', () => {
+		const { container } = render(EnvRow, { cells: [{ key: 'prod', label: 'prod', word: 'Needs your approval', wordShort: 'Waiting' }] });
+		expect(container.querySelector('.env-word-full')?.textContent).toBe('Needs your approval');
+		expect(container.querySelector('.env-word-short')?.textContent).toBe('Waiting');
+	});
 	it('below 380px the facts drop and the floor goes; below 300px the words drop too', () => {
 		const src = readFileSync('src/lib/components/EnvRow.svelte', 'utf8');
 		const phone = src.slice(src.indexOf('@container (max-width: 379.98px)'));
 		expect(phone).toContain('--env-min: 0px');
 		expect(phone).toContain('.env-fact { display: none; }');
+		expect(src).toContain('.env-word-short { display: inline; }');
+		expect(src).toContain('.env-row:has(.env-cell:nth-child(4)) .env-word { display: none; }');
 		expect(src).toMatch(/@container \(max-width: 300px\) \{\s*\.env-word \{ display: none; \}/);
 	});
 });

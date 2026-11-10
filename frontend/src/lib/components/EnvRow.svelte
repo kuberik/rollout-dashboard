@@ -37,6 +37,8 @@
 		/** r42 `progress` (opt-in, /design/atoms): the act's 0..1, drawn as StatusMark's progress pie */
 		mark?: { state: 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'approval'; tone?: 'held' | 'neutral'; progress?: number | null };
 		word?: string;
+		/** the state-words `compact` form ("Waiting" for "Needs your approval"), printed instead of `word` below 380px */
+		wordShort?: string;
 		/** ink class for the word (state ink) */
 		wordInk?: string;
 		region?: string;
@@ -71,7 +73,7 @@
 				>
 					{#if c.mark}<span class="env-mk"><StatusMark state={c.mark.state} tone={c.mark.tone} progress={c.mark.progress ?? null} /></span>{/if}
 					<span class="env-name t-ui-sm {c.hot ? 'text-fg' : 'text-fg-muted'}">{c.label}</span>
-					{#if c.word}<span class="env-word t-ui-sm {c.wordInk ?? 'text-fg-muted'}">{c.word}</span>{/if}
+					{#if c.word}<span class="env-word t-ui-sm {c.wordInk ?? 'text-fg-muted'}" data-word-short={c.wordShort ?? undefined}>{#if c.wordShort}<span class="env-word-full">{c.word}</span><span class="env-word-short">{c.wordShort}</span>{:else}{c.word}{/if}</span>{/if}
 					{#if c.region}<span class="env-region t-meta text-fg-subtle">{c.region}</span>{/if}
 					{#if c.beads?.length}
 						<span class="pointer-events-auto flex min-w-0 items-center gap-1 pl-1">{#each c.beads as b (b.state + b.refs.join() + b.count)}<ChangeDot bead={b} />{/each}</span>
@@ -150,8 +152,15 @@
 		.env-row { --env-min: 0px; --env-gap: 6px; column-gap: 6px; }
 		.env-row--l { --env-pad: 6px; }
 		.env-fact { display: none; }
+		.env-word-full { display: none; }
 	}
+	.env-word-short { display: none; }
+	@container (max-width: 379.98px) { .env-word-short { display: inline; } }
 	/* a 269px tile (a 350px phone) cannot hold three boxes AND a word: the mark carries the state, the tile's own sentence names it */
+	/* four boxes with words do not fit 330px either (a 309px tile at 390, a 303px lane at 350) */
+	@container (max-width: 330px) {
+		.env-row:has(.env-cell:nth-child(4)) .env-word { display: none; }
+	}
 	@container (max-width: 300px) {
 		.env-word { display: none; }
 	}
