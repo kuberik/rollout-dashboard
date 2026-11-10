@@ -451,6 +451,9 @@ describe('pendingRowText — Pending keeps real information, drops only text tha
 
 	it.each([
 		'No alerts firing for labels map[alertname:X]',
+		'No alerts firing for alertname=HighErrorRate',
+		'No alerts firing for alertname=HighErrorRate, app=checkout-api',
+		'No alerts firing for app=x, env=prod, team=a_b.',
 		'No alerts firing',
 		'Healthy',
 		'OK',
@@ -471,6 +474,9 @@ describe('readsHealthy — only a WHOLE message that is a complete healthy form 
 		'No alerts firing for labels map[alertname:X]',
 		'No alerts firing',
 		'  No alerts firing for labels map[app:x].  ',
+		'No alerts firing for alertname=HighErrorRate',
+		'No alerts firing for alertname=HighErrorRate, app=checkout-api',
+		'No alerts firing for app=x, env=prod, team=a_b.',
 		'0 errors',
 		'3/3 ready',
 		'3 of 3 ready',
@@ -524,6 +530,14 @@ describe('readsHealthy — only a WHOLE message that is a complete healthy form 
 		'No alerts firing for labels map[app:x] (stale data)',
 		'No alerts firing for labels map[app:x]\nprometheus unreachable',
 		'No alerts firing for labels',
-		'No alerts firing for labels anything at all'
+		'No alerts firing for labels anything at all',
+		'No alerts firing for alertname=X, app=y; 2 pending',
+		'No alerts firing for app=x but 1 pending',
+		'No alerts firing for app=x (stale data)',
+		'No alerts firing for app=x\nprometheus unreachable',
+		'No alerts firing for app=x, ',
+		'No alerts firing for app=x,app2',
+		'No alerts firing for app=x app=y',
+		'No alerts firing for =x'
 	])('keeps: %j', (m) => expect(readsHealthy(m)).toBe(false));
 });

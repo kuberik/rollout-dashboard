@@ -350,8 +350,15 @@ export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
  * Normalised = trimmed, lowercase, curly apostrophes straightened, whitespace
  * collapsed, trailing period removed.
  */
+// prometheus-controller writes either `for labels map[...]` (older) or
+// `for k=v, k=v` (sorted pairs, PR #2). Prometheus label VALUES may contain
+// spaces, but allowing them would let "for app=x but 1 pending" match as one
+// value, so values are whitespace-free: a spaced value is merely KEPT (fail
+// safe), never a problem hidden.
+const NO_ALERTS_FIRING =
+	/^no alerts firing( for (labels map\[[^\]]*\]|[a-z_][a-z0-9_]*=[^,;\s]+(, [a-z_][a-z0-9_]*=[^,;\s]+)*))?$/;
 const HEALTHY_FORMS: RegExp[] = [
-	/^no alerts firing( for labels map\[[^\]]*\])?$/,
+	NO_ALERTS_FIRING,
 	/^0 errors$/,
 	/^([1-9]\d*)(\/| of )\1 ready$/,
 	/^all [1-9]\d* resources ready$/,
