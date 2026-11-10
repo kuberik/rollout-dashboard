@@ -14,13 +14,11 @@ import (
 // in the rollouts API. The set is a frontend contract; the field is always
 // present, "unknown" when nothing below matches.
 const (
-	GateKindApproval         = "approval"
-	GateKindSchedule         = "schedule"
-	GateKindCheck            = "check"
-	GateKindDependency       = "dependency"
-	GateKindPromotion        = "promotion"
-	GateKindGitHubDeployment = "github-deployment"
-	GateKindUnknown          = "unknown"
+	GateKindApproval   = "approval"
+	GateKindSchedule   = "schedule"
+	GateKindDependency = "dependency"
+	GateKindPromotion  = "promotion"
+	GateKindUnknown    = "unknown"
 )
 
 // Marker names, copied from the controllers that stamp them.
@@ -50,10 +48,9 @@ const (
 // Consequently a hand-authored ownerless gate of another purpose also reads as
 // approval; that is the accepted trade-off, not a guess about an owner.
 //
-// "check" and "github-deployment" are reserved in the contract but no
-// controller creates a gate that can be recognised as either today (the "ghd-"
-// gates are owned by Environment and are promotion gates by function), so they
-// are never returned until a real marker exists. Never guess.
+// The contract has no "check" or "github-deployment": no controller creates a
+// gate recognisable as either (the "ghd-" gates are Environment-owned
+// promotion gates). Add a kind only when a controller marker exists.
 func GateKind(gate *rolloutv1alpha1.RolloutGate) string {
 	if gate == nil {
 		return GateKindUnknown

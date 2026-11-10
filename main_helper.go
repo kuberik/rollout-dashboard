@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -134,4 +135,22 @@ func writeUpstreamError(c *gin.Context, message string, err error) {
 		status = http.StatusConflict
 	}
 	c.JSON(status, gin.H{"error": message, "details": err.Error()})
+}
+
+// rolloutWithGateKinds wraps a Rollout returned by a mutation handler so its
+// status.gates[] carry "kind" exactly like the read endpoints do.
+//
+// The gate lookup always goes through the shared informer-cache read client,
+// never the operator's write client: that would be a live cross-namespace LIST
+// under the user's RBAC. If the read client is unavailable every kind is
+// "unknown" (field still present).
+func rolloutWithGateKinds(c *gin.Context, _ *kubernetes.Client, r *rolloutv1alpha1.Rollout) interface{} {
+	if r == nil {
+		return r
+	}
+	kinds := kubernetes.GateKindIndex{}
+	if rc, err := kubernetes.GetReadClient(c); err == nil {
+		kinds = rc.GateKindIndex(c.Request.Context())
+	}
+	return kubernetes.RolloutWithGateKinds{Rollout: r, Kinds: kinds}
 }

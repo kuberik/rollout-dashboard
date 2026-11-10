@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -86,4 +87,48 @@ func TestRolloutsListAndDetail_GateSummariesCarryKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertGateKinds(t, detail.Rollout.Status.Gates)
+}
+
+func TestRolloutPin_ResponseGateSummariesCarryKind(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	fc, err := kubernetes.NewTestClient(gateKindFixture()...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(kubernetes.SetReadClientForTest(fc))
+	t.Cleanup(kubernetes.SetWriteClientForTest(fc))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/rollouts/team-a/app/pin", strings.NewReader(`{"version":"v1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	setupRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("pin status %d: %s", w.Code, w.Body.String())
+	}
+	var out struct {
+		Rollout struct {
+			Status struct {
+				Gates []interface{} `json:"gates"`
+			} `json:"status"`
+		} `json:"rollout"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	assertGateKinds(t, out.Rollout.Status.Gates)
+}
+
+func TestRolloutDetail_GateWithoutRolloutRefDoesNotPanic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	objs := append(gateKindFixture(), &rolloutv1alpha1.RolloutGate{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "no-ref"}})
+	fc, err := kubernetes.NewTestClient(objs...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(kubernetes.SetReadClientForTest(fc))
+	w := httptest.NewRecorder()
+	setupRouter().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/rollouts/team-a/app", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("detail status %d: %s", w.Code, w.Body.String())
+	}
 }

@@ -77,6 +77,9 @@ func GetReadClientForGoContext(ctx context.Context) (*Client, error) {
 // cheap — see NewClientWithToken — it reuses the shared Scheme/RESTMapper
 // instead of redoing API discovery per request.
 func GetWriteClient(c *gin.Context) (*Client, error) {
+	if writeClientOverride != nil {
+		return writeClientOverride, nil
+	}
 	token := auth.GetTokenFromContext(c)
 	if token != "" {
 		return NewClientWithToken(token)
@@ -97,4 +100,14 @@ func GetDefaultClient() (*Client, error) {
 // It always uses the default client
 func GetClientFromGoContext(ctx context.Context) (*Client, error) {
 	return GetDefaultClient()
+}
+
+var writeClientOverride *Client
+
+// SetWriteClientForTest makes GetWriteClient return cl until the returned
+// restore func runs, so mutation handlers can be tested against a fake client.
+func SetWriteClientForTest(cl *Client) func() {
+	prev := writeClientOverride
+	writeClientOverride = cl
+	return func() { writeClientOverride = prev }
 }
