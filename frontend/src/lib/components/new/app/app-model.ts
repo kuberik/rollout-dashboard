@@ -144,7 +144,7 @@ export const shortGate = (name: string, app: string): string => {
 /** the Holding card of an app: each of ITS gates (approvals included) once, then the health hold; holding ones first. Links open the first guarded place's Gates tab. */
 export function holdRows(gates: GateInfo[], places: PlaceHold[], only: Set<string> | null = null, app = ''): HoldRow[] {
 	const hrefOf = (label: string) => `${places.find((p) => p.place === label)?.href ?? ''}/gates`;
-	const rows: HoldRow[] = gates.map((g) => ({ key: `gate:${g.name}`, kind: g.kind === 'promotion' ? 'other' : g.kind, name: shortGate(g.name, app), holding: g.holding, pending: g.heldPending, places: g.places, held: only ? g.held.filter((b) => only.has(b)) : g.held, sentence: g.sentence, href: hrefOf(g.places[0]) }));
+	const rows: HoldRow[] = gates.map((g) => ({ key: `gate:${g.id}`, kind: g.kind === 'promotion' ? 'other' : g.kind, name: shortGate(g.name, app), holding: g.holding, pending: g.heldPending, places: g.places, held: only ? g.held.filter((b) => only.has(b)) : g.held, sentence: g.sentence, href: hrefOf(g.places[0]) }));
 	const hp = places.filter((p) => p.holdReason === 'failed' || p.holdReason === 'health');
 	if (hp.length) {
 		const held: string[] = [];

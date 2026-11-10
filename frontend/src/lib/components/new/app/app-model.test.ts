@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { placeHolds, gatesOf, apps, tabPill, newestBuild } from '../data';
+import { placeHolds, gatesOf, apps, tabPill, newestBuild, type GateInfo } from '../data';
 import { buildsOf, holdSentences, deployTargets, holdRows, nextOf, pillOf, currencyOf, ledgerOf, foldLedger, tabLag, placeNote, stopWord, stopShort, weekSummary, placeWord, pinnedPlaces } from './app-model';
 
 describe('app-model on the demo apps', () => {
@@ -22,6 +22,13 @@ describe('app-model on the demo apps', () => {
 		expect(r.map((x) => x.kind)).toEqual(['approval', 'health']);
 		expect(r[0].places).toEqual(['us-east', 'us-west']);
 		expect(r[0].held.length).toBe(5);
+	});
+	it('holding rows: same-named gates of several prod sites keep unique keys (each_key_duplicate "gate:Gate")', () => {
+		const g = (id: string, place: string): GateInfo => ({ id, name: 'Gate', kind: 'approval', sentence: 'Releases when someone approves', holding: true, heldPending: false, places: [place], held: ['a11c808'], releasedBy: 'someone approves' });
+		const r = holdRows([g('ghd-6p5hd', 'us-east'), g('ghd-7k2qx', 'us-west'), g('ghd-9b4zt', 'eu-west')], P);
+		const gateRowsOf = r.filter((x) => x.kind === 'approval');
+		expect(gateRowsOf.map((x) => x.name)).toEqual(['Gate', 'Gate', 'Gate']);
+		expect(new Set(r.map((x) => x.key)).size).toBe(r.length);
 	});
 	it('next arrival and why', () => {
 		const eu = P.find((p) => p.place === 'eu-west')!;
