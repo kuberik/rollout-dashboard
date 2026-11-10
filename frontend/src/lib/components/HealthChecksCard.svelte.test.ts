@@ -113,6 +113,19 @@ describe('HealthChecksCard — one status grammar', () => {
 		expect(row.textContent).toContain('Not evaluated yet');
 	});
 
+	test('a pending row keeps a message that is real information (alert about to fire)', () => {
+		render(HealthChecksCard, {
+			props: {
+				healthChecks: [
+					hc('probe', 'Pending', { message: 'alert HighErrorRate is pending, fires after 5m' })
+				]
+			}
+		});
+		expect(document.querySelector('[data-testid="hc-row"]')!.textContent).toContain(
+			'fires after 5m'
+		);
+	});
+
 	test('colour, and only colour, carries the state', () => {
 		render(HealthChecksCard, {
 			props: { healthChecks: [hc('probe', 'Pending')] }

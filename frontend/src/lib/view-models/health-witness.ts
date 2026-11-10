@@ -97,7 +97,8 @@ export type CheckFailure = {
  * match falls through to `raw`, which is always shown. A regex that misses
  * costs a tooltip; a regex that is assumed to hit costs the sentence.
  */
-const CONDITION_MESSAGE = /^HealthCheck '([^']+)' in namespace '[^']*' is not healthy \([^)]*\)(?::\s*(.*))?$/s;
+const CONDITION_MESSAGE =
+	/^HealthCheck '([^']+)' in namespace '[^']*' is not healthy \([^)]*\)(?::\s*(.*))?$/s;
 
 export function parseCheckMessage(raw: string): { check: string | null; detail: string | null } {
 	const m = CONDITION_MESSAGE.exec(raw ?? '');
@@ -342,13 +343,31 @@ export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
 }
 
 /**
- * The sub-line of a PENDING row. Never the controller's `status.message`: a
- * check that has not settled has no verdict, and the message it carries
- * ("No alerts firing for labels …") reads as a healthy one (batch4 #6). The
- * countdown when the check says when it probes next, else the plain state.
+ * Text that reads as a healthy verdict. A Pending check has not settled, so
+ * "No alerts firing for labels …" under a Pending chip (prometheus-controller)
+ * is read as "fine". `unhealthy` / `not healthy` are NOT matched.
+ */
+const READS_HEALTHY =
+	/\b(no alerts?( are)? firing|not firing|(?<!un)(?<!not )healthy|ok|passing|reconciled|no (errors?|issues?|problems?)|all\b[^.]*\bready|\d+\/\d+ ready)\b/i;
+
+export function readsHealthy(message: string): boolean {
+	return READS_HEALTHY.test(message);
+}
+
+/**
+ * The sub-line of a PENDING row. Pending also covers EVALUATED states (an
+ * alert in its pending phase, Datadog Warn/NoData, resources not ready), so the
+ * controller's message is real information and is kept — EXCEPT when it reads
+ * healthy, where it is dropped (batch4 #6). Dropping beats a neutral lead-in:
+ * no extra words on every row, and the Pending chip already is the lead-in.
+ * Then the probe countdown when known, else "Not evaluated yet".
  */
 export function pendingRowText(hc: HealthCheck, now: Date): string {
-	return pendingProbeClause(hc, now) ?? 'Not evaluated yet';
+	const raw = hc.status?.message?.trim();
+	const msg = raw && !readsHealthy(raw) ? raw : null;
+	const clause = pendingProbeClause(hc, now);
+	if (msg && clause) return `${msg} · ${clause}`;
+	return msg ?? clause ?? 'Not evaluated yet';
 }
 
 /** Passing right now, but it errored inside this deploy's window. */
@@ -404,7 +423,10 @@ export function healthQuietState(
 	healthChecks: HealthCheck[] | null,
 	windowStart: Date | null
 ): HealthQuietState {
-	const counts = healthGateCounts(visibleHealthChecks(healthChecks ?? [], windowStart), windowStart);
+	const counts = healthGateCounts(
+		visibleHealthChecks(healthChecks ?? [], windowStart),
+		windowStart
+	);
 	if (counts.failing > 0) return 'failing';
 	if (counts.pending > 0) return 'pending';
 	return 'passing';

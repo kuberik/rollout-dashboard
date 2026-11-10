@@ -75,7 +75,9 @@ function check(status: string, lastErrorTime?: string, name = 'payment-latency')
 describe('checkFailure — the fact the list surfaces threw away', () => {
 	it('reads `DeploymentBlocked: True / UnhealthyHealthChecks`', () => {
 		const f = checkFailure(
-			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
+			rollout({
+				blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE }
+			})
 		);
 		expect(f).not.toBeNull();
 		expect(f!.check).toBe('payment-latency');
@@ -113,7 +115,9 @@ describe('checkFailure — the fact the list surfaces threw away', () => {
 
 	it('the title names the check and states the consequence', () => {
 		const f = checkFailure(
-			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
+			rollout({
+				blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE }
+			})
 		)!;
 		expect(checkFailureTitle(f)).toBe(
 			'Health check payment-latency is failing — p99 latency 4.2s exceeds SLO of 500ms for 5m. Automatic deploys here are held until it passes; a deploy you start by hand still applies.'
@@ -126,7 +130,9 @@ describe('checkFailure — the fact the list surfaces threw away', () => {
 	// never claim otherwise, and it may never drop the escape clause.
 	it('never claims a manual deploy is held', () => {
 		const f = checkFailure(
-			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
+			rollout({
+				blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE }
+			})
 		)!;
 		const title = checkFailureTitle(f);
 		expect(title).not.toMatch(/nothing new deploys/i);
@@ -240,10 +246,7 @@ describe('healthGateCounts / healthGateHolding / healthGateCountsLabel — the c
 	});
 
 	it('failing leads pending in the label, both counted together', () => {
-		const counts = healthGateCounts(
-			[check('Pending'), check('Unhealthy', undefined, 'b')],
-			window
-		);
+		const counts = healthGateCounts([check('Pending'), check('Unhealthy', undefined, 'b')], window);
 		expect(counts).toEqual({ pending: 1, failing: 1 });
 		expect(healthGateCountsLabel(counts)).toBe('1 failing, 1 pending');
 	});
@@ -346,10 +349,7 @@ describe('healthQuietState — the Gates tab`s empty-state sentence, three state
 
 	it('failing outranks pending when both are present', () => {
 		expect(
-			healthQuietState(
-				[check('Pending'), check('Unhealthy', '2026-08-31T01:45:00Z', 'b')],
-				window
-			)
+			healthQuietState([check('Pending'), check('Unhealthy', '2026-08-31T01:45:00Z', 'b')], window)
 		).toBe('failing');
 	});
 
@@ -422,22 +422,45 @@ describe('healthHolds — the shared predicate detail and the Gates tab both rea
  * as a healthy verdict on a check that has not been evaluated. Pending rows
  * print the product's own sentence and never the controller message.
  */
-describe('pendingRowText — a pending check never prints the controller message as a verdict', () => {
+describe('pendingRowText — Pending keeps real information, drops only text that reads healthy', () => {
 	const base = new Date('2026-09-21T12:00:00Z');
-	const hc = (extra: Record<string, unknown>, message = 'No alerts firing for labels map[alertname:X]') =>
+	const hc = (message: string | undefined, extra: Record<string, unknown> = {}) =>
 		({
 			metadata: { name: 'probe', namespace: 'p' },
-			status: { status: 'Pending', message, ...extra }
+			status: { status: 'Pending', ...(message ? { message } : {}), ...extra }
 		}) as unknown as HealthCheck;
+	const probe = { nextProbeAt: new Date(base.getTime() + 5000).toISOString() };
 
-	it('without a probe time: says it has not been evaluated, not the message', () => {
-		const t = pendingRowText(hc({}), base);
-		expect(t).toBe('Not evaluated yet');
-		expect(t).not.toMatch(/alerts firing/i);
+	it('keeps a Prometheus alert-pending message (about to fire)', () => {
+		const m = 'alert HighErrorRate is pending, fires after 5m';
+		expect(pendingRowText(hc(m), base)).toBe(m);
 	});
 
-	it('with a probe time: the countdown alone', () => {
-		const t = pendingRowText(hc({ nextProbeAt: new Date(base.getTime() + 5000).toISOString() }), base);
-		expect(t).toBe('next probe in 5s');
+	it('keeps a Datadog NoData / Warn message', () => {
+		expect(pendingRowText(hc('monitor state: No Data'), base)).toBe('monitor state: No Data');
+		expect(pendingRowText(hc('monitor state: Warn'), base)).toBe('monitor state: Warn');
+	});
+
+	it('keeps a message and appends the probe clause', () => {
+		expect(pendingRowText(hc('1 of 3 pods ready, waiting', probe), base)).toBe(
+			'1 of 3 pods ready, waiting · next probe in 5s'
+		);
+	});
+
+	it.each([
+		'No alerts firing for labels map[alertname:X]',
+		'alert is not firing',
+		'Healthy',
+		'OK',
+		'Kustomization is reconciled · 1/1 ready',
+		'all pods ready'
+	])('drops healthy-sounding %j on a Pending check', (m) => {
+		expect(pendingRowText(hc(m), base)).toBe('Not evaluated yet');
+		expect(pendingRowText(hc(m, probe), base)).toBe('next probe in 5s');
+	});
+
+	it('does not treat "unhealthy" / "not healthy" as healthy', () => {
+		expect(pendingRowText(hc('pod is unhealthy'), base)).toBe('pod is unhealthy');
+		expect(pendingRowText(hc('not healthy yet'), base)).toBe('not healthy yet');
 	});
 });

@@ -369,7 +369,7 @@
 								ticks every 100ms — so this line recomputes, and the number
 								actually falls, every render. A check with no `nextProbeAt` (a
 								real backend, or a mock check nobody wired up) falls back to
-								"Not evaluated yet" — never `status.message`, which reads as a
+								"Not evaluated yet" — `status.message` unless it reads healthy (batch4 #6), which is a
 								verdict on a check that has none (batch4 #6).
 							-->
 							{@const text = pendingRowText(hc, $now)}

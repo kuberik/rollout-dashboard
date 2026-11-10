@@ -1802,7 +1802,7 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 		expect(parseCheckMessage('')).toEqual({ check: null, detail: null });
 	});
 
-	test('a Pending check says it is not evaluated — never the controller message (batch4 #6)', () => {
+	test('a Pending check says it is not evaluated — drops a healthy-sounding controller message (batch4 #6)', () => {
 		const pending = {
 			metadata: { name: 'probe', namespace: 'alpha-prod' },
 			status: { status: 'Pending', message: 'No alerts firing for labels' }
