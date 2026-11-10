@@ -962,6 +962,7 @@ lib/components/new/Slipway.svelte	text	Next build
 lib/components/new/Slipway.svelte	code	Open rollout
 lib/components/new/Slipway.svelte	code	reached … of … place…
 lib/components/new/Slipway.svelte	code	reached all … places
+lib/components/new/Slipway.svelte	code	Rolled back from
 lib/components/new/Slipway.svelte	code	Your approval
 lib/components/new/Slipway.svelte	text	Your change
 lib/components/new/state-words.ts	code	… … approval
