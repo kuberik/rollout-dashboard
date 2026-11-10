@@ -142,7 +142,7 @@
 	const acts = $derived<Act[]>(severity === 'failed' && !primary && !secondary.length && openHref ? [{ label: 'Open rollout', href: openHref, after: true, key: 'open-rollout' }] : secondary);
 	const hasActions = $derived(!!primary || acts.length > 0);
 	/* the failure cards' rule (attention.ts): a measured figure leads, and the check line then says the name + the budget instead of repeating the figure in its message */
-	const figure = $derived(severity === 'failed' && check ? (() => { const l = failingLead(check, observations); return l.kind === 'check' ? null : l; })() : null);
+	const figure = $derived(severity === 'failed' && (check || observations?.length) ? (() => { const l = failingLead(check ?? null, observations); return l.kind === 'check' ? null : l; })() : null);
 	const shownCheck = $derived(check && figure?.budget ? { name: check.name, message: figure.budget } : check);
 	const hasBody = $derived(!!(figure || check || place || since || build || cause || fact || message || body));
 </script>
