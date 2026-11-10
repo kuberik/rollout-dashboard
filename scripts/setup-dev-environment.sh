@@ -3,7 +3,10 @@ set -e
 set -x
 
 SCRIPT_DIR=$(dirname "$0")
+# Tracing is paused wherever the token is expanded, so it never lands in a set -x log.
+{ set +x; } 2>/dev/null
 GITHUB_TOKEN=${GITHUB_TOKEN:-$(gh auth token)}
+set -x
 
 # GitHub App credentials come from rollout-dashboard/.env (gitignored) so a cluster
 # reset keeps the GitHub login without exporting them by hand. The .env held the
@@ -320,8 +323,11 @@ for env in ${APP_ENVS}; do
     # assuming ${app}-${env}.
     applied=$(kustomize build "example/${app}/cd/deployments/${env}" | kubectl apply -o name -f -)
     for ns in $(printf '%s\n' "${applied}" | sed -n 's#^namespace/##p'); do
+      { set +x; } 2>/dev/null
+      echo "+ creating github-token and github-registry-credentials in ${ns}"
       kubectl -n "${ns}" create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
       kubectl -n "${ns}" create secret docker-registry github-registry-credentials --docker-server=ghcr.io --docker-username=${GITHUB_USER} --docker-password=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
+      set -x
       # Bind the imagePullSecret to the namespace's default ServiceAccount so every
       # pod in the namespace can pull from ghcr without per-deployment plumbing.
       # Rollouts often promote images that weren't kind-loaded (newer tags published
