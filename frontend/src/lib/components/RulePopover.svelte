@@ -189,7 +189,7 @@
 >
 	<summary
 		bind:this={summaryEl}
-		class="t-micro inline-flex cursor-pointer list-none items-center gap-1 rounded text-gray-500 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none dark:text-gray-400 dark:hover:text-white [&::-webkit-details-marker]:hidden"
+		class="t-meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-fg-subtle hover:text-fg focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
 	>
 		<ChevronRightOutline
 			class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
@@ -242,9 +242,21 @@
 	     `sm:w-[22rem]` still gives the `fixed` panel its explicit measure —
 	     that one is never a flex item (out-of-flow, `align-self` does not
 	     apply to it), so it needs the width set outright. -->
+	<!-- ⭐ `rounded-md` BELOW `sm`, `rounded-lg` AT `sm`+ (TL review round 7,
+	     dr7, found on /apps/checkout-api at 390 dark). 12px (`rounded-lg`) is
+	     the right radius for a popover — but the note above this element
+	     already says below `sm` it ISN'T one: `static`, not `fixed`, it
+	     renders IN FLOW inside whatever card holds the summary, which on
+	     this page is the "Waiting, nothing to do" card at `rounded-md` (8px).
+	     DESIGN-LANGUAGE.md §2.7: "a child's radius is never larger than its
+	     container's" — a 12px-cornered box inside an 8px card broke that at
+	     the one width where the panel is actually a child, not an overlay.
+	     `sm:rounded-lg` restores 12px the moment `sm:fixed` makes it a true
+	     floating popover again, escaping the card's own box. -->
 	<div
 		bind:this={panelEl}
-		class="static z-50 mt-2 self-stretch rounded-lg border border-gray-200 bg-white p-3 shadow-md sm:fixed sm:mt-0 sm:w-[22rem] sm:max-w-[calc(100vw-16px)] dark:border-gray-700 dark:bg-gray-800"
+		class="static z-50 mt-2 self-stretch rounded-md border border-line bg-overlay p-3 sm:fixed sm:mt-0 sm:w-[22rem] sm:max-w-[calc(100vw-16px)] sm:rounded-lg"
+		style="box-shadow: var(--k-shadow-overlay)"
 	>
 		{@render children()}
 	</div>

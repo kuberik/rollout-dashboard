@@ -254,3 +254,24 @@ describe('the tile grid', () => {
 		}
 	});
 });
+
+import { siteCount, regionsPhrase } from './regions';
+describe('QA #10: regions are sites', () => {
+	it('places that share a label (or have none) are one site: no region wording', () => {
+		expect(siteCount(['prod', 'prod'])).toBe(1);
+		expect(siteCount(['', undefined, 'default'])).toBe(1);
+		expect(regionsPhrase(siteCount(['prod', 'prod']), 'prod')).toBeNull();
+	});
+	it('distinct sites are counted', () => {
+		expect(regionsPhrase(siteCount(['eu-west', 'us-east', 'eu-west']), 'prod')).toBe('2 prod regions');
+	});
+});
+
+describe('QA #10: one default site', () => {
+	it('an empty label and a tier-named label are the same (default) site', () => {
+		expect(siteCount(['prod', ''])).toBe(1);
+		expect(siteCount(['production', undefined, 'prod'])).toBe(1);
+		expect(siteCount(['prod', 'eu-west'])).toBe(2);
+		expect(regionsPhrase(siteCount(['prod', '']), 'prod')).toBeNull();
+	});
+});

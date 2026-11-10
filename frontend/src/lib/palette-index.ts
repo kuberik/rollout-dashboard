@@ -156,6 +156,18 @@ export function scoreBuildEntry(
 }
 
 /**
+ * MULTI-WORD QUERIES (QA #24): "hello world" has to find "hello-world-app" and a row whose words are spread over title and subtitle.
+ * 1 when the whole phrase is a substring of the field, 0.6 when every word is, else 0. The haystack and the query are
+ * lowercased by the caller; words split on whitespace and `-`/`_` are NOT split (a hyphenated name is still one word to type).
+ */
+export function fieldMatch(field: string, query: string): number {
+	if (!query) return 0;
+	if (field.includes(query)) return 1;
+	const words = query.split(/\s+/).filter(Boolean);
+	return words.length > 1 && words.every((w) => field.includes(w)) ? 0.6 : 0;
+}
+
+/**
  * ⌘K'S CHANGE RESULT KIND. Renamed from "PR" (2026-09-10, `CHANGES-2026-09-10
  * .md`'s "THE PALETTE" section) — the `pr` kind is renamed, not duplicated.
  * The measured defect: typing `hello` put a `PULL REQUESTS` group of five

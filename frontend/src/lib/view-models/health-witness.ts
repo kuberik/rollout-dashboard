@@ -176,6 +176,171 @@ export function classifyCheck(hc: HealthCheck, windowStart: Date | null): CheckS
 	return at >= windowStart.getTime() ? 'recovered' : 'passing';
 }
 
+/**
+ * ⭐ "PROMOTE ONLY WHEN IT'S HEALTHY" — THE HALF OF THE CONTROLLER NO GATE
+ * MODELS. (2026-09-20, demo film finding: the hero take showed a `Ready`
+ * build with a loud primary `Deploy` while a health check was still
+ * `Pending` — the exact opposite of what the beat claims.)
+ *
+ * `rollout_controller.go`'s promotion loop short-circuits BEFORE the gate
+ * loop even runs: `if !r.hasManualDeployment(&rollout) && len(history) > 0
+ * && !healthChecksHealthy { return }`. Nothing in `promotion.ts` or
+ * `blocking-story.ts` reads this — both of those classify
+ * `rollout.status.gates`, and a HealthCheck is not a gate object. So a
+ * newest candidate with an empty `allowedVersions` story and a `Pending`
+ * check passed every existing "is this blocked" test on the page and
+ * rendered as plain `Ready`.
+ *
+ * `pending` AND `failing` both hold automatic promotion back — a check that
+ * has not yet reported is exactly as much "not proven healthy" as one that
+ * has proven unhealthy, which is why both are counted here rather than only
+ * `failing`. `passing` and `recovered` (`classifyCheck`'s other two states)
+ * are both `status: Healthy` right now and never count.
+ */
+export type HealthGateCounts = { pending: number; failing: number };
+
+export function healthGateCounts(
+	healthChecks: HealthCheck[],
+	windowStart: Date | null
+): HealthGateCounts {
+	let pending = 0;
+	let failing = 0;
+	for (const hc of healthChecks ?? []) {
+		const state = classifyCheck(hc, windowStart);
+		if (state === 'pending') pending += 1;
+		else if (state === 'failing') failing += 1;
+	}
+	return { pending, failing };
+}
+
+/** Whether ANY check is holding automatic promotion back right now. */
+export function healthGateHolding(counts: HealthGateCounts): boolean {
+	return counts.pending > 0 || counts.failing > 0;
+}
+
+/**
+ * ⭐ THE VISIBILITY FILTER, EXTRACTED. (2026-10-08, Gates-tab integration.)
+ * Rollout detail's `visibleHealthChecks` (inline, `+page.svelte`) and the
+ * Gates tab's `healthHold` (`rollout-gates.ts`) each wrote this same filter
+ * by hand: a check that is CURRENTLY `Failed`/`Unhealthy` is evidence about
+ * the running deploy only if its `lastErrorTime` falls on or after
+ * `windowStart` (`deployWindowStart`'s own `errorCutoff`); a stale failure —
+ * or one with no `lastErrorTime` at all once a window exists — is dropped.
+ * Every OTHER check (passing, recovered, pending) always passes through
+ * unfiltered; only a failing verdict needs a witness to earn a place. With
+ * no window (`windowStart === null`, no deploy to attribute anything to),
+ * nothing is filtered — same as detail's `errorCutoff !== null ? … :
+ * healthChecks`. One function so the two pages read the same set of checks
+ * and cannot quietly diverge on which failure is "this deploy's".
+ */
+export function visibleHealthChecks(
+	healthChecks: HealthCheck[],
+	windowStart: Date | null
+): HealthCheck[] {
+	if (!windowStart) return healthChecks;
+	return healthChecks.filter((hc) => {
+		const st = hc.status?.status;
+		if (st !== 'Failed' && st !== 'Unhealthy') return true;
+		const lastErrorTime = hc.status?.lastErrorTime;
+		if (!lastErrorTime) return false;
+		const at = new Date(lastErrorTime).getTime();
+		return Number.isFinite(at) && at >= windowStart.getTime();
+	});
+}
+
+/**
+ * ⭐ THE ONE PREDICATE "IS HEALTH HOLDING THE NEWEST BUILD BACK" MAY EVER BE.
+ * (2026-10-08.) Extracted so rollout detail's `newestHeldByHealth` and the
+ * Gates tab's `healthHold` cannot drift the way they just had — the tab's
+ * version was missing the "already blocked by a real gate" exclusion
+ * entirely, so a rollout a gate already explains got a SECOND, independent
+ * health box for the same hold.
+ *
+ * `hasCandidate`: there must be something newer to hold back at all
+ * (`promotionCandidates(rollout)[0]`, mirroring detail's
+ * `rollout.status.releaseCandidates?.[0]`).
+ *
+ * `newestCandidateBlockedByGate`: true when a real gate (not health) already
+ * refuses the newest candidate (detail's `newestCandidateBlockedByGate`,
+ * `getBlockingGates(tag).length > 0`). Health is ADDITIVE evidence, never a
+ * replacement for a gate's own verdict — a rollout already explained by a
+ * gate must not also print "held by health" for the identical build.
+ *
+ * ⛔ PIN IS DELIBERATELY NOT A PARAMETER HERE. Detail's own `newestHeldByHealth`
+ * computed value does not consult `spec.wantedVersion` either — the pin's
+ * precedence ("a pin outranks every gate", `blocking-story.ts`) is applied by
+ * each CALLER, not baked into this predicate: detail's template tests
+ * `blockStory.pinnedTo` before `newestHeldByHealth` in an if/else-if chain
+ * (`+page.svelte` ~2928), and `rolloutGateBoxes` applies the same ordering by
+ * skipping the health box outright once its own PIN box is pushed. Keeping
+ * the exclusion out of this function is what lets both callers apply it in
+ * the shape each one needs (a sentence slot vs. a box list) without this
+ * shared piece knowing about either.
+ */
+export function healthHolds(
+	hasCandidate: boolean,
+	newestCandidateBlockedByGate: boolean,
+	counts: HealthGateCounts
+): boolean {
+	return hasCandidate && !newestCandidateBlockedByGate && healthGateHolding(counts);
+}
+
+/**
+ * "1 pending", "1 failing", "1 pending, 1 failing" — the counts alone, so
+ * two call sites (a release-candidate row's own clause, the version card's
+ * metadata line) can drop the identical fact into two different sentence
+ * shapes without re-deriving the count. Empty when nothing is held; callers
+ * check `healthGateHolding` first, same pattern as `heldClears` above.
+ */
+export function healthGateCountsLabel(counts: HealthGateCounts): string {
+	const parts: string[] = [];
+	if (counts.failing > 0) parts.push(`${counts.failing} failing`);
+	if (counts.pending > 0) parts.push(`${counts.pending} pending`);
+	return parts.join(', ');
+}
+
+/**
+ * ⭐ THE PENDING COUNTDOWN IS A REAL CLOCK COMPARISON, NOT A BAKED STRING.
+ * (2026-09-21, film critic finding: `HealthChecksCard`'s pending sub-line
+ * printed `evaluating alert state · next probe in 12s` as a literal string
+ * stamped once at fixture-build time — the number never moved no matter how
+ * long the row sat on screen, and it could not, because it was never a
+ * number to begin with by the time it reached the DOM.)
+ *
+ * `nextProbeAt` is not part of the real `HealthCheck` CRD's status today —
+ * these two functions read it defensively (an absent field is simply "no
+ * countdown to show", never an error) so a real backend response is
+ * unaffected. The mock (`lib/demo/state.ts`) is the one place that writes
+ * it, on that module's own demo clock (`peekDemoClock()`) — the same clock
+ * domain every other timestamp there uses, and the one the capture harness's
+ * `/api/demo/now` reports, so a browser whose clock is pinned to that
+ * endpoint (as the film capture and this feature's own verification both do)
+ * sees a countdown that agrees with the pin. See `state.ts`'s "THE PENDING
+ * COUNTDOWN" section for the full reasoning and its one accepted limitation
+ * (an unpinned browser against a long-uptime dev server).
+ */
+export function pendingNextProbeAt(hc: HealthCheck): Date | null {
+	const raw = (hc?.status as { nextProbeAt?: string } | undefined)?.nextProbeAt;
+	if (!raw) return null;
+	const at = new Date(raw);
+	return Number.isFinite(at.getTime()) ? at : null;
+}
+
+/**
+ * `null` when there is nothing to derive (no `nextProbeAt` on this check) —
+ * the caller falls back to the check's own `status.message`. Never a
+ * negative count: once the instant passes, this reads `probing…` and stays
+ * there until the caller's own data changes (the check resolves, or a fresh
+ * `nextProbeAt` arrives) — never a frozen NUMBER, which is the defect this
+ * exists to fix.
+ */
+export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
+	const at = pendingNextProbeAt(hc);
+	if (!at) return null;
+	const remainingMs = at.getTime() - now.getTime();
+	return remainingMs > 0 ? `next probe in ${Math.ceil(remainingMs / 1000)}s` : 'probing…';
+}
+
 /** Passing right now, but it errored inside this deploy's window. */
 export function recoveredChecks(
 	healthChecks: HealthCheck[],
@@ -203,4 +368,34 @@ export function recoveredLabel(ago: string): string {
 export function recoveredTitle(hc: HealthCheck, ago: string): string {
 	const name = hc?.metadata?.name ?? 'This check';
 	return `${name} is passing now, but it errored ${ago} — inside the window of the deploy that is running. The controller keeps that error as evidence; this mark clears on the next deploy or retry.`;
+}
+
+/**
+ * ⭐ THE GATES TAB'S OWN EMPTY STATE, AND WHY PENDING WAS SILENTLY "PASSING".
+ * (2026-10-08, QA + design review.) The tab's quiet one-sentence empty state
+ * (`gates/+page.svelte`) used to ask only `anyHealthFailing` — `status ===
+ * 'Failed' || 'Unhealthy'` — to pick between "a health check is failing…"
+ * and "its health checks are passing". A check that has not reported yet
+ * (`classifyCheck` → `pending`: anything that is not `Healthy` and not
+ * `Failed`/`Unhealthy`) is neither, and the binary swallowed it into the
+ * PASSING branch — claiming a check is clean when it is simply unproven,
+ * the exact "not proven healthy is not the same as healthy" distinction
+ * `healthGateCounts`'s own doc comment makes for the gate-holding count.
+ *
+ * Three states, not two, and `classifyCheck`/`visibleHealthChecks` decide
+ * them the same way `healthHold` does (stale pre-deploy failures excluded),
+ * so this sentence and the box column above it can never disagree about
+ * which checks are live. Failing outranks pending — a rollout with one of
+ * each is still "a health check is failing", the louder and truer fact.
+ */
+export type HealthQuietState = 'failing' | 'pending' | 'passing';
+
+export function healthQuietState(
+	healthChecks: HealthCheck[] | null,
+	windowStart: Date | null
+): HealthQuietState {
+	const counts = healthGateCounts(visibleHealthChecks(healthChecks ?? [], windowStart), windowStart);
+	if (counts.failing > 0) return 'failing';
+	if (counts.pending > 0) return 'pending';
+	return 'passing';
 }

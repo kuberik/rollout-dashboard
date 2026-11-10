@@ -1,0 +1,1257 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   KUBERIK DESIGN LANGUAGE — tokens, type roles, core component classes.
+   Spec: kuberik/internal design/DESIGN-LANGUAGE.md. This file is the code
+   half of that document; when the two disagree, fix one of them in the
+   same commit.
+
+   Order of authority inside this file:
+     1. @theme          — the values Tailwind generates utilities from
+     2. :root / .dark   — semantic tokens, one set per theme
+     3. base            — body ink, ground, font features
+     4. roles (t-*)     — the closed type list; every text uses exactly one
+     5. components      — button, chip, tile, pill, tabs, input, headers
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Fonts. Self-hosted, variable. Inter carries an optical-size axis
+   (`opsz` 14–32): text sizes get the open, wide text cut, the 24px title gets
+   the tighter display cut automatically (`font-optical-sizing: auto`). That
+   axis is why Inter was chosen over Geist: one file covers 11px chips and
+   24px titles without a second display face. JetBrains Mono for identifiers:
+   tall x-height that holds at 12px, unambiguous 0/O and 1/l/I. ──────────── */
+@font-face {
+	font-family: 'Inter';
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url('/fonts/inter-latin-opsz.woff2') format('woff2-variations');
+	unicode-range:
+		U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+		U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+	font-family: 'Inter';
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url('/fonts/inter-latin-ext-opsz.woff2') format('woff2-variations');
+	unicode-range:
+		U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+		U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+
+@font-face {
+	font-family: 'JetBrains Mono';
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 800;
+	src: url('/fonts/jetbrains-mono-latin.woff2') format('woff2-variations');
+}
+
+@theme {
+	--font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+	/* ── The neutral ramp, retinted. Hue 222 — between the kuberik mark's teal
+	   (≈208) and a cool slate — at chroma 0.003–0.019, so every grey in the
+	   product reads as one material. These OVERRIDE Tailwind's `gray-*`, so all
+	   existing `gray-*` utilities move onto the ramp with no markup change.
+	   The dark steps are placed where the legacy classes already land:
+	   `gray-900` = dark ground, `gray-800` = dark surface, `gray-700` = dark line. */
+	--color-gray-50: oklch(0.975 0.004 222);
+	--color-gray-100: oklch(0.955 0.006 222);
+	--color-gray-200: oklch(0.918 0.009 222);
+	--color-gray-300: oklch(0.862 0.012 222);
+	--color-gray-400: oklch(0.71 0.016 222);
+	--color-gray-500: oklch(0.53 0.018 222);
+	--color-gray-600: oklch(0.44 0.019 222);
+	--color-gray-700: oklch(0.33 0.019 222);
+	--color-gray-800: oklch(0.236 0.016 222);
+	--color-gray-900: oklch(0.195 0.014 222);
+	--color-gray-950: oklch(0.15 0.012 222);
+
+	/* ── Type scale. Five sizes for nearly everything (11/12/14/16/24) plus 20
+	   for mono object ids. Line-heights on the 4px grid. Tailwind's `text-lg`
+	   (18px) is off the scale and must not be used; `text-base` is 16. */
+	--text-2xs: 11px;
+	--text-2xs--line-height: 16px;
+	--text-xs: 12px;
+	--text-xs--line-height: 16px;
+	--text-sm: 14px;
+	--text-sm--line-height: 20px;
+	--text-base: 16px;
+	--text-base--line-height: 24px;
+
+	--radius-xs: 4px;
+	--radius-sm: 6px;
+	--radius-md: 8px;
+	--radius-lg: 12px;
+
+	--ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Semantic colours as Tailwind utilities that switch theme on their own:
+   `bg-ground`, `bg-surface`, `text-fg-muted`, `border-line`, `bg-success-tint`…
+   No `dark:` pair is needed for anything spelled with these. */
+@theme inline {
+	--color-ground: var(--k-ground);
+	--color-surface: var(--k-surface);
+	--color-subtle: var(--k-subtle);
+	--color-overlay: var(--k-overlay);
+	--color-inverse: var(--k-inverse);
+	--color-hover: var(--k-hover);
+	--color-selected: var(--k-selected);
+	/* lane P, round 3: the modal scrim — see `--k-scrim`'s own comment
+	   beside the two theme blocks. */
+	--color-scrim: var(--k-scrim);
+
+	--color-line: var(--k-line);
+	--color-line-strong: var(--k-line-strong);
+	--color-line-subtle: var(--k-line-subtle);
+
+	--color-fg: var(--k-fg);
+	--color-fg-muted: var(--k-fg-muted);
+	--color-fg-subtle: var(--k-fg-subtle);
+	--color-fg-disabled: var(--k-fg-disabled);
+	--color-fg-inverse: var(--k-fg-inverse);
+
+	--color-accent: var(--k-accent);
+	--color-accent-hover: var(--k-accent-hover);
+	--color-accent-text: var(--k-accent-text);
+
+	--color-success: var(--k-success-fg);
+	--color-success-tint: var(--k-success-tint);
+	--color-success-line: var(--k-success-line);
+	--color-success-solid: var(--k-success-solid);
+	--color-danger: var(--k-danger-fg);
+	--color-danger-tint: var(--k-danger-tint);
+	--color-danger-line: var(--k-danger-line);
+	--color-banner-danger-line: var(--k-banner-danger-line);
+	--color-done: var(--k-done);
+	--color-danger-solid: var(--k-danger-solid);
+	--color-warning: var(--k-warning-fg);
+	--color-warning-tint: var(--k-warning-tint);
+	--color-warning-line: var(--k-warning-line);
+	--color-warning-solid: var(--k-warning-solid);
+	--color-held: var(--k-held-fg);
+	--color-held-tint: var(--k-held-tint);
+	--color-held-line: var(--k-held-line);
+	--color-held-solid: var(--k-held-solid);
+	--color-progress: var(--k-progress-fg);
+	--color-progress-tint: var(--k-progress-tint);
+	--color-progress-line: var(--k-progress-line);
+	--color-progress-solid: var(--k-progress-solid);
+	--color-active: var(--k-active-fg);
+	--color-active-tint: var(--k-active-tint);
+	--color-active-line: var(--k-active-line);
+	--color-active-solid: var(--k-active-solid);
+}
+
+/* ── 2. Semantic tokens. ONE elevation model in both themes: the page is a
+   tinted ground, cards are lighter than it, menus/dialogs float on a shadow.
+   Five surfaces, three lines, four inks per theme. ──────────────────────── */
+:root,
+.k-light {
+	--k-ground: oklch(0.975 0.004 222);
+	--k-surface: oklch(1 0 0);
+	--k-subtle: oklch(0.962 0.005 222);
+	--k-overlay: oklch(1 0 0);
+	/* The one raised panel's ground (.surface-raised): the overlay in light. */
+	--k-raised: var(--k-overlay);
+	--k-inverse: oklch(0.236 0.016 222);
+	/* Interaction states, as alpha so they work on any surface. */
+	--k-hover: oklch(0.195 0.014 222 / 0.045);
+	--k-selected: oklch(0.195 0.014 222 / 0.08);
+
+	--k-line: oklch(0.918 0.009 222);
+	--k-line-strong: oklch(0.862 0.012 222);
+	--k-line-subtle: oklch(0.945 0.007 222);
+	/* Isometric material (Promotion Map plates and cubes, StepGlyph): one
+	   neutral family on the ramp's hue, lit from above. */
+	--k-iso-top: oklch(1 0 0);
+	--k-iso-top-lo: oklch(0.955 0.006 222);
+	--k-iso-side-l: oklch(0.89 0.01 222);
+	--k-iso-side-r: oklch(0.84 0.012 222);
+	--k-iso-cube-t: oklch(0.82 0.013 222);
+	--k-iso-cube-l: oklch(0.66 0.016 222);
+	--k-iso-cube-r: oklch(0.74 0.015 222);
+	--k-iso-outline: var(--k-line-strong);
+	--k-iso-rim: var(--k-line);
+
+	--k-fg: oklch(0.195 0.014 222);
+	--k-fg-muted: oklch(0.44 0.019 222);
+	--k-fg-subtle: oklch(0.53 0.018 222);
+	--k-fg-disabled: oklch(0.71 0.016 222);
+	--k-fg-inverse: oklch(0.975 0.004 222);
+
+	/* The one accent: the primary button's blue-700, unchanged. */
+	--k-accent: oklch(0.488 0.217 264);
+	--k-accent-hover: oklch(0.424 0.199 265.6);
+	--k-accent-text: oklch(0.488 0.217 264);
+	--k-focus: oklch(0.623 0.214 259.8);
+
+	/* Status: muted solids, a readable ink, a faint tint and a line, per hue.
+	   success 155 · danger 25 · warning(stuck) 78 · held 48 · progress 98 ·
+	   active(deploying) 262. */
+	--k-success-solid: oklch(0.63 0.14 155);
+	--k-success-fg: oklch(0.47 0.11 155);
+	--k-success-tint: oklch(0.958 0.045 155);
+	--k-success-line: oklch(0.86 0.06 155);
+	--k-danger-solid: oklch(0.6 0.19 25);
+	--k-danger-fg: oklch(0.5 0.17 25);
+	--k-danger-tint: oklch(0.95 0.055 20);
+	--k-danger-line: oklch(0.86 0.06 25);
+	--k-warning-solid: oklch(0.8 0.15 78);
+	--k-warning-fg: oklch(0.5 0.1 65);
+	--k-warning-tint: oklch(0.966 0.066 88);
+	--k-warning-line: oklch(0.87 0.09 82);
+	--k-on-warning: oklch(0.32 0.07 62);
+	--k-held-solid: oklch(0.69 0.16 48);
+	--k-held-fg: oklch(0.52 0.15 42);
+	--k-held-tint: oklch(0.96 0.058 55);
+	--k-held-line: oklch(0.84 0.095 45);
+	--k-progress-solid: oklch(0.82 0.16 98);
+	--k-progress-fg: oklch(0.51 0.1 95);
+	--k-progress-tint: oklch(0.975 0.08 112);
+	--k-progress-line: oklch(0.88 0.09 100);
+	--k-active-solid: oklch(0.6 0.19 262);
+	--k-active-fg: oklch(0.488 0.217 264);
+	--k-active-tint: oklch(0.955 0.035 262);
+	--k-active-line: oklch(0.86 0.06 262);
+	/* r39: step strand done (calm green), text on a solid fill, light failure-banner border. */
+	--k-done: oklch(0.66 0.1 165);
+	--k-on-solid: #fff;
+	--k-banner-danger-line: oklch(0.74 0.11 25);
+
+	/* Elevation exists only for things that float. */
+	--k-shadow-overlay:
+		0 0 0 1px oklch(0.195 0.014 222 / 0.06), 0 2px 4px oklch(0.195 0.014 222 / 0.04),
+		0 8px 24px -4px oklch(0.195 0.014 222 / 0.1);
+	--k-shadow-dialog:
+		0 0 0 1px oklch(0.195 0.014 222 / 0.06), 0 24px 64px -12px oklch(0.195 0.014 222 / 0.25);
+	/* Light as state: only on the thing that is deploying/evaluating now. */
+	--k-glow-active: 0 0 0 1px var(--k-active-line), 0 0 16px -2px oklch(0.6 0.19 262 / 0.28);
+
+	/* lane P, round 3 (AD, 2026-10-09, item 14): the modal SCRIM, a token so
+	   it can be lighter in light theme — the same 60% black read as muddy
+	   grey on a light page (measured: calm-query__1920-light). The panel's
+	   own `--k-shadow-dialog` does the lift; the scrim only needs to say
+	   "the page behind this is inert," not go dark itself. */
+	--k-scrim: oklch(0 0 0 / 0.35);
+
+	--k-dur-fast: 120ms;
+	--k-dur: 160ms;
+	--k-dur-slow: 240ms;
+
+	--focus-ring-color: var(--k-focus);
+	color-scheme: light;
+}
+
+html.dark,
+.dark {
+	--k-ground: oklch(0.195 0.014 222);
+	--k-surface: oklch(0.236 0.016 222);
+	--k-subtle: oklch(0.272 0.017 222);
+	--k-overlay: oklch(0.262 0.017 222);
+	/* Its own step in dark, above the overlay, so the panel lifts. */
+	--k-raised: oklch(0.29 0.017 222);
+	--k-inverse: oklch(0.955 0.006 222);
+	--k-hover: oklch(1 0 0 / 0.05);
+	--k-selected: oklch(1 0 0 / 0.085);
+
+	/* Lines one step quieter than the ramp's gray-700 (AD round 1): dark cards
+	   read as lifted surfaces with a barely-there edge, not outlined boxes.
+	   `line-strong` keeps inputs and buttons legible. */
+	--k-line: oklch(0.285 0.018 222);
+	--k-line-strong: oklch(0.38 0.019 222);
+	--k-line-subtle: oklch(0.262 0.017 222);
+	--k-iso-top: oklch(0.29 0.017 222);
+	--k-iso-top-lo: oklch(0.25 0.016 222);
+	--k-iso-side-l: oklch(0.2 0.014 222);
+	--k-iso-side-r: oklch(0.17 0.013 222);
+	--k-iso-cube-t: oklch(0.55 0.017 222);
+	--k-iso-cube-l: oklch(0.34 0.018 222);
+	--k-iso-cube-r: oklch(0.42 0.018 222);
+	--k-iso-outline: oklch(0.49 0.017 222);
+	--k-iso-rim: oklch(1 0 0 / 0.09);
+
+	--k-fg: oklch(0.965 0.005 222);
+	--k-fg-muted: oklch(0.8 0.012 222);
+	--k-fg-subtle: oklch(0.66 0.016 222);
+	--k-fg-disabled: oklch(0.5 0.016 222);
+	--k-fg-inverse: oklch(0.195 0.014 222);
+
+	--k-accent: oklch(0.546 0.215 262.9);
+	--k-accent-hover: oklch(0.623 0.214 259.8);
+	--k-accent-text: oklch(0.76 0.12 262);
+	--k-focus: oklch(0.707 0.165 254.6);
+
+	--k-success-solid: oklch(0.7 0.15 155);
+	--k-success-fg: oklch(0.8 0.13 155);
+	--k-success-tint: oklch(0.305 0.062 155);
+	--k-success-line: oklch(0.46 0.1 155);
+	--k-danger-solid: oklch(0.66 0.19 25);
+	--k-danger-fg: oklch(0.78 0.13 25);
+	--k-danger-tint: oklch(0.3 0.068 25);
+	--k-danger-line: oklch(0.46 0.13 25);
+	--k-warning-solid: oklch(0.8 0.15 78);
+	--k-warning-fg: oklch(0.85 0.12 82);
+	--k-warning-tint: oklch(0.328 0.07 80);
+	--k-warning-line: oklch(0.5 0.11 80);
+	--k-held-solid: oklch(0.72 0.16 50);
+	--k-held-fg: oklch(0.8 0.13 50);
+	--k-held-tint: oklch(0.318 0.068 50);
+	--k-held-line: oklch(0.48 0.12 50);
+	--k-progress-solid: oklch(0.84 0.15 98);
+	--k-progress-fg: oklch(0.87 0.12 98);
+	--k-progress-tint: oklch(0.352 0.07 102);
+	--k-progress-line: oklch(0.52 0.11 102);
+	--k-active-solid: oklch(0.65 0.18 260);
+	--k-active-fg: oklch(0.77 0.12 260);
+	--k-active-tint: oklch(0.3 0.07 262);
+	--k-active-line: oklch(0.46 0.13 262);
+	--k-done: oklch(0.74 0.1 165);
+	--k-on-solid: #fff;
+	--k-banner-danger-line: var(--k-danger-line);
+	/* Dark tints are stated, not mixed: a 13% mix over the surface measured
+	   C≈0.014 and the six tints were indistinguishable (ΔE 0.007-0.016,
+	   design review 2026-10-08). Chroma 0.062-0.07, lightness staggered so
+	   every pair is ≥ 0.034 apart in OKLab. */
+
+	--k-shadow-overlay:
+		0 0 0 1px oklch(1 0 0 / 0.06), 0 8px 24px -4px oklch(0 0 0 / 0.5);
+	--k-shadow-dialog: 0 0 0 1px oklch(1 0 0 / 0.07), 0 24px 64px -12px oklch(0 0 0 / 0.6);
+	--k-glow-active: 0 0 0 1px var(--k-active-line), 0 0 18px -2px oklch(0.65 0.18 260 / 0.35);
+	/* lane P, round 3 (AD, 2026-10-09, item 14): unchanged in dark — 60%
+	   black over a dark page reads as a scrim, not mud; only light theme
+	   needed the lighter value above. */
+	--k-scrim: oklch(0 0 0 / 0.6);
+
+	color-scheme: dark;
+}
+
+/* ── 3. Base. The document's ink and ground, the one body face, and the
+   feature settings that make Inter read as a UI face: `cv05` (a tailed
+   lowercase l, so `l`/`I`/`1` never collide in an identifier) and `cv08`
+   (an upper-case I with serifs). ─────────────────────────────────────────── */
+@layer base {
+	html {
+		font-family: var(--font-sans);
+		font-feature-settings: 'cv05', 'cv08';
+		font-optical-sizing: auto;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		text-rendering: optimizeLegibility;
+		background-color: var(--k-ground);
+		color: var(--k-fg);
+	}
+
+	code,
+	kbd,
+	samp,
+	pre {
+		font-family: var(--font-mono);
+		font-feature-settings: normal;
+		font-variant-ligatures: none;
+	}
+}
+
+/* ── 4. THE TYPE ROLES. A CLOSED LIST OF ELEVEN. Every piece of text in the
+   product uses exactly one; no Tailwind `text-<size>`/`font-<weight>` outside
+   this block. Roles carry size, weight, line-height, tracking, family and
+   case — never colour (colour is the `fg-*` / status utility beside it).
+   Hierarchy is spent in this order: COLOUR, then WEIGHT, then SIZE.
+
+     role            size/line  wt   tracking   family  use
+     t-title         24/32      600  -0.018em   sans    page title (list or object)
+     t-heading       16/24      600  -0.008em   sans    section header, banner headline, dialog title, rail figure
+     t-card-title    14/20      600  -0.004em   sans    card header title, the NAME in a row or tile
+     t-body          14/20      400  0          sans    default text
+     t-ui            14/20      500  0          sans    buttons, tabs, nav, links
+     t-ui-sm         12/16      500  0          sans    compact controls, filter pills, card rollups
+     t-meta          12/16      400  0          sans    metadata, timestamps, descriptions, captions
+     t-label         11/16      600  +0.06em    sans    UPPERCASE: chips, eyebrows, table heads
+     t-code          14/20      400  0          mono    an identifier inline with body text
+     t-code-sm       12/16      400  0          mono    a sha/version in a meta line or chip value
+     t-code-lg       20/28      500  -0.01em    mono    an object id as a heading (the build, a sha page)
+     t-stat          32/40      600  -0.022em   sans    the ONE figure that leads a card or tile; label under it in t-meta
+     t-stat-xl       40/44      600  -0.025em   sans    the figure of the page's one heavy object (at most one per page)
+
+   Numbers: `tabular-nums` goes on the FIGURE (a count, a duration, a time,
+   a percentage), never on a role. Inter's `tnum` also sets the hyphen to a
+   tabular width, so a role-level `tnum` spaces every hyphenated name out
+   (`checkout - worker`, `PROD - US - EAST - 2`) — measured, and the reason
+   this is not a role property. Mono roles are tabular by construction. ─────────────────── */
+.t-title {
+	font-family: var(--font-sans);
+	font-size: 24px;
+	line-height: 32px;
+	font-weight: 600;
+	letter-spacing: -0.018em;
+	text-transform: none;
+	/* A title is one or two lines: balance them, never a one-word last line. */
+	text-wrap: balance;
+}
+
+.t-heading {
+	font-family: var(--font-sans);
+	font-size: 16px;
+	line-height: 24px;
+	font-weight: 600;
+	letter-spacing: -0.008em;
+	text-transform: none;
+}
+
+.t-card-title {
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 600;
+	letter-spacing: -0.004em;
+	text-transform: none;
+}
+
+.t-body {
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 400;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+.t-ui {
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 500;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+.t-ui-sm {
+	font-family: var(--font-sans);
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 500;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+.t-meta {
+	font-family: var(--font-sans);
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 400;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+.t-label {
+	font-family: var(--font-sans);
+	font-size: 11px;
+	line-height: 16px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.t-code,
+.t-code-sm,
+.t-code-lg {
+	font-family: var(--font-mono);
+	font-variant-ligatures: none;
+	text-transform: none;
+	font-feature-settings: normal;
+}
+
+.t-code {
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 400;
+	letter-spacing: 0;
+}
+
+.t-code-sm {
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 400;
+	letter-spacing: 0;
+}
+
+.t-code-lg {
+	font-size: 20px;
+	line-height: 28px;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+}
+
+/* ── FIGURES (CRAFT-STUDY P2, 2026-10-09): the number leads, the label
+   follows. Two steps, one family: `t-stat` leads a card or tile (at most one
+   per card); `t-stat-xl` is the figure of the page's single heavy object (at
+   most one per page). Unlike every other role these carry `tnum` themselves:
+   they only ever hold a figure, so the hyphen-spacing hazard noted above
+   cannot arise. Colour stays fg; a delta beside it takes the state hue. */
+.t-stat,
+.t-stat-xl {
+	font-family: var(--font-sans);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	text-transform: none;
+}
+.t-stat {
+	font-size: 32px;
+	line-height: 40px;
+	letter-spacing: -0.022em;
+}
+.t-stat-xl {
+	font-size: 40px;
+	line-height: 44px;
+	letter-spacing: -0.025em;
+}
+
+/* ── RAISED SURFACE (CRAFT-STUDY P4): depth sets reading order. Exactly ONE
+   per screen, on the page's heavy object; every other panel stays flat on
+   `surface`. One step lighter than surface in dark (the overlay level) and
+   the floating shadow in both themes. Not for dialogs or popovers, which
+   already own `--k-shadow-dialog` / `--k-shadow-overlay` as floating layers. */
+.surface-raised {
+	background-color: var(--k-raised);
+	--avatar-ring: var(--k-raised);
+	box-shadow: var(--k-shadow-overlay);
+}
+/* Lines keep the same step ABOVE the ground they sit on. In dark the raised
+   ground sat on the surface's line-subtle step, so row dividers vanished
+   and a track drew at ~1.07:1 inside the one raised panel (AD squad-changes
+   round 1, repo + index). Re-anchor the line steps on the raised ground with
+   the surface's own deltas (+0.026 / +0.049 / +0.144). Light needs nothing:
+   the raised ground is white, like the surface. */
+/* The raised ground in dark is its OWN step (0.29), not the overlay (0.262):
+   0.262 on a 0.236 surface barely lifted (/activity AD r1). Dialogs and
+   popovers keep --k-overlay; only the one raised panel per screen moves. */
+html.dark .surface-raised,
+.dark .surface-raised {
+	--k-line-subtle: oklch(0.316 0.017 222);
+	--k-line: oklch(0.339 0.018 222);
+	--k-line-strong: oklch(0.434 0.019 222);
+}
+
+/* ── LEGACY ROLES → NEW ROLES. Kept as aliases so every page not yet
+   converted lands on the new scale with no markup change. New code must
+   not use these names; the migration map in DESIGN-LANGUAGE.md lists the
+   replacement for each. Values are copied, not @apply'd, so the cascade
+   position is the same as the role they alias. ─────────────────────────── */
+/* t-display (Montserrat 24/300) → t-title */
+.t-display,
+/* t-display-id (mono 24/500, object names) → t-title: names are sans now */
+.t-display-id {
+	font-family: var(--font-sans);
+	font-size: 24px;
+	line-height: 32px;
+	font-weight: 600;
+	letter-spacing: -0.018em;
+}
+
+/* t-headline (Montserrat 17/600) and t-figure (16/600) → t-heading */
+.t-headline,
+.t-figure {
+	font-family: var(--font-sans);
+	font-size: 16px;
+	line-height: 24px;
+	font-weight: 600;
+	letter-spacing: -0.008em;
+}
+
+/* t-dense (12.5/400) and t-micro (11/400) → t-meta */
+.t-dense,
+.t-micro {
+	font-family: var(--font-sans);
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 400;
+}
+
+/* t-button (12/600) and t-card-rollup (12/500) → t-ui-sm */
+.t-button,
+.t-card-rollup {
+	font-family: var(--font-sans);
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 500;
+	letter-spacing: 0;
+}
+
+/* t-chip (mono 10/600 caps) → t-label */
+.t-chip {
+	font-family: var(--font-sans);
+	font-size: 11px;
+	line-height: 16px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+/* t-rollout-name (mono 14/600 or 12/600) → t-card-title. A rollout name is
+   the row's SUBJECT and is set in the UI face, like every other name; mono
+   is for the build it runs. One size, no dense variant. */
+.t-rollout-name,
+.t-rollout-name.t-rollout-name--dense {
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 600;
+	letter-spacing: -0.004em;
+}
+
+/* ── lane P, round 3 (AD, 2026-10-09, item 3): THE COMMAND PALETTE'S INPUT
+   MUST COMPUTE 16px AT EVERY WIDTH (iOS Safari zooms on focus below that).
+   app.css's own unlayered `input, select, textarea { font-size: max(16px,
+   1em) }` exists for exactly this, but `.t-ui` above is ALSO unlayered (by
+   design — section 4's own banner says so) and a CLASS selector (0,0,1,0)
+   beats a TAG selector (0,0,0,1) even when neither is in a layer:
+   specificity still decides the tie. This is not a twelfth type role and
+   does not reopen that closed list — one override, scoped to one class, for
+   the one control in the product that needs a fixed 16px regardless of
+   `.t-ui` sitting on the same element. */
+.cp-search-input {
+	font-size: 16px;
+}
+
+/* ── 5. CORE COMPONENT CLASSES. ─────────────────────────────────────────── */
+@layer components {
+	/* Status/identity inks as classes, for places that cannot use the
+	   utilities (a `class` string built in TS, a child component's root). */
+	.ink-fg { color: var(--k-fg); }
+	.ink-muted { color: var(--k-fg-muted); }
+	.ink-subtle { color: var(--k-fg-subtle); }
+
+	/* ── PAGE HEADER. Two forms, one grid:
+	     list   [title][count]·[summary ……………………][actions]
+	     object [eyebrow over title][identity chips][meta ……][actions]
+	   `.page-header` is the row; children use the roles. 24px below it. */
+	.page-header {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		justify-content: space-between;
+		column-gap: 16px;
+		row-gap: 12px;
+		margin-bottom: 24px;
+	}
+	/* one title per page: the top bar names the page, so the h1 is sr-only and takes no row (the 12px row-gap would sit above the first content) */
+	.page-header[data-bare-title] {
+		row-gap: 0;
+	}
+
+	/* ── SECTION HEADER. dot · title · count · description …… action.
+	   The dot is the section's state colour (or `--k-fg-subtle` when the
+	   section is neutral). One dialect for every page. */
+	.section-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-height: 32px;
+		margin-bottom: 12px;
+	}
+
+	.section-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 9999px;
+		flex: none;
+		background-color: var(--k-fg-subtle);
+	}
+
+	/* ── TILE. The small clickable object in a grid (a rollout on Home).
+	   Card's shell (surface, 1px line, 8px radius), no header bar, 12px pad.
+	   Hover = line-strong + subtle wash; never a shadow. */
+	.tile {
+		position: relative;
+		border: 1px solid var(--k-line);
+		border-radius: 8px;
+		background-color: var(--k-surface);
+		padding: 12px;
+		transition:
+			border-color var(--k-dur) var(--ease-out),
+			background-color var(--k-dur) var(--ease-out);
+	}
+
+	.tile-link:hover {
+		border-color: var(--k-line-strong);
+		background-color: color-mix(in oklab, var(--k-subtle) 55%, var(--k-surface));
+	}
+
+	/* The one thing allowed to glow: the tile/node that is deploying or
+	   evaluating right now. */
+	.is-live {
+		box-shadow: var(--k-glow-active);
+		border-color: var(--k-active-line);
+	}
+
+	/* ── FILTER PILL. A toggle in a filter row. 28px, 6px radius, t-ui-sm.
+	   Selected = a FILLED NEUTRAL (10% ink over the surface) with fg ink and a strong hairline (r34 r2-shared: the inverse fill read as a
+	   different control family; the filled neutral is clearly "on" and keeps state hue for state). */
+	.pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 28px;
+		padding: 0 12px;
+		border-radius: 6px;
+		border: 1px solid var(--k-line);
+		background-color: var(--k-surface);
+		color: var(--k-fg-muted);
+		font-size: 12px;
+		line-height: 16px;
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			background-color var(--k-dur-fast) var(--ease-out),
+			border-color var(--k-dur-fast) var(--ease-out),
+			color var(--k-dur-fast) var(--ease-out);
+	}
+
+	.pill:hover {
+		border-color: var(--k-line-strong);
+		color: var(--k-fg);
+	}
+
+	/* A toggle BUTTON (follow, wrap, a view switch drawn as a button) that is
+	   ON: the same quiet selected wash a current nav item wears — never the
+	   pill's inverse fill, which is the filter grammar. */
+	.btn[aria-pressed='true'] {
+		background-color: var(--k-selected);
+		color: var(--k-fg);
+	}
+
+	.pill[aria-pressed='true'],
+	.pill.is-selected {
+		background-color: color-mix(in oklab, var(--k-fg) 10%, var(--k-surface));
+		border-color: var(--k-line-strong);
+		color: var(--k-fg);
+		font-weight: 600;
+	}
+
+	/* ── TABS. Underline tabs: t-ui, fg-muted at rest, fg + 2px accent rule
+	   when current. 44px tall so a phone thumb lands. */
+	.tabs {
+		display: flex;
+		gap: 4px;
+		border-bottom: 1px solid var(--k-line);
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.tab {
+		flex: none;
+	}
+
+	.tab {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		height: 44px;
+		padding: 0 12px;
+		margin-bottom: -1px;
+		border-bottom: 2px solid transparent;
+		color: var(--k-fg-muted);
+		font-size: 14px;
+		line-height: 20px;
+		font-weight: 500;
+		white-space: nowrap;
+		transition: color var(--k-dur-fast) var(--ease-out);
+	}
+
+	.tab:hover {
+		color: var(--k-fg);
+	}
+
+	.tab[aria-current='page'],
+	.tab.is-current {
+		color: var(--k-fg);
+		border-bottom-color: var(--k-accent);
+	}
+
+	/* ── INPUT. 36px, 6px radius, line-strong edge, surface fill. Font is
+	   ≥16px below `sm` (the unlayered iOS rule in app.css), 14px above. */
+	.input {
+		height: 36px;
+		width: 100%;
+		padding: 0 12px;
+		border-radius: 6px;
+		border: 1px solid var(--k-line-strong);
+		background-color: var(--k-surface);
+		color: var(--k-fg);
+		font-size: 14px;
+		line-height: 20px;
+		transition:
+			border-color var(--k-dur-fast) var(--ease-out),
+			box-shadow var(--k-dur-fast) var(--ease-out);
+	}
+
+	/* ── DOT LIST. Facts joined by a "·" drawn in CSS, never a text node, so a
+	   wrapped line never starts or ends with an orphaned separator and no two
+	   facts are ever glued ("staging·telemetry"). Markup:
+	     <div class="dot-list"><div class="dot-list-row flex flex-wrap …">
+	       <span>fact</span><a>fact</a>…</div></div>
+	   Each direct child of the row is one fact. The dot is a background in the
+	   child's 20px left padding (a ::before would collide with `.nav-link` /
+	   `.hit-32`'s touch-target pseudo-element); the row is pulled 20px left
+	   inside a clip, so the dot of whichever fact starts a line is hidden. 4px
+	   of slack keeps a focused link's ring inside the clip. PageHeader's meta
+	   row (`metaSeparated`) is the first consumer. */
+	.dot-list {
+		overflow: hidden;
+		margin: 0 -4px -4px 0;
+		padding: 4px 4px 4px 0;
+	}
+	.dot-list-row {
+		margin-left: -20px;
+	}
+	/* `.contents` wrappers (a conditional group of facts) are transparent: their children are the facts. */
+	.dot-list .dot-list-row > *,
+	.dot-list .dot-list-row > .contents > * {
+		padding-left: 20px;
+		background-image: radial-gradient(circle, var(--k-fg-disabled) 1.4px, transparent 1.9px);
+		background-repeat: no-repeat;
+		background-size: 4px 4px;
+		background-position: 8px 50%;
+	}
+
+	/* 32px input for a toolbar inside a card (beside `btn-sm` controls). */
+	.input.input-sm {
+		height: 32px;
+		padding: 0 12px;
+	}
+
+	.input::placeholder {
+		color: var(--k-fg-subtle);
+	}
+
+	.input:focus {
+		outline: none;
+		border-color: var(--k-focus);
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--k-focus) 25%, transparent);
+	}
+
+	/* ── BANNER FIELD. A page-scale status surface is the SURFACE with a trace
+	   of hue (28% of the tint: C ≤ 0.02 in both themes); the hue lives in the
+	   1px line and the 40px disc. A full tint at banner area read as a slab
+	   (AD round 1: "a ~1600×124 brown slab"). */
+	.field-danger { background-color: color-mix(in oklab, var(--k-danger-tint) 28%, var(--k-surface)); }
+	.field-warning { background-color: color-mix(in oklab, var(--k-warning-tint) 28%, var(--k-surface)); }
+	.field-held { background-color: color-mix(in oklab, var(--k-held-tint) 28%, var(--k-surface)); }
+	.field-active { background-color: color-mix(in oklab, var(--k-active-tint) 28%, var(--k-surface)); }
+
+	/* ── STATUS DOT. 8px, the state's solid. Used where a whole chip would be
+	   too much (a section header, a timeline node, an env in a chain). */
+	.status-dot {
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		border-radius: 9999px;
+		flex: none;
+		background-color: var(--k-fg-subtle);
+	}
+
+	/* ── GRAPH CANVAS. A quiet dot grid for the pipeline / gate / dependency
+	   graphs: 1px dots every 16px in the line colour, on the ground. */
+	.canvas-dots {
+		background-color: var(--k-ground);
+		background-image: radial-gradient(
+			circle at 1px 1px,
+			color-mix(in oklab, var(--k-fg-subtle) 32%, transparent) 1px,
+			transparent 0
+		);
+		background-size: 16px 16px;
+	}
+
+	/* lane P — command palette / dialog footer key hints. §5 spec: 20px
+	   tall, 20px min-width, 4px radius, border-line-strong, bg-subtle,
+	   t-ui-sm in text-fg-subtle, 4px side padding. Replaces the ad hoc
+	   `rounded-xs border border-line-strong bg-subtle/surface px-1.5 py-0.5
+	   t-code-sm` spans CommandPalette.svelte hand-rolled at three call
+	   sites (header ESC, footer ↑↓↵) — one definition now, so a dialog
+	   footer (Lane D) can reuse it rather than growing a fourth copy. */
+	.kbd {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 20px;
+		min-width: 20px;
+		padding: 0 4px;
+		border-radius: 4px;
+		border: 1px solid var(--k-line-strong);
+		background-color: var(--k-subtle);
+		font-family: var(--font-sans);
+		font-size: 11px;
+		line-height: 16px;
+		font-weight: 500;
+		color: var(--k-fg-subtle);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tile,
+	.pill,
+	.tab,
+	.input {
+		transition: none;
+	}
+}
+
+/* lane D (squad-rollout, 2026-10-09) — `.kbd` already exists (Lane P, just
+   above, inside the shared `@layer`): ChangeVersionModal's footer ("Esc",
+   "⌘↵ to deploy") and header ("Esc") reuse it as-is, no second definition
+   needed. Noted here only so a re-read of this file finds the reuse, not a
+   gap. */
+
+/* lane L (squad-rollout, 2026-10-09) — the Logs tab's level pills (SPEC.md
+   §2: "zero-count levels are disabled, not hidden") are the first place a
+   `.pill` needs a real disabled state; `.pill` itself never defined one.
+   Token only (`fg-disabled`, no new colour), no area fill change. */
+@layer components {
+	.pill:disabled {
+		cursor: not-allowed;
+		color: var(--k-fg-disabled);
+		opacity: 0.6;
+	}
+
+	.pill:disabled:hover {
+		border-color: var(--k-line);
+		color: var(--k-fg-disabled);
+	}
+}
+
+/* lane D (squad-rollout, 2026-10-09, round 3) — THE DIALOG SHELL IS NOT
+   ELEVATED. AD-dialogs-round1.md item 1: box-shadow was `none` on every
+   risk dialog in this lane and every ancestor; the dialog's surface
+   (`oklch(.236)`) matched the page's own cards behind it — Flowbite's own
+   `bg-white dark:bg-gray-800` default, which the per-component `bg-overlay`
+   Tailwind utility was meant to override but apparently loses the cascade
+   (or simply never had a shadow utility paired with it at all — no call
+   site ever set `--k-shadow-dialog`). The palette's own recipe
+   (CommandPalette.svelte's own dialog surface, already signed) is
+   `bg-overlay` + `box-shadow: var(--k-shadow-dialog), inset 0 1px 0 0
+   var(--k-line-subtle)` (the dialog shadow plus the inset top line that
+   reads as a hairline catching light) — copied here verbatim, not
+   reinvented. `rounded-lg` (12px, `--radius-lg`) is UNCHANGED — the AD's
+   own target keeps it at 12 per §3.14, only the elevation was wrong.
+
+   ONE PLACE, GREPPED: `role="dialog"][aria-modal="true"]` is the exact
+   attribute pair every dialog in THIS LANE sets (ChangeVersionModal,
+   ClearPinModal, RetryConfirmModal, RetryTestsModal,
+   RecoveryModeWarningModal — grepped, zero other hits in the frontend).
+   This rule is unlayered so it beats Flowbite's own `bg-white dark:bg-
+   gray-800` the same way the iOS input-zoom fix beats Tailwind utilities
+   — one CSS change elevates all five dialogs in this lane at once, and
+   touches NO other component: `SourceViewer`/`DeploymentPipelineCard`
+   and the Overview/History pages' own Flowbite modals do not set
+   `role="dialog"`, so they are unaffected by this rule (told to the
+   squad lead in the round-3 report — those pages are outside this
+   lane and would need the same attributes added by their own owners to
+   pick this up). */
+dialog[role='dialog'][aria-modal='true'] {
+	background-color: var(--k-overlay);
+	box-shadow:
+		var(--k-shadow-dialog),
+		inset 0 1px 0 0 var(--k-line-subtle);
+}
+
+/* lane D (squad-rollout, 2026-10-10, round 6) — a 44px touch floor below `sm`
+   for a 32px control that must keep its 32px box (the dialog header's back
+   and close buttons sit on the title's 24px line; a 44px box would push the
+   header taller). Same mechanism as `.hit-32`: an invisible `::before`
+   centred on the control, nothing drawn. */
+@layer components {
+	@media (max-width: 639px) {
+		.hit-44 {
+			position: relative;
+		}
+		.hit-44::before {
+			content: '';
+			position: absolute;
+			left: 50%;
+			top: 50%;
+			width: 44px;
+			height: 44px;
+			transform: translate(-50%, -50%);
+		}
+	}
+}
+
+/* ── LOGOPEN r8 (Lane L, squad-rollout coordinator): the phone header on
+   every rollout tab. `RolloutTabHeader` moves the state chip and the one
+   action onto the meta line below lg. Two structural collapses keep both
+   sides of the breakpoint exactly as they were:
+   - below lg, an actions cell whose only child is the sm+ copy of the
+     action collapses, instead of leaving an empty row and its 12px gap;
+   - from lg up, a meta row that exists only for the phone (the tab passed
+     no meta of its own) collapses, so that tab does not gain 8px. */
+@media (max-width: 1023px) {
+	.page-header > div:has(> [data-desktop-only]:only-child) {
+		display: none;
+	}
+}
+@media (min-width: 1024px) {
+	.page-header .dot-list:has(> .dot-list-row > [data-meta-phone-only]) {
+		display: none;
+	}
+}
+
+/* ── LANE H (squad-rollout, History, AD round 9, item 4): "drop the
+   [Summary rail's] numerals to 24px, so nothing outranks the title." The
+   existing `.t-stat` ladder only has 32px (`.t-stat`) and 40px
+   (`.t-stat-xl`) — both measured for a card or page that OWNS its figure
+   (CRAFT-STUDY P2's "one per card, at most one per page"); History's own
+   rail Summary card sits ALONGSIDE the page's real subject (the rollout
+   name, `t-title`, 24px) rather than leading the page, so a 32px stat in
+   its rail outranked the title it sits beside. `.t-stat-sm` is the one
+   step this ladder was missing, same family/weight/tabular-nums contract
+   as `.t-stat`/`.t-stat-xl`, sized to match `t-title` exactly rather than
+   outrank it — for a rail or inline stat tile that is NOT the page's own
+   one heavy object. */
+.t-stat-sm {
+	font-family: var(--font-sans);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	text-transform: none;
+	font-size: 24px;
+	line-height: 28px;
+	letter-spacing: -0.015em;
+}
+
+/* ── LOGOPEN r11 (Lane L): a calm build's secondary "Roll back to <sha>" is
+   right-aligned on a phone like the failed build's Roll back. It does not
+   fit beside the meta facts (194px), so it keeps its own row in the actions
+   cell, pushed to the right edge; the label keeps its sha. A cell that wraps
+   several buttons (the Overview's) ends on the right too, so its Roll back
+   finishes at the same right edge. */
+@media (max-width: 1023px) {
+	.page-header > div:has([data-phone-end]) {
+		margin-left: auto;
+		justify-content: flex-end;
+		/* 640-1023 (rollout-tabs item 2): the cell takes its own row too, so the
+		   title stays put and Roll back ends right at 768 as it does at 390.
+		   lg+ keeps the title-and-actions row. */
+		flex-basis: 100%;
+	}
+}
+
+/* ── LOGOPEN r11b (Lane L): the rollout header's phone meta line never
+   wraps (RolloutTabHeader's doc comment has the rule). Below lg: the chip
+   and the action never shrink; facts truncate with an ellipsis, the last
+   fact first (shrink 100) and the first fact last (shrink 1). */
+@media (max-width: 1023px) {
+	.page-header .dot-list-row:has(> [data-rth-meta]) {
+		flex-wrap: nowrap;
+	}
+	.page-header .dot-list-row:has(> [data-rth-meta]) > * {
+		flex-shrink: 0;
+		white-space: nowrap;
+	}
+	.page-header .dot-list-row:has(> [data-rth-meta]) > span:not([data-phone-only]) {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		flex-shrink: 1;
+	}
+	.page-header
+		.dot-list-row:has(> [data-rth-meta])
+		> span:not([data-phone-only])
+		~ span:not([data-phone-only]) {
+		flex-shrink: 100;
+	}
+}
+
+/* ── craft r3 (core): meter segments. WHY: the lists' progress strips drew blue / orange / pale-skeleton fills that
+   disagreed with the row's own mark (AD r2 R2-2, taste T2-3). Owner taste: calm, colour lives in the mark. Tones
+   are neutral except failing; to do is the TRACK (`--k-line`), not the loading-skeleton wash; held at a gate is an
+   OUTLINED segment. Old fills, for one-line revert: done .bg-success-solid · active .bg-active-solid ·
+   hold .bg-held-solid · to do .bg-subtle. */
+.seg-done { background-color: var(--k-fg-subtle); }
+.seg-active { background-color: var(--k-fg); }
+.seg-fail { background-color: var(--k-danger-solid); }
+.seg-todo { background-color: var(--k-line); }
+.seg-hold { background-color: transparent; box-shadow: inset 0 0 0 1px var(--k-line-strong); }
+
+/* craft r3 (core): the blocking card takes the tabs' failure-banner surface (field-danger + the 1px danger line
+   AlertPanel's error uses). Header = the banner's field; once per page; rows inside stay on the plain surface. */
+.card-blocking > .card-cq > .card-header { background-color: color-mix(in oklab, var(--k-danger-tint) 28%, var(--k-surface)); border-bottom-color: var(--k-danger-line); }
+.card-blocking.card-blocking-ring > .card-cq { border-color: var(--k-danger-line); }
+
+/* ── craft r5 (D5/D8): the ENVIRONMENT track is a different object from the STEPS meter. WHY: a change/app row's "how far did it get"
+   (dev → test → staging → production) was drawn with the same 6px segments as a rollout's steps, so two different facts read as one
+   drawing (AD r4 D5). It is now four 8px nodes on a 1px line, the promotion chain at row scale. Reached = filled neutral node,
+   the node where the outcome happens takes the state (failing danger, held/waiting = hollow ring, in flight = ring + pulse),
+   not reached = hollow line-coloured node. The hold ring is also what the steps meter's held segment uses: the pale `--k-line-strong`
+   outline vanished on the light surface (R4-D8), so it takes `--k-fg-subtle`. */
+.seg-hold { background-color: transparent; box-shadow: inset 0 0 0 1px var(--k-fg-subtle); }
+.nd-done { background-color: var(--k-fg-subtle); }
+.nd-active { background-color: var(--k-surface); box-shadow: inset 0 0 0 2px var(--k-fg); }
+.nd-fail { background-color: var(--k-danger-solid); }
+.nd-hold { background-color: var(--k-surface); box-shadow: inset 0 0 0 1.5px var(--k-fg-subtle); }
+.nd-todo { background-color: var(--k-surface); box-shadow: inset 0 0 0 1px var(--k-line-strong); }
+.nd-link { background-color: var(--k-line); }
+.nd-link-on { background-color: var(--k-fg-subtle); }
+
+/* craft r6: n2, held vs to-do nodes must be told apart at 1x in both themes. WHY: the held node was a hollow 1.5px ring and the to-do
+   node a hollow 1px ring, one pixel of weight apart (AD r5). A held node is now a FILLED disc (--k-line-strong) with a 1px
+   --k-fg-subtle ring: "something is stopping here"; to-do stays hollow. Tokens only. */
+.nd-hold { background-color: var(--k-line-strong); box-shadow: inset 0 0 0 1px var(--k-fg-subtle); }
+
+/* craft r7: n2, the held node reads at 1x in light and dark. WHY: a hollow ring with a faint fill was one pixel from the to-do node on the
+   light surface (AD r6). A held node is the DONE fill (fg-subtle: "reached") with a 1px outer ring one pixel off it ("and stopped");
+   a to-do node stays hollow. Tokens only. */
+.nd-hold { background-color: var(--k-fg-subtle); box-shadow: 0 0 0 1px var(--k-surface), 0 0 0 2px var(--k-fg-subtle); }
+
+/* ── r34 steps (Rollouts AD round 4): THE STRAND's node vocabulary at row scale, shared by the rollout rows' step indicator
+   (new/Pipeline.svelte sm) and the Changes cards' Trail so one ring means one thing on both pages. A node sits on one
+   continuous line-strong strand; the strand says "one sequence", the node says the state:
+   done = a FILLED neutral disc (fg-subtle: reached, healthy spends no hue); to do = a hollow 1.5px line-strong ring;
+   active = active ring + active centre dot (+ the live halo, deploying only); checking = progress ring + dot;
+   held = held ring; failed = THE solid danger disc. Tokens only. */
+.st-node { display: block; border-radius: 9999px; background-color: var(--k-surface); box-sizing: border-box; }
+.st-done { background-color: var(--k-fg-subtle); }
+.st-todo { box-shadow: inset 0 0 0 1.5px var(--k-line-strong); }
+.st-active { box-shadow: inset 0 0 0 1.5px var(--k-active-solid); background: radial-gradient(circle, var(--k-active-solid) 0 1.5px, transparent 2px); }
+.st-check { box-shadow: inset 0 0 0 1.5px var(--k-progress-solid); background: radial-gradient(circle, var(--k-progress-solid) 0 1.5px, transparent 2px); }
+.st-hold { box-shadow: inset 0 0 0 1.5px var(--k-held-solid); }
+.st-fail { background-color: var(--k-danger-solid); }
+.st-live { box-shadow: inset 0 0 0 1.5px var(--k-active-solid), var(--k-glow-active); }
+.st-strand { background-color: var(--k-line-strong); }
+@media (prefers-reduced-motion: reduce) { .st-live { box-shadow: inset 0 0 0 1.5px var(--k-active-solid); } }
+
+/* ── r34 v2 AP r2: the Apps lead's name (one 24 in the fold: the page H1; the lead name steps down to 20/600). Tokens only. ── */
+.ap-lead-name { font-family: var(--font-sans); font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+
+/* ── r34 build-r4 /changes (premium-changes mock → product, 2026-11-02): ONE row grammar for the page's four row kinds and the
+   Team rail, so a failure, a move, a hold, a landing and a build all share the tab's row: a 16px status column at one x, a
+   min-width-0 main column, fixed right tracks (age 32px tabular, right-aligned). Row kinds differ by what they PUT in the
+   columns, never by geometry. Tokens only; type comes from the t-* roles in markup. ── */
+.ch-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; padding: 12px 16px; min-height: 56px; position: relative; }
+.ch-row:hover { background-color: var(--k-hover); }
+.ch-row > .ch-mark { grid-column: 1; height: 20px; display: flex; align-items: center; justify-content: center; }
+.ch-row > .ch-main { grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ch-row > .ch-right { grid-column: 3; grid-row: 1; display: flex; align-items: center; gap: 12px; justify-self: end; height: 20px; }
+/* a line that runs under the right track too (the failure line: one line at 1440 instead of an orphaned word beside an empty track) */
+.ch-row > .ch-span { grid-column: 2 / -1; grid-row: 2; min-width: 0; margin-top: 4px; }
+.ch-line1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ch-ref { font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--k-fg-subtle); flex: none; }
+.ch-age { font-variant-numeric: tabular-nums; color: var(--k-fg-subtle); font-size: 12px; line-height: 16px; min-width: 32px; text-align: right; white-space: nowrap; }
+.ch-row-compact { min-height: 40px; padding: 8px 16px; }
+.ch-row-compact > .ch-main { gap: 0; }
+/* a hold (Waiting): the object is what the changes wait on; its held changes are 32px sub-rows indented to the main column */
+.ch-hold { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; padding: 12px 16px 8px; }
+.ch-hold > .ch-mark { grid-column: 1; grid-row: 1; height: 20px; display: flex; align-items: center; justify-content: center; }
+.ch-hold > .ch-h1 { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ch-hold > .ch-h2 { grid-column: 2; grid-row: 2; min-width: 0; }
+.ch-hold > .ch-right { grid-column: 3; grid-row: 1 / span 2; display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.ch-hold-rows { padding: 0 16px 8px; }
+.ch-hold-rows > li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 32px; }
+@media (max-width: 639.98px) { .ch-hold-rows > li { min-height: 44px; } }
+/* a ledger day band (Landed) and a rail facts list (Last 24 h): 32px / 36px tracks on the surface */
+.ch-day { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 16px; color: var(--k-fg-subtle); }
+.ch-facts { padding-top: 4px; padding-bottom: 4px; }
+.ch-facts > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 36px; border-bottom: 1px solid var(--k-line-subtle); }
+.ch-facts > div:last-child { border-bottom: 0; }
+@media (max-width: 639.98px) {
+	.ch-row { padding: 12px; column-gap: 10px; }
+	.ch-hold { padding: 12px 12px 8px; column-gap: 10px; }
+	.ch-hold-rows { padding: 0 12px 8px; }
+}
+
+/* r34 build-r4 Crossing: your changes on the environment axis (new/Crossing.svelte). Role: "where are my changes, which one is failing
+   or waits on me" as one row per app; borrows the rollout tab's env strip (one axis) and Linear's 32px grouped rows. Rows: App 180px | track
+   1fr | State 176px, gap 16; the track is a 1px line-strong strand with a surface-coloured pad behind each mark (the line stops either
+   side); a tier the app does not run is a dashed gap. Marks are 16px glyphs in a 32px hit area. Tokens only. */
+/* AD r1 #3 (presence): the track is the object: App 160 | track ≥55% | State 140; 40px rows; 20px glyphs on the 1px strand; faint gate ticks at the tier boundaries */
+.cx-head, .cx-row { display: grid; grid-template-columns: 160px minmax(0, 760px) 140px; column-gap: 16px; align-items: center; padding: 0 16px; }
+.cx-head { height: 28px; color: var(--k-fg-subtle); }
+/* DOM order is app, state, track (the phone's two lines); from 640 the grid places them app | track | state */
+.cx-app { grid-column: 1; grid-row: 1; } .cx-track { grid-column: 2; grid-row: 1; } .cx-state { grid-column: 3; grid-row: 1; }
+.cx-blank { display: inline-block; width: 16px; height: 16px; flex: none; }
+.cx-sep { margin: 0 4px; color: var(--k-fg-disabled); }
+.cx-state > span { white-space: nowrap; }
+.cx-tiers { display: grid; grid-template-columns: repeat(4, 1fr); }
+.cx-tiers > span { text-align: center; }
+.cx-row { height: 40px; border-bottom: 1px solid var(--k-line-subtle); position: relative; }
+.cx-row:last-child { border-bottom: 0; }
+.cx-row:hover { background-color: var(--k-hover); }
+.cx-app { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--k-fg); }
+.cx-app > a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cx-app > a:hover { text-decoration: underline; }
+.cx-lead .cx-app > a { font-weight: 600; letter-spacing: -0.004em; }
+.cx-glyph { display: inline-flex; zoom: 1.25; }
+.cx-tick { position: absolute; top: 50%; width: 1px; height: 12px; transform: translateY(-50%); background-color: var(--k-line); }
+.cx-quietname { color: var(--k-fg-subtle); font-weight: 400; }
+.cx-state { overflow: hidden; color: var(--k-fg-subtle); font-variant-numeric: tabular-nums; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.cx-track { position: relative; height: 40px; }
+.cx-ln { position: absolute; top: 50%; height: 1px; background-color: var(--k-line-strong); }
+.cx-gap { background-color: transparent; background-image: repeating-linear-gradient(90deg, var(--k-line-strong) 0 3px, transparent 3px 7px); }
+.cx-mk { position: absolute; top: 0; height: 100%; transform: translateX(-50%); display: flex; align-items: center; min-width: 32px; justify-content: center; }
+.cx-pad { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; background-color: var(--k-surface); }
+.surface-raised .cx-pad { background-color: var(--k-raised); }
+.cx-row:hover .cx-pad { background-image: linear-gradient(var(--k-hover), var(--k-hover)); }
+.cx-n { font-size: 11px; line-height: 16px; font-variant-numeric: tabular-nums; color: var(--k-fg-muted); font-weight: 500; }
+.cx-mk .cx-rest { margin: 0 2px; }
+.cx-live { display: inline-flex; border-radius: 9999px; box-shadow: var(--k-glow-active); }
+.cx-fold { display: none; }
+@media (prefers-reduced-motion: reduce) { .cx-live { box-shadow: 0 0 0 1px var(--k-active-line); } }
+@media (max-width: 639.98px) {
+	.cx-head { grid-template-columns: minmax(0, 1fr); padding: 0 16px; }
+	.cx-head > .cx-lbl { display: none; }
+	/* the app name is never shortened: the state words take what is left and end in an ellipsis */
+	.cx-row { grid-template-columns: auto minmax(0, 1fr); height: auto; padding: 8px 16px 4px; row-gap: 2px; column-gap: 8px; }
+	.cx-row > .cx-state { grid-column: 2; grid-row: 1; text-align: right; -webkit-line-clamp: 1; }
+	.cx-row > .cx-track { grid-column: 1 / -1; grid-row: 2; height: 28px; }
+	/* a phone thumb: the 16px glyph keeps a 44px tap box (the track is 24px; the box spills into the row's own padding) */
+	.cx-mk { min-width: 44px; }
+	.cx-mk::before { content: ''; position: absolute; left: 0; right: 0; top: -10px; bottom: -10px; }
+	.cx-fold { display: grid; }
+	.cx-hide-sm { display: none; }
+}
+
+/* r34 build-r4 rows: the Needs-you chip and the Landed rest dot (tokens only) */
+/* Landed ledger: fixed tracks so every row's ref, title, app, badge and age sit at one x (AD r1 #8) */
+.ch-land-l1 { display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 8px; align-items: center; }
+.ch-row > .ch-land-r { display: grid; grid-template-columns: 104px auto 32px; column-gap: 12px; align-items: center; justify-items: end; }
+.ch-row > .ch-land-r > .ch-land-app { justify-self: start; }
+/* phone: the title owns line 1; the badge and the age are line 2 (AD r3 #4) */
+@media (max-width: 639.98px) {
+	.ch-row.ch-landed { grid-template-rows: auto auto; row-gap: 4px; min-height: 56px; }
+	.ch-row.ch-landed > .ch-land-r { grid-column: 2; grid-row: 2; justify-self: start; display: flex; gap: 8px; height: 20px; }
+	.ch-row.ch-landed > .ch-land-r > .ch-age { min-width: 0; text-align: left; }
+	.ch-land-app, .ch-land-ref { display: none; } .ch-land-l1 { grid-template-columns: minmax(0, 1fr); }
+}
+/* the phone failure line is ONE line (the row opens for the rest) */
+.ch-fcl-1 .line-clamp-2 { -webkit-line-clamp: 1; }
+.ch-yours { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--k-held-line); border-radius: 4px; background: transparent; color: var(--k-held-fg); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; flex: none; }
+.ch-rest { display: block; width: 6px; height: 6px; border-radius: 9999px; background: var(--k-fg-subtle); }
+/* an in-row text link keeps a 44px tap box on a phone without growing the line */
+.ch-tap { position: relative; }
+@media (max-width: 639.98px) { .ch-tap::before { content: ''; position: absolute; left: -4px; right: -4px; top: -12px; bottom: -12px; } }
+/* a hold's words are one line on a phone (the row opens nothing; the sub-rows carry the changes) */
+@media (max-width: 639.98px) { .ch-h1-words { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; } }
+
+/* r34 build-r4 team (B2): the Team rail row's at-rest dot and overlapping avatar pair. Tokens only. */
+.tm-avs { display: inline-flex; align-items: center; }
+.tm-av { display: inline-flex; margin-left: 2px; border-radius: 9999px; }
+.tm-word { flex: none; }
+/* AD r3 #2: on sm+ the build fact wraps to its own line instead of clipping ("10 changes in 9a1f4c2" never shrinks); the phone keeps one truncating line */
+.tm-l2 { flex-wrap: wrap; overflow: hidden; }
+@media (max-width: 639.98px) { .tm-word { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; } .tm-l2 { flex-wrap: nowrap; } .tm-l2 > span:not(.tm-word) { min-width: 0; overflow: hidden; text-overflow: ellipsis; } }
+.tm-av:first-child { margin-left: 0; }
+
+/* ── r39 app identity: the monogram square takes the app's own hue (8 calm hues, FNV-1a by app name, `appHueIndex`).
+   Ported from the r39 kit tokens.css `.glyph`; chroma caps keep it quieter than any state colour. Unlayered on purpose. */
+.app-glyph { --h: 222; --id-c-ink: 0.1; --id-c-field: 0.04;
+	--id-field-top: oklch(0.975 calc(var(--id-c-field) * 0.6) var(--h)); --id-field: oklch(0.94 var(--id-c-field) var(--h));
+	--id-ink: oklch(0.45 var(--id-c-ink) var(--h)); --id-edge: oklch(0.86 calc(var(--id-c-field) * 1.5) var(--h)); }
+.dark .app-glyph { --id-c-ink: 0.085; --id-c-field: 0.045;
+	--id-field-top: oklch(0.36 var(--id-c-field) var(--h)); --id-field: oklch(0.3 var(--id-c-field) var(--h));
+	--id-ink: oklch(0.88 var(--id-c-ink) var(--h)); --id-edge: oklch(0.44 calc(var(--id-c-field) * 1.4) var(--h)); }
+.app-glyph.id0 { --h: 203; } .app-glyph.id1 { --h: 345; } .app-glyph.id2 { --h: 308; } .app-glyph.id3 { --h: 130; }
+.app-glyph.id4 { --h: 245; } .app-glyph.id5 { --h: 175; } .app-glyph.id6 { --h: 110; } .app-glyph.id7 { --h: 280; }

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { smoothHeight } from '$lib/smooth-height';
 	/**
 	 * THE CARD. The product's one titled panel.
 	 *
@@ -100,15 +101,19 @@
 		title,
 		titleTooltip = undefined,
 		titleHref = undefined,
+		id = undefined,
 		verdict = null,
 		verdictCompact = null,
 		verdictTone = 'neutral',
 		verdictTitle,
 		rollup,
-		iconClass = 'text-gray-500 dark:text-gray-400',
+		iconClass = 'text-fg-subtle',
 		padded = true,
 		bodyClass = '',
+		smooth = !bodyClass,
 		class: className = '',
+		dataTour = undefined,
+		dataTourTitle = undefined,
 		children
 	}: {
 		/**
@@ -134,6 +139,8 @@
 		titleTooltip?: string;
 		/** Makes the whole header bar go here. See the note above. */
 		titleHref?: string;
+		/** An anchor for in-page links (`/rollouts?state=held` → `#holding`); `undefined` emits no attribute. */
+		id?: string;
 		/** The rolled-up answer, right-aligned. `3/3 healthy`, `2 builds`. */
 		verdict?: string | null;
 		/**
@@ -166,18 +173,32 @@
 		/** `false` when the body is a `<ul>` of rows that own their padding. */
 		padded?: boolean;
 		bodyClass?: string;
+		/**
+		 * The body glides to a new height when live data changes what it
+		 * holds, instead of snapping and jumping everything below the card
+		 * (`$lib/smooth-height`). On by default; off where the caller lays the
+		 * body out itself (`bodyClass`), since that needs the body to be the
+		 * children's direct parent.
+		 */
+		smooth?: boolean;
 		/** LAYOUT ONLY — margin, span, visibility. Never colour or radius. */
 		class?: string;
+		/** Read by the landing page's guided tour (kuberik.com) to find this card's
+		 *  highlight region by a stable id instead of matching visible text. `undefined` emits no attribute. */
+		dataTour?: string;
+		/** Same tour mechanism as `dataTour`, but for the TITLE element specifically —
+		 *  used when the tour needs to highlight just the header's title rather than the whole card. `undefined` emits no attribute. */
+		dataTourTitle?: string;
 		children: Snippet;
 	} = $props();
 
 	const VERDICT_TONE: Record<VerdictTone, string> = {
-		neutral: 'text-gray-500 dark:text-gray-400',
-		good: 'text-green-700 dark:text-green-400',
-		adverse: 'text-red-700 dark:text-red-400',
-		active: 'text-blue-700 dark:text-blue-400',
+		neutral: 'text-fg-subtle !font-normal',
+		good: 'text-success',
+		adverse: 'text-danger',
+		active: 'text-active',
 		// held — needs a person or another deploy; the product's orange, not red.
-		held: 'text-orange-800 dark:text-orange-300'
+		held: 'text-held'
 	};
 
 	const Icon = $derived(icon);
@@ -195,14 +216,39 @@
 	the other half; with `flex-basis: auto` it never shrinks natural content.
 -->
 <section
-	class="card-cq flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 {className}"
+	{id}
+	data-tour={dataTour}
+	class="card-cq flex flex-col overflow-hidden rounded-md border border-line bg-surface {className}"
 >
 	<header
-		class="flex min-h-[47px] shrink-0 flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-b border-gray-200 px-4 py-3 dark:border-gray-700 {titleHref
-			? 'tap-zone transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30'
+		class="card-header flex min-h-[47px] shrink-0 items-center gap-2 border-b border-line px-4 py-3 {titleHref
+			? 'tap-zone transition-colors hover:bg-hover'
 			: ''}"
 	>
-		<!--
+		{#if Icon}
+			<Icon class="h-4 w-4 shrink-0 {iconClass}" />
+		{/if}
+		<!-- ⭐ D-6 (2026-10-08, "system" lane): THE ROLLUP NOW WRAPS UNDER THE
+		     TITLE, NOT UNDER THE ICON. Icon and (title + rollup) used to be
+		     THREE siblings of one `flex-wrap` header row — icon, title-group,
+		     rollup — so when the rollup had nowhere to share a line with the
+		     title it dropped to the row's own next line, flush with the
+		     header's padding edge: 26px left of the title text it answers
+		     (icon 16px + the 10px gap after it). Measured at 1440 in the
+		     rail and at 390 on every card: `26px` ("1098 vs 1124", "33 vs
+		     59") on every wrapped rollup in the product, because the icon
+		     was never part of the thing that wraps.
+		     The icon is pulled out to its OWN flex item now, sized once and
+		     never touched by the wrap decision. Title and rollup share a
+		     SECOND flex item — this `.min-w-0 flex-1` row — so wrapping is
+		     decided only between the two things that actually trade a line,
+		     exactly as `justify-between`'s own note above already argues
+		     for the icon-less case; nesting one level just moves the icon
+		     outside that argument instead of inside it. When the rollup
+		     drops, it drops to this row's own left edge — the same x as the
+		     title — because that is where the title itself starts. -->
+		<div class="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+			<!--
 			⭐ THE TITLE IS THE LAST THING THAT SHRINKS, NOT THE FIRST — AND A
 			ROLLUP THAT FITS STAYS ON THE TITLE'S LINE. (2026-09-02, narrowed at
 			the design re-check: the `basis-full` fix below solved the
@@ -246,12 +292,9 @@
 			CARD used to do when the real defect was an unconditional shared
 			line; the fix is not to have that fight at all.
 		-->
-		<div class="flex min-w-0 items-center gap-2.5">
-			{#if Icon}
-				<Icon class="h-4 w-4 shrink-0 {iconClass}" />
-			{/if}
 			<h2
-				class="t-card-title min-w-0 break-words text-gray-900 dark:text-white"
+				data-tour={dataTourTitle}
+				class="t-card-title min-w-0 break-words text-fg"
 				title={titleTooltip}
 			>
 				{#if titleHref}
@@ -264,7 +307,6 @@
 					{title}
 				{/if}
 			</h2>
-		</div>
 		<!--
 			⭐ HARD-RIGHT AT EVERY WIDTH, NOW VIA `justify-between` ON THE
 			HEADER ITSELF, NOT A CONTAINER-QUERIED `margin-left: auto` ON THE
@@ -326,28 +368,37 @@
 				     actually shrink; `shrink-0` never did) above 560px, and is
 				     replaced by the COMPACT form the caller supplied below it. -->
 				<span
-					class="t-card-rollup card-header-verdict card-header-verdict--full truncate {VERDICT_TONE[
+					class="t-ui-sm card-header-verdict card-header-verdict--full truncate {VERDICT_TONE[
 						verdictTone
 					]}"
 					title={verdictTitle}>{verdict}</span
 				>
 				<span
-					class="t-card-rollup card-header-verdict card-header-verdict--compact shrink-0 whitespace-nowrap {VERDICT_TONE[
+					class="t-ui-sm card-header-verdict card-header-verdict--compact shrink-0 whitespace-nowrap {VERDICT_TONE[
 						verdictTone
 					]}"
 					title={verdictTitle}>{verdictCompact}</span
 				>
 			{:else}
 				<span
-					class="t-card-rollup card-header-verdict shrink-0 whitespace-nowrap {VERDICT_TONE[verdictTone]}"
+					class="t-ui-sm card-header-verdict shrink-0 whitespace-nowrap {VERDICT_TONE[verdictTone]}"
 					title={verdictTitle}>{verdict}</span
 				>
 			{/if}
 		{/if}
+		</div>
 	</header>
-	<div class="grow {padded ? `p-4 ${bodyClass}` : bodyClass}">
-		{@render children()}
-	</div>
+	{#if smooth}
+		<div class="grow" use:smoothHeight>
+			<div class={padded ? 'p-4' : undefined}>
+				{@render children()}
+			</div>
+		</div>
+	{:else}
+		<div class="grow {padded ? `p-4 ${bodyClass}` : bodyClass}">
+			{@render children()}
+		</div>
+	{/if}
 </section>
 
 <style>
@@ -381,6 +432,13 @@
 	 * the card itself narrows past 560px, matching the title-fold threshold
 	 * already established two paragraphs up.
 	 */
+	/* ⛔ 47px AT EVERY WIDTH, EVEN AS A TAP ZONE. app.css's phone-width
+	   `.tap-zone { min-height: 32px }` is unlayered, so it beat the
+	   `min-h-[47px]` utility on a `titleHref` header: measured 45px on every
+	   /environments card at 360/390. This scoped rule outranks it. */
+	header.card-header {
+		min-height: 47px;
+	}
 	.card-header-verdict--full {
 		min-width: 0;
 	}

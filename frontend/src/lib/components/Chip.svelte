@@ -44,6 +44,7 @@
 	 *      than two, including one hand-rolled at a call site.
 	 */
 	import { getEnvironmentThemeStyle, type EnvironmentTheme } from '$lib/environment-theme';
+	import { splitEnvName } from '$lib/env-badge';
 	import { TagOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 
@@ -60,7 +61,21 @@
 		| 'unranked'
 		| 'held'
 		| 'deploying'
-		| 'checking';
+		| 'checking'
+		// ⭐ D-11/D-12 (2026-10-08, "system" lane). Added so the ad-hoc pills
+		// a live design review found — a full-radius "Ready" pill on the
+		// Overview page's `Newer builds` card, a full-radius "1 issue" pill
+		// on the failure panel, a full-radius "N BEHIND" with no icon on
+		// `/apps/<name>`'s Promotion pipeline — have the ONE chip shape to
+		// move into instead of inventing a second geometry. Zero new colour:
+		// `ready` is `MINT`, the same ink `newest` already prints a build
+		// as current/good in; `issue` is `ADVERSE`, the same ink `failing`/
+		// `blocked`/`diverged` already print a state nothing will clear on
+		// its own. Pages adopt by passing `role="ready"` / `role="issue"`
+		// instead of a bespoke `rounded-full` span — this component does not
+		// reach into those pages itself (they are other lanes' files).
+		| 'ready'
+		| 'issue';
 
 	let {
 		role = 'rank',
@@ -70,10 +85,13 @@
 		valueTitle,
 		valueDim = false,
 		theme = null,
+		dot = true,
 		title,
 		wide = false,
 		icon,
 		valueIsBuild = true,
+		regionOnly = false,
+		soft = false,
 		class: className = ''
 	}: {
 		role?: ChipRole;
@@ -121,6 +139,12 @@
 		 */
 		valueDim?: boolean;
 		/** Required for role="env"; ignored otherwise. */
+		/**
+		 * Owner ruling 2026-11-01: "Gray dots next to env name really doesn't make sense."
+		 * `dot={false}` draws NO tier dot: use it where the container already names the tier or
+		 * identity colour is budgeted out. Never a grey dot. Env role only; outline and height unchanged.
+		 */
+		dot?: boolean;
 		theme?: EnvironmentTheme | null;
 		title?: string;
 		/**
@@ -145,6 +169,16 @@
 		 * than a whole-chip opt-out still belongs in `class`.
 		 */
 		wide?: boolean;
+		/**
+		 * ENV BADGE ONLY (r34 r2-shared). Show the PLACE half alone (`eu-west-1`) for a host that already sits in a container titled with
+		 * the tier (a PROD group). A bare tier (no place) still prints its tier: the chip never goes empty. `title` stays the full name.
+		 */
+		regionOnly?: boolean;
+		/**
+		 * ENV BADGE ONLY (r34 r2-shared). A lighter identity tint on the tier half for list rows, so a row of PROD badges is not a magenta
+		 * wall. Same hue, ~45% of the fill; the tier text keeps its identity colour. Hero/title badges stay full.
+		 */
+		soft?: boolean;
 		/**
 		 * A GLYPH FOR THE LABEL HALF, when the ROLE cannot supply one.
 		 *
@@ -214,6 +248,11 @@
 	});
 
 	const joined = $derived(value !== null && value !== undefined && value !== '');
+	// THE ENV BADGE (2026-11-02). A lone `role="env"` chip is `<PROD | eu-west-1>`:
+	// tier in a tinted identity half, place in a neutral half, joined by the
+	// ordinary `.chip-joined` seam. `dot` is accepted and ignored — the tinted
+	// half replaces the dot. The joined `value` form is untouched.
+	const envBadge = $derived(role === 'env' && !joined ? splitEnvName(label) : null);
 	/** The value half alone — see `label`. */
 	const valueOnly = $derived(joined && label === '');
 
@@ -391,7 +430,8 @@
 	// `count`.
 	//
 	// NEUTRAL — the norm, or a caption. Spends no colour at all, and no ground.
-	const NEUTRAL = 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400';
+	const NEUTRAL =
+		'border-line text-fg-subtle';
 	// ⛔ THE BORDER STAYS NEUTRAL ON EVERY ROLE BELOW, AND THAT IS THE ONE THING
 	// THAT KEEPS A RANK CHIP FROM BEING AN IDENTITY CHIP. `.chip-env` is the only
 	// family with a COLOURED EDGE; the rank family is a COLOURED FIELD inside the
@@ -475,8 +515,12 @@
 	// third of `TRAILING`'s step, because `newest` outnumbers `N behind` 3.2 : 1
 	// and area is the channel a repeated mark must not spend. Dark takes
 	// `green-950` at 30% for the same reason `ADVERSE` takes an alpha there.
+	// ⭐ DESIGN LANGUAGE (coordinator review 2026-10-08): THE RANK PAIR SPENDS
+	// INK, NOT AREA. Hue in the word, a neutral hairline, no fill. On dense
+	// rows the rank is not a chip at all (quiet text); where the badge survives
+	// (ladders, version pages) it must not out-shout a state chip.
 	const MINT =
-		'border-gray-200 bg-green-50 text-green-800 dark:border-gray-700 dark:bg-green-950/30 dark:text-green-300';
+		'border-line text-success';
 	// TRAILING — `−N` / `N behind`. THE DEVIATION. IT IS A **DEEP, DESATURATED
 	// ORANGE GROUND WITH A DARK INK**, and it is the fifth spelling of this pair.
 	//
@@ -566,7 +610,7 @@
 	// `green-50` wash — so the wash/block structure holds, and the BORDER stays
 	// the neutral hairline like every other non-`env` role.
 	const TRAILING =
-		'border-gray-200 bg-orange-100 text-orange-950 dark:border-gray-700 dark:bg-orange-950/70 dark:text-orange-300';
+		'border-line text-held';
 	// ADVERSE — `failing`, `diverged`, `blocked`. ONE hue for all three; the WORD
 	// says which kind. `alarm` keeps the only SATURATED fill and stays the
 	// loudest mark on a row.
@@ -601,7 +645,7 @@
 	// contrast relationships and a derived point on a line does not. `MINT` now
 	// makes that argument too; the "mint has no ramp" exemption is retired.
 	const ADVERSE =
-		'border-gray-200 bg-red-50 text-red-700 dark:border-gray-700 dark:bg-red-950/50 dark:text-red-400';
+		'border-danger-line bg-danger-tint text-danger';
 
 	// ⭐ REVISIONS-2026-09-06, ITEM 1 — `deploying`/`checking`, SPENDING NO NEW
 	// HUE. `Deploying` (blue) and `InProgress`/checking (yellow) are already
@@ -613,9 +657,9 @@
 	// a `-50`/`-950` tint of the role's own hue, `-700`/`-400` ink — TEXT-only,
 	// so `alarm` keeps the only fill and neither in-flight chip out-shouts it.
 	const DEPLOYING =
-		'border-gray-200 bg-blue-50 text-blue-700 dark:border-gray-700 dark:bg-blue-950/50 dark:text-blue-400';
+		'border-active-line bg-active-tint text-active';
 	const CHECKING =
-		'border-gray-200 bg-yellow-50 text-yellow-700 dark:border-gray-700 dark:bg-yellow-950/50 dark:text-yellow-400';
+		'border-progress-line bg-progress-tint text-progress';
 
 	// Only `alarm` carries a FILL — that is the whole reason it reads as the
 	// loudest object on the page without needing a bigger box, a heavier
@@ -937,7 +981,9 @@
 		// call for the chip. ALIAS, not a new tone — `held` is `TRAILING`
 		// verbatim, the same deep desaturated orange `N behind` already
 		// spends, because both say "present, and normal, but needs a look".
-		held: TRAILING,
+		// Held is a hold on promotion: the orange family, with its own hairline
+		// so it out-reads a plain `N behind` beside it.
+		held: 'border-held-line bg-held-tint text-held',
 		count: NEUTRAL,
 		// `unranked` FILLS THE RANK SLOT WITH THE REASON THERE IS NO RANK —
 		// `held`, `pending`, `unknown`. It exists because on a page where the
@@ -1083,11 +1129,15 @@
 		// the mechanism the spec names as "what makes it loudest" was
 		// contributing essentially zero luminance mass and the chip was really
 		// an outline chip with a warm tint.
-		alarm:
-			'border-amber-500 bg-amber-400 text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-200',
+		// ⭐ DESIGN LANGUAGE: the ONE filled chip, in both themes. Stuck is the
+		// alarm; nothing else in the chip family is a solid.
+		alarm: 'border-warning-solid bg-warning-solid text-[var(--k-on-warning)]',
 		// See `DEPLOYING`/`CHECKING`'s own note, above `ADVERSE`.
 		deploying: DEPLOYING,
-		checking: CHECKING
+		checking: CHECKING,
+		// D-11/D-12: zero new colour — see the `ChipRole` note above.
+		ready: 'border-success-line bg-success-tint text-success',
+		issue: ADVERSE
 	};
 
 	// THE ROLES THAT STATE A POSITION ON THE RELEASE LINE — i.e. the roles whose
@@ -1238,7 +1288,7 @@
 	{#if icon}
 		{@render icon()}
 	{:else if hasGlyph}
-		<TagOutline class="mr-[3px] h-[11px] w-[11px] shrink-0" aria-hidden="true" />
+		<TagOutline class="mr-[3px] h-3 w-3 shrink-0" aria-hidden="true" />
 	{/if}
 	<span class="min-w-0 truncate">{label}</span>
 {/snippet}
@@ -1337,7 +1387,7 @@
 	     and not as a chip that happens to sit next to a sha. -->
 	<span class="chip-joined {className}" bind:this={el}>
 		<span
-			class="chip t-chip {TONE[role]} {capClass}"
+			class="chip {role === 'env' ? 'chip-env-name t-ui-sm' : 't-chip'} {TONE[role]} {capClass}"
 			style={role === 'env' && theme ? getEnvironmentThemeStyle(theme) : undefined}
 			title={title ?? label}
 		>
@@ -1345,9 +1395,39 @@
 		</span>
 		{@render valueHalf(false)}
 	</span>
+{:else if envBadge}
+	<!-- THE ENV BADGE. Left half: tier, small caps, identity tint (never state).
+	     Right half: place, neutral; the only half that truncates. -->
+	{#if envBadge.place && regionOnly}
+		<span
+			class="chip chip-env-name chip-env-place chip-env-region {wide ? 'chip-wide' : ''} {className}"
+			data-env={label}
+			title={title ?? label}
+			bind:this={el}><span class="min-w-0 truncate">{envBadge.place}</span></span
+		>
+	{:else if envBadge.place}
+		<span
+			class="chip-joined chip-env-badge {soft ? 'chip-env-soft' : ''} {className}"
+			data-env={label}
+			style={theme ? getEnvironmentThemeStyle(theme) : undefined}
+			title={title ?? label}
+			bind:this={el}
+		>
+			<span class="chip chip-env-name chip-env-tier t-chip">{envBadge.tier}</span>
+			<span class="chip chip-env-name chip-env-place t-ui-sm {wide ? 'chip-wide' : ''} {/^\d+ regions?$/.test(envBadge.place) ? 'chip-env-place--count' : ''}"><span class="min-w-0 truncate">{envBadge.place}</span></span>
+		</span>
+	{:else}
+		<span
+			class="chip chip-env-name chip-env-tier t-chip {soft ? 'chip-env-soft' : ''} {className}"
+			data-env={label}
+			style={theme ? getEnvironmentThemeStyle(theme) : undefined}
+			title={title ?? label}
+			bind:this={el}>{envBadge.tier}</span
+		>
+	{/if}
 {:else}
 	<span
-		class="chip t-chip {TONE[role]} {capClass} {className}"
+		class="chip {role === 'env' ? 'chip-env-name t-ui-sm' : 't-chip'} {TONE[role]} {capClass} {className}"
 		style={role === 'env' && theme ? getEnvironmentThemeStyle(theme) : undefined}
 		title={title ?? label}
 		bind:this={el}

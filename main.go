@@ -542,6 +542,10 @@ func setupRouter() *gin.Engine {
 			writeJSONWithETag(c, http.StatusOK, response)
 		})
 
+		// GET /api/health-checks — every visible rollout's selected
+		// HealthChecks, fleet-wide (main_health_checks.go).
+		api.GET("/health-checks", handleFleetHealthChecks)
+
 		api.GET("/rollouts/:namespace/:name", func(c *gin.Context) {
 			k8sClient, ok := getK8sReadClient(c)
 			if !ok {

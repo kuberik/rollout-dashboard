@@ -3,7 +3,24 @@ import type { ManagedResourceStatus as ManagedResourceStatusType } from './manag
 
 export type Rollout = components['schemas']['Rollout'];
 export type RolloutGate = components['schemas']['RolloutGate'];
-export type HealthCheck = components['schemas']['HealthCheck'];
+/** One measurement a health check reports (rollout-controller `status.observations[]`, max 16). Values are decimal strings. */
+export type HealthObservation = {
+	name: string;
+	kind: 'Threshold' | 'Ratio' | 'Count' | 'State';
+	value?: string;
+	/** Threshold: the budget the value is held against */
+	limit?: string;
+	/** Ratio: the denominator */
+	total?: string;
+	/** Threshold: which side of the limit is bad */
+	direction?: 'Above' | 'Below';
+	unit?: string;
+	window?: string;
+	healthy?: boolean;
+	observedTime?: string;
+};
+type HealthCheckBase = components['schemas']['HealthCheck'];
+export type HealthCheck = Omit<HealthCheckBase, 'status'> & { status?: NonNullable<HealthCheckBase['status']> & { observations?: HealthObservation[] } };
 export type Environment = components['schemas']['Environment'];
 export type RolloutTest = components['schemas']['RolloutTest'];
 export type Kustomization = components['schemas']['Kustomization'];

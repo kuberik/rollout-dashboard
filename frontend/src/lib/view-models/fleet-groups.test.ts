@@ -83,7 +83,7 @@ describe('one grouping predicate for `/` and `/rollouts`', () => {
 		expect(g.trailing.map((c) => c.envName)).toEqual(['staging']);
 		expect(g.steady.map((c) => c.envName)).toEqual(['dev']);
 		expect(g.inMotion.map((c) => c.envName)).toEqual(['prod']);
-		expect(g.pending.map((c) => c.envName)).toEqual(['qa']);
+		expect(g.pending.map((c) => c.envName)).toEqual(['test']);
 		expect(g.needsYou).toHaveLength(0);
 	});
 
@@ -135,7 +135,7 @@ describe('one grouping predicate for `/` and `/rollouts`', () => {
 	});
 
 	it('nothing deployed is `pending` and nothing else', () => {
-		const c = cards().find((x) => x.envName === 'qa')!;
+		const c = cards().find((x) => x.envName === 'test')!;
 		expect(isPending(c)).toBe(true);
 		expect(isHealthy(c)).toBe(false);
 		expect(isTrailing(c)).toBe(false);
@@ -331,5 +331,32 @@ describe('fleetTiebreak: render order does not depend on API list order', () => 
 			return primary !== 0 ? primary : fleetTiebreak(x, y);
 		};
 		expect([a, b].sort(byPrimaryThenTiebreak)).toEqual([b, a]);
+	});
+});
+
+/**
+ * ⛔ U-2 (2026-10-08, polish pass): `/apps` and `/environments` named a
+ * rollout "stuck" that `/`, `/rollouts` and the palette — all three reading
+ * `isNeedsYou` off this same `cards()` fixture — filed under Trailing
+ * ("deploy succeeded · N behind"). The rollout in question was simply behind
+ * a peer with nothing in flight: no bake/deploy running past the 1h
+ * threshold, no failed check, no failed deploy. `lib/CLAUDE.md`'s vocabulary
+ * rule is explicit about this shape: "stuck" is a stalled in-flight deploy
+ * or a genuinely wedged person gate; behind-but-promoting is Trailing. This
+ * pins `isNeedsYou` — the one definition every surface must read — on the
+ * exact fixture shape that drifted: a healthy, succeeded deploy that is
+ * merely behind.
+ */
+describe('U-2 — behind-a-peer alone is Trailing, never needsYou', () => {
+	it('a rollout behind a peer, with nothing running and no failed check, is Trailing and isNeedsYou is false', () => {
+		const g = fleetGroups(cards());
+		const staging = cards().find((c) => c.envName === 'staging')!;
+		expect(staging.statusKey).toBe('succeeded');
+		expect(staging.stuck).toBeNull(); // no in-flight bake/deploy has run long
+		expect(staging.checkFailure).toBeNull();
+		expect(isNeedsYou(staging)).toBe(false);
+		expect(isTrailing(staging)).toBe(true);
+		expect(g.needsYou.map((c) => c.envName)).not.toContain('staging');
+		expect(g.trailing.map((c) => c.envName)).toContain('staging');
 	});
 });

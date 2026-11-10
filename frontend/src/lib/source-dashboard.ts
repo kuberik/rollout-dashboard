@@ -5,6 +5,7 @@
 //
 // Two annotations are stamped: the cluster NAME (used for name-based routing) and
 // the dashboard URL (legacy; kept for compatibility).
+import { href } from './paths';
 export const SOURCE_CLUSTER_ANNOTATION = 'rollout-dashboard.kuberik.com/source-cluster';
 export const SOURCE_DASHBOARD_ANNOTATION = 'rollout-dashboard.kuberik.com/source-dashboard';
 
@@ -50,5 +51,5 @@ export function rolloutPath(
 	sub?: string
 ): string {
 	const base = `/rollouts/${encodeURIComponent(cluster)}/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
-	return sub ? `${base}/${sub}` : base;
+	return href(sub ? `${base}/${sub}` : base);
 }

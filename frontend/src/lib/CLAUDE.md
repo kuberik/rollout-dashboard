@@ -141,6 +141,10 @@
 - **The spacing scale is `2/4/6/8/10/12/16/24`.** (2026-09-03, F4 third re-check, NIT: "off-scale spacing 6px/10px is systematic — 68 on `/rollouts`".) `6px` and `10px` were flagged as off-scale by a census that had no written scale to check against; both are legal steps. Measure a spacing value against this list before calling it off-scale.
 - **ONE VERB PER ACTION, ACROSS TRIGGER, TITLE AND CONFIRM.** (2026-09-03, P9, operator walk.) Clearing a version pin had FOUR spellings on one path: `Release the hold` (app pages) → dialog titled `Remove the pin on … in DEV?` → confirm button `Clear Pin` → rollout detail's own trigger `Clear pin`. A reader who sees a different verb at each step cannot tell it is one act until they've already pressed something. `Clear pin` (sentence case) is now the one surviving spelling, canonicalised in `lib/components/pin-copy.ts` (`CLEAR_PIN_LABEL` + `clearPinDialogTitle`) — every trigger, dialog title and confirm button for this action imports from there rather than retyping the words. **The rule generalises: before naming a control that opens a dialog, check what the dialog's own title and confirm button already say, and match them — don't invent a fourth phrasing.**
 - **A HEADER CLAIM MUST BE TRUE OF EVERY CARD IT SITS ABOVE, NOT JUST MOST OF THEM.** (2026-09-03, operator-walk item, relayed to the type lane.) `/`'s Held section header read `Held N · blocked by a rule, will not move on their own` over every held card — but a card held by a closed deploy window clears itself the moment the window reopens, which is the opposite of "will not move on their own". The header now states only what is true of all of them (`blocked by a rule`); the self-clearing exception is named per-card, where it is actually true — `heldCauseText`'s clock branch (`rollout-cards.ts`) reads `reopens ${time} on its own` instead of `deploy window reopens ${time}`, so the ONE held card that clears itself says so on its own second line instead of the header making a blanket claim about all of them.
+- **No page-level count rollup under a visible title on list pages.** (2026-11-03, owner on the r36 mocks: a big "Apps" title with "3 failing · 1 to approve · 17 apps" under it — *"no need for 2nd title and these numbers are usually just not useful … when they take up valuable real estate"*.) The top bar names the page; a list page opens on its content. Counts belong in a section's card header rollup, where they label the thing below them.
+- **Environment ORDER is drawn as the rollout Overview's boxed environment lane, everywhere; dots are only for stages inside one rollout.** (owner, 2026-11-03: *"environment like old rollout overview"*, after a mock replaced the lane with dot steps.) Every place that shows ONE app's dev → test → staging → prod (Apps tiles, Changes repo lines, Home/Inbox asks) uses the lane's cell grammar at its own size — not the fleet-level /environments page, which keeps its own drawing (owner, 2026-11-08); `MiniPipeline`/step strands never stand for environments.
+- **Every tier chip keeps its identity colour** (DEV/TEST/STAGING/PROD). (owner, 2026-11-03: *"all chips get color"* — decided against PROD-only colour.)
+- **List group names — one vocabulary on every page** (owner delegated, 2026-11-03: *"something nice, premium"*). Short nouns, sentence case, no "Needs …" phrasing in headings: **Attention** (failing, or an approval a person must give), **In flight** (deploying or checking), **Waiting** (on someone else's approval), **Held** (a rule holds it), **At rest** (healthy, nothing moving). The viewer-scoped page is renamed **Inbox** (nav item, route title; owner invited a rename 2026-11-03) — the dev-tool convention for "what is waiting on me" (Graphite's PR inbox, Linear's Inbox), it already wears the inbox icon, and it frees "needs" from every heading. The phrase "Needs you" survives only inside sentences. `Needs a person` / `Needs attention` / `In motion` / `Running itself` / `Waiting on someone` / `Held by a rule` are retired as group headings.
 - When you discover a design constraint from user feedback, add it here immediately without waiting to be asked.
 
 ## Rollout list visual treatment
@@ -897,6 +901,64 @@ concept above; a retired spelling reappearing fails that suite by name, not by a
 diff, and the fix for a real new exception is one allowlisted `file\tkind\ttext` line with
 a reason, never a widened regex.
 
+## The vocabulary decision, continued — actions, environments, the version picker (2026-10-08, polish pass, TL ruling)
+
+A second drift census (the "dashboard polish fix" pass, U-11/U-13 on the shared ledger) found
+the SAME disease in two new places the 2026-09-03 pass didn't cover: the verbs for moving a
+rollout, and the words for an environment's own name.
+
+**(e) Moving a rollout has exactly two verbs, and they are not interchangeable.** A person
+choosing a build and sending it somewhere is **Deploy** — button `Deploy`, dialog title
+`Deploy <build> to <environment>`, confirm button `Deploy to <environment>`. A person
+reverting to an earlier build is **Roll back** (two words, capitalized as a title or button
+label) — trigger button `Roll back` (bare verb, like `Deploy`), dialog title `Roll back <environment> to <build>`, noun form `rollback`. **A trigger button never carries the target or build** (owner, 2026-11-03: the dialog names them, and the banner/card holding the button already states the place) — not `Roll back eu-west to #36`, not `Roll back to a11c101`. One Roll back control
+per page region; a page does not carry two buttons for the one action. **Promote** is reserved
+for the AUTOMATIC advance the controller performs on its own — it is never a person's button
+label. **"Change version"** (sentence case) survives as exactly one thing: the open-ended
+picker entry point, before any build is chosen. The dialog it opens retitles itself to the
+Deploy/Roll back form the moment a build is picked — it does not stay titled "Change version"
+once the person has committed to a build. `Change Version` (title case) is retired; a reader
+does not get two capitalizations of the same three words depending on which page sent them
+there. A link or button that only navigates (no verb it does not perform) is worded as
+navigation — `Open <thing> ›` — never dressed up as an action.
+
+**(f) An environment's name is never abbreviated.** Chips, meter labels, mark words — every
+place an environment's FAMILY is drawn — print the full word, uppercase: `DEV`, `STAGING`,
+`PROD`, `PROD-SA-EAST` (a genuine multi-region name keeps its qualifier; the family fold
+collapsing three `prod-*` regions to one mark is a different axis and unaffected). In prose,
+the same word is lowercase (`"held in staging"`). `STG`/`PRD` are retired everywhere — they
+used to be `version-utils.ts`'s `envFamilyWord()`, built for a `.chip`'s ~8.5-character visual
+budget (see that function's own history), but a visual-budget abbreviation is still a second
+spelling for the same word `STAGING`/`PROD` chips elsewhere already use in full, and a reader
+should not have to learn that `STG` and `STAGING` name the same place. No "dev/" (or any
+other) prefix glued in front of a family chip when the prefix would just restate the chip's
+own word — a cluster literally named `dev` printed beside a `DEV` chip is "dev/ DEV," not two
+facts. The nav section is **Environments** — `Envs` only where `Environments` genuinely does
+not fit (measure; write the reason down at the measurement, don't assume).
+
+**Verified (this pass):** `envFamilyWord()`'s family word changed from the 3-letter
+abbreviation to the full uppercased name (and its unmatched-name fallback dropped the
+"first 3 letters" truncation in favor of the environment's own full uppercased name) — every
+caller (`landing-grid.ts`'s marks, `ChangeLine.svelte`'s meter, `PipelineRow.svelte`'s env
+chip, `PipelineCard.svelte`'s prod/non-prod split) reads the one function, so the rename is
+one map, not per-caller surgery. `npx vitest run` passed (111 files, 2050 passed, 3 skipped) after
+updating every literal `STG`/`PRD` assertion this rename touched. The denylist in
+`src/lib/messages/vocabulary.test.ts` gained rules for `Change Version` (title case),
+`Promote now`/`Promote` as a button label, `STG`/`PRD` as a drawn environment label, and
+`Rollback` (one word) as a button verb — see that file for the exact regexes and allowlists.
+
+### U-25 — one document-title format (CLOSED, integrate-fixa, 2026-10-08)
+
+The ruling: `<page> · Kuberik` (`lib/page-title.ts`'s `pageTitle()`), everywhere — `Kuberik`
+capitalized (it reads as the product's proper noun, not a URL/identifier), Home the one
+exception (`pageTitle()` with no argument, bare `Kuberik`, no page name prefixed). Every route
+below now goes through the helper; the per-lane split this note used to list is done — see
+`git log -- src/lib/page-title.ts` for the pass that closed it. Left alone: `/dependencies`
+(`src/routes/dependencies/+page.svelte:252`) and the Gates tab
+(`src/routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte`), both owned by the
+gates/deps lane at the time — flag to that lane rather than converting under a different
+ticket.
+
 ## The scroll model has two sides of one breakpoint (2026-09-04)
 
 Amends the "THE DOCUMENT SCROLLS" rule from d7248c4. From the human: *"we broke how desktop
@@ -1187,3 +1249,61 @@ Chip, HeldBanner, `t-*`). What is genuinely new is designed inside that grammar 
 comment says what role it plays, why nothing existing fits, and which reference lends its
 proportions. A list without a card, a page ≥1024 in one column, or an old role drawn a new way
 is a defect; a new object with its reason written down is not.
+
+## One drawing per object (2026-10-08, polish pass, "system" lane)
+
+Consistency without complacency, applied: before drawing a region, name the reference region
+that plays the same role on Home, `/rollouts` or rollout detail (the pages the human calls
+the best) and build with its component or classes. Only when nothing plays that role is a new
+object legitimate — and then it carries a doc comment saying what role it plays, why nothing
+existing fits, and which reference lends its proportions. This pass found six objects drawn
+more than once and collapsed each to one place to draw it:
+
+- **Rollout name (D-4).** Six drawings (12/500 mono, 14/600 mono, 13/500 mono, 12.5/400 sans,
+  14 sans) are now `.t-rollout-name` (14px/600 mono) / `.t-rollout-name--dense` (12px, same
+  family and weight) in `app.css`, with `RolloutName.svelte` as the component wrapper most
+  call sites should reach for. Mono because a rollout's name is an identifier, not prose;
+  600 because `/rollouts` — 25 of the six drawings — already used it at that weight.
+- **Version/sha text (D-5/D-18).** No new role — `t-code` (13px/500 mono) and `t-code-sm`
+  (11.5px/400 mono) already covered every size; the defect was call sites typing a sans face
+  or a one-off `font-mono` instead of adopting them. `VersionText.svelte` is the wrapper for
+  prose contexts (a version outside a chip — a picker row, a dialog heading, a page `h1`).
+  Change/commit/repo page headings drop Montserrat for the product's own mono/display roles.
+- **State pills (D-11/D-12).** `Chip` gained `role="ready"` (zero new colour — `MINT`, same as
+  `newest`) and `role="issue"` (zero new colour — `ADVERSE`, same as `failing`/`blocked`/
+  `diverged`) so the ad-hoc full-radius "Ready"/"checking"/"1 issue"/"N BEHIND with no icon"
+  pills found on the Overview card, the History tab and `/apps/<name>`'s Promotion pipeline
+  have the one chip geometry (10px/600 mono uppercase, 4px radius, 20px tall) to move into.
+- **Card-header rollup (D-6).** `Card.svelte`'s header used to be THREE flex siblings (icon,
+  title, rollup) in one wrapping row, so a rollup that could not share a line with the title
+  dropped to the row's own left edge — 26px left of the title text it answers, because the
+  icon was part of the thing that wrapped. The icon is its own flex item now; title and rollup
+  share a second `min-w-0 flex-1` row, so a wrapped rollup lands under the TITLE.
+- **Button height/radius (D-7/D-13/D-14).** `.btn` now sets `height` explicitly (36px) instead
+  of deriving it from `padding + line-height`, which is what let it render 36 and 38 on the
+  same page. `.btn-sm` (32px) and `.btn-xs` (28px) are size modifiers on top of it, `.btn-icon`
+  the square icon-only variant — one radius (8px) at every step. `CopyButton` and
+  `GithubConnectButton`'s top-bar shape both moved onto this ladder.
+- **AlertPanel's pulse halo (D-2).** `.ap-cq`'s `overflow: hidden` was clipping the halo at
+  rest, contradicting the panel's own `.ap-collapse--closing` comment two screens down
+  ("nothing this banner draws … may be cut by a wrapper that exists for the exit"). Removed —
+  `border-radius` still rounds the panel's own fill without it, and nothing else inside ever
+  drew past the box (the radial glow blobs that once needed clipping were removed in an
+  earlier pass).
+
+**New by design, not drawn from a reference:** none in this pass — every item above was an
+existing object with more than one drawing, collapsed to one, never a new kind of region.
+
+**D-22 (same day, coordinator decision via `fix-dash`): "≥1024 never single column" broke at
+1024-with-sidebar-open.** The shared rail shell (`app.css`'s `.rail-grid`) switched main+rail
+side-by-side at a single `860px` container-width threshold; at 1024 viewport with the sidebar
+open the content container is ~785px, under that number, so Home's rail dropped below main at
+a width the standing rule forbids. The shell now steps in two: **760px** (rail narrows to
+**280px**) and **1000px** (rail back to the original 320px), `minmax(420px, 1fr)` on main at
+both steps so it never gets crushed. Measured at 1024 (container 785px, sidebar open): main
+473px, rail 280px, 32px gap. `ControlCenter.svelte`, `/apps`, `/apps/<name>` and
+`/envs/<name>` each hand-copied the old single `860px` number into their own private
+`@container` rule and migrate to the same two numbers on their own schedule — the guard test
+`lib/rail-shell-breakpoint.test.ts` pins the current count of hand-copies so a new one cannot
+appear unnoticed and shrinks as each lane adopts the shared shell (or matches its own private
+copy to the same 760/1000 pair).

@@ -33,7 +33,10 @@ const release = (tag: string, day: number) => ({
 	created: `2026-08-${String(day).padStart(2, '0')}T00:00:00Z`
 });
 
-export const RELEASES = [release('r1aaaaa', 1), release('r2bbbbb', 2), release('r3ccccc', 3)];
+// Late August, just before the history stamps (Aug 30-31) and the pinned
+// test clock (Aug 31 02:00): a candidate is hours old, not weeks, so a hold
+// reads as a hold rather than tripping the shared 24h stuck detector.
+export const RELEASES = [release('r1aaaaa', 29), release('r2bbbbb', 30), release('r3ccccc', 31)];
 
 export type Shape = {
 	/** Which release index is running. `null` = never deployed. */
@@ -182,7 +185,7 @@ function dependencyFor(app: string, tier: string, cluster: string) {
 	};
 }
 
-function environmentFor(app: string, tier: string, cluster: string, after: string | null) {
+function environmentFor(app: string, tier: string, cluster: string, site?: string, wave?: number) {
 	const ns = `${app.replace('-app', '')}-${tier}`;
 	return {
 		metadata: {
@@ -193,7 +196,8 @@ function environmentFor(app: string, tier: string, cluster: string, after: strin
 		spec: {
 			environment: tier,
 			rolloutRef: { name: app },
-			...(after ? { relationship: { environment: after, type: 'After' as const } } : {})
+			...(site ? { site } : {}),
+			...(wave ? { wave } : {})
 		},
 		status: { rolloutGateRef: { name: `promote-${app}-${tier}` } }
 	};
@@ -212,10 +216,10 @@ export function fleet(
 	const dependencies: any[] = [];
 	for (const [i, app] of APPS.entries()) {
 		const cluster = CLUSTERS[i % CLUSTERS.length];
-		for (const [t, tier] of TIERS.entries()) {
+		for (const tier of TIERS) {
 			const shape = override(app, tier);
 			rollouts.push(rolloutFor(app, tier, cluster, shape));
-			environments.push(environmentFor(app, tier, cluster, t === 0 ? null : TIERS[t - 1]));
+			environments.push(environmentFor(app, tier, cluster));
 			if (shape.hold === 'dependency') dependencies.push(dependencyFor(app, tier, cluster));
 		}
 	}

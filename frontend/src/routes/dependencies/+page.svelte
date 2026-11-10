@@ -44,36 +44,32 @@
 	 * unasked, and reverted. It is reached from the rollout `Dependencies` tab.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
-	import {
-		ShareNodesSolid,
-		ServerSolid,
-		ArrowRightOutline,
-		ExclamationCircleSolid
-	} from 'flowbite-svelte-icons';
+	import { ShareNodesSolid, ServerOutline, ArrowRightOutline } from 'flowbite-svelte-icons';
+	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import { iconForKind } from '$lib/components/BlockingStoryPanel.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ClusterMark from '$lib/components/ClusterMark.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import DependencyNetwork from '$lib/components/DependencyNetwork.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
+	import { pageTitle } from '$lib/page-title';
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import { getEnvironmentThemeStyle, type EnvironmentTheme } from '$lib/environment-theme';
 	import { compareEnvironmentNames } from '$lib/env-order';
-	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
-	import { buildGateContext } from '$lib/view-models/blocking-story';
+	import { rolloutMatchesEnvironment, SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
+	import { href } from '$lib/paths';
+	import { cardContext } from '$lib/view-models/card-context';
+import { heldHereGates } from '$lib/view-models/held';
 	import {
-		buildRolloutGraph,
 		filterByEnv,
 		networkVerdict,
-		heldSubjects,
+		heldSummary,
 		heldClause,
-		namespacesByCluster,
-		withNetworkSchedules,
 		type GraphEdge,
 		type GraphNode
 	} from '$lib/view-models/dependency-graph';
@@ -91,7 +87,6 @@
 
 	const rollouts = $derived(query.data?.rollouts?.items ?? []);
 	const environments = $derived(query.data?.environments?.items ?? []);
-	const deps = $derived(query.data?.rolloutDependencies?.items ?? []);
 
 	/**
 	 * ⭐ ONE `/api/schedules` REQUEST PER CLUSTER, NOT PER ROLLOUT. (2026-09-03,
@@ -115,17 +110,6 @@
 	 * a check, an approval — so a clock on a node here and the banner on the
 	 * rollout's own page cannot disagree about what it is.
 	 */
-	const gateContext = $derived(
-		withNetworkSchedules(
-			buildGateContext({
-				environments: query.data?.environments ?? null,
-				rolloutDependencies: query.data?.rolloutDependencies ?? null
-			}),
-			schedulesQuery.data ?? new Map(),
-			namespacesByCluster(rollouts)
-		)
-	);
-
 	/** One theme per tier, for the chips. Identity is a function of the name. */
 	const envThemes = $derived.by(() => {
 		const m = new Map<string, EnvironmentTheme | null>();
@@ -145,15 +129,22 @@
 		)
 	);
 
-	const full = $derived(
-		buildRolloutGraph({
+	/**
+	 * ⭐ ONE GATE SOURCE (2026-10-25): the shared `cardContext`, the construction
+	 * the Gates tab, /apps/<name> and Home use. Its graph and gate context are
+	 * this page's; `storyFor` hands every story the contract holds, which is how
+	 * a held edge learns the range its own build needs (see `heldRequirement`).
+	 */
+	const appCtx = $derived(
+		cardContext({
 			rollouts,
-			environments,
-			dependencies: deps,
+			environments: query.data?.environments ?? null,
+			rolloutDependencies: query.data?.rolloutDependencies ?? null,
 			envOrder,
-			gates: gateContext
+			schedulesByCluster: schedulesQuery.data ?? new Map()
 		})
 	);
+	const full = $derived(appCtx.providerNetwork);
 
 	// Multi-select chips, no `All` pill: an empty selection is every
 	// environment. Same convention as `/rollouts`.
@@ -173,6 +164,24 @@
 	const graphEnvs = $derived(full.envs);
 
 	/**
+	 * ⭐ NAMESPACES ARE NOT ENVIRONMENTS (round 6 review, 2026-10-09).
+	 * `full.envs` (`dependency-graph.ts`) is every distinct `node.env` the
+	 * graph drew a column for — real `Environment` tiers AND the per-node
+	 * NAMESPACE fallback it uses when nothing binds a node to one (the same
+	 * fallback the Held-links `envMark` snippet already tells apart from a
+	 * real environment, and the swimlane fix on `/activity` collapses to
+	 * one "No environment" lane). `themeOf(env)` resolves for a real tier
+	 * and is `null` for a namespace — that is the one signal this page has,
+	 * so the filter row splits on it: real environments keep the identity
+	 * dot, a namespace fallback (if the fleet has any un-bound rollouts at
+	 * all) gets a second, visually quieter group with no dot — it is a
+	 * real, useful filter (the node IS placed in that column), just not an
+	 * environment, so it may not borrow that chip's identity mark.
+	 */
+	const realEnvs = $derived(graphEnvs.filter((e) => envThemes.has(e)));
+	const namespaceEnvs = $derived(graphEnvs.filter((e) => !envThemes.has(e)));
+
+	/**
 	 * ⛔ `clusters` LISTS ONLY THE DISCOVERED SPOKES — THE HUB IS IMPLICIT.
 	 * Measured on the live payload: two clusters serve this fleet and
 	 * `clusters` has ONE entry. `RolloutGrid` composes its own list the same
@@ -189,15 +198,50 @@
 		return (t ? shortEnvLabel(t) : shortEnvLabel(env)) || env;
 	}
 
+	/**
+	 * ⭐ THE RANGE A HELD EDGE'S OWN BUILD NEEDS. (2026-10-25) The edge keeps a
+	 * `requiredVersion` only when every held build agrees on it; checkout-api
+	 * holds builds that ask `~2.9.0` and `^3.0.0` of the same provider, so the
+	 * edge said "Needs payments" with no range. The Gates tab names the build
+	 * refused in THIS environment (`heldHereGates` over a story built with the
+	 * contract holds), so the edge reads that gate's `need`, and falls back to
+	 * its own agreed range.
+	 */
+	const heldRequirementByEdge = $derived.by(() => {
+		const out: Record<string, string> = {};
+		for (const e of full.edges) {
+			if (e.writer !== 'contract' || e.state !== 'blocked' || e.requiredVersion) continue;
+			const to = nodeById.get(e.to);
+			const from = nodeById.get(e.from);
+			if (!to || !from) continue;
+			const rollout = rollouts.find(
+				(r) =>
+					r.metadata?.namespace === to.namespace &&
+					r.metadata?.name === to.name &&
+					(r.metadata?.annotations?.[SOURCE_CLUSTER_ANNOTATION] ?? '') === to.cluster
+			);
+			if (!rollout) continue;
+			const need = heldHereGates(appCtx.storyFor(rollout), to.env).find(
+				(g) => g.kind === 'dependency' && g.subject === from.name && g.need
+			)?.need;
+			if (need) out[e.key] = need;
+		}
+		return out;
+	});
+	const heldRequirement = (e: GraphEdge): string | null =>
+		e.requiredVersion ?? heldRequirementByEdge[e.key] ?? null;
+
 	/** The row's second line — the concrete consequence, per edge kind. */
 	function consequence(e: GraphEdge): string {
 		const from = nodeById.get(e.from);
 		const to = nodeById.get(e.to);
 		if (e.writer === 'promotion') {
-			const verb = e.relType === 'Parallel' ? 'alongside' : 'first';
+			const verb =
+				e.edgeKind === 'follow' ? 'and picked it' : e.edgeKind === 'wave' ? 'in the earlier wave' : 'first';
 			return `${to?.env ?? 'This environment'} takes nothing newer until ${from?.env ?? 'its upstream'} has deployed the next build ${verb}.`;
 		}
-		const needs = e.requiredVersion ? ` ${e.requiredVersion}` : '';
+		const required = heldRequirement(e);
+		const needs = required ? ` ${required}` : '';
 		const serves = e.providedVersion
 			? `${from?.name ?? 'the provider'} serves ${e.providedVersion} here.`
 			: `${from?.name ?? 'the provider'} has not deployed a version of it here.`;
@@ -205,19 +249,12 @@
 	}
 
 	/**
-	 * ⭐ THE SAME GLYPH MAP `BlockingStoryPanel` USES, NOT A HAND-PICKED
-	 * PADLOCK. (2026-09-03) `/apps`, `/apps/<name>`, `/environments` and
-	 * rollout detail all draw a share-node for a contract block (the same
-	 * "hello-frontend-app hasn't shipped api ^1.67.0" fact this page's own
-	 * `Blocked links` card names below); this banner drew a padlock for it
-	 * regardless of kind. An edge's `writer` — `contract` or `promotion` — IS
-	 * `blocking-story.ts`'s `dependency`/`promotion` split, so worst-first
-	 * (a contract present outranks a bare promotion order, same as the
-	 * classified story) picks the same glyph the rest of the product would.
+	 * ⛔ SUPERSEDED (round 4 review, 2026-10-09) — the banner no longer
+	 * hand-picks an icon at all. `AlertPanel`'s `pinned` severity draws
+	 * `HeldGlyph` by default now, the one mark for every held state product-
+	 * wide; a share-node here was a SECOND held glyph, not a third kind
+	 * this page uniquely needed. See the call site's own note.
 	 */
-	const bannerIcon = $derived(
-		iconForKind(blocked.some((e) => e.writer === 'contract') ? 'dependency' : 'promotion')
-	);
 
 	const bannerTitle = $derived.by(() => {
 		if (blocked.length === 1) {
@@ -236,15 +273,39 @@
 	 */
 	const bannerMessage = $derived.by(() => {
 		if (blocked.length === 1) return consequence(blocked[0]);
+		// ⭐ ONE SHORT SENTENCE (round 4 review, 2026-10-09) — §3.12: a banner
+		// prints ONE sentence, the rest goes under `Details`. The headline
+		// already states the count ("N rollouts are held…"); the message
+		// now says only what they are waiting FOR, not also who they are —
+		// `bannerDetail` below carries the subject clause (`heldSummary`)
+		// for the reader who opens `Details`.
+		const until = heldClause(blocked, nodeById, { brief: true });
+		return `Waiting until ${until}.`;
+	});
+
+	/**
+	 * The fuller sentence — who is held, not just what they are waiting
+	 * for — disclosed under the banner's own `Details`, never printed at
+	 * banner scale. `null` for the single-link case: `consequence()` is
+	 * already the one sentence there, with nothing left to disclose.
+	 */
+	const bannerDetail = $derived.by(() => {
+		if (blocked.length === 1) return null;
 		const held = [...new Set(blocked.map((e) => e.to))]
 			.map((id) => nodeById.get(id))
 			.filter((n): n is GraphNode => !!n);
-		return `${heldSubjects(held)} cannot take their next release until ${heldClause(blocked, nodeById)}.`;
+		const until = heldClause(blocked, nodeById, { brief: true });
+		return `${heldSummary(held)} cannot take their next release until ${until}.`;
 	});
 </script>
 
 <svelte:head>
-	<title>kuberik | Dependencies</title>
+	<!-- ⭐ (2026-10-09, integration round 3, item 4) `pageTitle()` — ONE
+	     DOCUMENT-TITLE FORMAT, PRODUCT-WIDE (`page-title.ts`'s own doc
+	     comment). This page and the rollout detail Gates tab were the two
+	     files left alone when `pageTitle()` landed everywhere else ("owned
+	     by other lanes at the time"); this is that follow-up. -->
+	<title>{pageTitle('Dependencies')}</title>
 </svelte:head>
 
 <div class="mx-auto w-full px-4 py-6 sm:px-6">
@@ -267,45 +328,49 @@
 	     a screen reader while costing zero pixels.
 
 	     WHAT FILLS THE SLOT IS THE ROLLUP, PROMOTED — same sentence as before,
-	     character for character; only the rollout count leads at `t-display`
-	     (24px) with the rest on its baseline at `t-dense`, the shape `/apps`,
-	     `/versions`, `/environments` and `/activity` already share. -->
-	<h1 class="sr-only">Dependencies</h1>
-	<div class="mb-5 min-w-0">
-		{#if !query.isLoading && !query.isError}
-			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
-				<span class="t-display text-gray-900 tabular-nums dark:text-white"
-					>{full.nodes.length}</span
-				>
-				<p class="t-dense min-w-0 flex-1 text-gray-500 dark:text-gray-400">
-					{#if trivial}
-						rollout{full.nodes.length === 1 ? '' : 's'}, none depends on another.
+	     character for character, now carried by `PageHeader`'s list form (the
+	     same component `/rollouts`, `/apps` and `/activity` use): the count on
+	     the title's baseline, the sentence as `summary` below it. -->
+	{#if !query.isLoading && !query.isError}
+		<!-- ⭐ THE COUNT NAMES WHAT THE TITLE NAMES. (round 2 review, 2026-10-08)
+		     This used to count NODES (rollouts) beside a title that says
+		     "Dependencies" — a reader sees "Dependencies 24" and the page is
+		     about RULES, so the count was the wrong axis, and the summary
+		     then opened on a bare "rollout" with no lead-in. The header now
+		     counts `full.edges.length` (the rules — "a `RolloutDependency` or
+		     an `Environment` promotion order", this page's own subject); the
+		     rollout count moves into the summary as "across N rollouts",
+		     the axis the title does not already fix. -->
+		<PageHeader title="Dependencies" count={full.edges.length} summaryBelow>
+			{#snippet summary()}
+				{#if trivial}
+					across {full.nodes.length} rollout{full.nodes.length === 1 ? '' : 's'}, none depends on
+					another.
+				{:else}
+					rule{full.edges.length === 1 ? '' : 's'} across {full.nodes.length} rollout{full.nodes
+						.length === 1
+						? ''
+						: 's'}
+					{#if blocked.length > 0}
+						· <span class="text-fg">{blocked.length} holding</span>
 					{:else}
-						rollout{full.nodes.length === 1 ? '' : 's'} · {full.edges.length} rule{full.edges
-							.length === 1
-							? ''
-							: 's'} between them
-						{#if blocked.length > 0}
-							· <span class="text-gray-700 dark:text-gray-200"
-								>{blocked.length} holding</span
-							>
-						{:else}
-							<!-- ⛔ A PAGE WITH NOTHING WRONG MUST STILL SAY SOMETHING.
-							     Naming the healthy verdict is what turns silence into an
-							     answer rather than "something is missing". -->
-							· nothing is waiting on another deploy
-						{/if}
-						{#if full.unlinkedRollouts > 0}
-							· {full.unlinkedRollouts} not in the graph
-						{/if}
-						{#if full.hasCycle}
-							· <span class="font-medium text-gray-700 dark:text-gray-200">contains a cycle</span>
-						{/if}
+						<!-- ⛔ A PAGE WITH NOTHING WRONG MUST STILL SAY SOMETHING.
+						     Naming the healthy verdict is what turns silence into an
+						     answer rather than "something is missing". -->
+						· nothing is waiting on another deploy
 					{/if}
-				</p>
-			</div>
-		{/if}
-	</div>
+					{#if full.unlinkedRollouts > 0}
+						· {full.unlinkedRollouts} not in the graph
+					{/if}
+					{#if full.hasCycle}
+						· <span class="text-fg">contains a cycle</span>
+					{/if}
+				{/if}
+			{/snippet}
+		</PageHeader>
+	{:else}
+		<h1 class="sr-only">Dependencies</h1>
+	{/if}
 
 	<PartialDataNotice
 		errors={query.data?.clusterErrors ?? []}
@@ -316,15 +381,11 @@
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
-		<div
-			class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-		>
-			<div
-				class="flex min-h-[47px] items-center gap-2.5 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
-			>
-				<div class="h-4 w-4 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-				<div class="h-3.5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-				<div class="ml-auto h-3 w-20 animate-pulse rounded bg-gray-200/70 dark:bg-gray-700/60"></div>
+		<div class="overflow-hidden rounded-md border border-line bg-surface">
+			<div class="flex min-h-[47px] items-center gap-3 border-b border-line px-4 py-3">
+				<div class="skel-block h-4 w-4"></div>
+				<div class="skel-block h-3.5 w-40"></div>
+				<div class="skel-block ml-auto h-3 w-20"></div>
 			</div>
 			<!-- The skeleton mirrors the MATRIX — the shape a reader is waiting
 			     for is the shape they are looking at. -->
@@ -332,7 +393,7 @@
 				{#each Array(3) as _, col (col)}
 					<div class="flex flex-col gap-6">
 						{#each Array(2) as __, row (row)}
-							<div class="h-16 w-44 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+							<div class="skel-block h-16 w-44 rounded-md"></div>
 						{/each}
 					</div>
 				{/each}
@@ -356,98 +417,199 @@
 		-->
 		<div class="mx-auto max-w-2xl py-12">
 			<div class="text-center">
-				<div
-					class="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
-				>
-					<ShareNodesSolid class="h-5 w-5 text-gray-400 dark:text-gray-500" />
+				<div class="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-subtle">
+					<ShareNodesSolid class="h-5 w-5 text-fg-disabled" />
 				</div>
-				<p class="t-body font-semibold text-gray-900 dark:text-white">Nothing waits on anything</p>
-				<p class="t-dense mx-auto mt-2 max-w-md text-gray-500 dark:text-gray-400">
+				<p class="t-ui text-fg">Nothing waits on anything</p>
+				<p class="t-meta mx-auto mt-2 max-w-md text-fg-subtle">
 					{rollouts.length} rollout{rollouts.length === 1 ? '' : 's'} across
 					{clusterCount} cluster{clusterCount === 1 ? '' : 's'}, and no rule on any of them is keyed
 					to another rollout. This is the normal state — most fleets deploy every service
 					independently.
 				</p>
-				<p class="t-dense mx-auto mt-4 max-w-md text-gray-500 dark:text-gray-400">
+				<p class="t-meta mx-auto mt-4 max-w-md text-fg-subtle">
 					A link appears here when an
-					<code class="t-code-sm rounded bg-gray-100 px-1 dark:bg-gray-800">Environment</code>
+					<code class="t-code-sm rounded-xs bg-subtle px-1">Environment</code>
 					holds one environment until the one before it has deployed a build, or a
-					<code class="t-code-sm rounded bg-gray-100 px-1 dark:bg-gray-800">RolloutDependency</code>
+					<code class="t-code-sm rounded-xs bg-subtle px-1">RolloutDependency</code>
 					holds one rollout until another has served a contract version its release asks for.
 				</p>
 			</div>
 		</div>
 	{:else}
 		{#if blocked.length > 0}
-			<!-- THE PAGE'S ONE BLOCKING FACT, at banner scale. Amber: neither kind
-			     of block clears itself and neither clears on approval — somebody
-			     has to ship the thing in front. -->
-			<AlertPanel severity="warning" icon={bannerIcon} title={bannerTitle} message={bannerMessage} />
+			<!-- THE PAGE'S ONE BLOCKING FACT, at banner scale. `pinned` (held),
+			     not `warning` (stuck only, per DESIGN-LANGUAGE.md §2.5/§3.12):
+			     neither kind of block clears itself and neither clears on
+			     approval — somebody has to ship the thing in front, but this
+			     is a HOLD, not a stuck rollout. -->
+			<!-- ⭐ NO `icon` OVERRIDE (round 4 review, 2026-10-09). `pinned`'s
+			     `defaultIcon` is `HeldGlyph` now (`AlertPanel`'s own severity
+			     table) — the TL is fixing the banner disc centrally there;
+			     this call site stops hand-picking `ShareNodesSolid` via
+			     `iconForKind`, the same share-node BlockingStoryPanel draws
+			     for a contract block elsewhere, which doubled as a SECOND
+			     "held" glyph beside `HeldGlyph`'s gate. -->
+			<AlertPanel
+				severity="pinned"
+				title={bannerTitle}
+				message={bannerMessage}
+				footnote={bannerDetail ?? undefined}
+			>
+				{#snippet actions()}
+					<!-- ⭐ THE BANNER'S RIGHT SLOT WAS EMPTY. (round 2 review,
+					     2026-10-08) A plain in-page anchor, not a `goto` — the
+					     held list is a real `id` on the page (`#held-links`),
+					     at every width: first on a phone (see the mobile-order
+					     note by `.dep-rail`), beside the graph in the rail at
+					     ≥1024. -->
+					<a href="#held-links" class="nav-link">Show held links</a>
+				{/snippet}
+			</AlertPanel>
 		{/if}
 
-		{#if graphEnvs.length > 1}
-			<!-- ⭐ THE CHIPS FILTER WHICH COLUMNS RENDER. A node IS a
-			     (service, environment), so selecting `prod` leaves the prod column
-			     and the contract edges inside it — the promotion edges into it
-			     come from a column that is no longer on screen and are dropped
-			     with it. Multi-select, no `All` pill, no dropdown. -->
-			<div class="mb-4 flex flex-wrap items-center gap-1.5">
-				{#each graphEnvs as env (env)}
-					{@const sel = envFilters.includes(env)}
-					{@const t = envThemes.get(env) ?? null}
-					<button
-						type="button"
-						onclick={() => toggleEnv(env)}
-						aria-pressed={sel}
-						aria-label={`Environment ${env}`}
-						class="environment-theme-scope hit-32 inline-flex items-center rounded transition-opacity
-							{sel
-							? 'ring-1 ring-gray-900/30 dark:ring-gray-100/30'
-							: envFilters.length === 0
-								? ''
-								: 'opacity-40 hover:opacity-100'}"
-						style={t ? getEnvironmentThemeStyle(t) : undefined}
-					>
-						<Chip role="env" theme={t} label={envLabel(env)} wide />
-					</button>
-				{/each}
-				{#if envFilters.length > 0}
-					<button
-						type="button"
-						onclick={() => (envFilters = [])}
-						class="ml-1 text-[11px] text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
-						>clear</button
-					>
-				{/if}
-			</div>
-		{/if}
-
-		<Card
-			icon={ShareNodesSolid}
-			title="Dependency graph"
-			verdict={verdict.text}
-			verdictTone={verdict.tone}
-			class="mb-6"
-		>
-			{#if graph.nodes.length === 0}
-				<p class="t-dense py-6 text-center text-gray-500 dark:text-gray-400">
-					No rollout in {envFilters.join(', ')} depends on another.
-				</p>
-			{:else}
-				<DependencyNetwork {graph} {themeOf} />
+		<!-- ⭐ MAIN + RAIL, ≥1024 NEVER SINGLE COLUMN — AND THE HELD LIST LEADS
+		     ON A PHONE. (round 2 review, 2026-10-08) `.rail-wrap`/`.rail-grid`/
+		     `.rail-main`/`.rail-side` (`app.css`) is the same shared shell Home
+		     and `/activity`'s rail use, reused verbatim — only while there IS
+		     a rail: a healthy graph with nothing held has no second card to
+		     put beside it, and the grid's reserved 280-320px column would
+		     just be empty space, so the plain single column renders when
+		     `blocked.length === 0` (`{#if}`/`{:else}` around a shared
+		     `graphSection` snippet, not a duplicated copy of the filters +
+		     graph Card). The graph stays the CENTREPIECE — first and widest
+		     in the rail-grid's source order, so it leads at ≥1024 where both
+		     sit side by side — but on a phone the held list is what needs a
+		     person RIGHT NOW and the graph is reference material, so
+		     `.dep-rail-main`/`.dep-rail-side` flip `order` below the shell's
+		     own container-query breakpoint (scoped styles below, same 760px
+		     step `.rail-grid` itself turns on). -->
+		{#snippet graphSection()}
+			{#if graphEnvs.length > 1}
+				<!-- ⭐ THE CHIPS FILTER WHICH COLUMNS RENDER. A node IS a
+				     (service, environment), so selecting `prod` leaves the prod
+				     column and the contract edges inside it — the promotion
+				     edges into it come from a column that is no longer on
+				     screen and are dropped with it. Multi-select, no `All`
+				     pill, no dropdown. -->
+				<!-- ⭐ THE `/rollouts` PILL DIALECT, NOT A WRAPPED 20PX `Chip`.
+				     (round 4 review, 2026-10-09) This was `Chip role="env"`
+				     in a button with its own ring/opacity "selected" — a
+				     20px control beside `/rollouts` and `/activity`'s 28px
+				     `.pill` env buttons, a different box on the same page as
+				     `/rollouts`' identical filter. One control, one height,
+				     one selected grammar (`.pill`'s own `aria-pressed`
+				     inverse fill): `.chip-env-dot` inline + the label text,
+				     the exact shape `RolloutGrid`'s env buttons already
+				     draw. -->
+				<div class="mb-4 flex flex-wrap items-center gap-1.5">
+					{#each realEnvs as env (env)}
+						{@const sel = envFilters.includes(env)}
+						{@const t = envThemes.get(env) ?? null}
+						<button
+							type="button"
+							onclick={() => toggleEnv(env)}
+							aria-pressed={sel}
+							aria-label={`Environment ${env}`}
+							class="env-filter hit-32"
+							><Chip role="env" theme={t} label={envLabel(env)} wide /></button
+						>
+					{/each}
+					{#if namespaceEnvs.length > 0}
+						<!-- ⭐ A SECOND, QUIETER GROUP — NOT THE SAME CHIP. (round 6
+						     review) These columns exist (a rollout with no
+						     `Environment` record still needs an axis to sit on),
+						     so the filter is real and useful; they are not
+						     environments, so they do not get the identity dot
+						     or the environment-theme styling. Same `.pill`
+						     control, same `aria-pressed` inverse-fill selected
+						     state — one filter LANGUAGE — just no borrowed
+						     identity mark. -->
+						<span class="mx-1 hidden h-4 w-px bg-line sm:inline-block" aria-hidden="true"></span>
+						{#each namespaceEnvs as env (env)}
+							{@const sel = envFilters.includes(env)}
+							<button
+								type="button"
+								onclick={() => toggleEnv(env)}
+								aria-pressed={sel}
+								aria-label={`Namespace ${env}`}
+								title="Not bound to an Environment — grouped by namespace"
+								class="pill"
+								>{env}</button
+							>
+						{/each}
+					{/if}
+					{#if envFilters.length > 0}
+						<button
+							type="button"
+							onclick={() => (envFilters = [])}
+							class="t-meta ml-1 text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
+							>clear</button
+						>
+					{/if}
+				</div>
 			{/if}
-		</Card>
+
+			<Card
+				icon={ShareNodesSolid}
+				title="Dependency graph"
+				verdict={verdict.text}
+				verdictTone={verdict.tone}
+				class="mb-6"
+			>
+				{#if graph.nodes.length === 0}
+					<p class="t-meta py-6 text-center text-fg-subtle">
+						No rollout in {envFilters.join(', ')} depends on another.
+					</p>
+				{:else}
+					<DependencyNetwork {graph} {themeOf} {heldRequirement} orderKey={envFilters.join(',')} />
+				{/if}
+			</Card>
+		{/snippet}
+
+		<!-- ⭐ A NAMESPACE IS NOT AN ENVIRONMENT CHIP (round 5 review,
+		     2026-10-09). A node's `env` falls back to the rollout's
+		     NAMESPACE when no `Environment` record binds it
+		     (`dependency-graph.ts`'s own fallback — the graph still needs
+		     an axis to place the node on) — `themeOf(env)` is `null` in
+		     exactly that case, since `envThemes` is built from real
+		     `Environment` tiers only. Drawing that fallback as `Chip
+		     role="env"` (a bordered box + a 6px identity dot) claimed an
+		     identity the page does not have for it; a namespace is a
+		     name, so it prints as one — `t-meta text-fg-subtle`, the same
+		     ink `ClusterMark` and every other quiet qualifier on this rail
+		     already use. -->
+		{#snippet envMark(node: GraphNode | undefined)}
+			{@const t = node ? themeOf(node.env) : null}
+			{#if t}
+				<span
+					class="environment-theme-scope inline-flex"
+					style={getEnvironmentThemeStyle(t)}><Chip role="env" theme={t} label={envLabel(node!.env)} wide /></span
+				>
+			{:else if node?.env}
+				<span class="t-meta text-fg-subtle">{envLabel(node.env)}</span>
+			{/if}
+		{/snippet}
 
 		{#if blocked.length > 0}
+			<div class="rail-wrap">
+				<div class="rail-grid">
+					<div class="rail-main dep-rail-main min-w-0">
+						{@render graphSection()}
+					</div>
+					<div class="rail-side dep-rail-side min-w-0" id="held-links">
+			<!-- HeldGlyph (round 4 review) — was `ExclamationCircleOutline`,
+			     the failed/stuck glyph shape even in outline form. Every
+			     held mark on the page is the same gate now. -->
 			<Card
-				icon={ExclamationCircleSolid}
-				iconClass="text-red-500 dark:text-red-400"
+				icon={HeldGlyph}
+				iconClass="text-held"
 				title="Held links"
 				verdict={`${blocked.length} of ${graph.edges.length}`}
-				verdictTone="adverse"
+				verdictTone="held"
 				padded={false}
 			>
-				<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
+				<ul class="divide-y divide-line-subtle">
 					{#each blocked as e (e.key)}
 						{@const from = nodeById.get(e.from)}
 						{@const to = nodeById.get(e.to)}
@@ -457,53 +619,44 @@
 							     contract is two services inside one. The row prints
 							     whichever it is, and never both shapes at once. -->
 							<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-								<ServerSolid class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+								<!-- `ServerOutline`, not `ServerSolid` (round 6 review):
+								     a structural glyph naming "this row is about a
+								     service", not a status mark. -->
+								<ServerOutline class="h-4 w-4 shrink-0 text-fg-disabled" />
 								{#if e.writer === 'promotion'}
 									<a
-										href={`/apps/${to?.name ?? ''}`}
-										class="truncate text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+										href={href(`/apps/${to?.name ?? ''}`)}
+										class="t-card-title truncate text-fg hover:underline"
 										>{to?.name}</a
 									>
-									<span
-										class="environment-theme-scope inline-flex"
-										style={from && themeOf(from.env) ? getEnvironmentThemeStyle(themeOf(from.env)!) : undefined}
-										><Chip role="env" theme={from ? themeOf(from.env) : null} label={envLabel(from?.env ?? '')} wide /></span
-									>
-									<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-red-500 dark:text-red-400" />
-									<span
-										class="environment-theme-scope inline-flex"
-										style={to && themeOf(to.env) ? getEnvironmentThemeStyle(themeOf(to.env)!) : undefined}
-										><Chip role="env" theme={to ? themeOf(to.env) : null} label={envLabel(to?.env ?? '')} wide /></span
-									>
+									{@render envMark(from)}
+									<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-held" />
+									{@render envMark(to)}
 								{:else}
 									<a
-										href={`/apps/${from?.name ?? ''}`}
-										class="truncate text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+										href={href(`/apps/${from?.name ?? ''}`)}
+										class="t-card-title truncate text-fg hover:underline"
 										>{from?.name}</a
 									>
-									<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-red-500 dark:text-red-400" />
+									<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-held" />
 									<a
-										href={`/apps/${to?.name ?? ''}`}
-										class="truncate text-sm font-semibold text-gray-900 hover:underline dark:text-white"
+										href={href(`/apps/${to?.name ?? ''}`)}
+										class="t-card-title truncate text-fg hover:underline"
 										>{to?.name}</a
 									>
-									<span
-										class="environment-theme-scope inline-flex"
-										style={to && themeOf(to.env) ? getEnvironmentThemeStyle(themeOf(to.env)!) : undefined}
-										><Chip role="env" theme={to ? themeOf(to.env) : null} label={envLabel(to?.env ?? '')} wide /></span
-									>
+									{@render envMark(to)}
 								{/if}
 								{#if to}
 									<a
-										href={`/rollouts/${to.cluster}/${to.namespace}/${to.name}`}
-										class="nav-link ml-auto shrink-0 !py-0 text-blue-600 dark:text-blue-400"
+										href={href(`/rollouts/${to.cluster}/${to.namespace}/${to.name}`)}
+										class="nav-link ml-auto shrink-0 !py-0"
 										>Open ›</a
 									>
 								{/if}
 							</div>
-							<p class="t-dense mt-1 pl-6 text-gray-600 dark:text-gray-300">{consequence(e)}</p>
+							<p class="t-meta mt-1 pl-6 text-fg-muted">{consequence(e)}</p>
 							{#if to?.cluster}
-								<p class="t-micro mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-gray-500 dark:text-gray-400">
+								<p class="t-meta mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-fg-subtle">
 									<ClusterMark name={to.cluster} />
 								</p>
 							{/if}
@@ -511,6 +664,45 @@
 					{/each}
 				</ul>
 			</Card>
+					</div>
+				</div>
+			</div>
+		{:else}
+			{@render graphSection()}
 		{/if}
 	{/if}
 </div>
+
+<style>
+	/* ⭐ THE HELD LIST LEADS ON A PHONE, THE GRAPH LEADS AT ≥1024. (round 2
+	   review, 2026-10-08) `.rail-grid` (`app.css`) is a plain flex column
+	   below its own container-query breakpoint and a two-column grid at and
+	   above it — source order either way, with no opinion on WHICH child
+	   should lead. This page wants the opposite order on a phone (the held
+	   list needs a person right now; the graph is reference material) from
+	   the order at ≥1024 (the graph is the centrepiece, first and widest).
+	   `order` flips at the SAME step `.rail-grid` itself turns on, scoped
+	   to this page only — the shared shell's own default (source order, no
+	   `order` set) is untouched for every other caller.
+	   ⭐ 760 → 700 (design-rollout, 5f10ba7): `.rail-grid` itself moved to
+	   700px — measured, 1024 with the sidebar open gives the rail only
+	   729px of container width, under the old 760px step, so the grid
+	   stayed single-column there while this page's `order` still assumed
+	   the two-column width had already kicked in. A private copy of a
+	   shared breakpoint has exactly one job — stay the same number as the
+	   original — so this moves with it, not a value chosen independently. */
+	.dep-rail-main {
+		order: 2;
+	}
+	.dep-rail-side {
+		order: 1;
+	}
+	@container (min-width: 700px) {
+		.dep-rail-main {
+			order: 1;
+		}
+		.dep-rail-side {
+			order: 2;
+		}
+	}
+</style>

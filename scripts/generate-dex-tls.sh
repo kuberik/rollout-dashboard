@@ -18,6 +18,21 @@ fi
 DEX_HOST="${HOST_IP}.nip.io"
 echo "Using Dex hostname: ${DEX_HOST}"
 
+# Idempotent: keep the existing CA + server cert when they are complete, were
+# issued for this hostname and are valid for 30+ more days. Regenerating the CA
+# on every cluster setup left the first cluster of a multi-cluster setup trusting
+# a stale CA (hub kept the old CA after the spoke's setup rotated it).
+# FORCE_REGEN=1 rotates anyway; run sync-dex-ca.sh afterwards to propagate it.
+if [ "${FORCE_REGEN:-0}" != "1" ] \
+   && [ -f "${OUTPUT_DIR}/dex-ca.crt" ] && [ -f "${OUTPUT_DIR}/dex-ca.key" ] \
+   && [ -f "${OUTPUT_DIR}/dex-server.crt" ] && [ -f "${OUTPUT_DIR}/dex-server.key" ] \
+   && [ "$(cat "${OUTPUT_DIR}/dex-hostname.txt" 2>/dev/null)" = "${DEX_HOST}" ] \
+   && openssl x509 -in "${OUTPUT_DIR}/dex-server.crt" -noout -checkend 2592000 >/dev/null \
+   && openssl x509 -in "${OUTPUT_DIR}/dex-ca.crt" -noout -checkend 2592000 >/dev/null; then
+    echo "Dex TLS certificates already current for ${DEX_HOST}; keeping them"
+    exit 0
+fi
+
 # Save hostname for use in other scripts
 echo "${DEX_HOST}" > "${OUTPUT_DIR}/dex-hostname.txt"
 

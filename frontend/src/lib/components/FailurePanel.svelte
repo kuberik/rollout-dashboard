@@ -1,11 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { canHover } from '$lib/can-hover.svelte';
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
-	import { blur } from 'svelte/transition';
-	import { PlaySolid, ReplyOutline } from 'flowbite-svelte-icons';
-	import { Tooltip } from 'flowbite-svelte';
-	import AlertPanel from './AlertPanel.svelte';
+	import { PlaySolid, UndoOutline } from 'flowbite-svelte-icons';
+	import StatementBanner from './StatementBanner.svelte';
 	import ChangeVersionModal from './ChangeVersionModal.svelte';
 	import RetryTestsModal from './RetryTestsModal.svelte';
 	import RetryConfirmModal from './RetryConfirmModal.svelte';
@@ -16,8 +15,13 @@
 		retryConsequences,
 		retryTag
 	} from '$lib/view-models/deploy-risk';
+	import { checkFailure } from '$lib/view-models/health-witness';
+	import { historyEntrySince } from '$lib/view-models/event-age';
+	import { formatTimeAgoCompact } from '$lib/utils';
+	import { now } from '$lib/stores/time';
 
 	interface Props {
+		open?: boolean;
 		rollout: Rollout;
 		failedHCList: Array<{ name: string; namespace?: string; message?: string }>;
 		healthChecks: HealthCheck[];
@@ -25,6 +29,10 @@
 		stalledKruiseRollout: KruiseRollout | null | undefined;
 		canUpdate: boolean;
 		canModify: boolean;
+		/** r34 tabs-nb r3 (#6): the permissions answer is still pending. The caller passes `canUpdate`/
+		 *  `canModify` as true so the action row is drawn at its final height from the first paint
+		 *  (it grew 56px, 144 -> 200, when the answer landed); both buttons stay disabled until then. */
+		actionsPending?: boolean;
 		isDashboardManagingWantedVersion: boolean;
 		cluster?: string;
 		/**
@@ -40,20 +48,53 @@
 	}
 
 	let {
-		rollout,
-		failedHCList,
-		healthChecks,
-		failedStepTests,
-		stalledKruiseRollout,
+		rollout: liveRollout,
+		failedHCList: liveFailedHCList,
+		healthChecks: liveHealthChecks,
+		failedStepTests: liveFailedStepTests,
+		stalledKruiseRollout: liveStalledKruiseRollout,
 		canUpdate,
 		canModify,
+		actionsPending = false,
 		isDashboardManagingWantedVersion,
 		cluster,
 		environmentName = null,
 		onRetry,
 		onSuccess = () => {},
-		onError = () => {}
+		onError = () => {},
+		/** See `AlertPanel`'s `open`: the panel collapses out instead of vanishing. */
+		open = true
 	}: Props = $props();
+
+	/**
+	 * THE FAILURE IT WAS DESCRIBING, HELD WHILE IT LEAVES. `AlertPanel` freezes
+	 * its own props on the way out, but this panel's message and record are
+	 * snippets that read these inputs live, so a Retry would re-render them
+	 * from the cleared state (44px shorter) one frame before the collapse
+	 * began. The data is frozen here instead, at its last open value.
+	 */
+	type Frozen = Pick<
+		Props,
+		'rollout' | 'failedHCList' | 'healthChecks' | 'failedStepTests' | 'stalledKruiseRollout'
+	>;
+	const live = $derived<Frozen>({
+		rollout: liveRollout,
+		failedHCList: liveFailedHCList,
+		healthChecks: liveHealthChecks,
+		failedStepTests: liveFailedStepTests,
+		stalledKruiseRollout: liveStalledKruiseRollout
+	});
+	// svelte-ignore state_referenced_locally
+	let held = $state.raw<Frozen>(live);
+	$effect.pre(() => {
+		const next = live;
+		if (open) held = next;
+	});
+	const rollout = $derived(held.rollout);
+	const failedHCList = $derived(held.failedHCList);
+	const healthChecks = $derived(held.healthChecks);
+	const failedStepTests = $derived(held.failedStepTests);
+	const stalledKruiseRollout = $derived(held.stalledKruiseRollout);
 
 	let showRetryModal = $state(false);
 	let retryTests = $state<Array<{ test: RolloutTest; kruiseRolloutName: string }>>([]);
@@ -168,6 +209,37 @@
 		rollbackExplanation = ''; // the operator writes the reason; nothing is pre-asserted
 		showRollbackModal = true;
 	}
+	// One sentence for the banner body: the failing check and its first fact.
+	const summaryLine = $derived.by(() => {
+		if (failedHCList.length === 1) {
+			const first = (failedHCList[0].message || '').split(/;\s*/).filter(Boolean)[0];
+			return `${findDisplayName(failedHCList[0])}${first ? `: ${first}` : ' is failing'}`;
+		}
+		if (failedHCList.length > 1)
+			return `${failedHCList.length} health checks failing: ${failedHCList
+				.slice(0, 3)
+				.map((hc) => findDisplayName(hc))
+				.join(', ')}${failedHCList.length > 3 ? '…' : ''}`;
+		const msg = (rollout.status?.history?.[0] as any)?.bakeStatusMessage as string | undefined;
+		return msg ? msg.split(/;\s*/).filter(Boolean)[0] : 'An error occurred during deployment.';
+	});
+
+	/**
+	 * ⭐ shared/age-lag-total: ONE AGE PER EVENT. This banner used to state no
+	 * instant at all — a reader had no way to tell "this just happened" from
+	 * "this has been failing since yesterday" except by opening the history
+	 * tab. `checkFailure(rollout)?.since` (the `DeploymentBlocked` condition's
+	 * own transition) when a health check is what is holding the rollout —
+	 * the deploy itself can have succeeded well before that — else
+	 * `historyEntrySince` (`bakeEndTime ?? timestamp`), the SAME instant
+	 * `event-age.ts`'s `eventAge(card, 'failed')` reads for every OTHER
+	 * failed-card surface (FleetRow, BlockedRow/NeedsYouCard, PromotionMap).
+	 */
+	const failureSince = $derived(
+		checkFailure(rollout)?.since ?? historyEntrySince(rollout.status?.history?.[0])
+	);
+	const failureAgo = $derived(failureSince ? formatTimeAgoCompact(failureSince, $now) : null);
+	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
 </script>
 
 <!--
@@ -196,93 +268,46 @@
 	line at 1440, five lines at 390. That is the identical defect `AlertPanel`
 	documents at 87px on `/versions`, and it was still live here.
 -->
-<AlertPanel
-	severity="error"
-	title="Deployment Failed"
-	footnote="Automated deployments are paused until this is resolved."
+<!-- ⭐ AD ROUND 1 (2026-10-08): ONE LINE OF MESSAGE, THE DETAIL IN THE
+     DISCLOSURE. The banner is the page's one statement of the failure:
+     headline + the failing check in one sentence + actions inline. The
+     per-check bullets and the "deployments are paused" note live under
+     `Details`; the `N issues` chip is gone (the sentence already counts). -->
+<StatementBanner
+	{open}
+	class="mb-4"
+	severity="failed"
+	title="Deployment failed"
+	message={failureAgo ? `${summaryLine} · ${failureAgo} ago` : summaryLine}
+	footnoteLabel="Details"
 	pulse
+	primary={rollbackShown ? { label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback } : undefined}
+	secondary={canUpdate ? [{ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: handleRetry }] : []}
+	tooltips={{
+		...(canUpdate ? { 'failure-retry-btn': 'Reset health checks and failed tests, then retry the deployment.' } : {}),
+		...(rollbackShown ? { 'failure-rollback-btn': 'Revert to the previous version.' + (!isDashboardManagingWantedVersion ? ' Disabled: wantedVersion managed externally.' : '') } : {})
+	}}
+	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? "Another controller owns this rollout's wanted version, so the dashboard cannot pin it." : undefined}
 >
-	{#snippet extra()}
+	{#snippet footnoteBody()}
 		{#if failedHCList.length > 0}
-			<span class="inline-flex items-center rounded-full bg-red-200/80 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-300/60 dark:bg-red-800/60 dark:text-red-300 dark:ring-red-700/60">
-				{failedHCList.length} issue{failedHCList.length > 1 ? 's' : ''}
-			</span>
-		{/if}
-	{/snippet}
-
-	{#snippet messageBody()}
-		{#if failedHCList.length === 1}
-			{@const hcMsg = failedHCList[0].message || ''}
-			{@const hcParts = hcMsg.split(/;\s*/).filter(Boolean)}
-			<p class="break-words font-medium">{findDisplayName(failedHCList[0])}</p>
-			{#if hcParts.length > 1}
-				<ul class="mt-0.5 list-disc space-y-0.5 pl-4">
-					{#each hcParts as part}
-						<li class="break-words">{part}</li>
-					{/each}
-				</ul>
-			{:else if hcMsg}
-				<p class="break-words">{hcMsg}</p>
-			{/if}
-		{:else if failedHCList.length > 1}
 			<ul class="list-disc space-y-0.5 pl-4">
 				{#each failedHCList.slice(0, 6) as hc}
-					<li class="break-words">{findDisplayName(hc)}{hc.message ? ` — ${hc.message}` : ''}</li>
+					{@const parts = (hc.message || '').split(/;\s*/).filter(Boolean)}
+					<li class="break-words">
+						<span class="text-fg">{findDisplayName(hc)}</span>{#if parts.length} — {parts.join('; ')}{/if}
+					</li>
 				{/each}
 				{#if failedHCList.length > 6}
 					<li class="opacity-60">+{failedHCList.length - 6} more</li>
 				{/if}
 			</ul>
 		{:else if (rollout.status?.history?.[0] as any)?.bakeStatusMessage}
-			{@const msg = (rollout.status?.history?.[0] as any).bakeStatusMessage as string}
-			{@const parts = msg.split(/;\s*/).filter(Boolean)}
-			{#if parts.length > 1}
-				<ul class="list-disc space-y-0.5 pl-4">
-					{#each parts as part}
-						<li class="break-words">{part}</li>
-					{/each}
-				</ul>
-			{:else}
-				<p class="break-words">{msg}</p>
-			{/if}
-		{:else}
-			<p>An error occurred during deployment.</p>
+			<p class="break-words">{(rollout.status?.history?.[0] as any).bakeStatusMessage}</p>
 		{/if}
+		<p class="mt-1">Automated deployments are held until this is resolved.</p>
 	{/snippet}
-
-	{#snippet actions()}
-		{#if canUpdate}
-			<button
-				id="failure-retry-btn"
-				class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-red-800/10 px-4 py-2 text-sm font-medium text-red-900 ring-1 ring-red-400/30 transition hover:bg-red-800/15 hover:ring-red-400/50 active:bg-red-800/20 dark:bg-white/10 dark:text-white/90 dark:ring-white/20 dark:hover:bg-white/15 dark:hover:ring-white/30 dark:active:bg-white/20"
-				onclick={handleRetry}
-			>
-				<PlaySolid class="h-3.5 w-3.5" />
-				Retry
-			</button>
-			<Tooltip triggeredBy="#failure-retry-btn" placement="bottom" class="max-w-xs" transition={blur} transitionParams={{ duration: 300 }}>
-				Reset health checks and failed tests, then retry the deployment.
-			</Tooltip>
-		{/if}
-		{#if rollout?.status?.history && rollout.status.history.length > 1 && canModify}
-			<button
-				id="failure-rollback-btn"
-				class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-red-900 dark:hover:bg-red-50"
-				disabled={!isDashboardManagingWantedVersion}
-				onclick={handleRollback}
-			>
-				<ReplyOutline class="h-3.5 w-3.5" />
-				Rollback
-			</button>
-			<Tooltip triggeredBy="#failure-rollback-btn" placement="bottom" class="max-w-xs" transition={blur} transitionParams={{ duration: 300 }}>
-				Revert to the previous version.
-				{#if !isDashboardManagingWantedVersion}
-					<br /><span class="text-yellow-300">Disabled: wantedVersion managed externally.</span>
-				{/if}
-			</Tooltip>
-		{/if}
-	{/snippet}
-</AlertPanel>
+</StatementBanner>
 
 <RetryConfirmModal
 	bind:open={showRetryConfirm}

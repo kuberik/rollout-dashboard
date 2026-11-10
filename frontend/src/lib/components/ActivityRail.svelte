@@ -1,23 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { placeKeyOf } from '$lib/view-models/sites-waves';
 	import { displayTimeZone } from '$lib/timezone.svelte';
-	import { startOfDayMs, zonedYMD } from '$lib/display-time';
-	import {
-		getDisplayVersion,
-		formatTimeAgoCompact,
-		formatTimeAgo,
-		formatDate,
-		shortenVersion
-	} from '$lib/utils';
-	import { changeBuildPath, repoKeyFromSource } from '$lib/version-utils';
-	import { rankVerdictsByRollout, rankLabel, rankRole, rankTitle } from '$lib/view-models/env-rank';
-	import {
-		CalendarMonthSolid,
-		ClockSolid,
-		UndoOutline,
-		ChevronRightOutline
-	} from 'flowbite-svelte-icons';
+	import { startOfDayMs, zonedYMD, formatClockTime } from '$lib/display-time';
+	import { getDisplayVersion } from '$lib/utils';
 	import {
 		getRolloutEnvironmentTheme,
 		getEnvironmentThemeStyle,
@@ -25,10 +12,16 @@
 	} from '$lib/environment-theme';
 	import { rolloutPath, sourceClusterName } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
-	import Chip from '$lib/components/Chip.svelte';
+	import ActivityDayHeader from './ActivityDayHeader.svelte';
+	import ActivitySentence from '$lib/components/ActivitySentence.svelte';
+	import { actorFrom, type Actor } from '$lib/actor';
+	import type { ActivityKind } from '$lib/view-models/activity-verb';
+	import { activityKindOf } from '$lib/view-models/activity-kind';
+	import { getEnvironmentRank } from '$lib/env-order';
 	import type { Rollout, Environment } from '../../types';
-	import { BAKE_WORD } from '$lib/bake-status';
+	import { changeBuildPath, repoKeyFromSource } from '$lib/version-utils';
 	import { deployActs, type DeployAct } from '$lib/history-marks';
+	import { historyEntrySince } from '$lib/view-models/event-age';
 
 	/** The one member of `DeployAct` this rail ever attaches to a row. */
 	type RollbackAct = Extract<DeployAct, { kind: 'rollback' }>;
@@ -43,7 +36,8 @@
 		showEnv = true,
 		chrome = true,
 		collapseAfter = null,
-		maxEntries = null
+		maxEntries = null,
+		avatarFor = () => undefined
 	}: {
 		rollouts: Rollout[];
 		environments?: Environment[];
@@ -58,18 +52,17 @@
 		 */
 		showEnv?: boolean;
 		/**
-		 * FALSE WHEN THE CALLER IS ALREADY A `Card`.
-		 *
-		 * This component draws its own `t-label` caption above its own bordered
-		 * box — the "caption floating over a box" shape that
-		 * `COMPOSITION-GRAMMAR.md` identifies as the one every rejected page is
-		 * built from, against a reference page where every region is a TITLED
-		 * CARD with an icon and a right-aligned rollup. `/apps/[name]` wraps it
-		 * in `Card` now; passing `chrome={false}` drops the caption and the box
-		 * so the two do not nest.
-		 *
-		 * DEFAULT TRUE, so `/envs/[name]` — the other call site, owned by
-		 * another pass — renders byte-identically.
+		 * ⚠️ DEPRECATED, KEPT AS A NO-OP (D-6, 2026-10-08 polish pass). This used
+		 * to gate a PRIVATE drawing of the exact region `Card` already owns —
+		 * this component's own `t-label` caption floating above its own
+		 * bordered box, the "caption over a box" shape
+		 * `COMPOSITION-GRAMMAR.md` names as what every rejected page is built
+		 * from. Every call site (`/`, `/apps`, `/apps/<name>`, `/envs/<name>`,
+		 * `/namespaces/<name>`) now wraps this component in a real `Card` and
+		 * passes `chrome={false}`, so the private header/box had no caller
+		 * left — removed rather than migrated. The prop stays, accepted and
+		 * ignored, so an un-migrated `chrome={false}` passed from another
+		 * lane's file does not need a matching edit here.
 		 */
 		chrome?: boolean;
 		/**
@@ -105,6 +98,8 @@
 		 * `effectiveCapEntries` below.
 		 */
 		maxEntries?: number | null;
+		/** The signed-in account's picture, for its own rows (`actorFrom`'s `src`). */
+		avatarFor?: (login: string) => string | undefined;
 	} = $props();
 
 	type ActivityEntry = {
@@ -129,8 +124,10 @@
 		source: string | null;
 		/**
 		 * ⭐ THIS ROW IS THE ROLLOUT'S CURRENT DEPLOY — its newest history
-		 * entry, i.e. what is running in that place RIGHT NOW. It is the only
-		 * row a rank may be attached to. See `ranks` below.
+		 * entry, i.e. what is running in that place RIGHT NOW. Still used to
+		 * weight the name (the live row leads); no rank is attached to it
+		 * any more — see the design-language course-correction note on
+		 * `versionSnippet` below.
 		 */
 		isLive: boolean;
 		rollout: Rollout;
@@ -146,10 +143,15 @@
 		 * History tab already does.
 		 */
 		rollbackAct: RollbackAct | null;
+		/** Who did it (a person, CI, or the controller): the sentence's subject. */
+		actor: Actor;
+		/** What it was, in the one vocabulary (`activityKindOf`). */
+		kind: ActivityKind;
 	};
 
 	/**
-	 * ⭐ THE RELATIVE VERSION, AND THE FENCE AROUND IT. (2026-09-01)
+	 * ⭐ THE RELATIVE VERSION, AND THE FENCE AROUND IT. (2026-09-01, amended
+	 * 2026-10-08)
 	 *
 	 * The rail printed ten rows of `<env> <old> → <new> <time>` with no
 	 * relative signal at all, against `DESIGN-INTENT.md`'s standing rule that
@@ -171,17 +173,16 @@
 	 * adjacent rows` defect `env-rank.ts` was written to end, reintroduced one
 	 * level down and in a prettier font.
 	 *
-	 * WHAT IS TRUE, AND IS THEREFORE WHAT THE RAIL PRINTS: exactly one row per
-	 * rollout is the deploy that is STILL LIVE. That row is the present tense,
-	 * so the shared verdict applies to it unchanged — same `rankVerdictsByRollout`,
-	 * same words, same joined `[verdict][sha]` chip `/` and `/rollouts` draw.
-	 * Every row below it keeps the plain `old → new` pair and carries no rank,
-	 * which also means the CHIP ITSELF is the mark that says "this is what is
-	 * running" — no second encoding, no legend.
+	 * ⭐ DESIGN-LANGUAGE COURSE CORRECTION (2026-10-08) — AND NOW THE LIVE
+	 * ROW'S RANK CHIP IS GONE TOO. A row already spends its two allowed
+	 * emphases on the NAME and ONE state word; a joined rank chip on the
+	 * live row was a third. `rankVerdictsByRollout` and its per-row lookup
+	 * are no longer read here at all — `versionSnippet` below reads plain
+	 * `old → new` text on every row, live or not, which also means "this is
+	 * what is running" is carried by the row's OWN position (sorted newest
+	 * first, one row per rollout) rather than a second encoding.
 	 */
-	const ranks = $derived(rankVerdictsByRollout(rollouts, environments));
-
-	const entries = $derived.by<ActivityEntry[]>(() => {
+	const allEntries = $derived.by<ActivityEntry[]>(() => {
 		const list: ActivityEntry[] = [];
 		for (const r of rollouts) {
 			const history = r.status?.history ?? [];
@@ -191,7 +192,7 @@
 					e.metadata?.namespace === r.metadata?.namespace &&
 					e.spec?.rolloutRef?.name === r.metadata?.name
 			);
-			const envName = env?.spec?.environment ?? '';
+			const envName = env ? placeKeyOf(env, environments) : '';
 			const theme = env ? getRolloutEnvironmentTheme(r, env) : getRolloutEnvironmentTheme(r);
 			// Index-aligned with `history` — see `RollbackAct` above.
 			const acts = deployActs(r);
@@ -210,6 +211,10 @@
 					}
 				}
 				const bs = h.bakeStatus || 'None';
+				const actor = actorFrom(
+					h.triggeredBy,
+					h.triggeredBy?.name ? avatarFor(h.triggeredBy.name) : undefined
+				);
 				// The FIRST entry with a timestamp is the current deploy. Not
 				// `i === 0`: the loop skips entries the controller wrote with no
 				// timestamp, and one of those at the head would silently move
@@ -226,7 +231,16 @@
 					revision: h.version?.revision ?? null,
 					previousVersion: prev,
 					bakeStatus: bs,
-					timestamp: h.timestamp,
+					// ⭐ shared/age-lag-total: ONE AGE PER EVENT. A Failed row used to
+					// show the deploy's own START (`h.timestamp`) — the third of the
+					// four disagreeing instants the coordinator's blind read found
+					// (10:26 here vs the failure's own bakeEndTime everywhere else).
+					// `historyEntrySince` is `bakeEndTime ?? timestamp`, the SAME
+					// formula `pr-pipeline.ts`'s `failed` cell and `event-age.ts`'s
+					// `eventAge('failed', …)` both read — every other status keeps
+					// its own start unchanged (bakeEndTime is only ever read for a
+					// concluded, failed attempt).
+					timestamp: bs === 'Failed' ? historyEntrySince(h) ?? h.timestamp : h.timestamp,
 					href: rolloutPath(
 						sourceClusterName(r) || localClusterName,
 						r.metadata?.namespace ?? '',
@@ -236,13 +250,67 @@
 					source: r.status?.source ?? null,
 					isLive,
 					rollout: r,
-					rollbackAct
+					rollbackAct,
+					actor,
+					kind: activityKindOf({
+						bakeStatus: bs,
+						bakeStatusMessage: h.bakeStatusMessage,
+						isRollback: !!rollbackAct,
+						actorKind: actor.kind,
+						envRank: getEnvironmentRank(envName),
+						firstEnvRank: Math.min(firstRank.get(r.metadata?.name ?? '') ?? Infinity, getEnvironmentRank(envName))
+					})
 				});
 			}
 		}
 		list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-		return list.slice(0, limit);
+		return list;
 	});
+	const entries = $derived(allEntries.slice(0, limit));
+
+	/**
+	 * Each app's FIRST environment (its lowest rank across the rollouts given):
+	 * the controller acting there deployed; acting anywhere later it promoted.
+	 */
+	const firstRank = $derived.by(() => {
+		// Over EVERY Environment of the app (not only the rollouts this rail was
+		// handed — an env page's rail holds one stage, and its controller
+		// deploys there are still promotions).
+		const m = new Map<string, number>();
+		const put = (name: string, env: string) => m.set(name, Math.min(m.get(name) ?? Infinity, getEnvironmentRank(env)));
+		for (const e of environments) {
+			const name = e.spec?.rolloutRef?.name;
+			if (name && e.spec?.environment) put(name, e.spec.environment);
+		}
+		for (const r of rollouts) {
+			const name = r.metadata?.name ?? '';
+			if (!m.has(name)) m.set(name, Infinity);
+		}
+		return m;
+	});
+
+	/** Per-day totals over the whole history given (not just the rows shown). */
+	const dayTotals = $derived.by(() => {
+		// `open` = failures whose rollout is STILL failed (its newest history
+		// entry is the failure) — the only ones drawn in danger ink. A resolved
+		// past failure still counts, in neutral ink (coordinator ruling,
+		// 2026-10-10; the same predicate DeployBars' `resolved` uses).
+		const m = new Map<string, { n: number; failed: number; open: number }>();
+		for (const a of allEntries) {
+			const k = dayKey(a.timestamp);
+			const t = m.get(k) ?? { n: 0, failed: 0, open: 0 };
+			t.n++;
+			if (a.kind === 'failed') {
+				t.failed++;
+				// Open only if THIS failure is the rollout's current state (its newest
+				// entry): an older failure stays resolved even when a newer one failed.
+				if (a.isLive) t.open++;
+			}
+			m.set(k, t);
+		}
+		return m;
+	});
+	const busiestDay = $derived(Math.max(1, ...[...dayTotals.values()].map((t) => t.n)));
 
 	type DayGroup = { label: string; key: string; entries: ActivityEntry[] };
 	function dayKey(ts: string): string {
@@ -259,13 +327,14 @@
 		if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long', timeZone });
 		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone });
 	}
+	// D-10/D-17 (2026-10-08, "system" lane): was `toLocaleTimeString(undefined,
+	// {hour,minute})` with no `hour12: false` — locale-default 12h, which is
+	// why this rail printed `07:12 AM` beside the History tab's 24h `Oct 8,
+	// 06:49` for the same field, and why the two-letter suffix wrapped onto
+	// its own line at 390 (D-10). `display-time.ts`'s `formatClockTime` is
+	// the one 24h clock formatter now; this call site inherits it.
 	function hourLabel(ts: string): string {
-		const d = new Date(ts);
-		return d.toLocaleTimeString(undefined, {
-			hour: '2-digit',
-			minute: '2-digit',
-			timeZone: displayTimeZone()
-		});
+		return formatClockTime(ts);
 	}
 
 	/**
@@ -374,22 +443,6 @@
 	// used to carry a lighter green, a SECOND green in a product allowed
 	// exactly one; red/yellow/blue had the same drift. Status hue is owned by
 	// the glyph scale, so the dots read from it rather than near it.
-	const STATUS_DOT: Record<string, string> = {
-		Succeeded: 'bg-green-700 dark:bg-green-400',
-		Failed: 'bg-red-700 dark:bg-red-400',
-		InProgress: 'bg-yellow-700 dark:bg-yellow-400',
-		Deploying: 'bg-blue-700 dark:bg-blue-400',
-		Cancelled: 'bg-gray-500 dark:bg-gray-400',
-		None: 'bg-gray-300 dark:bg-gray-600'
-	};
-	const STATUS_TEXT: Record<string, string> = {
-		Succeeded: 'text-green-700 dark:text-green-400',
-		Failed: 'text-red-700 dark:text-red-400',
-		InProgress: 'text-yellow-700 dark:text-yellow-400',
-		Deploying: 'text-blue-700 dark:text-blue-400',
-		Cancelled: 'text-gray-500 dark:text-gray-400',
-		None: 'text-gray-500 dark:text-gray-400'
-	};
 	/**
 	 * ⛔ THE RAIL SPEAKS `/activity`'S VOCABULARY NOW, NOT ITS OWN. (2026-08-30)
 	 *
@@ -409,7 +462,6 @@
 	 * `Succeeded` is never reached — the row below is guarded on it, because
 	 * the green dot has already said so.
 	 */
-	const STATUS_LABEL: Record<string, string> = BAKE_WORD;
 	function isRunning(s: string) {
 		return s === 'InProgress' || s === 'Deploying';
 	}
@@ -430,94 +482,29 @@
      it. It is a plain flow item now, joining the sentence right after the
      status word / rollback mark, exactly where `/activity`'s own version
      pair sits in its row. -->
-{#snippet versionSnippet(a: ActivityEntry)}
-	{@const rank = ranks.get(a.rollout) ?? { kind: 'unknown' as const }}
-	<!--
-		⛔ `shrink-0` IS GONE, AND THE PAIR WRAPS. IT WAS CUTTING THE NEW BUILD
-		IN HALF ON EVERY RAIL IN THE PRODUCT. (2026-09-10)
 
-		This span held `[old] → [NEWEST new]` as ONE `shrink-0` flex item, so
-		flexbox never asked it to give and it could not break internally
-		either. The rail is a 320px column: measured, the item wanted 377px in
-		a 262px row and overflowed the panel by 115px — the NEW build, the one
-		fact the row exists to state, rendered as `1.246.0` and then stopped at
-		the card's edge. Reproduced at 390/768/1280/1920 on `/`, `/apps`,
-		`/apps/[name]` and `/envs/[name]`, worst 129px, and at 390 it was one
-		of the two things giving `/` a horizontal scrollbar.
 
-		The row above already wraps (`flex-wrap` — see its own note); it simply
-		had one child that refused to participate. Wrapping HERE lets the old
-		build keep line 1 and the joined rank chip take line 2, which is the
-		break the reader wants anyway: `.chip-joined` is already
-		`max-width: 100%` over a `.chip-value` that clips, so on a rail too
-		narrow even for that the sha truncates inside its own box — with the
-		full string on the chip's `valueTitle` — instead of leaving the panel.
-	-->
-	<span class="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1">
-		{#if a.previousVersion}
-			<span class="t-code-sm min-w-0 truncate text-gray-500 line-through dark:text-gray-400"
-				>{a.previousVersion}</span
-			>
-			<span class="t-micro shrink-0 text-gray-500 dark:text-gray-400">→</span>
-		{/if}
-		{#if a.version && a.isLive}
-			<Chip
-				role={rankRole(rank)}
-				label={rankLabel(rank)}
-				title={rankTitle(rank, a.displayName)}
-				value={shortenVersion(a.version)}
-				valueHref={changeBuildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
-				valueTitle={a.version}
-				class="min-w-0"
-			/>
-		{:else if a.version}
-			<a
-				href={changeBuildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version)}
-				class="t-code-sm text-gray-700 hover:underline dark:text-gray-300">{a.version}</a
-			>
-		{/if}
-	</span>
-{/snippet}
 
-<!-- ⭐ THE ROLLBACK MARK'S ICON. (DESIGN PASS 2) `Chip`'s `icon` prop takes a
-     snippet, not a component reference — this replaces the private
-     `<UndoOutline>` literal that used to sit inside the filled pill below.
-     Same glyph; only the box around it changed. -->
-{#snippet rollbackIcon()}
-	<UndoOutline class="mr-[3px] h-[11px] w-[11px] shrink-0" aria-hidden="true" />
-{/snippet}
 
 <section>
-	{#if chrome}
-		<div class="mb-3 flex items-baseline justify-between">
-			<h2 class="t-label text-gray-500 dark:text-gray-400">Recent activity</h2>
-			<!-- `.nav-link`, NOT a private `t-micro` spelling. (2026-09-02) This
-			     was `view all ›` at 12px/400 with the `›` glyph — a control that
-			     only changes what you are looking at, wearing a treatment none of
-			     its siblings (`/`'s rail, and every route-level `rollup` snippet
-			     wrapping this component with `chrome={false}`) use any more. Same
-			     wording and glyph `HomeRail` settled on: "View all activity ›",
-			     the SVG chevron rather than the character, `.nav-link`'s own
-			     14px/500. -->
-			<a href={activityHref} class="nav-link" aria-label="View all recent activity">
-				View all activity <ChevronRightOutline class="h-3.5 w-3.5" />
-			</a>
-		</div>
-	{/if}
-	<div
-		class={chrome
-			? 'overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800'
-			: ''}
-	>
+	<!-- ⭐ D-6 (2026-10-08, polish pass). The header+box this used to draw for
+	     itself under `{#if chrome}` is deleted, not migrated: every caller
+	     already wraps this component in `Card` and supplies `Card`'s own
+	     icon, title and `rollup` snippet (`.nav-link`, the same control this
+	     block used to hand-draw). `chrome`/`activityHref` stay as accepted,
+	     ignored props — see the doc comment above — so this is content-only
+	     from here down, same reference `Card`'s body slot already is on
+	     `/apps/[name]`'s Recent activity card. -->
+	<div>
 		{#if entries.length === 0}
 			<div class="flex flex-col items-center px-4 py-10 text-center">
 				<div
-					class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700"
+					class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-subtle"
 				>
-					<span class="block h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-600"></span>
+					<span class="block h-2 w-2 rounded-full bg-line-strong"></span>
 				</div>
-				<p class="t-dense text-gray-700 dark:text-gray-300">No activity yet</p>
-				<p class="t-micro mt-1 text-gray-500 dark:text-gray-400">
+				<p class="t-body text-fg-muted">No activity yet</p>
+				<p class="t-meta mt-1 text-fg-subtle">
 					Deployments will appear here as a timeline.
 				</p>
 			</div>
@@ -525,190 +512,46 @@
 			<div class="p-4">
 				{#each byDay as group, gi}
 					{@const roll = dayRollup(group.entries)}
+					{@const t = dayTotals.get(group.key) ?? { n: roll.count, failed: roll.failed, open: roll.failed }}
 					<div class={gi > 0 ? 'mt-5' : ''}>
 						<!-- THE GROUP HEADER IS A HEADER: an icon, the label, and a
 						     right-aligned rollup. `COMPOSITION-GRAMMAR.md` §1 and §3 — the
 						     page the human calls beautiful carries 115 icons and this rail
 						     carried none. The clock/calendar pair is the one `/activity`
 						     already spends on the same distinction. -->
-						<div class="mb-3 flex items-center gap-2">
-							{#if group.label === 'Today'}
-								<ClockSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" />
-							{:else}
-								<CalendarMonthSolid class="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-gray-400" />
-							{/if}
-							<span class="t-label text-gray-500 dark:text-gray-400">{group.label}</span>
-							<span
-								class="h-px flex-1 bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-700"
-							></span>
-							{#if roll.failed > 0}
-								<span class="t-micro text-red-700 dark:text-red-400">{roll.failed} failed</span>
-								<span class="t-micro text-gray-500 dark:text-gray-400">·</span>
-							{/if}
-							<span class="t-code-sm text-gray-500 dark:text-gray-400">{roll.count}</span>
-						</div>
-						<ol class="relative">
-							<span
-								class="absolute top-1.5 bottom-1.5 left-[7px] w-px bg-gray-200 dark:bg-gray-700"
-								aria-hidden="true"
-							></span>
+						<!-- The day: its label, ONE single-fill volume bar (share of the
+						     busiest day shown) and "N deploys · M failed" — failures in
+						     words and danger ink, never a red segment, omitted at 0. -->
+						<ActivityDayHeader label={group.label} count={t.n} busiest={busiestDay} failed={t.failed} open={t.open} />
+						<!-- ⭐ ONE ACTIVITY ROW PRODUCT-WIDE (squad-fleet, AD round 0 #2 /
+						     round 2 #4): every rail renders the shared sentence —
+						     avatar · actor verb app · env · old → new · time — never its
+						     own dialect. A page scoped to one app passes
+						     showAppName={false} (the app is implied); showEnv={false}
+						     drops the env chip on a page scoped to one environment.
+						     Consecutive rows by the same actor collapse to the avatar. -->
+						<ol class="flex flex-col gap-3">
 							{#each group.entries as a, ai}
-								{@const isLast = ai === group.entries.length - 1}
-								<li
-									class="environment-theme-scope relative pl-6 {isLast ? '' : 'pb-3'}"
-									style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}
-								>
-									<span
-										class="absolute top-1 left-0 inline-flex h-3.5 w-3.5 items-center justify-center"
-									>
-										{#if isRunning(a.bakeStatus)}
-											<span
-												class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 {STATUS_DOT[
-													a.bakeStatus
-												]}"
-											></span>
-										{/if}
-										<span
-											class="relative inline-flex h-2.5 w-2.5 rounded-full {STATUS_DOT[
-												a.bakeStatus
-											] ?? STATUS_DOT.None} ring-2 ring-white dark:ring-gray-800"
-										></span>
-									</span>
-									<!-- ⭐ `.tap-zone`, NOT AN OVERLAY ANCHOR. (2026-09-01) The
-									     row's destination used to be an `<a class="absolute
-									     inset-0">` with an `aria-label` and no text, which
-									     forced every other element in the row to carry a
-									     hand-written `pointer-events-none` or `z-10` and gave a
-									     keyboard user a focus ring around an empty rectangle.
-									     The mechanism in `app.css` puts the `::after` on the
-									     anchor that already owns the destination and raises the
-									     rest by rule. Zero added tab stops, no nested anchors. -->
-									<div
-										class="tap-zone -mx-2 block rounded px-2 py-1 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
-									>
-										<!-- ⭐ ONE SENTENCE, NOT TWO RIGID LINES — AND THE
-										     TIMESTAMP IS A FLOW ITEM, NOT A FLUSH-RIGHT ONE.
-										     (2026-09-03, UX-walk finding 2, re-check) TWO defects,
-										     found in sequence.
-
-										     FIRST: the env chip + name lived in a `justify-between`
-										     line 1 against the timestamp, and the status/rollback
-										     mark + version pair were UNCONDITIONALLY exiled to a
-										     line 2 below — so on a short name at 1024/1280 (the
-										     rail's own container-query width, not the viewport:
-										     this row also renders full-width on `/apps/[name]`'s
-										     and `/namespaces/[name]`'s main column, well past the
-										     320px rail this component was tuned for) line 1 opened
-										     a 636–677px hole between the name and the timestamp
-										     while line 2 sat underneath with its own content, unused
-										     width on both. Merging everything — chip, name, status
-										     word, version pair — into ONE flow fixed the TWO-LINE
-										     hole.
-
-										     SECOND, MEASURED AFTER THAT FIRST FIX: keeping the
-										     timestamp `justify-between`'d against that merged
-										     sentence still opened a 56–68% gap at 1024/1280,
-										     because `justify-between` spends ALL of a line's free
-										     space as the ONE gap between exactly two children,
-										     however short the sentence is — the defect just moved
-										     from "between two lines" to "between two ends of one
-										     line". `/activity`'s own row has NO flush-right child
-										     at all: its icon and timestamp are FIXED-WIDTH columns
-										     and the sentence is the only thing that fills the rest,
-										     so there is no second object for `justify-between` to
-										     throw space at. The timestamp is a plain flow item now
-										     — the LAST thing in the one `flex-wrap` sentence, an
-										     ordinary `gap-x-2` from whatever precedes it, never
-										     pinned to the row's far edge. Measured: max first-line
-										     gap 7.5% (640) / 0.9% (768) / 1.1% (1024) / 0.8% (1280)
-										     — well inside the ≤35% bar at every intermediate width.
-
-										     ⛔ THE 390 OVERLAP FIX SURVIVES BY CONSTRUCTION, NOT BY
-										     ACCIDENT. The defect `versionSnippet`'s own note used to
-										     record ("two `shrink-0` anchors, neither able to yield
-										     … a `justify-between` NEGATIVE gap") was two un-wrapped
-										     flush ends fighting over negative free space. There is
-										     no `justify-between` left on this row at all, and the
-										     one `flex-wrap` sentence simply wraps the timestamp
-										     under the rest when the line runs out of room — nothing
-										     to overlap. -->
-										<div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-											{#if showEnv && (a.envName || a.theme)}
-												<Chip
-													role="env"
-													theme={a.theme}
-													label={shortEnvLabel(a.theme) || a.envName || a.theme?.label || ''}
-													wide
-													class="shrink-0"
-												/>
-											{/if}
-											{#if showAppName}
-												<!-- THE LIVE ROW LEADS. It is the one row of the ten
-												     that describes the present, so it takes the
-												     weight; the rest are history and read as it. -->
-												<a
-													href={a.href}
-													class="tap-link t-dense min-w-0 truncate text-gray-900 dark:text-white {a.isLive
-														? 'font-semibold'
-														: ''}">{a.displayName}</a
-												>
-											{/if}
-											{#if a.bakeStatus !== 'Succeeded'}
-												<span class="t-micro {STATUS_TEXT[a.bakeStatus] ?? STATUS_TEXT.None}"
-													>{STATUS_LABEL[a.bakeStatus]}</span
-												>
-											{:else if a.rollbackAct}
-												<!-- THE WORD, AT REST — same `Chip` the History tab
-												     and `/activity` use (`history-marks.ts`'s own
-												     `word` and `sentence`, never a private copy of
-												     them), so a rollback cannot be spelled two ways
-												     between the surfaces that all read `deployActs`.
-
-												     ⛔ SUPERSEDED (DESIGN PASS 2). This used to be a
-												     hand-rolled `bg-gray-900` filled pill — the SAME
-												     fill the `7d` window and `All` status selectors
-												     use on `/activity`, so one page's loudest object
-												     meant both "you clicked this" and "this deploy
-												     went backwards". A domain STATUS may not share a
-												     fill with a SELECTION state. `role="count"` is
-												     the neutral, text-only tone `HELD`/`PINNED`/
-												     `1 BEHIND` already use product-wide — going
-												     backwards is still a fact about the deploy, not
-												     an alarm about it; only the geometry moved onto
-												     the shared `.chip` (20px, 4px radius) instead of
-												     a private `rounded-full` box. -->
-												<Chip
-													role="count"
-													label={a.rollbackAct.word}
-													icon={rollbackIcon}
-													title={a.rollbackAct.sentence}
-												/>
-											{/if}
-											{@render versionSnippet(a)}
-											{#if showAppName}
-												<span
-													class="t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
-													title={formatDate(a.timestamp)}
-												>
-													{hourLabel(a.timestamp)}
-												</span>
-											{:else}
-												<!-- NO NAME TO HANG THE DESTINATION ON. On a page
-												     already scoped to one app the row prints no app
-												     name, so the timestamp is the anchor — it is the
-												     one thing on the row that identifies THIS deploy,
-												     and the accessible name still says what opens. -->
-												<a
-													href={a.href}
-													aria-label="Open {a.displayName}"
-													class="tap-link t-code-sm shrink-0 text-gray-500 dark:text-gray-400"
-													title={formatDate(a.timestamp)}
-												>
-													{hourLabel(a.timestamp)}
-												</a>
-											{/if}
-										</div>
-									</div>
+								<li class="environment-theme-scope" style={a.theme ? getEnvironmentThemeStyle(a.theme) : undefined}>
+									<ActivitySentence
+										actor={a.actor}
+										kind={a.kind}
+										app={showAppName ? a.displayName : null}
+										appHref={showAppName ? a.href : null}
+										env={showEnv ? shortEnvLabel(a.theme) || a.envName || a.theme?.label || null : null}
+										theme={a.theme}
+										from={a.previousVersion}
+										to={a.version}
+										toHref={a.version ? changeBuildPath(repoKeyFromSource(a.source, a.rolloutName), a.revision, a.version) : null}
+										time={hourLabel(a.timestamp)}
+										href={a.href}
+										live={a.isLive}
+										compact
+										repeatActor={showAppName &&
+											ai > 0 &&
+											group.entries[ai - 1].actor.kind === a.actor.kind &&
+											group.entries[ai - 1].actor.name === a.actor.name}
+									/>
 								</li>
 							{/each}
 						</ol>
@@ -725,7 +568,7 @@
 				{#if collapseAfter !== null && hiddenCount > 0}
 					<button
 						type="button"
-						class="t-micro mt-4 text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+						class="t-meta mt-4 text-fg-subtle hover:text-fg-muted hover:underline"
 						onclick={() => (expanded = true)}>Show {hiddenCount} earlier deploys ›</button
 					>
 				{/if}

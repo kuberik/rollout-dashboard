@@ -19,6 +19,8 @@
  * guessing.
  */
 
+import { href } from './paths';
+
 export type FullPrRef = {
 	kind: 'full';
 	owner: string;
@@ -90,7 +92,7 @@ export function parsePrRef(input: string): PrRef | null {
  *  PR tabs open "for longer time", so this route 308s to `changePath`'s
  *  address forever and is never deleted. New call sites use `changePath`. */
 export function prPath(owner: string, repo: string, number: number): string {
-	return `/pr/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${number}`;
+	return href(`/pr/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${number}`);
 }
 
 /**
@@ -112,8 +114,8 @@ export function changePath(
 	ref: { number: number } | { sha: string }
 ): string {
 	const repoSlug = ['github.com', owner, repo].map(encodeURIComponent).join('/');
-	if ('number' in ref) return `/changes/${repoSlug}/pull/${ref.number}`;
-	return `/changes/${repoSlug}/${encodeURIComponent(ref.sha)}`;
+	if ('number' in ref) return href(`/changes/${repoSlug}/pull/${ref.number}`);
+	return href(`/changes/${repoSlug}/${encodeURIComponent(ref.sha)}`);
 }
 
 export type ChangeRef = { kind: 'pull'; number: number } | { kind: 'sha'; sha: string };
@@ -139,4 +141,19 @@ export function parseChangeSlug(segments: readonly string[]): { repoSlug: string
 	const repoSlug = segments.slice(0, -1).join('/');
 	if (!repoSlug) return null;
 	return { repoSlug, ref: { kind: 'sha', sha: last } };
+}
+
+/**
+ * What a change address names, from the URL alone (QA2 #12): the page needs this when the change itself cannot load (GitHub not
+ * connected), where it used to print the bare last segment ("1"). `title` = "<repo> #<n>" for a pull request, "<repo> <sha7>" for a
+ * commit; `repo` = "<owner>/<repo>"; `ref` = the short ref ("#1" / "a1b2c3d"). null when the slug does not name a repo.
+ */
+export function changeSlugTitle(segments: readonly string[]): { title: string; repo: string; ref: string } | null {
+	const p = parseChangeSlug(segments);
+	if (!p) return null;
+	const parts = p.repoSlug.split('/').filter(Boolean);
+	if (parts[0]?.includes('.')) parts.shift(); /* the host */
+	if (parts.length === 0) return null;
+	const ref = p.ref.kind === 'pull' ? `#${p.ref.number}` : p.ref.sha.slice(0, 7);
+	return { title: `${parts[parts.length - 1]} ${ref}`, repo: parts.join('/'), ref };
 }

@@ -23,7 +23,7 @@
  *   | writer              | gate lives on | keyed to        | opens when                       |
  *   |---------------------|---------------|-----------------|----------------------------------|
  *   | `Environment`       | downstream    | upstream env's  | upstream has the build, baked OK |
- *   |  (`status.rolloutGateRef`, `spec.relationship`)  rollout                                |
+ *   |  (`status.rolloutGateRef`; the order is tier/wave/leader, sites-waves.ts)  rollout       |
  *   | `RolloutDependency` | consumer      | provider rollout| provider serves the contract     |
  *   |  (`status.gateName`, `spec.providerRef`, `spec.contract`)                                |
  *
@@ -83,14 +83,28 @@
 import type { Rollout, Environment, RolloutDependency } from '../../types';
 import { SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 import { displayVersionForTag } from '../version-utils';
-import { promotionBlock } from './promotion';
+import { getDisplayVersion } from '$lib/utils';
+import {
+	buildTopology,
+	deployNameOf,
+	placeKeyOf,
+	siteNodeOf,
+	upstreamOf
+} from './sites-waves';
+import {
+	candidatesHeldByGate,
+	promotionBlock,
+	promotionCandidates,
+	type ReleaseRef
+} from './promotion';
 import {
 	blockingStory,
 	joinClauses,
 	withSchedules,
 	EMPTY_GATE_CONTEXT,
 	type GateClears,
-	type GateContext
+	type GateContext,
+	type ContractHold
 } from './blocking-story';
 import type { NetworkSchedules, NetworkScheduleObject } from '$lib/api/schedules';
 
@@ -162,6 +176,8 @@ export type GraphNode = {
 	holds: NodeHold[];
 };
 
+export type EdgeKind = 'tier' | 'wave' | 'follow';
+
 /** ONE GATE, between two rollouts. */
 export type GraphEdge = {
 	key: string;
@@ -179,12 +195,23 @@ export type GraphEdge = {
 	requiredVersion: string | null;
 	/** `contract` only — the version the provider has deployed here. */
 	providedVersion: string | null;
-	/** `promotion` only — `After` or `Parallel`. */
-	relType: 'After' | 'Parallel' | null;
+	/**
+	 * `promotion` only — how the version crosses this edge: `tier` (from the
+	 * previous tier), `wave` (from the previous wave of the same tier) or
+	 * `follow` (a follower takes its wave leader's pick). Null on a contract edge.
+	 */
+	edgeKind: EdgeKind | null;
 	/** The controller's own sentence, for a tooltip. Never rendered as prose. */
 	message: string;
 	/** True when this edge closes a cycle. Drawn, never hidden. */
 	cyclic: boolean;
+	/**
+	 * Display versions of the gated rollout's (`to`) builds this edge is
+	 * holding, newest first. Empty unless `state === 'blocked'`. Decided HERE,
+	 * once, so `/dependencies` and the rollout Dependencies tab cannot draw
+	 * one edge in two states — see the edge-state loop in `buildRolloutGraph`.
+	 */
+	held: string[];
 };
 
 export type RolloutGraph = {
@@ -255,6 +282,18 @@ function displayBuild(r: Rollout | undefined): string | null {
 }
 
 /** The one value a set agrees on, or null when it does not agree (or is empty). */
+/**
+ * Per contract edge: each held DISPLAY version -> the requirement its own
+ * build asks of the provider (`blockedReleases[].requiredVersion`). The
+ * edge's `requiredVersion` is the value the held builds AGREE on and is null
+ * when they disagree (4.43.0-43 needs ~2.9.0, 4.44.0-44 ^3.0.0), but a
+ * `ContractHold` is always about ONE build, so `contractHoldsIndex` reads
+ * that build's own requirement here (fix7 C: the Overview newer-builds row
+ * read "Needs payments-svc · has 2.4.1" with no range). A side table, not a
+ * `GraphEdge` field, so no other reader of the edge changes.
+ */
+const requiredByHeld = new WeakMap<GraphEdge, Map<string, string>>();
+
 function agreed<T>(values: (T | null | undefined)[]): T | null {
 	const set = new Set(values.filter((v) => v !== null && v !== undefined) as T[]);
 	return set.size === 1 ? [...set][0] : null;
@@ -332,6 +371,120 @@ export function withNetworkSchedules(
 	return ctx;
 }
 
+export type PromotionLink = {
+	down: Environment;
+	up: Environment;
+	gate: string;
+	edgeKind: EdgeKind;
+};
+
+/**
+ * EVERY PROMOTION EDGE THE ENVIRONMENTS DECLARE — `down` waits on `up`
+ * through `gate`. The one place that decides what counts as a promotion
+ * edge: `buildRolloutGraph` draws exactly these, and `hasDependencyLinks`
+ * (the rollout tab's `show:` predicate) counts exactly these, so the tab
+ * cannot appear for a rollout whose graph is empty or hide for one whose
+ * graph is not.
+ *
+ * The edges come from the app's TOPOLOGY (`sites-waves.ts`), not from a
+ * per-Environment field: a follower waits on its wave leader, a wave-N leader
+ * on every live site of the previous wave, a wave-1 leader on every live site
+ * of the nearest earlier tier. There is ONE EDGE PER VISIBLE UPSTREAM SITE —
+ * the old model could only point at one Environment per tier, which silently
+ * dropped every region of a multi-site tier but one.
+ *
+ * `Environment.spec.name` is the GitHub deployment name and it is
+ * REPO-GLOBAL: the same value identifies dev, staging and prod of one
+ * service line. It is therefore the join key (`deployNameOf`), and it must
+ * NOT be cluster-scoped — on the live fleet dev and staging are on the spoke
+ * and prod is on the hub, so a cluster-scoped join loses the staging → prod
+ * edge, which is the most important edge on the page.
+ */
+export function promotionLinks(environments: Environment[]): PromotionLink[] {
+	const topologies = buildTopology(environments);
+	const out: PromotionLink[] = [];
+	for (const e of environments) {
+		const gate = e.status?.rolloutGateRef?.name;
+		if (!e.metadata?.namespace || !e.spec?.rolloutRef?.name || !e.spec?.environment) continue;
+		if (!gate) continue;
+		const topo = topologies.get(deployNameOf(e));
+		const node = siteNodeOf(topo, e);
+		if (!topo || !node || node.env !== e) continue;
+		const ups = upstreamOf(topo, node);
+		const edgeKind: EdgeKind = !node.isLeader ? 'follow' : ups[0]?.tier === node.tier ? 'wave' : 'tier';
+		for (const u of ups) {
+			const up = u.env;
+			// ⛔ NO PHANTOM SOURCE. An upstream site this dashboard cannot see
+			// (another cluster's, known only from `status.wave.members`) has no
+			// far end to draw to. The gate still holds the rollout, so it falls
+			// through to the node's `holds` via `classifyGate`, which says
+			// `after staging` in words.
+			if (!up || !up.metadata?.namespace || !up.spec?.rolloutRef?.name) continue;
+			out.push({ down: e, up, gate, edgeKind });
+		}
+	}
+	return out;
+}
+
+/**
+ * ⭐ DOES THIS ROLLOUT HAVE A DEPENDENCIES TAB — i.e. at least one edge in
+ * the dependency graph, at either end. (2026-10-05.)
+ *
+ * The rollout layout used to ask `environment.status.environmentInfos` (a
+ * mirror the controller may leave empty) or a `RolloutDependency` naming the
+ * rollout. `hello-world` in dev is bound to three `Environment`s with real
+ * promotion gates — staging and prod are held on it — and still had no tab,
+ * because neither of those two sources carried that fact. The `Environment`
+ * objects on the list payload do, and they are what the graph itself reads.
+ *
+ * ⛔ THE SAME EDGE RULE AS `buildRolloutGraph`, OR THE TAB OPENS ON NOTHING.
+ * (2026-10-07.) A `RolloutDependency` with no `status.gateName` is not an
+ * edge there — the controller has not created its gate yet — so it is not
+ * one here either; counting it showed a tab whose graph was empty.
+ *
+ * Matched on cluster too, through `onCluster`: the same (namespace, name)
+ * exists on more than one cluster behind a hub. An unstamped (hub-local)
+ * object is on `localCluster` when known, else on the route's cluster — the
+ * same rule the graph's links use.
+ */
+export function hasDependencyLinks(args: {
+	cluster?: string;
+	localCluster?: string;
+	namespace: string;
+	name: string;
+	environments: Environment[];
+	dependencies: RolloutDependency[];
+}): boolean {
+	const { namespace, name } = args;
+	const here = (obj: { metadata?: { annotations?: Record<string, string> | null } }) =>
+		args.cluster === undefined || onCluster(clusterOf(obj), args.cluster, args.localCluster);
+	const isMe = (ns: string | undefined, n: string | undefined) => ns === namespace && n === name;
+	for (const d of args.dependencies) {
+		const ns = d.metadata?.namespace;
+		if (!ns || !d.status?.gateName || !d.spec?.rolloutRef?.name || !d.spec?.providerRef?.name)
+			continue;
+		if (!here(d)) continue;
+		if (isMe(ns, d.spec.rolloutRef.name)) return true;
+		if (isMe(d.spec.providerRef.namespace || ns, d.spec.providerRef.name)) return true;
+	}
+	for (const { down, up } of promotionLinks(args.environments)) {
+		if (here(down) && isMe(down.metadata?.namespace, down.spec?.rolloutRef?.name)) return true;
+		if (here(up) && isMe(up.metadata?.namespace, up.spec?.rolloutRef?.name)) return true;
+	}
+	return false;
+}
+
+/**
+ * Is a node stamped `nodeCluster` on the route's cluster? A hub-local object
+ * carries no stamp (`''`): it is on `localCluster` when that is known, and on
+ * the route's cluster otherwise — the rule every graph link already uses
+ * (`n.cluster || cluster`), so the node a link points at is the node the
+ * page it opens finds.
+ */
+export function onCluster(nodeCluster: string, routeCluster: string, localCluster?: string): boolean {
+	return (nodeCluster || localCluster || routeCluster) === routeCluster;
+}
+
 export function buildRolloutGraph(args: {
 	rollouts: Rollout[];
 	environments: Environment[];
@@ -345,6 +498,16 @@ export function buildRolloutGraph(args: {
 	 * the product classify one gate the same way.
 	 */
 	gates?: GateContext;
+	/**
+	 * ⭐ A ROLLOUT THAT IS ALWAYS A NODE, EDGES OR NOT. (2026-10-08, the
+	 * rollout Gates tab.) The tab draws every gate on one rollout — a deploy
+	 * window, an approval — and a rollout whose only gates are those has no
+	 * edge, so without this it was not in the graph and its node `holds`
+	 * (classified here, by the same `blockingStory` every banner reads) did
+	 * not exist. Matched like `rolloutNeighbourhood`'s focus: namespace + name
+	 * + `onCluster`. Not counted in `unlinkedRollouts`, because it is drawn.
+	 */
+	focus?: { cluster: string; namespace: string; name: string; localCluster?: string };
 }): RolloutGraph {
 	const { rollouts, environments, dependencies, envOrder } = args;
 	const ctx = args.gates ?? EMPTY_GATE_CONTEXT;
@@ -370,7 +533,9 @@ export function buildRolloutGraph(args: {
 	for (const e of environments) {
 		const ns = e.metadata?.namespace;
 		const tier = e.spec?.environment;
-		if (ns && tier) tierOfNs.set(`${clusterOf(e)}/${ns}`, tier);
+		// The PLACE, not the raw tier: `prod-eu-west-1` once the tier has several
+		// live sites, `prod` while it has one (`placeKey`).
+		if (ns && tier) tierOfNs.set(`${clusterOf(e)}/${ns}`, placeKeyOf(e, environments));
 	}
 	const envOfNs = (cluster: string, ns: string) => tierOfNs.get(`${cluster}/${ns}`) ?? ns;
 
@@ -407,46 +572,29 @@ export function buildRolloutGraph(args: {
 	};
 
 	const edges: GraphEdge[] = [];
+	/** The `RolloutDependency` behind each contract edge, by edge key. */
+	const depOfEdge = new Map<string, RolloutDependency>();
 
 	// ── PROMOTION EDGES ──────────────────────────────────────────────────
-	//
-	// `Environment.spec.name` is the GitHub deployment name and it is
-	// REPO-GLOBAL: the same value identifies dev, staging and prod of one
-	// service line. It is therefore the join key, and it must NOT be
-	// cluster-scoped — on the live fleet dev and staging are on the spoke and
-	// prod is on the hub, so a cluster-scoped join loses the staging → prod
-	// edge, which is the most important edge on the page.
-	const lineByDeployName = new Map<string, Map<string, Environment>>();
-	for (const e of environments) {
-		const line = e.spec?.name;
-		const tier = e.spec?.environment;
-		if (!line || !tier) continue;
-		let byTier = lineByDeployName.get(line);
-		if (!byTier) lineByDeployName.set(line, (byTier = new Map()));
-		if (!byTier.has(tier)) byTier.set(tier, e);
-	}
+	// Which edges exist is `promotionLinks`' decision (see its doc); this
+	// loop only turns them into nodes and edges.
+	const seenPromotionKey = new Set<string>();
+	for (const { down: e, up, gate, edgeKind } of promotionLinks(environments)) {
+		const ns = e.metadata!.namespace!;
+		const target = e.spec!.rolloutRef!.name!;
+		const upNs = up.metadata!.namespace!;
+		const upName = up.spec!.rolloutRef!.name!;
 
-	for (const e of environments) {
-		const ns = e.metadata?.namespace;
-		const target = e.spec?.rolloutRef?.name;
-		const tier = e.spec?.environment;
-		const gate = e.status?.rolloutGateRef?.name;
-		const rel = e.spec?.relationship;
-		if (!ns || !target || !tier || !gate || !rel?.environment) continue;
-		const up = lineByDeployName.get(e.spec?.name ?? '')?.get(rel.environment);
-		const upNs = up?.metadata?.namespace;
-		const upName = up?.spec?.rolloutRef?.name;
-		// ⛔ NO PHANTOM SOURCE. An `After staging` relationship whose staging
-		// Environment this dashboard cannot see has no far end to draw to. The
-		// gate still holds the rollout, so it falls through to the node's
-		// `holds` via `classifyGate`, which says `after staging` in words.
-		if (!up || !upNs || !upName) continue;
-
-		const to = node(clusterOf(e), ns, target, tier);
-		const from = node(clusterOf(up), upNs, upName, up.spec?.environment ?? rel.environment);
+		const to = node(clusterOf(e), ns, target, placeKeyOf(e, environments));
+		const from = node(clusterOf(up), upNs, upName, placeKeyOf(up, environments));
 		if (from.id === to.id) continue;
+		// One gate, several upstream sites: the first edge keeps the historical
+		// key, the others are told apart by their far end.
+		const baseKey = `promotion:${to.id}:${gate}`;
+		const key = seenPromotionKey.has(baseKey) ? `${baseKey}:${from.id}` : baseKey;
+		seenPromotionKey.add(baseKey);
 		edges.push({
-			key: `promotion:${to.id}:${gate}`,
+			key,
 			from: from.id,
 			to: to.id,
 			writer: 'promotion',
@@ -455,9 +603,10 @@ export function buildRolloutGraph(args: {
 			contract: null,
 			requiredVersion: null,
 			providedVersion: null,
-			relType: rel.type ?? null,
+			edgeKind,
 			message: '',
-			cyclic: false
+			cyclic: false,
+			held: []
 		});
 	}
 
@@ -478,8 +627,10 @@ export function buildRolloutGraph(args: {
 		const from = node(cluster, dep.spec?.providerRef?.namespace || ns, provider);
 		const blocked = dep.status?.blockedReleases ?? [];
 		const satisfied = (dep.status?.conditions ?? []).find((c) => c?.type === 'Satisfied');
+		const key = `contract:${to.id}:${gate}`;
+		depOfEdge.set(key, dep);
 		edges.push({
-			key: `contract:${to.id}:${gate}`,
+			key,
 			from: from.id,
 			to: to.id,
 			writer: 'contract',
@@ -488,10 +639,26 @@ export function buildRolloutGraph(args: {
 			contract: dep.spec?.contract || provider,
 			requiredVersion: agreed(blocked.map((b) => b.requiredVersion ?? null)),
 			providedVersion: dep.status?.providedVersion ?? null,
-			relType: null,
+			edgeKind: null,
 			message: satisfied?.message ?? '',
-			cyclic: false
+			cyclic: false,
+			held: []
 		});
+	}
+
+	// ── THE FOCUS, EVEN WITH NO EDGE ─────────────────────────────────────
+	if (args.focus) {
+		const f = args.focus;
+		for (const r of rollouts) {
+			if (
+				r.metadata?.namespace === f.namespace &&
+				r.metadata?.name === f.name &&
+				onCluster(clusterOf(r), f.cluster, f.localCluster)
+			) {
+				node(clusterOf(r), f.namespace, f.name);
+				break;
+			}
+		}
 	}
 
 	// ── EDGE STATE, ONE PREDICATE FOR BOTH KINDS ─────────────────────────
@@ -506,19 +673,75 @@ export function buildRolloutGraph(args: {
 			new Set((r.status?.gates ?? []).map((g) => g?.name).filter(Boolean) as string[])
 		);
 	}
+	const display = (cs: ReleaseRef[]) => [
+		...new Set(
+			cs.map((c) => getDisplayVersion(c as { version?: string; revision?: string; tag: string }))
+		)
+	];
+	/** `requiredByHeld` for a contract edge: each held candidate's own requirement, by display version. */
+	const recordRequired = (e: GraphEdge, cs: ReleaseRef[]) => {
+		const dep = e.writer === 'contract' ? depOfEdge.get(e.key) : undefined;
+		if (!dep) return;
+		const byTag = new Map(
+			(dep.status?.blockedReleases ?? [])
+				.filter((b) => b?.tag && b.requiredVersion)
+				.map((b) => [b.tag, b.requiredVersion as string] as const)
+		);
+		const m = new Map<string, string>();
+		for (const c of cs) {
+			const req = c.tag ? byTag.get(c.tag) : undefined;
+			if (req) m.set(getDisplayVersion(c as { version?: string; revision?: string; tag: string }), req);
+		}
+		if (m.size) requiredByHeld.set(e, m);
+	};
 	for (const e of edges) {
 		const block = blockPerNode.get(e.to);
 		const seen = gateNamesPerNode.get(e.to);
+		const gated = rolloutById.get(e.to);
 		if (!block || !seen) {
 			e.state = 'unknown'; // the gated rollout is not in this payload
 		} else if (block.blockingGates.includes(e.gate)) {
 			e.state = 'blocked';
-		} else if (!seen.has(e.gate)) {
-			// The CRD names a gate the rollout has not published a summary for.
-			// Not health — an unread instrument.
-			e.state = 'unknown';
-		} else {
+			const heldCs = candidatesHeldByGate(gated, e.gate);
+			e.held = display(heldCs);
+			recordRequired(e, heldCs);
+		} else if (seen.has(e.gate)) {
 			e.state = 'clear';
+		} else {
+			// The CRD names a gate the rollout has not published a summary for.
+			// For a PROMOTION edge that is an unread instrument: `unknown`, never
+			// health.
+			//
+			// ⭐ FOR A CONTRACT EDGE THE SAME CONTROLLER HAS ALREADY ANSWERED, ONE
+			// OBJECT OVER. (2026-10-07, moved here from `rollout-neighbourhood`
+			// so this page and the rollout tab decide the edge ONCE.) The
+			// `RolloutDependency` reconciler writes the verdict it publishes to
+			// the gate onto its own status: `blockedReleases` is the list of
+			// consumer candidates it is refusing (each with the constraint that
+			// refuses it), and `Satisfied` is its statement that nothing the
+			// consumer could deploy next is held (rolloutdependency_types.go).
+			// Both are observations the controller made, not inferences — so:
+			//   - a refused tag the consumer could actually take next → blocked,
+			//     and those are the builds this edge holds;
+			//   - `Satisfied=True` → clear (refused tags the rollout is already
+			//     past are history, not a hold);
+			//   - anything else → still `unknown`.
+			e.state = 'unknown';
+			const dep = e.writer === 'contract' ? depOfEdge.get(e.key) : undefined;
+			if (dep) {
+				const refused = new Set(
+					(dep.status?.blockedReleases ?? []).map((b) => b?.tag).filter(Boolean)
+				);
+				const wanted = promotionCandidates(gated).filter((c) => c.tag && refused.has(c.tag));
+				const satisfied = (dep.status?.conditions ?? []).find((c) => c?.type === 'Satisfied');
+				if (wanted.length > 0) {
+					e.state = 'blocked';
+					e.held = display(wanted);
+					recordRequired(e, wanted);
+				} else if (satisfied?.status === 'True') {
+					e.state = 'clear';
+				}
+			}
 		}
 	}
 
@@ -529,16 +752,55 @@ export function buildRolloutGraph(args: {
 		if (!s) inboundGates.set(e.to, (s = new Set()));
 		s.add(e.gate);
 	}
+	/**
+	 * ⭐ THE HOLD-ONE-RULE, FOR EVERY NODE THIS GRAPH DRAWS. (2026-10-09,
+	 * coordinator ruling.) `node.blocked`/`node.waiting` below feed `/apps`'
+	 * fleet tiles, Home's `isNeedsYou` (`fleet-groups.ts`) and every other
+	 * reader of a `GraphNode` — so if THIS read stayed gate-only, every one
+	 * of them would still miss a contract hold the controller never
+	 * published on `rollout.status.gates`, no matter how many call sites
+	 * learn to pass `contractHolds` of their own.
+	 *
+	 * ⭐ NO LONGER A HAND-ROLLED SECOND LOOP OVER `edges`. (2026-10-10, QA
+	 * finding.) This used to fold every `contract`/`blocked` edge into its
+	 * own `Map<string, ContractHold>` with `Map.set` — so a build held by
+	 * TWO contracts at once (`payments-svc` and `auth` both refusing the
+	 * same consumer version) silently kept only whichever edge this loop
+	 * visited last, and the banner named one provider instead of both. That
+	 * logic now lives in exactly one place, `contractHoldsIndex`.
+	 *
+	 * ⭐ CALLED ONCE, NOT ONCE PER NODE. (2026-10-10, QA finding — perf.) The
+	 * fix above first called `contractHoldsForRollout` from INSIDE this loop
+	 * — once per node — and that adapter filters the WHOLE edge list on
+	 * every call, so a fleet's own `buildRolloutGraph` call was
+	 * O(nodes × edges) just for this step. `contractHoldsIndex` builds every
+	 * node's hold map in ONE scan of `edges`, done ONCE here, before the
+	 * loop; each node then does an O(1) `Map.get` by its own id.
+	 * `contractHoldsForRollout` (below, the adapter other pages call once
+	 * per `Rollout`) reads off the exact same index, so the two can never
+	 * disagree about which edges count.
+	 */
+	const holdsIndex = contractHoldsIndex({ nodes: [...nodes.values()], edges });
 	for (const n of nodes.values()) {
 		const r = rolloutById.get(n.id);
 		if (!r) continue;
-		const story = blockingStory(r, ctx, { place: n.env });
+		const contractHolds = holdsIndex.get(n.id);
+		const story = blockingStory(r, ctx, { place: n.env, contractHolds });
 		n.candidateCount = story.candidateCount;
 		n.waiting = story.blocked;
 		n.blocked = story.blocked && !story.selfClearing;
 		const drawn = inboundGates.get(n.id) ?? new Set<string>();
 		n.holds = story.gates
-			.filter((g) => !drawn.has(g.id))
+			// ⛔ A SYNTHETIC CONTRACT GATE (`id` starting `contract:` —
+			// `classifyContractHold`'s own convention, `blocking-story.ts`) is
+			// NEVER "a gate that is not an edge" here: `contractHoldsByNode`
+			// above is built directly off THIS function's own `contract`/
+			// `blocked` edges, so every one of these synthetic entries always
+			// has a matching edge already drawn. Without this, the SAME
+			// contract hold drew twice — once as the edge, once as a
+			// `holds` entry with no `RolloutGate` object behind it — on
+			// `checkout-api/staging`'s own Gates tab (`deps-story.test.ts`).
+			.filter((g) => !drawn.has(g.id) && !g.id.startsWith('contract:'))
 			.map((g) => ({
 				gate: g.id,
 				clears: g.clears,
@@ -646,6 +908,136 @@ function markCycles(edges: GraphEdge[]): void {
 			}
 		}
 	}
+}
+
+/**
+ * ⭐ THE CONTRACT HOLD SET FOR ONE ROLLOUT, OFF THIS GRAPH — AND NOTHING
+ * ELSE. (2026-10-09, integration round 4 — follow-up to the U-5 fix in
+ * `change-version-held-agreement.test.ts`.)
+ *
+ * Rollout detail's `holdEdgesIn` (that page's own `+page.svelte`) answered
+ * exactly this question inline — inbound edges on `providerFocusId` whose
+ * `writer` is `contract` and whose `state` is `blocked`, flattened to the
+ * DISPLAY-VERSION set `e.held` already carries — and handed the result to
+ * `ChangeVersionModal` as a `contractHeldVersions` prop. Every OTHER call
+ * site of that dialog (history, `/envs/<name>`, `/apps/<name>`,
+ * `FailurePanel`) never built that graph at all, so the prop silently
+ * defaulted to empty and `checkout-api`/`prod-us-east-2`'s `4.43.0-43` read
+ * plain `Ready` from every entry point except the one that happened to pass
+ * the prop. Pulling the one-line filter out to here — rather than teaching
+ * four more route files to build the graph by hand — is what lets the dialog
+ * compute its OWN answer from the SAME shared `/api/rollouts` payload
+ * (`buildRolloutGraph`), so it cannot drift from whatever rollout detail
+ * passes as an override.
+ */
+export function contractHeldVersionsFor(graph: RolloutGraph, focusId: string): Set<string> {
+	const held = graph.edges.filter(
+		(e) => e.to === focusId && e.writer === 'contract' && e.state === 'blocked'
+	);
+	return new Set(held.flatMap((e) => e.held));
+}
+
+/**
+ * ⭐ ONE PASS OVER THE EDGES, EVERY NODE'S CONTRACT HOLDS AT ONCE. (2026-10-10,
+ * QA finding — perf.) The join `contractHoldsForRollout` answers (below) —
+ * "every `ContractHold` on each DISPLAY version a node's inbound `contract`/
+ * `blocked` edges carry" — used to be re-derived by filtering the WHOLE edge
+ * list on every call. `buildRolloutGraph` called that adapter once PER NODE,
+ * which made ONE `buildRolloutGraph` call O(nodes × edges) for this step
+ * alone on a fleet whose node and edge counts both grow with it.
+ *
+ * This builds the index for EVERY node in a single scan of `edges` —
+ * `nodeId -> (display version -> every ContractHold on it)` — so
+ * `buildRolloutGraph` can call it ONCE and look its own nodes up by id in
+ * O(1), and `contractHoldsForRollout` reads off the exact same index for the
+ * one node it resolves, so the two can never disagree about which edges
+ * count. Takes `nodes`/`edges` rather than a full `RolloutGraph` because that
+ * is all either caller has settled at the point it calls this — a
+ * `buildRolloutGraph` in progress has not yet computed `envs`/`blockedEdges`/
+ * `hasCycle`/`unlinkedRollouts`, and this never reads them.
+ */
+function contractHoldsIndex(graph: {
+	nodes: readonly GraphNode[];
+	edges: readonly GraphEdge[];
+}): Map<string, Map<string, ContractHold[]>> {
+	const byId = new Map(graph.nodes.map((n) => [n.id, n] as const));
+	const index = new Map<string, Map<string, ContractHold[]>>();
+	for (const e of graph.edges) {
+		if (e.writer !== 'contract' || e.state !== 'blocked') continue;
+		let holdsForNode = index.get(e.to);
+		if (!holdsForNode) index.set(e.to, (holdsForNode = new Map()));
+		const provider = byId.get(e.from)?.name ?? 'another service';
+		const own = requiredByHeld.get(e);
+		for (const v of e.held) {
+			// the build's own requirement; the edge's agreed one only when it has none recorded
+			const hold: ContractHold = {
+				provider,
+				required: own?.get(v) ?? e.requiredVersion ?? undefined,
+				has: e.providedVersion ?? undefined,
+				gate: e.gate || undefined
+			};
+			const list = holdsForNode.get(v);
+			if (list) list.push(hold);
+			else holdsForNode.set(v, [hold]);
+		}
+	}
+	return index;
+}
+
+/**
+ * ⭐ THE SAME CONTRACT HOLD SET, WITH ENOUGH SHAPE TO NAME IT. (2026-10-09,
+ * coordinator ruling — design-rollout TL.) `contractHeldVersionsFor` above
+ * answers "is this candidate held", a bare display-version set with no
+ * provider or range attached — exactly what `ChangeVersionModal`'s row
+ * glyphs need and nothing more. `blockingStory`'s hold-one-rule needs the
+ * OTHER half too: WHO holds it and WHAT they need, so the banner can say
+ * "Needs payments-svc ~2.9.0" instead of a bare chip.
+ *
+ * Built off the exact same inbound `contract`/`blocked` edges, into every
+ * `ContractHold` on each DISPLAY version (`GraphEdge.held`'s own form, and
+ * the same key `promotionHoldBreakdown`'s `build` field uses) — `provider`
+ * is the OTHER rollout's own name, read off the edge's `from` node (never
+ * the `RolloutDependency` object's own name, which is an implementation
+ * detail no reader has ever seen); `required`/`has` are the edge's own
+ * `requiredVersion`/`providedVersion`, undefined exactly when the edge
+ * itself does not carry one.
+ *
+ * ⭐ A LIST, NOT THE LAST ONE WRITTEN. (2026-10-10, QA finding.) Two
+ * `RolloutDependency` edges can both refuse the SAME consumer version —
+ * `payments-svc` and `auth` each holding `4.43.0-43` back — and a map keyed
+ * on a bare `ContractHold` kept only whichever edge this loop visited last.
+ * The value is the full list of holds on that version instead, so a caller
+ * that needs "who, of possibly several" never has to re-walk the graph.
+ *
+ * The node lookup mirrors `app-tasks.ts`'s `graphNodeForRollout` (namespace +
+ * name, broken by `cluster` only on a genuine tie) rather than importing it —
+ * `app-tasks.ts` already imports FROM this module, and importing it back
+ * would be the same cycle `promotion.ts`'s own top comment warns this file's
+ * sibling away from. Any caller holding a `GraphNode` already (the Overview
+ * page, which built `providerNetwork` for other reasons) should read
+ * `contractHeldVersionsFor`-style edges directly rather than re-deriving a
+ * node id here — this is for callers that only have the `Rollout` object.
+ *
+ * Reads off `contractHoldsIndex`, the ONE place this join is computed — see
+ * its own doc for why `buildRolloutGraph` no longer calls this adapter from
+ * inside its per-node loop.
+ */
+export function contractHoldsForRollout(
+	graph: RolloutGraph,
+	rollout: Rollout,
+	namespace: string | undefined = rollout.metadata?.namespace,
+	cluster?: string
+): Map<string, ContractHold[]> {
+	const name = rollout.metadata?.name;
+	const candidates = graph.nodes.filter((n) => n.namespace === namespace && n.name === name);
+	const node =
+		candidates.length < 2
+			? candidates[0] ?? null
+			: (candidates.find((n) => n.cluster === (clusterOf(rollout) || (cluster ?? ''))) ??
+				candidates[0]);
+	if (!node) return new Map();
+
+	return contractHoldsIndex(graph).get(node.id) ?? new Map();
 }
 
 // =========================================================================
@@ -966,6 +1358,43 @@ export function heldSubjects(nodes: GraphNode[]): string {
 }
 
 /**
+ * ⭐ THE SUBJECT OF `/dependencies`' BANNER, KEPT SHORT. (2026-10-09.)
+ *
+ * `heldSubjects` names every held app with every environment, which on the
+ * demo fleet was five apps and ten places before the verb — four lines at
+ * 1440. The banner's job is the count and the worst of it; the full list is
+ * already the graph and the "Held links" card right below it. So:
+ *
+ *   - up to two apps: `heldSubjects`, unchanged (it is short);
+ *   - more: the count, then the two apps held in the most environments
+ *     (ties keep the graph's order) — `5 services, mostly checkout-api and
+ *     hello-world,` — or `including …` when every app is held in one place,
+ *     since "mostly" would then be false. No per-app counts: they cost a
+ *     line at 390 and the graph below draws every environment.
+ */
+export function heldSummary(nodes: GraphNode[]): string {
+	const order: string[] = [];
+	const envs = new Map<string, Set<string>>();
+	for (const n of nodes) {
+		if (!envs.has(n.name)) {
+			envs.set(n.name, new Set());
+			order.push(n.name);
+		}
+		envs.get(n.name)!.add(n.env);
+	}
+	if (order.length <= 2) return heldSubjects(nodes);
+	const ranked = order
+		.map((name, i) => ({ name, n: envs.get(name)!.size, i }))
+		.sort((a, b) => b.n - a.n || a.i - b.i)
+		.slice(0, 2);
+	const named =
+		ranked[0].n > 1
+			? `mostly ${ranked[0].name} and ${ranked[1].name}`
+			: `including ${ranked[0].name} and ${ranked[1].name}`;
+	return `${order.length} services, ${named},`;
+}
+
+/**
  * ⭐ THE CLAUSE THAT FINISHES "<subjects> cannot take their next release
  * until …" — and it is a function of `writer`, never one fixed verb.
  * (2026-09-02, a headline bug: the banner said *"…until the deploy in front
@@ -977,7 +1406,7 @@ export function heldSubjects(nodes: GraphNode[]): string {
  * thing per edge (`consequence` in `/dependencies`); this is what makes the
  * headline agree with them instead of overriding every row with one verb.
  *
- * ⚠️ GROUPED BY (provider, contract, requiredVersion) — the live cluster has
+ * ⚠️ GROUPED BY (provider, contract) — the live cluster has
  * THREE blocked edges (dev/staging/prod) that are all the same clause, so the
  * sentence must not say `hello-api-app ships api ^1.67.0` three times.
  *
@@ -985,33 +1414,65 @@ export function heldSubjects(nodes: GraphNode[]): string {
  * other, and never invent one clause that pretends to cover a promotion gate
  * and a contract gate at once.
  */
-export function heldClause(edges: GraphEdge[], nodes: Map<string, GraphNode>): string {
+export function heldClause(
+	edges: GraphEdge[],
+	nodes: Map<string, GraphNode>,
+	opts: { brief?: boolean } = {}
+): string {
 	const contractEdges = edges.filter((e) => e.writer === 'contract');
 	const promotionEdges = edges.filter((e) => e.writer === 'promotion');
 
-	const PROMOTION_CLAUSE = 'the deploy in front of each of them lands';
+	/**
+	 * ⭐ `brief`: PROVIDERS ONLY, VERSIONS LEFT TO THE GRAPH. (2026-10-09.)
+	 * `/dependencies`' banner is a summary over a graph that draws every
+	 * contract, range and served version right below it; spelling them in the
+	 * sentence made it nine lines at 390. Brief names each provider once and
+	 * says what they must do: `ledger-core and payments-svc ship the versions
+	 * they need and the deploys ahead of them land`.
+	 */
+	const PROMOTION_CLAUSE = opts.brief
+		? 'the deploys ahead of them land'
+		: 'the deploy in front of each of them lands';
 
 	if (contractEdges.length === 0) return PROMOTION_CLAUSE;
 
+	// ⭐ ONE PHRASE PER (provider, contract), NEVER ONE PER REQUIREMENT.
+	// (2026-10-09.) Grouping on the required version too printed
+	// "payments-svc ships payments ~2.9.0, payments-svc ships payments and
+	// payments-svc ships payments ^3.0.0" once more consumers were held on the
+	// same contract with different ranges. The provider and contract are the
+	// thing to ship; the ranges are a detail, listed once inside the phrase
+	// when there is more than one, in first-seen order.
 	const order: string[] = [];
-	const byKey = new Map<
-		string,
-		{ provider: string; contract: string; requiredVersion: string | null }
-	>();
+	const byKey = new Map<string, { provider: string; contract: string; needs: string[] }>();
 	for (const e of contractEdges) {
 		const provider = nodes.get(e.from)?.name ?? e.from;
 		const contract = e.contract ?? 'a contract';
-		const key = `${provider}::${contract}::${e.requiredVersion ?? ''}`;
-		if (!byKey.has(key)) {
+		const key = `${provider}::${contract}`;
+		let g = byKey.get(key);
+		if (!g) {
+			g = { provider, contract, needs: [] };
+			byKey.set(key, g);
 			order.push(key);
-			byKey.set(key, { provider, contract, requiredVersion: e.requiredVersion });
 		}
+		if (e.requiredVersion && !g.needs.includes(e.requiredVersion)) g.needs.push(e.requiredVersion);
 	}
 	const contractPhrases = order.map((k) => {
-		const { provider, contract, requiredVersion } = byKey.get(k)!;
-		const needs = requiredVersion ? ` ${requiredVersion}` : '';
-		return `${provider} ships ${contract}${needs}`;
+		const { provider, contract, needs } = byKey.get(k)!;
+		if (needs.length === 0) return `${provider} ships ${contract}`;
+		if (needs.length === 1) return `${provider} ships ${contract} ${needs[0]}`;
+		const ranges = needs.join(', ');
+		return `${provider} ships the ${contract} each of them needs (${ranges})`;
 	});
+	if (opts.brief) {
+		const providers = [...new Set(order.map((k) => byKey.get(k)!.provider))];
+		const verb = providers.length === 1 ? 'ships' : 'ship';
+		contractPhrases.splice(
+			0,
+			contractPhrases.length,
+			`${joinClauses(providers)} ${verb} the versions they need`
+		);
+	}
 	const contractClause = joinClauses(contractPhrases);
 
 	/**
@@ -1036,7 +1497,8 @@ export function heldClause(edges: GraphEdge[], nodes: Map<string, GraphNode>): s
 	const contractTargets = new Set(contractEdges.map((e) => e.to));
 	const independentPromotion = promotionEdges.some((e) => !contractTargets.has(e.to));
 
-	return independentPromotion ? `${contractClause} and ${PROMOTION_CLAUSE}` : contractClause;
+	// One list, one `and`: "A, B and C", never "A and B and C".
+	return independentPromotion ? joinClauses([...contractPhrases, PROMOTION_CLAUSE]) : contractClause;
 }
 
 /**
@@ -1052,7 +1514,7 @@ export function edgeSentence(e: GraphEdge, nodes: Map<string, GraphNode>): strin
 		// ⛔ "…until staging deploys IT" is ambiguous when both ends are running
 		// the same build, which is the normal case. The thing waiting is the
 		// NEXT build, and the sentence has to name it.
-		const verb = e.relType === 'Parallel' ? 'deploys it alongside' : 'deploys it first';
+		const verb = e.edgeKind === 'follow' ? 'picks it first' : 'deploys it first';
 		if (e.state === 'blocked')
 			return `${toName} cannot take its next build until ${from?.env ?? 'its upstream'} ${verb}`;
 		if (e.state === 'unknown')

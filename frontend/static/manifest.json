@@ -2,18 +2,20 @@
   "name": "Kuberik Rollout Dashboard",
   "short_name": "Kuberik",
   "description": "Kubernetes rollout management dashboard",
-  "start_url": "/",
+  "_comment": "EVERY PATH HERE IS RELATIVE TO THIS FILE, AND MUST STAY THAT WAY. The dashboard is served from the ORIGIN ROOT on a cluster and from /demo/ on kuberik.com (see frontend/README.md). An absolute /start_url made the installed app open the marketing site's own home page instead of the dashboard, and absolute /icon-*.png 404'd there. Relative paths resolve against the manifest's own URL, so one file is correct at both roots with no build-time templating.",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0F172A",
   "theme_color": "#00C9B5",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "./icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon-512.png",
+      "src": "./icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     }

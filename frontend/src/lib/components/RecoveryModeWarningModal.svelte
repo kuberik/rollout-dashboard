@@ -1,16 +1,59 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { Modal, Button } from 'flowbite-svelte';
-	import { ExclamationCircleSolid } from 'flowbite-svelte-icons';
+	/**
+	 * ROLE: the one-sentence consent step that opens before a deploy or a
+	 * rollback which will run in RECOVERY MODE (the controller waits for
+	 * health checks to recover instead of failing the deployment on them).
+	 *
+	 * ⭐ ROUND 6 (squad-rollout, Lane D, 2026-10-10 — AD round 4, item 1: "a
+	 * stranger to the family"). Rebuilt on `ChangeVersionModal`'s confirm
+	 * shell, byte-for-byte the same geometry, because the operator presses
+	 * Continue and this dialog is REPLACED by that confirm at the same place:
+	 * any difference in width, inset, header or footer reads as a jump.
+	 *   - 640 wide, top-anchored at 12vh (the confirm's own position);
+	 *     below `sm` the confirm's own FULL-HEIGHT sheet (coordinator, round
+	 *     7, reversing round 6's bottom sheet: one dialog per step changing
+	 *     in place, never a sheet that grows into a full screen on Continue);
+	 *   - header: the rollout crumb (`t-meta`) above the title (`t-heading`,
+	 *     wraps, never truncates), a 32px ghost close on the title's line;
+	 *   - body: one 16px inset, ONE sentence (`t-body text-fg-muted`) that
+	 *     says what happens next. No disc, no inset rules, no well: the
+	 *     sentence is the whole content, the title already names the object;
+	 *   - footer: `Esc` hint left; Cancel + the primary right (`btn-sm`);
+	 *     below `sm` a 50/50 split of 44px buttons above the safe area;
+	 *   - the page behind is locked (the same counter `ChangeVersionModal`
+	 *     and the palette share), and the first focus lands on the dialog
+	 *     body, never on Cancel (a ring on Cancel read as "Cancel is the
+	 *     default", AD round 4).
+	 * Recovery mode is a CAUTION, not a hold and not a stuck state: no hue
+	 * anywhere (amber is stuck only, orange is held only — §2.5).
+	 */
+	import { Modal } from 'flowbite-svelte';
+	import { CloseOutline } from 'flowbite-svelte-icons';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
+	import type { Rollout } from '../../types';
+	import { deployIntent } from '$lib/view-models/deploy-risk';
 
 	type Reason = 'previous-failed' | 'unhealthy-health-checks';
 
 	interface Props {
 		open: boolean;
 		reason: Reason;
+		/** The build about to deploy, as displayed (`3f1ed09`). */
 		versionDisplay?: string | null;
+		/** The build that failed (`history[0]`), as displayed. */
+		previousVersionDisplay?: string | null;
+		/**
+		 * The rollout and the tag about to deploy, so the title can name the
+		 * act exactly as the confirm that follows does ("Roll back staging to
+		 * 3f1ed09" / "Deploy 3f1ed09 to staging"), via the SAME `deployIntent`.
+		 * Without a tag (Change version opened before a build is picked) the
+		 * title says only that the next deploy runs in recovery mode.
+		 */
+		rollout?: Rollout | null;
+		selectedTag?: string | null;
+		environmentName?: string | null;
 		onContinue: () => void;
 		onCancel?: () => void;
 	}
@@ -19,6 +62,10 @@
 		open = $bindable(),
 		reason,
 		versionDisplay = null,
+		previousVersionDisplay = null,
+		rollout = null,
+		selectedTag = null,
+		environmentName = null,
 		onContinue,
 		onCancel = () => {}
 	}: Props = $props();
@@ -27,67 +74,126 @@
 	// restore focus here because the element is destroyed, not closed.
 	modalFocusReturn(() => open);
 
-	const title = $derived(
-		reason === 'previous-failed' ? 'Recovery deploy' : 'Deploy during incident'
-	);
-
-	const summary = $derived.by(() => {
-		if (reason === 'previous-failed') {
-			return 'The previous deployment failed. Continuing will start a new deployment in recovery mode.';
+	// The page lock, shared with ChangeVersionModal / the palette (same counter).
+	$effect(() => {
+		if (typeof document === 'undefined' || !open) return;
+		const w = window as unknown as { __scrollLockCount?: number };
+		w.__scrollLockCount = (w.__scrollLockCount ?? 0) + 1;
+		document.documentElement.classList.add('scroll-locked');
+		// Body lock below `sm`, counted (shared with ChangeVersionModal, which
+		// opens as this closes: a restored value would unlock its sheet).
+		const b = window as unknown as { __bodyLockCount?: number };
+		const phone = window.matchMedia('(max-width: 639px)').matches;
+		if (phone) {
+			b.__bodyLockCount = (b.__bodyLockCount ?? 0) + 1;
+			document.body.style.overflow = 'hidden';
 		}
-		return 'Health checks are currently unhealthy. Continuing will force-deploy into an active incident in recovery mode.';
+		return () => {
+			if (phone) {
+				b.__bodyLockCount = Math.max(0, (b.__bodyLockCount ?? 1) - 1);
+				if (b.__bodyLockCount === 0) document.body.style.overflow = '';
+			}
+			w.__scrollLockCount = Math.max(0, (w.__scrollLockCount ?? 1) - 1);
+			if (w.__scrollLockCount === 0) document.documentElement.classList.remove('scroll-locked');
+		};
 	});
+
+	const intent = $derived(selectedTag ? deployIntent(rollout, selectedTag, environmentName) : null);
+	const where = $derived(intent?.environment || environmentName || 'this environment');
+	const isRollback = $derived(intent?.direction === 'rollback');
+	const act = $derived(isRollback ? 'rollback' : 'deploy');
+
+	const title = $derived.by(() => {
+		if (!versionDisplay || !intent) return `Deploy to ${where} in recovery mode`;
+		return isRollback
+			? `Roll back ${where} to ${versionDisplay}`
+			: `Deploy ${versionDisplay} to ${where}`;
+	});
+
+	/** ONE sentence: why recovery mode applies, and what it does next. */
+	const summary = $derived.by(() => {
+		const cause =
+			reason === 'previous-failed'
+				? previousVersionDisplay
+					? `${previousVersionDisplay} failed`
+					: 'The last deploy failed'
+				: 'Health checks are unhealthy';
+		return `${cause}, so this ${act} runs in recovery mode: it waits for health checks to recover instead of failing on them.`;
+	});
+
+	const crumb = $derived(rollout?.metadata?.name ?? null);
+
+	function cancel() {
+		open = false;
+		onCancel();
+	}
 </script>
 
-<Modal bind:open size="md" autoclose={false} aria-labelledby="rmw-title" aria-describedby="rmw-summary">
-	<div class="space-y-4">
-		<div class="flex items-start gap-3">
-			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 ring-2 ring-amber-300/60 dark:bg-amber-500/20 dark:ring-amber-500/50">
-				<ExclamationCircleSolid class="h-6 w-6 text-amber-600 dark:text-amber-300" />
-			</div>
-			<div class="min-w-0">
-				<h2 id="rmw-title" class="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
-				{#if versionDisplay}
-					<p class="text-sm text-gray-500 dark:text-gray-400">Version {versionDisplay}</p>
+<Modal
+	bind:open
+	title=""
+	size="none"
+	autoclose={false}
+	dismissable={false}
+	role="dialog"
+	aria-modal="true"
+	aria-labelledby="rmw-title"
+	aria-describedby="rmw-summary"
+	classes={{ body: 'p-0 space-y-0 max-sm:h-full' }}
+	class="[&>div]:p-0 w-full max-w-[640px] rounded-lg sm:mt-[12vh] sm:mb-auto max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none"
+>
+	<div class="flex flex-col max-sm:h-full">
+		<div class="min-h-0 flex-1 max-sm:overflow-y-auto">
+			<header class="border-b border-line px-4 py-3">
+				{#if crumb}
+					<p class="t-meta truncate text-fg-subtle">{crumb}</p>
 				{/if}
+				<div class="flex items-start gap-1">
+					<h2 id="rmw-title" class="t-heading min-w-0 flex-1 text-fg">{title}</h2>
+					<button
+						type="button"
+						class="btn btn-ghost btn-sm btn-icon hit-44 -my-1 -mr-2 shrink-0"
+						aria-label="Close"
+						onclick={cancel}
+					>
+						<CloseOutline class="h-4 w-4" aria-hidden="true" />
+					</button>
+				</div>
+			</header>
+			<!-- `data-autofocus` + `tabindex=-1`: flowbite's Dialog focuses
+			     `[data-autofocus]` first, so the open lands here (no ring on
+			     Cancel) and Tab still reaches Cancel → Continue in order. -->
+			<div class="px-4 py-4 outline-none" data-autofocus tabindex="-1">
+				<p id="rmw-summary" class="t-body text-fg-muted">{summary}</p>
 			</div>
 		</div>
 
-		<p id="rmw-summary" class="text-sm text-gray-700 dark:text-gray-300">{summary}</p>
-
-		<div class="rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
-			<p id="rmw-recovery-heading" class="font-medium">In recovery mode:</p>
-			<ul class="mt-1.5 list-disc space-y-1 pl-5" aria-labelledby="rmw-recovery-heading">
-				<li>Health check failures will <strong>not</strong> mark this deployment as failed.</li>
-				<li>The deployment will sit waiting for health checks to recover.</li>
-				{#if reason === 'unhealthy-health-checks'}
-					<li>Once health checks become healthy and the check window starts, normal failure detection resumes.</li>
-				{:else}
-					<li>If the new deployment also fails to recover, the rollout will not transition to Failed.</li>
-				{/if}
-				<li>If the deployment is genuinely broken, watch logs and health checks closely.</li>
-			</ul>
-		</div>
-
-		<div class="flex justify-end gap-2">
-			<Button
-				color="light"
-				onclick={() => {
-					open = false;
-					onCancel();
-				}}
-			>
-				Cancel
-			</Button>
-			<Button
-				color="yellow"
-				onclick={() => {
-					open = false;
-					onContinue();
-				}}
-			>
-				I understand, continue
-			</Button>
+		<div
+			class="flex shrink-0 items-center justify-between gap-2 border-t border-line px-4 py-3 max-sm:pb-[calc(12px+env(safe-area-inset-bottom))]"
+		>
+			<div class="t-meta hidden items-center gap-2 text-fg-subtle sm:flex">
+				<span class="kbd">Esc</span>
+				<span>to cancel</span>
+			</div>
+			<div class="flex items-center gap-2 max-sm:w-full">
+				<button
+					type="button"
+					class="btn btn-secondary btn-sm max-sm:min-h-11 max-sm:flex-1 max-sm:basis-0"
+					onclick={cancel}
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					class="btn btn-primary btn-sm max-sm:min-h-11 max-sm:flex-1 max-sm:basis-0"
+					onclick={() => {
+						open = false;
+						onContinue();
+					}}
+				>
+					Continue
+				</button>
+			</div>
 		</div>
 	</div>
 </Modal>

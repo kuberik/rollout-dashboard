@@ -47,6 +47,7 @@ import type { RolloutsListResponse, RolloutResponse, DeploymentChildrenResponse 
 import { deploymentChildrenQueryKey } from './rollouts';
 import { SOURCE_CLUSTER_ANNOTATION, sourceClusterName } from '../source-dashboard';
 import type { ManagedResourceStatus } from '../../types';
+import { FLEET_HEALTH_CHECKS_KEY, type FleetHealthChecksResponse } from './health-checks';
 
 /**
  * One coalesced change, verbatim from the backend's ChangeEvent.
@@ -609,6 +610,45 @@ function patchHealthCheckCaches(queryClient: QueryClient, ev: ChangeEvent): bool
 	return !needsInvalidate;
 }
 
+/**
+ * hc-v2: patches ONE HealthCheck into `['fleet-health-checks']` (every rollout's
+ * checks, `api/health-checks.ts`), per CLUSTER + namespace + name. The list is
+ * grouped by the rollout that selects each check, which only the backend knows
+ * (`healthCheckSelector`), so the same presence rule as `patchHealthCheckCaches`
+ * holds: a check already in a group is that rollout's and is replaced or removed
+ * in place, in every group that holds it (two rollouts may select one check).
+ *
+ * Returns `true` when the list must be refetched instead: a check ADDED that no
+ * group holds yet (a new check some rollout may select), or a known check whose
+ * event carries no object. An UPDATE to a check no group holds is ignored: it
+ * selects no rollout (prometheus-controller rewrites every check's status on
+ * each reconcile, so refetching on those would refetch on every probe).
+ */
+function patchFleetHealthChecks(queryClient: QueryClient, ev: ChangeEvent): boolean {
+	let refetch = false;
+	queryClient.setQueryData<FleetHealthChecksResponse | null>(FLEET_HEALTH_CHECKS_KEY, (old) => {
+		const groups = old?.rolloutHealthChecks?.items;
+		if (!old || !groups) return old;
+		let found = false;
+		let changed = false;
+		const next = groups.map((g) => {
+			if (sourceClusterName(g) !== ev.cluster || g.metadata.namespace !== ev.namespace) return g;
+			const idx = (g.healthChecks ?? []).findIndex((h) => sameIdentity(h as K8sObject, ev));
+			if (idx === -1) return g;
+			found = true;
+			if (ev.type !== 'delete' && !ev.object) return g;
+			const list = g.healthChecks.slice();
+			if (ev.type === 'delete') list.splice(idx, 1);
+			else list[idx] = ev.object as (typeof list)[number];
+			changed = true;
+			return { ...g, healthChecks: list };
+		});
+		if ((found && ev.type !== 'delete' && !ev.object) || (!found && ev.type === 'add')) refetch = true;
+		return changed ? { ...old, rolloutHealthChecks: { ...old.rolloutHealthChecks, items: next } } : old;
+	});
+	return refetch;
+}
+
 /** The subset of a raw ReplicaSet object this module copies into a cached
  * `DeploymentReplicaSet` row — see `patchReplicaSetChildrenCaches`'s own doc
  * comment for exactly which fields, and why not more. */
@@ -791,6 +831,30 @@ function patchManagedResourceCaches(
 type ThrottleState = { timer: ReturnType<typeof setTimeout> | null; lastRun: number };
 const throttleStates = new Map<string, ThrottleState>();
 
+/**
+ * ⛔ A THROTTLE MEASURES ELAPSED TIME, AND `Date.now()` IS NOT ELAPSED TIME.
+ * (2026-09-13.)
+ *
+ * `Date.now()` is a SETTABLE wall clock: it jumps when NTP corrects the
+ * machine, and it can be frozen outright — which is exactly what a pinned
+ * page clock does, and how this product is captured on film. Measured there:
+ * with `Date.now()` frozen, `now - lastRun` is 0 forever, so the leading edge
+ * fires exactly once per key per page load and EVERY later invalidation pays
+ * a full trailing window. A deploy that finished landed in the Rollout cache
+ * at once (that one is patched, not invalidated) while the pipeline drawn
+ * from `managed-resources` sat a whole window behind it — the two halves of
+ * one fact, 1.8s apart, on screen.
+ *
+ * `performance.now()` is monotonic and immune to both. The fallback is for
+ * any runtime that somehow lacks it; the value's ORIGIN does not matter here
+ * because only differences are ever read.
+ */
+function monotonicNow(): number {
+	return typeof performance !== 'undefined' && typeof performance.now === 'function'
+		? performance.now()
+		: Date.now();
+}
+
 export function throttledInvalidate(
 	queryClient: QueryClient,
 	key: string,
@@ -803,10 +867,16 @@ export function throttledInvalidate(
 	}
 	let state = throttleStates.get(key);
 	if (!state) {
-		state = { timer: null, lastRun: 0 };
+		// ⛔ `-Infinity`, NOT `0`. "Never run" has to be a time infinitely far
+		// back, or the first call's leading edge depends on how big the clock's
+		// numbers happen to be: with epoch milliseconds `now - 0 >= ms` is
+		// trivially true, but `monotonicNow()` starts near zero at process
+		// start, so a first invalidation inside the first two seconds of the
+		// page's life silently became a TRAILING one.
+		state = { timer: null, lastRun: Number.NEGATIVE_INFINITY };
 		throttleStates.set(key, state);
 	}
-	const now = Date.now();
+	const now = monotonicNow();
 	if (state.timer === null && now - state.lastRun >= ms) {
 		// Leading edge — nothing pending, and the last run (if any) was a full
 		// window ago or more.
@@ -822,7 +892,7 @@ export function throttledInvalidate(
 		state.timer = setTimeout(
 			() => {
 				state!.timer = null;
-				state!.lastRun = Date.now();
+				state!.lastRun = monotonicNow();
 				invalidate();
 			},
 			Math.max(remaining, 0)
@@ -871,6 +941,7 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 	// the Deployment, not the rollout that owns the Kustomization.
 	const managedResourcesNamespaces = new Set<string>();
 	let scheduleChanged = false;
+	let fleetHealthChecksStale = false;
 
 	for (const ev of events) {
 		if (!KNOWN_KINDS.has(ev.kind) && !EVENT_TAG_KINDS.has(ev.kind)) continue;
@@ -912,7 +983,19 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 			}
 		}
 
+		// QA #4 (2026-11-09): the Deployment pipeline card draws the canary
+		// from the `managed-resources` query (the KruiseRollout object inside
+		// the Kustomization inventory), NOT from the rollout detail's embedded
+		// `kruiseRollout`. A KruiseRollout event only patched/invalidated the
+		// latter, so a finished canary stayed frozen at "Stage 1 in progress"
+		// until a reload. Throttled namespace+cluster invalidate, same shape
+		// as the Deployment fallback below.
+		if (ev.kind === 'KruiseRollout' && ev.namespace) {
+			managedResourcesNamespaces.add(`${ev.cluster}|${ev.namespace}`);
+		}
+
 		if (HEALTH_CHECK_KINDS.has(ev.kind) && ev.namespace) {
+			if (patchFleetHealthChecks(queryClient, ev)) fleetHealthChecksStale = true;
 			if (patchable) {
 				if (!patchHealthCheckCaches(queryClient, ev)) {
 					healthCheckTargets.add(`${ev.cluster}|${ev.namespace}`);
@@ -1074,6 +1157,12 @@ export function applyChangeEvents(queryClient: QueryClient, events: ChangeEvent[
 		});
 	}
 
+	if (fleetHealthChecksStale) {
+		throttledInvalidate(queryClient, 'fleet-health-checks', CHURN_THROTTLE_MS, () => {
+			queryClient.invalidateQueries({ queryKey: FLEET_HEALTH_CHECKS_KEY, exact: true });
+		});
+	}
+
 	if (healthCheckTargets.size > 0) {
 		queryClient.invalidateQueries({
 			predicate: (query) => {
@@ -1222,6 +1311,15 @@ function applyClusterHealth(update: Record<string, boolean>): void {
 }
 
 /**
+ * QA #3: a cluster flipping connected -> disconnected means the hub's fleet list now carries a `clusterErrors` entry for it; refetch the
+ * fleet list so the "unreachable / last known state" notice shows within seconds instead of on the next poll.
+ */
+export function clusterFlippedDown(prev: ReadonlyMap<string, boolean> | null, next: Record<string, boolean>): boolean {
+	if (!prev) return false;
+	return Object.entries(next).some(([name, up]) => !up && prev.get(name) === true);
+}
+
+/**
  * Whether ONE specific cluster's stream is currently connected. Rollout-
  * scoped queries (the rollout itself, health-checks, events,
  * managed-resources, rollout-tests, schedules) pass their own `[cluster]`
@@ -1266,17 +1364,88 @@ const HIDE_AFTER_MS = 60_000;
 /** No message at all (heartbeats included) for this long while nominally connected → force a reconnect; the backend heartbeats every 30s, so 3 misses is a good, cheap "actually dead" signal for a connection a proxy silently dropped. */
 const WATCHDOG_MS = 100_000;
 
+/**
+ * ⭐ ITEM 2 FOLLOW-UP (squad-rollout coordinator, 2026-10-11, after AD
+ * palette round 8). Measured during a full `/api` outage: 21 requests to the
+ * rollout endpoint in 29 seconds, and every one of them traced back to
+ * `onConnect` below — `eventsource-client`'s own `onFetchResponse` calls
+ * `onConnect()` for ANY HTTP response, including a 503 that resolves and
+ * closes in the same tick, BEFORE it ever looks at `response.status`. So a
+ * dead `/api` produced a `connect → invalidateQueries() → disconnect` cycle
+ * roughly every 2 seconds — the library's own fixed reconnect delay, which
+ * only ever moves if the STREAM sends an SSE `retry:` field (never arrives
+ * on a non-event-stream 503 body).
+ *
+ * Two independent fixes, both below:
+ *
+ * 1. **`CONNECT_SETTLE_MS`** — `onConnect` no longer invalidates on its own.
+ *    It arms a short timer; only a connection that is STILL up when that
+ *    timer fires (i.e. nothing called `onDisconnect` in the meantime) counts
+ *    as a real reconnect. A 503-and-closed cycle never reaches it.
+ * 2. **Our own capped, jittered, exponential backoff.** `eventsource-client`
+ *    exposes no setter for its internal reconnect delay, but its own JSDoc
+ *    says `connect()` is meant to be called again after `close()` "when the
+ *    server responded with a non-retryable error" — exactly this case.
+ *    `onDisconnect` now closes the client itself (replacing the library's
+ *    fixed ~2s timer with nothing) and schedules its OWN `connect()` after
+ *    `jitteredBackoffMs`, capped at `MAX_RECONNECT_MS`. `close()` ends the
+ *    live `pump()` subscription (see that function's own comment on why), so
+ *    the scheduled reconnect re-`pump()`s in the same breath — the stream
+ *    still recovers the moment a real response comes back, it just stops
+ *    hammering `/api/events/stream` every 2s while nothing is there to
+ *    answer.
+ */
+// Exported so `events.svelte.test.ts` drives its fake timers off the real
+// values instead of a second, independently-drifting copy of them.
+export const BASE_RECONNECT_MS = 1_000;
+export const MAX_RECONNECT_MS = 30_000;
+/**
+ * How long a freshly-"connected" fetch must stay open, with no
+ * `onDisconnect`, before it counts as a real reconnect rather than a
+ * transport error wearing `onConnect`'s callback for one tick.
+ */
+export const CONNECT_SETTLE_MS = 800;
+
+/** Full jitter (AWS-style): uniform in `[cap/2, cap]`, so many tabs opened
+ *  at once do not all retry on the same beat. */
+function jitteredBackoffMs(attempt: number): number {
+	const cap = Math.min(BASE_RECONNECT_MS * 2 ** attempt, MAX_RECONNECT_MS);
+	return cap / 2 + Math.random() * (cap / 2);
+}
+
 let client: EventSourceClient | null = null;
 let started = false;
 let connectedOnce = false;
 let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
 let watchdog: ReturnType<typeof setInterval> | null = null;
 let lastMessageAt = 0;
+let settleTimer: ReturnType<typeof setTimeout> | null = null;
+let manualReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectAttempts = 0;
 
 function noteMessage() {
 	lastMessageAt = Date.now();
 }
 
+/** Cancels any backoff this module scheduled on its own — the caller is
+ *  about to reconnect right now by some other, more direct means. */
+function clearManualReconnect() {
+	if (manualReconnectTimer) clearTimeout(manualReconnectTimer);
+	manualReconnectTimer = null;
+}
+
+/**
+ * ⭐ ONE SUBSCRIPTION PER `pump()` CALL. `for await` grabs the async
+ * iterator exactly once, at the top of this loop, and `client.close()`
+ * (called by `onDisconnect` below, and by the watchdog/hidden-tab paths)
+ * ends that SPECIFIC subscription for good — a later `client.connect()`
+ * reopens the HTTP connection but does not revive a dead iterator. Every
+ * call site that closes the client therefore also calls `pump()` again
+ * alongside the reconnect, which is the only thing that makes "the stream
+ * must still recover when the server comes back" true once this module
+ * manages its own reconnect timing instead of leaving the whole lifecycle to
+ * `eventsource-client`.
+ */
 async function pump(queryClient: QueryClient, source: EventSourceClient) {
 	try {
 		for await (const msg of source) {
@@ -1290,7 +1459,10 @@ async function pump(queryClient: QueryClient, source: EventSourceClient) {
 				}
 			} else if (msg.event === 'clusters' && msg.data) {
 				try {
-					applyClusterHealth(JSON.parse(msg.data) as Record<string, boolean>);
+					const update = JSON.parse(msg.data) as Record<string, boolean>;
+					const flippedDown = clusterFlippedDown(clusterHealth, update);
+					applyClusterHealth(update);
+					if (flippedDown) queryClient.invalidateQueries({ queryKey: ['rollouts', 'all'] });
 				} catch (e) {
 					console.error('[event-stream] failed to parse clusters payload:', e);
 				}
@@ -1322,13 +1494,24 @@ export function startEventStream(queryClient: QueryClient): void {
 		onConnect: () => {
 			healthy = true;
 			noteMessage();
-			// A RECONNECT (not the very first connect) means some window of
-			// changes may have been missed while disconnected — reconcile once
-			// rather than trying to diff what was missed.
-			if (connectedOnce) {
-				queryClient.invalidateQueries();
-			}
-			connectedOnce = true;
+			// See this file's own comment above `BASE_RECONNECT_MS`: `onConnect`
+			// fires on ANY response, including a failed one, so it no longer
+			// invalidates directly. It arms `settleTimer` instead — only a
+			// connection still open `CONNECT_SETTLE_MS` later (nothing called
+			// `onDisconnect` in between) is trusted as a real reconnect.
+			if (settleTimer) clearTimeout(settleTimer);
+			settleTimer = setTimeout(() => {
+				settleTimer = null;
+				// A real connection got through — the backoff starts over.
+				reconnectAttempts = 0;
+				// A RECONNECT (not the very first connect) means some window of
+				// changes may have been missed while disconnected — reconcile
+				// once rather than trying to diff what was missed.
+				if (connectedOnce) {
+					queryClient.invalidateQueries();
+				}
+				connectedOnce = true;
+			}, CONNECT_SETTLE_MS);
 		},
 		onDisconnect: () => {
 			healthy = false;
@@ -1340,6 +1523,27 @@ export function startEventStream(queryClient: QueryClient): void {
 			// stream signal until a fresh `clusters` event repopulates it,
 			// which the backend sends again "at connect".
 			clusterHealth = null;
+			if (settleTimer) {
+				// The connection that just dropped never settled — a failed
+				// reconnect attempt, not a real drop. Either way this is one
+				// more attempt to back off from.
+				clearTimeout(settleTimer);
+				settleTimer = null;
+			}
+			reconnectAttempts++;
+			const delay = jitteredBackoffMs(reconnectAttempts - 1);
+			// Own the reconnect timing — see the file doc comment. `close()`
+			// ends the library's own fixed-delay reconnect AND the live
+			// `pump()` subscription, so the scheduled reconnect below restarts
+			// both together.
+			client?.close();
+			clearManualReconnect();
+			manualReconnectTimer = setTimeout(() => {
+				manualReconnectTimer = null;
+				if (!client) return;
+				pump(queryClient, client);
+				client.connect();
+			}, delay);
 		}
 	});
 	pump(queryClient, client);
@@ -1348,7 +1552,9 @@ export function startEventStream(queryClient: QueryClient): void {
 		if (healthy && lastMessageAt && Date.now() - lastMessageAt > WATCHDOG_MS) {
 			healthy = false;
 			clusterHealth = null;
+			clearManualReconnect();
 			client?.close();
+			if (client) pump(queryClient, client);
 			client?.connect();
 		}
 	}, 10_000);
@@ -1359,6 +1565,7 @@ export function startEventStream(queryClient: QueryClient): void {
 			hiddenTimer = setTimeout(() => {
 				hiddenTimer = null;
 				healthy = false;
+				clearManualReconnect();
 				client?.close();
 			}, HIDE_AFTER_MS);
 		} else {
@@ -1372,6 +1579,8 @@ export function startEventStream(queryClient: QueryClient): void {
 			// Was closed for being hidden >60s — reopen. onConnect's
 			// `connectedOnce` branch invalidates everything once, covering
 			// whatever changed while suspended.
+			clearManualReconnect();
+			if (client) pump(queryClient, client);
 			client?.connect();
 		}
 	});
@@ -1394,6 +1603,10 @@ export function _resetEventStreamForTests(): void {
 	hiddenTimer = null;
 	if (watchdog) clearInterval(watchdog);
 	watchdog = null;
+	if (settleTimer) clearTimeout(settleTimer);
+	settleTimer = null;
+	clearManualReconnect();
+	reconnectAttempts = 0;
 	// `deployment-children`/`managed-resources` throttle state is module-level
 	// too (see `throttledInvalidate`) — reset it here so one test's churn on
 	// a target string doesn't bleed into the next test that reuses it.

@@ -69,13 +69,13 @@
 	 */
 	import { Handle, Position, useViewport } from '@xyflow/svelte';
 	import {
-		ServerSolid,
 		QuestionCircleOutline,
 		ClockOutline,
 		UserOutline,
 		ExclamationCircleOutline
 	} from 'flowbite-svelte-icons';
 	import Chip from '$lib/components/Chip.svelte';
+	import RestGlyph from '$lib/components/RestGlyph.svelte';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import type { DependencyNodeData } from '$lib/components/dependency-node-data';
 
@@ -106,6 +106,23 @@
 	 */
 	const viewport = useViewport();
 	const chipInvZoom = $derived(viewport.current.zoom > 0 ? 1 / viewport.current.zoom : 1);
+	/**
+	 * ⭐ D-20b — `zoom`, NOT `transform: scale`. A `transform` never changes
+	 * the box it is applied to — `getBoundingClientRect` (what Svelte Flow
+	 * measures a node by, and what dagre then packs the row around) still
+	 * reports the chip's UNSCALED size, so at `chipInvZoom > 1` (every zoom
+	 * under 1, which `restingFit` rests on whenever a fleet does not fit at
+	 * zoom 1) the chip painted LARGER than the room `DependencyNode`'s own
+	 * flex row ever reserved for it — measured live, `prod-af-south-1`
+	 * overprinting `checkout-api` on the name right beside it. The CSS
+	 * `zoom` property (unlike `transform`) DOES resize the box in layout —
+	 * the element's own content and its reported dimensions both scale, so
+	 * the flex row the chip sits in grows to fit it and the sibling name
+	 * is pushed clear instead of painted over. Supported by every engine
+	 * this product ships to (Chromium always; Firefox 126+, Safari 17+ —
+	 * both well under this project's own baseline).
+	 */
+	const chipLayoutStyle = $derived(`zoom: ${chipInvZoom};`);
 
 	/**
 	 * The environment axis is the one dagre RANKS along, so it follows the
@@ -222,19 +239,37 @@
 	aria-hidden="true"
 />
 
+<!--
+	⭐ D-20b ROUND 2 — STACKED `max-w` 132 → 168px. Measured live at 360px
+	(the measurement script's own `node-text-overflow` check): a `wide` env
+	chip (`prod-ap-southeast-2`, this fixture's longest, 20 chars) rendered
+	at 143-154px, past the 132px box — `.chip.chip-wide` only lifts the
+	TEXT cap (`max-width: none`), it never adds wrap (`white-space: nowrap`
+	stays, inherited from `.chip`), so a chip that cannot fit simply
+	overflows its box rather than clipping or wrapping. `wide` exists
+	specifically so two differently-suffixed region names never read as
+	the same chip (`prod-us-east-1`/`-2`) — reverting to the 12ch
+	truncation this box used before `wide` would reintroduce that exact
+	defect. 168px is the measured worst case (154px) plus a safety margin,
+	not a round number designed around; `min-w-[92px]` and the LR branch's
+	own 280/176px are untouched.
+-->
 <svelte:element
 	this={linked ? 'a' : 'div'}
 	href={linked ? data.href : undefined}
 	title={data.title}
-	class="environment-theme-scope flex w-max flex-col rounded-lg border transition-colors
-		{stacked ? 'min-w-[92px] max-w-[132px] gap-0.5 px-2 py-1.5' : 'min-w-[176px] max-w-[280px] gap-1 px-2.5 py-2'}
+	class="environment-theme-scope flex w-max flex-col rounded-md border transition-[border-color,background-color]
+		focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring-color)]
+		{stacked
+		? 'max-w-[168px] min-w-[92px] gap-0.5 px-2 py-1.5'
+		: 'max-w-[280px] min-w-[176px] gap-1 px-2.5 py-2'}
 		{data.blocked
-		? 'border-red-300 bg-red-50/70 dark:border-red-900 dark:bg-red-950/40'
+		? 'border-held-line bg-surface'
 		: data.unresolved
-			? 'border-dashed border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/50'
-			: 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'}
-		{linked ? 'cursor-pointer hover:border-gray-400 dark:hover:border-gray-500' : ''}
-		{data.focused ? 'ring-2 ring-gray-900/70 dark:ring-white/70' : ''}"
+			? 'border-dashed border-line-strong bg-surface'
+			: 'border-line bg-surface'}
+		{linked ? 'cursor-pointer hover:border-line-strong' : ''}
+		{data.focused ? 'ring-2 ring-fg/70' : ''}"
 	style={data.themeStyle ?? undefined}
 >
 	{#if stacked}
@@ -263,46 +298,101 @@
 			the chip actually depends on.
 		-->
 		{#if data.themeStyle}
-			<span class="inline-block" style="transform-origin: left center; transform: scale({chipInvZoom})">
-				<Chip role="env" label={data.envLabel} />
+			<span class="inline-block" style={chipLayoutStyle}>
+				<Chip role="env" label={data.envLabel} wide />
 			</span>
 		{:else if data.envLabel}
-			<span class="t-code-sm block text-gray-500 dark:text-gray-400" title={data.envLabel}
+			<!-- SANS, NOT MONO (round 2 review) — an environment/namespace
+			     label is a NAME, same as the Chip branch above draws it in
+			     `t-ui-sm` sans; this is the identical fact with no theme to
+			     colour it, not a different kind of value. `t-meta`, not
+			     `t-code-sm`: one drawing for "the place", on or off a
+			     resolved theme. -->
+			<span class="t-meta block text-fg-subtle" title={data.envLabel}
 				>{data.envLabel}</span
 			>
 		{/if}
 		<span
-			class="ident min-w-0 text-wrap text-[12px] leading-tight font-semibold text-gray-900 dark:text-white"
+			class="ident t-card-title min-w-0 leading-tight text-wrap text-fg"
 			>{#each identParts(data.name) as part, pi (pi)}{part}{#if pi < identParts(data.name).length - 1}<wbr
 					/>{/if}{/each}</span
 		>
 	{:else}
 		<span class="flex min-w-0 items-center gap-1.5">
+			<!-- ⭐ `wide` — THE CHIP IS THE IDENTIFIER HERE, AND THE BOX MEASURES
+			     ITSELF. (2026-09-13, eighth film review: `PLATFOR…` and
+			     `PROD-US…` on the two nodes of the demo's own graph.) `.chip`'s
+			     12ch cap resolves to 72.25px, i.e. 8.5 characters, so
+			     `platform-prod` (13) and `prod-us-east-2` (14) both died in an
+			     ellipsis — and `Chip`'s own note names this exact failure as the
+			     one `wide` exists for: "`prod-us-east-1`, `prod-us-east-2` and
+			     `prod-us-west-1` all render as the same eight characters". The
+			     cap is right where a chip shares a fixed track with other
+			     content; this node has no track to share — it hands dagre its
+			     OWN measured width (see this file's header), so an uncapped chip
+			     makes the BOX wider and clips nothing. -->
 			<!-- THE ENVIRONMENT IS ON THE NODE, NOT ONLY IN THE COLUMN. A column
 			     header would be a fifth thing to keep aligned with dagre's output,
 			     and it would vanish the moment one environment is filtered out. The
 			     chip's hue is the product's env identity, so a column reads as one
 			     colour without anything being drawn between the boxes. -->
 			{#if data.themeStyle}
-				<span class="inline-block" style="transform-origin: left center; transform: scale({chipInvZoom})">
-					<Chip role="env" label={data.envLabel} />
+				<span class="inline-block" style={chipLayoutStyle}>
+					<Chip role="env" label={data.envLabel} wide />
 				</span>
 			{:else if data.envLabel}
-				<span class="t-code-sm shrink-0 truncate text-gray-500 dark:text-gray-400" title={data.envLabel}
+				<!-- SANS, NOT MONO — see the identical note on the `stacked`
+				     branch above. -->
+				<span class="t-meta shrink-0 truncate text-fg-subtle" title={data.envLabel}
 					>{data.envLabel}</span
 				>
 			{/if}
 			{#if data.unresolved}
-				<QuestionCircleOutline class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
+				<QuestionCircleOutline class="h-3 w-3 shrink-0 text-fg-disabled" />
 			{:else}
-				<ServerSolid
-					class="h-3.5 w-3.5 shrink-0 {data.blocked
-						? 'text-red-600 dark:text-red-400'
-						: 'text-gray-400 dark:text-gray-500'}"
+				<!-- ⭐ D-20b (design review, per design-rollout) — `RestGlyph`,
+				     NOT a bare `ServerSolid` recoloured by hand. A held
+				     node's status mark must be the product's ONE held mark
+				     (`HeldGlyph`, the outline gate, `text-held`), never a
+				     different glyph tinted to match; a healthy one rests as
+				     the quiet 6px dot `RestGlyph` already draws for exactly
+				     this "nothing to report" case elsewhere (Home's
+				     Trailing/Steady rows). `RestGlyph` picks between the two
+				     the same way those rows do — `state: 'held'` routes
+				     through `BakeStatusIcon` to `HeldGlyph` itself, `null`
+				     with `bakeStatus: 'Succeeded'` and no `timestamp` rests
+				     at the dot — so this node never draws its own copy of
+				     either glyph's shape. -->
+				<RestGlyph
+					bakeStatus="Succeeded"
+					state={data.blocked ? 'held' : null}
+					class="h-3 w-3 shrink-0 {data.blocked ? 'text-held' : 'text-fg-disabled'}"
 				/>
 			{/if}
-			<span class="min-w-0 truncate text-[13px] font-semibold text-gray-900 dark:text-white"
-				>{data.name}</span
+			<!-- ⛔ 2026-10-09 · D-20 round 5 — REVERSED FOR THIS (non-`stacked`,
+			     `LR`) BRANCH ONLY: THE NAME NO LONGER WRAPS, IT TRUNCATES WITH
+			     A `title`.
+			     The 2026-09-20 reasoning this replaces (wrap because no
+			     ellipsis is short enough to tell two names apart) held for a
+			     hand-laid-out, two-or-three-node canvas where a taller box cost
+			     nothing. It stopped holding once `GraphCanvasInner` started
+			     PACKING many components onto one canvas (D-20 round 4): a
+			     wrapped name changes the node's own MEASURED height, which
+			     dagre then bakes into that component's rank spacing — the
+			     reported defect, `PROD-AP-SOUTHEAST-2`'s `checkout-api`
+			     wrapping to `checkout-` / `api`, is exactly a long name
+			     fighting the fixed-width column every other row in its stacked
+			     rank already committed to. Truncating keeps every row in a
+			     column the SAME height, which packing (and the gutter router
+			     reading each component's own height) depends on; the full name
+			     is one hover away via `title`, same mechanism `envLabel`
+			     already uses two attributes up. `stacked` (the phone/`TB`
+			     card) is UNCHANGED — a single column has no row-height
+			     neighbours to disagree with, so the 2026-09-20 trade (taller
+			     box, not a shorter name) still holds exactly as written there. -->
+			<span
+				class="ident t-card-title min-w-0 truncate leading-tight whitespace-nowrap text-fg"
+				title={data.name}>{data.name}</span
 			>
 		</span>
 	{/if}
@@ -315,13 +405,21 @@
 	-->
 	<span class="flex min-w-0 items-center gap-1.5">
 		{#if data.unresolved}
-			<span class="t-micro min-w-0 truncate text-gray-500 dark:text-gray-400"
+			<!-- Wraps rather than truncating: `not in this dashbo…` is the
+			     ellipsis saying nothing the full phrase does not, on the one
+			     node whose whole message IS that phrase. -->
+			<span class="t-meta min-w-0 text-wrap text-fg-subtle"
 				>not in this dashboard</span
 			>
 		{:else if data.build}
-			<span class="t-code-sm min-w-0 truncate text-gray-600 dark:text-gray-300">{data.build}</span>
+			<!-- `text-fg-muted`, not `-subtle` (round 2 review): measured
+			     4.22:1/4.43:1 on the old held-tint fill — under 4.5:1. The
+			     fill is gone (#10, surface for every node now), but the
+			     build id is still the row's one machine value worth a
+			     slightly stronger ink than the chrome around it. -->
+			<span class="t-code-sm min-w-0 truncate text-fg-muted">{data.build}</span>
 		{:else}
-			<span class="t-micro min-w-0 truncate text-gray-500 dark:text-gray-400">never deployed</span>
+			<span class="t-meta min-w-0 text-wrap text-fg-subtle">never deployed</span>
 		{/if}
 	</span>
 
@@ -332,7 +430,9 @@
 		kind earns — a clock is not a person and must never look like one.
 	-->
 	{#each data.holds as hold (hold.gate + hold.short)}
-		{@const Icon = hold.pending ? HOLD_ICON.pending : (HOLD_ICON[hold.clears] ?? QuestionCircleOutline)}
+		{@const Icon = hold.pending
+			? HOLD_ICON.pending
+			: (HOLD_ICON[hold.clears] ?? QuestionCircleOutline)}
 		<!-- ⛔ F6 (2026-09-03, design pass 9 re-check): `truncate` CLIPPED THE
 		     GATE'S OWN SENTENCE TO 94px OF 266 AT EVERY WIDTH FROM 390 TO
 		     1024 — `Outside the Business Hours Only deploy window` is prose,
@@ -346,10 +446,10 @@
 		     across both. -->
 		<span class="flex min-w-0 items-start gap-1.5">
 			<Icon
-				class="mt-px h-3.5 w-3.5 shrink-0 {!hold.pending &&
+				class="mt-px h-3 w-3 shrink-0 {!hold.pending &&
 				(hold.clears === 'person' || hold.clears === 'unknown')
-					? 'text-red-500 dark:text-red-400'
-					: 'text-gray-400 dark:text-gray-500'}"
+					? 'text-held'
+					: 'text-fg-disabled'}"
 			/>
 			{#if hold.pending}
 				<!-- ⭐ LINES RESERVED FOR THE WORST REALISTIC SENTENCE, NOT
@@ -380,11 +480,34 @@
 				/>
 			{:else}
 				<span
-					class="t-micro min-w-0 text-wrap {hold.clears === 'person' || hold.clears === 'unknown'
-						? 'text-red-700 dark:text-red-400'
-						: 'text-gray-500 dark:text-gray-400'}">{hold.short}</span
+					class="t-meta min-w-0 text-wrap {hold.clears === 'person' || hold.clears === 'unknown'
+						? 'text-held'
+						: 'text-fg-subtle'}">{hold.short}</span
 				>
 			{/if}
+		</span>
+	{/each}
+
+	<!--
+		⭐ D-20b ROUND 2 (coordinator decision) — THE HELD CONSTRAINT, READ
+		HERE, NOT ON THE EDGE. An edge used to carry this as text; placing
+		N of them on a dense canvas never reached zero collisions, however
+		good the placement algorithm got. The fact itself has not moved —
+		this box IS the consumer the constraint is about — so it reads
+		here instead, one quiet line per blocked contract, same row shape
+		`holds` (just above) already uses for a gate with no second
+		rollout. `text-held` sits ONLY on the version that is actually
+		short, never the whole sentence: the contract's name and which
+		version IS served are facts, not the complaint.
+	-->
+	{#each data.heldConstraints as hc (hc.contract + (hc.requiredVersion ?? '') + (hc.providedVersion ?? ''))}
+		<span class="flex min-w-0 items-start gap-1.5">
+			<ExclamationCircleOutline class="mt-px h-3 w-3 shrink-0 text-held" />
+			<span class="t-meta min-w-0 text-wrap text-fg-subtle"
+				>Needs {hc.contract}{#if hc.requiredVersion}{' '}<span class="text-held"
+						>{hc.requiredVersion}</span
+					>{/if}{#if hc.providedVersion}{' '}· has {hc.providedVersion}{:else}{' '}· not served here{/if}</span
+			>
 		</span>
 	{/each}
 </svelte:element>

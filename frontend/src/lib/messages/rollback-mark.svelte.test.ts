@@ -3,7 +3,6 @@ import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
-import ControlCenter from '$lib/ControlCenter.svelte';
 import Activity from '../../routes/activity/+page.svelte';
 import { fleet, respond } from './fleet-fixture';
 
@@ -54,14 +53,7 @@ function rollbackFleet() {
 }
 
 describe('the rollback mark is at rest, not only on hover, and not only on the current deploy', () => {
-	test('ActivityRail (embedded in `/`) prints the word for the rolled-back row', async () => {
-		vi.stubGlobal('fetch', vi.fn(respond(rollbackFleet())));
-		render(WithQueryClient, { props: { component: ControlCenter as any } });
-		await waitFor(
-			() => expect(screen.getAllByText('Rolled back', { exact: false }).length).toBeGreaterThan(0),
-			{ timeout: 5000 }
-		);
-	});
+	/* 2026-11-09: the ActivityRail-on-`/` case went with ControlCenter; `/activity` (below) keeps the mark at rest. */
 
 	// ⛔ `selector: ':not(button)'` — UX SWEEP FINDING 6, 2026-09-03.
 	// `/activity` now has a `Rolled back` KIND FILTER pill (a `<button>`,
@@ -97,7 +89,8 @@ describe('the rollback mark is at rest, not only on hover, and not only on the c
 		// no rollback (the fixture's other history entry, one day earlier)
 		// legitimately keeps "all fine", so the assertion is scoped to the
 		// specific defect string rather than banning the phrase outright.
-		expect(document.body.textContent).toMatch(/6 deploys · 1 rolled back/);
-		expect(document.body.textContent).not.toMatch(/6 deploys · all fine/);
+		// 2026-11-09: the r34 day header draws the count and the rollback as two elements (textContent has no "·" between them), so the separator is optional.
+		expect(document.body.textContent).toMatch(/6 deploys\s*·?\s*1 rolled back/);
+		expect(document.body.textContent).not.toMatch(/6 deploys\s*·?\s*all fine/);
 	});
 });

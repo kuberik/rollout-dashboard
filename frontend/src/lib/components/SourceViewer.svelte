@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Button, Modal, Tabs, TabItem } from 'flowbite-svelte';
+	import { Modal, Tabs, TabItem } from 'flowbite-svelte';
 	import Highlight from 'svelte-highlight';
 	import yaml from 'svelte-highlight/languages/yaml';
 	import plaintext from 'svelte-highlight/languages/plaintext';
@@ -87,30 +87,28 @@
 	{/if}
 </svelte:head>
 
-<Button color="light" size="sm" onclick={() => (showModal = true)}>
-	<CodeOutline class="me-2 h-4 w-4" />
-	View Source
-</Button>
+<button type="button" class="btn btn-secondary btn-xs" onclick={() => (showModal = true)}>
+	<CodeOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+	View source
+</button>
 
 <Modal bind:open={showModal} size="xl">
 	<div class="p-6">
-		<h3 class="mb-4 text-xl font-medium text-gray-900 dark:text-white">
-			Source Files for {name} v{version}
+		<h3 class="t-heading mb-4 text-fg">
+			Source files for <span class="t-code">{name}</span> <span class="t-code-sm text-fg-subtle">v{version}</span>
 		</h3>
 
 		{#if loading}
 			<div class="flex items-center justify-center p-8">
-				<div class="h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
+				<div class="h-8 w-8 animate-spin rounded-full border-b-2 border-fg"></div>
 			</div>
 		{:else if error}
-			<div class="p-4 text-red-600 dark:text-red-400">{error}</div>
+			<p class="t-body text-danger">{error}</p>
 		{:else}
 			<Tabs>
 				{#each Object.entries(files) as [filename, content]}
 					<TabItem title={filename}>
-						<div
-							class="h-[60vh] overflow-auto rounded-lg border border-gray-200 p-4 dark:border-gray-700"
-						>
+						<div class="t-code h-[60vh] overflow-auto rounded-md border border-line bg-subtle p-4">
 							<Highlight
 								language={getLanguage(filename) === 'yaml' ? yaml : plaintext}
 								code={content}

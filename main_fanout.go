@@ -43,10 +43,18 @@ type ClusterInfo struct {
 }
 
 // ClusterError describes a dashboard instance that could not be reached.
+//
+// Stale is the field the UI reads to tell "no data from this cluster" (false,
+// the cluster's items are absent) from "the items shown for this cluster are
+// its LAST KNOWN state, not current" (true: the spoke stopped answering, the
+// hub is still serving its cached payload, LastSeen is when that payload was
+// last fetched successfully). Either way the cluster is unreachable.
 type ClusterError struct {
-	URL   string `json:"url"`
-	Name  string `json:"name"`
-	Error string `json:"error"`
+	URL      string     `json:"url"`
+	Name     string     `json:"name"`
+	Error    string     `json:"error"`
+	Stale    bool       `json:"stale,omitempty"`
+	LastSeen *time.Time `json:"lastSeen,omitempty"`
 }
 
 // dashboardBaseURL extracts scheme+host from a URL string.
@@ -106,6 +114,25 @@ type parsedEnvironments struct {
 	} `json:"items"`
 }
 
+// tierAliases maps the nine environment names the environment-controller
+// accepts onto their canonical tier. Aliases of one tier are the same
+// environment. Keep in sync with environment-controller internal/wave/tier.go.
+var tierAliases = map[string]string{
+	"dev": "dev", "development": "dev",
+	"test": "test", "qa": "test",
+	"staging": "staging", "stage": "staging", "preprod": "staging",
+	"prod": "prod", "production": "prod",
+}
+
+// canonicalTier returns the canonical tier of a known environment name, and
+// the name unchanged when it is not one of the nine.
+func canonicalTier(name string) string {
+	if t, ok := tierAliases[name]; ok {
+		return t
+	}
+	return name
+}
+
 func parseEnvironments(environmentsJSON json.RawMessage) *parsedEnvironments {
 	if environmentsJSON == nil {
 		return nil
@@ -131,7 +158,7 @@ func localDashboardURLsFromEnvironments(envs *parsedEnvironments) []string {
 	var result []string
 	for _, env := range envs.Items {
 		for _, info := range env.Status.EnvironmentInfos {
-			if info.Environment != env.Spec.Environment || info.EnvironmentURL == "" {
+			if canonicalTier(info.Environment) != canonicalTier(env.Spec.Environment) || info.EnvironmentURL == "" {
 				continue
 			}
 			base := dashboardBaseURL(info.EnvironmentURL)
@@ -262,10 +289,17 @@ const spokeNameTimeout = 2 * time.Second
 // Gated by the per-spoke circuit breaker: a spoke that has been failing is
 // refused instantly instead of costing another spokeFetchTimeout.
 func fetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.RawMessage, error) {
+	return fetchSpokePath(ctx, spokeURL, rolloutsFanout.path, token)
+}
+
+// fetchSpokePath is fetchSpoke for any fanned-in list path (fanoutSpec.path).
+// The breaker is per spoke, not per path: reachability is a property of the
+// host, so a timeout on one path refuses every path to that host.
+func fetchSpokePath(ctx context.Context, spokeURL, path, token string) (map[string]json.RawMessage, error) {
 	if ok, brErr := breakers.allow(spokeURL); !ok {
 		return nil, brErr
 	}
-	data, err := doFetchSpoke(ctx, spokeURL, token)
+	data, err := doFetchSpoke(ctx, spokeURL, path, token)
 	recordSpokeOutcome(spokeURL, err)
 	if err != nil {
 		return nil, err
@@ -273,8 +307,8 @@ func fetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.Ra
 	return data, nil
 }
 
-func doFetchSpoke(ctx context.Context, spokeURL, token string) (map[string]json.RawMessage, error) {
-	reqURL := spokeURL + "/api/rollouts"
+func doFetchSpoke(ctx context.Context, spokeURL, path, token string) (map[string]json.RawMessage, error) {
+	reqURL := spokeURL + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -384,6 +418,27 @@ func doFetchSpokeClusterName(ctx context.Context, spokeURL, token string) (strin
 // indistinguishable.
 var mergedKeys = []string{"rollouts", "environments", "kustomizations", "kruiseRollouts", "rolloutDependencies"}
 
+// fanoutSpec describes one hub fan-in list: the path every spoke is asked
+// for, the SWR cache its payloads live in, and the response keys that are
+// Kubernetes-style lists ({items: [...]}) to annotate and merge.
+//
+// Each path gets its OWN cache: the cache key is identity|url, so two paths
+// sharing one cache would overwrite each other's payloads for the same spoke.
+// cache is a func so tests that swap the package-level cache var
+// (swapFanoutState) are seen here too.
+type fanoutSpec struct {
+	path       string
+	cache      func() *swrCache[map[string]json.RawMessage]
+	mergedKeys []string
+}
+
+// rolloutsFanout is GET /api/rollouts' fan-in.
+var rolloutsFanout = fanoutSpec{
+	path:       "/api/rollouts",
+	cache:      func() *swrCache[map[string]json.RawMessage] { return spokeDataCache },
+	mergedKeys: mergedKeys,
+}
+
 // fanOutRollouts fans out GET /api/rollouts to all discovered spoke dashboards
 // and merges the results with localData. localData values must be json.RawMessage.
 // Returns merged data, cluster list, and per-cluster errors.
@@ -393,12 +448,41 @@ func fanOutRollouts(
 	localURL string,
 	token string,
 ) (map[string]json.RawMessage, []ClusterInfo, []ClusterError) {
-	// Annotate local rollouts before merging.
-	localName := os.Getenv("CLUSTER_NAME")
-	if localName == "" {
-		localName = ClusterNameFromURL(localURL)
+	merged, clusters, clusterErrors, _ := fanOut(ctx, rolloutsFanout, localData, localData["environments"], localURL, token)
+	return merged, clusters, clusterErrors
+}
+
+// clusterNameForURL is the name local items are stamped with
+// (sourceClusterAnnotation): CLUSTER_NAME, else derived from localURL.
+// localClusterName (main_registry.go) is the same for a request.
+func clusterNameForURL(localURL string) string {
+	if name := os.Getenv("CLUSTER_NAME"); name != "" {
+		return name
 	}
-	for _, k := range mergedKeys {
+	return ClusterNameFromURL(localURL)
+}
+
+// fanOut fans spec.path out to every spoke discovered from envsJSON (the
+// caller's visibility-trimmed local Environments) and merges spec.mergedKeys
+// into localData. Spoke discovery is separate from localData because not
+// every fanned-in list carries environments itself (/api/health-checks does
+// not).
+//
+// The fourth return is every answering spoke's own "partialReads" entries,
+// qualified as "<cluster>/<entry>", so a spoke's failed read reaches the
+// hub's caller instead of being merged as a silently-short list. Callers
+// whose contract does not carry spoke partial reads drop it.
+func fanOut(
+	ctx context.Context,
+	spec fanoutSpec,
+	localData map[string]json.RawMessage,
+	envsJSON json.RawMessage,
+	localURL string,
+	token string,
+) (map[string]json.RawMessage, []ClusterInfo, []ClusterError, []string) {
+	// Annotate local items before merging.
+	localName := clusterNameForURL(localURL)
+	for _, k := range spec.mergedKeys {
 		if v, ok := localData[k]; ok && len(v) > 0 {
 			localData[k] = annotateItemsWithSource(v, localURL, localName)
 		}
@@ -410,13 +494,13 @@ func fanOutRollouts(
 	//    the entry matching spec.environment is the env that lives on this
 	//    cluster, so its environmentUrl points back to us. Zero-config, robust
 	//    even behind reverse proxies that don't forward Host headers.
-	envs := parseEnvironments(localData["environments"])
+	envs := parseEnvironments(envsJSON)
 	selfURLs := append([]string{localURL}, localDashboardURLsFromEnvironments(envs)...)
 
 	// Discover spokes — base URLs from environmentUrl that aren't self.
 	spokeURLs := extractSpokeURLs(envs, selfURLs)
 	if len(spokeURLs) == 0 {
-		return localData, nil, nil
+		return localData, nil, nil, nil
 	}
 
 	// Fan out in parallel: for each spoke, resolve rollouts + cluster name
@@ -431,6 +515,7 @@ func fanOutRollouts(
 	type result struct {
 		spoke spokeResult
 		name  string
+		meta  swrMeta
 	}
 	results := make([]result, len(spokeURLs))
 	identity := identityKey(token)
@@ -445,15 +530,16 @@ func fanOutRollouts(
 				nameCh <- cachedSpokeClusterName(ctx, spokeURL, token)
 			}()
 
-			data, err := spokeDataCache.load(ctx, identity+"|"+spokeURL,
+			data, meta, err := spec.cache().loadMeta(ctx, identity+"|"+spokeURL,
 				func(fctx context.Context) (map[string]json.RawMessage, error) {
-					return fetchSpoke(fctx, spokeURL, token)
+					return fetchSpokePath(fctx, spokeURL, spec.path, token)
 				})
 			name := <-nameCh
 
 			results[idx] = result{
 				spoke: spokeResult{url: spokeURL, data: data, err: err},
 				name:  name,
+				meta:  meta,
 			}
 		}(i, su)
 	}
@@ -462,6 +548,7 @@ func fanOutRollouts(
 	merged := localData
 	var clusters []ClusterInfo
 	var clusterErrors []ClusterError
+	var spokePartialReads []string
 	seenNames := make(map[string]bool)
 
 	for _, r := range results {
@@ -488,18 +575,37 @@ func fanOutRollouts(
 		}
 		seenNames[r.name] = true
 		clusters = append(clusters, ClusterInfo{URL: r.spoke.url, Name: r.name})
+		if r.meta.StaleErr != nil {
+			// Serve the last-known data (better than a hole) but say so.
+			seen := r.meta.LastOK
+			clusterErrors = append(clusterErrors, ClusterError{
+				URL:      r.spoke.url,
+				Name:     r.name,
+				Error:    r.meta.StaleErr.Error(),
+				Stale:    true,
+				LastSeen: &seen,
+			})
+		}
 		// Annotate and merge each key.
-		for _, k := range mergedKeys {
+		for _, k := range spec.mergedKeys {
 			if v, ok := r.spoke.data[k]; ok && len(v) > 0 {
 				annotated := annotateItemsWithSource(v, r.spoke.url, r.name)
 				merged[k] = mergeItemLists(merged[k], annotated)
+			}
+		}
+		if raw, ok := r.spoke.data["partialReads"]; ok && len(raw) > 0 {
+			var entries []string
+			if err := json.Unmarshal(raw, &entries); err == nil {
+				for _, e := range entries {
+					spokePartialReads = append(spokePartialReads, r.name+"/"+e)
+				}
 			}
 		}
 	}
 	// Warm the name→url registry so the proxy can resolve ?cluster=<name> without
 	// re-discovering (list calls happen on every page via the Navbar).
 	registry.put(clusters)
-	return merged, clusters, clusterErrors
+	return merged, clusters, clusterErrors, spokePartialReads
 }
 
 // cachedSpokeClusterName resolves a spoke's cluster name through the shared

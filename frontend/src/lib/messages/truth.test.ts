@@ -12,7 +12,10 @@ import {
 	ruleHandle,
 	joinClauses,
 	prettyNameOf,
-	EMPTY_GATE_CONTEXT
+	EMPTY_GATE_CONTEXT,
+	promotionHoldBreakdown,
+	holdCausePhrase,
+	type ContractHolds
 } from '$lib/view-models/blocking-story';
 import { verdictSentence, blockReason as verdictBlockReason } from '$lib/view-models/verdict';
 import {
@@ -38,7 +41,11 @@ import {
 	recoveredChecks,
 	recoveredLabel,
 	recoveredTitle,
-	deployWindowStart
+	deployWindowStart,
+	healthGateCounts,
+	healthGateHolding,
+	healthGateCountsLabel,
+	pendingProbeClause
 } from '$lib/view-models/health-witness';
 import { upToDateHeadline, upToDateCaption } from '$lib/view-models/up-to-date';
 import {
@@ -47,7 +54,9 @@ import {
 	rankTitle,
 	rankBehindBy,
 	rankIsAdverse,
-	rankVerdictsByRollout
+	rankVerdictsByRollout,
+	lagLabel,
+	regionsLabel
 } from '$lib/view-models/env-rank';
 import {
 	autoDeployState,
@@ -192,21 +201,27 @@ function rollout(opts: {
 describe('blocking-story: every gate kind is classified from evidence', () => {
 	const ENVS = {
 		items: [
-			{
-				metadata: { namespace: 'ns', name: 'e-after' },
-				spec: { environment: 'staging', relationship: { environment: 'dev', type: 'After' } },
-				status: { rolloutGateRef: { name: 'gate-after' } }
-			},
-			{
-				metadata: { namespace: 'ns', name: 'e-par' },
-				spec: { environment: 'canary', relationship: { environment: 'prod', type: 'Parallel' } },
-				status: { rolloutGateRef: { name: 'gate-par' } }
-			},
-			{
-				metadata: { namespace: 'ns', name: 'e-norel' },
-				spec: { environment: 'dev' },
-				status: { rolloutGateRef: { name: 'gate-norel' } }
-			}
+			{ metadata: { namespace: 'ns', name: 'e-dev' }, spec: { name: 'line', environment: 'dev' }, status: { conditions: [] } },
+			{ metadata: { namespace: 'ns', name: 'e-after' }, spec: { name: 'line', environment: 'staging' }, status: { rolloutGateRef: { name: 'gate-after' }, conditions: [] } },
+			{ metadata: { namespace: 'ns', name: 'e-ap' }, spec: { name: 'fan', environment: 'prod', site: 'ap-south-1', wave: 1 }, status: { conditions: [], wave: { site: 'ap-south-1', wave: 1, role: 'Leader', leader: 'ap-south-1', selectedRevision: 'abc1234def' } } },
+			{ metadata: { namespace: 'ns', name: 'e-eu' }, spec: { name: 'fan', environment: 'prod', site: 'eu-west-1', wave: 1 }, status: { rolloutGateRef: { name: 'gate-follow' }, conditions: [], wave: { site: 'eu-west-1', wave: 1, role: 'Follower', leader: 'ap-south-1', selectedRevision: 'abc1234def' } } },
+			{ metadata: { namespace: 'ns', name: 'e-us' }, spec: { name: 'fan', environment: 'prod', site: 'us-east-1', wave: 2 }, status: { rolloutGateRef: { name: 'gate-wave' }, conditions: [] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-bake' }, spec: { name: 'blk', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-bake' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'prod/b bake on abc1234' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-fail' }, spec: { name: 'blk', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-failed' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'prod/b bake failed on abc1234' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-cancel' }, spec: { name: 'blk2', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-cancelled' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'prod/b bake cancelled on abc1234' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-sel' }, spec: { name: 'blk3', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-sel' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'prod/b selection' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-nosites' }, spec: { name: 'blk4', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-nosites' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'staging has no registered sites' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-cand' }, spec: { name: 'blk5', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-cand' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingForCandidate', message: 'abc1234def' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-pin' }, spec: { name: 'blk6', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-pin' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'Pinned', message: 'pinned to rel-12, wave selected abc1234def' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-gap' }, spec: { name: 'blk7', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-gap' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'InvalidTopology', message: 'prod has waves 1,3 (missing 2)' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-start' }, spec: { name: 'blk8', environment: 'prod', site: 'a', wave: 2 }, status: { rolloutGateRef: { name: 'gate-start' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'InvalidTopology', message: 'prod has waves 2,3 (waves start at 1)' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-lock' }, spec: { name: 'blk9', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-lock' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'LockstepWaiting', message: 'prod/b bake on abc1234' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-dup' }, spec: { name: 'blk10', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-dup' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'DuplicateSite', message: 'site a of prod for kuberik-blk10 is owned by cluster c1 namespace n1 name old' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-self' }, spec: { name: 'blk11', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-self' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'InvalidTopology', message: 'prod is its own upstream' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-alias' }, spec: { name: 'blk13', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-alias' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'InvalidTopology', message: 'production and prd are the same tier (prod)' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-unk' }, spec: { name: 'blk14', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-unk' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'UnknownTier', message: 'environment "canary" is not a known tier' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-b-odd' }, spec: { name: 'blk12', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-odd' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'Brand', message: 'something new' }] } },
+			{ metadata: { namespace: 'ns', name: 'e-norel' }, spec: { name: 'solo', environment: 'dev' }, status: { rolloutGateRef: { name: 'gate-norel' }, conditions: [] } },
 		]
 	} as any;
 	const DEPS = {
@@ -235,13 +250,52 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 		says(g.short, 'Waiting for dev to deploy it first');
 	});
 
-	test('promotion gate, Parallel -- a different verb, because the order differs', () => {
-		const g = classifyGate({ name: 'gate-par', allowedVersions: [] }, 'ns', full);
-		says(g.clause, 'prod deploys it alongside');
-		says(g.short, 'Waiting for prod to deploy it alongside');
+	test('promotion gate, follower -- follows the leader\u2019s pick, names the revision', () => {
+		const g = classifyGate({ name: 'gate-follow', allowedVersions: [] }, 'ns', full);
+		says(g.label, "follows ap-south-1's pick (abc1234)");
+		says(g.clause, "ap-south-1's pick (abc1234) reaches it");
+		says(g.short, "Following ap-south-1's pick (abc1234)");
 	});
 
-	test('promotion gate with no relationship published -- says so, invents no upstream', () => {
+	test('promotion gate, later wave -- names the wave before it, not "alongside"', () => {
+		const g = classifyGate({ name: 'gate-wave', allowedVersions: [] }, 'ns', full);
+		says(g.label, 'after wave 1 (ap-south-1, eu-west-1)');
+		says(g.clause, 'wave 1 (ap-south-1, eu-west-1) deploys it first');
+		says(g.short, 'Waiting for wave 1 (ap-south-1, eu-west-1) to deploy it first');
+	});
+
+	test.each([
+		['gate-bake', 'Waiting for b to finish checking abc1234'],
+		['gate-failed', "b's check failed on abc1234"],
+		['gate-cancelled', "b's check was cancelled on abc1234"],
+		['gate-sel', 'Waiting for b to pick a build'],
+		['gate-nosites', 'Waiting for a site to register in staging'],
+		['gate-cand', 'Waiting for abc1234 to become available on this cluster'],
+		['gate-pin', 'Pinned to rel-12, the wave selected abc1234'],
+		['gate-gap', 'prod has no wave 2'],
+		['gate-start', 'prod waves start at 2, not 1'],
+		['gate-lock', 'Lockstep: waiting for b to finish abc1234'],
+		['gate-self', 'prod is its own upstream'],
+		['gate-alias', 'production and prd are the same tier (prod). Use one name per tier; split with sites and waves.'],
+		['gate-unk', 'canary is not a known tier. Use dev, test, staging or prod.'],
+		['gate-odd', 'something new']
+	])('WaveReady blocker %s -- says %s', (gate, short) => {
+		const g = classifyGate({ name: gate, allowedVersions: [] }, 'ns', full);
+		says(g.short, short);
+		saw(g.label, g.clause);
+	});
+
+	test('WaveReady DuplicateSite -- a misconfiguration hold naming the owner and the take-over annotation', () => {
+		const g = classifyGate({ name: 'gate-dup', allowedVersions: [] }, 'ns', full);
+		expect(g.clears).toBe('person');
+		says(g.short, /^Held: another Environment, c1\/n1\/old, owns site a of prod\. Annotate this Environment with environments\.kuberik\.com\/take-over-site=true to take it over\.$/);
+		saw(g.label, g.clause);
+		// The banner's own headline states the fault, never "waiting on an approval", and the story is an error.
+		expect(g.fault).toBe(true);
+		says(g.headline ?? '', 'Site a of prod is owned by another Environment');
+	});
+
+	test('promotion gate with no upstream published -- says so, invents no upstream', () => {
 		const g = classifyGate({ name: 'gate-norel', allowedVersions: [] }, 'ns', full);
 		says(g.label, 'after its upstream environment');
 		says(g.clause, 'its upstream environment deploys this build');
@@ -500,7 +554,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			gates: [{ name: 'manual', allowedVersions: [] }]
 		});
 		const s = blockingStory(r, ctxFull, { place: 'staging' });
-		says(s.headline, 'STAGING is pinned to a1');
+		says(s.headline, 'staging is pinned to a1');
 		says(
 			s.consequence,
 			'2 newer builds are available and none of them will deploy while the pin is set.'
@@ -527,7 +581,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 	test('one approval gate -- the only state whose verdict is escalate', () => {
 		const r = rollout({ at: 0, gates: [{ name: 'manual', allowedVersions: [] }] });
 		const s = blockingStory(r, ctxFull, { place: 'staging' });
-		says(s.headline, 'STAGING is waiting on an approval');
+		says(s.headline, 'staging is waiting on an approval');
 		says(
 			s.consequence,
 			'2 newer builds are waiting. Nothing promotes itself until someone approves it.'
@@ -573,7 +627,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 				place: 'dev'
 			}
 		);
-		says(s.headline, 'Something is holding DEV');
+		says(s.headline, 'Something is holding dev');
 		says(
 			s.verdict,
 			'This dashboard cannot tell what clears this — it may or may not need a person.'
@@ -586,9 +640,10 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const ctx = buildGateContext({
 			environments: {
 				items: [
+					{ metadata: { namespace: 'alpha-dev-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
 					{
 						metadata: { namespace: 'alpha-dev', name: 'e' },
-						spec: { environment: 'staging', relationship: { environment: 'dev', type: 'After' } },
+						spec: { environment: 'staging' },
 						status: { rolloutGateRef: { name: 'ghd-1' } }
 					}
 				]
@@ -602,7 +657,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 				place: 'staging'
 			}
 		);
-		says(s.headline, 'STAGING is waiting on another deploy');
+		says(s.headline, 'staging is waiting on another deploy');
 		says(
 			s.verdict,
 			'Nobody has to approve anything — this clears when the deploy in front of it lands.'
@@ -652,7 +707,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		// `upstreamHeadline`'s doc: the live `hello-dep-dev` shape carries only
 		// this one gate, and it used to print the same generic sentence a lone
 		// promotion gate does.
-		says(s.headline, 'PROD is waiting for hello-api-app to ship api ^1.67.0');
+		says(s.headline, 'prod is waiting for hello-api-app to ship api ^1.67.0');
 		// ⛔ NOT "Nobody has to approve anything" LEADING — superseded
 		// 2026-09-03 (operator-walk finding 6): that clause is the one a 3am
 		// reader takes as "not mine" and stops reading. A contract gate leads
@@ -675,6 +730,114 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		expect(s.resolution.match(/hand-started deploy|start.*by hand/gi)?.length).toBe(1);
 	});
 
+	/**
+	 * ⭐ THE HOLD-ONE-RULE. (2026-10-09, coordinator ruling — design-rollout
+	 * TL.) The live defect: `checkout-api/prod-us-east-2` carries a
+	 * `payments-svc` contract that the controller NEVER publishes on
+	 * `rollout.status.gates` (so there is no `RolloutGate` object and no
+	 * `RolloutDependency` join through `GateContext.dependency` either — the
+	 * contract is read off the DEPENDENCY GRAPH's own edge, via
+	 * `contractHoldsForRollout`/`options.contractHolds`, never off
+	 * `buildGateContext`). A promotion gate refuses the two newest
+	 * candidates; the contract alone refuses the one candidate the gate
+	 * does not touch, so NO candidate is deployable and `blockingStory` must
+	 * say so and name `payments-svc`.
+	 */
+	test('a candidate held ONLY by a contract hold (no RolloutGate, no RolloutDependency join) -- names the provider', () => {
+		const r = rollout({
+			ns: 'checkout-api-prod-us-east-2',
+			name: 'checkout-api',
+			releases: ['v0', 'v1', 'v2', 'v3'],
+			at: 0,
+			gates: [{ name: 'promotion-staging-first', passing: false, allowedVersions: ['v0', 'v1'] }]
+		});
+		// The promotion gate's own join -- an `Environment` naming it, same as
+		// the live payload -- so it classifies as `kind: 'promotion'` rather
+		// than falling through to `unknown` for lack of evidence (irrelevant
+		// to THIS fixture's own point, but a gate classified `unknown` would
+		// wrongly turn this into a two-cause "Two things are holding" story).
+		const ctx = buildGateContext({
+			environments: {
+				items: [
+					{ metadata: { namespace: 'checkout-api-prod-us-east-2-staging', name: 'e' }, spec: { environment: 'staging' }, status: {} },
+					{
+						metadata: { namespace: 'checkout-api-prod-us-east-2', name: 'e' },
+						spec: { environment: 'prod-us-east-2' },
+						status: { rolloutGateRef: { name: 'promotion-staging-first' } }
+					}
+				]
+			},
+			rolloutDependencies: { items: [] }
+		} as any);
+		const contractHolds: ContractHolds = new Map([
+			['v1', [{ provider: 'payments-svc', required: '~2.9.0', has: '2.4.1' }]]
+		]);
+
+		const withoutContract = blockingStory(r, ctx, { place: 'prod-us-east-2' });
+		expect(withoutContract.blocked, 'gate-only read must still call v1 deployable (the pre-fix defect)').toBe(
+			false
+		);
+
+		const s = blockingStory(r, ctx, { place: 'prod-us-east-2', contractHolds });
+		says(s.headline, 'prod-us-east-2 is waiting for payments-svc to ship ~2.9.0');
+		says(
+			s.verdict,
+			'No approval will unblock this. Someone has to ship ~2.9.0 from payments-svc, then the deploy in front of it has to land; until then the only way forward is a hand-started deploy, which bypasses the check.'
+		);
+		expect(s.blocked).toBe(true);
+		expect(s.selfClearing).toBe(false);
+		// `promotionHoldBreakdown` is the same per-build read the Overview's
+		// "Newer builds" rows and the Gates tab use — it must agree exactly.
+		const breakdown = promotionHoldBreakdown(r, ctx, {
+			place: 'prod-us-east-2',
+			contractHolds
+		});
+		expect(breakdown.allHeld).toBe(s.blocked);
+		// `short`'s own house-voice form, the Overview row's own wording
+		// ("Needs payments-svc ~2.9.0 · has 2.4.1") -- recorded for the
+		// catalogue even though no top-level `BlockingStory` field prints it
+		// verbatim; a caller reading `story.gates[].short` for a contract-kind
+		// gate gets this exact sentence.
+		const contractGate = s.gates.find((g) => g.subject === 'payments-svc');
+		says(contractGate?.short, 'Needs payments-svc ~2.9.0 · has 2.4.1');
+		// ⭐ THE HOLD-CAUSE PHRASE, MIXED (gate + contract). (2026-10-10,
+		// design-rollout TL commit "held-cause-phrase".) This fixture is
+		// BOTH a promotion gate AND a contract hold at once -- the exact
+		// shape the coordinator named "mixed" -- and the contract leads,
+		// same rule as `upstreamHeadline`/`upstreamVerdict`.
+		says(holdCausePhrase(s, { place: 'prod-us-east-2' }), 'prod-us-east-2 is waiting for payments-svc ~2.9.0');
+		says(
+			holdCausePhrase(breakdown, { place: 'prod-us-east-2' }),
+			'prod-us-east-2 is waiting for payments-svc ~2.9.0'
+		);
+	});
+
+	/**
+	 * ⭐ A CONTRACT HOLD WITH NO KNOWN REQUIRED RANGE -- the "ship a newer
+	 * version" fallback, same shape `classifyGate`'s own dependency branch
+	 * falls back to when `requiredVersion` does not resolve to exactly one
+	 * value (see `ClassifiedGate.need`'s own doc comment).
+	 */
+	test('a contract hold with no known required version -- falls back to "a newer version"', () => {
+		const r = rollout({
+			ns: 'standalone-prod',
+			name: 'standalone-api',
+			releases: ['v0', 'v1'],
+			at: 0,
+			gates: []
+		});
+		const contractHolds: ContractHolds = new Map([['v1', [{ provider: 'ledger-core' }]]]);
+		const s = blockingStory(r, EMPTY_GATE_CONTEXT, { contractHolds });
+		says(s.headline, 'this service is waiting for ledger-core to ship a newer version');
+		says(
+			s.verdict,
+			'No approval will unblock this. Someone has to ship a newer version from ledger-core; until then the only way forward is a hand-started deploy, which bypasses the check.'
+		);
+		const contractGate = s.gates.find((g) => g.subject === 'ledger-core');
+		says(contractGate?.short, 'Needs ledger-core');
+		says(contractGate?.clause, 'ledger-core ships a newer version');
+	});
+
 	test('a promotion gate AND a contract gate together -- the contract LEADS', () => {
 		// ⭐ (2026-09-02, second pass, from the human: "The contract is the
 		// binding cause; the order gate follows on its own once the provider
@@ -684,9 +847,10 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const ctx = buildGateContext({
 			environments: {
 				items: [
+					{ metadata: { namespace: 'ns-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
 					{
 						metadata: { namespace: 'ns', name: 'e' },
-						spec: { environment: 'staging', relationship: { environment: 'dev', type: 'After' } },
+						spec: { environment: 'staging' },
 						status: { rolloutGateRef: { name: 'ghd-1' } }
 					}
 				]
@@ -727,7 +891,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		// `clears: 'upstream'`. Two gates, one cause, so the headline names
 		// the cause the same way a lone contract gate's verdict already does,
 		// rather than counting to two.
-		says(s.headline, 'STAGING is waiting for hello-api-app to ship api ^1.67.0');
+		says(s.headline, 'staging is waiting for hello-api-app to ship api ^1.67.0');
 		expect(s.headline).not.toMatch(/things are holding/);
 		// Mixed gates too: the verdict already carries the escape hatch, so
 		// `resolution` must not append it a second time.
@@ -742,9 +906,10 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const ctx = buildGateContext({
 			environments: {
 				items: [
+					{ metadata: { namespace: 'ns2-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
 					{
 						metadata: { namespace: 'ns2', name: 'e' },
-						spec: { environment: 'staging', relationship: { environment: 'dev', type: 'After' } },
+						spec: { environment: 'staging' },
 						status: { rolloutGateRef: { name: 'ghd-1' } }
 					}
 				]
@@ -778,7 +943,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			ctx,
 			{ place: 'staging' }
 		);
-		says(s.headline, 'STAGING is waiting for hello-api-app to ship a newer api');
+		says(s.headline, 'staging is waiting for hello-api-app to ship a newer api');
 		// ⭐ (2026-09-03) Reaches `upstreamVerdict`'s "no agreed requirement"
 		// fallback template too — the headline alone left `ship a newer
 		// <contract> from <provider>` unproduced by any state in this file.
@@ -848,7 +1013,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			ctxFull,
 			{ place: 'prod' }
 		);
-		says(s.headline, 'Two things are holding PROD');
+		says(s.headline, 'Two things are holding prod');
 		expect(s.consequence).toContain('someone approves it');
 		expect(s.consequence).toContain('a check starts passing');
 		says(s.verdict, 'This will not clear on its own.');
@@ -860,7 +1025,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 	test('more gates than the count words cover -- falls back to the numeral, never blank', () => {
 		const gates = Array.from({ length: 7 }, (_, i) => ({ name: `g${i}`, passing: false }));
 		const s = blockingStory(rollout({ at: 0, gates }), ctxFull, { place: 'dev' });
-		says(s.headline, '7 things are holding DEV');
+		says(s.headline, '7 things are holding dev');
 		saw(shortStory(s), s.consequence);
 	});
 
@@ -890,9 +1055,10 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			buildGateContext({
 				environments: {
 					items: [
+						{ metadata: { namespace: 'alpha-dev-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
 						{
 							metadata: { namespace: 'alpha-dev', name: 'e' },
-							spec: { environment: 'staging', relationship: { environment: 'dev', type: 'After' } },
+							spec: { environment: 'staging' },
 							status: { rolloutGateRef: { name: 'ghd-1' } }
 						}
 					]
@@ -931,6 +1097,135 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		expect(joinClauses(['a'])).toBe('a');
 		says(joinClauses(['a', 'b']), 'a and b');
 		says(joinClauses(['a', 'b', 'c']), 'a, b and c');
+	});
+});
+
+/**
+ * ⭐ `holdCausePhrase` -- ONE CAUSE PHRASE, EVERY SURFACE. (2026-10-10,
+ * design-rollout TL commit "held-cause-phrase".) The checkout-api/
+ * prod-us-east-2 MIXED case (gate + contract) is pinned above, inside the
+ * fixture that produces it; this block covers the other three ranks --
+ * approval, promotion order, a lone contract -- plus the two fallbacks
+ * (`unknown`, a bare clock/check hold) nothing above reaches.
+ */
+describe('blocking-story: holdCausePhrase -- fact + cause, one sentence product-wide', () => {
+	const ctxFull = buildGateContext({
+		environments: { items: [] },
+		rolloutDependencies: { items: [] }
+	} as any);
+
+	test('approval -- outranks everything, same words as the headline it used to duplicate', () => {
+		const r = rollout({ at: 0, gates: [{ name: 'manual', allowedVersions: [] }] });
+		const s = blockingStory(r, ctxFull, { place: 'staging' });
+		says(holdCausePhrase(s, { place: 'staging' }), 'staging is waiting on an approval');
+	});
+
+	test('promotion order alone -- named as itself, not folded into the generic "is held"', () => {
+		const ctx = buildGateContext({
+			environments: {
+				items: [
+					{ metadata: { namespace: 'alpha-dev-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
+					{
+						metadata: { namespace: 'alpha-dev', name: 'e' },
+						spec: { environment: 'staging' },
+						status: { rolloutGateRef: { name: 'ghd-1' } }
+					}
+				]
+			},
+			rolloutDependencies: { items: [] }
+		} as any);
+		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'ghd-1', allowedVersions: [] }] }), ctx, {
+			place: 'prod-us-east-2'
+		});
+		says(holdCausePhrase(s, { place: 'prod-us-east-2' }), 'prod-us-east-2 is waiting on promotion order');
+	});
+
+	test('a lone contract -- names the provider and the required version, no promotion gate riding along', () => {
+		const contractHolds: ContractHolds = new Map([
+			['v1', [{ provider: 'ledger-core', required: '^6.0.0' }]]
+		]);
+		const r = rollout({ ns: 'standalone-prod', name: 'standalone-api', releases: ['v0', 'v1'], at: 0, gates: [] });
+		const s = blockingStory(r, EMPTY_GATE_CONTEXT, { place: 'prod', contractHolds });
+		says(holdCausePhrase(s, { place: 'prod' }), 'prod is waiting for ledger-core ^6.0.0');
+	});
+
+	/**
+	 * ⭐ TWO CONTRACTS, ONE BUILD -- NEITHER PROVIDER IS DROPPED. (2026-10-10,
+	 * QA finding.) `contractHoldsForRollout` used to key its map with a bare
+	 * `ContractHold` and overwrite with `Map.set`, so a build two
+	 * `RolloutDependency` edges both refused collapsed to whichever one the
+	 * join visited last -- the banner named one provider. The list form
+	 * pins both, joined with the house list joiner (`joinClauses`), the same
+	 * one every other multi-item sentence in this module already uses.
+	 */
+	test('two contracts holding the same build at once -- names both, with the house list joiner', () => {
+		const contractHolds: ContractHolds = new Map([
+			[
+				'v1',
+				[
+					{ provider: 'payments-svc', required: '~2.9.0' },
+					{ provider: 'auth', required: '~1.4' }
+				]
+			]
+		]);
+		const r = rollout({ ns: 'standalone-prod', name: 'standalone-api', releases: ['v0', 'v1'], at: 0, gates: [] });
+		// `story.gates` sorts worst-first then by id (`contract:auth` before
+		// `contract:payments-svc`, alphabetically) -- the SAME ordering every
+		// other multi-gate sentence in this product already reads off.
+		const s = blockingStory(r, EMPTY_GATE_CONTEXT, { place: 'prod', contractHolds });
+		says(
+			holdCausePhrase(s, { place: 'prod' }),
+			'prod is waiting for auth ~1.4 and payments-svc ~2.9.0'
+		);
+		// `promotionHoldBreakdown`'s own `held[].contracts` carries no such
+		// sort -- it is the raw list `options.contractHolds` named, in the
+		// order the caller gave it.
+		const breakdown = promotionHoldBreakdown(r, EMPTY_GATE_CONTEXT, { place: 'prod', contractHolds });
+		says(
+			holdCausePhrase(breakdown, { place: 'prod' }),
+			'prod is waiting for payments-svc ~2.9.0 and auth ~1.4'
+		);
+	});
+
+	test('unknown -- states the fact, invents no remedy', () => {
+		const partial = buildGateContext({
+			environments: { items: [] },
+			rolloutDependencies: null
+		} as any);
+		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'ghd-p2fld', allowedVersions: [] }] }), partial, {
+			place: 'dev'
+		});
+		says(holdCausePhrase(s, { place: 'dev' }), 'dev is waiting on a rule this dashboard cannot attribute');
+	});
+
+	test('a lone clock/check hold -- no second party to name, falls back to the generic held fact', () => {
+		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'sg-1', passing: false }] }), ctxFull, {
+			place: 'dev'
+		});
+		says(holdCausePhrase(s, { place: 'dev' }), 'dev is held');
+	});
+
+	test('not blocked -- null, NEVER the empty string (BlockingStoryPanel\'s title ?? story.headline only falls back on nullish)', () => {
+		const s = blockingStory(rollout({ at: 2 }), ctxFull);
+		expect(holdCausePhrase(s, { place: 'dev' })).toBe(null);
+	});
+
+	test('no place given -- falls back to the un-placed subject, same default every headline uses', () => {
+		const r = rollout({ at: 0, gates: [{ name: 'manual', allowedVersions: [] }] });
+		const s = blockingStory(r, ctxFull);
+		says(holdCausePhrase(s), 'this service is waiting on an approval');
+	});
+
+	test('a PromotionHoldBreakdown entry -- the HELD build, never the running one', () => {
+		const contractHolds: ContractHolds = new Map([
+			['v1', [{ provider: 'payments-svc', required: '~2.9.0', has: '2.4.1' }]]
+		]);
+		const r = rollout({ ns: 'checkout-api-prod-us-east-2', name: 'checkout-api', releases: ['v0', 'v1'], at: 0, gates: [] });
+		const breakdown = promotionHoldBreakdown(r, EMPTY_GATE_CONTEXT, { place: 'prod-us-east-2', contractHolds });
+		says(
+			holdCausePhrase(breakdown, { place: 'prod-us-east-2' }),
+			'prod-us-east-2 is waiting for payments-svc ~2.9.0'
+		);
 	});
 });
 
@@ -1262,15 +1557,27 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 	test('production, vouched -- says the controller would have done this itself', () => {
 		says(
 			confirmNotice(intent({ production: true, environment: 'prod', vouched: true })),
-			'This changes production. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.'
+			'This changes prod. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.'
 		);
 	});
 
-	test('production, unvouched -- says the word production, twice, and that nothing checks it', () => {
+	test('production, unvouched -- says the real place name (prod), twice, and that nothing checks it', () => {
 		const n = confirmNotice(intent({ production: true, environment: 'prod', vouched: false }))!;
 		says(
 			n,
-			'This ships to production a build that no rule currently allows. It applies immediately and production starts serving it; nothing checks it first.'
+			'This deploys to prod a build that a rule is still holding back. It applies immediately and prod starts serving it; nothing checks it first.'
+		);
+	});
+
+	test('production, unvouched, held -- counts the rules that hold it; the rule list names them (QA #22, round 2)', () => {
+		const i = intent({ production: true, environment: 'prod', vouched: false });
+		says(
+			confirmNotice(i, false, null, ['Manual approval'])!,
+			'This deploys to prod a build that a rule is still holding back. It applies immediately and prod starts serving it; nothing checks it first.'
+		);
+		says(
+			confirmNotice(i, false, null, ['A', 'B', 'C'])!,
+			'This deploys to prod a build that 3 rules are still holding back. It applies immediately and prod starts serving it; nothing checks it first.'
 		);
 	});
 
@@ -1287,13 +1594,17 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 		const n = confirmNotice(intent({ production: false, environment: 'staging', vouched: false }))!;
 		says(
 			n,
-			'This overrides the rules holding staging, which do not currently allow this build. It applies immediately. It does not deploy to production — but a build that deploys and passes its checks here can become allowed in whatever environment promotes after staging.'
+			'This overrides the rules holding staging, which do not currently allow this build. It applies immediately. It does not deploy to prod — but a build that deploys and passes its checks here can become allowed in whatever environment promotes after staging.'
 		);
 		expect(n).not.toContain('Production is not touched');
 	});
 
-	test('targetPhrase gives the modal the word it owed its reader', () => {
-		says(targetPhrase(intent({ production: true })), 'production');
+	// ⭐ ROUND 5 (squad-fleet, SPEC ruling "one place name… never
+	// 'production'") — `targetPhrase` no longer special-cases a production
+	// target to the generic word: it is the real environment name, always,
+	// the same name `/envs/<name>`'s header and `/apps/<name>`'s map print.
+	test('targetPhrase gives the modal the real place name it owed its reader', () => {
+		says(targetPhrase(intent({ production: true, environment: 'prod' })), 'prod');
 		says(targetPhrase(intent({ environment: 'staging' })), 'staging');
 		says(targetPhrase(intent({ environment: '' })), 'this environment');
 	});
@@ -1302,7 +1613,7 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 		says(typedPrompt(intent({ custom: true })), 'This version is not in the release list. Type');
 		says(
 			typedPrompt(intent({ production: true, environment: 'prod' })),
-			'Nothing has vouched for this build in production. Type'
+			'Nothing has vouched for this build in prod. Type'
 		);
 	});
 
@@ -1314,24 +1625,40 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 	test('the typed prompt for a rollback names the tier, not a false vouching claim', () => {
 		says(
 			typedPrompt(intent({ direction: 'rollback', production: true, environment: 'prod' })),
-			'This changes production. Type'
+			'This changes prod. Type'
 		);
 	});
 
 	test('the button says where it lands, in every direction', () => {
-		says(
-			deployActionLabel(intent({ direction: 'rollback', production: true })),
-			'Roll back production'
-		);
-		says(deployActionLabel(intent({ direction: 'rollback', environment: 'dev' })), 'Roll back dev');
+		// U-11, ledger (2026-10-08, canonical vocabulary): the rollback
+		// confirm is bare `Roll back` regardless of target now — the
+		// dialog's own TITLE carries the target
+		// (`ChangeVersionModal`'s `dialogTitle`: "Roll back production to
+		// <build>"), so the button does not repeat it. Forward/retry are
+		// unchanged.
+		says(deployActionLabel(intent({ direction: 'rollback', production: true })), 'Roll back');
+		says(deployActionLabel(intent({ direction: 'rollback', environment: 'dev' })), 'Roll back');
 		says(deployActionLabel(intent({ direction: 'rollback', environment: '' })), 'Roll back');
 		says(
-			deployActionLabel(intent({ direction: 'retry', production: true })),
-			'Redeploy to production'
+			deployActionLabel(intent({ direction: 'retry', production: true, environment: 'prod' })),
+			'Redeploy to prod'
 		);
 		says(deployActionLabel(intent({ direction: 'retry', environment: '' })), 'Redeploy');
 		says(deployActionLabel(intent({ environment: 'staging' })), 'Deploy to staging');
 		says(deployActionLabel(intent({ environment: '' })), 'Deploy Now');
+	});
+
+	// U-4, ledger (2026-10-08, TL ruling): a build whose own last attempt on
+	// THIS rollout failed is `typed` and `Deploy anyway` regardless of the
+	// target's own tier -- see `failedHereVerdict`/`DeployIntent.knownFailedHere`
+	// in `deploy-risk.ts`.
+	test('a known-failed build overrides production/vouching -- typed, and the button names the override', () => {
+		const known = intent({ knownFailedHere: true });
+		expect(known.production).toBe(false);
+		expect(known.vouched).toBe(true);
+		says(confirmLevel(known), 'typed');
+		says(deployActionLabel(known), 'Deploy anyway');
+		says(typedPrompt(known), 'This build already failed here. Type');
 	});
 });
 
@@ -1353,11 +1680,11 @@ describe('deploy-risk: a retry states what it destroys', () => {
 		);
 		says(
 			lines[0],
-			'Redeploys 064b655 to production — the same build whose last deploy here failed.'
+			'Redeploys 064b655 to prod — the same build whose last deploy here failed.'
 		);
 		says(
 			lines[1],
-			'No rule here currently allows this build. It applies immediately and production starts serving it.'
+			'A rule here is still holding this build back. It applies immediately and prod starts serving it.'
 		);
 		says(lines[2], 'latency is still failing right now. Nothing has re-checked this build since.');
 		says(
@@ -1369,7 +1696,7 @@ describe('deploy-risk: a retry states what it destroys', () => {
 	test('with no tag in hand it still names the target, never a bare Retry', () => {
 		says(
 			retryConsequences(prod(), { failingChecks: [], clearsFailureDetail: false })[0],
-			'Redeploys the current build to production — the same build whose last deploy here failed.'
+			'Redeploys the current build to prod — the same build whose last deploy here failed.'
 		);
 	});
 
@@ -1597,6 +1924,58 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 		);
 		says(recoveredTitle({} as any, '2m ago'), /^This check is passing now, but it errored 2m ago/);
 	});
+
+	/**
+	 * ⭐ "PROMOTE ONLY WHEN IT'S HEALTHY" — `rollout_controller.go:258`'s
+	 * `!healthChecksHealthy` short-circuit, quoted at the top of this file.
+	 * Nothing in `blocking-story.ts`/`promotion.ts` models it — a HealthCheck
+	 * is not a gate object — so `healthGateCounts`/`healthGateCountsLabel`
+	 * are the one place that count it. `pending` holds automatic promotion
+	 * back exactly as `failing` does; only `passing`/`recovered` (both
+	 * `status: Healthy`) clear it.
+	 */
+	test('healthGateCounts / healthGateHolding / healthGateCountsLabel — pending holds back exactly like failing', () => {
+		const w = new Date('2026-08-31T01:00:00Z');
+		const pendingOnly = healthGateCounts([{ status: { status: 'Pending' } } as any], w);
+		expect(healthGateHolding(pendingOnly)).toBe(true);
+		says(healthGateCountsLabel(pendingOnly), '1 pending');
+
+		const failingOnly = healthGateCounts([{ status: { status: 'Unhealthy' } } as any], w);
+		expect(healthGateHolding(failingOnly)).toBe(true);
+		says(healthGateCountsLabel(failingOnly), '1 failing');
+
+		const mixed = healthGateCounts(
+			[{ status: { status: 'Pending' } }, { status: { status: 'Failed' } }] as any,
+			w
+		);
+		says(healthGateCountsLabel(mixed), '1 failing, 1 pending');
+
+		const clear = healthGateCounts([{ status: { status: 'Healthy' } } as any], w);
+		expect(healthGateHolding(clear)).toBe(false);
+		expect(healthGateCountsLabel(clear)).toBe('');
+	});
+
+	/**
+	 * ⭐ THE PENDING COUNTDOWN — the film critic's finding that a pending
+	 * check's sub-line read `next probe in 12s` as a STRING baked in at
+	 * fixture-build time and never moved. `pendingProbeClause` is a real
+	 * clock comparison against whatever `now` the caller passes (the page's
+	 * `$now` store); ground truth here is the mock (`lib/demo/state.ts`),
+	 * the one place that writes `nextProbeAt` — there is no controller
+	 * source for a field the real `HealthCheck` CRD does not have yet.
+	 */
+	test('the pending countdown ticks down, and never goes negative', () => {
+		const at = new Date('2026-09-21T12:00:00.000Z');
+		const hc = { status: { status: 'Pending', nextProbeAt: '2026-09-21T12:00:03.000Z' } } as any;
+		says(pendingProbeClause(hc, at), 'next probe in 3s');
+		says(pendingProbeClause(hc, new Date(at.getTime() + 2_000)), 'next probe in 1s');
+		says(pendingProbeClause(hc, new Date(at.getTime() + 3_000)), 'probing…');
+		// Called long after `nextProbeAt` — the stepped `step=pass` route may
+		// resolve a check whenever it is called, not only at the instant the
+		// countdown reaches zero.
+		says(pendingProbeClause(hc, new Date(at.getTime() + 3_600_000)), 'probing…');
+		expect(pendingProbeClause({ status: { status: 'Pending' } } as any, at)).toBeNull();
+	});
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -1663,7 +2042,7 @@ describe('up-to-date: the caption never completes the wrong headline', () => {
 describe('env-rank: one spelling, and unknown is a legible answer', () => {
 	test('the chip label is total -- it never returns null for a caller to fill in', () => {
 		says(rankLabel({ kind: 'newest' }), 'newest');
-		says(rankLabel({ kind: 'behind', by: 20 }), '20 behind');
+		says(rankLabel({ kind: 'behind', by: 20 }), '20 builds behind');
 		says(rankLabel({ kind: 'diverged' }), 'unreleased');
 		says(rankLabel({ kind: 'unknown' }), 'unknown');
 		expect(rankLabel({ kind: 'behind', by: 20 })).not.toContain('−');
@@ -1693,6 +2072,19 @@ describe('env-rank: one spelling, and unknown is a legible answer', () => {
 			rankTitle({ kind: 'unknown' }, 'prod'),
 			"prod's distance from the newest build cannot be resolved — the build it is running is not in its own release list"
 		);
+	});
+
+	/**
+	 * ⭐ shared/age-lag-total (2026-10-12). ONE LAG UNIT: a build-distance
+	 * count always names "builds" (`lagLabel`); a region count always names
+	 * its denominator (`regionsLabel`) — neither may ever reach a screen as
+	 * a bare "N behind".
+	 */
+	test('lagLabel and regionsLabel always name their unit, never a bare count', () => {
+		says(lagLabel({ builds: 1 }), '1 build behind');
+		says(lagLabel({ builds: 4 }), '4 builds behind');
+		says(regionsLabel({ onNewest: 0, of: 5 }), '0 of 5 regions on the newest');
+		says(regionsLabel({ onNewest: 1, of: 1 }), '1 of 1 region on the newest');
 	});
 
 	test('behindBy is 0 for every non-behind verdict, and must not be rendered', () => {
@@ -2226,6 +2618,12 @@ describe('rollout-cards: a card carries the facts its row sentence needs', () =>
  * defect. EVERY ENTRY IS A CLAIM and is meant to be argued with.
  */
 const UNREACHED: Record<string, string> = {
+	'lib/view-models/blocking-story.ts|… newer … … waiting here':
+		'The held-here lead, built in parts by blockingStory (QA round 2 A5/A8); asserted filled against the live hub fixture in blocking-story-lead-count.test.ts.',
+	'lib/view-models/blocking-story.ts|; … more … reached … yet':
+		'The not-yet-through-the-earlier-stage clause of the same lead; asserted filled in blocking-story-lead-count.test.ts.',
+	'lib/view-models/blocking-story.ts|; … … skipped by …, which runs a newer …':
+		'The skipped-builds clause of the same lead (A8); asserted filled in blocking-story-lead-count.test.ts.',
 	'lib/api/errors.ts|Could not load …':
 		'The template; both of its filled forms are asserted (this page, this rollout).',
 	'lib/api/errors.ts|…… does not exist':
@@ -2241,6 +2639,8 @@ const UNREACHED: Record<string, string> = {
 	'lib/api/errors.ts|Request failed (…)': 'Asserted as the filled message of a 503 ApiError.',
 	'lib/api/errors.ts|this page':
 		'The default `subject` argument; asserted through the headline it produces.',
+	'lib/view-models/blocking-story.ts|and $1':
+		'The replace() template that joins the alias names; asserted in its filled form ("production and prd are the same tier", gate-alias).',
 	'lib/view-models/blocking-story.ts|… in … (…)':
 		'The clock arithmetic; asserted by regex against a real 4h window.',
 	'lib/view-models/blocking-story.ts|…Nothing promotes itself until ….':

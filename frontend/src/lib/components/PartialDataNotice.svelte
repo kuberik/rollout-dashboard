@@ -16,15 +16,28 @@
 	 * absent record is not an observation. That is the whole reason this
 	 * component exists and it is why it is an `AlertPanel` — the product's one
 	 * filled banner, `COMPOSITION-GRAMMAR.md` §4 — rather than a third error
-	 * idiom. `warning`, not `error`: what is on the page IS true, it is just
-	 * not all of it.
+	 * idiom.
 	 *
-	 * It carries the SERVER'S OWN sentence per cluster, verbatim, and never
-	 * invents a cause.
+	 * ⭐ `info`, NOT `warning`. (round 2, 2026-10-08, design review 4) This was
+	 * `severity="warning"` on the reasoning "not error, so warning" — but
+	 * `warning` is DESIGN-LANGUAGE.md's STUCK-only amber token (§2.5, §5.3.1),
+	 * and nothing here is stuck. What IS on the page is true, just not all of
+	 * it — the calm, no-alarm case `info` exists for, same severity `+error.
+	 * svelte`'s 404 and `ErrorState`'s missing-object case already settled on.
+	 *
+	 * ⭐ ONE SENTENCE, THE LIST UNDER `Details`. The per-cluster list (each
+	 * carrying the server's OWN sentence, verbatim, never a cause we did not
+	 * observe) used to sit inside `message` itself — `AlertPanel`'s message
+	 * slot is for the one concrete consequence, always printed; a growing list
+	 * of cluster names belongs behind the same `Details` disclosure
+	 * `ErrorState`'s own evidence list already uses (`footnoteBody`), not
+	 * inflating the banner's own height with every cluster that's ever down.
 	 */
 	import AlertPanel from './AlertPanel.svelte';
+	import FactList, { type Fact } from './FactList.svelte';
 	import type { ClusterError } from '$lib/api/rollouts';
-	import { RefreshOutline, ExclamationCircleSolid } from 'flowbite-svelte-icons';
+	import { formatClockTime } from '$lib/display-time';
+	import { RefreshOutline } from 'flowbite-svelte-icons';
 
 	let {
 		errors,
@@ -42,41 +55,47 @@
 	} = $props();
 
 	const names = $derived(errors.map((e) => e.name).filter(Boolean));
+	/* QA #3: a spoke whose LAST-KNOWN items are still merged is not "missing" — its rollouts are on the page, but stale. */
+	const lastSeenText = $derived(errors[0]?.lastSeen ? formatClockTime(errors[0].lastSeen) : '');
+	const stale = $derived(errors.length > 0 && errors.every((e) => e.stale));
 	const title = $derived(
-		names.length === 1
+		stale
+			? names.length === 1
+				? `${names[0]} is unreachable — its rollouts show their last known state`
+				: `${names.length} clusters are unreachable — their rollouts show their last known state`
+			: names.length === 1
 			? `${names[0]} did not answer — this page is incomplete`
 			: `${names.length} clusters did not answer — this page is incomplete`
 	);
+	const message = $derived(
+		stale
+			? `${names.length === 1 ? names[0] : 'These clusters'} stopped answering${lastSeenText ? ` after ${lastSeenText}` : ''}. What you see for ${names.length === 1 ? 'it' : 'them'} is the last copy the hub holds, not live state.`
+			: `Everything on ${subject} covers only the clusters that replied — a rollout on ${
+			names.length === 1 ? names[0] : 'one of these'
+		} is missing from these counts, not healthy in them.`
+	);
+	const facts = $derived<Fact[]>(
+		errors.map((ce) => ({ label: ce.name, value: ce.error || 'the hub gave no reason.' }))
+	);
 </script>
+
+{#snippet detail()}
+	<FactList {facts} tone="banner" />
+{/snippet}
 
 {#if errors.length > 0}
 	<AlertPanel
-		severity="warning"
-		icon={ExclamationCircleSolid}
+		severity="info"
 		{title}
+		{message}
+		footnoteBody={facts.length > 0 ? detail : undefined}
 		class={className}
 	>
-		{#snippet messageBody()}
-			<p>
-				Everything on {subject} covers only the clusters that replied. A rollout that lives on
-				{names.length === 1 ? names[0] : 'one of these'} is <strong class="font-semibold"
-					>missing from these counts, not healthy in them</strong
-				>.
-			</p>
-			<ul class="mt-1.5 space-y-1">
-				{#each errors as ce (ce.name)}
-					<li class="text-xs break-words">
-						<span class="font-semibold">{ce.name}</span> — {ce.error ||
-							'the hub gave no reason.'}
-					</li>
-				{/each}
-			</ul>
-		{/snippet}
 		{#snippet actions()}
 			{#if onRetry}
 				<button
 					type="button"
-					class="btn btn-secondary"
+					class="btn btn-secondary btn-sm"
 					onclick={() => onRetry?.()}
 					disabled={isRetrying}
 				>

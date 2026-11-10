@@ -11,11 +11,13 @@
 	 * Environments and the detail route is `/envs/<name>` — and had no way back
 	 * except the browser's Back button.
 	 *
-	 * The frustrating part is that the product already knows how to do this
-	 * well. The critic singled out the rollout not-found state for praise: it
-	 * says WHAT HAPPENED, WHAT IT MEANS, THE ADDRESS THAT WAS QUERIED, and
-	 * gives A WAY OUT. This file is that state, for every unmatched route, in
-	 * the same `AlertPanel` the rest of the product's blocking facts use.
+	 * ⭐ ROUND 2 (2026-10-08, design review 4, coordinator ruling): a missing
+	 * address is NOT an incident. The previous version reached for `AlertPanel`
+	 * — the product's BLOCKING-FACT banner — for a 404, which is the same
+	 * category error as spending the STUCK-only amber token on it (both were
+	 * findings on this file). `NotFound.svelte` is the calm composition: see
+	 * its own doc comment for the full reasoning. This file now only decides
+	 * WHICH destination to guess from the broken address.
 	 *
 	 * ⭐ IT ALSO GUESSES, CAREFULLY. `/environments/foo` is not a random
 	 * string: its first segment names a real section, so the way out offered
@@ -23,10 +25,18 @@
 	 * `SECTIONS` below, which is the same six destinations the sidebar prints —
 	 * it can only ever offer a place that exists, and when the first segment
 	 * matches nothing it offers Home and says nothing clever.
+	 *
+	 * A genuine RENDER ERROR (not a 404) is a different fact — something IS
+	 * broken — and keeps `ErrorState`'s danger treatment below, unchanged by
+	 * this round.
 	 */
 	import { page } from '$app/state';
+	import { href, appPath } from '$lib/paths';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import NotFound from '$lib/components/NotFound.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import FactList from '$lib/components/FactList.svelte';
+	import { pageTitle } from '$lib/page-title';
 	import {
 		HomeOutline,
 		GridOutline,
@@ -38,113 +48,67 @@
 		ArrowLeftOutline
 	} from 'flowbite-svelte-icons';
 
-	/** The sidebar's destinations, keyed by the URL segment a person types. */
-	const SECTIONS: Record<string, { label: string; href: string; icon: typeof HomeOutline }> = {
-		rollouts: { label: 'Rollouts', href: '/rollouts', icon: GridOutline },
-		apps: { label: 'Apps', href: '/apps', icon: RocketOutline },
-		environments: { label: 'Environments', href: '/environments', icon: LayersSolid },
-		envs: { label: 'Environments', href: '/environments', icon: LayersSolid },
-		versions: { label: 'Changes', href: '/changes', icon: TagOutline },
-		revisions: { label: 'Changes', href: '/changes', icon: TagOutline },
-		changes: { label: 'Changes', href: '/changes', icon: TagOutline },
-		namespaces: { label: 'Rollouts', href: '/rollouts', icon: GridOutline },
-		activity: { label: 'Activity', href: '/activity', icon: ClockOutline }
+	/** The sidebar's destinations, keyed by the URL segment a person types.
+	 *  `href()` is resolved once here — `base` is a build-time constant.
+	 *  No per-section icon: `NotFound`'s single way-out link has no icon
+	 *  slot (it is one plain `.nav-link` among others, not a tile). */
+	const SECTIONS: Record<string, { label: string; href: string }> = {
+		rollouts: { label: 'Rollouts', href: href('/rollouts') },
+		apps: { label: 'Apps', href: href('/apps') },
+		environments: { label: 'Environments', href: href('/environments') },
+		envs: { label: 'Environments', href: href('/environments') },
+		versions: { label: 'Changes', href: href('/changes') },
+		revisions: { label: 'Changes', href: href('/changes') },
+		changes: { label: 'Changes', href: href('/changes') },
+		namespaces: { label: 'Rollouts', href: href('/rollouts') },
+		activity: { label: 'Activity', href: href('/activity') }
 	};
 
 	const status = $derived(page.status);
+	// The RAW pathname (base included) is what actually gets shown as the
+	// "Address" fact below — that is genuinely what was requested. The
+	// first-segment guess against `SECTIONS`, though, has to be taken on the
+	// base-LESS route path, or every guess under a sub-path build reads the
+	// base itself (`/demo`) as the first segment instead of the real one.
 	const pathname = $derived(page.url?.pathname ?? '');
-	const firstSegment = $derived(pathname.split('/').filter(Boolean)[0] ?? '');
+	const routePath = $derived(appPath(pathname));
+	const firstSegment = $derived(routePath.split('/').filter(Boolean)[0] ?? '');
 	const section = $derived(SECTIONS[firstSegment] ?? null);
 	const isNotFound = $derived(status === 404);
 
-	const title = $derived(
-		isNotFound ? 'This address does not exist' : 'This page could not be loaded'
+	const nextStep = $derived(
+		section
+			? `Nothing in the dashboard answers to this address. ${section.label} is a real section, so the name after it is probably the part that is wrong.`
+			: 'Nothing in the dashboard answers to this address. It may have been renamed, or the link that brought you here may be out of date.'
 	);
-
-	const message = $derived.by(() => {
-		if (!isNotFound) {
-			return (
-				page.error?.message ||
-				'The dashboard hit an error rendering this page. It is not a problem with your cluster.'
-			);
-		}
-		if (section) {
-			return `Nothing in the dashboard answers to this address. ${section.label} is a real section, so the name after it is probably the part that is wrong.`;
-		}
-		return 'Nothing in the dashboard answers to this address. It may have been renamed, or the link that brought you here may be out of date.';
-	});
 </script>
 
 <svelte:head>
-	<title>kuberik | {isNotFound ? 'Address not found' : 'Error'}</title>
+	<title>{pageTitle(isNotFound ? 'Address not found' : 'Error')}</title>
 </svelte:head>
 
-<div class="h-full w-full overflow-y-auto p-3 sm:p-5 dark:bg-gray-900">
-	<h1 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">
-		{status}
-		{isNotFound ? 'Not found' : 'Error'}
-	</h1>
-
-	<!-- ⭐ TWO MACHINE FACTS, AS FIELDS. (2026-09-02) It was the sentence *"The
-	     address requested was /environments/foo."* — six words of grammar around
-	     one value, and the value is the one thing a reader would copy. The
-	     status code was in the `<h1>` and nowhere near it. Both are fields with
-	     names now, aligned, and the address is dressed as the handle it is.
-
-	     `Details`, not a count: `lib/disclosure.ts` gives the count form to a
-	     SET, and one request is not a set. -->
-	{#snippet requested()}
-		<FactList
-			tone="banner"
+<div class="h-full w-full overflow-y-auto bg-ground">
+	{#if isNotFound}
+		<NotFound
+			title="Not found"
+			headline="This address does not exist"
+			{nextStep}
 			facts={[
 				{ label: 'Address', value: pathname, handle: true },
 				{ label: 'Status', value: `HTTP ${status}`, handle: true }
 			]}
+			backHref={section?.href ?? href('/')}
+			backLabel={section ? `Go to ${section.label}` : 'Home'}
+			showHome={!!section}
+			onBack={() => history.back()}
 		/>
-	{/snippet}
-
-	<AlertPanel
-		severity={isNotFound ? 'warning' : 'error'}
-		class="mb-0 max-w-3xl"
-		{title}
-		{message}
-		footnoteBody={requested}
-	>
-		{#snippet actions()}
-			<!-- ⚠️ `AlertPanel` LAYS ACTIONS OUT IN A NON-WRAPPING ROW (`flex
-			     items-center gap-3`), which is right for the two-button states that
-			     built it and overflows at 390 with three. The snippet supplies its
-			     own wrapping box so the panel does not have to change for a caller
-			     that needs one more way out. -->
-			<!-- ⛔ THREE BUTTONS, AND NOT ONE OF THEM DID ANYTHING. (2026-09-02)
-			     Every way out of a 404 is a destination — two URLs and the
-			     session's own back entry — so all three are `.nav-link`s now.
-			     A `.btn` here promised three consequences and delivered three
-			     pages, and having three of them side by side meant none of them
-			     led. As links the section's name reads first, which is the order
-			     a reader wants them in.
-
-			     `Go back` STAYS A `<button>`: `history.back()` is not a URL and
-			     an `<a href="#">` that calls it is a lie to a screen reader.
-			     `.nav-link` is written to work on both elements. -->
-			<div class="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1">
-				{#if section}
-					{@const Icon = section.icon}
-					<a href={section.href} class="nav-link">
-						<Icon aria-hidden="true" />
-						Go to {section.label}
-						<ChevronRightOutline aria-hidden="true" />
-					</a>
-				{/if}
-				<a href="/" class="nav-link">
-					<HomeOutline aria-hidden="true" />
-					Back to Home
-				</a>
-				<button type="button" class="nav-link" onclick={() => history.back()}>
-					<ArrowLeftOutline aria-hidden="true" />
-					Go back
-				</button>
-			</div>
-		{/snippet}
-	</AlertPanel>
+	{:else}
+		<ErrorState
+			error={page.error}
+			subject="this page"
+			backHref={href('/')}
+			backLabel="Back to Home"
+			class="px-4 pt-6 pb-10 sm:px-6"
+		/>
+	{/if}
 </div>

@@ -1,9 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { render } from '@testing-library/svelte';
 import CardSkeleton, { CARD_HEADER_HEIGHT } from './CardSkeleton.svelte';
-import HeadBandSkeleton, { HEAD_BAND_HEIGHT } from './HeadBandSkeleton.svelte';
-import BannerSkeleton, { BANNER_HEIGHT } from './BannerSkeleton.svelte';
-import SkeletonChip, { CHIP_HEIGHT } from './SkeletonChip.svelte';
 import SkeletonBar from './SkeletonBar.svelte';
 
 /**
@@ -30,7 +27,12 @@ describe('CardSkeleton: header geometry matches Card.svelte', () => {
 	test('the container shares Card.svelte\'s radius and border', () => {
 		const { container } = render(CardSkeleton, { props: { titleWidth: 'w-32' } });
 		const card = container.querySelector('[data-skel-card]');
-		expect(card!.className).toContain('rounded-lg');
+		// ⭐ DESIGN-LANGUAGE MIGRATION (2026-10-08) — `rounded-md` (8px), not
+		// `rounded-lg`. The new radius scale moves `rounded-lg` to 12px
+		// (dialogs/popovers) and reserves 8px for cards/tiles as `rounded-md`
+		// — `Card.svelte` itself already carries `rounded-md border-line
+		// bg-surface` (verified live), so this skeleton follows it.
+		expect(card!.className).toContain('rounded-md');
 		expect(card!.className).toContain('border');
 	});
 
@@ -90,58 +92,6 @@ describe('CardSkeleton: rows × rowHeight', () => {
 		});
 		const body = container.querySelector('[data-skel-card] > div');
 		expect(body!.className).not.toContain('p-4');
-	});
-});
-
-describe('HeadBandSkeleton: the 28px head row', () => {
-	test('the exported constant is 28', () => {
-		expect(HEAD_BAND_HEIGHT).toBe(28);
-	});
-
-	test('renders at h-7 (28px)', () => {
-		const { container } = render(HeadBandSkeleton);
-		const band = container.querySelector('[data-skel-headband]');
-		expect(band!.className).toContain('h-7');
-	});
-});
-
-describe('BannerSkeleton: the 142px blocking banner', () => {
-	test('the exported constant is 142', () => {
-		expect(BANNER_HEIGHT).toBe(142);
-	});
-
-	// ⭐ NOT A CLASS ASSERTION ANY MORE. (2026-09-04, load-state audit finding
-	// 2) `min-h-[142px]` used to be a literal Tailwind class on this
-	// element; a caller overriding it with a second `!important` class
-	// raced the primitive's own on CASCADE ORDER and both lost (measured:
-	// `/environments` rendered 40px at BOTH widths). The height is now two
-	// CSS custom properties set via inline `style`, applied by a
-	// component-scoped rule — see the component's own note.
-	test('defaults to 142px at every width via the mobile/desktop custom properties', () => {
-		const { container } = render(BannerSkeleton);
-		const banner = container.querySelector('[data-skel-banner]') as HTMLElement;
-		expect(banner.style.getPropertyValue('--skel-banner-min-h')).toBe('142px');
-		expect(banner.style.getPropertyValue('--skel-banner-min-h-sm')).toBe('142px');
-	});
-
-	test('minHeight/minHeightMobile set the two custom properties independently', () => {
-		const { container } = render(BannerSkeleton, {
-			props: { minHeight: 142, minHeightMobile: 239 }
-		});
-		const banner = container.querySelector('[data-skel-banner]') as HTMLElement;
-		expect(banner.style.getPropertyValue('--skel-banner-min-h')).toBe('239px');
-		expect(banner.style.getPropertyValue('--skel-banner-min-h-sm')).toBe('142px');
-	});
-});
-
-describe('SkeletonChip: the .chip geometry', () => {
-	test('the exported constant is 20 — .chip\'s own height', () => {
-		expect(CHIP_HEIGHT).toBe(20);
-	});
-
-	test('renders at h-5 (20px), the same as .chip', () => {
-		const { container } = render(SkeletonChip, { props: { width: 'w-12' } });
-		expect(container.querySelector('span')!.className).toContain('h-5');
 	});
 });
 

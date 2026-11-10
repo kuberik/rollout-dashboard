@@ -58,13 +58,13 @@
 	);
 
 	function getPodStatusColor(phase: string, ready: boolean, terminating: boolean): string {
-		if (terminating) return 'text-orange-500 dark:text-orange-400';
-		if (phase === 'Running' && ready) return 'text-green-700 dark:text-green-400';
-		if (phase === 'Running' && !ready) return 'text-yellow-700 dark:text-yellow-400';
-		if (phase === 'Pending') return 'text-yellow-700 dark:text-yellow-400';
-		if (phase === 'Failed') return 'text-red-600 dark:text-red-400';
-		if (phase === 'Succeeded') return 'text-green-700 dark:text-green-400';
-		return 'text-gray-500 dark:text-gray-400';
+		if (terminating) return 'text-fg-subtle';
+		if (phase === 'Running' && ready) return 'text-fg-subtle';
+		if (phase === 'Running' && !ready) return 'text-progress';
+		if (phase === 'Pending') return 'text-progress';
+		if (phase === 'Failed') return 'text-danger';
+		if (phase === 'Succeeded') return 'text-fg-subtle';
+		return 'text-fg-subtle';
 	}
 
 	function getPodStatusLabel(phase: string, ready: boolean, terminating: boolean): string {
@@ -76,49 +76,49 @@
 </script>
 
 <div
-	class="border-t border-gray-100 bg-gray-50/50 pb-1 dark:border-gray-700/50 dark:bg-gray-800/50"
+	class="border-t border-line-subtle bg-subtle pb-1"
 >
 	{#if childrenQuery.isPending}
-		<div class="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+		<div class="t-meta flex items-center gap-2 px-4 py-2 text-fg-subtle">
 			<StatusSpinner size="4" color="gray" /> Loading...
 		</div>
 	{:else if childrenQuery.isError}
-		<p class="px-4 py-2 text-xs text-red-600 dark:text-red-400">Failed to load</p>
+		<p class="t-meta px-4 py-2 text-danger">Failed to load</p>
 	{:else}
 		{#each replicaSets as rs}
 			<!-- ReplicaSet row -->
-			<div class="flex items-center gap-2 py-1.5 pl-9 pr-4">
+			<div class="flex items-center gap-2 py-2 pl-9 pr-4">
 				<div class="flex h-4 w-4 shrink-0 items-center justify-center">
 					{#if rs.readyReplicas === rs.desiredReplicas}
-						<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
+						<CheckCircleSolid class="h-3 w-3 text-success" />
 					{:else}
 						<StatusSpinner size="3" color="yellow" />
 					{/if}
 				</div>
 				<div class="min-w-0 flex-1">
 					<div class="flex items-center gap-1">
-						<span class="truncate text-[11px] font-medium text-gray-700 dark:text-gray-300"
+						<span class="t-meta truncate text-fg-muted"
 							>{rs.name}</span
 						>
 						<span
-							class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+							class="t-code-sm shrink-0 text-fg-subtle"
 							>ReplicaSet</span
 						>
 						{#if rs.isCurrentRS}
 							<span
-								class="shrink-0 rounded bg-blue-100 px-1 py-0.5 t-micro text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+								class="t-meta shrink-0 text-fg-subtle"
 								>current</span
 							>
 						{/if}
 					</div>
 				</div>
 				<span
-					class="shrink-0 text-[11px] {rs.readyReplicas === rs.desiredReplicas
-						? 'text-green-700 dark:text-green-400'
-						: 'text-yellow-700 dark:text-yellow-400'}"
+					class="t-meta shrink-0 tabular-nums {rs.readyReplicas === rs.desiredReplicas
+						? 'text-fg-muted'
+						: 'text-progress'}"
 				>
 					{rs.readyReplicas}/{rs.desiredReplicas}
-					<span class="t-micro text-gray-500 dark:text-gray-400">pods</span>
+					<span class="text-fg-subtle">pods</span>
 				</span>
 			</div>
 
@@ -127,40 +127,40 @@
 				<div class="flex items-start gap-2 py-1 pl-14 pr-4">
 					<div class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
 						{#if pod.terminating}
-							<StatusSpinner size="3" color="orange" />
+							<StatusSpinner size="3" color="gray" />
 						{:else if pod.phase === 'Running' && pod.ready}
-							<CheckCircleSolid class="h-3 w-3 text-green-700 dark:text-green-400" />
+							<CheckCircleSolid class="h-3 w-3 text-success" />
 						{:else if pod.phase === 'Pending' || (pod.phase === 'Running' && !pod.ready)}
 							<StatusSpinner size="3" color="yellow" />
 						{:else if pod.phase === 'Failed'}
-							<ExclamationCircleSolid class="h-3 w-3 text-red-500 dark:text-red-400" />
+							<ExclamationCircleSolid class="h-3 w-3 text-danger" />
 						{:else}
-							<div class="h-2.5 w-2.5 rounded-full bg-gray-300 dark:bg-gray-600"></div>
+							<div class="h-2 w-2 rounded-full bg-line-strong"></div>
 						{/if}
 					</div>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center gap-1">
-							<span class="truncate text-[11px] text-gray-600 dark:text-gray-400">{pod.name}</span>
+							<span class="t-meta truncate text-fg-muted">{pod.name}</span>
 							<span
-								class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+								class="t-code-sm shrink-0 text-fg-subtle"
 								>Pod</span
 							>
 						</div>
 						{#if pod.message}
-							<span class="block break-words t-micro text-gray-500 dark:text-gray-400"
+							<span class="t-meta block break-words text-fg-subtle"
 								>{pod.message}</span
 							>
 						{/if}
 					</div>
 					{#if pod.restarts}
 						<span
-							class="shrink-0 rounded bg-orange-100 px-1 py-0.5 t-micro text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+							class="t-meta shrink-0 tabular-nums text-fg-muted" title="Container restarts"
 						>
 							{pod.restarts}r
 						</span>
 					{/if}
 					{#if pod.age}
-						<span class="shrink-0 t-micro text-gray-500 dark:text-gray-400">{pod.age}</span>
+						<span class="t-meta shrink-0 tabular-nums text-fg-subtle">{pod.age}</span>
 					{/if}
 					<span
 						class="t-label shrink-0 {getPodStatusColor(pod.phase, pod.ready, !!pod.terminating)}"
@@ -171,12 +171,12 @@
 			{/each}
 
 			{#if (rs.pods?.length ?? 0) === 0}
-				<p class="pb-1 pl-14 pr-4 t-micro text-gray-500 dark:text-gray-400">No pods</p>
+				<p class="t-meta pb-1 pl-14 pr-4 text-fg-subtle">No pods</p>
 			{/if}
 		{/each}
 
 		{#if replicaSets.length === 0}
-			<p class="px-9 py-2 text-xs text-gray-500 dark:text-gray-400">No active ReplicaSets</p>
+			<p class="t-meta px-9 py-2 text-fg-subtle">No active ReplicaSets</p>
 		{/if}
 	{/if}
 </div>

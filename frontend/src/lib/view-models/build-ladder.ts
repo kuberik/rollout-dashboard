@@ -210,7 +210,7 @@ export function buildLadder(cells: AppCell[]): BuildLadder {
 			// a build that has since been replaced everywhere says nothing
 			// about where it sits relative to what is running now.
 			if (i === 0) {
-				const r = getEnvironmentRank(c.environment?.spec?.environment ?? c.envName);
+				const r = getEnvironmentRank(c.tier ?? c.envName);
 				envRank.set(v, Math.min(envRank.get(v) ?? Infinity, r));
 			}
 		});

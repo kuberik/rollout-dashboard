@@ -29,14 +29,14 @@ import {
 import { gateKindWord } from '$lib/components/GateRecord.svelte';
 
 // ── LIVE FIXTURE ────────────────────────────────────────────────────────────
-// `/api/rollouts` → environments[].status.rolloutGateRef + spec.relationship
+// `/api/rollouts` → environments[].status.rolloutGateRef; the order comes from the app's
+// other Environments (tier, site, wave) via sites-waves.ts
 const ENVIRONMENTS = {
 	items: [
 		{
 			metadata: { namespace: 'hello-world-prod', name: 'hello-world-app' },
 			spec: {
 				environment: 'prod',
-				relationship: { environment: 'staging', type: 'After' as const },
 				rolloutRef: { name: 'hello-world-app' }
 			},
 			status: { rolloutGateRef: { name: 'ghd-xm669' } }
@@ -45,7 +45,6 @@ const ENVIRONMENTS = {
 			metadata: { namespace: 'hello-world-staging', name: 'hello-world-app' },
 			spec: {
 				environment: 'staging',
-				relationship: { environment: 'dev', type: 'After' as const },
 				rolloutRef: { name: 'hello-world-app' }
 			},
 			status: { rolloutGateRef: { name: 'ghd-p2fld' } }
@@ -58,6 +57,13 @@ const ENVIRONMENTS = {
 	]
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any;
+
+/** The staging Environment of hello-frontend-app: no gate of its own, it is what prod follows. */
+const STAGING_SIBLING = {
+	metadata: { namespace: 'hello-dep-staging', name: 'hello-frontend-app' },
+	spec: { environment: 'staging', rolloutRef: { name: 'hello-frontend-app' } },
+	status: {}
+};
 
 const DEPENDENCIES = {
 	items: [
@@ -129,10 +135,16 @@ function rolloutWith(
 // ── THE JOINS ───────────────────────────────────────────────────────────────
 
 describe('buildGateContext — the classification is a JOIN, never a name match', () => {
-	it('joins an environment-controller gate to its relationship', () => {
-		expect(ctx.promotion.get('hello-world-prod/ghd-xm669')).toEqual({
-			after: 'staging',
-			relType: 'After'
+	it('joins an environment-controller gate to the sites it follows', () => {
+		expect(ctx.promotion.get('hello-world-prod/ghd-xm669')).toMatchObject({
+			tier: 'prod',
+			site: 'default',
+			wave: 1,
+			role: 'Leader',
+			upstream: ['staging'],
+			upstreamTier: 'staging',
+			via: 'tier',
+			ready: null
 		});
 	});
 
@@ -256,25 +268,213 @@ describe('classifyGate', () => {
 		expect(g.label).not.toContain('ghd-');
 	});
 
-	it('a Parallel relationship says alongside, not first', () => {
-		const c = buildGateContext({
-			environments: {
-				items: [
-					{
-						metadata: { namespace: 'ns', name: 'e' },
-						spec: { environment: 'b', relationship: { environment: 'a', type: 'Parallel' } },
-						status: { rolloutGateRef: { name: 'g' } }
-					}
-				]
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			} as any
+	// ── SITES AND WAVES: the promotion gate's wording, one case per blocker kind ──
+	describe('wording by wave position and WaveReady blocker', () => {
+		type Cond = { reason: string; message: string };
+		const E = (
+			tier: string,
+			site: string,
+			wave: number,
+			over: { cond?: Cond; gate?: string; wave?: Record<string, unknown> } = {}
+		) => ({
+			metadata: { namespace: 'ns-' + tier + '-' + site, name: 'app-' + tier + '-' + site },
+			spec: { environment: tier, name: 'app', site, wave, rolloutRef: { name: 'app' } },
+			status: {
+				...(over.gate ? { rolloutGateRef: { name: over.gate } } : {}),
+				conditions: over.cond
+					? [{ type: 'WaveReady', status: 'False', reason: over.cond.reason, message: over.cond.message }]
+					: [],
+				...(over.wave ? { wave: over.wave } : {})
+			}
 		});
-		expect(classifyGate({ name: 'g', allowedVersions: [] }, 'ns', c).clause).toBe(
-			'a deploys it alongside'
-		);
+		const gateOf = (envs: unknown[], gate = 'g', ns?: string) => {
+			const c = buildGateContext({ environments: { items: envs } as never });
+			const owner = (envs as { metadata: { namespace: string }; status: { rolloutGateRef?: { name: string } } }[]).find(
+				(e) => e.status.rolloutGateRef?.name === gate
+			)!;
+			return classifyGate({ name: gate, allowedVersions: [] }, ns ?? owner.metadata.namespace, c);
+		};
+		const leaderReport = (site: string, wave: number, leader: string, rev?: string) => ({
+			site,
+			wave,
+			role: site === leader ? 'Leader' : 'Follower',
+			leader,
+			selectedRevision: rev
+		});
+
+		it('a wave-1 leader is "after staging"', () => {
+			const g = gateOf([E('staging', 'default', 1), E('prod', 'eu-west-1', 1, { gate: 'g' })]);
+			expect(g.kind).toBe('promotion');
+			expect(g.clears).toBe('upstream');
+			expect(g.label).toBe('after staging');
+			expect(g.clause).toBe('staging deploys it first');
+			expect(g.short).toBe('Waiting for staging to deploy it first');
+		});
+
+		it('a follower follows its leader’s pick, naming the revision', () => {
+			const rep = (s: string) => leaderReport(s, 1, 'eu-west-1', 'abc1234def5678');
+			const g = gateOf([
+				E('prod', 'eu-west-1', 1, { wave: rep('eu-west-1') }),
+				E('prod', 'ap-south-1', 1, { gate: 'g', wave: rep('ap-south-1') })
+			]);
+			expect(g.label).toBe("follows eu-west-1's pick (abc1234)");
+			expect(g.short).toBe("Following eu-west-1's pick (abc1234)");
+			expect(g.subject).toBe('eu-west-1');
+			expect(g.clears).toBe('upstream');
+		});
+
+		it('a follower with no pick yet says it is waiting for the leader to pick', () => {
+			const rep = (s: string) => leaderReport(s, 1, 'eu-west-1');
+			const g = gateOf([
+				E('prod', 'eu-west-1', 1, { wave: rep('eu-west-1') }),
+				E('prod', 'ap-south-1', 1, { gate: 'g', wave: rep('ap-south-1') })
+			]);
+			expect(g.label).toBe("follows eu-west-1's pick");
+			expect(g.short).toBe('Waiting for eu-west-1 to pick a build');
+		});
+
+		it('a wave-2 leader is "after wave 1 (eu-west-1, us-east-1)" and never says alongside', () => {
+			const g = gateOf([
+				E('prod', 'eu-west-1', 1),
+				E('prod', 'us-east-1', 1),
+				E('prod', 'ap-south-1', 2, { gate: 'g' })
+			]);
+			expect(g.label).toBe('after wave 1 (eu-west-1, us-east-1)');
+			expect(g.short).toBe('Waiting for wave 1 (eu-west-1, us-east-1) to deploy it first');
+			expect(g.clause).not.toMatch(/alongside/);
+		});
+
+		it('member bake: waiting for a site to finish checking the revision', () => {
+			const g = gateOf([
+				E('prod', 'us-east-1', 1),
+				E('prod', 'ap-south-1', 2, {
+					gate: 'g',
+					cond: { reason: 'WaitingFor', message: 'prod/us-east-1 bake on abc1234' }
+				})
+			]);
+			expect(g.short).toBe('Waiting for us-east-1 to finish checking abc1234');
+			expect(g.label).toBe('us-east-1 is checking');
+			expect(g.clears).toBe('upstream');
+			expect(g.subject).toBe('us-east-1');
+		});
+
+		it('member bake that failed names the site and the revision', () => {
+			const g = gateOf([
+				E('prod', 'eu-west-1', 1),
+				E('prod', 'ap-south-1', 2, {
+					gate: 'g',
+					cond: { reason: 'WaitingFor', message: 'prod/eu-west-1 bake failed on abc1234' }
+				})
+			]);
+			expect(g.short).toBe("eu-west-1's check failed on abc1234");
+			expect(g.label).toBe('eu-west-1 is failing');
+		});
+
+		it('member selection: waiting for a site to pick; a default site of another tier is named by its tier', () => {
+			const g = gateOf([
+				E('staging', 'default', 1),
+				E('prod', 'eu-west-1', 1, { gate: 'g', cond: { reason: 'WaitingFor', message: 'staging/default selection' } })
+			]);
+			expect(g.short).toBe('Waiting for staging to pick a build');
+		});
+
+		it('pinned: the pin is the cause, and a person has to clear it', () => {
+			const g = gateOf([
+				E('prod', 'eu-west-1', 1, {
+					gate: 'g',
+					cond: { reason: 'Pinned', message: 'pinned to rel-12, wave selected abc1234def' }
+				})
+			]);
+			expect(g.clears).toBe('person');
+			expect(g.label).toBe('pinned to rel-12');
+			expect(g.short).toBe('Pinned to rel-12, the wave selected abc1234');
+		});
+
+		it('gap: names the wave that is missing', () => {
+			const g = gateOf([
+				E('prod', 'eu-west-1', 1, {
+					gate: 'g',
+					cond: { reason: 'InvalidTopology', message: 'prod has waves 1,3 (missing 2)' }
+				})
+			]);
+			expect(g.short).toBe('prod has no wave 2');
+			expect(g.clears).toBe('person');
+		});
+
+		it('gap: waves that do not start at 1', () => {
+			const g = gateOf([
+				E('prod', 'eu-west-1', 2, {
+					gate: 'g',
+					cond: { reason: 'InvalidTopology', message: 'prod has waves 2,3 (waves start at 1)' }
+				})
+			]);
+			expect(g.short).toBe('prod waves start at 2, not 1');
+		});
+
+		it('lockstep: waiting for the site to finish the revision', () => {
+			const g = gateOf([
+				E('prod', 'eu-west-1', 1, {
+					gate: 'g',
+					cond: { reason: 'LockstepWaiting', message: 'prod/ap-south-1 bake on abc1234' }
+				})
+			]);
+			expect(g.short).toBe('Lockstep: waiting for ap-south-1 to finish abc1234');
+			expect(g.clears).toBe('upstream');
+		});
+
+		it('duplicate: a misconfiguration hold that names the owner and the take-over annotation', () => {
+			const g = gateOf([
+				E('prod', 'eu-west-1', 1, {
+					gate: 'g',
+					cond: {
+						reason: 'DuplicateSite',
+						message: 'site eu-west-1 of prod for kuberik-app is owned by cluster abc namespace ns-x name app-old'
+					}
+				})
+			]);
+			expect(g.clears).toBe('person');
+			expect(g.short).toContain('Held: another Environment');
+			expect(g.short).toContain('abc/ns-x/app-old');
+			expect(g.short).toContain('environments.kuberik.com/take-over-site');
+			expect(g.kind).toBe('promotion');
+		});
+
+		it('selfUpstream and unparsed show the raw message', () => {
+			const selfUp = gateOf([
+				E('prod', 'eu-west-1', 1, {
+					gate: 'g',
+					cond: { reason: 'InvalidTopology', message: 'prod is its own upstream' }
+				})
+			]);
+			expect(selfUp.short).toBe('prod is its own upstream');
+			expect(selfUp.clears).toBe('person');
+			const odd = gateOf([
+				E('prod', 'eu-west-1', 1, { gate: 'g', cond: { reason: 'Brand', message: 'something new happened' } })
+			]);
+			expect(odd.short).toBe('something new happened');
+			expect(odd.clears).toBe('unknown');
+		});
+
+		it('noSites and candidate are said in the controller’s terms', () => {
+			const none = gateOf([
+				E('prod', 'eu-west-1', 1, { gate: 'g', cond: { reason: 'WaitingFor', message: 'staging has no registered sites' } })
+			]);
+			expect(none.short).toBe('Waiting for a site to register in staging');
+			const cand = gateOf([
+				E('prod', 'eu-west-1', 1, { gate: 'g', cond: { reason: 'WaitingForCandidate', message: 'abc1234def' } })
+			]);
+			expect(cand.short).toBe('Waiting for abc1234 to become available on this cluster');
+		});
+
+		it('a ready WaveReady keeps the topology wording', () => {
+			const e = E('prod', 'eu-west-1', 1, { gate: 'g' });
+			(e.status.conditions as unknown[]).push({ type: 'WaveReady', status: 'True', reason: 'Ready', message: '' });
+			const g = gateOf([E('staging', 'default', 1), e]);
+			expect(g.label).toBe('after staging');
+		});
 	});
 
-	it('an environment gate with no relationship yet says so rather than guessing', () => {
+	it('an environment gate with no upstream yet says so rather than guessing', () => {
 		const g = classifyGate({ name: 'ghd-pnb8h', allowedVersions: [] }, 'hello-world-dev', ctx);
 		expect(g.kind).toBe('promotion');
 		expect(g.clause).toBe('its upstream environment deploys this build');
@@ -431,7 +631,7 @@ describe('blockingStory — the defect the critic filed', () => {
 		);
 		expect(s.blocked).toBe(true);
 		expect(s.gates).toHaveLength(2);
-		expect(s.headline).toBe('Two things are holding STAGING');
+		expect(s.headline).toBe('Two things are holding staging');
 		expect(s.consequence).toContain('Nothing promotes itself until dev deploys it first');
 		expect(s.consequence).toContain('the deploy window reopens in');
 		// NOT "this will not clear on its own" — nobody can approve either gate.
@@ -469,7 +669,7 @@ describe('blockingStory — the defect the critic filed', () => {
 			'hello-world-manual-approval',
 			'schedule-gate-zvsqr'
 		]);
-		expect(s.headline).toBe('Three things are holding PROD');
+		expect(s.headline).toBe('Three things are holding prod');
 		expect(s.person.map((g) => g.id)).toEqual(['hello-world-manual-approval']);
 		expect(s.upstream.map((g) => g.id)).toEqual(['ghd-xm669']);
 		expect(s.clock.map((g) => g.id)).toEqual(['schedule-gate-zvsqr']);
@@ -522,7 +722,7 @@ describe('blockingStory — the defect the critic filed', () => {
 		);
 		expect(s.severity).toBe('warning');
 		expect(s.selfClearing).toBe(true);
-		expect(s.headline).toBe('DEV is held');
+		expect(s.headline).toBe('dev is held');
 		expect(s.clearsAt).toBe('2026-08-31T13:00:00Z');
 		expect(s.resolution).toContain('clears on its own');
 	});
@@ -534,7 +734,7 @@ describe('blockingStory — the defect the critic filed', () => {
 			{ place: 'prod', now: NOW }
 		);
 		expect(s.severity).toBe('warning');
-		expect(s.headline).toBe('PROD is waiting on another deploy');
+		expect(s.headline).toBe('prod is waiting on another deploy');
 		expect(s.resolution).not.toContain('will not clear on its own');
 	});
 
@@ -550,7 +750,7 @@ describe('blockingStory — the defect the critic filed', () => {
 		);
 		expect(s.pinnedTo).toBe('991829b');
 		expect(s.gates).toHaveLength(0);
-		expect(s.headline).toBe('PROD is pinned to 991829b');
+		expect(s.headline).toBe('prod is pinned to 991829b');
 		expect(s.consequence).not.toContain('manual-approval');
 	});
 
@@ -570,7 +770,7 @@ describe('blockingStory — the defect the critic filed', () => {
 		);
 		expect(s.pinnedTo).toBe('tag-a');
 		expect(s.pinnedToDisplay).toBe('aaaaaaa');
-		expect(s.headline).toBe('DEV is pinned to aaaaaaa');
+		expect(s.headline).toBe('dev is pinned to aaaaaaa');
 		expect(s.headline).not.toContain('tag-a');
 		expect(shortStory(s)).toBe('Pinned to aaaaaaa');
 	});
@@ -989,7 +1189,7 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 		expect(s.blocked).toBe(true);
 		expect(s.person).toHaveLength(0);
 		expect(s.unknown).toHaveLength(1);
-		expect(s.headline).toBe('Something is holding DEV');
+		expect(s.headline).toBe('Something is holding dev');
 		expect(s.verdict).toBe(
 			'This dashboard cannot tell what clears this — it may or may not need a person.'
 		);
@@ -1022,7 +1222,7 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 			place: 'prod',
 			now: NOW
 		});
-		expect(s.headline).toBe('PROD is waiting for hello-api-app to ship api ^1.67.0');
+		expect(s.headline).toBe('prod is waiting for hello-api-app to ship api ^1.67.0');
 		// ⭐ SECOND OPERATOR WALK, ITEM 3 — THE CONSEQUENCE STATES THE SAME
 		// RANGE THE HEADLINE AND `/apps/hello-api-app` DO, NOT "a newer api
 		// than 1.66.0" (true today, silent about what the gate actually
@@ -1055,7 +1255,7 @@ describe('⚠️ an unrecognised gate must never silently become `person`', () =
 			place: 'dev',
 			now: NOW
 		});
-		expect(s.headline).toBe('DEV is waiting on another deploy');
+		expect(s.headline).toBe('dev is waiting on another deploy');
 		expect(s.consequence).toContain('the service it depends on ships a newer version');
 		expect(s.person).toHaveLength(0);
 	});
@@ -1194,7 +1394,7 @@ describe('pluralSubject — a headline whose subject is a set', () => {
 			ctx,
 			{ place: 'prod', now: NOW }
 		);
-		expect(s.headline).toBe('PROD is waiting on another deploy');
+		expect(s.headline).toBe('prod is waiting on another deploy');
 	});
 });
 
@@ -1218,11 +1418,11 @@ describe('⭐ same-bucket multi-gate headlines name the cause, not the count', (
 		const frontendCtx = buildGateContext({
 			environments: {
 				items: [
+					STAGING_SIBLING,
 					{
 						metadata: { namespace: 'hello-dep-prod', name: 'hello-frontend-app' },
 						spec: {
 							environment: 'prod',
-							relationship: { environment: 'staging', type: 'After' as const },
 							rolloutRef: { name: 'hello-frontend-app' }
 						},
 						status: { rolloutGateRef: { name: 'ghd-frontend-prod' } }
@@ -1244,7 +1444,7 @@ describe('⭐ same-bucket multi-gate headlines name the cause, not the count', (
 		// Both gates read the SAME bucket — the order gate is downstream of the
 		// same contract, not a second cause.
 		expect(s.gates.every((g) => g.clears === 'upstream')).toBe(true);
-		expect(s.headline).toBe('PROD is waiting for hello-api-app to ship api ^1.67.0');
+		expect(s.headline).toBe('prod is waiting for hello-api-app to ship api ^1.67.0');
 		expect(s.headline).not.toContain('things');
 		expect(s.headline).not.toMatch(/^(One|Two|Three|Four|Five|Six|no) /);
 		// The contract leads the consequence too, regardless of the gates'
@@ -1274,7 +1474,7 @@ describe('⭐ same-bucket multi-gate headlines name the cause, not the count', (
 		expect(s.upstream).toHaveLength(1);
 		// Mixed buckets: a person and a contract are two DIFFERENT kinds of
 		// story, so the count headline is still the honest one.
-		expect(s.headline).toBe('Two things are holding PROD');
+		expect(s.headline).toBe('Two things are holding prod');
 		// But the human-actionable clause still leads the consequence — the
 		// worst-first build order already puts `person` before `upstream`.
 		expect(s.consequence.indexOf('someone approves it')).toBeLessThan(
@@ -1320,7 +1520,7 @@ describe('⭐ same-bucket multi-gate headlines name the cause, not the count', (
 			now: NOW
 		});
 		expect(s.gates).toHaveLength(1);
-		expect(s.headline).toBe('DEV is waiting for hello-api-app to ship api ^1.67.0');
+		expect(s.headline).toBe('dev is waiting for hello-api-app to ship api ^1.67.0');
 	});
 
 	it('a lone PROMOTION-order gate is untouched — the generic sentence stays, because there is no contract to name', () => {
@@ -1338,7 +1538,7 @@ describe('⭐ same-bucket multi-gate headlines name the cause, not the count', (
 		);
 		expect(s.upstream).toHaveLength(1);
 		expect(s.upstream[0].kind).toBe('promotion');
-		expect(s.headline).toBe('PROD is waiting on another deploy');
+		expect(s.headline).toBe('prod is waiting on another deploy');
 	});
 });
 
@@ -1365,11 +1565,11 @@ describe('⭐ finding 1 lock: an allow-list gate is labelled by its classified K
 		const frontendCtx = buildGateContext({
 			environments: {
 				items: [
+					STAGING_SIBLING,
 					{
 						metadata: { namespace: 'hello-dep-prod', name: 'hello-frontend-app' },
 						spec: {
 							environment: 'prod',
-							relationship: { environment: 'staging', type: 'After' as const },
 							rolloutRef: { name: 'hello-frontend-app' }
 						},
 						status: { rolloutGateRef: { name: 'ghd-frontend-prod' } }
@@ -1457,11 +1657,11 @@ describe('ruleCountLabel / contractRuleCountLabel — one producer for every cou
 		const frontendCtx = buildGateContext({
 			environments: {
 				items: [
+					STAGING_SIBLING,
 					{
 						metadata: { namespace: 'hello-dep-prod', name: 'hello-frontend-app' },
 						spec: {
 							environment: 'prod',
-							relationship: { environment: 'staging', type: 'After' as const },
 							rolloutRef: { name: 'hello-frontend-app' }
 						},
 						status: { rolloutGateRef: { name: 'ghd-frontend-prod' } }

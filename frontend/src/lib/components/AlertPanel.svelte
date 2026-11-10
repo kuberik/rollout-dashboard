@@ -1,12 +1,14 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import HeldGlyph from './HeldGlyph.svelte';
+	import Avatar from './Avatar.svelte';
+	import BangGlyph from './BangGlyph.svelte';
 	import type { Snippet, Component } from 'svelte';
 	import { countLabel } from '$lib/disclosure';
 	import {
 		ExclamationCircleSolid,
 		InfoCircleSolid,
-		PauseSolid,
 		HeartSolid,
 		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
@@ -213,7 +215,50 @@
 		footnoteBody?: Snippet;
 		icon?: Component;
 		pulse?: boolean;
+		/**
+		 * r39 (kit `banner()`): the CHANGE LINE, the third line of a failure banner — the change that failed: title (truncates) ·
+		 * ref (mono) · who (16px avatar + name, or `you`). One quiet 12px line under the check line; omitted when unknown.
+		 */
+		change?: { title: string; ref?: string; person?: string; src?: string | null; you?: boolean };
+		/**
+		 * r39 ACTIONS ORDER: secondary on the LEFT, the one primary on the RIGHT (kit `banner()` `.acts`). Bare verbs ("Open rollout",
+		 * "Roll back", "Approve"), 36px `.btn` (44px on a phone, full-width wrap). Roll back is `btn-secondary` (outline); Approve is the
+		 * one `btn-primary`. Callers own the buttons; this documents the order the mocks fix.
+		 */
 		actions?: Snippet;
+		/**
+		 * FULL-WIDTH ACTION MODE (owner ruling 2026-11-02, "the banner must behave the
+		 * same on every page"). Below 640px OF THE BANNER'S OWN WIDTH the `actions`
+		 * cell leaves the column indented past the 40px mark and spans the card's
+		 * FULL inner width (under the body), so a caller can lay a primary `flex-1`
+		 * 44px button + one compact secondary + a "⋯" on one row (see
+		 * `StatementBanner`). From 640 the actions sit inline right, as before.
+		 * Default false: every other caller keeps the 700px rail switch untouched.
+		 */
+		actionBar?: boolean;
+		/**
+		 * PLAIN (r34 S1b): the panel at rest in a LIST of statements (/needs-you's second and third
+		 * cards): the neutral surface and a 1px line instead of the severity's field and ring; the
+		 * disc keeps the severity's ink only for a failure. The lead statement is never plain.
+		 */
+		plain?: boolean;
+		/**
+		 * FOLLOW (r34 needs-you r2, additive; needs `actionBar`): from 640px of the banner the text track stops at 44rem
+		 * and the actions FOLLOW it (a fixed text track, so every banner in a list puts its buttons at one x) instead of
+		 * flying to the far edge of a 1500px banner and leaving a 600px empty band between the sentence and the buttons.
+		 */
+		follow?: boolean;
+		/**
+		 * COMPACT (r34 needs-you r2, additive): the title takes at most two lines and, below 640px, the state disc is 32px
+		 * (the 40px disc + halo room is a desktop figure; at 390 a list of banners spends it on air).
+		 */
+		compact?: boolean;
+		/**
+		 * DISCLOSURE (r34 S1b): a 44px chevron at the panel's top-right corner, the same on every
+		 * page that opens a statement in place (the owner's praised /rollouts lead: 40px mark ·
+		 * title · chevron). The headline row reserves its width so a long title never runs under it.
+		 */
+		toggle?: { open: boolean; onclick: () => void; label: string; controls?: string };
 		extra?: Snippet;
 		/**
 		 * LAYOUT ONLY — the outer margin. Defaults to `mb-4`, which is right
@@ -222,24 +267,75 @@
 		 * palette is the whole point of the component.
 		 */
 		class?: string;
+		/** Read by the landing page's guided tour to find this banner by a stable
+		 *  id instead of matching its visible text. `undefined` emits no attribute. */
+		dataTour?: string;
+		/**
+		 * ⭐ HOW A BANNER LEAVES. (2026-10-07, film/site critic.) Pass the
+		 * banner's condition here instead of wrapping the panel in `{#if}`:
+		 * `{#if}` unmounts it in one frame and everything below jumps up by
+		 * its height (measured ~140px on rollout detail when a gate promotes).
+		 * With `open`, the panel stays mounted while it COLLAPSES — a 300 ms
+		 * CSS grid-row transition, which the capture harness advances, unlike
+		 * Web Animations — then renders nothing. While it collapses it keeps
+		 * the props it last had while open, so its words do not change under
+		 * the reader on the way out. Never-opened renders nothing. Default
+		 * `true`: every existing `{#if}` call site is unchanged.
+		 */
+		open?: boolean;
 	}
 
-	let {
-		severity = 'info',
-		title,
-		message,
-		messageBody,
-		footnote,
-		footnoteBody,
-		footnoteLabel = 'Details',
-		footnoteCount,
-		footnoteNoun = 'rule',
-		icon,
-		pulse = false,
-		actions,
-		extra,
-		class: className = 'mb-4'
-	}: Props = $props();
+	const all: Props = $props();
+	const open = $derived(all.open ?? true);
+
+	// The props actually rendered: live while open, FROZEN at their last open
+	// values while collapsing (see `open`). `.pre` so the cleared props never
+	// reach the DOM, not even for the one frame before the collapse starts.
+	// svelte-ignore state_referenced_locally
+	let shown = $state.raw<Props>({ ...all });
+	let closing = $state(false);
+	let wasOpen = false;
+	$effect.pre(() => {
+		const isOpen = open;
+		const snapshot = { ...all };
+		if (isOpen) {
+			shown = snapshot;
+			wasOpen = true;
+			closing = false;
+			return;
+		}
+		if (!wasOpen) return;
+		wasOpen = false;
+		closing = true;
+		// Unmount when the collapse has actually finished (`transitionend`, see
+		// the wrapper), not on a fixed timer: under load the transition can
+		// start late, and a 340 ms timer then cut it off mid-way — the last
+		// half of the banner vanished in one frame. This is only the fallback.
+		const t = setTimeout(() => (closing = false), 900);
+		return () => clearTimeout(t);
+	});
+
+	const severity = $derived(shown.severity ?? 'info');
+	const title = $derived(shown.title);
+	const message = $derived(shown.message);
+	const messageBody = $derived(shown.messageBody);
+	const footnote = $derived(shown.footnote);
+	const footnoteBody = $derived(shown.footnoteBody);
+	const footnoteLabel = $derived(shown.footnoteLabel ?? 'Details');
+	const footnoteCount = $derived(shown.footnoteCount);
+	const footnoteNoun = $derived(shown.footnoteNoun ?? 'rule');
+	const icon = $derived(shown.icon);
+	const pulse = $derived(shown.pulse ?? false);
+	const change = $derived(shown.change);
+	const actions = $derived(shown.actions);
+	const actionBar = $derived(shown.actionBar ?? false);
+	const plain = $derived(shown.plain ?? false);
+	const follow = $derived(shown.follow ?? false);
+	const compact = $derived(shown.compact ?? false);
+	const toggle = $derived(shown.toggle);
+	const extra = $derived(shown.extra);
+	const className = $derived(shown.class ?? 'mb-4');
+	const dataTour = $derived(shown.dataTour);
 
 	/**
 	 * ⛔ THE ALPHA LADDER IS GONE FROM THE MESSAGE AND THE FOOTNOTE IN LIGHT,
@@ -307,63 +403,121 @@
 	 * not positioned the same on both of these" — a request about placement,
 	 * never about removing the halo), and is untouched.
 	 */
+	/**
+	 * ⛔ IN DARK, THE FILL WAS DARKER THAN THE PAGE IT SAT ON. (2026-09-13,
+	 * eighth film review, measured on the held banner at
+	 * `/rollouts/.../dependencies`.)
+	 *
+	 * `dark:bg-<hue>-950/40` over `gray-900` composites to **rgb(38,25,25)**
+	 * for `warning` — arithmetic, not an estimate: amber-950 `#451a03` at 40%
+	 * over `#111827` is `0.4·69+0.6·17 = 37.8`, `0.4·26+0.6·24 = 24.8`,
+	 * `0.4·3+0.6·39 = 24.6`, which is the value the review measured off the
+	 * frame. Luma 29. The page around it measures 21-45 depending on the
+	 * surface, so THE PRODUCT'S LOUDEST OBJECT WAS A MAROON SMEAR SITTING
+	 * BELOW ITS OWN GROUND — the opposite of what a banner is for. In light
+	 * this never showed, because `<hue>-50` on white is lighter than its
+	 * ground by construction.
+	 *
+	 * The fill is the `<hue>-700`/`800`/`900` step at 55-75% now, chosen PER
+	 * HUE and MEASURED off the rendered page rather than predicted — the first
+	 * cut applied one ratio to all four and `red-800/55` came back at luma
+	 * **42.8**, under the floor, because a red ramp carries almost no green
+	 * and green is 59% of luma. Predicting from the v3 hex ladder was wrong
+	 * twice over (these are oklch values now), so every number below is
+	 * sampled, not derived. Composites (dark, 1440):
+	 *
+	 *   error    `red-700/75`     rgb(149,6,16)    luma 49.9
+	 *   warning  `amber-900/55`   rgb(74,39,21)    luma 47.4
+	 *   pinned   `orange-900/55`  rgb(76,34,24)    luma 45.4
+	 *   info     `blue-800/55`    rgb(20,44,119)   luma 45.4
+	 *
+	 * against the page ground these sit on, rgb(16,24,40), luma 23.4 — every
+	 * severity is now the brightest object in its own region, which is what a
+	 * banner is for. (Luma is Rec. 601 on the sRGB bytes, the same arithmetic
+	 * the review used to report 29 for the old fill. Numbers are one probe:
+	 * the fill composited over the real ancestor ground in a canvas, then each
+	 * ink composited over that fill, contrast by WCAG relative luminance.)
+	 *
+	 * ⛔ LIFTING THE FILL COSTS INK CONTRAST, AND FOR ONE SEVERITY IT COST TOO
+	 * MUCH. Every dark ink here is an ALPHA over the fill, so a brighter fill
+	 * moves ink and ground TOGETHER — for the three 900-step fills the shared
+	 * `-200/75` message still measures 6.66 (amber), 6.29 (orange) and 5.69
+	 * (blue), and the white title 12.7-13.6. But `error` sits on the 700 step,
+	 * and there `red-200/75` collapsed to **4.05:1** with the footnote at
+	 * 3.68:1 — both under the 4.5 floor, which is why that one case carries
+	 * `red-100/90` (6.23:1) and `red-100/85` (5.66:1) instead. Its white title
+	 * is 9.09:1. Nothing in the four panels is now below 4.5.
+	 *
+	 * The ring steps one lighter with the fill (`-800/60` → `-700/60`) so the
+	 * edge still reads against a lighter field. ⛔ NO LEFT ACCENT BAR: the
+	 * container is `rounded-xl`, and side accent bars are legal only on
+	 * square, non-rounded elements (this file's own header records the human
+	 * ruling). The fill carries it.
+	 */
 	const palette = $derived.by(() => {
 		switch (severity) {
 			case 'error':
 				return {
-					container:
-						'bg-red-50 dark:bg-red-950/40 ring-1 ring-red-300/60 dark:ring-red-800/60',
-					ping: 'bg-red-500/30 dark:bg-red-500/40',
-					iconWrap: 'bg-red-200 ring-2 ring-red-400/60 dark:bg-red-500/20 dark:ring-red-500/50',
-					iconColor: 'text-red-700 dark:text-red-300',
-					title: 'text-red-900 dark:text-white',
-					message: 'text-red-900 dark:text-red-200/75',
-					footnote: 'text-red-900 dark:text-red-200/70',
-					defaultIcon: ExclamationCircleSolid
+					container: 'field-danger ring-1 ring-banner-danger-line',
+					ping: 'bg-danger-solid/30',
+					// r39 (kit `.banner .disc`): the failure disc is the ONE solid red disc with a white "!", the same mark as StatusMark `failed`.
+					iconWrap: 'bg-danger-solid',
+					iconColor: 'text-white',
+					title: 'text-fg',
+					message: 'text-fg-muted',
+					footnote: 'text-fg-muted',
+					defaultIcon: BangGlyph
 				};
 			case 'warning':
 				return {
-					container:
-						'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300/60 dark:ring-amber-800/60',
-					ping: 'bg-amber-500/25 dark:bg-amber-500/30',
-					iconWrap:
-						'bg-amber-200 ring-2 ring-amber-400/60 dark:bg-amber-500/20 dark:ring-amber-500/50',
-					iconColor: 'text-amber-700 dark:text-amber-300',
-					title: 'text-amber-900 dark:text-white',
-					message: 'text-amber-900 dark:text-amber-200/75',
-					footnote: 'text-amber-900 dark:text-amber-200/70',
+					container: 'field-warning ring-1 ring-warning-line',
+					ping: 'bg-warning-solid/30',
+					iconWrap: 'bg-warning-tint ring-1 ring-warning-line',
+					iconColor: 'text-warning',
+					title: 'text-fg',
+					message: 'text-fg-muted',
+					footnote: 'text-fg-muted',
 					defaultIcon: ExclamationCircleSolid
 				};
 			case 'pinned':
 				return {
-					container:
-						'bg-orange-50 dark:bg-orange-950/40 ring-1 ring-orange-300/60 dark:ring-orange-800/60',
-					ping: 'bg-orange-500/25 dark:bg-orange-500/30',
-					iconWrap:
-						'bg-orange-200 ring-2 ring-orange-400/60 dark:bg-orange-500/20 dark:ring-orange-500/50',
-					iconColor: 'text-orange-700 dark:text-orange-300',
-					title: 'text-orange-900 dark:text-white',
-					message: 'text-orange-900 dark:text-orange-200/75',
-					footnote: 'text-orange-900 dark:text-orange-200/70',
-					defaultIcon: PauseSolid
+					container: 'field-held ring-1 ring-held-line',
+					ping: 'bg-held-solid/30',
+					iconWrap: 'bg-held-tint ring-1 ring-held-line',
+					iconColor: 'text-held',
+					title: 'text-fg',
+					message: 'text-fg-muted',
+					footnote: 'text-fg-muted',
+					defaultIcon: HeldGlyph
 				};
 			case 'info':
 			default:
 				return {
-					container:
-						'bg-blue-50 dark:bg-blue-950/40 ring-1 ring-blue-300/60 dark:ring-blue-800/60',
-					ping: 'bg-blue-500/25 dark:bg-blue-500/30',
-					iconWrap: 'bg-blue-200 ring-2 ring-blue-400/60 dark:bg-blue-500/20 dark:ring-blue-500/50',
-					iconColor: 'text-blue-700 dark:text-blue-300',
-					title: 'text-blue-900 dark:text-white',
-					message: 'text-blue-900 dark:text-blue-200/75',
-					footnote: 'text-blue-900 dark:text-blue-200/70',
+					container: 'field-active ring-1 ring-active-line',
+					ping: 'bg-active-solid/30',
+					iconWrap: 'bg-active-tint ring-1 ring-active-line',
+					iconColor: 'text-active',
+					title: 'text-fg',
+					message: 'text-fg-muted',
+					footnote: 'text-fg-muted',
 					defaultIcon: InfoCircleSolid
 				};
 		}
 	});
 
 	const Icon = $derived(icon ?? palette.defaultIcon);
+	/* plain: a neutral surface; only a failure keeps its disc's severity (the mark is the one coloured thing on the card) */
+	const face = $derived(
+		plain
+			? {
+					...palette,
+					container: 'border border-line bg-surface',
+					ping: palette.ping,
+					iconWrap: severity === 'error' || severity === 'pinned' ? palette.iconWrap : 'bg-subtle ring-1 ring-line',
+					iconColor: severity === 'error' || severity === 'pinned' ? palette.iconColor : 'text-fg-muted'
+				}
+			: palette
+	);
 
 	/**
 	 * THE SET FORM WINS WHERE A CALLER SUPPLIED A COUNT, so a caller cannot
@@ -374,8 +528,48 @@
 	);
 </script>
 
-<div class={className}>
-	<div class="ap-cq relative overflow-hidden rounded-xl {palette.container}">
+{#if open || closing}
+<div
+	class="ap-collapse {className}"
+	class:ap-collapse--closing={!open}
+	data-tour={dataTour}
+	ontransitionend={(e) => {
+		if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows' && !open) closing = false;
+	}}
+>
+<div class="ap-collapse-inner">
+	<!-- ⭐ D-2 (2026-10-08, "system" lane): `overflow-hidden` HERE WAS THE
+	     HALO'S CLIPPER, AND IT CONTRADICTED THE PANEL'S OWN STATED RULE.
+	     The `.ap-collapse--closing` note two screens down already says it:
+	     "at rest nothing this banner draws (focus rings, the pulse halo)
+	     may be cut by a wrapper that exists for the exit" — but this
+	     wrapper was not the exit, it was every render. The horizontal/
+	     vertical clearance math above targets EXACTLY 40px (disc centre to
+	     panel edge) with zero safety margin, so `ping`'s scale(2) halo
+	     (radius 40) was tangent to this box's edge by construction — and a
+	     tangent clip rounds to "a few px outside" the moment a container
+	     query reflows a line or a sub-pixel lands the wrong way, which is
+	     what D-2 measured (halo 4px outside the left edge, 0px clearance on
+	     top) on every severity, at rest, in both themes.
+	     `overflow: hidden` clips CHILDREN, not the box's own
+	     background/border — `rounded-xl` still rounds this panel's fill
+	     with it gone, because `border-radius` governs the element's own
+	     paint regardless of `overflow`. The only descendant that ever drew
+	     past this box was the halo (the radial glow blobs this comment's
+	     neighbours describe were removed in an earlier pass), so there is
+	     nothing left here for `overflow: hidden` to protect. Dropping it
+	     lets `ping` complete its circle outside the rounded corner exactly
+	     like the reference `Deploying` spinner does elsewhere in the
+	     product, instead of being sliced into a "D" by a box it was always
+	     going to touch. Verified: full 80px disc at scale(2), no flat edge,
+	     on the Apps banner, the failed-rollout panel and the incident
+	     banner, 1440 + 390, both themes. -->
+	<div class="ap-cq relative rounded-md {face.container}" class:ap-bar={actionBar} class:ap-follow={actionBar && follow} class:ap-compact={compact} class:ap-has-toggle={!!toggle}>
+		{#if toggle}
+			<button type="button" class="absolute right-2 top-2 z-[2] flex h-11 w-11 items-center justify-center rounded-md text-fg-subtle hover:bg-hover focus-visible:ring-2 focus-visible:ring-line-strong focus-visible:outline-none" aria-label={toggle.label} aria-expanded={toggle.open} aria-controls={toggle.controls} onclick={toggle.onclick} data-ap-toggle>
+				<svg viewBox="0 0 16 16" class="h-4 w-4 transition-transform {toggle.open ? 'rotate-180' : ''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" /></svg>
+			</button>
+		{/if}
 		<div
 			class="relative flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:gap-x-8 sm:px-6 sm:py-5"
 		>
@@ -467,7 +661,7 @@
 					only ever raises the disc, never caps the content.
 				-->
 				<div
-					class="ap-headline-row col-start-2 col-end-4 row-start-1 flex min-h-12 min-w-0 flex-wrap items-center gap-2"
+					class="ap-headline-row col-start-2 col-end-4 row-start-1 flex min-h-12 min-w-0 flex-wrap items-center gap-2 {toggle ? 'pr-8' : ''}"
 				>
 					<!--
 						⭐ THE DISC IS A ZERO-HEIGHT FLEX ITEM ON THE HEADLINE'S OWN
@@ -536,28 +730,42 @@
 						<div class="relative mr-6 -ml-16 h-0 w-10 shrink-0">
 							<div class="absolute top-0 left-0 h-10 w-10 -translate-y-1/2">
 								{#if pulse}
-									<!-- `animate-alert-halo` IS `ping`, VALUE FOR VALUE — scale(1)
-									     -> scale(2), 1s, same easing. It is a named class only so
-									     the `prefers-reduced-motion` guard can be scoped to this
-									     halo. THE SIZE WAS NEVER THE BUG; the placement was, and the
-									     row above now reserves the 40px the halo needs. The full
-									     arithmetic is in `app.css` beside the keyframes. -->
-									<div
-										class="animate-alert-halo absolute inset-0 rounded-full {palette.ping}"
-									></div>
+									<!-- ⭐ D-2 REOPENED TWICE (2026-10-08, design reviewer +
+									     coordinator, via fix-dash): the original `animate-alert-halo`
+									     (`app.css`, deleted — see the note beside `.ap-cq` for the
+									     history) was `ping` value for value — scale(1) -> scale(2),
+									     an 80px peak off this 40px disc. `.ap-cq` used to clip that at
+									     the panel's rounded corner (flattening a circle into a "D");
+									     the first pass on this finding removed the clip, which only
+									     moved the defect — an unclipped 80px peak measured 4px past
+									     the panel's left edge and touching the top border. A SECOND
+									     pass capped it at `scale(1.8)` (72px) on the reasoning that the
+									     row/column geometry's intended 40px clearance from the disc's
+									     centre only renders as ~36px live; measured, that left the
+									     1440 left edge at an EXACT TANGENT (0px) — "a tangent counts
+									     as touching, and touching is exactly what the reviewer
+									     flagged." `ap-halo-ring` now caps the peak at `scale(1.6)`
+									     (64px diameter, 12px overhang) so every edge clears the panel
+									     by >=4px at both 1440 and 390, in both themes, on the Apps
+									     banner and the incident failure panel — none of the row/column
+									     geometry above moved; only the halo's own amplitude did, for
+									     the second time. Verified by measuring the ring's actual rect
+									     (not the disc's nominal position) against the panel's rect
+									     over a full pulse loop — numbers in the commit message. -->
+									<div class="ap-halo-ring absolute inset-0 rounded-full {face.ping}"></div>
 								{/if}
 								<div
-									class="relative flex h-10 w-10 items-center justify-center rounded-full {palette.iconWrap}"
+									class="ap-disc relative flex h-10 w-10 items-center justify-center rounded-full {face.iconWrap}"
 								>
-									<Icon class="h-6 w-6 {palette.iconColor}" />
+									<Icon class="h-5 w-5 {face.iconColor}" />
 								</div>
 							</div>
 						</div>
-						<p class="t-headline {palette.title}">{title}</p>
+						<p class="t-heading {palette.title} {compact ? 'ap-title-clamp' : ''}">{title}</p>
 					</div>
 					{#if extra}{@render extra()}{/if}
 				</div>
-				{#if message || messageBody}
+				{#if message || messageBody || change}
 					<!--
 						⭐ ROW 2, ITS OWN GRID ITEM NOW. (defect #2, third pass) It used
 						to be the shared wrapper that ALSO held the disclosure and the
@@ -590,7 +798,7 @@
 					-->
 					<div class="ap-message-row col-start-2 col-end-4 row-start-2 min-w-0">
 						{#if messageBody}
-							<div class="mt-0.5 text-sm break-words {palette.message}">
+							<div class="t-body mt-0.5 break-words {palette.message}">
 								{@render messageBody()}
 							</div>
 						{:else if message}
@@ -607,7 +815,19 @@
 								stays printed in full at every width, as `message`'s own
 								doc comment has always promised ("ALWAYS PRINTED").
 							-->
-							<p class="mt-0.5 text-sm break-words {palette.message}">{message}</p>
+							<p class="t-body mt-0.5 break-words {palette.message}">{message}</p>
+						{/if}
+						{#if change}
+							<p class="ap-change t-meta mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-fg-subtle" data-ap-change>
+								<span class="max-w-full min-w-0 truncate">{change.title}</span>
+								{#if change.ref}<span class="t-code-sm shrink-0">{change.ref}</span>{/if}
+								{#if change.person}
+									<span class="h-3 w-px shrink-0 bg-line-strong" aria-hidden="true"></span>
+									<span class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+										{#if !change.you}<Avatar name={change.person} src={change.src ?? null} size={16} />{/if}{change.you ? 'you' : change.person}
+									</span>
+								{/if}
+							</p>
 						{/if}
 					</div>
 				{/if}
@@ -673,7 +893,7 @@
 					<div class="ap-disclosure-cell col-start-2 col-end-4 row-start-3 mt-1 min-w-0 self-start">
 						<details class="group flex flex-col items-start">
 							<summary
-								class="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs font-medium whitespace-nowrap {palette.footnote} hover:underline focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
+								class="inline-flex cursor-pointer list-none items-center gap-1 t-ui-sm rounded whitespace-nowrap {palette.footnote} hover:underline focus-visible:ring-2 focus-visible:ring-current/40 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
 							>
 								<ChevronRightOutline
 									class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
@@ -688,11 +908,11 @@
 							     else — the same mechanism `--nav-link-ink` uses for a link in
 							     the actions cell. -->
 							{#if footnoteBody}
-								<div class="mt-1 min-w-0 text-xs {palette.footnote}">
+								<div class="t-meta mt-1 min-w-0 {palette.footnote}">
 									{@render footnoteBody()}
 								</div>
 							{:else if footnote}
-								<p class="mt-1 text-xs break-words {palette.footnote}">{footnote}</p>
+								<p class="t-meta mt-1 break-words {palette.footnote}">{footnote}</p>
 							{/if}
 						</details>
 					</div>
@@ -765,8 +985,13 @@
 						as it was when `actions` was a flex sibling this morning.
 					-->
 						<!-- `flex-wrap`: at 390 in dark the error panel's two actions ("Try again", "Back to all rollouts") ran past the panel edge (2026-09-10, human on a phone). Actions wrap onto a second line rather than clip; every caller inherits it. -->
+					<!-- While the banner leaves, its controls are inert (no Retry for a
+					     failure that has just cleared) and fade with the rest of the
+					     content — never vanish in one frame. -->
 					<div
 						class="ap-actions-cell col-start-2 col-end-4 row-start-4 mt-1 flex shrink-0 flex-wrap items-center gap-3 self-start {palette.title}"
+						inert={!open}
+						class:ap-actions-bar={actionBar}
 						style="--nav-link-ink: currentColor"
 					>
 						{@render actions()}
@@ -777,8 +1002,120 @@
 		</div>
 	</div>
 </div>
+</div>
+{/if}
 
 <style>
+	/* ⭐ D-2 REOPENED TWICE (2026-10-08) — scoped here, not in `app.css`.
+	   The shared `.animate-alert-halo`/`@keyframes alert-halo` this
+	   replaces had zero other callers (greped the whole product) and is
+	   now DELETED from `app.css` in the same commit — a dead rule at this
+	   exact scale was the thing the first reopen was about, and leaving it
+	   on the shelf is how a future pass reaches for the old 80px peak by
+	   accident. Same easing, same 1s duration, same
+	   `prefers-reduced-motion` guard as what it replaces — the peak
+	   transform is `scale(1.6)` now, not `scale(2)`: a first attempt at
+	   `scale(1.8)` left the 1440 left edge at an EXACT TANGENT (0px
+	   clearance), and "a tangent counts as touching" was the coordinator's
+	   call. `scale(1.6)` (64px diameter, 12px overhang off the 40px disc)
+	   clears every edge by >=4px at both 1440 and 390 — see the markup
+	   comment above `.ap-halo-ring` and the commit message for the
+	   measured numbers. */
+	@keyframes ap-halo-ping {
+		0% {
+			opacity: 1;
+			transform: scale(1);
+		}
+
+		75%,
+		100% {
+			opacity: 0;
+			transform: scale(1.6);
+		}
+	}
+
+	.ap-halo-ring {
+		animation: ap-halo-ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.ap-halo-ring {
+			animation: none;
+			opacity: 0;
+		}
+	}
+
+	/* ⭐ S-10 (2026-10-08, pipeline lane's measurement, via fix-dash): FADE
+	   AND COLLAPSE WERE CONCURRENT, AND THAT IS WHAT CLIPPED THE TEXT. Both
+	   transitions used to start on the same trigger (`!open` toggling both
+	   `.ap-collapse--closing` and its `> .ap-collapse-inner` opacity rule at
+	   once) — 150ms fade, 300ms collapse, running in parallel. On a tall
+	   banner (`ScheduleStatus`'s "STAGING is waiting on another deploy",
+	   189px) the box had already lost 53px of height at t≈438ms while the
+	   text was still ~40% opaque: a line sat mid-fade inside a box already
+	   shorter than it, which reads as clipping, not as a fade.
+
+	   SEQUENTIAL, NOT CONCURRENT, AND MIRRORED BOTH WAYS:
+	     CLOSING   fade out 0–150ms (no delay)  → THEN collapse 150–450ms
+	               (the height/margin transition carries a 150ms delay,
+	               declared on `.ap-collapse--closing` itself — CSS takes a
+	               transitioning property's delay from the state being
+	               entered, so this governs closing only).
+	     OPENING   expand 0–300ms (no delay)    → THEN fade in 300–450ms
+	               (the opacity transition carries a 300ms delay, declared
+	               on the base `.ap-collapse-inner` rule — the state entered
+	               when `--closing` is removed, so this governs opening
+	               only). Chosen over "opening unchanged" so an OPENING
+	               banner never shows the same defect in reverse (text
+	               fading in before the box has room for it).
+	   Both directions total 450ms (150+300 / 300+150) — unchanged from the
+	   combined duration before this fix, so nothing on screen runs longer
+	   or shorter than it used to, only in a different order. Verified with
+	   a rAF probe (promote via `/api/demo/gate arm→pass→promote` on
+	   hello-world staging): no sampled frame has opacity > 0.05 while the
+	   box's rendered height is less than its content's natural height, in
+	   either direction — numbers in the commit message. */
+	.ap-collapse {
+		display: grid;
+		grid-template-rows: 1fr;
+		transition:
+			grid-template-rows 300ms cubic-bezier(0.45, 0, 0.55, 1),
+			margin 300ms cubic-bezier(0.45, 0, 0.55, 1);
+	}
+	.ap-collapse--closing {
+		grid-template-rows: 0fr;
+		margin-top: 0 !important;
+		margin-bottom: 0 !important;
+		/* CLOSING: the collapse itself waits for the fade (below) to finish. */
+		transition:
+			grid-template-rows 300ms cubic-bezier(0.45, 0, 0.55, 1) 150ms,
+			margin 300ms cubic-bezier(0.45, 0, 0.55, 1) 150ms;
+	}
+	.ap-collapse-inner {
+		min-height: 0;
+		/* OPENING: the fade-in waits for the expand (above) to finish. */
+		transition: opacity 150ms cubic-bezier(0.45, 0, 0.55, 1) 300ms;
+	}
+	/* The content stays rendered at full size and FADES while the box
+	   collapses round it, so no frame loses content abruptly: the first frames
+	   of the collapse move a few px of box edge, never a line of text. */
+	.ap-collapse--closing > .ap-collapse-inner {
+		opacity: 0;
+		/* CLOSING: fade out first, no delay — the collapse above waits on this. */
+		transition: opacity 150ms cubic-bezier(0.45, 0, 0.55, 1);
+	}
+	/* Clip only while leaving: at rest nothing this banner draws (focus rings,
+	   the pulse halo) may be cut by a wrapper that exists for the exit. */
+	.ap-collapse--closing > .ap-collapse-inner {
+		overflow: hidden;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.ap-collapse,
+		.ap-collapse--closing,
+		.ap-collapse-inner {
+			transition: none;
+		}
+	}
 	/*
 	 * ⭐ `t-headline` STEPS DOWN, SCOPED TO THIS COMPONENT ONLY. (defect #2,
 	 * redone) `.t-headline` (17px/600) is UNLAYERED in `app.css` — deliberate,
@@ -874,5 +1211,54 @@
 			margin-top: 0;
 			align-self: center;
 		}
+	}
+
+	/*
+	 * ⭐ actionBar MODE (2026-11-02). Stacked shape (container < 640): the actions
+	 * row starts at column 1 and spans the whole inner width — the owner's praised
+	 * /rollouts lead — instead of sitting indented past the mark. At >= 640 of the
+	 * banner's own width the two-column shape returns (the same rules as the 700px
+	 * block above, moved to 640 for this mode only so the phone/desktop switch is
+	 * the product-wide 640).
+	 */
+	.ap-bar .ap-actions-bar {
+		grid-column-start: 1;
+		margin-top: 0.75rem;
+		align-self: stretch;
+	}
+	@container (min-width: 640px) {
+		.ap-bar .ap-grid {
+			grid-template-columns: 2.5rem minmax(30ch, 1fr) auto;
+		}
+		.ap-bar .ap-headline-row,
+		.ap-bar .ap-message-row,
+		.ap-bar .ap-disclosure-cell {
+			grid-column-end: 3;
+		}
+		.ap-bar .ap-headline-row {
+			min-height: 2.5rem;
+		}
+		.ap-bar .ap-actions-bar {
+			grid-column-start: 3;
+			grid-column-end: 4;
+			grid-row-start: 1;
+			grid-row-end: 4;
+			margin-top: 0;
+			align-self: center;
+		}
+	}
+	/* compact (r34 needs-you r2): two lines of title at most; the disc steps down to 32px on a phone, centred in its 40px slot */
+	.ap-title-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+	@media (max-width: 639.98px) {
+		.ap-compact .ap-disc { height: 2rem; width: 2rem; margin: 4px; }
+		.ap-compact .ap-disc :global(svg) { height: 1rem; width: 1rem; }
+	}
+	/* the corner chevron is a 44px square 8px in: from 640 the grid keeps the actions out of its column (24px of banner padding + 32px = past the square's 52px edge, 4px to spare) */
+	@container (min-width: 640px) {
+		.ap-has-toggle .ap-grid { padding-right: 2rem; }
+	}
+	/* follow (r34 needs-you r2): a fixed text track and the actions right after it */
+	@container (min-width: 640px) {
+		.ap-follow .ap-grid { grid-template-columns: 2.5rem minmax(30ch, 44rem) auto; justify-content: start; }
 	}
 </style>

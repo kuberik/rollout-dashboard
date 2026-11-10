@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion, formatTimeAgoCompact, formatDuration, plainMessage, detectStuckBehind, compareRollouts } from './utils';
+import { isFieldManaged, isFieldManagedByManager, isFieldManagedByOtherManager, parseLinkAnnotations, mergeTestLinks, testLinkKind, extractDatadogInfoFromContainers, buildDatadogTestRunsUrl, buildDatadogLogsUrl, buildDatadogTraceSearchUrl, shortenVersion, formatTimeAgoCompact, formatTimeAgo, formatDurationMs, formatDuration, plainMessage, detectStuckBehind, compareRollouts, parseGoDuration } from './utils';
 import {
     ENVIRONMENT_THEME_ANNOTATION,
     ENVIRONMENT_THEME_COLOR_ANNOTATION,
@@ -275,7 +275,7 @@ describe('environment themes', () => {
     //     coloured border, so it still outranks every identity mark.
     //   · dev is green, the `Succeeded` family -> "one green" became "one green
     //     FOR STATE"; identity is separated by SHAPE. Guarded below.
-    it('maps production to the amber preset, and keeps it clear of red', () => {
+    it('maps production to the fuchsia preset, and keeps it clear of red', () => {
         // There is nothing left for a COLOUR test to assert about prod vs the
         // `stuck` amber: they share a hue family on purpose and are separated
         // by mark, not hue. What is still a real guard — and matters more than
@@ -292,7 +292,7 @@ describe('environment themes', () => {
         } as any);
 
         expect(theme?.label).toBe('Production');
-        expect(theme?.color).toBe('#d97706');
+        expect(theme?.color).toBe('#ed00ab');
         expect(hueGap(theme!.color, '#c10007')).toBeGreaterThan(25); // red-700
         expect(hueGap(theme!.color, '#ff6467')).toBeGreaterThan(25); // red-400
     });
@@ -306,7 +306,7 @@ describe('environment themes', () => {
         // is its own name; the preset word survives only for a rollout that
         // declares a theme with no Environment attached.
         expect(theme?.label).toBe('eu-prod-1');
-        expect(theme?.color).toBe('#d97706');
+        expect(theme?.color).toBe('#ed00ab');
     });
 
     it('infers development from Environment spec.environment', () => {
@@ -318,7 +318,7 @@ describe('environment themes', () => {
         // Same rule as above: the identity was inferred FROM this name, so the
         // name is what prints.
         expect(theme?.label).toBe('development-west');
-        expect(theme?.color).toBe('#16a34a');
+        expect(theme?.color).toBe('#009689');
     });
 
     it('lets a theme annotation override the inferred environment theme', () => {
@@ -334,7 +334,7 @@ describe('environment themes', () => {
         );
 
         expect(theme?.label).toBe('Development');
-        expect(theme?.color).toBe('#16a34a');
+        expect(theme?.color).toBe('#009689');
     });
 
     it('lets a custom color annotation override the inferred environment color', () => {
@@ -357,7 +357,7 @@ describe('environment themes', () => {
         expect(theme?.color).toBe('#0ea5e9');
     });
 
-    it('keeps dev identity and the Succeeded green apart by SHAPE, not by hue', () => {
+    it('keeps dev identity off the Succeeded green, by hue AND by shape', () => {
         // THIS TEST'S PREMISE WAS INVERTED, so its name changed with it. It used
         // to be `maps development to the cyan preset theme, not the Succeeded
         // green` and asserted `expect(color).not.toBe('#16a34a')` — i.e. it
@@ -388,12 +388,12 @@ describe('environment themes', () => {
         } as any);
 
         expect(theme?.label).toBe('Development');
-        expect(theme?.color).toBe('#16a34a');
+        expect(theme?.color).toBe('#009689');
 
-        // Same hue as the success green — STATED, not avoided, so that a future
-        // edit which "fixes" it by re-hueing dev fails here and has to come read
-        // this comment first.
-        expect(hueGap(theme!.color, '#008236')).toBeLessThan(2);
+        // ⭐ DESIGN LANGUAGE (2026-10-08) REVERSES THE RULE ABOVE: identity
+        // never wears a status hue. dev is TEAL now, clear of the success green
+        // by hue as well as by shape (the shape argument below still holds).
+        expect(hueGap(theme!.color, '#008236')).toBeGreaterThan(25);
 
         // ...and separated on the axis that actually does the work: the chip's
         // FILL is nowhere near the disc's ink.
@@ -475,11 +475,18 @@ describe('environment themes', () => {
             { metadata: { annotations: { [ENVIRONMENT_THEME_ANNOTATION]: name } } } as any
         )!;
 
-    it('uses the original four identity seeds', () => {
-        expect(themeFor('dev').color).toBe('#16a34a');
+    it('uses the four identity seeds, none of them a status hue', () => {
+        expect(themeFor('dev').color).toBe('#009689'); // teal-600
         expect(themeFor('staging').color).toBe('#7c3aed');
-        expect(themeFor('prod').color).toBe('#d97706');
+        expect(themeFor('prod').color).toBe('#ed00ab'); // fuchsia-600
         expect(themeFor('test').color).toBe('#0891b2');
+        // DESIGN LANGUAGE §2.6: identity may not reuse green (success), red
+        // (failed), amber (stuck), orange (held), yellow (checking) or the
+        // deploying blue. 25° is the floor the prod/red test above uses.
+        const status = ['#008236', '#c10007', '#d97706', '#f54900', '#a65f00', '#1447e6'];
+        for (const name of ['dev', 'staging', 'prod', 'test']) {
+            for (const s of status) expect(hueGap(themeFor(name).color, s)).toBeGreaterThan(20);
+        }
     });
 
     // ── COMPUTED → CHOSEN (2026-08-27) ──────────────────────────────────────
@@ -501,12 +508,12 @@ describe('environment themes', () => {
     // contrast in DESIGN.md.
     it('paints the presets from CHOSEN Tailwind steps, never from a mix', () => {
         const prod = themeFor('prod');
-        expect(prod.textColor).toBe('#7b3306'); // amber-900
-        expect(prod.borderColor).toBe('#fee685'); // amber-200
-        expect(prod.surfaceColor).toBe('#fffbeb'); // amber-50
-        expect(prod.darkSurfaceColor).toBe('#461901'); // amber-950
-        expect(prod.darkBorderColor).toBe('#973c00'); // amber-800
-        expect(prod.darkTextColor).toBe('#fef3c6'); // amber-100
+        expect(prod.textColor).toBe('#a800b7'); // fuchsia-700
+        expect(prod.borderColor).toBe('#f4a8ff'); // fuchsia-300
+        expect(prod.surfaceColor).toBe('#fdf4ff'); // fuchsia-50
+        expect(prod.darkSurfaceColor).toBe('#4b004f'); // fuchsia-950
+        expect(prod.darkBorderColor).toBe('#8a0194'); // fuchsia-800
+        expect(prod.darkTextColor).toBe('#f6cfff'); // fuchsia-200
 
         const staging = themeFor('staging');
         expect(staging.textColor).toBe('#5d0ec0'); // violet-800
@@ -516,7 +523,7 @@ describe('environment themes', () => {
         expect(staging.darkBorderColor).toBe('#4d179a'); // violet-900
         expect(staging.darkTextColor).toBe('#ddd6ff'); // violet-200
 
-        expect(themeFor('dev').textColor).toBe('#008236'); // green-700
+        expect(themeFor('dev').textColor).toBe('#00786f'); // teal-700
         expect(themeFor('test').textColor).toBe('#007595'); // cyan-700
 
         // NOT a mix of its own seed, on any channel. This is the assertion that
@@ -1097,4 +1104,92 @@ describe('compareRollouts — release order beats history containment', () => {
         expect(compareRollouts(behind, ahead)).toEqual({ kind: 'behind', otherVersion: 'new', by: 1 });
         expect(compareRollouts(ahead, behind)).toEqual({ kind: 'ahead', otherVersion: 'old', by: 1 });
     });
+});
+
+describe('mergeTestLinks', () => {
+	const dd = { service: 'hello-world', env: 'dev', version: 'f68d0ac' };
+
+	it('prints one row, with an explicit link winning over the derived one of the same name', () => {
+		// The defect this exists for: a test with `link.Logs`/`link.CI` AND
+		// Datadog env vars rendered SIX links — `Logs` and `CI` twice each,
+		// in two different colours and two different icon languages.
+		const links = mergeTestLinks(
+			{
+				'rollout.kuberik.com/link.Logs': 'https://example.com/logs',
+				'rollout.kuberik.com/link.CI': 'https://example.com/ci'
+			},
+			dd,
+			'f68d0ac'
+		);
+		expect(links.map((l) => l.label)).toEqual(['Logs', 'CI', 'Trace']);
+		expect(links[0].url).toBe('https://example.com/logs');
+		expect(links[0].vendor).toBeUndefined();
+		expect(links[2].vendor).toBe('Datadog');
+	});
+
+	it('matches case-insensitively, so `link.logs` still beats the derived `Logs`', () => {
+		const links = mergeTestLinks(
+			{ 'rollout.kuberik.com/link.logs': 'https://example.com/logs' },
+			dd,
+			'f68d0ac'
+		);
+		expect(links.map((l) => l.label)).toEqual(['logs', 'CI', 'Trace']);
+	});
+
+	it('keeps all three derived links when nothing was written by hand', () => {
+		expect(mergeTestLinks(undefined, dd, 'f68d0ac').map((l) => l.label)).toEqual([
+			'Logs',
+			'CI',
+			'Trace'
+		]);
+	});
+
+	it('is just the annotations when the job names no Datadog service', () => {
+		const links = mergeTestLinks(
+			{ 'rollout.kuberik.com/link.Report': 'https://example.com/r' },
+			null,
+			'f68d0ac'
+		);
+		expect(links).toEqual([
+			{ label: 'Report', url: 'https://example.com/r', kind: 'other' }
+		]);
+	});
+
+	it('marks a link by what its label says, not by who produced it', () => {
+		expect(testLinkKind('Logs')).toBe('logs');
+		expect(testLinkKind('build logs')).toBe('logs');
+		expect(testLinkKind('APM')).toBe('trace');
+		expect(testLinkKind('CI')).toBe('ci');
+		expect(testLinkKind('Test runs')).toBe('ci');
+		expect(testLinkKind('Runbook')).toBe('other');
+	});
+});
+
+describe('parseGoDuration (fix8 LOW b)', () => {
+	it('reads every unit time.ParseDuration accepts, "ms" as milliseconds', () => {
+		expect(parseGoDuration('500ms')).toBe(500);
+		expect(parseGoDuration('1m30s')).toBe(90_000);
+		expect(parseGoDuration('1h30m')).toBe(5_400_000);
+		expect(parseGoDuration('1.5s')).toBe(1500);
+		expect(parseGoDuration('2m500ms')).toBe(120_500);
+		expect(parseGoDuration('1500us')).toBe(1.5);
+		expect(parseGoDuration('2000000ns')).toBe(2);
+	});
+	it('stays 0 for nothing parseable', () => {
+		expect(parseGoDuration('')).toBe(0);
+		expect(parseGoDuration('soon')).toBe(0);
+	});
+});
+
+describe('clock skew (QA #18): ages never go negative', () => {
+	const now = new Date('2026-01-01T12:00:00Z');
+	const future = '2026-01-01T12:00:04Z';
+	it('formatTimeAgoCompact clamps at 0s', () => {
+		expect(formatTimeAgoCompact(future, now)).toBe('0s');
+	});
+	it('formatTimeAgo / formatDuration / formatDurationMs clamp at 0', () => {
+		expect(formatTimeAgo(future, now)).toBe('0 seconds ago');
+		expect(formatDuration(future, now)).toBe('0 seconds');
+		expect(formatDurationMs(-4000)).toBe('0 seconds');
+	});
 });

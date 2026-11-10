@@ -66,8 +66,9 @@ export type AutoDeployState = {
 
 export const AUTO_DEPLOY_RUNNING: AutoDeployState = { paused: false, reasons: [], gateNames: [] };
 
+import { prettyNameOf } from './gate-name';
 function prettyGateName(gate: RolloutGate | undefined): string | null {
-	return gate?.metadata?.annotations?.['gate.kuberik.com/pretty-name'] || null;
+	return prettyNameOf(gate?.metadata);
 }
 
 /**

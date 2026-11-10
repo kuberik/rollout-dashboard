@@ -85,6 +85,25 @@ export function getBakeStatusColor(
     }
 }
 
+/**
+ * ⭐ `STUCK_INK` — THE PLAIN-TEXT TONE FOR `stuck`, AND THE ONE PLACE A
+ * CALL SITE MAY GET IT. (2026-10-09, coordinator correction, integration
+ * round 3.) This file's own `getStatusCircleClass` comment two blocks down
+ * already states the budget: "green Succeeded, YELLOW checking, BLUE
+ * deploying, red Failed, amber stuck, gray pending" — yellow is `checking`
+ * (`InProgress`), amber is `stuck`, and the two may never share a value.
+ * `apps/[name]/+page.svelte`'s Needs-you row glyph shipped reading
+ * `text-yellow-700 dark:text-yellow-400` for a stuck environment, which is
+ * the `checking` ink on the `stuck` mark — the exact confusion this rule
+ * exists to prevent. `AlertPanel.svelte`'s own stuck banner
+ * (`text-amber-700 dark:text-amber-300`, line ~424) and `Chip`'s `alarm`
+ * role already carry the correct hue as hand-rolled classes with no shared
+ * name; this is that name. A call site reaches for `STUCK_INK`, never a
+ * raw `amber-700`/`amber-300` pair of its own — one value, one place it
+ * can drift from `AlertPanel`'s.
+ */
+export const STUCK_INK = 'text-amber-700 dark:text-amber-300';
+
 // Returns the tailwind class string for the soft "status circle" bg
 // in both light and dark mode. Centralised so the circle background
 // always matches the spinner/icon colour (e.g. blue circle behind
@@ -141,37 +160,32 @@ export function getStatusCircleClass(
     // deploy still owns its own fill unconditionally — same guard as
     // `BakeStatusIcon`'s `stateApplies`, so the two can never disagree.
     if (bakeStatus === 'Succeeded') {
-        if (state === 'held') return 'bg-orange-100 dark:bg-orange-950/70';
-        if (state === 'rolled-back') return 'bg-gray-100 dark:bg-gray-700/60';
+        // No disc behind the held gate: its hue is the stroke (owner 2026-10-08).
+		if (state === 'held') return 'bg-transparent';
+        if (state === 'rolled-back') return 'bg-subtle';
     }
     const c = getBakeStatusColor(bakeStatus);
     switch (c) {
         case 'green':
-            return 'bg-green-100 dark:bg-green-900/30';
+            return 'bg-success-tint';
         case 'red':
-            return 'bg-red-100 dark:bg-red-900/30';
+            return 'bg-danger-tint';
         case 'yellow':
-            return 'bg-yellow-100 dark:bg-yellow-900/30';
+            return 'bg-progress-tint';
         case 'blue':
-            return 'bg-blue-100 dark:bg-blue-900/30';
+            return 'bg-active-tint';
         default:
-            return 'bg-gray-100 dark:bg-gray-700/60';
+            return 'bg-subtle';
     }
 }
 
-// Returns the tailwind class for the animate-ping ring inside a status
-// circle. Matches the circle bg color so Deploying pings in blue and
-// InProgress pings in yellow.
+// Returns the class for the animate-ping ring inside a status circle.
+// Only DEPLOYING pings (the one live thing, the active hue). Checking
+// (InProgress, yellow) never glows or pulses — design language §1.12/13 —
+// so it, and everything else, gets no ring at all.
 export function getStatusPingClass(bakeStatus?: string): string {
     const c = getBakeStatusColor(bakeStatus);
-    switch (c) {
-        case 'blue':
-            return 'bg-blue-400/40';
-        case 'yellow':
-            return 'bg-yellow-400/30';
-        default:
-            return 'bg-yellow-400/30';
-    }
+    return c === 'blue' ? 'bg-active-solid/40' : 'hidden';
 }
 
 // Shared translation from the Rollouts-list statusKey vocabulary

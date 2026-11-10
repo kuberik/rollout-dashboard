@@ -255,7 +255,11 @@ describe('applyChangeEvents — mapping SSE change events to TanStack invalidati
 		it(`${kind} invalidates the fleet list and every rollout entry in its namespace`, () => {
 			const { qc, invalidated } = seededClient();
 			applyChangeEvents(qc, [ev({ kind, namespace: 'team-a', name: 'some-object' })]);
-			assertOnly(invalidated, ['fleetAll', 'fleetNsA', 'rolloutA1', 'rolloutA2']);
+			// QA #4: a KruiseRollout also drives the pipeline card, which reads
+			// the `managed-resources` query — it must refresh too.
+			const mr: Label[] =
+				kind === 'KruiseRollout' ? ['managedResourcesKustA', 'managedResourcesKustB'] : [];
+			assertOnly(invalidated, ['fleetAll', 'fleetNsA', 'rolloutA1', 'rolloutA2', ...mr]);
 		});
 	}
 
@@ -719,5 +723,14 @@ describe('applyChangeEvents — derived push (Deployment/ReplicaSet `derived.chi
 		qc.setQueryData(key, { 'kust-a': [managedResource()] });
 		applyChangeEvents(qc, [deployment()]);
 		expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+	});
+});
+
+import { clusterFlippedDown } from './events';
+describe('clusterFlippedDown (QA #3)', () => {
+	it('true only when a known-up cluster reports down', () => {
+		expect(clusterFlippedDown(new Map([['a', true]]), { a: false })).toBe(true);
+		expect(clusterFlippedDown(new Map([['a', false]]), { a: false })).toBe(false);
+		expect(clusterFlippedDown(null, { a: false })).toBe(false);
 	});
 });

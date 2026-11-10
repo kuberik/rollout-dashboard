@@ -8,6 +8,8 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+# The demo build (scripts/build-demo.sh); its only home is website/static/demo.
+/build-demo
 
 # OS
 .DS_Store

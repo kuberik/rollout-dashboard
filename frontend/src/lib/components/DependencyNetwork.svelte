@@ -99,14 +99,21 @@
 	 * drawing it is captioning. The card is not the viewport — it is 326px
 	 * inside a 390px page and 526px inside a 768px one.
 	 */
-	import { MarkerType, type Node, type Edge, type EdgeTypes } from '@xyflow/svelte';
+	import { StableOrder } from '$lib/view-models/stable-order';
+	import { type Node, type Edge, type EdgeTypes } from '@xyflow/svelte';
+	import { ARROW, ARROW_PATH, ARROW_VIEWBOX, wireKind } from '$lib/graph-arrow';
 	import { ChevronDoubleRightOutline, ShareNodesSolid } from 'flowbite-svelte-icons';
 	import GraphCanvas from '$lib/components/GraphCanvas.svelte';
 	import DependencyNode from '$lib/components/DependencyNode.svelte';
 	import ContractHopEdge from '$lib/components/ContractHopEdge.svelte';
 	import { theme } from '$lib/stores/theme';
-	import { getEnvironmentThemeStyle, shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
+	import {
+		getEnvironmentThemeStyle,
+		shortEnvLabel,
+		type EnvironmentTheme
+	} from '$lib/environment-theme';
 	import type { DependencyNodeData } from '$lib/components/dependency-node-data';
+	import { href } from '$lib/paths';
 	import {
 		layoutOrder,
 		edgeSentence,
@@ -119,9 +126,11 @@
 	let {
 		graph,
 		focus = null,
-		hrefOf = (n: GraphNode) => `/rollouts/${n.cluster}/${n.namespace}/${n.name}`,
+		hrefOf = (n: GraphNode) => href(`/rollouts/${n.cluster}/${n.namespace}/${n.name}`),
 		themeOf = () => null,
-		compact = false
+		compact = false,
+		orderKey = '',
+		heldRequirement = (e: GraphEdge) => e.requiredVersion
 	}: {
 		/** Already filtered by environment by the caller. */
 		graph: RolloutGraph;
@@ -133,6 +142,17 @@
 		themeOf?: (env: string) => EnvironmentTheme | null;
 		/** Tighter geometry for the rollout tab, where the card is narrower. */
 		compact?: boolean;
+		/**
+		 * When this changes the node order is re-sorted (held first); while it
+		 * stays the same, live updates keep every node where it is. See
+		 * `stable-order.ts`.
+		 */
+		orderKey?: string;
+		/**
+		 * The range a held contract edge's own build needs. Default: the edge's
+		 * agreed range (null when its held builds ask for different ones).
+		 */
+		heldRequirement?: (e: GraphEdge) => string | null;
 	} = $props();
 
 	const nodeTypes = { rollout: DependencyNode };
@@ -148,8 +168,61 @@
 	 * other exists.
 	 */
 	const STACK_BELOW = 620;
+	/**
+	 * ⭐ 2026-10-08 · D-20 — THE SECOND, INDEPENDENT STACKING THRESHOLD: NOT
+	 * "the card is too narrow for its columns" (`STACK_BELOW`, above) but
+	 * "the zoom rescue may fall back to a single column when the fit is
+	 * bad, but only below here." Coordinator decision: a fleet-sized network
+	 * must stay a layered `LR` graph, sitting at its readability floor and
+	 * panned onto the first blocked node, at desktop widths — never a
+	 * 2000px-plus single column just because the full fit landed under
+	 * `SINGLE_FILE_FLOOR`.
+	 *
+	 * This reads `GraphCanvasInner`'s `availableWidth` (the page's own offer
+	 * one level outside `.graph-canvas`, never narrowed by this component's
+	 * own `snugFrameWidth`), not `containerWidth` or the viewport — measured
+	 * live on this page with the rescue disabled: **783px at a 1024px
+	 * viewport, 527px at 768px.** `700` sits comfortably inside that gap —
+	 * right up against the boundary (e.g. 780) measured flaky: on a cold
+	 * mount `availableWidth` can read a few px low before the pane's first
+	 * real measurement settles, and the whole point of this ceiling is that
+	 * it must never trip at a desktop width by a timing accident. `700`
+	 * keeps a wide margin on both sides, so the full `/dependencies` page
+	 * reads as `>= 1024px viewport` (never stacks, floor-and-pan) reliably
+	 * from 1024 up, and the 768-1024 band below it keeps the zoom rescue
+	 * exactly as it already behaved: `LR` if the fleet fits at the floor,
+	 * `TB` if it does not.
+	 */
+	const FORCE_STACK_CEILING = 700;
 	/** Written by the canvas once it has measured itself. See `onorientation`. */
 	let stacked = $state(false);
+	/**
+	 * ⭐ 2026-09-18 · THE LEGEND MOVED BELOW THE DRAWING AND LOST ITS CENTRING.
+	 *
+	 * Until this redesign it sat ABOVE `<GraphCanvas>`, width-synced to
+	 * `GraphCanvasInner`'s `snugFrameWidth` (a small single-rank graph draws
+	 * in a canvas sized to its own content, centred, rather than stretched to
+	 * the full card) via the `onsnugwidth` callback — the row picked that
+	 * width up as its own `max-width` + `margin-inline: auto` so the two
+	 * objects shared one measured edge.
+	 *
+	 * On the rollout tab (`compact`) that centred pairing is exactly the
+	 * *"floating label"* the human named: a caption hanging above a narrow,
+	 * centred figure in a sea of empty card. §5c's `snugFrame={!compact}`
+	 * means the compact caller's frame is never narrowed in the first place
+	 * — the rail card is already sized to the drawing — so there is nothing
+	 * left to centre over. The legend now sits BELOW the drawing, left-
+	 * aligned at the card body's own left edge, as an ordinary caption. The
+	 * glyphs and their `stacked` rotation are unchanged.
+	 *
+	 * `snugWidth` is gone from THIS file, and `GraphCanvasInner`'s
+	 * `onsnugwidth` callback is gone with it: this was its only caller in the
+	 * product, and a reporting channel nobody reads is a second source of
+	 * truth waiting to drift from the one the template already uses.
+	 * `snugFrameWidth` itself is untouched — it still narrows
+	 * `/dependencies`' frame for a small subgraph, read where it is written,
+	 * by that component's own template.
+	 */
 
 	const nodeById = $derived(new Map(graph.nodes.map((n) => [n.id, n] as const)));
 	const inbound = $derived.by(() => {
@@ -178,11 +251,38 @@
 	 * against the product's own theme store rather than sniffed off the DOM.
 	 */
 	const INK = {
-		blocked: { light: '#dc2626', dark: '#f87171' },
-		quiet: { light: '#cbd5e1', dark: '#4b5563' },
-		label: { light: '#6b7280', dark: '#9ca3af' },
-		ground: { light: '#ffffff', dark: '#1f2937' }
+		// ⭐ THE TOKENS THEMSELVES, NOT `$lib/graph-arrow`'s SPEC. (round 4
+		// review, 2026-10-09) `WIRE_INK.held` (`#ff8904` dark / `#ca3500`
+		// light — Tailwind's orange-700/400) is a SECOND orange on this page,
+		// separable from `--k-held-line`/`--k-held-fg` (`#ffa46e`/`#ac430e`
+		// as rendered) by eye — two oranges made the graph the loudest
+		// colour in the dashboard. `$lib/graph-arrow` still owns the SHAPE
+		// (arrowhead geometry, stroke widths) shared with the rollout tab's
+		// neighbourhood graph; only the COLOUR moves onto this page's own
+		// `--k-held-line` (stroke + arrowhead) and `--k-held-fg` (the
+		// label's ink — see `blockedLabel` below, previously the label just
+		// reused the stroke colour). `quiet` moves from `WIRE_INK.quiet`
+		// (`#d1d5dc`/`#4a5565`, Tailwind gray-300/600) onto `--k-line-strong`
+		// — the exact token an unheld line is everywhere else on the page.
+		// Values read live via `getComputedStyle` against the running theme
+		// (`/tmp/tokens2.mjs`, round 4) rather than hand-converted to hex, so
+		// they cannot silently drift from the ramp if it is retinted again.
+		blocked: { light: 'oklch(0.84 0.095 45)', dark: 'oklch(0.48 0.12 50)' },
+		blockedLabel: { light: 'oklch(0.52 0.15 42)', dark: 'oklch(0.8 0.13 50)' },
+		quiet: { light: 'oklch(0.862 0.012 222)', dark: 'oklch(0.38 0.019 222)' },
+		// ⭐ THE RETINTED RAMP'S OWN HEX, NOT TAILWIND'S OLD GRAY. (round 2
+		// review, 2026-10-08) These were `gray-500`/`gray-400` (`#6b7280`/
+		// `#9ca3af`) and plain white/`gray-800` (`#ffffff`/`#1f2937`) — the
+		// PRE-retint ramp (DESIGN-LANGUAGE.md §2.3 moved to hue 222, chroma
+		// ≤0.019), so an edge label was the one object on this canvas still
+		// drawing the old material. `label` = `--k-fg-subtle`'s own hex;
+		// `ground` = `--k-ground`'s (the canvas draws on `.canvas-dots`,
+		// which is `bg-ground`, not `bg-surface` — a label sitting on the
+		// canvas has to match ITS ground, not a card's).
+		label: { light: '#616e73', dark: '#889599' },
+		ground: { light: '#f4f7f9', dark: '#0e1619' }
 	};
+	const markerUid = `dn-${Math.random().toString(36).slice(2, 8)}`;
 	const dark = $derived($theme === 'dark');
 	const ink = $derived((k: keyof typeof INK) => (dark ? INK[k].dark : INK[k].light));
 
@@ -192,9 +292,14 @@
 	 * It is what puts a contract's two ends adjacent along the within-rank axis
 	 * — rows under `LR`, columns under `TB` — and the held service first on it.
 	 */
+	// Held first on arrival, then stable under live updates (`stable-order.ts`):
+	// under `singleFile` this order IS the row order, and it seeds dagre's
+	// within-rank pass under `LR`, so re-sorting live moved boxes in one frame.
+	const nodeOrder = new StableOrder();
 	const orderedNodes = $derived.by(() => {
 		const rank = new Map(layoutOrder(graph).map((id, i) => [id, i] as const));
-		return [...graph.nodes].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+		const sorted = [...graph.nodes].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+		return nodeOrder.apply(orderKey, sorted, (n) => n.id);
 	});
 
 	/** The gates holding a node that ARE drawn as edges, for its tooltip. */
@@ -214,6 +319,28 @@
 		return lines.join('\n');
 	}
 
+	/**
+	 * ⭐ D-20b ROUND 2 — THE HELD CONSTRAINT, READ AT ITS CONSUMER. See
+	 * `DependencyNodeData.heldConstraints`'s own doc for why this moved off
+	 * the edge. `inbound` already indexes every edge by its consumer
+	 * (`to`); filtering to `writer === 'contract' && state === 'blocked'`
+	 * is the exact same test `edgeOf`'s own stroke colour and the OLD
+	 * `contractLabel` both used, so a node's held line and its edge's held
+	 * colour can never disagree about which edges are the story. Sorted by
+	 * contract name — graph edge order is insertion order off the API, not
+	 * a reading order a person chose.
+	 */
+	function heldConstraintsFor(n: GraphNode): DependencyNodeData['heldConstraints'] {
+		return (inbound.get(n.id) ?? [])
+			.filter((e) => e.writer === 'contract' && e.state === 'blocked')
+			.map((e) => ({
+				contract: e.contract ?? 'contract',
+				requiredVersion: heldRequirement(e),
+				providedVersion: e.providedVersion
+			}))
+			.sort((a, b) => a.contract.localeCompare(b.contract));
+	}
+
 	const flowNodes = $derived<Node[]>(
 		orderedNodes.map((n) => {
 			const t = themeOf(n.env);
@@ -231,6 +358,7 @@
 					short: h.short,
 					pending: h.pending
 				})),
+				heldConstraints: heldConstraintsFor(n),
 				href: n.unresolved ? null : hrefOf(n),
 				focused: n.id === focus,
 				title: nodeTitle(n)
@@ -246,21 +374,6 @@
 			} satisfies Node;
 		})
 	);
-
-	/**
-	 * A contract edge's label. It is the ONLY label on the canvas, and that is
-	 * the point: a contract has a name and a constraint, a promotion has
-	 * neither because it is the same artifact on both ends.
-	 *
-	 * ⛔ MARK THE DEVIATION, NEVER THE NORM — except here the name is the
-	 * discriminator, so it is always printed. What is conditional is the
-	 * CONSTRAINT: only a held edge has one worth reading.
-	 */
-	function contractLabel(e: GraphEdge): string {
-		const base = e.contract ?? 'contract';
-		if (e.state === 'blocked' && e.requiredVersion) return `${base} ${e.requiredVersion}`;
-		return base;
-	}
 
 	/**
 	 * ⭐ ONE LANE PER CONTRACT EDGE THAT SHARES GUTTER SPACE WITH ANOTHER —
@@ -303,7 +416,6 @@
 	function edgeOf(e: GraphEdge): Edge {
 		const stroke = e.state === 'blocked' ? ink('blocked') : ink('quiet');
 		const promotion = e.writer === 'promotion';
-		const label = promotion ? undefined : contractLabel(e);
 		/**
 		 * ⭐ `contractHop` UNDER `singleFile` ONLY. See `ContractHopEdge`'s own
 		 * header for the defect this replaces — the library's `smoothstep`
@@ -313,7 +425,19 @@
 		 * problem, because a contract partner really is beside the node
 		 * there, not somewhere else in the same column.
 		 */
-		const type = !promotion && stacked ? 'contractHop' : 'smoothstep';
+		/**
+		 * ⛔ 2026-09-13 · NO LONGER `stacked`-ONLY. The hook itself still is
+		 * (`ContractHopEdge` draws it only when the layout hands it a
+		 * `gutterX`, which only a `singleFile` `TB` column gets), but the
+		 * LABEL placement this component owns has to apply everywhere,
+		 * because `stacked` is not the same question as "did dagre put these
+		 * two nodes in one column". Under `LR` a contract edge does not rank
+		 * anything, so two services in ONE environment land in the same
+		 * column with `stacked` false — the library then loops the
+		 * `Bottom`→`Top` route and drops its label inside a node. Seen in the
+		 * film's own 06-dependencies take as a floating `ents`.
+		 */
+		const type = promotion ? 'smoothstep' : 'contractHop';
 		return {
 			id: e.key,
 			source: e.from,
@@ -324,20 +448,47 @@
 			sourceHandle: promotion ? 'env-out' : 'contract-out',
 			targetHandle: promotion ? 'env-in' : 'contract-in',
 			type,
-			data: type === 'contractHop' ? { lane: contractLane.get(e.key) ?? 0 } : undefined,
-			label,
-			// An edge label is an HTML div in this library, so it takes `color`
-			// and `background` — not the SVG `fill` a <text> node would.
-			// Size moves WITH the weight so each state lands on a declared
-			// type-role combo (`t-micro` 11/400 unblocked, `t-button` 12/600
-			// blocked) instead of the shared 10.5px neither state owns.
-			labelStyle: `font-size:${e.state === 'blocked' ? 12 : 11}px;font-weight:${
-				e.state === 'blocked' ? 600 : 400
-			};color:${e.state === 'blocked' ? stroke : ink('label')};background:${ink('ground')};`,
-			style: `stroke:${stroke};stroke-width:${e.state === 'blocked' ? 2 : 1.5};${
+			// `contract`: the bare relationship name (`e.contract`, never the
+			// constraint-bearing `label` text) — D-20 round 6's own trunk
+			// bundling groups by this, in `GraphCanvasInner`'s `trunkKeyOf`, so
+			// a provider's edges into DIFFERENT environments/components under
+			// the SAME contract still read as one trunk, not one lane each.
+			// `blocked`: D-20 round 7 — when a bundled trunk's branches carry
+			// different constraint text, `GraphCanvasInner`'s own label-carrier
+			// choice must prefer a BLOCKED one (the held constraint is the
+			// most important text on the graph) over an open "payments" with
+			// nothing to say. Read off the SAME `e.state` the stroke colour
+			// and `contractLabel` already key on, never recomputed.
+			data:
+				type === 'contractHop'
+					? {
+							lane: contractLane.get(e.key) ?? 0,
+							contract: e.contract ?? 'contract',
+							blocked: e.state === 'blocked'
+						}
+					: undefined,
+			/**
+			 * ⭐ D-20b round 2 (coordinator decision) — NO EDGE EVER CARRIES
+			 * TEXT, PERIOD. The constraint text used to live on the edge
+			 * (one representative per provider/text group, R3's own fix for
+			 * the worst of the pileups that caused) — but any edge label at
+			 * all meant a placement problem on a canvas this dense, and
+			 * label collisions never reached zero. A held constraint is now
+			 * read at the CONSUMER node (`DependencyNode`'s own quiet
+			 * second line, fed by `heldConstraints` below) and in the Held
+			 * links rail, which already existed. The edge itself still
+			 * carries the fact — `stroke`/`stroke-width` below — just never
+			 * a string: held ink and weight for a blocked edge, quiet and
+			 * thin for an open one, with no placement problem possible
+			 * because there is no box to place.
+			 */
+			label: undefined,
+			style: `stroke:${stroke};stroke-width:${ARROW[wireKind(e.state)].stroke};${
 				e.cyclic ? 'stroke-dasharray:2 4;' : e.state === 'unknown' ? 'stroke-dasharray:4 3;' : ''
 			}`,
-			markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: stroke },
+			// The shared head (`$lib/graph-arrow`), defined once below. xyflow's
+			// paths end AT the target, so this variant puts the TIP there.
+			markerEnd: `${markerUid}-${wireKind(e.state)}`,
 			ariaLabel: edgeSentence(e, nodeById),
 			animated: false,
 			selectable: false
@@ -345,11 +496,29 @@
 	}
 
 	const flowEdges = $derived<Edge[]>(graph.edges.map(edgeOf));
-	/** Only these advance a dagre rank. See `GraphCanvasInner.layoutEdges`. */
+	/**
+	 * Only these advance a dagre rank. See `GraphCanvasInner.layoutEdges`.
+	 *
+	 * ⛔ 2026-10-09 · D-20 round 4 — THE ENV-TIER SPINE (round 3's
+	 * `envSpineEdges`) IS GONE. It glued every disconnected chain into one
+	 * shared dagre graph to force environment columns onto nodes with no
+	 * promotion edge of their own, and the tech lead's own re-review traced
+	 * two defects to exactly that gluing: a 24-node fleet drawing 1990px wide
+	 * at 1024/1440/1920 (unrelated chains sharing one rank/row structure has
+	 * no notion of "the row is already spent"), and dagre routing an edge
+	 * from one chain through a NODE belonging to an entirely unrelated one.
+	 * `GraphCanvasInner`'s own `packComponents` (its doc, beside
+	 * `forceStackCeiling`) replaces the spine: it lays out each weakly
+	 * connected component — union-find over `flowEdges`, so two nodes joined
+	 * only by a CONTRACT edge still count as one cluster — on its own dagre
+	 * pass and shelf-packs the results, so a node with no promotion edge
+	 * simply renders whichever single-node column its own component's local
+	 * ranking gives it, never sharing rank space with a chain it has nothing
+	 * to do with.
+	 */
 	const rankEdges = $derived<Edge[]>(
 		graph.edges.filter((e) => e.writer === 'promotion').map(edgeOf)
 	);
-
 	/**
 	 * ⭐ WHICH NODE THE READER LANDS ON when the drawing does not fit — a design
 	 * decision, and the answer is the BLOCKED one.
@@ -457,31 +626,28 @@
 </script>
 
 {#if graph.nodes.length > 0}
-	<!--
-		⭐ A TWO-AXIS LEGEND HAS A SHAPE, SO IT IS DRAWN, NOT WRITTEN.
-		(2026-09-02) Two full sentences of prose ("Across: a build moving
-		through environments, left first. Down: a service waiting on another
-		in the same environment.") said the same thing this glyph pair shows
-		in one line — direction is the one thing a graph can get
-		catastrophically wrong, and no arrowhead convention is universal, but
-		the FIX is geometry, not more words. The two marks are the product's
-		own, already-shipped icons for these two edge kinds
-		(`ChevronDoubleRightOutline` for a promotion, `ShareNodesSolid` for a
-		contract — `GateRecord.svelte`'s `gateMark()`), so the legend and the
-		graph cannot drift about what a mark means. The chevron ROTATES with
-		`stacked`, because that edge is genuinely vertical under `TB` and the
-		glyph should say so; the share icon has no orientation to carry.
-	-->
-	<p class="t-micro mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-500 dark:text-gray-400">
-		<span class="inline-flex items-center gap-1">
-			<ChevronDoubleRightOutline class="h-3 w-3 shrink-0 {stacked ? 'rotate-90' : ''}" />
-			environments
-		</span>
-		<span class="inline-flex items-center gap-1">
-			<ShareNodesSolid class="h-3 w-3 shrink-0 {stacked ? '' : 'rotate-90'}" />
-			services in one environment
-		</span>
-	</p>
+	<!-- The shared arrowheads (`$lib/graph-arrow`): same shape, px size and inks
+	     as the rollout tab's. Tip on the path's end (`refX` = the head's
+	     length), because xyflow ends an edge's path at its target. -->
+	<svg class="pointer-events-none absolute h-0 w-0" aria-hidden="true">
+		<defs>
+			{#each ['held', 'quiet'] as k (k)}
+				{@const kk = k as 'held' | 'quiet'}
+				<marker
+					id="{markerUid}-{kk}"
+					viewBox={ARROW_VIEWBOX}
+					refX="10"
+					refY="8"
+					markerUnits="userSpaceOnUse"
+					markerWidth={ARROW[kk].length}
+					markerHeight={ARROW[kk].width}
+					orient="auto"
+				>
+					<path d={ARROW_PATH} fill={kk === 'held' ? ink('blocked') : ink('quiet')} />
+				</marker>
+			{/each}
+		</defs>
+	</svg>
 	<!--
 		⭐ 2026-09-03 · THE SAME COMPONENT, ONE NODE PER ROW UNDER `TB`, NOT A
 		SECOND COMPONENT. The human's standing decision, reaffirmed this week:
@@ -544,10 +710,53 @@
 		{anchorSpan}
 		fillWidth={!stacked}
 		minZoomWide={0.85}
+		snugFrame={!compact}
 		snugHeight
+		forceStackCeiling={compact ? null : FORCE_STACK_CEILING}
 		onorientation={(o) => (stacked = o === 'TB')}
 		{dark}
 		ariaLabel="Dependency graph"
-		class="rounded-lg border border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/40"
+		class="canvas-dots rounded-md border border-line"
 	/>
+	<!--
+		⭐ A TWO-AXIS LEGEND HAS A SHAPE, SO IT IS DRAWN, NOT WRITTEN.
+		(2026-09-02) Two full sentences of prose ("Across: a build moving
+		through environments, left first. Down: a service waiting on another
+		in the same environment.") said the same thing this glyph pair shows
+		in one line — direction is the one thing a graph can get
+		catastrophically wrong, and no arrowhead convention is universal, but
+		the FIX is geometry, not more words. The two marks are the product's
+		own, already-shipped icons for these two edge kinds
+		(`ChevronDoubleRightOutline` for a promotion, `ShareNodesSolid` for a
+		contract — `GateRecord.svelte`'s `gateMark()`), so the legend and the
+		graph cannot drift about what a mark means. The chevron ROTATES with
+		`stacked`, because that edge is genuinely vertical under `TB` and the
+		glyph should say so; the share icon has no orientation to carry.
+
+		⭐ 2026-09-18 · BELOW THE DRAWING NOW, NOT ABOVE IT — see the LEGEND
+		doc comment beside `STACK_BELOW` further up this file for the full
+		argument. In one line: this row used to width-sync to a narrowed,
+		centred frame; the compact caller's frame no longer narrows, so a
+		caption hanging above a centred figure in a sea of empty card was the
+		"floating label" the human named. Left-aligned at the card body's own
+		edge, below the figure, it reads as a caption should.
+
+		⛔ AND IT IS LAID OUT AGAINST THE CARD, NOT AGAINST THE FRAME. That is
+		only safe while the frame is at the card's full width, which is what
+		`snugFrame={!compact}` buys. When the `TB` hook branch was still
+		narrowing the frame behind that opt-out (fixed 2026-09-20), this row
+		ran past the frame's right edge at every width below `STACK_BELOW` —
+		the defect the opt-out existed to prevent, reappearing through the
+		branch that ignored it.
+	-->
+	<p class="t-meta mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-fg-subtle">
+		<span class="inline-flex items-center gap-1">
+			<ChevronDoubleRightOutline class="h-3 w-3 shrink-0 {stacked ? 'rotate-90' : ''}" />
+			environments
+		</span>
+		<span class="inline-flex items-center gap-1">
+			<ShareNodesSolid class="h-3 w-3 shrink-0 {stacked ? '' : 'rotate-90'}" />
+			services in one environment
+		</span>
+	</p>
 {/if}

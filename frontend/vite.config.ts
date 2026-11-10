@@ -2,17 +2,28 @@ import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import tailwindcss from '@tailwindcss/vite';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { defineConfig, searchForWorkspaceRoot } from 'vite';
+import { realpathSync } from 'node:fs';
 import mkcert from 'vite-plugin-mkcert';
 import { mockApiPlugin } from './dev-mock-api';
 import { devAuthPlugin } from './dev-auth';
 
 const useMockApi = !!process.env.MOCK_API;
 const skipDevAuth = !!process.env.SKIP_DEV_AUTH;
+// The DEMO BUILD (`scripts/build-demo.sh`). It needs no server-side mock —
+// `src/hooks.client.ts` installs the same fixtures as a `fetch` shim in the
+// page — but it does need a version string, since there is no backend to ask.
+const isDemo = process.env.VITE_DEMO === '1';
 
 export default defineConfig({
+	// Two dev servers sharing one node_modules (worktrees symlink it) must not
+	// share Vite's optimizer cache: they race on node_modules/.vite and break
+	// Svelte. `VITE_CACHE_DIR` gives a second server its own.
+	...(process.env.VITE_CACHE_DIR ? { cacheDir: process.env.VITE_CACHE_DIR } : {}),
 	define: {
-		...(useMockApi ? { 'import.meta.env.VITE_APP_VERSION': JSON.stringify('v0.0.1') } : {})
+		...(useMockApi || isDemo
+			? { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.MOCK_APP_VERSION || 'v0.0.1') }
+			: {})
 	},
 	plugins: [
 		...(useMockApi ? [mockApiPlugin()] : []),
@@ -57,6 +68,12 @@ export default defineConfig({
 			}
 		}),
 		allowedHosts: true,
+		// A git worktree may symlink node_modules to another checkout. Vite's
+		// fs allowlist checks the RESOLVED path, so allow wherever node_modules
+		// really lives — computed at startup, never a hard-coded local path.
+		fs: {
+			allow: [searchForWorkspaceRoot(process.cwd()), realpathSync('node_modules')]
+		},
 	},
 	test: {
 		workspace: [

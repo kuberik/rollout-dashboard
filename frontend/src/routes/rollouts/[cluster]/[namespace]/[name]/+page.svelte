@@ -1,9 +1,17 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { kruiseStatusIsPreviousDeploy, freshestKruise } from '$lib/pipeline';
+	import { sourceDashboardURL } from '$lib/source-dashboard';
+	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
+	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
+	import { sourceTreeUrl } from '$lib/source-url';
+	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
+	import { canHover } from '$lib/can-hover.svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { gitRef } from '$lib/git-ref';
 	import { page } from '$app/state';
-	import { get } from 'svelte/store';
 	import type {
 		Rollout,
 		Kustomization,
@@ -19,49 +27,24 @@
 		EnvironmentStatusEntry,
 		EnvironmentInfo
 	} from '../../../../../types/environment-types';
-	import {
-		Card,
-		Badge,
-		Alert,
-		Button,
-		Modal,
-		Toast,
-		Tooltip,
-		Popover,
-		Listgroup,
-		ListgroupItem,
-		Progressradial,
-		Sidebar,
-		SidebarGroup,
-		SidebarItem,
-		Timeline,
-		TimelineItem
-	} from 'flowbite-svelte';
+	import { Tooltip, Popover } from 'flowbite-svelte';
+	import Toast from '$lib/components/Toast.svelte';
 	import {
 		CodePullRequestSolid,
-		ReplyOutline,
 		UndoOutline,
 		EditOutline,
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		InfoCircleSolid,
-		CloseOutline,
-		CircleMinusSolid,
 		CodeOutline,
-		DatabaseSolid,
 		ClockSolid,
+		ClockOutline,
 		ClockArrowOutline,
-		PauseSolid,
 		PlaySolid,
 		RefreshOutline,
-		MessageDotsOutline,
 		CalendarWeekSolid,
-		QuestionCircleOutline,
 		ChevronDownOutline,
-		HeartSolid,
-		CubesStackedSolid,
-		UserSolid,
-		CogSolid,
+		ChevronUpOutline,
 		ArrowUpRightFromSquareOutline,
 		ArrowUpOutline,
 		GithubSolid,
@@ -69,55 +52,54 @@
 		ShareNodesSolid
 	} from 'flowbite-svelte-icons';
 	import {
-		formatTimeAgo,
 		formatTimeAgoCompact,
-		formatDuration,
 		formatDate,
-		getRolloutStatus,
 		isFieldManagedByManager,
 		isFieldManagedByOtherManager,
-		hasBypassGatesAnnotation,
-		getBypassGatesVersion,
-		getForceDeployVersion,
 		hasForceDeployAnnotation,
-		isVersionForceDeploying,
-		isVersionBypassingGates,
 		hasFailedBakeStatus,
 		hasUnblockFailedAnnotation,
 		getDisplayVersion,
 		extractURLFromGatewayOrIngress,
-		parseLinkAnnotations,
-		extractDatadogInfoFromContainers,
-		buildDatadogTestRunsUrl,
-		buildDatadogLogsUrl,
 		detectStuck
 	} from '$lib/utils';
-	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
-	import { changePathForRollout, displayVersionForTag } from '$lib/version-utils';
+	import { pollWhenHealthy, staleTimeWhenHealthy, apiFetch } from '$lib/api/errors';
+	import { repoKeyFor, repoSlug } from '$lib/version-utils';
+	import { href } from '$lib/paths';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
+	import { prettyNameOf } from '$lib/view-models/gate-name';
 	import { detectRollback } from '$lib/rollout-cards';
 	import StuckBadge from '$lib/components/StuckBadge.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StarToggle from '$lib/components/StarToggle.svelte';
+	import PromotionLane from '$lib/components/PromotionLane.svelte';
+	import { buildLanes } from '$lib/view-models/promotion-lanes';
+	import { buildRolloutCards } from '$lib/rollout-cards';
+	import type { RolloutCard } from '$lib/rollout-cards';
+	import { waitsFor, verdictForGates, causeLabelForGates } from '$lib/view-models/held';
 	import Chip from '$lib/components/Chip.svelte';
 	import { now } from '$lib/stores/time';
 	import SourceViewer from '$lib/components/SourceViewer.svelte';
-	import ChangeVersionModal from '$lib/components/ChangeVersionModal.svelte';
+	import ChangeVersionFlow from '$lib/components/ChangeVersionFlow.svelte';
+	import { outageEscalation } from '$lib/view-models/outage-escalation.svelte';
 	import CopyButton from '$lib/components/CopyButton.svelte';
 	import { announce } from '$lib/stores/announce.svelte';
+	import { afterNavigate, replaceState } from '$app/navigation';
 	import CommitSummary from '$lib/components/CommitSummary.svelte';
+	import { ledgerSpine } from '$lib/ledger-spine';
+	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
+	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import FactList from '$lib/components/FactList.svelte';
+	import NotFound from '$lib/components/NotFound.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
-	import RecoveryModeWarningModal from '$lib/components/RecoveryModeWarningModal.svelte';
 	import DeploymentPipelineCard from '$lib/components/DeploymentPipelineCard.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
-	import HeadBandSkeleton from '$lib/components/skeleton/HeadBandSkeleton.svelte';
-	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
-	import ResourceCard from '$lib/components/ResourceCard.svelte';
-	import HealthCheckBadge from '$lib/components/HealthCheckBadge.svelte';
 	import ScheduleStatus from '$lib/components/ScheduleStatus.svelte';
+	import { dependencyOnlyHold } from '$lib/view-models/dependency-hold';
 	import BlockingStoryPanel from '$lib/components/BlockingStoryPanel.svelte';
 	import {
 		buildGateContext,
@@ -127,20 +109,38 @@
 		joinClauses,
 		upstreamVerdict,
 		isPluralSubject,
-		type ClassifiedGate
+		holdCausePhrase,
+		contractHoldClause,
+		contractHoldSlots,
+		type ClassifiedGate,
+		type ContractHold,
+		type ContractHolds
 	} from '$lib/view-models/blocking-story';
 	import {
 		buildRolloutGraph,
 		nodeId,
 		heldSubjects,
+		contractHeldVersionsFor,
+		contractHoldsForRollout,
 		type GraphNode
 	} from '$lib/view-models/dependency-graph';
 	import { compareEnvironmentNames } from '$lib/env-order';
+	import {
+		healthGateCounts,
+		healthGateHolding,
+		healthGateCountsLabel
+	} from '$lib/view-models/health-witness';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import GateLines from '$lib/components/GateLines.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { bakeWord, bakeTitle } from '$lib/bake-status';
-	import { rollbackTarget } from '$lib/view-models/deploy-risk';
+	import {
+		rollbackTarget,
+		rolloutEnvironmentName,
+		failedHereVerdict,
+		rowShowsFailed
+	} from '$lib/view-models/deploy-risk';
+	import { blockingGateNames, promotionCandidates } from '$lib/view-models/promotion';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
@@ -152,18 +152,26 @@
 		shortEnvLabel
 	} from '$lib/environment-theme';
 
-	import { rolloutPath } from '$lib/source-dashboard';
+	import {
+		buildTopology,
+		lockstepMismatch,
+		canonicalTier,
+		deployNameOf,
+		siteNodeOf,
+		upstreamOf
+	} from '$lib/view-models/sites-waves';
+	import { rolloutPath, rolloutMatchesEnvironment, SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 	import { DEPLOY_PARAM, deployKey } from '$lib/history-deeplink';
 	import { formatTimeUntil } from '$lib/api/schedules';
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
 		rolloutsListQueryOptions,
-		type RolloutResponse,
 		rolloutPermissionsQueryOptions
 	} from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
 	import { apiPath } from '$lib/api/urls';
+	import { pageTitle } from '$lib/page-title';
 
 	// Params (runes)
 	const namespace = $derived(page.params.namespace as string);
@@ -172,7 +180,6 @@
 	// middleware resolves it and forwards every API call (including mutations) to
 	// that cluster, so the UI behaves identically regardless of source.
 	const cluster = $derived(page.params.cluster as string);
-
 
 	// Query for rollout - fetches all rollout data including kustomizations, ociRepositories, rolloutGates
 	// ⭐ CLUSTER-AWARE — this page's OWN rollout, so it passes `cluster`
@@ -183,6 +190,11 @@
 	// app-wide 300s/120s defaults (see root `+layout.svelte`'s `QueryClient`);
 	// `cluster` still rides both so this stays scoped to THIS rollout's own
 	// spoke rather than the fleet-wide "every cluster up" gate.
+	// QA #3: the fleet list names the spokes the hub could not read; if this rollout's cluster is one, the page says its data is stale.
+	// No cadence of its own: the app-wide defaults apply (300s while the stream is healthy), and a cluster dropping on the SSE `clusters`
+	// event invalidates ['rollouts','all'] (events.ts), so the notice still appears within seconds.
+	const fleetListQuery = createQuery(() => rolloutsListQueryOptions());
+	const myClusterErrors = $derived(clusterErrorsFor(fleetListQuery.data?.clusterErrors, cluster));
 	const rolloutQuery = createQuery(() =>
 		rolloutQueryOptions({
 			namespace,
@@ -219,19 +231,27 @@
 	);
 
 	// Query for permissions - checks if user can update/patch rollouts
-	const permissionsQuery = createQuery(() =>
-		rolloutPermissionsQueryOptions({
+	// ⭐ ITEM 2 (AD palette round 8): `enabled: false` once the rollout query
+	// has hard-failed — there is nothing to grant permissions ON while the
+	// tab itself can't load, and this is one of the two background queries
+	// named for contributing to the outage request storm (the other is
+	// Gates' `schedulesQuery`, see that page's identical note).
+	const permissionsQuery = createQuery(() => ({
+		...rolloutPermissionsQueryOptions({
 			namespace,
 			name,
 			cluster
-		})
-	);
+		}),
+		enabled: !rolloutQuery.isError
+	}));
 
 	// Derived permissions state
 	const canUpdate = $derived(permissionsQuery.data?.permissions?.update ?? false);
 	const canPatch = $derived(permissionsQuery.data?.permissions?.patch ?? false);
 	// Most actions require update permission, but some (like force-deploy, bypass-gates) use patch
 	const canModify = $derived(canUpdate || canPatch);
+	/** the one PR the header's head commit maps to (set by the header CommitSummary) */
+	let hdrPullNumber = $state<number | null>(null);
 	/**
 	 * ⭐ "NOT YET KNOWN" IS A THIRD STATE, DISTINCT FROM `canModify`'S
 	 * DEFAULT-FALSE. (2026-09-04, load-state audit finding 1: "action row
@@ -249,6 +269,36 @@
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	// Failure panel collapse (2026-09-26, film critic 25): the panel used to
+	// vanish in one frame when the failure cleared, the page reflowing upward by
+	// its height. Svelte's own `transition:slide` runs on the Web Animations
+	// API, which the film's capture harness (CDP virtual time + BeginFrame)
+	// does not advance — measured: still one frame — while CSS transitions do.
+	// So the panel stays mounted (up to 1 s) after the failure clears while it
+	// collapses — `AlertPanel`'s own `open` (a CSS grid-row transition, 300 ms,
+	// symmetric ease, props frozen at their last open values so nothing inside
+	// it changes height first). Generalised there 2026-10-08 so every banner
+	// leaves the same way.
+	const isFailedNow = $derived(
+		!!rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)
+	);
+	let failedLinger = $state(false);
+	let wasFailed = false;
+	// $effect.pre: the linger flag must be set BEFORE the DOM updates for the
+	// failure clearing, or the `{#if}` below unmounts the panel in that same
+	// flush and re-mounts it already collapsed (measured: still one frame).
+	$effect.pre(() => {
+		if (isFailedNow) {
+			wasFailed = true;
+			failedLinger = false;
+			return;
+		}
+		if (!wasFailed) return;
+		wasFailed = false;
+		failedLinger = true;
+		const t = setTimeout(() => (failedLinger = false), 1000); // outlives AlertPanel's own collapse, which ends on transitionend
+		return () => clearTimeout(t);
+	});
 
 	/**
 	 * ⭐ A DEPLOY FINISHING IS THE ONE THING THIS PAGE EXISTS TO TELL SOMEONE,
@@ -286,7 +336,83 @@
 		}
 	});
 	const environment = $derived(rolloutQuery.data?.environment);
-	const rolloutTheme = $derived(rollout ? getRolloutEnvironmentTheme(rollout, environment) : null);
+	// THE IDENTITY FALLBACK (design language, 2026-10-08): when the detail
+	// response carries no Environment, take the one the fleet list matches —
+	// the same `rolloutMatchesEnvironment` Home and /rollouts use — so every
+	// state of this page names its environment. THEME ONLY: `environment`
+	// above, and everything it drives, is unchanged.
+	const listEnvironment = $derived(
+		rollout && !environment?.spec?.environment
+			? (listQuery.data?.environments?.items ?? []).find((e) =>
+					rolloutMatchesEnvironment(rollout, e)
+				)
+			: undefined
+	);
+	// ⭐ THIS APP'S LANE (design language): the same view-model Home draws,
+	// built from the fleet list for this rollout's name only.
+	const appLane = $derived.by(() => {
+		const data = listQuery.data;
+		const me = rollout?.metadata?.name;
+		if (!data || !me) return null;
+		const mine = ((data.rollouts?.items ?? []) as Rollout[]).filter((r) => r.metadata?.name === me);
+		// The gate context goes in (QA 5): every stuck caller passes it, so the
+		// shared `detectRolloutStuck` excuses a correctly-held stage here the
+		// same way it does on Home. (`gateContext` is declared below; this
+		// closure only runs after component setup.)
+		// ⭐ THE HOLD-ONE-RULE, FOR THIS LANE TOO. (shared/held-predicate,
+		// 2026-10-11) Without `contractHoldsFor` a card held ONLY by a
+		// `RolloutDependency` contract (never published on `rollout.status.
+		// gates`) reads `held: false` here — the exact gap `held.ts`'s own
+		// doc warns about — which would make `waitsForFact` below think the
+		// upstream stage it is waiting on is clear when it is actually held
+		// on a contract. Same `providerNetwork` this page already builds for
+		// `contractHoldsIn`, read a second way, no new fetch.
+		const cards = buildRolloutCards(
+			mine,
+			(data.environments?.items ?? []) as Environment[],
+			$now,
+			gateContext,
+			(r) => contractHoldsForRollout(providerNetwork, r)
+		);
+		return buildLanes(cards)[0] ?? null;
+	});
+	/**
+	 * ⭐ THE "NOT REACHED YET" FACT FOR THIS BANNER. (shared/held-predicate,
+	 * 2026-10-11) `heldVerdict`/`waitsFor` — see `view-models/held.ts`'s own
+	 * doc for the ruling. `appLane`'s own cards already carry the corrected
+	 * `held`/`waitsForEnv`/`heldCauseLabel` facts (same `RolloutCard`s Home
+	 * reads), so this page never re-derives the ruling, only looks THIS
+	 * rollout's own card up in the lane it already built and asks the one
+	 * shared helper for the sentence.
+	 */
+	const hereCard = $derived.by(() => {
+		// `appLane`'s cards come off `listQuery` (the fleet list), never off
+		// `rolloutQuery` (this page's own detail fetch) — two different
+		// requests, so matching by object identity would miss every time.
+		// `ns`/`name` is the same identity `buildAppIndex` itself keys on.
+		const all = [...(appLane?.stages ?? []), ...(appLane?.prod ?? [])];
+		return all.find((n) => n.card.ns === namespace && n.card.name === name)?.card ?? null;
+	});
+	/**
+	 * ⭐ THE PEER MAP, SHARED (squad-rollout gates-2 follow-up, 2026-10-11).
+	 * Pulled out of `waitsForFact` so the "Newer builds" row's own per-build
+	 * read (below) can compose the identical one-hop "`<stage>` held on
+	 * `<cause>`" clause without a second copy of the lane walk.
+	 */
+	const peersByEnv = $derived.by(() => {
+		const m = new Map<string, RolloutCard>();
+		for (const n of [...(appLane?.stages ?? []), ...(appLane?.prod ?? [])]) {
+			if (n.card.envName) m.set(n.card.envName, n.card);
+		}
+		return m;
+	});
+	const waitsForFact = $derived.by(() => {
+		if (!hereCard) return null;
+		return waitsFor(hereCard, { peersByEnv });
+	});
+	const rolloutTheme = $derived(
+		rollout ? getRolloutEnvironmentTheme(rollout, listEnvironment ?? environment) : null
+	);
 	const rolloutThemeStyle = $derived(
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
 	);
@@ -307,8 +433,15 @@
 	 * assigned. See `$lib/api/errors` for the retry policy that lets the query
 	 * reach `error` at all.
 	 */
-	const loading = $derived(rolloutQuery.isLoading && !rolloutQuery.isError);
-	const error = $derived(rolloutQuery.isError ? rolloutQuery.error : null);
+	// PALROW r8 (AD palette r7 item 3): a full outage escalates to ErrorState
+	// after two failed answers instead of retrying on the skeleton forever
+	// (`view-models/outage-escalation.svelte.ts`).
+	const outage = outageEscalation(
+		() => rolloutQuery,
+		() => `${cluster}/${namespace}/${name}`
+	);
+	const loading = $derived(outage.loading);
+	const error = $derived(outage.error);
 
 	// Derive directly from the query so that when route params change the
 	// lists go back to empty while the new query is in flight, rather than
@@ -412,6 +545,24 @@
 	 * `GateContext.schedulesLoaded` `false` and `classifyGate`'s `check`
 	 * fallback `pending` — see `BlockingStoryPanel`'s own handling of
 	 * `story.kindPending` for the render-side half of this fix.
+	 *
+	 * ⭐ shared/cards-join (2026-10-11): this page's own `gateContext` carries
+	 * MORE evidence than `$lib/view-models/card-context.ts`'s `cardContext`
+	 * helper builds by default — `rolloutGates` ownership and this rollout's
+	 * own per-namespace `/schedules` fetch (via `withSchedules`), neither of
+	 * which the list-only pages (`ControlCenter`, `/apps`, `/rollouts`, the
+	 * palette) have. `cardContext` accepts both as optional inputs
+	 * (`rolloutGates`, `schedulesForNamespace`) precisely so this page COULD
+	 * route through it with no loss of evidence — kept hand-assembled here
+	 * instead because this block's `$state`/`$effect.pre` ordering is
+	 * already load-bearing (see the comment above on the dead-zone crash
+	 * this exact shape was written to fix) and is not worth re-threading
+	 * through one more layer of indirection. `buildGateContext` →
+	 * `withSchedules` → `buildRolloutGraph` → `contractHoldsForRollout` below
+	 * are the SAME four functions `cardContext` composes, called the same
+	 * way, so this and every other surface still classify one gate
+	 * identically — see `appLane`, below, which already hands
+	 * `buildRolloutCards` both `gateContext` and `contractHoldsForRollout`.
 	 */
 	let scheduleObjects = $state<any[] | null>(null);
 	const gateContext = $derived.by(() => {
@@ -430,12 +581,77 @@
 			? withSchedules(base, rollout?.metadata?.namespace, scheduleObjects)
 			: base;
 	});
+	/**
+	 * ⭐ THE SAME GRAPH THE DEPENDENCIES TAB BUILDS (`buildRolloutGraph`),
+	 * MOVED UP HERE SO `blockStory` CAN READ IT. (2026-10-09, coordinator
+	 * ruling: "held" = refused by a gate OR held by a contract.) This block
+	 * used to sit below, beside `heldByThis`/`holdEdgesIn` — it is relocated,
+	 * not duplicated: `$effect.pre` below reads `blockStory` EAGERLY, as
+	 * part of registering its own dependencies, which runs synchronously
+	 * while this `<script>` block is still executing top to bottom. A
+	 * `const` declared textually AFTER that point is in its own temporal
+	 * dead zone at that moment — "forward reference is safe, `$derived` is
+	 * lazy" is true of an ordinary read but NOT of the first run of an
+	 * `$effect`/`$effect.pre`, which is exactly the live crash this fixes
+	 * (`ReferenceError: Cannot access 'contractHoldsIn' before
+	 * initialization`, `subject-detail.svelte.test.ts`). `providerEnvOrder`/
+	 * `providerNetwork`/`providerFocusId` keep their own doc comments where
+	 * `heldByThis` still reads them, below.
+	 */
+	const providerEnvOrder = $derived(
+		[
+			...new Set(
+				(listQuery.data?.environments?.items ?? [])
+					.map((e: Environment) => e.spec?.environment)
+					.filter(Boolean) as string[]
+			)
+		].sort(compareEnvironmentNames)
+	);
+	const providerNetwork = $derived(
+		buildRolloutGraph({
+			rollouts: (listQuery.data?.rollouts?.items ?? []) as Rollout[],
+			environments: (listQuery.data?.environments?.items ?? []) as Environment[],
+			dependencies: (listQuery.data?.rolloutDependencies?.items ?? []) as RolloutDependency[],
+			envOrder: providerEnvOrder,
+			gates: gateContext
+		})
+	);
+	const providerFocusId = $derived(nodeId(cluster, namespace, name));
+	/**
+	 * ⭐ THE HOLD-ONE-RULE'S CONTRACT HALF, FOR `blockStory` ITSELF. Built off
+	 * the SAME `providerNetwork` this page already builds for
+	 * `heldByThis`/`holdEdgesIn`/`contractHeldVersions` below — nothing new
+	 * fetched or computed, same graph read a third way. `undefined` while the
+	 * graph has not resolved this rollout's own node yet, so a loading page
+	 * never reads "no contract holds" as a confident answer and flashes a
+	 * banner that then disappears. Inlined rather than reading `holdGraphKnown`
+	 * (declared further down, for the same eager-effect reason above).
+	 */
+	const contractHoldsIn = $derived.by((): ContractHolds | undefined => {
+		if (!listQuery.data || !rollout) return undefined;
+		if (!providerNetwork.nodes.some((n) => n.id === providerFocusId)) return undefined;
+		return contractHoldsForRollout(providerNetwork, rollout, namespace, cluster);
+	});
+	/** The one skipped-build rule: the banner, and the Newer builds rows, read this. */
+	const skippedFn = $derived(skippedPredicate(rollout, stageBuilds(rollout, listQuery.data?.rollouts?.items)));
 	const blockStory = $derived(
 		blockingStory(rollout, gateContext, {
 			place: environment?.spec?.environment ?? null,
-			now: $now
+			now: $now,
+			// A8: builds an earlier stage already passed over read "skipped", never "waiting for staging".
+			skipped: skippedFn,
+			// ⭐ THE HOLD-ONE-RULE. See `contractHoldsIn`'s own comment, above.
+			contractHolds: contractHoldsIn
 		})
 	);
+	// The gates the held banner names, frozen while it collapses out: its
+	// action slot is a snippet of THIS page, so without this it would read
+	// `0 rules` for the length of the fade. (See `AlertPanel`'s `open`.)
+	let heldGates = $state.raw<ClassifiedGate[]>([]);
+	$effect.pre(() => {
+		const st = blockStory;
+		if (st.blocked && st.clock.length === 0) heldGates = st.gates;
+	});
 
 	/**
 	 * ⭐ TWO TRUE FACTS ABOUT ONE ROLLOUT COLLAPSE INTO ONE PANEL. (P9, second
@@ -524,66 +740,208 @@
 	 * `blockStory` above reads, so a rollout this graph calls held and a
 	 * rollout `blockStory` calls held cannot disagree.
 	 */
-	const providerEnvOrder = $derived(
-		[
-			...new Set(
-				(listQuery.data?.environments?.items ?? [])
-					.map((e: Environment) => e.spec?.environment)
-					.filter(Boolean) as string[]
-			)
-		].sort(compareEnvironmentNames)
-	);
-	const providerNetwork = $derived(
-		buildRolloutGraph({
-			rollouts: (listQuery.data?.rollouts?.items ?? []) as Rollout[],
-			environments: (listQuery.data?.environments?.items ?? []) as Environment[],
-			dependencies: (listQuery.data?.rolloutDependencies?.items ?? []) as RolloutDependency[],
-			envOrder: providerEnvOrder,
-			gates: gateContext
-		})
-	);
-	const providerFocusId = $derived(nodeId(cluster, namespace, name));
-	const heldByThis = $derived.by(():
-		| { count: number; subjects: string; need: string; plural: boolean }
-		| null => {
-		const edges = providerNetwork.edges.filter(
-			(e) => e.from === providerFocusId && e.writer === 'contract' && e.state === 'blocked'
-		);
-		if (edges.length === 0) return null;
-		const byId = new Map(providerNetwork.nodes.map((n) => [n.id, n] as const));
-		const held = new Map<string, GraphNode>();
-		for (const e of edges) {
-			const n = byId.get(e.to);
-			if (n) held.set(n.id, n);
-		}
-		if (held.size === 0) return null;
-		const nodes = [...held.values()];
-		// The CONTRACT this rollout provides and what the held candidates ask
-		// of it — the tail of the sentence `heldSubjects` does not carry.
-		// Grouped: a live fleet can hold three environments on the same
-		// (contract, requiredVersion) pair, and the sentence must not repeat it.
-		const needs = [
-			...new Set(
-				edges.map(
-					(e) => `${e.contract ?? 'a newer version'}${e.requiredVersion ? ` ${e.requiredVersion}` : ''}`
+	const heldByThis = $derived.by(
+		(): { count: number; subjects: string; need: string; plural: boolean } | null => {
+			const edges = providerNetwork.edges.filter(
+				(e) => e.from === providerFocusId && e.writer === 'contract' && e.state === 'blocked'
+			);
+			if (edges.length === 0) return null;
+			const byId = new Map(providerNetwork.nodes.map((n) => [n.id, n] as const));
+			const held = new Map<string, GraphNode>();
+			for (const e of edges) {
+				const n = byId.get(e.to);
+				if (n) held.set(n.id, n);
+			}
+			if (held.size === 0) return null;
+			const nodes = [...held.values()];
+			// The CONTRACT this rollout provides and what the held candidates ask
+			// of it — the tail of the sentence `heldSubjects` does not carry.
+			// Grouped: a live fleet can hold three environments on the same
+			// (contract, requiredVersion) pair, and the sentence must not repeat it.
+			const needs = [
+				...new Set(
+					edges.map(
+						(e) =>
+							`${e.contract ?? 'a newer version'}${e.requiredVersion ? ` ${e.requiredVersion}` : ''}`
+					)
 				)
-			)
-		];
-		return {
-			count: nodes.length,
-			subjects: heldSubjects(nodes),
-			need: joinClauses(needs),
-			// ⛔ NUMBER AGREEMENT. `heldSubjects()` folds "one app held in three
-			// environments" into ONE phrase on purpose — the app named once,
-			// not per environment — so the SENTENCE's subject stays singular
-			// too: `hello-frontend-app in prod NEEDS api ^1.67.0`, not
-			// `need`. It only turns plural when the set names more than one
-			// DISTINCT app. `isPluralSubject` counts that off the same node
-			// list `heldSubjects` was built from, rather than re-parsing its
-			// prose to recover the count.
-			plural: isPluralSubject(nodes.map((n) => n.name))
-		};
+			];
+			return {
+				count: nodes.length,
+				subjects: heldSubjects(nodes),
+				need: joinClauses(needs),
+				// ⛔ NUMBER AGREEMENT. `heldSubjects()` folds "one app held in three
+				// environments" into ONE phrase on purpose — the app named once,
+				// not per environment — so the SENTENCE's subject stays singular
+				// too: `hello-frontend-app in prod NEEDS api ^1.67.0`, not
+				// `need`. It only turns plural when the set names more than one
+				// DISTINCT app. `isPluralSubject` counts that off the same node
+				// list `heldSubjects` was built from, rather than re-parsing its
+				// prose to recover the count.
+				plural: isPluralSubject(nodes.map((n) => n.name))
+			};
+		}
+	);
+	/**
+	 * ⭐ ONE SOURCE OF TRUTH FOR "IS THIS CANDIDATE HELD", SHARED WITH THE
+	 * GATES TAB. (2026-10-08, U-5, ledger.)
+	 *
+	 * Measured live on `checkout-api-prod-us-east-2`: this card's "Newer
+	 * builds" list rendered b-45/b-44/b-43 green `Ready` with a primary
+	 * `Deploy`, while the Gates tab on the SAME rollout at the SAME moment
+	 * said all three are HELD — `Needs payments-svc ^3.0.0 · has 2.4.1`.
+	 *
+	 * The split cause: `isBlocked` (below, in the `{#each releaseCandidates}`
+	 * loop) only ever reads `rollout.status.gates` via `getBlockingGates`. A
+	 * `RolloutDependency` contract gate is not always published there — this
+	 * fixture's own `ckGates()` deliberately omits it (see its comment in
+	 * `mock-data.ts`) precisely because publishing it flips `blockingStory`'s
+	 * banner too. But the Gates tab was never reading `rollout.status.gates`
+	 * for a contract hold either: `dependency-graph.ts`'s `buildRolloutGraph`
+	 * resolves a contract edge straight off the `RolloutDependency` object's
+	 * own `status.blockedReleases`/`Satisfied` condition (see its own
+	 * comment, "FOR A CONTRACT EDGE THE SAME CONTROLLER HAS ALREADY
+	 * ANSWERED") — which is the SAME graph this page already builds into
+	 * `providerNetwork` for `heldByThis` above, just read the other
+	 * direction: `heldByThis` asks what THIS rollout holds (`e.from ===
+	 * providerFocusId`), this asks what holds THIS rollout (`e.to ===
+	 * providerFocusId`). Nothing new is fetched or computed — `holdEdgesIn`
+	 * is the inbound half of a graph already in hand, read, never rebuilt;
+	 * `dependency-graph.ts` itself stays untouched (gates-team file).
+	 */
+	const holdEdgesIn = $derived(
+		providerNetwork.edges.filter(
+			(e) => e.to === providerFocusId && e.writer === 'contract' && e.state === 'blocked'
+		)
+	);
+	/**
+	 * The one inbound contract edge holding THIS candidate, or null.
+	 * `e.held` is already in DISPLAY-VERSION form (`GraphEdge`'s own
+	 * contract), matching `getDisplayVersion(releaseCandidate)` — never the
+	 * tag, which is what `rollout.status.gates`-based `isBlocked` keys on.
+	 */
+	function contractHoldFor(
+		releaseCandidate: { tag: string; version?: string; revision?: string }
+	): ContractHold | null {
+		// fix8 F3: the per-build hold (`contractHoldsIn`, the source the Gates tab, /apps and
+		// `blockStory` read), never the edge's `requiredVersion`: the edge drops the range when
+		// the held builds disagree (checkout-api prod ap-southeast-2: b-43 ~2.9.0, b-44 3.0.0).
+		return contractHoldsIn?.get(getDisplayVersion(releaseCandidate))?.[0] ?? null;
+	}
+	/** The provider's own short name, for the held sentence. */
+	function contractHoldProviderName(edge: (typeof holdEdgesIn)[number]): string {
+		return providerNetwork.nodes.find((n) => n.id === edge.from)?.name ?? 'another service';
+	}
+	/**
+	 * ⭐ (2026-10-09, integration round 3, item 3; round 4, item follow-up)
+	 * THE SAME `holdEdgesIn` GRAPH, FLATTENED FOR THE CHANGE VERSION DIALOG.
+	 * `contractHoldFor` above answers "is THIS candidate object held" for the
+	 * ledger loop, which already has a `releaseCandidate`; `ChangeVersionModal`
+	 * builds its own picker rows from `availableReleases`/repo tags, so it
+	 * gets the resolved display-version SET instead of the graph itself.
+	 *
+	 * `contractHeldVersionsFor` (`dependency-graph.ts`) is the SAME one-line
+	 * filter this used to inline here, extracted so `ChangeVersionModal`
+	 * itself can call it too — the dialog now derives this set on its own,
+	 * from the SAME `/api/rollouts` payload, on every call site that does
+	 * not pass this prop. This page still computes and passes it as an
+	 * OVERRIDE: it already builds `providerNetwork` for `heldByThis` and
+	 * `holdEdgesIn` above, so recomputing it here costs nothing extra and
+	 * saves the dialog a redundant graph build on the one page that already
+	 * has the answer.
+	 */
+	/**
+	 * ⭐ ITEM 1 (coordinator, 2026-10-09). THE HELD ANSWER IS "UNKNOWN" UNTIL
+	 * BOTH OF THESE ARE TRUE: the list query has data, AND this rollout's own
+	 * node actually exists in the graph it built (`nodeId(cluster, …)` uses
+	 * the page's cluster name; the graph keys off each rollout's raw
+	 * `source-cluster` annotation — see `contractHeldVersions`' own history).
+	 * Exposed as a boolean (rather than inlined per use) because TWO
+	 * consumers read it: the dialog override below, and every release-
+	 * candidate row's own "Ready" branch, which must not assert "not held"
+	 * while this is `false` (measured live, `checkout-api/prod-us-east-2`:
+	 * the row read green `Ready` with a primary `Deploy` for the first paint,
+	 * the IDENTICAL defect item (b)/`heldStatePending` already fixed one
+	 * layer down in `ChangeVersionModal`).
+	 *
+	 * ⛔ GATE-ONLY HOLDS ARE UNAFFECTED. `blockingGates` (above) reads
+	 * `rollout.status.gates`, which arrives with `rolloutQuery` itself — nod
+	 * to `listQuery` required — so a gate-held row already knows its state
+	 * synchronously and renders immediately regardless of this flag.
+	 */
+	const holdGraphKnown = $derived(
+		!!listQuery.data &&
+			(providerNetwork.nodes.some((n) => n.id === providerFocusId) ||
+				// r34 newer-builds (2026-11-01): the graph only makes nodes for rollouts that sit on an
+				// edge. A rollout the list DOES carry, under this page's own id, with no node has no
+				// edges — so no contract hold can point at it. Without this, a rollout outside every
+				// promotion/dependency link (invoice-api prod-eu-west under MOCK_API) showed the
+				// "checking" mark on every older row forever. A cluster-name mismatch still reads unknown.
+				(listQuery.data?.rollouts?.items ?? []).some(
+					(r) =>
+						nodeId(
+							r.metadata?.annotations?.[SOURCE_CLUSTER_ANNOTATION] ?? '',
+							r.metadata?.namespace ?? '',
+							r.metadata?.name ?? ''
+						) === providerFocusId
+				))
+	);
+	/**
+	 * ⭐ ITEM 2 (coordinator, 2026-10-09). "UNKNOWN" MUST NOT MEAN "FOREVER".
+	 * Same distinction `ChangeVersionModal`'s `selfHeldGraphErrored` makes
+	 * (see that const's own comment): `holdGraphKnown` alone cannot tell
+	 * "still loading" from "the request failed" — both read `false` — and a
+	 * failed `/api/rollouts` must say so plainly instead of leaving every
+	 * row on the "checking…" placeholder forever.
+	 */
+	const holdGraphErrored = $derived(listQuery.isError);
+	$effect(() => {
+		if (holdGraphKnown || !import.meta.env.DEV) return;
+		// Same split as the dialog's own dev warning: a list failure and a
+		// node-missing lookup miss are different bugs and must not be
+		// reported as the same one.
+		if (holdGraphErrored) {
+			console.warn(
+				`rollout detail: /api/rollouts failed — contract-hold state for ${namespace}/${name} ` +
+					'could not be checked — a list failure, not a lookup miss. Rows render the error ' +
+					'placeholder, never "Ready".'
+			);
+		} else if (listQuery.data) {
+			const clusterLabel = cluster ?? 'hub';
+			console.warn(
+				`rollout detail: ${namespace}/${name}, cluster ${clusterLabel}, was not found in ` +
+					'its own dependency graph — a node missing, not a list failure. Treating ' +
+					'contract-hold state as unknown, never Ready.'
+			);
+		}
 	});
+	// Only an override once the answer is known (`holdGraphKnown`): pass
+	// `undefined` while loading, errored, or when this rollout's node can't
+	// be found, so the dialog self-derives with its own pending/unknown/error
+	// state instead of receiving an empty set that reads as "not held".
+	const contractHeldVersions = $derived.by((): ReadonlySet<string> | undefined => {
+		if (!holdGraphKnown) return undefined;
+		return contractHeldVersionsFor(providerNetwork, providerFocusId);
+	});
+
+	/**
+	 * ⭐ A BUILD THAT JUST FAILED ITS CHECKS HERE IS NEVER OFFERED AS `Ready`
+	 * AGAIN. (U-4, ledger, 2026-10-08 — TL ruling, coordinator decision.)
+	 * Measured on the incident fixture: a rollback to `3f1ed09` left
+	 * `a02f1c4` — the build whose OWN deploy just failed its health checks
+	 * on THIS rollout — still a candidate (it is still newer by
+	 * release-list position), and the "Newer builds" row read plain green
+	 * `Ready` with a loud primary `Deploy`, as if nothing had just
+	 * happened.
+	 *
+	 * `failedHereVerdict` (`deploy-risk.ts`, pure, unit-tested) is the
+	 * derivation — this is no longer a mock-only flag or a local re-read of
+	 * `rollout.status.history`: the SAME function also feeds
+	 * `deployIntent`'s `knownFailedHere`, which is what makes
+	 * `ChangeVersionModal`'s own confirm ceremony agree with this row about
+	 * which build is the one that already failed.
+	 */
+
 	const bakeFailureDisabledCondition = $derived(
 		rollout?.status?.conditions?.find(
 			(c) => c.type === 'BakeFailureDisabled' && c.status === 'True'
@@ -726,12 +1084,285 @@
 			: healthChecks
 	);
 
+	/**
+	 * ⭐ "PROMOTE ONLY WHEN IT'S HEALTHY", DRAWN. (2026-09-20, promo film
+	 * finding: the hero take showed `e2c9b47 · Ready` with a loud primary
+	 * `Deploy` while a health check was still `Pending` — the opposite of
+	 * what the beat claims.) See `health-witness.ts`'s own doc comment on
+	 * `healthGateCounts` for why this is not a `status.gates` block: the
+	 * controller's promotion loop short-circuits on unhealthy checks BEFORE
+	 * the gate loop runs, so nothing in `promotion.ts`/`blocking-story.ts`
+	 * models it.
+	 *
+	 * Scoped to the NEWEST candidate only — an older one a person might
+	 * Change Version to is a different question, already answered by that
+	 * row's own gate classification. And only when a real gate is not ALSO
+	 * holding it: that state already renders (`isBlocked`, below), and this
+	 * is additive evidence, not a replacement for it.
+	 */
+	// ⭐ THE ONE LIST THIS PAGE COUNTS "NEWER BUILDS" FROM. (coordinator,
+	// 2026-10-09) Every read on this page used to go straight to
+	// `rollout.status.releaseCandidates` — a field `checkout-api`'s fixture
+	// (and some live rollouts) never publishes, because the controller only
+	// fills it in once it has computed an upgrade path. That field being
+	// absent does NOT mean "no newer build" — it can mean "ask
+	// `availableReleases` instead", which is exactly what `promotionCandidates`
+	// (`promotion.ts`) does, and it is the same function `/apps` and the
+	// Change Version dialog's rank labels already agree with. Measured on
+	// `checkout-api`/`prod-us-east-1` (calm): this page used to print "No
+	// newer build" here while `/apps/checkout-api` said "3 behind" — same
+	// rollout, two answers, because only one side ran the fallback. Both
+	// sides now call `promotionCandidates`, so they cannot disagree again.
+	// `promotionCandidates` is typed as `ReleaseRef[]` (`tag?: string`) so it
+	// can serve callers built from `availableReleases` too, but every element
+	// here actually comes off `status.releaseCandidates`/`status.availableReleases`,
+	// both of which the API contract (`rollout-types.ts`) declares with a
+	// REQUIRED `tag`. Same cast `apps/[name]/+page.svelte`'s `waitingBuildsFor`
+	// already uses for the identical reason.
+	const newerBuilds = $derived(
+		promotionCandidates(rollout) as {
+			version?: string;
+			revision?: string;
+			tag: string;
+			created?: string;
+		}[]
+	);
+	const newestCandidate = $derived(newerBuilds[0] ?? null);
+	// Newer builds ledger fold (r34 AD r3 TB6): the newest + the first NB_FOLD older builds are drawn;
+	// the rest sit behind a footer that expands in place. `nbOpen` = narrow-card rows opened by a tap.
+	// TB14/TB22/TB24 (r5): the fold is a phone/tablet thing. At >=1024 NO fold: every older row shows (the
+	// rail beside is shorter than the card, a fold band there saves nothing). Below 640 the card folds to
+	// the newest + EVERY held or failed row + Running here — only at-rest older rows hide, never the
+	// build the Gates tab leads with. 640-1023 keeps the first 4 older rows.
+	const nbPhone = new MediaQuery('(max-width: 639px)', false);
+	const nbDesktop = new MediaQuery('(min-width: 1024px)', false);
+	let nbShowAll = $state(false);
+	let nbOpen = $state<Record<string, boolean>>({});
+	/** A build the operator must see even on a folded card: held (gate / contract) or failed here.
+	 *  Chain waits ("Waits for staging") are at rest and may fold. */
+	function nbRowAdverse(rc: { tag: string; version?: string; revision?: string }): boolean {
+		const tag = rc.tag;
+		if (rowShowsFailed(failedHereVerdict(rollout, tag))) return true;
+		const gates = getBlockingGates(tag);
+		const dep =
+			gates.length > 0 &&
+			dependencyOnlyHold(
+				classifyBlockingGates(tag),
+				holdEdgesIn
+					.filter((e) => e.held.includes(getDisplayVersion(rc)))
+					.map((e) => ({ provider: contractHoldProviderName(e), gate: e.gate }))
+			);
+		// Mirrors the row's `markState`: a gate that is not the dependency's own decides first
+		// (a chain wait reads 'behind'), then a contract hold.
+		if (gates.length > 0 && !dep) {
+			if (blockStory.pinnedTo) return true;
+			const v = verdictForGates(classifyBlockingGates(tag), environment?.spec?.environment ?? null, {
+				hasContract: !!contractHoldFor(rc)
+			});
+			return !(!v.held && !!v.waitsForEnv);
+		}
+		return !!contractHoldFor(rc);
+	}
+	/** A build that only WAITS for an earlier environment ("Waits for staging"), with the cause that
+	 *  environment is itself held on — the shared cause is printed once (TB28), on the first such row. */
+	function nbChain(rc: { tag: string; version?: string; revision?: string }) {
+		const tag = rc.tag;
+		if (rowShowsFailed(failedHereVerdict(rollout, tag)) || blockStory.pinnedTo) return null;
+		if (getBlockingGates(tag).length === 0) return null;
+		const v = verdictForGates(classifyBlockingGates(tag), environment?.spec?.environment ?? null, {
+			hasContract: !!contractHoldFor(rc)
+		});
+		if (v.held || !v.waitsForEnv) return null;
+		const raw = waitsFor({ waitsForEnv: v.waitsForEnv }, { peersByEnv })?.heldCause ?? null;
+		const peer = raw ? raw.replace(new RegExp(`^${v.waitsForEnv}\\s+`), '') : null;
+		const skipped = chainWaitLabel(skippedFn, { tag }, v.waitsForEnv).skipped;
+		return { env: v.waitsForEnv, peer: skipped ? null : peer };
+	}
+	const nbFirstPeer = $derived.by(() => {
+		for (let i = 0; i < newerBuilds.length; i++) {
+			const c = nbChain(newerBuilds[i]);
+			if (c?.peer) return { i, peer: c.peer };
+		}
+		return null;
+	});
+	const nbRows = $derived(newerBuilds.map((rc, i) => ({ rc, i })));
+	const nbCollapsed = $derived.by(() => {
+		const keep = nbRows.map(
+			(r) => r.i === 0 || (nbDesktop.current ? true : nbPhone.current ? nbRowAdverse(r.rc) : r.i <= 4)
+		);
+		// r7 TB33: never fold a single row — a fold button is taller than the one row it hides.
+		let run = 0;
+		for (let k = 0; k <= keep.length; k++) {
+			if (k < keep.length && !keep[k]) {
+				run++;
+				continue;
+			}
+			if (run === 1) keep[k - 1] = true;
+			run = 0;
+		}
+		return nbRows.filter((_, k) => keep[k]);
+	});
+	const nbVisible = $derived(nbShowAll ? nbRows : nbCollapsed);
+	const nbFoldedCount = $derived(nbRows.length - nbCollapsed.length);
+	/** Index (into nbVisible) of the first older row — where the "Older" band sits. */
+	const nbOlderAt = $derived(nbVisible.findIndex((r) => r.i > 0));
+	/** TB23: the build track is as wide as the widest id on the card (14px mono 500 = 0.6em/char), min 64. */
+	const nbBuildW = $derived(
+		Math.max(
+			64,
+			Math.ceil(
+				Math.max(
+					...newerBuilds.map((r) => getDisplayVersion(r).length),
+					rollout?.status?.history?.[0]?.version ? getDisplayVersion(rollout.status.history[0].version).length : 0
+				) *
+					8.4
+			) + 2
+		)
+	);
+	// ⭐ REFUSED HERE VS NOT REACHED YET (shared/held-predicate, 2026-10-11).
+	// `getBlockingGates` names every gate whose allow-list excludes this
+	// tag — gate NAME only, no tier classification, so it cannot tell a
+	// real hold from plain chain sequencing (`promotion-prod` refusing a
+	// build its own upstream has not deployed yet reads identically here).
+	// `hereCard.held` is the one place that distinction is already made
+	// (`view-models/held.ts`) — `?? true` keeps this byte-identical to
+	// before on a card this page's own lane has not resolved yet (loading),
+	// never suppressing a real hold for lack of data.
+	const newestCandidateBlockedByGate = $derived(
+		newestCandidate && (hereCard?.held ?? true)
+			? getBlockingGates(newestCandidate.tag).length > 0
+			: false
+	);
+	const newestHealthGateCounts = $derived(healthGateCounts(visibleHealthChecks, errorCutoff));
+	const newestHeldByHealth = $derived(
+		!!newestCandidate && !newestCandidateBlockedByGate && healthGateHolding(newestHealthGateCounts)
+	);
+	const newestHealthHoldClause = $derived(
+		newestHeldByHealth
+			? `waiting for health checks · ${healthGateCountsLabel(newestHealthGateCounts)}`
+			: null
+	);
+
+	/**
+	 * ⭐ THE SAME WAIT, WHEN A RULE HOLDS IT RATHER THAN A HEALTH CHECK.
+	 * (2026-09-21) The health-held clause two lines up rides on the whole
+	 * page (version card AND the Newer builds row); a GATE-held newest
+	 * candidate only ever got that treatment on the Newer builds row — the
+	 * version card's own meta line fell all the way to the bare `N newer
+	 * build(s)` `{:else}` branch with no reason at all, on a rollout whose
+	 * WHOLE story that visit is "why hasn't this moved". `classifyBlockingGates`
+	 * is the exact function that row already calls; reused here rather than a
+	 * second gate-reading path. `label` is `classifyGate`'s own word for a
+	 * promotion gate (`after dev`) — never invented here — and the gate's own
+	 * `gate.kuberik.com/description` annotation (the same field
+	 * `getGateDescription` already surfaces in the row's popover) rides along
+	 * when the environment controller published one, e.g. naming why the
+	 * upstream environment itself hasn't deployed yet.
+	 */
+	const newestGateHoldGates = $derived(
+		newestCandidate && newestCandidateBlockedByGate
+			? classifyBlockingGates(newestCandidate.tag)
+			: []
+	);
+	const newestGateHoldDescription = $derived.by(() => {
+		if (!newestCandidate || !newestCandidateBlockedByGate) return null;
+		for (const g of getBlockingGates(newestCandidate.tag)) {
+			const d = getGateDescription(g);
+			if (d) return d;
+		}
+		return null;
+	});
+	const newestGateHoldClause = $derived(
+		newestGateHoldGates.length === 0
+			? null
+			: (newestGateHoldGates.length === 1
+					? newestGateHoldGates[0].label
+					: `${newestGateHoldGates.length} rules`) +
+					(newestGateHoldDescription ? ` · ${newestGateHoldDescription}` : '')
+	);
+
+	/**
+	 * ⭐ ITEM 8 FIX (integration round 3, Gates design review). A held-reason
+	 * clause (`Needs payments-svc ~2.9.0 · has 2.4.1`, `waiting for health
+	 * checks · 1 pending`) used to render as one plain text node inside a
+	 * non-wrapping `items-center` flex row — the browser could still break
+	 * the LINE at any space, including inside a version number, leaving a
+	 * mid-version wrap.
+	 *
+	 * The first fix gave each run its own TRAILING separator inside a
+	 * `whitespace-nowrap` span (the Gates tab's own `clauseRuns`,
+	 * `RolloutNeighbourhood.svelte`, had made the same move for the same
+	 * reason) — which stopped the mid-version break, but re-check at 390
+	 * found the glyph itself still lands at a line's END whenever the wrap
+	 * falls right after the run that carries it. There is no third position
+	 * for a literal `·` between two independently-wrappable runs that
+	 * dodges every edge; `splits` on `' · '` so the break still can only
+	 * land BETWEEN clauses, but nothing renders the glyph any more — the
+	 * container's own wider `gap-x-2` (vs. a clause's internal `gap-x-1`,
+	 * where used) is what reads as "new clause" instead.
+	 */
+	function clauseRuns(text: string): { text: string; sep: boolean }[] {
+		const parts = text.split(' · ').filter((p) => p.length > 0);
+		return parts.map((p, i) => ({ text: p, sep: i < parts.length - 1 }));
+	}
+
+	/**
+	 * ⭐ THE GATE OPENING IS A MOMENT, NOT A LEVEL. The instant every health
+	 * check reports healthy, the controller's own next reconcile promotes
+	 * automatically — a real, if usually brief, gap between "proven healthy"
+	 * and "actually promoted" that this flag names `promoting` rather than
+	 * letting the row jump straight back to a bare `Ready`, which would read
+	 * as if the wait had never happened.
+	 *
+	 * A TRANSITION, not a field on the rollout, so it has to be tracked
+	 * across renders. Self-clears after 8s — same idiom as `justClearedPin`
+	 * above — so a check that flaps back to held, or a promotion that
+	 * genuinely stalls, does not leave this on forever.
+	 */
+	let prevNewestCandidateKey = $state<string | null>(null);
+	let prevNewestHeldByHealth = $state(false);
+	let justOpenedHealthGate = $state(false);
+	let healthGateOpenedTimer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => {
+		const key = newestCandidate?.tag ?? null;
+		const held = newestHeldByHealth;
+		if (key !== prevNewestCandidateKey) {
+			// A different candidate (promoted away, or a new build appeared) —
+			// whatever this flag was tracking no longer applies.
+			justOpenedHealthGate = false;
+			clearTimeout(healthGateOpenedTimer);
+		} else if (prevNewestHeldByHealth && !held) {
+			justOpenedHealthGate = true;
+			clearTimeout(healthGateOpenedTimer);
+			healthGateOpenedTimer = setTimeout(() => {
+				justOpenedHealthGate = false;
+			}, 8000);
+		} else if (held) {
+			justOpenedHealthGate = false;
+		}
+		prevNewestCandidateKey = key;
+		prevNewestHeldByHealth = held;
+	});
+
 	// Query for events
+	// ⭐ SQUAD-ROLLOUT COORDINATOR, 2026-10-12 — cadence follow-up (traced
+	// with CDP `Network.requestWillBeSent` initiator stacks): this was the
+	// ONE query still firing every 5s, unthrottled, for the entire length of
+	// an outage — 12 of 15 rollout-scoped requests in a 60s mid-outage
+	// sample, all from this `queryFn`. `if (!res.ok) return { events: [] }`
+	// swallowed a 503 into a SUCCESSFUL empty answer, so `pollWhenHealthy`'s
+	// callback never saw `status: 'error'` and never backed off to
+	// `RECOVERY_POLL_MS` — it kept reading "healthy" forever. `apiFetch`
+	// throws instead, exactly like every other API call in this file; the
+	// rendered result is unchanged (`events` below still defaults to `[]`,
+	// and `eventsKnown`'s `isSuccess || isError` already treats a thrown
+	// failure as "known, show the empty state" — see that const's own
+	// comment), only the retry/backoff bookkeeping is fixed.
 	const eventsQuery = createQuery(() => ({
 		queryKey: ['events', namespace, name, cluster],
 		queryFn: async () => {
-			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/events`));
-			if (!res.ok) return { events: [] };
+			const res = await apiFetch(apiPath(cluster, `/rollouts/${namespace}/${name}/events`));
 			return res.json();
 		},
 		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `events` is in
@@ -793,8 +1424,53 @@
 
 	let showToast = $state(false);
 	let toastMessage = $state('');
+	/**
+	 * ⭐ LANE P, §5 (2026-10-09): `Toast.svelte`'s new, additive `description`
+	 * prop — a second line for the fact the title has no room for ("Deploy
+	 * requested" / "9a1f4c2 is deploying to prod."). Reset to `''` at every
+	 * call site that does not set one, so a later one-line toast never
+	 * inherits an earlier toast's second line.
+	 */
+	let toastDescription = $state('');
 	let toastType = $state<'success' | 'error' | 'info'>('success');
 	let toastLoading = $state(false);
+	/**
+	 * ⭐ ROUND 3, ITEM 13 (AD, 2026-10-09): "Add an action `.nav-link` 'View
+	 * logs'." Only `retryDeployment`'s own toast sets this — a reader who
+	 * just retried a deploy is exactly the reader who wants the logs next;
+	 * every other toast on this page resets it, same reset discipline
+	 * `toastDescription` already follows.
+	 */
+	let toastShowLogsAction = $state(false);
+
+	/**
+	 * ⭐ THE TOAST'S CLEARANCE, AS RESERVED SPACE — NOT A MEASURED DOCK.
+	 * (2026-10-09, integration round 3, item 3) See the doc comment on the
+	 * `<Toast>` markup for the full history. The previous fix measured
+	 * `.ov-split`'s two columns live with a `ResizeObserver` and slid the
+	 * toast sideways to whichever column had clearance — correct for the
+	 * two-column case it was built for, but it never touched the
+	 * single-column layout below the `.ov-split-cq` 1080px threshold (1024
+	 * reported pre-existing overlap with `Health checks`): at that width
+	 * `mainColEl` and `railColEl` are the same flex column, stacked, so
+	 * "whichever has clearance" is never true once the stack itself runs to
+	 * the fold.
+	 *
+	 * THE SIMPLER FIX: `<main>` is the one real scroller at `sm`+ (the
+	 * layout's own "`<main>` IS A PLAIN BLOCK … THE DOCUMENT IS THE
+	 * SCROLLER" — here that block is simply the one thing `<main>` ever
+	 * renders, so padding at the END of this page's own markup is
+	 * padding at the end of `<main>`'s scrollable content). A toast
+	 * showing adds `TOAST_DOCK_CLEARANCE` of empty space after the page's
+	 * last element — single column AND two column alike, since in the
+	 * two-column case the grid's own height is the TALLER column's, and
+	 * this reserve sits after that. Scrolled to the bottom, the toast's
+	 * fixed dock now always lands over that reserved strip, never over
+	 * `Health checks` or anything else. No `ResizeObserver`, no column
+	 * refs, no horizontal override — CSS padding plus the state the toast
+	 * already carries.
+	 */
+	const TOAST_DOCK_CLEARANCE = 96; // toast height (~64) + its own bottom-4 margin + a little air
 
 	let showRollbackModal = $state(false);
 	let rollbackVersion = $state<string | null>(null);
@@ -874,34 +1550,16 @@
 		}
 	});
 
-	// Recovery-mode pre-confirmation modal state
-	let showRecoveryWarningModal = $state(false);
-	let recoveryWarningReason = $state<'previous-failed' | 'unhealthy-health-checks'>(
-		'previous-failed'
-	);
-
-	function recoveryModeReason(): 'previous-failed' | 'unhealthy-health-checks' | null {
-		const currentBakeStatus = rollout?.status?.history?.[0]?.bakeStatus;
-		if (currentBakeStatus && currentBakeStatus !== 'Succeeded') {
-			return 'previous-failed';
-		}
-		if (visibleHealthChecks?.some((hc) => hc.status?.status === 'Unhealthy')) {
-			return 'unhealthy-health-checks';
-		}
-		return null;
-	}
-
-	// Intercept transitions to the change-version modal: if the action would put the
-	// rollout into recovery mode, show the warning modal first. The warning modal's
-	// onContinue then opens the actual ChangeVersionModal.
+	/**
+	 * ⭐ PALROW r8 (AD palette round 7, item 2): THE RECOVERY GATE MOVED.
+	 * `recoveryModeReason` (with its 2026-09-13 "only `Failed` is a failure"
+	 * fix, verbatim) lives in `view-models/change-version-entry.ts`, and
+	 * `ChangeVersionFlow` mounts the warning and the picker together, so
+	 * History walks the SAME step this page always did. This page only
+	 * requests the flow; the flow decides warning-first or picker.
+	 */
 	function requestChangeVersionModal() {
-		const reason = recoveryModeReason();
-		if (reason) {
-			recoveryWarningReason = reason;
-			showRecoveryWarningModal = true;
-		} else {
-			showChangeVersionModal = true;
-		}
+		showChangeVersionModal = true;
 	}
 
 	// New variables for pin version mode
@@ -923,9 +1581,64 @@
 
 	// Reset state when modals close
 	$effect(() => {
-		if (!showChangeVersionModal && !showRecoveryWarningModal) {
+		if (!showChangeVersionModal) {
 			selectedVersion = null;
 			isPinVersionMode = false;
+		}
+	});
+
+	// ⭐ SQUAD-ROLLOUT ROUND 3, ITEM 1 (coordinator-approved, 2026-10-09) —
+	// ROUND 4, ITEM A FIX (AD "REAL BUG", 2026-10-10): the palette's "Change
+	// version…" command has nothing to call directly (a separate component
+	// tree), so it navigates here with `?action=change-version`. The old
+	// version read the param straight off `page.url` inside a plain
+	// `$effect` — which opened the modal on the FIRST request (param +
+	// loaded `rollout` both true at once) but not a SECOND, because a
+	// same-route, query-only `goto()` does not reliably re-trigger a
+	// `$effect` whose only dependency is a reactive READ of `page.url` (the
+	// AD's own diagnosis: "handled only on first mount or data load, not on
+	// client-side navigation"). `afterNavigate` is the primitive that
+	// actually RUNS — an imperative callback, not a reactive read — once
+	// per COMPLETED navigation, same-route query-only ones included, so it
+	// cannot miss the SAME reactivity gap. The initial value below covers
+	// the one case `afterNavigate` itself never fires for: a cold first
+	// load that already has the param in its URL (SvelteKit does not
+	// deliver `afterNavigate` for the navigation that mounted the page).
+	// Either way this only sets a PENDING flag — `rollout` may not be
+	// loaded yet — and the `$effect` below opens the modal once `rollout`
+	// is ready and clears the flag, so "the param reappeared" and "the
+	// param appeared for the first time" are the same event.
+	// `?action=rollback` (the Logs tab's "Roll back to …", squad-rollout
+	// SPEC §7) rides the same pending flag: it opens the SAME dialog the
+	// status row's own Roll back button opens, pre-selected on `rollbackNow`.
+	let changeVersionPending = $state(page.url.searchParams.get('action') === 'change-version');
+	let rollbackPending = $state(page.url.searchParams.get('action') === 'rollback');
+	afterNavigate(() => {
+		const action = page.url.searchParams.get('action');
+		if (action === 'change-version') changeVersionPending = true;
+		if (action === 'rollback') rollbackPending = true;
+	});
+	$effect(() => {
+		if (rollbackPending && rollout) {
+			rollbackPending = false;
+			if (isDashboardManagingWantedVersion && rollbackNow) {
+				isPinVersionMode = true;
+				selectedVersion = rollbackNow.tag;
+				deployExplanation = '';
+				requestChangeVersionModal();
+			}
+			const url = new URL(page.url);
+			url.searchParams.delete('action');
+			replaceState(url, {});
+		}
+	});
+	$effect(() => {
+		if (changeVersionPending && rollout) {
+			changeVersionPending = false;
+			requestChangeVersionModal();
+			const url = new URL(page.url);
+			url.searchParams.delete('action');
+			replaceState(url, {});
 		}
 	});
 
@@ -949,21 +1662,12 @@
 	function subtitleRunningLabel(): string | null {
 		const running = rollout?.status?.history?.[0]?.version;
 		if (!running) return null;
-		if ((rollout?.status?.releaseCandidates?.length ?? 0) === 0) return null;
+		if (newerBuilds.length === 0) return null;
 		return getDisplayVersion(running);
 	}
 
-	// Selected version display label (for modal confirmation)
-	function selectedVersionDisplay(): string | null {
-		if (!selectedVersion) return null;
-		const availableRelease = rollout?.status?.availableReleases?.find(
-			(ar) => ar.tag === selectedVersion
-		);
-		if (availableRelease) {
-			return getDisplayVersion(availableRelease);
-		}
-		return selectedVersion;
-	}
+	// `selectedVersionDisplay` moved to `view-models/change-version-entry.ts`
+	// with the recovery gate (PALROW r8) — `ChangeVersionFlow` calls it directly.
 
 	// Helper function to map failed health checks to full health checks
 	function findFullHealthCheck(
@@ -986,35 +1690,33 @@
 	// Function to get gate pretty name from gate annotations
 	function getGatePrettyName(gate: any): string | null {
 		// Look for gate pretty name in the gate's own annotations
-		return gate.metadata?.annotations?.['gate.kuberik.com/pretty-name'] || null;
+		return prettyNameOf(gate?.metadata);
 	}
 
-	// Function to get gates blocking a specific version
+	/**
+	 * ⭐ U-5, 2026-10-08: THE DETERMINATION IS `blockingGateNames` (promotion.ts),
+	 * NEVER "does a RolloutGate object exist for this name". This used to
+	 * filter `rollout.status.gates` itself and then DROP any blocking entry
+	 * it could not match to an object in `rolloutGates` — so a gate whose CRD
+	 * this page's fetch didn't return (a promotion-order gate, on the live
+	 * cluster) silently stopped counting as held everywhere this function
+	 * fed: the "Newer builds" row, the version card's held clause, and the
+	 * Change Version dialog's `isDeployable`/picker chip all agreed with the
+	 * absence instead of with the controller's own published status, while
+	 * the Gates tab — which never required the object — read it correctly.
+	 * See `blockingGateNames`'s own doc comment for the measured repro.
+	 *
+	 * A CRD object, when one IS in `rolloutGates`, still rides along here —
+	 * every existing caller (`getGateDescription`, `classifyBlockingGates`'s
+	 * `.metadata?.name` lookup) reads it for DISPLAY only. A name with no
+	 * matching object gets a minimal stand-in so none of those callers see a
+	 * hole; `getGateDescription` returns `null` for it exactly as it already
+	 * does for an object with no description annotation.
+	 */
 	function getBlockingGates(version: string): any[] {
-		if (!rollout?.status?.gates || rollout.status.gates.length === 0) return [];
-
-		// Filter gates that are blocking this specific version
-		const blockingGates = rollout.status.gates.filter((gate) => {
-			// If gate has allowedVersions, check if this version is in the allowed list
-			// A gate can be passing but still blocking if the version is not in allowedVersions
-			if (Array.isArray(gate.allowedVersions)) {
-				// Version is blocked if it's NOT in the allowedVersions list (regardless of passing status)
-				return !gate.allowedVersions.includes(version);
-			}
-
-			// If gate doesn't have allowedVersions, check the passing status
-			// If gate is not passing, it's blocking
-			return gate.passing === false;
-		});
-
-		// Map to full gate objects from rolloutGates for display (name, description, etc.)
-		return blockingGates
-			.map((gateStatus) => {
-				// Find the corresponding full gate object
-				const fullGate = rolloutGates.find((g) => g.metadata?.name === gateStatus.name);
-				return fullGate || null;
-			})
-			.filter((gate): gate is any => gate !== null);
+		return blockingGateNames(rollout, version).map(
+			(name) => rolloutGates.find((g) => g.metadata?.name === name) ?? { metadata: { name } }
+		);
 	}
 
 	/**
@@ -1300,22 +2002,13 @@
 		return typeof version === 'string' ? version : (version?.tag ?? '');
 	}
 
-	// Build GitHub tree URL for a given version
+	// Build GitHub tree URL for a given version (always absolute: `sourceTreeUrl`).
 	function getGitHubUrl(version: string, revision?: string | null): string {
-		version = gitRef(revision, version); // sha over tag (2026-09-10, human)
-		let url = rollout?.status?.source ?? '';
-		if (!url) return '';
-		if (url.includes('github.com')) {
-			url = url.endsWith('/') ? url + 'tree/' + version : url + '/tree/' + version;
-		} else if (url.includes('git@github.com:')) {
-			url = url.replace('git@github.com:', 'https://github.com/') + '/tree/' + version;
-		} else if (url.includes('.git')) {
-			url = url.replace('.git', '') + '/tree/' + version;
-		} else {
-			url = url.endsWith('/') ? url + 'tree/' + version : url + '/tree/' + version;
-		}
-		return url;
+		return sourceTreeUrl(rollout?.status?.source, gitRef(revision, version)); // sha over tag (2026-09-10, human)
 	}
+
+	const lockstepFault = $derived(environment ? lockstepMismatch(environment) : null);
+	const joinList = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
 	// Helper function to get dependency env + status for a version
 	function getDependencyStatus(versionTag: string): { env: string; bakeStatus: string } | null {
@@ -1330,21 +2023,26 @@
 			return null;
 		}
 
-		// Find current environment info
-		const currentEnvInfo = environment.status.environmentInfos.find(
-			(e: EnvironmentInfo) => e.environment === currentEnv
-		);
-		const depEnv =
-			currentEnvInfo?.relationship?.type === 'After'
-				? currentEnvInfo.relationship.environment
-				: null;
+		// The place this environment takes its version from, off the sites &
+		// waves topology (a follower follows its leader, a wave-N leader follows
+		// wave N-1, the first place of a tier follows the tier before it).
+		// `environmentInfos` hold one history per TIER, so an upstream inside the
+		// same tier has no history of its own to read.
+		const deployName = deployNameOf(environment);
+		const topo = buildTopology([
+			...((listQuery.data?.environments?.items ?? []) as Environment[]),
+			environment
+		]).get(deployName);
+		const me = siteNodeOf(topo, environment);
+		const up = topo && me ? upstreamOf(topo, me)[0] : undefined;
+		const depEnv = up && up.tier !== me?.tier ? up.tier : null;
 		if (!depEnv) {
 			return null;
 		}
 
 		// Find the dependency environment info
 		const depEnvInfo = environment.status.environmentInfos.find(
-			(e: EnvironmentInfo) => e.environment === depEnv
+			(e: EnvironmentInfo) => canonicalTier(e.environment) === depEnv
 		);
 		if (!depEnvInfo?.history) {
 			return null;
@@ -1384,17 +2082,17 @@
 	}
 
 	function getStatusIcon(status: string | null) {
-		if (!status) return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
+		if (!status) return { icon: ExclamationCircleSolid, color: 'text-fg-subtle' };
 		switch (status.toLowerCase()) {
 			case 'success':
-				return { icon: CheckCircleSolid, color: 'text-green-700 dark:text-green-400' };
+				return { icon: CheckCircleSolid, color: 'text-success' };
 			case 'failure':
-				return { icon: ExclamationCircleSolid, color: 'text-red-600 dark:text-red-400' };
+				return { icon: ExclamationCircleSolid, color: 'text-danger' };
 			case 'in_progress':
 			case 'pending':
-				return { icon: ClockSolid, color: 'text-yellow-700 dark:text-yellow-400' };
+				return { icon: ClockSolid, color: 'text-progress' };
 			default:
-				return { icon: ExclamationCircleSolid, color: 'text-gray-500 dark:text-gray-400' };
+				return { icon: ExclamationCircleSolid, color: 'text-fg-subtle' };
 		}
 	}
 
@@ -1527,11 +2225,16 @@
 		showToast = true;
 		toastLoading = true;
 		toastMessage = 'Checking for new versions...';
+		toastDescription = '';
+		toastShowLogsAction = false;
 		toastType = 'success';
 
 		try {
 			const response = await fetch(
-				apiPath(cluster, `/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`),
+				apiPath(
+					cluster,
+					`/rollouts/${rollout.metadata?.namespace}/${rollout.metadata?.name}/reconcile`
+				),
 				{
 					method: 'POST',
 					headers: {
@@ -1585,9 +2288,13 @@
 			if (newVersionCount > 0) {
 				toastMessage =
 					newVersionCount === 1 ? '1 new version found!' : `${newVersionCount} new versions found!`;
+				toastDescription = 'Check the Newer builds card to deploy one.';
+				toastShowLogsAction = false;
 				toastType = 'success';
 			} else {
 				toastMessage = 'No new versions available';
+				toastDescription = '';
+				toastShowLogsAction = false;
 				toastType = 'info';
 			}
 
@@ -1600,6 +2307,8 @@
 			toastLoading = false;
 			showToast = true;
 			toastMessage = e instanceof Error ? e.message : 'Failed to check for new versions';
+			toastDescription = '';
+			toastShowLogsAction = false;
 			toastType = 'error';
 
 			// Auto-dismiss toast after 3 seconds
@@ -1687,7 +2396,18 @@
 			}
 
 			showToast = true;
-			toastMessage = `Successfully continued rollout ${kruiseRolloutName}`;
+			// ⭐ ROUND 2, ITEM 9: same rule as `retryDeployment` — the description
+			// names the build and place, not the rollout's own name again (the
+			// title already says what happened to "this rollout"; the reader is
+			// standing on its page).
+			toastMessage = 'Rollout continued';
+			{
+				const latest = rollout?.status?.history?.[0]?.version;
+				const build = latest ? getDisplayVersion(latest) : kruiseRolloutName;
+				const place = environment?.spec?.environment || namespace;
+				toastDescription = `${build} continues deploying in ${place}.`;
+				toastShowLogsAction = false;
+			}
 			toastType = 'success';
 
 			// Auto-hide toast after 3 seconds
@@ -1701,6 +2421,8 @@
 			console.error('Continue rollout error:', error);
 			showToast = true;
 			toastMessage = `Failed to continue rollout: ${error instanceof Error ? error.message : 'Unknown error'}`;
+			toastDescription = '';
+			toastShowLogsAction = false;
 			toastType = 'error';
 
 			// Auto-hide toast after 3 seconds
@@ -1723,7 +2445,24 @@
 			}
 
 			showToast = true;
-			toastMessage = 'Deployment retry initiated';
+			// ⭐ ROUND 2, ITEM 9 + ROUND 3, ITEM 13 (squad-rollout coordinator,
+			// 2026-10-09): THE DESCRIPTION ADDS A FACT, IT DOES NOT RESTATE THE
+			// TITLE. "Deployment retry initiated / Retrying checkout-worker in
+			// checkout-worker-staging" said the same thing twice; then "Retry
+			// started / {build} is deploying again in {place}" wrapped the
+			// identifier at a hyphen on both 1440 and 390 and still read as a
+			// restatement. Title is the ACT; description is the build id and
+			// what changed, `build · fact` (Toast's own one-line `truncate`
+			// now makes the id un-wrappable, not a word choice here), and the
+			// toast gets a `View logs` action — the next thing a reader who
+			// just retried a deploy wants.
+			toastMessage = 'Retry started';
+			{
+				const latest = rollout?.status?.history?.[0]?.version;
+				const build = latest ? getDisplayVersion(latest) : name;
+				toastDescription = `${build} · Check restarted`;
+			}
+			toastShowLogsAction = true;
 			toastType = 'success';
 			setTimeout(() => {
 				showToast = false;
@@ -1733,6 +2472,8 @@
 			console.error('Retry deployment error:', error);
 			showToast = true;
 			toastMessage = `Failed to retry: ${error instanceof Error ? error.message : 'Unknown error'}`;
+			toastDescription = '';
+			toastShowLogsAction = false;
 			toastType = 'error';
 			setTimeout(() => {
 				showToast = false;
@@ -1743,13 +2484,15 @@
 
 <svelte:head>
 	<title
-		>kuberik | {rollout?.metadata
-			? `${rollout.status?.title || rollout.metadata.name} (${rollout.metadata.namespace})`
-			: 'Rollout'}</title
+		>{pageTitle(
+			rollout?.metadata
+				? `${rollout.status?.title || rollout.metadata.name} (${rollout.metadata.namespace})`
+				: 'Rollout'
+		)}</title
 	>
 </svelte:head>
 
-<div class="min-h-full dark:bg-gray-900">
+<div class="bg-ground min-h-full">
 	{#if loading}
 		<!--
 			⭐ THE SAME COMPOSITION THE LOADED PAGE USES, NOT A GUESSED STACK OF
@@ -1763,7 +2506,7 @@
 			for every card that IS one, so the two states share their grid and
 			their card geometry; only the hero status card and the page header
 			(neither is a `Card`) are hand-drawn, matching their own real markup
-			below (`rounded-2xl` hero, the header's `t-display-id` name).
+			below (the hero card's shell, the header's `t-title` name).
 		-->
 		<div class="mx-auto w-full px-4 pt-6 pb-10 sm:px-6">
 			<StillTryingNotice failureCount={rolloutQuery.failureCount} />
@@ -1774,11 +2517,11 @@
 			<div class="ov-split-cq">
 				<div class="ov-split flex flex-col gap-4">
 					<div class="flex flex-col gap-4">
-						<!-- The hero status card — `rounded-2xl`, not `Card`'s
-						     `rounded-lg`: see the real markup a few hundred lines
-						     below for why this one is the deliberate exception. -->
+						<!-- The hero status card — same shell as the real markup a
+						     few hundred lines below (`rounded-md`/`border-line`/
+						     `bg-surface`, the language's one card treatment). -->
 						<div
-							class="flex flex-col gap-3 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+							class="border-line bg-surface flex flex-col gap-3 overflow-hidden rounded-md border p-5"
 							aria-hidden="true"
 						>
 							<span class="skel-block h-5 w-72"></span>
@@ -1813,78 +2556,38 @@
 		<ErrorState
 			{error}
 			subject="this rollout"
-			backHref="/rollouts"
+			backHref={href('/rollouts')}
 			backLabel="Back to all rollouts"
-			onRetry={() => rolloutQuery.refetch()}
-			isRetrying={rolloutQuery.isFetching}
+			onRetry={() => outage.retry()}
+			isRetrying={outage.isRetrying}
 		/>
 	{:else if !rollout}
-		<!--
-			⛔ THIS WAS A FLOWBITE `Alert color="yellow"` AND IT WAS THE LEAST
-			READABLE TEXT IN THE PRODUCT. `bg-yellow-100 text-yellow-500` measured
-			**1.78:1 in light and 2.53:1 in dark at 14px** — the error state was
-			harder to read than every ordinary row around it, which is exactly
-			backwards. A Flowbite `Alert` is also not this product's vocabulary:
-			`AlertPanel` is the object every other blocking fact here uses.
+		<!-- ⭐ ROUND 2 (2026-10-08, design review 4): A MISSING ROLLOUT IS A
+		     `NotFound`, NOT A BANNER. This used to be an `AlertPanel` at
+		     `severity="warning"` — the STUCK-only amber token spent on an
+		     ordinary wrong address, the same defect found product-wide this
+		     round. `NotFound.svelte` is the shared calm composition (own doc
+		     comment has the full reasoning); this call site supplies what it
+		     alone knows — the rollout's own identity as the eyebrow/title pair,
+		     and the record of what was actually asked for.
 
-			It now says the three things `ErrorState` (twelve lines above, same
-			branch chain) guarantees: a headline a novice understands, what
-			happens next, and a way out. The wording is deliberately IDENTICAL to
-			`errorConsequence`'s missing-object sentence so the two states read as
-			one fact and not as two dialects.
-
-			⚠️ The footnote is NOT a server sentence — there isn't one. The
-			request SUCCEEDED and came back without a release, which is a
-			different fact from a failed request, so the footnote states the
-			address that was asked for. Never invent a quote from the server.
-		-->
-		<div class="mx-auto w-full px-4 pt-6 pb-10 sm:px-6">
-			<!-- ⭐ THE ADDRESS AND THE ANSWER, AS FIELDS. (2026-09-02) It was
-			     *"The server answered for hello-dep-dev/does-not-exist on dev and
-			     returned no release."* — a namespace/name pair, a cluster and an
-			     outcome, narrated. The pair is the thing an engineer pastes after
-			     `kubectl get rollout -n`, and in the sentence it had a preposition
-			     glued to each end of it.
-
-			     ⚠️ `Server answered: no release` KEEPS THE DISTINCTION THE SENTENCE
-			     EXISTED FOR. The request SUCCEEDED — this is not a failed request
-			     and there is no server sentence to quote. Never invent one; see
-			     `errorFacts`, which is the other half of this state.
-
-			     `Details`, not a count: one request is not a set
-			     (`lib/disclosure.ts`). -->
-			{#snippet missing()}
-				<FactList
-					tone="banner"
-					facts={[
-						{ label: 'Rollout', value: `${namespace}/${name}`, handle: true },
-						...(cluster ? [{ label: 'Cluster', value: cluster, handle: true }] : []),
-						{ label: 'Server answered', value: 'no release' }
-					]}
-				/>
-			{/snippet}
-			<AlertPanel
-				severity="warning"
-				class=""
-				title="This rollout does not exist"
-				message="It may have been deleted, or the address may be wrong."
-				footnoteBody={missing}
-			>
-				{#snippet actions()}
-					<button type="button" class="btn btn-secondary" onclick={() => rolloutQuery.refetch()}>
-						<RefreshOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
-						Try again
-					</button>
-					<!-- A LINK, NOT A BUTTON. (2026-09-02) `Try again` re-issues the
-					     request; this only goes somewhere. Same contract as
-					     `ErrorState`, which is the other half of this state. -->
-					<a href="/rollouts" class="nav-link">
-						Back to all rollouts
-						<ChevronRightOutline aria-hidden="true" />
-					</a>
-				{/snippet}
-			</AlertPanel>
-		</div>
+		     ⚠️ `Server answered: no release` KEEPS THE DISTINCTION THE OLD
+		     FOOTNOTE EXISTED FOR. The request SUCCEEDED — this is not a failed
+		     request and there is no server sentence to quote. Never invent
+		     one; see `errorFacts`, which is the other half of this state. -->
+		<NotFound
+			eyebrow="Rollout"
+			title={name}
+			headline="This rollout does not exist"
+			nextStep="It may have been deleted, or the address may be wrong."
+			facts={[
+				{ label: 'Rollout', value: `${namespace}/${name}`, handle: true },
+				...(cluster ? [{ label: 'Cluster', value: cluster, handle: true }] : []),
+				{ label: 'Server answered', value: 'not found' }
+			]}
+			backHref={href('/rollouts')}
+			backLabel="Back to all rollouts"
+		/>
 	{:else}
 		<!-- ⭐ THE PRODUCT'S ONE CONTENT CONTAINER, `mx-auto max-w-7xl px-4 sm:px-6`.
 		     ⛔ THIS PAGE HAD NO WRAPPER AND `sm:px-5`. Measured at 1440 its content
@@ -1915,22 +2618,65 @@
 				-->
 				{@const stillCatchingUp =
 					latestEntry.bakeStatus === 'Deploying' || latestEntry.bakeStatus === 'InProgress'}
-				{@const currentEnv = environment?.spec?.environment}
+				<!-- ⭐ U-10, ledger (2026-10-08): `environment?.spec?.environment`
+					alone left this header chip BLANK on `checkout-worker-staging`
+					— its `Environment` object has `spec.label: "staging"` but no
+					`spec.environment` field, so every other rollout page prints an
+					env chip and this one printed nothing next to the title. The
+					rollout's own `metadata.labels.environment` (`"staging"`) was
+					sitting right there the whole time — it's the SAME fallback chain
+					`deploy-risk.ts`'s `rolloutEnvironmentName` already walks for the
+					banner/modal's own "production or not" question, reused here
+					rather than inventing a second one. -->
+				{@const currentEnv =
+					rolloutEnvironmentName(rollout, environment?.spec?.environment) || null}
 				{@const pipelineKruiseRollouts = Object.values(managedResources)
 					.flat()
 					.filter((resource) => resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout')}
 				{@const pipelineValidRollouts = pipelineKruiseRollouts
 					.map((rolloutResource) => {
-						const kruiseRollout = rolloutResource.object as KruiseRollout;
-						const rolloutData = kruiseRollout?.status?.canaryStatus;
+						// A1: the fleet list's copy is stream-patched; take the newer of the two copies (see `freshestKruise`).
+						const managedKr = rolloutResource.object as KruiseRollout;
+						const listKr = (listQuery.data?.kruiseRollouts?.items ?? []).find(
+							(k) =>
+								k.metadata?.name === managedKr?.metadata?.name &&
+								k.metadata?.namespace === managedKr?.metadata?.namespace &&
+								sourceDashboardURL(k) === sourceDashboardURL(managedKr)
+						);
+						const kruiseRollout = freshestKruise(managedKr, listKr);
 						const canarySteps = kruiseRollout?.spec?.strategy?.canary?.steps;
+						// QA #5: a KruiseRollout still carrying the PREVIOUS deploy's
+						// status (see `kruiseStatusIsPreviousDeploy`) has finished none
+						// of this deploy's steps.
+						const previousDeploy = kruiseStatusIsPreviousDeploy(kruiseRollout, rollout);
+						const rolloutData = previousDeploy
+							? { ...kruiseRollout?.status?.canaryStatus, currentStepIndex: 0, currentStepState: undefined }
+							: kruiseRollout?.status?.canaryStatus;
 						if (rolloutData && canarySteps && canarySteps.length > 0) {
 							return {
 								rolloutResource,
 								kruiseRollout,
 								rolloutData,
 								canarySteps,
-								isCompleted: kruiseRollout.status?.currentStepState === 'Completed'
+								// ⛔ `canaryStatus.currentStepState`, NOT `status.currentStepState`
+								// — the latter is a field kruise's v1beta1 Rollout does not
+								// have, so this read was ALWAYS undefined and no canary ever
+								// finished on this page. The cost: every completed pipeline
+								// kept its last stage drawn `ACTIVE · IN PROGRESS` with the
+								// stages after it `PENDING`, the rollup said `2/5 done ·
+								// active`, and `allStagesDone` (which gates the bake cell)
+								// stayed false — so a rollout whose hero read `deploy
+								// succeeded` sat beside a pipeline that said it was still
+								// running. `pipeline.ts`, which draws the same thing for the
+								// list glyph, reads the right path and always has; the two
+								// surfaces are meant to agree (see that file's header).
+								// The legacy path stays in the `||` so a hand-written
+								// fixture that used it does not regress.
+								isCompleted:
+									!previousDeploy &&
+									(rolloutData?.currentStepState === 'Completed' ||
+									// eslint-disable-next-line @typescript-eslint/no-explicit-any
+									(kruiseRollout.status as any)?.currentStepState === 'Completed')
 							};
 						}
 						return null;
@@ -1960,12 +2706,12 @@
 				{@const failedHCList = latestEntry?.failedHealthChecks || []}
 				{@const statusStripClass =
 					latestEntry.bakeStatus === 'Succeeded'
-						? 'bg-green-700 dark:bg-green-400'
+						? 'bg-success-solid'
 						: latestEntry.bakeStatus === 'Failed'
-							? 'bg-red-500'
+							? 'bg-danger-solid'
 							: latestEntry.bakeStatus === 'InProgress'
-								? 'bg-yellow-400'
-								: 'bg-blue-500'}
+								? 'bg-progress-solid'
+								: 'bg-active-solid'}
 				{@const statusBadgeColor =
 					latestEntry.bakeStatus === 'Succeeded'
 						? 'green'
@@ -1978,33 +2724,379 @@
 									: 'gray'}
 
 				<!-- ══ PAGE HEADER ══ -->
-				<div class="mb-4">
-					<div class="flex flex-wrap items-baseline gap-3">
-						<!-- The identifier leads, in the product's one display pair: the
-						     mono name the breadcrumb, the sidebar, the URL and every list row
-						     already print, then the human title in the light face — exactly
-						     what /apps/[name] and /envs/[name] do. This page was the only one
-						     leading with the title in bold sans, and the name it shares with
-						     every other surface appeared nowhere in its own header. -->
-						<h1 class="flex min-w-0 flex-wrap items-baseline gap-2">
-							<span class="t-display-id min-w-0 truncate text-gray-900 dark:text-white">
-								{rollout.metadata?.name}
-							</span>
-							{#if rollout.status?.title && rollout.status.title !== rollout.metadata?.name}
-								<!-- ⛔ WAS `t-display` — THE SAME 24px AS `hello-frontend-app`
-								     BESIDE IT. (F15, 2026-09-03) Measured 24/500 (mono id) next
-								     to 24/300 (sans title): at 390, where this row wraps, two
-								     equal-size headings stack instead of a name and its
-								     one-line gloss. `t-dense` (12.5px) is the declared caption
-								     role — same fix as `/apps/<name>`'s identical head. -->
-								<span class="t-display min-w-0 truncate text-gray-500 dark:text-gray-400">
-									{rollout.status.title}
+				<!-- ⭐ MIGRATED TO `PageHeader`. (2026-10-08, design language) The
+				     name is the title (sans, `t-title` — `PageHeader`'s default,
+				     since names are set in the UI face now, not mono), the
+				     environment chip is the `identity` slot, and the secondary
+				     title/"↗ across envs" link are `meta` — the exact
+				     `eyebrow`/`title`/`identity`/`meta` shape the component's own
+				     doc comment names for an object page
+				     (`"ROLLOUT / checkout-worker [STAGING] ↗ across envs"`). -->
+
+				<!-- ⭐ THE BUILD CARD IS GONE (AD round 1): its facts are the page
+				     header's — the build on the title line, the state as a pill,
+				     the age / newer-builds / revision / schedule facts and the
+				     commit in the meta row. Each block below is the card's own,
+				     moved, not rewritten. -->
+				{#snippet heroTitleAfter()}
+					<!-- r34 tabs-nb r3 (#7): the build links to the CHANGE it maps to (the one PR the head commit
+					     belongs to, `/changes/<repo>/pull/<n>` -- the header line's own #n), else to this deploy's
+					     row in History; never to a sha page that may not exist. -->
+					{@const hdrLatestKey = rollout.status?.history?.[0] ? deployKey(rollout.status.history[0]) : null}
+					{@const hdrHistoryHref = hdrLatestKey
+						? `${rolloutPath(cluster, namespace, name, 'history')}?${DEPLOY_PARAM}=${encodeURIComponent(hdrLatestKey)}`
+						: rolloutPath(cluster, namespace, name, 'history')}
+					<StarToggle app={rollout.metadata?.name ?? name} class="self-center" />
+					<!-- The separator travels with the build: one nowrap group, so a
+					     wrap at 390 moves "/ 2.66.0-66" together and no line ends on
+					     a bare slash. -->
+					<span class="inline-flex items-baseline gap-x-3 whitespace-nowrap">
+						<span class="t-title text-fg-disabled" aria-hidden="true">/</span>
+						<a
+							href={hdrPullNumber
+								? href(`/changes/${repoSlug(repoKeyFor(rollout, name))}/pull/${hdrPullNumber}`)
+								: hdrHistoryHref}
+							class="t-code-lg text-fg-muted hover:text-fg hover:underline"
+						>
+							{getDisplayVersion(latestEntry.version)}
+						</a>
+					</span>
+				{/snippet}
+				{#snippet heroIdentity()}
+					<Chip
+						role={latestEntry.bakeStatus === 'Succeeded'
+							? 'ready'
+							: latestEntry.bakeStatus === 'Failed'
+								? 'failing'
+								: latestEntry.bakeStatus === 'InProgress'
+									? 'checking'
+									: latestEntry.bakeStatus === 'Deploying'
+										? 'deploying'
+										: 'unranked'}
+						label={latestEntry.bakeStatus === 'Succeeded'
+							? 'deployed'
+							: latestEntry.bakeStatus === 'Failed'
+								? 'failed'
+								: bakeWord(latestEntry.bakeStatus)}
+						title={bakeTitle(latestEntry.bakeStatus)}
+					/>
+					{#if stuckReason}
+						<StuckBadge reason={stuckReason} />
+					{/if}
+					{#if pendingAction}
+						<!-- ⭐ THE POLL-GAP BRIDGE. See `pendingAction`'s own
+													     comment (B3, operator-walk finding): a mutation the
+													     modal already confirmed can still take 5-8s to reach
+													     this page's own data, and an unchanged screen in that
+													     window reads as "did that even work" — or invites a
+													     second press. -->
+						<span class="t-ui-sm text-active flex items-center gap-1">
+							<StatusSpinner size="3" color="blue" />
+							Deploy requested — starting
+						</span>
+					{/if}
+				{/snippet}
+				{#snippet heroMeta()}
+					<!-- D8 (LOGOPEN r10): the age is a plain fact on the "·" line, no
+					     clock icon, the same as every other rollout tab. -->
+					<!-- r11, item 5: no age on the phone meta line (it has other facts). -->
+					<span
+						class="t-meta text-fg-subtle tabular-nums max-lg:hidden"
+						title={formatDate(latestEntry.timestamp)}
+						>{formatTimeAgoCompact(latestEntry.timestamp, $now)} ago</span
+					>
+					<span class="t-meta contents"
+						>{#if isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)) || scheduleMetaText}
+							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+								<!--
+															⭐ `available` MEANS `allowed`, AND A PIN ALLOWS
+															NOTHING. (P10, operator-walk finding) This line said
+															`↑ 1 upgrade available` while the panel one row down
+															said the rollout is PINNED — `available` is a claim
+															this dashboard would actually DEPLOY the candidate on
+															its own, which is false the moment `wantedVersion` is
+															set (see `blocking-story.ts`: a pin outranks every
+															gate and refuses ALL builds). The count is still true
+															and still worth a glance; the verb changes to name
+															what is actually true.
+														-->
+								<!--
+															⭐ THE SAME WAIT, SAID ON THE WHOLE PAGE, NOT ONLY
+															INSIDE THE NEWER BUILDS CARD. (2026-09-20, coordinator
+															relay) A viewer watching the version card never
+															scrolls to that card's own row, so the identical
+															`newestHeldByHealth`/`justOpenedHealthGate` facts ride
+															here too — same clause text
+															(`newestHealthHoldClause`), never a second sentence
+															for the same count. `promoting` reuses the `Deploying`
+															blue this page already spends on "the system is
+															moving this on its own" (`pendingAction`'s "Deploy
+															requested — starting", six lines up); `held` keeps
+															this line's existing orange, matching the `held` Chip
+															below and the pinned branch already here.
+														-->
+								<span
+									class="hdr-newer flex min-w-0 items-center gap-1 max-sm:max-w-[calc(100%-7rem)] {justOpenedHealthGate && !blockStory.pinnedTo
+										? 'text-active'
+										: 'text-fg-muted'}"
+								>
+									<ArrowUpOutline class="h-3 w-3" />
+									<!-- r34 tabs-nb r3 (#6): below 640 the fact is ONE line (ellipsis when the hold clause is long): the
+									     clause arrives after the health checks, and a wrap there pushed the whole header down 20px. -->
+									<span class="min-w-0 max-sm:truncate">
+										{#if blockStory.pinnedTo}
+										{rollout.status.releaseCandidates.length} newer · held by the pin
+									{:else if blockStory.blocked}
+										<!-- One fact, once: the held banner below names every
+																     cause (gate and contract); the meta only counts. -->
+										{rollout.status.releaseCandidates.length}
+										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+									{:else if newestCandidateBlockedByGate}
+										{rollout.status.releaseCandidates.length}
+										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+										· held: {newestGateHoldClause}
+									{:else if newestHeldByHealth}
+										{rollout.status.releaseCandidates.length}
+										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+										· held: {newestHealthHoldClause}
+									{:else if justOpenedHealthGate}
+										{rollout.status.releaseCandidates.length}
+										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+										· promoting
+									{:else}
+										{rollout.status.releaseCandidates.length}
+										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+									{/if}</span>
 								</span>
 							{/if}
-						</h1>
-						{#if currentEnv}
+							{#if isCurrentVersionCustom}
+								<span class="text-fg-muted">Custom build</span>
+							{/if}
+							{#if getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)}
+								<span class="t-code-sm text-fg-subtle">
+									{formatRevision(getRevisionInfo(latestEntry.version)!)}
+								</span>
+							{/if}
+							<!--
+														⭐ THE SCHEDULE'S "NOTHING WAITING" FACT LANDS HERE,
+														NOT IN A BANNER. (F2, second re-check, 2026-09-03)
+														See `scheduleMetaText`'s own comment: a closed deploy
+														window with no candidate behind it is informational,
+														so it takes the same quiet, one-line treatment as
+														the upgrade count and the custom-version flag beside
+														it, instead of the page's one banner slot.
+													-->
+							{#if scheduleMetaText}
+								<span class="text-fg-subtle flex items-center gap-1">
+									<CalendarWeekSolid class="h-3 w-3" />
+									{scheduleMetaText}
+								</span>
+							{/if}
+						{/if}</span
+					>
+					{#if rollout?.status?.source && rollout.status.history && rollout.status.history.length > 1}
+						{@const historyHref = rolloutPath(cluster, namespace, name, 'history')}
+						{@const latestKey = deployKey(latestEntry)}
+						<!-- r34 tabs-nb r2 (#9): the slot's height is RESERVED before the commit data arrives — two
+						     lines below 640 (title, then stats), one from there up — so the content under it never moves. -->
+						<div class="min-w-0 basis-full {githubConnected ? 'min-h-[2.5rem] sm:min-h-[1.25rem]' : ''}">
+							<!--
+														⭐ P11: THE ROLLUP NAMES WHY IT HAS NOTHING TO SAY,
+														RATHER THAN SAYING NOTHING. See `githubStatus`'s own
+														comment. `CommitSummary`'s `query.isError` branch is
+														deliberately silent for a LIST of these; this is the
+														page's only one, so the fallback is drawn HERE rather
+														than inside that shared component.
+													-->
+							{#if githubConnected}
+								<CommitSummary
+									{namespace}
+									{name}
+									{cluster}
+									base={rollout.status.history[1]?.version?.revision}
+									head={latestEntry.version?.revision}
+									href={latestKey
+										? `${historyHref}?${DEPLOY_PARAM}=${encodeURIComponent(latestKey)}`
+										: historyHref}
+									hrefLabel="Open this deploy in the history"
+									headline
+									bind:headPullNumber={hdrPullNumber}
+									hideWhenEmpty
+									class="hover:bg-hover -mx-1.5 rounded px-1.5 py-0.5 transition-colors"
+								/>
+							{:else}
+								<p class="t-meta text-fg-subtle">
+									Commit message and author need GitHub. {githubAbsenceSentence(githubStatus.data)}
+								</p>
+							{/if}
+						</div>
+					{/if}
+				{/snippet}
+				{#snippet heroActions()}
+					{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
+						<SourceViewer
+							namespace={rollout.metadata?.namespace || ''}
+							name={rollout.metadata?.name || ''}
+							version={latestEntry.version.tag}
+							{cluster}
+						/>
+					{/if}
+					{#if rollout?.status?.source}
+						<a
+							class="btn btn-secondary max-lg:h-11"
+							href={getGitHubUrl(
+								getDisplayVersion(latestEntry.version),
+								latestEntry.version.revision
+							)}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							<GithubSolid class="h-4 w-4" aria-hidden="true" />
+							View on GitHub
+						</a>
+					{/if}
+					{#if canModify || !permissionsKnown}
+						{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
+							<button
+								type="button"
+								class="btn btn-secondary max-lg:h-11"
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								onclick={() => {
+									showClearPinModal = true;
+								}}
+							>
+								Clear pin
+							</button>
+						{/if}
+						<button
+							type="button"
+							id="status-change-version-btn"
+							data-tour="change-version"
+							class="btn btn-secondary max-lg:h-11"
+							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+							onclick={() => {
+								if (isDashboardManagingWantedVersion) {
+									isPinVersionMode = false;
+									selectedVersion = null;
+									deployExplanation = '';
+									requestChangeVersionModal();
+								}
+							}}
+						>
+							<EditOutline class="h-4 w-4" aria-hidden="true" />
+							Change version
+						</button>
+						<!-- ⛔ `Rollback` PRE-SELECTED `history[1]`, WHICH IS NOT
+										     NECESSARILY OLDER. A live critic pressed it on a rollout
+										     that had itself been rolled back and got a modal headed
+										     *"Deploy 51b976a → aa17645"* — a roll-FORWARD — under a
+										     caption reading "Required for rollback". The direction
+										     logic downstream was right; the pre-selection was not, so
+										     the button and its own modal disagreed on one screen.
+
+										     `rollbackTarget` proves the target is older (release-list
+										     position, else build creation time) and returns null when
+										     nothing older exists. A `Rollback` with nothing to roll
+										     back to is the label lying again, so the button is not
+										     rendered at all in that case.
+
+										     ⭐ ONE ROLLBACK ACTION ON SCREEN, ROUND 2 (2026-10-08,
+										     coordinator review). While `FailurePanel`'s banner is
+										     showing, ITS `Rollback` already does exactly what this
+										     button does (same `ChangeVersionModal`, same target) and
+										     carries the page's one `.btn-primary` — a second
+										     `Roll back to X` twelve pixels below it was two controls
+										     for one fact. `!isFailed` hides this one only while that
+										     banner offers the action; it returns the moment the
+										     banner itself leaves (a retry, a recovered check). -->
+						{#if rollbackNow && !isFailed}
+							<button
+								type="button"
+								id="status-rollback-btn"
+								class="btn btn-secondary max-lg:h-11"
+								data-phone-end
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								title={rollbackNow.basis === 'ran-here'
+									? `Go back to ${rollbackDisplay}, the last older version this environment ran${
+											rollbackSkipped.length > 0
+												? ` (skipping ${joinClauses(rollbackSkipped)} — newer than what is running now)`
+												: ''
+										}`
+									: `Go back to ${rollbackDisplay}, the release directly below the one running (never deployed here)`}
+								onclick={() => {
+									const running = rollout?.status?.history?.[0]?.version;
+									if (isDashboardManagingWantedVersion && rollbackNow && running) {
+										isPinVersionMode = true;
+										selectedVersion = rollbackNow.tag;
+										const currentVersionName = getDisplayVersion(running);
+										// ⛔ NO PRE-WRITTEN REASON. (2026-09-03, operator walk) A cause nobody
+										// asserted was landing in the deploy history. The note is required;
+										// the operator writes it.
+										deployExplanation = '';
+										requestChangeVersionModal();
+									}
+								}}
+							>
+								<!-- One header Roll back (r10, D2): 16px icon, as every tab. -->
+								<UndoOutline class="h-4 w-4" aria-hidden="true" />
+								Roll back to {rollbackDisplay}
+							</button>
+						{/if}
+						{#if !isDashboardManagingWantedVersion}
+							{#if canHover.current}
+								<Tooltip
+									triggeredBy="#status-change-version-btn"
+									placement="bottom"
+									transition={blur}
+									transitionParams={{ duration: 300 }}
+								>
+									Another controller owns this rollout's wanted version, so the dashboard cannot pin
+									it.
+								</Tooltip>
+							{:else}
+								<!-- ON TOUCH THE REASON IS PRINTED, NOT HIDDEN BEHIND A HOVER.
+												     (2026-10-09.) The tooltip only renders where there is a
+												     hover, so on a phone the disabled Change Version / Rollback
+												     buttons said nothing about why. One quiet line under the
+												     row, the same sentence the tooltip carries. -->
+								<p class="t-meta text-fg-subtle w-full">
+									Another controller owns this rollout's wanted version, so the dashboard cannot pin
+									it.
+								</p>
+							{/if}
+						{/if}
+					{/if}
+				{/snippet}
+				<PageHeader
+					title={rollout.metadata?.name ?? ''}
+					titleAfter={heroTitleAfter}
+					metaSeparated
+					class="mb-6"
+				>
+					{#snippet actions()}
+						{#if canModify || !permissionsKnown || rollout?.status?.source || rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}{@render heroActions()}{/if}
+					{/snippet}
+					{#snippet identity()}
+						<!-- Below sm the state moves onto the age line (meta, below),
+						     the same phone meta line RolloutTabHeader draws on every
+						     other tab (LOGOPEN r8). `sm:contents`: sm+ is untouched. -->
+						<span class="max-lg:hidden lg:contents">{@render heroIdentity()}</span>
+						{#if appLane}
+							<!-- the lane below names the environment -->
+						{:else if !currentEnv && rolloutTheme}
+							<!-- No Environment record, but the rollout carries an
+							     identity (theme annotation / name inference): still name
+							     it, unlinked, so every state of this page has its chip. -->
+							<Chip
+								role="env"
+								theme={rolloutTheme}
+								label={shortEnvLabel(rolloutTheme) || rolloutTheme.label}
+								title={rolloutTheme.label}
+								wide
+							/>
+						{:else if currentEnv}
 							<a
-								href={`/envs/${encodeURIComponent(currentEnv)}`}
+								href={href(`/envs/${encodeURIComponent(currentEnv)}`)}
 								class="environment-theme-scope inline-flex shrink-0 self-center rounded transition-opacity hover:opacity-80"
 								style={rolloutThemeStyle}
 								title="View all apps in {currentEnv}"
@@ -2017,28 +3109,74 @@
 								/></a
 							>
 						{/if}
-						<a
-							href={`/apps/${rollout.metadata?.name}`}
-							class="inline-flex items-center gap-1 self-center text-[11px] text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
-							title="See this app across all environments"
+					{/snippet}
+					{#snippet meta()}
+						<!-- Phone only (LOGOPEN r8): "FAILED · 16m ago". No header Roll
+						     back here: the failure panel already carries it on the first
+						     screen. -->
+						<span class="inline-flex items-center gap-2 lg:hidden" data-phone-only
+							>{@render heroIdentity()}</span
 						>
-							<span aria-hidden="true">↗</span>
-							across envs
-						</a>
-					</div>
-					{#if rollout.status?.description && rollout.status.description !== (rollout.status?.title || rollout.metadata?.name)}
-						{@const runningLabel = subtitleRunningLabel()}
-						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-							{rollout.status.description}{#if runningLabel}
-								<!-- gray-500/gray-400, the muted pair: gray-400 on white is 2.60:1,
-								     the one contrast failure left on the reference page. -->
-								<span class="text-gray-500 dark:text-gray-400"
-									>&nbsp;· running {runningLabel}</span
+						<!-- ⭐ ROUND 2 (2026-10-08, coordinator review): beside the
+						     namespace line, not floating alone below the title —
+						     a quiet `.nav-link` at `t-ui-sm`, the same row as the
+						     rollout's own secondary title when one exists, instead
+						     of being the only content in `PageHeader`'s `meta` row
+						     (which read as a stray orphan line on its own). -->
+						{#if rollout.status?.title && rollout.status.title !== rollout.metadata?.name}
+							<span class="t-meta text-fg-subtle min-w-0 truncate">{rollout.status.title}</span>
+						{/if}
+						<!-- The namespace is the row's anchor: the object's own address,
+						     sans (it is a name), so the cross-env link reads as a fact
+						     about it rather than a stray line. -->
+						{@render heroMeta()}
+						{#if rollout.metadata?.namespace}
+							<!-- Phone: the namespace is the top bar's context already; the
+							     meta line stays one row (r11). -->
+							<span class="t-meta text-fg-subtle min-w-0 truncate max-lg:hidden"
+								>{rollout.metadata.namespace}</span
+							>
+						{/if}
+					{/snippet}
+					{#snippet below()}
+						{#if appLane}
+							<!-- ⭐ THE HERO (AD round 1): this app's promotion lane —
+							     the same component as Home — with this rollout outlined.
+							     Identity and position in the chain read as one fact. -->
+							<!-- Inline in the header block (AD round 2): the lane is a fact about
+							     this object, like its build — no card, no eyebrow. -->
+							<!-- Below sm the lane takes the full row and "All environments"
+							     drops to its own line: sharing 390px with the link left the
+							     lane's (scrollbar-less) strip clipping "staging 1 beh…" with
+							     nothing to say it scrolls. -->
+							<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 pb-1">
+								<div class="min-w-0 basis-full sm:flex-1 sm:basis-0">
+									<PromotionLane
+										lane={appLane}
+										hrefFor={(n) =>
+											rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name)}
+										current={{ ns: namespace, name }}
+										youAreHere
+										showApp={false}
+									/>
+								</div>
+								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0"
+									>All environments<ChevronRightOutline class="h-3 w-3" /></a
 								>
-							{/if}
-						</p>
-					{/if}
-				</div>
+							</div>
+						{/if}
+					{/snippet}
+					{#snippet summary()}
+						{#if rollout.status?.description && rollout.status.description !== (rollout.status?.title || rollout.metadata?.name)}
+							{@const runningLabel = subtitleRunningLabel()}
+							<p>
+								{rollout.status.description}{#if runningLabel}
+									<span class="text-fg-subtle">&nbsp;· running {runningLabel}</span>
+								{/if}
+							</p>
+						{/if}
+					{/snippet}
+				</PageHeader>
 
 				<!-- ══ SCHEDULE STATUS (blocking / closing-soon) ══ -->
 				<!-- ⭐ ONE BLOCKING STORY. `ScheduleStatus` owns the schedule popover and
@@ -2087,6 +3225,10 @@
 					onSchedules={(s) => (scheduleObjects = s)}
 					onMeta={(t) => (scheduleMetaText = t)}
 				/>
+				<!-- QA #3: a block-level sibling directly above the banner slot, rendered whatever the candidate count -->
+				{#if myClusterErrors.length}
+					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
+				{/if}
 				{#if blockStory.pinnedTo}
 					<!--
 						⛔ THIS WAS `{#if pinnedTo && !rolledBack} … {:else if
@@ -2130,8 +3272,14 @@
 						{/snippet}
 						<BlockingStoryPanel story={blockStory} actions={clearPinAction} />
 					{/if}
-				{:else if blockStory.blocked && blockStory.clock.length === 0}
+				{:else}
 					<!--
+						⭐ MOUNTED WHENEVER NOT PINNED, OPEN ONLY WHILE HELD. The
+						condition is the panel's `open`, not an `{#if}`, so when a
+						gate promotes the banner collapses out (`AlertPanel`'s
+						`open`) instead of vanishing and dropping the page ~140px
+						in one frame. (2026-10-08, film critic, promote scene.)
+
 						⭐ THE RIGHT SLOT IS PART OF THIS BANNER, NOT AN EMPTY ONE.
 						(P9, second re-check, finding 10) `/apps` and `/environments`
 						fill `BlockingStoryPanel`'s `actions` slot with a nav-link to
@@ -2145,37 +3293,62 @@
 						the banner is never rendered with a bare unused column.
 					-->
 					{#snippet blockedActions()}
-						{#if blockStory.gates.some((g) => g.kind === 'dependency')}
-							<a href={rolloutPath(cluster, namespace, name, 'dependencies')} class="nav-link">
-								Dependencies
-								<ChevronRightOutline class="h-3.5 w-3.5" />
-							</a>
-						{:else}
-							<span class="t-micro font-medium">
-								{blockStory.gates.length}
-								{blockStory.gates.length === 1 ? 'rule' : 'rules'}
-							</span>
-						{/if}
+						<!-- ONE FACT, ONCE (design review 2026-10-08): the rule count is
+						     the disclosure's label below; this slot now always offers
+						     the place the rules live, the Gates tab. -->
+						<a href={rolloutPath(cluster, namespace, name, 'gates')} class="nav-link">
+							Gates
+							<ChevronRightOutline class="h-3 w-3" />
+						</a>
 					{/snippet}
 					<BlockingStoryPanel
 						story={blockStory}
+						title={holdCausePhrase(blockStory, {
+							place: environment?.spec?.environment ?? null
+						})}
+						open={(hereCard?.held ?? blockStory.blocked) && blockStory.clock.length === 0}
 						actions={blockedActions}
 						secondaryFact={rollbackFoldedIntoGateBanner && rolledBack
 							? rollbackWent(rolledBack, autoDeploy)
 							: undefined}
 					/>
+					<!--
+						⭐ REFUSED HERE VS NOT REACHED YET (shared/held-predicate,
+						2026-10-11). `blockStory.blocked` used to mean "held", full
+						stop — which is also true of plain chain sequencing (this
+						environment's own promotion gate just has not been asked to
+						admit a build its upstream has not deployed yet). That is
+						never a hold: see `view-models/held.ts`'s own doc for the
+						ruling. `hereCard.held` is `false` in exactly that case and
+						`waitsForFact` names the stage this environment is behind —
+						and, one hop only, why THAT stage is not moving, when it is
+						itself held (`"staging held on payments-svc"`).
+					-->
+					{#if hereCard && !hereCard.held && waitsForFact}
+						<!-- mb-4: the card gap, so the line does not sit flush on the
+						     pipeline card below it (qa11 nit 4). -->
+						<p class="text-fg-subtle mb-4 text-sm">
+							{`${waitsForFact.wave ?? `Waits for ${waitsForFact.stage}`}${waitsForFact.heldCause ? ` · ${waitsForFact.heldCause}` : ''}`}
+						</p>
+					{/if}
 				{/if}
 
 				<!-- ══ FAILURE PANEL ══ -->
-				{#if isFailed}
+				{#if isFailed || failedLinger}
+					<!-- `open`, not the `{#if}`, is the banner's condition: while
+					     it collapses (`AlertPanel`'s `open`) it keeps the failure it
+					     was describing; only its height moves. `failedLinger` keeps
+					     this mounted for that collapse. -->
 					<FailurePanel
+						open={isFailed}
 						{rollout}
 						{failedHCList}
 						healthChecks={visibleHealthChecks}
 						{failedStepTests}
 						{stalledKruiseRollout}
-						{canUpdate}
-						{canModify}
+						canUpdate={canUpdate || !permissionsKnown}
+						canModify={canModify || !permissionsKnown}
+						actionsPending={!permissionsKnown}
 						{isDashboardManagingWantedVersion}
 						{cluster}
 						environmentName={environment?.spec?.environment ?? null}
@@ -2183,12 +3356,16 @@
 						onSuccess={(m) => {
 							toastType = 'success';
 							toastMessage = m;
+							toastDescription = '';
+							toastShowLogsAction = false;
 							showToast = true;
 							setTimeout(() => (showToast = false), 3000);
 						}}
 						onError={(m) => {
 							toastType = 'error';
 							toastMessage = m;
+							toastDescription = '';
+							toastShowLogsAction = false;
 							showToast = true;
 							setTimeout(() => (showToast = false), 3000);
 						}}
@@ -2196,8 +3373,7 @@
 				{/if}
 
 				<!-- ══ DEPLOYMENT BLOCKED ══ -->
-				{#if deploymentBlockedCondition && !isFailed && latestEntry.bakeStatus !== 'Deploying' && latestEntry.bakeStatus !== 'InProgress'}
-					<!--
+				<!--
 						Same correction as the schedule banner. `DeploymentBlocked` is
 						the controller's condition for "health checks are unhealthy",
 						and it is consulted inside `if !r.hasManualDeployment(...)` —
@@ -2214,14 +3390,33 @@
 						in the product, forever. Behind the control it is one click away,
 						and it is still handed to them unprompted at the moment they act.
 					-->
-					<AlertPanel
-						severity="warning"
-						title="Held"
-						message={deploymentBlockedCondition.message || 'Health checks are unhealthy.'}
-						footnote="A deploy you start by hand still applies immediately."
-						pulse
-					/>
-				{/if}
+				<!-- `open`, not `{#if}`: health checks passing (a gate step) clears
+					     this, and it collapses out instead of jumping the page. -->
+				<AlertPanel
+					open={!!(
+						deploymentBlockedCondition &&
+						!isFailed &&
+						latestEntry.bakeStatus !== 'Deploying' &&
+						latestEntry.bakeStatus !== 'InProgress'
+					)}
+					severity="warning"
+					title="Held"
+					message={deploymentBlockedCondition?.message || 'Health checks are unhealthy.'}
+					footnote="A deploy you start by hand still applies immediately."
+					pulse
+				/>
+
+				<!-- ══ LOCKSTEP MISMATCH (sites & waves) ══ -->
+				<!-- The wave-1 leader's `lockstep` flag and a site's disagree, so the wave cannot hold in step. A warning: the
+				     controller keeps working, the operator fixes one manifest. Names the disagreeing sites. -->
+				<AlertPanel
+					open={!!lockstepFault}
+					severity="warning"
+					title="Lockstep is set on {lockstepFault?.leader ? lockstepFault.leader : 'the wave-1 leader'} only"
+					message={lockstepFault?.sites.length
+						? `${joinList(lockstepFault.sites.map((x) => x.site))} ${lockstepFault.sites.length === 1 ? 'does' : 'do'} not agree. Set lockstep the same on every site of ${lockstepFault.tier || 'the tier'}.`
+						: lockstepFault?.raw}
+				/>
 
 				<!-- ══ BAKE FAILURE DISABLED (RECOVERY MODE) ══ -->
 				<!--
@@ -2229,14 +3424,17 @@
 					deploy starts; only show the banner while the active deploy is still
 					running (Deploying or InProgress).
 				-->
-				{#if bakeFailureDisabledCondition && (latestEntry.bakeStatus === 'Deploying' || latestEntry.bakeStatus === 'InProgress')}
-					<AlertPanel
-						severity="info"
-						title="Recovery mode"
-						message={bakeFailureDisabledCondition.message ||
-							'Health check failures will not fail this deployment.'}
-					/>
-				{/if}
+				<!-- `open`: leaves with the deploy it describes, without a jump. -->
+				<AlertPanel
+					open={!!(
+						bakeFailureDisabledCondition &&
+						(latestEntry.bakeStatus === 'Deploying' || latestEntry.bakeStatus === 'InProgress')
+					)}
+					severity="info"
+					title="Recovery mode"
+					message={bakeFailureDisabledCondition?.message ||
+						'Health check failures will not fail this deployment.'}
+				/>
 
 				<!-- ══ PINNED VERSION ══ -->
 				<!--
@@ -2348,13 +3546,10 @@
 							link goes to where they're drawn), who, when — at the
 							density a list row already uses for this exact state.
 						-->
-						<p
-							class="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
-						>
-							<UndoOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+						<p class="t-meta text-fg-subtle mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+							<UndoOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
 							Rolled back {rollbackAge} ago{author ? ` · by ${author}` : ''}.
-							<a href={rolloutPath(cluster, namespace, name, 'history')} class="nav-link"
-								>History</a
+							<a href={rolloutPath(cluster, namespace, name, 'history')} class="nav-link">History</a
 							>
 						</p>
 					{:else if !rollbackFoldedIntoGateBanner}
@@ -2434,9 +3629,7 @@
 									: rollbackWent(rolledBack, autoDeploy)}
 							</p>
 							{#if autoDeploy.paused && !justClearedPin}
-								<p class="mt-1 opacity-80">
-									A deploy you start by hand still applies immediately.
-								</p>
+								<p class="mt-1 opacity-80">A deploy you start by hand still applies immediately.</p>
 							{/if}
 						{/snippet}
 						<AlertPanel
@@ -2454,10 +3647,7 @@
 								     identically whether it happened a minute or a week
 								     ago. Same slot `AlertPanel`'s `extra` already reserves
 								     beside the headline for exactly this kind of chip. -->
-								<span
-									class="t-micro font-normal text-blue-700/80 dark:text-blue-300/70"
-									>{rollbackAge} ago</span
-								>
+								<span class="t-meta text-fg-subtle tabular-nums">{rollbackAge} ago</span>
 							{/snippet}
 						</AlertPanel>
 					{/if}
@@ -2508,432 +3698,44 @@
 				-->
 				<div class="ov-split-cq">
 					<div class="ov-split flex flex-col gap-4">
-					<div class="flex flex-col gap-4">
-						<!--
-							⭐ THE HERO STAYS A HERO, AND THAT MEANS NO BORDER. (2026-09-02,
-							design re-check) `border border-gray-200` on a `rounded-xl` box
-							with no header bar is exactly the shape `Card.svelte`'s own doc
-							comment calls "a bordered box with no header" — the rejected
-							pattern. This object is deliberately not a `Card`: it carries the
-							page's own display id (`t-display-id`, the 22px mono build) and
-							the deploy's state disc, which is the page's lead object, not one
-							card among a stack. `COMPOSITION-GRAMMAR.md` names the border as
-							the thing that makes a rounded box read as "a card without a
-							header"; dropping it (keeping `shadow-sm` for separation from the
-							page ground) removes that misread without forcing a 47px header
-							bar onto the one object that should not look like the others.
-						-->
-						<!-- ══ STATUS CARD ══ -->
-						<div
-							class="environment-theme-scope overflow-hidden rounded-xl bg-white shadow-sm dark:bg-gray-800"
-							style={rolloutThemeStyle}
-						>
-							<div class="min-w-0 px-5 py-5">
-								<!-- Top row: icon + version + status label | meta -->
-								<div class="flex items-start justify-between gap-4">
-									<div class="flex min-w-0 items-center gap-3">
-										<!-- ⭐ THE DISC CARRIES THE STATE HERE TOO, so the status card
-										     answers on its own and matches the two list surfaces the
-										     reader arrived from. `BakeStatusIcon` already takes
-										     `state` (added for `/` and `/rollouts`); the glyph and
-										     the `sr-only` word cost no layout, and the hue stays the
-										     deploy's because the deploy really did succeed.
-
-										     ⚠️ ONLY `rolled-back`, DELIBERATELY. On a list the disc
-										     also carries `pinned`, because a row has nowhere else to
-										     put it. Here the pin has a full banner, and marking one
-										     fact twice on one page is the defect in the mirror. -->
-										<BakeStatusIcon
-											bakeStatus={latestEntry.bakeStatus}
-											size="medium"
-											class="shrink-0"
-											state={rolledBack ? 'rolled-back' : null}
-											stateWord="rolled back"
-										/>
-										<div class="min-w-0">
-											<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-												<a
-													href={changePathForRollout(
-														rollout,
-														name,
-														getDisplayVersion(latestEntry.version)
-													)}
-													class="t-display-id text-gray-900 hover:underline dark:text-white"
-												>
-													{getDisplayVersion(latestEntry.version)}
-												</a>
-												<!-- ⛔ THIS PRINTED THE RAW CRD ENUM. `InProgress` reached
-												     the screen beside a pipeline chip saying `Baking` and a
-												     home page saying `checking`, for the same rollout at the
-												     same second. `bakeWord` is the product's one word and
-												     `bakeTitle` carries the sentence a single word cannot. -->
-												<span
-													class="text-sm {latestEntry.bakeStatus === 'Succeeded'
-														? 'text-green-700 dark:text-green-400'
-														: latestEntry.bakeStatus === 'Failed'
-															? 'text-red-600 dark:text-red-400'
-															: latestEntry.bakeStatus === 'InProgress'
-																? 'text-yellow-700 dark:text-yellow-400'
-																: latestEntry.bakeStatus === 'Deploying'
-																	? 'text-blue-600 dark:text-blue-400'
-																	: 'text-gray-500 dark:text-gray-400'}"
-													title={bakeTitle(latestEntry.bakeStatus)}
-												>
-													{bakeWord(latestEntry.bakeStatus)}
-												</span>
-												{#if stuckReason}
-													<StuckBadge reason={stuckReason} />
-												{/if}
-												{#if pendingAction}
-													<!-- ⭐ THE POLL-GAP BRIDGE. See `pendingAction`'s own
-													     comment (B3, operator-walk finding): a mutation the
-													     modal already confirmed can still take 5-8s to reach
-													     this page's own data, and an unchanged screen in that
-													     window reads as "did that even work" — or invites a
-													     second press. -->
-													<span
-														class="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400"
-													>
-														<StatusSpinner size="3" color="blue" />
-														Deploy requested — starting
-													</span>
-												{/if}
-											</div>
-											<!-- Metadata line: upgrades, custom, hash, schedule meta (pinned shown as alert above) -->
-											{#if isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)) || scheduleMetaText}
-												<div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-													{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-														<!--
-															⭐ `available` MEANS `allowed`, AND A PIN ALLOWS
-															NOTHING. (P10, operator-walk finding) This line said
-															`↑ 1 upgrade available` while the panel one row down
-															said the rollout is PINNED — `available` is a claim
-															this dashboard would actually DEPLOY the candidate on
-															its own, which is false the moment `wantedVersion` is
-															set (see `blocking-story.ts`: a pin outranks every
-															gate and refuses ALL builds). The count is still true
-															and still worth a glance; the verb changes to name
-															what is actually true.
-														-->
-														<span
-															class="flex items-center gap-1 text-orange-700 dark:text-orange-400"
-														>
-															<ArrowUpOutline class="h-3 w-3" />
-															{#if blockStory.pinnedTo}
-																{rollout.status.releaseCandidates.length} newer · held by the pin
-															{:else}
-																{rollout.status.releaseCandidates.length}
-																{rollout.status.releaseCandidates.length === 1
-																	? 'newer build'
-																	: 'newer builds'}
-															{/if}
-														</span>
-													{/if}
-													{#if isCurrentVersionCustom}
-														<span class="font-medium text-yellow-700 dark:text-yellow-400"
-															>Custom build</span
-														>
-													{/if}
-													{#if getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)}
-														<span class="font-mono text-gray-500 dark:text-gray-400">
-															{formatRevision(getRevisionInfo(latestEntry.version)!)}
-														</span>
-													{/if}
-													<!--
-														⭐ THE SCHEDULE'S "NOTHING WAITING" FACT LANDS HERE,
-														NOT IN A BANNER. (F2, second re-check, 2026-09-03)
-														See `scheduleMetaText`'s own comment: a closed deploy
-														window with no candidate behind it is informational,
-														so it takes the same quiet, one-line treatment as
-														the upgrade count and the custom-version flag beside
-														it, instead of the page's one banner slot.
-													-->
-													{#if scheduleMetaText}
-														<span class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
-															<CalendarWeekSolid class="h-3 w-3" />
-															{scheduleMetaText}
-														</span>
-													{/if}
-												</div>
-											{/if}
-											<!-- ⭐ A ROLLUP, NOT A LOG. (2026-09-02, from the human:
-											     *"on the rollout detail page, i would simplify the
-											     'Commits deployed' — it can show how many changes
-											     deployed, and the list of users maybe, but history really
-											     needs to be on history page."*)
-
-											     It used to be `expandable`: pressing it unfolded a list of
-											     shas, subjects and author names INSIDE the status card — a
-											     second history page, drawn twenty pixels under the tab
-											     called History whose entire job that is, and which already
-											     renders this same component with `showMessages` for every
-											     deploy in the list.
-
-											     What survives is what a rollup owes: HOW MANY changed
-											     (`3 commits deployed`, `+42 −17 · 5 files`) and WHO made
-											     them (the faces). The tail is given away, which is this
-											     product's idiom for a tail everywhere else — `Show 8 ready
-											     resources ›` is in the card to the right of this one.
-
-											     No sentence was added to explain the move. Descriptive prose
-											     on a detail page has been rejected here repeatedly; the
-											     chevron and the fact that the whole row is one tap target
-											     say it without words.
-
-											     ⛔ AND IT MUST NAME THE DEPLOY, NOT THE PAGE. (2026-09-02,
-											     from the human: *"this link on rollout page doesn't expand
-											     the latest history entry. it should also navigate to it.
-											     it's not obvious now when we click the button what changes
-											     are for the latest deployment."*)
-
-											     `…/history` alone landed the reader on a list with
-											     everything collapsed — the changes they had just read the
-											     summary of were now somewhere below, shut. The href carries
-											     `?deploy=<revision>` now and the History tab opens exactly
-											     that entry, rings it and puts focus on it. The key is
-											     `deployKey`, shared with the resolver so there is one
-											     spelling; see `history-deeplink.ts` for why it is a query
-											     param and why it is the revision rather than the index.
-
-											     THE RANGE IS THE SAME OBJECT ON BOTH SIDES. This summary is
-											     `history[1] → history[0]`; the row it opens is index 0,
-											     whose own `CommitSummary` is `history[0 + 1] → history[0]`.
-											     Same component, same props, so the rollup and the row cannot
-											     disagree about the count or the diffstat. -->
-											{#if rollout?.status?.source && rollout.status.history && rollout.status.history.length > 1}
-												{@const historyHref = rolloutPath(cluster, namespace, name, 'history')}
-												{@const latestKey = deployKey(latestEntry)}
-												<div class="mt-1.5">
-													<!--
-														⭐ P11: THE ROLLUP NAMES WHY IT HAS NOTHING TO SAY,
-														RATHER THAN SAYING NOTHING. See `githubStatus`'s own
-														comment. `CommitSummary`'s `query.isError` branch is
-														deliberately silent for a LIST of these; this is the
-														page's only one, so the fallback is drawn HERE rather
-														than inside that shared component.
-													-->
-													{#if githubConnected}
-														<CommitSummary
-															{namespace}
-															{name}
-															{cluster}
-															base={rollout.status.history[1]?.version?.revision}
-															head={latestEntry.version?.revision}
-															href={latestKey
-																? `${historyHref}?${DEPLOY_PARAM}=${encodeURIComponent(latestKey)}`
-																: historyHref}
-															hrefLabel="Open this deploy in the history"
-															showAvatars
-															hideWhenEmpty
-															class="-mx-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
-														/>
-													{:else}
-														<p class="text-xs text-gray-500 dark:text-gray-400">
-															Commit message and author need GitHub. {githubAbsenceSentence(
-																githubStatus.data
-															)}
-														</p>
-													{/if}
-												</div>
-											{/if}
-										</div>
-									</div>
-									<!-- Right: time -->
-									<div class="shrink-0 text-right text-xs text-gray-500 dark:text-gray-400">
-										<div
-											class="flex items-center justify-end gap-1"
-											title={formatDate(latestEntry.timestamp)}
-										>
-											<ClockSolid class="h-3 w-3" />
-											<span>{formatTimeAgoCompact(latestEntry.timestamp, $now)}</span>
-										</div>
-									</div>
-								</div>
-							</div>
+						<div class="flex flex-col gap-4">
 							<!--
-								⭐ ACTIONS FOOTER — `Change Version`/`Rollback` RESERVE THEIR
-								SLOTS WHILE `/permissions` IS PENDING. (2026-09-04, load-state
-								audit finding 1: "action row gains `Change Version` + `Rollback`
-								when permissions arrive.") `canModify`'s own `?? false` default
-								made "waiting to hear back" and "confirmed: no permission" look
-								identical — no buttons — so a viewer who DOES have permission
-								watched `View on GitHub` render alone and then grow two siblings.
-								`permissionsKnown` (declared beside `canModify` above) is read
-								below wherever `canModify` alone used to gate visibility;
-								VISIBILITY of Clear pin/Change Version/Rollback was already
-								decided purely by `rollout` data (`wantedVersion`, `rollbackNow`)
-								with no permission dependency of its own, so the only thing that
-								needed reserving was this outer gate and each button's own
-								`disabled` state.
-							-->
-							{#if canModify || !permissionsKnown || rollout?.status?.source || rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
-								<div
-									class="flex flex-col gap-2 border-t border-gray-100 px-5 py-3 sm:flex-row sm:flex-wrap sm:items-center dark:border-gray-700"
-								>
-									{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
-										<SourceViewer
-											namespace={rollout.metadata?.namespace || ''}
-											name={rollout.metadata?.name || ''}
-											version={latestEntry.version.tag}
-											{cluster}
-										/>
-									{/if}
-									{#if rollout?.status?.source}
-										<Button
-											size="sm"
-											color="light"
-											class="w-full justify-center sm:w-auto"
-											href={getGitHubUrl(getDisplayVersion(latestEntry.version), latestEntry.version.revision)}
-											target="_blank"
-											rel="noopener noreferrer"
-										>
-											<GithubSolid class="me-2 h-4 w-4" />
-											View on GitHub
-										</Button>
-									{/if}
-									{#if canModify || !permissionsKnown}
-										{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
-											<Button
-												size="sm"
-												color="light"
-												class="w-full justify-center sm:w-auto"
-												disabled={!permissionsKnown ||
-													!isDashboardManagingWantedVersion ||
-													!!pendingAction}
-												onclick={() => {
-													showClearPinModal = true;
-												}}
-											>
-												Clear pin
-											</Button>
-										{/if}
-										<Button
-											id="status-change-version-btn"
-											size="sm"
-											color="light"
-											class="w-full justify-center sm:w-auto"
-											disabled={!permissionsKnown ||
-												!isDashboardManagingWantedVersion ||
-												!!pendingAction}
-											onclick={() => {
-												if (isDashboardManagingWantedVersion) {
-													isPinVersionMode = false;
-													selectedVersion = null;
-													deployExplanation = '';
-													requestChangeVersionModal();
-												}
-											}}
-										>
-											<EditOutline class="me-2 h-4 w-4" />
-											Change Version
-										</Button>
-										<!-- ⛔ `Rollback` PRE-SELECTED `history[1]`, WHICH IS NOT
-										     NECESSARILY OLDER. A live critic pressed it on a rollout
-										     that had itself been rolled back and got a modal headed
-										     *"Deploy 51b976a → aa17645"* — a roll-FORWARD — under a
-										     caption reading "Required for rollback". The direction
-										     logic downstream was right; the pre-selection was not, so
-										     the button and its own modal disagreed on one screen.
-
-										     `rollbackTarget` proves the target is older (release-list
-										     position, else build creation time) and returns null when
-										     nothing older exists. A `Rollback` with nothing to roll
-										     back to is the label lying again, so the button is not
-										     rendered at all in that case. -->
-										{#if rollbackNow}
-											<Button
-												id="status-rollback-btn"
-												size="sm"
-												color="light"
-												class="w-full justify-center sm:w-auto"
-												disabled={!permissionsKnown ||
-													!isDashboardManagingWantedVersion ||
-													!!pendingAction}
-												title={rollbackNow.basis === 'ran-here'
-													? `Go back to ${rollbackDisplay}, the last older version this environment ran${
-															rollbackSkipped.length > 0
-																? ` (skipping ${joinClauses(rollbackSkipped)} — newer than what is running now)`
-																: ''
-														}`
-													: `Go back to ${rollbackDisplay}, the release directly below the one running (never deployed here)`}
-												onclick={() => {
-													const running = rollout?.status?.history?.[0]?.version;
-													if (isDashboardManagingWantedVersion && rollbackNow && running) {
-														isPinVersionMode = true;
-														selectedVersion = rollbackNow.tag;
-														const currentVersionName = getDisplayVersion(running);
-														// ⛔ NO PRE-WRITTEN REASON. (2026-09-03, operator walk) A cause nobody
-														// asserted was landing in the deploy history. The note is required;
-														// the operator writes it.
-														deployExplanation = '';
-														requestChangeVersionModal();
-													}
-												}}
-											>
-												<ReplyOutline class="me-2 h-4 w-4" />
-												Rollback to {rollbackDisplay}
-											</Button>
-										{/if}
-										{#if !isDashboardManagingWantedVersion}
-											<Tooltip
-												triggeredBy="#status-change-version-btn"
-												placement="bottom"
-												transition={blur}
-												transitionParams={{ duration: 300 }}
-											>
-												Another controller owns this rollout's wanted version, so the dashboard
-												cannot pin it.
-											</Tooltip>
-										{/if}
-									{/if}
-								</div>
-							{/if}
-						</div>
-
-						<!--
-							⭐ PIPELINE CARD — RESERVES ITS OWN GEOMETRY, NEVER PRINTS AN
-							UNCOMPUTED ROLLUP. (2026-09-04, load-state audit finding 1:
-							"Pipeline card grows 184→285 (390: 225→357) when
-							managed-resources arrive... The rollup prints `2/2 done` then
-							`5/5 done` — a finished sentence that is false.")
-
-							`DeploymentPipelineCard`'s own `nodes` (and therefore
-							`summary.done`/`summary.total`, the `N/N done` rollup) are
-							built from `pipelineValidRollouts` — sourced from
-							`managedResources`, a request that resolves strictly AFTER
-							`rollout` itself. Rendering the real card the moment `rollout`
-							loads means it briefly counts ONLY the always-present `bake`
-							node (`1/1 done` or similar) before jumping to the true stage
-							count — a finished-looking fraction that was never the whole
-							pipeline. `managedResourcesKnown` (declared beside that query
-							above) is the same "settled, not just present" signal the
-							right rail's `ResourcesCard`/External Links slot already read;
-							until it is true this renders a `CardSkeleton` instead of the
-							real card, so no rollup is ever drawn before the stage count
-							it is a fraction OF is actually known. `rows`/`rowHeight`
-							approximate a typical canary pipeline's stage list; the exact
-							count cannot be known before `managedResourcesKnown` without
-							defeating the point of waiting for it.
+							⭐ THE HERO STAYS A HERO, AND THAT MEANS NO HEADER BAR.
+							(2026-09-02, design re-check; migrated 2026-10-08 to the shared
+							design language.) This object is deliberately not a `Card` in
+							COMPOSITION, even though it now USES the Card shell (`bg-surface`,
+							`border-line`, `rounded-md`, no shadow — the language's one card
+							treatment): it carries the page's own object id (`t-code-lg`, the
+							20px mono build) and the deploy's state disc, which is the page's
+							lead object, not one card among a stack, so it has no 47px header
+							bar and no right-aligned rollup. The language's shell replaces the
+							old no-border/shadow-only separation (`rounded-xl` + `shadow-sm`,
+							no border) — shadows no longer carry separation anywhere in flow;
+							the 1px line does.
 						-->
-						{#if !managedResourcesKnown}
-							<CardSkeleton titleWidth="w-40" rollupWidth="w-16" rows={4} rowHeight={32} />
-						{:else}
-							<DeploymentPipelineCard
-								{rollout}
-								{latestEntry}
-								{pipelineValidRollouts}
-								{pipelineValidTests}
-								healthChecks={visibleHealthChecks}
-								{canUpdate}
-								{namespace}
-								{name}
-								{cluster}
-								onContinue={continueRollout}
-							/>
-						{/if}
+							<!-- ══ STATUS CARD ══ -->
+							<!-- Glides to a new height when the deploy changes under it (a promote
+						     swapping the build and its meta rows) instead of reflowing the page
+						     in one frame — `$lib/smooth-height`. -->
+							{#if !managedResourcesKnown}
+								<CardSkeleton titleWidth="w-40" rollupWidth="w-16" rows={4} rowHeight={32} />
+							{:else}
+								<DeploymentPipelineCard
+									{rollout}
+									{latestEntry}
+									{pipelineValidRollouts}
+									{pipelineValidTests}
+									healthChecks={visibleHealthChecks}
+									{canUpdate}
+									{namespace}
+									{name}
+									{cluster}
+									onContinue={continueRollout}
+								/>
+							{/if}
 
-						<!-- Available Upgrades card (full width) -->
-						<!-- ⭐ 8px, NOT 12px. (F10, 2026-09-03 re-check) This was the
+							<!-- Available Upgrades card (full width) -->
+							<!-- ⭐ 8px, NOT 12px. (F10, 2026-09-03 re-check) This was the
 						     only `rounded-xl` card on a page whose every other card
 						     (`Card.svelte`, `DeploymentPipelineCard`, the resources
 						     list) is `rounded-lg` (8px) — `COMPOSITION-GRAMMAR.md` §2
@@ -2942,11 +3744,14 @@
 						     not one of this stack's cards) and 8px for everything in
 						     the stack. This card has a header bar and sits in the
 						     stack, so it takes the stack's radius. -->
-						<div
-							class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
-						>
-							<!-- Header -->
-							<!--
+							<!-- Glides when a candidate row leaves (a promote) — `$lib/smooth-height`. -->
+							<div
+								class="border-line bg-surface overflow-hidden rounded-md border"
+								use:smoothHeight
+							>
+								<div>
+									<!-- Header -->
+									<!--
 								⭐ THE HEADER SLOT TAKES THE ROLLUP, NEVER A BUTTON BESIDE IT.
 								(2026-09-03, F12) This was 57px — the chip/text answer PLUS a
 								32px icon button — against every other card header on this page
@@ -2957,14 +3762,25 @@
 								body, where `Chip`'s `Held`/pin banners already sit — a control
 								row, not a header.
 							-->
-							<div
-								class="flex min-h-[47px] items-center gap-2.5 border-b border-gray-100 px-4 py-3 dark:border-gray-700"
-							>
-								<CodeOutline class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
-								<span class="text-sm font-semibold text-gray-900 dark:text-white"
-									>Newer builds</span
-								>
-								<!--
+									<!-- ⛔ ITEM 2 (integrator re-check, round 3): `min-h-[47px]` +
+							     `py-3` (every other card header's own combo, `Card.svelte`'s
+							     included) assumes its tallest child is ~20-24px of text/chip —
+							     true everywhere else, but THIS header also holds the Refresh
+							     button, which item 10 now puts at a fixed 36px. `py-3`
+							     (12+12=24px) on top of a 36px child is 60px of natural content
+							     height, so `min-height` stopped being the binding constraint and
+							     the row grew to 61px regardless of viewport width (measured at
+							     360 through 1440 — this was never a wrap, just a floor that
+							     could not hold its own tallest child). A fixed `h-[47px]` with no
+							     vertical padding makes 47px the ACTUAL height, not a floor, so
+							     the 36px button (and everything shorter) centres inside it via
+							     `items-center` with room to spare. -->
+									<div
+										class="border-line-subtle flex min-h-[47px] items-center gap-3 border-b px-4 py-3"
+									>
+										<CodeOutline class="text-fg-subtle h-4 w-4 shrink-0" />
+										<span class="t-card-title text-fg whitespace-nowrap">Newer builds</span>
+										<!--
 									⭐ THE ROLLUP IS NOT CONDITIONAL ON HAVING SOMETHING TO SAY.
 									(2026-09-02, `COMPOSITION-GRAMMAR.md` §1) It used to render the
 									`Chip` only when candidates existed, so the common case — a rollout
@@ -2975,60 +3791,46 @@
 									the rest of the product answers this question with (`3/3 on the
 									newest`, `All on the newest`).
 								-->
-								<div class="ml-auto flex items-center gap-2">
-									{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-										<!-- A count is a `count` chip, the same one every list header uses.
-										     It was an orange-100 pill with an arrow — the only fill on the
-										     card, and orange is not a role the budget owns. -->
-										<Chip
-											role="count"
-											label="{rollout.status.releaseCandidates.length} newer"
-										/>
-									{:else if stillCatchingUp}
-										<!-- ⭐ P10: NOT `on the newest` YET. `releaseCandidates` is
+										<div class="ml-auto flex items-center gap-2">
+											{#if newerBuilds.length > 0}
+												<!-- r34 tabs-nb r2 (#5): the baseline's rollup, back. Same count as the page
+												     header's "↑ N newer" (both read `newerBuilds.length`). -->
+												<span class="t-ui-sm text-fg-subtle tabular-nums"
+													>{newerBuilds.length} newer</span
+												>
+											{:else if stillCatchingUp}
+												<!-- ⭐ P10: NOT `on the newest` YET. `releaseCandidates` is
 										     already empty (nothing newer is ALLOWED) but the current
 										     history entry hasn't settled — see `stillCatchingUp`'s own
 										     comment. Same neutral ink `BakeStatusIcon`'s in-flight
 										     states use elsewhere on this page; green is reserved for
 										     the verdict actually being true. -->
-										<span class="text-xs font-medium text-gray-500 dark:text-gray-400"
-											>{bakeWord(latestEntry.bakeStatus)}…</span
-										>
-									{:else}
-										<span class="text-xs font-medium text-green-700 dark:text-green-400"
-											>on the newest</span
-										>
-									{/if}
-									<!-- The refresh control lives beside the rollup. (2026-09-03, from
-									     the human: "refresh button there is also in an awkward place"
-									     — it had a 37px band of its own under the header.) -->
-								<button
-									id="refresh-versions-btn"
-									onclick={reconcileFluxResources}
-									disabled={isReconciling}
-									aria-label="Refresh the build list"
-									class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-								>
-									{#if isReconciling}
-										<StatusSpinner size="4" color="gray" />
-									{:else}
-										<RefreshOutline class="h-3.5 w-3.5" />
-									{/if}
-									Refresh
-								</button>
-								<Tooltip triggeredBy="#refresh-versions-btn" placement="bottom">
-									Refresh the build list
-								</Tooltip>
-								</div>
-							</div>
+												<span class="t-ui-sm text-fg-subtle"
+													>{bakeWord(latestEntry.bakeStatus)}…</span
+												>
+											{:else}
+												<span class="t-ui-sm text-success">on the newest</span>
+											{/if}
+											<!-- TB12: the History link lives in the header's right slot (it was a subheader's
+											     right slot, a bare word with no affordance). -->
+											<!-- r34 tabs-nb r2 (#5): `.btn-ghost .btn-xs -my-1`, the very box the baseline's
+											     Refresh control was (28px inside the 47px header) — never a 32px tap box. -->
+											<a
+												href={rolloutPath(cluster, namespace, name, 'history')}
+												class="btn btn-ghost btn-xs -my-1 gap-0.5"
+												>History<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a
+											>
+											<!-- TB18 (r4): no Refresh — the build list streams; one rollup + the link. -->
+										</div>
+									</div>
 
-							<!-- ⭐ THE REFRESH CONTROL, NOW A BODY ROW. It is a MUTATING
+									<!-- ⭐ THE REFRESH CONTROL, NOW A BODY ROW. It is a MUTATING
 							     control (re-runs the Flux reconcile), so it earns button
 							     chrome — just not in the slot COMPOSITION-GRAMMAR reserves
 							     for the card's own rolled-up answer. Always present: staleness
 							     is possible whatever the candidate count reads. -->
 
-							<!--
+									<!--
 								⭐ THE PROVIDER FACT. This rollout's own upgrade state ("up to
 								date", "N candidates") answers a different question than
 								"is anyone waiting on ME" — a reader could see a green tick
@@ -3037,72 +3839,382 @@
 								silent otherwise, so a rollout that provides nothing to
 								anyone gains no new furniture.
 							-->
-							{#if heldByThis}
-								<div
-									class="flex items-start gap-3 border-b border-orange-100 bg-orange-50 px-4 py-2.5 dark:border-orange-900/30 dark:bg-orange-900/10"
-								>
-									<ShareNodesSolid
-										class="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-600 dark:text-orange-400"
-									/>
-									<p class="min-w-0 flex-1 text-xs text-orange-800 dark:text-orange-300">
-										Holding {heldByThis.count} rollout{heldByThis.count === 1 ? '' : 's'} — {heldByThis.subjects}
-										{heldByThis.plural ? 'need' : 'needs'} {heldByThis.need}.
-										<a href={rolloutPath(cluster, namespace, name, 'dependencies')} class="nav-link"
-											>See Dependencies</a
+									{#if heldByThis}
+										<div
+											class="border-held-line bg-held-tint flex items-start gap-3 border-b px-4 py-3"
 										>
-									</p>
-								</div>
-							{/if}
-
-							<!-- Pin warning (compact banner) -->
-							{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
-								<div
-									class="flex items-center gap-3 border-b border-amber-100 bg-amber-50 px-4 py-2.5 dark:border-amber-900/30 dark:bg-amber-900/20"
-								>
-									<PauseSolid class="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-									<p class="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-300">
-										Pinned to {blockStory.pinnedToDisplay ?? rollout.spec.wantedVersion} — automatic
-										deploys are paused until the pin is cleared.
-									</p>
-									{#if canModify}
-										<Button
-											size="xs"
-											color="light"
-											class="shrink-0"
-											disabled={!isDashboardManagingWantedVersion || !!pendingAction}
-											onclick={() => {
-												showClearPinModal = true;
-											}}
-										>
-											Clear pin
-										</Button>
+											<ShareNodesSolid class="text-held mt-0.5 h-4 w-4 shrink-0" />
+											<p class="t-meta text-held min-w-0 flex-1">
+												Holding {heldByThis.count} rollout{heldByThis.count === 1 ? '' : 's'} — {heldByThis.subjects}
+												{heldByThis.plural ? 'need' : 'needs'}
+												{heldByThis.need}.
+												<a href={rolloutPath(cluster, namespace, name, 'gates')} class="nav-link"
+													>See gates</a
+												>
+											</p>
+										</div>
 									{/if}
-								</div>
-							{/if}
 
-							<!-- Release candidates -->
-							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
-								<ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
-									{#each rollout.status.releaseCandidates as releaseCandidate, candidateIndex}
-										{@const version = releaseCandidate.tag}
-										{@const blockingGates = getBlockingGates(version)}
-										{@const isBlocked = blockingGates.length > 0}
-										{@const depInfo = getDependencyStatus(version)}
-										{@const commitBase =
-											rollout.status.releaseCandidates[candidateIndex + 1]?.revision ??
-											latestEntry?.version?.revision}
-										<li class="flex items-center gap-3 px-4 py-3.5">
-											<!-- Version info -->
-											<div class="min-w-0 flex-1">
-												<div class="flex flex-wrap items-center gap-1.5">
-													<span
-														class="font-mono text-sm font-semibold text-gray-900 dark:text-white"
-													>
+									<!-- Pin warning (compact banner) -->
+									{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
+										<div
+											class="border-held-line bg-held-tint flex items-center gap-3 border-b px-4 py-3"
+										>
+											<HeldGlyph class="text-held h-4 w-4 shrink-0" />
+											<p class="t-meta text-held min-w-0 flex-1">
+												Pinned to {blockStory.pinnedToDisplay ?? rollout.spec.wantedVersion} — automatic
+												deploys are paused until the pin is cleared.
+											</p>
+											{#if canModify}
+												<button
+													type="button"
+													class="btn btn-secondary btn-xs shrink-0"
+													disabled={!isDashboardManagingWantedVersion || !!pendingAction}
+													onclick={() => {
+														showClearPinModal = true;
+													}}
+												>
+													Clear pin
+												</button>
+											{/if}
+										</div>
+									{/if}
+
+									<!-- Release candidates: `newerBuilds` (promotionCandidates), the ONE
+							     list the banner, the count and this card read. `status.releaseCandidates`
+							     can be absent while `availableReleases` still holds a newer, gate-held
+							     build: the card then said "0 newer" under "1 newer build is waiting"
+							     (squad-rollout, telemetry-indexer prod, incident). -->
+									{#if newerBuilds.length > 0}
+										<!-- ⭐ r34 NEWER BUILDS = THE HISTORY LEDGER'S FIRST HALF (pick A, typo/newer-builds/PICK.md).
+										     The builds not deployed yet, newest first, on ONE spine (History's
+										     `use:ledgerSpine`, TABS-DESIGN-GUIDE §3.8/§4.7) that ends at the build
+										     running here — the spine's length is "how far behind", drawn. Three
+										     32px subheaders (History's `deploy-day-header` anatomy): Newest · Older ·
+										     Running here. Only the newest build's Deploy is at rest; an older one's
+										     shows on row hover / keyboard focus at ≥1024 (`.row-reveal`), always on
+										     touch. -->
+										{#snippet nbFoldRow(n: number)}
+											<!-- P6 fold row (TB24): the ONE control, in the gap it hides — no second count. -->
+											<li class="bg-subtle relative flex items-center py-2 pr-4 pl-11">
+												<button
+													type="button"
+													class="btn btn-secondary btn-sm"
+													aria-expanded={nbShowAll}
+													onclick={() => (nbShowAll = !nbShowAll)}
+												>
+													{nbShowAll ? 'Show fewer' : `Show ${n} older build${n === 1 ? '' : 's'}`}
+												</button>
+											</li>
+										{/snippet}
+										<ul
+											class="nb-ledger divide-line-subtle divide-y @container"
+											style="--nb-build-w: {nbBuildW}px"
+											data-anyway={rowShowsFailed(failedHereVerdict(rollout, newerBuilds[0].tag)) ? '' : undefined}
+											use:ledgerSpine
+										>
+											{#each nbVisible as nbRow, nbK}
+												{@const releaseCandidate = nbRow.rc}
+												{@const candidateIndex = nbRow.i}
+												<!-- r34 tabs-nb r2 (#10): no "Older" subheader at any width — the one anchor is the
+												     running build's "Running here" row (the spine ends there). -->
+												{#if !nbShowAll && nbK > 0 && candidateIndex - nbVisible[nbK - 1].i > 1}
+													{@render nbFoldRow(candidateIndex - nbVisible[nbK - 1].i - 1)}
+												{/if}
+												{@const version = releaseCandidate.tag}
+												{@const blockingGates = getBlockingGates(version)}
+												{@const contractHold = contractHoldFor(releaseCandidate)}
+												<!-- ⭐ U-5, ledger (2026-10-08): a contract hold from
+											 `holdEdgesIn` counts too — see that const's own
+											 doc comment above. A candidate held by a
+											 `RolloutDependency` that `rollout.status.gates`
+											 never published is NOT `Ready`. -->
+												{@const isBlocked = blockingGates.length > 0 || !!contractHold}
+												<!-- A dependency's RolloutGate and its contract hold are ONE
+											     cause: when every gate refusing this build is that
+											     dependency's own, the row reads the contract sentence
+											     ("Needs payments-svc ~2.9.0 · has 2.4.1"), never a
+											     generic "held · 1 rule". -->
+												{@const dependencyOnly =
+													blockingGates.length > 0 &&
+													dependencyOnlyHold(
+														classifyBlockingGates(version),
+														holdEdgesIn
+															.filter((e) => e.held.includes(getDisplayVersion(releaseCandidate)))
+															.map((e) => ({
+																provider: contractHoldProviderName(e),
+																gate: e.gate
+															}))
+													)}
+												<!-- ⭐ U-9, 2026-10-08 (QA, fixing the comment-vs-code gap
+											 U-4/ledger left): see `failedHereVerdict`'s own doc
+											 comment (`deploy-risk.ts`). Checked INDEPENDENTLY of
+											 `isBlocked` — a build can be both gate-held AND the
+											 thing that just failed, and the FAILED fact takes the
+											 row (it is the more urgent one: a gate reopening does
+											 not make a build that already failed here trustworthy
+											 again). The OLD code read `!isBlocked &&
+											 failedHere.kind === 'failed'`, which said the exact
+											 opposite of what this comment always claimed — a held
+											 build that had also just failed here rendered plain
+											 `Held by a gate`, never `failed here`, because
+											 `isBlocked` silently suppressed `justFailed` before the
+											 render chain below even got to choose. The render chain
+											 (below) now checks `justFailed` FIRST, for the same
+											 reason. -->
+												{@const failedHere = failedHereVerdict(rollout, version)}
+												{@const justFailed = rowShowsFailed(failedHere)}
+												<!-- ⭐ ITEM 1 (coordinator, 2026-10-09): a row that passes every
+										     known gate and has not just failed is NOT thereby `Ready` —
+										     it is `Ready` only once `holdGraphKnown` says so. Scoped to
+										     `!isBlocked && !justFailed`, same as `heldByHealth` below:
+										     a gate-held or just-failed row already has its own marker and
+										     has nothing to wait on. `contractHoldErrored` (item 2) splits
+										     out the "never going to resolve" half — see `holdGraphErrored`'s
+										     own comment — so the row says so plainly instead of
+										     "checking…" forever. -->
+												{@const contractHoldUnknown = !isBlocked && !justFailed && !holdGraphKnown}
+												{@const contractHoldErrored = contractHoldUnknown && holdGraphErrored}
+												<!--
+											⭐ "PROMOTE ONLY WHEN IT'S HEALTHY", ON THE ROW ITSELF.
+											See the script's own doc comment on `newestHeldByHealth` /
+											`justOpenedHealthGate` — a health check pending or failing
+											holds automatic promotion back exactly as a gate does, and
+											nothing above computed that. Scoped to `candidateIndex === 0`
+											(the newest — `newestCandidate` is `releaseCandidates[0]`)
+											and to `!isBlocked`: a gate already holding this candidate
+											already renders its own `held` chip above, and this is
+											additive evidence, not a second opinion on the same row.
+										-->
+												{@const heldByHealth =
+													candidateIndex === 0 && !isBlocked && !justFailed && newestHeldByHealth}
+												{@const promotingByHealth =
+													candidateIndex === 0 && !isBlocked && !justFailed && justOpenedHealthGate}
+												{@const depInfo = getDependencyStatus(version)}
+												{@const commitBase =
+													newerBuilds[candidateIndex + 1]?.revision ??
+													latestEntry?.version?.revision}
+												<!-- ⛔ ITEM 1 (integrator re-check, round 3): below `sm` this
+									     row was `flex items-center` (never wrapping), which left the
+									     facts column only ~130px once the actions (GitHub/copy/Deploy,
+									     ~167px) took their `shrink-0` share of a 390px card — measured
+									     live, `Needs payments-svc ~2.9.0` (one still-unsplit run)
+									     overflowed that column by 40px, under the action buttons. At
+									     `<sm` the row now stacks: facts get the FULL card width on
+									     their own line, actions a second line below — the facts' own
+									     clause-wrap (`clauseRuns`) then has real room and the actions
+									     never sit on top of text. `sm:` restores the single-row layout
+									     once there is room for both. -->
+												<!-- ⭐ NEWER-BUILD ROW, ON A GRID (owner §7, 2026-11-02: "text is laid out,
+												     not dropped together"). Role: a candidate in the Overview's list, which the
+												     Slipway pane rows and the History deploy row also play. Reference: the
+												     History deploy row's discipline (mark column, mono build in its own
+												     track, title in ink, age right) and the Dev card's slots on /environments.
+												     >=512px of card: mark 16 | build 64 | title (+ state under it) | author 104
+												     | age 40 | action, one x per slot down the list. Below: mark | build + state
+												     + age | action over the title (author is one tap away, owner §5). -->
+												{@const rowGateHeld =
+													!justFailed && blockingGates.length > 0 && !dependencyOnly
+														? classifyBlockingGates(version)
+														: null}
+												{@const rowVerdict = rowGateHeld
+													? blockStory.pinnedTo
+														? { held: true, cause: null, waitsForEnv: null }
+														: verdictForGates(rowGateHeld, environment?.spec?.environment ?? null, {
+																hasContract: !!contractHold
+															})
+													: null}
+												{@const rowChain = !!rowVerdict && !rowVerdict.held && !!rowVerdict.waitsForEnv}
+												{@const markState = justFailed
+													? 'failed'
+													: rowGateHeld
+														? rowChain
+															? 'behind'
+															: 'held'
+														: contractHold || heldByHealth
+															? 'held'
+															: promotingByHealth
+																? 'deploying'
+																: contractHoldErrored
+																	? 'none'
+																	: contractHoldUnknown
+																		? 'checking'
+																		: candidateIndex === 0
+																			? 'newest'
+																			: 'behind'}
+
+												{@const isOlderRow = candidateIndex > 0}
+												{#snippet deployBtn()}
+													{#if canModify}
+														<!-- ⭐ DEPLOY: ONLY THE NEWEST CARRIES IT AT REST (AD r3 #5). An older build's
+														     Deploy is hover/focus at >=512px of card (in the actions cluster that
+														     replaces the age, History §4.13), and on a narrow card appears after one
+														     tap on the row, in place. Demotion rules unchanged: primary only when
+														     nothing else on the page claims it (`isFailed`), secondary while held /
+														     failed / promoting. -->
+														<button
+															type="button"
+															class="btn btn-xs nb-deploy-btn {isOlderRow ||
+															isBlocked ||
+															justFailed ||
+															heldByHealth ||
+															promotingByHealth ||
+															isFailed
+																? 'btn-secondary'
+																: 'btn-primary'}"
+															aria-label={`Deploy version ${getDisplayVersion(releaseCandidate)}`}
+															disabled={(!isDashboardManagingWantedVersion &&
+																!hasForceDeployAnnotation(rollout)) ||
+																!!pendingAction}
+															onclick={() => {
+																selectedVersion = version;
+																const isCustom = isSelectedVersionCustom(version);
+																isPinVersionMode = isOlderThanCurrent(version) || isCustom;
+																deployExplanation = '';
+																requestChangeVersionModal();
+															}}
+														>
+															<!-- U-4: the label matches the modal it opens (`deployButtonLabel`). -->
+															{justFailed ? 'Deploy anyway' : 'Deploy'}
+														</button>
+													{/if}
+												{/snippet}
+												<!-- ⭐ NEWER-BUILD ROW = THE HISTORY DEPLOY ROW'S ANATOMY (r34 AD r3, tabs-typo-3).
+												     Role: a build not deployed yet; the History tab's Deploys ledger is the
+												     reference (spine mark | build mono 500 | title takes the free width | time in
+												     one column at the card edge | hover/focus actions REPLACE the time, §4.13).
+												     Wide (card >= 512px): mark | build | title | author (fixed column) | age; line 2 =
+												     the cause SLOT (muted words + the failing-check glyph), Deploy (newest only)
+												     under the age. Narrow: line 1 = mark | build | age | Deploy (newest), line 2 =
+												     the cause in full, line 3 = the title (newest; an older row's title and Deploy
+												     are one tap away). The tracks live in the style block (`.nb-row`). -->
+												<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+												<li
+													class="nb-row row-hover hover:bg-hover {isOlderRow ? 'nb-row-older' : 'nb-row-newest'}"
+													data-open={nbOpen[version] ? 'true' : undefined}
+													onclick={(e) => {
+														const hit = (e.target as HTMLElement).closest('button,a');
+														if (hit && !hit.hasAttribute('data-nb-toggle')) return;
+														nbOpen[version] = !nbOpen[version];
+													}}
+												>
+													<span class="nb-c-mark flex items-center justify-center">
+														<span class="nb-mark" data-spine-mark><StatusMark state={markState} /></span>
+													</span>
+													<span class="nb-c-build nb-build t-code text-fg">
 														{getDisplayVersion(releaseCandidate)}
 													</span>
-													{#if isBlocked}
-														{@const held = classifyBlockingGates(version)}
-														<!--
+													{#if githubConnected && commitBase && releaseCandidate.revision}
+														<CommitSummary
+															{namespace}
+															{name}
+															{cluster}
+															base={commitBase}
+															head={releaseCandidate.revision}
+															singleLine="slots"
+															titleTone={candidateIndex === 0 ? 'fg' : 'muted'}
+															hideWhenEmpty
+															class="nb-c-title"
+															authorClass="nb-c-author"
+														/>
+													{/if}
+													{#if !isOlderRow || nbOpen[version]}
+														<!-- r34 tabs-nb r3 (#4): ONE slot at every width, on line 1, left of the age: the
+														     newest's Deploy at rest, an older row's once it is opened (touch) -- on a
+														     hover-capable wide card the older row's hover cluster starts in this same track. -->
+														<div class="nb-c-deploy">{@render deployBtn()}</div>
+													{/if}
+													{#if releaseCandidate.created}
+														<span
+															class="nb-c-age nb-rest t-meta text-fg-subtle tabular-nums"
+															title={formatDate(releaseCandidate.created)}
+														>
+															{formatTimeAgoCompact(releaseCandidate.created, $now)}
+														</span>
+													{/if}
+													<!-- History's disclosure (§4.8): the chevron button at the row's right edge, one x
+													     down both lists; its ::after is not used (the row's own click toggles). -->
+													<button
+														type="button"
+														data-nb-toggle
+														aria-expanded={!!nbOpen[version]}
+														class="nb-c-chev text-fg-subtle shrink-0 rounded-sm p-1"
+													>
+														{#if nbOpen[version]}
+															<ChevronUpOutline class="h-4 w-4" aria-hidden="true" />
+														{:else}
+															<ChevronDownOutline class="h-4 w-4" aria-hidden="true" />
+														{/if}
+														<span class="sr-only">{nbOpen[version] ? 'Hide' : 'Show'} actions for {getDisplayVersion(releaseCandidate)}</span>
+													</button>
+													<div class="nb-c-cause flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+															{#if justFailed}
+																<!-- ⭐ U-9, 2026-10-08: FAILED CHECKED FIRST, SO IT
+															 TAKES THE ROW EVEN WHEN A GATE ALSO HOLDS THIS
+															 BUILD. Content unchanged from the branch this
+															 replaces below (moved, not rewritten) — see
+															 `justFailed`'s own doc comment, three lines up,
+															 for why the precedence flipped. -->
+																<span
+																	class="inline-flex min-w-0 items-center gap-1"
+																	title="The last deploy of this build on this rollout failed its checks. Nothing has re-checked it since; deploying again tries it fresh."
+																>
+																	<span class="t-meta text-danger shrink-0">failed here</span>
+																	{#if failedHere.kind === 'failed' && failedHere.rolledBackAt}
+																		<span class="t-meta text-fg-subtle tabular-nums"
+																			>rolled back {formatTimeAgoCompact(
+																				failedHere.rolledBackAt,
+																				$now
+																			)}</span
+																		>
+																	{/if}
+																</span>
+															{:else if blockingGates.length > 0 && !dependencyOnly}
+																{@const held = rowGateHeld!}
+																<!-- ⭐ CHAIN VS REALLY HELD (squad-rollout gates-2 follow-up,
+														     2026-10-11, shared/held-predicate). A candidate this
+														     environment has simply not reached yet (an
+														     earlier-tier promotion gate) is NOT "held" — see
+														     `verdictForGates` (`held.ts`). A PIN outranks every
+														     gate (`blockStory.pinnedTo`'s own rule, above), so the
+														     chain check is skipped entirely while pinned: nothing
+														     promotes automatically either way, and `heldWord`
+														     already carries the pin's own clause. -->
+																{@const buildVerdict = rowVerdict!}
+																{@const chainOnly = rowChain}
+																{@const chainLabel = chainOnly
+																	? chainWaitLabel(skippedFn, { tag: version }, buildVerdict.waitsForEnv!)
+																	: null}
+																{@const peerClause = chainOnly && !chainLabel?.skipped
+																	? (waitsFor(
+																			{ waitsForEnv: buildVerdict.waitsForEnv },
+																			{ peersByEnv }
+																		)?.heldCause ?? null)
+																	: null}
+																{#if chainOnly}
+																	<!-- TB28: two SLOTS on `.dot-list` (the dot is drawn, never typed): "Waits for
+																	     staging" | "held on payments-svc". The shared cause is printed once, on the
+																	     first row that has it. -->
+																	{@const peerSlot =
+																		peerClause && nbFirstPeer
+																			? candidateIndex === nbFirstPeer.i || nbFirstPeer.peer !== buildVerdict.waitsForEnv
+																				? peerClause.replace(new RegExp(`^${buildVerdict.waitsForEnv}\\s+`), '')
+																				: null
+																			: null}
+																	<div class="dot-list">
+																		<div class="dot-list-row flex flex-wrap">
+																			<span
+																				class="t-meta text-fg-muted"
+																				title="Nothing promotes this build automatically until it reaches this environment."
+																				>{chainLabel?.text}</span
+																			>
+																			{#if peerSlot && (candidateIndex === nbFirstPeer?.i || nbFirstPeer?.peer !== peerSlot)}
+																				<span class="t-meta text-fg-muted">{peerSlot}</span>
+																			{/if}
+																		</div>
+																	</div>
+															{:else}
+																	<!--
 															⛔ THE WORD HERE HAS BEEN WRONG TWICE. See
 															`classifyBlockingGates` above for the full account.
 
@@ -3125,17 +4237,17 @@
 
 															Same span, same yellow, same 12px.
 														-->
-														<!-- A `button`, not a `span`: flowbite's `Popover` makes its
+																	<!-- A `button`, not a `span`: flowbite's `Popover` makes its
 														     trigger focusable, so this was already a tab stop on every
 														     release-candidate row with no role at all. Flex item either
 														     way, preflight strips the button chrome — same 12px, same
 														     yellow, same pill. -->
-														<button
-															type="button"
-															aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
-															class="hit-32 inline-flex cursor-pointer items-center gap-1 rounded text-xs"
-														>
-															<!-- `held` is a gate correctly refusing a candidate, not an
+																	<button
+																		type="button"
+																		aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
+																		class="hit-32 inline-flex cursor-pointer items-center gap-1 rounded-xs"
+																	>
+																		<!-- `held` is a gate correctly refusing a candidate, not an
 															     adverse outcome — `role="blocked"` (red) was the wrong
 															     word wearing the wrong ink; a held rollout is not failing
 															     or diverged. `role="held"` aliases the same deep orange
@@ -3145,7 +4257,7 @@
 															     draws its own `Chip role="blocked" label="held"` from a
 															     separate template (not shared markup) and still needs
 															     the same fix — flagged to the graph lane. -->
-															<!--
+																		<!--
 																⭐ THE COUNT IS ON THE CHIP. (2026-09-18, from the human:
 																"held needs to display how many gates are blocking it".)
 																It was a bare `held` with the count as loose text beside
@@ -3160,20 +4272,23 @@
 																deleted that. So it is printed only when it differs from
 																the plain count form.
 															-->
-															<Chip role="held" label="held" value={heldCountLabel(held)} />
-															{#if heldWord(held) !== heldCountPhrase(held)}
-																<span class="text-gray-500 dark:text-gray-400">{heldWord(held)}</span>
-															{/if}
-															<!-- ⛔ A CHEVRON, NOT A QUESTION MARK. `?` with `cursor-help`
+																		<span class="t-meta text-fg-muted">Held {heldCountPhrase(held)}</span>
+																		{#if heldWord(held) !== heldCountPhrase(held)}
+																			<span class="t-meta min-w-0 truncate text-fg-subtle">{heldWord(held)}</span>
+																		{/if}
+																		<!-- ⛔ A CHEVRON, NOT A QUESTION MARK. `?` with `cursor-help`
 															     is a HOVER affordance and says nothing on a phone, which
 															     is where this control most needs to read as openable. A
 															     chevron is the product's own "there is more behind this"
 															     mark. `hit-32` supplies the touch floor — its `::before`
 															     is scoped to `@media (pointer: coarse), (max-width: 639px)`,
 															     so it costs desktop nothing. -->
-															<ChevronDownOutline class="h-3 w-3 text-gray-500 dark:text-gray-400" aria-hidden="true" />
-														</button>
-														<!--
+																		<ChevronDownOutline
+																			class="text-fg-subtle h-3 w-3"
+																			aria-hidden="true"
+																		/>
+																	</button>
+																	<!--
 													⛔ THE LINES, NOT THE RECORD. (2026-09-18, third attempt, and the
 													second one is why this comment exists.)
 
@@ -3203,248 +4318,352 @@
 													host is itself a popover, so it cannot nest that control; the
 													lines plus the verdict are what it shows.
 												-->
-												<Popover class="max-w-sm text-sm" title={heldTitle(held)}>
-													<div class="p-1">
-														<GateLines gates={held} />
-														<p class="mt-2 border-t border-gray-100 pt-2 text-xs text-gray-500 dark:border-gray-700/60 dark:text-gray-400">
-															{heldFoot(held)}
-														</p>
-													</div>
-												</Popover>
-													{:else}
-														<span
-															class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400"
-														>
-															Ready
-														</span>
-													{/if}
-												</div>
-												<div
-													class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
-												>
-													{#if releaseCandidate.created}
-														<span
-															class="flex items-center gap-1"
-															title={formatDate(releaseCandidate.created)}
-														>
-															<ClockSolid class="h-3 w-3" />
-															{formatTimeAgoCompact(releaseCandidate.created, $now)}
-														</span>
-													{/if}
-													{#if depInfo}
-														{@const depTheme = getRolloutEnvironmentTheme(null, depInfo.env)}
-														<!--
-															⛔ THE STATE IS NOT DRAWN INSIDE THE ENVIRONMENT'S BOX.
-															(2026-09-18, from the human: "it's weird that green of the
-															environment is mixed with red failure here".)
+																	<Popover class="t-body max-w-sm" title={heldTitle(held)}>
+																		<div class="p-1">
+																			<GateLines gates={held} />
+																			<p
+																				class="border-line-subtle t-meta text-fg-subtle mt-2 border-t pt-2"
+																			>
+																				{heldFoot(held)}
+																			</p>
+																		</div>
+																	</Popover>
+																{/if}
+															{:else if contractHold}
+																<!--
+													⭐ HELD BY A CONTRACT, NOT A PUBLISHED GATE. (U-5,
+													ledger, 2026-10-08.) `rollout.status.gates` never
+													carries this hold on this fixture (see
+													`holdEdgesIn`'s own comment) — the truth is
+													`providerNetwork`'s inbound contract edge, which has
+													no `RolloutGate` object to join into a
+													`ClassifiedGate` for `GateLines`/`RulePopover`. Same
+													chip and word as the gate-held branch above (never a
+													second spelling of `held`); the sentence is composed
+													straight from the edge's own fields instead of a
+													popover, the same shape `heldByHealth` already uses
+													below for the identical reason (no gate record to
+													disclose).
 
-															The previous pass put the bake glyph in the env chip's own label
-															half, so a RED failure mark sat inside a chip tinted with DEV's
-															green — two hues eight pixels apart saying different things. And
-															it is not only the red pair: `Succeeded` put a GREEN tick inside
-															that same green box, where the mark stopped reading as a separate
-															fact at all.
-
-															`Chip`'s own grammar already names the way out — a chip is
-															`[role][value]`, and "anything past the second half is now a LOOSE
-															mark inside a `.chip-mark` group". The environment is the identity
-															and keeps the only tinted box here; the deploy state is a second
-															fact and sits beside it, not inside it.
-
-															⚠️ THE WORD IS NOT COLOURED AND THE GLYPH TRAILS IT. Colouring the
-															word would put a second full-strength hue on a row whose whole job
-															is to say WHERE this build already got to. The glyph carries the
-															state's colour by itself, which is the same single-channel split
-															`BakeStatusIcon` uses everywhere else. The word inherits this row's
-															muted ink rather than declaring its own, so it cannot drift from
-															its neighbours.
+													⭐ SAME WORDING AS THE GATES TAB'S OWN "Held builds"
+													ROW — `routes/.../gates/+page.svelte`: `Needs
+													{providerName} {requiredVersion} · has
+													{providedVersion}`. Read there, not reinvented, so a
+													reader who opens both tabs sees one sentence, not
+													two about the same fact.
+												-->
+<div class="dot-list" title="{contractHold.provider} has not shipped a version this build needs. A deploy you start by hand still applies immediately.">
+																	<div class="dot-list-row flex flex-wrap">
+																		{#each contractHoldSlots(contractHold) as slot}
+																			<span class="t-meta min-w-0 text-fg-muted">{slot}</span>
+																		{/each}
+																	</div>
+																</div>
+															{:else if promotingByHealth}
+																<!--
+															⭐ THE GATE OPENED, AND NOBODY CLICKED. The same blue
+															`pendingAction` already uses for "the system is moving
+															this on its own" (`Deploy requested — starting`,
+															`ChangeVersionModal.svelte`'s own onDeployStart wiring)
+															— reused here rather than invented, because this is the
+															same fact one level earlier: healthy, and about to be
+															promoted automatically.
 														-->
-														<span class="chip-mark">
-															<Chip
-																role="env"
-																theme={depTheme}
-																label={shortEnvLabel(depTheme) || depInfo.env}
-																title="{depInfo.env} — {bakeTitle(depInfo.bakeStatus)}"
-																wide
+																<span class="t-ui-sm text-active inline-flex items-center gap-1">
+																	<StatusSpinner size="3" color="blue" />
+																	promoting
+																</span>
+															{:else if heldByHealth}
+																<!--
+															⭐ HELD, BUT NOT BY A GATE. Same `Chip role="held"` and
+															same word as the gate-held branch above (never a second
+															spelling of "held") — the difference is only what
+															clears it, said in the reason line instead of a
+															popover, since there is no gate record to disclose.
+														-->
+																<span
+																	class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5"
+																	title="Automatic promotion waits until every health check passes. A deploy you start by hand still applies immediately."
+																>
+																	<span class="t-meta text-fg-muted">Waiting for health checks</span>
+																	{#if newestHealthGateCounts.failing > 0}
+																		<span class="t-meta text-danger inline-flex items-center gap-1">
+																			<ExclamationCircleSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
+																			{newestHealthGateCounts.failing} failing
+																		</span>
+																	{/if}
+																	{#if newestHealthGateCounts.pending > 0}
+																		<span class="t-meta text-fg-subtle">{newestHealthGateCounts.pending} pending</span>
+																	{/if}
+																</span>
+															{:else if contractHoldErrored}
+																<!-- ⭐ ITEM 2 (coordinator, 2026-10-09): plain words, not
+														     a "checking…" placeholder that will never resolve —
+														     see `holdGraphErrored`'s own comment, and the SAME copy
+														     `ChangeVersionModal`'s own picker row uses for the
+														     identical state. Never a permanent disable: the row's
+														     own `Deploy` below stays clickable, demoted (see the
+														     button's `color`, below) — the typed-confirmation path
+														     inside `ChangeVersionModal` is what actually carries
+														     the risk once this button is pressed. -->
+																<span class="t-meta text-fg-subtle">
+																	Couldn't check dependency holds
+																</span>
+															{:else if contractHoldUnknown}
+																<!-- ⭐ ITEM 1 (coordinator, 2026-10-09): THE SAME
+														     "checking" PLACEHOLDER THE DIALOG ALREADY USES
+														     (`ChangeVersionModal.svelte`'s `rowHeldPending` branch,
+														     9d46961) — same `SkeletonBar` shape (`w-10`/`h-5`, the
+														     `held` chip's own box) and the same `sr-only` copy, so a
+														     reader who opens both surfaces sees one idiom for "this
+														     answer isn't in yet", not two. -->
+																<!-- Nothing drawn while the hold graph is unknown (TB2): the
+																     16px `checking` mark carries "pending"; a reserved bar that
+																     never fills read as a broken slot. -->
+																<span class="sr-only">Checking whether this build is held</span>
+															{:else if candidateIndex === 0}
+																<span class="t-meta text-fg">Ready to deploy</span>
+															{/if}
+
+													</div>
+													<!-- Actions: wide = they REPLACE the age (and the Deploy slot) on hover/focus
+													     (§4.13); one tap on the chevron / row opens them in place on any width. -->
+													{#if nbOpen[version] && githubConnected && commitBase && releaseCandidate.revision}
+														<!-- r34 tabs-nb r2 (#7): an opened row lists the CHANGE rows History's open deploy
+														     lists — the SAME CommitSummary `showMessages` list (sha mono · title · author),
+														     with the author face; fold beyond 3. -->
+														<div class="nb-c-changes t-meta">
+															<CommitSummary
+																{namespace}
+																{name}
+																{cluster}
+																base={commitBase}
+																head={releaseCandidate.revision}
+																verb="to deploy"
+																showMessages
+																messagesMin={2}
+																rowAvatars
+																messageLimit={3}
 															/>
-															<span
-																class="inline-flex min-w-0 items-center gap-1"
-																title={bakeTitle(depInfo.bakeStatus)}
-															>
-																<span class="min-w-0 truncate">{bakeWord(depInfo.bakeStatus)}</span>
-																<!-- `decorative`: the word is printed right beside it now, so the
-																     glyph's own `sr-only` copy would announce the state twice.
-																     Still `size="chip"` — a spinning 16px mark sweeps its 22.6px
-																     diagonal and does not fit a 20px box. -->
-																<BakeStatusIcon bakeStatus={depInfo.bakeStatus} size="chip" decorative />
-															</span>
+														</div>
+													{/if}
+													<div class="nb-actions">
+														<span class="nb-act-icons">
+															{#if rollout?.status?.source}
+																<button
+																	type="button"
+																	class="btn btn-ghost btn-sm {nbOpen[version] ? '' : 'btn-icon'}"
+																	title={`View ${getDisplayVersion(releaseCandidate)} on GitHub`}
+																	aria-label={`View ${getDisplayVersion(releaseCandidate)} on GitHub`}
+																	onclick={() => {
+																		const url = getGitHubUrl(
+																			getDisplayVersion(releaseCandidate),
+																			releaseCandidate.revision
+																		);
+																		window.open(url, '_blank');
+																	}}
+																>
+																	<GithubSolid />{#if nbOpen[version]}GitHub{/if}
+																</button>
+															{/if}
+															<CopyButton
+																value={releaseCandidate.tag}
+																label={`version ${getDisplayVersion(releaseCandidate)}`}
+																color="ghost"
+																size="sm"
+																text={nbOpen[version] ? 'Copy version' : undefined}
+															/>
+														</span>
+														{#if isOlderRow && !nbOpen[version]}
+															<span class="nb-c-deploy-act">{@render deployBtn()}</span>
+														{/if}
+													</div>
+												</li>
+											{/each}
+											{#if !nbShowAll && nbVisible.length > 0 && nbVisible[nbVisible.length - 1].i < nbRows.length - 1}
+												{@render nbFoldRow(nbRows.length - 1 - nbVisible[nbVisible.length - 1].i)}
+											{:else if nbShowAll && nbRows.length > nbCollapsed.length}
+												{@render nbFoldRow(0)}
+											{/if}
+											{#if latestEntry?.version}
+												{@const runningBase = rollout.status?.history?.[1]?.version?.revision}
+												<!-- The spine's terminal row: the build this rollout runs. No band — a neutral 8px
+												     stop (not a state: the banner and the header say how that deploy went, once)
+												     and a quiet "Running here" in the cause slot. Same tracks as the rows above. -->
+												<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+												<li
+													class="nb-row row-hover hover:bg-hover nb-row-older nb-row-run"
+													data-open={nbOpen['__run'] ? 'true' : undefined}
+													onclick={(e) => {
+														const hit = (e.target as HTMLElement).closest('button,a');
+														if (hit && !hit.hasAttribute('data-nb-toggle')) return;
+														nbOpen['__run'] = !nbOpen['__run'];
+													}}
+												>
+													<span class="nb-c-mark flex items-center justify-center">
+														<span
+															class="nb-mark inline-flex h-4 w-4 items-center justify-center"
+															data-spine-mark
+															title="Running here"
+														>
+															<span class="bg-fg-subtle h-2 w-2 rounded-full"></span>
+														</span>
+													</span>
+													<span class="nb-c-build nb-build t-code text-fg">
+														{getDisplayVersion(latestEntry.version)}
+													</span>
+													{#if githubConnected && runningBase && latestEntry.version.revision}
+														<CommitSummary
+															{namespace}
+															{name}
+															{cluster}
+															base={runningBase}
+															head={latestEntry.version.revision}
+															singleLine="slots"
+															titleTone="muted"
+															hideWhenEmpty
+															class="nb-c-title"
+															authorClass="nb-c-author"
+														/>
+													{/if}
+													<!-- TB25: the age column means ONE thing down the spine — how old the BUILD is
+													     (the running build's own `created`); the deploy time is the History
+													     tab's and the header's. Falls back to the deploy time only for a build
+													     with no creation stamp, said in the tooltip. -->
+													{#if latestEntry.version.created || latestEntry.timestamp}
+														{@const runAge = latestEntry.version.created ?? latestEntry.timestamp}
+														<span
+															class="nb-c-age nb-rest t-meta text-fg-subtle tabular-nums"
+															title={latestEntry.version.created
+																? `Built ${formatDate(runAge)}`
+																: `Deployed ${formatDate(runAge)}`}
+														>
+															{formatTimeAgoCompact(runAge, $now)}
 														</span>
 													{/if}
-												</div>
-												<!-- WHAT THIS BUILD WOULD SHIP. (2026-09-03, from the human:
-												     "available version list also must show the commit
-												     information.") The same summary the status card draws for
-												     the last deploy, from the running revision to this one. -->
-												<!-- ⛔ EACH ROW SHOWS ONLY ITS OWN COMMITS. (2026-09-03, from the
-												     human: "commits are repeating now for each available
-												     version.") From the running revision every row's range
-												     overlapped the one below it. `releaseCandidates` is
-												     newest-first, so a row's base is the NEXT-OLDER candidate,
-												     and only the oldest candidate reaches back to what is
-												     running. -->
-												{#if githubConnected && commitBase && releaseCandidate.revision}
-													<CommitSummary
-														{namespace}
-														{name}
-														{cluster}
-														base={commitBase}
-														head={releaseCandidate.revision}
-														verb="to deploy"
-														showAvatars
-														showMessages
-														hideWhenEmpty
-														class="mt-1.5"
-													/>
-												{/if}
-											</div>
-
-											<!-- Actions -->
-											<div class="flex shrink-0 items-center gap-1.5">
-												{#if rollout?.status?.source}
-													<Button
-														size="xs"
-														color="light"
-														class="!p-1.5"
-														title={`View ${getDisplayVersion(releaseCandidate)} on GitHub`}
-														aria-label={`View ${getDisplayVersion(releaseCandidate)} on GitHub`}
-														onclick={() => {
-															let url = rollout?.status?.source ?? '';
-															const ver = gitRef(releaseCandidate.revision, getDisplayVersion(releaseCandidate));
-															if (url.includes('github.com')) {
-																url = url.endsWith('/')
-																	? url + 'tree/' + ver
-																	: url + '/tree/' + ver;
-															} else if (url.includes('git@github.com:')) {
-																url =
-																	url.replace('git@github.com:', 'https://github.com/') +
-																	'/tree/' +
-																	ver;
-															} else if (url.includes('.git')) {
-																url = url.replace('.git', '') + '/tree/' + ver;
-															} else {
-																url = url.endsWith('/')
-																	? url + 'tree/' + ver
-																	: url + '/tree/' + ver;
-															}
-															window.open(url, '_blank');
-														}}
+													<button
+														type="button"
+														data-nb-toggle
+														aria-expanded={!!nbOpen['__run']}
+														class="nb-c-chev text-fg-subtle shrink-0 rounded-sm p-1"
 													>
-														<GithubSolid class="h-3.5 w-3.5" />
-													</Button>
-												{/if}
-												<!-- Was `Clipboard` with an icon-only snippet: a button
-												     with NO accessible name, nineteen of them on this
-												     page, that reported a blocked clipboard only to
-												     devtools. See `CopyButton.svelte`. -->
-												<CopyButton
-													value={releaseCandidate.tag}
-													label={`version ${getDisplayVersion(releaseCandidate)}`}
-													class="!p-1.5"
-												/>
-												{#if canModify}
-													<!--
-														⭐ F4: `size="sm"`, NOT `size="xs"`. (2026-09-03,
-														breakpoints pass) This is the one `.btn-primary`-weight
-														action in the release-candidate list — deploying a
-														build — and it was rendering SMALLER than every
-														secondary control on the page: measured 66×32px/12px
-														here against 38px/14px on `View on GitHub`, `Change
-														Version` and `Rollback` above (all `size="sm"`). A
-														primary action may not be the smallest control on its
-														own page. The row's icon-only siblings (`View on
-														GitHub`, copy) stay `xs` — they are utilities, not the
-														row's verb.
-													-->
-													<Button
-														size="sm"
-														color="blue"
-														aria-label={`Deploy version ${getDisplayVersion(releaseCandidate)}`}
-														disabled={(!isDashboardManagingWantedVersion &&
-														!hasForceDeployAnnotation(rollout)) ||
-														!!pendingAction}
-														onclick={() => {
-															selectedVersion = version;
-															const isCustom = isSelectedVersionCustom(version);
-															isPinVersionMode = isOlderThanCurrent(version) || isCustom;
-															deployExplanation = '';
-															requestChangeVersionModal();
-														}}
-													>
-														Deploy
-													</Button>
-												{/if}
-											</div>
-										</li>
-									{/each}
-								</ul>
-							{:else if !rollout.status?.releaseCandidates || rollout.status.releaseCandidates.length === 0}
-								<!-- (2026-09-03, from the human: "when there's no available version,
+														{#if nbOpen['__run']}
+															<ChevronUpOutline class="h-4 w-4" aria-hidden="true" />
+														{:else}
+															<ChevronDownOutline class="h-4 w-4" aria-hidden="true" />
+														{/if}
+														<span class="sr-only">{nbOpen['__run'] ? 'Hide' : 'Show'} actions for the running build</span>
+													</button>
+													<div class="nb-c-cause flex min-w-0 items-center">
+														<!-- r34 tabs-nb r3 (#7): the age column is the BUILD's (monotonic down the card); the
+														     header's "1h ago" is the DEPLOY's. When they differ the row says so, in its own
+														     slot, so one build never reads as two times. -->
+														{#if latestEntry.timestamp && latestEntry.version.created && formatTimeAgoCompact(latestEntry.timestamp, $now) !== formatTimeAgoCompact(latestEntry.version.created, $now)}
+															<div class="dot-list">
+																<div class="dot-list-row flex flex-wrap">
+																	<span class="t-meta text-fg-subtle">Running here</span>
+																	<span class="t-meta text-fg-subtle" title={`Deployed ${formatDate(latestEntry.timestamp)}`}
+																		>deployed {formatTimeAgoCompact(latestEntry.timestamp, $now)} ago</span
+																	>
+																</div>
+															</div>
+														{:else}
+															<span class="t-meta text-fg-subtle">Running here</span>
+														{/if}
+													</div>
+													{#if nbOpen['__run'] && githubConnected && runningBase && latestEntry.version.revision}
+														<div class="nb-c-changes t-meta">
+															<CommitSummary
+																{namespace}
+																{name}
+																{cluster}
+																base={runningBase}
+																head={latestEntry.version.revision}
+																showMessages
+																messagesMin={2}
+																rowAvatars
+																messageLimit={3}
+															/>
+														</div>
+													{/if}
+													<div class="nb-actions">
+														<span class="nb-act-icons">
+															{#if rollout?.status?.source}
+																<button
+																	type="button"
+																	class="btn btn-ghost btn-sm {nbOpen['__run'] ? '' : 'btn-icon'}"
+																	title={`View ${getDisplayVersion(latestEntry.version)} on GitHub`}
+																	aria-label={`View ${getDisplayVersion(latestEntry.version)} on GitHub`}
+																	onclick={() => {
+																		window.open(
+																			getGitHubUrl(
+																				getDisplayVersion(latestEntry.version),
+																				latestEntry.version.revision
+																			),
+																			'_blank'
+																		);
+																	}}
+																>
+																	<GithubSolid />{#if nbOpen['__run']}GitHub{/if}
+																</button>
+															{/if}
+															<CopyButton
+																value={latestEntry.version.tag}
+																label={`version ${getDisplayVersion(latestEntry.version)}`}
+																color="ghost"
+																size="sm"
+																text={nbOpen['__run'] ? 'Copy version' : undefined}
+															/>
+														</span>
+													</div>
+												</li>
+											{/if}
+										</ul>
+									{:else if newerBuilds.length === 0}
+										<!-- (2026-09-03, from the human: "when there's no available version,
 								     we don't display anything.") The header's rollup is the verdict;
 								     the body still has to say it in a sentence, or the card reads
 								     as a title with nothing under it. -->
-								<p class="t-dense px-4 py-3 text-gray-500 dark:text-gray-400">
-									No newer build to deploy right now. New builds appear here as the
-									registry publishes them.
-								</p>
-							{:else if isCurrentVersionCustom}
-								<div class="p-5">
-									<!--
-										INK ONLY, AND IT IS THE SECOND HALF OF THE SAME DEFECT. Flowbite's
-										`yellow` Alert paints `bg-yellow-100 text-yellow-500` in light and
-										`dark:bg-yellow-200 dark:text-yellow-600` in dark — the same 1.78:1 /
-										2.53:1 pair the missing-release banner was rebuilt out of. Leaving one
-										of the two behind is precisely the "minority spelling survives the
-										sweep" failure this pass exists to end.
-
-										The fill is light in BOTH themes here (Flowbite paints `dark:bg-yellow-200`),
-										so one ink serves both — but `yellow-700` on `yellow-200` is only
-										4.24:1, so the fill is pinned to `yellow-100` in dark as well and
-										`text-yellow-700` on `bg-yellow-100` is already the product's own
-										spelling for yellow ink on a yellow fill (`HealthChecksCard:111`,
-										`ResourcesCard` x4, the held-by-a-gate chip). Zero new colour values,
-										and the composition of this card is untouched.
-									-->
-									<Alert
-										color="yellow"
-										class="bg-yellow-100 text-yellow-700 dark:bg-yellow-100 dark:text-yellow-700"
-									>
-										<div class="flex items-center gap-3">
-											<InfoCircleSolid class="h-5 w-5" />
-											<span class="text-lg font-medium">Custom build</span>
-										</div>
-										<p class="mt-2 mb-4 text-sm">
-											The running build is not in this rollout's release list, so no rule here
-											vouches for it.
+										<p class="t-meta text-fg-subtle px-4 py-3">
+											No newer build to deploy right now. New builds appear here as the registry
+											publishes them.
 										</p>
-										<div class="flex gap-2">
-											<Button
-												size="xs"
-												color="light"
-												onclick={() => {
-													isPinVersionMode = true;
-													selectedVersion = null;
-													deployExplanation = '';
-													requestChangeVersionModal();
-												}}
-											>
-												<EditOutline class="me-2 h-4 w-4" />
-												Change Version
-											</Button>
+									{:else if isCurrentVersionCustom}
+										<!-- ⭐ MIGRATED TO THE DESIGN LANGUAGE'S `held` HUE, NOT
+								     `warning`. (2026-10-08) `warning`/amber is reserved for a
+								     STUCK rollout; this is "no rule here vouches for the
+								     running build", the same "not covered / waiting on a rule"
+								     family the pin banner above and the hero's `held` upgrade
+								     line already spend — one hue for the whole family instead
+								     of a second, unrelated yellow. -->
+										<div class="border-held-line bg-held-tint m-4 rounded-md border p-4">
+											<div class="flex items-center gap-3">
+												<InfoCircleSolid class="text-held h-5 w-5 shrink-0" />
+												<span class="t-heading text-held">Custom build</span>
+											</div>
+											<p class="t-body text-held mt-2 mb-4">
+												The running build is not in this rollout's release list, so no rule here
+												vouches for it.
+											</p>
+											<div class="flex gap-2">
+												<button
+													type="button"
+													data-tour="change-version"
+													class="btn btn-secondary btn-xs"
+													onclick={() => {
+														isPinVersionMode = true;
+														selectedVersion = null;
+														deployExplanation = '';
+														requestChangeVersionModal();
+													}}
+												>
+													<EditOutline />
+													Change version
+												</button>
+											</div>
 										</div>
-									</Alert>
-								</div>
-							{/if}
-							<!--
+									{/if}
+									<!--
 								⛔ THE `on the newest` EMPTY STATE — A CENTRED 32px CHECK PLUS
 								`Up to date — no upgrades available` IN A 40px-PADDED
 								BODY — USED TO RENDER HERE UNCONDITIONALLY IN THE FINAL
@@ -3459,9 +4678,10 @@
 								restatement does not. `heldByThis` and the pin banner above
 								are untouched — those are facts the header does not carry.
 							-->
+								</div>
+							</div>
 						</div>
-					</div>
-					<!--
+						<!--
 						⭐ THE RAIL'S FOUR CARDS RENDER IN THEIR FINAL ORDER FROM FIRST
 						PAINT, EACH ITS OWN `CardSkeleton` UNTIL ITS OWN SOURCE HAS
 						SETTLED. (2026-09-04, load-state audit finding 1: "The right
@@ -3487,56 +4707,46 @@
 						the tab strip one layer up, and for the identical reason: it can
 						only be answered once, not narrowed while waiting.
 					-->
-					<div class="flex flex-col gap-4">
-						{#if !managedResourcesKnown}
-							<CardSkeleton titleWidth="w-28" rows={1} rowHeight={36} />
-						{:else if datadogServiceInfo}
-							<div
-								class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-							>
-								<!-- ⭐ `min-h-[47px]`, LIKE EVERY OTHER CARD HEADER. (NIT,
+						<div class="flex flex-col gap-4">
+							{#if !managedResourcesKnown}
+								<CardSkeleton titleWidth="w-28" rows={1} rowHeight={36} />
+							{:else if datadogServiceInfo}
+								<div class="border-line bg-surface overflow-hidden rounded-md border">
+									<!-- ⭐ `min-h-[47px]`, LIKE EVERY OTHER CARD HEADER. (NIT,
 								     2026-09-03 re-check) This was a hand-rolled header with
 								     no height floor — 45px, against the 47px `Card.svelte`
 								     enforces everywhere else, because a header with no
 								     rollup measures a line box 2px shorter than one with a
 								     chip on it. Same fix `Card.svelte`'s own doc comment
 								     already made the rule for. -->
-								<div
-									class="flex min-h-[47px] items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700"
-								>
-									<ArrowUpRightFromSquareOutline class="h-4 w-4 text-gray-500 dark:text-gray-400" />
-									<h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-										External Links
-									</h2>
-								</div>
-								<div class="divide-y divide-gray-100 dark:divide-gray-700">
-									{#if datadogServiceInfo}
-										<a
-											href={datadogServiceInfo.url}
-											target="_blank"
-											rel="noopener noreferrer"
-											class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/30"
-										>
-											<!-- No ink class: the asset's fill is literal, not `currentColor` — the
+									<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
+										<ArrowUpRightFromSquareOutline class="text-fg-subtle h-4 w-4" />
+										<h2 class="t-card-title text-fg">External links</h2>
+									</div>
+									<div class="divide-line-subtle divide-y">
+										{#if datadogServiceInfo}
+											<a
+												href={datadogServiceInfo.url}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="hover:bg-hover flex items-center gap-3 px-4 py-3"
+											>
+												<!-- No ink class: the asset's fill is literal, not `currentColor` — the
 											     theme picks the official asset now (see `DatadogLogo`). -->
-											<DatadogLogo class="h-4 w-4 flex-shrink-0" />
-											<div class="min-w-0 flex-1">
-												<span class="text-sm text-gray-700 dark:text-gray-300"
-													>{datadogServiceInfo.service}</span
-												>
-												<span class="ml-1.5 text-xs text-gray-500 dark:text-gray-400"
-													>APM service</span
-												>
-											</div>
-											<ArrowUpRightFromSquareOutline
-												class="h-3 w-3 flex-shrink-0 text-gray-500 dark:text-gray-400"
-											/>
-										</a>
-									{/if}
+												<DatadogLogo class="h-4 w-4 flex-shrink-0" />
+												<div class="min-w-0 flex-1">
+													<span class="t-body text-fg">{datadogServiceInfo.service}</span>
+													<span class="t-meta text-fg-subtle ml-2">APM service</span>
+												</div>
+												<ArrowUpRightFromSquareOutline
+													class="text-fg-subtle h-3 w-3 flex-shrink-0"
+												/>
+											</a>
+										{/if}
+									</div>
 								</div>
-							</div>
-						{/if}
-						<!--
+							{/if}
+							<!--
 							⭐ `windowStart` IS `errorCutoff`, THE SAME OBJECT THAT ALREADY
 							DECIDES WHICH FAILURES THIS PANEL SHOWS — and the same
 							`max(deployedAt, lastRetryAt)` the rollout controller calls
@@ -3546,77 +4756,155 @@
 							panel cannot hide a failure on one rule and forget a recovery on
 							another.
 						-->
-						{#if !healthChecksKnown}
-							<CardSkeleton titleWidth="w-24" rows={2} rowHeight={28} />
-						{:else}
-							<HealthChecksCard healthChecks={visibleHealthChecks} windowStart={errorCutoff} />
-						{/if}
-						{#if !managedResourcesKnown}
-							<CardSkeleton titleWidth="w-20" rows={3} rowHeight={28} />
-						{:else}
-							<ResourcesCard
-								{kustomizations}
-								{ociRepositories}
-								{filteredManagedResources}
-								{cluster}
-							/>
-						{/if}
-						{#if !eventsKnown}
-							<CardSkeleton titleWidth="w-24" rows={1} rowHeight={36} />
-						{:else}
-							<EventsCard {events} deployedAt={errorCutoff} />
-						{/if}
+							{#if !healthChecksKnown}
+								<CardSkeleton titleWidth="w-24" rows={2} rowHeight={28} />
+							{:else}
+								<HealthChecksCard
+									healthChecks={visibleHealthChecks}
+									windowStart={errorCutoff}
+									emptyState
+								/>
+							{/if}
+							{#if !managedResourcesKnown}
+								<CardSkeleton titleWidth="w-20" rows={3} rowHeight={28} />
+							{:else}
+								<ResourcesCard
+									{kustomizations}
+									{ociRepositories}
+									{filteredManagedResources}
+									{cluster}
+								/>
+							{/if}
+							{#if !eventsKnown}
+								<CardSkeleton titleWidth="w-24" rows={1} rowHeight={36} />
+							{:else}
+								<EventsCard {events} deployedAt={errorCutoff} />
+							{/if}
+						</div>
 					</div>
 				</div>
-				</div>
 			{:else}
-				<!-- No deploy yet — minimal but informative empty state -->
-				<div class="mx-auto max-w-2xl py-6">
-					<div
-						class="flex flex-col items-center rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800"
-					>
-						<div
-							class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700"
-						>
-							<ClockSolid class="h-5 w-5 text-gray-500 dark:text-gray-400" />
-						</div>
-						<h2 class="text-base font-semibold text-gray-900 dark:text-white">No deploys yet</h2>
-						<p class="mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
-							{rollout.status?.title ?? rollout.metadata?.name} hasn't received its first deploy. Once
-							a version is selected and the controller deploys it, this page will fill in with the deployment
-							pipeline, health checks, and history.
-						</p>
-						{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}
-							<div class="mt-5 w-full">
-								<div
-									class="t-label text-left text-gray-500 dark:text-gray-400"
-								>
-									{rollout.status?.releaseCandidates?.length} newer build{rollout.status
-										?.releaseCandidates?.length === 1
-										? ''
-										: 's'}
-								</div>
-								<ul
-									class="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-700/60 dark:border-gray-700"
-								>
+				<!-- ⭐ NO DEPLOY YET — §3.15 EMPTY STATE, INSIDE THE CARD THAT WOULD HOLD
+				     THE CONTENT. (design rollout, 2026-10-08) Was a centred 2xl-radius
+				     shadowed island at max-w-2xl: a single-column page at 1440 with
+				     its own card grammar. Now the loaded page's own main + rail split
+				     (`.ov-split-cq`): the Deployment pipeline card, empty, says what
+				     will fill it; the rail lists the builds waiting to be picked in
+				     the Overview's "Newer builds" row grammar (mono build, time right). -->
+				<!-- The same page header the loaded page draws (name, env chip,
+				     Change version on the title line), so the first deploy is one
+				     press away and the page keeps its shape when it lands. -->
+				<PageHeader title={rollout.metadata?.name ?? ''} class="mb-6">
+					{#snippet titleAfter()}<StarToggle app={rollout.metadata?.name ?? name} class="self-center" />{/snippet}
+					{#snippet identity()}
+						{#if rolloutTheme}
+							<Chip
+								role="env"
+								theme={rolloutTheme}
+								label={shortEnvLabel(rolloutTheme) || rolloutTheme.label}
+								title={rolloutTheme.label}
+								wide
+							/>
+						{/if}
+					{/snippet}
+					{#snippet meta()}
+						<span class="text-fg-subtle">{namespace}</span>
+					{/snippet}
+					{#snippet actions()}
+						{#if canModify}
+							<button
+								type="button"
+								data-tour="change-version"
+								class="btn btn-primary"
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								onclick={() => {
+									if (isDashboardManagingWantedVersion) {
+										isPinVersionMode = false;
+										selectedVersion = null;
+										deployExplanation = '';
+										requestChangeVersionModal();
+									}
+								}}
+							>
+								<EditOutline />
+								Change version
+							</button>
+						{/if}
+					{/snippet}
+				</PageHeader>
+				<div class="ov-split-cq">
+					<div class="ov-split flex flex-col gap-4">
+						<section class="border-line bg-surface overflow-hidden rounded-md border">
+							<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
+								<ClockOutline class="text-fg-subtle h-4 w-4" aria-hidden="true" />
+								<h2 class="t-card-title text-fg">Deployment pipeline</h2>
+							</div>
+							<div class="flex flex-col items-start gap-1 px-4 py-6">
+								<ClockOutline class="text-fg-disabled mb-1 h-5 w-5" aria-hidden="true" />
+								<p class="t-ui text-fg">No deploys yet</p>
+								<p class="t-meta text-fg-subtle max-w-[320px]">
+									{rollout.status?.title ?? rollout.metadata?.name} hasn't received its first deploy.
+									Once a version is selected and the controller deploys it, this page will fill in with
+									the deployment pipeline, health checks, and history.
+								</p>
+							</div>
+						</section>
+						<section class="border-line bg-surface overflow-hidden rounded-md border">
+							<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
+								<CodeOutline class="text-fg-subtle h-4 w-4" aria-hidden="true" />
+								<h2 class="t-card-title text-fg">Newer builds</h2>
+								{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}<span
+										class="t-ui-sm text-fg-subtle ml-auto tabular-nums"
+										>{rollout.status?.releaseCandidates?.length} build{rollout.status
+											?.releaseCandidates?.length === 1
+											? ''
+											: 's'}</span
+									>{/if}
+							</div>
+							{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}
+								<ul class="divide-line-subtle divide-y">
 									{#each rollout.status?.releaseCandidates?.slice(0, 5) ?? [] as rc}
-										<li class="flex items-center justify-between px-3 py-2 text-left">
-											<span class="font-mono text-sm text-gray-800 dark:text-gray-200"
-												>{getDisplayVersion(rc)}</span
-											>
+										<li class="flex items-center justify-between gap-3 px-4 py-3">
+											<span class="t-code text-fg">{getDisplayVersion(rc)}</span>
 											{#if rc.created}
-												<span class="font-mono text-[10px] text-gray-500 dark:text-gray-400"
+												<span class="t-meta text-fg-subtle tabular-nums"
 													>{formatTimeAgoCompact(rc.created, $now)}</span
 												>
 											{/if}
 										</li>
 									{/each}
 								</ul>
-							</div>
-						{/if}
+							{:else}
+								<div class="flex flex-col items-start gap-1 px-4 py-6">
+									<CodeOutline class="text-fg-disabled mb-1 h-5 w-5" aria-hidden="true" />
+									<p class="t-ui text-fg">No builds yet</p>
+									<p class="t-meta text-fg-subtle max-w-[320px]">
+										Builds appear here as the registry publishes them.
+									</p>
+								</div>
+							{/if}
+						</section>
 					</div>
 				</div>
 			{/if}
+			<!-- ⭐ THE TOAST'S RESERVED CLEARANCE. See the doc comment beside
+			     `TOAST_DOCK_CLEARANCE` above and the one on `<Toast>` below —
+			     this is the whole fix now: `TOAST_DOCK_CLEARANCE` of empty
+			     space at the END of this page's own markup, which is the end
+			     of `<main>`'s scrollable content (the layout's own `<main>`
+			     renders nothing else). Scrolled to the bottom while a toast
+			     shows, the fixed dock lands on this reserved strip, never on
+			     `Health checks`, `Recent events`, or any other card — single
+			     column and two column alike, since the `.ov-split` grid's
+			     own height already follows its taller column. `aria-hidden`:
+			     it reserves layout space, nothing a reader needs announced.
+			     `transition-[height]` makes it collapse smoothly with the
+			     toast's own fade instead of yanking the scroll position. -->
+			<div
+				aria-hidden="true"
+				class="transition-[height] duration-200"
+				style="height: {showToast ? TOAST_DOCK_CLEARANCE : 0}px"
+			></div>
 		</div>
 	{/if}
 </div>
@@ -3644,6 +4932,8 @@
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;
+		toastDescription = '';
+		toastShowLogsAction = false;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
 		rolloutQuery.refetch();
@@ -3653,24 +4943,32 @@
 	onError={(m) => {
 		toastType = 'error';
 		toastMessage = m;
+		toastDescription = '';
+		toastShowLogsAction = false;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
 	}}
 />
 
-<ChangeVersionModal
+<!-- PALROW r8: the warning (when recovery applies) and the picker, mounted
+     together by the shared flow History mounts too. -->
+<ChangeVersionFlow
 	bind:open={showChangeVersionModal}
 	{rollout}
+	{cluster}
+	healthChecks={visibleHealthChecks}
 	{autoDeploy}
 	{isPinVersionMode}
 	initialSelectedVersion={selectedVersion}
 	initialExplanation={deployExplanation}
-	{cluster}
 	environmentName={environment?.spec?.environment ?? null}
+	{contractHeldVersions}
 	onDeployStart={beginPendingAction}
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;
+		toastDescription = '';
+		toastShowLogsAction = false;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
 		// The mutation is DONE now (unlike `onDeployStart`, which fires
@@ -3682,51 +4980,357 @@
 	onError={(m) => {
 		toastType = 'error';
 		toastMessage = m;
+		toastDescription = '';
+		toastShowLogsAction = false;
 		showToast = true;
 		setTimeout(() => (showToast = false), 3000);
 	}}
 />
 
-<RecoveryModeWarningModal
-	bind:open={showRecoveryWarningModal}
-	reason={recoveryWarningReason}
-	versionDisplay={selectedVersionDisplay()}
-	onContinue={() => {
-		showChangeVersionModal = true;
-	}}
+<!-- The toast's position is the shared Toast component's own house position
+     (bottom-right from `sm`, top under the header on a phone — see
+     `Toast.svelte`'s doc comment). This page's one addition is the
+     end-of-page `TOAST_DOCK_CLEARANCE` spacer above, so the rail's last rows
+     can scroll out from under a bottom-right toast at sm+. -->
+<!-- ⭐ ROUND 3, ITEM 13: the retry toast's one action, "View logs" — only
+     `retryDeployment` sets `toastShowLogsAction`, every other toast on this
+     page resets it, so this snippet renders only on the toast it was asked
+     for. -->
+{#snippet toastViewLogsAction()}
+	<a href={href(`/rollouts/${cluster}/${namespace}/${name}/logs`)} class="nav-link shrink-0"
+		>View logs</a
+	>
+{/snippet}
+<Toast
+	bind:open={showToast}
+	tone={toastLoading
+		? 'loading'
+		: toastType === 'success'
+			? 'success'
+			: toastType === 'info'
+				? 'info'
+				: 'danger'}
+	message={toastMessage}
+	description={toastDescription}
+	action={toastShowLogsAction ? toastViewLogsAction : undefined}
 />
 
-<Toast
-	transition={fly}
-	position="top-right"
-	params={{ x: 200 }}
-	class="fixed top-24 right-4 z-50 rounded-lg"
-	align={false}
-	bind:toastStatus={showToast}
-	color={toastLoading
-		? 'blue'
-		: toastType === 'success'
-			? 'green'
-			: toastType === 'info'
-				? 'gray'
-				: 'red'}
-	classes={{ icon: toastLoading ? '!bg-transparent' : '' }}
->
-	{#snippet icon()}
-		{#if toastLoading}
-			<StatusSpinner size="5" color="blue" />
-		{:else if toastType === 'success'}
-			<CheckCircleSolid class="h-5 w-5" />
-		{:else if toastType === 'info'}
-			<CheckCircleSolid class="h-5 w-5" />
-		{:else}
-			<ExclamationCircleSolid class="h-5 w-5" />
-		{/if}
-	{/snippet}
-	{toastMessage}
-</Toast>
-
 <style>
+	/* r34 tabs-nb r3 (#5): below 1024 the status badge (phone-only identity) leads the meta line, so the
+	   "N newer builds" fact right after it takes no separator dot (the `.contents` rule in language.css
+	   dots every fact; the badge is not a fact in a list, it is the line's lead). The 20px padding stays,
+	   so the glyph is never clipped when the fact wraps to a line start. */
+	@media (max-width: 1023px) {
+		.hdr-newer.hdr-newer.hdr-newer {
+			background-image: none;
+		}
+	}
+	/* r34 Newer builds ledger: History's spine (`lib/ledger-spine.ts` sets the vars). */
+	.nb-ledger {
+		position: relative;
+		isolation: isolate;
+	}
+	.nb-ledger::before {
+		content: '';
+		position: absolute;
+		left: var(--spine-x, 24px);
+		top: var(--spine-top, 0);
+		height: var(--spine-h, 0);
+		width: 1px;
+		background-color: var(--k-line-strong);
+		z-index: 1;
+		pointer-events: none;
+	}
+	/* TB10: the mark's 3px ring is the ROW's current background, not a hard-coded surface: a
+	   disc of padding painted with the surface plus the row's hover wash on top (the hover
+	   token is translucent, so a flat var() would cut the spine). */
+	.nb-mark {
+		position: relative;
+		z-index: 2;
+		display: inline-flex;
+		border-radius: 9999px;
+		padding: 3px;
+		margin: -3px;
+		background: linear-gradient(var(--nb-wash, transparent), var(--nb-wash, transparent)),
+			var(--k-surface);
+	}
+	/* TB15 (r4): the ROW paints the very same two-layer gradient as the ring (one composite,
+	   no transition), so the ring and the row are the same colour by construction. */
+	@media (hover: hover) {
+		.nb-ledger > li.nb-row:hover {
+			--nb-wash: var(--k-hover);
+			background: linear-gradient(var(--nb-wash), var(--nb-wash)), var(--k-surface);
+			transition: none;
+		}
+	}
+
+	/* ⭐ THE NEWER-BUILD ROW'S TRACKS (r34 tabs-nb round 3). ONE rule at every width:
+	   - the author's 16px face LEADS THE TITLE (it overlays the left 22px of the title cell; the login is
+	     the title attribute, never drawn: a row always has a title, not always a cause, so the face cannot
+	     lead the cause line without being absent from every cause-less row; text then starts at one x);
+	   - the cause sits under the title, on the title's x, and WRAPS (never truncates);
+	   - Deploy: ONE slot at every width, line 1 left of the age (44px hit box drawn by ::after): the
+	     newest's at rest; an older row's on hover/focus (wide: the cluster's first item starts in the same
+	     track) or once opened (touch), so the cause line never shares its width with a button.
+	   NARROW (< 32rem of card): line 1 = mark build [Deploy] age chevron; line 2 = title (<= 2 lines,
+	   build column to the chevron, 296px at 390); line 3 = the cause, full width, wrapping if it must.
+	   Padding 12/16, gaps 4/4.
+	   WIDE: line 1 = mark build title(1fr) deploy-slot age chevron; line 2 = the cause. */
+	.nb-row {
+		display: grid;
+		grid-template-columns: 16px var(--nb-build-w, 64px) minmax(0, 1fr) 36px 26px;
+		column-gap: 12px;
+		row-gap: 4px;
+		align-items: center;
+		padding: 12px 16px;
+		position: relative;
+		cursor: pointer;
+	}
+	.nb-c-mark {
+		grid-column: 1;
+		grid-row: 1;
+	}
+	.nb-build {
+		white-space: nowrap;
+		font-weight: 500;
+		text-align: left;
+		justify-self: start;
+	}
+	.nb-c-build {
+		grid-column: 2;
+		grid-row: 1;
+	}
+	.nb-c-age {
+		grid-column: 4;
+		grid-row: 1;
+		justify-self: end;
+		text-align: right;
+	}
+	/* History's chevron box: 26x26, a transparent border that resolves on hover; a 44x44 hit box is drawn
+	   by ::after (the visual box does not change, the row height does not change). */
+	.nb-c-chev {
+		grid-column: 5;
+		grid-row: 1;
+		position: relative;
+		margin-block: -4px;
+		border: 1px solid transparent;
+		cursor: pointer;
+		transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+	}
+	.nb-c-chev::after {
+		content: '';
+		position: absolute;
+		inset: -10px;
+	}
+	@media (hover: hover) {
+		.nb-row:hover .nb-c-chev {
+			color: var(--k-fg);
+			background: var(--k-surface);
+			border-color: var(--k-line);
+		}
+	}
+	.nb-c-chev:focus-visible {
+		color: var(--k-fg);
+		outline: 2px solid var(--k-accent, currentColor);
+		outline-offset: 0;
+	}
+	/* the cause (a flex run) under the title: wraps, never truncates */
+	.nb-c-cause {
+		grid-column: 2 / -1;
+		grid-row: 3;
+		margin: 0;
+	}
+	.nb-row:has(:global(.nb-c-author)) .nb-c-cause {
+		padding-left: 22px;
+	}
+	/* the cause's dot-list adds no vertical slack */
+	.nb-c-cause :global(.dot-list) {
+		margin: 0;
+		padding: 0 4px 0 0;
+	}
+	.nb-c-cause:not(:has(> :not(.sr-only))) {
+		display: none;
+	}
+	/* line 2 = the title, the build column to the chevron's, at most TWO lines (owner 2026-11-02: a
+	   Newer builds row keeps its PR/commit title at 390). Overrides the `truncate` the shared
+	   CommitSummary sets; the wide layout puts it back to one truncated line. */
+	.nb-ledger :global(.nb-c-title) {
+		grid-column: 2 / -1;
+		grid-row: 2;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		white-space: normal;
+		overflow: hidden;
+		overflow-wrap: anywhere;
+	}
+	.nb-row:has(:global(.nb-c-author)) :global(.nb-c-title) {
+		padding-left: 22px;
+	}
+	/* the author's 16px face, in the title cell's left 22px (centred on the title's first line, 20px) */
+	.nb-ledger :global(.nb-c-author) {
+		display: flex;
+		grid-column: 2;
+		grid-row: 2;
+		justify-self: start;
+		align-self: start;
+		margin-top: 2px;
+		z-index: 1;
+	}
+	.nb-c-deploy {
+		grid-column: 3;
+		grid-row: 1;
+		justify-self: end;
+		align-self: center;
+		margin-block: -6px;
+		z-index: 1;
+	}
+	/* the Deploy's tap target: a 44px-tall hit area drawn around the 28px button (it overlaps the
+	   gaps and padding, never changes the row's height) */
+	.nb-row :global(.nb-deploy-btn) {
+		position: relative;
+	}
+	.nb-row :global(.nb-deploy-btn)::after {
+		content: '';
+		position: absolute;
+		inset: -9px -6px;
+	}
+	/* the opened row: the change rows, then the actions */
+	.nb-c-changes {
+		grid-column: 2 / -1;
+		grid-row: 4;
+		margin-top: 4px;
+		min-width: 0;
+	}
+	.nb-actions {
+		display: none;
+		grid-column: 2 / -1;
+		grid-row: 5;
+		margin-top: 4px;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.nb-row[data-open] .nb-actions {
+		display: flex;
+	}
+	.nb-act-icons {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.nb-row:not([data-open]) .nb-act-icons :global(.btn) {
+		width: 28px;
+		height: 28px;
+		min-height: 28px;
+		padding: 0;
+	}
+	@container (min-width: 32rem) {
+		.nb-row {
+			grid-template-columns:
+				16px var(--nb-build-w, 64px) minmax(0, 1fr) var(--nb-dep-w, 62px) 60px
+				26px;
+		}
+		.nb-ledger[data-anyway] .nb-row {
+			--nb-dep-w: 116px;
+		}
+		.nb-ledger :global(.nb-c-author) {
+			grid-column: 3;
+			grid-row: 1;
+			align-self: center;
+			margin-top: 0;
+		}
+		.nb-ledger :global(.nb-c-title) {
+			grid-column: 3;
+			grid-row: 1;
+			display: block;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+		}
+		.nb-c-age {
+			grid-column: 5;
+		}
+		.nb-c-chev {
+			grid-column: 6;
+		}
+		.nb-c-cause {
+			grid-column: 3 / -1;
+			grid-row: 2;
+		}
+		/* wide: the Deploy slot is its own track, left of the age */
+		.nb-c-deploy {
+			grid-column: 4;
+			grid-row: 1;
+			justify-self: start;
+		}
+		.nb-c-changes {
+			grid-column: 3 / -1;
+			grid-row: 3;
+		}
+		/* Hover/focus actions REPLACE the age (TABS §4.13), in the same grid: an older row's cluster
+		   starts in the Deploy track (its Deploy is the first item, so it lands where the newest's rests)
+		   and runs over the age; the newest's cluster is just the icons over the age. Never at rest;
+		   hover-capable pointers only. */
+		.nb-actions {
+			display: flex;
+			grid-row: 1;
+			grid-column: 4 / 6;
+			justify-self: start;
+			align-self: center;
+			margin: -6px 0;
+			gap: 4px;
+			opacity: 0;
+			pointer-events: none;
+			z-index: 3;
+			transition: opacity 120ms ease;
+		}
+		.nb-row-newest .nb-actions {
+			grid-column: 5;
+			justify-self: end;
+		}
+		.nb-act-icons {
+			gap: 4px;
+			flex-wrap: nowrap;
+		}
+		.nb-actions :global(.nb-c-deploy-act) {
+			order: -1;
+			margin-right: 4px;
+		}
+		.nb-row[data-open] .nb-actions {
+			grid-column: 3 / -1;
+			grid-row: 4;
+			justify-self: stretch;
+			margin-top: 4px;
+			opacity: 1;
+			pointer-events: auto;
+		}
+	}
+	@media (hover: hover) {
+		@container (min-width: 32rem) {
+			.nb-row:not([data-open]):hover .nb-actions,
+			.nb-row:not([data-open]):focus-within .nb-actions {
+				opacity: 1;
+				pointer-events: auto;
+			}
+			.nb-row:not([data-open]):hover :global(.nb-rest),
+			.nb-row:not([data-open]):focus-within :global(.nb-rest) {
+				opacity: 0;
+			}
+			.nb-row :global(.nb-rest) {
+				transition: opacity 120ms ease;
+			}
+		}
+	}
+	@media (hover: none) {
+		@container (min-width: 32rem) {
+			.nb-row:not([data-open]) .nb-actions {
+				display: none;
+			}
+		}
+	}
+
 	/*
 	 * ⭐ F4: THE MAIN/RAIL SPLIT IS A CONTAINER QUERY. See the doc comment on
 	 * `.ov-split` in the markup for the measurement and the derivation of

@@ -19,7 +19,20 @@
 	let { events, deployedAt = null }: { events: any[]; deployedAt?: Date | null } = $props();
 
 	let showAllEvents = $state(false);
-	const visibleEvents = $derived(showAllEvents ? events : events.slice(0, 5));
+	/**
+	 * Newest first, by the event's own last timestamp (2026-09-26). The API
+	 * hands events over in whatever order the cluster listed them, and the
+	 * demo fixtures in creation order — so a card could read "25 minutes ago"
+	 * above "24 minutes ago" (film critic 24). A "Recent events" card that is
+	 * not in time order is not a recent-events card. Events without a usable
+	 * timestamp keep their incoming order at the end.
+	 */
+	const eventTime = (e: any): number => {
+		const t = Date.parse(e?.lastTimestamp ?? e?.eventTime ?? e?.firstTimestamp ?? '');
+		return Number.isNaN(t) ? -Infinity : t;
+	};
+	const sortedEvents = $derived([...events].sort((a, b) => eventTime(b) - eventTime(a)));
+	const visibleEvents = $derived(showAllEvents ? sortedEvents : sortedEvents.slice(0, 5));
 
 	/**
 	 * ⭐ THE IDENTIFIER WRAP. (2026-09-03, design pass 7, finding #2)
@@ -63,10 +76,10 @@
 		argument `/dependencies` makes for its own empty card.
 	-->
 	{#snippet rollup()}
-		<span class="text-xs text-gray-500 dark:text-gray-400">{events.length} event{events.length !== 1 ? 's' : ''}</span>
+		<span class="t-ui-sm text-fg-subtle">{events.length} event{events.length !== 1 ? 's' : ''}</span>
 	{/snippet}
 	{#if events.length === 0}
-		<p class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+		<p class="t-body px-4 py-3 text-fg-subtle">
 			{#if deployedAt}
 				Nothing since the deploy started · {formatTimeAgoCompact(deployedAt.toISOString(), $now)}
 			{:else}
@@ -74,28 +87,32 @@
 			{/if}
 		</p>
 	{:else}
-		<div class="divide-y divide-gray-100 dark:divide-gray-700">
+		<div class="divide-y divide-line-subtle">
 			{#each visibleEvents as event}
 				<!-- `{@const}`'s parent must be a block, never a nested element —
 				     computed here, at the `{#each}`'s own top, rather than three
 				     `<div>`s down beside the span that uses it. -->
 				{@const identParts_ = identParts(`${event.involvedObject?.kind ?? ''}/${event.involvedObject?.name ?? ''}`)}
-				<div class="flex items-start gap-3 px-4 py-2.5">
+				<div class="flex items-start gap-3 px-4 py-3">
 					{#if event.type === 'Warning'}
-						<ExclamationCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-700 dark:text-yellow-400" />
+						<ExclamationCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-danger" />
 					{:else}
-						<InfoCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+						<InfoCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-fg-subtle" />
 					{/if}
 					<div class="min-w-0 flex-1">
-						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-							<span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{event.reason}</span>
-							<span class="ident text-xs text-gray-500 dark:text-gray-400"
+						<!-- One line: reason, the object clamped, the time pinned right (AD
+						     round 2: long paths pushed the time to a ragged second line). -->
+						<div class="flex flex-wrap items-baseline gap-x-2">
+							<span class="t-ui-sm shrink-0 text-fg">{event.reason}</span>
+							<!-- Phone: the path takes its own truncated line under reason + time
+							     (AD round 3); inline from `sm`. -->
+							<span class="ident t-code-sm order-last min-w-0 basis-full truncate whitespace-nowrap text-fg-subtle sm:order-none sm:basis-auto sm:flex-1"
 								>{#each identParts_ as part, pi (pi)}{part}{#if pi < identParts_.length - 1}<wbr
 									/>{/if}{/each}</span
 							>
-							<span class="ml-auto text-xs text-gray-500 dark:text-gray-400">{formatTimeAgo(event.lastTimestamp, $now)}</span>
+							<span class="t-meta ml-auto shrink-0 tabular-nums text-fg-subtle">{formatTimeAgo(event.lastTimestamp, $now)}</span>
 						</div>
-						<p class="mt-0.5 text-xs text-gray-600 dark:text-gray-400">{event.message}</p>
+						<p class="t-meta mt-0.5 text-fg-muted">{event.message}</p>
 					</div>
 				</div>
 			{/each}
@@ -103,7 +120,7 @@
 		{#if events.length > 5}
 			<button
 				onclick={() => { showAllEvents = !showAllEvents; }}
-				class="w-full border-t border-gray-100 px-4 py-2 text-xs text-blue-600 hover:bg-gray-50 dark:border-gray-700 dark:text-blue-400 dark:hover:bg-gray-700/50"
+				class="t-ui-sm w-full border-t border-line-subtle px-4 py-2 text-accent-text hover:bg-hover"
 			>
 				{showAllEvents ? 'Show fewer' : `Show all ${events.length} events`}
 			</button>

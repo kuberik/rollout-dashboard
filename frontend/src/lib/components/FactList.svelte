@@ -52,15 +52,15 @@
 
 	const TONES: Record<Tone, { label: string; value: string; handle: string }> = {
 		card: {
-			label: 'text-gray-500 dark:text-gray-400',
-			value: 'text-gray-900 dark:text-white',
-			handle: 'text-gray-500 dark:text-gray-400'
+			label: 'text-fg-subtle',
+			value: 'text-fg',
+			handle: 'text-fg-subtle'
 		},
 		banner: { label: '', value: '', handle: '' },
 		alert: {
 			label: '',
-			value: 'text-gray-700 dark:text-gray-300',
-			handle: 'text-gray-700 dark:text-gray-300'
+			value: 'text-fg-muted',
+			handle: 'text-fg-muted'
 		}
 	};
 </script>
@@ -176,7 +176,7 @@
 								/>{/if}{/each}
 					</dd>
 				{:else}
-					<dd class="t-micro min-w-0 break-words {ink.value}">{f.value}</dd>
+					<dd class="t-meta min-w-0 break-words {ink.value}">{f.value}</dd>
 				{/if}
 			{/each}
 		</dl>

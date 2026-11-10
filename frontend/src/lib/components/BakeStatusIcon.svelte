@@ -1,12 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import EmptyGlyph from './EmptyGlyph.svelte';
+	import HeldGlyph from './HeldGlyph.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
-		PauseSolid,
 		CircleMinusSolid,
 		RefreshOutline,
 		UndoOutline,
@@ -90,10 +91,10 @@
 		 * ⛔ `'held'` ADDED 2026-09-02 — a THIRD, LOWER-PRECEDENCE STATE, same
 		 * reasoning as the two above. `rollout-cards.ts`'s `cardStateMark` only
 		 * returns it when neither `rolled-back` nor `pinned` already claimed
-		 * the slot: a newer build exists and no gate lets it through. Reuses
-		 * `PauseSolid` (already imported for `bakeStatus === 'None'`, a
-		 * disjoint branch of this same switch) rather than a new icon import —
-		 * "promotion paused" is the honest read and it costs nothing new.
+		 * the slot: a newer build exists and no gate lets it through. Drawn
+		 * as `HeldGlyph` (a gate — a rule is holding it; nothing "paused"
+		 * it). `bakeStatus === 'None'` is a different fact (nothing deployed)
+		 * and draws `EmptyGlyph`, a dashed ring (design language, 2026-10-08).
 		 */
 		state?: 'rolled-back' | 'pinned' | 'held' | null;
 		/** The word for `sr-only`, when `state` is set. */
@@ -129,14 +130,14 @@
 	const sizeClasses = {
 		chip: 'h-3 w-3',
 		small: 'h-4 w-4',
-		medium: 'h-6 w-6',
+		medium: 'h-5 w-5',
 		large: 'h-8 w-8'
 	};
 
-	const spinnerSizes: Record<'chip' | 'small' | 'medium' | 'large', '3' | '4' | '6' | '8'> = {
+	const spinnerSizes: Record<'chip' | 'small' | 'medium' | 'large', '3' | '4' | '5' | '8'> = {
 		chip: '3',
 		small: '4',
-		medium: '6',
+		medium: '5',
 		large: '8'
 	};
 
@@ -151,18 +152,18 @@
 	// contrast fix — by the InProgress bake mark's `currentColor`, so the
 	// running bake and the settled bake print the same yellow.
 	const TONE: Record<string, string> = {
-		green: 'text-green-700 dark:text-green-400',
-		red: 'text-red-700 dark:text-red-400',
-		yellow: 'text-yellow-700 dark:text-yellow-400',
-		blue: 'text-blue-700 dark:text-blue-400',
-		gray: 'text-gray-500 dark:text-gray-400',
+		green: 'text-success',
+		red: 'text-danger',
+		yellow: 'text-progress',
+		blue: 'text-active',
+		gray: 'text-fg-subtle',
 		// ⭐ THE GLYPH'S INK MOVES WITH THE FILL NOW. (2026-09-02, disc
 		// histogram pass) `held` sits on `getStatusCircleClass`'s new
 		// `orange-100`/`orange-950/70` field, so a green-700 pause glyph
 		// would sit on an orange ground — the SAME ink `Chip`'s `rank` role
 		// (`N behind`) already prints on its own `orange-100` block, reused
 		// verbatim rather than picked again.
-		orange: 'text-orange-950 dark:text-orange-300'
+		orange: 'text-held'
 	};
 
 	function getStatusConfig(status?: string) {
@@ -186,7 +187,8 @@
 				// tint here).
 				if (state === 'rolled-back') return { icon: UndoOutline, color: TONE.gray };
 				if (state === 'pinned') return { icon: LockSolid, color };
-				if (state === 'held') return { icon: PauseSolid, color: TONE.orange };
+				// Held is a gate, not a pause (design language, owner 2026-10-08).
+				if (state === 'held') return { icon: HeldGlyph, color: TONE.orange };
 				return { icon: CheckCircleSolid, color };
 			case 'Failed':
 				return { icon: ExclamationCircleSolid, color };
@@ -197,7 +199,7 @@
 			case 'Cancelled':
 				return { icon: CircleMinusSolid, color };
 			case 'None':
-				return { icon: PauseSolid, color };
+				return { icon: EmptyGlyph, color };
 			default:
 				return { icon: ClockSolid, color };
 		}

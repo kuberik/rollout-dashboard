@@ -19,6 +19,15 @@ export interface PodInfo {
 	name: string;
 	namespace: string;
 	type: string; // "pod" or "test"
+	// ⭐ OPTIONAL, ADDITIVE (AD round 2, logs: "12m · 0 restarts when the
+	// payload has them; when it doesn't, show only the age you can know").
+	// The live backend does not send these yet — this is forward
+	// compatibility only, so a payload missing them (every real one,
+	// today) stays exactly as honest as before. `ageSeconds` is the pod's
+	// own age, not "time since this view opened"; `restarts` is its
+	// current restart count.
+	ageSeconds?: number;
+	restarts?: number;
 }
 
 export interface LogsStreamData {

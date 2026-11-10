@@ -148,7 +148,25 @@ export const SURFACES: readonly Surface[] = [
 		'routes/apps/[name]/+page.svelte',
 		['app'],
 		[],
-		'The page is one app. Every sentence still has to name its environment.'
+		'The page is one app. Every sentence still has to name its environment.',
+		// ⭐ THE SAME EXEMPTION `/apps` ALREADY HAS, FOR THE SAME MECHANISM
+		// (TL review round 3). `/apps`'s own comment above already says it:
+		// "the SAME function `/apps/[name]`'s banner already ships" —
+		// `blockingStory`'s `pluralSubject` reads `All 3 environments are
+		// waiting on…` when one cause holds every environment identically,
+		// and that sentence deliberately names no single tier. The exemption
+		// was never mirrored here, which stayed invisible while this page's
+		// own `stuckFor` over-fired on promotion/gate causes (QA4 blocker A)
+		// and intercepted most of them before `bannerStory` ever rendered
+		// the aggregate form. Narrowing `stuckFor` to `detectStuck` alone
+		// surfaces the gap `/apps` already closed. The SUBSET case (`> 1`
+		// but not all) still names the tiers verbatim and stays under full
+		// check; only the "every environment" branch is exempted.
+		{
+			'blocking headline': ['environment'],
+			'blocking consequence': ['environment'],
+			'blocking verdict': ['environment']
+		}
 	),
 	surface(
 		'/environments',
@@ -191,7 +209,15 @@ export const SURFACES: readonly Surface[] = [
 		'routes/activity/+page.svelte',
 		[],
 		[],
-		'A cross-fleet feed. Nothing is fixed.'
+		'A cross-fleet feed. Nothing is fixed.',
+		// ⭐ ONE ROW PER RELEASE (round 5 review, 2026-10-09, design-rollout
+		// ruling): a release row enumerates its environments ("dev · staging
+		// · 4 prod regions"), by design — the subject of that sentence is
+		// app + release, not one environment. Scoped to this ONE claim, not
+		// a page-wide exemption: `activityKindOf`-driven rows still name a
+		// single environment whenever a release only reached one place, and
+		// every OTHER claim on this surface still has to name its own place.
+		{ 'deploy state word': ['environment'] }
 	),
 	surface(
 		'/revisions',

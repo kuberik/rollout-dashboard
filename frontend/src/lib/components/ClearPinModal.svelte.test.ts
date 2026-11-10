@@ -62,17 +62,22 @@ function devRollout(over: Record<string, unknown> = {}): Rollout {
 }
 
 describe('defect 2 — Clear Version Pin names the environment it acts on', () => {
-	test("title and body both name the environment, in the product's own case", () => {
+	test("title and body both name the environment, as written — never uppercase", () => {
+		// ⭐ ROUND 2 (2026-10-08, design review 4): environment identity is
+		// drawn ONE way everywhere — the name AS WRITTEN (principle 11).
+		// `.toUpperCase()` on the dialog's own `envLabel` broke that; this
+		// fixture's `dev` must print `dev`, not `DEV`.
 		render(ClearPinModal, { open: true, rollout: devRollout() });
 
 		// The title — a reader deciding whether to press has the answer before
 		// reading the body.
-		expect(screen.getByText('Clear the pin on hello-world-app in DEV?')).toBeInTheDocument();
-		// The body repeats it as a fact, not just in the heading.
-		expect(screen.getByText('DEV', { selector: 'strong' })).toBeInTheDocument();
+		expect(screen.getByText('Clear the pin on hello-world-app in dev?')).toBeInTheDocument();
+		// The body repeats it as a fact, not just in the heading. Emphasis is
+		// colour (`text-fg`), never weight — no `<strong>` any more.
+		expect(screen.getByText('dev', { selector: 'span' })).toBeInTheDocument();
 	});
 
-	test('a different environment on the same rollout shape says so, not "DEV" by accident', () => {
+	test('a different environment on the same rollout shape says so, not "dev" by accident', () => {
 		render(ClearPinModal, {
 			open: true,
 			rollout: devRollout({
@@ -84,8 +89,8 @@ describe('defect 2 — Clear Version Pin names the environment it acts on', () =
 			})
 		});
 
-		expect(screen.getByText('Clear the pin on hello-world-app in PROD?')).toBeInTheDocument();
-		expect(screen.queryByText(/in DEV\?/)).not.toBeInTheDocument();
+		expect(screen.getByText('Clear the pin on hello-world-app in prod?')).toBeInTheDocument();
+		expect(screen.queryByText(/in dev\?/)).not.toBeInTheDocument();
 	});
 
 	test('a spoke cluster name rides along, for the ambiguous case', () => {
@@ -112,7 +117,7 @@ describe('defect 2 — Clear Version Pin names the environment it acts on', () =
 	});
 
 	test('cluster equal to the environment word, different case: still no stutter', () => {
-		render(ClearPinModal, { open: true, rollout: devRollout(), cluster: 'DEV' });
+		render(ClearPinModal, { open: true, rollout: devRollout(), cluster: 'DEV' });  // cluster names stay whatever case the caller gives
 
 		expect(screen.queryByText(/on the .* cluster/)).not.toBeInTheDocument();
 	});
@@ -136,10 +141,10 @@ describe('the dialog has role="dialog", aria-modal and a labelled name', () => {
 		expect(dialog, 'no <dialog> rendered').not.toBeNull();
 		expect(dialog?.getAttribute('role')).toBe('dialog');
 		expect(dialog?.getAttribute('aria-modal')).toBe('true');
-		// `title` renders flowbite's own `<h3>`, which has no `id` for
+		// The dialog's own header (`<h2>`, §3.14) has no `id` for
 		// `aria-labelledby` to reference — `aria-label` gives the dialog an
 		// accessible name directly, and it is the same words the visible
-		// `<h3>` shows, verbatim.
-		expect(dialog?.getAttribute('aria-label')).toBe('Clear the pin on hello-world-app in DEV?');
+		// header shows, verbatim.
+		expect(dialog?.getAttribute('aria-label')).toBe('Clear the pin on hello-world-app in dev?');
 	});
 });

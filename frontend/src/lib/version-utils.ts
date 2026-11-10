@@ -3,6 +3,17 @@ import { getDisplayVersion, shortenVersion } from './utils';
 import { rolloutMatchesEnvironment, sourceClusterName, sourceDashboardURL } from './source-dashboard';
 import { getRolloutEnvironmentTheme, type EnvironmentTheme } from './environment-theme';
 import { compareEnvironmentNames } from './env-order';
+import { href } from './paths';
+import type { WaveRole } from '../types/environment-types';
+import {
+	canonicalTier,
+	placeKeyOf,
+	roleOf,
+	siteOf,
+	waveOf,
+	waveReady,
+	type Tier
+} from './view-models/sites-waves';
 
 // Collapse the many shapes `status.source` can take (https URL, ssh URL,
 // trailing .git/slash, mixed case) down to one comparable string, so the
@@ -104,7 +115,7 @@ export function repoSlug(repoKey: string): string {
 // (2026-09-03, vocabulary pass) `/versions` renamed to `/revisions` — see
 // `src/routes/versions/+page.ts`, which now redirects the old address here.
 export function versionPath(repoKey: string, version: string): string {
-	return `/revisions/${repoSlug(repoKey)}/${encodeURIComponent(version)}`;
+	return href(`/revisions/${repoSlug(repoKey)}/${encodeURIComponent(version)}`);
 }
 
 // ── REVISION IS THE IDENTITY, THE LABEL IS ONLY A NAME FOR IT ────────────
@@ -130,12 +141,31 @@ export function versionPath(repoKey: string, version: string): string {
  * `core.abbrev` on a large repo. The page still DISPLAYS 7; only the URL
  * carries the longer form, and the detail page resolves any prefix.
  */
+/**
+ * A real git revision is HEX. `revisionSlug`/`shortRevision` both exist to
+ * shorten exactly that shape — when `revision-ledger.ts`'s own `releasesByKey`
+ * has no `b.revision` annotation to key by, it falls back to `b.version` (a
+ * semver-ish label like `4.43.0-43`), and that string rides through every
+ * caller that holds a "revision" as if it were one. U-16 (2026-10-08, polish
+ * pass): `shortRevision('4.43.0-43')` blindly sliced to the first 7
+ * characters — `'4.43.0-'`, a trailing dash with the digits after it cut off
+ * — and that truncated label became the change page's own `h1` and
+ * `<title>`. Neither helper should touch a string that is not actually hex;
+ * a label's own shortening (if any) belongs to `shortenVersion`, not here.
+ */
+function looksLikeHexRevision(s: string): boolean {
+	return /^[0-9a-f]+$/i.test(s);
+}
+
 export function revisionSlug(revision: string): string {
+	if (!looksLikeHexRevision(revision)) return revision;
 	return revision.length > 12 ? revision.slice(0, 12) : revision;
 }
 
-/** Short display form. Seven characters, everywhere the sha is shown. */
+/** Short display form. Seven characters, everywhere the sha is shown — but
+ *  only for a real hex revision; see `looksLikeHexRevision`'s doc above. */
 export function shortRevision(revision: string): string {
+	if (!looksLikeHexRevision(revision)) return revision;
 	return revision.length > 7 ? revision.slice(0, 7) : revision;
 }
 
@@ -176,7 +206,7 @@ export function displayVersionForTag(
 
 /** Single source of truth for linking to a revision's detail page. */
 export function revisionPath(repoKey: string, revision: string): string {
-	return `/revisions/${repoSlug(repoKey)}/${encodeURIComponent(revisionSlug(revision))}`;
+	return href(`/revisions/${repoSlug(repoKey)}/${encodeURIComponent(revisionSlug(revision))}`);
 }
 
 // ── THE `/changes` PATH HELPERS ──────────────────────────────────────────
@@ -193,7 +223,7 @@ export function revisionPath(repoKey: string, revision: string): string {
 
 /** `/changes/<repoSlug>` — the repo's own page (§3, "KEPT, as `/changes/<repo>`"). */
 export function changeRepoPath(repoKey: string): string {
-	return `/changes/${repoSlug(repoKey)}`;
+	return href(`/changes/${repoSlug(repoKey)}`);
 }
 
 /**
@@ -209,7 +239,7 @@ export function changeBuildPath(
 	version: string
 ): string {
 	const key = revision ? revisionSlug(revision) : version;
-	return `/changes/${repoSlug(repoKey)}/${encodeURIComponent(key)}`;
+	return href(`/changes/${repoSlug(repoKey)}/${encodeURIComponent(key)}`);
 }
 
 // ── THE MARK'S FAMILY WORD ───────────────────────────────────────────────
@@ -238,25 +268,38 @@ const FAMILY_PATTERNS: { key: EnvFamilyKey; pattern: RegExp }[] = [
 	{ key: 'test', pattern: /test|qa|qe|integration/i }
 ];
 
+/**
+ * ⭐ (2026-10-08, U-13 vocabulary fix) THE FULL FAMILY NAME, NEVER AN
+ * ABBREVIATION. This used to be `STG`/`PRD` — a THIRD spelling for staging/
+ * prod beside the chips' own `STAGING`/`PROD` (Home, Rollouts) and whatever
+ * the environment's own name literally is. The canonical vocabulary (TL
+ * ruling, `lib/CLAUDE.md`'s dated addition) retires every environment-name
+ * abbreviation: uppercase, full word, everywhere a family is drawn —
+ * `DEV`/`STAGING`/`PROD`/`TEST`. Every caller (`landing-grid.ts`'s marks,
+ * `ChangeLine.svelte`'s meter, `PipelineRow.svelte`'s row label,
+ * `PipelineCard.svelte`'s prod/non-prod split) reads this one word, so the
+ * rename is this one map, not per-caller surgery.
+ */
 const FAMILY_WORD: Record<EnvFamilyKey, string> = {
 	dev: 'DEV',
-	staging: 'STG',
-	prod: 'PRD',
+	staging: 'STAGING',
+	prod: 'PROD',
 	test: 'TEST'
 };
 
 /**
  * The mark's family word for an environment name. No preset match → the
- * environment's own first three letters (alphabetic characters only),
- * uppercased — still named in full in the mark's `title`, never silently
+ * environment's own name, uppercased, UNABBREVIATED (no 3-letter
+ * truncation — see this function's own fix-pass note above; the previous
+ * "first three letters" fallback was itself a silent abbreviation this pass
+ * retires) — still named in full in the mark's `title` too, never silently
  * dropped.
  */
 export function envFamilyWord(envName: string): string {
 	for (const { key, pattern } of FAMILY_PATTERNS) {
 		if (pattern.test(envName)) return FAMILY_WORD[key];
 	}
-	const letters = envName.replace(/[^a-zA-Z]/g, '');
-	return (letters || envName).slice(0, 3).toUpperCase();
+	return envName.toUpperCase();
 }
 
 /**
@@ -323,7 +366,21 @@ export function changePathForRollout(
 }
 
 export type AppCell = {
+	/**
+	 * The PLACE this cell is (`placeKey`): the tier while the tier has at most
+	 * one live site, `${tier}-${site}` once it has several. Identity and the
+	 * label come from here; order and filters use `tier`.
+	 */
 	envName: string;
+	/** Canonical tier (dev/test/staging/prod), null for a name that cannot be placed or an unbound rollout. */
+	tier: Tier | null;
+	/** The site, null for an unbound rollout. */
+	site: string | null;
+	wave: number | null;
+	/** Reported role (Leader/Follower), null before the first reconcile or when unbound. */
+	role: WaveRole | null;
+	/** WaveReady: true/false, or null when the controller reported none. */
+	ready: boolean | null;
 	environment: Environment | null;
 	rollout: Rollout;
 	theme: EnvironmentTheme | null;
@@ -348,14 +405,30 @@ export function groupRolloutsByApp(
 	environments: Environment[]
 ): Map<string, AppGroup> {
 	const groups = new Map<string, AppGroup>();
-	const boundAppNames = new Set<string>();
+	// ⛔ U-12 (2026-10-08, stuck lane, cross-lane coordination with
+	// `routes/apps/+page.svelte` and `routes/environments/+page.svelte`'s
+	// unbound-rollout counts — messaged to the owning IC, see commit).
+	// TRACKS BOUND ROLLOUT INSTANCES, NOT APP NAMES. The fallback loop below
+	// used to skip any rollout whose NAME had EVER been bound to an
+	// environment ANYWHERE in the fleet (`boundAppNames.has(name)`), so a
+	// second, unrelated rollout sharing that name — a fixture in a
+	// different namespace, e.g. `orders-prod/orders-api` beside the real
+	// `orders-api-dev/staging/prod` fleet app — vanished from this map
+	// entirely: not bound (no `Environment` actually matches IT), and not
+	// counted as unbound either (its name read as "already bound" to the
+	// loop below). Measured live: `/rollouts?unlinked=1` lists 6 rollouts
+	// with no Environment record; `/apps` and `/environments` both read 5,
+	// because this one never got a cell in either branch. Tracking the
+	// ROLLOUT OBJECT each `Environment` actually resolved to (rather than
+	// the name it asked for) is the precise fact the fallback loop needs.
+	const boundRollouts = new Set<Rollout>();
 
 	for (const env of environments) {
 		const appName = env.spec?.rolloutRef?.name;
 		if (!appName) continue;
-		boundAppNames.add(appName);
 		const rollout = rollouts.find((r) => rolloutMatchesEnvironment(r, env));
 		if (!rollout) continue;
+		boundRollouts.add(rollout);
 		let group = groups.get(appName);
 		if (!group) {
 			group = { appName, hasEnvironmentBinding: true, cells: [] };
@@ -363,10 +436,19 @@ export function groupRolloutsByApp(
 		}
 		const repoKey = repoKeyFor(rollout, appName);
 		group.cells.push({
-			envName: env.spec?.environment || '',
+			envName: env.spec?.environment ? placeKeyOf(env, environments) : '',
+			tier: canonicalTier(env.spec?.environment),
+			site: siteOf(env),
+			wave: waveOf(env),
+			role: roleOf(env),
+			ready: waveReady(env).ready,
 			environment: env,
 			rollout,
-			theme: getRolloutEnvironmentTheme(rollout, env),
+			theme: getRolloutEnvironmentTheme(
+				rollout,
+				env,
+				env.spec?.environment ? placeKeyOf(env, environments) : null
+			),
 			sourceURL: sourceDashboardURL(env),
 			sourceCluster: sourceClusterName(env),
 			repoKey,
@@ -375,10 +457,14 @@ export function groupRolloutsByApp(
 	}
 
 	// Fallback: rollouts with no Environment binding at all — group by rollout
-	// name, one cell per namespace it appears in.
+	// name, one cell per namespace it appears in. Skips only a rollout
+	// INSTANCE this function already placed above — a same-named rollout
+	// that got no cell of its own still reaches here and falls into the
+	// bound group under that name, `environment: null`, correctly flagged
+	// as the one thing about it this page cannot show.
 	for (const rollout of rollouts) {
 		const name = rollout.metadata?.name;
-		if (!name || boundAppNames.has(name)) continue;
+		if (!name || boundRollouts.has(rollout)) continue;
 		let group = groups.get(name);
 		if (!group) {
 			group = { appName: name, hasEnvironmentBinding: false, cells: [] };
@@ -387,6 +473,11 @@ export function groupRolloutsByApp(
 		const repoKey = repoKeyFor(rollout, name);
 		group.cells.push({
 			envName: rollout.metadata?.namespace || '',
+			tier: null,
+			site: null,
+			wave: null,
+			role: null,
+			ready: null,
 			environment: null,
 			rollout,
 			theme: getRolloutEnvironmentTheme(rollout),

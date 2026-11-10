@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './styles/language.css';
 
 @plugin 'flowbite/plugin';
 
@@ -8,29 +9,18 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-	--color-primary-50: #fff5f2;
-	--color-primary-100: #fff1ee;
-	--color-primary-200: #ffe4de;
-	--color-primary-300: #ffd5cc;
-	--color-primary-400: #ffbcad;
-	--color-primary-500: #fe795d;
-	--color-primary-600: #ef562f;
-	--color-primary-700: #eb4f27;
-	--color-primary-800: #cc4522;
-	--color-primary-900: #a5371b;
-
-	--color-secondary-50: #f0f9ff;
-	--color-secondary-100: #e0f2fe;
-	--color-secondary-200: #bae6fd;
-	--color-secondary-300: #7dd3fc;
-	--color-secondary-400: #38bdf8;
-	--color-secondary-500: #0ea5e9;
-	--color-secondary-600: #0284c7;
-	--color-secondary-700: #0369a1;
-	--color-secondary-800: #075985;
-	--color-secondary-900: #0c4a6e;
-
-	--font-montserrat: 'Montserrat', sans-serif;
+	/* Flowbite's `primary-*` IS the one accent (blue), so a Flowbite control can
+	   never introduce a second brand colour. Was an orange ramp nothing chose. */
+	--color-primary-50: var(--color-blue-50);
+	--color-primary-100: var(--color-blue-100);
+	--color-primary-200: var(--color-blue-200);
+	--color-primary-300: var(--color-blue-300);
+	--color-primary-400: var(--color-blue-400);
+	--color-primary-500: var(--color-blue-500);
+	--color-primary-600: var(--color-blue-600);
+	--color-primary-700: var(--color-blue-700);
+	--color-primary-800: var(--color-blue-800);
+	--color-primary-900: var(--color-blue-900);
 }
 
 @source "../node_modules/flowbite-svelte/dist";
@@ -47,13 +37,7 @@
    toward this token, not six different rings. Unlayered so `html.dark`'s
    redefinition (specificity 0,1,1) beats `:root`'s (0,1,0) regardless of
    source order, exactly like the two rules this replaces did. */
-:root {
-	--focus-ring-color: var(--color-blue-500);
-}
-
-html.dark {
-	--focus-ring-color: var(--color-blue-400);
-}
+/* `--focus-ring-color` now lives in styles/language.css (`--k-focus`). */
 
 /* ═══════════════════════════════════════════════════════════════════════
    THE DOCUMENT SCROLLS. (2026-09-03, scroll model rewrite)
@@ -212,7 +196,7 @@ html.scroll-locked {
 	   element that names no colour at all. Measured before/after across the
 	   twelve audited pages: zero elements changed colour. */
 	html.dark {
-		color: var(--color-gray-100);
+		color: var(--k-fg);
 	}
 
 	button,
@@ -289,18 +273,38 @@ textarea {
 	hyphens: none;
 }
 
+/* ⛔ AN UNTHEMED SCOPE IS NEUTRAL, NOT BLUE (design rollout, 2026-10-08).
+   These defaults apply to an environment with no theme (no preset match, no
+   annotation: `platform-prod`, `orders-prod` in the demo). They used to be
+   blue-600 — the DEPLOYING hue — so every unknown environment's identity dot
+   read as "in motion" (principle 11: identity never wears a status hue). The
+   neutral ramp instead: the dot is the subtle ink, the chip edge a line. */
 .environment-theme-scope {
-	--rollout-theme-accent: #2563eb;
-	--rollout-theme-text: #1d4ed8;
-	--rollout-theme-border: #bfdbfe;
-	--rollout-theme-surface: #eff6ff;
-	--rollout-theme-dark-surface: #172554;
-	--rollout-theme-dark-text: #93c5fd;
-	--rollout-theme-dark-border: #1e40af;
+	--rollout-theme-accent: var(--k-fg-subtle);
+	--rollout-theme-text: var(--k-fg-muted);
+	--rollout-theme-border: var(--k-line-strong);
+	--rollout-theme-surface: var(--k-subtle);
+	--rollout-theme-dark-surface: var(--k-subtle);
+	--rollout-theme-dark-text: var(--k-fg-muted);
+	--rollout-theme-dark-border: var(--k-line-strong);
 }
 
+/* ⛔ U-35 — PAINTS WITH THE BORDER STEP, NOT THE SEED. (2026-10-08.) This
+   used to read `var(--rollout-theme-accent)` — the raw seed, full strength
+   (`#d97706` on prod) — across a solid 4px bar on every rollout page in that
+   environment. Amber at seed strength is this product's one alarm colour
+   (`stuck`), so a healthy prod page opened with a warning-coloured bar for
+   no reason. `--rollout-theme-border` is the SAME hue family, already
+   chosen several steps quieter (see `environment-theme.ts`'s own note on
+   this), and is what the chip's own border already paints with — this just
+   gives the stripe the quieter member of the pair instead of the loud one.
+   The seed itself (`--rollout-theme-accent`) is untouched and still reaches
+   every other consumer unchanged. */
 .environment-theme-accent {
-	background-color: var(--rollout-theme-accent);
+	background-color: var(--rollout-theme-border);
+}
+.dark .environment-theme-accent {
+	background-color: var(--rollout-theme-dark-border);
 }
 
 .environment-theme-text {
@@ -474,262 +478,92 @@ textarea {
 	animation: gradient-rotate 3s linear infinite;
 }
 
-/* ⭐ THE ALERT BANNER'S HALO — FULL-SIZE `ping`, AND THE ICON MOVED TO FIT IT.
-   Used by `AlertPanel` when `pulse` is set, and by nothing else.
+/* ⭐ THE ALERT BANNER'S HALO MOVED, AND ITS SCALE IS NO LONGER `2`.
+   (2026-10-08, D-2, reopened twice.) This rule -- `.animate-alert-halo` /
+   `@keyframes alert-halo`, `ping` value for value at `scale(2)` (an 80px
+   peak off the 40px icon disc) -- lived here because `AlertPanel.svelte`
+   was its only caller and a product-wide animation utility was assumed to
+   belong in the shared stylesheet. It had zero OTHER callers the whole
+   time (reverified by grep before deleting), so "shared" bought nothing.
 
-   ── THE DEFECT, MEASURED AT 390 ON THE ROLLOUT-DETAIL GATE BANNER ────────
-   From the human: *"the alert banner pulse effect sometimes goes out of border
-   because icon feels positioned too high. this is specially the case on
-   mobile."* Measured with `getBoundingClientRect` on the running page:
+   Two measured passes found the 40px clearance this rule's own geometry
+   analysis used to assume is NOT what the live page renders (closer to
+   36px once padding/border/sub-pixel layout resolve), which put the ring
+   a few px past the panel at `scale(2)` and still touching it -- an exact
+   tangent -- at `scale(1.8)`. The surviving value, `scale(1.6)`, is
+   `AlertPanel.svelte`'s own `.ap-halo-ring` / `@keyframes ap-halo-ping`
+   now, scoped to the one component that uses it, so the NEXT pass reaches
+   for the current, fitted amplitude instead of finding a wider dead rule
+   on the shelf and reviving the defect by accident. See that component
+   for the current numbers and the full history of this finding -- the
+   geometry method this comment used to carry (sampling the halo's
+   perimeter against the true rounded-rect corner, 3600 ways) is preserved
+   there too, just re-run at the new scale. */
 
-     halo centre       28px below the panel's top edge, 40px in from its left
-     `ping`            scale(1) -> scale(2) on a 40px element = PEAK RADIUS 40
-     overshoot         12px past the top edge, 0px at the left edge
+/* ⭐ THE BAKE-PROGRESS STRIPE — A DETERMINATE BAR'S HONEST "STILL COUNTING"
+   MARK UNDER A FROZEN CLOCK. (2026-09-13, motion-under-a-fixed-clock pass)
+   `DeploymentPipelineCard`'s two bake/health-check progress fills compute
+   their `width: N%` from `$now.getTime() - readyAtMs` — genuinely correct
+   in normal use (`$now` ticks every 100ms), but the promo capture pins the
+   page clock (`page.clock.setFixedTime`), under which `Date.now()` never
+   advances: `$now`'s store still ticks (real `setInterval`s keep firing),
+   but every tick recomputes the SAME frozen instant, so the bar's WIDTH is
+   a constant for the whole capture — it reads as dead, not as "5s left".
 
-   The panel is `rounded-xl overflow-hidden`, so the halo was never floating
-   outside the card — it was being SLICED FLAT by the card's own top edge on
-   every cycle. A round pulse with a straight chop across its top-left quadrant
-   is why it reads as broken. At 1440 the padding is `py-5`/`px-6`, so the
-   overshoot is 8px at the top and none at the left, which is why the human saw
-   it *"specially on mobile"*.
+   No amount of re-reading the clock can fix this honestly: the true elapsed
+   wall time is exactly what the capture has deliberately frozen, so a width
+   that kept moving would be a NUMBER THAT IS NOT TRUE. The width therefore
+   stays exactly what the data says. What was missing is a mark that reads
+   "this is still an active process" independent of the number — the same
+   distinction `BakeStatusIcon`'s `InProgress` waves and `Deploying`'s spinner
+   already make for the STATE glyphs one level up; this is that same idea
+   applied to a progress FILL, which had no such mark at all.
 
-   ⛔ AND THE FIX IS NOT A SMALLER PULSE. A first pass capped the halo at
-   scale 1.35 and the human rejected it in one line: *"I didn't want pulse to be
-   smaller but that you move the icon appropriately."* The size is the design;
-   the PLACEMENT was the bug. `scale(2)` is restored and the room is found in
-   `AlertPanel` instead — see the `min-h` on the headline row there.
-
-   ── THE GEOMETRY, AND THE TRAP IN IT ────────────────────────────────
-   ⚠️ THE 12px CORNER IS NOT THE BINDING CONSTRAINT, AND THE OBVIOUS FORMULA
-   FOR IT IS WRONG. It is tempting to treat `rounded-xl` as a solid 12px disc
-   obstacle at (12,12) and require `distance(centre, (12,12)) - 12 >= R`, which
-   for R=40 demands an inset of ~49px from both edges. That is not the shape.
-   The corner circle's CENTRE IS INSIDE the panel; the material actually
-   removed is only the sliver OUTSIDE the arc, inside the 12x12 corner square.
-   For any centre at x,y >= 12 the nearest point of the arc is one of its
-   endpoints, (12,0) or (0,12), and sqrt((x-12)^2 + y^2) >= y always — so a
-   flat edge is always nearer than the corner.
-
-   Verified rather than argued: a script samples the halo's perimeter 3600 ways
-   at peak radius and tests each point against the true rounded rect, then
-   binary-searches the largest scale that fits. On the running page:
-
-     390    centre (40, 40)   top 40  left 40  nearest arc point 48.8
-            largest scale that fits = 2.00   — the FULL halo already fits
-     1440   centre (44, 32)   top 32  left 44  nearest arc point 45.3
-            largest scale that fits = 1.60   — scale(2) is 8px over the TOP
-
-   So the requirement is just `min(distToTop, distToLeft) >= 40`, the left edge
-   is already satisfied everywhere, and only the top needed moving.
-
-   THE LEFT EDGE IS EXACTLY TANGENT AT 390 (40 = 40) AND THAT IS FINE, NOT
-   LUCK: `ping` interpolates scale and opacity on the SAME easing, so the halo
-   is at opacity 0 exactly when it reaches radius 40. Composited with the
-   palette's own alpha (`bg-<hue>-500/25..40`) it is already invisible by
-   radius ~36. Widening `px-5` to buy left margin would cost 8px of the text
-   column at 390 to hide nothing.
-
-   ── AND IT STOPS FOR PEOPLE WHO ASKED IT TO ────────────────────────
-   The product had NO `prefers-reduced-motion` handling anywhere. This is the
-   one animation whose entire job is to pull the eye, so it is the one that
-   must honour the setting. The banner keeps its fill, its disc and its bold
-   headline — the attention is carried by design, not by the motion.
-
-   It is a named class rather than Tailwind's `animate-ping` for exactly that
-   reason: the guard below has to be scoped to this halo and not to any future
-   `animate-ping` somebody adds for a different purpose. The keyframes are
-   otherwise `ping`'s, value for value. */
-@keyframes alert-halo {
-	0% {
-		opacity: 1;
-		transform: scale(1);
+   A diagonal stripe sliding across the filled portion, CSS-only
+   (`background-position`, no JS, no `Date` read) — it keeps animating
+   whether or not the frozen page clock ever ticks again, at zero cost in
+   normal use (it runs alongside the width updating smoothly every 100ms,
+   same as any other "in-progress" striped meter — GitHub Actions, GitLab
+   CI and Bootstrap's own `.progress-bar-animated` all use this exact
+   pattern for "know the percent, still moving"). Applied alongside the
+   existing `bg-yellow-500` fill colour, not instead of it. */
+@keyframes bar-progress-stripes {
+	from {
+		background-position: 1rem 0;
 	}
 
-	75%,
-	100% {
-		opacity: 0;
-		transform: scale(2);
+	to {
+		background-position: 0 0;
 	}
 }
 
-.animate-alert-halo {
-	animation: alert-halo 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+.bar-progress-active {
+	background-image: linear-gradient(
+		45deg,
+		rgba(255, 255, 255, 0.28) 25%,
+		transparent 25%,
+		transparent 50%,
+		rgba(255, 255, 255, 0.28) 50%,
+		rgba(255, 255, 255, 0.28) 75%,
+		transparent 75%,
+		transparent
+	);
+	background-size: 1rem 1rem;
+	animation: bar-progress-stripes 1s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.animate-alert-halo {
+	.bar-progress-active {
 		animation: none;
-		opacity: 0;
+		background-image: none;
 	}
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   DEPLOY BOARD DESIGN SYSTEM — type scale, chip, panel radius.
-   Defined once here so the values are enforceable and countable rather
-   than re-derived per page. See frontend/DESIGN.md "Closed budget".
+   TYPE ROLES MOVED. The closed role list (`t-title` … `t-code-lg`) and the
+   legacy aliases (`t-display`, `t-dense`, `t-micro`, `t-chip`, …) live in
+   `styles/language.css`, section 4. Do not define a `t-*` class here.
    ═══════════════════════════════════════════════════════════════════════ */
-
-/* ── Type scale: 9 roles, exactly 2 uppercase trackings ──────────────
-   Montserrat is the sans DISPLAY + HEADLINE + LABEL face. Body / dense /
-   micro stay on the system stack; code roles on the mono stack. The old
-   9/10/11px sprawl collapses to exactly `t-label` (10px) and `t-micro`
-   (11px). 0.16em tracking on Montserrat, 0.08em on mono — 0.16em on a
-   monospace face looks broken, which is why there are two and only two. */
-.t-display {
-	font-family: var(--font-montserrat);
-	font-size: 24px;
-	font-weight: 300;
-	line-height: 1.15;
-	letter-spacing: 0;
-}
-
-.t-display-id {
-	font-family: var(--font-mono);
-	font-size: 24px;
-	font-weight: 500;
-	line-height: 1.15;
-	letter-spacing: -0.01em;
-}
-
-.t-headline {
-	font-family: var(--font-montserrat);
-	font-size: 17px;
-	font-weight: 600;
-	line-height: 1.35;
-	letter-spacing: 0;
-}
-
-/* THE `dd` FIGURE — one role, everywhere a rail card prints a bare number.
-   (2026-09-02) `How it's going` had FOUR spellings of its own headline
-   figure across `/`, `/apps`, `/envs/<name>` (`text-base font-semibold` —
-   16px/600, off the scale) and `/apps/[name]` (`t-headline` — 17px/600, the
-   nearest declared role, reached for because there was nowhere else to
-   land). Neither is a role a second page can cite. No existing role is
-   16px, so this is the tenth, not a rename of `t-headline` — `t-headline`
-   stays a PROSE role (17px on Montserrat, used for sentence-shaped
-   headlines) and this is a FIGURE role (16px on the system stack, for a
-   number standing alone in a `dd`). Consuming components still add
-   `tabular-nums` and their own ink. */
-.t-figure {
-	font-size: 16px;
-	font-weight: 600;
-	line-height: 1.3;
-	letter-spacing: 0;
-}
-
-.t-body {
-	font-size: 14px;
-	font-weight: 400;
-	line-height: 1.5;
-}
-
-.t-dense {
-	font-size: 12.5px;
-	font-weight: 400;
-	line-height: 1.45;
-}
-
-.t-micro {
-	font-size: 11px;
-	font-weight: 400;
-	line-height: 1.4;
-}
-
-.t-code {
-	font-family: var(--font-mono);
-	font-size: 13px;
-	font-weight: 500;
-	line-height: 1.35;
-}
-
-.t-code-sm {
-	font-family: var(--font-mono);
-	font-size: 11.5px;
-	font-weight: 400;
-	line-height: 1.4;
-}
-
-/* The spec's Buttons section mandates 12px/600 for all three button kinds.
-   That is a real 10th role; naming it here stops it being re-invented as a
-   `text-[12px] font-semibold` pair at every call site. */
-.t-button {
-	font-size: 12px;
-	font-weight: 600;
-	line-height: 1;
-	letter-spacing: 0;
-}
-
-.t-label {
-	font-family: var(--font-montserrat);
-	font-size: 10px;
-	font-weight: 600;
-	line-height: 1.2;
-	text-transform: uppercase;
-	letter-spacing: 0.16em;
-}
-
-/* ── THREE ROLES NAMED FROM THE CENSUS, NOT FROM TASTE. (2026-09-03, third
-   re-check.) 744 uses across the product were undeclared per the
-   coordinator's own manual count — sizes and weights that matched no `t-*`
-   role above, so the census counted them as noise instead of as usage of a
-   real, repeated pattern. (`scripts/type-census.mjs`'s own extended
-   histogram, class-name-based rather than hand-counted, finds 1114 —
-   different methodology, same three buckets on top.) Each of these three
-   is the single BIGGEST undeclared bucket the census found; naming them
-   stops the next call site re-inventing the same triad as a bare
-   `text-sm font-semibold` / `text-xs font-medium` pair. */
-
-/* `Card`'s own header title — 35 uses on 11 routes moved off the undeclared
-   `14px/600/sans` bucket (which also holds OTHER hand-rolled 14/600 headers
-   this pass does not own, e.g. `/environments`' own card-shaped sections —
-   those stay undeclared until whichever lane owns that markup adopts this
-   role too), every one hand-spelled `text-sm font-semibold`. 14px/600 is
-   NOT `t-headline` (17px, Montserrat, prose) and not `t-figure` (16px, a
-   bare `dd` number) — it is what a card's own name is set in, nowhere
-   else. */
-.t-card-title {
-	font-size: 14px;
-	font-weight: 600;
-	line-height: 1.4;
-}
-
-/* `Card`'s right-aligned rollup (`verdict`, and the rollup snippet's own
-   text where it renders prose rather than chips) — 23 uses on 9 routes
-   moved off the undeclared `12px/500/sans` bucket, hand-spelled
-   `text-xs font-medium`. One size down and one weight down from
-   `t-card-title`, on purpose: the rollup answers the card, it does not
-   compete with the card's name for the reader's eye first. */
-.t-card-rollup {
-	font-size: 12px;
-	font-weight: 500;
-	line-height: 1.4;
-}
-
-/* THE CHIP'S OWN TYPE, NAMED SEPARATELY FROM `.chip`'S GEOMETRY. 322 uses
-   on 18 pages — every `Chip` label and value half — were undeclared because
-   `.chip` (`app.css`, "THE CHIP" block below) carries this typography
-   inline as part of a GEOMETRY class (height, padding, radius, border)
-   rather than as a named role a census or a second caller can cite. The
-   values are copied byte-for-byte from `.chip`, measured on the live
-   product: 10px mono, 600, uppercase, 0.08em — the mono counterpart to
-   `t-label`'s 0.16em-on-Montserrat (0.16em on a monospace face looks
-   broken, which is `t-label`'s own note for why there are only two
-   trackings in the whole scale).
-   ⭐ MIGRATED, 2026-09-03 (F4 third re-check lane, on request while it held
-   `Chip.svelte`). `Chip` now puts `t-chip` on the chip label element
-   alongside `chip` in both the lone and joined forms, and `.chip`'s own
-   six inline type declarations are gone — see "THE CHIP" block below.
-   Computed style verified identical before/after (10px mono/600/uppercase/
-   0.08em, line-height 1). This role still exists independently for any
-   OTHER caller that wants chip-style type without the chip's box. */
-.t-chip {
-	font-family: var(--font-mono);
-	font-size: 10px;
-	font-weight: 600;
-	line-height: 1;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-}
 
 /* ── THE THREE GLYPH INKS — `tone-live` / `tone-mute` / `tone-bad`.
 
@@ -771,27 +605,15 @@ textarea {
    different ink passes a Tailwind utility and it must win. ──────────── */
 @layer components {
 	.tone-live {
-		color: var(--color-green-700);
-	}
-
-	.dark .tone-live {
-		color: var(--color-green-400);
+		color: var(--k-success-fg);
 	}
 
 	.tone-bad {
-		color: var(--color-red-700);
-	}
-
-	.dark .tone-bad {
-		color: var(--color-red-400);
+		color: var(--k-danger-fg);
 	}
 
 	.tone-mute {
-		color: var(--color-gray-500);
-	}
-
-	.dark .tone-mute {
-		color: var(--color-gray-400);
+		color: var(--k-fg-subtle);
 	}
 
 	/* ⭐ REVISIONS-2026-09-06, ITEM 2 (IN-FLIGHT STATE) — `tone-active`, the
@@ -801,11 +623,7 @@ textarea {
 	   hue product-wide (`bake-status.ts`'s `DOT`/`TONE`, `BakeStatusIcon`'s
 	   spinner), reused rather than invented. */
 	.tone-active {
-		color: var(--color-blue-700);
-	}
-
-	.dark .tone-active {
-		color: var(--color-blue-400);
+		color: var(--k-active-fg);
 	}
 }
 
@@ -967,21 +785,21 @@ textarea {
 		height: 20px;
 		padding: 0 6px;
 		border: 1px solid;
-		border-color: var(--color-gray-200);
+		border-color: var(--k-line);
 		border-top-right-radius: 4px;
 		border-bottom-right-radius: 4px;
 		font-family: var(--font-mono);
-		font-size: 11.5px;
+		font-size: 12px;
 		font-weight: 400;
 		line-height: 1;
-		color: var(--color-gray-700);
+		color: var(--k-fg-muted);
 		white-space: nowrap;
 		overflow: hidden;
 	}
 
 	.dark .chip-value {
-		border-color: var(--color-gray-700);
-		color: var(--color-gray-200);
+		border-color: var(--k-line);
+		color: var(--k-fg-muted);
 	}
 
 	/* ── THE NON-CLIPPING WRAPPER for a JOINED chip's `valueHref` link.
@@ -1143,23 +961,77 @@ textarea {
    about banners, and `.btn-primary` is the action it governs.
    ─────────────────────────────────────────────────────────────────────── */
 @layer components {
+	/* ⭐ ONE HEIGHT, ONE RADIUS, PER SIZE STEP. (2026-10-08, D-7/D-13/D-14 —
+	   "system" lane of the polish pass.) `.btn` used to size itself off
+	   `padding + line-height`, which is why it rendered 38px on this page
+	   and 36px on that one (14px/1.4 line-height rounds to 19.6, +16
+	   padding, +2 border = 37.6 — a sub-pixel a browser is free to round
+	   either way) while `CopyButton` (28), `GithubConnectButton`'s top-bar
+	   shape (32/4px radius) and a hand-rolled `Refresh` (24/4px radius) each
+	   invented their own box next to it. `height` is now EXPLICIT so the
+	   box can never depend on a font metric again, and there is exactly
+	   ONE radius (8px) at every size step — 4px chip radius is a different
+	   object's contract (`.chip`), not a smaller button.
+
+	   THE SIZE LADDER: `.btn` alone is the standard control (36px — the
+	   reference's `Deploy` / `View on GitHub`). `.btn-sm` (32px) and
+	   `.btn-xs` (28px) are MODIFIERS on top of it (`class="btn btn-secondary
+	   btn-sm"`), for a row that is deliberately denser than the page's main
+	   action row (a table cell, a chip-adjacent icon button) — never a
+	   silent substitute for the standard size beside a `.btn-primary`. */
+	/* ⭐ DESIGN LANGUAGE (2026-10-08): ONE BUTTON, THREE HEIGHTS, ONE RADIUS.
+	   36 (`.btn`, the page's action row) · 32 (`.btn-sm`, inside a card or a
+	   banner) · 28 (`.btn-xs`, a row or a card header). Radius 6 at every
+	   height — the control radius, one step inside the card's 8. Text is
+	   `t-ui` (14/500) at 36 and 32, `t-ui-sm` (12/500) at 28. Icon 16px
+	   (14px at 28). Flowbite `<Button>` is migrated onto this class, never
+	   the other way round. */
 	.btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 8px;
-		padding: 8px 16px;
-		border-radius: 8px;
+		height: 36px;
+		padding: 0 14px;
+		border-radius: 6px;
 		border: 1px solid transparent;
+		font-family: var(--font-sans);
 		font-size: 14px;
+		line-height: 20px;
 		font-weight: 500;
-		line-height: 1.4;
 		white-space: nowrap;
 		cursor: pointer;
 		transition:
-			background-color 120ms ease,
-			border-color 120ms ease,
-			color 120ms ease;
+			background-color var(--k-dur-fast) var(--ease-out),
+			border-color var(--k-dur-fast) var(--ease-out),
+			color var(--k-dur-fast) var(--ease-out);
+	}
+
+	.btn-sm {
+		height: 32px;
+		padding: 0 12px;
+		gap: 6px;
+	}
+
+	.btn-xs {
+		height: 28px;
+		padding: 0 10px;
+		gap: 6px;
+		font-size: 12px;
+		line-height: 16px;
+	}
+
+	.btn-icon {
+		padding: 0;
+		width: 36px;
+	}
+
+	.btn-icon.btn-sm {
+		width: 32px;
+	}
+
+	.btn-icon.btn-xs {
+		width: 28px;
 	}
 
 	.btn:disabled,
@@ -1168,68 +1040,72 @@ textarea {
 		opacity: 0.5;
 	}
 
-	/* SECONDARY: white ground, 1px border, an icon. The default — a row of
-     buttons where every one is filled has no primary at all. */
+	/* SECONDARY: surface + strong line. The default. */
 	.btn-secondary {
-		background-color: #fff;
-		border-color: var(--color-gray-300);
-		color: var(--color-gray-900);
+		background-color: var(--k-surface);
+		border-color: var(--k-line-strong);
+		color: var(--k-fg);
 	}
 
 	.btn-secondary:hover {
-		background-color: var(--color-gray-50);
+		background-color: var(--k-subtle);
 	}
 
-	.dark .btn-secondary {
-		background-color: var(--color-gray-800);
-		/* `gray-600` measured 1.94:1 against the `gray-800` card it sits on —
-		   under the 3:1 non-text floor, i.e. a button whose own boundary is
-		   not reliably visible. `gray-500` is 3.01:1 on the card and 3.62:1
-		   on the `gray-900` page ground, and it is a step the ink vocabulary
-		   already spends. Light is unchanged. */
-		border-color: var(--color-gray-500);
-		color: var(--color-gray-100);
+	/* GHOST: no box until hover. Tertiary actions in a dense row. */
+	.btn-ghost {
+		background-color: transparent;
+		color: var(--k-fg-muted);
 	}
 
-	.dark .btn-secondary:hover {
-		background-color: var(--color-gray-700);
+	.btn-ghost:hover {
+		background-color: var(--k-subtle);
+		color: var(--k-fg);
+	}
+
+	/* DANGER: a destructive confirm inside a dialog only. Outline, not fill:
+	   the page's one fill belongs to the primary action. */
+	.btn-danger {
+		background-color: var(--k-surface);
+		border-color: var(--k-danger-line);
+		color: var(--k-danger-fg);
+	}
+
+	.btn-danger:hover {
+		background-color: var(--k-danger-tint);
 	}
 
 	/* PRIMARY: the one filled action. `blue-700` is the `Deploying` blue the
      budget already owns — measured `oklch(0.488 0.243 264.376)` on the
      reference's `Deploy` button. Zero new colour values. */
 	.btn-primary {
-		background-color: var(--color-blue-700);
-		border-color: var(--color-blue-700);
+		background-color: var(--k-accent);
+		border-color: var(--k-accent);
 		color: #fff;
 	}
 
 	.btn-primary:hover {
-		background-color: var(--color-blue-800);
-		border-color: var(--color-blue-800);
+		background-color: var(--k-accent-hover);
+		border-color: var(--k-accent-hover);
 	}
 
+	/* Dark: the fill is blue-600 (white text 5.2:1); blue-500 carries the
+	   boundary against the card, same reasoning as before the tokens. */
 	.dark .btn-primary {
-		background-color: var(--color-blue-600);
-		/* THE FILL IS THE BOUNDARY ON A FILLED BUTTON, and in dark
-		   `blue-600` on the `gray-800` card is 2.79:1 — under 3:1, where the
-		   same button in light is 6.83:1. The FILL cannot move (white ink on
-		   `blue-500` is 3.73:1 and fails 4.5 for 14px text), so the border
-		   carries it: `blue-500` is 3.96:1 against the card and is already
-		   this button's own hover fill. Zero new values. */
-		border-color: var(--color-blue-500);
+		border-color: oklch(0.623 0.214 259.8);
 	}
 
-	.dark .btn-primary:hover {
-		background-color: var(--color-blue-500);
-		border-color: var(--color-blue-500);
-	}
-
-	/* The icon inside a button. 16px, same as a card header's. */
-	.btn > :global(svg) {
+	/* The icon inside a button. 16px, same as a card header's; 12px at 28.
+	   (Was `.btn > :global(svg)` — Svelte syntax in a plain stylesheet, which
+	   is invalid CSS and never applied.) */
+	.btn > svg {
 		width: 16px;
 		height: 16px;
 		flex: none;
+	}
+
+	.btn-xs > svg {
+		width: 12px;
+		height: 12px;
 	}
 }
 
@@ -1313,9 +1189,9 @@ textarea {
 		background: none;
 		font-size: 14px;
 		font-weight: 500;
-		line-height: 1.4;
+		line-height: 20px;
 		white-space: nowrap;
-		color: var(--nav-link-ink, var(--color-gray-900));
+		color: var(--nav-link-ink, var(--k-fg));
 		cursor: pointer;
 		text-decoration-line: underline;
 		text-decoration-color: transparent;
@@ -1324,7 +1200,7 @@ textarea {
 	}
 
 	.dark .nav-link {
-		color: var(--nav-link-ink, var(--color-gray-100));
+		color: var(--nav-link-ink, var(--k-fg));
 	}
 
 	.nav-link:hover {
@@ -1353,6 +1229,7 @@ textarea {
 	   whether the rollup is a verdict string or a link. */
 	.card-header-rollup .nav-link {
 		padding: 0;
+		font-size: 12px;
 		line-height: 16px;
 	}
 }
@@ -1734,16 +1611,16 @@ textarea {
    segmented-control state is not a call to action. */
 @layer components {
 	.pill-selected {
-		border-color: var(--color-gray-400);
-		background-color: var(--color-gray-50);
-		color: var(--color-gray-900);
+		border-color: var(--k-inverse);
+		background-color: var(--k-inverse);
+		color: var(--k-fg-inverse);
 	}
 }
 
 .dark .pill-selected {
-	border-color: var(--color-gray-500);
-	background-color: var(--color-gray-700);
-	color: #fff;
+	border-color: var(--k-inverse);
+	background-color: var(--k-inverse);
+	color: var(--k-fg-inverse);
 }
 
 /* Env-identity chip colours. Must be declared AFTER `.chip` so they win
@@ -1751,20 +1628,112 @@ textarea {
    from the `--rollout-theme-*` custom properties that
    `getEnvironmentThemeStyle()` writes inline, which is what lets a single
    class carry both light and dark treatments. */
+/* ⭐ DESIGN LANGUAGE (2026-10-08, coordinator review): IDENTITY IS QUIET.
+   An environment chip is a NEUTRAL outline chip in the muted ink; the
+   environment's hue lives only in a 6px dot inside it (`Chip.svelte` draws
+   the dot from `--rollout-theme-accent`). Hue at chip AREA is reserved for
+   STATE. Measured on Home: a saturated fuchsia PROD chip on 30+ rows was the
+   loudest hue on a healthy page — the defect amber PROD was, in a new colour. */
 .chip-env {
-	border-color: var(--rollout-theme-border);
-	background-color: color-mix(in srgb, var(--rollout-theme-surface) 72%, transparent);
-	color: var(--rollout-theme-text);
+	border-color: var(--k-line-strong);
+	background-color: transparent;
+	color: var(--k-fg-muted);
 }
 
-/* The dark chip edge is a CHOSEN Tailwind step, not `accent` washed toward the
-   card ground. Warm identities cancelled against that blue-gray mix — prod's
-   dark border measured C 0.0612 at hue 67 where its seed is hue 58 at C 0.157 —
-   so the edge could not carry identity. See `environment-theme.ts`. */
-.dark .chip-env {
-	border-color: var(--rollout-theme-dark-border);
-	background-color: color-mix(in srgb, var(--rollout-theme-dark-surface) 28%, transparent);
-	color: var(--rollout-theme-dark-text);
+/* An env FILTER is the badge itself as a toggle button: no pill chrome of its
+   own, selected = a gray-900/100 (inverse) outline around the badge, the same
+   selected grammar every other toggle on the page uses. */
+.env-filter {
+	display: inline-flex;
+	border-radius: 6px;
+	padding: 0;
+	outline: 2px solid transparent;
+	outline-offset: 2px;
+}
+.env-filter[aria-pressed='true'] {
+	outline-color: var(--k-inverse);
+}
+.env-filter:focus-visible {
+	outline-color: var(--k-ring, var(--k-inverse));
+}
+
+/* An environment is a NAME: sans, sentence case as written (`prod-us-east-2`),
+   never the uppercase state-label type (AD round 2: identity was drawn two ways
+   on one screen). Uppercase stays for state chips only. */
+.chip.chip-env-name {
+	text-transform: none;
+	letter-spacing: 0;
+	/* a name is not a figure: tabular figures letter-space hyphenated names ("prod-eu-west"), whatever the host inherited */
+	font-variant-numeric: normal;
+	font-feature-settings: normal;
+	max-width: 22ch;
+}
+
+/* ── THE ENV BADGE `<PROD | eu-west-1>` (2026-11-02, owner). Left half = the
+   tier, small caps, tinted with the environment's IDENTITY colour (a function
+   of the name only; state stays on StatusMark beside it). Right half = the
+   place, neutral surface + hairline. Joined by the ordinary `.chip-joined`
+   seam; 20px / 4px everywhere. Only the right half truncates. */
+.chip.chip-env-tier {
+	flex: none;
+	max-width: none;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	font-weight: 600;
+	border-color: var(--rollout-theme-border, var(--k-line-strong));
+	background-color: var(--rollout-theme-surface, transparent);
+	color: var(--rollout-theme-text, var(--k-fg-muted));
+}
+.dark .chip.chip-env-tier {
+	border-color: var(--rollout-theme-dark-border, var(--k-line-strong));
+	background-color: color-mix(in srgb, var(--rollout-theme-dark-surface, transparent) 75%, transparent);
+	color: var(--rollout-theme-dark-text, var(--k-fg-muted));
+}
+.chip.chip-env-place {
+	min-width: 0;
+	justify-content: flex-start;
+	text-transform: none;
+	letter-spacing: 0;
+	max-width: 18ch;
+	border-color: var(--k-line);
+	background-color: var(--k-surface, transparent);
+	color: var(--k-fg-muted);
+}
+.chip-joined > .chip.chip-env-place {
+	flex: 0 1 auto;
+}
+.chip-joined > .chip.chip-env-place.chip-env-place--count {
+	flex: none; /* a count is a fact, never an ellipsis */
+}
+/* SOFT tint (rows): same identity hue at ~45% of the fill, hairline halfway to the neutral line; the tier text keeps its identity colour */
+.chip-env-soft .chip.chip-env-tier,
+.chip.chip-env-tier.chip-env-soft {
+	background-color: color-mix(in srgb, var(--rollout-theme-surface, transparent) 45%, transparent);
+	border-color: color-mix(in srgb, var(--rollout-theme-border, var(--k-line-strong)) 55%, var(--k-line));
+}
+.dark .chip-env-soft .chip.chip-env-tier,
+.dark .chip.chip-env-tier.chip-env-soft {
+	background-color: color-mix(in srgb, var(--rollout-theme-dark-surface, transparent) 40%, transparent);
+	border-color: color-mix(in srgb, var(--rollout-theme-dark-border, var(--k-line-strong)) 55%, var(--k-line));
+}
+/* a place alone (regionOnly): a standalone neutral chip, all four corners */
+.chip.chip-env-place.chip-env-region {
+	flex: 0 1 auto;
+}
+.chip.chip-env-place.chip-wide {
+	max-width: none;
+}
+
+.chip-env-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 9999px;
+	flex: none;
+	margin-right: 5px;
+	background-color: var(--rollout-theme-accent, var(--k-fg-subtle));
+	/* Identity may not out-chroma state: capped at the success solid's chroma
+	   (prod's seed #ed00ab is C≈0.27 — see environment-theme.ts, 2026-10-11). */
+	background-color: oklch(from var(--rollout-theme-accent, var(--k-fg-subtle)) l min(c, 0.14) h);
 }
 
 /* ── AN ENV FILTER CHIP'S "SELECTED" STATE, MATCHING THE STATUS PILLS BESIDE
@@ -1798,16 +1767,11 @@ textarea {
    selected chip that also kept its own colour would be a THIRD grammar
    (neutral-fill boolean AND colour-preserving identity) rather than either
    of the other two. */
-.env-filter-selected .chip-env {
-	border-color: var(--color-gray-900);
-	background-color: var(--color-gray-900);
-	color: #fff;
-}
-
+.env-filter-selected .chip-env,
 .dark .env-filter-selected .chip-env {
-	border-color: var(--color-gray-100);
-	background-color: var(--color-gray-100);
-	color: var(--color-gray-900);
+	border-color: var(--k-inverse);
+	background-color: var(--k-inverse);
+	color: var(--k-fg-inverse);
 }
 
 /* ── Deploy board grids ──────────────────────────────────────────────
@@ -2170,16 +2134,36 @@ textarea {
 	container-type: inline-size;
 }
 
+/* Stacked (phone, narrow container): 16px, the same seam as every other card
+   gap on a phone (lane B/D, /activity r7). Side by side it is 32px (below). */
 .rail-grid {
 	display: flex;
 	flex-direction: column;
-	gap: 2rem;
+	gap: 1rem;
 }
 
-@container (min-width: 860px) {
+/* ⭐ D-22 (2026-10-08, coordinator decision via `fix-dash`): "≥1024 NEVER
+   SINGLE COLUMN." At 1024 with the sidebar open, `main`'s content box is
+   ~785px — under the old single 860px threshold, so Home's rail dropped
+   below main at the exact width the standing rule forbids it to. Rather
+   than lower one number (a 320px rail plus a 32px gap leaves only 433px
+   for main at 785px, which is tight but not broken — the actual failure
+   mode is anything NARROWER than 785 that still clears a lowered single
+   threshold), the rail gets a SECOND, NARROWER step: side-by-side from
+   ~760px of container width, at 280px until the container reaches 1000px,
+   where it widens to the original 320px. `rail-main`'s own `min-width: 0`
+   is what lets it shrink that far without a horizontal scrollbar; measured
+   on Home at 1024 (container 785px with the sidebar open): main 473px,
+   rail 280px, 32px gap — comfortably over the ~420px floor this step is
+   built around. The flex-column fallback below the first step is unchanged. */
+/* ⛔ 2026-10-10 (home-v2 AD r4, measured): at a 1024 viewport with the
+   sidebar open and a classic scrollbar the container is 729px, not 785, so
+   760 left 1024–1059 single column. The first step is 700px; main's floor
+   at that step is 380px (700 − 32 − 280 = 388). */
+@container (min-width: 700px) {
 	.rail-grid {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 320px;
+		grid-template-columns: minmax(380px, 1fr) 280px;
 		align-items: start;
 		/* ⛔ FIX PASS ITEM 9, 2026-09-11 — was 24px here, 32px (`2rem`) in the
 		   flex-column form above — ONE main→rail seam value everywhere this
@@ -2190,6 +2174,12 @@ textarea {
 	}
 }
 
+@container (min-width: 1000px) {
+	.rail-grid {
+		grid-template-columns: minmax(420px, 1fr) 320px;
+	}
+}
+
 .rail-main {
 	min-width: 0;
 }
@@ -2197,3 +2187,127 @@ textarea {
 .rail-side {
 	min-width: 0;
 }
+
+/* ⛔ IN DARK, THE MODAL'S SCRIM BARELY DIMMED THE PAGE. (2026-09-13, tenth
+   film review, measured on the Change Version dialog.)
+
+   flowbite's `Modal` ships `backdrop:bg-gray-900/50`, which is the right
+   scrim over a WHITE page and almost a no-op over a dark one: the page is
+   already `gray-900`, so half of `gray-900` over it removes nothing. Sampled
+   at 1600×1000 on the running dashboard (Rec. 601 luma on the sRGB bytes,
+   0-255): panel 40, page behind it 31 — NINE steps of separation, against
+   116 in light (panel 255, page 139). A dialog that changes production read
+   as another card on the same plane.
+
+   The dark scrim is near-black now, so the page recedes to ~6 and the panel
+   keeps its own `gray-800`: ~34 steps, a bit under 4× what it had.
+
+   ⛔ AND ~34 IS THE HONEST CEILING FOR A SCRIM ALONE. The panel measures 40;
+   an opaque black page would still only buy 40. Reaching the ~55 the review
+   asked for needs the PANEL lifted (gray-800 → gray-700), and this dialog
+   draws five of its own inset surfaces at `gray-700` — the lift would erase
+   them. That is a design change to the dialog's internals, not a scrim fix,
+   so it is named here rather than half-done.
+
+   The selector is `html.dark` + element, which outranks the utility
+   flowbite sets on the dialog; `::backdrop` lives in the top layer, but
+   selector MATCHING still walks the real DOM tree, so the ancestor class
+   applies. Light is untouched. */
+html.dark dialog::backdrop {
+	background-color: rgb(0 0 0 / 0.85);
+}
+
+/* ⛔ THE DARK ALERT FILL WAS A SLAB, NOT A TINT. (2026-09-20, eleventh film
+   review: "a fully saturated red slab with white text, the loudest object in
+   the dark film for 2.5 s, while the light one is a pale tinted field.")
+
+   Light and dark had drifted into two different TEMPERAMENTS. Measured on the
+   running dashboard (Rec. 601 luma on sRGB bytes, 0-255; "sat" is max-min):
+
+     light  `<hue>-50` on white   luma 244.9-250.4, i.e. **4.6-10.1 BELOW**
+                                  its own ground, sat 12-20 — a wash.
+     dark   `red-700/75`          luma 49.9, **10.4 ABOVE** the panel ground
+                                  — but sat **143**, a filled red plate.
+
+   The lift was right (the fill before that one sat BELOW its ground, which is
+   what 1a81be8 fixed); the CHROMA was not. So the dark fill is now the same
+   kind of object as the light one: the hue mixed 8% into the panel's own
+   `gray-800`, which lands 6.3-10.2 luma above that ground — the mirror image
+   of light's 4.6-10.1 below — at sat 10-39 instead of 143.
+
+   ⛔ `in oklab`, NOT `in oklch`. The review suggested oklch; measured, it is
+   wrong for this job. This product's `gray-800` is not neutral — it is a blue
+   slate (rgb(30,41,57), sat 27) — and oklch interpolates the HUE ANGLE, so
+   mixing 18% red into it walks the hue the short way round and comes back
+   **rgb(50,52,92), a BLUER surface than the ground it started from**. oklab
+   mixes in rectangular coordinates: the red pulls toward red, and the result
+   reads as a warm slate. Same call for all four hues.
+
+   ⛔ AND THE REVIEW'S "luma 40-45" IS NOT WHAT IT SOUNDS LIKE. The panel
+   ground is already 39.5, so a fill at 40-45 is a 0.5-5.5 lift — LESS than
+   light's own 4.6-10.1 and, at the bottom of that band, invisible. The band
+   that actually mirrors light is 45-50, which is where 8% lands.
+
+   The inks are the SHARED ladder again (`<hue>-200/75` message,
+   `<hue>-200/70` footnote, white title). 1a81be8 had to give `error` its own
+   lighter ink because a red-700 plate left the shared one at 4.05:1; on a
+   tint there is no exception to make. Measured on these fills: title
+   12.86-13.74:1, message 5.94-6.69:1, footnote 5.41-6.03:1 — every one above
+   the 7:1 / 4.5:1 floors the review asked for, and the whole ladder is one
+   recipe again.
+
+   The `-chip-` variants are the same recipe one step louder (14%), for the
+   objects that sit INSIDE one of these surfaces — the `N issues` count and
+   the failing health-check badge — so a nested thing still reads as nested
+   instead of as a second slab. Unlayered so they beat the component
+   libraries' own utility classes. */
+/* ⭐ DESIGN LANGUAGE: every alert/row fill is a status TINT token now
+   (`styles/language.css`), in both themes. The history above explains why
+   the old values existed; the dark tints are stated OKLCH values chosen so
+   the six hues stay separable (ΔE ≥ 0.034). */
+.alert-fill-error {
+	background-color: var(--k-danger-tint);
+}
+/* A failing ROW is not a band: neutral row, red glyph, red ink (AD round 1).
+   The quiet in-flight fills go the same way; `selected` is a choice, it stays. */
+.alert-fill-error-quiet {
+	background-color: transparent;
+}
+.alert-fill-warning {
+	background-color: var(--k-warning-tint);
+}
+.alert-fill-pinned {
+	background-color: var(--k-held-tint);
+}
+.alert-fill-info {
+	background-color: var(--k-active-tint);
+}
+.alert-fill-active,
+.alert-fill-progress {
+	background-color: transparent;
+}
+.alert-fill-selected {
+	background-color: var(--k-selected);
+}
+.alert-chip-error {
+	background-color: var(--k-danger-tint);
+	color: var(--k-danger-fg);
+}
+
+
+/* FILTER PILL ROW AT PHONE WIDTH (r34 r2-shared; UNLAYERED so it beats the utilities' `flex-wrap`): pills are 44px tap targets and the row
+   SCROLLS HORIZONTALLY in one line instead of wrapping to two 44px rows. Scoped by what the row holds (`> .pill`), so no host changes. */
+@media (max-width: 639px) {
+	:where(div, nav, ul, section):has(> button.pill, > a.pill) {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
+	}
+	:where(div, nav, ul, section):has(> button.pill, > a.pill)::-webkit-scrollbar { display: none; }
+	:where(div, nav, ul, section) > .pill { flex: none; min-height: 44px; }
+}
+
+/* THE 64px LIST ROW (r34 r2-shared): RolloutRow, ChangeRow, ChangeLine and any cleared row share one height and hover wash. `py-3` + two 20px lines = 64. */
+.row-64 { min-height: 64px; }
+.row-64:hover { background-color: var(--k-hover); }

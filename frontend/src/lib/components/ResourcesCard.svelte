@@ -189,10 +189,10 @@
 	);
 	const headerIconClass = $derived(
 		failedInHeader.length > 0
-			? 'text-red-500 dark:text-red-400'
+			? 'text-danger'
 			: notReadyResources.length > 0 || fluxDisagrees
-				? 'text-yellow-700 dark:text-yellow-400'
-				: 'text-green-700 dark:text-green-400'
+				? 'text-progress'
+				: 'text-success'
 	);
 
 	// getPodStatusColor/getPodStatusLabel moved into DeploymentChildren.svelte
@@ -204,27 +204,27 @@
 		{#snippet rollup()}
 			{#if failedInHeader.length > 0}
 				{@const reconcilingCount = notReadyResources.filter((r) => r.status === 'Reconciling').length}
-				<span class="text-xs font-semibold text-red-600 dark:text-red-400">
+				<span class="t-ui-sm text-danger">
 					{failedInHeader.length} failed{reconcilingCount > 0 ? ` · ${reconcilingCount} reconciling` : ''}
 				</span>
 			{:else if notReadyResources.length > 0}
-				<span class="text-xs text-yellow-700 dark:text-yellow-400">{notReadyResources.length} not ready</span>
+				<span class="t-ui-sm text-progress">{notReadyResources.length} not ready</span>
 			{:else if fluxDisagrees}
 				<!-- ⛔ EVERY RESOURCE THIS CARD KNOWS ABOUT LOOKS READY, AND FLUX
 				     STILL SAYS OTHERWISE. Named, not silenced — see
 				     `unreadyKustomizations`'s own note above. -->
 				{@const msg = unreadyKustomizations[0]?.status?.conditions?.find((c) => c.type === 'Ready')?.message}
 				<span
-					class="text-xs text-yellow-700 dark:text-yellow-400"
+					class="t-ui-sm text-progress"
 					title={msg ?? 'Flux has not marked this Kustomization Ready'}
 				>
 					Flux reports issues
 				</span>
 			{:else}
-				<span class="text-xs text-green-700 dark:text-green-400">{allManagedResources.length}/{allManagedResources.length} ready</span>
+				<span class="t-ui-sm text-success">{allManagedResources.length}/{allManagedResources.length} ready</span>
 			{/if}
 		{/snippet}
-		<div class="divide-y divide-gray-100 dark:divide-gray-700/50">
+		<div class="divide-y divide-line-subtle">
 			<!-- Deployment resources -->
 			{#each deploymentResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
 				{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
@@ -234,20 +234,20 @@
 				{@const depKey = getDeploymentKey(resource)}
 				{@const isExpanded = expandedDeployments.has(depKey)}
 
-				<div class="{isFailing ? 'bg-red-50 dark:bg-red-950/10' : isReconciling ? 'bg-yellow-50/50 dark:bg-yellow-950/5' : ''}">
+				<div class="{isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
 					<!-- Deployment row -->
-					<div class="flex items-center gap-2 px-4 py-2.5">
+					<div class="flex items-center gap-2 px-4 py-3">
 						<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
 							{#if isFailing}
-								<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
+								<ExclamationCircleSolid class="h-4 w-4 text-danger" />
 							{:else if isReconciling}
 								<StatusSpinner size="4" color="yellow" />
 							{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
 								<StatusSpinner size="4" color="blue" />
 							{:else if isReady}
-								<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
+								<CheckCircleSolid class="h-4 w-4 text-success" />
 							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+								<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
 							{/if}
 						</div>
 						<!-- ⛔ F7: `hello-frontend` AND `hello-api` BOTH TRUNCATED TO
@@ -262,34 +262,34 @@
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
 								<span
-									class="truncate text-xs font-medium text-gray-900 dark:text-white"
+									class="t-body truncate text-fg"
 									title="{resource.name} — Deployment">{resource.name}</span
 								>
 								<span
-									class="rc-type-tag hidden shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+									class="rc-type-tag hidden shrink-0 rounded-xs bg-subtle px-1 py-0.5 t-meta text-fg-muted"
 									>Deployment</span
 								>
 							</div>
 							{#if resource.message && !isReady}
-								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
+								<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
 							{/if}
 						</div>
 						{#if replicas}
 							<span
-								class="shrink-0 text-xs font-medium {replicas.ready === replicas.total && replicas.total > 0 ? 'text-green-700 dark:text-green-400' : replicas.ready < replicas.total ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}"
+								class="t-ui-sm shrink-0 tabular-nums {replicas.ready === replicas.total && replicas.total > 0 ? 'text-success' : replicas.ready < replicas.total ? 'text-progress' : 'text-fg-subtle'}"
 								title="{replicas.ready}/{replicas.total} pods"
 							>
 								{replicas.ready}/{replicas.total}
-								<span class="rc-pods-word hidden font-normal t-micro text-gray-500 dark:text-gray-400">pods</span>
+								<span class="rc-pods-word hidden t-meta text-fg-subtle">pods</span>
 							</span>
 						{/if}
-						<span class="chip t-chip shrink-0
-							{isFailing ? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
-							: isReconciling ? 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
-							: isReady ? 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
-							: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'}">
+						{#if isFailing || isReconciling}
+						<span class="chip t-label shrink-0
+							{isFailing ? 'border-danger-line text-danger'
+							: 'border-progress-line text-progress'}">
 							{resourceStatusWord(resource.status)}
 						</span>
+						{/if}
 						<!-- A chevron is not a name. `title` alone made this announce as
 						     "Show pods" with no indication of WHICH deployment, and
 						     `aria-expanded` was missing entirely, so the state the glyph
@@ -297,15 +297,15 @@
 						<button
 							type="button"
 							onclick={() => toggleDeploymentChildren(resource)}
-							class="shrink-0 rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+							class="btn btn-ghost btn-icon btn-xs shrink-0"
 							aria-expanded={isExpanded}
 							aria-label={`${isExpanded ? 'Hide' : 'Show'} pods for ${resource.name}`}
 							title={isExpanded ? 'Hide pods' : 'Show pods'}
 						>
 							{#if isExpanded}
-								<ChevronDownOutline class="h-3.5 w-3.5" aria-hidden="true" />
+								<ChevronDownOutline class="h-3 w-3" aria-hidden="true" />
 							{:else}
-								<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" />
+								<ChevronRightOutline class="h-3 w-3" aria-hidden="true" />
 							{/if}
 						</button>
 					</div>
@@ -327,36 +327,36 @@
 				{@const isReconciling = resource.status === 'Reconciling'}
 				{@const urls = getHTTPRouteURLs(resource)}
 
-				<div class="{isFailing ? 'bg-red-50 dark:bg-red-950/10' : isReconciling ? 'bg-yellow-50/50 dark:bg-yellow-950/5' : ''}">
+				<div class="{isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
 					<!-- HTTPRoute row -->
-					<div class="flex items-center gap-2 px-4 py-2.5">
+					<div class="flex items-center gap-2 px-4 py-3">
 						<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
 							{#if isFailing}
-								<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
+								<ExclamationCircleSolid class="h-4 w-4 text-danger" />
 							{:else if isReconciling}
 								<StatusSpinner size="4" color="yellow" />
 							{:else if isReady}
-								<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
+								<CheckCircleSolid class="h-4 w-4 text-success" />
 							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+								<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
 							{/if}
 						</div>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
-								<span class="truncate text-xs font-medium text-gray-900 dark:text-white">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">HTTPRoute</span>
+								<span class="t-body truncate text-fg">{resource.name}</span>
+								<span class="shrink-0 rounded-xs bg-subtle px-1 py-0.5 t-meta text-fg-muted">HTTPRoute</span>
 							</div>
 							{#if resource.message && !isReady}
-								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
+								<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
 							{/if}
 						</div>
-						<span class="chip t-chip shrink-0
-							{isFailing ? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
-							: isReconciling ? 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
-							: isReady ? 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
-							: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'}">
+						{#if isFailing || isReconciling}
+						<span class="chip t-label shrink-0
+							{isFailing ? 'border-danger-line text-danger'
+							: 'border-progress-line text-progress'}">
 							{resourceStatusWord(resource.status)}
 						</span>
+						{/if}
 						<!-- ⛔ F4 (finding 13): FIXED COLUMNS — THE CHEVRON HAS ITS OWN
 						     TRACK WHETHER PRESENT OR NOT. (2026-09-03) The Deployment
 						     row above ends in a real toggle button; this row (and the
@@ -366,21 +366,21 @@
 						     vs 1384 (this row). An `invisible` same-box spacer keeps the
 						     chip's right edge identical without adding a fake control. -->
 						<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
-							<ChevronRightOutline class="h-3.5 w-3.5" />
+							<ChevronRightOutline class="h-3 w-3" />
 						</span>
 					</div>
 
 					<!-- URL children -->
 					{#if urls.length > 0}
-						<div class="border-t border-gray-100 bg-gray-50/50 dark:border-gray-700/50 dark:bg-gray-800/50">
+						<div class="border-t border-line-subtle bg-subtle">
 							{#each urls as url}
 								<div class="flex items-center gap-2 py-1.5 pl-9 pr-4">
-									<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+									<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-accent-text" />
 									<a
 										href={url}
 										target="_blank"
 										rel="noopener noreferrer"
-										class="truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
+										class="t-meta truncate text-accent-text hover:underline"
 									>{url}</a>
 								</div>
 							{/each}
@@ -392,41 +392,42 @@
 
 		<!-- Non-ready other-resources: always visible -->
 		{#if visibleOtherResources.length > 0}
-			<div class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/50 dark:border-gray-700/50">
+			<div class="divide-y divide-line-subtle border-t border-line-subtle">
 				{#each visibleOtherResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
 					{@const isFailing = ['Unhealthy', 'Failed', 'Error'].includes(resource.status || '')}
 					{@const isReconciling = resource.status === 'Reconciling'}
-					<div class="flex items-center gap-2 px-4 py-2 {isFailing ? 'bg-red-50 dark:bg-red-950/10' : isReconciling ? 'bg-yellow-50/50 dark:bg-yellow-950/5' : ''}">
+					<div class="flex items-center gap-2 px-4 py-2 {isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
 						<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
 							{#if isFailing}
-								<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
+								<ExclamationCircleSolid class="h-4 w-4 text-danger" />
 							{:else if isReconciling}
 								<StatusSpinner size="4" color="yellow" />
 							{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
 								<StatusSpinner size="4" color="blue" />
 							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+								<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
 							{/if}
 						</div>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-1.5">
-								<span class="truncate text-xs text-gray-700 dark:text-gray-300">{resource.name}</span>
-								<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">{resource.type}</span>
+								<span class="t-body truncate text-fg-muted">{resource.name}</span>
+								<span class="t-code-sm shrink-0 text-fg-subtle">{resource.type}</span>
 							</div>
 							{#if resource.message}
-								<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
+								<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
 							{/if}
 						</div>
-						<span class="chip t-chip shrink-0
-							{isFailing ? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
-							: isReconciling ? 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
-							: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'}">
+						{#if isFailing || isReconciling}
+						<span class="chip t-label shrink-0
+							{isFailing ? 'border-danger-line text-danger'
+							: 'border-progress-line text-progress'}">
 							{resourceStatusWord(resource.status)}
 						</span>
+						{/if}
 						<!-- Fixed chevron column — see the note beside the HTTPRoute
 						     row above (finding 13). -->
 						<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
-							<ChevronRightOutline class="h-3.5 w-3.5" />
+							<ChevronRightOutline class="h-3 w-3" />
 						</span>
 					</div>
 				{/each}
@@ -440,7 +441,7 @@
 				onclick={() => { showOtherResources = !showOtherResources; }}
 				aria-expanded={showOtherResources}
 				aria-controls="resources-card-ready"
-				class="flex w-full items-center gap-1.5 border-t border-gray-100 px-4 py-2 text-left text-xs text-gray-500 hover:bg-gray-50 dark:border-gray-700/50 dark:text-gray-400 dark:hover:bg-gray-700/30"
+				class="t-ui-sm flex h-10 w-full items-center gap-2 border-t border-line-subtle px-4 text-left text-fg-subtle hover:bg-hover"
 			>
 				{#if showOtherResources}
 					<ChevronDownOutline class="h-3 w-3" aria-hidden="true" />
@@ -451,45 +452,45 @@
 			</button>
 
 			{#if showOtherResources}
-				<div id="resources-card-ready" class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700/50 dark:border-gray-700/50">
+				<div id="resources-card-ready" class="divide-y divide-line-subtle border-t border-line-subtle">
 					{#each collapsibleOtherResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
 						{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
 						{@const isFailing = ['Unhealthy','Failed','Error'].includes(resource.status || '')}
 						{@const isReconciling = resource.status === 'Reconciling'}
-						<div class="flex items-center gap-2 px-4 py-2 {isFailing ? 'bg-red-50 dark:bg-red-950/10' : isReconciling ? 'bg-yellow-50/50 dark:bg-yellow-950/5' : ''}">
+						<div class="flex items-center gap-2 px-4 py-2 {isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
 							<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
 								{#if isFailing}
-									<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
+									<ExclamationCircleSolid class="h-4 w-4 text-danger" />
 								{:else if isReconciling}
 									<StatusSpinner size="4" color="yellow" />
 								{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
 									<StatusSpinner size="4" color="blue" />
 								{:else if isReady}
-									<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
+									<CheckCircleSolid class="h-4 w-4 text-success" />
 								{:else}
-									<ExclamationCircleSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+									<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
 								{/if}
 							</div>
 							<div class="min-w-0 flex-1">
 								<div class="flex items-center gap-1.5">
-									<span class="truncate text-xs text-gray-700 dark:text-gray-300">{resource.name}</span>
-									<span class="shrink-0 rounded bg-gray-100 px-1 py-0.5 t-micro text-gray-700 dark:bg-gray-700 dark:text-gray-300">{resource.type}</span>
+									<span class="t-body truncate text-fg-muted">{resource.name}</span>
+									<span class="t-code-sm shrink-0 text-fg-subtle">{resource.type}</span>
 								</div>
 								{#if resource.message && !isReady}
-									<p class="mt-0.5 break-words t-micro text-gray-500 dark:text-gray-400">{resource.message}</p>
+									<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
 								{/if}
 							</div>
-							<span class="chip t-chip shrink-0
-								{isFailing ? 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400'
-								: isReconciling ? 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400'
-								: isReady ? 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
-								: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'}">
+							{#if isFailing || isReconciling}
+							<span class="chip t-label shrink-0
+								{isFailing ? 'border-danger-line text-danger'
+								: 'border-progress-line text-progress'}">
 								{resourceStatusWord(resource.status)}
 							</span>
+							{/if}
 							<!-- Fixed chevron column — see the note beside the HTTPRoute
 							     row (finding 13). -->
 							<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
-								<ChevronRightOutline class="h-3.5 w-3.5" />
+								<ChevronRightOutline class="h-3 w-3" />
 							</span>
 						</div>
 					{/each}

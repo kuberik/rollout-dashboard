@@ -7,7 +7,15 @@ import {
 	deployWindowStart,
 	classifyCheck,
 	recoveredChecks,
-	recoveredLabel
+	recoveredLabel,
+	healthGateCounts,
+	healthGateHolding,
+	healthGateCountsLabel,
+	healthHolds,
+	healthQuietState,
+	visibleHealthChecks,
+	pendingNextProbeAt,
+	pendingProbeClause
 } from './health-witness';
 
 const NOW = new Date('2026-08-31T02:00:00Z');
@@ -208,8 +216,201 @@ describe('recoveredChecks — the one row that had nowhere to render', () => {
 	});
 });
 
+/**
+ * ⛔ "PROMOTE ONLY WHEN IT'S HEALTHY" — the half of the controller no gate
+ * models. A `Pending` check is exactly as unproven as a failing one for the
+ * purpose of holding automatic promotion back; only `passing`/`recovered`
+ * (both `status: Healthy`) count as clear.
+ */
+describe('healthGateCounts / healthGateHolding / healthGateCountsLabel — the check-gate no `status.gates` object models', () => {
+	const window = new Date(DEPLOYED_AT);
+
+	it('counts a Pending check as pending, not as clear', () => {
+		const counts = healthGateCounts([check('Pending')], window);
+		expect(counts).toEqual({ pending: 1, failing: 0 });
+		expect(healthGateHolding(counts)).toBe(true);
+		expect(healthGateCountsLabel(counts)).toBe('1 pending');
+	});
+
+	it('counts Unhealthy/Failed as failing', () => {
+		const counts = healthGateCounts([check('Unhealthy'), check('Failed', undefined, 'b')], window);
+		expect(counts).toEqual({ pending: 0, failing: 2 });
+		expect(healthGateCountsLabel(counts)).toBe('2 failing');
+	});
+
+	it('failing leads pending in the label, both counted together', () => {
+		const counts = healthGateCounts(
+			[check('Pending'), check('Unhealthy', undefined, 'b')],
+			window
+		);
+		expect(counts).toEqual({ pending: 1, failing: 1 });
+		expect(healthGateCountsLabel(counts)).toBe('1 failing, 1 pending');
+	});
+
+	it('a passing check, and a recovered one, hold nothing back', () => {
+		const passing = healthGateCounts([check('Healthy')], window);
+		expect(passing).toEqual({ pending: 0, failing: 0 });
+		expect(healthGateHolding(passing)).toBe(false);
+
+		// `recovered`: Healthy now, but errored inside this deploy's window —
+		// classifyCheck's own reported-defect fixture. Still not held: the
+		// check is CURRENTLY healthy, which is all promotion cares about.
+		const recovered = healthGateCounts([check('Healthy', '2026-08-31T01:39:09Z')], window);
+		expect(recovered).toEqual({ pending: 0, failing: 0 });
+		expect(healthGateHolding(recovered)).toBe(false);
+	});
+
+	it('no checks at all holds nothing back', () => {
+		const counts = healthGateCounts([], window);
+		expect(healthGateHolding(counts)).toBe(false);
+		expect(healthGateCountsLabel(counts)).toBe('');
+	});
+});
+
 // Keep NOW referenced so the fixture's intent (02:00, 21m after the deploy,
 // 90s after the error) stays legible rather than drifting into a magic string.
 it('the fixture is the critic`s timeline', () => {
 	expect(NOW.getTime() - new Date(DEPLOYED_AT).getTime()).toBe(30 * 60_000);
+});
+
+/**
+ * ⛔ FILM CRITIC FINDING 1 (2026-09-21): the pending sub-line read `next
+ * probe in 12s` as a literal string baked in at fixture-build time — it
+ * never moved no matter how long the row sat on screen. `pendingProbeClause`
+ * is the fix: a real clock comparison, recomputed against whatever `now` the
+ * caller passes (the page's `$now` store, ticking every 100ms).
+ */
+describe('pendingNextProbeAt / pendingProbeClause — a real clock comparison, not a baked string', () => {
+	const base = new Date('2026-09-21T12:00:00Z');
+
+	function pendingWithProbe(nextProbeAt?: string): HealthCheck {
+		return {
+			metadata: { name: 'probe', namespace: 'hello-world-prod' },
+			status: { status: 'Pending', ...(nextProbeAt ? { nextProbeAt } : {}) }
+		} as unknown as HealthCheck;
+	}
+
+	it('is null when the check carries no `nextProbeAt` at all', () => {
+		expect(pendingNextProbeAt(pendingWithProbe())).toBeNull();
+		expect(pendingProbeClause(pendingWithProbe(), base)).toBeNull();
+	});
+
+	it('counts down the whole way: 12s, 3s, 1s — never negative, never frozen', () => {
+		const hc = pendingWithProbe(new Date(base.getTime() + 12_000).toISOString());
+		expect(pendingProbeClause(hc, base)).toBe('next probe in 12s');
+		expect(pendingProbeClause(hc, new Date(base.getTime() + 9_000))).toBe('next probe in 3s');
+		expect(pendingProbeClause(hc, new Date(base.getTime() + 11_000))).toBe('next probe in 1s');
+	});
+
+	it('reads `probing…`, never a negative number, once the instant passes', () => {
+		const hc = pendingWithProbe(new Date(base.getTime() + 3_000).toISOString());
+		// Exactly at the instant, and arbitrarily far past it (the stepped
+		// `step=pass` route may resolve the check whenever it is called,
+		// long after `nextProbeAt` — the countdown must not show a negative
+		// number either way).
+		expect(pendingProbeClause(hc, new Date(base.getTime() + 3_000))).toBe('probing…');
+		expect(pendingProbeClause(hc, new Date(base.getTime() + 3_600_000))).toBe('probing…');
+	});
+
+	it('an unparsable `nextProbeAt` is treated as absent, not as a crash', () => {
+		const hc = pendingWithProbe('not-a-date');
+		expect(pendingNextProbeAt(hc)).toBeNull();
+		expect(pendingProbeClause(hc, base)).toBeNull();
+	});
+});
+
+/**
+ * ⭐ ITEM 2, QA + design review 2026-10-08: a merely PENDING check must read
+ * as pending/waiting, never as failing — and never, which was the actual
+ * defect, be swallowed into "passing" by a binary that only asked about
+ * `Failed`/`Unhealthy`.
+ */
+describe('healthQuietState — the Gates tab`s empty-state sentence, three states not two', () => {
+	const window = new Date(DEPLOYED_AT);
+
+	it('is `passing` with no checks or all-clear checks', () => {
+		expect(healthQuietState([], window)).toBe('passing');
+		expect(healthQuietState([check('Healthy')], window)).toBe('passing');
+	});
+
+	it('⛔ THE REPORTED DEFECT — a Pending check used to read as `passing`', () => {
+		expect(healthQuietState([check('Pending')], window)).toBe('pending');
+		// Status '' (never reported) is `pending` too (`classifyCheck`'s rule).
+		expect(healthQuietState([check('')], window)).toBe('pending');
+	});
+
+	it('is `failing` when a check is Failed/Unhealthy inside the deploy window', () => {
+		expect(healthQuietState([check('Unhealthy', '2026-08-31T01:45:00Z')], window)).toBe('failing');
+	});
+
+	it('failing outranks pending when both are present', () => {
+		expect(
+			healthQuietState(
+				[check('Pending'), check('Unhealthy', '2026-08-31T01:45:00Z', 'b')],
+				window
+			)
+		).toBe('failing');
+	});
+
+	it('a STALE failure (before this deploy`s window) is not failing — and not pending either', () => {
+		// visibleHealthChecks drops it entirely, same as `healthHold` would.
+		expect(healthQuietState([check('Unhealthy', '2026-08-30T23:00:00Z')], window)).toBe('passing');
+	});
+
+	it('null healthChecks (not yet loaded) reads as `passing`, same as `[]`', () => {
+		expect(healthQuietState(null, window)).toBe('passing');
+	});
+});
+
+describe('visibleHealthChecks — the shared filter `healthHold` and detail`s own both need', () => {
+	const window = new Date(DEPLOYED_AT);
+
+	it('drops a failure whose lastErrorTime predates the window', () => {
+		const stale = check('Unhealthy', '2026-08-30T23:00:00Z');
+		expect(visibleHealthChecks([stale], window)).toEqual([]);
+	});
+
+	it('keeps a failure inside the window', () => {
+		const fresh = check('Unhealthy', '2026-08-31T01:45:00Z');
+		expect(visibleHealthChecks([fresh], window)).toEqual([fresh]);
+	});
+
+	it('drops a failing check with no lastErrorTime at all, once a window exists', () => {
+		const noWitness = check('Unhealthy');
+		expect(visibleHealthChecks([noWitness], window)).toEqual([]);
+	});
+
+	it('never filters a non-failing check', () => {
+		const pending = check('Pending');
+		const healthy = check('Healthy');
+		expect(visibleHealthChecks([pending, healthy], window)).toEqual([pending, healthy]);
+	});
+
+	it('with no window, nothing is filtered — even an unwitnessed failure', () => {
+		const noWitness = check('Unhealthy');
+		expect(visibleHealthChecks([noWitness], null)).toEqual([noWitness]);
+	});
+});
+
+/**
+ * ⭐ ITEM 3, QA 2026-10-08: the ONE predicate rollout detail's
+ * `newestHeldByHealth` and the Gates tab's `healthHold` both must read.
+ */
+describe('healthHolds — the shared predicate detail and the Gates tab both read', () => {
+	it('false with no candidate to hold back, regardless of check state', () => {
+		expect(healthHolds(false, false, { pending: 1, failing: 1 })).toBe(false);
+	});
+
+	it('false when a real gate already blocks the newest candidate', () => {
+		expect(healthHolds(true, true, { pending: 1, failing: 0 })).toBe(false);
+	});
+
+	it('true when there is a candidate, no gate blocks it, and health holds', () => {
+		expect(healthHolds(true, false, { pending: 1, failing: 0 })).toBe(true);
+		expect(healthHolds(true, false, { pending: 0, failing: 1 })).toBe(true);
+	});
+
+	it('false when health itself holds nothing back', () => {
+		expect(healthHolds(true, false, { pending: 0, failing: 0 })).toBe(false);
+	});
 });

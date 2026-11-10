@@ -241,7 +241,11 @@ export function rankVerdictsByRollout(
 
 /** One environment tier's verdict within an app, or `unknown` if unbound. */
 export function rankVerdictFor(group: AppGroup, envTier: string): RankVerdict {
-	const cell = group.cells.find((c) => (c.environment?.spec?.environment ?? c.envName) === envTier);
+	// The PLACE (`placeKey`) first; the raw `spec.environment` second, so a caller
+	// that still holds the Environment's own spelling (`production`) resolves too.
+	const cell =
+		group.cells.find((c) => c.envName === envTier) ??
+		group.cells.find((c) => c.environment?.spec?.environment === envTier);
 	if (!cell) return { kind: 'unknown' };
 	return rankVerdicts(group).get(cell) ?? { kind: 'unknown' };
 }
@@ -262,13 +266,41 @@ export function rankVerdictFor(group: AppGroup, envTier: string): RankVerdict {
  * `/rollouts` and `/versions/<rev>` still said `−N` — one fact, two spellings,
  * which is how a term becomes insider vocabulary. It is spelled here now, so
  * no page can spell it a third way.
+ *
+ * ⛔ AND THEN IT WAS STILL `N behind`, WITH NO UNIT. (shared/age-lag-total,
+ * 2026-10-12, six blind reads of Home) `N behind` names no denominator: is
+ * it builds, regions, services? Four surfaces answered that four different
+ * ways. `lagLabel` below is now the ONE spelling for a BUILD-DISTANCE count
+ * ("N builds behind") and `rankLabel` reads it rather than inlining the bare
+ * number — every other caller that used to write `${n} behind` by hand
+ * (`journey.ts`'s `laneNodeLabel`, `revision-ledger.ts`'s `rankSentence`)
+ * now reads this too, so a build-lag count can never again reach a screen
+ * with no unit.
  */
+export function lagLabel({ builds }: { builds: number }): string {
+	return `${builds} build${builds === 1 ? '' : 's'} behind`;
+}
+
+/**
+ * THE OTHER UNIT — a REGION count's share of newest, never folded into
+ * `lagLabel`'s build-distance count (same ruling: never both units in one
+ * cell). `onNewest` of `of` regions are running the newest build; the
+ * caller supplies both ends so this never silently divides by a population
+ * it was not given.
+ */
+export function regionsLabel({ onNewest, of }: { onNewest: number; of: number }): string {
+	// "on the newest" — the same phrasing `fleet-facts.ts`'s `stageLabel` and
+	// `PromotionMap`'s own captions already use for "on the newest build";
+	// one convention, not a third wording for the identical fact.
+	return `${onNewest} of ${of} region${of === 1 ? '' : 's'} on the newest`;
+}
+
 export function rankLabel(v: RankVerdict): string {
 	switch (v.kind) {
 		case 'newest':
 			return 'newest';
 		case 'behind':
-			return `${v.by} behind`;
+			return lagLabel({ builds: v.by });
 		case 'diverged':
 			// Not git's word. The fact is that this build was never released
 			// to any environment — see the vocabulary table in DESIGN.md.

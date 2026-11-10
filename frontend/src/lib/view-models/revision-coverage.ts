@@ -316,16 +316,16 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
 	// on the page including the brand mark. `green-600` is the same hue two
 	// steps down, still unmistakably the health green, and it is the only
 	// value in this table that differs between ink and fill.
-	live: 'bg-green-700 dark:bg-green-600',
+	live: 'bg-success-solid',
 	// `Deploying`'s own hue product-wide (`bake-status.ts` DOT/`BakeStatusIcon`
 	// spinner) — a bucket merging `Deploying` AND `InProgress` still reads as
 	// "in progress", the STATUS meaning of blue, not the separate reservation
 	// `Chip`'s `rank` role gives blue on a joined badge (a different component,
 	// a different context — see that file's own note on why the two do not
 	// collide).
-	deploying: 'bg-blue-700 dark:bg-blue-400',
-	failing: 'bg-red-700 dark:bg-red-500',
-	ahead: 'bg-gray-300 dark:bg-gray-600',
+	deploying: 'bg-active-solid',
+	failing: 'bg-danger-solid',
+	ahead: 'bg-line-strong',
 	// THE TRACK. Faintest fill in the object, because this is the part of the
 	// fleet the build has NOT reached — the bar visibly stopping short is the
 	// strongest statement of that, and it is the reading a proportional bar
@@ -350,12 +350,12 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
 	// entry now serves only the bucket CARDS, which sit on the same ground,
 	// so the same fix applies here for the same reason and the two objects
 	// converge on one spelling instead of two.
-	notYet: 'bg-gray-100 dark:bg-gray-700',
+	notYet: 'bg-subtle',
 	// HOLLOW. An outlined cell with no fill is the one shape that says "there
 	// is a place here and no answer for it" — which is exactly what this
 	// bucket admits. It is also the rarest bucket, so the busiest treatment
 	// costs the least.
-	unplaceable: 'bg-transparent border border-gray-400 dark:border-gray-500'
+	unplaceable: 'bg-transparent border border-line-strong'
 };
 
 /**
@@ -399,17 +399,17 @@ export function coverageSwatch(key: CoverageKey, _reachable = true): string {
  * borrows a 1px `gray-300` perimeter, which is ink on ~48px rather than area.
  */
 export const COVERAGE_SWATCH: Record<CoverageKey, string> = {
-	live: 'bg-green-700 dark:bg-green-600 border-transparent',
-	deploying: 'bg-blue-700 dark:bg-blue-400 border-transparent',
-	failing: 'bg-red-700 dark:bg-red-500 border-transparent',
-	ahead: 'bg-gray-300 dark:bg-gray-600 border-transparent',
+	live: 'bg-success-solid border-transparent',
+	deploying: 'bg-active-solid border-transparent',
+	failing: 'bg-danger-solid border-transparent',
+	ahead: 'bg-line-strong border-transparent',
 	// The swatch is the bar's own treatment at 12px, so the two neutral
 	// buckets keep the bar's own distinction: `notYet` is the faint TRACK (it
 	// borrows a border only because gray-100 at 12px on a white card has no
 	// edge at all), `unplaceable` is HOLLOW. A swatch drawn in a value the
 	// segment does not use is a second encoding to keep in sync.
-	notYet: 'bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600',
-	unplaceable: 'bg-transparent border-gray-400 dark:border-gray-500'
+	notYet: 'bg-subtle border-line',
+	unplaceable: 'bg-transparent border-line-strong'
 };
 
 /**
@@ -549,13 +549,24 @@ export function coverageWeight(key: CoverageKey): CoverageWeight {
  * calculation off the ramp disagreed with what actually renders).
  */
 export const WEIGHT_FILL: Record<CoverageWeight, string> = {
-	here: 'bg-green-700 dark:bg-green-600',
-	movedOn: 'bg-[oklch(82%_0.07_154)] dark:bg-[oklch(42%_0.05_154)]',
-	notReached: 'bg-gray-200 dark:bg-gray-700',
-	unplaceable: 'bg-transparent border border-gray-400 dark:border-gray-500'
+	here: 'bg-success-solid',
+	movedOn: 'bg-success-tint',
+	notReached: 'bg-subtle',
+	unplaceable: 'bg-transparent border border-line-strong'
 };
 
-export function weightFill(weight: CoverageWeight): string {
+/**
+ * ⭐ ROUND 5 (TL review, design review 7, item 3) — `quiet` IS A VISUAL-ONLY
+ * OVERRIDE, NEVER A NEW SEMANTIC BUCKET. `movedOn`'s `title` ("have moved
+ * past this build") stays the true fact everywhere; `quiet` only swaps
+ * WHICH track colour the fill borrows (`notReached`'s own neutral
+ * `bg-subtle`) for a caller whose every place is, by construction,
+ * `movedOn` — a dead/archived row that needs nobody's attention, not a
+ * build still spreading across the fleet. See `CoverageBar`'s own `quiet`
+ * prop doc comment for the caller-facing contract.
+ */
+export function weightFill(weight: CoverageWeight, quiet = false): string {
+	if (quiet && weight === 'movedOn') return WEIGHT_FILL.notReached;
 	return WEIGHT_FILL[weight];
 }
 
@@ -569,12 +580,12 @@ const WEIGHT_TITLE: Record<CoverageWeight, string> = {
 };
 
 const DOT: Record<string, string> = {
-	fail: 'bg-red-700 dark:bg-red-500',
-	stuck: 'bg-amber-500 dark:bg-amber-400',
-	pending: 'bg-gray-200 dark:bg-gray-700',
-	deploying: 'bg-blue-700 dark:bg-blue-400',
-	baking: 'bg-yellow-700 dark:bg-yellow-400',
-	ok: 'bg-gray-500 dark:bg-gray-400'
+	fail: 'bg-danger-solid',
+	stuck: 'bg-warning-solid',
+	pending: 'bg-line-strong',
+	deploying: 'bg-active-solid',
+	baking: 'bg-progress-solid',
+	ok: 'bg-fg-subtle'
 };
 
 // THE WORDS COME FROM `bake-status.ts` (2026-08-30). This table used to

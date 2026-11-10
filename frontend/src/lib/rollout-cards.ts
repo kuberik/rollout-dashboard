@@ -2,12 +2,25 @@
 // list (RolloutGrid.svelte) and the Control Center overview (ControlCenter.svelte),
 // so stuck/behind/failure classification logic lives in exactly one place.
 
+import { behindOfRollout } from './view-models/behind';
 import type { Rollout, Environment } from '../types';
 import { getRolloutEnvironmentTheme, shortEnvLabel } from './environment-theme';
-import { getDisplayVersion, categorizeFailure, compareRollouts, detectStuck } from './utils';
+import {
+	getDisplayVersion,
+	categorizeFailure,
+	compareRollouts,
+	detectStuck,
+	detectStuckBehind
+} from './utils';
 import type { StuckReason } from './utils';
 import { compareEnvironmentNames } from './env-order';
-import { newerReleaseCount, promotionBlock } from './view-models/promotion';
+import {
+	newerReleaseCount,
+	promotionBlock,
+	blockNeedsPerson,
+	detectStuckPromotion
+} from './view-models/promotion';
+import type { PromotionStuckReason } from './view-models/promotion';
 import { rankVerdictsByRollout, rankBehindBy } from './view-models/env-rank';
 import type { RankVerdict } from './view-models/env-rank';
 import { checkFailure } from './view-models/health-witness';
@@ -17,9 +30,218 @@ import {
 	sourceClusterName,
 	rolloutMatchesEnvironment
 } from './source-dashboard';
-import type { BlockingStory } from './view-models/blocking-story';
+import { blockingStory } from './view-models/blocking-story';
+import type { BlockingStory, GateContext, ContractHolds } from './view-models/blocking-story';
+import { heldVerdict } from './view-models/held';
+import type { HeldCause } from './view-models/held';
 import { displayVersionForTag } from './version-utils';
 import { formatAbsoluteReopen } from './api/schedules';
+import type { PrCell } from './view-models/pr-pipeline';
+import type { WaveRole } from '../types/environment-types';
+import {
+	canonicalTier,
+	placeKeyOf,
+	roleOf,
+	siteOf,
+	waveOf,
+	waveReady,
+	type Tier
+} from './view-models/sites-waves';
+
+/**
+ * ⛔ ONE STUCK PREDICATE FOR THE WHOLE PRODUCT. (U-2 class, 2026-10-09)
+ *
+ * The coordinator's finding: in the calm demo, `/apps/checkout-api` showed
+ * five environments `STUCK 41d` while Home's "Needs you now" showed none of
+ * them — not because the two surfaces disagreed about a FACT, but because
+ * `buildRolloutCards` (below), which is what Home / `/rollouts` /
+ * `CommandPalette` all read `.stuck` from, only ever ran `detectStuck` — the
+ * OWN-rollout baking/deploying detector. `/apps`, `/apps/[name]`,
+ * `/environments` and `/envs/[name]` each separately re-derived the two
+ * other kinds of stuck (a promotion that has been waiting, and a rollout
+ * behind a peer) as local copies, with three different amounts of care
+ * about the one rule that must gate all of them:
+ *
+ * ⭐ "NO PROGRESS FOR N, AND NOTHING IS HOLDING IT ON PURPOSE." A 41-day-old
+ * environment with newer builds ready but refused by a schedule window or a
+ * dependency contract is not stuck — it is HELD, and held is not a person's
+ * problem (`src/lib/CLAUDE.md`: "a gate correctly refusing a candidate is
+ * not a stoppage"). Whether a block needs a person is a JOIN on who wrote
+ * the blocking gate (`promotion.ts`'s `blockNeedsPerson`, via a
+ * `GateContext`) — never a bare "is there a newer build sitting elsewhere".
+ *
+ * This function is the one place that joins the three detectors in the one
+ * order that respects that rule, and it is why its shape is NOT just
+ * `detectStuck() || detectStuckPromotion() || detectStuckBehind()`:
+ *
+ *   1. `detectStuck` — baking or deploying past its own threshold. A
+ *      genuine wedge whatever the gates say; nothing excuses it.
+ *   2. `detectStuckPromotion` — releases waiting on a promotion that needs
+ *      a person (or has no gate at all and is simply stagnant). Already
+ *      internally excuses a block held entirely by a clock/upstream gate.
+ *   3. THE GUARD: if the rollout IS gate-blocked and that block does not
+ *      need a person, every remaining question is one `detectStuckPromotion`
+ *      already answered "no" to, so stop — a peer merely being ahead is the
+ *      gate working as designed, not a second chance for the same fact to
+ *      read `stuck` on this page and not on that one.
+ *   4. `detectStuckBehind` — only reached when 1-3 found nothing: compare
+ *      against every peer environment for the same app.
+ *
+ * Every caller that renders `stuck` must supply its own real `GateContext`
+ * (built the same way `/apps/[name]`'s `gateContext` is) — a caller with
+ * none gets the same conservative fallback `detectStuckPromotion` /
+ * `detectStuckBehind` already document (every allow-list gate classifies
+ * `unknown`, which still counts as needing a person), never a silent
+ * narrower answer.
+ */
+export function detectRolloutStuck(
+	rollout: Rollout | null | undefined,
+	peers: { envName: string; rollout: Rollout }[],
+	options: {
+		now?: Date;
+		gateContext?: GateContext;
+		bakeThresholdMs?: number;
+		behindThresholdMs?: number;
+	} = {}
+): StuckReason | PromotionStuckReason | null {
+	const own = detectStuck(rollout, { now: options.now, bakeThresholdMs: options.bakeThresholdMs });
+	if (own) return own;
+	const promo = detectStuckPromotion(rollout, { now: options.now, gateContext: options.gateContext });
+	if (promo) return promo;
+	const block = promotionBlock(rollout);
+	if (block.blocked && !blockNeedsPerson(rollout, block, options.gateContext)) {
+		// Held by a clock/upstream gate that correctly refuses every
+		// candidate — not stuck, and a peer comparison below would only
+		// repeat the same excused fact from a different angle.
+		return null;
+	}
+	for (const peer of peers) {
+		const r = detectStuckBehind(rollout, peer.rollout, peer.envName, {
+			now: options.now,
+			thresholdMs: options.behindThresholdMs,
+			gateContext: options.gateContext
+		});
+		if (r) return r;
+	}
+	return null;
+}
+
+/**
+ * ⭐ THE WORST-WINS CHANGE VERDICT (squad-changes round 2, 2026-10-09,
+ * coordinator ruling). ONE shared severity ranking for "what is the single
+ * worst thing happening to this change right now" — failed > stuck > held >
+ * deploying/checking > queued > live — shared by `pr-pipeline.ts`'s
+ * `buildChangeVerdict` (the page/index/Home verdict word+tone) and
+ * `changes.ts`'s `pickFrontierCell` (the same selection's own cell handle,
+ * for prose that needs more than the fused sentence). Both used to pick the
+ * EARLIEST-ENV-RANK non-live cell instead — reasonable for "where do I look
+ * to unblock this", wrong for "what is the worst thing happening", and the
+ * bug a live PR (`#20`, failed in prod + held in prod + checking in dev)
+ * exposed: the title chip read "Deploying" because dev's checking cell had
+ * the lower env rank, and no failure banner showed at all.
+ *
+ * `CHANGE_STATE_RANK` is exported so a caller with its OWN kind enum for the
+ * same three shared severities (`NeedsYouCard`'s `Kind = 'failed' | 'stuck'
+ * | 'held'`) can assert its hand-rolled order never drifts from this one
+ * (see this file's own test) — NOT so it can replace that file's `KIND_RANK`
+ * outright: `NeedsYouCard` is home-v2's file, not switched here.
+ *
+ * `isEnvHeld` reads squad-rollout's own `promotionHoldBreakdown(rollout,
+ * ctx).allHeld` — set once, on the real `Rollout` + `GateContext`, by
+ * `pr-pipeline.ts`'s `buildPrPipeline` (`PrCell.held`, that field's own doc
+ * comment) — "every deployable candidate for this rollout is held", never
+ * merely an older build held while a newer one could still move
+ * (`anyHeld`, which is NOT held for this purpose). This function never
+ * re-derives the fact from `state`; a cell with no `held` set (a hand-built
+ * fixture that skips it) reads `false`.
+ */
+export const CHANGE_STATE_RANK = {
+	failed: 0,
+	stuck: 1,
+	held: 2,
+	deploying: 3,
+	queued: 4,
+	live: 5
+} as const;
+
+/**
+ * ⛔ `cell.held` CAN ONLY CONFIRM A STATE THE PER-CANDIDATE CLASSIFICATION
+ * ALREADY CALLED HELD-LIKE — NEVER PROMOTE A BARE PROMOTION-ORDER WAIT.
+ * (Found live, incident PR #30: `hello-world` read title chip "Deploying"
+ * — `frontierTone` in `pr-pipeline.ts` saw `state: 'queued'`, its own
+ * `default` case, correctly "active" — while THIS predicate read
+ * `cell.held: true` off `promotionHoldBreakdown(rollout, ctx).allHeld`,
+ * which answers a ROLLOUT-WIDE question — "is every candidate build held"
+ * — not "is the ONE candidate that carries THIS change held". A `queued`
+ * cell is, by `buildCell`'s own rules (`pr-pipeline.ts`), one gates
+ * actively ALLOW; nothing is refusing it, it is simply waiting its turn.
+ * Reading the rollout-wide `held` over that produced a banner reading
+ * "hello-world is held" under a title chip reading "Deploying" — the exact
+ * disagreement this whole round exists to kill.
+ *
+ * So: `held` is trusted only to REFINE an already held-like state
+ * (`gated`/`pinned`/`waiting-upstream` — the SAME three `frontierTone`
+ * reads as "held"), never to promote a `queued`/`deploying`/`baking`/…
+ * cell into one. `pr-pipeline.ts`'s `buildPrPipeline` does not currently
+ * set `held: false` to override a gate-blocked state either, so in
+ * practice this still behaves as "held-like state -> held" until a real
+ * refinement is wired — but the TYPE is honoured for when it is.
+ */
+export function isEnvHeld(cell: Pick<PrCell, 'held' | 'state'>): boolean {
+	const stateIsHeldLike =
+		cell.state === 'gated' || cell.state === 'pinned' || cell.state === 'waiting-upstream';
+	if (!stateIsHeldLike) return false;
+	// `held` is set by the real pipeline (`PrCell.held`'s own doc). A
+	// hand-built fixture that skips it (`undefined`) falls back to "yes,
+	// held" — the state itself already said so.
+	return cell.held ?? true;
+}
+
+function isEnvFailed(cell: Pick<PrCell, 'state'>): boolean {
+	return cell.state === 'failed' || cell.state === 'rolled-back';
+}
+
+/**
+ * One cell's own rank (lower = worse). `cell.stuck` must come from a real
+ * `detectRolloutStuck` run and `cell.held` from a real
+ * `promotionHoldBreakdown(...).allHeld` run (`pr-pipeline.ts`'s
+ * `buildPrPipeline`, which has the `Rollout` + `GateContext` to run both on)
+ * — this function never re-derives either itself, per the coordinator's
+ * ruling.
+ */
+export function changeStateRankFor(cell: Pick<PrCell, 'state' | 'stuck' | 'held'>): number {
+	if (isEnvFailed(cell)) return CHANGE_STATE_RANK.failed;
+	if (cell.stuck) return CHANGE_STATE_RANK.stuck;
+	if (isEnvHeld(cell)) return CHANGE_STATE_RANK.held;
+	if (cell.state === 'live' || cell.state === 'not-built') return CHANGE_STATE_RANK.live;
+	if (cell.state === 'queued') return CHANGE_STATE_RANK.queued;
+	// promoting / deploying / baking / retrying / cancelled.
+	return CHANGE_STATE_RANK.deploying;
+}
+
+/**
+ * Picks the single worst cell across a change's services — severity first
+ * (`changeStateRankFor`), env rank then cluster name as the tiebreak WITHIN
+ * one severity tier (an earlier environment still wins a tie, e.g. two
+ * services both `queued`). Callers keep their own "every cell live" /
+ * "nothing built" short-circuits before calling this (both existing callers
+ * already filter `not-built` and check the all-live case first) — this
+ * function itself never special-cases an empty list beyond returning `null`.
+ */
+export function worstChangeCell<
+	T extends { cell: Pick<PrCell, 'state' | 'stuck' | 'held' | 'envRank' | 'cluster'> }
+>(
+	cells: readonly T[]
+): T | null {
+	if (cells.length === 0) return null;
+	return cells.reduce((worst, x) => {
+		const r = changeStateRankFor(x.cell);
+		const wr = changeStateRankFor(worst.cell);
+		if (r !== wr) return r < wr ? x : worst;
+		if (x.cell.envRank !== worst.cell.envRank) return x.cell.envRank < worst.cell.envRank ? x : worst;
+		return x.cell.cluster.localeCompare(worst.cell.cluster) < 0 ? x : worst;
+	});
+}
 
 export type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
 
@@ -87,7 +309,17 @@ export type RolloutCard = {
 	title: string;
 	envKey: string;
 	envDisplay: string;
-	envName: string; // raw env name (e.g. 'staging') for behind-by lookups
+	envName: string; // the place key (`placeKey`: 'staging', or 'prod-eu-west-1' once a tier has several live sites) for behind-by lookups
+	/** Canonical tier, for order and filters. Null when the Environment is unbound or its name cannot be placed. */
+	tier: Tier | null;
+	site: string | null;
+	wave: number | null;
+	/** Reported wave role (Leader/Follower); null before the first reconcile or when unbound. */
+	role: WaveRole | null;
+	/** WaveReady condition: true/false, null when none was reported. */
+	ready: boolean | null;
+	/** True for an Environment that claims a site another Environment owns (WaveReady DuplicateSite). It is not a place: lanes and counts leave it out. */
+	duplicateSite: boolean;
 	theme: ReturnType<typeof getRolloutEnvironmentTheme>;
 	version: string | null;
 	timestamp: string | null;
@@ -100,7 +332,14 @@ export type RolloutCard = {
 	pinnedVersion: string | null;
 	/** Non-null when the CURRENT version is older than the one it replaced. */
 	rolledBack: RollbackMark | null;
-	stuck: StuckReason | null;
+	/**
+	 * ⛔ READ `detectRolloutStuck`'s OWN DOC COMMENT ABOVE BEFORE TOUCHING
+	 * THIS FIELD. It is the ONE stuck predicate, joining own-rollout,
+	 * promotion and peer-behind detection in the one order every other
+	 * surface (`/apps`, `/apps/[name]`, `/environments`, `/envs/[name]`)
+	 * must also call through, never re-derive.
+	 */
+	stuck: StuckReason | PromotionStuckReason | null;
 	/**
 	 * ⛔ A HEALTH CHECK IS FAILING RIGHT NOW — and this is NOT derivable from
 	 * `statusKey`. The deploy succeeded; the check failed afterwards. Four list
@@ -145,6 +384,29 @@ export type RolloutCard = {
 	 * drawn as its own mark beside the rank.
 	 */
 	held: boolean;
+	/**
+	 * ⭐ THE HELD-PREDICATE RULING, PRECOMPUTED. (shared/held-predicate,
+	 * 2026-10-11) `held-predicate.ts`'s `heldVerdict`, run once here against
+	 * this card's own `BlockingStory` and raw `envName` — see that module's
+	 * own doc for the ruling ("refused here" vs "not reached yet") and why
+	 * `held` above now agrees with it instead of `blockingStory(...).blocked`
+	 * directly (that field folded plain chain sequencing into "held").
+	 * `heldCause` is `null` exactly when `held` is `false`; `heldCauseLabel`
+	 * is the noun phrase (`"payments-svc"`, `"an approval"`, `"promotion
+	 * order"`) `waitsFor`'s "X held on Y" sentence reads off a PEER card.
+	 */
+	heldCause: HeldCause | null;
+	heldCauseLabel: string | null;
+	/**
+	 * Set exactly when NOT held because an earlier-tier promotion gate (this
+	 * app's own chain) has not deployed the candidate here yet — the
+	 * upstream environment's raw name. `view-models/held.ts`'s `waitsFor`
+	 * reads this to name the stage and, via a peer card, why that stage
+	 * itself is not moving.
+	 */
+	waitsForEnv: string | null;
+	/** The wave/site wording of that wait ("Waiting for us-east-1 to finish checking c6f19d2"); null for a plain tier wait. */
+	waveWait: string | null;
 	rollout: Rollout;
 	sourceURL: string; // dashboard URL this rollout belongs to (empty = local)
 	sourceCluster: string; // cluster NAME this rollout belongs to (for name-based routing)
@@ -159,8 +421,9 @@ function buildAppIndex(
 	const map = new Map<string, { envName: string; rollout: Rollout }[]>();
 	for (const env of environments) {
 		const appName = env.spec?.rolloutRef?.name;
-		const envName = env.spec?.environment;
-		if (!appName || !envName) continue;
+		if (!appName || !env.spec?.environment) continue;
+		// The PLACE (`placeKey`): two prod sites are two peers, not one.
+		const envName = placeKeyOf(env, environments);
 		const r = rollouts.find((x) => rolloutMatchesEnvironment(x, env));
 		if (!r) continue;
 		if (!map.has(appName)) map.set(appName, []);
@@ -249,7 +512,21 @@ function computeBehind(
 export function buildRolloutCards(
 	rollouts: Rollout[],
 	environments: Environment[],
-	now: Date
+	now: Date,
+	gateContext?: GateContext,
+	/**
+	 * ⭐ THE HOLD-ONE-RULE'S OTHER HALF, OPTIONAL. (2026-10-09, coordinator
+	 * ruling: "held" = refused by a gate OR held by a dependency-contract.)
+	 * `held` below is deliberately cheap — gate-only, no environment/
+	 * dependency join, "safe to compute for every card on every list
+	 * surface" (see that field's own doc comment) — and that stays true for
+	 * every caller that omits this. A caller that already built the
+	 * dependency graph for OTHER reasons (Home, which needs it for
+	 * Needs-you) passes this to fold the SAME contract reads in, so `held`
+	 * and `blockingStory`'s own banner can never disagree about the same
+	 * rollout.
+	 */
+	contractHoldsFor?: (rollout: Rollout) => ContractHolds | undefined
 ): RolloutCard[] {
 	const appIndex = buildAppIndex(rollouts, environments);
 	// ONE LADDER PER APP, built once for the whole fleet — the same derivation
@@ -259,7 +536,11 @@ export function buildRolloutCards(
 	return rollouts.map((r) => {
 		const latest = r.status?.history?.[0];
 		const env = environments.find((e) => rolloutMatchesEnvironment(r, e));
-		const theme = getRolloutEnvironmentTheme(r, env);
+		const theme = getRolloutEnvironmentTheme(
+			r,
+			env,
+			env?.spec?.environment ? placeKeyOf(env, environments) : null
+		);
 		const bakeStatus = latest?.bakeStatus || 'None';
 		const isRunning = bakeStatus === 'InProgress' || bakeStatus === 'Deploying';
 		let statusKey: StatusKey;
@@ -268,12 +549,15 @@ export function buildRolloutCards(
 		else if (!latest) statusKey = 'pending';
 		else statusKey = 'succeeded';
 		const envDisplay = shortEnvLabel(theme);
-		const envName = env?.spec?.environment ?? '';
+		const envName = env?.spec?.environment ? placeKeyOf(env, environments) : '';
 		const rank: RankVerdict = ranks.get(r) ?? { kind: 'unknown' };
 		// Attribution keeps its peer; the NUMBER comes off the ladder so the
 		// card and the app row cannot print two answers for one rollout.
 		const attribution = envName ? computeBehind(r, envName, appIndex) : null;
 		const behind = attribution ? { ...attribution, behindBy: rankBehindBy(rank) } : null;
+		const peers = (appIndex.get(r.metadata?.name ?? '') ?? []).filter(
+			(p) => p.envName !== envName
+		);
 		// For failed cards: find the most recent succeeded version that's different
 		// from the current one. Gives the user a rollback target at a glance.
 		let previousSucceededVersion: string | null = null;
@@ -288,6 +572,19 @@ export function buildRolloutCards(
 				}
 			}
 		}
+		// ⭐ ONE STORY, READ TWICE: `held`/`heldCause`/`heldCauseLabel`/
+		// `waitsForEnv` all come off this SAME `BlockingStory` — see
+		// `held.ts`'s own doc. Gate-only (`promotionBlock`'s old cheap path)
+		// is no longer a separate branch: `blockingStory` with no
+		// `contractHolds` degrades to the identical gate-only read
+		// (`options.contractHolds` is optional throughout that module), so
+		// every card now gets real gate CLASSIFICATION — which `heldVerdict`
+		// needs to tell a chain gate from a same-tier order gate — at the
+		// same cost `promotionBlock(r).blocked` already paid.
+		const cardStory = contractHoldsFor
+			? blockingStory(r, gateContext, { contractHolds: contractHoldsFor(r), now })
+			: blockingStory(r, gateContext, { now });
+		const heldCardVerdict = heldVerdict(cardStory, envName);
 		return {
 			ns: r.metadata?.namespace || '',
 			name: r.metadata?.name || '',
@@ -295,6 +592,12 @@ export function buildRolloutCards(
 			envKey: theme?.name || '',
 			envDisplay,
 			envName,
+			tier: env ? canonicalTier(env.spec?.environment) : null,
+			site: env ? siteOf(env) : null,
+			wave: env ? waveOf(env) : null,
+			role: env ? roleOf(env) : null,
+			ready: env ? waveReady(env).ready : null,
+			duplicateSite: env ? waveReady(env).blocker?.kind === 'duplicate' : false,
 			theme,
 			version: latest?.version ? getDisplayVersion(latest.version) : null,
 			timestamp: latest?.timestamp || null,
@@ -307,11 +610,21 @@ export function buildRolloutCards(
 			previousSucceededVersion,
 			pinnedVersion: r.spec?.wantedVersion || null,
 			rolledBack: detectRollback(r),
-			stuck: detectStuck(r, { now }),
+			stuck: detectRolloutStuck(r, peers, { now, gateContext }),
 			checkFailure: checkFailure(r),
 			rank,
 			behind,
-			held: promotionBlock(r).blocked,
+			held: heldCardVerdict.held,
+			heldCause: heldCardVerdict.cause,
+			// ⭐ qa12 (squad-rollout gates-2 follow-up, 2026-10-11): the
+			// FRONTIER candidate's own label, never the whole-story blend
+			// — `heldVerdict`'s own `.frontier.causeLabel` is read off ONLY
+			// the eligible candidate's `classifiedGates`, which is what
+			// keeps a newer chain-refused candidate's gate from naming the
+			// cause for an OLDER candidate this environment really refuses.
+			heldCauseLabel: heldCardVerdict.held ? (heldCardVerdict.frontier?.causeLabel ?? null) : null,
+			waitsForEnv: heldCardVerdict.waitsForEnv,
+			waveWait: heldCardVerdict.waveWait ?? null,
 			rollout: r,
 			sourceURL: sourceDashboardURL(r),
 			sourceCluster: sourceClusterName(r)
@@ -390,7 +703,7 @@ export function buildRolloutCards(
  * env chip and ONE `[verdict][build]` chip, and that is the whole budget.
  */
 export function cardVerdict(
-	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held' | 'rank'>>,
+	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held' | 'rank' | 'rollout'>>,
 	rankWord: string,
 	rankSentence: string
 ): { label: string; title: string } {
@@ -400,7 +713,7 @@ export function cardVerdict(
 	// upgrade path's size, and beside "no rule lets it through yet" it read
 	// as a contradiction. For a held row the number is how many are WAITING.
 	if (mark?.kind === 'held') {
-		const n = rankBehindBy(c.rank);
+		const n = c.rank ? behindOfRollout(c.rollout, c.rank) : 0;
 		const waiting =
 			n > 0 ? ` ${n} newer build${n === 1 ? ' is' : 's are'} waiting.` : '';
 		return { label: rankWord, title: `${mark.title}${waiting}` };
@@ -598,4 +911,20 @@ export function pinnedCauseText(c: Pick<RolloutCard, 'pinnedVersion' | 'rollout'
 	const trig = c.rollout.status?.history?.[0]?.triggeredBy;
 	const who = trig?.kind === 'User' && trig?.name ? trig.name : null;
 	return who ? `pinned to ${display} by ${who}` : `pinned to ${display}`;
+}
+
+/**
+ * D-23 (2026-10-08): a hyphenated app/environment/namespace name interpolated
+ * into a banner SENTENCE wraps at the browser's default hyphen break
+ * opportunity — at 390 that split "checkout-edge" into "checkout-" / "edge"
+ * and "prod-us-east-2" into "prod-" / "us-east-2" mid-word, which a reader
+ * sees as two different names on two lines. A chip/badge never hit this
+ * because it is its own box with its own width; only free-flowing prose
+ * does. Swap the plain hyphen for U+2011 (non-breaking hyphen) ONLY at the
+ * point this one name is interpolated — it paints identically to `-` in
+ * every typeface the product uses, so this is invisible until the line
+ * actually wraps, where the whole name now moves together.
+ */
+export function nowrapName(name: string): string {
+	return name.replace(/-/g, '‑');
 }

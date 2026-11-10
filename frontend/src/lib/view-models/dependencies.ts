@@ -1,5 +1,15 @@
 import { getDisplayVersion } from '$lib/utils';
 import type { BlockedRelease, RolloutDependency } from '../../types';
+import {
+	TIERS,
+	canonicalTier,
+	comparePlaces,
+	placeKeyOfSite,
+	upstreamOf,
+	type AppTopology,
+	type SiteNode,
+	type Tier
+} from './sites-waves';
 import { dependencyCondition } from '../../types/rollout-dependency-types';
 
 /**
@@ -10,10 +20,13 @@ import { dependencyCondition } from '../../types/rollout-dependency-types';
  * keeps them apart on purpose. They are NEVER folded into one list:
  *
  *   1. ENVIRONMENT DEPENDENCY - promotion order INSIDE one service.
- *      `Environment.status.environmentInfos[].relationship` is an `After`
- *      edge: staging runs after dev, prod after staging. The question is
- *      "HOW FAR HAVE I GOT" and the answer is a position on this app's own
- *      line. Rendered as the promotion chain.
+ *      Sites and waves (environment-controller): a tier (dev < test < staging
+ *      < prod) orders itself after the previous tier, a wave after the
+ *      previous wave of the same tier, and a follower takes its leader's pick.
+ *      `sites-waves.ts` derives those edges (`upstreamOf`); there is no
+ *      `relationship` field any more. The question is "HOW FAR HAVE I GOT" and
+ *      the answer is a position on this app's own line. Rendered as the
+ *      promotion chain.
  *
  *   2. CONTRACT GATE (`RolloutDependency`) - a CROSS-SERVICE contract.
  *      A consumer release declares `com.kuberik.rollout.requires.<contract>`
@@ -448,10 +461,21 @@ export function contractBlocks(args: {
 		for (const row of b.blocked) {
 			row.envs.sort((x, y) => (rank.get(x) ?? 999) - (rank.get(y) ?? 999));
 		}
-		// Newest first: the build closest to shipping is the one to look at.
-		b.blocked.sort(
-			(x, y) => rankOfTag(order, x.tag) - rankOfTag(order, y.tag) || x.key.localeCompare(y.key)
-		);
+		// Newest first: the build closest to shipping is the one to look at,
+		// and it is the one whose constraint the card's `BlockReason` quotes.
+		//
+		// ⛔ A TAG THIS ORDER CANNOT RESOLVE SORTS LAST, NOT FIRST. `rankOfTag`
+		// returns -1 for a tag that is not in `order` at all (a blocked release
+		// whose `Release` this dashboard never saw), and -1 beats every real
+		// rank in an ascending sort — so the UNKNOWN build led the list and the
+		// card quoted ITS constraint as the one a person is trying to deploy.
+		// This mirrors the outbound `d.holds` comparator, which already pushes
+		// an unresolvable rank to the end for exactly this reason.
+		const newestFirst = (tag: string) => {
+			const r = rankOfTag(order, tag);
+			return r < 0 ? Number.MAX_SAFE_INTEGER : r;
+		};
+		b.blocked.sort((x, y) => newestFirst(x.tag) - newestFirst(y.tag) || x.key.localeCompare(y.key));
 	}
 	// Adverse contracts first - the page's one ordering decision, and it is
 	// the standing "worst first" rule every list in this product already uses.
@@ -476,9 +500,17 @@ export type EnvHistoryEntry = {
 };
 
 export type EnvInfo = {
+	/**
+	 * The place this row is: the tier while it has one live site, `${tier}-${site}`
+	 * once it has several (`sites-waves.ts` `placeKey`). A row built from
+	 * `status.environmentInfos` carries the tier name, which is the same thing.
+	 */
 	environment: string;
 	environmentUrl?: string;
-	relationship?: { environment: string; type: string };
+	/** Optional site/wave/role of the place; the topology fills them in when it is passed. */
+	site?: string;
+	wave?: number;
+	role?: 'Leader' | 'Follower' | null;
 	history?: EnvHistoryEntry[];
 };
 
@@ -491,54 +523,84 @@ export type ChainEnv = {
 	timestamp: string | null;
 	/** Rank on this rollout's ladder. -1 when unresolvable. */
 	rank: number;
-	/** The environment this one runs After, or null for the head of the line. */
+	/** The first place this one takes its version from, or null for the head of the line. */
 	after: string | null;
+	/** Every place it takes its version from (a wave-N leader follows all of wave N-1). */
+	upstream: string[];
+	/** Canonical tier of the row, null when the name cannot be placed. */
+	tier: Tier | null;
+	site: string | null;
+	wave: number | null;
+	role: 'Leader' | 'Follower' | null;
 };
 
 /**
- * Order the environments by their `After` relationships, upstream first.
- *
- * `Environment.status.environmentInfos` arrives in no guaranteed order and
- * carries `relationship: { type: 'After', environment }` on every node but
- * the first. Walking the edges is the only ordering that is a FACT about the
- * pipeline; `compareEnvironmentNames` is a heuristic on the NAME and would
- * silently reorder a chain that does not use the conventional tier words.
- *
- * Anything the walk cannot place (a cycle, a dangling `After`, a second head)
- * is appended in the order it arrived rather than dropped - an environment
- * missing from this list cannot be located at all, which is the same reason
- * `/apps/[name]` marks a diverged environment instead of filtering it out.
+ * "wave 2" / "follows eu-west-1": the row's place in its tier's order, only when it
+ * tells the reader something (the tier has several waves, or the site is a follower).
+ * Same rule as the app page's PlaceRow suffix.
  */
-export function chainOrder(infos: EnvInfo[]): string[] {
-	const names = infos.map((i) => i.environment);
-	const after = new Map<string, string | null>();
-	for (const i of infos) {
-		after.set(
-			i.environment,
-			i.relationship?.type === 'After' ? (i.relationship.environment ?? null) : null
-		);
+export function chainWaveFact(row: ChainEnv, topo: AppTopology | undefined): string | null {
+	if (!topo || row.wave === null || !row.site) return null;
+	const tier = topo.tiers.find((t) => t.tier === row.tier);
+	if (!tier) return null;
+	if (row.role === 'Follower') {
+		const lead = row.upstream[0] ? tier.sites.find((s) => placeKeyOfSite(topo, s) === row.upstream[0]) : undefined;
+		return 'follows ' + (lead?.site || 'its leader');
 	}
-	const children = new Map<string, string[]>();
-	const heads: string[] = [];
-	for (const n of names) {
-		const a = after.get(n) ?? null;
-		if (a && names.includes(a)) {
-			if (!children.has(a)) children.set(a, []);
-			children.get(a)!.push(n);
-		} else {
-			heads.push(n);
-		}
+	return tier.waves.length > 1 ? 'wave ' + row.wave : null;
+}
+
+const siteOfInfo = (i: EnvInfo): string | undefined => i.site;
+
+/** The SiteNode a row stands for, from the topology when it knows it, else from the row's own fields. */
+function nodeOfInfo(i: EnvInfo, topo?: AppTopology): SiteNode | null {
+	if (topo) {
+		for (const t of topo.tiers)
+			for (const s of t.sites) {
+				if (placeKeyOfSite(topo, s) === i.environment) return s;
+			}
 	}
-	const out: string[] = [];
-	const seen = new Set<string>();
-	const walk = (n: string) => {
-		if (seen.has(n)) return;
-		seen.add(n);
-		out.push(n);
-		for (const c of children.get(n) ?? []) walk(c);
+	const tier = canonicalTier(i.environment);
+	if (!tier) return null;
+	return {
+		tier,
+		site: siteOfInfo(i) ?? '',
+		wave: i.wave ?? 1,
+		role: i.role ?? 'Leader',
+		isLeader: i.role !== 'Follower',
+		deregistered: false,
+		duplicates: []
 	};
-	for (const h of heads) walk(h);
-	for (const n of names) if (!seen.has(n)) out.push(n);
+}
+
+/**
+ * Order the places of one app, upstream first: tier, then wave, then leader
+ * before followers, then site (`comparePlaces`).
+ *
+ * `status.environmentInfos` arrives in no guaranteed order. Ordering by the
+ * controller's own model is a FACT about the pipeline;
+ * `compareEnvironmentNames` is a heuristic on the NAME. When a topology is
+ * passed, a row's wave and leader come from it (it also sees what the
+ * controller reported about sites on other clusters); without one the row's
+ * own `wave` / `role` / `site` are used.
+ *
+ * Anything that cannot be placed on a tier is appended in the order it
+ * arrived rather than dropped - an environment missing from this list cannot
+ * be located at all, which is the same reason `/apps/[name]` marks a diverged
+ * environment instead of filtering it out.
+ */
+export function chainOrder(infos: EnvInfo[], topo?: AppTopology): string[] {
+	const placed: { env: string; node: SiteNode; idx: number }[] = [];
+	const rest: string[] = [];
+	infos.forEach((i, idx) => {
+		const node = nodeOfInfo(i, topo);
+		if (node) placed.push({ env: i.environment, node, idx });
+		else rest.push(i.environment);
+	});
+	placed.sort((a, b) => comparePlaces(a.node, b.node) || a.idx - b.idx);
+	const out: string[] = [];
+	for (const p of placed) if (!out.includes(p.env)) out.push(p.env);
+	for (const n of rest) if (!out.includes(n)) out.push(n);
 	return out;
 }
 
@@ -550,7 +612,10 @@ export function currentEntry(info: EnvInfo | undefined): EnvHistoryEntry | null 
 }
 
 /**
- * The chain, as rows. One per environment, upstream first.
+ * The chain, as rows. One per place, upstream first. `topo` (optional) makes
+ * `after`/`upstream` the controller's real edges (a follower follows its
+ * leader, a wave-N leader follows wave N-1); without it a row follows the last
+ * row of the nearest earlier tier.
  *
  * ⛔ `ownRank` IS THE PRODUCT'S ONE `behind`, AND `order` IS ONLY THE FALLBACK.
  * (2026-08-31)
@@ -570,14 +635,41 @@ export function currentEntry(info: EnvInfo | undefined): EnvHistoryEntry | null 
 export function chain(
 	infos: EnvInfo[],
 	order: Build[],
-	ownRank?: (env: string) => number | null
+	ownRank?: (env: string) => number | null,
+	topo?: AppTopology
 ): ChainEnv[] {
 	const byName = new Map(infos.map((i) => [i.environment, i] as const));
-	return chainOrder(infos).map((env) => {
-		const info = byName.get(env);
+	const names = chainOrder(infos, topo);
+	const tierIdx = (e: string): number => {
+		const t = nodeOfInfo(byName.get(e)!, topo)?.tier;
+		return t ? TIERS.indexOf(t) : -1;
+	};
+	return names.map((env, at) => {
+		const info = byName.get(env)!;
 		const cur = currentEntry(info);
 		const tag = cur?.version?.tag ?? null;
 		const own = ownRank ? ownRank(env) : null;
+		const node = nodeOfInfo(info, topo);
+		let upstream: string[] = [];
+		const known = !!(topo && node && topo.tiers.some((t) => t.sites.includes(node)));
+		if (topo && node && known) {
+			upstream = upstreamOf(topo, node)
+				.map((s) => placeKeyOfSite(topo, s))
+				.filter((k) => k !== env);
+		}
+		if (!upstream.length && !known) {
+			// Tier-level rows: the last row of the nearest earlier tier.
+			const mine = tierIdx(env);
+			if (mine >= 0) {
+				for (let j = at - 1; j >= 0; j--) {
+					const t = tierIdx(names[j]);
+					if (t >= 0 && t < mine) {
+						upstream = [names[j]];
+						break;
+					}
+				}
+			}
+		}
 		return {
 			env,
 			tag,
@@ -585,7 +677,12 @@ export function chain(
 			bakeStatus: cur?.bakeStatus ?? null,
 			timestamp: cur?.timestamp ?? null,
 			rank: own !== null ? own : rankOfTag(order, tag),
-			after: info?.relationship?.type === 'After' ? (info.relationship.environment ?? null) : null
+			after: upstream[0] ?? null,
+			upstream,
+			tier: node?.tier ?? null,
+			site: node ? node.site || null : null,
+			wave: node ? node.wave : null,
+			role: node ? node.role : null
 		};
 	});
 }
@@ -622,8 +719,7 @@ export function hopBetween(up: ChainEnv | null, down: ChainEnv | null): ChainHop
 	// — the novice-pass defect `/apps/[name]` fixed by spelling it
 	// `2 versions waiting to move`. Same words here, so the product spells one
 	// fact one way.
-	if (n > 0)
-		return { waiting: n, label: `${n} version${n === 1 ? '' : 's'} waiting to move` };
+	if (n > 0) return { waiting: n, label: `${n} version${n === 1 ? '' : 's'} waiting to move` };
 	if (n < 0) return { waiting: 0, label: `${-n} version${n === -1 ? '' : 's'} ahead` };
 	return { waiting: 0, label: '' };
 }
@@ -990,11 +1086,31 @@ export function providedContracts(args: {
 		c.held = c.dependents.filter((d) => d.adverse).length;
 		c.adverse = c.held > 0;
 		// Worst first, the standing rule every list in this product uses.
-		c.dependents.sort((a, b) => Number(b.adverse) - Number(a.adverse) || a.name.localeCompare(b.name));
+		c.dependents.sort(
+			(a, b) => Number(b.adverse) - Number(a.adverse) || a.name.localeCompare(b.name)
+		);
 	}
 
-	out.sort(
-		(a, b) => Number(b.adverse) - Number(a.adverse) || a.contract.localeCompare(b.contract)
-	);
+	out.sort((a, b) => Number(b.adverse) - Number(a.adverse) || a.contract.localeCompare(b.contract));
 	return out;
+}
+
+/**
+ * ⭐ NO LINK TO A ROLLOUT THAT ISN'T THERE. (qa11, 2026-10-11.) A
+ * `ContractBlock`'s `providerName`/`providerNamespace` is read off the
+ * `RolloutDependency`'s own `providerRef` — a CLAIM about what exists, not
+ * a guarantee. The identity-svc fixture gap (a dependency pointing at a
+ * provider Rollout nobody had created) 404'd the Gates tab's "Open
+ * identity-svc" link because nothing checked this first. `rollouts` is the
+ * fleet this dashboard actually knows about (the same list
+ * `dependency-graph.ts`'s own `rolloutById`/`unresolved` reads for the
+ * graph); a provider missing from it has no link to offer.
+ */
+export function providerResolved(
+	b: Pick<ContractBlock, 'providerName' | 'providerNamespace'>,
+	rollouts: { metadata?: { name?: string; namespace?: string } }[]
+): boolean {
+	return rollouts.some(
+		(r) => r.metadata?.name === b.providerName && r.metadata?.namespace === b.providerNamespace
+	);
 }

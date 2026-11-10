@@ -2,23 +2,44 @@
 
 <script lang="ts">
 	import { page } from '$app/state';
-	import { HomeOutline, GridOutline, RocketOutline, LayersSolid, ClockOutline, TagOutline } from 'flowbite-svelte-icons';
+	import { href, appPath } from '$lib/paths';
+	import {
+		HomeOutline,
+		GridOutline,
+		RocketOutline,
+		LayersOutline,
+		CodePullRequestOutline
+	} from 'flowbite-svelte-icons';
 
+	/**
+	 * ⛔ U-13 (2026-10-08, polish pass) — the TL's ruling (lib/CLAUDE.md,
+	 * "the vocabulary decision, continued" (f)) is "Environments," full
+	 * word, nav section included if it fits at 360. It does not fit here.
+	 * Measured live at 360×740 (own playwright-core, 6 equal `flex-1` tabs,
+	 * each a 57.5px column): substituting "Environments" for "Envs" renders
+	 * the label at 69px — wider than its own 57.5px column — which either
+	 * clips the word mid-letter or (since no sibling has slack to give up;
+	 * every tab is already at its own content-free minimum) pushes the
+	 * whole bar wider than the viewport, the exact D-1 defect ("the
+	 * Activity tab ends past the screen edge") this pass is also fixing.
+	 * `Envs` is kept, abbreviated, specifically here — nowhere else in the
+	 * product abbreviates the environments section name.
+	 */
 	const tabs = [
 		{ key: 'control', href: '/', label: 'Home', icon: HomeOutline },
 		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
 		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
-		{ key: 'envs', href: '/environments', label: 'Envs', icon: LayersSolid },
-		{ key: 'changes', href: '/changes', label: 'Changes', icon: TagOutline },
-		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
+		{ key: 'envs', href: '/environments', label: 'Envs', icon: LayersOutline },
+		// Five items: six clipped `Activity` at 390 (AD round 1). Activity stays
+		// one tap away from Home's Recent activity card.
+		{ key: 'changes', href: '/changes', label: 'Changes', icon: CodePullRequestOutline }
 	] as const;
-
-	function isActive(href: string): boolean {
-		const path = page.url.pathname;
-		if (href === '/') return path === '/';
-		if (href === '/rollouts') return path === '/rollouts' || path.startsWith('/rollouts/') || path.startsWith('/namespaces/');
-		if (href === '/environments') return path === '/environments' || path.startsWith('/envs/');
-		return path === href || path.startsWith(href + '/');
+	function isActive(navHref: string): boolean {
+		const path = appPath(page.url.pathname);
+		if (navHref === '/') return path === '/';
+		if (navHref === '/rollouts') return path === '/rollouts' || path.startsWith('/rollouts/') || path.startsWith('/namespaces/');
+		if (navHref === '/environments') return path === '/environments' || path.startsWith('/envs/');
+		return path === navHref || path.startsWith(navHref + '/');
 	}
 
 	/**
@@ -110,7 +131,7 @@
      which is what a bottom tab bar means everywhere else. -->
 <nav
 	bind:this={navEl}
-	class="safe-area-bottom fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 sm:hidden {dialogOpen
+	class="safe-area-bottom fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t border-line bg-ground sm:hidden {dialogOpen
 		? 'invisible'
 		: ''}"
 	aria-label="Main navigation"
@@ -119,14 +140,14 @@
 	{#each tabs as t (t.key)}
 		{@const active = isActive(t.href)}
 		<a
-			href={t.href}
+			href={href(t.href)}
 			aria-current={active ? 'page' : undefined}
 			aria-label={t.label}
 			tabindex={dialogOpen ? -1 : undefined}
-			class="flex flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10px] font-medium transition-colors
+			class="flex flex-1 flex-col items-center justify-center t-ui-sm gap-1 px-1 py-2 transition-colors
 				{active
-					? 'text-blue-600 dark:text-blue-400'
-					: 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}"
+					? 'text-accent-text'
+					: 'text-fg-subtle hover:text-fg'}"
 		>
 			<t.icon class="h-5 w-5" />
 			<span>{t.label}</span>

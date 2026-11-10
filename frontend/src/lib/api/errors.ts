@@ -40,13 +40,26 @@ export class ApiError extends Error {
 	/** The server's own sentence, verbatim. Empty when it did not send one. */
 	readonly detail: string;
 	readonly url: string;
+	/**
+	 * ⭐ ITEM 4 (AD palette round 8): did the response carry ANY bytes at all?
+	 * Distinct from `detail` being empty — a 503 with a plain-text, non-JSON
+	 * body (e.g. Envoy's `upstream connect error`) still has `detail === ''`
+	 * (its text failed to parse as the `{error, details}` shape) but DID say
+	 * something, so `errorFacts` below still owes it a "Server said" row. A
+	 * literally empty 503 body owes no row at all — see that function's own
+	 * comment. Defaults `true` so every OTHER construction site (the
+	 * `status === 0` "never got an answer" case, test fixtures) keeps its
+	 * prior behavior unchanged.
+	 */
+	readonly hasBody: boolean;
 
-	constructor(status: number, message: string, detail: string, url: string) {
+	constructor(status: number, message: string, detail: string, url: string, hasBody = true) {
 		super(message);
 		this.name = 'ApiError';
 		this.status = status;
 		this.detail = detail;
 		this.url = url;
+		this.hasBody = hasBody;
 	}
 
 	/**
@@ -155,8 +168,56 @@ export function isRetryable(error: unknown): boolean {
 /** Two retries ≈ 1s + 2s. Past that the UI says what happened instead. */
 export const MAX_RETRIES = 2;
 
+/**
+ * ⭐ SQUAD-ROLLOUT COORDINATOR, 2026-10-12 — item 2, round 3. A query's own
+ * `retry` callback (`(failureCount, error) => boolean`, TanStack's exact
+ * signature — no query identity, no access to whether this is the FIRST
+ * fetch or the fortieth) cannot tell "this is a fresh failure, worth two
+ * quick retries" from "this backend has already been confirmed down for the
+ * last five scheduled rechecks, retrying 1s/2s before each one is pure
+ * noise." Measured under a sustained outage: every `RECOVERY_POLL_MS` cycle
+ * still ran its own full retry cascade, so a rollout tab's own query (and
+ * every sibling query keyed the same way) cost up to 3 requests per 30s
+ * cycle instead of 1 — 7-10 requests per 60s against a copy that promises
+ * "Rechecking every 30s."
+ *
+ * `pollWhenHealthy` below is the ONE place in the app that already knows
+ * "this query just settled into a retryable `error`" — it is consulted
+ * right after a fetch (and all of ITS OWN retries) exhausts and TanStack
+ * asks "what's the next interval". That is the exact moment to mark the
+ * backend CONFIRMED down, module-level: `queryRetry` below reads the mark to
+ * skip retrying WITHIN a later cycle (the scheduled interval IS the retry
+ * now), while the very FIRST failure anywhere (the mark is still unset)
+ * keeps its full two-retry cushion for absorbing a genuine one-off blip.
+ * Reset the instant ANY query reports healthy again, so a fresh, unrelated
+ * failure after a recovery gets its own cushion back.
+ *
+ * ⛔ GLOBAL, NOT PER QUERY-KEY — deliberately. This product talks to ONE
+ * backend; `/api` is up or it is not. A per-key map would need to thread the
+ * query's identity through a callback signature that does not carry one.
+ *
+ * ⛔ `failureCount` IS 0 ON THE VERY FIRST FAILURE, NOT 1. TanStack's own
+ * retryer (`@tanstack/query-core`'s `retryer.ts`) evaluates `retry(failureCount,
+ * error)` BEFORE incrementing its counter — the first-ever failure of a
+ * fetch is asked about with `failureCount === 0`. A `failureCount >= 1`
+ * gate here let that first failure of EVERY scheduled cycle through once
+ * regardless of `confirmedOutageAt` — two attempts per cycle instead of
+ * one, measured live. Once the outage is confirmed, EVERY attempt of a
+ * later cycle is refused, full stop; `failureCount` no longer matters.
+ */
+let confirmedOutageAt = 0;
+
 export function queryRetry(failureCount: number, error: unknown): boolean {
-	return isRetryable(error) && failureCount < MAX_RETRIES;
+	if (!isRetryable(error)) return false;
+	if (confirmedOutageAt) return false;
+	return failureCount < MAX_RETRIES;
+}
+
+/** Test-only — `confirmedOutageAt` is module-level, so a test that drives
+ *  `pollWhenHealthy` through an `error` state must not leak that mark into
+ *  the next test's own `queryRetry` assertions. */
+export function _resetQueryRetryStateForTests(): void {
+	confirmedOutageAt = 0;
 }
 
 export function queryRetryDelay(attemptIndex: number): number {
@@ -212,11 +273,33 @@ function streamIsHealthyFor(cluster: string | undefined): boolean {
 
 export function pollWhenHealthy(ms: number, streamedMs?: number, cluster?: string) {
 	return (query: { state: { status: string; error: unknown } }): number | false => {
-		if (query.state.status !== 'error') {
+		// ⛔ `status === 'success'`, NOT `status !== 'error'`. TanStack
+		// re-evaluates `refetchInterval` on every state change, including the
+		// moment a retry attempt WITHIN a confirmed outage's own fetch cycle
+		// flips the query to `'pending'` — `!== 'error'` is true for that too,
+		// so it reset `confirmedOutageAt` to 0 mid-cascade, which is what let
+		// `queryRetry`'s gate above get silently defeated on the SAME cycle it
+		// was meant to guard: measured live, a scheduled recheck still ran its
+		// full 1s/2s retry cascade every ~30s instead of one request. Only a
+		// REAL, confirmed success is evidence the backend answered.
+		if (query.state.status === 'success') {
+			confirmedOutageAt = 0;
 			if (streamedMs !== undefined && streamIsHealthyFor(cluster)) return streamedMs;
 			return ms;
 		}
-		return isRetryable(query.state.error) ? RECOVERY_POLL_MS : false;
+		if (query.state.status !== 'error') {
+			// `pending` — a fetch (first-ever, or a retry attempt mid-cascade)
+			// is in flight. Same interval as `success` would give; `queryRetry`
+			// is what decides whether THIS fetch gets to retry, not this value.
+			if (streamedMs !== undefined && streamIsHealthyFor(cluster)) return streamedMs;
+			return ms;
+		}
+		if (!isRetryable(query.state.error)) return false;
+		// This fetch (and its own bounded retries) just exhausted and settled
+		// into `error` — the backend is CONFIRMED down as of now. `queryRetry`
+		// reads this to skip retrying within the next scheduled cycle.
+		confirmedOutageAt = Date.now();
+		return RECOVERY_POLL_MS;
 	};
 }
 
@@ -351,14 +434,22 @@ export function errorFacts(error: unknown): ErrorFact[] {
 		const facts: ErrorFact[] = [];
 		if (error.path) facts.push({ label: 'Address', value: error.path, handle: true });
 		if (error.status) facts.push({ label: 'Status', value: `HTTP ${error.status}`, handle: true });
-		facts.push({
-			label: 'Server said',
-			value: error.detail
-				? error.detail
-				: error.status
-					? 'nothing'
-					: 'nothing — the browser could not open a connection'
-		});
+		// ⭐ ITEM 4 (AD palette round 8): a real HTTP status with a GENUINELY
+		// empty body earns no "Server said" row at all — there is nothing to
+		// report, and printing "nothing" for it reads as if the server had
+		// answered with a deliberate silence rather than not answering at the
+		// transport level. The two cases this still prints for are unchanged:
+		// a non-empty body that just wasn't the `{error, details}` shape
+		// (`hasBody`, still says "nothing" — it is this app's OWN vocabulary
+		// that came up empty, not the wire), and no response at all
+		// (`!error.status`, the one case that was never about a body).
+		if (error.detail) {
+			facts.push({ label: 'Server said', value: error.detail });
+		} else if (!error.status) {
+			facts.push({ label: 'Server said', value: 'nothing — the browser could not open a connection' });
+		} else if (error.hasBody) {
+			facts.push({ label: 'Server said', value: 'nothing' });
+		}
 		return facts;
 	}
 	if (error instanceof Error && error.message) return [{ label: 'Error', value: error.message }];
@@ -378,12 +469,28 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
 		throw new ApiError(0, 'No response from the server', e instanceof Error ? e.message : '', url);
 	}
 	if (!res.ok) {
-		const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+		// Read as text first (never throws), so a genuinely EMPTY body (`''`,
+		// e.g. a bare 503 from a scaled-to-zero backend) can be told apart from
+		// a non-JSON one that still said SOMETHING (Envoy's plain-text
+		// `upstream connect error`) — `ApiError.hasBody` below is that
+		// distinction, and `errorFacts` reads it to decide whether a "Server
+		// said" row is owed at all.
+		const text = await res.text().catch(() => '');
+		let body: ApiErrorBody = {};
+		if (text) {
+			try {
+				body = JSON.parse(text) as ApiErrorBody;
+			} catch {
+				// Not JSON — `body` stays `{}`; `hasBody` still records that the
+				// response was not literally empty.
+			}
+		}
 		throw new ApiError(
 			res.status,
 			body.error || `Request failed (${res.status})`,
 			body.details || body.error || '',
-			url
+			url,
+			text.length > 0
 		);
 	}
 	return res;

@@ -23,15 +23,23 @@
 	 */
 	import { formatTimestamp } from '$lib/display-time';
 	import {
-		UserCircleSolid,
-		CalendarWeekSolid,
-		ShieldCheckSolid,
-		ShareNodesSolid,
+		UserCircleOutline,
+		CalendarWeekOutline,
+		ShieldCheckOutline,
+		ShareNodesOutline,
 		ChevronDoubleRightOutline,
-		QuestionCircleSolid
+		QuestionCircleOutline
 	} from 'flowbite-svelte-icons';
 	import type { ClassifiedGate } from '$lib/view-models/blocking-story';
 
+	/**
+	 * ⭐ OUTLINE, NOT SOLID. (Design language pass — TL review, final pass.)
+	 * Every mark here is STRUCTURAL: it names what kind of object the rule
+	 * is, beside its name, the same role a card header's icon plays — never
+	 * a status glyph (§2.7: `*Outline` for structure, `*Solid` only where
+	 * the icon IS a status disc). The identities are otherwise unchanged —
+	 * same kind → same shape, still pinned by this file's own test.
+	 */
 	export function gateMark(g: Pick<ClassifiedGate, 'kind' | 'clears' | 'pending'>) {
 		// ⭐ PENDING OUTRANKS EVERY OTHER READ. (2026-09-04, load-state audit
 		// finding 4) A `pending` gate's `kind`/`clears` are `check`/`check` by
@@ -40,22 +48,22 @@
 		// gate that might turn out to be a `clock` gate is the exact "mark
 		// that is not true of its kind" `../../CLAUDE.md` bans. Same question
 		// mark `unknown` uses, for the same reason: neither claims a kind.
-		if (g.pending) return QuestionCircleSolid;
+		if (g.pending) return QuestionCircleOutline;
 		// A CONTRACT WITH ANOTHER SERVICE. `contractBlockReason` and the
 		// `/dependencies` graph already spend this mark on this object.
-		if (g.kind === 'dependency') return ShareNodesSolid;
+		if (g.kind === 'dependency') return ShareNodesOutline;
 		// PROMOTION ORDER. The `Promotion pipeline` card header's own mark.
 		if (g.kind === 'promotion') return ChevronDoubleRightOutline;
 		// A TIME WINDOW. True of the kind, and unchanged.
-		if (g.clears === 'clock') return CalendarWeekSolid;
+		if (g.clears === 'clock') return CalendarWeekOutline;
 		// SOMEONE HAS TO ACT. True of the kind, and unchanged.
-		if (g.clears === 'person') return UserCircleSolid;
+		if (g.clears === 'person') return UserCircleOutline;
 		// WE CANNOT TELL. True of the kind, and unchanged.
-		if (g.clears === 'unknown') return QuestionCircleSolid;
+		if (g.clears === 'unknown') return QuestionCircleOutline;
 		// ⛔ NOT AN HOURGLASS. An hourglass means *time will fix this*, which is
 		// `clock`'s meaning — and `check` is precisely the kind that is NOT on a
 		// clock. A guard that has not cleared.
-		return ShieldCheckSolid;
+		return ShieldCheckOutline;
 	}
 
 	/** What kind of object the rule is, for the record. A NOUN, never a remedy. */
@@ -175,6 +183,8 @@
 			const until = untilFor(g);
 			facts.push({ label: 'When', value: until ? `${stamp} · ${until}` : stamp });
 		}
+		// QA #17 (round 2): the record's NAME line prints `displayName` (the
+		// Gates tab's name); this row is the kubectl handle, printed once.
 		// THE IDENTIFIER IS A HANDLE AND IS DRESSED AS ONE — mono, on its own
 		// line, labelled with the word that says what it is. Inside the record it
 		// has the panel's full measure rather than the remainder of a sentence.
@@ -182,9 +192,7 @@
 		return facts;
 	}
 
-	const divide = $derived(
-		tone === 'banner' ? 'divide-current/15' : 'divide-gray-100 dark:divide-gray-700/60'
-	);
+	const divide = $derived(tone === 'banner' ? 'divide-current/15' : 'divide-line-subtle');
 </script>
 
 <div class="flex min-w-0 flex-col">
@@ -197,25 +205,23 @@
 				     entry belongs to which line. -->
 				<p class="flex min-w-0 items-center gap-1.5">
 					<Icon
-						class="h-3.5 w-3.5 shrink-0 {tone === 'card' ? 'text-gray-500 dark:text-gray-400' : ''}"
+						class="h-4 w-4 shrink-0 {tone === 'card' ? 'text-fg-subtle' : ''}"
 						aria-hidden="true"
 					/>
 					<!--
-						⭐ PLAIN `t-dense`, NOT `t-dense font-medium`. (2026-09-03, design
+						⭐ PLAIN `t-meta`, NOT `t-meta font-medium`. (2026-09-03, design
 						pass 7, finding #3) COMPOSITION-GRAMMAR names no inline-emphasis
 						exception for a declared role, and this label is not a WORD
 						picked out of a sentence — it is the whole line, the rule's own
 						name, so there is no surrounding non-bold text for a heavier
 						weight to emphasise AGAINST. `font-medium` here only turned
-						`t-dense` (12.5px/400) into a fourth, undeclared 12.5px/500
-						pairing the census had no name for. The role's own weight already
-						reads as the line's lead — `Icon` and colour (full ink vs the
-						record's gray-500) carry the hierarchy this line needs.
+						`t-meta` (12/400) into a fourth, undeclared 12/500 pairing the
+						census had no name for. The role's own weight already reads as
+						the line's lead — `Icon` and colour (full ink vs the record's
+						subtle ink) carry the hierarchy this line needs.
 					-->
-					<span
-						class="t-dense min-w-0 break-words {tone === 'card'
-							? 'text-gray-900 dark:text-white'
-							: ''}">{g.label}</span
+					<span class="t-meta min-w-0 break-words {tone === 'card' ? 'text-fg' : ''}"
+						>{g.displayName ?? g.label}</span
 					>
 				</p>
 				<FactList facts={factsFor(g)} {tone} />
@@ -228,9 +234,9 @@
 		     label. It sits under a rule, which is what separates it from the
 		     record above. -->
 		<p
-			class="t-micro mt-2 border-t pt-2 break-words {tone === 'banner'
+			class="t-meta mt-2 border-t pt-2 break-words {tone === 'banner'
 				? 'border-current/15'
-				: 'border-gray-100 text-gray-500 dark:border-gray-700/60 dark:text-gray-400'}"
+				: 'border-line-subtle text-fg-subtle'}"
 		>
 			{foot}
 		</p>

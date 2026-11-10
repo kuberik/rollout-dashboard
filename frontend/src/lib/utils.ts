@@ -228,7 +228,7 @@ export function detectStuckBehind(
 export function categorizeFailure(msg: string | null | undefined): string | null {
     if (!msg) return null;
     const m = msg.toLowerCase();
-    if (/health.?check|liveness|readiness/.test(m)) return 'healthcheck';
+    if (/health.?check|liveness|readiness|alert|firing|error.?rate/.test(m)) return 'healthcheck';
     if (/image.?pull|cannot pull|registry|pullbackoff|errimagepull|imagepullbackoff/.test(m)) return 'image';
     if (/gate/.test(m)) return 'gate';
     if (/test/.test(m)) return 'test';
@@ -241,9 +241,36 @@ export function categorizeFailure(msg: string | null | undefined): string | null
     return 'failed';
 }
 
+/**
+ * ⭐ THE ONE FAILURE PHRASE, EVERYWHERE A SURFACE SAYS A DEPLOY FAILED AS A
+ * SENTENCE VERB. (qa11 B4, 2026-10-11.) `categorizeFailure`'s `'healthcheck'`
+ * bucket is the single fork: a health-check failure reads "failed its
+ * health check" on every surface, a genuine deploy failure reads "failed to
+ * deploy" — never one on one page and the other on the next for the SAME
+ * event. `activityVerb` (`view-models/activity-verb.ts`) builds its
+ * `failed`/`failedHealthCheck` verbs from this, and any page-level banner
+ * that states a failure as a sentence (`/environments`, `/envs/[name]`)
+ * calls this directly instead of spelling the words itself. The two literal
+ * strings below are the ONLY place they may appear in `frontend/src` outside
+ * a test or the message catalogue — see `failure-phrase.test.ts`'s guard.
+ */
+export function failurePhrase(message: string | null | undefined): string {
+    return failureKind(message) === 'healthcheck' ? 'failed its health check' : 'failed to deploy';
+}
+
+/**
+ * `failurePhrase`'s decision as data: `'healthcheck'` or `'deploy'`. Callers
+ * that word the failure themselves (Home, through paraglide) read this
+ * instead of matching the English phrase.
+ */
+export function failureKind(message: string | null | undefined): 'healthcheck' | 'deploy' {
+    return categorizeFailure(message) === 'healthcheck' ? 'healthcheck' : 'deploy';
+}
+
 export function formatTimeAgoCompact(start: string, end: Date = new Date()): string {
     const date = new Date(start);
-    const s = Math.floor((end.getTime() - date.getTime()) / 1000);
+    // Clock skew (QA #18): an instant slightly in the future is "now", never "-4s".
+    const s = Math.max(0, Math.floor((end.getTime() - date.getTime()) / 1000));
     if (s < 60) return `${s}s`;
     const m = Math.floor(s / 60);
     if (m < 60) return `${m}m`;
@@ -283,7 +310,8 @@ export function formatDuration(timestamp: string, now: Date = new Date()): strin
  * the existing boundary tests still pin them.
  */
 export function formatDurationMs(ms: number): string {
-    const diffInSeconds = Math.floor(ms / 1000);
+    // Clock skew (QA #18): clamp so no caller can print a negative age.
+    const diffInSeconds = Math.max(0, Math.floor(ms / 1000));
 
     if (diffInSeconds < 60) {
         return `${diffInSeconds} second${diffInSeconds === 1 ? '' : 's'}`;
@@ -322,20 +350,27 @@ export function formatDurationMs(ms: number): string {
     return `${diffInYears} year${diffInYears === 1 ? '' : 's'}`;
 }
 
-// Parses Go-style durations ("30m", "1h30m", "45s") into milliseconds.
-// Returns 0 for anything unparseable (callers treat a falsy result as
-// "no/indeterminate duration").
+// Parses Go-style durations ("30m", "1h30m", "45s", "500ms", "1.5s") into
+// milliseconds, with every unit time.ParseDuration accepts (ns, us/µs, ms, s,
+// m, h). The multi-letter units are matched before "m"/"s", so "500ms" is
+// half a second, not 500 minutes. Returns 0 for anything unparseable (callers
+// treat a falsy result as "no/indeterminate duration").
+const GO_DURATION_UNIT_MS: Record<string, number> = {
+    ns: 1e-6,
+    us: 1e-3,
+    'µs': 1e-3,
+    'μs': 1e-3,
+    ms: 1,
+    s: 1000,
+    m: 60000,
+    h: 3600000
+};
 export function parseGoDuration(d: string): number {
     if (!d) return 0;
-    const re = /(\d+(?:\.\d+)?)(h|m|s)/g;
+    const re = /(\d+(?:\.\d+)?)(ns|us|µs|μs|ms|h|m|s)/g;
     let total = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(d))) {
-        const n = parseFloat(m[1]);
-        if (m[2] === 'h') total += n * 3600000;
-        else if (m[2] === 'm') total += n * 60000;
-        else total += n * 1000;
-    }
+    while ((m = re.exec(d))) total += parseFloat(m[1]) * GO_DURATION_UNIT_MS[m[2]];
     return total;
 }
 
@@ -458,24 +493,6 @@ export function hasForceDeployAnnotation(rollout?: Rollout): boolean {
 }
 
 /**
- * Checks if a rollout has the bypass-gates annotation and returns the version
- * @param rollout The rollout to check
- * @returns The version that is bypassing gates, or null if no bypass is set
- */
-export function getBypassGatesVersion(rollout: Rollout): string | null {
-    return rollout.metadata?.annotations?.['rollout.kuberik.com/bypass-gates'] || null;
-}
-
-/**
- * Checks if a rollout has the bypass-gates annotation
- * @param rollout The rollout to check
- * @returns true if the bypass-gates annotation exists
- */
-export function hasBypassGatesAnnotation(rollout: Rollout): boolean {
-    return getBypassGatesVersion(rollout) !== null;
-}
-
-/**
  * Checks if a specific version is being force deployed
  * @param rollout The rollout to check
  * @param version The version to check
@@ -484,17 +501,6 @@ export function hasBypassGatesAnnotation(rollout: Rollout): boolean {
 export function isVersionForceDeploying(rollout: Rollout, version: string): boolean {
     const forceDeployVersion = getForceDeployVersion(rollout);
     return forceDeployVersion === version;
-}
-
-/**
- * Checks if a specific version is bypassing gates
- * @param rollout The rollout to check
- * @param version The version to check
- * @returns true if the specified version is bypassing gates
- */
-export function isVersionBypassingGates(rollout: Rollout, version: string): boolean {
-    const bypassVersion = getBypassGatesVersion(rollout);
-    return bypassVersion === version;
 }
 
 /**
@@ -708,6 +714,105 @@ export function buildDatadogTraceSearchUrl(service: string, env: string, version
 	const filters = [`service:${service}`, `env:${env}`, '@rollout.test:true'];
 	if (version) filters.splice(2, 0, `version:${version}`);
 	return `https://app.datadoghq.com/apm/traces?query=${encodeURIComponent(filters.join(' '))}`;
+}
+
+/**
+ * ⭐ ONE LINK ROW PER TEST, ONE ICON LANGUAGE. (2026-09-13, site review: the
+ * rollout page's Stage 2 tests row.)
+ *
+ * A `RolloutTest` can name its links TWICE, in two unrelated ways, and the
+ * pipeline card used to print both groups back to back on one line: the
+ * `rollout.kuberik.com/link.*` annotations a team writes by hand (`Logs`,
+ * `CI` — blue, plain text) AND the Datadog links this file DERIVES from the
+ * job's own `DD_SERVICE`/`DD_ENV`/`DD_VERSION` (`Logs`, `CI`, `Trace` —
+ * violet, each with the Datadog logo). On the demo's own `hello-world-test`
+ * that is six links, `Logs` and `CI` printed twice each, and two icon
+ * languages one line apart.
+ *
+ * The merge rule: an EXPLICIT link wins. A team that wrote
+ * `link.Logs` pointed it somewhere on purpose, and a derived link that would
+ * print the same word is a duplicate of a decision already made — so the
+ * derived set only contributes labels the annotations did not claim. Match
+ * is case-insensitive and trimmed, because `link.logs` and `link.Logs` are
+ * the same intent.
+ *
+ * `kind` is what the row draws its mark from; it is a function of the LABEL,
+ * not of the vendor, so a hand-written `Logs` and a derived `Logs` get the
+ * same mark — which is the point.
+ */
+export type TestLinkKind = 'logs' | 'ci' | 'trace' | 'other';
+
+export type TestLink = {
+	label: string;
+	url: string;
+	kind: TestLinkKind;
+	/** Names the destination for the accessible name and tooltip; the row
+	 *  prints no vendor logo (see `DatadogLogo`'s own trademark note — a
+	 *  brand mark may not be recoloured to fit a monochrome row). */
+	vendor?: string;
+};
+
+/**
+ * ⛔ TOKENS, NOT SUBSTRINGS. The first cut matched `includes('run')` and
+ * classified a `Runbook` link as a CI one — and `includes('ci')` would do the
+ * same to `Specification`. A label is matched word by word.
+ */
+const TRACE_WORDS = new Set(['trace', 'traces', 'span', 'spans', 'apm']);
+const CI_WORDS = new Set([
+	'ci',
+	'test',
+	'tests',
+	'run',
+	'runs',
+	'build',
+	'builds',
+	'pipeline',
+	'pipelines'
+]);
+
+export function testLinkKind(label: string): TestLinkKind {
+	const words = label.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+	if (words.some((w) => w.startsWith('log'))) return 'logs';
+	if (words.some((w) => TRACE_WORDS.has(w))) return 'trace';
+	if (words.some((w) => CI_WORDS.has(w))) return 'ci';
+	return 'other';
+}
+
+export function mergeTestLinks(
+	annotations: Record<string, string> | undefined,
+	datadog: DatadogInfo | null,
+	fallbackVersion: string
+): TestLink[] {
+	const out: TestLink[] = parseLinkAnnotations(annotations).map((l) => ({
+		label: l.label,
+		url: l.url,
+		kind: testLinkKind(l.label)
+	}));
+	const taken = new Set(out.map((l) => l.label.trim().toLowerCase()));
+	if (!datadog) return out;
+	const version = datadog.version || fallbackVersion;
+	const derived: TestLink[] = [
+		{
+			label: 'Logs',
+			url: buildDatadogLogsUrl(datadog.service, datadog.env),
+			kind: 'logs',
+			vendor: 'Datadog'
+		},
+		{
+			label: 'CI',
+			url: buildDatadogTestRunsUrl(datadog.service, version),
+			kind: 'ci',
+			vendor: 'Datadog'
+		},
+		{
+			label: 'Trace',
+			url: buildDatadogTraceSearchUrl(datadog.service, datadog.env, version),
+			kind: 'trace',
+			vendor: 'Datadog'
+		}
+	];
+	for (const d of derived) if (!taken.has(d.label.toLowerCase())) out.push(d);
+	return out;
 }
 
 export function getResourceStatus(resource: Kustomization | OCIRepository) {

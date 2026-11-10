@@ -1,12 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { Rollout, Environment, RolloutDependency } from '../../types';
-import { buildGateContext } from './blocking-story';
+import { buildGateContext, contractHoldClause } from './blocking-story';
+import { cardContext } from './card-context';
+import { homeInput } from './home/fixture';
 import {
 	buildRolloutGraph,
 	filterByEnv,
 	neighbourhood,
 	networkVerdict,
 	edgeSentence,
+	hasDependencyLinks,
 	heldSubjects,
 	heldClause,
 	layoutOrder,
@@ -64,8 +67,10 @@ function environment(over: {
 	ns: string;
 	rollout: string;
 	gate: string;
+	/** Retained for call-site readability; the order now comes from the tier. */
 	after?: string;
-	relType?: 'After' | 'Parallel';
+	site?: string;
+	wave?: number;
 }): Environment {
 	return {
 		metadata: { name: over.rollout, namespace: over.ns, annotations: ann(CLUSTER[over.tier]) },
@@ -74,7 +79,8 @@ function environment(over: {
 			environment: over.tier,
 			rolloutRef: { name: over.rollout },
 			backend: { type: 'github', project: 'x/y' },
-			...(over.after ? { relationship: { environment: over.after, type: over.relType ?? 'After' } } : {})
+			...(over.site ? { site: over.site } : {}),
+			...(over.wave ? { wave: over.wave } : {})
 		},
 		status: { rolloutGateRef: { name: over.gate } }
 	} as unknown as Environment;
@@ -246,7 +252,7 @@ describe('ONE edge collection, with the writer as an attribute', () => {
 		const g = build();
 		const e = g.edges.find((x) => x.writer === 'promotion' && x.to === ID.feProd);
 		expect(e?.from).toBe(ID.feStaging);
-		expect(e?.relType).toBe('After');
+		expect(e?.edgeKind).toBe('tier');
 	});
 
 	it('joins the promotion line on Environment.spec.name ACROSS clusters', () => {
@@ -268,13 +274,24 @@ describe('ONE edge collection, with the writer as an attribute', () => {
 
 	it('does not draw a promotion edge when the upstream Environment is not visible', () => {
 		const f = liveFixture();
-		// Drop the staging half of the api line. prod still has a gate holding
+		// Drop every earlier tier of the api line. prod still has a gate holding
 		// it, but there is no rollout to draw an arrow from.
+		const without = f.environments.filter(
+			(e) => !(e.spec?.name === 'hello-dep-api-app' && e.spec?.environment !== 'prod')
+		);
+		f.environments = without;
+		const g = build(f);
+		expect(g.edges.some((e) => e.writer === 'promotion' && e.to === ID.apiProd)).toBe(false);
+	});
+
+	it('with staging gone the edge comes from the nearest earlier tier that exists (the controller skips an empty tier)', () => {
+		const f = liveFixture();
 		f.environments = f.environments.filter(
 			(e) => !(e.spec?.name === 'hello-dep-api-app' && e.spec?.environment === 'staging')
 		);
 		const g = build(f);
-		expect(g.edges.some((e) => e.writer === 'promotion' && e.to === ID.apiProd)).toBe(false);
+		const e = g.edges.find((x) => x.writer === 'promotion' && x.to === ID.apiProd);
+		expect(e?.from).toBe(ID.apiDev);
 	});
 });
 
@@ -306,7 +323,7 @@ describe('the adverse predicate is `promotionBlock`, for BOTH kinds', () => {
 		expect(g.nodes.find((n) => n.id === ID.feProd)?.unresolved).toBe(true);
 	});
 
-	it('is `unknown` when the rollout publishes no summary for the gate the CRD names', () => {
+	it('is `unknown` when the rollout publishes no summary for the gate the CRD names, and the dependency says nothing either', () => {
 		const f = liveFixture();
 		const fe = f.rollouts.find(
 			(r) => r.metadata?.name === 'hello-frontend-app' && r.metadata?.namespace === 'hello-dep-dev'
@@ -315,10 +332,30 @@ describe('the adverse predicate is `promotionBlock`, for BOTH kinds', () => {
 		(fe.status as { gates?: unknown[] }).gates = [
 			{ name: 'ghd-dptmm', passing: true, allowedVersions: null }
 		];
+		// …and its RolloutDependency reports no refusal and no verdict.
+		f.dependencies[0] = dep({ ns: 'hello-dep-dev', cluster: 'dev', blocked: [], satisfied: null });
 		const g = build(f);
 		expect(g.edges.find((e) => e.writer === 'contract' && e.to === ID.feDev)?.state).toBe(
 			'unknown'
 		);
+	});
+
+	it('reads an unpublished contract gate off its RolloutDependency: a refused candidate is a hold', () => {
+		const f = liveFixture();
+		const fe = f.rollouts.find(
+			(r) => r.metadata?.name === 'hello-frontend-app' && r.metadata?.namespace === 'hello-dep-dev'
+		)!;
+		(fe.status as { gates?: unknown[] }).gates = [
+			{ name: 'ghd-dptmm', passing: true, allowedVersions: null }
+		];
+		// The fixture's dependency refuses `rel-67`, the candidate fe-dev wants.
+		const edge = build(f).edges.find((e) => e.writer === 'contract' && e.to === ID.feDev)!;
+		expect(edge.state).toBe('blocked');
+		expect(edge.held).toEqual(['rel-67']);
+
+		// Refusing nothing the rollout could take, with `Satisfied=True`: clear.
+		f.dependencies[0] = dep({ ns: 'hello-dep-dev', cluster: 'dev', blocked: [{ tag: 'rel-1' }], satisfied: 'True' });
+		expect(build(f).edges.find((e) => e.writer === 'contract' && e.to === ID.feDev)!.state).toBe('clear');
 	});
 });
 
@@ -679,7 +716,7 @@ describe('identity is (cluster, namespace, name) and nothing shorter', () => {
 
 	it('never draws an edge from a rollout to itself', () => {
 		const f = liveFixture();
-		// An Environment whose relationship resolves back to its own tier.
+		// An Environment alone in its tier: nothing upstream, so nothing to point at itself.
 		f.environments.push(
 			environment({
 				line: 'self-line',
@@ -739,21 +776,91 @@ describe('the environment axis', () => {
 	});
 });
 
-describe('a Parallel relationship is not an After relationship', () => {
-	it('carries the type onto the edge and into the sentence', () => {
+describe('sites and waves: one edge per visible upstream site', () => {
+	// dev -> wave 1 (ap-south-1 leads, eu-west-1 follows it) -> wave 2 (us-east-1)
+	const wavesFixture = () => {
 		const f = liveFixture();
-		const staging = f.environments.find(
-			(e) => e.spec?.name === 'hello-dep-frontend-app' && e.spec?.environment === 'staging'
-		)!;
-		(staging.spec as { relationship?: unknown }).relationship = {
-			environment: 'dev',
-			type: 'Parallel'
+		const L = 'hello-wv-app';
+		f.environments.push(
+			environment({ line: L, tier: 'dev', ns: 'wv-dev', rollout: 'wv', gate: 'g-dev' }),
+			environment({ line: L, tier: 'prod', ns: 'wv-ap', rollout: 'wv', gate: 'g-ap', site: 'ap-south-1', wave: 1 }),
+			environment({ line: L, tier: 'prod', ns: 'wv-eu', rollout: 'wv', gate: 'g-eu', site: 'eu-west-1', wave: 1 }),
+			environment({ line: L, tier: 'prod', ns: 'wv-us', rollout: 'wv', gate: 'g-us', site: 'us-east-1', wave: 2 })
+		);
+		return build(f);
+	};
+	const edgeTo = (g: ReturnType<typeof build>, ns: string) =>
+		g.edges.filter((e) => e.writer === 'promotion' && e.to.endsWith(`/${ns}/wv`));
+	const nodeOf = (g: ReturnType<typeof build>, ns: string) => g.nodes.find((n) => n.namespace === ns && n.name === 'wv')!;
+
+	it('a wave-1 leader is fed by the previous tier (edgeKind tier)', () => {
+		const g = wavesFixture();
+		const e = edgeTo(g, 'wv-ap');
+		expect(e).toHaveLength(1);
+		expect(e[0].edgeKind).toBe('tier');
+		expect(nodeOf(g, 'wv-dev').id).toBe(e[0].from);
+	});
+
+	it('a follower is fed by its leader only (edgeKind follow)', () => {
+		const g = wavesFixture();
+		const e = edgeTo(g, 'wv-eu');
+		expect(e).toHaveLength(1);
+		expect(e[0].edgeKind).toBe('follow');
+		expect(e[0].from).toBe(nodeOf(g, 'wv-ap').id);
+	});
+
+	it('a wave-2 leader gets one edge per live site of wave 1 (edgeKind wave), with unique keys', () => {
+		const g = wavesFixture();
+		const e = edgeTo(g, 'wv-us');
+		expect(e.map((x) => x.from).sort()).toEqual([nodeOf(g, 'wv-ap').id, nodeOf(g, 'wv-eu').id].sort());
+		expect(e.every((x) => x.edgeKind === 'wave')).toBe(true);
+		expect(new Set(g.edges.map((x) => x.key)).size).toBe(g.edges.length);
+	});
+
+	it('names the nodes by place once the tier has several live sites', () => {
+		const g = wavesFixture();
+		expect(nodeOf(g, 'wv-ap').env).toBe('prod-ap-south-1');
+		expect(nodeOf(g, 'wv-us').env).toBe('prod-us-east-1');
+		expect(nodeOf(g, 'wv-dev').env).toBe('dev');
+	});
+
+	it('words a follow edge as the leader picking, a wave edge as deploying first', () => {
+		const g = wavesFixture();
+		const byId = new Map(g.nodes.map((n) => [n.id, n] as const));
+		const held = (e: GraphEdge): GraphEdge => ({ ...e, state: 'blocked' });
+		expect(edgeSentence(held(edgeTo(g, 'wv-eu')[0]), byId)).toContain('picks it first');
+		expect(edgeSentence(held(edgeTo(g, 'wv-us')[0]), byId)).toContain('deploys it first');
+		expect(edgeSentence(held(edgeTo(g, 'wv-us')[0]), byId)).not.toContain('alongside');
+	});
+
+	it('a site this dashboard cannot see draws no phantom edge', () => {
+		const f = liveFixture();
+		f.environments.push(
+			environment({ line: 'solo-line', tier: 'prod', ns: 'solo-ns', rollout: 'solo', gate: 'g-solo' })
+		);
+		// the only upstream would be a remote dev site known from members alone
+		(f.environments[f.environments.length - 1].status as Record<string, unknown>).wave = {
+			site: 'default',
+			wave: 1,
+			role: 'Leader',
+			members: [{ environment: 'dev', site: 'default', wave: 1 }]
 		};
 		const g = build(f);
-		const byId = new Map(g.nodes.map((n) => [n.id, n] as const));
-		const e = g.edges.find((x) => x.writer === 'promotion' && x.to === ID.feStaging)!;
-		expect(e.relType).toBe('Parallel');
-		expect(edgeSentence(e, byId)).toContain('deploys it alongside');
+		expect(g.edges.some((e) => e.to.endsWith('/solo-ns/solo'))).toBe(false);
+	});
+
+	it('counts as a dependency link in hasDependencyLinks for either end of a wave edge', () => {
+		const f = liveFixture();
+		const L = 'hello-wv-app';
+		f.environments.push(
+			environment({ line: L, tier: 'prod', ns: 'wv-a', rollout: 'wv', gate: 'g-a', site: 'a', wave: 1 }),
+			environment({ line: L, tier: 'prod', ns: 'wv-b', rollout: 'wv', gate: 'g-b', site: 'b', wave: 2 })
+		);
+		const has = (ns: string) =>
+			hasDependencyLinks({ namespace: ns, name: 'wv', environments: f.environments, dependencies: [] });
+		expect(has('wv-a')).toBe(true);
+		expect(has('wv-b')).toBe(true);
+		expect(has('nope')).toBe(false);
 	});
 });
 
@@ -901,9 +1008,10 @@ describe('heldClause', () => {
 			contract: 'api',
 			requiredVersion,
 			providedVersion: '1.66.0',
-			relType: null,
+			edgeKind: null,
 			message: '',
-			cyclic: false
+			cyclic: false,
+			held: []
 		};
 	}
 	function promotionEdge(to: string): GraphEdge {
@@ -917,9 +1025,10 @@ describe('heldClause', () => {
 			contract: null,
 			requiredVersion: null,
 			providedVersion: null,
-			relType: 'After',
+			edgeKind: 'tier',
 			message: '',
-			cyclic: false
+			cyclic: false,
+			held: []
 		};
 	}
 
@@ -929,13 +1038,14 @@ describe('heldClause', () => {
 		expect(heldClause(edges, nodes)).not.toMatch(/deploy in front/);
 	});
 
-	it('names each distinct (provider, contract, requirement) once, not per edge', () => {
+	it('names each (provider, contract) once, listing differing requirements inside it', () => {
 		const edges = [
 			contractEdge('fe-dev', '^1.67.0'),
-			contractEdge('fe-staging', '^2.0.0')
+			contractEdge('fe-staging', '^2.0.0'),
+			contractEdge('fe-prod', null)
 		];
 		expect(heldClause(edges, nodes)).toBe(
-			'hello-api-app ships api ^1.67.0 and hello-api-app ships api ^2.0.0'
+			'hello-api-app ships the api each of them needs (^1.67.0, ^2.0.0)'
 		);
 	});
 
@@ -1160,6 +1270,89 @@ describe('withNetworkSchedules — the graph-wide schedule join (2026-09-03, ope
 	});
 });
 
+describe('contract holds are indexed in ONE scan of the edges, not once per node (2026-10-10, QA finding — perf)', () => {
+	/**
+	 * `buildRolloutGraph`'s per-node loop used to call `contractHoldsForRollout`
+	 * from INSIDE the loop — once per node — and that adapter filters the
+	 * WHOLE `edges` array on every call, making one `buildRolloutGraph` call
+	 * O(nodes × edges) just for the contract-hold join. The fix moved that
+	 * join to `contractHoldsIndex`, called ONCE before the loop.
+	 *
+	 * This proves it without timing (flaky on a loaded CI box): spy on
+	 * `Array.prototype.filter` and count how many calls run against an array
+	 * AS LONG AS THE FULL EDGE LIST. A per-node re-filter of `edges` (the
+	 * pre-fix defect) shows up as one such call per consumer; a single
+	 * upfront scan shows up as the one call this function already makes at
+	 * the very end (`blockedEdges: edges.filter(...)`), regardless of how
+	 * many consumers there are.
+	 */
+	const N = 29;
+
+	function manyConsumersFixture() {
+		const rollouts: Rollout[] = [rollout({ name: 'provider', ns: 'ns', cluster: 'dev' })];
+		const dependencies: RolloutDependency[] = [];
+		for (let i = 0; i < N; i++) {
+			const name = `consumer-${i}`;
+			rollouts.push(rollout({ name, ns: 'ns', cluster: 'dev', candidates: ['rel-67'] }));
+			dependencies.push(dep({ ns: 'ns', cluster: 'dev', consumer: name, provider: 'provider' }));
+		}
+		return { rollouts, dependencies };
+	}
+
+	it('the number of full-edge-list scans does not grow with the number of consumer nodes', () => {
+		const { rollouts, dependencies } = manyConsumersFixture();
+
+		// Two different ways a full scan of `edges` (length === N) could show
+		// up — `.filter()` and a `for...of` (which calls `[Symbol.iterator]`)
+		// — are both spied on, so this catches a per-node re-scan regardless
+		// of which shape it is written in.
+		const lengths: number[] = [];
+		const realFilter = Array.prototype.filter;
+		const filterSpy = vi.spyOn(Array.prototype, 'filter').mockImplementation(function (
+			this: unknown[],
+			...args: Parameters<typeof realFilter>
+		) {
+			lengths.push(this.length);
+			return realFilter.apply(this, args);
+		});
+		const realIterator = Array.prototype[Symbol.iterator];
+		const iteratorSpy = vi
+			.spyOn(Array.prototype, Symbol.iterator)
+			.mockImplementation(function (this: unknown[]) {
+				lengths.push(this.length);
+				return realIterator.call(this);
+			});
+
+		let g: ReturnType<typeof buildRolloutGraph>;
+		try {
+			g = buildRolloutGraph({
+				rollouts,
+				environments: [],
+				dependencies,
+				envOrder: ORDER
+			});
+		} finally {
+			filterSpy.mockRestore();
+			iteratorSpy.mockRestore();
+		}
+
+		// Sanity: every consumer really did produce its own contract edge,
+		// all blocked (otherwise this test would pass for the wrong reason).
+		expect(g.edges).toHaveLength(N);
+		expect(g.edges.every((e) => e.writer === 'contract' && e.state === 'blocked')).toBe(true);
+
+		// `buildRolloutGraph` legitimately walks the full `edges` array a
+		// small, FIXED number of times regardless of fleet size (the edge-
+		// state loop, `markCycles`, `contractHoldsIndex`'s own one-time scan,
+		// the final `edges.sort`/`blockedEdges` pass, …). A per-node re-scan
+		// of that same array — the pre-fix defect — would add one MORE such
+		// scan per consumer, i.e. N extra, which this generous fixed bound
+		// rules out without pinning the exact legitimate count.
+		const fullLengthScans = lengths.filter((len) => len === N).length;
+		expect(fullLengthScans).toBeLessThan(10);
+	});
+});
+
 describe('namespacesByCluster', () => {
 	it('groups a set of rollouts by cluster, then namespace', () => {
 		const map = namespacesByCluster([
@@ -1169,5 +1362,27 @@ describe('namespacesByCluster', () => {
 		]);
 		expect(map.get('spoke')).toEqual(new Set(['dev', 'staging']));
 		expect(map.get('')).toEqual(new Set(['prod']));
+	});
+});
+
+describe('a contract hold names ITS build’s own requirement (fix7 C)', () => {
+	// checkout-api's held builds disagree on what they need of payments-svc
+	// (b-43 ~2.9.0, b-44 3.0.0, b-45 ^3.0.0), so the edge's agreed
+	// requiredVersion is null. The Overview newer-builds row is about one build.
+	it('4.43.0-43 reads "Needs payments-svc ~2.9.0 · has 2.4.1"', () => {
+		const input = homeInput();
+		const ctx = cardContext({
+			rollouts: input.rollouts,
+			environments: { items: input.environments },
+			rolloutDependencies: input.rolloutDependencies,
+			schedulesExpected: false
+		});
+		const r = input.rollouts.find(
+			(x) => x.metadata?.namespace === 'checkout-api-prod-us-east-2' && x.metadata?.name === 'checkout-api'
+		)!;
+		const holds = ctx.contractHoldsFor(r)!;
+		const pick = (v: string) => (holds.get(v) ?? []).map(contractHoldClause);
+		expect(pick('4.43.0-43')).toEqual(['Needs payments-svc ~2.9.0 · has 2.4.1']);
+		expect(pick('4.45.0-45')).toEqual(['Needs payments-svc ^3.0.0 · has 2.4.1']);
 	});
 });

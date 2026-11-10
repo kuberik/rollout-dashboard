@@ -10,11 +10,30 @@ import {
 	isReady,
 	isSatisfied,
 	providedContracts,
+	providerResolved,
 	rankOfTag,
 	splitBlocked,
 	type EnvInfo
 } from './dependencies';
-import type { RolloutDependency } from '../../types';
+import type { Environment, RolloutDependency } from '../../types';
+import { buildTopology } from './sites-waves';
+
+/** An Environment of app `checkout` at (tier, site, wave); `wave` is the controller's report. */
+function envObj(
+	tier: string,
+	site: string,
+	wave: number,
+	report: { leader?: string; role?: 'Leader' | 'Follower' } = {}
+): Environment {
+	return {
+		metadata: { name: `checkout-${tier}-${site}`, namespace: 'ns' },
+		spec: { environment: tier, name: 'checkout', site, wave },
+		status: {
+			conditions: [],
+			wave: report.leader ? { site, wave, role: report.role, leader: report.leader } : undefined
+		}
+	} as unknown as Environment;
+}
 
 /**
  * The live hub's own numbers, so the fixtures below are not invented.
@@ -318,48 +337,46 @@ describe('contractBlocks', () => {
 	});
 });
 
-describe('chainOrder - walks the After edges', () => {
-	const infos: EnvInfo[] = [
-		{ environment: 'prod', relationship: { environment: 'staging', type: 'After' } },
-		{ environment: 'dev' },
-		{ environment: 'staging', relationship: { environment: 'dev', type: 'After' } }
-	];
+describe('chainOrder - tier, wave, leader, site', () => {
+	const infos: EnvInfo[] = [{ environment: 'prod' }, { environment: 'dev' }, { environment: 'staging' }];
 
 	it('orders the live chain upstream-first regardless of arrival order', () => {
 		expect(chainOrder(infos)).toEqual(['dev', 'staging', 'prod']);
 	});
 
-	it('keeps a fan-out under its shared parent', () => {
-		const order = chainOrder([
-			{ environment: 'dev' },
-			{ environment: 'prod-eu', relationship: { environment: 'dev', type: 'After' } },
-			{ environment: 'prod-us', relationship: { environment: 'dev', type: 'After' } }
-		]);
-		expect(order[0]).toBe('dev');
-		expect(order.slice(1).sort()).toEqual(['prod-eu', 'prod-us']);
-	});
-
-	it('never drops an environment caught in a cycle', () => {
-		const order = chainOrder([
-			{ environment: 'a', relationship: { environment: 'b', type: 'After' } },
-			{ environment: 'b', relationship: { environment: 'a', type: 'After' } }
-		]);
-		expect(order.slice().sort()).toEqual(['a', 'b']);
-	});
-
-	it('treats a dangling After as a head rather than losing the node', () => {
-		expect(chainOrder([{ environment: 'x', relationship: { environment: 'gone', type: 'After' } }])).toEqual(
-			['x']
+	it('orders aliases by their canonical tier', () => {
+		expect(chainOrder([{ environment: 'production' }, { environment: 'qa' }, { environment: 'development' }])).toEqual(
+			['development', 'qa', 'production']
 		);
 	});
 
-	it('ignores a relationship whose type is not After', () => {
-		expect(
-			chainOrder([
-				{ environment: 'a' },
-				{ environment: 'b', relationship: { environment: 'a', type: 'Before' } }
-			])
-		).toEqual(['a', 'b']);
+	it('orders sites of one tier by wave, leader first, then site name', () => {
+		const order = chainOrder([
+			{ environment: 'prod-us-east-1', site: 'us-east-1', wave: 2, role: 'Leader' },
+			{ environment: 'prod-eu-west-1', site: 'eu-west-1', wave: 1, role: 'Leader' },
+			{ environment: 'prod-ap-south-1', site: 'ap-south-1', wave: 1, role: 'Follower' },
+			{ environment: 'dev' }
+		]);
+		expect(order).toEqual(['dev', 'prod-eu-west-1', 'prod-ap-south-1', 'prod-us-east-1']);
+	});
+
+	it('takes a row\'s wave and leader from the topology when one is passed', () => {
+		const envs = [
+			envObj('prod', 'eu-west-1', 1, { leader: 'eu-west-1' }),
+			envObj('prod', 'ap-south-1', 1, { leader: 'eu-west-1' })
+		];
+		const topo = buildTopology(envs).get('kuberik-checkout')!;
+		const order = chainOrder([{ environment: 'prod-ap-south-1' }, { environment: 'prod-eu-west-1' }], topo);
+		expect(order).toEqual(['prod-eu-west-1', 'prod-ap-south-1']);
+	});
+
+	it('never drops an environment whose tier it cannot place', () => {
+		const order = chainOrder([{ environment: 'sandbox' }, { environment: 'prod' }, { environment: 'dev' }]);
+		expect(order).toEqual(['dev', 'prod', 'sandbox']);
+	});
+
+	it('is stable: equal places keep arrival order', () => {
+		expect(chainOrder([{ environment: 'dev' }, { environment: 'development' }])).toEqual(['dev', 'development']);
 	});
 });
 
@@ -378,10 +395,9 @@ describe('currentEntry / chain', () => {
 		},
 		{
 			environment: 'staging',
-			relationship: { environment: 'dev', type: 'After' },
 			history: [hist('rel-63', '2.63.0-63', 2)]
 		},
-		{ environment: 'prod', relationship: { environment: 'staging', type: 'After' } }
+		{ environment: 'prod' }
 	];
 
 	it('takes the highest history id, not the array order', () => {
@@ -410,10 +426,9 @@ describe('hopBetween - a count or nothing, never a fabricated zero', () => {
 			{ environment: 'dev', history: [{ id: 1, version: { tag: 'rel-66', version: '2.66.0-66' } }] },
 			{
 				environment: 'staging',
-				relationship: { environment: 'dev', type: 'After' },
 				history: [{ id: 1, version: { tag: 'rel-63', version: '2.63.0-63' } }]
 			},
-			{ environment: 'prod', relationship: { environment: 'staging', type: 'After' } }
+			{ environment: 'prod' }
 		],
 		order
 	);
@@ -649,5 +664,87 @@ describe('providedContracts — widened across this app\'s own environments', ()
 		expect(provided[0].providedVaries).toBe(false);
 		// Still three places — the widening is untouched by the version fix.
 		expect(provided[0].dependents[0].places).toHaveLength(3);
+	});
+});
+
+/**
+ * ⭐ NO LINK TO A ROLLOUT THAT ISN'T THERE. (qa11, 2026-10-11.) identity-svc's
+ * `RolloutDependency` claimed a provider rollout (`checkout-api-dev`/
+ * `identity-svc`) that the fleet fixture never created, and the Gates tab
+ * built the link anyway — a 404 behind an "Open identity-svc" anchor.
+ * `providerResolved` is the one guard every "open the provider" link now
+ * checks first.
+ */
+describe('providerResolved: a provider without a rollout is not linkable', () => {
+	const block = { providerName: 'identity-svc', providerNamespace: 'checkout-api-dev' };
+
+	it('resolves when a rollout with that exact name and namespace exists', () => {
+		const rollouts = [{ metadata: { name: 'identity-svc', namespace: 'checkout-api-dev' } }];
+		expect(providerResolved(block, rollouts)).toBe(true);
+	});
+
+	it('does not resolve when no rollout matches (the identity-svc fixture gap)', () => {
+		const rollouts = [{ metadata: { name: 'payments-svc', namespace: 'platform-prod' } }];
+		expect(providerResolved(block, rollouts)).toBe(false);
+	});
+
+	it('does not resolve on name match alone — the namespace must agree too', () => {
+		const rollouts = [{ metadata: { name: 'identity-svc', namespace: 'some-other-ns' } }];
+		expect(providerResolved(block, rollouts)).toBe(false);
+	});
+
+	it('an empty fleet never resolves', () => {
+		expect(providerResolved(block, [])).toBe(false);
+	});
+});
+
+describe('chain - upstream edges from the topology', () => {
+	const order = buildOrder(LIVE_RELEASES);
+	const envs = [
+		envObj('dev', 'default', 1),
+		envObj('prod', 'eu-west-1', 1, { leader: 'eu-west-1', role: 'Leader' }),
+		envObj('prod', 'ap-south-1', 1, { leader: 'eu-west-1', role: 'Follower' }),
+		envObj('prod', 'us-east-1', 2, { leader: 'us-east-1', role: 'Leader' })
+	];
+	const topo = buildTopology(envs).get('kuberik-checkout')!;
+	const infos: EnvInfo[] = [
+		{ environment: 'prod-us-east-1' },
+		{ environment: 'prod-ap-south-1' },
+		{ environment: 'dev' },
+		{ environment: 'prod-eu-west-1' }
+	];
+
+	it('orders places and names what each one follows', () => {
+		const rows = chain(infos, order, undefined, topo);
+		expect(rows.map((r) => r.env)).toEqual(['dev', 'prod-eu-west-1', 'prod-ap-south-1', 'prod-us-east-1']);
+		expect(rows.map((r) => r.after)).toEqual([null, 'dev', 'prod-eu-west-1', 'prod-eu-west-1']);
+	});
+
+	it('a wave-2 leader follows every live site of wave 1', () => {
+		const rows = chain(infos, order, undefined, topo);
+		expect(rows[3].upstream.sort()).toEqual(['prod-ap-south-1', 'prod-eu-west-1']);
+	});
+
+	it('carries tier, site, wave and role per row', () => {
+		const rows = chain(infos, order, undefined, topo);
+		expect(rows[2]).toMatchObject({ tier: 'prod', site: 'ap-south-1', wave: 1, role: 'Follower' });
+		expect(rows[0]).toMatchObject({ tier: 'dev', wave: 1 });
+	});
+
+	it('without a topology a row follows the last row of the nearest earlier tier', () => {
+		const rows = chain(
+			[{ environment: 'prod' }, { environment: 'dev' }, { environment: 'staging' }],
+			order
+		);
+		expect(rows.map((r) => [r.env, r.after])).toEqual([
+			['dev', null],
+			['staging', 'dev'],
+			['prod', 'staging']
+		]);
+	});
+
+	it('sites of one tier without a topology do not follow each other', () => {
+		const rows = chain([{ environment: 'dev' }, { environment: 'prod-a', site: 'a' }, { environment: 'prod-b', site: 'b' }], order);
+		expect(rows.map((r) => r.after)).toEqual([null, 'dev', 'dev']);
 	});
 });

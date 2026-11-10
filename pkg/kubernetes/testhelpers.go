@@ -1,11 +1,13 @@
 package kubernetes
 
 import (
+	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 // NewTestClient builds a *Client backed by a controller-runtime fake client
@@ -58,4 +60,36 @@ func NewTestClientWithPods(objs []client.Object, pods ...corev1.Pod) (*Client, *
 	fakeClientset := k8sfake.NewSimpleClientset(podRuntimeObjs...)
 	c.clientset = fakeClientset
 	return c, fakeClientset, nil
+}
+
+// NewTestClientWithInterceptor is NewTestClient with controller-runtime's
+// interceptor in front of the fake client, so a handler test can make one
+// List fail (or count calls) the way a real apiserver/cache read would.
+func NewTestClientWithInterceptor(funcs interceptor.Funcs, objs ...client.Object) (*Client, error) {
+	scheme, err := buildScheme()
+	if err != nil {
+		return nil, err
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithInterceptorFuncs(funcs).Build()
+	return &Client{client: cl}, nil
+}
+
+// SetListRolloutsPermissionCheckForTest replaces the SelfSubjectAccessReview
+// behind CanListRolloutsInNamespace for the duration of a handler test and
+// clears the visibility cache on both ends, so a test can give a token a
+// fixed set of visible namespaces without a live cluster. Returns a restore
+// func.
+func SetListRolloutsPermissionCheckForTest(fn func(c *gin.Context, ns string) (bool, error)) func() {
+	prev := checkListRolloutsPermission
+	clear := func() {
+		visibilityMu.Lock()
+		visibilityCache = map[string]visibilityEntry{}
+		visibilityMu.Unlock()
+	}
+	checkListRolloutsPermission = fn
+	clear()
+	return func() {
+		checkListRolloutsPermission = prev
+		clear()
+	}
 }

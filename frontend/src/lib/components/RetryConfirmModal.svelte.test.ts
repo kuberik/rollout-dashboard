@@ -37,6 +37,7 @@ function intent(over: Partial<DeployIntent> = {}): DeployIntent {
 		vouched: false,
 		custom: false,
 		environment: 'prod',
+		knownFailedHere: false,
 		...over
 	};
 }

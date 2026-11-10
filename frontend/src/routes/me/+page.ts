@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { href } from '$lib/paths';
 
 /**
  * `/me` → `/changes`.
@@ -24,5 +25,5 @@ import { redirect } from '@sveltejs/kit';
  * `.agents-context/design/PROFILE-PLAN-2026-09-10.md`.
  */
 export const load = () => {
-	redirect(308, '/changes');
+	redirect(308, href('/changes'));
 };

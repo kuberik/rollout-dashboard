@@ -6,7 +6,9 @@ import {
 	rankLabel,
 	rankRole,
 	rankBehindBy,
-	rankIsAdverse
+	rankIsAdverse,
+	lagLabel,
+	regionsLabel
 } from './env-rank';
 import { buildMatrix } from './matrix';
 import type { Rollout, Environment } from '$lib/../types';
@@ -156,8 +158,8 @@ describe('env-rank — the one denominator', () => {
 		expect(rankRole({ kind: 'diverged' })).toBe('diverged');
 		expect(rankRole({ kind: 'unknown' })).toBe('unranked');
 		// ⛔ `N behind`, NOT `−N`. One spelling, product-wide.
-		expect(rankLabel({ kind: 'behind', by: 19 })).toBe('19 behind');
-		expect(rankLabel({ kind: 'behind', by: 1 })).toBe('1 behind');
+		expect(rankLabel({ kind: 'behind', by: 19 })).toBe('19 builds behind');
+		expect(rankLabel({ kind: 'behind', by: 1 })).toBe('1 build behind');
 		expect(rankLabel({ kind: 'newest' })).toBe('newest');
 		expect(rankIsAdverse({ kind: 'newest' })).toBe(false);
 		expect(rankIsAdverse({ kind: 'behind', by: 1 })).toBe(true);
@@ -180,5 +182,23 @@ describe('the matrix carries the same number the app pages print', () => {
 		}
 		expect(row.cells['prod']!.behindBy).toBe(4);
 		expect(row.worstLag).toBe(4);
+	});
+});
+
+describe('shared/age-lag-total — ONE LAG UNIT', () => {
+	it('lagLabel always names builds, singular and plural', () => {
+		expect(lagLabel({ builds: 1 })).toBe('1 build behind');
+		expect(lagLabel({ builds: 4 })).toBe('4 builds behind');
+		expect(lagLabel({ builds: 0 })).toBe('0 builds behind');
+	});
+
+	it('regionsLabel always names regions and their denominator', () => {
+		expect(regionsLabel({ onNewest: 3, of: 5 })).toBe('3 of 5 regions on the newest');
+		expect(regionsLabel({ onNewest: 1, of: 1 })).toBe('1 of 1 region on the newest');
+	});
+
+	it('rankLabel routes a behind verdict through lagLabel, never a bare number', () => {
+		expect(rankLabel({ kind: 'behind', by: 19 })).toBe('19 builds behind');
+		expect(rankLabel({ kind: 'behind', by: 19 })).not.toMatch(/^\d+ behind$/);
 	});
 });

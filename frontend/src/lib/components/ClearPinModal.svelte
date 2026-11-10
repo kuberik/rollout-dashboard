@@ -25,8 +25,9 @@
 	 * move. Duplicating the markup on a second page would have been the way to
 	 * lose it, so rollout detail uses this component too and there is one copy.
 	 */
-	import { Modal, Button, Toast } from 'flowbite-svelte';
-	import { LockOpenOutline, ExclamationCircleSolid } from 'flowbite-svelte-icons';
+	import { Modal } from 'flowbite-svelte';
+	import { LockOpenOutline } from 'flowbite-svelte-icons';
+	import Toast from './Toast.svelte';
 	import type { Rollout } from '../../types';
 	import {
 		autoDeployState,
@@ -89,7 +90,10 @@
 
 	// `DEV`, `STAGING`, `PROD` — the product's own case for an environment
 	// tier, matched to the `[DEV]` chips this rollout appears under elsewhere.
-	const envLabel = $derived(rolloutEnvironmentName(rollout, environmentName).toUpperCase());
+	// ⭐ AS WRITTEN, NEVER UPPERCASE. (round 2, 2026-10-08, design review 4)
+	// `.toUpperCase()` broke principle 11 — an environment is drawn one way
+	// everywhere: the name as written. Uppercase belongs to `t-label` only.
+	const envLabel = $derived(rolloutEnvironmentName(rollout, environmentName));
 	// ⛔ THE COMMENT ABOVE PROMISED THIS AND THE CODE DID NOT DO IT.
 	// (coordinator residue, 2026-09-03) `cluster ? … : ''` said it aloud
 	// whenever the prop was merely present, so the prod rollout — whose
@@ -178,7 +182,13 @@
 		const target = shortRevisionOrNull(newestDeployableCandidate(rollout)?.revision);
 		if (!current || !target || current === target) return null;
 		const count = promotionCandidates(rollout).length;
-		return `${envLabel} moves ${current} → ${target}${count > 1 ? ` (${count} newer builds allowed)` : ''}.`;
+		// Sentence case, not identity case: capitalising the first letter to
+		// open a sentence grammatically is not the banned ALL-CAPS treatment
+		// (principle 11 bans shouting an environment's name, not an ordinary
+		// capital letter at a sentence's start) — `envLabel` itself stays
+		// exactly as written everywhere else in this dialog.
+		const sentenceLead = envLabel.charAt(0).toUpperCase() + envLabel.slice(1);
+		return `${sentenceLead} moves ${current} → ${target}${count > 1 ? ` (${count} newer builds allowed)` : ''}.`;
 	});
 
 	function shortRevisionOrNull(rev: string | null | undefined): string | null {
@@ -249,14 +259,46 @@
      `<dialog>`. `title` alone renders flowbite's own `<h3>`, which has no
      `id` for `aria-labelledby` to point at — `aria-label` gives the dialog
      an accessible name directly, without needing one. -->
-<Modal bind:open title={clearPinTitle} role="dialog" aria-modal="true" aria-label={clearPinTitle}>
-	<div class="space-y-4">
-		<p class="text-sm text-gray-600 dark:text-gray-400">
+<!-- `title` is omitted deliberately: flowbite's own `title` prop renders its
+     own `<h3>` chrome, which does not match §3.14's dialog header (`px-5
+     py-4 border-b border-line`, `t-heading`). `aria-label` alone gives the
+     dialog its accessible name — see the note above on why that was already
+     the right call for THIS modal's labelling, independent of the header's
+     own markup. -->
+<!-- ⭐ ONE DIALOG SHELL FOR EVERY DIALOG IN THIS LANE. (squad-rollout, Lane D,
+     §4) `RecoveryModeWarningModal`'s own doc comment already claimed this
+     shell is "shared byte-for-byte with RetryConfirmModal/RetryTestsModal/
+     ClearPinModal" — true of the footer, false of the header: this dialog
+     had a bare `<h2>` with no disc, while the other three in the lane all
+     open on a 40px icon beside the title. `size="sm"` (512px) joins the
+     same width those three already share — this was the one dialog in the
+     lane still at the flowbite default (`md`, 672px), wider than a single
+     sentence plus a `FactList` needs. -->
+<Modal bind:open size="sm" role="dialog" aria-modal="true" aria-label={clearPinTitle} class="rounded-lg bg-overlay" classes={{ body: 'p-0 space-y-0' }}>
+	<div class="border-b border-line px-5 py-4">
+		<div class="flex items-start gap-3">
+			<!-- Neutral disc, same reasoning as `RecoveryModeWarningModal`'s own:
+			     clearing a pin is a reversible, ordinary control action, not a
+			     hold (orange) or a destructive one (red) — the hue stays out of
+			     the glyph the same way it stays out of the body wells below. -->
+			<div
+				class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-subtle ring-1 ring-line"
+			>
+				<LockOpenOutline class="h-5 w-5 text-fg-subtle" />
+			</div>
+			<h2 class="t-heading min-w-0 text-fg">{clearPinTitle}</h2>
+		</div>
+	</div>
+	<div class="space-y-4 px-5 py-4">
+		<p class="t-body text-fg-muted">
 			<!-- ⛔ THIS USED TO NAME NO ENVIRONMENT, ON A PAGE LISTING THREE OF
 			     THEM. The dialog acts on exactly ONE rollout — the one it was
 			     opened for — so it says which one before the press, the same way
 			     the title above it does. -->
-			This clears the pin currently held in <strong>{envLabel}</strong>{clusterSuffix}.
+			<!-- Emphasis inside a sentence is colour, never weight
+			     (DESIGN-LANGUAGE.md §4's do/don't table): `text-fg`, not
+			     `<strong>`. -->
+			This clears the pin currently held in <span class="text-fg">{envLabel}</span>{clusterSuffix}.
 			<!-- ⭐ THE ROLLOUT RIDES ALONG NOW. (2026-09-03, UX-walk iteration 2,
 			     finding 5) The dialog used to promise "moves to the newest
 			     allowed version" with no version anywhere in the sentence — an
@@ -283,36 +325,22 @@
 			<!-- ⭐ ITEM 8 (2026-09-06 critique) — WHO PINNED THIS, AND WHEN. See
 			     `pinnedByLine`'s own comment: renders only when the API
 			     actually carries at least one of the two facts. -->
-			<p class="text-xs text-gray-500 dark:text-gray-400">{pinnedByLine}</p>
+			<p class="t-meta text-fg-subtle">{pinnedByLine}</p>
 		{/if}
 		{#if !isDashboardManaging}
-			<p class="text-xs text-amber-600 dark:text-amber-400">
+			<p class="t-meta text-held">
 				The dashboard is not managing the wantedVersion field. Clearing may conflict with other
 				controllers.
 			</p>
 		{/if}
-		<div class="flex justify-end gap-2 pt-2">
-			<Button color="light" onclick={() => (open = false)}>Cancel</Button>
-			<Button color="blue" disabled={busy} onclick={clearPin}>
-				<LockOpenOutline class="mr-1.5 h-4 w-4" />
-				{CLEAR_PIN_LABEL}
-			</Button>
-		</div>
+	</div>
+	<div class="flex justify-end gap-2 border-t border-line px-5 py-3">
+		<button type="button" class="btn btn-secondary btn-sm" onclick={() => (open = false)}>Cancel</button>
+		<button type="button" class="btn btn-primary btn-sm" disabled={busy} onclick={clearPin}>
+			<LockOpenOutline class="h-4 w-4 shrink-0" />
+			{CLEAR_PIN_LABEL}
+		</button>
 	</div>
 </Modal>
 
-{#if showLocalToast}
-	<Toast class="fixed top-24 right-4 z-50 rounded-lg" bind:toastStatus={showLocalToast}>
-		{#snippet icon()}
-			<div
-				class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {localToastType ===
-				'success'
-					? 'bg-gray-100 text-green-700 dark:bg-gray-700 dark:text-green-400'
-					: 'bg-red-100 text-red-500 dark:bg-red-800 dark:text-red-200'}"
-			>
-				<ExclamationCircleSolid class="h-5 w-5" />
-			</div>
-		{/snippet}
-		{localToastMessage}
-	</Toast>
-{/if}
+<Toast bind:open={showLocalToast} tone={localToastType === 'success' ? 'success' : 'danger'} message={localToastMessage} />

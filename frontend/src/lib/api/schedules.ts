@@ -58,9 +58,10 @@ function isBlocking(s: ScheduleLike): boolean {
 	return (action === 'Allow' && !active) || (action === 'Deny' && active);
 }
 
+import { prettyNameOf } from '$lib/view-models/gate-name';
 function prettyName(s: ScheduleLike): string {
 	return (
-		s.metadata?.annotations?.['gate.kuberik.com/pretty-name'] || s.metadata?.name || 'schedule'
+		prettyNameOf(s.metadata) || s.metadata?.name || 'schedule'
 	);
 }
 
@@ -181,6 +182,31 @@ export async function fetchScheduleObjects(
 		...(data?.rolloutSchedules?.items ?? []),
 		...(data?.clusterRolloutSchedules?.items ?? [])
 	];
+}
+
+/**
+ * THE FULL SCHEDULE OBJECTS FOR ONE ROLLOUT — the exact request and data
+ * shape `ScheduleStatus` caches under `scheduleWindowQueryKey`, exported so
+ * the rollout Gates tab reads the SAME cache entry (one request, and the
+ * `RolloutSchedule` change-stream invalidation in `events.ts` already covers
+ * it) instead of a second copy keyed differently.
+ */
+export type RolloutScheduleObject = {
+	metadata?: { name?: string; namespace?: string; annotations?: Record<string, string> };
+	spec?: { action?: 'Allow' | 'Deny'; timezone?: string };
+	status?: { active?: boolean; nextTransition?: string; managedGates?: string[] };
+};
+
+export async function fetchRolloutSchedules(
+	namespace: string,
+	name: string,
+	cluster?: string
+): Promise<RolloutScheduleObject[]> {
+	const data = await apiJson<{
+		rolloutSchedules?: { items?: RolloutScheduleObject[] } | null;
+		clusterRolloutSchedules?: { items?: RolloutScheduleObject[] } | null;
+	}>(apiPath(cluster, `/rollouts/${namespace}/${name}/schedules`));
+	return [...(data?.rolloutSchedules?.items ?? []), ...(data?.clusterRolloutSchedules?.items ?? [])];
 }
 
 /**

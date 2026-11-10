@@ -59,11 +59,15 @@
 
 {#if named}
 <span
-	class="inline-flex min-w-0 items-center gap-1 {className}"
+	class="inline-flex min-w-0 items-baseline gap-1 {className}"
 	title={`Cluster ${named} — the Kubernetes cluster these rollouts run on, not the environment they serve`}
 >
-	<ServerOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-	<span class="t-micro shrink-0 leading-none">cluster</span>
-	<span class="t-code-sm truncate leading-none">{named}</span>
+	<ServerOutline class="h-3 w-3 shrink-0 self-center" aria-hidden="true" />
+	<span class="t-meta shrink-0 leading-none">cluster</span>
+	<!-- SANS, NOT MONO (round 4 review, 2026-10-09). A cluster name is a
+	     NAME — the same family as an environment, a namespace, a rollout —
+	     never a machine-minted id (a sha, a version, a k8s object path),
+	     the one thing mono is for (DESIGN-LANGUAGE.md §1.3). -->
+	<span class="t-meta truncate leading-none">{named}</span>
 </span>
 {/if}

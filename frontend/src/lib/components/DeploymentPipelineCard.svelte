@@ -1,8 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import Leaving from './Leaving.svelte';
+	import { smoothHeight } from '$lib/smooth-height';
+	import { canHover } from '$lib/can-hover.svelte';
 	import { formatTimestamp } from '$lib/display-time';
-	import { Button, Modal, Spinner, Tooltip } from 'flowbite-svelte';
+	import { Modal, Spinner, Tooltip } from 'flowbite-svelte';
 	import {
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -16,23 +19,47 @@
 		ArrowUpRightFromSquareOutline,
 		CircleMinusSolid,
 		ArrowsRepeatOutline,
-		RefreshOutline
+		RefreshOutline,
+		TerminalOutline,
+		ClipboardCheckOutline,
+		ChartMixedOutline,
+		LinkOutline
 	} from 'flowbite-svelte-icons';
-	import DatadogLogo from './DatadogLogo.svelte';
-	import HealthCheckBadge from './HealthCheckBadge.svelte';
 	import {
 		formatTimeAgo,
 		formatTimeAgoCompact,
-		formatDuration,
 		getDisplayVersion,
-		parseLinkAnnotations,
+		mergeTestLinks,
 		extractDatadogInfoFromContainers,
-		buildDatadogTestRunsUrl,
-		buildDatadogLogsUrl,
-		buildDatadogTraceSearchUrl, formatDate } from '$lib/utils';
+		formatDate } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { stageAdvance, type StageAdvance } from '$lib/view-models/stage-advance';
+	import { href } from '$lib/paths';
 	import type { Rollout, RolloutTest, HealthCheck, KruiseRollout } from '../../types';
+
+	/**
+	 * ⭐ THE TEST ROW'S ONE ICON LANGUAGE. (2026-09-13, site review.)
+	 *
+	 * The row used to print two: plain blue text for a team's own
+	 * `link.*` annotations and a violet link carrying the Datadog brand mark
+	 * for every derived one — the mark being a COLOUR asset (`#632CA6`, or
+	 * white on dark) which `DatadogLogo`'s own trademark note forbids
+	 * recolouring, so it can never join a monochrome row. It is gone from
+	 * this row; the destination is named in the link's accessible name and
+	 * tooltip instead, which is what a reader actually needs to know.
+	 *
+	 * The marks are the product's own: `TerminalOutline` is the mark the
+	 * rollout's OWN Logs tab uses (`+layout.svelte`), so `Logs` here and
+	 * `Logs` in the tab strip are one word with one glyph. `kind` comes from
+	 * `mergeTestLinks`, i.e. from the label, so a hand-written `Logs` and a
+	 * derived one are marked identically.
+	 */
+	const TEST_LINK_MARK = {
+		logs: TerminalOutline,
+		ci: ClipboardCheckOutline,
+		trace: ChartMixedOutline,
+		other: LinkOutline
+	} as const;
 
 	type ValidKruiseRollout = {
 		rolloutResource: any;
@@ -94,16 +121,6 @@
 		return `${s}s`;
 	}
 
-	function findFullHealthCheck(
-		failedHC: { name: string; namespace?: string },
-		allHealthChecks: HealthCheck[]
-	): HealthCheck | undefined {
-		return allHealthChecks.find(
-			(hc) =>
-				hc.metadata?.name === failedHC.name &&
-				(!failedHC.namespace || hc.metadata?.namespace === failedHC.namespace)
-		);
-	}
 
 	type NodeStatus = 'done' | 'running' | 'paused' | 'failed' | 'pending';
 
@@ -150,6 +167,9 @@
 		pipelineValidRollouts.length === 0 || pipelineValidRollouts.every((kr) => kr.isCompleted)
 	);
 	let bakeIsDeploying = $derived(allStagesDone && latestEntry.bakeStatus === 'Deploying');
+	// The tone of whatever is in flight: steps still rolling or a deploy going
+	// out is `active` (blue); a finished rollout being checked is `progress`.
+	let inflightIsDeploy = $derived(!allStagesDone || latestEntry.bakeStatus === 'Deploying');
 	let bakeIsInProgress = $derived(allStagesDone && latestEntry.bakeStatus === 'InProgress');
 	let bakeIsSucceeded = $derived(allStagesDone && latestEntry.bakeStatus === 'Succeeded');
 	let bakeIsFailed = $derived(allStagesDone && latestEntry.bakeStatus === 'Failed');
@@ -362,10 +382,19 @@
 
 	// Default auto-selection: every active node if any exist, otherwise the last
 	// node in the pipeline (typically Bake once the whole rollout is done).
+	// A2: while the deploy is still going out and no step has started yet (the new rollout has not begun), the selected step is the NEXT one
+	// (first pending stage), never "Final check — the new version is already live", which is false for a deploying build.
+	let nextPendingId = $derived(
+		latestEntry.bakeStatus === 'Deploying'
+			? (nodes.find((n) => n.status === 'pending' && n.kind !== 'bake')?.id ?? null)
+			: null
+	);
 	let autoSelectedIds = $derived(
 		activeNodes.length > 0
 			? activeNodes.map((n) => n.id)
-			: nodes.length > 0
+			: nextPendingId
+				? [nextPendingId]
+				: nodes.length > 0
 				? [nodes[nodes.length - 1].id]
 				: []
 	);
@@ -413,12 +442,25 @@
 		userSelectedId = null;
 	}
 
+	/**
+	 * ⛔ ITEM 9 (integration round 3, Gates design review). `running` used to
+	 * fold BOTH the literal `running` status (blue, `Deploying`) AND `paused`
+	 * (yellow, `checking` in `bake-status.ts`'s own vocabulary — a canary
+	 * mid-bake) into one bucket, and the header always painted that bucket
+	 * blue — so a pipeline where every active step was `paused` (checking)
+	 * still showed a blue "in progress" rollup, disagreeing with every one
+	 * of its own step chips (`pillClasses`' `paused` branch, yellow). The
+	 * header now reads `checking` separately, and the tone it picks follows
+	 * which status is actually active — matching the step's own chip colour,
+	 * never defaulting to blue.
+	 */
 	let summary = $derived(
 		(() => {
 			const failed = nodes.filter((n) => n.status === 'failed').length;
 			const done = nodes.filter((n) => n.status === 'done').length;
-			const running = nodes.filter((n) => n.status === 'running' || n.status === 'paused').length;
-			return { failed, done, running, total: nodes.length };
+			const running = nodes.filter((n) => n.status === 'running').length;
+			const checking = nodes.filter((n) => n.status === 'paused').length;
+			return { failed, done, running, checking, active: running + checking, total: nodes.length };
 		})()
 	);
 
@@ -428,11 +470,11 @@
 	// dashboard) so the pipeline stages don't read as a different style.
 	function circleBg(status: NodeStatus): string {
 		return {
-			done: 'bg-gray-100 text-green-700 dark:bg-gray-700 dark:text-green-400',
-			running: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-			paused: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-			failed: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
-			pending: 'bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400'
+			done: 'bg-success-tint text-success',
+			running: 'bg-active-tint text-active',
+			paused: 'bg-progress-tint text-progress',
+			failed: 'bg-danger-tint text-danger',
+			pending: 'bg-subtle text-fg-subtle'
 		}[status];
 	}
 
@@ -447,32 +489,32 @@
 	 */
 	function pillClasses(status: NodeStatus): string {
 		return {
-			done: 'border-gray-200 text-green-700 dark:border-gray-700 dark:text-green-400',
-			running: 'border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400',
-			paused: 'border-gray-200 text-yellow-700 dark:border-gray-700 dark:text-yellow-400',
-			failed: 'border-gray-200 text-red-700 dark:border-gray-700 dark:text-red-400',
-			pending: 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+			done: 'border-success-line text-success',
+			running: 'border-active-line text-active',
+			paused: 'border-progress-line text-progress',
+			failed: 'border-danger-line text-danger',
+			pending: 'border-line text-fg-subtle'
 		}[status];
 	}
 
 	function subDotBg(status: NodeStatus): string {
 		return {
-			done: 'bg-green-700 dark:bg-green-400',
-			running: 'bg-blue-500',
-			paused: 'bg-yellow-500',
-			failed: 'bg-red-500',
-			pending: 'bg-gray-300 dark:bg-gray-600'
+			done: 'bg-success-solid',
+			running: 'bg-active-solid',
+			paused: 'bg-progress-solid',
+			failed: 'bg-danger-solid',
+			pending: 'bg-line-strong'
 		}[status];
 	}
 
 	function leftEdgeAccent(status: NodeStatus, selected: boolean): string {
 		if (!selected) return 'bg-transparent';
 		return {
-			done: 'bg-green-700 dark:bg-green-400',
-			running: 'bg-blue-500',
-			paused: 'bg-yellow-500',
-			failed: 'bg-red-500',
-			pending: 'bg-blue-500'
+			done: 'bg-success-solid',
+			running: 'bg-active-solid',
+			paused: 'bg-progress-solid',
+			failed: 'bg-danger-solid',
+			pending: 'bg-active-solid'
 		}[status];
 	}
 
@@ -531,28 +573,47 @@
 		})()
 	);
 
+	// ⛔ U-19 — `Checking`, NOT `In progress`. (2026-10-08.) This was the fifth
+	// spelling of "this is checking right now" on the card (`Checking` on the
+	// stage/bake node itself, `CHECKING` on its chip, `In progress` here) —
+	// the exact class the step-name rename (see the comment above `nodes`)
+	// closed for the step NAME, still open for the STATE word. One state, one
+	// word, same as every other `NodeStatus` label on this card.
 	let finalBakeTimerStatus = $derived<{ status: NodeStatus; label: string }>(
 		(() => {
 			if (bakeIsFailed && allHCHealthy) return { status: 'failed', label: 'Failed' };
 			if (bakeIsSucceeded) return { status: 'done', label: 'Done' };
-			if (bakeIsInProgress) return { status: 'paused', label: 'In progress' };
+			if (bakeIsInProgress) return { status: 'paused', label: 'Checking' };
 			return { status: 'pending', label: 'Pending' };
 		})()
 	);
 
 	function testIconColor(phase: string): string {
-		if (phase === 'Succeeded') return 'text-green-700 dark:text-green-400';
-		if (phase === 'Failed') return 'text-red-500 dark:text-red-400';
-		if (phase === 'Cancelled') return 'text-gray-500 dark:text-gray-400';
-		if (phase === 'Skipped') return 'text-gray-500 dark:text-gray-400';
-		if (phase === 'Pending') return 'text-yellow-700 dark:text-yellow-400';
-		return 'text-gray-500 dark:text-gray-400';
+		if (phase === 'Succeeded') return 'text-success';
+		if (phase === 'Failed') return 'text-danger';
+		if (phase === 'Cancelled') return 'text-fg-subtle';
+		if (phase === 'Skipped') return 'text-fg-subtle';
+		if (phase === 'Pending') return 'text-progress';
+		return 'text-fg-subtle';
 	}
 
+	/**
+	 * ⭐ THE SAME TINT RECIPE AS THE BANNERS, AT THE ROW'S OWN STRENGTH.
+	 * (2026-09-20.) These were `dark:bg-red-950/20` / `dark:bg-blue-950/15`,
+	 * which composite BELOW the card they sit on — a failed stage drawn darker
+	 * than the stages that are fine, the banner's own upside-down defect one
+	 * object down. `app.css`'s `.alert-fill-*-quiet`/`-active` carry the
+	 * mirrored version; light is byte-identical (the class's light half is the
+	 * same `/40` and `/30` composite these strings already produced).
+	 *
+	 * ⛔ The ACTIVE node is in this commit too, though only the failed one was
+	 * asked for: they are two branches of one function, and fixing one would
+	 * have left a running stage and a failed stage at the same value — the
+	 * distinction this function exists to draw.
+	 */
 	function nodeAccentRow(node: StageNode): string {
-		// subtle tinted row bg for failed/active nodes
-		if (node.status === 'failed') return 'bg-red-50/40 dark:bg-red-950/20';
-		if (node.isActive) return 'bg-blue-50/30 dark:bg-blue-950/15';
+		if (node.status === 'failed') return 'alert-fill-error-quiet';
+		if (node.isActive) return 'alert-fill-active';
 		return '';
 	}
 
@@ -612,13 +673,26 @@
 	{:else if status === 'running' || status === 'paused'}
 		<!-- Rotating arc in the parent's text color (currentColor) so the
 		     spinner picks up the same hue as the rest of the icons —
-		     blue-600 for running, yellow-700 for paused/baking. -->
+		     active for running, progress for paused/baking. Only RUNNING
+		     (deploying) pings or pulses: checking never glows (§1.12). -->
 		<div class="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current"></div>
 	{:else}
-		<ClockSolid class="h-3.5 w-3.5" />
+		<ClockSolid class="h-4 w-4" />
 	{/if}
 {/snippet}
 
+<!--
+	⛔ U-19 — ONE CHIP PER ROW. (2026-10-08.) `navRow` (and its mobile twin
+	below) used to print a SECOND chip, "Active", beside the status chip
+	whenever `node.isActive` — so the active bake step read `Check` ·
+	`ACTIVE` · `CHECKING`, three objects for one fact. The pulsing ring
+	already drawn on the circle (`node.isActive && status !== 'failed'`,
+	just below) is the product's one "this is live right now" mark; the
+	chip's own job is the STATE WORD, and that word (`Checking`) already
+	says it is in progress. Deleted rather than merged into the status
+	chip — a chip that said both would be two facts in one box, the other
+	defect this rule exists to prevent.
+-->
 {#snippet navRow(node: StageNode, showLineAbove: boolean, showLineBelow: boolean)}
 	{@const isSelected = selectedIds.includes(node.id)}
 	<li class="relative">
@@ -626,13 +700,13 @@
 		{#if showLineAbove}
 			<div
 				aria-hidden="true"
-				class="absolute left-[29px] top-0 h-2 w-0.5 bg-gray-300 dark:bg-gray-600"
+				class="absolute left-[29px] top-0 h-2 w-0.5 bg-line-strong"
 			></div>
 		{/if}
 		{#if showLineBelow}
 			<div
 				aria-hidden="true"
-				class="absolute left-[29px] top-9 bottom-0 w-0.5 bg-gray-300 dark:bg-gray-600"
+				class="absolute left-[29px] top-9 bottom-0 w-0.5 bg-line-strong"
 			></div>
 		{/if}
 
@@ -640,8 +714,8 @@
 			type="button"
 			onclick={() => select(node.id)}
 			aria-current={isSelected ? 'step' : undefined}
-			class="group relative flex w-full items-center gap-3 py-2 pl-4 pr-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 {isSelected
-				? 'bg-blue-50/50 dark:bg-blue-950/30'
+			class="group relative flex w-full items-center gap-3 py-2 pl-4 pr-3 text-left transition-colors hover:bg-hover {isSelected
+				? 'bg-selected'
 				: nodeAccentRow(node)}"
 		>
 			<!-- Left accent bar when selected -->
@@ -655,14 +729,14 @@
 			     connector; without a stacking context here it also beat the sticky
 			     tab strip (z-10 too) and rode over it while scrolling (2026-09-04). -->
 			<div class="relative isolate flex-shrink-0">
-				{#if node.isActive && node.status !== 'failed'}
+				{#if node.isActive && node.status === 'running'}
 					<span
 						aria-hidden="true"
 						class="absolute inset-0 animate-ping rounded-full opacity-40 {subDotBg(node.status)}"
 					></span>
 				{/if}
 				<div
-					class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full shadow-sm {circleBg(
+					class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full {circleBg(
 						node.status
 					)}"
 				>
@@ -671,32 +745,36 @@
 			</div>
 
 			<!-- Label -->
-			<div class="flex min-w-0 flex-1 items-center justify-between gap-2">
-				<div class="flex min-w-0 items-center gap-1.5">
-					<span
-						class="truncate text-sm {isSelected
-							? 'font-semibold text-gray-900 dark:text-white'
-							: 'font-medium text-gray-700 dark:text-gray-200'}"
-					>
-						{node.shortLabel}
-					</span>
-					{#if node.isActive}
+				<div class="flex min-w-0 flex-1 items-center justify-between gap-2">
+					<div class="flex min-w-0 items-center gap-1.5">
 						<span
-							class="chip t-chip border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400"
+							class="truncate {node.status === 'failed'
+								? 't-card-title text-danger'
+								: isSelected
+									? 't-card-title text-fg'
+									: 't-body text-fg-muted'}"
 						>
-							Active
+							{node.shortLabel}
+						</span>
+					</div>
+					<!-- ⭐ THE CHIP BUDGET, ROUND 2 (2026-10-08, coordinator
+					     review): "one fact, once" — a FAILED row's circle is
+					     already red and its name is now red too, so a `FAILED`
+					     chip repeated beside them was a third mark for one
+					     fact. Only a stage that is still LIVE (running/paused)
+					     or at its starting point keeps a chip; done and failed
+					     are both legible from glyph + ink alone. -->
+					{#if node.status !== 'done' && node.status !== 'failed'}
+						<span
+							class="chip t-label chip-wide flex-shrink-0 {pillClasses(
+								node.status
+							)}"
+						>
+							{node.statusLabel}
 						</span>
 					{/if}
 				</div>
-				<span
-					class="chip t-chip chip-wide flex-shrink-0 {pillClasses(
-						node.status
-					)}"
-				>
-					{node.statusLabel}
-				</span>
-			</div>
-		</button>
+			</button>
 	</li>
 {/snippet}
 
@@ -711,131 +789,117 @@
 		<div class="flex items-center gap-3">
 			<span
 				aria-hidden="true"
-				class="h-2.5 w-2.5 flex-shrink-0 rounded-full {subDotBg(status)} {status ===
-					'running' || status === 'paused'
+				class="h-3 w-3 flex-shrink-0 rounded-full {subDotBg(status)} {status === 'running'
 					? 'animate-pulse'
 					: ''}"
 			></span>
-			<span class="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-white">
+			<span class="t-card-title flex min-w-0 flex-1 items-center gap-1.5 text-fg">
 				<span class="truncate">{title}</span>
 				{#if extra === 'tests' && sd?.hasTests}
 					<span
-						class="inline-flex h-4 min-w-[1.125rem] flex-shrink-0 items-center justify-center rounded-full bg-gray-200 px-1 text-[10px] font-semibold leading-none text-gray-600 tabular-nums dark:bg-gray-700 dark:text-gray-300"
+						class="t-ui-sm inline-flex h-4 min-w-[1.125rem] flex-shrink-0 items-center justify-center rounded-full bg-selected px-1 leading-none text-fg-muted tabular-nums"
 					>
 						{sd.stepTests.length}
 					</span>
 				{/if}
 			</span>
-			<span
-				class="chip t-chip chip-wide flex-shrink-0 {pillClasses(
-					status
-				)}"
-			>
-				{label}
-			</span>
+			<!-- ⭐ ONE FACT, ONCE, ROUND 2 (2026-10-08): a failed sub-row's dot
+			     and title are already red; a `FAILED` chip beside them was a
+			     third mark. Every other state keeps its chip. -->
+			{#if status === 'pending'}
+				<!-- Sub-rows: the detail header above already carries the stage's
+				     one chip; a running or done sub-row is its glyph + ink only,
+				     so CHECKING is said once, not three times. -->
+				<span
+					class="chip t-label chip-wide flex-shrink-0 {pillClasses(
+						status
+					)}"
+				>
+					{label}
+				</span>
+			{:else}
+				<span class="t-meta flex-shrink-0 text-fg-subtle">{label}</span>
+			{/if}
 		</div>
 
 		{#if extra === 'tests' && sd}
 			{#if sd.hasTests}
-				<ul class="mt-2.5 space-y-1.5 pl-5">
+				<ul class="mt-2 space-y-1.5 pl-5">
 					{#each sd.stepTests as test}
 						{#if test.metadata}
 							{@const phase = test.status?.phase || 'Unknown'}
 							{@const retryCount = test.status?.retryCount || 0}
-							{@const linkAnnotations = parseLinkAnnotations(test.metadata.annotations)}
-							{@const ddInfo = extractDatadogInfoFromContainers(
-								test.spec?.jobTemplate?.template?.spec?.containers || []
+							{@const testLinks = mergeTestLinks(
+								test.metadata.annotations,
+								extractDatadogInfoFromContainers(
+									test.spec?.jobTemplate?.template?.spec?.containers || []
+								),
+								getDisplayVersion(latestEntry.version)
 							)}
-							<li class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
-								<Tooltip class="z-50" placement="top" triggeredBy={'#pipe-test-' + test.metadata.name}>
-									{phase}
-								</Tooltip>
+							<li class="t-meta flex flex-wrap items-center gap-x-3 gap-y-1">
+								{#if canHover.current}
+									<Tooltip class="z-50" placement="top" triggeredBy={'#pipe-test-' + test.metadata.name}>
+										{phase}
+									</Tooltip>
+								{/if}
 								<span id={'pipe-test-' + test.metadata.name} class="inline-flex items-center gap-1.5">
 									{#if phase === 'Running'}
 										<Spinner size="4" color="blue" />
 									{:else if phase === 'Succeeded'}
-										<CheckCircleSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
+										<CheckCircleSolid class="h-4 w-4 {testIconColor(phase)}" />
 									{:else if phase === 'Failed'}
-										<ExclamationCircleSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
+										<ExclamationCircleSolid class="h-4 w-4 {testIconColor(phase)}" />
 									{:else if phase === 'Cancelled'}
-										<CircleMinusSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
+										<CircleMinusSolid class="h-4 w-4 {testIconColor(phase)}" />
 									{:else if phase === 'Skipped'}
-										<CircleMinusSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
+										<CircleMinusSolid class="h-4 w-4 {testIconColor(phase)}" />
 									{:else if phase === 'Pending'}
-										<ClockArrowOutline class="h-3.5 w-3.5 {testIconColor(phase)}" />
+										<ClockArrowOutline class="h-3 w-3 {testIconColor(phase)}" />
 									{:else}
-										<ClockSolid class="h-3.5 w-3.5 {testIconColor(phase)}" />
+										<ClockSolid class="h-4 w-4 {testIconColor(phase)}" />
 									{/if}
-									<span class="font-mono text-gray-700 dark:text-gray-200">
+									<span class="t-code-sm text-fg-muted">
 										{test.metadata.name}
 									</span>
 									{#if retryCount > 0}
 										<span
-											class="chip t-chip gap-0.5 border-gray-200 text-gray-500 tabular-nums dark:border-gray-700 dark:text-gray-400"
+											class="chip t-label gap-0.5 border-line text-fg-subtle tabular-nums"
 											title="{retryCount} retr{retryCount === 1 ? 'y' : 'ies'}"
 										>
-											<RefreshOutline class="h-2.5 w-2.5" />
+											<RefreshOutline class="h-3 w-3" />
 											{retryCount}
 										</span>
 									{/if}
 								</span>
 								{#if phase === 'Failed'}
 									<a
-										href={`/rollouts/${cluster}/${namespace}/${name}/logs?tab=tests`}
-										class="inline-flex items-center gap-0.5 font-medium text-blue-600 hover:underline dark:text-blue-400"
+										href={href(`/rollouts/${cluster}/${namespace}/${name}/logs?tab=tests`)}
+										class="t-ui-sm inline-flex items-center gap-0.5 text-accent-text hover:underline"
 									>
-										Logs<ArrowUpRightFromSquareOutline class="h-2.5 w-2.5" />
+										Logs<ArrowUpRightFromSquareOutline class="h-3 w-3" />
 									</a>
 								{/if}
-								{#each linkAnnotations as link}
+								{#each testLinks as link}
+									{@const Mark = TEST_LINK_MARK[link.kind]}
 									<a
 										href={link.url}
 										target="_blank"
 										rel="noopener noreferrer"
-										class="inline-flex items-center gap-0.5 font-medium text-blue-600 hover:underline dark:text-blue-400"
+										title={link.vendor ? `${link.label} in ${link.vendor}` : link.label}
+										aria-label={link.vendor ? `${link.label} in ${link.vendor}` : undefined}
+										class="t-ui-sm inline-flex items-center gap-1 text-accent-text hover:underline"
 									>
-										{link.label}<ArrowUpRightFromSquareOutline class="h-2.5 w-2.5" />
+										<Mark class="h-3 w-3 shrink-0" />{link.label}<ArrowUpRightFromSquareOutline
+											class="h-3 w-3"
+										/>
 									</a>
 								{/each}
-								{#if ddInfo}
-									<a
-										href={buildDatadogLogsUrl(ddInfo.service, ddInfo.env)}
-										target="_blank"
-										rel="noopener noreferrer"
-										class="inline-flex items-center gap-1 font-medium text-purple-600 hover:underline dark:text-purple-400"
-									>
-										<DatadogLogo class="h-3 w-3 shrink-0" />Logs
-									</a>
-									<a
-										href={buildDatadogTestRunsUrl(
-											ddInfo.service,
-											ddInfo.version || getDisplayVersion(latestEntry.version)
-										)}
-										target="_blank"
-										rel="noopener noreferrer"
-										class="inline-flex items-center gap-1 font-medium text-purple-600 hover:underline dark:text-purple-400"
-									>
-										<DatadogLogo class="h-3 w-3 shrink-0" />CI
-									</a>
-									<a
-										href={buildDatadogTraceSearchUrl(
-											ddInfo.service,
-											ddInfo.env,
-											ddInfo.version || getDisplayVersion(latestEntry.version)
-										)}
-										target="_blank"
-										rel="noopener noreferrer"
-										class="inline-flex items-center gap-1 font-medium text-purple-600 hover:underline dark:text-purple-400"
-									>
-										<DatadogLogo class="h-3 w-3 shrink-0" />Trace
-									</a>
-								{/if}
 							</li>
 						{/if}
 					{/each}
 				</ul>
 			{:else}
-				<p class="mt-1.5 pl-5 text-xs italic text-gray-500 dark:text-gray-400">
+				<p class="t-meta mt-2 pl-5 text-fg-subtle">
 					No tests configured
 				</p>
 			{/if}
@@ -854,16 +918,21 @@
 				{@const remainingBake = bakeTimeMs > 0 ? Math.max(0, bakeTimeMs - elapsed) : 0}
 				{#if bakeTimeMs > 0}
 					{@const progress = Math.min(100, (elapsed / bakeTimeMs) * 100)}
-					<div class="mt-2.5 pl-5">
+					<div class="mt-2 pl-5">
 						<div
-							class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+							class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line"
 						>
+							<!-- `bar-progress-active`: see its own doc comment in app.css —
+							     the width is a true, $now-derived percentage; the stripe is
+							     the mark that this is still a live process even on a frame
+							     where $now itself has not visibly advanced (a fixed-clock
+							     capture, or simply the gap between two 100ms ticks). -->
 							<div
-								class="h-full rounded-full bg-yellow-500 transition-[width] duration-500"
+								class="h-full rounded-full bg-progress-solid transition-[width] duration-500 bar-progress-active"
 								style="width: {progress}%"
 							></div>
 						</div>
-						<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+						<p class="t-meta mt-1 text-fg-subtle">
 							{remainingBake > 0
 								? formatDurationFromMs(remainingBake) + ' remaining'
 								: 'Ready to continue'}
@@ -873,18 +942,11 @@
 			{/if}
 		{/if}
 
-		{#if extra === 'hc' && bakeIsFailed && (latestEntry.failedHealthChecks?.length ?? 0) > 0}
-			<div class="mt-2 flex flex-col gap-1 pl-5">
-				{#each latestEntry.failedHealthChecks || [] as failedHC, index}
-					<HealthCheckBadge
-						failedHealthCheck={failedHC}
-						fullHealthCheck={findFullHealthCheck(failedHC, healthChecks)}
-						{index}
-						prefix="failed-hc-pipeline"
-					/>
-				{/each}
-			</div>
-		{/if}
+		<!-- ⛔ THE FAILED-CHECK PILLS NO LONGER REPEAT HERE (design language,
+		     2026-10-08, "one fact, once"). The same check was named by the
+		     banner, this sub-row's pill AND the rail's Health checks card. The
+		     rail card is the authority on checks; this sub-row keeps its own
+		     status line and stops there. -->
 
 		{#if extra === 'timer' && bakeIsInProgress && latestEntry.bakeStartTime && rollout.spec?.bakeTime}
 			{@const bakeStartMs = new Date(latestEntry.bakeStartTime).getTime()}
@@ -892,14 +954,16 @@
 			{@const totalMs = parseDuration(rollout.spec.bakeTime)}
 			{@const progress = totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0}
 			{@const remainingMs = Math.max(0, totalMs - elapsedMs)}
-			<div class="mt-2.5 pl-5">
-				<div class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+			<div class="mt-2 pl-5">
+				<div class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line">
+					<!-- `bar-progress-active`: see app.css — same reasoning as the
+					     bake-time bar above, for the deploy-timeout countdown. -->
 					<div
-						class="h-full rounded-full bg-yellow-500 transition-[width] duration-500"
+						class="h-full rounded-full bg-progress-solid transition-[width] duration-500 bar-progress-active"
 						style="width: {progress}%"
 					></div>
 				</div>
-				<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+				<p class="t-meta mt-1 text-fg-subtle">
 					{remainingMs > 0 ? formatDurationFromMs(remainingMs) + ' remaining' : 'Finishing…'}
 				</p>
 			</div>
@@ -912,43 +976,64 @@
 		{#if !hideHeader}
 			<!-- Detail header: title + status + meta -->
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-				<h3 class="t-headline text-gray-900 dark:text-white">
+				<h3 class="t-heading text-fg">
 					{node.longLabel}
 				</h3>
 				{#if hasMultipleKRs && node.krName}
 					<span
-						class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+						class="inline-flex items-center gap-1 rounded-xs bg-subtle px-1.5 py-0.5 text-fg-muted"
 					>
 						<ArrowsRepeatOutline class="h-3 w-3" />
 						{node.krName}
 					</span>
 				{/if}
-				<span
-					class="chip t-chip chip-wide flex-shrink-0 {pillClasses(
-						node.status
-					)}"
-				>
-					{node.statusLabel}
-				</span>
+				<!-- ⭐ ONE FACT, ONCE, ROUND 2 (2026-10-08): a failed detail
+				     header already carries the red heading ink (above); a
+				     `FAILED` chip beside it restated the same fact a third
+				     time (circle, ink, chip). Every other state keeps its
+				     chip — this header has no DONE suppression elsewhere, so
+				     only `failed` is special-cased. -->
+				{#if node.status === 'pending'}
+					<!-- Only a WAITING step earns a chip: the page header's pill and
+					     the stage's own glyph already say running / checking (one
+					     fact, once). DONE is the norm: the green glyph already says it (design
+					     review 2026-10-08). Only an in-flight or waiting state earns
+					     a chip, and only here — the sub-rows below stay chip-free. -->
+					<span
+						class="chip t-label chip-wide flex-shrink-0 {pillClasses(
+							node.status
+						)}"
+					>
+						{node.statusLabel}
+					</span>
+				{/if}
 
 				{#if node.kind === 'started' && latestEntry.timestamp}
-					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatDate(latestEntry.timestamp)}>
+					<span class="t-meta text-fg-subtle" title={formatDate(latestEntry.timestamp)}>
 						{formatTimeAgoCompact(latestEntry.timestamp, $now)}
 					</span>
 				{:else if node.kind === 'bake' && bakeIsSucceeded && latestEntry.bakeEndTime}
-					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatDate(latestEntry.bakeEndTime)}>
+					<!-- ⛔ U-34 — ONE DURATION FORMAT, NOT TWO ON ONE LINE.
+					     (2026-10-08.) This printed `formatTimeAgoCompact` ("1h", the
+					     compact form every other timestamp on this card uses) next to
+					     `formatDuration` ("1 minute", the long-form word this card
+					     uses nowhere else) for two DIFFERENT spans — time since the
+					     check finished, and how long the check took. Both now use the
+					     same compact unit the rest of the card already prints
+					     (`formatDurationFromMs`, see the remaining-time bars above). -->
+					<span class="t-meta text-fg-subtle" title={formatDate(latestEntry.bakeEndTime)}>
 						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)} ·
-						{formatDuration(
-							latestEntry.bakeStartTime || latestEntry.timestamp,
-							new Date(latestEntry.bakeEndTime)
+						{formatDurationFromMs(
+							new Date(latestEntry.bakeEndTime).getTime() -
+								new Date(latestEntry.bakeStartTime || latestEntry.timestamp).getTime()
 						)}
 					</span>
 				{:else if node.kind === 'bake' && bakeIsFailed && latestEntry.bakeEndTime}
-					<span class="text-xs text-gray-500 dark:text-gray-400" title={formatDate(latestEntry.bakeEndTime)}>
+					<span class="t-meta text-fg-subtle" title={formatDate(latestEntry.bakeEndTime)}>
 						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)}
 					</span>
 				{:else if node.kind === 'bake' && !bakeIsSucceeded && !bakeIsFailed && rollout.spec?.deployTimeout && !bakeIsDeploying && !bakeIsInProgress}
-					<span class="text-xs text-gray-500 dark:text-gray-400">
+					<span class="t-meta text-fg-subtle">
 						{(() => {
 							const deploymentTime = new Date(latestEntry.timestamp).getTime();
 							const timeoutMs = parseDuration(rollout.spec.deployTimeout);
@@ -967,31 +1052,31 @@
 			<div class="space-y-3">
 				{#if latestEntry.message}
 					<div
-						class="rounded bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
+						class="rounded bg-subtle px-3 py-2"
 					>
-						<p class="text-sm italic text-gray-700 dark:text-gray-300">
+						<p class="t-body text-fg-muted">
 							{latestEntry.message}
 						</p>
 					</div>
 				{/if}
 				{#if latestEntry.triggeredBy}
-					<div class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+					<div class="t-meta inline-flex items-center gap-1.5 text-fg-subtle">
 						{#if latestEntry.triggeredBy.kind === 'User'}
-							<UserSolid class="h-3.5 w-3.5 flex-shrink-0" />
+							<UserSolid class="h-4 w-4 flex-shrink-0" />
 							<span>
 								Triggered by
-								<span class="font-medium text-gray-700 dark:text-gray-200">
+								<span class="t-ui-sm text-fg-muted">
 									{latestEntry.triggeredBy.name}
 								</span>
 							</span>
 						{:else}
-							<CogSolid class="h-3.5 w-3.5 flex-shrink-0" />
+							<CogSolid class="h-4 w-4 flex-shrink-0" />
 							<span>Triggered by System</span>
 						{/if}
 					</div>
 				{/if}
 				{#if !latestEntry.message && !latestEntry.triggeredBy}
-					<p class="text-sm text-gray-500 dark:text-gray-400">
+					<p class="t-body text-fg-subtle">
 						Deployment initiated{#if latestEntry.timestamp}
 							{' '}at {formatTimestamp(latestEntry.timestamp)}{/if}.
 					</p>
@@ -1007,19 +1092,19 @@
 			{@const bakeSub = stageBakeSubStatus(sd)}
 
 			<div
-				class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/60 dark:border-gray-700 dark:bg-gray-900/30"
+				class="overflow-hidden rounded-md border border-line bg-subtle"
 			>
 				{@render subRow('Rollout', rolloutSub.status, rolloutSub.label, null, sd)}
 				{#if !sd.isLastStep}
-					<div class="border-t border-gray-200 dark:border-gray-700"></div>
+					<div class="border-t border-line"></div>
 					{@render subRow('Tests', testsSub.status, testsSub.label, 'tests', sd)}
-					<div class="border-t border-gray-200 dark:border-gray-700"></div>
+					<div class="border-t border-line"></div>
 					{@render subRow('Check', bakeSub.status, bakeSub.label, 'bake', sd)}
 				{/if}
 				{#if sd.isLastStep && sd.hasTests}
-					<div class="border-t border-gray-200 dark:border-gray-700"></div>
-					<div class="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-						<ExclamationCircleSolid class="h-3.5 w-3.5 shrink-0" />
+					<div class="border-t border-line"></div>
+					<div class="t-meta flex items-center gap-1.5 px-3 py-2 text-warning">
+						<ExclamationCircleSolid class="h-4 w-4 shrink-0" />
 						Tests on last step won't run — rollout completes without pausing.
 					</div>
 				{/if}
@@ -1058,43 +1143,68 @@
 				-->
 				<div class="flex flex-col gap-1.5">
 					<div>
-						<Button size="sm" color="blue" title={adv.consequence} onclick={() => askAdvance(adv, sd)}>
-							<PlaySolid class="mr-1.5 h-3.5 w-3.5" />
+						<button
+							type="button"
+							class="btn btn-primary btn-sm"
+							title={adv.consequence}
+							onclick={() => askAdvance(adv, sd)}
+						>
+							<PlaySolid />
 							{adv.label}
-						</Button>
+						</button>
 					</div>
-					<p class="max-w-md text-xs text-gray-500 dark:text-gray-400">{adv.consequence}</p>
+					<p class="t-meta max-w-md text-fg-subtle">{adv.consequence}</p>
 				</div>
 			{/if}
 		{/if}
 
 		<!-- Final bake content -->
 		{#if node.kind === 'bake'}
-			<div class="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
-				<!-- Was a bare `span[tabindex=0]` (flowbite's `Tooltip` adds the
-				     tabindex): a focus stop on rollout detail with no role and no
-				     name, which a screen reader announced as nothing at all. A
-				     `button` in a flex row is blockified exactly like the span was,
-				     and Tailwind's preflight strips its chrome — measured
-				     pixel-identical in both themes. -->
-				<button
-					type="button"
-					id="bake-help-icon"
-					aria-label="What the final check window means"
-					class="cursor-help"
-				>
-					<QuestionCircleOutline class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-				</button>
-				<Tooltip triggeredBy="#bake-help-icon" placement="top" class="max-w-xs text-xs">
-					After it is deployed, the new version runs live for a configured period while its health
-					checks are watched. If every check holds for the whole window, the deploy is marked
-					successful.
-				</Tooltip>
-				<span>
-					Final check window. The new version is already live; health checks are watched before the
-					deploy counts as done.
-				</span>
-			</div>
+			<!--
+				⛔ U-34 / D-P1 — THE EXPLAINER IS FOR WHILE YOU ARE WAITING, SO IT
+				LEAVES ONCE YOU ARE NOT. (2026-10-08.) This used to render
+				unconditionally, including after the check had finished — a
+				sentence whose whole subject is "health checks are watched before
+				the deploy counts as done" sitting under a node that already reads
+				`Checked · Done`, the done fact restated as if it were still in
+				question. `Leaving` (not `{#if}`) so the SAME promote that collapses
+				the sub-rows below it (see the box after this one) also eases this
+				text out instead of both vanishing in one frame — the phone film's
+				promote beat found both cuts on the same frame. -->
+			<Leaving value={!bakeIsSucceeded && !bakeIsFailed}>
+				{#snippet children()}
+					<div class="t-meta flex items-start gap-2 text-fg-subtle">
+						<!-- Was a bare `span[tabindex=0]` (flowbite's `Tooltip` adds the
+						     tabindex): a focus stop on rollout detail with no role and no
+						     name, which a screen reader announced as nothing at all. A
+						     `button` in a flex row is blockified exactly like the span was,
+						     and Tailwind's preflight strips its chrome — measured
+						     pixel-identical in both themes. -->
+						<button
+							type="button"
+							id="bake-help-icon"
+							aria-label="What the final check window means"
+							class="btn btn-ghost btn-icon btn-xs shrink-0 cursor-help"
+						>
+							<QuestionCircleOutline class="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+						</button>
+						<Tooltip
+							triggeredBy="#bake-help-icon"
+							trigger={canHover.current ? 'hover' : 'click'}
+							placement="top"
+							class="t-meta max-w-xs"
+						>
+							After it is deployed, the new version runs live for a configured period while its health
+							checks are watched. If every check holds for the whole window, the deploy is marked
+							successful.
+						</Tooltip>
+						<span>
+							Final check window. The new version is already live; health checks are watched before the
+							deploy counts as done.
+						</span>
+					</div>
+				{/snippet}
+			</Leaving>
 
 			<!-- ⚠️ THE CONTROLLER'S OWN SENTENCE, AND ON SUCCESS IT SAYS NOTHING
 			     THIS CARD HAS NOT. `Bake time completed successfully (no errors
@@ -1104,33 +1214,47 @@
 			     split the rename exists to close. It is not rewritten (it is the
 			     cluster's text, not ours); it is shown only when it CARRIES
 			     something — a failure, a cancellation, a stall. -->
-			{#if latestEntry.bakeStatusMessage && !bakeIsSucceeded}
-				<div
-					class="rounded bg-gray-100 px-3 py-2 dark:bg-gray-900/40"
-				>
-					<p class="text-sm italic text-gray-700 dark:text-gray-300">
-						{latestEntry.bakeStatusMessage}
-					</p>
-				</div>
-			{/if}
+			<!-- Leaves with its last words rather than vanishing — see `Leaving`. -->
+			<Leaving value={!bakeIsSucceeded && latestEntry.bakeStatusMessage}>
+				{#snippet children(message)}
+					<div class="rounded bg-subtle px-3 py-2">
+						<p class="t-body text-fg-muted">
+							{message}
+						</p>
+					</div>
+				{/snippet}
+			</Leaving>
 
-			{#if bakeIsDeploying || bakeIsInProgress || bakeIsFailed}
-				<div
-					class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/60 dark:border-gray-700 dark:bg-gray-900/30"
-				>
-					{#if hasHCSelector}
-						{@render subRow('Health checks', finalHCStatus.status, finalHCStatus.label, 'hc', null)}
-						<div class="border-t border-gray-200 dark:border-gray-700"></div>
-					{/if}
-					{@render subRow(
-						'Check timer',
-						finalBakeTimerStatus.status,
-						finalBakeTimerStatus.label,
-						'timer',
-						null
-					)}
-				</div>
-			{/if}
+			<!--
+				⛔ D-P1 — THE SUB-ROWS LEAVE, THEY DO NOT VANISH. (2026-10-08, phone
+				film, promote beat.) This box used to be a plain `{#if}`: the moment
+				the deploy finished, `bakeIsDeploying`/`bakeIsInProgress`/`bakeIsFailed`
+				all went false in the same tick and the health-checks + check-timer
+				rows (together ~60px at 390) disappeared in one frame, with nothing
+				below them to glide into the gap. `Leaving` renders the LAST sub-row
+				state while it collapses, so the rows beneath ease up over 300ms
+				instead of jumping. -->
+			<!-- A finished check keeps its two rows too (AD round 1: the detail pane
+			     was a title floating in an empty box once the check had passed). -->
+			<Leaving value={bakeIsDeploying || bakeIsInProgress || bakeIsFailed || bakeIsSucceeded}>
+				{#snippet children()}
+					<div
+						class="overflow-hidden rounded-md border border-line"
+					>
+						{#if hasHCSelector}
+							{@render subRow('Health checks', finalHCStatus.status, finalHCStatus.label, 'hc', null)}
+							<div class="border-t border-line"></div>
+						{/if}
+						{@render subRow(
+							'Check timer',
+							finalBakeTimerStatus.status,
+							finalBakeTimerStatus.label,
+							'timer',
+							null
+						)}
+					</div>
+				{/snippet}
+			</Leaving>
 		{/if}
 	</div>
 {/snippet}
@@ -1138,13 +1262,13 @@
 {#snippet groupHeader(info: { name: string; index: number; total: number })}
 	<li aria-hidden="false" class="px-4 pt-4 pb-1">
 		<div
-			class="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
+			class="t-label flex items-center gap-2 text-fg-subtle"
 		>
 			<ArrowsRepeatOutline class="h-3 w-3 flex-shrink-0" />
 			<span class="truncate">{info.name}</span>
-			<span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
+			<span class="h-px flex-1 bg-line"></span>
 			<span
-				class="chip t-chip chip-wide flex-shrink-0 border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400"
+				class="chip t-label chip-wide flex-shrink-0 border-line text-fg-subtle"
 				title="Parallel rollouts progress independently"
 			>
 				track {info.index} / {info.total}
@@ -1155,9 +1279,16 @@
 
 <!-- ━━━━━━━━━━━━━━━━━━━━━━ card ━━━━━━━━━━━━━━━━━━━━━━ -->
 
+<!-- The card (its own border, not just what follows it) glides to a new height when the pipeline's state changes
+     (`$lib/smooth-height`): a retry turning a failed check with its alert
+     into a pending one, and its header from two lines to one, used to drop
+     this card ~100px in one frame. -->
 <div
-	class="dpc-cq overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+	data-tour="pipeline"
+	class="dpc-cq overflow-hidden rounded-md border border-line bg-surface"
+	use:smoothHeight
 >
+	<div>
 	<!--
 		⭐ `min-h-[47px]`, MATCHING `Card`'S OWN FLOOR EXACTLY. (defect #4,
 		design re-check) This header hand-rolls its own bar rather than using
@@ -1170,60 +1301,119 @@
 		one pixel value short of the reference page's own `Deployment
 		Pipeline`. Byte-identical now.
 	-->
+	<!-- The header's own height can change with its rollup (at 390 a failed
+	     run's `1 failed · 1/2 done` wraps the title to two lines; after a Retry
+	     it is one). The border sits on this gliding box, so the rows below it
+	     follow smoothly instead of jumping 18px — `$lib/smooth-height`. -->
+	<div class="border-b border-line" use:smoothHeight>
 	<div
-		class="flex min-h-[47px] items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700"
+		class="flex min-h-[47px] items-center justify-between px-4 py-3"
 	>
 		<div class="flex items-center gap-2">
 			{#if summary.failed > 0}
-				<ExclamationCircleSolid class="h-4 w-4 text-red-500 dark:text-red-400" />
+				<ExclamationCircleSolid class="h-4 w-4 text-danger" />
 			{:else if summary.running > 0}
+				<!-- The in-flight tone follows WHAT is in flight: deploying is
+				     blue (active), checking/baking is yellow (progress). -->
 				<div
 					aria-hidden="true"
-					class="h-4 w-4 animate-spin rounded-full border-2 border-blue-500/40 border-t-blue-500"
+					class="h-4 w-4 animate-spin rounded-full border-2 {inflightIsDeploy
+						? 'border-active-solid/40 border-t-active-solid'
+						: 'border-progress-solid/40 border-t-progress-solid'}"
+				></div>
+			{:else if summary.checking > 0}
+				<!-- ITEM 9: the active steps are all `paused` (checking) — same
+				     yellow spin as `pillClasses`' own `paused` chip, never blue. -->
+				<div
+					aria-hidden="true"
+					class="h-4 w-4 animate-spin rounded-full border-2 border-progress-line border-t-progress-solid"
 				></div>
 			{:else if summary.done === summary.total}
-				<CheckCircleSolid class="h-4 w-4 text-green-700 dark:text-green-400" />
+				<CheckCircleSolid class="h-4 w-4 text-success" />
 			{:else}
-				<CodePullRequestSolid class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+				<CodePullRequestSolid class="h-4 w-4 text-fg-subtle" />
 			{/if}
-			<h2 class="text-sm font-semibold text-gray-900 dark:text-white">Deployment pipeline</h2>
+			<h2 class="t-card-title text-fg">Deployment pipeline</h2>
 		</div>
 		<div class="flex items-center gap-3">
 			{#if !isAutoSelected}
 				<button
 					type="button"
 					onclick={jumpToActive}
-					class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/60"
+					class="pill"
 				>
 					{#if jumpButton.active}
 						<span class="relative flex h-1.5 w-1.5">
-							<span
-								class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-70"
-							></span>
-							<span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+							{#if inflightIsDeploy}
+								<span
+									class="absolute inline-flex h-full w-full animate-ping rounded-full bg-active-solid opacity-70"
+								></span>
+							{/if}
+							<span class="relative inline-flex h-1.5 w-1.5 rounded-full {inflightIsDeploy ? 'bg-active-solid' : 'bg-progress-solid'}"></span>
 						</span>
 					{/if}
 					{jumpButton.label}
 				</button>
 			{/if}
+			<!--
+				⛔ U-19 — `STEPS DONE`, NOT THE BARE WORD `done`. (2026-10-08.) Home's
+				own rail counts a DIFFERENT thing under the same word — its
+				promotion stepper's "N/M stages done" is environments reached
+				(dev → staging → prod), while this card's "done" is pipeline NODES
+				(the Started marker, each canary step, the final check) for ONE
+				environment's one deploy. Measured live, the two numbers for the
+				same rollout at the same moment disagreed (`1/2` here, `2/3` there)
+				with nothing to tell a reader they were never counting the same
+				thing. `steps` scopes the word to what THIS card counts; Home's own
+				stepper needs the matching scope word on its side (flagged to that
+				lane — see the commit message).
+
+				⛔ ITEM 2 (integrate-fixa, 2026-10-08) — ONE LINE ON PHONES, TWO
+				WORDINGS OF THE SAME FACTS. At 360/390 this header measured 64px
+				(two lines, not the `min-h-[47px]` floor above) because the h2 had
+				no `whitespace-nowrap` of its own (fixed above) AND because "1/2
+				steps done · in progress" plus "Deployment pipeline" plus the
+				icon simply do not fit a ~340px content width on one line. Rather
+				than drop the `steps` word everywhere (losing the U-19 fix above
+				on every width), the card keeps the full "N/M steps done" phrasing
+				once there is room for it (`.dpc-summary-full`, ≥480px of this
+				card's own container — well under the 600px master-detail split
+				above, which is about the BODY, not this header) and falls back to
+				"N/M · in progress" / "N/M" below that — `steps` is implied by the
+				fraction sitting next to the pipeline's own heading, the way
+				`cardVerdict`'s chips already imply their own units next to a named
+				row. Same four branches, same colours, half the characters. -->
+			<!-- ONE SHORT ROLLUP, NO FULL/COMPACT TWINS (design rollout, 2026-10-09):
+			     "N/M steps" fits a 47px header at 360 on its own. The rollup tone
+			     follows the step (integrator's rule): failed is stated by the
+			     banner (one fact, once), so the count stays subtle; in flight =
+			     the step's own ink (deploying active, checking progress — the
+			     word "checking" is the step's own, not repeated here, so the
+			     header holds 47px at 360); all
+			     done = success. -->
 			{#if summary.failed > 0}
-				<span class="text-xs font-semibold text-red-600 dark:text-red-400">
-					{summary.failed} failed · {summary.done}/{summary.total} done
+				<span class="t-ui-sm whitespace-nowrap tabular-nums text-fg-subtle">
+					{summary.done}/{summary.total} steps
 				</span>
 			{:else if summary.running > 0}
-				<span class="text-xs font-medium text-blue-600 dark:text-blue-400">
-					{summary.done}/{summary.total} done · active
+				<span class="t-ui-sm whitespace-nowrap tabular-nums {inflightIsDeploy ? 'text-active' : 'text-progress'}">
+					{summary.done}/{summary.total} steps
+				</span>
+			{:else if summary.checking > 0}
+				<span class="t-ui-sm whitespace-nowrap tabular-nums text-progress">
+					{summary.done}/{summary.total} steps
 				</span>
 			{:else if summary.done === summary.total}
-				<span class="text-xs font-medium text-green-700 dark:text-green-400">
-					{summary.total}/{summary.total} done
+				<span class="t-ui-sm whitespace-nowrap tabular-nums text-success">
+					{summary.total}/{summary.total} steps
 				</span>
 			{:else}
-				<span class="text-xs text-gray-500 dark:text-gray-400">
-					{summary.done}/{summary.total} done
+				<span class="t-ui-sm whitespace-nowrap tabular-nums text-fg-subtle">
+					{summary.done}/{summary.total} steps
 				</span>
 			{/if}
 		</div>
+	</div>
 	</div>
 
 	<!--
@@ -1242,9 +1432,13 @@
 		at or above it, the two-pane split returns.
 	-->
 	<div class="dpc-desktop">
-		<!-- Left nav -->
+		<!-- Left nav. ⭐ ONE SURFACE, ROUND 2 (2026-10-08, coordinator
+		     review): the nav used to sit on its own `bg-subtle` panel beside
+		     the detail pane's plain `bg-surface` — two surfaces reading as
+		     two cards glued together. Both panes are `bg-surface` now (the
+		     card's own ground); the `border-r` alone is the seam. -->
 		<nav
-			class="border-r border-gray-200 bg-gray-50/40 dark:border-gray-700 dark:bg-gray-900/30"
+			class="border-r border-line"
 			aria-label="Pipeline stages"
 		>
 			<ol class="py-2">
@@ -1261,7 +1455,7 @@
 		<div class="p-5 sm:p-6">
 			{#each selectedNodes as node, idx (node.id)}
 				{#if idx > 0}
-					<div class="my-5 border-t border-gray-200 dark:border-gray-700"></div>
+					<div class="my-5 border-t border-line"></div>
 				{/if}
 				{@render detailPanel(node)}
 			{/each}
@@ -1281,7 +1475,7 @@
 					{#if shouldShowLineAbove(node, idx)}
 						<div
 							aria-hidden="true"
-							class="absolute left-[29px] top-0 h-2 w-0.5 bg-gray-300 dark:bg-gray-600"
+							class="absolute left-[29px] top-0 h-2 w-0.5 bg-line-strong"
 						></div>
 					{/if}
 					{#if shouldShowLineBelow(node, idx)}
@@ -1289,7 +1483,7 @@
 						     expands to include the inline detail panel, so the line continues through it. -->
 						<div
 							aria-hidden="true"
-							class="absolute left-[29px] top-9 bottom-0 w-0.5 bg-gray-300 dark:bg-gray-600"
+							class="absolute left-[29px] top-9 bottom-0 w-0.5 bg-line-strong"
 						></div>
 					{/if}
 
@@ -1297,8 +1491,8 @@
 						type="button"
 						onclick={() => select(node.id)}
 						aria-current={isSelected ? 'step' : undefined}
-						class="group relative flex w-full items-center gap-3 py-2 pl-4 pr-4 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40 {isSelected
-							? 'bg-blue-50/50 dark:bg-blue-950/30'
+						class="group relative flex w-full items-center gap-3 py-2 pl-4 pr-4 text-left transition-colors hover:bg-hover {isSelected
+							? 'bg-selected'
 							: nodeAccentRow(node)}"
 					>
 						<span
@@ -1310,7 +1504,7 @@
 			     connector; without a stacking context here it also beat the sticky
 			     tab strip (z-10 too) and rode over it while scrolling (2026-09-04). -->
 			<div class="relative isolate flex-shrink-0">
-							{#if node.isActive && node.status !== 'failed'}
+							{#if node.isActive && node.status === 'running'}
 								<span
 									aria-hidden="true"
 									class="absolute inset-0 animate-ping rounded-full opacity-40 {subDotBg(
@@ -1319,7 +1513,7 @@
 								></span>
 							{/if}
 							<div
-								class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full shadow-sm {circleBg(
+								class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full {circleBg(
 									node.status
 								)}"
 							>
@@ -1330,27 +1524,25 @@
 						<div class="flex min-w-0 flex-1 items-center justify-between gap-2">
 							<div class="flex min-w-0 items-center gap-1.5">
 								<span
-									class="truncate text-sm {isSelected
-										? 'font-semibold text-gray-900 dark:text-white'
-										: 'font-medium text-gray-700 dark:text-gray-200'}"
+									class="truncate {node.status === 'failed'
+										? 't-card-title text-danger'
+										: isSelected
+											? 't-card-title text-fg'
+											: 't-body text-fg-muted'}"
 								>
 									{node.shortLabel}
 								</span>
-								{#if node.isActive}
-									<span
-										class="chip t-chip border-gray-200 text-blue-700 dark:border-gray-700 dark:text-blue-400"
-									>
-										Active
-									</span>
-								{/if}
 							</div>
-							<span
-								class="chip t-chip chip-wide flex-shrink-0 {pillClasses(
-									node.status
-								)}"
-							>
-								{node.statusLabel}
-							</span>
+							<!-- Chip budget, round 2 — see `navRow`'s identical note above. -->
+							{#if node.status !== 'done' && node.status !== 'failed'}
+								<span
+									class="chip t-label chip-wide flex-shrink-0 {pillClasses(
+										node.status
+									)}"
+								>
+									{node.statusLabel}
+								</span>
+							{/if}
 						</div>
 					</button>
 
@@ -1362,6 +1554,7 @@
 				</li>
 			{/each}
 		</ol>
+	</div>
 	</div>
 </div>
 
@@ -1402,13 +1595,13 @@
 {#if pendingAdvance}
 	<Modal bind:open={advanceModalOpen} title={pendingAdvance.adv.confirmTitle} size="sm" autoclose={false}>
 		<div class="space-y-4">
-			<p class="text-sm text-gray-600 dark:text-gray-400">{pendingAdvance.adv.consequence}</p>
+			<p class="t-body text-fg-subtle">{pendingAdvance.adv.consequence}</p>
 			<div class="flex justify-end gap-2">
-				<Button color="light" onclick={cancelAdvance}>Cancel</Button>
-				<Button color="blue" onclick={confirmAdvance}>
-					<PlaySolid class="mr-1.5 h-3.5 w-3.5" />
+				<button type="button" class="btn btn-secondary" onclick={cancelAdvance}>Cancel</button>
+				<button type="button" class="btn btn-primary" onclick={confirmAdvance}>
+					<PlaySolid />
 					{pendingAdvance.adv.label}
-				</Button>
+				</button>
 			</div>
 		</div>
 	</Modal>

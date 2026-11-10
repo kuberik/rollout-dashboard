@@ -47,9 +47,17 @@
  *     the truth matrix, not the census.
  *  6. Anything under `src/lib/paraglide` -- generated, and pinned separately
  *     by `paraglide.test.ts` and by the 160-byte gate.
+ *  7. Anything under `src/lib/demo` -- MOCK FIXTURES, not product copy.
+ *     (2026-09-12, when `dev-mock-api.ts` split into `lib/demo/mock-data.ts`
+ *     so the demo build could serve the same data in the browser.) A fixture's
+ *     `"Gate allows 1 release(s)"` is a payload the BACKEND would send, which
+ *     the product then renders in its own words; censusing it would make the
+ *     vocabulary rules police strings no operator ever reads, and would let a
+ *     fixture edit fail the drift test.
  */
 
-const SOURCES = import.meta.glob('/src/**/*.{ts,svelte}', {
+// truth-4: the leftover data/view helpers under home/{sketch,depot,pocket} and home/roster/v* (once shared with the removed /lab sketches) are not product copy.
+const SOURCES = import.meta.glob(['/src/**/*.{ts,svelte}', '!/src/lib/components/home/{sketch,depot,pocket}/**', '!/src/lib/components/home/roster/v*/**'], {
 	query: '?raw',
 	import: 'default',
 	eager: true
@@ -71,7 +79,7 @@ export type Literal = {
 	text: string;
 };
 
-const SKIP_DIR = /^(lib\/paraglide|lib\/messages|lib\/testing)\//;
+const SKIP_DIR = /^(lib\/paraglide|lib\/messages|lib\/testing|lib\/demo)\//;
 const SKIP_FILE = /(\.test\.ts|\.spec\.ts|\.svelte\.test\.ts)$/;
 
 /**

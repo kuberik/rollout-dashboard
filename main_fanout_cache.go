@@ -117,7 +117,8 @@ type swrEntry[T any] struct {
 	val        T
 	ok         bool // a value has been fetched at least once
 	err        error
-	fetchedAt  time.Time
+	fetchedAt  time.Time // last refresh attempt, success or failure
+	okAt       time.Time // last SUCCESSFUL refresh (when val was actually true)
 	lastAccess time.Time
 	done       chan struct{} // non-nil while a refresh is in flight
 }
@@ -163,6 +164,23 @@ func (c *swrCache[T]) get(key string) (T, bool) {
 // above requires. ctx bounds only the caller's own wait — a refresh it
 // starts runs on its own context and outlives a cancelled request.
 func (c *swrCache[T]) load(ctx context.Context, key string, fetch func(context.Context) (T, error)) (T, error) {
+	v, _, err := c.loadMeta(ctx, key, fetch)
+	return v, err
+}
+
+// swrMeta qualifies a value load() returned with a nil error. StaleErr is
+// non-nil when the value is a leftover: the most recent refresh FAILED and
+// val is from LastOK, an older success. Without this a dead spoke is
+// indistinguishable from a healthy one for as long as its last payload stays
+// in memory (QA 2026-11-09: spoke down >2 min, hub still showed its old state
+// as current with clusterErrors null).
+type swrMeta struct {
+	StaleErr error
+	LastOK   time.Time
+}
+
+// loadMeta is load plus swrMeta. Same SWR behaviour.
+func (c *swrCache[T]) loadMeta(ctx context.Context, key string, fetch func(context.Context) (T, error)) (T, swrMeta, error) {
 	c.mu.Lock()
 	now := c.now()
 	e := c.m[key]
@@ -174,9 +192,9 @@ func (c *swrCache[T]) load(ctx context.Context, key string, fetch func(context.C
 	e.lastAccess = now
 
 	if e.ok && now.Sub(e.fetchedAt) < c.ttl {
-		val := e.val
+		val, meta := e.val, e.metaLocked()
 		c.mu.Unlock()
-		return val, nil
+		return val, meta, nil
 	}
 
 	if e.done == nil {
@@ -188,12 +206,12 @@ func (c *swrCache[T]) load(ctx context.Context, key string, fetch func(context.C
 		}()
 	}
 	done := e.done
-	staleVal, haveStale, lastErr := e.val, e.ok, e.err
+	staleVal, haveStale, lastErr, staleMeta := e.val, e.ok, e.err, e.metaLocked()
 	c.mu.Unlock()
 
 	// Stale-but-usable: return now, let the refresh land for next time.
 	if haveStale {
-		return staleVal, nil
+		return staleVal, staleMeta, nil
 	}
 
 	// Cold. Wait, but only briefly.
@@ -208,9 +226,9 @@ func (c *swrCache[T]) load(ctx context.Context, key string, fetch func(context.C
 		c.mu.Lock()
 		e := c.m[key]
 		if e != nil && e.ok {
-			val := e.val
+			val, meta := e.val, e.metaLocked()
 			c.mu.Unlock()
-			return val, nil
+			return val, meta, nil
 		}
 		var err error
 		if e != nil {
@@ -221,14 +239,29 @@ func (c *swrCache[T]) load(ctx context.Context, key string, fetch func(context.C
 		if err == nil {
 			err = lastErr
 		}
-		return zero, err
+		return zero, swrMeta{}, err
 	case <-timer:
 		var zero T
-		return zero, errSpokeColdTimeout
+		// A spoke that already failed must keep reporting that failure while
+		// its next probe is in flight; a silent cold timeout here made the
+		// clusterError flicker off between retries.
+		if lastErr != nil {
+			return zero, swrMeta{}, lastErr
+		}
+		return zero, swrMeta{}, errSpokeColdTimeout
 	case <-ctx.Done():
 		var zero T
-		return zero, ctx.Err()
+		return zero, swrMeta{}, ctx.Err()
 	}
+}
+
+// metaLocked reports whether the held value is a leftover from before a
+// failed refresh. Called with the cache mutex held.
+func (e *swrEntry[T]) metaLocked() swrMeta {
+	if e.ok && e.err != nil {
+		return swrMeta{StaleErr: e.err, LastOK: e.okAt}
+	}
+	return swrMeta{LastOK: e.okAt}
 }
 
 // refresh runs one fetch for key and publishes the result. Deliberately on
@@ -251,6 +284,7 @@ func (c *swrCache[T]) refresh(key string, fetch func(context.Context) (T, error)
 		e.val = val
 		e.ok = true
 		e.err = nil
+		e.okAt = c.now()
 	} else {
 		e.err = err
 		// A failed refresh deliberately leaves any previous value in place
@@ -284,6 +318,12 @@ func (c *swrCache[T]) evictLocked() {
 // spokeDataCache holds spoke /api/rollouts payloads, keyed
 // identity|url — see the per-identity note above.
 var spokeDataCache = newSWRCache[map[string]json.RawMessage](spokeDataTTL, spokeColdGrace, spokeRefreshTimeout)
+
+// spokeHealthCheckCache holds spoke /api/health-checks payloads, keyed
+// identity|url like spokeDataCache. A separate cache because the key does not
+// carry the path: sharing one would let each list overwrite the other's
+// payload for the same spoke.
+var spokeHealthCheckCache = newSWRCache[map[string]json.RawMessage](spokeDataTTL, spokeColdGrace, spokeRefreshTimeout)
 
 // spokeNameCache holds spoke cluster names, keyed by url alone.
 var spokeNameCache = newSWRCache[string](spokeNameTTL, spokeColdGrace, spokeRefreshTimeout)
