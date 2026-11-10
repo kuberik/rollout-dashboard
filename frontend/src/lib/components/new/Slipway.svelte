@@ -24,7 +24,7 @@
 	import TraySteps from './TraySteps.svelte';
 	import PipelineCard from './PipelineCard.svelte';
 	import ActRow, { type Act } from '$lib/components/ActRow.svelte';
-	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, newestBuild, pathPosition, stepDetail, healthChecks, healthTally, checkClock, waitingBuild, approvalScope, approvalTarget, bakeDuration, holdSince, type TRow, type HomeState } from './data';
+	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, newestBuild, pathPosition, stepDetail, healthChecks, healthTally, testsSub, checkClock, waitingBuild, approvalScope, approvalTarget, bakeDuration, holdSince, type TRow, type HomeState } from './data';
 	import { approveAct } from './approvals.svelte';
 	import { slipwayTitle, actionHref, actionLabel, approvalFact, envTheme, VIEWER } from './rollout-view';
 
@@ -65,7 +65,10 @@
 	/* r5 R1/R16: the tab's words, with its tally ("Waiting · 1 pending · 0 passing") and the bake clock ("Checking · 5 min left") */
 	const clock = $derived(checkClock(row));
 	const checkingGate = $derived(row.group === 'approval' && row.stillChecking && !!clock);
+	/* the Overview card's per-stage Tests row (Passed / Running / Pending / Failed), drawn only when the place has RolloutTests */
+	const ts = $derived(testsSub(row));
 	const subs = $derived<Sub[]>([
+		...(ts ? [{ title: 'Tests', label: ts.label, tone: ts.label === 'Passed' ? 'ok' : ts.label === 'Failed' ? 'bad' : ts.label === 'Running' ? 'wait' : 'pending' } as Sub] : []),
 		{ title: 'Health checks', label: hcFailing || sd.healthChecks === 'Failed' ? 'Failed' : sd.healthChecks === 'Healthy' ? 'Healthy' : (sd.healthChecks === 'Pending' ? healthTally(row) : `${sd.healthChecks} · ${healthTally(row)}`), tone: hcFailing || sd.healthChecks === 'Failed' ? 'bad' : sd.healthChecks === 'Healthy' ? 'ok' : 'wait' },
 		{ title: 'Check timer', label: sd.checkTimer === 'Checking' && clock ? (checkingGate ? clock : `Checking · ${clock}`) : sd.checkTimer, tone: sd.checkTimer === 'Done' ? 'ok' : sd.checkTimer === 'Checking' ? 'wait' : 'pending' }
 	]);
