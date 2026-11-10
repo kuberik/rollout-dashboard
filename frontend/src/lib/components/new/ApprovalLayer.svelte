@@ -17,7 +17,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import { approvePlace } from './approve-place';
 	import Toast from '$lib/components/Toast.svelte';
-	import { approvalUi, cancelApprove, confirmApprove, undoApprove, dismissDone, askSentence, doneWords } from './approvals.svelte';
+	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords } from './approvals.svelte';
 
 	const ask = $derived(approvalUi.ask);
 	const done = $derived(approvalUi.done);
@@ -39,7 +39,7 @@
 		if (ask) tick().then(() => panel?.querySelector<HTMLButtonElement>('[data-action="approve-confirm"]')?.focus());
 	});
 	onMount(() => {
-		const away = (e: PointerEvent) => { if (approvalUi.ask && panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[data-approve-open]')) cancelApprove(); };
+		const away = (e: PointerEvent) => { if (approvalUi.ask && panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[data-approve-open]')) closeApprove(); };
 		document.addEventListener('pointerdown', away, true);
 		return () => document.removeEventListener('pointerdown', away, true);
 	});
@@ -48,7 +48,7 @@
 	}
 </script>
 
-<svelte:window bind:innerWidth={vw} bind:innerHeight={vh} onkeydown={key} />
+<svelte:window onscrollcapture={refreshAnchor} bind:innerWidth={vw} bind:innerHeight={vh} onkeydown={key} />
 
 {#if ask}
 	{@const t = ask.target}

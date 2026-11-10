@@ -13,7 +13,7 @@ import type { Act } from '$lib/components/ActRow.svelte';
 export const UNDO_MS = 8000;
 
 export const approvalUi = $state<{
-	ask: { target: ApprovalTarget; anchor: { top: number; left: number; right: number; bottom: number } | null } | null;
+	ask: { target: ApprovalTarget; anchor: { top: number; left: number; right: number; bottom: number } | null; trigger: HTMLElement | null } | null;
 	done: { target: ApprovalTarget; error: string | null } | null;
 }>({ ask: null, done: null });
 
@@ -34,9 +34,23 @@ export function askApprove(target: ApprovalTarget | null, ev?: Event | null): vo
 	if (!target) return;
 	const el = (ev?.currentTarget ?? null) as HTMLElement | null;
 	const r = el?.getBoundingClientRect?.();
-	approvalUi.ask = { target, anchor: r ? { top: r.top, left: r.left, right: r.right, bottom: r.bottom } : null };
+	approvalUi.ask = { target, anchor: r ? { top: r.top, left: r.left, right: r.right, bottom: r.bottom } : null, trigger: el };
 }
-export const cancelApprove = (): void => { approvalUi.ask = null; };
+/** Cancel / Escape / click-away-onto-nothing: close, and hand focus back to the button that opened the confirm (never leave it on BODY). */
+export function cancelApprove(): void {
+	const trigger = approvalUi.ask?.trigger;
+	approvalUi.ask = null;
+	if (trigger?.isConnected) trigger.focus();
+}
+/** Click-away: close without moving focus (the pointer already chose where focus goes). */
+export const closeApprove = (): void => { approvalUi.ask = null; };
+/** The confirm is `position: fixed`; `<main>` scrolls from sm up, so re-measure the trigger (the same follow-on-scroll RulePopover does). */
+export function refreshAnchor(): void {
+	const a = approvalUi.ask;
+	if (!a?.trigger) return;
+	const r = a.trigger.getBoundingClientRect();
+	a.anchor = { top: r.top, left: r.left, right: r.right, bottom: r.bottom };
+}
 
 export function confirmApprove(f?: typeof fetch): void {
 	const a = approvalUi.ask;
