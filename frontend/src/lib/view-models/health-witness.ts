@@ -345,13 +345,28 @@ export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
 /**
  * Text that reads as a healthy verdict. A Pending check has not settled, so
  * "No alerts firing for labels …" under a Pending chip (prometheus-controller)
- * is read as "fine". `unhealthy` / `not healthy` are NOT matched.
+ * is read as "fine".
+ *
+ * Two rules, in order:
+ *  1. NEGATED GOOD IS NOT HEALTHY. A negation directly (≤ 2 words) before a
+ *     GOOD word — "not ok", "no longer healthy", "isn't ready", "never became
+ *     ready", "2 of 3 not ready" — or an `un-` form of one ("unhealthy").
+ *  2. Otherwise, a GOOD word or a "nothing bad" phrase reads healthy. "No
+ *     alerts firing" is a negation of a BAD word (firing), so rule 1 does not
+ *     see it, and it reads healthy as it should.
  */
-const READS_HEALTHY =
-	/\b(no alerts?( are)? firing|not firing|(?<!un)(?<!not )healthy|ok|passing|reconciled|no (errors?|issues?|problems?)|all\b[^.]*\bready|\d+\/\d+ ready)\b/i;
+const GOOD = '(?:ok|okay|passing|healthy|ready|reconciled|available)';
+const NEGATED_GOOD = new RegExp(
+	`\\b(?:not|never|no longer|isn't|aren't|wasn't|weren't)\\b(?:\\s+\\w+){0,2}?\\s+${GOOD}\\b|\\bun${GOOD}\\b`,
+	'i'
+);
+const READS_GOOD = new RegExp(
+	`\\b(?:no alerts?(?: are)? firing|not firing|0 (?:errors?|alerts?|issues?)|no (?:errors?|issues?|problems?)|ok|okay|passing|healthy|reconciled|all\\b[^.]*\\bready|(\\d+)/\\1 ready)\\b`,
+	'i'
+);
 
 export function readsHealthy(message: string): boolean {
-	return READS_HEALTHY.test(message);
+	return !NEGATED_GOOD.test(message) && READS_GOOD.test(message);
 }
 
 /**

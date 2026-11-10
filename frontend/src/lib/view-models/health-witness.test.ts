@@ -16,7 +16,8 @@ import {
 	visibleHealthChecks,
 	pendingNextProbeAt,
 	pendingProbeClause,
-	pendingRowText
+	pendingRowText,
+	readsHealthy
 } from './health-witness';
 
 const NOW = new Date('2026-08-31T02:00:00Z');
@@ -463,4 +464,25 @@ describe('pendingRowText — Pending keeps real information, drops only text tha
 		expect(pendingRowText(hc('pod is unhealthy'), base)).toBe('pod is unhealthy');
 		expect(pendingRowText(hc('not healthy yet'), base)).toBe('not healthy yet');
 	});
+});
+
+describe('readsHealthy — negation of a healthy word is not healthy; negation of a bad word is', () => {
+	it.each([
+		'No alerts firing for labels map[alertname:X]',
+		'0 errors',
+		'all 3 resources ready',
+		'alert is not firing',
+		'Healthy'
+	])('reads healthy: %j', (m) => expect(readsHealthy(m)).toBe(true));
+
+	it.each([
+		'not ok',
+		'not passing',
+		'no longer healthy',
+		"isn't ready",
+		'never became ready',
+		'unhealthy',
+		'2 of 3 not ready',
+		'alert pending: HighErrorRate'
+	])('does not read healthy: %j', (m) => expect(readsHealthy(m)).toBe(false));
 });
