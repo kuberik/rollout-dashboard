@@ -45,7 +45,8 @@ import {
 	healthGateCounts,
 	healthGateHolding,
 	healthGateCountsLabel,
-	pendingProbeClause
+	pendingProbeClause,
+	pendingRowText
 } from '$lib/view-models/health-witness';
 import { upToDateHeadline, upToDateCaption } from '$lib/view-models/up-to-date';
 import {
@@ -201,27 +202,276 @@ function rollout(opts: {
 describe('blocking-story: every gate kind is classified from evidence', () => {
 	const ENVS = {
 		items: [
-			{ metadata: { namespace: 'ns', name: 'e-dev' }, spec: { name: 'line', environment: 'dev' }, status: { conditions: [] } },
-			{ metadata: { namespace: 'ns', name: 'e-after' }, spec: { name: 'line', environment: 'staging' }, status: { rolloutGateRef: { name: 'gate-after' }, conditions: [] } },
-			{ metadata: { namespace: 'ns', name: 'e-ap' }, spec: { name: 'fan', environment: 'prod', site: 'ap-south-1', wave: 1 }, status: { conditions: [], wave: { site: 'ap-south-1', wave: 1, role: 'Leader', leader: 'ap-south-1', selectedRevision: 'abc1234def' } } },
-			{ metadata: { namespace: 'ns', name: 'e-eu' }, spec: { name: 'fan', environment: 'prod', site: 'eu-west-1', wave: 1 }, status: { rolloutGateRef: { name: 'gate-follow' }, conditions: [], wave: { site: 'eu-west-1', wave: 1, role: 'Follower', leader: 'ap-south-1', selectedRevision: 'abc1234def' } } },
-			{ metadata: { namespace: 'ns', name: 'e-us' }, spec: { name: 'fan', environment: 'prod', site: 'us-east-1', wave: 2 }, status: { rolloutGateRef: { name: 'gate-wave' }, conditions: [] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-bake' }, spec: { name: 'blk', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-bake' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'prod/b bake on abc1234' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-fail' }, spec: { name: 'blk', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-failed' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'prod/b bake failed on abc1234' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-cancel' }, spec: { name: 'blk2', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-cancelled' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'prod/b bake cancelled on abc1234' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-sel' }, spec: { name: 'blk3', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-sel' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'prod/b selection' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-nosites' }, spec: { name: 'blk4', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-nosites' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingFor', message: 'staging has no registered sites' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-cand' }, spec: { name: 'blk5', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-cand' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'WaitingForCandidate', message: 'abc1234def' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-pin' }, spec: { name: 'blk6', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-pin' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'Pinned', message: 'pinned to rel-12, wave selected abc1234def' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-gap' }, spec: { name: 'blk7', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-gap' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'InvalidTopology', message: 'prod has waves 1,3 (missing 2)' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-start' }, spec: { name: 'blk8', environment: 'prod', site: 'a', wave: 2 }, status: { rolloutGateRef: { name: 'gate-start' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'InvalidTopology', message: 'prod has waves 2,3 (waves start at 1)' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-lock' }, spec: { name: 'blk9', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-lock' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'LockstepWaiting', message: 'prod/b bake on abc1234' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-dup' }, spec: { name: 'blk10', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-dup' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'DuplicateSite', message: 'site a of prod for kuberik-blk10 is owned by cluster c1 namespace n1 name old' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-self' }, spec: { name: 'blk11', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-self' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'InvalidTopology', message: 'prod is its own upstream' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-alias' }, spec: { name: 'blk13', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-alias' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'InvalidTopology', message: 'production and prd are the same tier (prod)' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-unk' }, spec: { name: 'blk14', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-unk' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'UnknownTier', message: 'environment "canary" is not a known tier' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-b-odd' }, spec: { name: 'blk12', environment: 'prod', site: 'a', wave: 1 }, status: { rolloutGateRef: { name: 'gate-odd' }, conditions: [{ type: 'WaveReady', status: 'False', reason: 'Brand', message: 'something new' }] } },
-			{ metadata: { namespace: 'ns', name: 'e-norel' }, spec: { name: 'solo', environment: 'dev' }, status: { rolloutGateRef: { name: 'gate-norel' }, conditions: [] } },
+			{
+				metadata: { namespace: 'ns', name: 'e-dev' },
+				spec: { name: 'line', environment: 'dev' },
+				status: { conditions: [] }
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-after' },
+				spec: { name: 'line', environment: 'staging' },
+				status: { rolloutGateRef: { name: 'gate-after' }, conditions: [] }
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-ap' },
+				spec: { name: 'fan', environment: 'prod', site: 'ap-south-1', wave: 1 },
+				status: {
+					conditions: [],
+					wave: {
+						site: 'ap-south-1',
+						wave: 1,
+						role: 'Leader',
+						leader: 'ap-south-1',
+						selectedRevision: 'abc1234def'
+					}
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-eu' },
+				spec: { name: 'fan', environment: 'prod', site: 'eu-west-1', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-follow' },
+					conditions: [],
+					wave: {
+						site: 'eu-west-1',
+						wave: 1,
+						role: 'Follower',
+						leader: 'ap-south-1',
+						selectedRevision: 'abc1234def'
+					}
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-us' },
+				spec: { name: 'fan', environment: 'prod', site: 'us-east-1', wave: 2 },
+				status: { rolloutGateRef: { name: 'gate-wave' }, conditions: [] }
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-bake' },
+				spec: { name: 'blk', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-bake' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'WaitingFor',
+							message: 'prod/b bake on abc1234'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-fail' },
+				spec: { name: 'blk', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-failed' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'WaitingFor',
+							message: 'prod/b bake failed on abc1234'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-cancel' },
+				spec: { name: 'blk2', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-cancelled' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'WaitingFor',
+							message: 'prod/b bake cancelled on abc1234'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-sel' },
+				spec: { name: 'blk3', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-sel' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'WaitingFor',
+							message: 'prod/b selection'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-nosites' },
+				spec: { name: 'blk4', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-nosites' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'WaitingFor',
+							message: 'staging has no registered sites'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-cand' },
+				spec: { name: 'blk5', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-cand' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'WaitingForCandidate',
+							message: 'abc1234def'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-pin' },
+				spec: { name: 'blk6', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-pin' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'Pinned',
+							message: 'pinned to rel-12, wave selected abc1234def'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-gap' },
+				spec: { name: 'blk7', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-gap' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'InvalidTopology',
+							message: 'prod has waves 1,3 (missing 2)'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-start' },
+				spec: { name: 'blk8', environment: 'prod', site: 'a', wave: 2 },
+				status: {
+					rolloutGateRef: { name: 'gate-start' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'InvalidTopology',
+							message: 'prod has waves 2,3 (waves start at 1)'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-lock' },
+				spec: { name: 'blk9', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-lock' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'LockstepWaiting',
+							message: 'prod/b bake on abc1234'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-dup' },
+				spec: { name: 'blk10', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-dup' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'DuplicateSite',
+							message:
+								'site a of prod for kuberik-blk10 is owned by cluster c1 namespace n1 name old'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-self' },
+				spec: { name: 'blk11', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-self' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'InvalidTopology',
+							message: 'prod is its own upstream'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-alias' },
+				spec: { name: 'blk13', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-alias' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'InvalidTopology',
+							message: 'production and prd are the same tier (prod)'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-unk' },
+				spec: { name: 'blk14', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-unk' },
+					conditions: [
+						{
+							type: 'WaveReady',
+							status: 'False',
+							reason: 'UnknownTier',
+							message: 'environment "canary" is not a known tier'
+						}
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-b-odd' },
+				spec: { name: 'blk12', environment: 'prod', site: 'a', wave: 1 },
+				status: {
+					rolloutGateRef: { name: 'gate-odd' },
+					conditions: [
+						{ type: 'WaveReady', status: 'False', reason: 'Brand', message: 'something new' }
+					]
+				}
+			},
+			{
+				metadata: { namespace: 'ns', name: 'e-norel' },
+				spec: { name: 'solo', environment: 'dev' },
+				status: { rolloutGateRef: { name: 'gate-norel' }, conditions: [] }
+			}
 		]
 	} as any;
 	const DEPS = {
@@ -276,7 +526,10 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 		['gate-start', 'prod waves start at 2, not 1'],
 		['gate-lock', 'Lockstep: waiting for b to finish abc1234'],
 		['gate-self', 'prod is its own upstream'],
-		['gate-alias', 'production and prd are the same tier (prod). Use one name per tier; split with sites and waves.'],
+		[
+			'gate-alias',
+			'production and prd are the same tier (prod). Use one name per tier; split with sites and waves.'
+		],
 		['gate-unk', 'canary is not a known tier. Use dev, test, staging or prod.'],
 		['gate-odd', 'something new']
 	])('WaveReady blocker %s -- says %s', (gate, short) => {
@@ -288,7 +541,10 @@ describe('blocking-story: every gate kind is classified from evidence', () => {
 	test('WaveReady DuplicateSite -- a misconfiguration hold naming the owner and the take-over annotation', () => {
 		const g = classifyGate({ name: 'gate-dup', allowedVersions: [] }, 'ns', full);
 		expect(g.clears).toBe('person');
-		says(g.short, /^Held: another Environment, c1\/n1\/old, owns site a of prod\. Annotate this Environment with environments\.kuberik\.com\/take-over-site=true to take it over\.$/);
+		says(
+			g.short,
+			/^Held: another Environment, c1\/n1\/old, owns site a of prod\. Annotate this Environment with environments\.kuberik\.com\/take-over-site=true to take it over\.$/
+		);
 		saw(g.label, g.clause);
 		// The banner's own headline states the fault, never "waiting on an approval", and the story is an error.
 		expect(g.fault).toBe(true);
@@ -640,7 +896,11 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const ctx = buildGateContext({
 			environments: {
 				items: [
-					{ metadata: { namespace: 'alpha-dev-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
+					{
+						metadata: { namespace: 'alpha-dev-dev', name: 'e' },
+						spec: { environment: 'dev' },
+						status: {}
+					},
 					{
 						metadata: { namespace: 'alpha-dev', name: 'e' },
 						spec: { environment: 'staging' },
@@ -759,7 +1019,11 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const ctx = buildGateContext({
 			environments: {
 				items: [
-					{ metadata: { namespace: 'checkout-api-prod-us-east-2-staging', name: 'e' }, spec: { environment: 'staging' }, status: {} },
+					{
+						metadata: { namespace: 'checkout-api-prod-us-east-2-staging', name: 'e' },
+						spec: { environment: 'staging' },
+						status: {}
+					},
 					{
 						metadata: { namespace: 'checkout-api-prod-us-east-2', name: 'e' },
 						spec: { environment: 'prod-us-east-2' },
@@ -774,9 +1038,10 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		]);
 
 		const withoutContract = blockingStory(r, ctx, { place: 'prod-us-east-2' });
-		expect(withoutContract.blocked, 'gate-only read must still call v1 deployable (the pre-fix defect)').toBe(
-			false
-		);
+		expect(
+			withoutContract.blocked,
+			'gate-only read must still call v1 deployable (the pre-fix defect)'
+		).toBe(false);
 
 		const s = blockingStory(r, ctx, { place: 'prod-us-east-2', contractHolds });
 		says(s.headline, 'prod-us-east-2 is waiting for payments-svc to ship ~2.9.0');
@@ -805,7 +1070,10 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		// BOTH a promotion gate AND a contract hold at once -- the exact
 		// shape the coordinator named "mixed" -- and the contract leads,
 		// same rule as `upstreamHeadline`/`upstreamVerdict`.
-		says(holdCausePhrase(s, { place: 'prod-us-east-2' }), 'prod-us-east-2 is waiting for payments-svc ~2.9.0');
+		says(
+			holdCausePhrase(s, { place: 'prod-us-east-2' }),
+			'prod-us-east-2 is waiting for payments-svc ~2.9.0'
+		);
 		says(
 			holdCausePhrase(breakdown, { place: 'prod-us-east-2' }),
 			'prod-us-east-2 is waiting for payments-svc ~2.9.0'
@@ -847,7 +1115,11 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const ctx = buildGateContext({
 			environments: {
 				items: [
-					{ metadata: { namespace: 'ns-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
+					{
+						metadata: { namespace: 'ns-dev', name: 'e' },
+						spec: { environment: 'dev' },
+						status: {}
+					},
 					{
 						metadata: { namespace: 'ns', name: 'e' },
 						spec: { environment: 'staging' },
@@ -906,7 +1178,11 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const ctx = buildGateContext({
 			environments: {
 				items: [
-					{ metadata: { namespace: 'ns2-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
+					{
+						metadata: { namespace: 'ns2-dev', name: 'e' },
+						spec: { environment: 'dev' },
+						status: {}
+					},
 					{
 						metadata: { namespace: 'ns2', name: 'e' },
 						spec: { environment: 'staging' },
@@ -1055,7 +1331,11 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			buildGateContext({
 				environments: {
 					items: [
-						{ metadata: { namespace: 'alpha-dev-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
+						{
+							metadata: { namespace: 'alpha-dev-dev', name: 'e' },
+							spec: { environment: 'dev' },
+							status: {}
+						},
 						{
 							metadata: { namespace: 'alpha-dev', name: 'e' },
 							spec: { environment: 'staging' },
@@ -1124,7 +1404,11 @@ describe('blocking-story: holdCausePhrase -- fact + cause, one sentence product-
 		const ctx = buildGateContext({
 			environments: {
 				items: [
-					{ metadata: { namespace: 'alpha-dev-dev', name: 'e' }, spec: { environment: 'dev' }, status: {} },
+					{
+						metadata: { namespace: 'alpha-dev-dev', name: 'e' },
+						spec: { environment: 'dev' },
+						status: {}
+					},
 					{
 						metadata: { namespace: 'alpha-dev', name: 'e' },
 						spec: { environment: 'staging' },
@@ -1134,17 +1418,30 @@ describe('blocking-story: holdCausePhrase -- fact + cause, one sentence product-
 			},
 			rolloutDependencies: { items: [] }
 		} as any);
-		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'ghd-1', allowedVersions: [] }] }), ctx, {
-			place: 'prod-us-east-2'
-		});
-		says(holdCausePhrase(s, { place: 'prod-us-east-2' }), 'prod-us-east-2 is waiting on promotion order');
+		const s = blockingStory(
+			rollout({ at: 0, gates: [{ name: 'ghd-1', allowedVersions: [] }] }),
+			ctx,
+			{
+				place: 'prod-us-east-2'
+			}
+		);
+		says(
+			holdCausePhrase(s, { place: 'prod-us-east-2' }),
+			'prod-us-east-2 is waiting on promotion order'
+		);
 	});
 
 	test('a lone contract -- names the provider and the required version, no promotion gate riding along', () => {
 		const contractHolds: ContractHolds = new Map([
 			['v1', [{ provider: 'ledger-core', required: '^6.0.0' }]]
 		]);
-		const r = rollout({ ns: 'standalone-prod', name: 'standalone-api', releases: ['v0', 'v1'], at: 0, gates: [] });
+		const r = rollout({
+			ns: 'standalone-prod',
+			name: 'standalone-api',
+			releases: ['v0', 'v1'],
+			at: 0,
+			gates: []
+		});
 		const s = blockingStory(r, EMPTY_GATE_CONTEXT, { place: 'prod', contractHolds });
 		says(holdCausePhrase(s, { place: 'prod' }), 'prod is waiting for ledger-core ^6.0.0');
 	});
@@ -1168,7 +1465,13 @@ describe('blocking-story: holdCausePhrase -- fact + cause, one sentence product-
 				]
 			]
 		]);
-		const r = rollout({ ns: 'standalone-prod', name: 'standalone-api', releases: ['v0', 'v1'], at: 0, gates: [] });
+		const r = rollout({
+			ns: 'standalone-prod',
+			name: 'standalone-api',
+			releases: ['v0', 'v1'],
+			at: 0,
+			gates: []
+		});
 		// `story.gates` sorts worst-first then by id (`contract:auth` before
 		// `contract:payments-svc`, alphabetically) -- the SAME ordering every
 		// other multi-gate sentence in this product already reads off.
@@ -1180,7 +1483,10 @@ describe('blocking-story: holdCausePhrase -- fact + cause, one sentence product-
 		// `promotionHoldBreakdown`'s own `held[].contracts` carries no such
 		// sort -- it is the raw list `options.contractHolds` named, in the
 		// order the caller gave it.
-		const breakdown = promotionHoldBreakdown(r, EMPTY_GATE_CONTEXT, { place: 'prod', contractHolds });
+		const breakdown = promotionHoldBreakdown(r, EMPTY_GATE_CONTEXT, {
+			place: 'prod',
+			contractHolds
+		});
 		says(
 			holdCausePhrase(breakdown, { place: 'prod' }),
 			'prod is waiting for payments-svc ~2.9.0 and auth ~1.4'
@@ -1192,20 +1498,31 @@ describe('blocking-story: holdCausePhrase -- fact + cause, one sentence product-
 			environments: { items: [] },
 			rolloutDependencies: null
 		} as any);
-		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'ghd-p2fld', allowedVersions: [] }] }), partial, {
-			place: 'dev'
-		});
-		says(holdCausePhrase(s, { place: 'dev' }), 'dev is waiting on a rule this dashboard cannot attribute');
+		const s = blockingStory(
+			rollout({ at: 0, gates: [{ name: 'ghd-p2fld', allowedVersions: [] }] }),
+			partial,
+			{
+				place: 'dev'
+			}
+		);
+		says(
+			holdCausePhrase(s, { place: 'dev' }),
+			'dev is waiting on a rule this dashboard cannot attribute'
+		);
 	});
 
 	test('a lone clock/check hold -- no second party to name, falls back to the generic held fact', () => {
-		const s = blockingStory(rollout({ at: 0, gates: [{ name: 'sg-1', passing: false }] }), ctxFull, {
-			place: 'dev'
-		});
+		const s = blockingStory(
+			rollout({ at: 0, gates: [{ name: 'sg-1', passing: false }] }),
+			ctxFull,
+			{
+				place: 'dev'
+			}
+		);
 		says(holdCausePhrase(s, { place: 'dev' }), 'dev is held');
 	});
 
-	test('not blocked -- null, NEVER the empty string (BlockingStoryPanel\'s title ?? story.headline only falls back on nullish)', () => {
+	test("not blocked -- null, NEVER the empty string (BlockingStoryPanel's title ?? story.headline only falls back on nullish)", () => {
 		const s = blockingStory(rollout({ at: 2 }), ctxFull);
 		expect(holdCausePhrase(s, { place: 'dev' })).toBe(null);
 	});
@@ -1220,8 +1537,17 @@ describe('blocking-story: holdCausePhrase -- fact + cause, one sentence product-
 		const contractHolds: ContractHolds = new Map([
 			['v1', [{ provider: 'payments-svc', required: '~2.9.0', has: '2.4.1' }]]
 		]);
-		const r = rollout({ ns: 'checkout-api-prod-us-east-2', name: 'checkout-api', releases: ['v0', 'v1'], at: 0, gates: [] });
-		const breakdown = promotionHoldBreakdown(r, EMPTY_GATE_CONTEXT, { place: 'prod-us-east-2', contractHolds });
+		const r = rollout({
+			ns: 'checkout-api-prod-us-east-2',
+			name: 'checkout-api',
+			releases: ['v0', 'v1'],
+			at: 0,
+			gates: []
+		});
+		const breakdown = promotionHoldBreakdown(r, EMPTY_GATE_CONTEXT, {
+			place: 'prod-us-east-2',
+			contractHolds
+		});
 		says(
 			holdCausePhrase(breakdown, { place: 'prod-us-east-2' }),
 			'prod-us-east-2 is waiting for payments-svc ~2.9.0'
@@ -1678,10 +2004,7 @@ describe('deploy-risk: a retry states what it destroys', () => {
 			{ failingChecks: ['latency'], clearsFailureDetail: true },
 			'064b655'
 		);
-		says(
-			lines[0],
-			'Redeploys 064b655 to prod — the same build whose last deploy here failed.'
-		);
+		says(lines[0], 'Redeploys 064b655 to prod — the same build whose last deploy here failed.');
 		says(
 			lines[1],
 			'A rule here is still holding this build back. It applies immediately and prod starts serving it.'
@@ -1799,6 +2122,14 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 		});
 		expect(parseCheckMessage('something else entirely')).toEqual({ check: null, detail: null });
 		expect(parseCheckMessage('')).toEqual({ check: null, detail: null });
+	});
+
+	test('a Pending check says it is not evaluated — drops a healthy-sounding controller message (batch4 #6)', () => {
+		const pending = {
+			metadata: { name: 'probe', namespace: 'alpha-prod' },
+			status: { status: 'Pending', message: 'No alerts firing for labels map[app:x]' }
+		} as unknown as Parameters<typeof pendingRowText>[0];
+		says(pendingRowText(pending, new Date('2026-09-21T12:00:00Z')), 'Not evaluated yet');
 	});
 
 	test('DeploymentBlocked True is the join; False and absent are not', () => {

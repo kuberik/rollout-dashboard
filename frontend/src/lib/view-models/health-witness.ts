@@ -97,7 +97,8 @@ export type CheckFailure = {
  * match falls through to `raw`, which is always shown. A regex that misses
  * costs a tooltip; a regex that is assumed to hit costs the sentence.
  */
-const CONDITION_MESSAGE = /^HealthCheck '([^']+)' in namespace '[^']*' is not healthy \([^)]*\)(?::\s*(.*))?$/s;
+const CONDITION_MESSAGE =
+	/^HealthCheck '([^']+)' in namespace '[^']*' is not healthy \([^)]*\)(?::\s*(.*))?$/s;
 
 export function parseCheckMessage(raw: string): { check: string | null; detail: string | null } {
 	const m = CONDITION_MESSAGE.exec(raw ?? '');
@@ -341,6 +342,56 @@ export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
 	return remainingMs > 0 ? `next probe in ${Math.ceil(remainingMs / 1000)}s` : 'probing…';
 }
 
+/**
+ * A Pending message is dropped ONLY when the WHOLE message, normalised, is one
+ * of a short allow-list of complete healthy forms. Anything else is kept:
+ * a keyword heuristic ("ok", "healthy", negation guards) dropped real
+ * problems ("HTTP 200 OK but p99 over budget", "healthy: false", "2/3 healthy").
+ * Normalised = trimmed, lowercase, curly apostrophes straightened, whitespace
+ * collapsed, trailing period removed.
+ */
+// prometheus-controller writes either `for labels map[...]` (older) or
+// `for k=v, k=v` (sorted pairs, PR #2). Prometheus label VALUES may contain
+// spaces, but allowing them would let "for app=x but 1 pending" match as one
+// value, so values are whitespace-free: a spaced value is merely KEPT (fail
+// safe), never a problem hidden.
+const NO_ALERTS_FIRING =
+	/^no alerts firing( for (labels map\[[^\]]*\]|[a-z_][a-z0-9_]*=[^,;\s]+(, [a-z_][a-z0-9_]*=[^,;\s]+)*))?$/;
+const HEALTHY_FORMS: RegExp[] = [
+	NO_ALERTS_FIRING,
+	/^0 errors$/,
+	/^([1-9]\d*)(\/| of )\1 ready$/,
+	/^all [1-9]\d* resources ready$/,
+	/^healthy$/,
+	/^ok$/
+];
+
+export function readsHealthy(message: string): boolean {
+	const m = message
+		.trim()
+		.toLowerCase()
+		.replace(/[‘’]/g, "'")
+		.replace(/\s+/g, ' ')
+		.replace(/\.$/, '');
+	return HEALTHY_FORMS.some((re) => re.test(m));
+}
+
+/**
+ * The sub-line of a PENDING row. Pending also covers EVALUATED states (an
+ * alert in its pending phase, Datadog Warn/NoData, resources not ready), so the
+ * controller's message is real information and is kept — EXCEPT when it reads
+ * healthy, where it is dropped (batch4 #6). Dropping beats a neutral lead-in:
+ * no extra words on every row, and the Pending chip already is the lead-in.
+ * Then the probe countdown when known, else "Not evaluated yet".
+ */
+export function pendingRowText(hc: HealthCheck, now: Date): string {
+	const raw = hc.status?.message?.trim();
+	const msg = raw && !readsHealthy(raw) ? raw : null;
+	const clause = pendingProbeClause(hc, now);
+	if (msg && clause) return `${msg} · ${clause}`;
+	return msg ?? clause ?? 'Not evaluated yet';
+}
+
 /** Passing right now, but it errored inside this deploy's window. */
 export function recoveredChecks(
 	healthChecks: HealthCheck[],
@@ -394,7 +445,10 @@ export function healthQuietState(
 	healthChecks: HealthCheck[] | null,
 	windowStart: Date | null
 ): HealthQuietState {
-	const counts = healthGateCounts(visibleHealthChecks(healthChecks ?? [], windowStart), windowStart);
+	const counts = healthGateCounts(
+		visibleHealthChecks(healthChecks ?? [], windowStart),
+		windowStart
+	);
 	if (counts.failing > 0) return 'failing';
 	if (counts.pending > 0) return 'pending';
 	return 'passing';

@@ -15,7 +15,9 @@ import {
 	healthQuietState,
 	visibleHealthChecks,
 	pendingNextProbeAt,
-	pendingProbeClause
+	pendingProbeClause,
+	pendingRowText,
+	readsHealthy
 } from './health-witness';
 
 const NOW = new Date('2026-08-31T02:00:00Z');
@@ -74,7 +76,9 @@ function check(status: string, lastErrorTime?: string, name = 'payment-latency')
 describe('checkFailure — the fact the list surfaces threw away', () => {
 	it('reads `DeploymentBlocked: True / UnhealthyHealthChecks`', () => {
 		const f = checkFailure(
-			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
+			rollout({
+				blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE }
+			})
 		);
 		expect(f).not.toBeNull();
 		expect(f!.check).toBe('payment-latency');
@@ -112,7 +116,9 @@ describe('checkFailure — the fact the list surfaces threw away', () => {
 
 	it('the title names the check and states the consequence', () => {
 		const f = checkFailure(
-			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
+			rollout({
+				blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE }
+			})
 		)!;
 		expect(checkFailureTitle(f)).toBe(
 			'Health check payment-latency is failing — p99 latency 4.2s exceeds SLO of 500ms for 5m. Automatic deploys here are held until it passes; a deploy you start by hand still applies.'
@@ -125,7 +131,9 @@ describe('checkFailure — the fact the list surfaces threw away', () => {
 	// never claim otherwise, and it may never drop the escape clause.
 	it('never claims a manual deploy is held', () => {
 		const f = checkFailure(
-			rollout({ blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE } })
+			rollout({
+				blocked: { status: 'True', reason: 'UnhealthyHealthChecks', message: SLO_MESSAGE }
+			})
 		)!;
 		const title = checkFailureTitle(f);
 		expect(title).not.toMatch(/nothing new deploys/i);
@@ -239,10 +247,7 @@ describe('healthGateCounts / healthGateHolding / healthGateCountsLabel — the c
 	});
 
 	it('failing leads pending in the label, both counted together', () => {
-		const counts = healthGateCounts(
-			[check('Pending'), check('Unhealthy', undefined, 'b')],
-			window
-		);
+		const counts = healthGateCounts([check('Pending'), check('Unhealthy', undefined, 'b')], window);
 		expect(counts).toEqual({ pending: 1, failing: 1 });
 		expect(healthGateCountsLabel(counts)).toBe('1 failing, 1 pending');
 	});
@@ -345,10 +350,7 @@ describe('healthQuietState — the Gates tab`s empty-state sentence, three state
 
 	it('failing outranks pending when both are present', () => {
 		expect(
-			healthQuietState(
-				[check('Pending'), check('Unhealthy', '2026-08-31T01:45:00Z', 'b')],
-				window
-			)
+			healthQuietState([check('Pending'), check('Unhealthy', '2026-08-31T01:45:00Z', 'b')], window)
 		).toBe('failing');
 	});
 
@@ -413,4 +415,129 @@ describe('healthHolds — the shared predicate detail and the Gates tab both rea
 	it('false when health itself holds nothing back', () => {
 		expect(healthHolds(true, false, { pending: 0, failing: 0 })).toBe(false);
 	});
+});
+
+/**
+ * batch4 #6: a Pending check printed the controller's message under the
+ * Pending chip — prometheus-controller's "No alerts firing for labels …" reads
+ * as a healthy verdict on a check that has not been evaluated. Pending rows
+ * keep the controller message (it can be real information: alert pending,
+ * NoData) and drop it only when the WHOLE message is a complete healthy form.
+ */
+describe('pendingRowText — Pending keeps real information, drops only text that reads healthy', () => {
+	const base = new Date('2026-09-21T12:00:00Z');
+	const hc = (message: string | undefined, extra: Record<string, unknown> = {}) =>
+		({
+			metadata: { name: 'probe', namespace: 'p' },
+			status: { status: 'Pending', ...(message ? { message } : {}), ...extra }
+		}) as unknown as HealthCheck;
+	const probe = { nextProbeAt: new Date(base.getTime() + 5000).toISOString() };
+
+	it('keeps a Prometheus alert-pending message (about to fire)', () => {
+		const m = 'alert HighErrorRate is pending, fires after 5m';
+		expect(pendingRowText(hc(m), base)).toBe(m);
+	});
+
+	it('keeps a Datadog NoData / Warn message', () => {
+		expect(pendingRowText(hc('monitor state: No Data'), base)).toBe('monitor state: No Data');
+		expect(pendingRowText(hc('monitor state: Warn'), base)).toBe('monitor state: Warn');
+	});
+
+	it('keeps a message and appends the probe clause', () => {
+		expect(pendingRowText(hc('1 of 3 pods ready, waiting', probe), base)).toBe(
+			'1 of 3 pods ready, waiting · next probe in 5s'
+		);
+	});
+
+	it.each([
+		'No alerts firing for labels map[alertname:X]',
+		'No alerts firing for alertname=HighErrorRate',
+		'No alerts firing for alertname=HighErrorRate, app=checkout-api',
+		'No alerts firing for app=x, env=prod, team=a_b.',
+		'No alerts firing',
+		'Healthy',
+		'OK',
+		'3/3 ready'
+	])('drops healthy-sounding %j on a Pending check', (m) => {
+		expect(pendingRowText(hc(m), base)).toBe('Not evaluated yet');
+		expect(pendingRowText(hc(m, probe), base)).toBe('next probe in 5s');
+	});
+
+	it('does not treat "unhealthy" / "not healthy" as healthy', () => {
+		expect(pendingRowText(hc('pod is unhealthy'), base)).toBe('pod is unhealthy');
+		expect(pendingRowText(hc('not healthy yet'), base)).toBe('not healthy yet');
+	});
+});
+
+describe('readsHealthy — only a WHOLE message that is a complete healthy form drops', () => {
+	it.each([
+		'No alerts firing for labels map[alertname:X]',
+		'No alerts firing',
+		'  No alerts firing for labels map[app:x].  ',
+		'No alerts firing for alertname=HighErrorRate',
+		'No alerts firing for alertname=HighErrorRate, app=checkout-api',
+		'No alerts firing for app=x, env=prod, team=a_b.',
+		'0 errors',
+		'3/3 ready',
+		'3 of 3 ready',
+		'all 3 resources ready',
+		'Healthy',
+		'OK',
+		'ok.'
+	])('reads healthy: %j', (m) => expect(readsHealthy(m)).toBe(true));
+
+	it.each([
+		'not ok',
+		'not passing',
+		'no longer healthy',
+		"isn't ready",
+		'Health isn’t ready',
+		'monitor isn’t healthy',
+		'never became ready',
+		'unhealthy',
+		'status: unready',
+		'2 of 3 not ready',
+		'alert pending: HighErrorRate',
+		'Alert pending for labels map[app:checkout]',
+		'Alert pending (not firing yet)',
+		'2/3 healthy',
+		'2/3 passing',
+		'1/3 ready',
+		'0 of 3 ready',
+		'12/1 ready',
+		'1 of 3 checks passing',
+		'Waiting for all pods to be ready (1/3)',
+		'not all ready',
+		'all 3 pods ready but one restarting',
+		'HTTP 200 OK but p99 latency 3.2s over budget',
+		'healthy: false',
+		'ok=false',
+		'OK (stale)',
+		'3 Datadog monitors OK',
+		'Warn: error rate 0.8% near 1% budget',
+		'No Data',
+		'Pending resources: ns/web (Ready: 1/3)',
+		'Kustomization pending: generation 4 not yet observed',
+		'Test job is pending',
+		'not yet healthy',
+		'unknown',
+		'ready',
+		'no errors but latency high',
+		'0 errors in the last minute, 5 timeouts',
+		'No alerts firing for labels map[app:x]; 2 alerts pending',
+		'No alerts firing for labels map[app:x] but HighErrorRate is pending',
+		'No alerts firing for labels map[app:x] \u2014 evaluation failed',
+		'No alerts firing for labels map[app:x] (stale data)',
+		'No alerts firing for labels map[app:x]\nprometheus unreachable',
+		'No alerts firing for labels',
+		'No alerts firing for labels anything at all',
+		'No alerts firing for alertname=X, app=y; 2 pending',
+		'No alerts firing for app=x but 1 pending',
+		'No alerts firing for app=x (stale data)',
+		'No alerts firing for app=x\nprometheus unreachable',
+		'No alerts firing for app=x, ',
+		'No alerts firing for app=x,app2',
+		'No alerts firing for app=x app=y',
+		'No alerts firing for =x'
+	])('keeps: %j', (m) => expect(readsHealthy(m)).toBe(false));
 });
