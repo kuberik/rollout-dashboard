@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../common
+
+namespace: hello-world-prod-ap-south
+
+patches:
+  # Site/wave placement (environment-controller "Sites and waves").
+  - target:
+      kind: Environment
+    patch: |-
+      - op: add
+        path: /spec/site
+        value: ap-south
+      - op: add
+        path: /spec/wave
+        value: 2
+
+  # Common manifests are built from the prod artifact, which hard-codes
+  # namespace hello-world-prod; deploy each site into its own namespace.
+  - target:
+      kind: Kustomization
+      group: kustomize.toolkit.fluxcd.io
+    patch: |-
+      - op: add
+        path: /spec/targetNamespace
+        value: hello-world-prod-ap-south
+  - target:
+      kind: Rollout
+      name: hello-world-app
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/dashboard.rollout.kuberik.com~1description
+        value: "Hello World app / prod ap-south"
+  - patch: |-
+      $patch: delete
+      apiVersion: kuberik.com/v1alpha1
+      kind: ClusterRolloutSchedule
+      metadata:
+        name: production-peak-hours-deny

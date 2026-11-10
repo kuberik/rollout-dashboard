@@ -299,15 +299,20 @@ SCRIPT_DIR=$(dirname "$0")
 for env in ${APP_ENVS}; do
   for app in hello-world hello-multi hello-dep hello-second; do
     # kustomize build "example/${app}/app/deployments/${env}" | kubectl apply -f -
-    kustomize build "example/${app}/cd/deployments/${env}" | kubectl apply -f -
-    kubectl -n ${app}-${env} create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
-    kubectl -n ${app}-${env} create secret docker-registry github-registry-credentials --docker-server=ghcr.io --docker-username=${GITHUB_USER} --docker-password=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
-    # Bind the imagePullSecret to the namespace's default ServiceAccount so every
-    # pod in the namespace can pull from ghcr without per-deployment plumbing.
-    # Rollouts often promote images that weren't kind-loaded (newer tags published
-    # to ghcr by previous runs), and ghcr private packages 401 on anonymous pull.
-    kubectl -n ${app}-${env} patch serviceaccount default \
-      -p '{"imagePullSecrets":[{"name":"github-registry-credentials"}]}'
+    # An overlay may produce several namespaces (e.g. prod sites: ${app}-prod-eu-west,
+    # ...), so take the namespaces from what was actually applied instead of
+    # assuming ${app}-${env}.
+    applied=$(kustomize build "example/${app}/cd/deployments/${env}" | kubectl apply -o name -f -)
+    for ns in $(printf '%s\n' "${applied}" | sed -n 's#^namespace/##p'); do
+      kubectl -n "${ns}" create secret generic github-token --from-literal=token=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
+      kubectl -n "${ns}" create secret docker-registry github-registry-credentials --docker-server=ghcr.io --docker-username=${GITHUB_USER} --docker-password=${GITHUB_TOKEN} -o yaml --dry-run=client | kubectl apply -f -
+      # Bind the imagePullSecret to the namespace's default ServiceAccount so every
+      # pod in the namespace can pull from ghcr without per-deployment plumbing.
+      # Rollouts often promote images that weren't kind-loaded (newer tags published
+      # to ghcr by previous runs), and ghcr private packages 401 on anonymous pull.
+      kubectl -n "${ns}" patch serviceaccount default \
+        -p '{"imagePullSecrets":[{"name":"github-registry-credentials"}]}'
+    done
   done
 done
 

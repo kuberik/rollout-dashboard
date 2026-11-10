@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../common
+
+namespace: hello-second-prod-eu-west
+
+patches:
+  # Site/wave placement (environment-controller "Sites and waves").
+  - target:
+      kind: Environment
+    patch: |-
+      - op: add
+        path: /spec/site
+        value: eu-west
+      - op: add
+        path: /spec/wave
+        value: 1
+      - op: add
+        path: /spec/lockstep
+        value: true
+  # Common manifests are built from the prod artifact, which hard-codes
+  # namespace hello-second-prod; deploy each site into its own namespace.
+  - target:
+      kind: Kustomization
+      group: kustomize.toolkit.fluxcd.io
+    patch: |-
+      - op: add
+        path: /spec/targetNamespace
+        value: hello-second-prod-eu-west
+  - target:
+      kind: Rollout
+      name: hello-second-app
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/dashboard.rollout.kuberik.com~1description
+        value: "Hello Second app / prod eu-west"
