@@ -1707,7 +1707,7 @@
 							     ≥640: one row of four with hairline dividers. -->
 							<!-- phone: the window control leaves the header (it would squeeze the rollup out) and sits as six equal buttons at the top of the card -->
 							{@render rangeControl('mb-4 grid grid-cols-6 sm:hidden')}
-							<div class="act-kpis mb-4 grid grid-cols-2 gap-y-4 sm:grid-cols-4" role="group" aria-label="Deploy stats">
+							<div class="act-kpis mb-4" role="group" aria-label="Deploy stats">
 								<div class="min-w-0 pr-4">
 									<KpiTile
 										icon={ExclamationCircleSolid}
@@ -2035,6 +2035,13 @@
 </div>
 
 <style>
+	/* The KPI head's columns follow the CARD's width, not the viewport: 2x2 until the card holds four figures side by side (>= 32rem), then one row of four.
+	   Scoped CSS + a container query, so the layout cannot depend on a utility (`sm:grid-cols-4`) being present where the page is embedded, and a half-width card at 1024 gets the right count too. */
+	.act-chart { container-type: inline-size; }
+	.act-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 1rem; }
+	@container (min-width: 32rem) {
+		.act-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+	}
 	/* The KPI tiles are flat inside the chart card: `KpiTile` is shared and keeps its own internals; this page only disowns the .tile shell. */
 	.act-kpis :global(.tile.kpi) {
 		border: none;
