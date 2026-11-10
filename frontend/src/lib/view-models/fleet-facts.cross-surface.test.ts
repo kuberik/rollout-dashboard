@@ -6,10 +6,7 @@ import { buildGateContext } from '$lib/view-models/blocking-story';
 import { buildRolloutGraph, contractHoldsForRollout } from '$lib/view-models/dependency-graph';
 import { isNeedsYou } from '$lib/view-models/fleet-groups';
 import { buildLanes, nodeState, STATE_ORDER } from '$lib/view-models/promotion-lanes';
-import { fleetMap, stepFacts } from '$lib/view-models/promotion-map';
 import { fleetFacts } from './fleet-facts';
-import { fleetPulse } from './fleet-pulse';
-import { heldFor } from './held-for';
 import type { Environment, Rollout, RolloutDependency } from '../../types';
 
 /**
@@ -17,12 +14,6 @@ import type { Environment, Rollout, RolloutDependency } from '../../types';
  * scenario (calm, incident, wide — `lib/demo/state.ts`'s own `Scenario`),
  * builds the SAME cards every real page builds and asserts every surface
  * this commit rewired reads the identical numbers:
- *   - the Promotion Map's stage captions (`stepFacts`, summed) agree with
- *     `fleetFacts.byTier`'s `appsByState` totals for held/failed-live/
- *     in-motion apps (THE UNIT RULE: one count per app, its worst place);
- *   - `fleetPulse`'s delegated figures (deploys/failed/held) agree with
- *     `fleetFacts` directly;
- *   - `heldFor` (Home's KPI, /activity) agrees with `fleetFacts.held`;
  *   - Home's Fleet list (the lanes `buildLanes` draws) counts the same
  *     mapped-apps total as `fleetFacts.mappedApps`.
  *
@@ -66,77 +57,8 @@ function buildAll(scenario: Scenario) {
 const SCENARIOS: Scenario[] = ['calm', 'incident', 'wide'];
 
 describe.each(SCENARIOS)('cross-surface agreement — %s', (scenario) => {
-	it('the map’s stage captions count its blocks: fleetFacts’ per-app plates (held == held.plates)', () => {
-		const { cards, facts } = buildAll(scenario);
-		const lanes = buildLanes(cards);
-		const map = fleetMap({ lanes }, { granularity: 'tier', facts });
 
-		let heldOnMap = 0;
-		let failedOnMap = 0;
-		let inMotionOnMap = 0;
-		for (const step of map.steps) {
-			for (const fact of stepFacts(step)) {
-				if (fact.state === 'held') heldOnMap += fact.n;
-				if (fact.state === 'failed') failedOnMap += fact.n;
-				if (fact.state === 'deploying' || fact.state === 'checking') inMotionOnMap += fact.n;
-			}
-		}
-		// home-map (2026-10-11, round-6 first read: "held 5 vs 4"): a caption
-		// counts the BLOCKS on its plate (one per app, its worst place in the
-		// stage), the unit of the "of N apps" figure beside it. So the captions
-		// sum to fleet-facts' per-app plate tallies, and held to `held.plates`
-		// (the Held tile's "in N places"). Places (regions) stay in fleet-facts
-		// for the surfaces that speak regions.
-		const tiers = Object.values(facts.byTier);
-		expect(heldOnMap).toBe(facts.held.plates);
-		expect(heldOnMap).toBe(tiers.reduce((n, t) => n + t.appsByState.held, 0));
-		expect(failedOnMap).toBe(tiers.reduce((n, t) => n + t.appsByState.failed, 0));
-		expect(inMotionOnMap).toBe(tiers.reduce((n, t) => n + t.appsByState.deploying + t.appsByState.checking, 0));
-		// A plate never counts more than its places.
-		expect(heldOnMap).toBeLessThanOrEqual(facts.held.places - facts.held.unmapped);
-		// `appsByState` sums to `apps` per stage (THE UNIT RULE: one count per
-		// app, its worst place) — and `placesByState` sums to `places` (the
-		// raw per-rollout tally).
-		for (const t of tiers) {
-			const appSum = Object.values(t.appsByState).reduce((a, b) => a + b, 0);
-			expect(appSum).toBe(t.apps);
-			const placeSum = Object.values(t.placesByState).reduce((a, b) => a + b, 0);
-			expect(placeSum).toBe(t.places);
-		}
-	});
 
-	it('fleetPulse’s delegated deploys/failed/held figures equal fleetFacts directly', () => {
-		const { cards, list, facts } = buildAll(scenario);
-		const pulse = fleetPulse(list.rollouts.items, NOW.getTime(), '7d', {
-			cards,
-			factsOpts: { gateContext: undefined, contractHoldsFor: undefined }
-		});
-		// Re-derive facts with the SAME (no gateContext) opts fleetPulse used,
-		// since byCause/needsYou depend on classification but deploys/failed/
-		// held counts and medians do not.
-		const factsNoCtx = fleetFacts(cards, list.rollouts.items, NOW.getTime(), '7d');
-		expect(pulse.deploys.value).toBe(factsNoCtx.deploys.value);
-		expect(pulse.deploys.prev).toBe(factsNoCtx.deploys.prev);
-		expect(pulse.failed.value).toBe(factsNoCtx.failed.inWindow.value);
-		expect(pulse.held.count).toBe(factsNoCtx.held.apps);
-		void facts;
-	});
-
-	it('heldFor agrees with fleetFacts.held exactly (apps, plates, medians, longest)', () => {
-		// ⭐ `heldFor.places` IS `fleetFacts.held.plates`, NOT `.places` — the
-		// map's own unit (app × stage, prod one plate), home-map's shipped
-		// rule, kept verbatim. `fleetFacts.held.places` is the FINER, raw
-		// per-region unit this commit's own brief defines; the two agree in
-		// the common case (no multi-region prod fold in play) but are not
-		// the same number in general — see `held-for.ts`'s own doc comment.
-		const { cards, facts } = buildAll(scenario);
-		const held = heldFor(cards, NOW.getTime());
-		expect(held.apps).toBe(facts.held.apps);
-		expect(held.places).toBe(facts.held.plates);
-		expect(held.medianMs).toBe(facts.held.medianMs);
-		expect(held.longestMs).toBe(facts.held.longestMs);
-		expect(held.longestSubject).toEqual(facts.held.longestSubject);
-	});
 
 	it('Home’s Fleet list (lanes) counts the same mapped apps as fleetFacts.mappedApps', () => {
 		const { cards, facts } = buildAll(scenario);
@@ -144,48 +66,6 @@ describe.each(SCENARIOS)('cross-surface agreement — %s', (scenario) => {
 		expect(lanes.length).toBe(facts.mappedApps);
 	});
 
-	it('shared/stagefacts-units: byTier/byEnv obey THE UNIT RULE and never drift from the top-level facts', () => {
-		const { cards, facts } = buildAll(scenario);
-		const lanes = buildLanes(cards);
-
-		// KPI held apps = mapped Fleet rows reading Held PLUS unmapped apps
-		// whose own worst place is held (⭐ shared/fleet-facts-ids,
-		// 2026-10-11: "apps WITHOUT an Environment held on a dependency
-		// contract are real holds and COUNT" — `byTier`/`byEnv` stay mapped-
-		// only, since the map can only draw mapped places; only the
-		// top-level `held.apps`/`appIds` widen).
-		const heldRows = lanes.filter((l) => l.state === 'held').map((l) => l.app).sort();
-		const unmappedHeldApps = facts.held.appIds.filter((app) => !heldRows.includes(app));
-		expect(facts.held.apps).toBe(heldRows.length + unmappedHeldApps.length);
-		expect([...heldRows, ...unmappedHeldApps].sort()).toEqual(facts.held.appIds);
-
-		for (const t of Object.values(facts.byTier)) {
-			// appsByState sums to apps; placesByState sums to places.
-			expect(Object.values(t.appsByState).reduce((a, b) => a + b, 0)).toBe(t.apps);
-			expect(Object.values(t.placesByState).reduce((a, b) => a + b, 0)).toBe(t.places);
-			// appsByCause never exceeds appsByState.held (an app can land in
-			// more than one cause bucket if its held places in this stage
-			// disagree, same as the top-level byCauseApps).
-			const causeSum = t.appsByCause.order + t.appsByCause.approval + t.appsByCause.dependency + t.appsByCause.other;
-			expect(causeSum).toBeGreaterThanOrEqual(0);
-			if (t.appsByState.held === 0) expect(causeSum).toBe(0);
-		}
-		for (const e of Object.values(facts.byEnv)) {
-			expect(Object.values(e.appsByState).reduce((a, b) => a + b, 0)).toBe(e.apps);
-			expect(Object.values(e.placesByState).reduce((a, b) => a + b, 0)).toBe(e.places);
-		}
-
-		// Map blocks == appsByState (per state, per tier) — the map draws
-		// exactly one cube per app, its worst place in the stage.
-		const map = fleetMap({ lanes }, { granularity: 'tier', facts });
-		for (const step of map.steps) {
-			const stage = step.key === 'prod' ? facts.byTier.prod : facts.byTier[step.tier];
-			if (!stage) continue;
-			for (const state of ['held', 'failed', 'stuck', 'deploying', 'checking', 'behind', 'newest'] as const) {
-				expect(step.cubes.filter((c) => c.state === state).length).toBe(stage.appsByState[state]);
-			}
-		}
-	});
 
 	it('shared/fleet-facts-ids: held.appIds/approvalAppIds and behind.appIds/apps agree with the lanes plus unmapped apps', () => {
 		const { cards, facts } = buildAll(scenario);

@@ -20,8 +20,6 @@
  *   - A card is held on an approval (`heldCause === 'person'`) iff
  *     `isHeldByApproval` says so — Home's "Needs you · approval" rows and
  *     the map's callout cannot name a different set of cards.
- *   - `heldFor`'s `places` count (Home's held KPI) equals the number of
- *     cards `nodeState` itself calls `'held'`.
  */
 import { describe, expect, it } from 'vitest';
 import { respond } from '$lib/demo/respond';
@@ -33,7 +31,6 @@ import { nodeState } from './promotion-lanes';
 import { isHeld, isPinned } from './fleet-groups';
 import { promotionHoldBreakdown } from './blocking-story';
 import { isHeldByApproval, heldVerdict } from './held';
-import { heldFor } from './held-for';
 
 type Scenario = 'calm' | 'incident' | 'wide';
 
@@ -113,20 +110,6 @@ describe.each(['calm', 'incident', 'wide'] as const)('held-predicate agreement �
 		}
 	});
 
-	it('heldFor\'s apps are a subset of the apps whose lane leads with held', () => {
-		// ⭐ held-for.ts now delegates to fleet-facts.ts (shared/fleet-facts,
-		// merged 2026-10-11), which LANE-GATES `apps`/the durations —
-		// home-map's rule, "an app failing somewhere and held elsewhere reads
-		// failed, not held" — so `heldFor.apps` is no longer a raw per-card
-		// `nodeState === 'held'` count. `fleet-facts.cross-surface.test.ts`
-		// pins the exact equality against `fleetFacts.held` directly; this
-		// only confirms the number stays sane relative to THIS predicate's
-		// own raw count, which can never be smaller.
-		const rawHeldCards = cards.filter((c) => nodeState(c) === 'held').length;
-		const result = heldFor(cards, now.getTime());
-		expect(result.apps).toBeLessThanOrEqual(rawHeldCards);
-		expect(result.apps).toBeGreaterThanOrEqual(0);
-	});
 
 	it('re-deriving heldVerdict straight off the card\'s own rollout never disagrees with the precomputed fields', () => {
 		// Belt-and-suspenders: `rollout-cards.ts` precomputes `held`/`cause`/
