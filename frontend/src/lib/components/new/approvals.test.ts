@@ -64,6 +64,28 @@ describe('approving in place', () => {
 			resetHomeModel();
 		}
 	});
+	for (const [what, gate] of [['a closed deploy window', 'schedule-gate-ab12c'], ['a failing check gate', 'smoke-check']] as const) it(`${what} (passing: false, no allow-list) still holds after the approval: no Deploying, the toast and row name it`, () => {
+		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
+		type R = { metadata: { name: string; namespace: string }; status: { gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null }[] } };
+		const rs = (source().rollouts as unknown as R[]).filter((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`));
+		rs.forEach((r) => { r.status.gates = [...(r.status.gates ?? []), { name: gate, passing: false, allowedVersions: null }]; });
+		resetHomeModel();
+		try {
+			const before = rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort();
+			const t = approvalTarget(row('payments-core')!, 'incident')!;
+			expect(t.waitsOn, 'approvalTarget sees the hold').toBeTruthy();
+			expect(doneWords(t).detail).toBe(`payments-core waits on ${t.waitsOn} for ${t.where}`);
+			grantApproval(t);
+			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
+			expect(mine.length).toBeGreaterThan(0);
+			expect(mine.some((r) => r.state === 'deploying' || r.state === 'checking' || r.state === 'awaiting-approval')).toBe(false);
+			revokeApproval(t);
+			expect(rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort()).toEqual(before);
+		} finally {
+			rs.forEach((r) => { r.status.gates = r.status.gates!.filter((g) => g.name !== gate); });
+			resetHomeModel();
+		}
+	});
 	it('a hold says which kind it is without its words being parsed', () => {
 		const a = apps('incident').items.find((x) => x.approval)!;
 		const h = appHolds(a, 'incident');

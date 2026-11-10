@@ -1229,9 +1229,10 @@ export function approvalScope(row: Pick<RolloutRow, 'app' | 'tier' | 'regions' |
  *  The wire contract (src/lib/api/approvals.ts): one `POST /api/rollouts/<ns>/<name>/approve {version}` per place. */
 export type ApprovalTarget = { key: string; app: string; build: string; where: string; count: number; places: { href: string; label: string; tag: string }[]; href: string; /** what STILL holds the build once approved (a dependency's provider, another rule's name); null when nothing else does, i.e. the build really deploys */ waitsOn?: string | null };
 type GateLite = { name: string; allowedVersions?: string[] | null; passing?: boolean | null };
-/** The gate other than the approval that still refuses `tag` after the approval is given (null: the approval was the only hold). A dependency gate is named by its provider. */
+/** The gate other than the approval that still refuses `tag` (by allow-list, or `passing: false` with none) after the approval is given (null: the approval was the only hold). A dependency gate is named by its provider. */
 export function stillHeldAfterApproval(gates: readonly GateLite[], tag: string, provider: string | null | ((gateName: string) => string | null), pretty: (name: string) => string = (n) => n): string | null {
-	const g = gates.find((x) => !/approval/.test(x.name) && x.allowedVersions != null && !x.allowedVersions.includes(tag));
+	/* a non-approval gate refuses the build when its allow-list lacks the tag, or (no allow-list: a closed window, a failing check) when it is not passing */
+	const g = gates.find((x) => !/approval/.test(x.name) && (x.allowedVersions != null ? !x.allowedVersions.includes(tag) : x.passing === false));
 	if (!g) return null;
 	const p = typeof provider === 'function' ? provider(g.name) : provider;
 	return /^dependency-/.test(g.name) && p ? p : pretty(g.name);

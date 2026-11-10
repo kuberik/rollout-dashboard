@@ -33,3 +33,22 @@ describe('stillHeldAfterApproval', () => {
 		expect(stillHeldAfterApproval([{ name: 'check', allowedVersions: null }], '4.45.0', null)).toBeNull();
 	});
 });
+
+describe('stillHeldAfterApproval: gates that refuse without an allow-list', () => {
+	const pretty = (n: string) => ({ 'deploy-window': 'the deploy window', 'smoke-check': 'Smoke check' }[n] ?? n);
+	it('a closed deploy window (passing: false, no allow-list) still holds the build', () => {
+		const gates = [{ name: 'release-approval', allowedVersions: ['4.45.0'] }, { name: 'deploy-window', passing: false, allowedVersions: null }];
+		expect(stillHeldAfterApproval(gates, '4.45.0', null, pretty)).toBe('the deploy window');
+	});
+	it('a failing check gate still holds the build, named by the check', () => {
+		expect(stillHeldAfterApproval([{ name: 'smoke-check', passing: false }], '4.45.0', null, pretty)).toBe('Smoke check');
+	});
+	it('the toast then says it waits on that rule, never deploying', () => {
+		const w = stillHeldAfterApproval([{ name: 'deploy-window', passing: false }], '4.45.0', null, pretty);
+		expect(doneWords(target(w)).detail).toBe('checkout-api waits on the deploy window for 5 prod regions');
+	});
+	it('an open or unjudged gate does not hold', () => {
+		expect(stillHeldAfterApproval([{ name: 'deploy-window', passing: true, allowedVersions: null }], '4.45.0', null)).toBeNull();
+		expect(stillHeldAfterApproval([{ name: 'smoke-check', allowedVersions: null }], '4.45.0', null)).toBeNull();
+	});
+});
