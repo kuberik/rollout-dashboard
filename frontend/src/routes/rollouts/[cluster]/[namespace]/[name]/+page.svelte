@@ -1562,8 +1562,9 @@
 
 	/**
 	 * ⭐ PALROW r8 (AD palette round 7, item 2): THE RECOVERY GATE MOVED.
-	 * `recoveryModeReason` (with its 2026-09-13 "only `Failed` is a failure"
-	 * fix, verbatim) lives in `view-models/change-version-entry.ts`, and
+	 * `recoveryModeReason` (it predicts the controller: every bake status but
+	 * `Succeeded` is a trigger, worded failed / cancelled / unfinished per
+	 * status) lives in `view-models/change-version-entry.ts`, and
 	 * `ChangeVersionFlow` mounts the warning and the picker together, so
 	 * History walks the SAME step this page always did. This page only
 	 * requests the flow; the flow decides warning-first or picker.

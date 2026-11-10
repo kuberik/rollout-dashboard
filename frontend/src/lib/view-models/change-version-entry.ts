@@ -11,8 +11,11 @@
  * the warning's sentence needs, and `ChangeVersionFlow.svelte` is the one
  * component that mounts the warning and the picker together.
  *
- * The predicate is the Overview's, moved verbatim (including its 2026-09-13
- * fix: only `Failed` is a failure; an in-flight deploy is not).
+ * The predicate started as the Overview's and now predicts the CONTROLLER
+ * (rollout_controller.go:1188-1189): every bake status but `Succeeded` on the
+ * running entry enters recovery mode, worded per status: `Failed` is failed,
+ * `Cancelled` was cancelled, `Deploying`/`InProgress` has not finished. (The
+ * page still DRAWS only `Failed` as failing; that rule is separate.)
  */
 import type { HealthCheck, Rollout } from '../../types';
 import { getDisplayVersion } from '$lib/utils';

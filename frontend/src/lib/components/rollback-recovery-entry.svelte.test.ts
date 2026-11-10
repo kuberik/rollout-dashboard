@@ -169,6 +169,20 @@ describe('cross-page cache: Overview 500, then History opens the flow', () => {
 	});
 });
 
+describe('AppDetail Deploy (no list, not a pin) after an Overview 500', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	test('says unavailable under the title "Deploy 1.0.0 to orders", never no-checks', async () => {
+		stub500();
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+		await client.fetchQuery(healthChecksQueryOptions('orders', 'orders-api', 'hub')).catch(() => {});
+		render(WithQueryClient, {
+			props: { client, component: ChangeVersionFlow as never, props: { open: true, rollout: sel, cluster: 'hub', isPinVersionMode: false, initialSelectedVersion: '1.0.0' } as never }
+		});
+		await waitFor(() => expect(screen.getByText(unavailableText)).toBeInTheDocument());
+		expect(document.querySelector('#rmw-title')?.textContent?.trim()).toBe('Deploy 1.0.0 to orders');
+	});
+});
+
 describe('a failed running build skips the wait', () => {
 	afterEach(() => vi.unstubAllGlobals());
 	test('previous-failed shows at once while the checks are still loading', async () => {
