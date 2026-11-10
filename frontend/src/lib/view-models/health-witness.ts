@@ -341,6 +341,16 @@ export function pendingProbeClause(hc: HealthCheck, now: Date): string | null {
 	return remainingMs > 0 ? `next probe in ${Math.ceil(remainingMs / 1000)}s` : 'probing…';
 }
 
+/**
+ * The sub-line of a PENDING row. Never the controller's `status.message`: a
+ * check that has not settled has no verdict, and the message it carries
+ * ("No alerts firing for labels …") reads as a healthy one (batch4 #6). The
+ * countdown when the check says when it probes next, else the plain state.
+ */
+export function pendingRowText(hc: HealthCheck, now: Date): string {
+	return pendingProbeClause(hc, now) ?? 'Not evaluated yet';
+}
+
 /** Passing right now, but it errored inside this deploy's window. */
 export function recoveredChecks(
 	healthChecks: HealthCheck[],

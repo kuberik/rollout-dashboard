@@ -15,7 +15,8 @@ import {
 	healthQuietState,
 	visibleHealthChecks,
 	pendingNextProbeAt,
-	pendingProbeClause
+	pendingProbeClause,
+	pendingRowText
 } from './health-witness';
 
 const NOW = new Date('2026-08-31T02:00:00Z');
@@ -412,5 +413,31 @@ describe('healthHolds — the shared predicate detail and the Gates tab both rea
 
 	it('false when health itself holds nothing back', () => {
 		expect(healthHolds(true, false, { pending: 0, failing: 0 })).toBe(false);
+	});
+});
+
+/**
+ * batch4 #6: a Pending check printed the controller's message under the
+ * Pending chip — prometheus-controller's "No alerts firing for labels …" reads
+ * as a healthy verdict on a check that has not been evaluated. Pending rows
+ * print the product's own sentence and never the controller message.
+ */
+describe('pendingRowText — a pending check never prints the controller message as a verdict', () => {
+	const base = new Date('2026-09-21T12:00:00Z');
+	const hc = (extra: Record<string, unknown>, message = 'No alerts firing for labels map[alertname:X]') =>
+		({
+			metadata: { name: 'probe', namespace: 'p' },
+			status: { status: 'Pending', message, ...extra }
+		}) as unknown as HealthCheck;
+
+	it('without a probe time: says it has not been evaluated, not the message', () => {
+		const t = pendingRowText(hc({}), base);
+		expect(t).toBe('Not evaluated yet');
+		expect(t).not.toMatch(/alerts firing/i);
+	});
+
+	it('with a probe time: the countdown alone', () => {
+		const t = pendingRowText(hc({ nextProbeAt: new Date(base.getTime() + 5000).toISOString() }), base);
+		expect(t).toBe('next probe in 5s');
 	});
 });

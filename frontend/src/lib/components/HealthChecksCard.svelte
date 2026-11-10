@@ -18,7 +18,7 @@
 		classifyCheck,
 		recoveredLabel,
 		recoveredTitle,
-		pendingProbeClause,
+		pendingRowText,
 		type CheckState
 	} from '$lib/view-models/health-witness';
 
@@ -369,14 +369,10 @@
 								ticks every 100ms — so this line recomputes, and the number
 								actually falls, every render. A check with no `nextProbeAt` (a
 								real backend, or a mock check nobody wired up) falls back to
-								whatever `status.message` already says, unchanged from before.
+								"Not evaluated yet" — never `status.message`, which reads as a
+								verdict on a check that has none (batch4 #6).
 							-->
-							{@const clause = pendingProbeClause(hc, $now)}
-							{@const text = hc.status?.message
-								? clause
-									? `${hc.status.message} · ${clause}`
-									: hc.status.message
-								: clause}
+							{@const text = pendingRowText(hc, $now)}
 							{#if text}
 								<p class="t-body mt-0.5 leading-relaxed text-fg-muted">
 									{text}

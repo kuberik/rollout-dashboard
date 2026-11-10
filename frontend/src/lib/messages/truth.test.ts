@@ -45,7 +45,8 @@ import {
 	healthGateCounts,
 	healthGateHolding,
 	healthGateCountsLabel,
-	pendingProbeClause
+	pendingProbeClause,
+	pendingRowText
 } from '$lib/view-models/health-witness';
 import { upToDateHeadline, upToDateCaption } from '$lib/view-models/up-to-date';
 import {
@@ -1799,6 +1800,14 @@ describe('health-witness: a failing check, and a check that recovered', () => {
 		});
 		expect(parseCheckMessage('something else entirely')).toEqual({ check: null, detail: null });
 		expect(parseCheckMessage('')).toEqual({ check: null, detail: null });
+	});
+
+	test('a Pending check says it is not evaluated — never the controller message (batch4 #6)', () => {
+		const pending = {
+			metadata: { name: 'probe', namespace: 'alpha-prod' },
+			status: { status: 'Pending', message: 'No alerts firing for labels' }
+		} as unknown as Parameters<typeof pendingRowText>[0];
+		says(pendingRowText(pending, new Date('2026-09-21T12:00:00Z')), 'Not evaluated yet');
 	});
 
 	test('DeploymentBlocked True is the join; False and absent are not', () => {
