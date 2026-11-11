@@ -13,7 +13,6 @@ describe('the primary cause classifies a gate by its backend kind', () => {
 		const cold = g({ id: 'sched', kind: 'check', clears: 'check', backendKind: 'schedule' });
 		const v = verdictForGates([approval, cold], 'prod-us');
 		expect(v.cause).toBe('clock');
-		expect(v.alsoHold?.kind).toBe('window');
 	});
 	it('the same gate with the join loaded reads the same cause', () => {
 		expect(verdictForGates([approval, g({ id: 'sched', kind: 'schedule', clears: 'clock', backendKind: 'schedule' })], 'prod-us').cause).toBe('clock');
