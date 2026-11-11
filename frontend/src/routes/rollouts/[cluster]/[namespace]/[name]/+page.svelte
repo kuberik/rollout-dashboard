@@ -55,6 +55,7 @@
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgoCompact,
+		buildAge,
 		formatDate,
 		isFieldManagedByManager,
 		isFieldManagedByOtherManager,
@@ -4182,7 +4183,7 @@
 															class="nb-c-age nb-rest t-meta text-fg-subtle tabular-nums"
 															title={formatDate(releaseCandidate.created)}
 														>
-															{formatTimeAgoCompact(releaseCandidate.created, $now)}
+															{buildAge(releaseCandidate.created, $now)}
 														</span>
 													{/if}
 													<!-- History's disclosure (§4.8): the chevron button at the row's right edge, one x
@@ -4591,7 +4592,7 @@
 																? `Built ${formatDate(runAge)}`
 																: `Deployed ${formatDate(runAge)}`}
 														>
-															{formatTimeAgoCompact(runAge, $now)}
+															{latestEntry.version.created ? buildAge(runAge, $now) : `deployed ${formatTimeAgoCompact(runAge, $now)} ago`}
 														</span>
 													{/if}
 													<button
@@ -4930,7 +4931,7 @@
 											<span class="t-code text-fg">{getDisplayVersion(rc)}</span>
 											{#if rc.created}
 												<span class="t-meta text-fg-subtle tabular-nums"
-													>{formatTimeAgoCompact(rc.created, $now)}</span
+													>{buildAge(rc.created, $now)}</span
 												>
 											{/if}
 										</li>
@@ -5140,7 +5141,7 @@
 	   WIDE: line 1 = mark build title(1fr) deploy-slot age chevron; line 2 = the cause. */
 	.nb-row {
 		display: grid;
-		grid-template-columns: 16px var(--nb-build-w, 64px) minmax(0, 1fr) 36px 26px;
+		grid-template-columns: 16px var(--nb-build-w, 64px) minmax(0, 1fr) 82px 26px; /* the age says "built 12h ago" (buildAge): a build's age, labelled, never a bare wait-looking clock */
 		column-gap: 12px;
 		row-gap: 4px;
 		align-items: center;
@@ -5167,6 +5168,7 @@
 		grid-row: 1;
 		justify-self: end;
 		text-align: right;
+		white-space: nowrap;
 	}
 	/* History's chevron box: 26x26, a transparent border that resolves on hover; a 44x44 hit box is drawn
 	   by ::after (the visual box does not change, the row height does not change). */
@@ -5292,7 +5294,7 @@
 	@container (min-width: 32rem) {
 		.nb-row {
 			grid-template-columns:
-				16px var(--nb-build-w, 64px) minmax(0, 1fr) var(--nb-dep-w, 62px) 60px
+				16px var(--nb-build-w, 64px) minmax(0, 1fr) var(--nb-dep-w, 62px) 82px
 				26px;
 		}
 		.nb-ledger[data-anyway] .nb-row {

@@ -15,6 +15,9 @@ import {
 	streamBuilds,
 	newestBuild,
 	noReleasesAt,
+	deployedBuild,
+	waitClock,
+	type HomeState,
 	ago,
 	buildIdentity,
 	type PlaceHold,
@@ -768,3 +771,8 @@ export const approvalMessage = (
 	[waitingSentence(heldN), focus ? followSentence(placesAfter(focus, places)) : null]
 		.filter(Boolean)
 		.join(' ');
+
+/** the time-in-state a PlaceRow prints. A place that WAITS (approval / rule) prints the one clock of a wait, `waitClock` (the figure the /rollouts row prints);
+ *  every other place prints since its deployed build landed. The waiting build's own age is not this row's to say. */
+export const placeAge = (row: TRow, hs: HomeState = 'incident'): string =>
+	ago((row.group === 'approval' || row.group === 'held') && !row.stillChecking ? waitClock(row, hs) : (deployedBuild(row)?.at ?? row.since));

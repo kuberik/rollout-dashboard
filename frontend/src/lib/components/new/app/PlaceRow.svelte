@@ -17,11 +17,11 @@
 	import Slipway from '../Slipway.svelte';
 	import { ago, approvalTarget, deployedBuild, truthAttrs, type TRow, type HomeState, type PlaceHold } from '../data';
 	import { markOf, envTheme, tabEnv, actionHref } from '../rollout-view';
-	import { placeWord, waveFactOf, waveClause, type PlaceWait } from './app-model';
+	import { placeAge, placeWord, waveFactOf, waveClause, type PlaceWait } from './app-model';
 
 	let { row, place, pinned = false, note = null, noReleases = null, wait = null, approve = null, open = false, nested = false, toggle = null, hs = 'incident', slipAction = null }: { row: TRow; place: PlaceHold; pinned?: boolean; note?: string | null; /** this place's Rollout has no releases: its own word, printed beside the state (never counted as on the newest) */ noReleases?: string | null; /** a healthy place its rollout order has not reached: "Waiting for ap-southeast-2" + "to deploy 4.46.0-46" (app-model placeWait) */ wait?: PlaceWait | null; /** the Approve this place owns (>= 640 only; the phone's lives in the banner) */ approve?: TRow['action']; open?: boolean; nested?: boolean; toggle?: (() => void) | null; hs?: HomeState; slipAction?: TRow['action'] } = $props();
 
-	const age = $derived(ago(deployedBuild(row)?.at ?? row.since));
+	const age = $derived(placeAge(row, hs));
 	const word = $derived(placeWord(place, pinned, !!row.needsYou));
 	const label = $derived(tabEnv(row) === 'production' ? 'prod' : tabEnv(row));
 	/** "wave 2" / "wave 1 · leader" / "follows eu-west-1": only where the tier has several waves (or a follower), so a one-wave tier prints nothing. */

@@ -268,6 +268,11 @@ export function failureKind(message: string | null | undefined): 'healthcheck' |
     return categorizeFailure(message) === 'healthcheck' ? 'healthcheck' : 'deploy';
 }
 
+/** A build's OWN age, labelled as such ("built 2h ago"): the Newer-builds rows print it beside a hold, where a bare "2h" read as the wait clock (waitClock). */
+export function buildAge(created: string, now: Date = new Date()): string {
+    return `built ${formatTimeAgoCompact(created, now)} ago`;
+}
+
 export function formatTimeAgoCompact(start: string, end: Date = new Date()): string {
     const date = new Date(start);
     // Clock skew (QA #18): an instant slightly in the future is "now", never "-4s".

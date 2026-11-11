@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
 import { findChange, classified, runningN, stripOf, statementOf, spineOf, blockLine, rollbackTo, countsOf, countLine, changeProd, commitsOf, openedOf, howFacts } from './detail-model';
-import { placesOfChange, ago } from '../data';
+import { placesOfChange, ago, waitClock } from '../data';
 import { firstBuildOf, headFacts, foldWindow, carrierRange } from './detail-model';
 
 const at = (slug: string, s: 'incident' | 'calm' | 'quiet') => {
@@ -71,7 +71,7 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(w).toHaveLength(1);
 		expect(w[0].places).toHaveLength(5);
 	});
-	it('#90 (r13 CE2): the wait is THIS change\'s build c0d3e88, aged as the tab ages it (4h); f4a2c19 is only the labelled newer build', () => {
+	it('#90 (r13 CE2): the wait is THIS change\'s build c0d3e88, aged by the wait clock (batch4 P1: the hold clock, not the build age); f4a2c19 is only the labelled newer build', () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'incident');
 		const lead = places[0];
 		const o = openedOf(lead, 'incident');
@@ -82,12 +82,14 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(o.relation).toMatchObject({ word: `${lead.label} runs`, build: '9b7e410' });
 		expect(o.commit).toEqual({ title: 'Fix partial refund rounding', author: 'paul-stevens' });
 		expect(commitsOf(c, 'incident', lead).commits[0]).toMatchObject({ sha: 'c0d3e88' });
-		expect(o.since).toBe('4h');
-		/* the source, not just the sort: the wait event is dated by the tab's candidate c0d3e88 (created), never f4a2c19's */
+		expect(o.since).toBe(ago(waitClock(lead.row!, 'incident')));
+		/* the wait event names the tab's candidate c0d3e88 (never f4a2c19) and is dated by the wait clock */
 		const raw = (fixture as unknown as { rollouts: { metadata: { namespace: string; name: string }; status: { releaseCandidates?: { tag?: string; version?: string; created?: string }[] } }[] }).rollouts.find((r) => lead.href.endsWith(`${r.metadata.namespace}/${r.metadata.name}`))!;
 		const cand = raw.status.releaseCandidates!.find((x) => (x.version ?? x.tag ?? '').startsWith('c0d3e88'))!;
 		const w = spineOf(c, 'incident', places).find((e) => e.kind === 'waiting')!;
-		expect([w.build, w.at]).toEqual(['c0d3e88', cand.created]);
+		expect(cand.created).toBeTruthy();
+		const oldest = places.filter((x) => x.kind === 'waiting').map((x) => waitClock(x.row!, 'incident')!).sort()[0];
+		expect([w.build, w.at]).toEqual(['c0d3e88', oldest]);
 	});
 	it('#37 (CD5, re-pinned r6 CG6): build subject = the tab\'s commit (danielreed, the PR title); the change subject stays the PR\'s', () => {
 		const { c, places } = at(P37, 'incident');
