@@ -11,7 +11,7 @@ describe('the Approved toast says what is true', () => {
 	it('approved, waits on the dependency that still holds the build', () => {
 		const w = doneWords(target('payments-svc'));
 		expect(w.title).toBe('Approved f4a2c19');
-		expect(w.detail).toBe('checkout-api waits on payments-svc for 5 prod regions');
+		expect(w.detail).toBe('checkout-api: Waits on payments-svc · 5 prod regions');
 		expect(w.detail).not.toMatch(/deploying/);
 	});
 });

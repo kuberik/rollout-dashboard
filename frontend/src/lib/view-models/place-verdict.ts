@@ -25,9 +25,6 @@ export const approvalWrite = (allowed: readonly string[], approvedTag: string): 
 export const approvalGateOf = <G extends VGate>(gates: readonly G[], cands?: readonly string[]): G | undefined =>
 	gates.find((x) => (x.kind == null ? /approval/.test(x.name) : x.kind === 'approval') && x.allowedVersions != null && (!cands || cands.every((c) => !x.allowedVersions!.includes(c))));
 
-/** a gate of kind approval is the approval only when it carries an allow-list (what Approve edits): an ownerless check the backend can only call `approval`, with no allow-list, still refuses */
-export const isApprovalGate = (g: VGate, own: VGate | undefined): boolean => g === own || (gateKindOf(g) === 'approval' && g.allowedVersions != null);
-
 /** The gates that refuse `tag`: its allow-list lacks it, or (no allow-list: a closed deploy window, a failing check) the gate is not passing. */
 export const refusingGates = <G extends VGate>(gates: readonly G[], tag: string): G[] => gates.filter((x) => (x.allowedVersions != null ? !!tag && !x.allowedVersions.includes(tag) : x.passing === false));
 
@@ -52,10 +49,12 @@ export type PlaceVerdict<G extends VGate = VGate> =
 	| { state: 'awaiting-approval'; target: string }
 	/** the approved build is itself Deploying / InProgress here: the place reads its own bake state, whatever refuses the next build */
 	| { state: 'running'; target: string }
-	| { state: 'held-by-rule'; target: string; first: G; refusers: G[]; /** the approval is also pending for this build */ also: { kind: AlsoKind } };
+	| { state: 'held-by-rule'; target: string; first: G; refusers: G[]; /** the approval is ALSO pending for this build and would still deploy it once the refuser clears; null when the refuser is a static allow-list that does not list the build (no approval and no clock ever clears it for THIS build: the ask would be a false call to action) */ also: { kind: AlsoKind } | null };
 
 /** blame order: a persistent refuser (a failing check, a dependency, an unattributed gate) decides over a promotion order, which decides over a window (clears by itself) */
 const BLAME = (g: VGate): number => { const k = gateKindOf(g); return k === 'schedule' ? 2 : k === 'promotion' ? 1 : 0; };
+/** a hand-written allow-list (kind unknown, with a list) that lacks the build: nothing the dashboard shows clears it for that build */
+const isStaticRefusal = (g: VGate): boolean => gateKindOf(g) === 'unknown' && g.allowedVersions != null;
 export const alsoKindOf = (g: VGate): AlsoKind => { const k = gateKindOf(g); return k === 'schedule' ? 'window' : k === 'promotion' ? 'order' : 'hold'; };
 
 export type PlaceVerdictInput<G extends VGate> = {
@@ -68,24 +67,18 @@ export type PlaceVerdictInput<G extends VGate> = {
 	running?: { tag: string; bake?: string | null } | null;
 };
 
-/** null: no approval is pending at this place (the caller reads the gates as they are). */
+/** a gate that is the approval: `kind` says it (only a payload without `kind` falls back to the name) and it carries the allow-list Approve edits */
+export const isApprovalLike = (x: VGate): boolean => (x.kind == null ? /approval/.test(x.name) : x.kind === 'approval') && x.allowedVersions != null;
+
+/** null: no approval gate refuses any live candidate here (the caller reads the gates as they are), or the target is approved and nothing refuses it (it deploys). */
 export function placeVerdict<G extends VGate>(i: PlaceVerdictInput<G>): PlaceVerdict<G> | null {
-	const own = approvalGateOf(i.gates, i.cands);
-	if (!own || !i.cands.length || !i.target) return null;
-	const refusers = refusingGatesAfterApproval(i.gates, own, i.target);
-	if (!refusers.length) return { state: 'awaiting-approval', target: i.target };
+	const approvals = i.gates.filter(isApprovalLike);
+	if (!i.cands.length || !i.target || !approvals.some((a) => i.cands.some((c) => !a.allowedVersions!.includes(c)))) return null;
+	const pending = approvals.some((a) => !a.allowedVersions!.includes(i.target));
+	const refusers = refusingGates(i.gates, i.target).filter((x) => !isApprovalLike(x));
+	if (!refusers.length) return pending ? { state: 'awaiting-approval', target: i.target } : null;
 	const r = i.running;
-	if (r && (r.bake === 'Deploying' || r.bake === 'InProgress') && gateWrites(i.gates, own, r.tag)) return { state: 'running', target: i.target };
+	if (r && (r.bake === 'Deploying' || r.bake === 'InProgress') && approvals.every((a) => a.allowedVersions!.includes(r.tag)) && refusingGates(i.gates, r.tag).length === 0) return { state: 'running', target: i.target };
 	const sorted = [...refusers].sort((a, b) => BLAME(a) - BLAME(b));
-	return { state: 'held-by-rule', target: i.target, first: sorted[0], refusers: sorted, also: { kind: alsoKindOf(sorted[0]) } };
-}
-
-/** the gates (not the approval) that still refuse `tag` once it is approved */
-export function refusingGatesAfterApproval<G extends VGate>(gates: readonly G[], own: G | undefined, tag: string): G[] {
-	return refusingGates(gates, tag).filter((x) => !isApprovalGate(x, own));
-}
-
-/** the build `tag` is approved (the approval gate allows it) AND every other gate lets it through: it is what an approval deployed */
-function gateWrites(gates: readonly VGate[], own: VGate, tag: string): boolean {
-	return own.allowedVersions!.includes(tag) && refusingGatesAfterApproval(gates, own, tag).length === 0;
+	return { state: 'held-by-rule', target: i.target, first: sorted[0], refusers: sorted, also: pending && !isStaticRefusal(sorted[0]) ? { kind: alsoKindOf(sorted[0]) } : null };
 }

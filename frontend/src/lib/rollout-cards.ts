@@ -32,8 +32,8 @@ import {
 } from './source-dashboard';
 import { blockingStory } from './view-models/blocking-story';
 import type { BlockingStory, GateContext, ContractHolds } from './view-models/blocking-story';
-import { heldVerdict, causeLabelForGates } from './view-models/held';
-import { placeVerdict, targetBuild, type PlaceVerdict } from './view-models/place-verdict';
+import { heldVerdict, verdictForGates, causeLabelForGates } from './view-models/held';
+import { placeVerdict, targetBuild, alsoKindOf, type PlaceVerdict } from './view-models/place-verdict';
 import type { HeldCause, AlsoHold } from './view-models/held';
 import { displayVersionForTag } from './version-utils';
 import { formatAbsoluteReopen } from './api/schedules';
@@ -283,14 +283,19 @@ function placeVerdictOf(
 		return best;
 	};
 	const h0 = r.status?.history?.[0];
-	const v = placeVerdict({ gates, cands, target: targetBuild(cands, reachOf), running: h0 ? { tag: h0.version?.tag ?? h0.version?.version ?? '', bake: h0.bakeStatus } : null });
+	const target = targetBuild(cands, reachOf);
+	/* a target that has not cleared every earlier stage is queued behind it, not held here (held.ts's frontier rule): chain sequencing is not this place's verdict */
+	const tb = (story.candidates ?? []).find((b) => b.build === (displayVersionForTag(r, target) || target));
+	if (tb) { const cv = verdictForGates(tb.classifiedGates, envName, { hasContract: tb.contracts.length > 0 }); if (!cv.held && cv.waitsForEnv) return null; }
+	const v = placeVerdict({ gates, cands, target, running: h0 ? { tag: h0.version?.tag ?? h0.version?.version ?? '', bake: h0.bakeStatus } : null });
 	if (!v) return null;
 	if (v.state === 'running') return { verdict: v, held: false, cause: null, causeLabel: null, also: null };
 	if (v.state === 'awaiting-approval') return { verdict: v, held: true, cause: 'person', causeLabel: causeLabelForGates(story.gates, 'person'), also: null };
 	const cg = story.gates.find((g) => g.id === v.first.name) ?? null;
-	const cause: HeldCause = v.also.kind === 'window' ? 'clock' : v.also.kind === 'order' ? 'order' : cg?.kind === 'dependency' || cg?.clears === 'upstream' ? 'dependency' : cg?.clears === 'check' ? 'check' : 'unknown';
+	const kind = alsoKindOf(v.first);
+	const cause: HeldCause = kind === 'window' ? 'clock' : kind === 'order' ? 'order' : cg?.kind === 'dependency' || cg?.clears === 'upstream' ? 'dependency' : cg?.clears === 'check' ? 'check' : 'unknown';
 	const name = cg ? (cg.kind === 'dependency' && cg.subject ? cg.subject : (cg.displayName ?? cg.label)) : v.first.name;
-	const also: AlsoHold = { kind: v.also.kind, other: v.also.kind === 'order' ? 'promotion order' : name };
+	const also: AlsoHold | null = v.also ? { kind: v.also.kind, other: v.also.kind === 'order' ? 'promotion order' : name } : null;
 	return { verdict: v, held: true, cause, causeLabel: cg ? causeLabelForGates([cg], cause) : null, also };
 }
 

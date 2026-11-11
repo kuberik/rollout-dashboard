@@ -60,7 +60,7 @@ describe('approving in place', () => {
 			const before = rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort();
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
 			expect(t.waitsOn, 'approvalTarget computes waitsOn itself').toBe('payments-svc');
-			expect(doneWords(t).detail).toBe(`payments-core waits on payments-svc for ${t.where}`);
+			expect(doneWords(t).detail).toBe(`payments-core: Waits on payments-svc · ${t.where}`);
 			grant(t);
 			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
 			expect(mine.length, 'the prod row survives').toBeGreaterThan(0);
@@ -101,7 +101,7 @@ describe('approving in place', () => {
 	const holds = (what: string, gate: G) => it(`${what} still holds after the approval: no Deploying, and the toast and the held row name the same hold`, () => {
 		withGate(gate, (t) => {
 			expect(t.waitsOn, 'approvalTarget sees the hold').toBeTruthy();
-			expect(doneWords(t).detail).toBe(`payments-core waits on ${t.waitsOn} for ${t.where}`);
+			expect(doneWords(t).detail).toBe(`payments-core: ${t.cause} · ${t.where}`);
 			const before = rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort();
 			grant(t);
 			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
@@ -192,7 +192,7 @@ describe('one classification for the toast, the row, the Holding card and the bu
 	it('a closed window first, then an unknown gate whose allow-list refuses the build: toast title == row title', () => {
 		patched([{ name: 'business-hours-gate', kind: 'schedule', passing: false, allowedVersions: null }, { name: 'mystery-rule', kind: 'unknown', allowedVersions: ['0.0.0'] }], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
-			expect(t.waitsOn).toBe('Business hours gate');
+			expect(t.waitsOn, 'blame order: a persistent refuser (an unknown gate) names the hold, a window that clears itself does not').toBe('Mystery rule');
 			grant(t);
 			expect(gatesOf('payments-core', 'incident').some((g) => g.holding && g.name === t.waitsOn), 'the Holding card names the toast gate').toBe(true);
 			revokeApproval(t);
@@ -225,7 +225,7 @@ describe('one classification for the toast, the row, the Holding card and the bu
 		patched([{ name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] }], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
 			expect(t.waitsOn).toBe('Permits newest only');
-			expect(doneWords(t).detail).toBe(`payments-core waits on Permits newest only for ${t.where}`);
+			expect(doneWords(t).detail).toBe(`payments-core: Held by Permits newest only · ${t.where}`);
 			grant(t);
 			expect(rollouts('incident').rows.some((r) => r.app === 'payments-core' && r.tier === 'prod' && (r.state === 'deploying' || r.state === 'checking'))).toBe(false);
 			/* the row, the toast and the card all name X (ruling 4) */
@@ -271,7 +271,7 @@ describe('one classification for the toast, the row, the Holding card and the bu
 		(window ? withWindow : (f: () => void) => f())(() => patched([gate], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
 			expect(t.waitsOn, 'the toast waits on the rule').toBeTruthy();
-			expect(doneWords(t).detail).toBe(`payments-core waits on ${t.waitsOn} for ${t.where}`);
+			expect(doneWords(t).detail).toBe(`payments-core: ${t.cause} · ${t.where}`);
 			expect(sentenceOf(prodRow(), 'incident')[0], 'the row names the rule, and the approval too').toBe(`Held by ${t.waitsOn} · also needs your approval`);
 			const ask = inbox('incident').items.find((i) => i.row.app === 'payments-core' && i.row.tier === 'prod');
 			expect(ask?.reason, 'Home keeps the ask and names the other hold').toMatch(ask_);
@@ -363,7 +363,7 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 		patched([{ name: 'refuses-all', kind: 'unknown', allowedVersions: [] }], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
 			expect(t.waitsOn).toBe('Refuses all');
-			expect(doneWords(t).detail).toBe(`payments-core waits on Refuses all for ${t.where}`);
+			expect(doneWords(t).detail).toBe(`payments-core: Held by Refuses all · ${t.where}`);
 			grant(t);
 			expect(rollouts('incident').rows.some((r) => r.app === 'payments-core' && r.tier === 'prod' && (r.state === 'deploying' || r.state === 'checking'))).toBe(false);
 			expect(gatesOf('payments-core', 'incident').some((g) => g.holding && g.name === 'Refuses all')).toBe(true);

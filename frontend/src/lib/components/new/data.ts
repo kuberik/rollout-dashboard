@@ -1288,7 +1288,8 @@ export function holdTitleOf(href: string, g: GateLite, state: HomeState, app: st
  *  until the gate's pretty name is published) reads as what it is, "Waits for the deploy window"; once named, "Held by Business Hours Only". */
 export function holdCause(href: string, g: GateLite, state: HomeState, app: string, key: string | null): string {
 	const title = holdTitleOf(href, g, state, app, key);
-	return gateKindOf(g) === 'schedule' && title === 'Gate' ? 'Waits for the deploy window' : `Held by ${title}`;
+	const kind = gateKindOf(g);
+	return kind === 'schedule' && title === 'Gate' ? 'Waits for the deploy window' : kind === 'dependency' || !!dependencyProviderOf(href, g.name) ? `Waits on ${title}` : `Held by ${title}`;
 }
 /** the cause of a place the verdict holds by a rule (null: the place is not held by a rule, or its verdict is awaiting-approval) */
 export function placeCause(href: string, app: string, key: string | null, state: HomeState = 'incident'): string | null {
