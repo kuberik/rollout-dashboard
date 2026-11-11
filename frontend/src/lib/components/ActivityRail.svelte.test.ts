@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import ActivityRail from './ActivityRail.svelte';
 
 const MIN = 60_000;
+/* Day grouping depends on the clock: pin it to midday so "ago" offsets never straddle midnight (the suite failed between 00:00 and 02:00). */
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(new Date('2026-11-10T12:00:00'));
+});
+afterEach(() => vi.useRealTimers());
 function rollout(name: string, entries: { ago: number; status: string; v: string }[]) {
 	return {
 		metadata: { name, namespace: `${name}-staging`, annotations: {} },
