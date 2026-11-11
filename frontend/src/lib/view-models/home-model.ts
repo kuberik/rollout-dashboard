@@ -751,6 +751,23 @@ function appEnvState(c: RolloutCard): EnvState {
 	return 'healthy'; // newest or behind — both are a running, unheld deploy
 }
 
+/**
+ * THE PLACE VERDICT AS A HELD FACT, the one every surface reads for "is this place held": the app page's strip, /rollouts and the Gates tab's
+ * neighbour tiles. A place still baking its own build reads "Checking" even when the frontier read (`card.held`) would refuse the next one, so
+ * the Gates tab's "us-east-2 held on payments-svc" must come from here, never from `card.held`.
+ */
+export function placeVerdictHeld(c: RolloutCard): boolean {
+	const s = appEnvState(c);
+	return s === 'awaiting-approval' || s === 'held-by-rule';
+}
+
+/** The Gates tab's peer map (env name to held + cause), read off the place verdict (`placeVerdictHeld`). */
+export function peerHeldMap(peers: ReadonlyMap<string, RolloutCard>): Map<string, { held: boolean; causeLabel: string | null }> {
+	const m = new Map<string, { held: boolean; causeLabel: string | null }>();
+	for (const [envName, card] of peers) m.set(envName, { held: placeVerdictHeld(card), causeLabel: card.heldCauseLabel });
+	return m;
+}
+
 function laneEnvLabel(env: string, isProd: boolean): string {
 	return isProd ? env.replace(/^prod-?/i, '') || env : env;
 }

@@ -121,6 +121,7 @@
 	} from '$lib/view-models/dependency-graph';
 	import { skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { buildLanes } from '$lib/view-models/promotion-lanes';
+	import { peerHeldMap } from '$lib/view-models/home-model';
 	import { countLabel } from '$lib/disclosure';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
@@ -990,13 +991,7 @@
 	 * `waitsForFact` already prints for the lead row, reaching the
 	 * canvas without a second copy of the join.
 	 */
-	const peerHeldByEnv = $derived.by(() => {
-		const m = new Map<string, { held: boolean; causeLabel: string | null }>();
-		for (const [envName, card] of peersByEnv) {
-			m.set(envName, { held: card.held, causeLabel: card.heldCauseLabel });
-		}
-		return m;
-	});
+	const peerHeldByEnv = $derived(peerHeldMap(peersByEnv));
 
 	/**
 	 * ⭐ THE LEAD ROW'S ONE SENTENCE, COMPOSED HERE NOW (squad-rollout Lane G
