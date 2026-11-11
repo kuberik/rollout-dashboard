@@ -582,7 +582,7 @@ func setupRouter() *gin.Engine {
 
 			// Fan out: rollout fetch is fatal (returns 500 below); the rest log-and-continue.
 			// ImagePolicy → ImageRepository chain is sequenced inside the rollout goroutine since
-			// it depends on rollout.Spec.ReleasesImagePolicy.Name.
+			// it depends on the rollout's release source.
 			g, gctx := errgroup.WithContext(c.Request.Context())
 			g.Go(func() error {
 				r, err := k8sClient.GetRollout(gctx, namespace, name)
@@ -591,16 +591,8 @@ func setupRouter() *gin.Engine {
 					return nil
 				}
 				rollout = r
-				if r.Spec.ReleasesImagePolicy.Name == "" {
-					return nil
-				}
-				imagePolicy, err := k8sClient.GetImagePolicy(gctx, namespace, r.Spec.ReleasesImagePolicy.Name)
-				if err != nil || imagePolicy.Spec.ImageRepositoryRef.Name == "" {
-					return nil
-				}
-				imageRepo, err := k8sClient.GetImageRepository(gctx, namespace, imagePolicy.Spec.ImageRepositoryRef.Name)
-				if err == nil && imageRepo.Status.LastScanResult != nil {
-					imageRepoScanTime = imageRepo.Status.LastScanResult.ScanTime.Format(time.RFC3339)
+				if ri, err := k8sClient.ResolveReleaseImage(gctx, r); err == nil && ri.Repository != nil && ri.Repository.Status.LastScanResult != nil {
+					imageRepoScanTime = ri.Repository.Status.LastScanResult.ScanTime.Format(time.RFC3339)
 				}
 				return nil
 			})
@@ -1115,27 +1107,17 @@ func setupRouter() *gin.Engine {
 				return
 			}
 
-			// Get the ImagePolicy referenced by the rollout
-			imagePolicyName := rollout.Spec.ReleasesImagePolicy.Name
-			imagePolicy, err := k8sClient.GetImagePolicy(context.Background(), namespace, imagePolicyName)
+			// Resolve the image repository from the rollout's release source
+			releaseImage, err := k8sClient.ResolveReleaseImage(context.Background(), rollout)
 			if err != nil {
-				log.Printf("Error fetching image policy: %v", err)
-				writeUpstreamError(c, "Failed to fetch image policy", err)
-				return
-			}
-
-			// Get the ImageRepository referenced by the ImagePolicy
-			imageRepoName := imagePolicy.Spec.ImageRepositoryRef.Name
-			imageRepo, err := k8sClient.GetImageRepository(context.Background(), namespace, imageRepoName)
-			if err != nil {
-				log.Printf("Error fetching image repository: %v", err)
-				writeUpstreamError(c, "Failed to fetch image repository", err)
+				log.Printf("Error resolving release image: %v", err)
+				writeReleaseImageError(c, err)
 				return
 			}
 
 			var opts []crane.Option
-			if imageRepo.Spec.SecretRef != nil {
-				secret, err := k8sClient.GetSecret(context.Background(), namespace, imageRepo.Spec.SecretRef.Name)
+			if releaseImage.SecretName != "" {
+				secret, err := k8sClient.GetSecret(context.Background(), namespace, releaseImage.SecretName)
 				if err != nil {
 					log.Printf("Error fetching secret: %v", err)
 					c.JSON(http.StatusInternalServerError, gin.H{
@@ -1161,7 +1143,7 @@ func setupRouter() *gin.Engine {
 			// Get the image contents
 			files, err := oci.GetImageContents(
 				context.Background(),
-				imageRepo.Spec.Image,
+				releaseImage.Image,
 				version,
 				opts...,
 			)
@@ -1378,25 +1360,16 @@ func setupRouter() *gin.Engine {
 				return
 			}
 
-			imagePolicyName := rollout.Spec.ReleasesImagePolicy.Name
-			imagePolicy, err := k8sClient.GetImagePolicy(context.Background(), namespace, imagePolicyName)
+			releaseImage, err := k8sClient.ResolveReleaseImage(context.Background(), rollout)
 			if err != nil {
-				log.Printf("Error fetching image policy: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image policy"})
-				return
-			}
-
-			imageRepoName := imagePolicy.Spec.ImageRepositoryRef.Name
-			imageRepo, err := k8sClient.GetImageRepository(context.Background(), namespace, imageRepoName)
-			if err != nil {
-				log.Printf("Error fetching image repository: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image repository"})
+				log.Printf("Error resolving release image: %v", err)
+				writeReleaseImageError(c, err)
 				return
 			}
 
 			var opts []crane.Option
-			if imageRepo.Spec.SecretRef != nil {
-				secret, err := k8sClient.GetSecret(context.Background(), namespace, imageRepo.Spec.SecretRef.Name)
+			if releaseImage.SecretName != "" {
+				secret, err := k8sClient.GetSecret(context.Background(), namespace, releaseImage.SecretName)
 				if err != nil {
 					log.Printf("Error fetching secret: %v", err)
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch secret"})
@@ -1417,7 +1390,7 @@ func setupRouter() *gin.Engine {
 				opts = append(opts, crane.WithAuthFromKeychain(keychain))
 			}
 
-			mediaType, err := oci.GetArtifactType(context.Background(), imageRepo.Spec.Image, version, opts...)
+			mediaType, err := oci.GetArtifactType(context.Background(), releaseImage.Image, version, opts...)
 			if err != nil {
 				log.Printf("Error fetching media type: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch media type"})
@@ -1448,26 +1421,17 @@ func setupRouter() *gin.Engine {
 				return
 			}
 
-			// Get the ImagePolicy referenced by the rollout
-			imagePolicyName := rollout.Spec.ReleasesImagePolicy.Name
-			imagePolicy, err := k8sClient.GetImagePolicy(context.Background(), namespace, imagePolicyName)
+			// Resolve the image repository from the rollout's release source
+			releaseImage, err := k8sClient.ResolveReleaseImage(context.Background(), rollout)
 			if err != nil {
-				log.Printf("Error fetching image policy: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image policy"})
-				return
-			}
-
-			imageRepoName := imagePolicy.Spec.ImageRepositoryRef.Name
-			imageRepo, err := k8sClient.GetImageRepository(context.Background(), namespace, imageRepoName)
-			if err != nil {
-				log.Printf("Error fetching image repository: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image repository"})
+				log.Printf("Error resolving release image: %v", err)
+				writeReleaseImageError(c, err)
 				return
 			}
 
 			var opts []crane.Option
-			if imageRepo.Spec.SecretRef != nil {
-				secret, err := k8sClient.GetSecret(context.Background(), namespace, imageRepo.Spec.SecretRef.Name)
+			if releaseImage.SecretName != "" {
+				secret, err := k8sClient.GetSecret(context.Background(), namespace, releaseImage.SecretName)
 				if err != nil {
 					log.Printf("Error fetching secret: %v", err)
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch secret"})
@@ -1488,7 +1452,7 @@ func setupRouter() *gin.Engine {
 				opts = append(opts, crane.WithAuthFromKeychain(keychain))
 			}
 
-			annotations, err := oci.GetImageAnnotations(context.Background(), imageRepo.Spec.Image, version, opts...)
+			annotations, err := oci.GetImageAnnotations(context.Background(), releaseImage.Image, version, opts...)
 			if err != nil {
 				log.Printf("Error fetching annotations: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch annotations"})
@@ -1519,26 +1483,17 @@ func setupRouter() *gin.Engine {
 				return
 			}
 
-			// Get the ImagePolicy referenced by the rollout
-			imagePolicyName := rollout.Spec.ReleasesImagePolicy.Name
-			imagePolicy, err := k8sClient.GetImagePolicy(context.Background(), namespace, imagePolicyName)
+			// Resolve the image repository from the rollout's release source
+			releaseImage, err := k8sClient.ResolveReleaseImage(context.Background(), rollout)
 			if err != nil {
-				log.Printf("Error fetching image policy: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image policy"})
-				return
-			}
-
-			imageRepoName := imagePolicy.Spec.ImageRepositoryRef.Name
-			imageRepo, err := k8sClient.GetImageRepository(context.Background(), namespace, imageRepoName)
-			if err != nil {
-				log.Printf("Error fetching image repository: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image repository"})
+				log.Printf("Error resolving release image: %v", err)
+				writeReleaseImageError(c, err)
 				return
 			}
 
 			var opts []crane.Option
-			if imageRepo.Spec.SecretRef != nil {
-				secret, err := k8sClient.GetSecret(context.Background(), namespace, imageRepo.Spec.SecretRef.Name)
+			if releaseImage.SecretName != "" {
+				secret, err := k8sClient.GetSecret(context.Background(), namespace, releaseImage.SecretName)
 				if err != nil {
 					log.Printf("Error fetching secret: %v", err)
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch secret"})
@@ -1560,7 +1515,7 @@ func setupRouter() *gin.Engine {
 			}
 
 			// Get all tags from the repository
-			tags, err := oci.ListRepositoryTags(context.Background(), imageRepo.Spec.Image, opts...)
+			tags, err := oci.ListRepositoryTags(context.Background(), releaseImage.Image, opts...)
 			if err != nil {
 				log.Printf("Error fetching repository tags: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch repository tags"})

@@ -157,3 +157,13 @@ func rolloutWithGateKinds(c *gin.Context, r *rolloutv1alpha1.Rollout) interface{
 	}
 	return kubernetes.RolloutWithGateKinds{Rollout: r, Kinds: kinds}
 }
+
+// writeReleaseImageError answers a failed release-image resolution: a rollout
+// without a (resolvable) release source is the caller's 404/422, not a 500.
+func writeReleaseImageError(c *gin.Context, err error) {
+	if status, ok := kubernetes.IsReleaseImageUnresolvable(err); ok {
+		c.JSON(status, gin.H{"error": "Rollout release source is not resolvable", "details": err.Error()})
+		return
+	}
+	writeUpstreamError(c, "Failed to resolve release image repository", err)
+}

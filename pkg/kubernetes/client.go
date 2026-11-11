@@ -30,6 +30,7 @@ import (
 	envv1alpha1 "github.com/kuberik/environment-controller/api/v1alpha1"
 	openkruisev1alpha1 "github.com/kuberik/openkruise-controller/api/v1alpha1"
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
+	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
 	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -142,6 +143,9 @@ func buildScheme() (*runtime.Scheme, error) {
 	}
 	if err := rolloutv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add scheme: %w", err)
+	}
+	if err := releasev1alpha1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add release scheme: %w", err)
 	}
 	if err := imagereflectorv1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add image reflector scheme: %w", err)
