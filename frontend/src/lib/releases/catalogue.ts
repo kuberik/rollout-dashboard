@@ -32,11 +32,11 @@
  */
 import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
 import { noticeLead } from './notice-copy';
-import type { Rollout } from '../../types';
+import type { Rollout, SchemaRelease } from '../../types';
 
 type RolloutStatus = NonNullable<Rollout['status']>;
 /** One release as every dashboard reader already consumes it (the old VersionInfo). */
-export type VersionInfo = NonNullable<RolloutStatus['availableReleases']>[number] & {
+export type VersionInfo = SchemaRelease & {
 	requires?: Record<string, string>;
 	metadataUnresolved?: boolean;
 };

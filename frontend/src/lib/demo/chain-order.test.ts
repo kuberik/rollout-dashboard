@@ -7,6 +7,7 @@ import { buildRolloutCards, type RolloutCard } from '$lib/rollout-cards';
 import { buildGateContext } from '$lib/view-models/blocking-story';
 import { buildRolloutGraph, contractHoldsForRollout } from '$lib/view-models/dependency-graph';
 import { buildTopology, deployNameOf, placeKeyOf, upstreamOf } from '$lib/view-models/sites-waves';
+import { legacyStatus } from '../releases/legacy-fixture';
 
 /**
  * ⭐ CHAIN ORDER (2026-10-11, demo/chain-order). Every app's builds must
@@ -208,7 +209,7 @@ function checkScenario(scenario: 'calm' | 'incident' | 'wide') {
 			// is merely BEHIND may legitimately show a candidate the stage
 			// before it has not shipped yet, see this file's module doc.
 			if (heldByKey.get(`${app}/${stage.env}`) !== true) continue;
-			const candidates = (stage.rollout.status?.releaseCandidates ?? [])
+			const candidates = (legacyStatus(stage.rollout).releaseCandidates ?? [])
 				.map((c) => getDisplayVersion(c))
 				.filter((v): v is string => !!v);
 			for (const candidate of candidates) {

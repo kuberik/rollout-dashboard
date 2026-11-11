@@ -1,7 +1,16 @@
 import type { components } from './rollout-types';
 import type { ManagedResourceStatus as ManagedResourceStatusType } from './managed-resource';
 
-export type Rollout = components['schemas']['Rollout'];
+type RolloutSchema = components['schemas']['Rollout'];
+/** The old status lists rollout-controller no longer writes: releases come from the ReleaseSlice catalogue (src/lib/releases/catalogue.ts). Absent here so svelte-check refuses any read of them. */
+type RetiredReleaseLists = 'availableReleases' | 'releaseCandidates' | 'gatedReleaseCandidates';
+/** The schema's one release entry (the catalogue's VersionInfo is built on it). */
+export type SchemaRelease = NonNullable<
+	NonNullable<RolloutSchema['status']>['availableReleases']
+>[number];
+export type Rollout = Omit<RolloutSchema, 'status'> & {
+	status?: Omit<NonNullable<RolloutSchema['status']>, RetiredReleaseLists>;
+};
 export type RolloutGate = components['schemas']['RolloutGate'];
 /** One measurement a health check reports (rollout-controller `status.observations[]`, max 16). Values are decimal strings. */
 export type HealthObservation = {
