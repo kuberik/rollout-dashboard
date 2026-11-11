@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	github.com/cjwagner/httpcache v0.0.0-20230907212505-d4841bbad466
 	github.com/docker/cli v28.4.0+incompatible
-	github.com/fluxcd/image-reflector-controller/api v1.1.2
 	github.com/fluxcd/kustomize-controller/api v1.7.3
 	github.com/fluxcd/source-controller/api v1.7.4
 	github.com/gin-contrib/gzip v1.0.1

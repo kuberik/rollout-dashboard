@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -80,3 +81,17 @@ func (c *Client) GetReleaseSlicesAllNamespaces(ctx context.Context) (*releasev1a
 // stripManagedFields mirrors the informer cache's TransformStripManagedFields
 // for reads that bypass the cache (uncached fallback client).
 func stripManagedFields(m *metav1.ObjectMeta) { m.ManagedFields = nil }
+
+// GetRolloutReleaseSource returns the ReleaseSource a rollout names in
+// spec.releaseSourceRef, read from the rollout's namespace.
+func (c *Client) GetRolloutReleaseSource(ctx context.Context, rollout *rolloutv1alpha1.Rollout) (*releasev1alpha1.ReleaseSource, error) {
+	if rollout == nil || rollout.Spec.ReleaseSourceRef == nil || rollout.Spec.ReleaseSourceRef.Name == "" {
+		return nil, fmt.Errorf("rollout has no releaseSourceRef")
+	}
+	src := &releasev1alpha1.ReleaseSource{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: rollout.Namespace, Name: rollout.Spec.ReleaseSourceRef.Name}, src); err != nil {
+		return nil, fmt.Errorf("failed to get release source: %w", err)
+	}
+	stripManagedFields(&src.ObjectMeta)
+	return src, nil
+}
