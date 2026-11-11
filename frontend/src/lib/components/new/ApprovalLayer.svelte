@@ -30,7 +30,7 @@
 		const a = ask?.anchor;
 		if (phone || !a) return '';
 		const m = typeof document === 'undefined' ? null : document.querySelector('main')?.getBoundingClientRect();
-		const p = approvePlace(a, vw, vh, m && m.width > 0 ? { left: m.left, right: m.right } : null, undefined, ownCard(ask?.trigger ?? null));
+		const p = approvePlace(a, vw, vh, m && m.width > 0 ? { left: m.left, right: m.right } : null, undefined, ownCard(ask?.trigger ?? null), panel?.offsetHeight || undefined);
 		const below = 'top' in p;
 		return `left:${p.left}px;width:${p.width}px;${below ? `top:${p.top}px` : `bottom:${p.bottom}px`}`;
 	});
