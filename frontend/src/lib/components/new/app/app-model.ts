@@ -260,8 +260,9 @@ export function holdRows(
 	/* a pin is a hold like any gate: the place rows say "Held by the pin" (`placeWord`), so this card must list it, or the page says "Nothing held" beside a held place */
 	const pinned = places.filter((p) => pins.has(p.place));
 	if (pinned.length) {
+		/* a pin is per place: the builds it holds are those the place's own Overview and Gates tab count (`newerBuildsShown`), not the app baseline's `only` */
 		const held: string[] = [];
-		for (const p of pinned) for (const h of p.heldBuilds) if (!held.includes(h.build) && (!only || only.has(h.build))) held.push(h.build);
+		for (const p of pinned) for (const b of p.newerShown) if (!held.includes(b)) held.push(b);
 		rows.push({ key: 'pin', kind: 'pin', name: pinVersion ? `Pinned to ${pinVersion}` : 'Pinned', holding: true, places: pinned.map((p) => p.place), held, sentence: 'Releases when the pin is cleared', href: `${pinned[0].href}` });
 	}
 	return rows.sort((a, b) => Number(b.holding) - Number(a.holding));
