@@ -21,7 +21,7 @@ const boxes: Box[] = [
 	{ kind: 'pin', state: 'blocked', held: ['4.41', '4.42', '4.43', '4.44'] }
 ];
 const run = (over: Partial<Parameters<typeof gatesPinBox<Box>>[0]> = {}) =>
-	gatesPinBox<Box>({ boxes, rollout: pinned as never, fleet, settled: true, hereBuilds: ['4.42'], pinnedTo: '4.40', displayVersion: (c) => c.tag, ...over });
+	gatesPinBox<Box>({ boxes, rollout: pinned as never, fleet, settled: true, hereBuilds: ['4.42'], pinnedTo: '4.40', displayVersion: (c) => c.tag ?? '', ...over });
 
 describe('Gates tab pin box', () => {
 	it('the pin box holds the builds the header counts (not the gate list): the failed build is out', () => {
