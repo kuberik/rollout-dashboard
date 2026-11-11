@@ -34,6 +34,7 @@
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
+import { catalogueOrder, newestOf, behindIn } from '$lib/releases/order';
 import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact, buildAge } from '$lib/utils';
 import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
@@ -599,6 +600,12 @@ export const shortBuild = (v: string | null | undefined): string | null => (!v ?
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$/;
 const semverCmp = (a: string, b: string): number => { const x = SEMVER.exec(a)!, y = SEMVER.exec(b)!; for (let k = 1; k <= 4; k++) { const d = +(x[k] ?? 0) - +(y[k] ?? 0); if (d) return d; } return 0; };
 /** the failing build is reported separately from the newest build (AD j) */
+/** The app's builds in the release catalogue's ONE order (oldest first, releases/order.ts), read off the places that have releases (no release = not affected: such a place is not counted). */
+const orderOfEnvs = (envs: readonly { href: string }[]): string[] => catalogueOrder(envs.filter((e) => !noReleasesAt(e.href)).map((e) => streamBuilds(e.href)));
+/** The app's catalogue order for surfaces that hold only an app name (Slipway, Facia, the Gates tab). */
+export const appOrder = (app: string, state: HomeState = 'incident'): string[] => orderOfEnvs(placesOf(state, app));
+/** The newest build of the app: the catalogue's newest by slice order, even when it failed. Only an app with no catalogue at all falls back to the highest build any place runs (`fallback`). */
+const newestOfApp = (order: readonly string[], fallback: string | null): string | null => newestOf(order) ?? fallback;
 /** the app's deployed places with the app-wide newest build marked (newest = highest semver tag, else latest merge, else latest arrival) */
 /** additive (r4 /rollouts, At rest rows): an app's deployed places with the newest build; exported for the At rest fold's build and age columns */
 export function placesOf(state: HomeState, app: string): (AppPlace & { newest: string | null })[] {
@@ -610,8 +617,9 @@ export function placesOf(state: HomeState, app: string): (AppPlace & { newest: s
 		if (pc && qc && pc !== qc) return qc.localeCompare(pc);
 		return (q.arrivedAt ?? '').localeCompare(p.arrivedAt ?? '');
 	})[0];
-	const newest = newestEnv ? shortBuild(newestEnv.version) : null;
-	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', newest }));
+	const order = orderOfEnvs(envs);
+	const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : null);
+	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0, newest }));
 }
 export type AppFailing = { build: string | null; place: string; href: string; line: string };
 /**
@@ -622,7 +630,7 @@ export type AppFailing = { build: string | null; place: string; href: string; li
  * Every reader that turns `!onNewest` into "behind" must check `currency !== 'none'` first (onNewest/onBuild are false for it).
  */
 export type PlaceCurrency = 'newest' | 'behind' | 'none';
-export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean };
+export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean; /** builds of the catalogue's order newer than the one it runs (releases/order.ts); 0 for a place without releases or on a build outside the order */ behind: number };
 /** the place's currency against `newest` (see PlaceCurrency) */
 const currencyOfPlace = (href: string, version: string | null, newest: string | null): PlaceCurrency => noReleasesAt(href) ? 'none' : version === newest ? 'newest' : 'behind';
 export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {
@@ -678,19 +686,14 @@ const prettyOfGate = (href: string, gate: string): string | null => {
 /** QA #12 — THE ONE "how many builds behind" of a place, for every surface (Apps tile, app strip + ledger, Environments, Runs-in, the tab's header):
  *  the length of the tab's "Newer builds" list (`status.releaseCandidates`); only a rollout that carries no such list falls back to its position in `availableReleases`. */
 export { behindOfStatus };
-/** how many releases a place is behind (the tab's "N behind"); null when its build is not in the release list */
-function behindCount(href: string, version: string | null): number | null {
-	const rel = relsOf(rawOf(href)) ?? [];
-	const idx = rel.findIndex((r) => [r.tag, r.version, r.revision?.slice(0, 7)].some((x) => x && shortBuild(x) === version));
-	return idx < 0 ? null : behindOfStatus(rawOf(href), envsOfSource());
-}
 /** the place's "N behind" for a surface that prints it beside "on the newest" (the Rollouts rest row): the ONE count (`behindWhenSettled`, behind.ts), null until the fleet has answered or while the lag is unknown */
 export const placeBehind = (href: string, settled: boolean): number | null => behindWhenSettled(rawOf(href) as never, envsOfSource(), settled);
 export type RunsIn = { label: string; tier: TierKey; build: string | null; word: string; href: string; state: EnvState };
 /** The Gates tab's Runs-in rows for an app: one per deployed place in the tab's order, with the build as the tab prints it and its word ("on the newest" / "N behind" / "failing"). */
 export function runsIn(app: string, state: HomeState = 'incident'): RunsIn[] {
+	const order = appOrder(app, state);
 	return placesOf(state, app).map((p) => {
-		const behind = behindCount(p.href, p.version);
+		const behind = behindIn(order, p.version);
 		return { label: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, build: p.version, href: p.href, state: p.state, word: p.state === 'failed' ? 'failing' : p.currency === 'none' ? '' : p.onNewest ? 'on the newest' : behind != null ? `${behind} behind` : 'behind' };
 	});
 }
@@ -700,6 +703,8 @@ export function apps(state: HomeState) {
 	const R = rollouts(state);
 	const m = homeModel(state);
 	const causes = heldCauses(state);
+	const inboundTiers = new Map<TierKey, Inbound[]>();
+	const inboundOf = (t: TierKey): Inbound[] => { let x = inboundTiers.get(t); if (!x) inboundTiers.set(t, (x = inbound(state, t))); return x; };
 	const items = A.items.map((a): TApp => {
 		const rows = R.rows.filter((r) => r.app === a.app);
 		const w = pickPlace(rows);
@@ -712,20 +717,27 @@ export function apps(state: HomeState) {
 			if (pc && qc && pc !== qc) return qc.localeCompare(pc);
 			return (q.arrivedAt ?? '').localeCompare(p.arrivedAt ?? '');
 		})[0];
-		const newest = newestEnv ? shortBuild(newestEnv.version) : a.newest;
-		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' }));
+		const order = orderOfEnvs(envs);
+		const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : a.newest);
+		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0 }));
 		const onNewest = placeList.filter((p) => p.onNewest).length;
 		const prodPl = placeList.filter((p) => p.tier === 'prod');
 		/* the outcome is recomputed from OUR pick (production first among equals) so the text and its link name the same place */
 		let fact = w ? outcomeOf(w) : a.fact, blocker: string | null = null;
 		let promoteHref: string | null = null;
 		const noRel = (() => { const ns = placeList.map((p) => noReleasesAt(p.href)); return ns.length > 0 && ns.every(Boolean) ? ns[0]! : undefined; })();
-		const behindOf = (p: AppPlace) => behindCount(p.href, p.version);
+		const behindOf = (p: AppPlace) => behindIn(order, p.version);
 		if (!w) {
 			/* a quiet app with a place behind the newest: the app page's "Ready to promote · prod 1 behind" */
 			const order: TierKey[] = ['dev', 'test', 'staging', 'prod'];
 			const lag = order.map((t) => ({ t, ps: placeList.filter((p) => p.tier === t && p.currency !== 'none' && !p.onNewest && p.state !== 'failed') })).find((x) => x.ps.length);
-			if (lag) { const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 1)); fact = `Ready to promote to ${lag.t} · ${n} behind`; promoteHref = lag.ps[0].href; }
+			if (lag) {
+				const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 0));
+				/* ONE predicate with /envs/<env>: "Ready to promote" exactly when a newer catalogue build can be promoted there (inbound names the app, nothing holds it); otherwise the app is Behind */
+				const target = inboundOf(lag.t).some((x) => x.app === a.app && isArriving(x));
+				fact = target ? `Ready to promote to ${lag.t} · ${n} behind` : `Behind in ${lag.t} · ${n} behind`;
+				promoteHref = lag.ps[0].href;
+			}
 			/* no ReleaseSource: there are no builds to promote; say why, in the controller's words */
 			if (noRel) { fact = noRel.label; promoteHref = null; }
 		}
@@ -748,7 +760,7 @@ export function apps(state: HomeState) {
 			if (pin && e.state !== 'not-deployed') holds.push(`Pinned to ${shortBuild(e.version) ?? pin} in ${placeLabel({ tier: tierOfEnv(e), regions: [e.label] })}`);
 		}
 		const outcome = [fact, ...holds.filter((h) => !fact.includes(h))].join(' · ');
-		return Object.assign(a, { approval: !!w && w.state === 'awaiting-approval' && w.group !== 'failed', behind: (() => { let best: { n: number; place: string } | null = null; for (const p of placeList) { /* a no-release place has an empty catalogue, so behindCount is null (0) here */ const n = behindCount(p.href, p.version) ?? 0; if (n > (best?.n ?? 0)) best = { n, place: placeLabel({ tier: p.tier, regions: [p.label] }) }; } return best; })(), row: w, outcomeHref: w?.href ?? promoteHref ?? placeList[0]?.href ?? a.href, failedCount: placeList.filter((p) => p.state === 'failed').length, holds, outcome, noReleases: noRel ?? null, newest, onNewest, fact, blocker, failing, placeList, prod: { regions: prodPl.length, onNewest: prodPl.filter((p) => p.onNewest).length } }) as unknown as TApp;
+		return Object.assign(a, { approval: !!w && w.state === 'awaiting-approval' && w.group !== 'failed', behind: (() => { let best: { n: number; place: string } | null = null; for (const p of placeList) { /* a no-release place has an empty catalogue, so behindCount is null (0) here */ const n = behindIn(order, p.version) ?? 0; if (n > (best?.n ?? 0)) best = { n, place: placeLabel({ tier: p.tier, regions: [p.label] }) }; } return best; })(), row: w, outcomeHref: w?.href ?? promoteHref ?? placeList[0]?.href ?? a.href, failedCount: placeList.filter((p) => p.state === 'failed').length, holds, outcome, noReleases: noRel ?? null, newest, onNewest, fact, blocker, failing, placeList, prod: { regions: prodPl.length, onNewest: prodPl.filter((p) => p.onNewest).length } }) as unknown as TApp;
 	});
 	const L = lead(state);
 	for (const it of items) it.lead = !!L && it.row?.href === L.href;
@@ -843,14 +855,18 @@ export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>)
 /** "7 newer builds · held: waiting for health checks": the newest-build line of the tab header. null when the place is on the newest. */
 export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'word'>): { count: number; sentence: string; newest: string | null } | null {
 	const rel = relsOf(rawOf(row.href)) ?? [];
-	const count = behindOfStatus(rawOf(row.href) as never, envsOfSource());
+	/* the distance in the app's catalogue order (releases/order.ts); a place whose build is not in the order, or an app with no catalogue, keeps the place's own tab count */
+	const order = appOrder(row.app);
+	const here = placesOf('incident', row.app).find((p) => p.href === row.href)?.version ?? null;
+	const count = behindIn(order, here) ?? behindOfStatus(rawOf(row.href) as never, envsOfSource());
 	if (!count) return null;
 	const why = row.state === 'awaiting-approval' ? 'waiting for approval' : row.state === 'held-by-rule' ? row.word.replace(/^Waits on /, 'waiting on ') : row.state === 'failed' ? 'waiting for health checks' : null;
 	const nw = rel[rel.length - 1];
+	const newestName = newestOf(order) ?? (nw ? shortBuild(nw.version ?? nw.tag) : null);
 	/* round 3: the held phrase counts what the hold refuses HERE (held.ts), and names the rest ("2 waiting for staging"), so "Newer builds" and the banner never disagree */
 	const hh = why ? heldHere(row.href) : null;
 	const split = hh && hh.waiting > 0 ? `${hh.count} held: ${why}, ${hh.waiting} waiting for ${hh.stage ?? 'an earlier stage'}` : why ? `held: ${why}` : '';
-	return { count, sentence: `${count} newer build${count === 1 ? '' : 's'}${split ? ` · ${split}` : ''}`, newest: nw ? shortBuild(nw.version ?? nw.tag) : null };
+	return { count, sentence: `${count} newer build${count === 1 ? '' : 's'}${split ? ` · ${split}` : ''}`, newest: newestName };
 }
 /** The pill word for a place in the ROW's vocabulary (never "DEPLOYED" on a build held in prod). `tabPill` keeps the rollout tab's own pill. */
 export const stateWord = (row: Pick<RolloutRow, 'state'>): string =>
@@ -1489,6 +1505,8 @@ export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 		const causeOf = (p: AppPlace) => causes.find((c) => c.rows.some((r) => r.href === p.href));
 		const holder = here.find((p) => causeOf(p));
 		const hold = holder ? causeOf(holder) : undefined;
+		/* a newer catalogue build that no other place runs (healthy) and nothing holds here is nothing to promote: the app is Behind (env-page), not inbound. Held, it is inbound: the hold is the story. */
+		if (!up && !hold) continue;
 		/* the tile names a cause and links to a place that cause holds, never to a sibling (a pinned region) it does not */
 		out.push({ app: a.app, build: buildName(a.app, newest) ?? newest, from: up, reason: hold?.cause ?? null, href: (holder ?? here[0]).href });
 	}

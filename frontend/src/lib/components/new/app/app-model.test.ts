@@ -65,7 +65,7 @@ describe('apps-12 AT1: one pill rule for the tile and the app page', () => {
 });
 
 
-describe('r34 builds-lag: the Sounding ledger (lag = position in THIS app\'s own sequence, as each place\'s tab counts it)', () => {
+describe('r34 builds-lag: the Sounding ledger (lag = distance in the release catalogue\'s order, the ONE order of the app\'s builds)', () => {
 	const ALL = (['incident', 'calm', 'quiet'] as const).flatMap((sc) => apps(sc).items.map((a) => ({ sc, app: a.app, P: placeHolds(a.app, sc) })));
 	it('every place of every app, in all three states, stands exactly once, on the stop of the build it runs', () => {
 		for (const { sc, app, P } of ALL) {
@@ -75,15 +75,15 @@ describe('r34 builds-lag: the Sounding ledger (lag = position in THIS app\'s own
 			expect(new Set(L.map((s) => s.build)).size, `${sc} ${app}: a build twice`).toBe(L.length);
 		}
 	});
-	it('the stop index is the place\'s own tab count ("N newer builds") for every place; a disagreeing place is flagged by placeNote, never silently relabelled', () => {
+	it('the stop index is the place\'s distance in the catalogue; a place whose tab offers fewer builds is flagged by placeNote (never "Up to date" under a build that is behind)', () => {
 		const flagged: string[] = [];
 		for (const { sc, app, P } of ALL) for (const s of ledgerOf(P)) for (const p of s.places) {
 			if (s.custom) { expect(stopWord(s)).toBe('Custom build'); continue; }
 			const note = placeNote(s, p);
-			if (note) { flagged.push(`${sc} ${app} ${p.place}`); expect(note).toBe(tabLag(p) ? `${tabLag(p)} build${tabLag(p) === 1 ? '' : 's'} behind` : 'Up to date'); }
+			if (note) { flagged.push(`${sc} ${app} ${p.place}`); expect(note).toBe(tabLag(p) ? `${tabLag(p)} newer on its tab` : 'Nothing inbound'); expect(note).not.toMatch(/up to date/i); }
 			else expect(s.index, `${sc} ${app} ${p.place}`).toBe(tabLag(p));
 		}
-		expect([...new Set(flagged.map((f) => f.replace(/^\w+ /, "")))].sort()).toEqual(["orders-api production"]);
+		expect([...new Set(flagged.map((f) => f.replace(/^\w+ /, "")))].sort()).toEqual(["checkout-api af-south-1", "orders-api production"]);
 	});
 	it('invoice-api: every place against its tab, incident', () => {
 		const L = ledgerOf(placeHolds('invoice-api', 'incident'));
@@ -107,14 +107,14 @@ describe('r34 builds-lag: the Sounding ledger (lag = position in THIS app\'s own
 		expect(c[0].index).toBeNull();
 		expect(L.filter((s) => !s.custom).map((s) => s.index)).toEqual([0, 1, 2, 3].slice(0, L.length - 1));
 	});
-	it('checkout-api: af-south-1 is 4 builds behind (4.41.0-41 failed there and was rolled back: batch4 #1) and says the tab\'s cause, "Held by the pin"', () => {
+	it('checkout-api: af-south-1 is 5 builds behind (4.41.0-41 failed there and was rolled back, and still counts: the catalogue\'s distance) and says the tab\'s cause, "Held by the pin"', () => {
 		const P = placeHolds('checkout-api', 'incident');
 		const item = apps('incident').items.find((a) => a.app === 'checkout-api')!;
 		const pins = pinnedPlaces(item.holds);
 		const af = P.find((p) => p.label === 'af-south-1')!;
 		expect(pins.has(af.place)).toBe(true);
 		expect(placeWord(af, pins.has(af.place))).toBe('Held by the pin');
-		expect(ledgerOf(P).find((s) => s.places.includes(af))!.index).toBe(4);
+		expect(ledgerOf(P).find((s) => s.places.includes(af))!.index).toBe(5);
 		expect(P.filter((p) => pins.has(p.place)).length).toBe(1);
 	});
 	it('runs of 4 or more unused builds fold into one row (never the first or last stop); expanding shows them', () => {

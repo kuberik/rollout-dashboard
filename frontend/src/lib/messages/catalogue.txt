@@ -538,6 +538,7 @@ lib/components/new/app/app-model.ts	code	… deploying
 lib/components/new/app/app-model.ts	code	… held
 lib/components/new/app/app-model.ts	code	… in …
 lib/components/new/app/app-model.ts	code	… newer
+lib/components/new/app/app-model.ts	code	… newer on its tab
 lib/components/new/app/app-model.ts	code	… prod regions
 lib/components/new/app/app-model.ts	code	… waiting here.
 lib/components/new/app/app-model.ts	code	… was skipped · … runs …
@@ -555,6 +556,7 @@ lib/components/new/app/app-model.ts	code	next …
 lib/components/new/app/app-model.ts	code	next … · ${up ?
 lib/components/new/app/app-model.ts	code	next … · held: waiting on …
 lib/components/new/app/app-model.ts	code	next … · ready to deploy
+lib/components/new/app/app-model.ts	code	Nothing inbound
 lib/components/new/app/app-model.ts	code	On the newest build
 lib/components/new/app/app-model.ts	code	Pinned to …
 lib/components/new/app/app-model.ts	code	Releases when the check starts passing
@@ -763,6 +765,7 @@ lib/components/new/data.ts	code	$1 of $2 places on the newest build
 lib/components/new/data.ts	code	$1 of 1 place
 lib/components/new/data.ts	code	All … places on the newest build
 lib/components/new/data.ts	code	Approved …
+lib/components/new/data.ts	code	Behind in … · … behind
 lib/components/new/data.ts	code	Changes could not be read
 lib/components/new/data.ts	code	Changes need GitHub
 lib/components/new/data.ts	code	Deploy window
@@ -827,7 +830,7 @@ lib/components/new/env/env-page.ts	code	Waits on
 lib/components/new/env/env-page.ts	code	Wave …
 lib/components/new/env/env-page.ts	code	Wave …${w.build ?
 lib/components/new/env/env-page.ts	code	When the oldest waiting change was merged
-lib/components/new/env/EnvPage.svelte	text	… behind
+lib/components/new/env/EnvPage.svelte	text	… … behind · nothing inbound
 lib/components/new/env/EnvPage.svelte	text	A rollout deployed to this environment shows up here.
 lib/components/new/env/EnvPage.svelte	title	In step
 lib/components/new/env/EnvPage.svelte	text	Nothing runs here yet

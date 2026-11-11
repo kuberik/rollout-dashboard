@@ -27,6 +27,7 @@ import {
 	type TierKey
 } from '../data';
 import { lastFailureMs } from '$lib/view-models/event-age';
+import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
 
@@ -436,9 +437,17 @@ export const bySeverity = (places: PlaceHold[]): PlaceHold[] =>
 	[...places].sort((a, b) => placeRank(a) - placeRank(b));
 export function ledgerOf(places: PlaceHold[]): Stop[] {
 	if (!places.length) return [];
-	const spinePlace = [...places].sort((a, b) => b.heldBuilds.length - a.heldBuilds.length)[0];
-	const spine = spinePlace.heldBuilds.map((h) => h.build);
-	let seq = spine.length && spinePlace.deployedBuild ? [...spine, spinePlace.deployedBuild] : spine;
+	/* the sequence is the release catalogue's order (releases/order.ts), newest first, from its newest build down to the oldest build a place runs:
+	   Newest is the catalogue's newest even when it failed, and a build's index is its distance from it. Places without releases are not counted. */
+	const order = catalogueOrder(places.filter((p) => !noReleasesAt(p.href)).map((p) => streamBuilds(p.href)));
+	const lowest = Math.min(...places.map((p) => (p.deployedBuild ? order.lastIndexOf(p.deployedBuild) : -1)).filter((i) => i >= 0), order.length - 1);
+	let seq: string[] = order.length ? order.slice(lowest).reverse() : [];
+	if (!seq.length) {
+		/* no catalogue anywhere (a mock, a place whose list has not loaded): the places' own newer-build lists give the sequence, the longest is the spine */
+		const spinePlace = [...places].sort((a, b) => b.heldBuilds.length - a.heldBuilds.length)[0];
+		const spine = spinePlace.heldBuilds.map((h) => h.build);
+		seq = spine.length && spinePlace.deployedBuild ? [...spine, spinePlace.deployedBuild] : spine;
+	}
 	if (!seq.length) {
 		/* nothing newer anywhere: every place is on the newest; the newest deploy names it, any other build is custom */
 		const top = [...places]
@@ -490,18 +499,9 @@ export function ledgerOf(places: PlaceHold[]): Stop[] {
 			places.map((p) => p.deployedBuild).filter((b): b is string => !!b && !seq.includes(b))
 		)
 	];
-	/* QA #23: a build that is in the app's release stream (availableReleases) is a release that was SUPERSEDED (a newer one went past it): it takes its place in
-	   the sequence, newest first, after the spine. Only a build outside the app's release stream (a hotfix, a pin to a foreign build) is a "Custom build" (never counted). */
-	const rank = new Map<string, number>();
-	for (const p of places)
-		streamBuilds(p.href).forEach((b, i) => rank.set(b, Math.max(rank.get(b) ?? -1, i)));
-	const superseded = outside
-		.filter((b) => rank.has(b))
-		.sort((a, b) => (rank.get(b) ?? 0) - (rank.get(a) ?? 0));
-	const custom = outside.filter((b) => !rank.has(b));
+	const custom = outside;
 	return [
 		...stops,
-		...superseded.map((b, i) => mk(b, seq.length + i, false)),
 		...custom.map((b) => mk(b, null, true))
 	];
 }
@@ -536,9 +536,9 @@ export function foldLedger(
 /** the tab's own count for a place: how many entries its "Newer builds" list has */
 export const tabLag = (p: PlaceHold): number => p.heldBuilds.length;
 
-/** what a place says about its own currency when its tab disagrees with the stop it stands on (the tab's list is shorter: a gate filters what it is offered): null when they agree */
+/** what a place says when its tab's own list (what it is OFFERED: builds that failed upstream or are gated are not) differs from the stop it stands on, which counts every build of the catalogue: null when they agree. It never restates a lag in other words. */
 export const placeNote = (stop: Pick<Stop, 'index' | 'custom'>, p: PlaceHold): string | null =>
-	stop.custom || stop.index === tabLag(p) ? null : lagWord(tabLag(p));
+	stop.custom || stop.index === tabLag(p) ? null : tabLag(p) ? `${tabLag(p)} newer on its tab` : 'Nothing inbound'; /* never "Up to date" on a row under a build that is behind */
 /** the stop's own word: "Newest", "N builds behind" (the tab's count), "Custom build" (never counted) */
 export const stopWord = (s: Pick<Stop, 'index' | 'custom'>): string =>
 	s.custom ? 'Custom build' : s.index === 0 ? 'Newest' : lagWord(s.index ?? 0);

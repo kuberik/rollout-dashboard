@@ -96,7 +96,7 @@ export type GangTile = {
 	foot: { title: string | null; ref: string; age: string; ageLabel: string; ageTitle: string; from: string | null };
 };
 export type DayRow = { key: string; kind: 'deploy' | 'failed' | 'rolledBack'; app: string; href: string; place: string; title: string | null; build: string; who: string; age: string; /** a person pressed deploy (not the controller) */ mark: 'manual' | null; /** the reason they typed, or null (QA #14) */ reason: string | null };
-export type Gangway = { held: GangTile[]; ready: GangTile[]; heldRollup: Rollup; inStep: { app: string; href: string }[]; /** apps here that run an older build and have nothing inbound: the same "N behind" the at-rest predicate prints, so they are never listed In step */ behind: { app: string; href: string; n: number }[]; today: DayRow[]; todayRollup: Rollup };
+export type Gangway = { held: GangTile[]; ready: GangTile[]; heldRollup: Rollup; inStep: { app: string; href: string }[]; /** apps here that run an older build and have nothing inbound: the same "N behind" the at-rest predicate prints, so they are never listed In step */ behind: { app: string; /** the lagging place's rollout (where the Deploy action is) */ href: string; n: number; /** its site, '' when the environment has one default site */ place: string }[]; today: DayRow[]; todayRollup: Rollup };
 
 /* a NAMED site: not empty and not a tier word (regions.ts siteKey, the one default-site rule) */
 const SITE_NOT = (_tier: string) => (l: string) => siteKey(l) !== 'default';
@@ -147,8 +147,9 @@ const REST_FILL = 'On the newest';
  * ONE predicate for "how far behind its newest build is this app HERE" (an app's places in this environment, or in the one region): the at-rest rows'
  * "N behind" and the In step / Behind lists both read it, so an app cannot be 1 behind in one place on the page and in step in another.
  */
-export const behindOfApp = (base: { placeList: readonly { tier: string; label: string; onNewest: boolean; currency?: string }[]; behind?: { n: number } | null } | null, tierKey: string, region: string | null): number =>
-	base && !base.placeList.filter((x) => x.tier === tierKey && (!region || x.label === region) && x.currency !== 'none').every((x) => x.onNewest) ? (base.behind?.n ?? 0) : 0;
+export const behindOfApp = (base: { placeList: readonly { tier: string; label: string; behind: number; currency?: string }[] } | null, tierKey: string, region: string | null): number =>
+	/* THIS environment's own distance (the largest over its places), never the app's maximum over all of its places */
+	base ? Math.max(0, ...base.placeList.filter((x) => x.tier === tierKey && (!region || x.label === region) && x.currency !== 'none').map((x) => x.behind)) : 0;
 /** the apps with nothing inbound split by that predicate: on the newest build (In step) or an older one (Behind, with its number) */
 export function stepSplit<A extends { app: string; href: string }>(apps: readonly A[], behindOf: (app: string) => number): { inStep: { app: string; href: string }[]; behind: { app: string; href: string; n: number }[] } {
 	return {
@@ -291,7 +292,13 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 	const heldRollup: Rollup = [...(nAp ? [{ text: needApprovalCount(nAp), ink: 'held' as const }] : []), ...(held.length - nAp ? [`${held.length - nAp} held`] : [])];
 	const failedApps = new Set(rows.filter((r) => r.group === 'failed').map((r) => r.app));
 	const inSet = new Set(inb.map((t) => t.app));
-	const { inStep, behind } = stepSplit(apps.filter((a) => !inSet.has(a.app) && !failedApps.has(a.app)), behindHere);
+	const split = stepSplit(apps.filter((a) => !inSet.has(a.app) && !failedApps.has(a.app)), behindHere);
+	const { inStep } = split;
+	/* a Behind row names the place that lags and links to ITS rollout, the page that has the action; the app page prints the same lag for that place */
+	const behind = split.behind.map((b) => {
+		const lag = (A.items.find((x) => x.app === b.app)?.placeList ?? []).filter((x) => x.tier === tierKey && (!region || x.label === region) && x.currency !== 'none').sort((x, y) => y.behind - x.behind)[0];
+		return { ...b, href: lag?.href ?? b.href, place: !lag || lag.label === tierKey || ['prod', 'production'].includes(lag.label) ? '' : lag.label };
+	});
 	const evs = fleet24hEvents(hs, tierKey).filter((e) => !region || e.place === region || e.place === `prod-${region}` || e.place.endsWith(region));
 	const today: DayRow[] = evs.map((e, i) => {
 		const pl = e.place.replace(/^prod-/, '');
