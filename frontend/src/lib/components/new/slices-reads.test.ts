@@ -237,10 +237,10 @@ describe('mixed app: one place has no releases, another on the same build has', 
 });
 
 /** the payments-core prod places that carry candidates, edited by `f` (the rest of the fleet untouched) */
-const prodEdit = (f: (r: any) => any) =>
+const prodEdit = (f: (r: any) => any, includeSaEast = false) =>
 	(fixtureSource().rollouts as any[]).map((r) =>
 		/^payments-core-prod-/.test(r.metadata.namespace) &&
-		r.metadata.namespace !== 'payments-core-prod-sa-east' &&
+		(includeSaEast || r.metadata.namespace !== 'payments-core-prod-sa-east') &&
 		r.status.releaseCandidates?.length
 			? f(r)
 			: r
@@ -266,20 +266,24 @@ describe('the moved reads, pinned by value', () => {
 	});
 
 	it('gateName picks the approval gate by name when no gate has a kind (approvalGateOf over the catalogue candidates)', () => {
-		/* [a legacy approval that already allows every candidate, a freeze window, the approval that refuses them]: only `own` (the
-		   approval gate that refuses EVERY candidate) names the third; without the candidates the first approval-named gate wins and the
-		   row is blamed on the freeze window */
-		const rs = prodEdit((r) => ({
-			...r,
-			status: {
-				...r.status,
-				gates: [
-					{ name: 'approval-legacy', allowedVersions: [...r.status.releaseCandidates.map((x: any) => x.tag), '9b7e410'], passing: true },
-					{ name: 'freeze-window', allowedVersions: ['9b7e410'] },
-					{ name: 'release-approval', allowedVersions: ['9b7e410'] }
-				]
-			}
-		}));
+		/* two gates, neither with a `kind`, both refusing the build in question: [approval-legacy, which allows the newest candidates but not the build in question, and
+		   release-approval, which refuses every candidate]. Only `own` (the approval gate that refuses EVERY candidate, read from the
+		   catalogue) names the second; with no candidates the first approval-named gate wins and the row names the wrong gate */
+		const rs = prodEdit(
+			(r) => ({
+				...r,
+				status: {
+					...r.status,
+					/* the retired list is empty: only the catalogue knows the candidates */
+					releaseCandidates: [],
+					gates: [
+						{ name: 'approval-legacy', allowedVersions: ['f4a2c19'], passing: true },
+						{ name: 'release-approval', allowedVersions: ['0000000'] }
+					]
+				}
+			}),
+			true
+		);
 		serve(rs, true);
 		const row = rollouts('incident').rows.find(
 			(r) => r.app === 'payments-core' && r.tier === 'prod' && r.state === 'awaiting-approval'
