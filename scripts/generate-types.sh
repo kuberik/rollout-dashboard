@@ -147,7 +147,7 @@ cat > $TEMP_DIR/schema.json << EOL
           }
         }
       },
-      "Rollout": $(echo "$ROLLOUT_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
+      "Rollout": $(echo "$ROLLOUT_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"} | .properties.status.properties.gates.items.properties += {"kind": {"type": "string", "description": "Added by the dashboard API (not the CRD): the gate'"'"'s kind (approval, schedule, ...)."}, "displayName": {"type": "string", "description": "Added by the dashboard API: the gate'"'"'s `gate.kuberik.com/pretty-name`, omitted when it has none."}}'),
       "RolloutGate": $(echo "$ROLLOUTGATE_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "HealthCheck": $(echo "$HEALTHCHECK_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
       "Environment": $(echo "$ENVIRONMENT_SCHEMA" | jq '.properties.metadata = {"$ref": "#/components/schemas/KubernetesMetadata"}'),
