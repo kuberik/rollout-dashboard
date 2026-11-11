@@ -113,7 +113,7 @@
 		.s-id { grid-column: 2; grid-row: 1; margin-left: 4px; }
 		.s-ttl { display: block; grid-column: 3; grid-row: 1; margin-left: 0; white-space: nowrap; text-overflow: ellipsis; -webkit-line-clamp: unset; line-clamp: unset; }
 		.s-lag { grid-column: 4; grid-row: 1; text-align: right; }
-		.s-age { grid-column: 5; grid-row: 1; }
+		.s-age { grid-column: 5; grid-row: 1; white-space: nowrap; }
 		.stop :global(.s-cv) { grid-column: 6; grid-row: 1; }
 	}
 </style>
