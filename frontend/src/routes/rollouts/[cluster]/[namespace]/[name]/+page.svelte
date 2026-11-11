@@ -1,13 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
+	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
 	import { kruiseStatusIsPreviousDeploy, freshestKruise } from '$lib/pipeline';
 	import { sourceDashboardURL } from '$lib/source-dashboard';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
-	import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
-	import { releasesOf } from '$lib/releases/registry.svelte';
 	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
 	import { sourceTreeUrl } from '$lib/source-url';
@@ -277,8 +275,9 @@
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
-	/** the controller's `ReleaseSourceRequired` message: this Rollout has no release source, so it has no releases to compare */
-	const noSource = $derived(releaseSourceRequiredMessage(rollout));
+	/** no releases to show: no release source (the alert says it) or a source that published nothing yet */
+	const noReleases = $derived(noReleasesOf(rollout));
+	const noSource = $derived(noReleases?.kind === 'no-source');
 	/** a rollout with a ReleaseSource whose catalogue has not arrived yet: say so, never "on the newest" */
 	const releasesLoading = $derived(releasesOf(rollout).state === 'loading');
 	// Failure panel collapse (2026-09-26, film critic 25): the panel used to
@@ -3015,8 +3014,8 @@
 							id="status-change-version-btn"
 							data-tour="change-version"
 							class="btn btn-secondary max-lg:h-11"
-							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noSource}
-							title={noSource ? 'No release source, so there are no versions to choose from' : undefined}
+							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
+							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
 							onclick={() => {
 								if (isDashboardManagingWantedVersion) {
 									isPinVersionMode = false;
@@ -3841,6 +3840,8 @@
 										<div class="ml-auto flex items-center gap-2">
 											{#if releasesLoading}
 												<span class="t-ui-sm text-fg-subtle" data-releases-loading>Loading releases…</span>
+											{:else if noReleases}
+												<span class="t-ui-sm text-fg-subtle" data-no-releases>{noReleases.label}</span>
 											{:else if newerBuilds.length > 0}
 												<!-- r34 tabs-nb r2 (#5): the baseline's rollup, back. Same count as the page
 												     header's "↑ N newer" (both read `newerBuilds.length`). -->
@@ -4670,6 +4671,8 @@
 										</ul>
 									{:else if releasesLoading}
 										<p class="t-meta text-fg-subtle px-4 py-3">Loading releases…</p>
+									{:else if noReleases}
+										<p class="t-meta text-fg-subtle px-4 py-3">{noReleases.message}</p>
 									{:else if newerBuilds.length === 0}
 										<!-- (2026-09-03, from the human: "when there's no available version,
 								     we don't display anything.") The header's rollup is the verdict;
@@ -4870,8 +4873,8 @@
 								type="button"
 								data-tour="change-version"
 								class="btn btn-primary"
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noSource}
-							title={noSource ? 'No release source, so there are no versions to choose from' : undefined}
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
+							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
 								onclick={() => {
 									if (isDashboardManagingWantedVersion) {
 										isPinVersionMode = false;

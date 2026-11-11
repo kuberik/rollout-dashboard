@@ -33,8 +33,8 @@
  *  8 step names                              -> stepsOf(): 'Started', 'Stage N', 'Check' exactly as the tab (DeploymentPipelineCard.shortLabel)
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
-import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
-import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
+import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
+import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact } from '$lib/utils';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
@@ -90,10 +90,10 @@ const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean);
 type RawRel = { tag?: string; version?: string; revision?: string; created?: string };
 const relsOf = (r: RawRollout | null | undefined) => availableReleases(r as unknown as Rollout) as RawRel[] | undefined;
 const candsOf = (r: RawRollout | null | undefined) => releaseCandidates(r as unknown as Rollout) as RawRel[] | undefined;
-/** the controller's ReleaseSourceRequired message for the Rollout behind a place's href, or undefined */
-export const noSourceOf = (href: string): string | undefined => releaseSourceRequiredMessage(rawOf(href) as unknown as Rollout);
-/** an app none of whose rollouts has a release source (by rollout name): its changes cannot be promoted */
-export const noSourceApp = (app: string): boolean => { const rs = raws().filter((r) => r.metadata.name === app); return rs.length > 0 && rs.every((r) => !!releaseSourceRequiredMessage(r as unknown as Rollout)); };
+/** the "no releases" state (no source, or an empty catalogue) of the Rollout behind a place's href, or undefined: THE rule every surface reads */
+export const noReleasesAt = (href: string): NoReleases | undefined => noReleasesOf(rawOf(href) as unknown as Rollout) ?? undefined;
+/** an app none of whose rollouts has releases (by rollout name): its changes cannot be promoted */
+export const noReleasesApp = (app: string): NoReleases | undefined => { const rs = raws().filter((r) => r.metadata.name === app); const ns = rs.map((r) => noReleasesOf(r as unknown as Rollout)); return rs.length > 0 && ns.every(Boolean) ? ns[0]! : undefined; };
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
 
 /* ═══ steps (defects 7, 8) ═══ */
@@ -209,7 +209,7 @@ export function placeLabel(x: { tier: string; regions?: string[]; label?: string
 }
 
 /* ═══ rollouts ═══ */
-export type TRow = RolloutRow & { steps: Step[]; failure: FailureReason | null; place: string; deployedAt: string | null; /** AD f: a folded production row covers n of the app's `of` production regions (null when not folded) */ regionsOf: { n: number; of: number } | null; /** AD v2 (a): classed as an approval wait while its own deploy is still being checked (the tab shows both) */ stillChecking: boolean; /** the controller's `ReleaseSourceRequired` message: this place's Rollout has no ReleaseSource, so it has no builds to show (null otherwise) */ noSource: string | null };
+export type TRow = RolloutRow & { steps: Step[]; failure: FailureReason | null; place: string; deployedAt: string | null; /** AD f: a folded production row covers n of the app's `of` production regions (null when not folded) */ regionsOf: { n: number; of: number } | null; /** AD v2 (a): classed as an approval wait while its own deploy is still being checked (the tab shows both) */ stillChecking: boolean; /** the "no releases" state of this place's Rollout (no ReleaseSource, or a source that published nothing): it has no builds to show (null otherwise) */ noReleases: NoReleases | null };
 const enrich = (r: RolloutRow): TRow => {
 	const failure = failureReason(r);
 	const t = r as TRow;
@@ -224,8 +224,7 @@ const enrich = (r: RolloutRow): TRow => {
 		if (be) t.since = be;
 	}
 	/* a Rollout with no ReleaseSource has no builds to show: its row says why, in the controller's words */
-	const noSource = releaseSourceRequiredMessage(rawOf(r.href) as unknown as Rollout);
-	t.noSource = noSource ?? null;
+	t.noReleases = noReleasesAt(r.href) ?? null;
 	void 0; /* defect 9: the row's one line of cause is the tab's failing check */
 	return t;
 };
@@ -621,8 +620,8 @@ export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {
 	/** the outcome line; a held app names its blocker ("Waits on payments-svc in staging") (AD i) */
 	fact: string;
 	blocker: string | null;
-	/** the controller's `ReleaseSourceRequired` message when a place of the app has no ReleaseSource (it has no builds to show), else null */
-	noSource: string | null;
+	/** the "no releases" state when every place of the app has no releases (no source, or an empty catalogue), else null */
+	noReleases: NoReleases | null;
 	/** places that deployed but failed: the app page's "2 of 3 on the newest · 1 failed" suffix. onNewest never includes them. */
 	failedCount: number;
 	/** the app's worst region: how many releases behind the newest, and where */
@@ -701,7 +700,7 @@ export function apps(state: HomeState) {
 		/* the outcome is recomputed from OUR pick (production first among equals) so the text and its link name the same place */
 		let fact = w ? outcomeOf(w) : a.fact, blocker: string | null = null;
 		let promoteHref: string | null = null;
-		const noSourceMsg = placeList.map((p) => noSourceOf(p.href)).find(Boolean);
+		const noRel = (() => { const ns = placeList.map((p) => noReleasesAt(p.href)); return ns.length > 0 && ns.every(Boolean) ? ns[0]! : undefined; })();
 		const behindOf = (p: AppPlace) => behindCount(p.href, p.version);
 		if (!w) {
 			/* a quiet app with a place behind the newest: the app page's "Ready to promote · prod 1 behind" */
@@ -709,7 +708,7 @@ export function apps(state: HomeState) {
 			const lag = order.map((t) => ({ t, ps: placeList.filter((p) => p.tier === t && !p.onNewest && p.state !== 'failed') })).find((x) => x.ps.length);
 			if (lag) { const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 1)); fact = `Ready to promote to ${lag.t} · ${n} behind`; promoteHref = lag.ps[0].href; }
 			/* no ReleaseSource: there are no builds to promote; say why, in the controller's words */
-			if (noSourceMsg) { fact = 'No release source'; promoteHref = null; }
+			if (noRel) { fact = noRel.label; promoteHref = null; }
 		}
 		if (w && (w.state === 'held-by-rule' || w.state === 'awaiting-approval') && w.group !== 'failed') {
 			const hc = causes.find((c) => c.rows.some((r) => r.href === w.href));
@@ -730,7 +729,7 @@ export function apps(state: HomeState) {
 			if (pin && e.state !== 'not-deployed') holds.push(`Pinned to ${shortBuild(e.version) ?? pin} in ${placeLabel({ tier: tierOfEnv(e), regions: [e.label] })}`);
 		}
 		const outcome = [fact, ...holds.filter((h) => !fact.includes(h))].join(' · ');
-		return Object.assign(a, { approval: !!w && w.state === 'awaiting-approval' && w.group !== 'failed', behind: (() => { let best: { n: number; place: string } | null = null; for (const p of placeList) { const n = behindCount(p.href, p.version) ?? 0; if (n > (best?.n ?? 0)) best = { n, place: placeLabel({ tier: p.tier, regions: [p.label] }) }; } return best; })(), row: w, outcomeHref: w?.href ?? promoteHref ?? placeList[0]?.href ?? a.href, failedCount: placeList.filter((p) => p.state === 'failed').length, holds, outcome, noSource: noSourceMsg ?? null, newest, onNewest, fact, blocker, failing, placeList, prod: { regions: prodPl.length, onNewest: prodPl.filter((p) => p.onNewest).length } }) as unknown as TApp;
+		return Object.assign(a, { approval: !!w && w.state === 'awaiting-approval' && w.group !== 'failed', behind: (() => { let best: { n: number; place: string } | null = null; for (const p of placeList) { const n = behindCount(p.href, p.version) ?? 0; if (n > (best?.n ?? 0)) best = { n, place: placeLabel({ tier: p.tier, regions: [p.label] }) }; } return best; })(), row: w, outcomeHref: w?.href ?? promoteHref ?? placeList[0]?.href ?? a.href, failedCount: placeList.filter((p) => p.state === 'failed').length, holds, outcome, noReleases: noRel ?? null, newest, onNewest, fact, blocker, failing, placeList, prod: { regions: prodPl.length, onNewest: prodPl.filter((p) => p.onNewest).length } }) as unknown as TApp;
 	});
 	const L = lead(state);
 	for (const it of items) it.lead = !!L && it.row?.href === L.href;

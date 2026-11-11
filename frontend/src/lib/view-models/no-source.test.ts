@@ -17,11 +17,11 @@ const rollout = (name: string, ns: string, tag: string, withCond = true) =>
 
 describe('a change or rollout with no release source', () => {
 	it('is not "moving": the repo rollup says so', () => {
-		expect(rollupParts([{ state: 'checking', noSource: true }]).map((p) => p.text)).toEqual(['no release source']);
-		expect(rollupParts([{ state: 'checking' }, { state: 'deploying', noSource: true }]).map((p) => p.text)).toEqual(['1 moving', 'no release source']);
+		expect(rollupParts([{ state: 'checking', noReleases: 'No release source' }]).map((p) => p.text)).toEqual(['no release source']);
+		expect(rollupParts([{ state: 'checking' }, { state: 'deploying', noReleases: 'No release source' }]).map((p) => p.text)).toEqual(['1 moving', 'no release source']);
 	});
 	it('stands as "no release source", never queued or moving (failures still read as failures)', () => {
-		const row = { verdictTone: 'moving', grid: { services: [] }, services: [], noSource: true } as never;
+		const row = { verdictTone: 'moving', grid: { services: [] }, services: [], noReleases: 'No release source' } as never;
 		expect(standingWords(row)).toBe('no release source');
 		expect(standingWordsCompact(row)).toBe('no release source');
 		expect(standingWords({ ...(row as object), verdictTone: 'failed' } as never)).not.toBe('no release source');
@@ -40,5 +40,35 @@ describe('a change or rollout with no release source', () => {
 		const withRef = rollout('a', 'n', 'v');
 		(withRef.spec as Record<string, unknown>).releaseSourceRef = { name: 's' };
 		expect(releaseSourceRequiredMessage(withRef)).toBeUndefined();
+	});
+});
+
+import { ingestReleaseSlices, noReleasesOf, resetReleaseCatalogue } from '../releases/registry.svelte';
+import { catalogueKey } from '../releases/catalogue';
+import { rel, rollout as fixtureRollout, slice } from '../releases/fixtures';
+
+describe('one rule for "no releases": no source, and a source that published nothing', () => {
+	it('no source -> No release source, with the controller message', () => {
+		const n = noReleasesOf(fixtureRollout({ status: { conditions: [cond] } }));
+		expect(n?.kind).toBe('no-source');
+		expect(n?.label).toBe('No release source');
+	});
+	it('a source with an empty catalogue -> No releases yet; with releases -> null; unknown catalogue -> null (loading)', () => {
+		resetReleaseCatalogue();
+		const r = fixtureRollout({ ref: 'src' });
+		expect(noReleasesOf(r)).toBeNull(); // loading
+		ingestReleaseSlices([], [catalogueKey('', 'ns', 'src')]);
+		expect(noReleasesOf(r)?.label).toBe('No releases yet');
+		ingestReleaseSlices([slice('s1', 'src', [rel('v1', 1)])], [catalogueKey('', 'ns', 'src')]);
+		expect(noReleasesOf(r)).toBeNull();
+	});
+	it('the same state word reaches the shared view-models: behind counts, rank, rollup and standing words', () => {
+		resetReleaseCatalogue();
+		ingestReleaseSlices([], [catalogueKey('', 'ns', 'src')]);
+		const r = fixtureRollout({ ref: 'src', status: { currentVersion: 'v1', history: [{ version: { tag: 'v1' } }] } });
+		expect(behindOfStatus(r)).toBe(0);
+		expect(behindOfRollout(r, { kind: 'behind', by: 2 } as never)).toBe(0);
+		expect(rollupParts([{ state: 'checking', noReleases: 'No releases yet' }]).map((p) => p.text)).toEqual(['no releases yet']);
+		expect(standingWords({ verdictTone: 'moving', grid: { services: [] }, services: [], noReleases: 'No releases yet' } as never)).toBe('no releases yet');
 	});
 });

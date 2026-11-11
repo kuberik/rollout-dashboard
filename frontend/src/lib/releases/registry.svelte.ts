@@ -13,6 +13,8 @@ import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
 import {
 	catalogueKey,
 	mergeSlices,
+	noReleasesFrom,
+	type NoReleases,
 	rolloutCatalogueKey,
 	rolloutReleases,
 	sliceCatalogueKey,
@@ -191,6 +193,11 @@ function sameSlices(a: Map<string, ReleaseSliceObject>, b: Map<string, ReleaseSl
 		if (ra === undefined || ra !== rb) return false;
 	}
 	return true;
+}
+
+/** No releases to show for this Rollout (no source, or a source with an empty catalogue), else null. The ONE rule. */
+export function noReleasesOf(r: Rollout | null | undefined): NoReleases | null {
+	return noReleasesFrom(r, releasesOf(r));
 }
 
 /** All three lists at once (use when a reader needs more than one). */

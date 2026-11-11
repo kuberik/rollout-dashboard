@@ -1,5 +1,4 @@
-import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
-import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
+import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import type { Rollout, Environment } from '$lib/../types';
 import type { AppGroup, AppCell } from '$lib/version-utils';
 import { groupRolloutsByApp } from '$lib/version-utils';
@@ -175,8 +174,8 @@ export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 	const fleet = { environments: group.cells.map((c) => c.environment).filter((e): e is Environment => !!e), rollouts: group.cells.map((c) => c.rollout) };
 	for (const cell of group.cells) {
 		const version = cellVersion(cell);
-		// No release source: there is no release list to rank against, so the lag is unknown (never a number, never `newest`).
-		if (!version || releaseSourceRequiredMessage(cell.rollout)) {
+		// No releases (no source, or an empty catalogue): there is no release list to rank against, so the lag is unknown (never a number, never `newest`).
+		if (!version || noReleasesOf(cell.rollout)) {
 			out.set(cell, { kind: 'unknown' });
 			continue;
 		}

@@ -83,7 +83,7 @@
 	import { modEnterHint } from '$lib/shortcut-hint';
 	import { apiPath } from '$lib/api/urls';
 	import { href } from '$lib/paths';
-	import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
+	import { noReleasesOf } from '$lib/releases/registry.svelte';
 	import { recoveryModeReason } from '$lib/view-models/change-version-entry';
 
 	interface Props {
@@ -1303,7 +1303,7 @@
 	const nameOfGate = (n: string) => resolveGateName(n, gateObjects);
 
 	/** no ReleaseSource: the controller's message (there is no list of releases to pick from) */
-	const noSourceMessage = $derived(releaseSourceRequiredMessage(rollout));
+	const noReleases = $derived(noReleasesOf(rollout));
 	const supportsManifestDiff = $derived(
 		rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'
 	);
@@ -2709,8 +2709,8 @@
 					{#if showAllTags && !loadingAllTags}
 						<p class="t-meta text-fg-subtle px-4 pb-2">
 							{extraTagCount === 0
-								? noSourceMessage
-									? 'This Rollout has no release source, so no tag is a release yet.'
+								? noReleases
+									? `${noReleases.label}: no tag is a release yet.`
 									: 'No other tags in the registry — every tag is already a release.'
 								: `${extraTagCount} more tag${extraTagCount === 1 ? '' : 's'} from the registry, below.`}
 						</p>
@@ -2994,10 +2994,10 @@
 							</button>
 						{/each}
 					{:else}
-						{#if noSourceMessage}
+						{#if noReleases}
 							<div class="px-4 py-8 text-center" data-no-release-source>
-								<p class="t-body text-fg">No release source</p>
-								<p class="t-meta text-fg-subtle mt-1">{noSourceMessage}</p>
+								<p class="t-body text-fg">{noReleases.label}</p>
+								<p class="t-meta text-fg-subtle mt-1">{noReleases.message}</p>
 							</div>
 						{:else}
 							<div class="t-body text-fg-subtle px-4 py-8 text-center">No versions available</div>

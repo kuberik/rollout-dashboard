@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { behindOfRollout, behindOfStatus } from './behind';
-import { noSourceOf } from '../components/new/data';
+import { noReleasesAt } from '../components/new/data';
 
 const noSource = {
 	metadata: { name: 'app', namespace: 'ns' },
@@ -18,6 +18,6 @@ describe('a Rollout without a ReleaseSource', () => {
 		expect(behindOfRollout(noSource, { kind: 'behind', by: 3 } as never)).toBe(0);
 	});
 	it('exports no message for an unknown place', () => {
-		expect(noSourceOf('/rollouts/x/y/z')).toBeUndefined();
+		expect(noReleasesAt('/rollouts/x/y/z')).toBeUndefined();
 	});
 });

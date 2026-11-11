@@ -1,7 +1,6 @@
 <script lang="ts">
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
-	import { noSourceOf } from '../data';
-	import { releaseCandidates } from '$lib/releases/registry.svelte';
+		import { releaseCandidates } from '$lib/releases/registry.svelte';
 	/**
 	 * r34 v2 AD — APP DETAIL (/apps/<name>): "Where does this app run, which build is where, what is failing or waiting, and
 	 * what is the next build to arrive?" The list's object (the Apps lead Facia) reappears at page scale; the tabs' grammar
@@ -66,8 +65,8 @@
 
 	const A = $derived(apps(scenario));
 	const item = $derived(A.items.find((a) => a.app === name) ?? null);
-	/** an app whose places have no ReleaseSource has no builds to show: the controller's message goes where they would be */
-	const noSource = $derived(item?.placeList.map((p) => noSourceOf(p.href)).find(Boolean));
+	/** an app whose places have no releases (no source, or an empty catalogue) has no builds to count: one state, everywhere */
+	const noReleases = $derived(item?.noReleases ?? null);
 	const built = $derived(item ? laneOf(item, A.R.c.m as never, A.R.c.events as never) : null);
 	const approvals = $derived((A.R.groups.find((g) => g.key === 'approval')?.rows ?? []) as TRow[]);
 
@@ -125,8 +124,8 @@
 		const swap = new Map<unknown, typeof L.stages[number]>();
 		const fix = (n: typeof L.stages[number]) => {
 			const k = places.find((x) => x.href === hrefFor(n))?.heldBuilds.length ?? 0;
-			/* no release source: no lag and no "newest" (a neutral ring), whatever the history says */
-			const m = noSource ? { ...n, behind: 0, state: n.state === 'newest' ? ('behind' as const) : n.state } : k ? { ...n, behind: k } : n;
+			/* no releases: no lag and no "newest" (a neutral ring), whatever the history says */
+			const m = noReleases ? { ...n, behind: 0, state: n.state === 'newest' ? ('behind' as const) : n.state } : k ? { ...n, behind: k } : n;
 			swap.set(n, m);
 			return m;
 		};
@@ -302,7 +301,7 @@
 				</div>
 			{/if}
 		</header>
-		{#if noSource}<ReleaseSourceNotice text={noSource} class="mt-6 mb-4" />{/if}
+		{#if noReleases?.kind === 'no-source'}<ReleaseSourceNotice text={noReleases.message} class="mt-6 mb-4" />{/if}
 
 		<div class="mt-6 flex flex-col gap-4">
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}
@@ -327,7 +326,7 @@
 			<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:grid-cols-[minmax(0,1fr)_452px]">
 				<div class="flex min-w-0 flex-col gap-4">
 					<div id="regions" class="ad-places scroll-mt-16" class:ad-owned={!!failRow}>
-						<AppBuilds {stops} {places} {view} {phone} nested hs={scenario} noSource={!!noSource} onDeploy={openDeploy} />
+						<AppBuilds {stops} {places} {view} {phone} nested hs={scenario} noReleases={noReleases?.label ?? ''} fromHistory={!!noReleases} onDeploy={openDeploy} />
 					</div>
 				</div>
 

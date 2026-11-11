@@ -178,6 +178,29 @@ export function releaseSourceRequiredMessage(r: Rollout | null | undefined): str
 }
 
 /**
+ * "This Rollout has no releases to show", ONE rule for every surface: either it has no release source at all (the
+ * controller's `ReleaseSourceRequired` condition), or its source is known and has published nothing yet (an empty
+ * catalogue). Both read as "no releases": never a count, never "newest" or "up to date", never "ready to promote".
+ */
+export type NoReleases = {
+	kind: 'no-source' | 'empty';
+	/** the short state word every surface prints */
+	label: 'No release source' | 'No releases yet';
+	/** one sentence for the surfaces that have room for it */
+	message: string;
+};
+
+/** The shared rule, over an already-resolved state. See `noReleasesOf` (registry) for the Rollout-level accessor. */
+export function noReleasesFrom(r: Rollout | null | undefined, releases: RolloutReleases): NoReleases | null {
+	const msg = releaseSourceRequiredMessage(r);
+	if (msg) return { kind: 'no-source', label: 'No release source', message: msg };
+	if (releases.state === 'ready' && (releases.availableReleases?.length ?? 0) === 0) {
+		return { kind: 'empty', label: 'No releases yet', message: 'This Rollout\'s release source has not published any releases yet.' };
+	}
+	return null;
+}
+
+/**
  * Pure core: a Rollout's three release lists given its merged catalogue
  * (`undefined` = catalogue not known yet).
  */

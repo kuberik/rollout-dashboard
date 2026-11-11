@@ -11,7 +11,7 @@
  * a prod approval card counts its regions (the region meter, as on Home); other approvals stay title-led.
  */
 import {
-	changes, rollouts, ago, isViewer, personOf, personName, holdSince, waitingBuild, avatarSrc, regionStates, type HomeState, type TChange, type TRow, type TierKey, noSourceApp
+	changes, rollouts, ago, isViewer, personOf, personName, holdSince, waitingBuild, avatarSrc, regionStates, type HomeState, type TChange, type TRow, type TierKey, noReleasesApp
 } from './data';
 import { rides, waitsOnMe, rideAction, ownTier, TIERS, type Ride } from './change-view';
 import { dedupeCommitOfPr } from './change-cards';
@@ -88,7 +88,7 @@ export function groupByRepo(ps: PChange[]): RepoGroup[] {
 		return { repo, changes: fly, landed: xs.filter((x) => x.state === 'landed'), flying: fly.length, worst: Math.min(9, ...xs.map((x) => SEV[x.state] ?? 9)), href: xs[xs.length - 1].c.changeHref ?? xs[xs.length - 1].c.href };
 	}).sort((a, b) => a.worst - b.worst || b.flying - a.flying || a.repo.localeCompare(b.repo));
 }
-export const rc = (p: PChange): RepoChange => ({ ref: p.ref, title: p.c.title, state: p.state, col: p.col, href: p.c.changeHref ?? p.c.href, key: p.c.key, noSource: p.c.apps.length > 0 && p.c.apps.every(noSourceApp) });
+export const rc = (p: PChange): RepoChange => ({ ref: p.ref, title: p.c.title, state: p.state, col: p.col, href: p.c.changeHref ?? p.c.href, key: p.c.key, noReleases: p.c.apps.length > 0 && p.c.apps.every((a) => !!noReleasesApp(a)) ? noReleasesApp(p.c.apps[0])!.label : undefined });
 export function cardOf(g: RepoGroup, tiers: readonly string[], o: { team?: boolean } = {}): RepoCardModel {
 	const apps = [...new Set([...g.changes, ...g.landed].flatMap((p) => p.c.apps))];
 	return { ...repoCardModel({ repo: g.repo, tiers, changes: g.changes.map(rc), landed: g.landed.map((l) => ({ ref: l.ref, title: l.c.title })), team: o.team, compact: true }), apps };

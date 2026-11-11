@@ -25,7 +25,7 @@
 	import PlaceRow from './PlaceRow.svelte';
 
 	export type PlaceView = { row: TRow; pinned: boolean; approve: TRow['action']; slipAction: TRow['action']; toggle: (() => void) | null; open: boolean };
-	let { stops, places, view, rollup: roll = '', noSource = false, phone = false, nested = false, hs = 'incident', onDeploy }: { stops: Stop[]; places: PlaceHold[]; /** how each place is drawn (row, pin, the action it owns, its pipeline toggle) */ view: (p: PlaceHold) => PlaceView; rollup?: string; /** no ReleaseSource: no releases, so no "newest", "custom" or lag words */ noSource?: boolean; phone?: boolean; nested?: boolean; hs?: HomeState; onDeploy: (place: PlaceHold, build: string) => void } = $props();
+	let { stops, places, view, rollup: roll = '', noReleases = '', fromHistory = false, phone = false, nested = false, hs = 'incident', onDeploy }: { stops: Stop[]; places: PlaceHold[]; /** how each place is drawn (row, pin, the action it owns, its pipeline toggle) */ view: (p: PlaceHold) => PlaceView; rollup?: string; /** the state word when the app has no releases (no source, or an empty catalogue): no "newest", "custom" or lag words */ noReleases?: string; /** the builds listed come from deploy history, not from a catalogue */ fromHistory?: boolean; phone?: boolean; nested?: boolean; hs?: HomeState; onDeploy: (place: PlaceHold, build: string) => void } = $props();
 
 	let openStops = $state(new Set<string>());
 	let openFolds = $state(new Set<string>());
@@ -37,8 +37,9 @@
 </script>
 
 <Card icon={CodeOutline} title="Builds" padded={false} class="min-w-0">
-	{#snippet rollup()}<span class="t-ui-sm inline-flex items-center gap-x-3 tabular-nums text-fg-subtle">{#if failing}<span class="inline-flex items-center gap-2 whitespace-nowrap text-fg"><span class="h-1.5 w-1.5 rounded-full bg-danger-solid" aria-hidden="true"></span>{failing} failing</span>{/if}<span class="whitespace-nowrap">{noSource ? 'No releases' : roll || `${onNewest} of ${total} ${total === 1 ? 'place' : 'places'} on the newest build`}</span></span>{/snippet}
+	{#snippet rollup()}<span class="t-ui-sm inline-flex items-center gap-x-3 tabular-nums text-fg-subtle">{#if failing}<span class="inline-flex items-center gap-2 whitespace-nowrap text-fg"><span class="h-1.5 w-1.5 rounded-full bg-danger-solid" aria-hidden="true"></span>{failing} failing</span>{/if}<span class="whitespace-nowrap">{noReleases ? noReleases : roll || `${onNewest} of ${total} ${total === 1 ? 'place' : 'places'} on the newest build`}</span></span>{/snippet}
 	{#if stops.length}
+		{#if fromHistory}<p class="t-meta border-line-subtle border-b px-4 py-2 text-fg-subtle" data-from-history>Builds from deploy history</p>{/if}
 		<ul class="ledger relative" data-ledger>
 			{#each items as it (it.kind === 'fold' ? `fold:${it.key}` : it.stop.key)}
 				{#if it.kind === 'fold'}
@@ -46,10 +47,10 @@
 				{:else}
 					{@const s = it.stop}
 					{@const open = openStops.has(s.key)}
-					<li class="stop-li" class:occ={s.places.length > 0 || s.index === 0} data-truth-kind="build" data-truth-build={s.build} data-truth-author={s.author ?? ''} data-truth-title={s.title ?? ''} data-truth-lag={noSource ? '' : s.custom ? 'custom' : String(s.index)} data-truth-deploy={s.deployTo.map((p) => p.place).join(',')}>
-						<button type="button" class="stop tap-zone" class:empty={!s.places.length} class:custom={s.custom} aria-expanded={open} aria-label="{s.build}{noSource ? '' : `, ${stopWord(s)}`}{s.title ? `, ${s.title}` : ''}" onclick={() => (openStops = flipIn(openStops, s.key))}>
+					<li class="stop-li" class:occ={s.places.length > 0 || s.index === 0} data-truth-kind="build" data-truth-build={s.build} data-truth-author={s.author ?? ''} data-truth-title={s.title ?? ''} data-truth-lag={noReleases ? '' : s.custom ? 'custom' : String(s.index)} data-truth-deploy={s.deployTo.map((p) => p.place).join(',')}>
+						<button type="button" class="stop tap-zone" class:empty={!s.places.length} class:custom={s.custom} aria-expanded={open} aria-label="{s.build}{noReleases ? '' : `, ${stopWord(s)}`}{s.title ? `, ${s.title}` : ''}" onclick={() => (openStops = flipIn(openStops, s.key))}>
 							<span class="dot" aria-hidden="true"></span>
-							<span class="s-main"><span class="t-code s-id">{s.build}</span><span class="s-lag t-meta" title={noSource ? undefined : !s.places.length && !s.custom && s.index === 0 ? 'Newest · no place yet' : stopWord(s)}>{#if noSource}{:else if !s.places.length && !s.custom}{s.index === 0 ? 'Newest' : ''}{:else}{stopShort(s)}{/if}</span></span>
+							<span class="s-main"><span class="t-code s-id">{s.build}</span><span class="s-lag t-meta" title={noReleases ? undefined : !s.places.length && !s.custom && s.index === 0 ? 'Newest · no place yet' : stopWord(s)}>{#if noReleases}{:else if !s.places.length && !s.custom}{s.index === 0 ? 'Newest' : ''}{:else}{stopShort(s)}{/if}</span></span>
 							{#if s.title}<span class="s-ttl t-body" title={s.title}>{s.title}</span>{/if}
 							<span class="s-age t-meta tabular-nums">{s.age}</span>
 							<ChevronDownOutline class="s-cv h-4 w-4 transition-transform {open ? 'rotate-180' : ''}" aria-hidden="true" />
