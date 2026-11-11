@@ -1395,11 +1395,11 @@ lib/view-models/cluster-errors.ts	code	… clusters did not answer — this page
 lib/view-models/cluster-errors.ts	code	… did not answer — this page is incomplete
 lib/view-models/cluster-errors.ts	code	… is slow to answer${lastSeenText ?
 lib/view-models/cluster-errors.ts	code	… is unreachable — its rollouts show their last known state
+lib/view-models/cluster-errors.ts	code	… is up, but did not answer in time.
 lib/view-models/cluster-errors.ts	code	… rollouts show the last known state the hub holds. They refresh as soon as ${one ?
 lib/view-models/cluster-errors.ts	code	… stopped answering${lastSeenText ?
 lib/view-models/cluster-errors.ts	code	Could not be reached.
 lib/view-models/cluster-errors.ts	code	Everything on … covers only the clusters that replied — a rollout on … is missing from these counts, not healthy in them.
-lib/view-models/cluster-errors.ts	code	Is up, but did not answer in time.
 lib/view-models/dependencies.ts	code	… version… ahead
 lib/view-models/dependencies.ts	code	… version… waiting to move
 lib/view-models/dependencies.ts	code	its leader

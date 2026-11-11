@@ -55,12 +55,12 @@ it('the slow message agrees in number, and no stale copy uses "live" as a state 
 });
 
 import { clusterDetail } from './cluster-errors';
-it('the Details line is plain words chosen by the typed reason, never the raw fetch error', () => {
+it('the Details sentence is plain words chosen by the typed reason, and names its cluster', () => {
 	const raw = 'Get "https://10.0.0.5:6443/api": dial tcp 10.0.0.5:6443: i/o timeout';
 	const slow = clusterDetail({ ...stale('prod', 'slow'), error: raw });
 	const unr = clusterDetail({ ...stale('prod', 'unreachable'), error: raw });
 	const none = clusterDetail({ ...e('prod'), error: raw });
-	expect(slow).toBe('Is up, but did not answer in time.');
+	expect(slow).toBe('prod is up, but did not answer in time.');
 	expect(unr).toBe('Could not be reached.');
 	expect(none).toBe(unr);
 	for (const t of [slow, unr, none]) expect(t).not.toMatch(/dial|tcp|10\.0|timeout|https/);
@@ -68,8 +68,7 @@ it('the Details line is plain words chosen by the typed reason, never the raw fe
 it('the slow and the unreachable headings use one grammar: cause — consequence, never a middle dot', () => {
 	for (const r of ['slow', 'unreachable'] as const) expect(clusterNoticeCopy([stale('prod', r)], 'Home', '09:41').title).not.toContain(' · ');
 });
-it('the notice lists the plain detail, not ce.error', () => {
+it('the notice lists the plain detail and keeps ce.error beneath it as the note', () => {
 	const src = readFileSync('src/lib/components/PartialDataNotice.svelte', 'utf8');
-	expect(src).toMatch(/clusterDetail/);
-	expect(src).not.toMatch(/ce\.error/);
+	expect(src).toMatch(/value: clusterDetail\(ce\), note: ce\.error/);
 });

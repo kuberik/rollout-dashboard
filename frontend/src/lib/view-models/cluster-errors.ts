@@ -19,11 +19,11 @@ export function clusterReason(e: ClusterError): 'slow' | 'unreachable' {
 }
 
 /**
- * The Details line for one cluster, chosen by the typed `reason` and nothing else: the server's raw fetch error ("dial tcp 10.0.0.5:6443: i/o timeout")
- * is for the hub's log, not the operator. Never branch on `error` text.
+ * The Details line for one cluster, chosen by the typed `reason` and nothing else. The server's raw error ("HTTP 403", "dial tcp …: i/o timeout") is shown
+ * beneath it as secondary text by the notice, never branched on.
  */
 export function clusterDetail(e: ClusterError): string {
-	return clusterReason(e) === 'slow' ? 'Is up, but did not answer in time.' : 'Could not be reached.';
+	return clusterReason(e) === 'slow' ? `${e.name} is up, but did not answer in time.` : 'Could not be reached.';
 }
 
 export type ClusterNoticeCopy = { stale: boolean; slow: boolean; title: string; message: string };
