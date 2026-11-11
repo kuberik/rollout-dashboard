@@ -51,6 +51,9 @@ metadata:
   name: hello-multi-app
 spec:
   interval: 1m
+  retention:
+    days: 7
+    minCount: 30
   oci:
     # Bridge: reuse the Flux ImagePolicy (and its ImageRepository) above.
     imagePolicyRef:

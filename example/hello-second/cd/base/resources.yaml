@@ -27,6 +27,9 @@ metadata:
   name: hello-second-manifests
 spec:
   interval: 1m
+  retention:
+    days: 7
+    minCount: 30
   oci:
     image: ghcr.io/littlechimera/hello-second/__ENVIRONMENT__/manifests
     secretRef:
@@ -86,6 +89,9 @@ metadata:
   name: hello-second-app
 spec:
   interval: 1m
+  retention:
+    days: 7
+    minCount: 30
   oci:
     image: ghcr.io/littlechimera/hello-second/app
     secretRef:

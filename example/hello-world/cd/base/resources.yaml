@@ -27,6 +27,9 @@ metadata:
   name: hello-world-manifests
 spec:
   interval: 1m
+  retention:
+    days: 7
+    minCount: 30
   oci:
     image: ghcr.io/littlechimera/hello-world/__ENVIRONMENT__/manifests
     secretRef:
@@ -88,6 +91,9 @@ metadata:
   name: hello-world-app
 spec:
   interval: 1m
+  retention:
+    days: 7
+    minCount: 30
   oci:
     image: ghcr.io/littlechimera/hello-world/app
     secretRef:

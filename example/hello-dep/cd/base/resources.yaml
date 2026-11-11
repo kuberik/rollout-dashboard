@@ -28,6 +28,9 @@ metadata:
   name: hello-api-app
 spec:
   interval: 1m
+  retention:
+    days: 7
+    minCount: 30
   oci:
     image: ghcr.io/littlechimera/hello-dep/api
     secretRef:
@@ -63,6 +66,9 @@ metadata:
   name: hello-frontend-app
 spec:
   interval: 1m
+  retention:
+    days: 7
+    minCount: 30
   oci:
     image: ghcr.io/littlechimera/hello-dep/frontend
     secretRef:
