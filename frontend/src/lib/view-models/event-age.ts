@@ -45,6 +45,7 @@
  * different name ("behind since …").
  */
 import type { RolloutCard } from '../rollout-cards';
+import { formatTimeAgoCompact } from '../utils';
 import { waitingSince } from './fleet-facts';
 import type { NodeState } from './promotion-lanes';
 
@@ -89,6 +90,12 @@ export function lastFailureMs(histories: ReadonlyArray<ReadonlyArray<(NonNullabl
 			if (Number.isFinite(t) && (last === null || t > last)) last = t;
 		}
 	return last;
+}
+
+/** "31m ago" for the last failure of `histories` (see lastFailureMs), or null when none failed: the History tab's Summary prints it */
+export function lastFailureAgoOf(histories: Parameters<typeof lastFailureMs>[0], now: Date): string | null {
+	const ms = lastFailureMs(histories);
+	return ms === null ? null : `${formatTimeAgoCompact(new Date(ms).toISOString(), now)} ago`;
 }
 
 /**

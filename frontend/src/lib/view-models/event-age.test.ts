@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Rollout } from '../../types';
 import { buildRolloutCards } from '$lib/rollout-cards';
-import { eventAge, historyEntrySince, lastFailureMs } from './event-age';
+import { eventAge, historyEntrySince, lastFailureMs, lastFailureAgoOf } from './event-age';
 import { weekSummary } from '../components/new/app/app-model';
 
 const NOW = new Date('2026-10-12T12:00:00Z');
@@ -161,5 +161,19 @@ describe('lastFailureMs: one last-failure instant for every surface', () => {
 	it('the app summary and the activity row agree on it', () => {
 		const sum = weekSummary([{ history: [failed], rolledBack: [false] }], 7, new Date('2026-11-10T10:48:00Z').getTime());
 		expect(sum.lastFailureMs).toBe(new Date(historyEntrySince(failed)!).getTime());
+	});
+});
+
+describe('History tab last failure', () => {
+	const failed = { timestamp: '2026-11-10T10:00:00Z', bakeEndTime: '2026-11-10T10:31:00Z', bakeStatus: 'Failed' };
+	it('lastFailureAgoOf reads the failure instant (bake end), not the deploy start', () => {
+		expect(lastFailureAgoOf([[failed]], new Date('2026-11-10T10:48:00Z'))).toBe('17m ago');
+		expect(lastFailureAgoOf([[{ ...failed, bakeStatus: 'Succeeded' }]], new Date('2026-11-10T10:48:00Z'))).toBeNull();
+	});
+	it('the History page reads it through lastFailureAgoOf, not its own copy', async () => {
+		const { readFileSync } = await import('node:fs');
+		const src = readFileSync(new URL('../../routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte', import.meta.url), 'utf8');
+		expect(src).toContain('lastFailureAgoOf(');
+		expect(src).not.toMatch(/const f = filteredHistory\.find\(\(\{ e \}\) => e\.bakeStatus === 'Failed'\)/);
 	});
 });
