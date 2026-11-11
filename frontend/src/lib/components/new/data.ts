@@ -1205,7 +1205,9 @@ export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] 
 			const gk = gateKindOf(g);
 			const kind: GateInfo['kind'] = gk === 'approval' || gk === 'dependency' || gk === 'promotion' || gk === 'schedule' ? gk : 'other'; /* the backend's kind only: no name is read here */
 			if (kind === 'promotion') continue; /* sequencing, not a hold anyone releases */
-			const holding = cands.length > 0 && refusingGates([g], buildInQuestion({ href: p.href, app })).length > 0; /* the one rule, for the build in question: the approval target's where there is one (what the toast names), else the newest */
+			const h0bake = st?.history?.[0]?.bakeStatus;
+			const runs = h0bake === 'Deploying' || h0bake === 'InProgress'; /* a place that is deploying or checking its own build holds nothing: a rule that refuses a newer build is not this place's hold */
+			const holding = cands.length > 0 && !runs && refusingGates([g], buildInQuestion({ href: p.href, app })).length > 0; /* the one rule, for the build in question: the approval target's where there is one (what the toast names), else the newest */
 			const k = kind === 'dependency' ? `dependency-${dependencyProviderOf(p.href, g.name) ?? g.name}` : g.name; /* one card per provider, from the RolloutDependency join: no name is parsed */
 			const e = out.get(k) ?? { id: k, name: gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : 'the rule allows it' };
 			e.places.push(placeLabel({ tier: p.tier, regions: [p.label] }));

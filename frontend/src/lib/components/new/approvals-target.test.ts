@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rollouts, approvalTarget, grantApproval, revokeApproval, placeHolds, environments, buildInQuestion, deployableTags, inbox, type TRow } from './data';
+import { rollouts, gatesOf, approvalTarget, grantApproval, revokeApproval, placeHolds, environments, buildInQuestion, deployableTags, inbox, type TRow } from './data';
 import { sentenceOf } from './rollouts-page';
 import { askSentence, doneWords } from './approvals.svelte';
 import { source, resetHomeModel, homeModel } from '$lib/components/home/sketch/home-data';
@@ -178,6 +178,24 @@ describe('the app detail and the approval target read the row\'s verdict', () =>
 			expect(approvalTarget(prodRow(), 'incident')).toBeNull();
 			expect(inbox('incident').items.some((i) => i.row.app === APP && i.row.tier === 'prod')).toBe(false);
 		}));
+	});
+});
+
+describe('the app detail\'s Holding card counts only places that hold', () => {
+	const holding = () => gatesOf(APP, 'incident').filter((g) => g.holding);
+	it('before the grant the approval holds every prod place; after it the places deploy, so nothing is holding and no count is pending', () => {
+		expect(holding().some((g) => g.kind === 'approval')).toBe(true);
+		granted(() => {
+			expect(holding().filter((g) => g.kind === 'approval' && g.places.some((p) => /prod/i.test(p)))).toEqual([]);
+			for (const g of gatesOf(APP, 'incident')) expect(g.heldPending, g.name).toBe(false);
+		});
+	});
+
+	it('a rule is judged against the build in question, not the newest candidate: a rule that lets the build in question through is not holding', () => {
+		withGates([{ name: 'permits-target-only', kind: 'unknown', allowedVersions: [STAGED] }], () => {
+			expect(approvalTarget(prodRow(), 'incident')!.build).toBe(STAGED);
+			expect(holding().some((g) => g.id === 'permits-target-only')).toBe(false);
+		});
 	});
 });
 
