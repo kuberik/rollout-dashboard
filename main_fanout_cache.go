@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"sync"
 	"time"
 )
@@ -79,6 +80,24 @@ const (
 	// slow-but-working spoke should still land in the cache for next time.
 	spokeRefreshTimeout = 8 * time.Second
 
+	// spokeMaxStale is the oldest a cached payload may be and still be served
+	// without waiting. Past it the request joins the refresh instead: the
+	// "serve stale, refresh behind" contract is meant to hide a few seconds of
+	// latency, not to answer a read after a quiet period with whatever the
+	// previous reader left in memory (seen live: 16 minutes old). Age is
+	// measured from the last SUCCESSFUL fetch.
+	spokeMaxStale = 30 * time.Second
+
+	// spokeStaleWait bounds how long such a request waits for the refresh
+	// before falling back to the old payload, flagged as stale.
+	spokeStaleWait = 3 * time.Second
+
+	// spokeSkipWait is how long, after a wait on a spoke timed out or its
+	// refresh failed, reads of that entry skip the wait and get the flagged
+	// stale value at once. Keeps a dead spoke with a closed breaker to one slow
+	// request per window. A successful refresh clears it immediately.
+	spokeSkipWait = 30 * time.Second
+
 	// swrMaxEntries caps the payload cache so a stream of distinct tokens
 	// cannot grow it without bound.
 	swrMaxEntries = 512
@@ -97,6 +116,10 @@ var fanoutBackgroundWG sync.WaitGroup
 // waitForFanoutBackground blocks until every tracked background fetch has
 // finished. Test-only.
 func waitForFanoutBackground() { fanoutBackgroundWG.Wait() }
+
+// errSpokeStaleTimeout is the StaleErr reported when an over-age entry's
+// refresh did not finish inside staleWait and the old payload was served.
+var errSpokeStaleTimeout = errors.New("spoke refresh exceeded the wait for an out-of-date read; showing its last known state")
 
 var errSpokeColdTimeout = errors.New("spoke fetch exceeded cold-start grace window; serving without it")
 
@@ -121,6 +144,7 @@ type swrEntry[T any] struct {
 	okAt       time.Time // last SUCCESSFUL refresh (when val was actually true)
 	lastAccess time.Time
 	done       chan struct{} // non-nil while a refresh is in flight
+	skipUntil  time.Time     // until then an over-age read does not wait
 }
 
 // swrCache is a small stale-while-revalidate cache with per-key
@@ -134,6 +158,11 @@ type swrCache[T any] struct {
 	ttl            time.Duration
 	coldGrace      time.Duration
 	refreshTimeout time.Duration
+	// maxStale: payloads whose last success is older than this are not
+	// served until the refresh finishes or staleWait elapses. 0 disables.
+	maxStale  time.Duration
+	staleWait time.Duration
+	skipWait  time.Duration
 }
 
 func newSWRCache[T any](ttl, coldGrace, refreshTimeout time.Duration) *swrCache[T] {
@@ -143,6 +172,9 @@ func newSWRCache[T any](ttl, coldGrace, refreshTimeout time.Duration) *swrCache[
 		ttl:            ttl,
 		coldGrace:      coldGrace,
 		refreshTimeout: refreshTimeout,
+		maxStale:       spokeMaxStale,
+		staleWait:      spokeStaleWait,
+		skipWait:       spokeSkipWait,
 	}
 }
 
@@ -207,11 +239,50 @@ func (c *swrCache[T]) loadMeta(ctx context.Context, key string, fetch func(conte
 	}
 	done := e.done
 	staleVal, haveStale, lastErr, staleMeta := e.val, e.ok, e.err, e.metaLocked()
+	tooOld := haveStale && c.maxStale > 0 && now.Sub(e.okAt) > c.maxStale
+	okAt := e.okAt
 	c.mu.Unlock()
 
 	// Stale-but-usable: return now, let the refresh land for next time.
-	if haveStale {
+	if haveStale && !tooOld {
 		return staleVal, staleMeta, nil
+	}
+
+	// Too old to serve as-is: wait (bounded) for the shared refresh. A
+	// failed refresh keeps the existing behaviour: the old value is served
+	// with StaleErr set. A slow one is served flagged the same way.
+	if tooOld {
+		c.mu.Lock()
+		skipping := now.Before(e.skipUntil)
+		c.mu.Unlock()
+		if skipping {
+			m := staleMeta
+			if m.StaleErr == nil {
+				m = swrMeta{StaleErr: errSpokeStaleTimeout, LastOK: okAt}
+			}
+			return staleVal, m, nil
+		}
+		t := time.NewTimer(c.staleWait)
+		defer t.Stop()
+		select {
+		case <-done:
+			c.mu.Lock()
+			val, meta := e.val, e.metaLocked()
+			if meta.StaleErr != nil {
+				e.skipUntil = c.now().Add(c.skipWait)
+			}
+			c.mu.Unlock()
+			return val, meta, nil
+		case <-t.C:
+			c.mu.Lock()
+			e.skipUntil = c.now().Add(c.skipWait)
+			c.mu.Unlock()
+			log.Printf("fanout cache: serving %s-old spoke data, refresh still running after %s", now.Sub(okAt).Round(time.Second), c.staleWait)
+			return staleVal, swrMeta{StaleErr: errSpokeStaleTimeout, LastOK: okAt}, nil
+		case <-ctx.Done():
+			var zero T
+			return zero, swrMeta{}, ctx.Err()
+		}
 	}
 
 	// Cold. Wait, but only briefly.
@@ -285,6 +356,7 @@ func (c *swrCache[T]) refresh(key string, fetch func(context.Context) (T, error)
 		e.ok = true
 		e.err = nil
 		e.okAt = c.now()
+		e.skipUntil = time.Time{}
 	} else {
 		e.err = err
 		// A failed refresh deliberately leaves any previous value in place
@@ -327,3 +399,5 @@ var spokeHealthCheckCache = newSWRCache[map[string]json.RawMessage](spokeDataTTL
 
 // spokeNameCache holds spoke cluster names, keyed by url alone.
 var spokeNameCache = newSWRCache[string](spokeNameTTL, spokeColdGrace, spokeRefreshTimeout)
+
+func init() { spokeNameCache.maxStale = 0 } // a cluster name does not go out of date
