@@ -35,7 +35,7 @@
 </script>
 
 <Card {icon} {title} verdict="unavailable" padded={false} class={className}>
-	<div class="flex items-center justify-between gap-3 px-4 py-3" role="alert">
+	<div class="flex items-center justify-between gap-3 px-4 py-3">
 		<p class="t-meta min-w-0 text-fg-subtle">{sentence}</p>
 		{#if onRetry}
 			<button type="button" class="btn btn-secondary btn-sm shrink-0" onclick={() => onRetry?.()} disabled={isRetrying}>

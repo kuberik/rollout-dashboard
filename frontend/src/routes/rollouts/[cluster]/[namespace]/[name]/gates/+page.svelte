@@ -84,6 +84,7 @@
 	import { pageTitle } from '$lib/page-title';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import UnavailableCard from '$lib/components/UnavailableCard.svelte';
+	import { createLoadFailedLatch } from '$lib/view-models/load-failed-latch.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import {
 		dependencySourceCluster,
@@ -236,6 +237,17 @@
 	const listQuery = createQuery(() =>
 		rolloutsListQueryOptions({ options: { refetchInterval: pollWhenHealthy(15000, 60000) } })
 	);
+
+	/**
+	 * The fleet list failed with nothing cached, remembered through "Try again"'s refetch: tanstack resets an errored query that holds
+	 * no data to `pending` while it retries, so `isError` alone would swap the unavailable card for the skeleton. THE SAME keyed latch
+	 * the Overview's health card uses (`createLoadFailedLatch`), so "Checking…" shows while it retries.
+	 */
+	const fleetLatch = createLoadFailedLatch(
+		() => 'rollouts-list',
+		() => listQuery
+	);
+	const fleetFailed = $derived(fleetLatch.failed && listQuery.data === undefined);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
 
@@ -1281,6 +1293,8 @@
 	// see the grid's own comment where it renders, below.
 	/** Does the main track hold cards (Waiting on / Held builds)? When it does not and the graph has nothing to draw, the main track holds the "No gates" card instead. */
 	const hasMainContent = $derived(hasContracts || holdBreakdown.held.length > 0);
+	/** Is there anything below the top slot: a main column (Waiting on / Held builds) or a rail (Runs in / Depends on this)? An early rollout has neither, so it is the top card alone. */
+	const showGrid = $derived(hasMainContent || hasChain || hasDependents || hood.total > 0);
 </script>
 
 <!-- ⭐ THE "Here" GROUP'S OWN ROW (squad-rollout Lane G round 3, item 4,
@@ -1547,6 +1561,17 @@
 	</div>
 {/snippet}
 
+{#snippet pendingSkeleton(testid: string | null)}
+	<!-- ONE layout for every kind of rollout: the TOP slot is a full-width card (the graph, the "No gates" card or the unavailable card), the two-column grid (Waiting on in main, the rail) sits below it. The placeholder mirrors that, so the top card keeps its x and width from pending to settled. -->
+	<div class="grid gap-4" data-testid={testid}>
+		<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={176} />
+		<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
+			<CardSkeleton titleWidth="w-24" rollupWidth="w-20" rows={2} rowHeight={40} padded={false} />
+			{@render railSkeleton()}
+		</div>
+	</div>
+{/snippet}
+
 {#snippet railSkeleton()}
 	<!-- The rail's two cards ("Runs in", "Depends on this") as placeholders, shared by the load-outage skeleton and the pending-fleet skeleton so nothing pops in once the list answers. -->
 	<div class="grid min-w-0 content-start gap-4">
@@ -1597,13 +1622,7 @@
 			<div class="-mt-4 mb-4">
 				<span class="skel-block block h-3.5 w-32" aria-hidden="true"></span>
 			</div>
-			<div class="grid gap-4">
-				<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={240} />
-				<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
-					<div></div>
-					{@render railSkeleton()}
-				</div>
-			</div>
+			{@render pendingSkeleton(null)}
 		</div>
 	{:else if gatesOutage.error}
 		<!--
@@ -1747,7 +1766,7 @@
 				{/snippet}
 			</RolloutTabHeader>
 
-			{#if listQuery.isError && listQuery.data === undefined}
+			{#if fleetFailed}
 				<!-- The fleet list failed and there is nothing cached: hasChain / hasContracts / the graph are all read off it, so "No gates on this rollout" would be a false answer, and a newer-builds count has no fleet to be right about. Same unavailable treatment as the health rows (they say it could not be loaded instead of guessing), in the empty-state anatomy; ErrorState would repeat the tab header here. -->
 				<UnavailableCard
 					icon={ShareNodesOutline}
@@ -1759,30 +1778,7 @@
 				/>
 			{:else if !fleetSettled(listQuery)}
 				<!-- The fleet list has not answered: hasChain / hasContracts / hood are all read off it, so "No gates on this rollout" would be a finished, false sentence. The same skeleton the loaded page's graph card uses (below). -->
-				<div class="grid gap-4" data-testid="gates-pending">
-					<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
-						<!-- Mirrors the settled layout: main track (the graph / "No gates" card, or Waiting on) and the rail on the right, so nothing jumps sideways. -->
-						<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={120} />
-						{@render railSkeleton()}
-					</div>
-				</div>
-			{:else if !hasChain && !hasContracts && !hasDependents && hood.total === 0}
-				<!-- ⛔ THE EMPTY STATE IS DELIBERATE AND IT IS ONE SENTENCE. Most
-				     rollouts hold nobody and are held by nothing. It is a GENUINE
-				     empty state now, not an unreachable one — U-32(a) widened the
-				     tab's `show:` predicate (`hasEnvironment || hasDependencies ||
-				     hasOwnGates`, the layout's own) to include a rollout whose only
-				     gate is its own health check selector, so a rollout with health
-				     checks that are all currently passing lands exactly here.
-
-				     REFERENCE REGION: §3.15 empty anatomy, INSIDE the `Card` that
-				     would hold the content (the graph card below, when there is
-				     something to draw) — 20px outline icon in `fg-disabled`, a
-				     `t-ui` one-line headline, `t-meta` next-step line. Replaces the
-				     bare `rounded-xl` box with no icon and no card header. -->
-				<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
-					{@render noGatesCard()}
-				</div>
+				{@render pendingSkeleton('gates-pending')}
 			{:else}
 				<div class="grid gap-4">
 					<!-- ══ THE GRAPH — the tab's centrepiece, full width above the
@@ -1944,9 +1940,11 @@
 								chainWait={waitsForFact?.wave ? { stage: waitsForFact.stage, text: waitsForFact.wave } : null}
 							/>
 						</Card>
-					{:else if hood.focus && hasMainContent}
+					{:else}
+						<!-- No graph to draw (no gates, or none this rollout can see): the SAME full-width top slot holds the "No gates" card, so every kind of rollout has one layout. An early rollout (no chain, no contracts, no dependents) is this card alone, with no empty right column. -->
 						{@render noGatesCard()}
 					{/if}
+					{#if showGrid}
 					<!-- ══ MAIN HOLDS WHAT HAS TO MOVE; THE RAIL HOLDS WHERE THINGS
 				     ARE — the Overview tab's own split, same tracks, ALWAYS
 				     (squad-rollout Lane G round 5, AD ruling: "one grid with or
@@ -2224,8 +2222,6 @@
 									</Card>
 								{/if}
 							</div>
-						{:else if hood.focus && hood.total === 0}
-							{@render noGatesCard()}
 						{/if}
 
 						<!-- RAIL — the column that holds LOCATORS: where things are,
@@ -2407,6 +2403,7 @@
 							</Card>
 						</div>
 					</div>
+					{/if}
 				</div>
 			{/if}
 		</div>

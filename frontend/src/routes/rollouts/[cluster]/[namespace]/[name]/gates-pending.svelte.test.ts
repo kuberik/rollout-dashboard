@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { render, waitFor } from '@testing-library/svelte';
+import { render, waitFor, fireEvent } from '@testing-library/svelte';
 
 vi.mock('$app/state', async () => ({
 	page: (await import('$lib/testing/reactive-page.svelte')).reactivePage
@@ -90,4 +90,46 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		expect(container.querySelector('[data-testid="gates-pending"]')).toBeNull();
 		expect(text()).toMatch(/Try again/);
 	}, 40000);
+
+	test('Try again keeps the unavailable card through the refetch ("Checking…"), a second failure keeps it, a success shows the content', async () => {
+		let mode: 'fail' | 'hold' | 'ok' = 'fail';
+		let releaseHold!: () => void;
+		const hold = new Promise<void>((r) => (releaseHold = r));
+		const fleet = { rollouts: { items: [ro] }, environments: { items: [env] }, rolloutDependencies: [], clusters: [{ name: 'prod', url: 'https://x' }] };
+		const f = async (req: any) => {
+			const url = String(typeof req === 'string' ? req : (req?.url ?? req));
+			if (/\/clusters\/prod\/rollouts\/app-prod-eu-west-1\/app(\?|$)/.test(url)) return json({ rollout: ro, environment: env, rolloutGates: { items: [] } });
+			if (url.includes('/permissions')) return json({ canDeploy: true, canPin: true });
+			if (url.includes('/api/cluster')) return json({ name: 'prod', clusters: [{ name: 'prod', url: 'https://x' }] });
+			if (url.includes('/api/commits') || url.includes('/api/github')) return json({ connected: false });
+			if (!/\/api\/rollouts(\?|$)/.test(url)) return json({ items: [] });
+			if (mode === 'hold') {
+				await hold;
+				return json({ error: 'boom' }, 500);
+			}
+			return mode === 'ok' ? json(fleet) : json({ error: 'boom' }, 500);
+		};
+		vi.stubGlobal('fetch', vi.fn(f));
+		reactivePage.params = { cluster: 'prod', namespace: 'app-prod-eu-west-1', name: 'app' };
+		reactivePage.url = new URL('http://localhost/rollouts/prod/app-prod-eu-west-1/app/gates');
+		const { container, getByRole } = render(WithQueryClient, { props: { component: RolloutGates as any } });
+		const text = () => container.textContent ?? '';
+		await waitFor(() => expect(text()).toMatch(/Rules couldn't be loaded/), { timeout: 20000 });
+		// failure -> Try again: the card stays and says Checking… (no skeleton swap)
+		mode = 'hold';
+		await fireEvent.click(getByRole('button', { name: 'Try again' }));
+		await waitFor(() => expect(text()).toMatch(/Checking…/), { timeout: 5000 });
+		expect(text()).toMatch(/Rules couldn't be loaded/);
+		expect(container.querySelector('[data-testid="gates-pending"]')).toBeNull();
+		// the retry fails again: the card is still there, button back to Try again
+		releaseHold();
+		await waitFor(() => expect(getByRole('button', { name: 'Try again' })).toBeEnabled(), { timeout: 8000 });
+		expect(text()).toMatch(/Rules couldn't be loaded/);
+		expect(container.querySelector('[data-testid="gates-pending"]')).toBeNull();
+		// a success shows the content
+		mode = 'ok';
+		await fireEvent.click(getByRole('button', { name: 'Try again' }));
+		await waitFor(() => expect(text()).toMatch(/No gates on this rollout/), { timeout: 8000 });
+		expect(text()).not.toMatch(/Rules couldn't be loaded/);
+	}, 60000);
 });
