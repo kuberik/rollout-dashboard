@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	imagereflectorv1 "github.com/fluxcd/image-reflector-controller/api/v1"
 	"io"
 	"os"
 	"path/filepath"
@@ -24,7 +25,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
-	imagereflectorv1 "github.com/fluxcd/image-reflector-controller/api/v1"
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	envv1alpha1 "github.com/kuberik/environment-controller/api/v1alpha1"
@@ -752,44 +752,6 @@ func (c *Client) GetSecret(ctx context.Context, namespace, name string) (*corev1
 	return secret, nil
 }
 
-func (c *Client) GetImagePolicies(ctx context.Context, namespace string) (*imagereflectorv1.ImagePolicyList, error) {
-	imagePolicies := &imagereflectorv1.ImagePolicyList{}
-	if err := c.client.List(ctx, imagePolicies, client.InNamespace(namespace)); err != nil {
-		return nil, fmt.Errorf("failed to list image policies: %w", err)
-	}
-	SortByNamespaceName(imagePolicies.Items)
-	return imagePolicies, nil
-}
-
-// New: list image policies across all namespaces
-func (c *Client) GetImagePoliciesAllNamespaces(ctx context.Context) (*imagereflectorv1.ImagePolicyList, error) {
-	imagePolicies := &imagereflectorv1.ImagePolicyList{}
-	if err := c.client.List(ctx, imagePolicies); err != nil {
-		return nil, fmt.Errorf("failed to list image policies across all namespaces: %w", err)
-	}
-	SortByNamespaceName(imagePolicies.Items)
-	return imagePolicies, nil
-}
-
-func (c *Client) GetImageRepositories(ctx context.Context, namespace string) (*imagereflectorv1.ImageRepositoryList, error) {
-	imageRepositories := &imagereflectorv1.ImageRepositoryList{}
-	if err := c.client.List(ctx, imageRepositories, client.InNamespace(namespace)); err != nil {
-		return nil, fmt.Errorf("failed to list image repositories: %w", err)
-	}
-	SortByNamespaceName(imageRepositories.Items)
-	return imageRepositories, nil
-}
-
-// New: list image repositories across all namespaces
-func (c *Client) GetImageRepositoriesAllNamespaces(ctx context.Context) (*imagereflectorv1.ImageRepositoryList, error) {
-	imageRepositories := &imagereflectorv1.ImageRepositoryList{}
-	if err := c.client.List(ctx, imageRepositories); err != nil {
-		return nil, fmt.Errorf("failed to list image repositories across all namespaces: %w", err)
-	}
-	SortByNamespaceName(imageRepositories.Items)
-	return imageRepositories, nil
-}
-
 func (c *Client) GetKustomizations(ctx context.Context, namespace string) (*kustomizev1.KustomizationList, error) {
 	kustomizations := &kustomizev1.KustomizationList{}
 	if err := c.client.List(ctx, kustomizations, client.InNamespace(namespace)); err != nil {
@@ -828,6 +790,8 @@ func (c *Client) GetOCIRepositoriesAllNamespaces(ctx context.Context) (*sourcev1
 	return ociRepositories, nil
 }
 
+// GetImagePolicy and GetImageRepository are read only to resolve the registry
+// image of a ReleaseSource that names its images through oci.imagePolicyRef.
 func (c *Client) GetImagePolicy(ctx context.Context, namespace, name string) (*imagereflectorv1.ImagePolicy, error) {
 	imagePolicy := &imagereflectorv1.ImagePolicy{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, imagePolicy); err != nil {
@@ -1322,49 +1286,26 @@ func (c *Client) ReconcileOCIRepository(ctx context.Context, namespace, name str
 	return nil
 }
 
-// ReconcileImageRepository adds the reconcile annotation to trigger a reconciliation
-func (c *Client) ReconcileImageRepository(ctx context.Context, namespace, name string) error {
-	imageRepository := &imagereflectorv1.ImageRepository{}
-	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, imageRepository); err != nil {
-		return fmt.Errorf("failed to get image repository: %w", err)
-	}
-
-	// Add the reconcile annotation with current timestamp
-	if imageRepository.Annotations == nil {
-		imageRepository.Annotations = make(map[string]string)
-	}
-	imageRepository.Annotations["reconcile.fluxcd.io/requestedAt"] = fmt.Sprintf("%d", time.Now().Unix())
-
-	if err := c.client.Update(ctx, imageRepository); err != nil {
-		return fmt.Errorf("failed to update image repository: %w", err)
-	}
-
-	return nil
-}
-
-// ReconcileAllFluxResources reconciles all associated Flux resources for a rollout
-// Returns the previous scanTime of the ImageRepository (if found) so the caller can detect completion
+// ReconcileAllFluxResources reconciles the rollout's release source and its associated Flux resources.
+// Returns the release source's previous last-sync time (if found) so the caller can detect completion.
 func (c *Client) ReconcileAllFluxResources(ctx context.Context, namespace, rolloutName string) (previousScanTime string, err error) {
-	// Get the rollout to find its ImagePolicy reference
 	rollout, err := c.GetRollout(ctx, namespace, rolloutName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get rollout: %w", err)
 	}
 
-	// Reconcile the ImageRepository referenced by the rollout's ImagePolicy
-	if rollout.Spec.ReleasesImagePolicy.Name != "" {
-		imagePolicy, err := c.GetImagePolicy(ctx, namespace, rollout.Spec.ReleasesImagePolicy.Name)
-		if err == nil && imagePolicy.Spec.ImageRepositoryRef.Name != "" {
-			// Get the ImageRepository to capture the previous scan time
-			imageRepo, err := c.GetImageRepository(ctx, namespace, imagePolicy.Spec.ImageRepositoryRef.Name)
-			if err == nil && imageRepo.Status.LastScanResult != nil {
-				previousScanTime = imageRepo.Status.LastScanResult.ScanTime.Format(time.RFC3339)
-			}
-			// Reconcile the ImageRepository
-			if err := c.ReconcileImageRepository(ctx, namespace, imagePolicy.Spec.ImageRepositoryRef.Name); err != nil {
-				// Log but don't fail - other resources can still be reconciled
-				fmt.Printf("Warning: failed to reconcile image repository %s: %v\n", imagePolicy.Spec.ImageRepositoryRef.Name, err)
-			}
+	// Ask the rollout's ReleaseSource to sync now: release-controller reconciles on any annotation change.
+	if src, err := c.GetRolloutReleaseSource(ctx, rollout); err == nil {
+		if src.Status.LastSyncTime != nil {
+			previousScanTime = src.Status.LastSyncTime.Format(time.RFC3339)
+		}
+		if src.Annotations == nil {
+			src.Annotations = make(map[string]string)
+		}
+		src.Annotations["reconcile.fluxcd.io/requestedAt"] = fmt.Sprintf("%d", time.Now().Unix())
+		if err := c.client.Update(ctx, src); err != nil {
+			// Log but don't fail - other resources can still be reconciled
+			fmt.Printf("Warning: failed to reconcile release source %s: %v\n", src.Name, err)
 		}
 	}
 

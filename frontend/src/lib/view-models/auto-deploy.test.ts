@@ -7,6 +7,7 @@ import {
 	AUTO_DEPLOY_RUNNING
 } from './auto-deploy';
 import type { Rollout, RolloutGate } from '../../types';
+import { legacyStatus } from '../releases/legacy-fixture';
 
 /**
  * THE FIXTURE IS THE LIVE HUB'S OWN SHAPE.
@@ -172,7 +173,7 @@ describe('clearPinOutcome — the promise the old dialog could not keep', () => 
 		const r = rollout({ spec: { wantedVersion: 'main-abc' } });
 		r.status!.conditions = [{ type: 'GatesPassing', status: 'True' } as never];
 		r.status!.gates = [];
-		r.status!.releaseCandidates = [
+		legacyStatus(r).releaseCandidates = [
 			{ version: 'def456', tag: 'def456' },
 			{ version: 'abc123', tag: 'abc123' }
 		] as never;

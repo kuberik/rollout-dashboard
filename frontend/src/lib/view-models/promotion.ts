@@ -1,3 +1,4 @@
+import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import type { Rollout } from '$lib/../types';
 import { getDisplayVersion } from '$lib/utils';
 // ⛔ THIS IMPORT IS CIRCULAR, AND THAT IS DELIBERATE — SEE THE NOTE ON
@@ -40,7 +41,9 @@ export function newerReleaseCount(rollout: Rollout | null | undefined): number |
 	if (!status) return null;
 
 	const cur = status.history?.[0] ? getDisplayVersion(status.history[0].version) : null;
-	const available = Array.isArray(status.availableReleases) ? status.availableReleases : null;
+	const availableList = availableReleases(rollout);
+	const candidateList = releaseCandidates(rollout);
+	const available = Array.isArray(availableList) ? availableList : null;
 
 	// ── VALIDITY GUARD — runs BEFORE we trust releaseCandidates ──────────
 	// `releaseCandidates` is empty in TWO different situations, and the
@@ -64,7 +67,7 @@ export function newerReleaseCount(rollout: Rollout | null | undefined): number |
 	if (available && cur !== null) {
 		const idx = available.findIndex((r) => getDisplayVersion(r) === cur);
 		if (idx === -1) return null; // aged out of its own retention window — unknowable
-		if (Array.isArray(status.releaseCandidates)) return status.releaseCandidates.length;
+		if (Array.isArray(candidateList)) return candidateList.length;
 		// availableReleases is OLDEST-FIRST, so distance to head is the
 		// number of entries after idx. Verified to agree with
 		// releaseCandidates.length on all 15 live rollouts.
@@ -74,7 +77,7 @@ export function newerReleaseCount(rollout: Rollout | null | undefined): number |
 	// No availableReleases to validate against. releaseCandidates is still
 	// the controller's own answer, so use it when present; otherwise we
 	// have nothing to go on.
-	if (Array.isArray(status.releaseCandidates)) return status.releaseCandidates.length;
+	if (Array.isArray(candidateList)) return candidateList.length;
 	return null;
 }
 
@@ -84,8 +87,9 @@ export function newestCandidate(rollout: Rollout | null | undefined): ReleaseRef
 	if (!status) return null;
 
 	// releaseCandidates is NEWEST-FIRST.
-	if (Array.isArray(status.releaseCandidates)) {
-		return status.releaseCandidates[0] ?? null;
+	const candidateList = releaseCandidates(rollout);
+	if (Array.isArray(candidateList)) {
+		return candidateList[0] ?? null;
 	}
 
 	// Fall back to availableReleases (OLDEST-FIRST → newest is the last
@@ -93,8 +97,9 @@ export function newestCandidate(rollout: Rollout | null | undefined): ReleaseRef
 	// otherwise the "last element" is just the rollout's own current
 	// version and calling it a "candidate" would be misleading.
 	const count = newerReleaseCount(rollout);
-	if (count && count > 0 && Array.isArray(status.availableReleases)) {
-		return status.availableReleases[status.availableReleases.length - 1] ?? null;
+	const availableList = availableReleases(rollout);
+	if (count && count > 0 && Array.isArray(availableList)) {
+		return availableList[availableList.length - 1] ?? null;
 	}
 
 	return null;
@@ -222,15 +227,17 @@ export function promotionCandidates(rollout: Rollout | null | undefined): Releas
 	// unknowable we must not claim anything, blocked or otherwise.
 	if (newerReleaseCount(rollout) === null) return [];
 
-	if (Array.isArray(status.releaseCandidates)) return status.releaseCandidates;
+	const candidateList = releaseCandidates(rollout);
+	if (Array.isArray(candidateList)) return candidateList;
 
 	const count = newerReleaseCount(rollout);
-	if (count && count > 0 && Array.isArray(status.availableReleases) && status.history?.[0]) {
+	const availableList = availableReleases(rollout);
+	if (count && count > 0 && Array.isArray(availableList) && status.history?.[0]) {
 		const cur = getDisplayVersion(status.history[0].version);
-		const idx = status.availableReleases.findIndex((r) => getDisplayVersion(r) === cur);
+		const idx = availableList.findIndex((r) => getDisplayVersion(r) === cur);
 		// availableReleases is OLDEST-FIRST; the tail after idx is everything
 		// newer than current. Reversed so this function has ONE contract.
-		return idx >= 0 ? status.availableReleases.slice(idx + 1).reverse() : [];
+		return idx >= 0 ? availableList.slice(idx + 1).reverse() : [];
 	}
 	return [];
 }

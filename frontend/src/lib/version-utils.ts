@@ -1,3 +1,4 @@
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { Environment, Rollout } from '../types';
 import { getDisplayVersion, shortenVersion } from './utils';
 import { rolloutMatchesEnvironment, sourceClusterName, sourceDashboardURL } from './source-dashboard';
@@ -195,7 +196,7 @@ export function displayVersionForTag(
 	tag: string | null | undefined
 ): string {
 	if (!tag) return '';
-	for (const rel of rollout?.status?.availableReleases ?? []) {
+	for (const rel of availableReleases(rollout) ?? []) {
 		if (rel.tag === tag) return getDisplayVersion(rel);
 	}
 	for (const h of rollout?.status?.history ?? []) {
@@ -315,7 +316,7 @@ export function revisionFor(
 ): string | null {
 	if (!rollout || !displayVersion) return null;
 	const status = rollout.status;
-	for (const rel of status?.availableReleases ?? []) {
+	for (const rel of availableReleases(rollout) ?? []) {
 		if (rel.revision && getDisplayVersion(rel) === displayVersion) return rel.revision;
 	}
 	for (const h of status?.history ?? []) {

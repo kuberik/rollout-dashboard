@@ -76,7 +76,10 @@ npm run build         # Output to frontend/dist
 
 ```
 GET  /api/health                               # Health check
-GET  /api/rollouts                             # List all rollouts
+GET  /api/rollouts                             # List all rollouts (+ kustomizations, environments, kruiseRollouts,
+                                               #   rolloutDependencies, releaseSources, releaseSlices; the last three
+                                               #   are {items}|null, null = CRD not installed; real read failures are
+                                               #   named in partialReads; all fan-out merged + source-cluster stamped)
 GET  /api/rollouts/:namespace/:name            # Get rollout details
 POST /api/rollouts/:namespace/:name/pin        # Pin version to rollout
 POST /api/rollouts/:namespace/:name/bypass-gates  # Add bypass-gates annotation
@@ -291,3 +294,7 @@ kubectl get httproute -n kuberik-system
 curl http://localhost:8080/api/health
 curl http://localhost:8080/api/rollouts
 ```
+
+## Release catalogue (ReleaseSource / ReleaseSlice)
+
+release-controller's catalogue kinds are mirrored in `pkg/apis/release/v1alpha1` (copied from release-controller commit 1306a8c; it has no git remote, so it is not a module dependency; re-sync by hand). Both are informer-cached (registered through `optionalCachedObjects`/`kindOf`, see below), event-carrying (`objectCarryingKinds`, 64 KiB cap) and served on `/api/rollouts` as `releaseSources`/`releaseSlices`, namespace-visibility filtered like every other list. The CRDs are optional: an absent CRD yields null, not an error. RBAC: release-controller ships the optional binding of `release-controller-reader` to this SA (its `config/readers`); the dashboard deploy does not define one. The catalogue kinds are NOT in `cachedByObject` (cache.New fails without the CRD): they register via `registerOptionalInformers`, retried every 30s. `go.mod` pins rollout-controller to the merge commit that added the release catalogue (a pseudo-version); move it to the next release tag once one exists. Releases come only from ReleaseSources and ReleaseSlices (plus `status.candidates`); the only reads of Flux `ImagePolicy`/`ImageRepository` left resolve the image of a source that names it through `oci.imagePolicyRef` (`ResolveReleaseImage`).

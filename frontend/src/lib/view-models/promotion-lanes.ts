@@ -13,6 +13,7 @@
  * never disagree with the rest of the page about a rollout's state.
  */
 import { behindOfRollout } from './behind';
+import { noReleasesOf } from '$lib/releases/registry.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 import { getEnvironmentRank } from '$lib/env-order';
 import { canonicalTier } from '$lib/view-models/sites-waves';
@@ -46,6 +47,8 @@ export type LaneNode = {
 	state: NodeState;
 	/** Builds behind the newest; 0 when on it or unknown. */
 	behind: number;
+	/** The place has no releases in the catalogue: drawn neutral (state 'none'), health only, never a currency claim. */
+	noReleases?: boolean;
 };
 
 export type Lane = {
@@ -97,12 +100,16 @@ export function nodeState(c: RolloutCard): NodeState {
 
 function toNode(c: RolloutCard): LaneNode {
 	const env = shortEnvLabel(c.theme) || c.envName || c.envDisplay || '';
+	/* no release = no currency: health (failed, held, moving) still wins; a place that would read newest/behind is drawn 'none', from the catalogue rule, never a label */
+	const base = nodeState(c);
+	const none = (base === 'newest' || base === 'behind' || base === 'none') && !!noReleasesOf(c.rollout);
 	return {
 		card: c,
 		tier: tierOf(c.envName || env),
 		env,
-		state: nodeState(c),
-		behind: c.behindCount ?? behindOfRollout(c.rollout, c.rank)
+		state: none ? 'none' : base,
+		behind: none ? 0 : (c.behindCount ?? behindOfRollout(c.rollout, c.rank)),
+		...(none ? { noReleases: true } : {})
 	};
 }
 

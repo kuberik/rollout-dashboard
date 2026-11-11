@@ -572,8 +572,9 @@ lib/components/new/app/AppActivity.svelte	title	Recent activity
 lib/components/new/app/AppActivity.svelte	code	Rolled back
 lib/components/new/app/AppBuilds.svelte	text	… builds not running anywhere
 lib/components/new/app/AppBuilds.svelte	text	… failing
-lib/components/new/app/AppBuilds.svelte	aria-label	…, …{s.title ? `, $…` : ''}
+lib/components/new/app/AppBuilds.svelte	aria-label	…{noReleases ? '' : `, $…`}{s.title ? `, $…` : ''}
 lib/components/new/app/AppBuilds.svelte	text	Builds appear once a rollout deploys it.
+lib/components/new/app/AppBuilds.svelte	text	Builds from deploy history
 lib/components/new/app/AppBuilds.svelte	aria-label	Deploy … to …
 lib/components/new/app/AppBuilds.svelte	text	No details recorded for this build
 lib/components/new/app/AppBuilds.svelte	text	No place runs this app yet
@@ -817,6 +818,7 @@ lib/components/new/env/env-page.ts	code	… regions
 lib/components/new/env/env-page.ts	code	… to approve
 lib/components/new/env/env-page.ts	code	from …
 lib/components/new/env/env-page.ts	code	leads · ${w.followers.length === 1 ?
+lib/components/new/env/env-page.ts	code	No releases yet
 lib/components/new/env/env-page.ts	code	On the newest
 lib/components/new/env/env-page.ts	code	Rolled back
 lib/components/new/env/env-page.ts	code	Since the build began waiting
@@ -1021,19 +1023,9 @@ lib/components/PartialDataNotice.svelte	code	this page
 lib/components/pin-copy.ts	code	Clear pin
 lib/components/pin-copy.ts	code	Clear the pin on … in …?
 lib/components/PromotionLane.svelte	code	… behind
-lib/components/PromotionLane.svelte	code	… in …${nextName ?
 lib/components/PromotionLane.svelte	code	……: …${r.card.version ?
 lib/components/PromotionLane.svelte	code	· wave …
-lib/components/PromotionLane.svelte	code	Checking … in …${age ?
-lib/components/PromotionLane.svelte	code	Deploy failed in …
-lib/components/PromotionLane.svelte	code	Deploying … to …${age ?
-lib/components/PromotionLane.svelte	code	Health check failing in …
-lib/components/PromotionLane.svelte	code	Held in …${n.card.heldCauseLabel ?
-lib/components/PromotionLane.svelte	code	Newest build not deployed yet
-lib/components/PromotionLane.svelte	code	Nothing deployed yet
-lib/components/PromotionLane.svelte	code	On the newest everywhere
-lib/components/PromotionLane.svelte	code	Stuck in …
-lib/components/PromotionLane.svelte	code	Waits for you in …
+lib/components/PromotionLane.svelte	code	no releases
 lib/components/PromotionLane.svelte	code	wave …
 lib/components/RecoveryModeWarningModal.svelte	code	… failed
 lib/components/RecoveryModeWarningModal.svelte	code	… hasn't finished (it is still deploying or baking)
@@ -1050,6 +1042,9 @@ lib/components/RecoveryModeWarningModal.svelte	code	The last deploy failed
 lib/components/RecoveryModeWarningModal.svelte	code	The last deploy was cancelled before it finished
 lib/components/RecoveryModeWarningModal.svelte	code	this environment
 lib/components/RecoveryModeWarningModal.svelte	text	to cancel
+lib/components/ReleaseSourceNotice.svelte	text	… … … … . … … … Set
+lib/components/ReleaseSourceNotice.svelte	title	No release source
+lib/components/ReleaseSourceNotice.svelte	text	on the ReleaseSource to read from that ImagePolicy ( … ). … …
 lib/components/RepoCard.svelte	title	deploys …
 lib/components/ResourcesCard.svelte	title	… — Deployment
 lib/components/ResourcesCard.svelte	text	… … … ready resource …
@@ -1179,6 +1174,14 @@ lib/pr-cell-copy.ts	code	usually … min
 lib/pr-cell-copy.ts	code	usually … min once it starts
 lib/pr-cell-copy.ts	code	waiting for … to deploy it first
 lib/pr-cell-copy.ts	code	waiting on …
+lib/releases/catalogue.ts	code	No release source
+lib/releases/catalogue.ts	code	No releases yet
+lib/releases/notice-copy.ts	code	… has no release source, so it has no releases.
+lib/releases/notice-copy.ts	code	… sets spec.releasesImagePolicy, which is ignored.
+lib/releases/notice-copy.ts	code	The release source of this app's rollout has not published any releases yet.
+lib/releases/notice-copy.ts	code	This app's rollout
+lib/releases/notice-copy.ts	code	This Rollout
+lib/releases/notice-copy.ts	code	This Rollout's release source has not published any releases yet.
 lib/rollout-cards.ts	code	… newer build… waiting.
 lib/rollout-cards.ts	code	Held: a newer build exists, but no rule lets it through yet.
 lib/rollout-cards.ts	code	Not pinned, so it can move forward again.
@@ -1875,6 +1878,7 @@ routes/namespaces/[name]/+page.svelte	text	Show … more rollout …
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
 routes/namespaces/[name]/+page.svelte	text	View all activity
 routes/rollouts/[cluster]/[namespace]/[name]/+layout.svelte	aria-label	Rollout sections
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… : no versions to choose from
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … … … … · held: … … … … · held: … … … … · promoting … … … …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … newer · held by the pin …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	… · Check restarted
@@ -1934,6 +1938,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to retry: 
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Held …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Held by rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Holding … rollout … — … … … .
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Loading releases…
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Lockstep is set on … only
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Newer builds
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No builds yet

@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
 	"log"
 	"sync/atomic"
 	"time"
@@ -14,7 +15,11 @@ import (
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	kruiserolloutv1beta1 "github.com/openkruise/kruise-rollout-api/rollouts/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
 	toolscache "k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -52,6 +57,9 @@ import (
 // as every other entry here — this dashboard has no per-namespace cache
 // scoping today.
 //
+// ReleaseSource and ReleaseSlice (release-controller's catalogue) are cached
+// too but live in optionalCachedObjects(), not here: see its doc comment.
+//
 // Deliberately NOT Pod: cluster-wide Pods are heavy (every namespace, every
 // replica, every restart) and nothing else in this cache needs them — the
 // children/managed-resources handlers keep doing a namespaced, selector-
@@ -84,6 +92,75 @@ func cachedByObject() map[client.Object]cache.ByObject {
 	}
 }
 
+// optionalCachedObjects are informer-cached kinds whose CRDs may be absent
+// (release-controller's catalogue). They MUST stay out of cachedByObject():
+// cache.New resolves every ByObject type through the RESTMapper up front
+// (IsObjectNamespaced) and fails for the whole cache when one has no mapping,
+// which would take every other kind and the SSE stream down on any cluster
+// without release-controller. They are registered by
+// registerOptionalInformers once the mapper resolves them, and retried in the
+// background until then. A read of one before that returns the cache's own
+// no-match error, which handlers treat as "CRD not installed" (null).
+func optionalCachedObjects() []client.Object {
+	return []client.Object{
+		&releasev1alpha1.ReleaseSource{},
+		&releasev1alpha1.ReleaseSlice{},
+	}
+}
+
+// optionalRetryInterval is how often unresolved optional kinds are retried.
+var optionalRetryInterval = 30 * time.Second
+
+// retryOptionalInformers polls discovery every interval until every pending
+// kind resolves and has its informer, so a CRD installed after startup starts
+// streaming without a restart. Until then reads of the kind return the
+// cache's no-match error, which the handlers answer as an empty catalogue.
+func retryOptionalInformers(ctx context.Context, interval time.Duration, g informerGetter, mapper meta.RESTMapper, scheme *runtime.Scheme, pending []client.Object, attach func(kind string, inf cache.Informer)) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for len(pending) > 0 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		meta.MaybeResetRESTMapper(mapper)
+		pending = registerOptionalInformers(ctx, g, mapper, scheme, pending, attach)
+	}
+}
+
+// informerGetter is the slice of cache.Cache registerOptionalInformers needs.
+type informerGetter interface {
+	GetInformer(ctx context.Context, obj client.Object, opts ...cache.InformerGetOption) (cache.Informer, error)
+}
+
+// registerOptionalInformers starts an informer for each object in pending
+// whose kind the mapper resolves, calls attach with it, and returns the
+// objects that are still unresolved.
+func registerOptionalInformers(ctx context.Context, g informerGetter, mapper meta.RESTMapper, scheme *runtime.Scheme, pending []client.Object, attach func(kind string, inf cache.Informer)) []client.Object {
+	var still []client.Object
+	for _, obj := range pending {
+		gvk, err := apiutil.GVKForObject(obj, scheme)
+		if err != nil {
+			log.Printf("[read-cache] optional kind %T not in scheme: %v", obj, err)
+			continue
+		}
+		if _, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version); err != nil {
+			still = append(still, obj)
+			continue
+		}
+		inf, err := g.GetInformer(ctx, obj)
+		if err != nil {
+			log.Printf("[read-cache] failed to start informer for optional kind %s: %v", gvk.Kind, err)
+			still = append(still, obj)
+			continue
+		}
+		attach(kindOf(obj), inf)
+		log.Printf("[read-cache] optional kind %s registered", gvk.Kind)
+	}
+	return still
+}
+
 // kindOf names the object type for ChangeEvent.Kind. A plain type switch over
 // the same set cachedByObject() lists — kept in sync with it by inspection,
 // same as the doc comment above cachedByObject already promises to be kept in
@@ -102,6 +179,10 @@ func kindOf(obj client.Object) string {
 		return "ClusterRolloutSchedule"
 	case *rolloutv1alpha1.HealthCheck:
 		return "HealthCheck"
+	case *releasev1alpha1.ReleaseSource:
+		return "ReleaseSource"
+	case *releasev1alpha1.ReleaseSlice:
+		return "ReleaseSlice"
 	case *openkruisev1alpha1.RolloutTest:
 		return "RolloutTest"
 	case *envv1alpha1.Environment:
@@ -182,9 +263,33 @@ func shouldPublishUpdate(kind string, oldObj, newObj interface{}) bool {
 	switch kind {
 	case "ReplicaSet":
 		return replicaSetMeaningfullyChanged(oldObj, newObj)
+	case "ReleaseSource":
+		return releaseSourceMeaningfullyChanged(oldObj, newObj)
 	default:
 		return true
 	}
+}
+
+// releaseSourceMeaningfullyChanged ignores updates where only
+// status.lastSyncTime (bumped every sync interval), resourceVersion or
+// managedFields changed: those would otherwise stream a no-op event per
+// source per minute. Non-ReleaseSource values publish (safe default).
+func releaseSourceMeaningfullyChanged(oldObj, newObj interface{}) bool {
+	o, ok := oldObj.(*releasev1alpha1.ReleaseSource)
+	if !ok {
+		return true
+	}
+	n, ok := newObj.(*releasev1alpha1.ReleaseSource)
+	if !ok {
+		return true
+	}
+	o, n = o.DeepCopy(), n.DeepCopy()
+	for _, x := range []*releasev1alpha1.ReleaseSource{o, n} {
+		x.Status.LastSyncTime = nil
+		x.ResourceVersion = ""
+		x.ManagedFields = nil
+	}
+	return !apiequality.Semantic.DeepEqual(o, n)
 }
 
 const podTemplateHashLabel = "pod-template-hash"
@@ -225,6 +330,21 @@ func int32PtrEqual(a, b *int32) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+func attachChangeHandlers(kind string, informer cache.Informer) {
+	if _, err := informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
+		AddFunc: func(o interface{}) { publishChange(Hub, "add", kind, o) },
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			if !shouldPublishUpdate(kind, oldObj, newObj) {
+				return
+			}
+			publishChange(Hub, "update", kind, newObj)
+		},
+		DeleteFunc: func(o interface{}) { publishChange(Hub, "delete", kind, o) },
+	}); err != nil {
+		log.Printf("[read-cache] failed to register change-stream handler for %s: %v", kind, err)
+	}
 }
 
 // ErrCacheWarming is returned by GetReadClient while InitReadCache's initial
@@ -320,19 +440,14 @@ func InitReadCache(ctx context.Context, syncTimeout time.Duration) {
 			log.Printf("[read-cache] failed to start informer for %T (resync/list failures for this type will be visible on read, not here): %v", obj, err)
 			continue
 		}
-		kind := kindOf(obj)
-		if _, err := informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
-			AddFunc: func(o interface{}) { publishChange(Hub, "add", kind, o) },
-			UpdateFunc: func(oldObj, newObj interface{}) {
-				if !shouldPublishUpdate(kind, oldObj, newObj) {
-					return
-				}
-				publishChange(Hub, "update", kind, newObj)
-			},
-			DeleteFunc: func(o interface{}) { publishChange(Hub, "delete", kind, o) },
-		}); err != nil {
-			log.Printf("[read-cache] failed to register change-stream handler for %s: %v", kind, err)
-		}
+		attachChangeHandlers(kindOf(obj), informer)
+	}
+
+	// Optional kinds (absent CRDs): register what resolves now, retry the rest
+	// in the background so a release-controller installed after this process
+	// started streams without a restart.
+	if pending := registerOptionalInformers(ctx, c, mapper, scheme, optionalCachedObjects(), attachChangeHandlers); len(pending) > 0 {
+		go retryOptionalInformers(ctx, optionalRetryInterval, c, mapper, scheme, pending, attachChangeHandlers)
 	}
 
 	cl, err := client.New(cfg, client.Options{

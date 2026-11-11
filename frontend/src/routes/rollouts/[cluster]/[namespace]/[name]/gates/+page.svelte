@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { availableReleases } from '$lib/releases/registry.svelte';
 	import { providerScopeCounts } from '$lib/view-models/dependency-hold';
 	import { waitsForText } from '$lib/view-models/waits-for-text';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
@@ -400,7 +401,7 @@
 	const order = $derived.by(() => {
 		const releases: Release[] = [];
 		const push = (r: Rollout | null | undefined) => {
-			for (const rel of r?.status?.availableReleases ?? []) releases.push(rel as Release);
+			for (const rel of availableReleases(r) ?? []) releases.push(rel as Release);
 			for (const h of r?.status?.history ?? []) if (h.version) releases.push(h.version as Release);
 		};
 		push(rollout);
@@ -674,7 +675,7 @@
 		const r = rolloutByKey.get(`${ns}/${cname}`);
 		if (!r) return null;
 		const releases: Release[] = [];
-		for (const rel of r.status?.availableReleases ?? []) releases.push(rel as Release);
+		for (const rel of availableReleases(r) ?? []) releases.push(rel as Release);
 		for (const h of r.status?.history ?? []) if (h.version) releases.push(h.version as Release);
 		const ord = buildOrder(releases);
 		const history = (r.status?.history ?? []) as unknown as EnvHistoryEntry[];

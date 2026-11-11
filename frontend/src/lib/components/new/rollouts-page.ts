@@ -9,7 +9,7 @@
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
 import {
-	rollouts, placeCause, placesOf, placeBehind, regionStates, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
+	rollouts, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
@@ -77,6 +77,11 @@ const sinceDesc = (a: { since?: string | null }, b: { since?: string | null }) =
 /** [state word, what the strand cannot draw]. Never "step N of M". */
 /** `clockInSentence: false` — the row has an age slot (the aligned column) that already prints the wait's clock, so the sentence does not say "for 5h" a second time (QA2 #8). */
 export function sentenceOf(r: TRow, hs: HomeState, o: { clockInSentence?: boolean } = {}): [string, string] {
+	/* no releases: the row keeps its own state word and detail; the label only takes the currency slot, appended after the detail */
+	if (r.noReleases && r.group !== 'failed') {
+		const [lead, rest] = sentenceOf({ ...r, noReleases: null }, hs, o);
+		return [lead, [rest, r.noReleases.label].filter(Boolean).join(' · ')];
+	}
 	if (r.group === 'approval') {
 		return [approvalWord(!!r.needsYou && !r.stillChecking), r.stillChecking ? 'check still running' : o.clockInSentence === false ? '' : `for ${ago(waitClock(r, hs))}`];
 	}
@@ -148,7 +153,10 @@ function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState, sett
 			if (covered(p, app)) continue;
 			const label = p.label.replace(/^prod-/, '');
 			const place = !label || TIER_WORDS.has(label) || label === p.tier ? p.tier : `${p.tier} · ${label}`;
-			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence: restSentence(p, settled), code: p.version ?? '', age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
+			const none = noReleasesAt(p.href);
+			/* no releases: the health word and the running build stay; the label takes the currency slot ("2 behind" / "On the newest") */
+			const sentence = none ? `${p.state === 'rolled-back' ? 'Rolled back' : 'Healthy'} · ${none.label}` : restSentence(p, settled);
+			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence, code: p.version ?? '', age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
 		}
 	}
 	out.sort((a, b) => a.app.localeCompare(b.app) || a.o - b.o || a.place.localeCompare(b.place));

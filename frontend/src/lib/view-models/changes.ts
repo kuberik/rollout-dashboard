@@ -190,6 +190,8 @@ export type ChangeRowVM = {
 	 * produces.
 	 */
 	noRelease: boolean;
+	/** every app this change deploys has no releases (no source, or an empty catalogue): it will not be promoted. The state word ("No release source" / "No releases yet"), never "moving" or "queued". */
+	noReleases?: string;
 	/**
 	 * ⭐ COORDINATOR RULING (AD round 3, repo finding 8 / "item H") — THE
 	 * CARRIER-SHA SUFFIX. Both the Changes row ("7b3c9f1 … failed in prod")
@@ -506,6 +508,7 @@ function buildChangeRow(
 		frontierReason: frontierReasonFor(frontier, now),
 		frontierSince: frontierFamilySince(vm, grid),
 		noRelease: vm.noRelease,
+		noReleases: vm.services.length > 0 && vm.services.every((s) => !!s.noReleases) ? vm.services[0].noReleases : undefined,
 		carrierSha,
 		carrierHref,
 		services: vm.services
@@ -1006,8 +1009,9 @@ export function standingMotion(
  * on `row.grid`/`row.verdictTone`, computed once at `buildChangeRow` time.
  */
 export function standingWords(
-	row: Pick<ChangeRowVM, 'verdictTone' | 'grid' | 'services'> & { noRelease?: boolean }
+	row: Pick<ChangeRowVM, 'verdictTone' | 'grid' | 'services'> & { noRelease?: boolean; noReleases?: string }
 ): string {
+	if (row.noReleases && row.verdictTone !== 'failed' && row.verdictTone !== 'live') return row.noReleases.toLowerCase();
 	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built" is retired copy — checked
 	// FIRST, ahead of `verdictTone`, so this reads correctly however the
 	// caller reached `not-built` (the real pipeline's own `noRelease`, or a
@@ -1078,8 +1082,9 @@ export function standingWords(
  * `standingWords`, worded to the family alone: `<short state> · <family>`.
  */
 export function standingWordsCompact(
-	row: Pick<ChangeRowVM, 'verdictTone' | 'grid' | 'services'> & { noRelease?: boolean }
+	row: Pick<ChangeRowVM, 'verdictTone' | 'grid' | 'services'> & { noRelease?: boolean; noReleases?: string }
 ): string {
+	if (row.noReleases && row.verdictTone !== 'failed' && row.verdictTone !== 'live') return row.noReleases.toLowerCase();
 	// ⭐ ROUND 3 (2026-09-10 ruling A). "not built" retired — see
 	// `standingWords`'s own doc for the full reasoning; this is its
 	// compact-card twin.

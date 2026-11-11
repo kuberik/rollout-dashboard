@@ -44,7 +44,7 @@
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { approvalOf } from './Footprint.svelte';
 	import { approvalIn, rowPlaceName } from './state-words';
-	import { pillOf, currencyOf } from './app/app-model';
+	import { pillOf, currencyOf, restCurrency } from './app/app-model';
 		import { rolloutPath } from '$lib/source-dashboard';
 
 	let { span = false, compact = false, framed = false, item, lane, approvals = [], lead = false, attention = false, calm = false, scenario = 'incident', last = null, recent = [], noTier = false, drawing }: {
@@ -198,7 +198,7 @@
 	 * build. No "·" run holds an id; the commit, author and lag live on the app page.
 	 */
 	/** apps-13 AL1/AL3: the headline place's currency against THIS app's own newest build (its tab's Newer builds list) */
-	const headCurrency = $derived(headPill ? currencyOf(headPill.place.href, item.app).word : '');
+	const headCurrency = $derived(restCurrency(item.placeList, headPill?.place.href ?? null, item.app));
 	const slots = $derived.by(() => {
 		/* apps collapsed r1: no CHECK/NEXT/RUNS keys; a slot says only what the lane does not. A deploying or checking place is already its cell's mark + word; a settled app is the rest line. */
 		const out: { key: string; build?: string; pre?: string; text: string; right?: string }[] = [];
@@ -245,9 +245,9 @@
 	 * draws no strip at all: the rings and one line, "All healthy · up to date".
 	 */
 	const TIERS = ['dev', 'test', 'staging', 'other', 'prod'] as const;
-	const AT_REST = new Set(['newest', 'behind']);
+	const AT_REST = new Set(['newest', 'behind', 'none']);
 	const tierList = $derived(TIERS.filter((t) => lane.byTier[t]?.length));
-	const restTiers = $derived(tierList.filter((t) => lane.byTier[t]!.every((n) => AT_REST.has(n.state))));
+	const restTiers = $derived(tierList.filter((t) => lane.byTier[t]!.every((n) => AT_REST.has(n.state) && (n.state !== 'none' || n.noReleases))));
 	const shownTiers = $derived(tierList.filter((t) => !restTiers.includes(t)));
 	const allRest = $derived(tierList.length > 0 && !shownTiers.length);
 	/** one name per tier: a prod set of regions is "prod" */
@@ -299,7 +299,7 @@
 			case 'deploying': return { ink: 'text-active', lead: '', rest: '', build: build, badge: true };
 			case 'checking': return { ink: 'text-progress', lead: '', rest: '', build: build, badge: true };
 			case 'ready': return { ink: 'text-fg', lead: 'Ready to promote to prod', rest: '', build: '', badge: false };
-			case 'quiet': return restLine || /at rest|healthy/i.test(item.fact) ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: prodWord(item.fact), rest: '', build: '', badge: false };
+			case 'quiet': if (item.noReleases) return { ink: 'text-fg', lead: 'All healthy', rest: item.noReleases.label.charAt(0).toLowerCase() + item.noReleases.label.slice(1), build: '', badge: false }; return restLine || /at rest|healthy/i.test(item.fact) ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: prodWord(item.fact), rest: '', build: '', badge: false };
 			default: return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: line2.replace(/^./, (c) => c.toUpperCase()), rest: '', build: '', badge: false };
 		}
 	});
@@ -349,7 +349,7 @@
 {#snippet envRow(cls: string)}
 	<!-- r39 (owner 2026-11-08: "Apps tiles use the boxed env row"): the SAME PromotionLane every page draws, neutral boxes (no current), bare = no app name column.
 	     The tile is one link, so nothing inside the row is a target. -->
-	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} showApp={false} fill={lead ? 'L' : 'M'} {calm} /></div>
+	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} fill={lead ? 'L' : 'M'} {calm} /></div>
 {/snippet}
 
 {#snippet facts(t: string)}{#each chunks(t) as c}{#if c.nw}<span class="whitespace-nowrap">{c.x}</span>{:else}{c.x}{/if}{/each}{/snippet}
@@ -468,7 +468,7 @@
 	{/if}
 	<!-- tile footer, two fixed tracks: the change (commit icon · title · #PR · age) | who ships to it (avatar stack). Phone: folds behind the state line's chevron.
 	     LEAD (r2 apps fix 1): the footer names the change of the build the title and banner are about (title · #PR | its author, no second age), or is omitted. -->
-	{#if lead ? leadChange : !isQuiet && (lastChange || shippers.length)}
+	{#if lead ? leadChange : (!isQuiet || !!item.noReleases) && (lastChange || shippers.length)}
 		<div class="fp-foot-row mt-auto grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 {lead ? '' : 'border-t border-line-subtle pt-4'} " data-fp-footer>
 			{#if lead && leadChange}
 				<span class="t-meta flex min-w-0 items-center gap-2 text-fg-muted">

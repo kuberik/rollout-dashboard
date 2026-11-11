@@ -1,4 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('$lib/releases/registry.svelte', async (orig) => {
+	const m = await orig<typeof import('$lib/releases/registry.svelte')>();
+	return { ...m, noReleasesOf: (r: { metadata?: { namespace?: string } } | null) => (r?.metadata?.namespace === 'norel' ? { kind: 'empty', label: 'No releases yet', message: '' } : m.noReleasesOf(r as never)) };
+});
 import type { Rollout, Environment } from '$lib/../types';
 import { buildRolloutCards } from '$lib/rollout-cards';
 import { buildLanes, appsWithoutEnvironment, tierOf } from './promotion-lanes';
@@ -108,5 +113,18 @@ describe('envless rollouts with a theme annotation (QA #11)', () => {
 		expect(nodes.length).toBe(3);
 		for (const n of nodes) expect(n.env.trim()).not.toBe('');
 		expect(nodes.map((n) => n.tier).sort()).toEqual(['dev', 'prod', 'staging']);
+	});
+});
+
+describe('buildLanes: a place with no releases is a none node from the catalogue rule (rollout detail lane)', () => {
+	it('flags it noReleases and state none; a sibling with releases is unaffected', () => {
+		const a = mkRollout('checkout-worker', 'norel');
+		const b = mkRollout('checkout-worker', 'rel');
+		const lanes = buildLanes(buildRolloutCards([a, b], [mkEnv('checkout-worker', 'norel', 'dev'), mkEnv('checkout-worker', 'rel', 'prod')], NOW));
+		const nodes = [...lanes[0].stages, ...lanes[0].prod];
+		const dev = nodes.find((n) => n.card.ns === 'norel')!;
+		expect(dev.state).toBe('none');
+		expect(dev.noReleases).toBe(true);
+		expect(nodes.find((n) => n.card.ns === 'rel')!.noReleases).toBeUndefined();
 	});
 });

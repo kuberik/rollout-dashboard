@@ -17,6 +17,7 @@
  * `Cancelled` was cancelled, `Deploying`/`InProgress` has not finished. (The
  * page still DRAWS only `Failed` as failing; that rule is separate.)
  */
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { HealthCheck, Rollout } from '../../types';
 import { getDisplayVersion } from '$lib/utils';
 
@@ -109,7 +110,7 @@ export function selectedVersionDisplay(
 	selectedTag: string | null
 ): string | null {
 	if (!selectedTag) return null;
-	const release = rollout?.status?.availableReleases?.find((ar) => ar.tag === selectedTag);
+	const release = availableReleases(rollout)?.find((ar) => ar.tag === selectedTag);
 	return release ? getDisplayVersion(release) : selectedTag;
 }
 

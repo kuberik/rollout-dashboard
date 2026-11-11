@@ -26,6 +26,7 @@ import {
 } from './revision-ledger';
 import type { RevisionCoverage } from './revision-coverage';
 import type { Environment, Rollout } from '../../types';
+import { legacyStatus } from '../releases/legacy-fixture';
 
 /**
  * The defect these tests are written against, measured on the live cluster:
@@ -235,7 +236,7 @@ describe('buildRevisionLedger', () => {
 		const { rollouts, environments, A } = fixture();
 		// A fourth build exists on the release line but has never deployed.
 		const extra = rel('ddddddd', '1.4.0', 1);
-		for (const r of rollouts) r.status!.availableReleases!.push(extra as never);
+		for (const r of rollouts) legacyStatus(r).availableReleases!.push(extra as never);
 		const [repo] = buildRevisionLedger(rollouts, environments);
 		expect(repo.rows).toHaveLength(3);
 		expect(repo.knownRevisions).toBe(4);
@@ -297,7 +298,7 @@ describe('buildRevisionLedger', () => {
 	it('withholds the promote when a gate holds that exact tag back', () => {
 		const { rollouts, environments, W } = fixture();
 		const prod = rollouts[3];
-		prod.status!.releaseCandidates = [W[0], W[1]] as never;
+		legacyStatus(prod).releaseCandidates = [W[0], W[1]] as never;
 		// The gate publishes an allow-list that does NOT contain the head. This
 		// is the live cluster's own shape: `hello-world-manual-approval` allows
 		// nothing, so `/versions` offers no promote there either. An offer that
@@ -314,7 +315,7 @@ describe('buildRevisionLedger', () => {
 	it('falls back to the label as the key when no artifact carries a revision', () => {
 		const { rollouts, environments } = fixture();
 		for (const r of rollouts) {
-			for (const rel of r.status!.availableReleases!) delete (rel as { revision?: string }).revision;
+			for (const rel of legacyStatus(r).availableReleases!) delete (rel as { revision?: string }).revision;
 			for (const h of r.status!.history!) delete (h.version as { revision?: string }).revision;
 		}
 		const [repo] = buildRevisionLedger(rollouts, environments);

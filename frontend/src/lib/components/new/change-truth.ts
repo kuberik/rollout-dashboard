@@ -34,6 +34,6 @@ export function heldShown(items: Pick<TChange, 'heldBuild'>[]): number {
 export function regionSquares(app: string, scenario: HomeState): { inks: SquareInk[]; heldRule: boolean; sentence: string } {
 	const regions = regionStates(app, scenario);
 	const heldRule = regions.some((r) => r.state === 'held-by-rule') && !regions.some((r) => r.state === 'awaiting-approval');
-	const inks = regions.map((r) => (r.ink === 'moving' && r.state === 'checking' ? 'checking' : r.ink === 'healthy' && !r.onNewest ? 'behind' : r.ink) as SquareInk);
+	const inks = regions.map((r) => (r.ink === 'moving' && r.state === 'checking' ? 'checking' : r.ink === 'healthy' && r.currency !== 'none' && !r.onNewest ? 'behind' : r.ink) as SquareInk);
 	return { inks, heldRule, sentence: squaresSentence(inks, heldRule) };
 }

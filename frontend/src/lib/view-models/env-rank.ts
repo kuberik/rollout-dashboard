@@ -1,3 +1,4 @@
+import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import type { Rollout, Environment } from '$lib/../types';
 import type { AppGroup, AppCell } from '$lib/version-utils';
 import { groupRolloutsByApp } from '$lib/version-utils';
@@ -173,7 +174,8 @@ export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 	const fleet = { environments: group.cells.map((c) => c.environment).filter((e): e is Environment => !!e), rollouts: group.cells.map((c) => c.rollout) };
 	for (const cell of group.cells) {
 		const version = cellVersion(cell);
-		if (!version) {
+		// No releases (no source, or an empty catalogue): there is no release list to rank against, so the lag is unknown (never a number, never `newest`).
+		if (!version || noReleasesOf(cell.rollout)) {
 			out.set(cell, { kind: 'unknown' });
 			continue;
 		}
@@ -199,9 +201,8 @@ export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 		//   · NO list exists at all → there is no own-stream witness, and the
 		//     ladder (built from deploy history) is the only ordering there
 		//     is. Does not occur on any live rollout.
-		const st = cell.rollout?.status;
 		const publishesNothing =
-			!Array.isArray(st?.availableReleases) && !Array.isArray(st?.releaseCandidates);
+			!Array.isArray(availableReleases(cell.rollout)) && !Array.isArray(releaseCandidates(cell.rollout));
 		if (!publishesNothing) {
 			out.set(cell, { kind: 'unknown' });
 			continue;

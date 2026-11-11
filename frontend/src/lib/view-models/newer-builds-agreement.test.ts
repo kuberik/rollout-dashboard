@@ -4,6 +4,8 @@ import { resetDemoState, type Scenario } from '$lib/demo/state';
 import { promotionCandidates } from './promotion';
 import { pickerRankLabel, releaseIndex } from './deploy-risk';
 import type { Rollout } from '../../types';
+import { availableReleases } from '../releases/registry.svelte';
+import { legacyStatus } from '../releases/legacy-fixture';
 
 /**
  * ⛔ ITEM (a), coordinator follow-up, 2026-10-09. The measured defect: on
@@ -92,7 +94,7 @@ function findRollout(list: List, env: string): Rollout {
 function dialogNewerCount(rollout: Rollout): number | null {
 	const currentTag = rollout.status?.history?.[0]?.version?.tag ?? null;
 	if (releaseIndex(rollout, currentTag) === -1) return null;
-	const available = rollout.status?.availableReleases ?? [];
+	const available = availableReleases(rollout) ?? [];
 	return available.filter((r) => pickerRankLabel(rollout, r.tag)?.endsWith('newer') ?? false).length;
 }
 
@@ -121,7 +123,7 @@ describe('the exact reported defect: checkout-api/prod-us-east-1, calm', () => {
 	const rollout = findRollout(list, 'prod-us-east-1');
 
 	it('reads 3 newer builds everywhere, never 0', () => {
-		expect(rollout.status?.releaseCandidates ?? []).toEqual([]); // the field a naive read would use
+		expect(legacyStatus(rollout).releaseCandidates ?? []).toEqual([]); // the field a naive read would use
 		expect(promotionCandidates(rollout).length, 'Overview / /apps').toBe(3);
 		expect(dialogNewerCount(rollout), 'the Change Version dialog').toBe(3);
 	});

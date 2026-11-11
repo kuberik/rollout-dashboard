@@ -1,3 +1,4 @@
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { Rollout, Environment } from '../types';
 import { buildRevisionLedger, type RevisionRow } from '$lib/view-models/revision-ledger';
 import { changeBuildPath, repoKeyFromSource, githubOwnerRepo } from '$lib/version-utils';
@@ -321,7 +322,7 @@ function repoKnowsRevision(rollouts: readonly Rollout[], owner: string, repo: st
 		if (!parsed || parsed.owner.toLowerCase() !== owner.toLowerCase() || parsed.repo.toLowerCase() !== repo.toLowerCase()) {
 			continue;
 		}
-		for (const rel of r.status?.availableReleases ?? []) {
+		for (const rel of availableReleases(r) ?? []) {
 			if (rel.revision?.toLowerCase().startsWith(needle)) return true;
 		}
 		for (const h of r.status?.history ?? []) {

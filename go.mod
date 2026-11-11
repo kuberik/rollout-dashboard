@@ -15,7 +15,7 @@ require (
 	github.com/google/go-github/v88 v88.0.0
 	github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd24bd
 	github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd
-	github.com/kuberik/rollout-controller v0.8.1-0.20260828142116-ec160cdd3a2b
+	github.com/kuberik/rollout-controller v0.11.1-0.20261111095404-d4e4d4abe390
 	github.com/openkruise/kruise-rollout-api v0.6.0
 	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.35.0
@@ -38,6 +38,7 @@ require (
 	github.com/go-openapi/swag/stringutils v0.24.0 // indirect
 	github.com/go-openapi/swag/typeutils v0.24.0 // indirect
 	github.com/go-openapi/swag/yamlutils v0.24.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -60,7 +61,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fluxcd/pkg/apis/acl v0.9.0 // indirect
 	github.com/fluxcd/pkg/apis/kustomize v1.14.0 // indirect
-	github.com/fluxcd/pkg/apis/meta v1.25.1 // indirect
+	github.com/fluxcd/pkg/apis/meta v1.25.1
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.1.0
@@ -122,3 +123,7 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+// rollout-controller is pinned to a pseudo-version of the release reader
+// (spec.releaseSourceRef, status.releaseSource, status.candidates). The
+// requirement moves to the reader's release tag once that is tagged.

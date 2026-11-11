@@ -35,6 +35,7 @@
  * RELEASES.
  */
 
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { Rollout } from '../types';
 import { getDisplayVersion } from './utils';
 
@@ -106,7 +107,7 @@ function releaseKey(v: { tag?: string; version?: string } | undefined): string |
  */
 export function deployActs(r: Rollout | null | undefined): DeployAct[] {
 	const history = r?.status?.history ?? [];
-	const releases = r?.status?.availableReleases ?? [];
+	const releases = availableReleases(r) ?? [];
 	const keys = releases.map((x) => releaseKey(x));
 
 	return history.map((entry, i) => {

@@ -1,6 +1,8 @@
 import type { QueryKey, QueryObserverOptions } from '@tanstack/svelte-query';
 import { apiJson } from './errors';
 import { apiPath } from './urls';
+import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
+import type { ReleaseSliceObject, ReleaseSourceObject } from '../releases/catalogue';
 import type {
     Rollout,
     Kustomization,
@@ -58,6 +60,11 @@ export type RolloutsListResponse = {
     // Null/absent when the source cluster has no RolloutDependency CRD installed —
     // that is not an error and is not reported in clusterErrors.
     rolloutDependencies?: { items: RolloutDependency[] } | null;
+    // release-controller catalogue. Same source-cluster annotation as
+    // `rollouts`; null/absent when the CRDs are not installed. Ingested into
+    // the registry by `installReleaseCatalogueFeed`, never read directly.
+    releaseSources?: { items: ReleaseSourceObject[] } | null;
+    releaseSlices?: { items: ReleaseSliceObject[] } | null;
     // Multi-cluster: discovered spoke clusters (absent when single-cluster).
     clusters?: ClusterInfo[];
     // Multi-cluster: spokes that could not be reached.
@@ -110,7 +117,22 @@ export async function fetchRollout(
     name: string,
     cluster?: string
 ): Promise<RolloutResponse> {
-    return apiJson<RolloutResponse>(apiPath(cluster, `/rollouts/${namespace}/${name}`));
+    const res = await apiJson<RolloutResponse>(apiPath(cluster, `/rollouts/${namespace}/${name}`));
+    return withSourceCluster(res, cluster);
+}
+
+/**
+ * The list stamps every item with the cluster it came from; a response that
+ * lacks the stamp (an older backend) gets the cluster the request named, so the
+ * rollout finds its release catalogue (keyed by cluster) either way.
+ */
+export function withSourceCluster<R extends { rollout?: Rollout | null }>(res: R, cluster?: string): R {
+    const r = res?.rollout;
+    if (!r || !cluster || r.metadata?.annotations?.[SOURCE_CLUSTER_ANNOTATION]) return res;
+    return {
+        ...res,
+        rollout: { ...r, metadata: { ...r.metadata, annotations: { ...r.metadata?.annotations, [SOURCE_CLUSTER_ANNOTATION]: cluster } } }
+    } as R;
 }
 
 export async function fetchRolloutsList(): Promise<RolloutsListResponse> {

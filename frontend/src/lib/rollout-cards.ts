@@ -2,6 +2,7 @@
 // list (RolloutGrid.svelte) and the Control Center overview (ControlCenter.svelte),
 // so stuck/behind/failure classification logic lives in exactly one place.
 
+import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import { behindOfRollout } from './view-models/behind';
 import { liveForPlace, newerReleaseCountLive, type Fleet } from './view-models/failed-builds';
 import type { Rollout, Environment } from '../types';
@@ -266,7 +267,7 @@ function placeVerdictOf(
 ): { verdict: PlaceVerdict; held: boolean; cause: HeldCause | null; causeLabel: string | null; also: AlsoHold | null } | null {
 	const gates = (r.status?.gates ?? []) as { name: string; kind?: string | null; passing?: boolean | null; allowedVersions?: string[] | null }[];
 	if (!gates.length) return null;
-	const live = liveForPlace(r, r.status?.releaseCandidates ?? [], fleet);
+	const live = liveForPlace(r, releaseCandidates(r) ?? [], fleet);
 	const tagOf = (c: { tag?: string; version?: string }) => c.tag ?? c.version ?? '';
 	const cands = live.map(tagOf);
 	const mine = getEnvironmentRank(envName);
@@ -342,7 +343,7 @@ function releaseKey(v: { tag?: string; version?: string } | undefined): string |
 // answer as "no ordering" — silence.
 export function detectRollback(r: Rollout | null | undefined): RollbackMark | null {
 	const history = r?.status?.history ?? [];
-	const releases = r?.status?.availableReleases ?? [];
+	const releases = availableReleases(r) ?? [];
 	if (history.length < 2 || releases.length === 0) return null;
 	const nowKey = releaseKey(history[0]?.version);
 	const prevKey = releaseKey(history[1]?.version);

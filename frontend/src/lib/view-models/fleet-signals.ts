@@ -15,6 +15,7 @@
  * Severity: `failure` (a check failing now, a failed deploy or bake) is the
  * loud kind; everything else is `signal`, quieter but listed.
  */
+import { availableReleases } from '$lib/releases/registry.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 import type { HealthCheck } from '$lib/../types';
 import { tierOf, nodeState, type Lane, type Tier } from '$lib/view-models/promotion-lanes';
@@ -205,7 +206,7 @@ function allDeploys(cards: readonly RolloutCard[]) {
 
 /** How long a release usually waits before this place deploys it: release created → deploy, median of ≥ 2. */
 function usualLagMs(c: RolloutCard): number | null {
-	const rel = c.rollout.status?.availableReleases ?? [];
+	const rel = availableReleases(c.rollout) ?? [];
 	const lags: number[] = [];
 	for (const h of c.rollout.status?.history ?? []) {
 		const v = h.version ? getDisplayVersion(h.version) : null;

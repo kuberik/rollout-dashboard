@@ -15,13 +15,15 @@ export type RepoCardModel = { /** the apps this repo's changes deploy (empty or 
 const SEV: Record<string, number> = { failed: 0, 'approval-yours': 1, held: 2, deploying: 3, checking: 3, approval: 4, landed: 9 };
 
 /** adverse first; landed is excluded (the row's end says it). Only failing takes ink, and "waiting" takes held ink when one is yours. */
-export function rollupParts(changes: readonly { state: string }[]): RollupPart[] {
+export function rollupParts(changes: readonly { state: string; noReleases?: string }[]): RollupPart[] {
 	const n = (...ks: string[]) => changes.filter((c) => ks.includes(c.state)).length;
-	const failed = n('failed'), wait = n('approval', 'approval-yours', 'held'), mov = n('deploying', 'checking');
+	const failed = n('failed'), wait = n('approval', 'approval-yours', 'held'), mov = changes.filter((c) => !c.noReleases && ['deploying', 'checking'].includes(c.state)).length, stuck = changes.filter((c) => c.noReleases && ['deploying', 'checking'].includes(c.state)).length;
 	return [
 		failed ? { text: `${failed} failing`, ink: 'danger' as const } : null,
 		wait ? { text: `${wait} waiting`, ink: n('approval-yours') ? ('held' as const) : ('subtle' as const) } : null,
-		mov ? { text: `${mov} moving`, ink: 'subtle' as const } : null
+		mov ? { text: `${mov} moving`, ink: 'subtle' as const } : null,
+		/* no releases: nothing will carry it on, so it is not "moving" */
+		stuck ? { text: changes.find((c) => c.noReleases)!.noReleases!.toLowerCase(), ink: 'subtle' as const } : null
 	].filter((x): x is RollupPart => !!x);
 }
 

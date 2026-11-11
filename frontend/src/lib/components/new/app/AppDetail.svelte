@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
+		import { releaseCandidates } from '$lib/releases/registry.svelte';
 	/**
 	 * r34 v2 AD — APP DETAIL (/apps/<name>): "Where does this app run, which build is where, what is failing or waiting, and
 	 * what is the next build to arrive?" The list's object (the Apps lead Facia) reappears at page scale; the tabs' grammar
@@ -53,7 +55,7 @@
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
-	import { apps, heldHere, ago, approvalTarget, appHolds, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
+	import { apps, heldHere, ago, approvalTarget, appHolds, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
 	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
@@ -63,6 +65,8 @@
 
 	const A = $derived(apps(scenario));
 	const item = $derived(A.items.find((a) => a.app === name) ?? null);
+	/** an app whose places have no releases (no source, or an empty catalogue) has no builds to count: one state, everywhere */
+	const noReleases = $derived(item?.noReleases ?? null);
 	const built = $derived(item ? laneOf(item, A.R.c.m as never, A.R.c.events as never) : null);
 	const approvals = $derived((A.R.groups.find((g) => g.key === 'approval')?.rows ?? []) as TRow[]);
 
@@ -120,7 +124,8 @@
 		const swap = new Map<unknown, typeof L.stages[number]>();
 		const fix = (n: typeof L.stages[number]) => {
 			const k = places.find((x) => x.href === hrefFor(n))?.heldBuilds.length ?? 0;
-			const m = k ? { ...n, behind: k } : n;
+			/* no releases: no lag and no "newest" (a neutral ring), whatever the history says */
+			const m = noReleases ? { ...n, behind: 0, state: n.state === 'newest' ? ('behind' as const) : n.state } : k ? { ...n, behind: k } : n;
 			swap.set(n, m);
 			return m;
 		};
@@ -247,7 +252,7 @@
 		const key = keyOf(pl.href);
 		const r = live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === key);
 		if (!r) return;
-		const cand = (r.status?.releaseCandidates ?? []).find((c) => c.tag === buildId || shortBuild(c.version ?? c.tag ?? '') === buildId);
+		const cand = (releaseCandidates(r) ?? []).find((c) => c.tag === buildId || shortBuild(c.version ?? c.tag ?? '') === buildId);
 		modalRollout = r;
 		modalVersion = cand?.tag ?? null;
 		modalExplanation = `Deploy ${buildId} to ${pl.place}.`;
@@ -291,13 +296,14 @@
 			{/if}
 			{#if built && lane}
 				<div class="ad-strip flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1" data-ad-strip>
-					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} showApp={false} {calm} words yours={!!stateRow?.needsYou} mutedRest {hrefFor} {current} /></div>
+					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} {calm} words yours={!!stateRow?.needsYou} mutedRest {hrefFor} {current} /></div>
 					<a href={href('/environments')} class="nav-link t-ui-sm shrink-0 !py-0 max-sm:min-h-11 max-sm:items-center sm:max-xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 				</div>
 			{/if}
 		</header>
+		{#if noReleases?.kind === 'no-source'}<ReleaseSourceNotice app text={noReleases.message} legacyPolicy={item?.placeList.map((p) => legacyPolicyAt(p.href)).find(Boolean) ?? null} class="mt-6 mb-4" />{/if}
 
-		<div class="mt-6 flex flex-col gap-4">
+		<div class="mt-4 flex flex-col gap-4">
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}
 				<!-- AA4: the wait is a statement in the tab's own box: the gate sentence, the one Approve the viewer can give (the tab's destination), Open rollout -->
 				<div data-ad-statement data-ad-wait>
@@ -320,7 +326,7 @@
 			<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:grid-cols-[minmax(0,1fr)_452px]">
 				<div class="flex min-w-0 flex-col gap-4">
 					<div id="regions" class="ad-places scroll-mt-16" class:ad-owned={!!failRow}>
-						<AppBuilds {stops} {places} {view} {phone} nested hs={scenario} onDeploy={openDeploy} />
+						<AppBuilds {stops} {places} {view} {phone} nested hs={scenario} noReleases={noReleases?.label ?? ''} fromHistory={!!noReleases} onDeploy={openDeploy} />
 					</div>
 				</div>
 

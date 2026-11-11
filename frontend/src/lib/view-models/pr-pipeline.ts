@@ -41,6 +41,7 @@
  * reverted ranges"); `pr-pipeline.test.ts`'s revert fixture asserts the
  * CURRENT behaviour so a future fix has something concrete to change.
  */
+import { availableReleases, noReleasesOf } from '$lib/releases/registry.svelte';
 import type { Rollout, Environment, RolloutDependency } from '$lib/../types';
 import { releaseMetadataUnresolved } from '$lib/../types';
 import { getDisplayVersion } from '$lib/utils';
@@ -396,6 +397,8 @@ export type PrHistoryMatch = {
 
 export type PrService = {
 	appName: string;
+	/** this app's rollouts have no releases (no source, or an empty catalogue): its builds are not promoted past the place they are in. The state word, or undefined. */
+	noReleases?: string;
 	/** `github.com/owner/repo`, this app's OWN `status.source`, normalised. */
 	sourceRepo: string;
 	cells: PrCell[];
@@ -613,7 +616,7 @@ function findContainingRelease(
 
 /** Tag → revision, for resolving `spec.wantedVersion` (a TAG, never a revision). */
 function revisionForTag(rollout: Rollout, tag: string): string | null {
-	for (const rel of rollout.status?.availableReleases ?? []) {
+	for (const rel of availableReleases(rollout) ?? []) {
 		if (rel.tag === tag) return rel.revision ?? null;
 	}
 	for (const h of rollout.status?.history ?? []) {
@@ -625,7 +628,7 @@ function revisionForTag(rollout: Rollout, tag: string): string | null {
 /** `displayVersionForTag`'s own lookup, inlined so this module has no other
  *  dependency on `version-utils.ts` beyond the grouping/repo helpers. */
 function displayVersionForTag(rollout: Rollout, tag: string): string {
-	for (const rel of rollout.status?.availableReleases ?? []) {
+	for (const rel of availableReleases(rollout) ?? []) {
 		if (rel.tag === tag) return getDisplayVersion(rel);
 	}
 	for (const h of rollout.status?.history ?? []) {
@@ -1172,7 +1175,7 @@ function buildCell(
 	}
 
 	// ── RULE 3/4: search `availableReleases` for a build carrying the PR ────
-	const found = findContainingRelease(status.availableReleases ?? [], set, meta);
+	const found = findContainingRelease(availableReleases(rollout) ?? [], set, meta);
 
 	if (found && found.state === 'contained') {
 		const candidate = found.release;
@@ -1381,7 +1384,7 @@ function hasBuildEvidence(rollout: Rollout, meta: PrPipelineMeta): boolean {
 	const history = status.history ?? [];
 	const sha = new ShaSet([meta.mergeCommitSha]);
 	if (history.some((h) => !!h.version?.revision && sha.has(h.version.revision))) return true;
-	for (const r of status.availableReleases ?? []) {
+	for (const r of availableReleases(rollout) ?? []) {
 		if (r.revision && sha.has(r.revision)) return true;
 	}
 	return false;
@@ -1993,6 +1996,7 @@ export function buildPrPipeline(
 
 		services.push({
 			appName: group.appName,
+			noReleases: matching.length > 0 && matching.every((m) => !!noReleasesOf(m.rollout)) ? noReleasesOf(matching[0].rollout)!.label : undefined,
 			sourceRepo: repoLabel(matching[0].repoKey),
 			cells,
 			furthest: furthestSentence(cells),

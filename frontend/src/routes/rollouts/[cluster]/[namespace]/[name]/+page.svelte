@@ -1,9 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
 	import { kruiseStatusIsPreviousDeploy, freshestKruise } from '$lib/pipeline';
 	import { sourceDashboardURL } from '$lib/source-dashboard';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
 	import { sourceTreeUrl } from '$lib/source-url';
@@ -273,6 +275,11 @@
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	/** no releases to show: no release source (the alert says it) or a source that published nothing yet */
+	const noReleases = $derived(noReleasesOf(rollout));
+	const noSource = $derived(noReleases?.kind === 'no-source');
+	/** a rollout with a ReleaseSource whose catalogue has not arrived yet: say so, never "on the newest" */
+	const releasesLoading = $derived(releasesOf(rollout).state === 'loading');
 	// Failure panel collapse (2026-09-26, film critic 25): the panel used to
 	// vanish in one frame when the failure cleared, the page reflowing upward by
 	// its height. Svelte's own `transition:slide` runs on the Web Animations
@@ -2003,21 +2010,23 @@
 
 	// Computed property to determine if current version is custom (not in available releases)
 	const isCurrentVersionCustom = $derived.by(() => {
-		if (!rollout?.status?.history?.[0] || !rollout?.status?.availableReleases) return false;
+		const releases = availableReleases(rollout);
+		if (noReleases) return false; /* no catalogue to be "custom" against */
+		if (!rollout?.status?.history?.[0] || !releases) return false;
 		const currentVersionTag = rollout.status.history[0].version.tag;
-		return !rollout.status.availableReleases.some((ar) => ar.tag === currentVersionTag);
+		return !releases.some((ar) => ar.tag === currentVersionTag);
 	});
 
 	// Computed property to determine if pinned version (wantedVersion) is custom
 	const isPinnedVersionCustom = $derived.by(() => {
-		if (!rollout?.spec?.wantedVersion || !rollout?.status?.availableReleases) return false;
+		if (!rollout?.spec?.wantedVersion || !availableReleases(rollout)) return false;
 		const pinnedVersionTag = toTag(rollout.spec.wantedVersion);
 		return isSelectedVersionCustom(pinnedVersionTag);
 	});
 
 	function isOlderThanCurrent(selectedTag: string): boolean {
 		const currentTag = rollout?.status?.history?.[0]?.version?.tag;
-		const releases = rollout?.status?.availableReleases;
+		const releases = availableReleases(rollout);
 		if (!currentTag || !releases) return false;
 		const currentIdx = releases.findIndex((r) => r.tag === currentTag);
 		const selectedIdx = releases.findIndex((r) => r.tag === selectedTag);
@@ -2027,8 +2036,9 @@
 	}
 
 	function isSelectedVersionCustom(selectedTag: string): boolean {
-		if (!rollout?.status?.availableReleases) return false;
-		return !rollout.status.availableReleases.some((ar) => ar.tag === selectedTag);
+		const releases = availableReleases(rollout);
+		if (!releases) return false;
+		return !releases.some((ar) => ar.tag === selectedTag);
 	}
 
 	function toTag(version: string | { tag: string } | undefined): string {
@@ -2086,7 +2096,7 @@
 		const historyEntry = rollout.status?.history?.find(
 			(entry) => entry.version?.tag === versionTag
 		);
-		const availableRelease = rollout.status?.availableReleases?.find((ar) => ar.tag === versionTag);
+		const availableRelease = availableReleases(rollout)?.find((ar) => ar.tag === versionTag);
 
 		// Collect all possible version identifiers to match against
 		const versionIdentifiers = new Set<string>([versionTag]);
@@ -2252,7 +2262,7 @@
 		isReconciling = true;
 
 		// Capture current state to detect changes
-		const previousReleaseTags = new Set(rollout.status?.availableReleases?.map((r) => r.tag) ?? []);
+		const previousReleaseTags = new Set(availableReleases(rollout)?.map((r) => r.tag) ?? []);
 
 		// Show persistent toast with spinner while checking
 		showToast = true;
@@ -2299,7 +2309,7 @@
 					scanCompleted = true;
 				}
 
-				const currentReleases = rolloutQuery.data?.rollout?.status?.availableReleases ?? [];
+				const currentReleases = availableReleases(rolloutQuery.data?.rollout) ?? [];
 				const currentTags = new Set(currentReleases.map((r: { tag: string }) => r.tag));
 
 				// Check if we have new versions
@@ -3006,7 +3016,9 @@
 							id="status-change-version-btn"
 							data-tour="change-version"
 							class="btn btn-secondary max-lg:h-11"
-							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
+							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
+							aria-describedby={noReleases ? "change-version-reason-1" : undefined}
 							onclick={() => {
 								if (isDashboardManagingWantedVersion) {
 									isPinVersionMode = false;
@@ -3019,6 +3031,7 @@
 							<EditOutline class="h-4 w-4" aria-hidden="true" />
 							Change version
 						</button>
+						{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" id="change-version-reason-1" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
 						<!-- ⛔ `Rollback` PRE-SELECTED `history[1]`, WHICH IS NOT
 										     NECESSARILY OLDER. A live critic pressed it on a rollout
 										     that had itself been rolled back and got a modal headed
@@ -3190,7 +3203,6 @@
 											rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name)}
 										current={{ ns: namespace, name }}
 										youAreHere
-										showApp={false}
 									/>
 								</div>
 								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0"
@@ -3259,6 +3271,7 @@
 					onMeta={(t) => (scheduleMetaText = t)}
 				/>
 				<!-- QA #3: a block-level sibling directly above the banner slot, rendered whatever the candidate count -->
+				<ReleaseSourceNotice {rollout} class="mt-6 mb-4" />
 				{#if myClusterErrors.length}
 					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
 				{/if}
@@ -3781,8 +3794,9 @@
 						     stack, so it takes the stack's radius. -->
 							<!-- Glides when a candidate row leaves (a promote) — `$lib/smooth-height`. -->
 							<div
-								class="border-line bg-surface overflow-hidden rounded-md border"
+								class="border-line bg-surface overflow-hidden rounded-md border {noSource ? 'hidden' : ''}"
 								use:smoothHeight
+								data-newer-builds-card
 							>
 								<div>
 									<!-- Header -->
@@ -3827,7 +3841,11 @@
 									newest`, `All on the newest`).
 								-->
 										<div class="ml-auto flex items-center gap-2">
-											{#if newerBuilds.length > 0}
+											{#if releasesLoading}
+												<span class="t-ui-sm text-fg-subtle" data-releases-loading>Loading releases…</span>
+											{:else if noReleases}
+												<span class="t-ui-sm text-fg-subtle" data-no-releases>{noReleases.label}</span>
+											{:else if newerBuilds.length > 0}
 												<!-- r34 tabs-nb r2 (#5): the baseline's rollup, back. Same count as the page
 												     header's "↑ N newer" (both read `newerBuilds.length`). -->
 												<span class="t-ui-sm text-fg-subtle tabular-nums"
@@ -4654,6 +4672,10 @@
 												</li>
 											{/if}
 										</ul>
+									{:else if releasesLoading}
+										<p class="t-meta text-fg-subtle px-4 py-3">Loading releases…</p>
+									{:else if noReleases}
+										<p class="t-meta text-fg-subtle px-4 py-3">{noReleases.message}</p>
 									{:else if newerBuilds.length === 0}
 										<!-- (2026-09-03, from the human: "when there's no available version,
 								     we don't display anything.") The header's rollup is the verdict;
@@ -4854,7 +4876,9 @@
 								type="button"
 								data-tour="change-version"
 								class="btn btn-primary"
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
+							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
+							aria-describedby={noReleases ? "change-version-reason-2" : undefined}
 								onclick={() => {
 									if (isDashboardManagingWantedVersion) {
 										isPinVersionMode = false;
@@ -4867,6 +4891,7 @@
 								<EditOutline />
 								Change version
 							</button>
+							{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" id="change-version-reason-2" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
 						{/if}
 					{/snippet}
 				</PageHeader>
@@ -4891,17 +4916,16 @@
 							<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
 								<CodeOutline class="text-fg-subtle h-4 w-4" aria-hidden="true" />
 								<h2 class="t-card-title text-fg">Newer builds</h2>
-								{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}<span
+								{#if (releaseCandidates(rollout)?.length ?? 0) > 0}<span
 										class="t-ui-sm text-fg-subtle ml-auto tabular-nums"
-										>{rollout.status?.releaseCandidates?.length} build{rollout.status
-											?.releaseCandidates?.length === 1
+										>{releaseCandidates(rollout)?.length} build{releaseCandidates(rollout)?.length === 1
 											? ''
 											: 's'}</span
 									>{/if}
 							</div>
-							{#if (rollout.status?.releaseCandidates?.length ?? 0) > 0}
+							{#if (releaseCandidates(rollout)?.length ?? 0) > 0}
 								<ul class="divide-line-subtle divide-y">
-									{#each rollout.status?.releaseCandidates?.slice(0, 5) ?? [] as rc}
+									{#each releaseCandidates(rollout)?.slice(0, 5) ?? [] as rc}
 										<li class="flex items-center justify-between gap-3 px-4 py-3">
 											<span class="t-code text-fg">{getDisplayVersion(rc)}</span>
 											{#if rc.created}

@@ -17,6 +17,7 @@
  * ⛔ NOTHING NODE-SPECIFIC MAY ENTER THIS FILE — see `./mock-data.ts`.
  */
 
+import { applySlicesMode, sliceDetailRollout } from './mock-slices';
 import {
 	NAMESPACE,
 	ROLLOUT_NAME,
@@ -71,6 +72,9 @@ import {
 	type DepsStep
 } from './deps-story';
 import { mkHwEnvironment } from './mock-promote';
+
+/** the detail response, in the served shape and stamped with its source cluster like the list items */
+const sliceDetailRollout2 = <B>(body: B): B => sliceDetailRollout(body, stampSourceCluster as never);
 
 /** Pushes one already-framed chunk (SSE frames include their own `\n\n`). */
 export type MockSend = (chunk: string) => void;
@@ -470,9 +474,8 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 	// unscenario'd exports, and serving them here would put a `Failed`
 	// rollout back on every page even while `calm` is active.
 	if (url === '/api/rollouts') {
-		return json({
-			rollouts: {
-				items: withLiveOverrides([
+		// Some rollouts are served in slices mode (see ./mock-slices.ts).
+		const slicesMode = applySlicesMode(withLiveOverrides([
 					mockRolloutResponse.rollout,
 					...getScenarioFleetRollouts(),
 					...getScenarioDepRollouts(),
@@ -480,8 +483,11 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 					// scenario's chain (mock-promote.ts). No FLEET placeholder to
 					// override; these ARE the live fixtures already.
 					...getHwEnvRollouts()
-				]).map(stampSourceCluster)
-			},
+				]));
+		return json({
+			rollouts: { items: slicesMode.rollouts.map(stampSourceCluster) },
+			releaseSources: { items: slicesMode.sources.map((x) => stampSourceCluster(x as never)) },
+			releaseSlices: { items: slicesMode.slices.map((x) => stampSourceCluster(x as never)) },
 			environments: {
 				items: [
 					...mockFleetEnvironments,
@@ -645,7 +651,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)$/);
 		if (m) {
 			const [, rNs, rName] = m;
-			if (hasFixture(rNs, rName)) return json(getDetail(rNs, rName));
+			if (hasFixture(rNs, rName)) return json(sliceDetailRollout2(getDetail(rNs, rName)));
 			const detail = mockDepDetails[`${rNs}/${rName}`] as Record<string, unknown> | undefined;
 			// A rollout the dependencies story has moved is served LIVE, its
 			// promotion chain read from the live histories too.
@@ -653,7 +659,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				const rollouts = getScenarioDepRollouts() as { metadata?: { namespace?: string; name?: string } }[];
 				const live = rollouts.find((r) => r.metadata?.namespace === rNs && r.metadata?.name === rName);
 				const env = detail.environment as { status?: Record<string, unknown> } | undefined;
-				return json({
+				return json(sliceDetailRollout2({
 					...detail,
 					rollout: live ?? detail.rollout,
 					...(env
@@ -667,7 +673,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 								}
 							}
 						: {})
-				});
+				}));
 			}
 			if (detail) {
 				// `detail.rollout` here is the SAME object `mockDepRollouts` was
@@ -679,10 +685,10 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				const clone = structuredClone(detail) as { rollout?: unknown };
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				freshenStaticRollout(clone.rollout as any);
-				return json(clone);
+				return json(sliceDetailRollout2(clone));
 			}
 			const listRollout = findListRollout(rNs, rName);
-			if (listRollout) return json(deriveGenericDetail(listRollout, findListEnvironment(rNs)));
+			if (listRollout) return json(sliceDetailRollout2(deriveGenericDetail(listRollout, findListEnvironment(rNs))));
 		}
 	}
 
