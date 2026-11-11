@@ -5,7 +5,7 @@ import {
 	SLOT_GAP,
 	focusMinHeight,
 	maxRise,
-	narrowUpstreamOrder,
+	holdingFirst,
 	narrowWires,
 	slotPitch,
 	slots,
@@ -133,14 +133,15 @@ describe('fan-in spacing at the focus', () => {
 	});
 });
 
-describe('narrow order and steepness', () => {
-	it('held upstream links go last, next to the focus', () => {
-		const order = narrowUpstreamOrder([
+describe('upstream order and steepness', () => {
+	it('a holding link is first at every width, the rest keep their order', () => {
+		const order = holdingFirst([
 			{ key: 'a', state: 'blocked' as const },
 			{ key: 'b', state: 'clear' as const },
 			{ key: 'c', state: 'unknown' as const }
 		]);
-		expect(order.map((l) => l.key)).toEqual(['b', 'c', 'a']);
+		expect(order.map((l) => l.key)).toEqual(['a', 'b', 'c']);
+		expect(holdingFirst([{ key: 'x', state: 'clear' as const }, { key: 'y', state: 'blocked' as const }, { key: 'z', state: 'blocked' as const }]).map((l) => l.key)).toEqual(['y', 'z', 'x']);
 	});
 
 	it('maxRise is the largest box-centre distance from the focus middle', () => {

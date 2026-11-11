@@ -95,17 +95,14 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 
-		// jsdom renders at width 0, which is < WIDE_AT (672) — the narrow
-		// layout. Narrow moves held items LAST, so the held link is the final
-		// entry even though it is the loudest fact; everything else keeps the
-		// arrival order: links (promotion, then contract) before gate boxes,
-		// gate boxes alphabetically by title ("A approval" before "Z window").
+		// ONE order at every width (jsdom renders narrow, 1440 renders wide): the holding link is first, so a phone's fold never slices it;
+		// everything else keeps the arrival order: links (promotion, then contract) before gate boxes, gate boxes alphabetically by title.
 		expect(upstreamKeys(container)).toEqual([
+			'link:held',
 			'link:promo',
 			'link:contract',
 			'gate:gate:a-approval',
-			'gate:gate:z-window',
-			'link:held'
+			'gate:gate:z-window'
 		]);
 	});
 

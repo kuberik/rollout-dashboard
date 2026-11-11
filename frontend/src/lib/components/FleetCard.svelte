@@ -19,7 +19,7 @@
 	import type { FleetTrouble, FleetDeploy } from '$lib/components/new/home-page';
 
 	let { trouble, deploys }: { trouble: FleetTrouble[]; deploys: FleetDeploy[] } = $props();
-	const label = (tier: string, place: string) => (!place ? tier : /^\d+ regions?$/.test(place) ? place.replace(/ (regions?)$/, ` ${tier} $1`) : `${tier}-${place}`);
+	const label = (tier: string, place: string) => (!place ? tier : /^(\d+ of )?\d+ regions?$/.test(place) ? place.replace(/ (regions?)$/, ` ${tier} $1`) : `${tier}-${place}`);
 </script>
 
 <Card icon={GridOutline} title="Fleet" padded={false} class="fleet-card">
@@ -31,9 +31,9 @@
 		{#if trouble.length}
 			<ul class="m-0 list-none p-0" data-fleet-trouble>
 				{#each trouble as t (t.key)}
-					<li class="fl tap-zone relative flex min-h-10 min-w-0 items-center gap-2 px-4 hover:bg-hover" data-fleet-row="trouble" data-truth-app={t.app}>
+					<li class="fl tap-zone relative flex min-h-10 min-w-0 flex-wrap items-center gap-x-2 px-4 py-1 hover:bg-hover" data-fleet-row="trouble" data-truth-app={t.app}>
 						<span class="inline-grid h-4 w-4 shrink-0 place-items-center">{#if t.mark === 'held'}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{:else}<StatusMark state={t.mark} tone="neutral" />{/if}</span>
-						<a href={t.href} class="tap-link t-body min-w-0 truncate text-fg">{t.app}</a>
+						<a href={t.href} class="tap-link t-body min-w-0 max-w-full shrink-0 truncate text-fg">{t.app}</a>
 						<span class="flex shrink-0 items-center gap-1">{#each t.places as p (p.tier + p.place)}<Chip role="env" theme={envTheme(p.tier)} label={label(p.tier, p.place)} wide />{/each}</span>
 						<span class="t-meta ml-auto shrink-0 tabular-nums text-fg-muted">{t.word}</span>
 					</li>

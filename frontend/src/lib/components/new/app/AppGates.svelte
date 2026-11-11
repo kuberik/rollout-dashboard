@@ -51,7 +51,7 @@
 					{#if isOpen}
 						<div class="mt-1 pl-7">
 							<p class="t-meta text-fg-subtle">{r.places.join(', ')}</p>
-							<p class="t-meta text-fg-subtle">{r.sentence}</p>
+							<p class="t-meta mt-1 text-fg-subtle">{r.sentence}</p>
 							{#if r.kind === 'approval'}<a href={DOCS} target="_blank" rel="noreferrer" class="btn btn-xs btn-secondary relative z-[1] mt-2 max-sm:min-h-11">How to approve<ArrowUpRightFromSquareOutline /></a>{/if}
 						</div>
 					{/if}

@@ -5,6 +5,7 @@ import {
 	type NodeState,
 	type Tier
 } from '$lib/view-models/promotion-lanes';
+import { placeStateWithPin } from '$lib/view-models/pin-hold';
 import { rolloutPath } from '$lib/source-dashboard';
 import type { TApp } from './data';
 
@@ -37,7 +38,7 @@ export function maskLane(a: TApp, lane: Lane): Lane {
 		const p = byHref.get(nodeHref(n));
 		if (!p) return n;
 		const want =
-			NS[p.state] ??
+			NS[placeStateWithPin(p.state, p.pinned)] ??
 			(p.currency === 'none'
 				? 'none'
 				: NOISY.has(n.state)

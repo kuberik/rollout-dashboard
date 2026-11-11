@@ -132,6 +132,15 @@ describe('rolloutGateBoxes', () => {
 		expect(b[0]).toMatchObject({ kind: 'approval', state: 'clear', title: 'Release approval', kindWord: 'Approval', phrase: 'allows r3, r2' });
 	});
 
+	it('an allow-list of unknown kind is a gate with a list, never labelled an approval; the same list with kind approval is one', () => {
+		const withKind = (kind: string) => {
+			const r = rollout({ candidates: ['r2'], gates: [{ name: 'permits-newest-only', passing: true, allowedVersions: ['r3'], kind } as never] });
+			return boxes(r, [gateObj('permits-newest-only', { allowed: ['r3'] })], [])[0];
+		};
+		expect(withKind('unknown')).toMatchObject({ kind: 'gate', state: 'blocked', kindWord: 'Gate', mark: { kind: 'unknown', clears: 'unknown' } });
+		expect(withKind('approval')).toMatchObject({ kind: 'approval', kindWord: 'Approval', mark: { kind: 'approval', clears: 'person' } });
+	});
+
 	it('an approval not given for the candidate holds it', () => {
 		const r = rollout({ candidates: ['r2'], gates: [{ name: 'approval', passing: false, allowedVersions: [] }] });
 		const b = boxes(r, [gateObj('approval', { allowed: [] })], []);
@@ -185,6 +194,16 @@ describe('rolloutGateBoxes', () => {
 			['pin', 'blocked'],
 			['schedule', 'clear']
 		]);
+	});
+
+	it('the pin box is released by clearing the pin, names the build and who pinned it, and is never an approval', () => {
+		const r = rollout({ candidates: ['r2'], pinned: 'r1' });
+		(r.metadata!.annotations as Record<string, string>)['rollout.kuberik.com/deploy-user'] = 'luka';
+		const pin = boxes(r, [], [])[0];
+		expect(pin).toMatchObject({ kind: 'pin', title: 'Pinned to r1 by luka' });
+		expect(pin.mark.clears).toBe('pin');
+		const noWho = boxes(rollout({ candidates: ['r2'], pinned: 'r1' }), [], [])[0];
+		expect(noWho.title).toBe('Pinned to r1');
 	});
 
 	it('humanizes a gate name', () => {

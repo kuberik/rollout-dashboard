@@ -26,3 +26,18 @@ describe('StatementBanner failure figure', () => {
 		expect(container.querySelector('[data-observation-figure]')).toBeNull();
 	});
 });
+
+describe('StatementBanner window clause', () => {
+	test('"opens Mon 09:00 UTC" is one unbreakable unit; the text around it is not', () => {
+		const { container } = render(StatementBanner, { severity: 'info', title: 'Held by Business Hours Only in 5 prod regions', message: 'opens Mon 09:00 UTC · 2 builds' });
+		const unit = container.querySelector('[data-opens-clause]');
+		expect(unit?.textContent).toBe('opens Mon 09:00 UTC');
+		expect(unit).toHaveClass('whitespace-nowrap');
+		expect(container.textContent).toContain('opens Mon 09:00 UTC · 2 builds');
+	});
+	test('a message with no clause renders as plain text', () => {
+		const { container } = render(StatementBanner, { severity: 'info', title: 't', message: 'Releases when the pin is cleared' });
+		expect(container.querySelector('[data-opens-clause]')).toBeNull();
+		expect(container.textContent).toContain('Releases when the pin is cleared');
+	});
+});

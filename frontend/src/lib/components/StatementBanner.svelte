@@ -29,6 +29,7 @@
 	import ActRow, { type Act } from './ActRow.svelte';
 	import Chip from './Chip.svelte';
 	import FailedCheckLine from './FailedCheckLine.svelte';
+	import { splitOpensClause } from '$lib/view-models/window-words';
 	import HeldGlyph from './HeldGlyph.svelte';
 	import ObservationFigure from './ObservationFigure.svelte';
 	import { failingLead } from '$lib/view-models/attention';
@@ -170,7 +171,7 @@
 					</div>
 				{/if}
 				{#if shownCheck && checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} />{/if}
-				{#if message}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{message}</p>{/if}
+				{#if message}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{#each splitOpensClause(message) as part}{#if part.unit}<span class="whitespace-nowrap" data-opens-clause>{part.text}</span>{:else}{part.text}{/if}{/each}</p>{/if}
 				{#if body}{@render body()}{/if}
 			</div>
 {/snippet}

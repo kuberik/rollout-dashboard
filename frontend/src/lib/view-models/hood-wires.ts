@@ -145,10 +145,9 @@ function paintOrder(ws: Wire[]): Wire[] {
 	return [...ws].sort((a, b) => order[a.state] - order[b.state]);
 }
 
-/** Narrow: held upstream links go LAST (nearest the focus), so the orange
- *  trunk is only the last stretch and grey branches never join it. */
-export function narrowUpstreamOrder<T extends { state: WireState }>(links: readonly T[]): T[] {
-	return [...links.filter((l) => l.state !== 'blocked'), ...links.filter((l) => l.state === 'blocked')];
+/** ONE order for the Gated by column at every width: a holding link first, then the rest in their own order. The card that holds the rollout is the one the reader must see, so it is never the one a fold slices. */
+export function holdingFirst<T extends { state: WireState }>(links: readonly T[]): T[] {
+	return [...links.filter((l) => l.state === 'blocked'), ...links.filter((l) => l.state !== 'blocked')];
 }
 
 /** Steep fan: the largest vertical rise a wide wire has to make, against the

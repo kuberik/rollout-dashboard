@@ -55,11 +55,11 @@
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
-	import { apps, heldHere, ago, approvalTarget, appHolds, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
+	import { apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
 	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
-	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
+	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLine, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
 	let { state: scenario, name }: { state: HomeState; name: string } = $props();
 
@@ -188,7 +188,7 @@
 		const act = rowAction(r);
 		return { row: r, pinned: pins.has(p.place), approve, slipAction: r.group === 'failed' || act?.kind === 'approve' ? null : act, toggle: r.group === 'rest' ? null : () => flip(r.key), open: r.key === openKey };
 	};
-	const gateRows = $derived(holdRows(gates, places, only, name).filter((r) => r.holding && r.held.length > 0));
+	const gateRows = $derived(holdRows(gates, places, only, name, pins, pinnedVersion(item?.holds ?? [])).filter((r) => r.holding && (r.kind === 'pin' || r.held.length > 0)));
 	const current = $derived.by(() => { const h = (focus?.href ?? '').split('/').filter(Boolean); return h[0] === 'rollouts' ? { ns: h[2], name: h[3] } : null; });
 
 	/* the wait line (a waiting or held app): the Facia lead's words, from the same helpers */
@@ -197,7 +197,11 @@
 	const outcomeText = $derived([...factLine, ...holds.map((h) => h.text).filter((h) => !item?.fact.includes(h))].join(' · '));
 	const apprText = $derived(appr?.text ?? holds.find((h) => h.approval)?.text ?? '');
 	const parts = $derived(appr ? [apprText, ...(item?.approval ? [] : item ? [item.fact] : [])] : item?.group === 'quiet' ? [item.fact] : outcomeText.split(' · '));
-	const cause = $derived(parts.slice(1).join(' · ') || null);
+	/* the held cause and the app's own fact can both carry the hold's sentence ("Held by X in prod"): the banner says it once, in the title; the message keeps what is new (the clause) */
+	/* more than one cause holds the app: the headline counts the places held by ANY of them (the chip's own set), the message lists each cause once */
+	const heldBannerOf = $derived(!appr && item && item.group !== 'quiet' ? heldBanner(item, holds) : null);
+	const heldHeadline = $derived(heldBannerOf?.title ?? null);
+	const cause = $derived(heldBannerOf ? heldBannerOf.message : causeLine(parts));
 	const waitsOnApproval = $derived(!!stateRow && stateRow.group === 'approval');
 	const waitAct = $derived(waitsOnApproval && stateRow ? rowAction(stateRow) : null);
 	/* AP13: the statement says what waits and who can release it, once; "Nothing promotes itself until someone approves it" is the tab banner's sentence and is not repeated here */
@@ -307,7 +311,7 @@
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}
 				<!-- AA4: the wait is a statement in the tab's own box: the gate sentence, the one Approve the viewer can give (the tab's destination), Open rollout -->
 				<div data-ad-statement data-ad-wait>
-					<StatementBanner severity={checkingNow ? 'checking' : waitsOnApproval ? 'approval' : 'info'} title={checkingNow ? 'Checking' : waitsOnApproval ? approvalIn(!!stateRow?.needsYou, stateRow ? rowPlaceName(stateRow) : null) : parts[0]} message={waitMessage ?? undefined}
+					<StatementBanner severity={checkingNow ? 'checking' : waitsOnApproval ? 'approval' : 'info'} title={checkingNow ? 'Checking' : waitsOnApproval ? approvalIn(!!stateRow?.needsYou, stateRow ? rowPlaceName(stateRow) : null) : (heldHeadline ?? parts[0])} message={waitMessage ?? undefined}
 						primary={waitAct ? (approveAct(stateRow ? approvalTarget(stateRow, scenario) : null, { icon: CheckOutline }) ?? { label: 'Approve', href: actionHref(waitAct), icon: CheckOutline, key: 'approve' }) : undefined}
 						secondary={stateRow ? [{ label: 'Open rollout', href: stateRow.href, key: 'open-rollout' }] : []} />
 				</div>

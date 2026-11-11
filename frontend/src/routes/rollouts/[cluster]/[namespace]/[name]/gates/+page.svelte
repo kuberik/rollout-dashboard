@@ -157,6 +157,11 @@
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import RolloutNeighbourhood from '$lib/components/RolloutNeighbourhood.svelte';
+	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
+	import { autoDeployState } from '$lib/view-models/auto-deploy';
+	import { dashboardManagesWantedVersion, newerBuildsShown, pinLeadSentence } from '$lib/view-models/pin-hold';
+	import { getDisplayVersion } from '$lib/utils';
+	import { rolloutPermissionsQueryOptions } from '$lib/api/rollouts';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import type { HealthCheck, RolloutGate } from '../../../../../../types';
 
@@ -253,6 +258,17 @@
 	const fleetFailed = $derived(fleetLatch.failed && listQuery.data === undefined);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
+
+	// Clear pin, the Overview's own action: the same permission read, the same dialog.
+	const permissionsQuery = createQuery(() => ({
+		...rolloutPermissionsQueryOptions({ namespace: page.params.namespace as string, name: page.params.name as string, cluster: page.params.cluster as string }),
+		enabled: !rolloutQuery.isError
+	}));
+	const canModify = $derived(
+		(permissionsQuery.data?.permissions?.update ?? false) || (permissionsQuery.data?.permissions?.patch ?? false)
+	);
+	let showClearPinModal = $state(false);
+	const autoDeploy = $derived(autoDeployState(rollout, (rolloutQuery.data?.rolloutGates?.items ?? []) as RolloutGate[]));
 
 	/**
 	 * ⭐ U-32(a)'s empty-state sentence must not CLAIM health is passing when
@@ -1012,6 +1028,9 @@
 		consequence: string;
 		tone: 'held' | 'neutral';
 	} | null>(() => {
+		// A pin refuses every newer build, so it is the whole sentence: never "<builds> can deploy".
+		const pinLead = pinLeadSentence(blockStory);
+		if (pinLead) return { ...pinLead, tone: 'held' };
 		if (!holdBreakdown.anyHeld) return null;
 		// ⭐ qa11b CORRECTION (squad-rollout gates-2 follow-up, 2026-10-11):
 		// the gate is `reallyHeldHere.length === 0`, NEVER `!hereCard.held`.
@@ -1196,7 +1215,12 @@
 	// them, two of which have not reached this place yet.
 	const gateBoxes = $derived.by(() => {
 		const hereBuilds = new Set(reallyHeldHere.map((h) => h.build));
-		return gateBoxesRaw.map((b) => (b.state === 'blocked' && b.kind !== 'pin' ? { ...b, held: b.held.filter((x) => hereBuilds.has(x)) } : b));
+		/* the pin card counts what the header counts (`newerBuildsShown`): a build that failed here or upstream is not held by the pin */
+		const pinHeld = newerBuildsShown(rollout, { environments: listEnvironments, rollouts: listRollouts }, fleetSettled(listQuery))
+			.map((c) => getDisplayVersion(c as { version?: string; revision?: string; tag: string }));
+		return gateBoxesRaw.map((b) =>
+			b.kind === 'pin' ? (b.state === 'blocked' ? { ...b, held: [...new Set(pinHeld)] } : b) : b.state === 'blocked' ? { ...b, held: b.held.filter((x) => hereBuilds.has(x)) } : b
+		);
 	});
 
 	const hood = $derived(
@@ -1884,7 +1908,7 @@
 						     ~12px so the focus tile's own held line lands inside the
 						     first screen more often. -->
 							<div class="border-line-subtle -mx-4 -mt-4 mb-2 border-b px-4 py-2.5 sm:mb-3 sm:py-3">
-								{#if holdBreakdown.anyHeld && leadSentence}
+								{#if (holdBreakdown.anyHeld || blockStory.pinnedTo) && leadSentence}
 									{#if blockStory.kindPending}
 										<SkeletonBar width="w-72" height="h-3.5" />
 									{:else}
@@ -1926,7 +1950,9 @@
 								{hood}
 								themeOf={themeFor}
 								hrefOf={(n) => rolloutPath(n.cluster || cluster, n.namespace, n.name, 'gates')}
-								heldBuildsOverride={reallyHeldHere.map((h) => h.build)}
+								heldBuildsOverride={blockStory.pinnedTo ? gateBoxes.find((b) => b.kind === 'pin')?.held : reallyHeldHere.map((h) => h.build)}
+								onClearPin={canModify && blockStory.pinnedTo ? () => (showClearPinModal = true) : null}
+								clearPinDisabled={!dashboardManagesWantedVersion(rollout)}
 								reconciledUpstream={reconciled.upstream}
 								elsewhereCountOverride={elsewhereCounts}
 								{peerHeldByEnv}
@@ -2408,6 +2434,16 @@
 		</div>
 	{/if}
 </div>
+
+{#if rollout}
+	<ClearPinModal
+		bind:open={showClearPinModal}
+		{rollout}
+		{cluster}
+		{autoDeploy}
+		onSuccess={() => rolloutQuery.refetch()}
+	/>
+{/if}
 
 <style>
 	/* The Gates card's rollup, full/compact — same 559.98px CARD-width
