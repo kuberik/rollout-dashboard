@@ -63,11 +63,11 @@
 	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
 	let { state: scenario, name }: { state: HomeState; name: string } = $props();
-	/** an app whose places have no ReleaseSource has no builds to show: the controller's message goes where they would be */
-	const noSource = $derived(item?.placeList.map((p) => noSourceOf(p.href)).find(Boolean));
 
 	const A = $derived(apps(scenario));
 	const item = $derived(A.items.find((a) => a.app === name) ?? null);
+	/** an app whose places have no ReleaseSource has no builds to show: the controller's message goes where they would be */
+	const noSource = $derived(item?.placeList.map((p) => noSourceOf(p.href)).find(Boolean));
 	const built = $derived(item ? laneOf(item, A.R.c.m as never, A.R.c.events as never) : null);
 	const approvals = $derived((A.R.groups.find((g) => g.key === 'approval')?.rows ?? []) as TRow[]);
 

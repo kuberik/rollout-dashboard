@@ -68,11 +68,11 @@ describe('mock release catalogue', () => {
 			spec: {},
 			status: { currentVersion: 'b', history: [{ version: { tag: 'b' } }], availableReleases: A, releaseCandidates: [A[4], A[3], A[2]], gatedReleaseCandidates: [A[3]] }
 		};
-		const { rollouts, sources, slices } = applySlicesMode(structuredClone([original]));
+		const { rollouts, sources, slices } = applySlicesMode(structuredClone([original]) as any[]);
 		ingestListResponse({ releaseSources: { items: sources }, releaseSlices: { items: slices } });
 		expectEquivalent(original, rollouts[0]);
 		expect(releaseCandidates(rollouts[0])?.map((c) => c.tag)).toEqual(['e', 'd', 'c']);
-		const empty = applySlicesMode(structuredClone([{ ...original, metadata: { ...original.metadata, name: 'empty-app' }, status: { history: [] } }]));
+		const empty = applySlicesMode(structuredClone([{ ...original, metadata: { ...original.metadata, name: 'empty-app' }, status: { history: [] } }] as any[]));
 		ingestListResponse({ releaseSources: { items: empty.sources }, releaseSlices: { items: empty.slices } });
 		expect(availableReleases(empty.rollouts[0])).toEqual([]);
 	});
