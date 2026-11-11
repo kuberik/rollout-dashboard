@@ -20,6 +20,25 @@ export const approvalUi = $state<{
 let timer: ReturnType<typeof setTimeout> | null = null;
 let inflight: Promise<unknown> = Promise.resolve();
 const clearTimer = () => { if (timer) clearTimeout(timer); timer = null; };
+/** the row's Approve button the confirm opened from; where focus returns when the toast goes (if it still exists) */
+let returnTo: HTMLElement | null = null;
+/** the toast keeps its 8 s only while nobody is on it: hovering or focusing it pauses, leaving restarts */
+/** hover and focus are separate holds: the timer runs only when neither holds (a pointer leaving never closes the toast under a keyboard user on Undo) */
+const holds = { hover: false, focus: false };
+function syncTimer(): void {
+	if (holds.hover || holds.focus) clearTimer();
+	else if (approvalUi.done && !timer) timer = setTimeout(dismissDone, UNDO_MS);
+}
+export function holdDone(kind: 'hover' | 'focus', on: boolean): void { holds[kind] = on; syncTimer(); }
+export const pauseDone = (kind: 'hover' | 'focus' = 'hover'): void => holdDone(kind, true);
+export const resumeDone = (kind: 'hover' | 'focus' = 'hover'): void => holdDone(kind, false);
+/** Where focus lands when the toast is gone: the row's trigger if it is still mounted, else the page's main heading. Never BODY. */
+export function stableFocusTarget(): HTMLElement | null {
+	if (returnTo?.isConnected) return returnTo;
+	const h = (document.querySelector<HTMLElement>('main h1') ?? document.querySelector<HTMLElement>('h1') ?? document.querySelector<HTMLElement>('main'));
+	if (h && !h.matches('a,button,input,[tabindex]')) h.setAttribute('tabindex', '-1');
+	return h;
+}
 
 /** the approval one row asks for (null when nothing waits on the viewer there) */
 export const targetOf = (row: Pick<TRow, 'app' | 'tier' | 'href' | 'regions'>, state: HomeState): ApprovalTarget | null => approvalTarget(row, state);
@@ -48,6 +67,8 @@ export const closeApprove = (): void => { approvalUi.ask = null; };
 export function refreshAnchor(): void {
 	const a = approvalUi.ask;
 	if (!a?.trigger) return;
+	// The button unmounted under the open confirm (a re-render, a navigation): nothing to anchor to, so close rather than float.
+	if (!a.trigger.isConnected) { approvalUi.ask = null; return; }
 	const r = a.trigger.getBoundingClientRect();
 	a.anchor = { top: r.top, left: r.left, right: r.right, bottom: r.bottom };
 }
@@ -56,6 +77,8 @@ export function confirmApprove(f?: typeof fetch): void {
 	const a = approvalUi.ask;
 	if (!a) return;
 	const t = a.target;
+	returnTo = a.trigger;
+	holds.hover = holds.focus = false; // a new toast never inherits a held state
 	approvalUi.ask = null;
 	clearTimer();
 	grantApproval(t);
@@ -70,12 +93,20 @@ export function undoApprove(f?: typeof fetch): void {
 	const d = approvalUi.done;
 	if (!d || d.error) return;
 	const t = d.target;
+	holds.hover = holds.focus = false;
 	clearTimer();
 	revokeApproval(t);
 	approvalUi.done = null;
+	handOffFocus();
 	void inflight.then(() => Promise.all(t.places.map((p) => postApproval(p.href, p.tag, true, f)))).catch(() => {});
 }
-export function dismissDone(): void { clearTimer(); approvalUi.done = null; }
+/** the toast is going (auto-dismiss, Dismiss, Undo): if focus was on it or nowhere, hand it to a stable target, never BODY */
+function handOffFocus(): void {
+	if (typeof document === 'undefined') return;
+	const a = document.activeElement;
+	if (!a || a === document.body || !a.isConnected || a.closest('[data-approve-toast]')) stableFocusTarget()?.focus();
+}
+export function dismissDone(): void { holds.hover = holds.focus = false; clearTimer(); approvalUi.done = null; handOffFocus(); }
 
 /** the banner / slipway form of the action: an ActRow `Act` that opens the same confirm */
 export function approveAct(target: ApprovalTarget | null, o: Partial<Act> = {}): Act | undefined {

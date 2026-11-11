@@ -37,6 +37,14 @@ export const stateInk = (s: string | null | undefined): string => { const k = st
 /** THE ONE APPROVAL WORD (r39 coordinator decision b, 2026-11-08): "Needs your approval" when the viewer can give it, "Waiting for approval" otherwise. */
 export const approvalWord = (yours: boolean): string => stateWord('approval', { yours })!;
 
+/** The approval word with its place: "Waiting for approval in prod" / "Needs your approval in staging". Every claim names its place (the subject test); a bare word
+ *  is for a column that already is the place (a row's state cell). Facia's banner and the app page's banner both print this. */
+export const approvalIn = (yours: boolean, place: string | null | undefined): string => `${approvalWord(yours)}${place ? ' in ' + place : ''}`;
+
+/** The place a rollout row speaks about, as a person says it: a folded prod row is "prod", a single prod site "prod-<site>", else its own place. */
+export const rowPlaceName = (r: { regionsOf?: unknown; regions: readonly unknown[]; place: string; tier: string }): string =>
+	r.regionsOf || r.regions.length > 1 || r.place === 'production' ? 'prod' : r.tier === 'prod' && !/^prod/.test(r.place) ? `prod-${r.place}` : r.place;
+
 /** THE ONE COUNT PHRASE for places waiting on an approval: "1 needs approval", "3 need approval" (QA2 #6; /apps and /envs/<name> print it). */
 export const needApprovalCount = (n: number): string => `${n} ${n === 1 ? 'needs' : 'need'} approval`;
 

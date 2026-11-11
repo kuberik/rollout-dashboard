@@ -43,7 +43,7 @@
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { approvalOf } from './Footprint.svelte';
-	import { approvalWord } from './state-words';
+	import { approvalIn, rowPlaceName } from './state-words';
 	import { pillOf, currencyOf } from './app/app-model';
 		import { rolloutPath } from '$lib/source-dashboard';
 
@@ -126,7 +126,7 @@
 	/** r6 P2: the lag of the focus place in words a first-time reader can place: "prod is 7 builds behind the newest" (not a link). Skipped when the one newer build IS the waiting "next" build. */
 	const placeName = $derived.by(() => {
 		const r = stateRow;
-		if (r) return r.regionsOf || r.regions.length > 1 || r.place === 'production' ? 'prod' : r.tier === 'prod' && !/^prod/.test(r.place) ? `prod-${r.place}` : r.place;
+		if (r) return rowPlaceName(r);
 		const pl = focus ? item.placeList.find((x) => x.href === focus.href) : null;
 		return pl ? (pl.tier === 'prod' ? 'prod' : pl.label) : '';
 	});
@@ -294,7 +294,7 @@
 			case 'wait': return checkingNow
 				? { ink: 'text-progress', lead: '', rest: waitRow?.state === 'awaiting-approval' ? `Then waits for ${rowAction(waitRow)?.kind === 'approve' ? 'your ' : ''}approval` : '', build: wait?.build ?? '', badge: true }
 				: waitRow?.state === 'awaiting-approval'
-				? { ink: 'text-held', lead: `${approvalWord(rowAction(waitRow)?.kind === 'approve')}${placeName ? ' in ' + placeName : ''}`, rest: '', build: wait?.build ?? '', badge: true }
+				? { ink: 'text-held', lead: approvalIn(rowAction(waitRow)?.kind === 'approve', placeName), rest: '', build: wait?.build ?? '', badge: true }
 				: { ink: 'text-held', lead: `Waiting on ${prodWord(gateWord).replace(/ in (prod|[\w.-]+)$/, '')}`, rest: '', build: wait?.build ?? '', badge: true };
 			case 'deploying': return { ink: 'text-active', lead: '', rest: '', build: build, badge: true };
 			case 'checking': return { ink: 'text-progress', lead: '', rest: '', build: build, badge: true };
@@ -441,7 +441,7 @@
 				secondary={[...(place ? [{ label: 'Open rollout', href: place, key: 'open-rollout' }] : []), ...(act && act.kind !== 'approve' ? [actAsAct()!] : [])]} primary={act?.kind === 'approve' ? actAsAct() : undefined} />
 		{:else if waitRow}
 			<!-- apps-7 Q2: the tab's own held banner (the shared StatementBanner: tint, 40px pause disc, the tab's sentence) -->
-			<StatementBanner severity={checkingNow ? 'checking' : 'held'} title={checkingNow ? 'Checking' : waitRow.state === 'awaiting-approval' ? 'Waiting for approval' : `${placeName} is held: waiting on ${gate}`} message={checkingNow ? `${checkLeft ? checkLeft.replace(/\.$/, '') + '. ' : 'The health checks are running. '}${waitRow.state === 'awaiting-approval' ? `Then it waits for ${act?.kind === 'approve' ? 'your ' : ''}approval${placeName ? ' in ' + placeName : ''}.` : ''}`.trim() : waitRow.state === 'awaiting-approval' && wait?.build ? `${act?.kind === 'approve' ? 'Your approval' : 'An approval'} releases ${wait.build} ${waitScope ? 'in ' + waitScope : placeName ? 'to ' + placeName : ''}.`.replace(/ \.$/, '.') : nb ? (waitRow.state === 'awaiting-approval' ? `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting.` : `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting. Nothing promotes itself until someone clears the hold.`) : undefined}
+			<StatementBanner severity={checkingNow ? 'checking' : 'held'} title={checkingNow ? 'Checking' : waitRow.state === 'awaiting-approval' ? approvalIn(rowAction(waitRow)?.kind === 'approve', placeName) : `${placeName} is held: waiting on ${gate}`} message={checkingNow ? `${checkLeft ? checkLeft.replace(/\.$/, '') + '. ' : 'The health checks are running. '}${waitRow.state === 'awaiting-approval' ? `Then it waits for ${act?.kind === 'approve' ? 'your ' : ''}approval${placeName ? ' in ' + placeName : ''}.` : ''}`.trim() : waitRow.state === 'awaiting-approval' && wait?.build ? `${act?.kind === 'approve' ? 'Your approval' : 'An approval'} releases ${wait.build} ${waitScope ? 'in ' + waitScope : placeName ? 'to ' + placeName : ''}.`.replace(/ \.$/, '.') : nb ? (waitRow.state === 'awaiting-approval' ? `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting.` : `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting. Nothing promotes itself until someone clears the hold.`) : undefined}
 				primary={act?.kind === 'approve' ? actAsAct() : undefined}
 				secondary={[...(act && act.kind !== 'approve' ? [actAsAct()!] : []), ...(place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : [])]} />
 		{:else if act}

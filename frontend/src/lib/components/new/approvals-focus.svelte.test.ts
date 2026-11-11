@@ -26,4 +26,10 @@ describe('approve confirm focus and anchor', () => {
 		top = 40; refreshAnchor();
 		expect(approvalUi.ask!.anchor).toEqual({ top: 40, bottom: 70, left: 10, right: 90 });
 	});
+	it('refreshAnchor closes the confirm when the trigger has unmounted', () => {
+		const b = mk(); press(b);
+		b.remove();
+		refreshAnchor();
+		expect(approvalUi.ask).toBeNull();
+	});
 });

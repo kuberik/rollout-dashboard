@@ -116,6 +116,7 @@
 	} from '$lib/view-models/dependency-graph';
 	import { skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { buildLanes } from '$lib/view-models/promotion-lanes';
+	import { countLabel } from '$lib/disclosure';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import {
@@ -1812,7 +1813,7 @@
 											? reconciledHolding === realGateTotal
 												? `${reconciledHolding} holding`
 												: `${reconciledHolding} of ${realGateTotal} holding`
-											: `${realGateTotal} gates`}</span
+											: countLabel(realGateTotal, 'gate')}</span
 									>
 									<span class="gates-rollup-full"
 										>{reconciledHolding > 0

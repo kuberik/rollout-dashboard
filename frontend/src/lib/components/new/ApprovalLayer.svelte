@@ -17,7 +17,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import { approvePlace } from './approve-place';
 	import Toast from '$lib/components/Toast.svelte';
-	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords } from './approvals.svelte';
+	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
 
 	const ask = $derived(approvalUi.ask);
 	const done = $derived(approvalUi.done);
@@ -38,6 +38,18 @@
 	$effect(() => {
 		if (ask) tick().then(() => panel?.querySelector<HTMLButtonElement>('[data-action="approve-confirm"]')?.focus());
 	});
+	// After Approve the trigger may be gone (the row moved to Deploying), so focus goes to the toast's own action, never BODY.
+	$effect(() => {
+		if (!done) return;
+		let tries = 0;
+		const grab = () => {
+			const el = document.querySelector<HTMLButtonElement>('[data-action="approve-undo"], [data-action="approve-dismiss"]');
+			if (el) el.focus();
+			else if (tries++ < 10) raf = requestAnimationFrame(grab);
+		};
+		let raf = requestAnimationFrame(grab);
+		return () => cancelAnimationFrame(raf);
+	});
 	onMount(() => {
 		const away = (e: PointerEvent) => { if (approvalUi.ask && panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[data-approve-open]')) closeApprove(); };
 		document.addEventListener('pointerdown', away, true);
@@ -45,6 +57,7 @@
 	});
 	function key(e: KeyboardEvent) {
 		if (e.key === 'Escape' && approvalUi.ask) { e.stopPropagation(); cancelApprove(); }
+		else if (e.key === 'Escape' && approvalUi.done && !e.defaultPrevented && !document.querySelector('[role="dialog"][aria-modal="true"], dialog[open]')) dismissDone(); // another overlay already took this Escape
 	}
 </script>
 
@@ -76,6 +89,7 @@
 
 {#if done}
 	{@const w = doneWords(done.target)}
+	<div role="presentation" data-approve-toast onpointerover={() => pauseDone('hover')} onpointerout={() => resumeDone('hover')} onfocusin={() => pauseDone('focus')} onfocusout={() => resumeDone('focus')} style="display: contents">
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
 		tone={done.error ? 'danger' : 'success'}
@@ -90,4 +104,5 @@
 			{/if}
 		{/snippet}
 	</Toast>
+	</div>
 {/if}

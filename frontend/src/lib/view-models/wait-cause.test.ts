@@ -69,6 +69,27 @@ describe('waitCause — one named cause per wait (round R table)', () => {
 		expect(k).toMatchObject({ kind: 'rule', place: 'prod', name: 'offline-eval' });
 		expect(k.app).toBeNull();
 	});
+	it('a live ghd-* promotion gate (kind from the API) is not the named rule', () => {
+		const m = app([
+			{ label: 'dev', nodes: [{ state: 'newest', card: card({ version: 'b' }) }] },
+			{ label: 'prod', nodes: [{ state: 'held', card: card({ version: 'a', held: true, heldCause: 'check', heldCauseLabel: 'a check', gates: [{ name: 'ghd-prod-7f3a', kind: 'promotion', passing: false }, { name: 'offline-eval', kind: 'unknown', passing: false }] }) }] }
+		]);
+		expect(waitCause(m, ctx)).toMatchObject({ kind: 'rule', name: 'offline-eval' });
+	});
+	it('no kind on the summary (older backend): a failing promotion-* gate still counts as promotion', () => {
+		const m = app([
+			{ label: 'dev', nodes: [{ state: 'newest', card: card({ version: 'b' }) }] },
+			{ label: 'prod', nodes: [{ state: 'held', card: card({ version: 'a', held: true, heldCause: 'check', heldCauseLabel: 'a check', gates: [{ name: 'promotion-prod', passing: false }, { name: 'offline-eval', passing: false }] }) }] }
+		]);
+		expect(waitCause(m, ctx)).toMatchObject({ kind: 'rule', name: 'offline-eval' });
+	});
+	it('a promotion-* NAME with a non-promotion kind is a rule: the backend kind wins over the name', () => {
+		const m = app([
+			{ label: 'dev', nodes: [{ state: 'newest', card: card({ version: 'b' }) }] },
+			{ label: 'prod', nodes: [{ state: 'held', card: card({ version: 'a', held: true, heldCause: 'check', heldCauseLabel: 'a check', gates: [{ name: 'promotion-freeze', kind: 'schedule', passing: false }] }) }] }
+		]);
+		expect(waitCause(m, ctx)).toMatchObject({ kind: 'rule', name: 'promotion-freeze' });
+	});
 	it('inside the normal cycle: "prod next · usually within 5m"', () => {
 		const m = app([
 			{ label: 'dev', nodes: [{ state: 'newest', card: card({ version: '4a8d2e6', head: { bakeStatus: 'Succeeded', bakeEndTime: ago(2) } }) }] },

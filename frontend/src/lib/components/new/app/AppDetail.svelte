@@ -55,7 +55,7 @@
 	import { laneOf, approvalOf } from '../Footprint.svelte';
 	import { apps, heldHere, ago, approvalTarget, appHolds, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
-	import { approvalWord } from '../state-words';
+	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
@@ -301,7 +301,7 @@
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}
 				<!-- AA4: the wait is a statement in the tab's own box: the gate sentence, the one Approve the viewer can give (the tab's destination), Open rollout -->
 				<div data-ad-statement data-ad-wait>
-					<StatementBanner severity={checkingNow ? 'checking' : waitsOnApproval ? 'approval' : 'info'} title={checkingNow ? 'Checking' : waitsOnApproval ? approvalWord(!!stateRow?.needsYou) : parts[0]} message={waitMessage ?? undefined}
+					<StatementBanner severity={checkingNow ? 'checking' : waitsOnApproval ? 'approval' : 'info'} title={checkingNow ? 'Checking' : waitsOnApproval ? approvalIn(!!stateRow?.needsYou, stateRow ? rowPlaceName(stateRow) : null) : parts[0]} message={waitMessage ?? undefined}
 						primary={waitAct ? (approveAct(stateRow ? approvalTarget(stateRow, scenario) : null, { icon: CheckOutline }) ?? { label: 'Approve', href: actionHref(waitAct), icon: CheckOutline, key: 'approve' }) : undefined}
 						secondary={stateRow ? [{ label: 'Open rollout', href: stateRow.href, key: 'open-rollout' }] : []} />
 				</div>

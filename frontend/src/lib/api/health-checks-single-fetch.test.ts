@@ -60,7 +60,7 @@ export function findOffenders(files: Record<string, string>): string[] {
 		if (rel === OWNER || MOCK_SERVERS.has(rel)) continue;
 		if (mentionsEndpoint(text)) out.push(`${rel}: mentions /health-checks`);
 		if (!rel.startsWith(`lib${sep}demo${sep}`) && !MOCK_IMPORTERS.has(rel)) {
-			for (const m of text.matchAll(/(?:from\s*|import\(\s*)['"][^'"\n]*\/demo\/([\w-]+)(?:\.[jt]s)?['"]/g)) {
+			for (const m of text.matchAll(/(?:from\s*|import\(\s*|^\s*import\s*)['"`][^'"`\n]*\/demo\/([\w-]+)(?:\.[jt]s)?['"`]/gm)) {
 				const target = join('lib', 'demo', `${m[1]}.ts`);
 				if (demoMentioning.has(target) || MOCK_SERVERS.has(target))
 					out.push(`${rel}: imports ${target}, which carries the endpoint`);
@@ -110,6 +110,11 @@ describe('the /health-checks URL has exactly one owner', () => {
 			join('lib', 'x.ts'),
 			"import { respond } from '$lib/demo/respond.ts';\nexport const x = respond;"
 		],
+		'n6 a backtick-quoted dynamic import of a mock server': [
+			join('lib', 'x.ts'),
+			'export const x = () => import(`$lib/demo/respond`);'
+		],
+		'n7 a bare side-effect import of a mock server': [join('lib', 'x.ts'), "import '$lib/demo/respond';\nexport const x = 1;"],
 		"n5 an export line with a trailing comment quoting 'from api/health-checks'": [
 			join('lib', 'x.ts'),
 			"export const hcUrl = (n: string) => `/rollouts/${n}/health-checks`; // shape copied from 'api/health-checks'"
