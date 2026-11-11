@@ -39,3 +39,4 @@ src/lib/.svelte-kit/
 # into a commit by `git add -A`.
 demos/
 recordings-raw/
+census-before.json
