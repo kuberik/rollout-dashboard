@@ -815,10 +815,9 @@ export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state:
 		for (const p of lower) for (const h of rawOf(p.href)?.status.history ?? []) if (shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) === b.build) ts.push(h.timestamp);
 		if (!ts.length) return null;
 		const arrived = oldestClock(ts)!;
-		return b.created && b.created > arrived ? b.created : arrived;
+		return b.created && Date.parse(b.created) > Date.parse(arrived) ? b.created : arrived;
 	};
-	const arrivals = here.map(arrivalOf).filter((x): x is string => !!x).sort();
-	return arrivals[0] ?? null;
+	return oldestClock(here.map(arrivalOf).filter((x): x is string => !!x));
 }
 /** QA2 #8: THE ONE CLOCK OF A WAIT. A row that waits (approval / rule) has one time for the fact "how long": when the hold began (`holdSince`), else the waiting
  *  build's own age, else the row's. The sentence ("Waiting for approval for 5h"), the row's age slot and the /apps card's age all read THIS, so one row never shows
