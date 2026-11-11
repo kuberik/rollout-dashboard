@@ -41,10 +41,10 @@
 		const behindOf = (v: string | null) => { const i = v ? seq.indexOf(v) : -1; return i < 0 || newIdx < 0 ? 0 : Math.max(0, newIdx - i); };
 		const nodes: LaneNode[] = item.placeList.map((e) => {
 			const tier: Tier = e.tier === 'prod' ? 'prod' : e.tier === 'dev' ? 'dev' : e.tier === 'test' ? 'test' : 'staging';
-			const state: NodeState = STATE[e.state] ?? (e.onNewest || e.currency === 'none' ? 'newest' : behindOf(e.version) > 0 ? 'behind' : 'newest');
+			const state: NodeState = STATE[e.state] ?? (e.currency === 'none' ? 'none' : e.onNewest ? 'newest' : behindOf(e.version) > 0 ? 'behind' : 'newest');
 			const theme = getRolloutEnvironmentTheme(null, tier);
 			const card = { ns: e.label, name: app, version: e.version, theme, envDisplay: e.label || tier, href: e.href, heldCause: e.state === 'awaiting-approval' ? 'person' : undefined } as unknown as RolloutCard;
-			return { card, tier, env: (tier === 'prod' ? e.label : shortEnvLabel(theme) || e.label) || tier, /* QA #11: an env-less place has a blank label; the tier names it, a box is never empty */ state, behind: state === 'behind' ? behindOf(e.version) : 0 };
+			return { card, tier, env: (tier === 'prod' ? e.label : shortEnvLabel(theme) || e.label) || tier, /* QA #11: an env-less place has a blank label; the tier names it, a box is never empty */ state, behind: state === 'behind' ? behindOf(e.version) : 0, ...(e.currency === 'none' ? { noReleases: true } : {}) };
 		});
 		const byTier: Partial<Record<Tier, LaneNode[]>> = {};
 		for (const n of nodes) (byTier[n.tier] ??= []).push(n);

@@ -12,7 +12,7 @@
 	 * A healthy box says only its name and its lag; a box that needs reading adds the state mark and word in the state's ink. A prod set
 	 * of several regions is ONE box: the worst region's mark and word, the region when exactly one, and "k of N regions".
 	 */
-	import { STATE_ORDER, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
+	import { STATE_ORDER, settledSentence, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
 	import { formatTimeAgoCompact, shortenVersion } from '$lib/utils';
 	import { splitEnvName } from '$lib/env-badge';
 	import { getEnvironmentThemeStyle } from '$lib/environment-theme';
@@ -111,9 +111,9 @@
 				return `${v} in ${newest.env}${nextName ? ` · ${nextName} next` : ''}`;
 			}
 			case 'newest':
-				return 'On the newest everywhere';
+				return settledSentence(lane, 'newest');
 			default:
-				return 'Nothing deployed yet';
+				return settledSentence(lane, 'none');
 		}
 	}
 

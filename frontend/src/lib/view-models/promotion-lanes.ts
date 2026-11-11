@@ -46,6 +46,8 @@ export type LaneNode = {
 	state: NodeState;
 	/** Builds behind the newest; 0 when on it or unknown. */
 	behind: number;
+	/** The place has no releases in the catalogue: drawn neutral (state 'none'), health only, never a currency claim. */
+	noReleases?: boolean;
 };
 
 export type Lane = {
@@ -190,4 +192,14 @@ export function stairRise(tier: Tier, tiers: readonly Tier[]): number {
 
 export function stairColumns(tiers: readonly Tier[]): string {
 	return tiers.map((t) => (t === 'prod' ? 'minmax(160px, 1.5fr)' : 'minmax(88px, 1fr)')).join(' ');
+}
+
+/**
+ * The settled sentences of a lane (nobody failing, held or moving). A place without releases is not "on the newest" and
+ * is not "nothing deployed": rows read "No releases yet", so the lane reads the same words.
+ */
+export function settledSentence(lane: Lane, kind: 'newest' | 'none'): string {
+	const none = [...lane.stages, ...lane.prod].some((n) => n.noReleases);
+	if (kind === 'newest') return none ? 'On the newest where released' : 'On the newest everywhere';
+	return lane.lead?.noReleases ? 'No releases yet' : 'Nothing deployed yet';
 }

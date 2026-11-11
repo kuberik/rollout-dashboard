@@ -121,7 +121,7 @@
 		const fix = (n: LaneNode): LaneNode => {
 			const p = byHref.get(nodeHref(n));
 			if (!p) return n;
-			const want = NS[p.state] ?? (NOISY.has(n.state) ? (n.behind > 0 ? 'behind' : 'newest') : n.state);
+			const want = NS[p.state] ?? (p.currency === 'none' ? 'none' : NOISY.has(n.state) ? (n.behind > 0 ? 'behind' : 'newest') : n.state);
 			return want === n.state ? n : { ...n, state: want };
 		};
 		const byTier: Lane['byTier'] = {};
