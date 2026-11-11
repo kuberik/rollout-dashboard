@@ -7,8 +7,8 @@ import { gateKindOf, type GateKind } from './gate-kind';
  * the place's state (the env model's card, the rows, the inbox, the toast, the approval target, the app detail's holds) asks this
  * function, so none can judge another build or another rule.
  *
- *  - the place's own newest history entry is Deploying / InProgress with a build every allow-list permits -> running: the place reads
- *    its own bake state, whatever any gate says about another build (a window closing mid-deploy, an approval pending for a newer build)
+ *  - the place's own newest history entry is Deploying / InProgress -> running: the place reads its own bake state, whatever any gate or
+ *    allow-list says (a window closing mid-deploy, an approval pending for a newer build, a force deploy of a build no list contains)
  *  - no non-approval gate refuses the build after the approval  -> awaiting-approval (ask kept)
  *  - some gate still refuses it                                 -> held-by-rule, naming the first refuser in blame order
  *                                                                  (a persistent check / dependency / unknown, then a promotion order, then a window),
@@ -39,14 +39,16 @@ export function deployableTags(gates: readonly VGate[], cands: readonly string[]
 
 /**
  * THE build a person is deciding on at a place, ONE pick for every surface: the newest candidate that every NON-approval gate lets
- * through (the clock, a check, a dependency and the promotion order all decide here), and among those the one that got furthest through
- * the tiers below (what an approval is for), not a newer build still behind it; the newest on a tie. When no candidate passes (a closed
- * window, a rule that refuses everything) the same furthest-reach rule picks among all of them, so the hold still names a build.
+ * through (a check, a dependency and the promotion order decide here), and among those the one that got furthest through
+ * the tiers below (what an approval is for), not a newer build still behind it; the newest on a tie. The clock (a schedule gate) is
+ * ignored by the pick: a closed window refuses every candidate and must not change which build is in question. When a rule that never
+ * clears refuses everything, the same furthest-reach rule picks among all candidates, so the hold still names a build.
  * `reachOf` is -1 for a build no lower tier has finished; a peer still deploying a build has not reached the next stage with it.
  * '' when nothing is a candidate.
  */
 export function pickBuildInQuestion(gates: readonly VGate[], cands: readonly string[], reachOf: (tag: string) => number): string {
-	const open = cands.filter((c) => refusingGates(gates, c).every(isApprovalLike));
+	/* a gate that clears by itself (the deploy window) never decides WHICH build: a closed window refuses every candidate, and the pick must not change with the clock */
+	const open = cands.filter((c) => refusingGates(gates, c).every((g) => isApprovalLike(g) || gateKindOf(g) === 'schedule'));
 	let best = '', bestReach = -2;
 	for (const c of open.length ? open : cands) { const r = reachOf(c); if (r > bestReach) { best = c; bestReach = r; } }
 	return best;
@@ -55,7 +57,7 @@ export function pickBuildInQuestion(gates: readonly VGate[], cands: readonly str
 export type AlsoKind = 'window' | 'order' | 'hold';
 export type PlaceVerdict<G extends VGate = VGate> =
 	| { state: 'awaiting-approval'; target: string }
-	/** the place's newest build is Deploying / InProgress and every allow-list permits it: the place reads its own bake state, whatever refuses another build */
+	/** the place's newest build is Deploying / InProgress: the place reads its own bake state, whatever refuses another build */
 	| { state: 'running'; target: string }
 	| { state: 'held-by-rule'; target: string; first: G; refusers: G[]; /** the approval is ALSO pending for this build and would still deploy it once the refuser clears; null when the refuser is a static allow-list that does not list the build (no approval and no clock ever clears it for THIS build: the ask would be a false call to action) */ also: { kind: AlsoKind } | null };
 
@@ -83,7 +85,7 @@ export function placeVerdict<G extends VGate>(i: PlaceVerdictInput<G>): PlaceVer
 	const approvals = i.gates.filter(isApprovalLike);
 	if (!i.cands.length || !i.target || !approvals.some((a) => i.cands.some((c) => !a.allowedVersions!.includes(c)))) return null;
 	const r = i.running;
-	if (r && (r.bake === 'Deploying' || r.bake === 'InProgress') && i.gates.every((g) => g.allowedVersions == null || g.allowedVersions.includes(r.tag))) return { state: 'running', target: i.target };
+	if (r && (r.bake === 'Deploying' || r.bake === 'InProgress')) return { state: 'running', target: i.target };
 	const pending = approvals.some((a) => !a.allowedVersions!.includes(i.target));
 	const refusers = refusingGates(i.gates, i.target).filter((x) => !isApprovalLike(x));
 	if (!refusers.length) return pending ? { state: 'awaiting-approval', target: i.target } : null;

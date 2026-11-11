@@ -348,21 +348,21 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask').toBe(false);
 		});
 	});
-	it('permits only the newest while the place still checks or deploys a build the rule refuses: the place waits for the newest\'s approval, no ask yet, no inbox entry', () => {
+	it('a place that still checks or deploys a build reads its own bake state, whatever the rules say about it: no ask for a newer build yet, no inbox entry', () => {
 		const { newest } = targetAndNewest0();
 		patched([{ name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] }], () => {
 			const t0 = approvalTarget(row('payments-core')!, 'incident')!;
 			const rs = (source().rollouts as unknown as { metadata: { name: string; namespace: string }; status: { history?: { bakeStatus?: string }[] } }[]).filter((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`));
 			const was = rs.map((r) => r.status.history![0].bakeStatus);
 			try {
-				for (const bake of ['InProgress', 'Deploying']) {
+				for (const [bake, state, lead] of [['InProgress', 'checking', 'Checking'], ['Deploying', 'deploying', 'Deploying']]) {
 					rs.forEach((r) => { r.status.history![0].bakeStatus = bake; });
 					resetHomeModel();
 					const pr = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
 					expect(pr.length).toBeGreaterThan(0);
 					for (const r of pr) {
-						expect(r.state, bake).toBe('awaiting-approval');
-						expect(sentenceOf(r, 'incident')[0], bake).toBe('Waiting for approval');
+						expect(r.state, bake).toBe(state);
+						expect(sentenceOf(r, 'incident')[0], bake).toBe(lead);
 						expect(r.needsYou, bake).toBe(false);
 					}
 					expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask').toBe(false);

@@ -29,17 +29,20 @@ const granted = (f: (t: NonNullable<ReturnType<typeof approvalTarget>>) => void)
 };
 const prodRows = () => rollouts('incident').rows.filter((x) => x.app === APP && x.tier === 'prod');
 const approvalOf = (r: R) => r.status.gates.find((g) => g.kind === 'approval')!;
-const withStagingDeploying = (f: () => void) => {
+const withStagingDeploying = (f: () => void, only = false) => {
 	const st = all().find((r) => r.metadata.namespace === 'payments-core-staging')!;
 	const h = st.status.history, c0 = st.status.releaseCandidates;
-	st.status.history = [{ ...h[0], version: { tag: NEWEST, version: NEWEST, revision: NEWEST }, bakeStatus: 'Deploying', timestamp: '2026-11-11T00:00:00Z' }, ...h];
+	const now = { ...h[0], version: { tag: NEWEST, version: NEWEST, revision: NEWEST }, bakeStatus: 'Deploying', timestamp: '2026-11-11T00:00:00Z' };
+	st.status.history = only ? [now] : [now, ...h];
 	st.status.releaseCandidates = [];
 	resetHomeModel();
 	try { f(); } finally { st.status.history = h; st.status.releaseCandidates = c0; resetHomeModel(); }
 };
+const WINDOW: G = { name: 'schedule-gate-qqqqq', kind: 'schedule', passing: false, allowedVersions: null };
+const PROMO: G = { name: 'ghd-promo', kind: 'promotion', passing: true, allowedVersions: [STAGED, '9b7e410', '2a55f0c'] };
 
 describe('the build in question is one pick', () => {
-	it('S6b: staging is still deploying the newest build and prod promotes only staged builds: the dialog, the toast, the write and the target all name the staged build', () => {
+	it('staging is still deploying the newest build and prod promotes only staged builds: the dialog, the toast, the write and the target all name the staged build', () => {
 		withStagingDeploying(() => withGates([{ name: 'ghd-promo', kind: 'promotion', passing: true, allowedVersions: [STAGED, '9b7e410', '2a55f0c'] }], () => {
 			const t = approvalTarget(prodRow(), 'incident')!;
 			expect(t.build).toBe(STAGED);
@@ -62,17 +65,82 @@ describe('the build in question is one pick', () => {
 		}));
 	});
 
-	it('S6a: with no promotion gate the newest build is the target while staging deploys it', () => {
+	it('with no promotion gate the build staging already finished is the target while staging deploys a newer one, and a closed window changes nothing', () => {
 		withStagingDeploying(() => {
-			const t = approvalTarget(prodRow(), 'incident')!;
-			expect(t.build).toBe(NEWEST);
-			expect(t.places.map((p) => p.tag)).toEqual(t.places.map(() => NEWEST));
+			for (const gs of [[], [WINDOW]]) withGates(gs, () => {
+				const t = approvalTarget(prodRow(), 'incident')!;
+				expect(t.build).toBe(STAGED);
+				expect(t.places.map((p) => p.tag)).toEqual(t.places.map(() => STAGED));
+			});
 		});
+	});
+
+	it('a closed deploy window never changes the build in question: the dialog, the toast, the write and the place verdict name the staged build, and it deploys when the window opens', () => {
+		withStagingDeploying(() => withGates([PROMO, WINDOW], () => {
+			const t = approvalTarget(prodRow(), 'incident')!;
+			expect(t.build).toBe(STAGED);
+			expect(t.places.map((p) => p.tag)).toEqual(t.places.map(() => STAGED));
+			expect(askSentence(t)).toBe(`Approve ${STAGED} for ${t.where}?`);
+			expect(doneWords(t).title).toBe(`Approved ${STAGED}`);
+			const pv = homeModel('incident').apps.find((a) => a.app === APP)!.envs.find((e) => e.href === t.places[0].href)!.placeVerdict!;
+			expect(pv.target).toBe(STAGED);
+			grantApproval(t);
+			try {
+				for (const r of prodRs()) {
+					expect(approvalOf(r).allowedVersions, r.metadata.namespace).toContain(STAGED);
+					expect(approvalOf(r).allowedVersions, r.metadata.namespace).not.toContain(NEWEST);
+					const cands = r.status.releaseCandidates.map((c) => c.tag ?? '');
+					r.status.gates.find((g) => g.name === WINDOW.name)!.passing = true;
+					expect(deployableTags(r.status.gates, cands), r.metadata.namespace).toEqual([STAGED]);
+				}
+			} finally { revokeApproval(t); }
+		}));
+	});
+
+	it('a build a lower tier is still deploying has not reached that tier: with nothing finished anywhere the newest candidate is the target', () => {
+		const lower = all().filter((r) => r.metadata.name === APP && /-(dev|test)$/.test(r.metadata.namespace));
+		const was = lower.map((r) => r.status.history);
+		lower.forEach((r) => { r.status.history = []; });
+		try {
+			withStagingDeploying(() => {
+				const st = all().find((r) => r.metadata.namespace === 'payments-core-staging')!;
+				st.status.history[0].version = { tag: STAGED, version: STAGED, revision: STAGED };
+				resetHomeModel();
+				expect(approvalTarget(prodRow(), 'incident')!.build).toBe(NEWEST);
+			}, true);
+		} finally { lower.forEach((r, i) => { r.status.history = was[i]; }); resetHomeModel(); }
+	});
+
+	it('only the places whose own build in question is the approved one are approved with it: a region another rule steers to a different build is excluded', () => {
+		const rs = prodRs();
+		const odd = rs[rs.length - 1];
+		odd.status.gates.push({ name: 'only-newest', kind: 'promotion', passing: true, allowedVersions: [NEWEST] });
+		resetHomeModel();
+		try {
+			const t = approvalTarget(prodRow(), 'incident')!;
+			expect(t.build).toBe(STAGED);
+			expect(t.places.every((p) => p.tag === STAGED)).toBe(true);
+			expect(t.places.some((p) => p.href === hrefOf(odd))).toBe(false);
+			expect(t.places.length).toBeGreaterThan(0);
+		} finally { odd.status.gates = odd.status.gates.filter((g) => g.name !== 'only-newest'); resetHomeModel(); }
+	});
+
+	it('a grant deploys the newest build every gate allows after the approval, which is not always the approved one', () => {
+		const rs = prodRs();
+		rs.forEach((r) => { approvalOf(r).allowedVersions = [NEWEST]; });
+		resetHomeModel();
+		try {
+			const t = approvalTarget(prodRow(), 'incident')!;
+			expect(t.build).toBe(STAGED);
+			expect(t.deploys).toBe(NEWEST);
+			grantApproval(t);
+			try { for (const r of rs.filter((x) => t.places.some((p) => p.href === hrefOf(x)))) expect(r.status.history[0].version.tag, r.metadata.namespace).toBe(NEWEST); } finally { revokeApproval(t); }
+		} finally { rs.forEach((r) => { approvalOf(r).allowedVersions = ['9b7e410']; }); resetHomeModel(); }
 	});
 });
 
 describe('a place that runs its build reads Deploying', () => {
-	it('S7: a deploy window closing while the approved build deploys does not turn the place into a hold', () => {
+	it('a deploy window closing while the approved build deploys does not turn the place into a hold', () => {
 		withGates([{ name: 'permits-target-only', kind: 'unknown', allowedVersions: [STAGED] }], () => granted(() => {
 			withGates([{ name: 'schedule-gate-qqqqq', kind: 'schedule', passing: false, allowedVersions: null }], () => {
 				const pr = prodRows();
@@ -85,7 +153,7 @@ describe('a place that runs its build reads Deploying', () => {
 		}));
 	});
 
-	it('S8: after a grant with a newer candidate still behind it, every target place reads Deploying (a grant that never deploys fails this)', () => {
+	it('after a grant with a newer candidate still behind it, every target place reads Deploying (a grant that never deploys fails this)', () => {
 		granted((t) => {
 			const hrefs = new Set(t.places.map((p) => p.href));
 			const pr = prodRows().filter((r) => hrefs.has(r.href) || r.regions.length > 1);
@@ -102,7 +170,7 @@ describe('a place that runs its build reads Deploying', () => {
 });
 
 describe('the app detail and the approval target read the row\'s verdict', () => {
-	it('F4: after the permits-target grant the place is Deploying, so it carries no approval hold and offers no approval', () => {
+	it('after the permits-target grant the place is Deploying, so it carries no approval hold and offers no approval', () => {
 		withGates([{ name: 'permits-target-only', kind: 'unknown', allowedVersions: [STAGED] }], () => granted(() => {
 			const prod = placeHolds(APP, 'incident').filter((h) => h.tier === 'prod' && h.href !== '' && prodRs().some((r) => hrefOf(r) === h.href));
 			expect(prod.length).toBeGreaterThan(0);
@@ -114,7 +182,7 @@ describe('the app detail and the approval target read the row\'s verdict', () =>
 });
 
 describe('the Environments page reads the verdict, never its own awaiting-approval', () => {
-	it('F5: every prod place still baking its own build reads the place verdict, in every region (never an awaiting-approval invented for one row)', () => {
+	it('every prod place still baking its own build reads the place verdict (running), in every region, even under a rule that refuses everything', () => {
 		const rs = prodRs();
 		const was = rs.map((r) => r.status.history[0].bakeStatus);
 		rs.forEach((r) => { r.status.history[0].bakeStatus = 'InProgress'; });
@@ -125,8 +193,8 @@ describe('the Environments page reads the verdict, never its own awaiting-approv
 				const model = homeModel('incident').apps.find((a) => a.app === APP)!.envs;
 				for (const p of mine) {
 					const pv = model.find((e) => e.isProdRegion && e.env.endsWith(p.label))!.placeVerdict;
-					expect(pv?.state, p.label).toBe('held-by-rule');
-					expect(p.state, p.label).toBe(pv!.state);
+					expect(pv?.state, p.label).toBe('running');
+					expect(p.state, p.label).toBe('checking');
 				}
 			});
 		} finally { rs.forEach((r, i) => { r.status.history[0].bakeStatus = was[i]; }); resetHomeModel(); }

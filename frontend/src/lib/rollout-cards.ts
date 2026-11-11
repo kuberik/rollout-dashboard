@@ -254,7 +254,7 @@ const refTags = (x: { tag?: string; version?: string; revision?: string } | null
 /**
  * THE PER-PLACE VERDICT, read for one rollout (`place-verdict.ts` holds the rule; this only gathers its inputs). The build in question is
  * the newest live candidate every non-approval gate lets through that got furthest through the lower tiers (`pickBuildInQuestion`; a
- * peer's newest history entry counts as reached only once it has stopped deploying), and the gates are the rollout's own published gates. Null when no approval is pending here: the frontier verdict stands. Everything the card says about its
+ * build counts as reached once a lower tier has finished it, in any history entry), and the gates are the rollout's own published gates. Null when no approval is pending here: the frontier verdict stands. Everything the card says about its
  * hold (`held`, `heldCause`, `heldCauseLabel`, `heldAlso`) follows this verdict, so the env model, the rows and the inbox cannot read another build.
  */
 function placeVerdictOf(
@@ -277,10 +277,9 @@ function placeVerdictOf(
 		for (const p of peers) {
 			const rk = getEnvironmentRank(p.envName);
 			if (rk >= mine || rk <= best) continue;
-			const e = p.rollout.status?.history?.[0];
-			if (e?.bakeStatus === 'Deploying' || e?.bakeStatus === 'InProgress') continue; /* a peer still deploying a build has not reached the next stage with it */
-			const h = refTags(e?.version);
-			if (h.some((x) => names.includes(x))) best = rk;
+			/* reached = the peer FINISHED the build, in any history entry (it may be deploying a newer one now); a build it is still deploying has not reached the stage */
+			const done = (p.rollout.status?.history ?? []).some((e) => e.bakeStatus === 'Succeeded' && refTags(e.version).some((x) => names.includes(x)));
+			if (done) best = rk;
 		}
 		return best;
 	};
