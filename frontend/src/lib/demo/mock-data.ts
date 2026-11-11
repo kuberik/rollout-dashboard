@@ -2678,6 +2678,8 @@ export const mockProviderRollouts = [
 		},
 		status: {
 			availableReleases: SEARCH_RELEASES,
+			// nothing deployed: every release is a candidate (the controller's rule), listed so its age is kept fresh like every other candidate
+			releaseCandidates: [...SEARCH_RELEASES].reverse(),
 			history: []
 		}
 	} as unknown as ReturnType<typeof mkPlainRollout>

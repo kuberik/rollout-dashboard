@@ -4,11 +4,12 @@ import {
 	gatedReleaseCandidates,
 	ingestReleaseSlices,
 	releaseCandidates,
+	releasesOf,
 	removeReleaseSlice,
 	resetReleaseCatalogue,
 	upsertReleaseSlice
 } from './registry.svelte';
-import { catalogueKey, mergeSlices } from './catalogue';
+import { catalogueKey, mergeSlices, releaseSourceRequiredMessage } from './catalogue';
 import { rel, rollout, slice } from './fixtures';
 
 const K = catalogueKey('', 'ns', 'src');
@@ -16,32 +17,45 @@ const tags = (l: { tag: string }[] | undefined) => l?.map((v) => v.tag);
 
 beforeEach(() => resetReleaseCatalogue());
 
-describe('fallback path', () => {
+describe('no old-field reads', () => {
 	const old = {
 		availableReleases: [{ tag: 'a' }],
 		releaseCandidates: [{ tag: 'b' }],
 		gatedReleaseCandidates: [{ tag: 'c' }]
 	};
-	it('no ref: old fields verbatim, even when a catalogue exists', () => {
+	const cond = { type: 'ReleasesUpdated', status: 'False', reason: 'ReleaseSourceRequired', message: 'Create a ReleaseSource.' };
+	it('no ref: nothing, even when old fields and a catalogue exist; the controller message is surfaced', () => {
 		ingestReleaseSlices([slice('s1', 'src', [rel('x', 1)])], [K]);
-		const r = rollout({ status: old });
-		expect(availableReleases(r)).toBe(old.availableReleases);
-		expect(releaseCandidates(r)).toBe(old.releaseCandidates);
-		expect(gatedReleaseCandidates(r)).toBe(old.gatedReleaseCandidates);
+		const r = rollout({ status: { ...old, conditions: [cond] } });
+		expect(availableReleases(r)).toBeUndefined();
+		expect(releaseCandidates(r)).toBeUndefined();
+		expect(gatedReleaseCandidates(r)).toBeUndefined();
+		expect(releasesOf(r).state).toBe('source-required');
+		expect(releaseSourceRequiredMessage(r)).toBe('Create a ReleaseSource.');
+		expect(releaseSourceRequiredMessage(rollout({ ref: 'src', status: { conditions: [cond] } }))).toBeUndefined();
 	});
-	it('ref set but catalogue unknown: old fields', () => {
+	it('ref set but catalogue unknown: loading, never the old fields', () => {
 		const r = rollout({ ref: 'src', status: old });
-		expect(availableReleases(r)).toBe(old.availableReleases);
-		expect(releaseCandidates(r)).toBe(old.releaseCandidates);
+		expect(availableReleases(r)).toBeUndefined();
+		expect(releaseCandidates(r)).toBeUndefined();
+		expect(gatedReleaseCandidates(r)).toBeUndefined();
+		expect(releasesOf(r).state).toBe('loading');
 	});
-	it('keeps undefined vs []', () => {
-		expect(availableReleases(rollout({ status: {} }))).toBeUndefined();
-		expect(releaseCandidates(rollout({ status: {} }))).toBeUndefined();
-		const e = rollout({ status: { availableReleases: [], releaseCandidates: [], gatedReleaseCandidates: [] } });
-		expect(availableReleases(e)).toEqual([]);
-		expect(releaseCandidates(e)).toEqual([]);
-		expect(gatedReleaseCandidates(e)).toEqual([]);
-		expect(availableReleases(null)).toBeUndefined();
+	it('a ref\'d Rollout with the old fields absent reads the newer counts and candidates from slices + status.candidates', () => {
+		ingestReleaseSlices([slice('s1', 'src', [rel('v1', 1), rel('v2', 2), rel('v3', 3)])], [K]);
+		const r = rollout({
+			ref: 'src',
+			status: { history: [{ version: { tag: 'v1' } }], candidates: [{ tag: 'v3', gated: true }, { tag: 'v2', gated: false }] }
+		});
+		expect(tags(availableReleases(r))).toEqual(['v1', 'v2', 'v3']);
+		expect(tags(releaseCandidates(r))).toEqual(['v3', 'v2']);
+		expect(tags(gatedReleaseCandidates(r))).toEqual(['v3']);
+		expect(releasesOf(r).state).toBe('ready');
+	});
+	it('deployed tag left the catalogue: status.candidates, not old fields', () => {
+		ingestReleaseSlices([slice('s1', 'src', [rel('v2', 2)])], [K]);
+		const r = rollout({ ref: 'src', status: { ...old, history: [{ version: { tag: 'gone' } }], candidates: [{ tag: 'v2', gated: false }] } });
+		expect(tags(releaseCandidates(r))).toEqual(['v2']);
 	});
 });
 
@@ -55,12 +69,12 @@ describe('slices path', () => {
 			],
 			[K]
 		);
-		const r = rollout({ ref: 'src', status: { availableReleases: [{ tag: 'OLD' }] } });
+		const r = rollout({ ref: 'src', status: {} });
 		expect(tags(availableReleases(r))).toEqual(['v1', 'v2', 'v3', 'v4', 'dup']);
 		// the duplicate keeps its highest-sequence entry
 		expect(mergeSlices([slice('a', 'src', [rel('dup', 3)]), slice('b', 'src', [rel('dup', 6)])])).toHaveLength(1);
 	});
-	it('known but empty catalogue is slices mode (empty list, not the old fields)', () => {
+	it('known but empty catalogue is slices mode (empty list)', () => {
 		ingestReleaseSlices([], [K]);
 		const r = rollout({ ref: 'src', status: { availableReleases: [{ tag: 'OLD' }] } });
 		expect(availableReleases(r)).toEqual([]);
@@ -130,7 +144,7 @@ describe('cluster isolation', () => {
 		);
 		expect(tags(availableReleases(rollout({ ref: 'src', cluster: 'east' })))).toEqual(['a1']);
 		expect(tags(availableReleases(rollout({ ref: 'src', cluster: 'west' })))).toEqual(['b1', 'b2']);
-		// a rollout with no cluster annotation reads cluster '' → unknown → old fields
+		// a rollout with no cluster annotation reads cluster '' → unknown catalogue → loading
 		expect(availableReleases(rollout({ ref: 'src' }))).toBeUndefined();
 		removeReleaseSlice('east', 'ns', 's');
 		expect(availableReleases(rollout({ ref: 'src', cluster: 'east' }))).toEqual([]);

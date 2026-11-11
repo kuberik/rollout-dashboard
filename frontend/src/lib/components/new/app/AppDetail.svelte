@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
+	import { noSourceOf } from '../data';
 	import { releaseCandidates } from '$lib/releases/registry.svelte';
 	/**
 	 * r34 v2 AD — APP DETAIL (/apps/<name>): "Where does this app run, which build is where, what is failing or waiting, and
@@ -61,6 +63,8 @@
 	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
 	let { state: scenario, name }: { state: HomeState; name: string } = $props();
+	/** an app whose places have no ReleaseSource has no builds to show: the controller's message goes where they would be */
+	const noSource = $derived(item?.placeList.map((p) => noSourceOf(p.href)).find(Boolean));
 
 	const A = $derived(apps(scenario));
 	const item = $derived(A.items.find((a) => a.app === name) ?? null);
@@ -297,6 +301,7 @@
 				</div>
 			{/if}
 		</header>
+		{#if noSource}<ReleaseSourceNotice text={noSource} class="mt-4" />{/if}
 
 		<div class="mt-6 flex flex-col gap-4">
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}

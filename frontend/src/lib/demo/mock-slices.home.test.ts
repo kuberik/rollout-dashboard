@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { respondHomeIncident, type HomeFixture } from './home-incident';
-import { SLICES_MODE_APPS } from './mock-slices';
+import { UNSOURCED_APPS } from './mock-slices';
 import { ingestListResponse } from '../releases/feed';
 import { availableReleases, releaseCandidates, gatedReleaseCandidates } from '../releases/registry.svelte';
 
@@ -14,14 +14,14 @@ describe('mock slices mode, home-incident scenario path (dev-mock-api serves it 
 	) as HomeFixture;
 	const tags = (l: { tag: string }[] | undefined) => l?.map((v) => v.tag);
 
-	it('serves releaseSources/releaseSlices and converts payments-core/edge-mesh rollouts; accessors read back the fixture tags', () => {
+	it('serves releaseSources/releaseSlices and converts every rollout (but the unsourced app); accessors read back the fixture tags', () => {
 		const body = JSON.parse(respondHomeIncident('GET', '/api/rollouts', fixture, new Date(Date.parse(fixture.capturedAt) + 1000))!.body!);
 		expect(body.releaseSlices.items.length).toBeGreaterThan(0);
 		ingestListResponse(body);
-		const conv = body.rollouts.items.filter((r: any) => r.spec?.releaseSourceRef);
+		const conv = body.rollouts.items.filter((r: any) => !UNSOURCED_APPS.has(r.metadata.name));
 		expect(conv.length).toBeGreaterThan(0);
 		for (const r of conv) {
-			expect(SLICES_MODE_APPS.has(r.metadata.name)).toBe(true);
+			expect(r.spec.releaseSourceRef?.name).toBeTruthy();
 			for (const f of OLD) expect(r.status[f]).toBeUndefined();
 			const orig = fixture.rollouts.find(
 				(o: any) =>
@@ -30,7 +30,7 @@ describe('mock slices mode, home-incident scenario path (dev-mock-api serves it 
 					o.metadata.annotations?.['rollout-dashboard.kuberik.com/source-cluster'] ===
 						r.metadata.annotations?.['rollout-dashboard.kuberik.com/source-cluster']
 			) as any;
-			expect(tags(availableReleases(r))).toEqual(tags(orig.status.availableReleases));
+			expect(tags(availableReleases(r))).toEqual(tags(orig.status.availableReleases ?? []));
 			const served = (l: any) => (Array.isArray(l) && l.length === 0 ? undefined : l);
 			expect(tags(releaseCandidates(r))).toEqual(tags(served(orig.status.releaseCandidates)));
 			expect(tags(gatedReleaseCandidates(r))).toEqual(tags(served(orig.status.gatedReleaseCandidates)));

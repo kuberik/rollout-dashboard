@@ -1,40 +1,34 @@
 /**
- * THE ONE PLACE A ROLLOUT'S RELEASES COME FROM (D4, release-controller).
+ * THE ONE PLACE A ROLLOUT'S RELEASES COME FROM.
  *
- * rollout-controller moves the release catalogue out of
- * `Rollout.status.availableReleases` into ReleaseSlices (release-controller,
+ * The release catalogue lives in ReleaseSlices (release-controller,
  * `kuberik.com/v1alpha1`), selected by the label `kuberik.com/release-source`.
- * A Rollout that reads a catalogue names it in `spec.releaseSourceRef`; its
- * working set lives in `status.candidates` (tag + gated + blockedBy, newest
- * first). Old Rollouts keep `availableReleases` / `releaseCandidates` /
- * `gatedReleaseCandidates`. Both shapes exist during the transition, so EVERY reader of
- * those three lists goes through the accessors below, never the status fields.
+ * A Rollout names its catalogue in `spec.releaseSourceRef`; its working set
+ * lives in `status.candidates` (tag + gated + blockedBy, newest first).
+ * rollout-controller no longer writes `status.availableReleases`,
+ * `releaseCandidates` or `gatedReleaseCandidates`, so NOTHING reads them: every
+ * reader of those three lists goes through the accessors below.
  *
- * Rule:
- * - `spec.releaseSourceRef` set AND the catalogue for (cluster, namespace,
- *   source) is known to the registry → slices mode:
+ * Rule, by `state`:
+ * - `ready`: `spec.releaseSourceRef` is set AND the catalogue for (cluster,
+ *   namespace, source) is known to the registry.
  *     availableReleases      = every slice's releases merged, sorted by
- *                              `sequence` ascending (oldest → newest, the
- *                              same order the old list had);
+ *                              `sequence` ascending (oldest to newest);
  *     releaseCandidates      = catalogue releases newer than the deployed
  *                              tag (history[0]; all when no history;
- *                              `status.candidates` when the deployed tag left
- *                              the catalogue), NEWEST FIRST like the old list
- *                              (readers take `[0]` as the newest candidate;
- *                              availableReleases alone is oldest → newest);
- *                              `undefined` when empty, exactly like the old
- *                              `omitempty` field;
+ *                              `status.candidates` when the deployed tag has
+ *                              left the catalogue), NEWEST FIRST (readers take
+ *                              `[0]` as the newest candidate); `undefined`
+ *                              when empty;
  *     gatedReleaseCandidates = the same, only those `status.candidates` marks
  *                              `gated: true` (`undefined` when none).
- * - otherwise → the old status fields, verbatim (including `undefined`).
- *   This also covers a slices-mode Rollout whose catalogue has not arrived
- *   yet or whose cluster has no release-controller CRDs: the controller
- *   dual-writes the old lists by default, so they are the best answer.
- *
- * Return values keep the old fields' `undefined`-vs-`[]` distinction on
- * purpose: some readers (behind.ts) branch on it.
- *
- * Remove the fallback (and this paragraph) in a later release.
+ * - `loading`: a ref is set but the catalogue has not arrived yet (a detail
+ *   page loaded before the fleet list). All three lists are `undefined`; the
+ *   reader shows a loading state, never old fields.
+ * - `source-required`: no `spec.releaseSourceRef`. The controller reports a
+ *   condition with reason `ReleaseSourceRequired` whose message tells the user
+ *   to create a ReleaseSource; all three lists are `undefined` and readers
+ *   show that message (`releaseSourceRequiredMessage`).
  */
 import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
 import type { Rollout } from '../../types';
@@ -164,30 +158,39 @@ export function mergeSlices(slices: readonly ReleaseSliceObject[]): VersionInfo[
 		.map(toVersionInfo);
 }
 
+export type ReleasesState = 'ready' | 'loading' | 'source-required';
+
 export type RolloutReleases = {
 	availableReleases: VersionInfo[] | undefined;
 	releaseCandidates: VersionInfo[] | undefined;
 	gatedReleaseCandidates: VersionInfo[] | undefined;
-	/** True when the lists above came from ReleaseSlices. */
-	fromSlices: boolean;
+	state: ReleasesState;
 };
+
+/** Reason rollout-controller sets on the condition of a Rollout that has no `spec.releaseSourceRef`. */
+export const RELEASE_SOURCE_REQUIRED_REASON = 'ReleaseSourceRequired';
+
+/** The controller's message for a Rollout without a ReleaseSource, or undefined when it has one / none was reported. */
+export function releaseSourceRequiredMessage(r: Rollout | null | undefined): string | undefined {
+	if (!r || rolloutCatalogueKey(r)) return undefined;
+	const conds = (r.status?.conditions ?? []) as { reason?: string; message?: string }[];
+	return conds.find((c) => c.reason === RELEASE_SOURCE_REQUIRED_REASON)?.message || undefined;
+}
 
 /**
  * Pure core: a Rollout's three release lists given its merged catalogue
- * (`undefined` = catalogue unknown → old fields).
+ * (`undefined` = catalogue not known yet).
  */
 export function rolloutReleases(r: Rollout | null | undefined, catalogue: readonly VersionInfo[] | undefined): RolloutReleases {
-	const st = (r?.status ?? undefined) as
-		| (RolloutStatus & { candidates?: ReleaseCandidate[]; releaseSource?: unknown })
-		| undefined;
-	if (!rolloutCatalogueKey(r) || catalogue === undefined) {
-		return {
-			availableReleases: st?.availableReleases as VersionInfo[] | undefined,
-			releaseCandidates: st?.releaseCandidates as VersionInfo[] | undefined,
-			gatedReleaseCandidates: st?.gatedReleaseCandidates as VersionInfo[] | undefined,
-			fromSlices: false
-		};
-	}
+	const none = (state: ReleasesState): RolloutReleases => ({
+		availableReleases: undefined,
+		releaseCandidates: undefined,
+		gatedReleaseCandidates: undefined,
+		state
+	});
+	if (!rolloutCatalogueKey(r)) return none('source-required');
+	if (catalogue === undefined) return none('loading');
+	const st = (r?.status ?? undefined) as (RolloutStatus & { candidates?: ReleaseCandidate[] }) | undefined;
 	const available = catalogue as VersionInfo[];
 	// Newer-than-deployed comes from the CATALOGUE (status.candidates is capped
 	// at K, the old list was not): the controller's getNextReleaseCandidates rule
@@ -216,5 +219,5 @@ export function rolloutReleases(r: Rollout | null | undefined, catalogue: readon
 	// old fields' Go `omitempty` (behind.ts branches on undefined vs []).
 	const candidates: VersionInfo[] | undefined = newer.length ? newer : undefined;
 	const gated: VersionInfo[] | undefined = passing.length ? passing : undefined;
-	return { availableReleases: available, releaseCandidates: candidates, gatedReleaseCandidates: gated, fromSlices: true };
+	return { availableReleases: available, releaseCandidates: candidates, gatedReleaseCandidates: gated, state: 'ready' };
 }

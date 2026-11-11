@@ -953,6 +953,7 @@ lib/components/new/rollouts-page.ts	code	… regions
 lib/components/new/rollouts-page.ts	code	check still running
 lib/components/new/rollouts-page.ts	code	Held by …
 lib/components/new/rollouts-page.ts	code	In flight
+lib/components/new/rollouts-page.ts	code	No release source
 lib/components/new/rollouts-page.ts	code	On the newest
 lib/components/new/rollouts-page.ts	code	Rolled back
 lib/components/new/Rollouts.svelte	text	… apps
@@ -1046,6 +1047,7 @@ lib/components/RecoveryModeWarningModal.svelte	code	The last deploy failed
 lib/components/RecoveryModeWarningModal.svelte	code	The last deploy was cancelled before it finished
 lib/components/RecoveryModeWarningModal.svelte	code	this environment
 lib/components/RecoveryModeWarningModal.svelte	text	to cancel
+lib/components/ReleaseSourceNotice.svelte	title	No release source
 lib/components/RepoCard.svelte	title	deploys …
 lib/components/ResourcesCard.svelte	title	… — Deployment
 lib/components/ResourcesCard.svelte	text	… … … ready resource …

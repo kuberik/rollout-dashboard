@@ -77,6 +77,7 @@ const sinceDesc = (a: { since?: string | null }, b: { since?: string | null }) =
 /** [state word, what the strand cannot draw]. Never "step N of M". */
 /** `clockInSentence: false` — the row has an age slot (the aligned column) that already prints the wait's clock, so the sentence does not say "for 5h" a second time (QA2 #8). */
 export function sentenceOf(r: TRow, hs: HomeState, o: { clockInSentence?: boolean } = {}): [string, string] {
+	if (r.noSource && r.group !== 'failed') return ['No release source', r.noSource];
 	if (r.group === 'approval') {
 		return [approvalWord(!!r.needsYou && !r.stillChecking), r.stillChecking ? 'check still running' : o.clockInSentence === false ? '' : `for ${ago(waitClock(r, hs))}`];
 	}

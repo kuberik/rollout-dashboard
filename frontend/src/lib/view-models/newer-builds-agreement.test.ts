@@ -4,6 +4,7 @@ import { resetDemoState, type Scenario } from '$lib/demo/state';
 import { promotionCandidates } from './promotion';
 import { pickerRankLabel, releaseIndex } from './deploy-risk';
 import type { Rollout } from '../../types';
+import { availableReleases } from '../releases/registry.svelte';
 
 /**
  * ⛔ ITEM (a), coordinator follow-up, 2026-10-09. The measured defect: on
@@ -92,7 +93,7 @@ function findRollout(list: List, env: string): Rollout {
 function dialogNewerCount(rollout: Rollout): number | null {
 	const currentTag = rollout.status?.history?.[0]?.version?.tag ?? null;
 	if (releaseIndex(rollout, currentTag) === -1) return null;
-	const available = rollout.status?.availableReleases ?? [];
+	const available = availableReleases(rollout) ?? [];
 	return available.filter((r) => pickerRankLabel(rollout, r.tag)?.endsWith('newer') ?? false).length;
 }
 

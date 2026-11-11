@@ -24,7 +24,7 @@ import { source } from '$lib/components/home/sketch/home-data';
 type RawV = { revision?: string; tag?: string; version?: string };
 type RawC = { tag?: string; version?: string; revision?: string; created?: string };
 type RawH = { version: RawV; timestamp: string; bakeEndTime?: string; bakeStatus?: string; message?: string };
-type RawR = { metadata: { name: string; namespace: string }; status: { history?: RawH[]; releaseCandidates?: RawC[] } };
+type RawR = { metadata: { name: string; namespace: string }; status: { history?: RawH[] } };
 const RAWS = (): RawR[] => source().rollouts as unknown as RawR[];
 const rawOf = (href: string): RawR | null => {
 	const p = href.split('/').filter(Boolean);

@@ -34,6 +34,7 @@
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
+import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact } from '$lib/utils';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
@@ -82,13 +83,15 @@ export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */
 type RawEntry = { message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
-type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; releaseCandidates?: { tag?: string; version?: string; revision?: string; created?: string }[]; availableReleases?: { tag?: string; version?: string; revision?: string; created?: string }[]; wantedVersion?: string; currentVersion?: string } };
+type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; wantedVersion?: string; currentVersion?: string } };
 const raws = (): RawRollout[] => source().rollouts as unknown as RawRollout[];
 const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean); return p[0] === 'rollouts' ? { cluster: p[1], ns: p[2], name: p[3] } : null; };
-/* D4: every release list goes through the catalogue accessors (slices when the rollout reads a ReleaseSource, else the old status fields). */
+/* Every release list goes through the catalogue accessors (ReleaseSlices plus status.candidates). */
 type RawRel = { tag?: string; version?: string; revision?: string; created?: string };
 const relsOf = (r: RawRollout | null | undefined) => availableReleases(r as unknown as Rollout) as RawRel[] | undefined;
 const candsOf = (r: RawRollout | null | undefined) => releaseCandidates(r as unknown as Rollout) as RawRel[] | undefined;
+/** the controller's ReleaseSourceRequired message for the Rollout behind a place's href, or undefined */
+export const noSourceOf = (href: string): string | undefined => releaseSourceRequiredMessage(rawOf(href) as unknown as Rollout);
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
 
 /* ═══ steps (defects 7, 8) ═══ */
@@ -204,7 +207,7 @@ export function placeLabel(x: { tier: string; regions?: string[]; label?: string
 }
 
 /* ═══ rollouts ═══ */
-export type TRow = RolloutRow & { steps: Step[]; failure: FailureReason | null; place: string; deployedAt: string | null; /** AD f: a folded production row covers n of the app's `of` production regions (null when not folded) */ regionsOf: { n: number; of: number } | null; /** AD v2 (a): classed as an approval wait while its own deploy is still being checked (the tab shows both) */ stillChecking: boolean };
+export type TRow = RolloutRow & { steps: Step[]; failure: FailureReason | null; place: string; deployedAt: string | null; /** AD f: a folded production row covers n of the app's `of` production regions (null when not folded) */ regionsOf: { n: number; of: number } | null; /** AD v2 (a): classed as an approval wait while its own deploy is still being checked (the tab shows both) */ stillChecking: boolean; /** the controller's `ReleaseSourceRequired` message: this place's Rollout has no ReleaseSource, so it has no builds to show (null otherwise) */ noSource: string | null };
 const enrich = (r: RolloutRow): TRow => {
 	const failure = failureReason(r);
 	const t = r as TRow;
@@ -218,6 +221,9 @@ const enrich = (r: RolloutRow): TRow => {
 		const be = rawOf(r.href)?.status.history?.[0]?.bakeEndTime;
 		if (be) t.since = be;
 	}
+	/* a Rollout with no ReleaseSource has no builds to show: its row says why, in the controller's words */
+	const noSource = releaseSourceRequiredMessage(rawOf(r.href) as unknown as Rollout);
+	t.noSource = noSource ?? null;
 	void 0; /* defect 9: the row's one line of cause is the tab's failing check */
 	return t;
 };
@@ -697,6 +703,9 @@ export function apps(state: HomeState) {
 			const order: TierKey[] = ['dev', 'test', 'staging', 'prod'];
 			const lag = order.map((t) => ({ t, ps: placeList.filter((p) => p.tier === t && !p.onNewest && p.state !== 'failed') })).find((x) => x.ps.length);
 			if (lag) { const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 1)); fact = `Ready to promote to ${lag.t} · ${n} behind`; promoteHref = lag.ps[0].href; }
+			/* no ReleaseSource: there are no builds to promote; say why, in the controller's words */
+			const noSource = placeList.map((p) => releaseSourceRequiredMessage(rawOf(p.href) as unknown as Rollout)).find(Boolean);
+			if (noSource) { fact = noSource; promoteHref = null; }
 		}
 		if (w && (w.state === 'held-by-rule' || w.state === 'awaiting-approval') && w.group !== 'failed') {
 			const hc = causes.find((c) => c.rows.some((r) => r.href === w.href));
@@ -1299,7 +1308,6 @@ export function grantApproval(t: ApprovalTarget): void {
 		if (t.waitsOn) continue;
 		const sliceCands = (st as { candidates?: { tag: string }[] }).candidates;
 		if (Array.isArray(sliceCands)) (st as { candidates?: { tag: string }[] }).candidates = sliceCands.filter((c) => c.tag !== p.tag);
-		else st.releaseCandidates = (st.releaseCandidates ?? []).filter((c) => (c.tag ?? c.version) !== p.tag);
 		st.history = [{ version: { tag: p.tag, version: p.tag, revision: p.tag }, timestamp: RD.NOW.toISOString(), bakeStatus: 'Deploying', bakeStartTime: RD.NOW.toISOString(), triggeredBy: { kind: 'User', name: viewerLogin() } }, ...(st.history ?? [])];
 	}
 	SNAPS.set(t.key, snaps);

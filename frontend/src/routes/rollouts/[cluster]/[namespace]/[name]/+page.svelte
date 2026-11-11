@@ -5,6 +5,7 @@
 	import { kruiseStatusIsPreviousDeploy, freshestKruise } from '$lib/pipeline';
 	import { sourceDashboardURL } from '$lib/source-dashboard';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
+	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
 	import { sourceTreeUrl } from '$lib/source-url';
@@ -3261,6 +3262,7 @@
 					onMeta={(t) => (scheduleMetaText = t)}
 				/>
 				<!-- QA #3: a block-level sibling directly above the banner slot, rendered whatever the candidate count -->
+				<ReleaseSourceNotice {rollout} class="mb-4" />
 				{#if myClusterErrors.length}
 					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
 				{/if}
