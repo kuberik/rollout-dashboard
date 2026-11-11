@@ -100,7 +100,7 @@
 		if (!d?.rollouts?.items?.length) return new Map<string, Lane>();
 		const rollouts = d.rollouts.items as Rollout[];
 		const envs = (d.environments?.items ?? []) as Environment[];
-		const gates = buildGateContext({ environments: d.environments ? { items: envs } : null, rolloutDependencies: d.rolloutDependencies ?? null, rolloutGates: null });
+		const gates = buildGateContext({ environments: d.environments ? { items: envs } : null, rolloutDependencies: d.rolloutDependencies ?? null, rollouts, rolloutGates: null });
 		const net = buildRolloutGraph({
 			rollouts, environments: envs, dependencies: (d.rolloutDependencies?.items ?? []) as RolloutDependency[],
 			envOrder: [...new Set(envs.map((e) => e.spec?.environment).filter(Boolean) as string[])].sort(compareEnvironmentNames), gates

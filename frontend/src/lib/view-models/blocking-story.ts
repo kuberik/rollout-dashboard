@@ -627,6 +627,11 @@ export function buildGateContext(payload: {
 	environments?: { items?: Environment[] } | null;
 	rolloutDependencies?: { items?: RolloutDependency[] } | null;
 	/**
+	 * Rollouts whose gate SUMMARIES (`status.gates[].displayName`) seed `pretty` before any gate object has loaded; the objects, when
+	 * present, still win. Same one name, earlier.
+	 */
+	rollouts?: readonly Rollout[] | null;
+	/**
 	 * The `RolloutGate` OBJECTS, when the caller has them. Only the
 	 * single-rollout endpoint serves these, and they are what makes the
 	 * classification evidence-based rather than inference-based on that page —
@@ -654,6 +659,12 @@ export function buildGateContext(payload: {
 		schedulesLoaded: false,
 		schedulesExpected: payload.schedulesExpected ?? true
 	};
+
+	for (const r of payload?.rollouts ?? []) {
+		for (const g of r?.status?.gates ?? []) {
+			if (g?.name && g.displayName) ctx.pretty!.set(key(r.metadata?.namespace, g.name), g.displayName);
+		}
+	}
 
 	for (const gate of payload?.rolloutGates?.items ?? []) {
 		const name = gate?.metadata?.name;

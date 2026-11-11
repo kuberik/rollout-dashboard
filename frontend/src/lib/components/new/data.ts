@@ -85,7 +85,7 @@ export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */
 type RawEntry = { message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
-type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; kind?: GateKind; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; releaseCandidates?: { tag?: string; version?: string; revision?: string; created?: string }[]; availableReleases?: { tag?: string; version?: string; revision?: string; created?: string }[]; wantedVersion?: string; currentVersion?: string } };
+type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; kind?: GateKind; displayName?: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; releaseCandidates?: { tag?: string; version?: string; revision?: string; created?: string }[]; availableReleases?: { tag?: string; version?: string; revision?: string; created?: string }[]; wantedVersion?: string; currentVersion?: string } };
 const raws = (): RawRollout[] => source().rollouts as unknown as RawRollout[];
 const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean); return p[0] === 'rollouts' ? { cluster: p[1], ns: p[2], name: p[3] } : null; };
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
@@ -437,7 +437,7 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 		i.refLabel = i.ref.startsWith('#') && (((refRepos.get(i.ref)?.size ?? 0) > 1) || (refCount.get(i.ref) ?? 0) > 1) ? `${i.repo}${i.ref}` : i.ref;
 	}
 	for (const i of items) {
-		i.fact = i.fact.replace(/ on check ([a-z0-9-]+)/, (_m, n: string) => ` on ${gateDisplayName(n)}`); /* AD v2 (q): gate names as the Gates tab prints them */
+		i.fact = i.fact.replace(/ on check ([a-z0-9-]+)/, (_m, n: string) => ` on ${gateDisplayName(n, i.href ? prettyOfGate(i.href, n) : null)}`); /* AD v2 (q): gate names as the Gates tab prints them */
 		i.heldBuild = null; i.youApprove = false; i.scope = null;
 		if (i.group === 'waiting' && /^Waiting for approval/.test(i.fact)) {
 			const hr = R.rows.find((r) => r.href === i.href && r.state === 'awaiting-approval');
@@ -633,7 +633,12 @@ export function streamBuilds(href: string): string[] {
 	return rel.map((r) => shortBuild(r.version ?? r.tag ?? r.revision) ?? '').filter(Boolean);
 }
 /** the published pretty name of a gate on the rollout at `href` (cluster + namespace scoped), or null until its detail was fetched */
-const prettyOfGate = (href: string, gate: string): string | null => { const h = hrefParts(href); return h ? gatePrettyOf(h.cluster, h.ns, gate) : null; };
+const prettyOfGate = (href: string, gate: string): string | null => {
+	const h = hrefParts(href);
+	if (!h) return null;
+	/* the loaded gate object's name wins; until then the API's summary `displayName` (same annotation, served on the list) */
+	return gatePrettyOf(h.cluster, h.ns, gate) ?? rawOf(href)?.status?.gates?.find((g) => g.name === gate)?.displayName ?? null;
+};
 /** QA #12 — THE ONE "how many builds behind" of a place, for every surface (Apps tile, app strip + ledger, Environments, Runs-in, the tab's header):
  *  the length of the tab's "Newer builds" list (`status.releaseCandidates`); only a rollout that carries no such list falls back to its position in `availableReleases`. */
 export { behindOfStatus };
@@ -1508,7 +1513,7 @@ export function heldCauses(state: HomeState, tier?: TierKey): HeldCause[] {
 		const cause =
 			r.state === 'awaiting-approval' ? 'Waiting for approval'
 			: f?.reason === 'dependency' ? (f.provider ? `Waiting on ${f.provider}` : 'Waiting on a dependency')
-			: f?.reason === 'check' ? (f.checks?.length ? `Waiting on ${f.checks.map((c) => gateDisplayName(c)).join(', ')}` : 'Waiting on a check')
+			: f?.reason === 'check' ? (f.checks?.length ? `Waiting on ${f.checks.map((c) => gateDisplayName(c, prettyOfGate(r.href, c))).join(', ')}` : 'Waiting on a check')
 			: f?.reason === 'pinned' ? 'Pinned'
 			: f?.reason === 'clock' ? windowCause(f.window)
 			: r.word.startsWith('Waits on') ? r.word.replace('Waits on', 'Waiting on') : 'Held by a rule';
