@@ -119,7 +119,7 @@ func waitForFanoutBackground() { fanoutBackgroundWG.Wait() }
 
 // errSpokeStaleTimeout is the StaleErr reported when an over-age entry's
 // refresh did not finish inside staleWait and the old payload was served.
-var errSpokeStaleTimeout = errors.New("spoke refresh exceeded the wait for an out-of-date read; showing its last known state")
+var errSpokeStaleTimeout = errors.New("took too long to answer, so its last known state is shown")
 
 var errSpokeColdTimeout = errors.New("spoke fetch exceeded cold-start grace window; serving without it")
 
