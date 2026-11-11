@@ -154,7 +154,7 @@
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
 	import EventsCard from '$lib/components/EventsCard.svelte';
-	import { fly, blur, fade } from 'svelte/transition';
+	import { fly, blur } from 'svelte/transition';
 	import {
 		getEnvironmentThemeStyle,
 		getRolloutEnvironmentTheme,
