@@ -20,7 +20,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { CodeOutline, ChevronDownOutline, PlaySolid, MapPinAltOutline } from 'flowbite-svelte-icons';
-	import { avatarSrc, type PlaceHold, type TRow, type HomeState } from '../data';
+	import { avatarSrc, noReleasesAt, type PlaceHold, type TRow, type HomeState } from '../data';
 	import { foldLedger, stopWord, stopShort, placeNote, placeWait, type Stop } from './app-model';
 	import PlaceRow from './PlaceRow.svelte';
 
@@ -31,8 +31,10 @@
 	let openFolds = $state(new Set<string>());
 	const flipIn = (s: Set<string>, k: string) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; };
 	const items = $derived(foldLedger(stops, openFolds));
-	const total = $derived(places.length);
-	const onNewest = $derived(stops[0] && !stops[0].custom ? stops[0].places.length : 0);
+	/* no release = not affected: a place whose Rollout has no releases says "No releases yet" and is not counted */
+	const counted = $derived(places.filter((p) => !noReleasesAt(p.href)));
+	const total = $derived(counted.length);
+	const onNewest = $derived(stops[0] && !stops[0].custom ? stops[0].places.filter((p) => !noReleasesAt(p.href)).length : 0);
 	const failing = $derived(places.filter((p) => p.state === 'failed').length);
 </script>
 
@@ -63,7 +65,7 @@
 							</div>
 						{/if}
 					</li>
-					{#each s.places as p (p.href)}{@const v = view(p)}<PlaceRow row={v.row} place={p} pinned={v.pinned} note={placeNote(s, p)} wait={placeWait(p, places)} approve={v.approve} open={v.open} {nested} toggle={v.toggle} {hs} slipAction={v.slipAction} />{/each}
+					{#each s.places as p (p.href)}{@const v = view(p)}<PlaceRow row={v.row} place={p} pinned={v.pinned} note={noReleasesAt(p.href) ? null : placeNote(s, p)} noReleases={noReleasesAt(p.href)?.label ?? null} wait={placeWait(p, places)} approve={v.approve} open={v.open} {nested} toggle={v.toggle} {hs} slipAction={v.slipAction} />{/each}
 				{/if}
 			{/each}
 		</ul>
