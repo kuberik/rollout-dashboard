@@ -48,6 +48,8 @@ export const closeApprove = (): void => { approvalUi.ask = null; };
 export function refreshAnchor(): void {
 	const a = approvalUi.ask;
 	if (!a?.trigger) return;
+	// The button unmounted under the open confirm (a re-render, a navigation): nothing to anchor to, so close rather than float.
+	if (!a.trigger.isConnected) { approvalUi.ask = null; return; }
 	const r = a.trigger.getBoundingClientRect();
 	a.anchor = { top: r.top, left: r.left, right: r.right, bottom: r.bottom };
 }

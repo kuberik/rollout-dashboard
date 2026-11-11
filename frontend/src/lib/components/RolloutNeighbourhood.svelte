@@ -388,6 +388,18 @@
 	 */
 	function releaseSentence(l: NeighbourLink): string | null {
 		if (l.state !== 'blocked') return null;
+		// DOWNSTREAM: the box is the one HELD, and the focus is what it waits on. "Releases when <box env> deploys X" read as the box releasing
+		// itself, so the line names both ends: releases TO the box WHEN the focus deploys / ships it. Upstream keeps the old subject-less form
+		// (the held build is the focus's own, so "Releases when staging deploys X" is about this page's rollout).
+		if (l.side === 'downstream' && focus) {
+			if (l.writer === 'contract') {
+				return l.requiredVersion
+					? `Releases to ${l.node.name} when ${focus.name} ships ${l.requiredVersion}`.replace(/ (?=\S+$)/, '\u00a0')
+					: `Releases to ${l.node.name} when ${focus.name} ships a newer version`;
+			}
+			const b = l.held[0];
+			return `Releases to ${envLabel(l.node.env)} when ${envLabel(focus.env)} deploys ${b ?? 'it'}`;
+		}
 		if (l.writer === 'contract') {
 			// A NON-BREAKING SPACE inside the version clause (round 6 nit): a
 			// plain space let "~2.9.0" wrap away from its own sentence,
@@ -743,7 +755,7 @@
 		>
 			<div class="hood-up min-w-0" class:hood-col--empty={upstream.length === 0}>
 				<!-- ⭐ COLUMN HEADS AS `t-label` (squad-rollout Lane G round 2, item
-				     3): "Gated by · N" / "This rollout" / "Gates · N" — the label
+				     3): "Gated by · N" / "This rollout" / "Downstream · N" — the label
 				     role every other section head on this product uses (28px dot
 				     headers, the palette's group heads), not a `t-ui-sm` line that
 				     read at body-text weight. -->
@@ -942,7 +954,7 @@
 
 	/* ⭐ HIDE AN EMPTY COLUMN AT EVERY WIDTH (round 5 item 6 did this only at
 	   ≥672px via the grid-template-columns override below; round 6 item 5,
-	   AD ruling, extends it to 390 too — a dashed "Gates · 0" placeholder
+	   AD ruling, extends it to 390 too — a dashed "Downstream · 0" placeholder
 	   tile the narrow stack still drew, one `{#if}` branch nobody asked to
 	   keep). Universal (outside the container query): nothing attaches a
 	   wire to a hidden column (U-32(c)'s own finding, unaffected either way,

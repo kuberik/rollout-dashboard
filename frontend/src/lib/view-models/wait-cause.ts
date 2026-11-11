@@ -61,7 +61,10 @@ const head = (c: RolloutCard) => c.rollout.status?.history?.[0];
  *  environment's own promotion-order gate. */
 export function ruleOf(c: RolloutCard): { name: string; app: string | null } | null {
 	if (c.heldCause === 'dependency' && c.heldCauseLabel && c.heldCauseLabel !== 'a dependency') return { name: c.heldCauseLabel, app: c.heldCauseLabel };
-	const gate = (c.rollout.status?.gates ?? []).find((g) => g.passing === false && !g.name?.startsWith('promotion-'));
+	// The backend's `kind` decides (live gates are named ghd-*, not promotion-*); the name prefix only covers a summary that has no kind yet.
+	// Minimal read of the summary's `kind` (#91); swap for gateKindOf once #92 lands.
+	const isPromotion = (g: { name?: string; kind?: string }) => (g.kind ? g.kind === 'promotion' : !!g.name?.startsWith('promotion-'));
+	const gate = (c.rollout.status?.gates ?? []).find((g) => g.passing === false && !isPromotion(g as { name?: string; kind?: string }));
 	return gate?.name ? { name: gate.name, app: null } : null;
 }
 

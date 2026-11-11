@@ -176,6 +176,9 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		expect(text).not.toMatch(/Gates · \d/);
 		const el = container.querySelector('[data-hood-link="downstream"]');
 		expect(el?.textContent).toContain('held downstream');
+		// batch4 nits: the release line names both ends (releases TO the box WHEN the focus deploys), never "Releases when <the box> deploys"
+		expect(el?.textContent).toMatch(/Releases to \S+ when \S+ deploys 4\.45\.0-45/);
+		expect(el?.textContent).not.toMatch(/Releases when/);
 	});
 
 	test('a gate box carries the link box shell, not a link, with no destination today', () => {

@@ -38,6 +38,18 @@
 	$effect(() => {
 		if (ask) tick().then(() => panel?.querySelector<HTMLButtonElement>('[data-action="approve-confirm"]')?.focus());
 	});
+	// After Approve the trigger may be gone (the row moved to Deploying), so focus goes to the toast's own action, never BODY.
+	$effect(() => {
+		if (!done) return;
+		let tries = 0;
+		const grab = () => {
+			const el = document.querySelector<HTMLButtonElement>('[data-action="approve-undo"], [data-action="approve-dismiss"]');
+			if (el) el.focus();
+			else if (tries++ < 10) raf = requestAnimationFrame(grab);
+		};
+		let raf = requestAnimationFrame(grab);
+		return () => cancelAnimationFrame(raf);
+	});
 	onMount(() => {
 		const away = (e: PointerEvent) => { if (approvalUi.ask && panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[data-approve-open]')) closeApprove(); };
 		document.addEventListener('pointerdown', away, true);
