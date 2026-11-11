@@ -83,6 +83,7 @@
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import { pageTitle } from '$lib/page-title';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { untrack } from 'svelte';
 	import UnavailableCard from '$lib/components/UnavailableCard.svelte';
 	import { createLoadFailedLatch } from '$lib/view-models/load-failed-latch.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
@@ -1291,10 +1292,23 @@
 	// ⛔ `twoColumns` (whether to split the grid) is RETIRED (squad-rollout
 	// Lane G round 5, AD ruling): the main+rail split is unconditional now —
 	// see the grid's own comment where it renders, below.
-	/** Does the main track hold cards (Waiting on / Held builds)? When it does not and the graph has nothing to draw, the main track holds the "No gates" card instead. */
+	/** Does the main track hold cards (Waiting on / Held builds)? Decides whether the grid's main column renders at all. */
 	const hasMainContent = $derived(hasContracts || holdBreakdown.held.length > 0);
 	/** Is there anything below the top slot: a main column (Waiting on / Held builds) or a rail (Runs in / Depends on this)? An early rollout has neither, so it is the top card alone. */
 	const showGrid = $derived(hasMainContent || hasChain || hasDependents || hood.total > 0);
+	/**
+	 * The settled fleet list does not contain this rollout (`hood.focus` is null). The first time that is seen, remember the list's
+	 * `dataUpdatedAt`; once a LATER refetch has landed and the focus is still missing, give up waiting (the top slot stays empty).
+	 */
+	let focusMissingSince = $state<number | null>(null);
+	$effect(() => {
+		if (!fleetSettled(listQuery) || hood.focus) {
+			focusMissingSince = null;
+			return;
+		}
+		if (focusMissingSince === null) focusMissingSince = untrack(() => listQuery.dataUpdatedAt);
+	});
+	const focusGaveUp = $derived(focusMissingSince !== null && listQuery.dataUpdatedAt > focusMissingSince);
 </script>
 
 <!-- ⭐ THE "Here" GROUP'S OWN ROW (squad-rollout Lane G round 3, item 4,
@@ -1529,7 +1543,7 @@
 </svelte:head>
 
 {#snippet noGatesCard()}
-	<!-- THE one "No gates on this rollout" card (§3.15 empty anatomy), always drawn in the MAIN track of the 3fr/2fr grid so the settled page uses the same tracks as a gated one and the pending skeleton can mirror it. -->
+	<!-- THE one "No gates on this rollout" card (§3.15 empty anatomy), drawn in the full-width TOP slot above the two-column grid, so every kind of rollout shares one layout and the pending skeleton can mirror it. -->
 	<div class="min-w-0">
 		<Card icon={ShareNodesOutline} title="Gates" padded={false} class="min-w-0">
 		<div class="flex flex-col items-start gap-2 px-4 py-6 text-left">
@@ -1940,9 +1954,14 @@
 								chainWait={waitsForFact?.wave ? { stage: waitsForFact.stage, text: waitsForFact.wave } : null}
 							/>
 						</Card>
-					{:else}
-						<!-- No graph to draw (no gates, or none this rollout can see): the SAME full-width top slot holds the "No gates" card, so every kind of rollout has one layout. An early rollout (no chain, no contracts, no dependents) is this card alone, with no empty right column. -->
+					{:else if hood.focus}
+						<!-- No graph to draw (no gates, or none this rollout can see): the SAME full-width top slot holds the "No gates" card, so every kind of rollout has one layout. An early rollout (no chain, no contracts, no dependents) is this card alone, with no empty right column. Drawn ONLY when this rollout is in the fleet list: a list that lacks it cannot say "no gates". -->
 						{@render noGatesCard()}
+					{:else if !focusGaveUp}
+						<!-- The settled list lacks this rollout: hold the top slot as a skeleton until the next refetch of the list; if it is still missing then, the slot stays empty (`focusGaveUp`). -->
+						<div data-testid="gates-top-pending">
+							<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={120} />
+						</div>
 					{/if}
 					{#if showGrid}
 					<!-- ══ MAIN HOLDS WHAT HAS TO MOVE; THE RAIL HOLDS WHERE THINGS

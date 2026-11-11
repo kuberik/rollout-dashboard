@@ -15,6 +15,7 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+import { QueryClient } from '@tanstack/svelte-query';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import RolloutGates from './gates/+page.svelte';
 import { reactivePage } from '$lib/testing/reactive-page.svelte';
@@ -132,4 +133,66 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		await waitFor(() => expect(text()).toMatch(/No gates on this rollout/), { timeout: 8000 });
 		expect(text()).not.toMatch(/Rules couldn't be loaded/);
 	}, 60000);
+
+	test('a settled list that lacks this rollout never draws "No gates": skeleton until the next refetch, then an empty slot', async () => {
+		const other = { ...ro, metadata: { name: 'other', namespace: 'other-ns' } };
+		const otherEnv = { ...env, metadata: { name: 'other-env', namespace: 'other-ns' }, spec: { ...env.spec, name: 'other', rolloutRef: { name: 'other' } } };
+		const fleet = { rollouts: { items: [other] }, environments: { items: [otherEnv] }, rolloutDependencies: [], clusters: [{ name: 'prod', url: 'https://x' }] };
+		let listCalls = 0;
+		const f = async (req: any) => {
+			const url = String(typeof req === 'string' ? req : (req?.url ?? req));
+			if (/\/clusters\/prod\/rollouts\/app-prod-eu-west-1\/app(\?|$)/.test(url)) return json({ rollout: ro, environment: env, rolloutGates: { items: [] } });
+			if (url.includes('/permissions')) return json({ canDeploy: true, canPin: true });
+			if (url.includes('/api/cluster')) return json({ name: 'prod', clusters: [{ name: 'prod', url: 'https://x' }] });
+			if (url.includes('/api/commits') || url.includes('/api/github')) return json({ connected: false });
+			if (!/\/api\/rollouts(\?|$)/.test(url)) return json({ items: [] });
+			listCalls++;
+			return json(fleet);
+		};
+		vi.stubGlobal('fetch', vi.fn(f));
+		reactivePage.params = { cluster: 'prod', namespace: 'app-prod-eu-west-1', name: 'app' };
+		reactivePage.url = new URL('http://localhost/rollouts/prod/app-prod-eu-west-1/app/gates');
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false, gcTime: 0, staleTime: Infinity } } });
+		const { container } = render(WithQueryClient, { props: { component: RolloutGates as any, client } });
+		const text = () => container.textContent ?? '';
+		const seen: boolean[] = [];
+		const obs = new MutationObserver(() => seen.push(/No gates on this rollout/.test(text())));
+		obs.observe(container, { childList: true, subtree: true, characterData: true });
+		await waitFor(() => expect(listCalls).toBeGreaterThan(0), { timeout: 12000 });
+		await new Promise((r) => setTimeout(r, 800));
+		// the list answered without this rollout: a skeleton, never the finished sentence
+		expect(text()).not.toMatch(/No gates on this rollout/);
+		expect(container.querySelector('[data-testid="gates-top-pending"]')).not.toBeNull();
+		// the next refetch still lacks it: the slot is empty (as before), still no sentence
+		const before = listCalls;
+		await client.refetchQueries();
+		await waitFor(() => expect(listCalls).toBeGreaterThan(before), { timeout: 8000 });
+		await waitFor(() => expect(container.querySelector('[data-testid="gates-top-pending"]')).toBeNull(), { timeout: 8000 });
+		expect(text()).not.toMatch(/No gates on this rollout/);
+		obs.disconnect();
+		expect(seen.includes(true)).toBe(false);
+	}, 40000);
+
+	test('with no main column the rail stays in the right track (lg:col-start-2)', async () => {
+		const ro2 = { ...ro, metadata: { name: 'app2', namespace: 'app-dev' }, status: { ...ro.status } };
+		const env2 = { metadata: { name: 'app-dev', namespace: 'app-dev' }, spec: { name: 'app', environment: 'dev', wave: 0, rolloutRef: { name: 'app2' } }, status: { conditions: [] } };
+		const fleet = { rollouts: { items: [ro, ro2] }, environments: { items: [env, env2] }, rolloutDependencies: [], clusters: [{ name: 'prod', url: 'https://x' }] };
+		const f = async (req: any) => {
+			const url = String(typeof req === 'string' ? req : (req?.url ?? req));
+			if (/\/clusters\/prod\/rollouts\/app-prod-eu-west-1\/app(\?|$)/.test(url)) return json({ rollout: ro, environment: env, rolloutGates: { items: [] } });
+			if (url.includes('/permissions')) return json({ canDeploy: true, canPin: true });
+			if (url.includes('/api/cluster')) return json({ name: 'prod', clusters: [{ name: 'prod', url: 'https://x' }] });
+			if (url.includes('/api/commits') || url.includes('/api/github')) return json({ connected: false });
+			if (!/\/api\/rollouts(\?|$)/.test(url)) return json({ items: [] });
+			return json(fleet);
+		};
+		vi.stubGlobal('fetch', vi.fn(f));
+		reactivePage.params = { cluster: 'prod', namespace: 'app-prod-eu-west-1', name: 'app' };
+		reactivePage.url = new URL('http://localhost/rollouts/prod/app-prod-eu-west-1/app/gates');
+		const { container } = render(WithQueryClient, { props: { component: RolloutGates as any } });
+		await waitFor(() => expect(container.textContent).toMatch(/No gates on this rollout/), { timeout: 20000 });
+		await waitFor(() => expect(container.textContent).toMatch(/Depends on this/), { timeout: 5000 });
+		const rail = [...container.querySelectorAll('section')].find((x) => /Depends on this/.test(x.textContent ?? ''))!.parentElement!;
+		expect(rail.className).toMatch(/lg:col-start-2/);
+	}, 40000);
 });
