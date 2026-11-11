@@ -71,7 +71,7 @@ export interface components {
             /** @description RolloutSpec defines the desired state of Rollout. */
             spec?: {
                 /** @description ReleaseSourceRef names the ReleaseSource this rollout reads its catalogue from.
-                 *     HAND-ADDED (release-controller D4); not yet regenerated from the CRD. */
+                 *     Added by hand; not yet regenerated from the CRD. */
                 releaseSourceRef?: {
                     name: string;
                 };
@@ -172,7 +172,7 @@ export interface components {
             /** @description RolloutStatus defines the observed state of Rollout. */
             status?: {
                 /** @description Candidates is the working set of releases for slices mode (newest first).
-                 *     HAND-ADDED (release-controller D4); not yet regenerated from the CRD. */
+                 *     Added by hand; not yet regenerated from the CRD. */
                 candidates?: {
                     blockedBy?: string[];
                     /** Format: date-time */
@@ -183,7 +183,7 @@ export interface components {
                     tag: string;
                 }[];
                 /** @description ReleaseSource summarises the ReleaseSource named by spec.releaseSourceRef.
-                 *     HAND-ADDED (release-controller D4); not yet regenerated from the CRD. */
+                 *     Added by hand; not yet regenerated from the CRD. */
                 releaseSource?: {
                     count?: number;
                     name: string;

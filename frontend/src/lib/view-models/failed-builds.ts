@@ -127,7 +127,7 @@ export function liveForPlace<T extends BuildRef>(rollout: RolloutLike | null | u
 export function newerReleaseCountLive(rollout: (RolloutLike & { status?: unknown }) | null | undefined, fleet?: Fleet | null): number | null {
 	const n = newerReleaseCount(rollout as never);
 	if (n === null || !n) return n;
-	/* D4: both lists come through the catalogue accessors (slices when the rollout reads a ReleaseSource, else the old status fields) */
+	/* both lists come through the catalogue accessors (ReleaseSlices plus status.candidates) */
 	const cands = releaseCandidates(rollout as never) as BuildRef[] | undefined;
 	const counted = Array.isArray(cands) ? cands : ((availableReleases(rollout as never) ?? []) as BuildRef[]).slice(-n);
 	return Math.max(0, n - (counted.length - liveForPlace(rollout, counted, fleet).length));

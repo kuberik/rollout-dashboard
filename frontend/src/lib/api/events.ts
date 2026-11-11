@@ -235,7 +235,7 @@ const FLEET_LIST_KINDS = new Set([
 	'ReleaseSlice'
 ]);
 
-/** release-controller kinds (D4): they ride in the fleet list as
+/** release-controller kinds: they ride in the fleet list as
  * `releaseSources` / `releaseSlices` and feed the release-catalogue registry. */
 const RELEASE_CATALOGUE_KINDS = new Set(['ReleaseSource', 'ReleaseSlice']);
 

@@ -59,7 +59,7 @@ export type RolloutsListResponse = {
     // Null/absent when the source cluster has no RolloutDependency CRD installed —
     // that is not an error and is not reported in clusterErrors.
     rolloutDependencies?: { items: RolloutDependency[] } | null;
-    // release-controller catalogue (D4). Same source-cluster annotation as
+    // release-controller catalogue. Same source-cluster annotation as
     // `rollouts`; null/absent when the CRDs are not installed. Ingested into
     // the registry by `installReleaseCatalogueFeed`, never read directly.
     releaseSources?: { items: ReleaseSourceObject[] } | null;

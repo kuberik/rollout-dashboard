@@ -1,5 +1,5 @@
 /**
- * The one feed into the release-catalogue registry (D4).
+ * The one feed into the release-catalogue registry.
  *
  * Every rollouts-list response (`['rollouts','all']`, `['rollouts',
  * 'namespace',<ns>]`) carries `releaseSources` / `releaseSlices` next to
