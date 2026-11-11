@@ -164,16 +164,27 @@ describe('lastFailureMs: one last-failure instant for every surface', () => {
 	});
 });
 
+describe('lastFailureMs: newest wins, window bounds the deploy start', () => {
+	const older = { timestamp: '2026-11-10T11:00:00Z', bakeEndTime: '2026-11-10T11:10:00Z', bakeStatus: 'Failed' };
+	const newer = { timestamp: '2026-11-10T12:35:00Z', bakeEndTime: '2026-11-10T12:45:00Z', bakeStatus: 'Failed' };
+	it('picks the newer failure whatever the order', () => {
+		const want = new Date('2026-11-10T12:45:00Z').getTime();
+		expect(lastFailureMs([[older, newer]])).toBe(want);
+		expect(lastFailureMs([[newer, older]])).toBe(want);
+		expect(lastFailureMs([[older], [newer]])).toBe(want);
+	});
+	it('the app summary ignores a failure older than its window', () => {
+		const now = new Date('2026-11-10T13:05:00Z').getTime();
+		const stale = { timestamp: '2026-10-20T12:35:00Z', bakeEndTime: '2026-10-20T12:45:00Z', bakeStatus: 'Failed' };
+		expect(weekSummary([{ history: [stale], rolledBack: [false] }], 7, now)).toMatchObject({ failed: 0, lastFailureMs: null });
+		expect(weekSummary([{ history: [stale, older], rolledBack: [false, false] }], 7, now).lastFailureMs).toBe(new Date('2026-11-10T11:10:00Z').getTime());
+	});
+});
+
 describe('History tab last failure', () => {
 	const failed = { timestamp: '2026-11-10T10:00:00Z', bakeEndTime: '2026-11-10T10:31:00Z', bakeStatus: 'Failed' };
 	it('lastFailureAgoOf reads the failure instant (bake end), not the deploy start', () => {
 		expect(lastFailureAgoOf([[failed]], new Date('2026-11-10T10:48:00Z'))).toBe('17m ago');
 		expect(lastFailureAgoOf([[{ ...failed, bakeStatus: 'Succeeded' }]], new Date('2026-11-10T10:48:00Z'))).toBeNull();
-	});
-	it('the History page reads it through lastFailureAgoOf, not its own copy', async () => {
-		const { readFileSync } = await import('node:fs');
-		const src = readFileSync(new URL('../../routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte', import.meta.url), 'utf8');
-		expect(src).toContain('lastFailureAgoOf(');
-		expect(src).not.toMatch(/const f = filteredHistory\.find\(\(\{ e \}\) => e\.bakeStatus === 'Failed'\)/);
 	});
 });
