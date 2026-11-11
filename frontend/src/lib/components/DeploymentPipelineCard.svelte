@@ -33,6 +33,7 @@
 		extractDatadogInfoFromContainers,
 		formatDate } from '$lib/utils';
 	import { now } from '$lib/stores/time';
+	import { HEALTH_CHECKS_UNAVAILABLE } from '$lib/view-models/health-witness';
 	import { stageAdvance, type StageAdvance } from '$lib/view-models/stage-advance';
 	import { href } from '$lib/paths';
 	import type { Rollout, RolloutTest, HealthCheck, KruiseRollout } from '../../types';
@@ -75,6 +76,10 @@
 		pipelineValidRollouts: ValidKruiseRollout[];
 		pipelineValidTests: RolloutTest[];
 		healthChecks: HealthCheck[];
+		/** The health-checks load failed: the checks are unknown, never Healthy. */
+		healthChecksUnavailable?: boolean;
+		/** The health-checks list has not arrived yet: `[]` here is "not known", not "none". */
+		healthChecksPending?: boolean;
 		canUpdate: boolean;
 		namespace: string;
 		name: string;
@@ -88,6 +93,8 @@
 		pipelineValidRollouts,
 		pipelineValidTests,
 		healthChecks,
+		healthChecksUnavailable = false,
+		healthChecksPending = false,
 		canUpdate,
 		namespace,
 		name,
@@ -173,9 +180,22 @@
 	let bakeIsInProgress = $derived(allStagesDone && latestEntry.bakeStatus === 'InProgress');
 	let bakeIsSucceeded = $derived(allStagesDone && latestEntry.bakeStatus === 'Succeeded');
 	let bakeIsFailed = $derived(allStagesDone && latestEntry.bakeStatus === 'Failed');
+	let recordedFailedCheckNames = $derived<string[]>(
+		((latestEntry?.failedHealthChecks ?? []) as Array<{ name?: string }>)
+			.map((c) => c?.name ?? '')
+			.filter(Boolean)
+	);
 	let hasHCSelector = $derived(Boolean(rollout.spec?.healthCheckSelector));
 	let allHCHealthy = $derived(
 		healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')
+	);
+	// The timer reads Failed ("the bake timed out") only when the checks are KNOWN
+	// healthy. On an unreadable list: the history's own snapshot of failing
+	// checks stands in (so it reads as when the list is known), else unknown. A list still
+	// LOADING is unknown in the same way.
+	let hcUnknown = $derived(healthChecksUnavailable || healthChecksPending);
+	let timerHCHealthy = $derived<boolean | null>(
+		hcUnknown ? (recordedFailedCheckNames.length > 0 ? false : null) : allHCHealthy
 	);
 	let hasMultipleKRs = $derived(pipelineValidRollouts.length > 1);
 
@@ -559,6 +579,13 @@
 
 	let finalHCStatus = $derived<{ status: NodeStatus; label: string }>(
 		(() => {
+			// The recorded failure wins over an unreadable LIVE list: "Unavailable"
+			// describes only the current load, never the history's verdict.
+			if (bakeIsFailed && hcUnknown) return { status: 'failed', label: 'Failed' };
+			if (healthChecksUnavailable)
+				return { status: 'pending', label: HEALTH_CHECKS_UNAVAILABLE.label };
+			// A list that has not arrived is `[]` only by default: never Healthy.
+			if (healthChecksPending) return { status: 'pending', label: 'Pending' };
 			if (bakeIsFailed && !allHCHealthy) return { status: 'failed', label: 'Failed' };
 			// Once any bake activity has started, report checks as healthy as soon
 			// as they actually are — don't keep showing "Waiting" just because the
@@ -581,7 +608,7 @@
 	// word, same as every other `NodeStatus` label on this card.
 	let finalBakeTimerStatus = $derived<{ status: NodeStatus; label: string }>(
 		(() => {
-			if (bakeIsFailed && allHCHealthy) return { status: 'failed', label: 'Failed' };
+			if (bakeIsFailed && timerHCHealthy === true) return { status: 'failed', label: 'Failed' };
 			if (bakeIsSucceeded) return { status: 'done', label: 'Done' };
 			if (bakeIsInProgress) return { status: 'paused', label: 'Checking' };
 			return { status: 'pending', label: 'Pending' };
@@ -821,6 +848,11 @@
 				<span class="t-meta flex-shrink-0 text-fg-subtle">{label}</span>
 			{/if}
 		</div>
+
+		{#if extra === 'hc' && status === 'failed' && recordedFailedCheckNames.length > 0}
+			<!-- The history's own snapshot names what failed, so it survives an unreadable live list. -->
+			<p class="t-meta mt-1 pl-5 text-fg-subtle">{recordedFailedCheckNames.join(', ')}</p>
+		{/if}
 
 		{#if extra === 'tests' && sd}
 			{#if sd.hasTests}

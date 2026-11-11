@@ -132,7 +132,7 @@
 		gatesOnThisRollout
 	} from '$lib/view-models/rollout-neighbourhood';
 	import { rolloutGateBoxes } from '$lib/view-models/rollout-gates';
-	import { deployWindowStart, healthQuietState } from '$lib/view-models/health-witness';
+	import { deployWindowStart, healthQuietState, HEALTH_CHECKS_UNAVAILABLE } from '$lib/view-models/health-witness';
 	import {
 		buildGateContext,
 		withSchedules,
@@ -1732,6 +1732,8 @@
 								A health check is failing, but there is no newer build for it to hold back.
 							{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'pending'}
 								A health check is still pending, but there is no newer build for it to hold back.
+							{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'unknown'}
+								{#if healthChecksQuery.isError}{HEALTH_CHECKS_UNAVAILABLE.sentence}{/if}
 							{:else if rollout?.spec?.healthCheckSelector}
 								Its health checks are passing.
 							{:else}
@@ -1943,6 +1945,8 @@
 									{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'pending'}
 										A health check is still pending, but there is no newer build for it to hold
 										back.
+									{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'unknown'}
+										{#if healthChecksQuery.isError}{HEALTH_CHECKS_UNAVAILABLE.sentence}{/if}
 									{:else if rollout?.spec?.healthCheckSelector}
 										Its health checks are passing.
 									{:else}

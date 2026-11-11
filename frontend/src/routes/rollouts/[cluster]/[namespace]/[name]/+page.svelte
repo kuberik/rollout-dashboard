@@ -128,7 +128,8 @@
 	import {
 		healthGateCounts,
 		healthGateHolding,
-		healthGateCountsLabel
+		healthGateCountsLabel,
+		healthLoadFailed
 	} from '$lib/view-models/health-witness';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import GateLines from '$lib/components/GateLines.svelte';
@@ -170,6 +171,7 @@
 		rolloutPermissionsQueryOptions
 	} from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
+	import { untrack } from 'svelte';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
@@ -1050,9 +1052,34 @@
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
+	/**
+	 * The load failed, remembered through "Try again"'s refetch (see
+	 * `healthLoadFailed`). The latch is KEYED to the health-checks query key, so
+	 * a client navigation to another rollout (same component instance) never
+	 * inherits it, and it is never applied to a rollout with no selector (whose
+	 * query is disabled and whose card says "none select this rollout").
+	 */
+	const healthChecksKey = $derived(JSON.stringify(healthChecksQueryOptions(namespace, name, cluster).queryKey));
+	let healthChecksLatch = $state({ key: '', failed: false });
+	$effect(() => {
+		const key = healthChecksKey;
+		const prev = untrack(() => healthChecksLatch);
+		healthChecksLatch = {
+			key,
+			failed: healthLoadFailed(prev.key === key && prev.failed, {
+				isError: healthChecksQuery.isError,
+				isSuccess: healthChecksQuery.isSuccess
+			})
+		};
+	});
+	const healthChecksFailed = $derived(
+		Boolean(rollout?.spec?.healthCheckSelector) &&
+			(healthChecksQuery.isError ||
+				(healthChecksLatch.key === healthChecksKey && healthChecksLatch.failed))
+	);
 	/** Same shape as `managedResourcesKnown` — see that field's own comment. */
 	const healthChecksKnown = $derived(
-		!rollout?.spec?.healthCheckSelector || healthChecksQuery.isSuccess || healthChecksQuery.isError
+		!rollout?.spec?.healthCheckSelector || healthChecksQuery.isSuccess || healthChecksFailed
 	);
 
 	const errorCutoff = $derived<Date | null>(
@@ -1088,7 +1115,7 @@
 			{
 				hasSelector: Boolean(rollout?.spec?.healthCheckSelector),
 				isSuccess: healthChecksQuery.isSuccess,
-				isError: healthChecksQuery.isError
+				isError: healthChecksFailed
 			},
 			visibleHealthChecks
 		)
@@ -3737,6 +3764,8 @@
 									{pipelineValidRollouts}
 									{pipelineValidTests}
 									healthChecks={visibleHealthChecks}
+									healthChecksUnavailable={healthChecksFailed}
+									healthChecksPending={!healthChecksKnown}
 									{canUpdate}
 									{namespace}
 									{name}
@@ -4774,6 +4803,9 @@
 									healthChecks={visibleHealthChecks}
 									windowStart={errorCutoff}
 									emptyState
+									loadError={healthChecksFailed}
+									onRetry={() => healthChecksQuery.refetch()}
+									isRetrying={healthChecksQuery.isFetching}
 								/>
 							{/if}
 							{#if !managedResourcesKnown}

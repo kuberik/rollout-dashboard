@@ -27,7 +27,7 @@ export function homeInput(now = new Date(fixture.capturedAt)) {
 		kruiseRollouts: fixture.kruiseRollouts as unknown as KruiseRollout[],
 		me: fixture.me,
 		now,
-		// hc-v2: what the mock's `GET /api/health-checks` serves for this fixture
+		// hc-v2: what the mock's fleet health-checks endpoint serves for this fixture
 		healthChecks: rolloutHealthChecks(
 			homeIncidentFleetHealthChecks(fixture as unknown as HomeFixture) as FleetHealthChecksResponse
 		)

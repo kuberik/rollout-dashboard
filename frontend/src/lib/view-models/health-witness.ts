@@ -439,17 +439,48 @@ export function recoveredTitle(hc: HealthCheck, ago: string): string {
  * which checks are live. Failing outranks pending — a rollout with one of
  * each is still "a health check is failing", the louder and truer fact.
  */
-export type HealthQuietState = 'failing' | 'pending' | 'passing';
+/** `unknown`: the list never arrived. Unknown is never `passing`. */
+export type HealthQuietState = 'failing' | 'pending' | 'passing' | 'unknown';
 
 export function healthQuietState(
 	healthChecks: HealthCheck[] | null,
 	windowStart: Date | null
 ): HealthQuietState {
+	if (healthChecks === null) return 'unknown';
 	const counts = healthGateCounts(
-		visibleHealthChecks(healthChecks ?? [], windowStart),
+		visibleHealthChecks(healthChecks, windowStart),
 		windowStart
 	);
 	if (counts.failing > 0) return 'failing';
 	if (counts.pending > 0) return 'pending';
 	return 'passing';
+}
+
+/**
+ * THE ONE STATEMENT OF "THE HEALTH CHECKS COULD NOT BE LOADED" for the Overview
+ * (batch4): the Health checks card and the pipeline's Health checks step row
+ * both read it, so neither can say "none select this rollout" or "Healthy"
+ * about a list that never arrived. `verdict` is the card's header word,
+ * `label` the step row's state word, `sentence` the card's body.
+ */
+export const HEALTH_CHECKS_UNAVAILABLE = {
+	verdict: 'unavailable',
+	label: 'Unavailable',
+	sentence:
+		"Health checks couldn't be loaded, so the dashboard can't tell whether any select this rollout."
+} as const;
+
+/**
+ * Has the health-checks load failed, remembering through the refetch? tanstack
+ * resets an errored query that holds no data to `pending` while it refetches, so
+ * `isError` alone flips false on "Try again" and the error card would be swapped
+ * for a skeleton. Latch the failure until a success clears it.
+ */
+export function healthLoadFailed(
+	previous: boolean,
+	q: { isError: boolean; isSuccess: boolean }
+): boolean {
+	if (q.isError) return true;
+	if (q.isSuccess) return false;
+	return previous;
 }

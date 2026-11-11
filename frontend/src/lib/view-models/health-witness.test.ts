@@ -13,6 +13,7 @@ import {
 	healthGateCountsLabel,
 	healthHolds,
 	healthQuietState,
+	healthLoadFailed,
 	visibleHealthChecks,
 	pendingNextProbeAt,
 	pendingProbeClause,
@@ -359,8 +360,8 @@ describe('healthQuietState — the Gates tab`s empty-state sentence, three state
 		expect(healthQuietState([check('Unhealthy', '2026-08-30T23:00:00Z')], window)).toBe('passing');
 	});
 
-	it('null healthChecks (not yet loaded) reads as `passing`, same as `[]`', () => {
-		expect(healthQuietState(null, window)).toBe('passing');
+	it('null healthChecks (not yet loaded) reads as `unknown`, never `passing`', () => {
+		expect(healthQuietState(null, window)).toBe('unknown');
 	});
 });
 
@@ -540,4 +541,15 @@ describe('readsHealthy — only a WHOLE message that is a complete healthy form 
 		'No alerts firing for app=x app=y',
 		'No alerts firing for =x'
 	])('keeps: %j', (m) => expect(readsHealthy(m)).toBe(false));
+});
+
+describe('healthLoadFailed: a failure survives its own refetch (batch4)', () => {
+	// tanstack resets an errored, data-less query to `pending` while it refetches,
+	// so `isError` alone would swap the error card for a skeleton on Try again.
+	it('error latches through the pending refetch, and clears only on success', () => {
+		expect(healthLoadFailed(false, { isError: true, isSuccess: false })).toBe(true);
+		expect(healthLoadFailed(true, { isError: false, isSuccess: false })).toBe(true);
+		expect(healthLoadFailed(true, { isError: false, isSuccess: true })).toBe(false);
+		expect(healthLoadFailed(false, { isError: false, isSuccess: false })).toBe(false);
+	});
 });

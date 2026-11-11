@@ -612,7 +612,7 @@ function patchHealthCheckCaches(queryClient: QueryClient, ev: ChangeEvent): bool
 
 /**
  * hc-v2: patches ONE HealthCheck into `['fleet-health-checks']` (every rollout's
- * checks, `api/health-checks.ts`), per CLUSTER + namespace + name. The list is
+ * checks, the fleet-health-checks api module), per CLUSTER + namespace + name. The list is
  * grouped by the rollout that selects each check, which only the backend knows
  * (`healthCheckSelector`), so the same presence rule as `patchHealthCheckCaches`
  * holds: a check already in a group is that rollout's and is replaced or removed

@@ -1478,6 +1478,7 @@ lib/view-models/health-witness.ts	code	… is passing now, but it errored … �
 lib/view-models/health-witness.ts	code	… pending
 lib/view-models/health-witness.ts	code	A health check
 lib/view-models/health-witness.ts	code	Health check …
+lib/view-models/health-witness.ts	code	Health checks couldn't be loaded, so the dashboard can't tell whether any select this rollout.
 lib/view-models/health-witness.ts	code	next probe in …s
 lib/view-models/health-witness.ts	code	Not evaluated yet
 lib/view-models/health-witness.ts	code	passing, last errored …
@@ -1948,7 +1949,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	code	Th
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	code	The same build was deployed again, so nothing in the cluster changed.
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	title	This deploy
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	… … … not holding …
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	… A health check is failing, but there is no newer build for it to hold back. … A health check is still pending, but there is no newer build for it to hold back. … Its health checks are passing. … A gate — an approval, a deploy window, a dependency or a health check — holds a build until its rule passes. …
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	… A health check is failing, but there is no newer build for it to hold back. … A health check is still pending, but there is no newer build for it to hold back. … … … … … Its health checks are passing. … A gate — an approval, a deploy window, a dependency or a health check — holds a build until its rule passes. …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	… held elsewhere
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	… held here
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	… is not on this dashboard
