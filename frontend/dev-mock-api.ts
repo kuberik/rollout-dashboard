@@ -13,6 +13,7 @@
  * env-var outage harness below.
  */
 
+import { stampGateKinds } from './src/lib/demo/gate-kind';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
@@ -153,7 +154,7 @@ export function mockApiPlugin(): Plugin {
 					req.on('close', stop);
 					return;
 				}
-				return res.end(result.body ?? '{}');
+				return res.end(stampGateKinds(result.body) ?? '{}');
 			}
 		}
 	};

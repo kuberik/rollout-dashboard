@@ -17,7 +17,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import { approvePlace } from './approve-place';
 	import Toast from '$lib/components/Toast.svelte';
-	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords } from './approvals.svelte';
+	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
 
 	const ask = $derived(approvalUi.ask);
 	const done = $derived(approvalUi.done);
@@ -88,6 +88,7 @@
 
 {#if done}
 	{@const w = doneWords(done.target)}
+	<div role="presentation" onpointerover={pauseDone} onpointerout={resumeDone} onfocusin={pauseDone} onfocusout={resumeDone} style="display: contents">
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
 		tone={done.error ? 'danger' : 'success'}
@@ -102,4 +103,5 @@
 			{/if}
 		{/snippet}
 	</Toast>
+	</div>
 {/if}

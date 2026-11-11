@@ -181,6 +181,20 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		expect(el?.textContent).not.toMatch(/Releases when/);
 	});
 
+	test('batch4 nits: an empty held list never dangles an "it", and env names are unbreakable tokens', () => {
+		const held = {
+			key: 'promotion:eu', side: 'downstream', writer: 'promotion', state: 'blocked', node: node('checkout-api', 'prod-us-east-2'), held: [],
+			contract: null, requiredVersion: null, providedVersion: null, cyclic: false, gate: 'promotion-prod', chainPredecessor: false
+		} as unknown as NeighbourLink;
+		const hood = { focus: node('this-app', 'prod-eu-central'), upstream: [], downstream: [held], gates: [], heldLinks: 1, total: 1, holding: 0, heldBuilds: [] } as unknown as Hood;
+		const { container } = render(RolloutNeighbourhood, { props: { hood } });
+		const p = container.querySelector('[data-hood-link="downstream"] p.break-words');
+		expect(p?.textContent).toMatch(/deploys its first build$/);
+		expect(p?.textContent).not.toMatch(/ it$/);
+		const nb = [...(p?.querySelectorAll('span.whitespace-nowrap') ?? [])].map((e) => e.textContent);
+		expect(nb).toContain('prod-eu-central');
+	});
+
 	test('a gate box carries the link box shell, not a link, with no destination today', () => {
 		const hood: Hood = {
 			focus,
