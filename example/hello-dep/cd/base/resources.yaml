@@ -13,7 +13,7 @@ metadata:
     dashboard.rollout.kuberik.com/description: "Hello Dep api / __ENVIRONMENT__"
     dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
 spec:
-  releasesImagePolicy:
+  releaseSourceRef:
     name: hello-api-app
   versionHistoryLimit: 5
   bakeTime: 15s
@@ -22,29 +22,22 @@ spec:
       matchLabels:
         app: hello-dep
 ---
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
+apiVersion: kuberik.com/v1alpha1
+kind: ReleaseSource
 metadata:
   name: hello-api-app
 spec:
-  image: ghcr.io/littlechimera/hello-dep/api
-  interval: 60s
-  secretRef:
-    name: github-registry-credentials
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
-metadata:
-  name: hello-api-app
-spec:
-  imageRepositoryRef:
-    name: hello-api-app
-  filterTags:
-    pattern: "^rel-(?P<seq>[0-9]+)$"
-    extract: "$seq"
-  policy:
-    numerical:
-      order: asc
+  interval: 1m
+  oci:
+    image: ghcr.io/littlechimera/hello-dep/api
+    secretRef:
+      name: github-registry-credentials
+    filterTags:
+      pattern: "^rel-(?P<seq>[0-9]+)$"
+      extract: "$seq"
+    policy:
+      numerical:
+        order: asc
 ---
 # ━━━━━━━━━━━━━━━━━━━ hello-frontend: consumes contract "api" ━━━━━━━━━━━━━━━━━━━
 apiVersion: kuberik.com/v1alpha1
@@ -55,7 +48,7 @@ metadata:
     dashboard.rollout.kuberik.com/description: "Hello Dep frontend / __ENVIRONMENT__"
     dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
 spec:
-  releasesImagePolicy:
+  releaseSourceRef:
     name: hello-frontend-app
   versionHistoryLimit: 5
   bakeTime: 15s
@@ -64,29 +57,22 @@ spec:
       matchLabels:
         app: hello-dep
 ---
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
+apiVersion: kuberik.com/v1alpha1
+kind: ReleaseSource
 metadata:
   name: hello-frontend-app
 spec:
-  image: ghcr.io/littlechimera/hello-dep/frontend
-  interval: 60s
-  secretRef:
-    name: github-registry-credentials
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
-metadata:
-  name: hello-frontend-app
-spec:
-  imageRepositoryRef:
-    name: hello-frontend-app
-  filterTags:
-    pattern: "^rel-(?P<seq>[0-9]+)$"
-    extract: "$seq"
-  policy:
-    numerical:
-      order: asc
+  interval: 1m
+  oci:
+    image: ghcr.io/littlechimera/hello-dep/frontend
+    secretRef:
+      name: github-registry-credentials
+    filterTags:
+      pattern: "^rel-(?P<seq>[0-9]+)$"
+      extract: "$seq"
+    policy:
+      numerical:
+        order: asc
 ---
 # hello-frontend releases declare which "api" contract version they were built
 # against, via a com.kuberik.rollout.requires.api OCI annotation. This
