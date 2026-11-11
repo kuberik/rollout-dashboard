@@ -3,7 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
-	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
+	imagereflectorv1 "github.com/fluxcd/image-reflector-controller/api/v1"
 	"io"
 	"os"
 	"path/filepath"
@@ -146,6 +146,9 @@ func buildScheme() (*runtime.Scheme, error) {
 	}
 	if err := releasev1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add release scheme: %w", err)
+	}
+	if err := imagereflectorv1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add image reflector scheme: %w", err)
 	}
 	if err := kustomizev1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("failed to add kustomize scheme: %w", err)
@@ -785,6 +788,24 @@ func (c *Client) GetOCIRepositoriesAllNamespaces(ctx context.Context) (*sourcev1
 	}
 	SortByNamespaceName(ociRepositories.Items)
 	return ociRepositories, nil
+}
+
+// GetImagePolicy and GetImageRepository are read only to resolve the registry
+// image of a ReleaseSource that names its images through oci.imagePolicyRef.
+func (c *Client) GetImagePolicy(ctx context.Context, namespace, name string) (*imagereflectorv1.ImagePolicy, error) {
+	imagePolicy := &imagereflectorv1.ImagePolicy{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, imagePolicy); err != nil {
+		return nil, fmt.Errorf("failed to get image policy: %w", err)
+	}
+	return imagePolicy, nil
+}
+
+func (c *Client) GetImageRepository(ctx context.Context, namespace, name string) (*imagereflectorv1.ImageRepository, error) {
+	imageRepository := &imagereflectorv1.ImageRepository{}
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, imageRepository); err != nil {
+		return nil, fmt.Errorf("failed to get image repository: %w", err)
+	}
+	return imageRepository, nil
 }
 
 func (c *Client) GetKustomizationsByRolloutAnnotation(ctx context.Context, namespace, rolloutName string) (*kustomizev1.KustomizationList, error) {

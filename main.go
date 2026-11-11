@@ -672,8 +672,8 @@ func setupRouter() *gin.Engine {
 					return nil
 				}
 				rollout = r
-				if ri, err := k8sClient.ResolveReleaseImage(gctx, r); err == nil && ri.Repository != nil && ri.Repository.Status.LastScanResult != nil {
-					imageRepoScanTime = ri.Repository.Status.LastScanResult.ScanTime.Format(time.RFC3339)
+				if ri, err := k8sClient.ResolveReleaseImage(gctx, r); err == nil {
+					imageRepoScanTime = ri.LastSync
 				}
 				return nil
 			})

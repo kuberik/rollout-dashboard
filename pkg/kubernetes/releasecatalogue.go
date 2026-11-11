@@ -86,7 +86,7 @@ func stripManagedFields(m *metav1.ObjectMeta) { m.ManagedFields = nil }
 // spec.releaseSourceRef, read from the rollout's namespace.
 func (c *Client) GetRolloutReleaseSource(ctx context.Context, rollout *rolloutv1alpha1.Rollout) (*releasev1alpha1.ReleaseSource, error) {
 	if rollout == nil || rollout.Spec.ReleaseSourceRef == nil || rollout.Spec.ReleaseSourceRef.Name == "" {
-		return nil, fmt.Errorf("rollout has no releaseSourceRef")
+		return nil, ErrNoReleaseImage
 	}
 	src := &releasev1alpha1.ReleaseSource{}
 	if err := c.client.Get(ctx, client.ObjectKey{Namespace: rollout.Namespace, Name: rollout.Spec.ReleaseSourceRef.Name}, src); err != nil {
