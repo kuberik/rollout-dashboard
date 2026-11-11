@@ -44,7 +44,7 @@
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { approvalOf } from './Footprint.svelte';
 	import { approvalIn, rowPlaceName } from './state-words';
-	import { pillOf, currencyOf } from './app/app-model';
+	import { pillOf, currencyOf, restCurrency } from './app/app-model';
 		import { rolloutPath } from '$lib/source-dashboard';
 
 	let { span = false, compact = false, framed = false, item, lane, approvals = [], lead = false, attention = false, calm = false, scenario = 'incident', last = null, recent = [], noTier = false, drawing }: {
@@ -198,7 +198,7 @@
 	 * build. No "·" run holds an id; the commit, author and lag live on the app page.
 	 */
 	/** apps-13 AL1/AL3: the headline place's currency against THIS app's own newest build (its tab's Newer builds list) */
-	const headCurrency = $derived(headPill ? currencyOf(headPill.place.href, item.app).word : '');
+	const headCurrency = $derived(restCurrency(item.placeList, headPill?.place.href ?? null, item.app));
 	const slots = $derived.by(() => {
 		/* apps collapsed r1: no CHECK/NEXT/RUNS keys; a slot says only what the lane does not. A deploying or checking place is already its cell's mark + word; a settled app is the rest line. */
 		const out: { key: string; build?: string; pre?: string; text: string; right?: string }[] = [];

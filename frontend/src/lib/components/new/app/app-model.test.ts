@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { placeHolds, gatesOf, apps, tabPill, newestBuild } from '../data';
-import { buildsOf, holdSentences, deployTargets, holdRows, nextOf, pillOf, currencyOf, ledgerOf, foldLedger, tabLag, placeNote, stopWord, stopShort, weekSummary, placeWord, pinnedPlaces, placeWait } from './app-model';
+import { buildsOf, holdSentences, deployTargets, holdRows, nextOf, pillOf, currencyOf, restCurrency, ledgerOf, foldLedger, tabLag, placeNote, stopWord, stopShort, weekSummary, placeWord, pinnedPlaces, placeWait } from './app-model';
 
 describe('app-model on the demo apps', () => {
 	const P = placeHolds('invoice-api', 'incident');
@@ -232,5 +232,19 @@ describe('waveHold: why a healthy place its wave has not reached is held', () =>
 	it('null for a place that is not waiting', () => {
 		const ps = places();
 		expect(waveHold(ps[0], ps, () => true)).toBeNull();
+	});
+});
+
+describe('restCurrency: the rest line of an app tile', () => {
+	const mixed = [
+		{ href: 'a', currency: 'newest' },
+		{ href: 'b', currency: 'none' }
+	];
+	it('is "Up to date" when every place with releases is on the newest build, no-release places ignored', () => {
+		expect(restCurrency(mixed, null, 'x')).toBe('Up to date');
+		expect(restCurrency(mixed, 'a', 'x')).toBe('Up to date');
+	});
+	it('is empty when no place has releases', () => {
+		expect(restCurrency([{ href: 'b', currency: 'none' }], 'b', 'x')).toBe('');
 	});
 });

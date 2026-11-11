@@ -365,6 +365,22 @@ export function currencyOf(href: string, app = ''): { behind: number; word: stri
 }
 
 /**
+ * The currency word an app tile's rest line carries. Places without releases have no currency (no release = not affected) and
+ * are ignored: when every place that HAS releases runs the newest build the app is "Up to date", whatever the headline place is.
+ * Otherwise the headline place speaks (currencyOf).
+ */
+export function restCurrency(
+	places: { href: string; currency?: string }[],
+	headHref: string | null,
+	app = ''
+): string {
+	const rel = places.filter((p) => p.currency !== 'none');
+	if (!rel.length) return '';
+	if (rel.every((p) => p.currency === 'newest')) return 'Up to date';
+	return headHref ? currencyOf(headHref, app).word : '';
+}
+
+/**
  * r34 builds-lag (B) — THE SOUNDING LEDGER's model. One app, one build sequence (newest first), every place exactly once, standing on the
  * build it runs. LAG = the place's own position in THIS app's sequence = the length of the "Newer builds" list its rollout tab prints
  * (data.ts heldBuilds, the tab's promotionCandidates), never data.ts newestBuild (availableReleases arithmetic: the fixture's staging
