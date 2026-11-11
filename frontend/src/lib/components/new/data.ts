@@ -35,7 +35,7 @@
  */
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import type { NoReleases } from '$lib/releases/catalogue';
-import { formatTimeAgoCompact } from '$lib/utils';
+import { formatTimeAgoCompact, buildAge } from '$lib/utils';
 import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
@@ -86,6 +86,8 @@ const rosterWait = (t: string): string => t.replace(/^Waits for (your )?approval
 
 /** ONE age format everywhere: the tab header's compact form ("25m", "9h", "3d"), counted from the fixture clock. */
 export const ago = (iso: string | null | undefined): string => (iso ? formatTimeAgoCompact(iso, RD.NOW) : '');
+/** a build's OWN age, labelled ("built 11mo ago"), in the fixture clock: the one form wherever a build's age sits beside a place or a hold */
+export const builtAgo = (iso: string | null | undefined): string => (iso ? buildAge(iso, RD.NOW) : '');
 export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */
@@ -812,11 +814,10 @@ export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state:
 		const ts: string[] = [];
 		for (const p of lower) for (const h of rawOf(p.href)?.status.history ?? []) if (shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) === b.build) ts.push(h.timestamp);
 		if (!ts.length) return null;
-		const arrived = ts.sort()[0];
-		return b.created && b.created > arrived ? b.created : arrived;
+		const arrived = oldestClock(ts)!;
+		return b.created && Date.parse(b.created) > Date.parse(arrived) ? b.created : arrived;
 	};
-	const arrivals = here.map(arrivalOf).filter((x): x is string => !!x).sort();
-	return arrivals[0] ?? null;
+	return oldestClock(here.map(arrivalOf).filter((x): x is string => !!x));
 }
 /** QA2 #8: THE ONE CLOCK OF A WAIT. A row that waits (approval / rule) has one time for the fact "how long": when the hold began (`holdSince`), else the waiting
  *  build's own age, else the row's. The sentence ("Waiting for approval for 5h"), the row's age slot and the /apps card's age all read THIS, so one row never shows
@@ -824,8 +825,14 @@ export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state:
 export function waitClock(row: Pick<RolloutRow, 'app' | 'href' | 'tier'> & { since?: string | null; hrefs?: string[] }, state: HomeState = 'incident'): string | null {
 	const own = (href: string): string | null => holdSince({ app: row.app, tier: row.tier, href }, state) ?? buildInQuestionFacts({ app: row.app, href })?.since ?? (href === row.href ? row.since ?? null : null);
 	/* A row that covers SEVERAL places (a folded prod row, "5 of 6 prod regions") shows the LONGEST wait among them: the clock of its oldest held place. */
-	const clocks = (row.hrefs?.length ? row.hrefs : [row.href]).map(own).filter((x): x is string => !!x).sort();
-	return clocks[0] ?? row.since ?? null;
+	const clocks = (row.hrefs?.length ? row.hrefs : [row.href]).map(own).filter((x): x is string => !!x);
+	return oldestClock(clocks) ?? row.since ?? null;
+}
+/** The earliest of several ISO timestamps, compared as INSTANTS: a string sort puts "…:00.5Z" before "…:00Z" and "…T11:00+02:00" after "…T10:00Z". Unparseable entries lose to parseable ones. */
+export function oldestClock(clocks: string[]): string | null {
+	let best: string | null = null, bestMs = Infinity;
+	for (const c of clocks) { const ms = Date.parse(c); if (!Number.isNaN(ms) && ms < bestMs) { best = c; bestMs = ms; } }
+	return best ?? clocks[0] ?? null;
 }
 /** The DEPLOYED build of a place with its own commit: the change title the History headline prints (fixture change by sha, else the range head) and the range head's author. */
 export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>): { build: string; meta: string | null; title: string | null; author: string | null; at: string | null } {

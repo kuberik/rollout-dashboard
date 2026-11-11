@@ -20,6 +20,8 @@
 		 * you paste after `kubectl`, not a string you read.
 		 */
 		handle?: boolean;
+		/** Raw evidence under the value (an HTTP status, a fetch error): secondary, muted, mono. The plain sentence stays the value. */
+		note?: string;
 	};
 
 	/**
@@ -176,7 +178,7 @@
 								/>{/if}{/each}
 					</dd>
 				{:else}
-					<dd class="t-meta min-w-0 break-words {ink.value}">{f.value}</dd>
+					<dd class="t-meta min-w-0 break-words {ink.value}">{f.value}{#if f.note}<span class="t-code-sm ident mt-0.5 block text-fg-muted">{f.note}</span>{/if}</dd>
 				{/if}
 			{/each}
 		</dl>

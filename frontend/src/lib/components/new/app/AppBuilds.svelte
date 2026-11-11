@@ -54,7 +54,7 @@
 							<span class="dot" aria-hidden="true"></span>
 							<span class="s-main"><span class="t-code s-id">{s.build}</span><span class="s-lag t-meta" title={noReleases ? undefined : !s.places.length && !s.custom && s.index === 0 ? 'Newest · no place yet' : stopWord(s)}>{#if noReleases}{:else if !s.places.length && !s.custom}{s.index === 0 ? 'Newest' : ''}{:else}{stopShort(s)}{/if}</span></span>
 							{#if s.title}<span class="s-ttl t-body" title={s.title}>{s.title}</span>{/if}
-							<span class="s-age t-meta tabular-nums">{s.age}</span>
+							<span class="s-age t-meta tabular-nums">{s.ageLabel}</span>
 							<ChevronDownOutline class="s-cv h-4 w-4 transition-transform {open ? 'rotate-180' : ''}" aria-hidden="true" />
 						</button>
 						{#if open}
@@ -108,12 +108,12 @@
 	.fold-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; min-height: 32px; padding: 0 16px; background: var(--k-subtle); }
 	.fold-dash { width: 8px; height: 1px; justify-self: center; background: var(--k-fg-disabled); }
 	@container (min-width: 560px) {
-		.stop { grid-template-columns: 16px 96px minmax(0, 1fr) 64px 40px 16px; }
+		.stop { grid-template-columns: 16px 96px minmax(0, 1fr) 64px 92px 16px; } /* the age says "built 11mo ago" (a build's own age, labelled) */
 		.s-main { display: contents; }
 		.s-id { grid-column: 2; grid-row: 1; margin-left: 4px; }
 		.s-ttl { display: block; grid-column: 3; grid-row: 1; margin-left: 0; white-space: nowrap; text-overflow: ellipsis; -webkit-line-clamp: unset; line-clamp: unset; }
 		.s-lag { grid-column: 4; grid-row: 1; text-align: right; }
-		.s-age { grid-column: 5; grid-row: 1; }
+		.s-age { grid-column: 5; grid-row: 1; white-space: nowrap; }
 		.stop :global(.s-cv) { grid-column: 6; grid-row: 1; }
 	}
 </style>

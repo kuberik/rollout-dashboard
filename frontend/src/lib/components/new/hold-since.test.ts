@@ -36,3 +36,16 @@ it('waitClock is the hold clock, and the Rollouts row prints the clock once, in 
 		for (const s of rows) { expect(s.rest).not.toMatch(/^for /); expect(s.age).toMatch(/\d/); }
 	} finally { installLiveSource(null); }
 });
+
+/* The later of "created" and "arrived" is decided by instant, not by string: an offset spelling ("15:50:00+02:00" = 13:50Z) sorts AFTER "13:55:22Z" as text
+   though it is five minutes earlier. */
+it('holdSince compares a build\'s creation and its arrival as instants when the two are spelled differently', () => {
+	const d = JSON.parse(fs.readFileSync('src/lib/components/new/fixtures/qa-approval-only-held.json', 'utf8'));
+	for (const r of d.rollouts) if (r.metadata.namespace !== 'hello-world-prod') for (const h of r.status.history) if (h.version.version === 'd993f4d') h.timestamp = '2026-11-09T15:50:00.250+02:00';
+	installLiveSource({ rollouts: d.rollouts, environments: d.environments, rolloutDependencies: d.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: [], changesState: 'not_connected', healthChecks: [], github: { configured: false, connected: false }, me: '', now: new Date() } as never);
+	try {
+		const row = { app: 'hello-world-app', href: '/rollouts/prod/hello-world-prod/hello-world-app', tier: 'prod' } as never;
+		/* created 13:55:22Z is later than the arrival at 13:50:00.250Z, so the build arrived at its gate when it was created */
+		expect(holdSince(row)).toBe('2026-11-09T13:55:22Z');
+	} finally { installLiveSource(null); }
+});

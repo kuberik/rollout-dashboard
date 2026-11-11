@@ -19,6 +19,7 @@ import {
 	waitClock,
 	type HomeState,
 	ago,
+	builtAgo,
 	buildIdentity,
 	type PlaceHold,
 	type GateInfo,
@@ -409,6 +410,8 @@ export type Stop = {
 	author: string | null;
 	created: string | null;
 	age: string;
+	/** the build's own age, labelled ("built 11mo ago"): what the Builds card prints, so a bare "11mo" never reads as the place's or a wait's clock */
+	ageLabel: string;
 	pr: number | null;
 	/** index in the sequence = builds behind the newest; null for a custom build */ index:
 		| number
@@ -473,6 +476,7 @@ export function ledgerOf(places: PlaceHold[]): Stop[] {
 			author: i?.author ?? null,
 			created: i?.created ?? null,
 			age: ago(i?.created),
+			ageLabel: builtAgo(i?.created),
 			pr: buildIdentity(build, places[0]?.href)?.pr ?? null,
 			index,
 			custom,

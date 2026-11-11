@@ -18,6 +18,14 @@ export function clusterReason(e: ClusterError): 'slow' | 'unreachable' {
 	return e.reason === 'slow' ? 'slow' : 'unreachable';
 }
 
+/**
+ * The Details line for one cluster, chosen by the typed `reason` and nothing else. The server's raw error ("HTTP 403", "dial tcp …: i/o timeout") is shown
+ * beneath it as secondary text by the notice, never branched on.
+ */
+export function clusterDetail(e: ClusterError): string {
+	return clusterReason(e) === 'slow' ? `${e.name} is up, but did not answer in time.` : 'Could not be reached.';
+}
+
 export type ClusterNoticeCopy = { stale: boolean; slow: boolean; title: string; message: string };
 
 /**
@@ -35,8 +43,8 @@ export function clusterNoticeCopy(errors: readonly ClusterError[], subject: stri
 			stale,
 			slow,
 			title: one
-				? `${names[0]} is slow to answer${lastSeenText ? ` · showing its data from ${lastSeenText}` : ''}`
-				: `${names.length} clusters are slow to answer${lastSeenText ? ` · showing their data from ${lastSeenText}` : ''}`,
+				? `${names[0]} is slow to answer${lastSeenText ? ` — showing its data from ${lastSeenText}` : ''}`
+				: `${names.length} clusters are slow to answer${lastSeenText ? ` — showing their data from ${lastSeenText}` : ''}`,
 			message: `${one ? 'Its' : 'Their'} rollouts show the last known state the hub holds. They refresh as soon as ${one ? `${names[0]} answers` : 'the clusters answer'}.`
 		};
 	}

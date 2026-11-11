@@ -122,7 +122,7 @@
 	const waitRow = $derived(stateRow && (stateRow.state === 'awaiting-approval' || stateRow.state === 'held-by-rule') ? stateRow : null);
 	const wait = $derived(waitRow ? buildInQuestionFacts(waitRow) : null);
 	/** apps-7 Q1: a wait's age is `waitClock` (QA2 #8) — the same clock the Rollouts row's sentence prints; otherwise the row's */
-	const age = $derived(isQuiet ? '' : ago((waitRow ? waitClock(waitRow) : null) ?? (appr?.row ?? item.row)?.since ?? item.since));
+	const age = $derived(isQuiet ? '' : ago((waitRow ? waitClock(waitRow, scenario) : null) ?? (appr?.row ?? item.row)?.since ?? item.since));
 	/** r6 P2: the lag of the focus place in words a first-time reader can place: "prod is 7 builds behind the newest" (not a link). Skipped when the one newer build IS the waiting "next" build. */
 	const placeName = $derived.by(() => {
 		const r = stateRow;
@@ -298,7 +298,7 @@
 			case 'deploying': return { ink: 'text-active', lead: '', rest: '', build: build, badge: true };
 			case 'checking': return { ink: 'text-progress', lead: '', rest: '', build: build, badge: true };
 			case 'ready': return { ink: 'text-fg', lead: 'Ready to promote to prod', rest: '', build: '', badge: false };
-			case 'quiet': if (item.noReleases) return { ink: 'text-fg', lead: 'All healthy', rest: item.noReleases.label.charAt(0).toLowerCase() + item.noReleases.label.slice(1), build: '', badge: false }; return restLine || /at rest|healthy/i.test(item.fact) ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: prodWord(item.fact), rest: '', build: '', badge: false };
+			case 'quiet': if (item.noReleases) return { ink: 'text-fg', lead: 'All healthy', rest: item.noReleases.label.charAt(0).toLowerCase() + item.noReleases.label.slice(1), build: '', badge: false }; return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: prodWord(item.fact), rest: '', build: '', badge: false };
 			default: return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: line2.replace(/^./, (c) => c.toUpperCase()), rest: '', build: '', badge: false };
 		}
 	});

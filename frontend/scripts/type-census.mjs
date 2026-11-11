@@ -13,12 +13,13 @@
  * Must be run with the sandbox disabled (loopback is blocked otherwise),
  * against a running dev server at https://127.0.0.1:5173.
  */
-import { chromium } from '/home/luka/.claude/skills/gstack/node_modules/playwright-core/index.mjs';
+import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const BASE = 'https://127.0.0.1:5173';
-const OUT = process.argv[2] || '/tmp/claude/pass3/type/census-before.json';
+const OUT = process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'census-before.json');
 
 /**
  * ⭐ 2026-09-03 · THE DECLARED ROLES, MIRRORED FROM `app.css`'S TYPE-ROLE

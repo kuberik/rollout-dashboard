@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rollouts, ago, waitClock, rowsOf } from './data';
+import { rollouts, ago, waitClock, rowsOf, oldestClock } from './data';
 import { rolloutsPage } from './rollouts-page';
 import { placeAge } from './app/app-model';
 
@@ -30,5 +30,18 @@ describe('multi-place wait clock (mock scenario incident)', () => {
 	it('a single-place row keeps its own clock', () => {
 		const r = rollouts(S).rows.find((x) => x.app === 'invoice-api' && x.tier === 'prod' && x.group === 'approval')!;
 		expect(ago(waitClock(r, S))).toBe('4h');
+	});
+});
+
+describe('oldestClock compares instants, not strings', () => {
+	it('fractional seconds: 10:00:00Z is older than 10:00:00.5Z although "." sorts before "Z"', () => {
+		expect(oldestClock(['2026-11-01T10:00:00.500Z', '2026-11-01T10:00:00Z'])).toBe('2026-11-01T10:00:00Z');
+	});
+	it('offsets: 11:00+02:00 (09:00Z) is older than 10:00Z', () => {
+		expect(oldestClock(['2026-11-01T10:00:00Z', '2026-11-01T11:00:00+02:00'])).toBe('2026-11-01T11:00:00+02:00');
+	});
+	it('empty is null; unparseable never beats a real time', () => {
+		expect(oldestClock([])).toBeNull();
+		expect(oldestClock(['nope', '2026-11-01T10:00:00Z'])).toBe('2026-11-01T10:00:00Z');
 	});
 });
