@@ -87,14 +87,20 @@ export function waveFailures(rollout: RolloutLike | null | undefined, fleet?: Fl
 	   an EARLIER wave in this tier keeps its own history: a build whose latest attempt there failed is a failed upstream build for this place too
 	   (rolledBack once that site no longer runs it). */
 	const me = siteNodeOf(topo as AppTopology | undefined, env);
-	if (topo && me) for (const site of topo.tiers.find((t) => t.tier === me.tier)?.waves.filter((w) => w.wave < me.wave).flatMap((w) => w.sites) ?? []) {
+	/* batch4 #3d (same wave): a FOLLOWER waits on its own wave's leader, and a build the leader is STILL running failed (latest attempt, not replaced) is a
+	   failed upstream build for it too. A leader that already rolled back holds nobody, so only its ACTIVE failure counts (the same failedHereVerdict rule). */
+	const sites = !topo || !me ? [] : [
+		...(topo.tiers.find((t) => t.tier === me.tier)?.waves.filter((w) => w.wave < me.wave).flatMap((w) => w.sites) ?? []).map((site) => ({ site, activeOnly: false })),
+		...(me.isLeader ? [] : upstreamOf(topo, me).filter((u) => u.tier === me.tier).map((site) => ({ site, activeOnly: true })))
+	];
+	for (const { site, activeOnly } of sites) {
 		const ref = site.env?.spec?.rolloutRef?.name;
 		const ro = ref ? ros.find((r) => r.metadata?.name === ref && r.metadata?.namespace === site.env!.metadata?.namespace) : null;
 		for (const h of ro?.status?.history ?? []) {
 			const rev = h?.version?.revision;
 			if (!rev || h.bakeStatus !== 'Failed') continue;
 			const v = failedHereVerdict(ro as never, h.version!);
-			if (v.kind !== 'failed') continue;
+			if (v.kind !== 'failed' || (activeOnly && v.rolledBackAt != null)) continue;
 			const key = [...out.keys()].find((k) => rev.startsWith(k) || k.startsWith(rev)) ?? rev; /* the blocker names a short sha: one revision, one entry */
 			out.set(key, (out.get(key) ?? true) && v.rolledBackAt != null);
 		}

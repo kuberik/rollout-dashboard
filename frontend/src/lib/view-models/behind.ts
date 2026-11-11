@@ -36,5 +36,8 @@ export function behindOfRollout(rollout: Ro, rank?: RankVerdict | null, fleet?: 
  * stays), never a number that is later corrected by the wave subtraction. A surface given null prints NO count (batch4 #3d, QA8).
  */
 export function behindWhenSettled(rollout: Ro, fleet: Fleet | null | undefined, settled: boolean, rank?: RankVerdict | null): number | null {
-	return settled ? behindOfRollout(rollout, rank, fleet) : null;
+	if (!settled) return null;
+	/* an UNKNOWN lag (the current build aged out of availableReleases: the rank says null) is no count, never 0 / "Up to date" (batch4 #3d, QA17) */
+	if (!rank && newerReleaseCountLive(rollout as never, fleet) === null) return null;
+	return behindOfRollout(rollout, rank, fleet);
 }

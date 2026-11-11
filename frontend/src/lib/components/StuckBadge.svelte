@@ -65,7 +65,7 @@
 		if (reason.kind === 'deploying') return `Stuck — ${BAKE_WORD.Deploying} for ${formatTimeAgoCompact(new Date(Date.now() - reason.durationMs).toISOString())}`;
 		if (reason.kind === 'promotion') {
 			const waitingAgo = formatTimeAgoCompact(new Date(Date.now() - reason.waitingMs).toISOString());
-			const n = reason.candidateCount;
+			const n = reason.newerCount ?? reason.candidateCount; /* the live count (failed-builds.ts), the same number every behind chip prints */
 			const blockedBy = reason.blockingGates.length > 0 ? `, held by ${reason.blockingGates.join(', ')}` : '';
 			return `Stuck — ${n} release${n === 1 ? '' : 's'} waiting for ${waitingAgo}${blockedBy}`;
 		}

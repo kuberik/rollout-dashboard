@@ -307,8 +307,8 @@
 		if (n.unresolved) return `${n.name} — no Rollout of this name is visible to this dashboard`;
 		const lines = [nodeLabel(n)];
 		if (n.build) lines.push(`running ${n.build}`);
-		if (n.candidateCount > 0)
-			lines.push(`${n.candidateCount} newer build${n.candidateCount === 1 ? '' : 's'} available`);
+		if ((n.newerCount ?? n.candidateCount) > 0)
+			lines.push(`${n.newerCount ?? n.candidateCount} newer build${(n.newerCount ?? n.candidateCount) === 1 ? '' : 's'} available`);
 		for (const e of inbound.get(n.id) ?? []) lines.push(edgeSentence(e, nodeById));
 		// ⛔ NOT `h.short` WHILE PENDING. (2026-09-04, load-state audit
 		// finding 4) `short` is the `check` fallback's claim until

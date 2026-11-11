@@ -82,6 +82,7 @@
 import type { Rollout, Environment, RolloutDependency, RolloutGate } from '$lib/../types';
 import { heldBuilds } from './held';
 import { promotionBlock, promotionCandidates, blockingGateNames, type PromotionBlock } from './promotion';
+import { liveForPlace, type Fleet } from './failed-builds';
 import { formatTimeUntil, formatAbsoluteReopen } from '$lib/api/schedules';
 import { displayVersionForTag } from '$lib/version-utils';
 import { countLabel } from '$lib/disclosure';
@@ -1287,6 +1288,8 @@ export type BlockingStory = {
 	blocked: boolean;
 	/** How many newer builds this rollout could take. */
 	candidateCount: number;
+	/** The count a SENTENCE prints: `candidateCount` minus the builds that failed here or upstream in the wave chain (failed-builds.ts, the ONE behind rule). `blocked` and `nothingWaiting` keep reading the raw `candidateCount` (a gate still refuses a failed build). Absent = `candidateCount`. */
+	newerCount?: number;
 	/** `spec.wantedVersion`. A pin refuses ALL builds, so it outranks every gate. */
 	pinnedTo: string | null;
 	/**
@@ -1771,6 +1774,8 @@ export function blockingStory(
 		place?: string | null;
 		subject?: StorySubject | null;
 		now?: Date;
+		/** the fleet lists the place's wave chain lives in (failed-builds.ts `Fleet`): without one only a failure HERE is subtracted from the printed count */
+		fleet?: Fleet | null;
 		/**
 		 * ⭐ THE HOLD-ONE-RULE'S OTHER HALF. (2026-10-09, coordinator ruling.)
 		 * "Held" = refused by a gate OR held by a contract, per build —
@@ -1793,6 +1798,7 @@ export function blockingStory(
 	const block: PromotionBlock = promotionBlock(rollout);
 	const pinnedTo = rollout?.spec?.wantedVersion ?? null;
 	const candidateCount = promotionCandidates(rollout).length;
+	const newerCount = liveForPlace(rollout as never, promotionCandidates(rollout) as never, options.fleet).length; /* what sentences print (batch4 #3d) */
 	// An environment is a NAME, set as written, never uppercased (design
 	// language principle 11; uppercase is for state labels only). Was
 	// `toUpperCase()`: "hello-world in PROD", "PROD-EU-" / "CENTRAL" at 390.
@@ -1840,6 +1846,7 @@ export function blockingStory(
 			candidates: [],
 			blocked: candidateCount > 0,
 			candidateCount,
+			newerCount,
 			pinnedTo,
 			pinnedToDisplay,
 			selfClearing: false,
@@ -1848,8 +1855,8 @@ export function blockingStory(
 			severity: 'info',
 			headline: `${subjectLead} ${isVerb} pinned to ${pinnedToDisplay}`,
 			consequence:
-				candidateCount > 0
-					? `${candidateCount} newer build${candidateCount === 1 ? '' : 's'} ${candidateCount === 1 ? 'is' : 'are'} available and none of them will deploy while the pin is set.`
+				newerCount > 0
+					? `${newerCount} newer build${newerCount === 1 ? '' : 's'} ${newerCount === 1 ? 'is' : 'are'} available and none of them will deploy while the pin is set.`
 					: 'Automatic updates are off here until the pin is cleared.',
 			verdict: 'Clearing the pin is the only thing that restarts automatic deploys.',
 			resolution: 'Clearing the pin is the only thing that restarts automatic deploys.',
@@ -1876,7 +1883,7 @@ export function blockingStory(
 		// ELIGIBLE candidate is held or merely queued; leaving it empty
 		// here would silently hide a genuine "waits for `<stage>`" fact
 		// whenever an OLDER candidate happens to be fully deployable.
-		return { ...NOT_BLOCKED, candidateCount, candidates: breakdown.perBuild };
+		return { ...NOT_BLOCKED, candidateCount, newerCount, candidates: breakdown.perBuild };
 	}
 
 	// The gate OBJECTS, not the names: `promotionBlock` publishes names only, so
@@ -2046,7 +2053,9 @@ export function blockingStory(
 					(nWait > 0 && notYet ? `; ${nWait} more ${nWait === 1 ? "hasn't" : "haven't"} reached ${notYet} yet` : '') +
 					(nSkip > 0 && skippedStage ? `; ${nSkip} ${nSkip === 1 ? 'was' : 'were'} skipped by ${skippedStage}, which runs a newer ${plural(1)}` : '') +
 					'. '
-				: `${candidateCount} newer build${candidateCount === 1 ? '' : 's'} ${candidateCount === 1 ? 'is' : 'are'} waiting. `
+				: newerCount > 0
+				? `${newerCount} newer build${newerCount === 1 ? '' : 's'} ${newerCount === 1 ? 'is' : 'are'} waiting. `
+				: ''
 			: '';
 	const consequence = `${lead}Nothing promotes itself until ${joinClauses(parts)}.`;
 
@@ -2113,6 +2122,7 @@ export function blockingStory(
 	return {
 		blocked: true,
 		candidateCount,
+		newerCount,
 		pinnedTo: null,
 		pinnedToDisplay: null,
 		gates,
