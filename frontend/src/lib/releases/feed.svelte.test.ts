@@ -69,7 +69,7 @@ describe('installReleaseCatalogueFeed', () => {
 		// a spoke that could not be reached at all: not the whole truth, keep
 		qc.setQueryData(rolloutsListQueryKey, { ...payload(), releaseSources: { items: null }, releaseSlices: { items: null }, clusterErrors: [{}] });
 		expect(tags(rollout({ ref: 'src' }))).toEqual(['v1', 'v2']);
-		// complete answer with no catalogue (CRDs uninstalled / source deleted): dropped → old fields
+		// complete answer with no catalogue (CRDs uninstalled / source deleted): dropped → no catalogue
 		qc.setQueryData(rolloutsListQueryKey, { ...payload(), releaseSources: { items: null }, releaseSlices: { items: null } });
 		expect(tags(rollout({ ref: 'src' }))).toBeUndefined();
 	});

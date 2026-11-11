@@ -13,8 +13,8 @@
  * immediately after ("cache:updated:success"), but both run in the SAME
  * synchronous notifyManager flush, i.e. before any microtask. Svelte renders
  * (and evaluates `$derived`) in a later microtask, so the registry is already
- * populated when a slices-mode rollout first renders: no one-frame fallback to
- * the old fields. Code reading the registry synchronously INSIDE an observer
+ * populated when a rollout first renders: no one-frame flash of an empty
+ * (loading) catalogue. Code reading the registry synchronously INSIDE an observer
  * callback would still see the previous catalogue; nothing does (readers are
  * `$derived`s). Data already cached at install time is ingested by the
  * initial pass; `setQueryData` / `applyChangeEvents` ingest synchronously.
@@ -35,8 +35,8 @@ const CATALOGUE_PARTIAL = /(^|\/)(releaseSlices|releaseSources)$/;
 /**
  * Ingest one rollouts-list payload. `releaseSlices` / `releaseSources` that
  * are absent, null or `{items: null}` (the hub fan-out's re-marshalled nil)
- * mean "no catalogue on that cluster": nothing is ingested and rollouts fall
- * back to their old fields. A key named in `partialReads` failed to read this
+ * mean "no catalogue on that cluster": nothing is ingested and a rollout reads as
+ * loading (it has a ref, but no catalogue is known). A key named in `partialReads` failed to read this
  * time, so the registry keeps its previous catalogues rather than being wiped.
  */
 export function ingestListResponse(data: unknown, opts: { fleetWide?: boolean } = {}): void {

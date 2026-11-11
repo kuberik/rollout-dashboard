@@ -76,6 +76,25 @@ describe('deletion and complete lists', () => {
 	});
 });
 
+describe('a deleted slice stays deleted', () => {
+	it('a stale list that still carries a slice deleted over SSE does not bring it back, until the tombstone ages out', () => {
+		ingestReleaseSlices([slice('s1', 'src', [rel('v1', 1)], { gen: 1 }), slice('s2', 'src', [rel('v2', 2)], { gen: 1 })], [K], { now: 0 });
+		removeReleaseSlice('', 'ns', 's1', 1_000);
+		ingestReleaseSlices([slice('s1', 'src', [rel('v1', 1)], { gen: 1 }), slice('s2', 'src', [rel('v2', 2)], { gen: 1 })], [K], { now: 5_000 });
+		expect(tags(availableReleases(r()))).toEqual(['v2']);
+		// the hub has caught up, then a new slice is created under the same name
+		ingestReleaseSlices([slice('s1', 'src', [rel('v9', 9)], { gen: 1, uid: 'new' })], [K], { now: 120_000 });
+		expect(tags(availableReleases(r()))).toEqual(['v9']);
+	});
+	it('an SSE add of the same name clears the tombstone at once', () => {
+		ingestReleaseSlices([slice('s1', 'src', [rel('v1', 1)], { gen: 1 })], [K], { now: 0 });
+		removeReleaseSlice('', 'ns', 's1', 1_000);
+		upsertReleaseSlice(slice('s1', 'src', [rel('v2', 2)], { gen: 1, uid: 'again' }), 2_000);
+		ingestReleaseSlices([slice('s1', 'src', [rel('v2', 2)], { gen: 1, uid: 'again' })], [K], { now: 3_000 });
+		expect(tags(availableReleases(r()))).toEqual(['v2']);
+	});
+});
+
 describe('release source image', () => {
 	it('reads the registry image of the Rollout\'s ReleaseSource, per cluster', async () => {
 		const { ingestReleaseSources, releaseSourceImage } = await import('./registry.svelte');

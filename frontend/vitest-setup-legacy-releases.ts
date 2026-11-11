@@ -23,6 +23,8 @@ vi.mock('./src/lib/releases/registry.svelte', async (importOriginal) => {
 		if (!r || r.spec?.releaseSourceRef) return null;
 		const st = r.status;
 		if (!st) return null;
+		/* a rollout the product serves in slices shape (a ref, or the no-source condition) is never adapted */
+		if (JSON.stringify(st.conditions ?? []).includes('ReleaseSourceRequired')) return null;
 		if (!['availableReleases', 'releaseCandidates', 'gatedReleaseCandidates'].some((f) => f in st)) return null;
 		return st;
 	};

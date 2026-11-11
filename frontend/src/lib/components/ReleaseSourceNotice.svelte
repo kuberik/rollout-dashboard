@@ -13,6 +13,7 @@
 	import type { Rollout } from '$lib/../types';
 
 	let { rollout, text, class: className = '' }: { rollout?: Rollout | null; /** the message itself, when the caller already has it */ text?: string | null; class?: string } = $props();
+	const gap = ' ';
 	const message = $derived(text ?? releaseSourceRequiredMessage(rollout));
 	/** `spec.releasesImagePolicy` is no longer read; when a Rollout still sets it, say so and where it goes now. */
 	const legacyPolicy = $derived.by(() => {
@@ -29,7 +30,7 @@
 {/snippet}
 
 {#snippet body()}
-	{@render code(message ?? '')}{#if legacyPolicy}&#32;<code class="t-code">spec.releasesImagePolicy</code> is set but is ignored: set <code class="t-code">oci.imagePolicyRef</code> on the ReleaseSource to read from that ImagePolicy ({legacyPolicy}).{/if}
+	{@render code(message ?? '')}{#if legacyPolicy}{gap}<code class="t-code">spec.releasesImagePolicy</code> is set but is ignored: set <code class="t-code">oci.imagePolicyRef</code> on the ReleaseSource to read from that ImagePolicy ({legacyPolicy}).{/if}
 {/snippet}
 
 {#if message}

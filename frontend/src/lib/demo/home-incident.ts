@@ -32,7 +32,7 @@
  * entry, so the page agrees with the Home row that linked to it.
  */
 import type { MockResult } from './respond';
-import { applySlicesMode } from './mock-slices';
+import { applySlicesMode, sliceDetailRollout } from './mock-slices';
 import { respondGithub as respondGithubRange, avatarFor as avatarForLogin } from './github-data';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -584,7 +584,7 @@ export function respondHomeIncident(
 		if (!rollout) return json({ error: 'not_found', message: `rollout ${ns}/${name} not found` }, 404);
 		if (sub === '/health-checks') return json(homeIncidentHealthChecks(rollout, f.healthChecks));
 		if (sub === '/events') return json(homeIncidentEvents(rollout));
-		return json(homeIncidentDetail(f, rollout));
+		return json(sliceDetailRollout(homeIncidentDetail(f, rollout)));
 	}
 
 	if (path === '/api/auth/github/status') {

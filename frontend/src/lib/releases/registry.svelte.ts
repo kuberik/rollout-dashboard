@@ -70,6 +70,16 @@ const pending = new Map<string, number>();
  */
 const PENDING_GRACE_MS = 60_000;
 const pendingKey = (k: string, name: string) => `${k}\u0001${name}`;
+/** Slices deleted over SSE: a stale list (the hub's fan-in cache) must not bring them back. Key as `pendingKey`, value = deletion ms. */
+const tombstones = new Map<string, number>();
+const TOMBSTONE_MS = 60_000;
+const isTombstoned = (key: string, now: number) => {
+	const at = tombstones.get(key);
+	if (at === undefined) return false;
+	if (now - at < TOMBSTONE_MS) return true;
+	tombstones.delete(key);
+	return false;
+};
 
 /**
  * Fold a full list response into the catalogues it covers. Every source that
@@ -89,6 +99,7 @@ export function ingestReleaseSlices(
 	for (const k of knownSources) next.set(k, new Map());
 	for (const s of slices) {
 		const k = sliceCatalogueKey(s);
+		if (isTombstoned(pendingKey(k, s.metadata.name), now)) continue;
 		let m = next.get(k);
 		if (!m) next.set(k, (m = new Map()));
 		m.set(s.metadata.name, s);
@@ -116,6 +127,7 @@ export function ingestReleaseSlices(
 /** One slice added or updated (an SSE event carrying the object). Never replaces a newer copy. */
 export function upsertReleaseSlice(slice: ReleaseSliceObject, now: number = Date.now()): void {
 	const k = sliceCatalogueKey(slice);
+	tombstones.delete(pendingKey(k, slice.metadata.name));
 	const held = catalogues.get(k)?.get(slice.metadata.name);
 	if (held && !isNewerSlice(slice, held)) return;
 	const m = new Map(catalogues.get(k) ?? []);
@@ -125,7 +137,7 @@ export function upsertReleaseSlice(slice: ReleaseSliceObject, now: number = Date
 }
 
 /** One slice deleted. `key` from `catalogueKey(cluster, namespace, source)`; unknown source → scan. */
-export function removeReleaseSlice(cluster: string, namespace: string, name: string): void {
+export function removeReleaseSlice(cluster: string, namespace: string, name: string, now: number = Date.now()): void {
 	for (const [k, m] of catalogues) {
 		const s = m.get(name);
 		if (!s || (s.metadata.namespace ?? '') !== namespace) continue;
@@ -133,6 +145,7 @@ export function removeReleaseSlice(cluster: string, namespace: string, name: str
 		const next = new Map(m);
 		next.delete(name);
 		pending.delete(pendingKey(k, name));
+		tombstones.set(pendingKey(k, name), now);
 		catalogues.set(k, next);
 	}
 }
@@ -164,6 +177,7 @@ export function releaseSourceImage(r: Rollout | null | undefined): string | unde
 export function resetReleaseCatalogue(): void {
 	catalogues.clear();
 	pending.clear();
+	tombstones.clear();
 	sources.clear();
 }
 
