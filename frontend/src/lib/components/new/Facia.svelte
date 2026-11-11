@@ -35,7 +35,7 @@
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { TChange } from './data';
 	import type { Lane } from '$lib/view-models/promotion-lanes';
-	import { ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, waitingBuild, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
+	import { ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
 	import { plural, rowAction, actionLabel, actionHref, markOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
@@ -120,7 +120,7 @@
 	const commit = $derived(dep?.title && !/^(Initial commit|Release commit for build )/.test(dep.title) ? { title: dep.title, who: dep.author } : null);
 	/** L3 — a place that waits (approval or rule): the tile names the WAITING build, never the deployed one */
 	const waitRow = $derived(stateRow && (stateRow.state === 'awaiting-approval' || stateRow.state === 'held-by-rule') ? stateRow : null);
-	const wait = $derived(waitRow ? waitingBuild(waitRow) : null);
+	const wait = $derived(waitRow ? buildInQuestionFacts(waitRow) : null);
 	/** apps-7 Q1: a wait's age is `waitClock` (QA2 #8) — the same clock the Rollouts row's sentence prints; otherwise the row's */
 	const age = $derived(isQuiet ? '' : ago((waitRow ? waitClock(waitRow) : null) ?? (appr?.row ?? item.row)?.since ?? item.since));
 	/** r6 P2: the lag of the focus place in words a first-time reader can place: "prod is 7 builds behind the newest" (not a link). Skipped when the one newer build IS the waiting "next" build. */

@@ -4,7 +4,7 @@
  * TODO(truth) and is replaced by the truth lane's `heldCauses` / `arrivals` / regionless-prod exports
  * when they land. Pure, so it is unit-testable.
  */
-import { environments, rollouts, inbound as inboundOf, lastDeploy as lastDeployOf, lead as leadOf, fleetCounts, arrivals as arrivalsOf, heldCauses, failureReason, checkClock, waitingBuild, ago, ARRIVALS_WINDOW, TIERS, TIER_NAME, type HomeState, type TierKey, type HeldCause, type TRow } from './data';
+import { environments, rollouts, inbound as inboundOf, lastDeploy as lastDeployOf, lead as leadOf, fleetCounts, arrivals as arrivalsOf, heldCauses, failureReason, checkClock, buildInQuestionFacts, ago, ARRIVALS_WINDOW, TIERS, TIER_NAME, type HomeState, type TierKey, type HeldCause, type TRow } from './data';
 
 import type { EnvState } from '$lib/view-models/home-model';
 import { stateWord } from './state-words';

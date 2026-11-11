@@ -2,17 +2,17 @@ import { gateAllows } from './promotion';
 import { gateKindOf, type GateKind } from './gate-kind';
 
 /**
- * THE ONE PER-PLACE VERDICT (batch4 #92, QA28 redesign). A place that has an approval pending is judged against ONE build, the build a
- * person is deciding on (`targetBuild`), and against what refuses THAT build once the approval is written (`approvalWrite`). Every
- * surface that prints the place's state (the env model's card, the rows, the inbox, the toast, the Holding card) asks this function, so
- * none can judge another build or another rule.
+ * THE ONE PER-PLACE VERDICT. A place that has an approval pending is judged against ONE build, the build a person is deciding on
+ * (`pickBuildInQuestion`), and against what refuses THAT build once the approval is written (`approvalWrite`). Every surface that prints
+ * the place's state (the env model's card, the rows, the inbox, the toast, the approval target, the app detail's holds) asks this
+ * function, so none can judge another build or another rule.
  *
+ *  - the place's own newest history entry is Deploying / InProgress with a build every allow-list permits -> running: the place reads
+ *    its own bake state, whatever any gate says about another build (a window closing mid-deploy, an approval pending for a newer build)
  *  - no non-approval gate refuses the build after the approval  -> awaiting-approval (ask kept)
  *  - some gate still refuses it                                 -> held-by-rule, naming the first refuser in blame order
  *                                                                  (a persistent check / dependency / unknown, then a promotion order, then a window),
  *                                                                  and `also`: the approval is ALSO pending for that build
- *  - ... unless the place's own newest history entry is the approved build and it is running (Deploying / InProgress): the approval did
- *    its work, the place reads its own bake state, and a hold on the NEXT build does not outrank it (`running`)
  *
  * A leaf module (no data-layer imports): the model, the roster and the page layer all import it.
  */
@@ -37,17 +37,25 @@ export function deployableTags(gates: readonly VGate[], cands: readonly string[]
 	}));
 }
 
-/** THE build a person is deciding on at a place: the candidate that got furthest through the tiers below (what an approval is for), not a newer build still behind it; the newest on a tie. `reachOf` is -1 for a build no lower tier runs. '' when nothing is a candidate. */
-export function targetBuild(cands: readonly string[], reachOf: (tag: string) => number): string {
+/**
+ * THE build a person is deciding on at a place, ONE pick for every surface: the newest candidate that every NON-approval gate lets
+ * through (the clock, a check, a dependency and the promotion order all decide here), and among those the one that got furthest through
+ * the tiers below (what an approval is for), not a newer build still behind it; the newest on a tie. When no candidate passes (a closed
+ * window, a rule that refuses everything) the same furthest-reach rule picks among all of them, so the hold still names a build.
+ * `reachOf` is -1 for a build no lower tier has finished; a peer still deploying a build has not reached the next stage with it.
+ * '' when nothing is a candidate.
+ */
+export function pickBuildInQuestion(gates: readonly VGate[], cands: readonly string[], reachOf: (tag: string) => number): string {
+	const open = cands.filter((c) => refusingGates(gates, c).every(isApprovalLike));
 	let best = '', bestReach = -2;
-	for (const c of cands) { const r = reachOf(c); if (r > bestReach) { best = c; bestReach = r; } }
+	for (const c of open.length ? open : cands) { const r = reachOf(c); if (r > bestReach) { best = c; bestReach = r; } }
 	return best;
 }
 
 export type AlsoKind = 'window' | 'order' | 'hold';
 export type PlaceVerdict<G extends VGate = VGate> =
 	| { state: 'awaiting-approval'; target: string }
-	/** the approved build is itself Deploying / InProgress here: the place reads its own bake state, whatever refuses the next build */
+	/** the place's newest build is Deploying / InProgress and every allow-list permits it: the place reads its own bake state, whatever refuses another build */
 	| { state: 'running'; target: string }
 	| { state: 'held-by-rule'; target: string; first: G; refusers: G[]; /** the approval is ALSO pending for this build and would still deploy it once the refuser clears; null when the refuser is a static allow-list that does not list the build (no approval and no clock ever clears it for THIS build: the ask would be a false call to action) */ also: { kind: AlsoKind } | null };
 
@@ -61,7 +69,7 @@ export type PlaceVerdictInput<G extends VGate> = {
 	gates: readonly G[];
 	/** the live candidates, newest first */
 	cands: readonly string[];
-	/** the build in question (`targetBuild`) */
+	/** the build in question (`pickBuildInQuestion`) */
 	target: string;
 	/** the place's newest history entry */
 	running?: { tag: string; bake?: string | null } | null;
@@ -74,11 +82,11 @@ export const isApprovalLike = (x: VGate): boolean => (x.kind == null ? /approval
 export function placeVerdict<G extends VGate>(i: PlaceVerdictInput<G>): PlaceVerdict<G> | null {
 	const approvals = i.gates.filter(isApprovalLike);
 	if (!i.cands.length || !i.target || !approvals.some((a) => i.cands.some((c) => !a.allowedVersions!.includes(c)))) return null;
+	const r = i.running;
+	if (r && (r.bake === 'Deploying' || r.bake === 'InProgress') && i.gates.every((g) => g.allowedVersions == null || g.allowedVersions.includes(r.tag))) return { state: 'running', target: i.target };
 	const pending = approvals.some((a) => !a.allowedVersions!.includes(i.target));
 	const refusers = refusingGates(i.gates, i.target).filter((x) => !isApprovalLike(x));
 	if (!refusers.length) return pending ? { state: 'awaiting-approval', target: i.target } : null;
-	const r = i.running;
-	if (r && (r.bake === 'Deploying' || r.bake === 'InProgress') && approvals.every((a) => a.allowedVersions!.includes(r.tag)) && refusingGates(i.gates, r.tag).length === 0) return { state: 'running', target: i.target };
 	const sorted = [...refusers].sort((a, b) => BLAME(a) - BLAME(b));
 	return { state: 'held-by-rule', target: i.target, first: sorted[0], refusers: sorted, also: pending && !isStaticRefusal(sorted[0]) ? { kind: alsoKindOf(sorted[0]) } : null };
 }

@@ -6,7 +6,7 @@
  *   "when did they land"                     -> Landed
  */
 import type { TChange, TierKey, HeldCause, TRow, HomeState, ApprovalTarget } from './data';
-import { approvalTarget, urgency, lastHealthy, buildOf, candidateBuilds, deployedBuild, waitingBuild, avatarSrc, NOW } from './data';
+import { approvalTarget, urgency, lastHealthy, buildOf, candidateBuilds, deployedBuild, buildInQuestionFacts, avatarSrc, NOW } from './data';
 import { rangeJson } from './github-read.svelte';
 import { formatTimeAgoCompact } from '$lib/utils';
 import { rowAction, actionLabel } from './rollout-view';
@@ -121,7 +121,7 @@ export function rides(items: TChange[], rows: TRow[], leadKey: string | null, tr
 	}
 	const out = [...m.values()];
 	/* a held or waiting change's age is the wait of the build that waits (the change page's own "waiting 19m"), never the rollout's older hold */
-	for (const r of out) if ((r.state === 'approval' || r.state === 'held') && r.row) { const w = waitingBuild(r.row)?.since; if (w) r.since = notBeforeMerge(w, r.items[0].mergedAt) ?? w; }
+	for (const r of out) if ((r.state === 'approval' || r.state === 'held') && r.row) { const w = buildInQuestionFacts(r.row)?.since; if (w) r.since = notBeforeMerge(w, r.items[0].mergedAt) ?? w; }
 	/* changes-7 (X14): a failing place's age is the TAB's own ("failed 20m" = the failing check's end), whichever change the row carries: Mine and Others never disagree about one build */
 	for (const r of out) if (r.state === 'failed' && r.row?.since) r.since = notBeforeMerge(r.row.since, r.items[0].mergedAt) ?? r.row.since;
 	for (const r of out) r.items.sort((a, b) => (b.mergedAt ?? '').localeCompare(a.mergedAt ?? ''));
@@ -265,7 +265,7 @@ export function folioFacts(r: Pick<Ride, 'state' | 'row' | 'href'>): FolioFacts 
 	if (!row) return none;
 	if (r.state === 'approval' || r.state === 'held') {
 		const hb = candidateBuilds(row);
-		return { ...none, build: waitingBuild(row)?.build ?? hb[0]?.build ?? none.build, commits: hb.map((h) => ({ sha: h.build, title: (h.title ?? '').split('\n')[0], author: h.author, at: null, url: null })) };
+		return { ...none, build: buildInQuestionFacts(row)?.build ?? hb[0]?.build ?? none.build, commits: hb.map((h) => ({ sha: h.build, title: (h.title ?? '').split('\n')[0], author: h.author, at: null, url: null })) };
 	}
 	const p = r.href.split('/').filter(Boolean);
 	const lg = r.state === 'failed' ? lastHealthy(row) : null;

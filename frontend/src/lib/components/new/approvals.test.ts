@@ -37,8 +37,12 @@ describe('approving in place', () => {
 		const t = approvalTarget(row('payments-core')!, 'incident')!;
 		grant(t);
 		const after = rollouts('incident').rows.filter((r) => r.app === 'payments-core');
-		expect(after.some((r) => r.state === 'deploying' || r.state === 'checking')).toBe(true);
-		/* per-build approval: the approved build deploys; a NEWER build still waits for its own approval */
+		/* per-build approval: the approved build deploys; a NEWER build still waits for its own approval, and the place reads Deploying, not that wait */
+		const mineAfter = after.filter((r) => t.places.some((p) => p.href === r.href));
+		expect(mineAfter.length, 'the approved places keep a row').toBeGreaterThan(0);
+		expect(mineAfter.every((r) => r.state === 'deploying'), 'every approved place reads Deploying').toBe(true);
+		expect(after.some((r) => r.state === 'awaiting-approval' && t.places.some((p) => p.href === r.href))).toBe(false);
+		expect(apps('incident').items.find((a) => a.app === 'payments-core')!.approval).toBe(false);
 		revokeApproval(t);
 		expect(rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort()).toEqual(before);
 	});
@@ -65,13 +69,12 @@ describe('approving in place', () => {
 			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
 			expect(mine.length, 'the prod row survives').toBeGreaterThan(0);
 			expect(t.places.every((p) => mine.some((r) => r.href === p.href || r.regions.includes(p.label))), 'every place is still covered by a row').toBe(true);
-			expect(mine.some((r) => r.state === 'deploying' || r.state === 'checking'), 'nothing deploys: the provider holds every candidate').toBe(false);
+			expect(mine.some((r) => r.state === 'deploying' || r.state === 'checking' || r.state === 'awaiting-approval'), 'nothing deploys and nothing asks: the provider holds every candidate').toBe(false);
 			const hc = heldCauses('incident').map((c) => c.cause);
 			expect(hc, 'the row names the same provider as the toast').toContain(`Waiting on ${t.waitsOn}`);
 			expect(stateVerb(mine[0], 'incident').text).toMatch(/waits on/i);
 			const item = apps('incident').items.find((a) => a.app === 'payments-core')!;
-			/* per-build: the newest build still awaits its own approval, so the app's holds may read that; the Holding card carries the provider */
-			expect(appHolds(item, 'incident').length).toBeGreaterThan(0);
+			expect(appHolds(item, 'incident').some((h) => /Waiting on|waits on/i.test(h.text) && !h.approval)).toBe(true);
 			expect(gatesOf('payments-core', 'incident').some((g) => g.kind === 'dependency' && g.holding), 'the Holding card shows the dependency').toBe(true);
 			revokeApproval(t);
 			expect(rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort()).toEqual(before);
@@ -96,8 +99,6 @@ describe('approving in place', () => {
 			resetHomeModel();
 		}
 	};
-	/* the held row's title as /rollouts prints it ("Held by X" / "Waits on X"): X is what the toast names */
-	const rowTitle = () => sentenceOf(rollouts('incident').rows.find((r) => r.app === 'payments-core' && r.tier === 'prod')!, 'incident')[0].replace(/^(Held by|Waits on) /, '');
 	const holds = (what: string, gate: G) => it(`${what} still holds after the approval: no Deploying, and the toast and the held row name the same hold`, () => {
 		withGate(gate, (t) => {
 			expect(t.waitsOn, 'approvalTarget sees the hold').toBeTruthy();
@@ -107,6 +108,7 @@ describe('approving in place', () => {
 			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
 			expect(mine.length).toBeGreaterThan(0);
 			expect(mine.some((r) => r.state === 'deploying' || r.state === 'checking')).toBe(false);
+			expect(sentenceOf(mine[0], 'incident')[0], 'the held row names the toast\'s hold').toBe(t.cause);
 			/* per-build: the newest build still awaits its OWN approval, so the row may read that wait; the Holding card names the toast's gate */
 			expect(gatesOf('payments-core', 'incident').some((g) => g.holding && g.name === t.waitsOn), 'the Holding card names the toast gate').toBe(true);
 			revokeApproval(t);
@@ -141,9 +143,9 @@ describe('approving in place', () => {
 		});
 	});
 	it('a hold says which kind it is without its words being parsed', () => {
-		const a = apps('incident').items.find((x) => x.approval)!;
-		const h = appHolds(a, 'incident');
-		expect(h.some((x) => x.approval && /^Waiting for (your )?approval/.test(x.text))).toBe(true);
+		const asking = apps('incident').items.filter((x) => x.approval);
+		expect(asking.length).toBeGreaterThan(0);
+		for (const a of asking) expect(appHolds(a, 'incident').some((x) => x.approval && /^(Waiting for (your )?|Needs your )approval/.test(x.text)), a.app).toBe(true);
 	});
 });
 
@@ -213,6 +215,12 @@ describe('one classification for the toast, the row, the Holding card and the bu
 		});
 	});
 	/* the build in question is the one a person is deciding on: the approval target's build (c0d3e88), not the newest candidate (f4a2c19) */
+	/* the newest live candidate of the approval places (the build a rule that permits only it lets through) */
+	const targetAndNewest0 = () => {
+		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
+		const r0 = (source().rollouts as unknown as (R & { status: { releaseCandidates?: { tag?: string; version?: string }[] } })[]).find((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`))!;
+		return { newest: (r0.status.releaseCandidates ?? []).map((c) => c.tag ?? c.version ?? '')[0] };
+	};
 	const targetAndNewest = () => {
 		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
 		const r0 = (source().rollouts as unknown as (R & { status: { releaseCandidates?: { tag?: string; version?: string }[] } })[]).find((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`))!;
@@ -220,17 +228,19 @@ describe('one classification for the toast, the row, the Holding card and the bu
 		expect(t0.places[0].tag, 'the target is not the newest candidate').not.toBe(newest);
 		return { target: t0.places[0].tag, newest };
 	};
-	it('QA14 case: permits the newest, refuses the target. Approve writes ONLY the approved build, so nothing is deployable: toast, row and Holding card all say X', () => {
-		const { newest } = targetAndNewest();
+	it('permits only the newest (refuses the staged build): the newest is the one build every other gate lets through, so the dialog, the toast and the write name it, and Approve deploys it', () => {
+		const { newest } = targetAndNewest0();
 		patched([{ name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] }], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
-			expect(t.waitsOn).toBe('Permits newest only');
-			expect(doneWords(t).detail).toBe(`payments-core: Held by Permits newest only · ${t.where}`);
+			expect(t.build).toBe(newest);
+			expect(t.places.map((p) => p.tag)).toEqual(t.places.map(() => newest));
+			expect(t.waitsOn ?? null).toBeNull();
+			expect(doneWords(t).detail).toBe(`payments-core is deploying to ${t.where}`);
 			grant(t);
-			expect(rollouts('incident').rows.some((r) => r.app === 'payments-core' && r.tier === 'prod' && (r.state === 'deploying' || r.state === 'checking'))).toBe(false);
-			/* the row, the toast and the card all name X (ruling 4) */
-			expect(placeHolds('payments-core', 'incident').find((h) => h.tier === 'prod')?.gate?.name).toBe('Permits newest only');
-			expect(gatesOf('payments-core', 'incident').find((g) => g.id === 'permits-newest-only')?.holding).toBe(true);
+			const prod = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
+			expect(prod.length).toBeGreaterThan(0);
+			for (const r of prod) expect(r.state, r.key).toBe('deploying');
+			expect(placeHolds('payments-core', 'incident').filter((h) => h.tier === 'prod').every((h) => h.holdReason !== 'approval')).toBe(true);
 		});
 	});
 	it('the approval write allows ONLY the approved build (per-build approval; must match the real write once the approval API lands)', () => {
@@ -324,40 +334,41 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 		}));
 	});
 	alsoCase('a persistent hold (a failing check)', { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }, /^Approving won't deploy until .+ clears$/);
-	it('QA14 row: X permits only the newest, so no approval of the approved build can deploy it: the row says X holds it, with no ask, before and after the grant (the row reads the same per-build refusers as the toast and the Holding card)', () => {
-		const { newest } = targetAndNewest();
+	it('permits only the newest: BEFORE the grant the row and the inbox ask for the newest build; AFTER it the place reads Deploying and asks nothing', () => {
+		const { newest } = targetAndNewest0();
 		patched([{ name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] }], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
-			expect(t.waitsOn).toBe('Permits newest only');
-			const check = () => {
-				expect(sentenceOf(prodRow(), 'incident')[0]).toBe('Held by Permits newest only');
-				expect(sentenceOf(prodRow(), 'incident')[0]).not.toMatch(/approval/i);
-				expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask').toBe(false);
-			};
-			check();
+			expect(t.build).toBe(newest);
+			expect(sentenceOf(prodRow(), 'incident')[0]).toBe('Needs your approval');
+			expect(prodRow().needsYou).toBe(true);
+			expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'the ask is in the inbox').toBe(true);
 			grant(t);
-			check();
+			expect(sentenceOf(prodRow(), 'incident')[0]).toBe('Deploying');
+			expect(prodRow().needsYou).toBe(false);
+			expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask').toBe(false);
 		});
 	});
-	it('QA14 row while the place is still checking or deploying: the same per-build refusers apply (F1): "Held by Permits newest only", no ask, no inbox entry', () => {
-		const { newest } = targetAndNewest();
-		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
-		const rs = (source().rollouts as unknown as { metadata: { name: string; namespace: string }; status: { history?: { bakeStatus?: string }[] } }[]).filter((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`));
-		const was = rs.map((r) => r.status.history![0].bakeStatus);
-		try {
-			for (const bake of ['InProgress', 'Deploying']) {
-				rs.forEach((r) => { r.status.history![0].bakeStatus = bake; });
-				patched([{ name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] }], () => {
+	it('permits only the newest while the place still checks or deploys a build the rule refuses: the place waits for the newest\'s approval, no ask yet, no inbox entry', () => {
+		const { newest } = targetAndNewest0();
+		patched([{ name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] }], () => {
+			const t0 = approvalTarget(row('payments-core')!, 'incident')!;
+			const rs = (source().rollouts as unknown as { metadata: { name: string; namespace: string }; status: { history?: { bakeStatus?: string }[] } }[]).filter((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`));
+			const was = rs.map((r) => r.status.history![0].bakeStatus);
+			try {
+				for (const bake of ['InProgress', 'Deploying']) {
+					rs.forEach((r) => { r.status.history![0].bakeStatus = bake; });
+					resetHomeModel();
 					const pr = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
 					expect(pr.length).toBeGreaterThan(0);
 					for (const r of pr) {
-						expect(sentenceOf(r, 'incident')[0], bake).toBe('Held by Permits newest only');
+						expect(r.state, bake).toBe('awaiting-approval');
+						expect(sentenceOf(r, 'incident')[0], bake).toBe('Waiting for approval');
 						expect(r.needsYou, bake).toBe(false);
 					}
 					expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask').toBe(false);
-				});
-			}
-		} finally { rs.forEach((r, i) => { r.status.history![0].bakeStatus = was[i]; }); resetHomeModel(); }
+				}
+			} finally { rs.forEach((r, i) => { r.status.history![0].bakeStatus = was[i]; }); resetHomeModel(); }
+		});
 	});
 	it('refuses every build: held after Approve, and the toast, the row and the Holding card name the same gate', () => {
 		patched([{ name: 'refuses-all', kind: 'unknown', allowedVersions: [] }], () => {
@@ -385,18 +396,17 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 	causeCase('a failing check', { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }, 'Held by Smoke check');
 	/* viewer-owned: the viewer CAN approve payments-core (its other regions still ask), but ONE region is held by a static allow-list that lacks the build: that region asks nothing (no approval ever deploys it), while its siblings keep the ask. Kills QA28 M10 (a rule-held row taking needsYou from the app's ask). */
 	it('a viewer-owned approval with ONE region held by a rule that never clears for the build: that region asks nothing, the others keep the ask', () => {
-		const { newest } = targetAndNewest();
 		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
 		const rs = (source().rollouts as unknown as R[]);
 		const one = rs.find((r) => `${r.metadata.namespace}/${r.metadata.name}` === t0.places[0].href.split('/').slice(3, 5).join('/'))!;
-		const gate = { name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] };
+		const gate = { name: 'refuses-all', kind: 'unknown', allowedVersions: [] };
 		one.status.gates!.push(gate); resetHomeModel();
 		try {
 			const prod = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
 			const held = prod.filter((r) => r.state === 'held-by-rule'), asking = prod.filter((r) => r.state === 'awaiting-approval');
 			expect(held.length, 'one region is rule-held').toBe(1);
 			expect(asking.length, 'the siblings still ask').toBeGreaterThan(0);
-			for (const r of held) { expect(r.needsYou, 'no false call to action on the rule-held region').toBe(false); expect(sentenceOf(r, 'incident')[0]).toBe('Held by Permits newest only'); }
+			for (const r of held) { expect(r.needsYou, 'no false call to action on the rule-held region').toBe(false); expect(sentenceOf(r, 'incident')[0]).toBe('Held by Refuses all'); }
 			for (const r of asking) expect(r.needsYou).toBe(true);
 			const keys = inbox('incident').items.filter((i) => i.row.app === 'payments-core').map((i) => i.row.key);
 			expect(keys).not.toContain(held[0].key);

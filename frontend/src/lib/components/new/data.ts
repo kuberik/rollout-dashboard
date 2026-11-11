@@ -238,8 +238,8 @@ export const buildOf = (r: Pick<RolloutRow, 'href' | 'version'>): string => {
 export function truthAttrs(r: TRow | RolloutRow): Record<string, string> {
 	const t = r as TRow;
 	const steps = t.steps ?? stepsOf(r);
-	/* an approval's dwell is the WAITING build's (waitingBuild().since, the tab's Newer-builds age), never the row's */
-	const wb = r.group === 'approval' ? waitingBuild(r) : null;
+	/* an approval's dwell is the WAITING build's (buildInQuestionFacts().since, the tab's Newer-builds age), never the row's */
+	const wb = r.group === 'approval' ? buildInQuestionFacts(r) : null;
 	return {
 		'data-truth-state': r.state,
 		'data-truth-steps': stepsKey(steps),
@@ -503,10 +503,10 @@ export function absenceFor(state: string): GithubAbsence | null {
 export function githubAbsence(): GithubAbsence | null {
 	return absenceFor(source().changesState);
 }
-/** THE one answer to "which change does this approval release, and who wrote it": the identity of the build the gate holds (waitingBuild), the person by display name; `you` when the viewer wrote it.
+/** THE one answer to "which change does this approval release, and who wrote it": the identity of the build the gate holds (buildInQuestionFacts), the person by display name; `you` when the viewer wrote it.
  *  Home, Rollouts and Changes all print this, so one approval is one change everywhere. */
 export function approvalIdentity(row: Pick<RolloutRow, 'app' | 'href'>): { ref?: string; title?: string; person?: string; you: boolean } {
-	const wb = waitingBuild(row);
+	const wb = buildInQuestionFacts(row);
 	const idn = wb ? buildIdentity(wb.build, row.href) : null;
 	const author = idn?.author ?? wb?.author ?? null;
 	const you = isViewer(author);
@@ -540,8 +540,9 @@ export function environments(state: HomeState) {
 	const prod = R.c.tiers.find((t) => t.key === 'prod');
 	const by = new Map<string, { app: string; href: string; state: EnvState }[]>();
 	/* AD v2 (a): places the tab shows as approval-gated count as approvals everywhere */
-	const gatedHref = new Set(R.rows.filter((r) => r.stillChecking).map((r) => r.href));
-	for (const p of prod?.places ?? []) by.set(p.label, [...(by.get(p.label) ?? []), { app: p.app, href: p.href, state: gatedHref.has(p.href) ? ('awaiting-approval' as EnvState) : p.state }]);
+	/* a place still baking its own build reads the place verdict (its approval / rule hold), the same state the row reads: nothing here decides awaiting-approval on its own */
+	const stateOf = (p: { href: string; state: EnvState }): EnvState => { const v = p.state === 'checking' || p.state === 'deploying' ? verdictAt(p.href, state) : null; return v && v.state !== 'running' ? v.state : p.state; };
+	for (const p of prod?.places ?? []) by.set(p.label, [...(by.get(p.label) ?? []), { app: p.app, href: p.href, state: stateOf(p) }]);
 	const build = (label: string, ps: { app: string; href: string; state: EnvState }[]) => {
 		const worst = [...ps].sort((a, b) => (SEV[a.state] ?? 9) - (SEV[b.state] ?? 9))[0];
 		const n = { failing: 0, waiting: 0, moving: 0, rest: 0 };
@@ -745,22 +746,20 @@ export function fleet24h(state: HomeState, tier?: TierKey): Fleet24h {
 }
 
 /* ═══ per-place build facts (AD v2 f, g, h, i) ═══ */
-/** The WAITING build of a gated place (newest candidate): its own id, title, author and age, never the deployed build's. null when nothing waits. */
-export function waitingBuild(row: Pick<RolloutRow, 'app' | 'href'>): { build: string; title: string | null; author: string | null; since: string | null; count: number } | null {
+/** The facts (id, title, author, age) of THE build in question at a place (`buildInQuestion`: the one pick the verdict, the dialog, the toast and the approval write all use), never the deployed build's. Where no verdict applies the newest build the place's own rules hold. null when nothing waits. */
+export function buildInQuestionFacts(row: Pick<RolloutRow, 'app' | 'href'>): { build: string; title: string | null; author: string | null; since: string | null; count: number } | null {
 	const all = candidateBuilds(row);
-	/* r5 R3: the build the place's OWN gate holds (the Gates tab's "Held builds · HELD HERE"), not the newest candidate that merely waits for a promotion step */
 	const here = all.some((x) => x.here) ? all.filter((x) => x.here) : all;
-	/* ONE approval = ONE change: of the builds the gate holds, the one that got furthest through the tiers below (it is what an approval is for), not a newer build that is still behind it */
-	const ps = placesOf('incident', row.app), me = ps.find((p) => p.href === row.href);
-	const reach = (b: string): number => (me ? Math.max(-1, ...ps.filter((p) => RANK_T[p.tier] < RANK_T[me.tier] && shortBuild(p.version) === b).map((p) => RANK_T[p.tier])) : -1);
-	const h = [...here].sort((x, y) => reach(y.build) - reach(x.build));
-	return h[0] ? { build: h[0].build, title: h[0].title, author: h[0].author, since: h[0].created, count: h.length } : null;
+	const tag = verdictAt(row.href) ? buildInQuestion({ href: row.href, app: row.app }) : '';
+	const i = tag ? (liveCands(rawOf(row.href)?.status) ?? []).findIndex((c) => (c.tag ?? c.version ?? '') === tag) : -1;
+	const b = i >= 0 ? all[i] : here[0];
+	return b ? { build: b.build, title: b.title, author: b.author, since: b.created, count: here.length } : null;
 }
 /** r6 T6: when the build that waits at a gated place ARRIVED AT ITS GATE: the later of the build's creation and the moment the app's lower tiers deployed it (a promotion gate lets a build
  *  through only once the tier below runs it). null when no age can be told: the build waits for a promotion step that has not happened, or nothing waits.
- *  The build's own age (`waitingBuild().since`, the tab's Newer-builds age) is NOT the hold's age: 4.43.0-43 was created 10h ago and reached staging 1h ago. */
+ *  The build's own age (`buildInQuestionFacts().since`, the tab's Newer-builds age) is NOT the hold's age: 4.43.0-43 was created 10h ago and reached staging 1h ago. */
 export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state: HomeState = 'incident'): string | null {
-	const wb = waitingBuild(row);
+	const wb = buildInQuestionFacts(row);
 	if (!wb) return null;
 	/* QA round 2 A6: the hold began when the OLDEST still-held build reached its gate, never when the newest arrived: a new build landing under an
 	   unanswered approval must not reset "waiting for 2h" to "3m". */
@@ -782,7 +781,7 @@ export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state:
  *  build's own age, else the row's. The sentence ("Waiting for approval for 5h"), the row's age slot and the /apps card's age all read THIS, so one row never shows
  *  two disagreeing unlabelled clocks (the build's own age stays on the Newer-builds list, where it is labelled). */
 export function waitClock(row: Pick<RolloutRow, 'app' | 'href' | 'tier'> & { since?: string | null }, state: HomeState = 'incident'): string | null {
-	return holdSince(row, state) ?? waitingBuild(row)?.since ?? row.since ?? null;
+	return holdSince(row, state) ?? buildInQuestionFacts(row)?.since ?? row.since ?? null;
 }
 /** The DEPLOYED build of a place with its own commit: the change title the History headline prints (fixture change by sha, else the range head) and the range head's author. */
 export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>): { build: string; meta: string | null; title: string | null; author: string | null; at: string | null } {
@@ -878,8 +877,8 @@ export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'
  * WHO / WHAT RULE (r34 truth, settled): two subjects, two sources, never mixed.
  *  - a BUILD is the subject (Apps lead header, Slipway, Environments' arriving build, Newer builds, held builds): r5 R4 (lead ruling) TITLE and PERSON come from the tabs but
  *    from their two named panes: the TITLE is the History tab's HEADLINE, the single-sha commit lookup (`commitHeadline`: a11c202 -> "Retry webhook delivery with exponential
- *    backoff", never the range's boilerplate "Release commit for build a11c202"; used by `deployedBuild.title`, `heldBuilds.title`, `waitingBuild.title`); the PERSON is the
- *    head commit's author in the range "previous release -> this build" the CHANGE pane prints (`buildRange`, `heldBuilds`, `waitingBuild`, `newestBuild`,
+ *    backoff", never the range's boilerplate "Release commit for build a11c202"; used by `deployedBuild.title`, `heldBuilds.title`, `buildInQuestionFacts.title`); the PERSON is the
+ *    head commit's author in the range "previous release -> this build" the CHANGE pane prints (`buildRange`, `heldBuilds`, `buildInQuestionFacts`, `newestBuild`,
  *    `deployedBuild.author`: a11c202 -> mark-collins), because the headline's trigger is "Automatic" for every automatic deploy. When the person is the viewer the page
  *    prints "Your change" instead of a face. A build with no real title shows no title (the build id is already on the row).
  *  - a CHANGE is the subject (Changes rows/Folio, Needs you cards, "Yours"): the PR identity (`buildIdentity`, `changes()[].author/title`), e.g. a11c202 -> the viewer's #37.
@@ -1184,7 +1183,8 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const cands = candTags(p.href).length ? candTags(p.href) : failedC ? [failedC.tag ?? failedC.version ?? ''] : [];
 		/* the one hold rule (gatesOf, the toast's waitsOn): held only when NO candidate is deployable, and some gate refuses the build in question */
 		const rule = pv ? pv.state === 'held-by-rule' : cands.length > 0 && refusingGates(gs, buildInQuestion({ href: p.href, app })).length > 0;
-		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
+		/* the row's own verdict: a place that runs its build (`running`) holds nothing here, whatever it still refuses for another build */
+		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : pv?.state === 'running' ? null : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
 		const g = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
 		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, heldBuilds: held, runs: p.version };
 	});
@@ -1245,7 +1245,7 @@ function failedWaveCand(href: string) {
 	const blocking = waveBlockingRevisions(rawOf(href) as never, envsOfSource());
 	return blocking.length ? rawC.find((c) => !liveC.includes(c) && blocking.some((r) => shaNamesBuild(r, c))) : undefined;
 }
-/** THE build a hold is judged against, for one place: the build a person is deciding on. At a place with an approval gate that is the approval target's build (`waitingBuild`: the one the toast names), otherwise the newest
+/** THE build a hold is judged against, for one place: the build a person is deciding on. At a place with an approval gate that is the approval target's build (`buildInQuestionFacts`: the one the toast names), otherwise the newest
  *  candidate (the one the rollout deploys next). Every caller of `refusingGates` (the approval target, the held row's title, the Holding card) asks THIS, so they cannot check different builds. '' when nothing is a candidate. */
 export function buildInQuestion(place: { href: string; app: string }): string {
 	const v = verdictAt(place.href);
@@ -1261,8 +1261,7 @@ function verdictAt(href: string, state: HomeState = 'incident'): PlaceVerdict | 
 	const m = homeModel(state);
 	let t = VERDICTS.get(m);
 	if (!t) { t = new Map(); for (const a of m.apps) for (const e of a.envs) t.set(e.href, e.placeVerdict ?? null); VERDICTS.set(m, t); }
-	const v = t.get(href) ?? null;
-	return v && v.state !== 'running' ? v : null;
+	return t.get(href) ?? null;
 }
 /** The provider a dependency gate waits on, from the RolloutDependency join (namespace + `status.gateName`; `spec.providerRef.name`): the SAME source the held row's "Waits on <provider>" is built from (blocking-story's `ctx.dependency`). */
 const dependencyProviderOf = (href: string, gateName: string): string | null => {
@@ -1301,13 +1300,14 @@ const candTags = (href: string): string[] => (liveCands(rawOf(href)?.status) ?? 
 /** The newest build that deploys after `tag` is approved at a place (null: nothing deploys). */
 const deploysAfterApproval = (href: string, tag: string): string | null => deployableTags(rawOf(href)?.status.gates ?? [], candTags(href), tag)[0] ?? null;
 export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | 'regions'>, state: HomeState = 'incident'): ApprovalTarget | null {
-	const own = placesOf(state, row.app).filter((p) => p.tier === row.tier && approvalHold(p.href) > 0 && (p.href === row.href || !row.regions.length || row.regions.includes(p.label)));
-	const ps = own.length ? own : approvalHold(row.href) > 0 ? placesOf(state, row.app).filter((p) => p.href === row.href) : [];
+	/* the row's own verdict decides: a place that runs its build (`running`) offers no approval */
+	const asks = (href: string): boolean => { const v = verdictAt(href, state); return v ? v.state !== 'running' : approvalHold(href) > 0; };
+	const own = placesOf(state, row.app).filter((p) => p.tier === row.tier && asks(p.href) && (p.href === row.href || !row.regions.length || row.regions.includes(p.label)));
+	const ps = own.length ? own : asks(row.href) ? placesOf(state, row.app).filter((p) => p.href === row.href) : [];
 	if (!ps.length) return null;
-	const wb = waitingBuild({ app: row.app, href: ps[0].href });
-	const places = ps.map((p) => {
-		return { href: p.href, label: p.label, tag: buildInQuestion({ href: p.href, app: row.app }) };
-	}).filter((p) => p.tag);
+	const all = ps.map((p) => ({ href: p.href, label: p.label, tag: buildInQuestion({ href: p.href, app: row.app }) })).filter((p) => p.tag);
+	/* ONE build per approval: the dialog, the toast and the write name the first place's build, and only the places whose own build in question is that one are approved with it (a region another rule steers to a different build asks on its own) */
+	const places = all.filter((p) => p.tag === all[0]?.tag);
 	if (!places.length) return null;
 	const where = placeLabel({ tier: row.tier as TierKey, regions: places.map((p) => p.label) });
 	/* what still refuses the build in question after the approval: the place verdict's own first refuser, titled and worded by the one formatter the row uses */
@@ -1315,7 +1315,7 @@ export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | '
 	const waitsOn = holds?.title ?? null;
 	const dep = waitsOn ? null : deploysAfterApproval(places[0].href, places[0].tag);
 	const deploys = dep && dep !== places[0].tag ? (shortBuild(candidatesOf(places[0].href).find((c) => (c.tag ?? c.version) === dep)?.version ?? dep) ?? dep) : null;
-	return { key: `${row.app}|${row.tier}|${places.map((p) => p.href).sort().join(',')}`, app: row.app, build: wb?.build ?? places[0].tag, where, count: places.length, places, href: row.href, waitsOn, cause: holds?.cause ?? null, deploys };
+	return { key: `${row.app}|${row.tier}|${places.map((p) => p.href).sort().join(',')}`, app: row.app, build: buildInQuestionFacts({ app: row.app, href: places[0].href })?.build ?? places[0].tag, where, count: places.length, places, href: row.href, waitsOn, cause: holds?.cause ?? null, deploys };
 }
 type Snap = { r: RawRollout; status: RawRollout['status'] };
 const SNAPS = new Map<string, Snap[]>();

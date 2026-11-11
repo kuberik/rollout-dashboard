@@ -9,7 +9,7 @@
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
 import {
-=======
+	rollouts, placeCause, placesOf, placeBehind, regionStates, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
