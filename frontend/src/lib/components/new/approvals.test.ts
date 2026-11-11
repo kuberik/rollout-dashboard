@@ -430,6 +430,9 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			for (const r of prod) { expect(r.state).toBe('deploying'); expect(sentenceOf(r, 'incident')[0]).toBe('Deploying'); expect(r.needsYou).toBe(false); }
 			expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask for the build that cannot deploy').toBe(false);
 			expect(newest).not.toBe(target);
+			const envs = homeModel('incident').apps.find((a) => a.app === 'payments-core')!.envs.filter((e) => e.isProdRegion && e.placeVerdict);
+			expect(envs.length).toBeGreaterThan(0);
+			for (const e of envs) { expect(e.placeVerdict!.state, 'the verdict itself says the approved build is running').toBe('running'); expect(e.alsoApproval ?? null).toBeNull(); }
 		});
 	});
 	it('a promotion gate named ghd-* (the live naming) decides where a build is held', () => {
@@ -438,4 +441,11 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			expect(candidateBuilds({ app: 'payments-core', href: p.href }).every((c) => c.here)).toBe(false);
 		});
 	});
+});
+
+/* QA28 M9: on a phone the second ask of a held row ("· also needs your approval") wraps, never an ellipsis: the wrap rule must stay in the row's stylesheet */
+import { readFileSync } from 'node:fs';
+it('a wrapping held row keeps its phone wrap rule (white-space: normal, no ellipsis)', () => {
+	const css = readFileSync(new URL('./StrandRow.svelte', import.meta.url), 'utf8');
+	expect(css).toMatch(/\.lr-sn\.wrap\s*\{[^}]*white-space:\s*normal[^}]*text-overflow:\s*clip/);
 });
