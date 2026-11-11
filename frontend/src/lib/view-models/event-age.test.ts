@@ -181,6 +181,18 @@ describe('lastFailureMs: newest wins, window bounds the deploy start', () => {
 	});
 });
 
+describe('lastFailureMs: the window bounds the deploy START, not the bake end', () => {
+	const now = new Date('2026-11-10T13:00:00Z').getTime();
+	const H = 3600_000;
+	it('a deploy that started 7d1h ago and failed 6d23h ago is outside the 7-day summary (no last failure)', () => {
+		const straddle = { timestamp: new Date(now - (7 * 24 + 1) * H).toISOString(), bakeEndTime: new Date(now - (6 * 24 + 23) * H).toISOString(), bakeStatus: 'Failed' };
+		expect(weekSummary([{ history: [straddle], rolledBack: [false] }], 7, now)).toMatchObject({ failed: 0, lastFailureMs: null });
+		/* started inside the window, still counts */
+		const inside = { ...straddle, timestamp: new Date(now - (6 * 24 + 23) * H - 60_000).toISOString() };
+		expect(weekSummary([{ history: [inside], rolledBack: [false] }], 7, now).lastFailureMs).toBe(new Date(inside.bakeEndTime).getTime());
+	});
+});
+
 describe('History tab last failure', () => {
 	const failed = { timestamp: '2026-11-10T10:00:00Z', bakeEndTime: '2026-11-10T10:31:00Z', bakeStatus: 'Failed' };
 	it('lastFailureAgoOf reads the failure instant (bake end), not the deploy start', () => {
