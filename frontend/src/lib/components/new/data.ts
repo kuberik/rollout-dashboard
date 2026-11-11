@@ -1193,13 +1193,11 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const held = candidateBuilds({ app, href: p.href });
 		const gs = rawOf(p.href)?.status.gates ?? [];
 		/* batch4 #3b/#3c: a build that failed upstream in the wave chain, while its failing site still RUNS it, is no candidate here but the gates still refuse it: the place is held BY THE WAVE (`upstreamFailed` names the build), with no build waiting. Once the failing site has rolled back from it nothing holds the wave (failed-builds.ts waveBlockingRevisions). */
-		const rawC = rawOf(p.href)?.status.releaseCandidates ?? [], liveC = liveCands(rawOf(p.href)?.status) ?? [];
-		const blocking = waveBlockingRevisions(rawOf(p.href) as never, envsOfSource());
-		const failedC = blocking.length ? rawC.find((c) => !liveC.includes(c) && blocking.some((r) => shaNamesBuild(r, c))) : undefined;
+		const failedC = failedWaveCand(p.href);
 		const upstreamFailed = failedC ? (shortBuild(failedC.version ?? failedC.tag) ?? null) : null;
-		const cands = candTags(p.href);
+		const cands = candTags(p.href).length ? candTags(p.href) : failedC ? [failedC.tag ?? failedC.version ?? ''] : [];
 		/* the one hold rule (gatesOf, the toast's waitsOn): held only when NO candidate is deployable, and some gate refuses the build in question */
-		const rule = !approval && cands.length > 0 && !deployableTags(gs, cands).length && refusingGates(gs, buildInQuestion({ href: p.href, app })).length > 0;
+		const rule = !approval && cands.length > 0 && (!deployableTags(gs, cands).length || !approvalGateOf(gs)) && refusingGates(gs, buildInQuestion({ href: p.href, app })).length > 0;
 		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
 		const g = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
 		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, heldBuilds: held, runs: p.version };
@@ -1256,12 +1254,19 @@ export type ApprovalTarget = { key: string; app: string; build: string; where: s
 type GateLite = { name: string; kind?: string | null; allowedVersions?: string[] | null; passing?: boolean | null };
 /** The gates that refuse `tag`, always the build that deploys NEXT (the newest candidate; the toast, the row and the Holding card all ask about that one): its allow-list lacks it, or (no allow-list: a closed deploy window, a failing check) the gate is not passing. */
 const refusingGates = <G extends GateLite>(gates: readonly G[], tag: string): G[] => gates.filter((x) => (x.allowedVersions != null ? !!tag && !x.allowedVersions.includes(tag) : x.passing === false));
+/** The candidate a failed upstream build in the wave chain still names while its failing site RUNS it: no live candidate, but the gates still refuse it (batch4 #3b/#3c). */
+function failedWaveCand(href: string) {
+	const st = rawOf(href)?.status;
+	const rawC = st?.releaseCandidates ?? [], liveC = liveCands(st) ?? [];
+	const blocking = waveBlockingRevisions(rawOf(href) as never, envsOfSource());
+	return blocking.length ? rawC.find((c) => !liveC.includes(c) && blocking.some((r) => shaNamesBuild(r, c))) : undefined;
+}
 /** THE build a hold is judged against, for one place: the build a person is deciding on. At a place with an approval gate that is the approval target's build (`waitingBuild`: the one the toast names), otherwise the newest
  *  candidate (the one the rollout deploys next). Every caller of `refusingGates` (the approval target, the held row's title, the Holding card) asks THIS, so they cannot check different builds. '' when nothing is a candidate. */
 export function buildInQuestion(place: { href: string; app: string }): string {
 	const st = rawOf(place.href)?.status;
 	const cands = liveCands(st) ?? [];
-	if (!cands.length) return '';
+	if (!cands.length) { const f = failedWaveCand(place.href); return f ? (f.tag ?? f.version ?? '') : ''; }
 	if (approvalGateOf(st?.gates ?? [])) {
 		const wb = waitingBuild(place);
 		const c = wb ? cands.find((x) => shortBuild(x.version ?? x.tag ?? '') === wb.build) : null;
