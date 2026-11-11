@@ -909,6 +909,7 @@ async function fleetChecks(statesToCheck) {
 						kind: el.dataset.truthKind,
 						lr: el.classList.contains('lr'),
 						app: el.dataset.truthApp,
+						group: el.dataset.truthGroup,
 						href: norm(
 							el.dataset.truthHref ||
 								el.querySelector('a[href^="/rollouts/"]')?.getAttribute('href')
@@ -999,9 +1000,10 @@ async function fleetChecks(statesToCheck) {
 			for (const d of r.dwell) {
 				if (!d.build) continue;
 				for (const e of r.els.filter((x) =>
-					x.kind === 'rollout' || x.kind === 'attention'
+					x.kind === 'rollout'
 						? x.href === d.href
-						: x.kind === 'app' && x.app === d.app
+						: (x.kind === 'app' || (x.kind === 'attention' && x.group === 'approval')) &&
+							x.app === d.app
 				)) {
 					/* one clock per wait: a row's age column is the HOLD clock (waitClock), said once. A still-checking place has no hold yet, so no dwell is expected on its row or tile; its row prints the check's own age. */
 					if (d.stillChecking) {
