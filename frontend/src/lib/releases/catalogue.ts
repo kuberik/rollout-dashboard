@@ -31,6 +31,7 @@
  *   show that message (`releaseSourceRequiredMessage`).
  */
 import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
+import { noticeLead } from './notice-copy';
 import type { Rollout } from '../../types';
 
 type RolloutStatus = NonNullable<Rollout['status']>;
@@ -214,7 +215,7 @@ export function noReleasesFrom(
 		return {
 			kind: 'empty',
 			label: 'No releases yet',
-			message: "This Rollout's release source has not published any releases yet."
+			message: noticeLead('NoReleases')
 		};
 	}
 	return null;

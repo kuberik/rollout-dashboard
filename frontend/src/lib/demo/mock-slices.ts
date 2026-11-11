@@ -31,8 +31,11 @@ import type {
 /** Apps (rollout names) served WITHOUT a releaseSourceRef: the controller reports `ReleaseSourceRequired` for them. */
 export const UNSOURCED_APPS: ReadonlySet<string> = new Set(['recommender-svc']);
 
+/** The controller's exact message (rollout-controller `messageSourceRequired`). */
 export const RELEASE_SOURCE_REQUIRED_MESSAGE =
-	'This Rollout has no spec.releaseSourceRef, so it has no releases. Create a ReleaseSource for its releases repository and reference it to see releases.';
+	'spec.releaseSourceRef is not set, so this Rollout has no releases. Create a ReleaseSource for the app ' +
+	'and reference it from spec.releaseSourceRef; to migrate an existing Flux ImagePolicy, create a ReleaseSource with ' +
+	'spec.oci.imagePolicyRef pointing at it';
 
 type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
