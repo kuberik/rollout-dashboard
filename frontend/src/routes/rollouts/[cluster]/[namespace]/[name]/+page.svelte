@@ -128,7 +128,8 @@
 	import {
 		healthGateCounts,
 		healthGateHolding,
-		healthGateCountsLabel
+		healthGateCountsLabel,
+		healthLoadFailed
 	} from '$lib/view-models/health-witness';
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import GateLines from '$lib/components/GateLines.svelte';
@@ -170,6 +171,7 @@
 		rolloutPermissionsQueryOptions
 	} from '$lib/api/rollouts';
 	import { fetchGithubStatus, githubStatusQueryKey, githubAbsenceSentence } from '$lib/api/github';
+	import { untrack } from 'svelte';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
@@ -1050,9 +1052,18 @@
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
+	/** The load failed, remembered through "Try again"'s refetch (see `healthLoadFailed`). */
+	let healthChecksFailedLatch = $state(false);
+	$effect(() => {
+		healthChecksFailedLatch = healthLoadFailed(untrack(() => healthChecksFailedLatch), {
+			isError: healthChecksQuery.isError,
+			isSuccess: healthChecksQuery.isSuccess
+		});
+	});
+	const healthChecksFailed = $derived(healthChecksQuery.isError || healthChecksFailedLatch);
 	/** Same shape as `managedResourcesKnown` — see that field's own comment. */
 	const healthChecksKnown = $derived(
-		!rollout?.spec?.healthCheckSelector || healthChecksQuery.isSuccess || healthChecksQuery.isError
+		!rollout?.spec?.healthCheckSelector || healthChecksQuery.isSuccess || healthChecksFailed
 	);
 
 	const errorCutoff = $derived<Date | null>(
@@ -1088,7 +1099,7 @@
 			{
 				hasSelector: Boolean(rollout?.spec?.healthCheckSelector),
 				isSuccess: healthChecksQuery.isSuccess,
-				isError: healthChecksQuery.isError
+				isError: healthChecksFailed
 			},
 			visibleHealthChecks
 		)
@@ -3737,7 +3748,7 @@
 									{pipelineValidRollouts}
 									{pipelineValidTests}
 									healthChecks={visibleHealthChecks}
-									healthChecksUnavailable={healthChecksQuery.isError}
+									healthChecksUnavailable={healthChecksFailed}
 									{canUpdate}
 									{namespace}
 									{name}
@@ -4775,7 +4786,7 @@
 									healthChecks={visibleHealthChecks}
 									windowStart={errorCutoff}
 									emptyState
-									loadError={healthChecksQuery.isError}
+									loadError={healthChecksFailed}
 									onRetry={() => healthChecksQuery.refetch()}
 									isRetrying={healthChecksQuery.isFetching}
 								/>

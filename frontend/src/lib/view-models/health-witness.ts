@@ -439,14 +439,16 @@ export function recoveredTitle(hc: HealthCheck, ago: string): string {
  * which checks are live. Failing outranks pending — a rollout with one of
  * each is still "a health check is failing", the louder and truer fact.
  */
-export type HealthQuietState = 'failing' | 'pending' | 'passing';
+/** `unknown`: the list never arrived. Unknown is never `passing`. */
+export type HealthQuietState = 'failing' | 'pending' | 'passing' | 'unknown';
 
 export function healthQuietState(
 	healthChecks: HealthCheck[] | null,
 	windowStart: Date | null
 ): HealthQuietState {
+	if (healthChecks === null) return 'unknown';
 	const counts = healthGateCounts(
-		visibleHealthChecks(healthChecks ?? [], windowStart),
+		visibleHealthChecks(healthChecks, windowStart),
 		windowStart
 	);
 	if (counts.failing > 0) return 'failing';
@@ -467,3 +469,18 @@ export const HEALTH_CHECKS_UNAVAILABLE = {
 	sentence:
 		"Health checks couldn't be loaded, so the dashboard can't tell whether any select this rollout."
 } as const;
+
+/**
+ * Has the health-checks load failed, remembering through the refetch? tanstack
+ * resets an errored query that holds no data to `pending` while it refetches, so
+ * `isError` alone flips false on "Try again" and the error card would be swapped
+ * for a skeleton. Latch the failure until a success clears it.
+ */
+export function healthLoadFailed(
+	previous: boolean,
+	q: { isError: boolean; isSuccess: boolean }
+): boolean {
+	if (q.isError) return true;
+	if (q.isSuccess) return false;
+	return previous;
+}

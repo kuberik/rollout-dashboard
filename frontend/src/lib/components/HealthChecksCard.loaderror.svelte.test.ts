@@ -16,4 +16,9 @@ describe('HealthChecksCard when the load failed (batch4)', () => {
 		render(HealthChecksCard, { props: { healthChecks: [], emptyState: true } as never });
 		expect(screen.getByText(/No health checks select this rollout/)).toBeInTheDocument();
 	});
+	test('while retrying, the error card stays with a disabled Checking… button', () => {
+		render(HealthChecksCard, { props: { healthChecks: [], emptyState: true, loadError: true, onRetry: () => {}, isRetrying: true } as never });
+		expect(screen.getByText(/Health checks couldn't be loaded/)).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: /Checking…/ })).toBeDisabled();
+	});
 });

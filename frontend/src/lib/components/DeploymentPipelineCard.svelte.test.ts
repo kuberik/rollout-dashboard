@@ -46,4 +46,29 @@ describe('DeploymentPipelineCard Health checks row on a failed load', () => {
 		expect(container.textContent).toContain('Failed');
 		expect(container.textContent).toContain('error-rate, p99-latency');
 	});
+
+	const failedBake = (names: string[]) => {
+		const e = { bakeStatus: 'Failed', timestamp: new Date().toISOString(), version: { tag: 't' }, failedHealthChecks: names.map((name) => ({ name })) };
+		return { healthChecksUnavailable: true, latestEntry: e, rollout: { metadata: { name: 'r', namespace: 'ns' }, spec: { healthCheckSelector: { matchLabels: { a: 'b' } } }, status: { history: [e] } } };
+	};
+	const failedCount = (c: HTMLElement) => (c.textContent?.match(/Failed/g) ?? []).length;
+	const known = (names: string[], checks: unknown[]) => {
+		const { healthChecksUnavailable: _u, ...rest } = failedBake(names);
+		return { ...rest, healthChecks: checks };
+	};
+	const unhealthy = { metadata: { name: 'error-rate', namespace: 'ns' }, status: { status: 'Unhealthy', lastErrorTime: new Date().toISOString() } };
+	test('failed load + failed bake WITH a snapshot: reads exactly as when the list is known unhealthy', () => {
+		const ref = render(DeploymentPipelineCard, { props: base(known(['error-rate'], [unhealthy])) as any });
+		const want = failedCount(ref.container);
+		ref.unmount();
+		const { container } = render(DeploymentPipelineCard, { props: base(failedBake(['error-rate'])) as any });
+		expect(failedCount(container)).toBe(want);
+	});
+	test('failed load + failed bake with NO snapshot: unknown, so the timer does not claim a timeout', () => {
+		const ref = render(DeploymentPipelineCard, { props: base(known([], [unhealthy])) as any });
+		const want = failedCount(ref.container); // reference: known-unhealthy (HC row Failed, timer not)
+		ref.unmount();
+		const { container } = render(DeploymentPipelineCard, { props: base(failedBake([])) as any });
+		expect(failedCount(container)).toBe(want);
+	});
 });

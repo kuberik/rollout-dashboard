@@ -210,7 +210,7 @@ const DENY: Array<{
 			// other echoed "Nothing gates…") with a next-step sentence that
 			// defines the word and a docs link out. Same tab, same exception.
 			'lib/components/RolloutNeighbourhood.svelte\ttext\tGates ·',
-			'routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte\ttext\t… A health check is failing, but there is no newer build for it to hold back. … A health check is still pending, but there is no newer build for it to hold back. … Its health checks are passing. … A gate — an approval, a deploy window, a dependency or a health check — holds a build until its rule passes. …',
+			'routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte\ttext\t… A health check is failing, but there is no newer build for it to hold back. … A health check is still pending, but there is no newer build for it to hold back. … … … … … Its health checks are passing. … A gate — an approval, a deploy window, a dependency or a health check — holds a build until its rule passes. …',
 			'routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte\ttitle\tBuilds of this rollout a gate is holding right now',
 			'routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte\ttext\tLearn about gates ›',
 			'routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte\ttext\tNo gates on this rollout',
