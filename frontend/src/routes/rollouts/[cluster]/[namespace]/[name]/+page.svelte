@@ -7,6 +7,7 @@
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 	import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
+	import { releasesOf } from '$lib/releases/registry.svelte';
 	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
 	import { sourceTreeUrl } from '$lib/source-url';
@@ -278,6 +279,8 @@
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
 	/** the controller's `ReleaseSourceRequired` message: this Rollout has no release source, so it has no releases to compare */
 	const noSource = $derived(releaseSourceRequiredMessage(rollout));
+	/** a rollout with a ReleaseSource whose catalogue has not arrived yet: say so, never "on the newest" */
+	const releasesLoading = $derived(releasesOf(rollout).state === 'loading');
 	// Failure panel collapse (2026-09-26, film critic 25): the panel used to
 	// vanish in one frame when the failure cleared, the page reflowing upward by
 	// its height. Svelte's own `transition:slide` runs on the Web Animations
@@ -3012,7 +3015,8 @@
 							id="status-change-version-btn"
 							data-tour="change-version"
 							class="btn btn-secondary max-lg:h-11"
-							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noSource}
+							title={noSource ? 'No release source, so there are no versions to choose from' : undefined}
 							onclick={() => {
 								if (isDashboardManagingWantedVersion) {
 									isPinVersionMode = false;
@@ -3788,8 +3792,9 @@
 						     stack, so it takes the stack's radius. -->
 							<!-- Glides when a candidate row leaves (a promote) — `$lib/smooth-height`. -->
 							<div
-								class="border-line bg-surface overflow-hidden rounded-md border"
+								class="border-line bg-surface overflow-hidden rounded-md border {noSource ? 'hidden' : ''}"
 								use:smoothHeight
+								data-newer-builds-card
 							>
 								<div>
 									<!-- Header -->
@@ -3834,8 +3839,8 @@
 									newest`, `All on the newest`).
 								-->
 										<div class="ml-auto flex items-center gap-2">
-											{#if noSource}
-												<span class="t-ui-sm text-fg-subtle" data-no-release-source>Releases unknown: no release source</span>
+											{#if releasesLoading}
+												<span class="t-ui-sm text-fg-subtle" data-releases-loading>Loading releases…</span>
 											{:else if newerBuilds.length > 0}
 												<!-- r34 tabs-nb r2 (#5): the baseline's rollup, back. Same count as the page
 												     header's "↑ N newer" (both read `newerBuilds.length`). -->
@@ -4663,10 +4668,8 @@
 												</li>
 											{/if}
 										</ul>
-									{:else if noSource}
-										<p class="t-meta text-fg-subtle px-4 py-3">
-											Without a release source there is no list of releases, so nothing here can be called newer or current.
-										</p>
+									{:else if releasesLoading}
+										<p class="t-meta text-fg-subtle px-4 py-3">Loading releases…</p>
 									{:else if newerBuilds.length === 0}
 										<!-- (2026-09-03, from the human: "when there's no available version,
 								     we don't display anything.") The header's rollup is the verdict;
@@ -4867,7 +4870,8 @@
 								type="button"
 								data-tour="change-version"
 								class="btn btn-primary"
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noSource}
+							title={noSource ? 'No release source, so there are no versions to choose from' : undefined}
 								onclick={() => {
 									if (isDashboardManagingWantedVersion) {
 										isPinVersionMode = false;

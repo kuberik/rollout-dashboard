@@ -126,9 +126,10 @@ export function stripUnsourced(r: Obj): Obj {
 }
 
 /** The detail GET's body with its Rollout in the served shape (no catalogue objects: the fleet list carries those). */
-export function sliceDetailRollout<B>(body: B): B {
+export function sliceDetailRollout<B>(body: B, stamp: (r: Obj) => Obj = (r) => r): B {
 	const b = body as Obj;
 	if (!b || typeof b !== 'object' || !b.rollout) return body;
-	const rollout = canConvert(b.rollout) ? convertRollout(b.rollout).rollout : stripUnsourced(b.rollout);
+	// Like the list, the detail response names its source cluster (the real backend stamps both the same way).
+	const rollout = stamp(canConvert(b.rollout) ? convertRollout(b.rollout).rollout : stripUnsourced(b.rollout));
 	return { ...b, rollout } as B;
 }

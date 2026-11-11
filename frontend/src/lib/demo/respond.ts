@@ -73,6 +73,9 @@ import {
 } from './deps-story';
 import { mkHwEnvironment } from './mock-promote';
 
+/** the detail response, in the served shape and stamped with its source cluster like the list items */
+const sliceDetailRollout2 = <B>(body: B): B => sliceDetailRollout(body, stampSourceCluster as never);
+
 /** Pushes one already-framed chunk (SSE frames include their own `\n\n`). */
 export type MockSend = (chunk: string) => void;
 
@@ -648,7 +651,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)$/);
 		if (m) {
 			const [, rNs, rName] = m;
-			if (hasFixture(rNs, rName)) return json(sliceDetailRollout(getDetail(rNs, rName)));
+			if (hasFixture(rNs, rName)) return json(sliceDetailRollout2(getDetail(rNs, rName)));
 			const detail = mockDepDetails[`${rNs}/${rName}`] as Record<string, unknown> | undefined;
 			// A rollout the dependencies story has moved is served LIVE, its
 			// promotion chain read from the live histories too.
@@ -656,7 +659,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				const rollouts = getScenarioDepRollouts() as { metadata?: { namespace?: string; name?: string } }[];
 				const live = rollouts.find((r) => r.metadata?.namespace === rNs && r.metadata?.name === rName);
 				const env = detail.environment as { status?: Record<string, unknown> } | undefined;
-				return json(sliceDetailRollout({
+				return json(sliceDetailRollout2({
 					...detail,
 					rollout: live ?? detail.rollout,
 					...(env
@@ -682,10 +685,10 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				const clone = structuredClone(detail) as { rollout?: unknown };
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				freshenStaticRollout(clone.rollout as any);
-				return json(sliceDetailRollout(clone));
+				return json(sliceDetailRollout2(clone));
 			}
 			const listRollout = findListRollout(rNs, rName);
-			if (listRollout) return json(sliceDetailRollout(deriveGenericDetail(listRollout, findListEnvironment(rNs))));
+			if (listRollout) return json(sliceDetailRollout2(deriveGenericDetail(listRollout, findListEnvironment(rNs))));
 		}
 	}
 
