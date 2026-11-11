@@ -75,7 +75,7 @@ export { pipelineSegs, rowMeter, reachMeter, appMeter, failingAt, failStep, wors
 export type { Seg, Meter, ReachTone } from '$lib/components/home/roster/v09/rowstate';
 export type { HomeState } from '$lib/components/home/sketch/home-data';
 
-/** roster-data (ADD ONLY: the lab versions still import it) spells the approval wait "Waits for [your] approval". This is the one place that vocabulary is translated
+/** roster-data (the lab versions still import it) spells the approval wait "Waits for [your] approval". This is the one place that vocabulary is translated
  *  into the product's (state-words.ts), so no page prints or parses the old string; pages read `TApp.approval` / `Hold.approval` instead of matching text. */
 const rosterWait = (t: string): string => t.replace(/^Waits for (your )?approval/, (_m, y: string | undefined) => sharedWord('approval', { yours: !!y })!);
 
