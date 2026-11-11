@@ -8,12 +8,13 @@
 //           ?calm / ?quiet scenario cookie of one state never leaks into the next.
 // env: FROZEN=1   compare ages against the fixture's capturedAt instead of the clock. Only for a capture that really is frozen; the mock dates every response
 //                 relative to the request, so the default is the live clock.
-//      NO_FLEET=1, NO_ENVD=1, NO_CHGD=1, NO_MULTI=1, FLEET_ONLY=1   skip or isolate a check group
+//      NO_FLEET=1, NO_ENVD=1, NO_CHGD=1, NO_MULTI=1, NO_WAITCLOCK=1, NO_V2=1   skip a check group; FLEET_ONLY=1 isolates the fleet checks; V2_ONLY=1 runs only the v2 group (pins, behind, words)
 // exit code: 1 on any mismatch, with one line per mismatch.
 // contract: see the header of src/lib/components/new/data.ts.
 import { chromium } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+if (process.env.V2_ONLY) Object.assign(process.env, { FLEET_ONLY: '1', NO_FLEET: '1', NO_ENVD: '1', NO_CHGD: '1', NO_MULTI: '1', NO_WAITCLOCK: '1' });
 const base = process.argv[2] || 'https://127.0.0.1:5173';
 const pages = (process.argv[3] || 'rollouts,changes,environments,apps,inbox').split(',');
 const states = (process.argv[4] || 'incident,calm,quiet').split(',');
@@ -45,8 +46,8 @@ async function useState(state) {
 	});
 }
 await useState('incident');
-/* preflight: the incident fixture must be loaded. A server without it has no approval waits, so every fleet check would pass on "approval counts = 0". */
-if (states.includes('incident')) {
+/* preflight (always, whatever the states: a calm-only run on a server without the fixture must fail loudly too): the incident fixture must be loaded. A server without it has no approval waits, so every fleet check would pass on "approval counts = 0". */
+{
 	const pp = await ctx.newPage();
 	let n = 0;
 	try {
@@ -76,6 +77,12 @@ if (states.includes('incident')) {
 	}
 	await pp.close();
 }
+/* KNOWN open product findings, found by this script and reported in the lane that added it (batch4 truth-v2). They print as "KNOWN FINDING" and do not fail the run until the product decides;
+   STRICT=1 makes them fail. A finding leaves this list when the product is fixed (the entry then matches nothing and the run says so). */
+const KNOWN = [
+	{ id: 'pin-state-attr', re: /^pin checkout-api checkout-api-prod-af-south-1: \/apps\/checkout-api place row carries state "rolled-back"/, note: 'the app page words the pinned place "Held by the pin" but its data-truth-state is rolled-back; /rollouts says held-by-rule' },
+	{ id: 'ledger-lag-skips-failed', re: /^behind \/apps\/checkout-api 4\.40\.0-40: /, note: 'the Builds ledger counts 4 builds ahead of 4.40.0-40, the catalogue order has 5 (4.41.0-41 failed at this place and is left out of the ledger count)' }
+];
 const problems = [];
 const bad = (where, msg) => problems.push(`${where}: ${msg}`);
 
@@ -500,11 +507,7 @@ async function extra(where0, data, needs) {
 	const failedCards = data.att.filter((a) => a.group === 'failed').length,
 		yoursCards = data.att.filter((a) => a.group === 'approval').length;
 	const failing = failedCards + (data.banner ? 1 : 0);
-	if (
-		num(/(\d+) failing/, data.attRollup) !==
-			(data.attRollup ? failing - (data.banner ? 0 : 0) : 0) &&
-		(data.att.length || data.banner)
-	)
+	if (num(/(\d+) failing/, data.attRollup) !== (data.attRollup ? failing : 0) && (data.att.length || data.banner))
 		bad(
 			where0,
 			`counts: Attention says "${data.attRollup}", banner + cards are ${failing} failing / ${yoursCards} to approve`
@@ -787,9 +790,114 @@ const closeAge = (a, b) => {
 	);
 };
 const hasAge = (text, age) => new RegExp(`(?<![\\w.-])${escRe(age)}(?![\\w.])`).test(text);
-/* ── checks A (the viewer's action per row per page = data.ts actionFor), B (approval dwell = ago(buildInQuestionFacts.since) beside buildInQuestionFacts.build; a checking
-      place's age = the tab's CHECKING age), C (every "N to approve" / "N waiting for approval" = fleetCounts(state).places.approval). The app's own modules are
-      imported INTO the page from the vite server, so the expectations are the model's, the observations the DOM's. ── */
+/* ── the oracle: expectations derived HERE from the raw /api/rollouts answer (the fixture's own timestamps, gates, catalogue), never from the app's models (data.ts waitClock / rollouts /
+   buildInQuestionFacts). The mock dates every response relative to the moment it is asked, so an age is "the instant the answer was asked − a raw timestamp"; the page and the oracle agree to the
+   minute. THE HOLD-CLOCK RULE (data.ts holdSince documents the same rule): the hold of an approval wait began when the OLDEST build the approval gate still refuses ARRIVED AT ITS GATE, that is the later
+   of the build's creation and the first moment a LOWER tier of the same app deployed it (no lower tier: its creation; a lower tier that never ran it: no hold can be told). A build refused by a
+   promotion gate waits for that step, not here, so only builds every promotion gate allows count; when none qualifies the refused builds all do. A row or card covering several places shows the
+   LONGEST wait among them (the oldest held place). A place whose newest history entry is still InProgress is checking: it has no hold yet. ── */
+const FMT_AGE = (n) => {
+	const s = Math.max(0, Math.floor(n));
+	return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
+};
+/* a printed age equals the oracle's to the minute: the page read its answer a few seconds before the oracle read its own */
+const ageIs = (printed, ageSec) => [-120, -60, 0, 60, 120].some((d) => FMT_AGE(ageSec + d) === (printed ?? '').trim());
+const TIER_RANK = { dev: 0, test: 1, staging: 2, prod: 3 };
+const placeKey = (href) => {
+	const m = /^\/rollouts\/[^/]+\/([^/?#]+)\/([^/?#]+)/.exec(href ?? '');
+	return m ? `${m[1]}/${m[2]}` : null;
+};
+/* the words of a place's state, and the state each one names. Unknown words are reported, so a new word has to be added here on purpose. */
+function stateOfWord(word) {
+	const w = word.trim();
+	if (/^(Failing|Failed)\b/.test(w)) return 'failed';
+	if (/^Deploying\b/.test(w)) return 'deploying';
+	if (/^Checking\b/.test(w)) return 'checking';
+	if (/^(Needs your approval|Waiting for approval)\b/.test(w)) return 'awaiting-approval';
+	if (/^(Waits on|Waits for|Held by|Held\b)/.test(w)) return 'held-by-rule';
+	if (/^(Healthy|Up to date|At rest|\d+ (builds? )?behind|Rolled back)\b/.test(w)) return 'healthy';
+	return undefined;
+}
+const yoursByState = new Map();
+async function loadOracle() {
+	const at = Date.now();
+	const res = await ctx.request.get(`${base}/api/rollouts`);
+	if (!res.ok()) throw new Error(`GET /api/rollouts answered ${res.status()}`);
+	return holdOracle(await res.json(), at);
+}
+function holdOracle(raw, at) {
+	const tagOf = (v) => v?.tag ?? v?.version ?? v?.revision ?? '';
+	const tierOf = (r) =>
+		/^(dev|test|staging|prod)/.exec(r.metadata.labels?.environment ?? '')?.[1] ??
+		/-(dev|test|staging|prod)(-|$)/.exec(r.metadata.namespace)?.[1] ??
+		null;
+	const places = (raw.rollouts?.items ?? []).map((r) => ({
+		key: `${r.metadata.namespace}/${r.metadata.name}`,
+		ns: r.metadata.namespace,
+		app: r.metadata.name,
+		tier: tierOf(r),
+		cluster: r.metadata.annotations?.['rollout-dashboard.kuberik.com/source-cluster'] ?? 'default',
+		spec: r.spec ?? {},
+		st: r.status ?? {}
+	}));
+	const arrival = (p, c) => {
+		const lower = places.filter((q) => q.app === p.app && TIER_RANK[q.tier] < TIER_RANK[p.tier]);
+		if (!lower.length) return c.created ?? null;
+		const ts = lower.flatMap((q) => (q.st.history ?? []).filter((h) => tagOf(h.version) === c.tag).map((h) => h.timestamp)).sort();
+		return ts.length ? (c.created && c.created > ts[0] ? c.created : ts[0]) : null;
+	};
+	const groups = new Map();
+	for (const p of places) {
+		const gates = p.st.gates ?? [];
+		const appr = gates.filter((g) => g.kind === 'approval');
+		const promo = gates.filter((g) => g.kind === 'promotion' && g.allowedVersions != null);
+		const cands = p.st.candidates ?? p.st.releaseCandidates ?? [];
+		const refused = cands.filter((c) => appr.some((g) => !(g.allowedVersions ?? []).includes(c.tag)));
+		if (!appr.length || !refused.length || p.tier == null) continue;
+		const here = refused.filter((c) => promo.every((g) => g.allowedVersions.includes(c.tag)));
+		const arrivals = (here.length ? here : refused).map((c) => arrival(p, c)).filter(Boolean).sort();
+		const gk = `${p.app}|${p.tier}`;
+		if (!groups.has(gk)) groups.set(gk, { app: p.app, tier: p.tier, keys: [], clocks: new Map(), checking: true });
+		const g = groups.get(gk);
+		g.keys.push(p.key);
+		if (p.st.history?.[0]?.bakeStatus === 'InProgress') continue;
+		g.checking = false;
+		if (arrivals[0]) g.clocks.set(p.key, (at - Date.parse(arrivals[0])) / 1000);
+	}
+	for (const g of groups.values()) {
+		const secs = [...g.clocks.values()];
+		g.ageSec = secs.length ? Math.max(...secs) : null; /* the longest wait = the oldest held place */
+		g.wait = g.ageSec == null ? null : FMT_AGE(g.ageSec);
+		g.multi = secs.length > 1 && new Set(secs.map(FMT_AGE)).size > 1;
+		g.perPlace = [...g.clocks].map(([k, v]) => `${k.split('/')[0]} ${FMT_AGE(v)}`).join(', ');
+	}
+	/* the catalogue: a source's releases in sequence order; a place is N behind when N releases follow its current version */
+	const cat = new Map();
+	for (const s of raw.releaseSlices?.items ?? []) {
+		const k = `${s.metadata.namespace}/${s.source ?? s.metadata.labels?.['kuberik.com/release-source']}`;
+		cat.set(k, [...(cat.get(k) ?? []), ...(s.releases ?? [])]);
+	}
+	for (const v of cat.values()) v.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+	const behind = (p) => {
+		const rels = cat.get(`${p.ns}/${p.spec.releaseSourceRef?.name}`);
+		const i = rels ? rels.findIndex((x) => (x.tag ?? x.version) === p.st.currentVersion || x.version === p.st.currentVersion) : -1;
+		return i < 0 ? null : rels.length - 1 - i;
+	};
+	return {
+		groups,
+		places,
+		pins: places.filter((p) => p.spec.wantedVersion),
+		groupOf: (href) => [...groups.values()].find((g) => g.keys.includes(placeKey(href))) ?? null,
+		behindOf: (app, tier) => places.filter((p) => p.app === app && p.tier === tier).map(behind).filter((n) => n != null),
+		behind,
+		catalogue: (p) => cat.get(`${p.ns}/${p.spec.releaseSourceRef?.name}`)
+	};
+}
+/* ── checks A (the viewer's action per row per page = data.ts actionFor), B (an approval wait's clock = the hold clock derived HERE from the raw fixture timestamps by the
+      hold-clock rule, see holdOracle(); NOT D.waitClock / D.rollouts; a row or card covering several places prints the LONGEST wait; a checking place's age = the tab's CHECKING age),
+      C (the env pages' to-approve figures = fleetCounts(state).places.approval; every "(N for you)" = the places of the rows that say "Needs your approval"),
+      W (state word = state for every row, card and tile), L (every "N behind" = the catalogue order). A and C's fleet total import the app's modules INTO the page from the vite
+      server; B, W and L read the raw /api/rollouts answer of the same server and never the app's models. ── */
 async function fleetChecks(statesToCheck) {
 	const PAGES = ['/rollouts', '/environments', '/envs/prod', '/apps', '/', '/changes'];
 	for (const state of statesToCheck) {
@@ -845,21 +953,8 @@ async function fleetChecks(statesToCheck) {
 						})
 						.filter((b) => !b.ok);
 					const txt = main.innerText.replace(/\s+/g, ' ');
-					const counts = [
-						...txt.matchAll(
-							/(?<![#\w])(\d+)\s+(?:places?\s+)?(?:to approve|waiting for approval)/gi
-						)
-					].map((m) => +m[1]);
-					{
-						/* Attention's rollup "N to approve" counts the viewer's asks (cards), not places; rolloutsText checks it against the cards */ const at =
-							/(\d+) to approve/.exec(
-								document.querySelector('#attention [data-rollup]')?.textContent ?? ''
-							);
-						if (at) {
-							const i = counts.indexOf(+at[1]);
-							if (i >= 0) counts.splice(i, 1);
-						}
-					}
+					/* every "(N for you)" the page prints: the places of the rows that say "Needs your approval" (C2) */
+					const forYou = [...txt.matchAll(/\((\d+) for you\)/g)].map((m) => +m[1]);
 					const want = D.fleetCounts(st).places.approval;
 					/* /environments lists one row per place group, each with its own "N to approve" cell; only page-level figures equal the fleet, the cells must SUM to it */
 					const toN = (el) => {
@@ -888,19 +983,6 @@ async function fleetChecks(statesToCheck) {
 								}))
 							}
 						: null;
-					const dwell = rows
-						.filter((x) => x.group === 'approval')
-						.map((x) => {
-							const wb = D.buildInQuestionFacts(x);
-							return {
-								app: x.app,
-								href: norm(x.href),
-								stillChecking: !!x.stillChecking,
-								build: wb?.build ?? null,
-								wait: D.ago(D.waitClock(x, st)),
-								own: D.ago(x.since)
-							};
-						});
 					const els = [
 						...main.querySelectorAll(
 							'[data-truth-kind="rollout"],[data-truth-kind="app"],[data-truth-kind="attention"]'
@@ -917,9 +999,27 @@ async function fleetChecks(statesToCheck) {
 						text: el.innerText.replace(/\s+/g, ' ').trim(),
 						since: el.dataset.truthSince,
 						wb: el.dataset.truthWaitBuild,
+						word:
+							el.querySelector('[data-state-word],[data-word]')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
 						age: el.querySelector('.lr-age')?.textContent.trim() ?? ''
 					}));
-					return { A, counts, want, dwell, els, envs };
+					/* W: every element that carries a state, with the word it prints for it (row [data-state-word], card [data-word], tile data-truth-fact) */
+					const words = [...main.querySelectorAll('[data-truth-state]')].map((el) => ({
+						kind: el.dataset.truthKind ?? '',
+						app: el.dataset.truthApp ?? '',
+						href: norm(el.dataset.truthHref),
+						state: el.dataset.truthState,
+						word:
+							el.querySelector('[data-state-word],[data-word]')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+						fact: el.dataset.truthFact ?? ''
+					}));
+					/* L: every "N behind" a tile prints, with the app and the environment cell it sits in */
+					const lags = [...main.querySelectorAll('.env-lag')].map((e) => ({
+						app: e.closest('[data-truth-app]')?.dataset.truthApp ?? '',
+						tier: (e.closest('.env-cell')?.innerText ?? '').trim().split(/\s+/)[0],
+						text: e.textContent.replace(/\s+/g, ' ').trim()
+					}));
+					return { A, forYou, want, els, envs, words, lags };
 				}, state)
 				.catch((e) => ({ error: String(e.message).slice(0, 120) }));
 			await p.close();
@@ -987,28 +1087,51 @@ async function fleetChecks(statesToCheck) {
 				console.log(
 					`${where0}: C envs: rollup ${E.rollup}, header ${E.header}, tags ${tagSum}, row cells sum ${cellSum} = fleet ${w}`
 				);
-			} else
-				for (const n of r.counts) {
-					/* /envs/<name> is ONE environment: its counts are per-environment (a column, a neighbour tile), so they may not exceed the fleet's; every fleet-wide page must print exactly it */ const perEnv =
-						path.startsWith('/envs/');
-					if (perEnv ? n > r.want : n !== r.want)
-						bad(
-							where0,
-							`C: an approval count prints ${n}, fleetCounts().places.approval is ${r.want}${perEnv ? ' (per-environment page: may not exceed it)' : ''}`
-						);
+			}
+			/* C: the only fleet-wide approval figure a non-environment page prints is the Attention rollup "N to approve" (the viewer's asks, checked against the cards in rolloutsText); the old
+			   "N to approve / N waiting for approval" scan matched no text in any state, so it is gone. What /environments and /envs/<tier> really print is "(N for you)": the places of the rows that
+			   say "Needs your approval", counted here from the oracle's place sets (C2). */
+			const O = await loadOracle().catch((e) => {
+				bad(where0, `oracle: ${String(e.message).slice(0, 120)}`);
+				return null;
+			});
+			if (!O) continue;
+			if (path === '/rollouts') {
+				const yours = { total: 0, byTier: {} };
+				for (const x of r.els) {
+					const g = x.kind === 'rollout' && x.group === 'approval' && x.word === 'Needs your approval' ? O.groupOf(x.href) : null;
+					if (!g) continue;
+					yours.total += g.keys.length;
+					yours.byTier[g.tier] = (yours.byTier[g.tier] ?? 0) + g.keys.length;
 				}
-			for (const d of r.dwell) {
-				if (!d.build) continue;
+				yoursByState.set(state, yours);
+			}
+			const yours = yoursByState.get(state);
+			let forYouChecked = 0;
+			for (const n of r.forYou) {
+				if (!yours) {
+					bad(where0, `C2: "(${n} for you)" printed but /rollouts was not read first in state ${state}`);
+					continue;
+				}
+				forYouChecked++;
+				const want = path.startsWith('/envs/') ? (yours.byTier[path.slice(6)] ?? 0) : null;
+				if (want != null ? n !== want : n !== yours.total && !Object.values(yours.byTier).includes(n))
+					bad(
+						where0,
+						`C2: "(${n} for you)" but the rows saying "Needs your approval" cover ${yours.total} places (${JSON.stringify(yours.byTier)})`
+					);
+			}
+			/* B: an approval wait has ONE clock: the hold clock, derived from the raw fixture timestamps (holdOracle). A row or card that covers several places shows the LONGEST wait of them. */
+			let waitsChecked = 0;
+			for (const g of O.groups.values()) {
+				const clocks = [...g.clocks.values()];
 				for (const e of r.els.filter((x) =>
-					x.kind === 'rollout'
-						? x.href === d.href
-						: (x.kind === 'app' || (x.kind === 'attention' && x.group === 'approval')) &&
-							x.app === d.app
+					x.kind === 'app' ? x.app === g.app : (x.kind === 'rollout' || (x.kind === 'attention')) && x.group === 'approval' && g.keys.includes(placeKey(x.href))
 				)) {
-					/* one clock per wait: a row's age column is the HOLD clock (waitClock), said once. A still-checking place has no hold yet, so no dwell is expected on its row or tile; its row prints the check's own age. */
-					if (d.stillChecking) {
+					/* a still-checking place has no hold yet, so no dwell is expected on its row or tile; its row prints the check's own age. */
+					if (g.checking) {
 						if (e.kind === 'rollout') {
-							const tt = await tab(d.href);
+							const tt = await tab(e.href);
 							const tage = (tt.age || '').replace(/\s*ago$/, '');
 							if (
 								tage &&
@@ -1016,53 +1139,51 @@ async function fleetChecks(statesToCheck) {
 									closeAge(m[0], tage)
 								)
 							)
-								bad(
-									where0,
-									`B: ${d.app} checking row prints no tab CHECKING age "${tage}": ${e.text.slice(0, 90)}`
-								);
+								bad(where0, `B: ${g.app} checking row prints no tab CHECKING age "${tage}": ${e.text.slice(0, 90)}`);
 						}
 						continue;
 					}
+					if (g.ageSec == null) continue; /* no arrival can be told (the build waits for a promotion step): no hold clock to compare */
+					waitsChecked++;
 					if (e.kind === 'attention') {
 						/* the Attention card says "for <hold clock>" in its own sentence */
 						const m = /\bfor (\d+\s?(?:s|m|h|d|w|mo))\b/.exec(e.text);
-						if (d.wait && !m)
-							bad(
-								where0,
-								`B: ${d.app} Attention card prints no wait clock, the hold clock is "${d.wait}": ${e.text.slice(0, 110)}`
-							);
-						else if (m && !closeAge(m[1], d.wait))
-							bad(
-								where0,
-								`B: ${d.app} Attention card says "for ${m[1]}" but the hold clock is "${d.wait}": ${e.text.slice(0, 110)}`
-							);
-						continue;
-					}
-					if (e.lr) {
-						if (d.wait && !closeAge(e.age, d.wait))
-							bad(
-								where0,
-								`B: ${d.app} row age column "${e.age}" is not the hold clock "${d.wait}": ${e.text.slice(0, 110)}`
-							);
+						if (!m)
+							bad(where0, `B: ${g.app} Attention card prints no wait clock, the hold clock is "${g.wait}": ${e.text.slice(0, 110)}`);
+						else if (!ageIs(m[1], g.ageSec))
+							bad(where0, `B: ${g.app} Attention card says "for ${m[1]}" but the hold clock is "${g.wait}"${g.multi ? ` (oldest of ${clocks.length} places: ${g.perPlace})` : ''}: ${e.text.slice(0, 110)}`);
+					} else if (e.kind === 'rollout' && e.lr) {
+						if (!ageIs(e.age, g.ageSec))
+							bad(where0, `B: ${g.app} row age column "${e.age}" is not the hold clock "${g.wait}"${g.multi ? ` (oldest of ${clocks.length} places: ${g.perPlace})` : ''}: ${e.text.slice(0, 110)}`);
 					} else if (e.kind === 'rollout') {
-						if (!buildAgeAny(e.text, d.build, d.wait))
-							bad(
-								where0,
-								`B: ${d.app} row should print "${d.build}" + "[waiting] ${d.wait}": ${e.text.slice(0, 110)}`
-							);
-					} else if (
-						d.wait &&
-						/\bNEXT\b/.test(e.text) &&
-						(!e.text.includes(d.build) || !hasAge(e.text, d.wait))
-					)
-						bad(
-							where0,
-							`B: ${d.app} tile should print "${d.build}" + hold clock "${d.wait}": ${e.text.slice(0, 110)}`
-						);
+						if (!e.wb || !buildAgeAny(e.text, e.wb, g.wait))
+							bad(where0, `B: ${g.app} row should print "${e.wb}" + "[waiting] ${g.wait}": ${e.text.slice(0, 110)}`);
+					} else if (/\bNEXT\b/.test(e.text) && (!e.wb || !e.text.includes(e.wb) || !hasAge(e.text, g.wait)))
+						bad(where0, `B: ${g.app} tile should print "${e.wb}" + hold clock "${g.wait}": ${e.text.slice(0, 110)}`);
 				}
 			}
+			/* W: the state word names the state (Deploying never reads "Failing", an approval never reads "Held") on every row, card and tile of every page */
+			let wordsChecked = 0;
+			for (const w of r.words) {
+				const said = (w.word || w.fact).trim();
+				if (!said) continue;
+				wordsChecked++;
+				const implied = stateOfWord(said);
+				if (implied === undefined)
+					bad(where0, `W: ${w.app} (${w.state}) prints "${said}", which is not a state word the product has`);
+				else if (implied !== w.state && !(w.state === 'checking' && implied === 'deploying'))
+					bad(where0, `W: ${w.app} ${w.href} state is ${w.state} but its word is "${said}" (a ${implied} word)`);
+			}
+			/* L: "N behind" = the place's distance from the newest release in the source's catalogue order (releaseSlices by sequence) */
+			for (const l of r.lags) {
+				const n = +(/(\d+)/.exec(l.text)?.[1] ?? NaN);
+				const have = O.behindOf(l.app, l.tier);
+				if (!have.length) continue; /* no catalogue to count against */
+				if (!have.includes(n))
+					bad(where0, `L: ${l.app} ${l.tier} says "${l.text}" but the catalogue order puts its places ${have.join(' / ')} behind`);
+			}
 			console.log(
-				`${where0}: A/B/C checked (${r.A.length} action mismatches, ${r.counts.length} approval counts = ${r.want})`
+				`${where0}: A/B/C/W/L checked (${r.A.length} action mismatches; ${waitsChecked} wait clocks vs the raw fixture, ${forYouChecked} "for you" counts, ${wordsChecked} state words, ${r.lags.length} "N behind")`
 			);
 		}
 	}
@@ -1227,53 +1348,43 @@ async function multiServiceChecks() {
 	);
 	await p.close();
 }
-/* one wait, one clock (the hold clock, D.waitClock): the /rollouts row's age column (fleetChecks B), the app page's place row and the change page's place row print the same figure for the same approval wait.
-   The build's own age is printed, labelled, on the tab's Newer builds list and is not compared here. */
+/* one wait, one clock (the hold clock, derived from the raw fixture: holdOracle): the /rollouts row's age column and the Attention card (fleetChecks B), every PLACE row of the app page and the change page's place row print the same figure
+   for the same approval wait. The app page lists places one by one, so each prints that place's OWN clock (payments-core: sa-east 1d, the other four 4h); a folded row shows the longest. The build's own age is printed, labelled, on the tab's Newer builds list and is not compared here. */
 const holdClock = new Map();
 async function waitClockChecks() {
+	let O;
+	try {
+		O = await loadOracle();
+	} catch (e) {
+		return bad('waitclock', `could not read the raw fixture (${String(e.message).slice(0, 120)}): nothing was checked`);
+	}
+	const groups = [...O.groups.values()].filter((g) => !g.checking && g.clocks.size);
+	if (!groups.length) return bad('waitclock', 'the raw fixture has no approval waits, so nothing was checked');
 	const p = await ctx.newPage();
-	await p.goto(`${base}/rollouts`, { waitUntil: 'load' });
-	await p.waitForSelector('li[data-truth-kind=rollout]', { timeout: 60000 }).catch(() => {});
-	await p.waitForTimeout(1500);
-	const waits = await p
-		.evaluate(async () => {
-			const D = await import('/src/lib/components/new/data.ts');
-			return D.rollouts('incident')
-				.rows.filter((r) => r.group === 'approval' && !r.stillChecking)
-				.map((r) => ({
-					app: r.app,
-					tier: r.tier,
-					href: r.href.split('?')[0].replace(/\/$/, ''),
-					/* a PLACE row covers one place: a folded row (5 of 6 regions) shows the longest wait on /rollouts, but the app page's row for its first place prints that place's own clock */
-					wait: D.ago(D.waitClock({ ...r, hrefs: undefined }, 'incident'))
-				}));
-		})
-		.catch(() => []);
-	if (!waits.length) bad('waitclock', 'no approval waits found to check');
-	for (const w of waits) {
-		holdClock.set(`${w.app}|${w.tier}`, w.wait);
-		await p.goto(`${base}/apps/${w.app}`, { waitUntil: 'load' });
+	let n = 0;
+	for (const g of groups) {
+		holdClock.set(`${g.app}|${g.tier}`, g.wait);
+		await p.goto(`${base}/apps/${g.app}`, { waitUntil: 'load' });
 		await p.waitForSelector('[data-place-row]', { timeout: 30000 }).catch(() => {});
 		await p.waitForTimeout(1000);
-		const age = await p.evaluate(
-			(h) =>
-				[...document.querySelectorAll('li[data-truth-kind=rollout]')]
-					.find((l) => (l.dataset.truthHref ?? '').replace(/\/$/, '') === h)
-					?.querySelector('.pl-since')
-					?.textContent.trim() ?? null,
-			w.href
-		);
-		const tag = `waitclock /apps/${w.app} ${w.tier}`;
-		if (age == null) bad(tag, 'the app page has no place row for this approval wait');
-		else if (!closeAge(age, w.wait))
-			bad(
-				tag,
-				`place row prints "${age}" but the hold clock is "${w.wait}" (the hold clock, as printed on /rollouts)`
+		for (const [key, ageSec] of g.clocks) {
+			const age = await p.evaluate(
+				(k) =>
+					[...document.querySelectorAll('li[data-truth-kind=rollout]')]
+						.find((l) => (l.dataset.truthHref ?? '').split('?')[0].endsWith(`/${k}`))
+						?.querySelector('.pl-since')
+						?.textContent.trim() ?? null,
+				key
 			);
+			const tag = `waitclock /apps/${g.app} ${key.split('/')[0]}`;
+			n++;
+			if (age == null) bad(tag, 'the app page has no place row for this approval wait');
+			else if (!ageIs(age, ageSec))
+				bad(tag, `place row prints "${age}" but the hold clock derived from the fixture's timestamps is "${FMT_AGE(ageSec)}"`);
+		}
+		if (g.multi) console.log(`waitclock: ${g.app} ${g.tier} covers ${g.keys.length} places with different clocks (${g.perPlace}); a folded row must print the longest, "${g.wait}"`);
 	}
-	console.log(
-		`waitclock: ${waits.length} approval waits, app place rows compared with the hold clock`
-	);
+	console.log(`waitclock: ${groups.length} approval waits, ${n} place rows compared with the clock derived from the raw fixture`);
 	await p.close();
 }
 if (process.env.NO_WAITCLOCK !== '1') {
@@ -1284,8 +1395,129 @@ if (process.env.NO_MULTI !== '1') {
 	await useState('incident');
 	await multiServiceChecks();
 }
+/* ── v2 checks. P: the pinned place (spec.wantedVersion). A pin is a HOLD: /rollouts lists its place under Held and says "Held by the pin"; its Overview says "Held by the pin" on every newer build it refuses;
+      its Gates tab offers "Clear pin" and never an approval; the app page's environment cell counts it ("Held 3 of 5 regions" counts the pin among the 3).
+   N: every "N behind" on an app page's place rows = the distance from the newest release in the source's catalogue order. ── */
+async function v2Checks() {
+	let O;
+	try {
+		O = await loadOracle();
+	} catch (e) {
+		return bad('v2', `could not read the raw fixture (${String(e.message).slice(0, 120)}): nothing was checked`);
+	}
+	const p = await ctx.newPage();
+	const read = async (path, settle = 2500) => {
+		await p.goto(base + path, { waitUntil: 'load' });
+		await p.waitForFunction(() => (document.querySelector('main')?.innerText || '').trim().length > 80, null, { timeout: 30000 }).catch(() => {});
+		await p.waitForTimeout(settle);
+	};
+	if (!O.pins.length) bad('pin', 'the raw fixture has no pinned place (spec.wantedVersion), so the pinned-place case is not exercised');
+	await read('/rollouts', 3500);
+	for (const g of await p.locator('[data-show-all][aria-expanded=false]').all()) await g.click({ timeout: 1500 }).catch(() => {});
+	await p.locator('[data-rest-fold]').first().click({ timeout: 1500 }).catch(() => {});
+	const rows = await p.evaluate(() =>
+		[...document.querySelectorAll('li[data-truth-kind=rollout]')].map((l) => ({
+			href: (l.dataset.truthHref ?? '').split('?')[0],
+			group: l.dataset.truthGroup,
+			state: l.dataset.truthState,
+			section: l.closest('[data-group]')?.dataset.group ?? '',
+			word: l.querySelector('[data-state-word]')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+			approve: [...l.querySelectorAll('a.btn, button.btn')].some((b) => /^(Approve|Review approval)/.test(b.textContent.trim()))
+		}))
+	);
+	for (const pin of O.pins) {
+		const tag = `pin ${pin.app} ${pin.key.split('/')[0]}`;
+		const href = `/rollouts/${pin.cluster}/${pin.key}`;
+		const row = rows.find((r) => placeKey(r.href) === pin.key);
+		if (!row) bad(tag, '/rollouts has no row for the pinned place');
+		else {
+			if (row.group !== 'held' || row.state !== 'held-by-rule' || row.section !== 'Held')
+				bad(tag, `/rollouts lists the pin as group "${row.group}" state "${row.state}" in section "${row.section}", a pin is a hold (Held)`);
+			if (row.word !== 'Held by the pin') bad(tag, `/rollouts says "${row.word}" for the pin, not "Held by the pin"`);
+			if (row.approve) bad(tag, '/rollouts offers an approval on a pinned place');
+		}
+		const base0 = row?.href ?? href;
+		await read(`${base0}/gates`, 3000);
+		const gt = await p.evaluate(() => ({
+			text: document.querySelector('main')?.innerText ?? '',
+			btns: [...document.querySelectorAll('main button, main a.btn')].map((b) => b.textContent.trim()).filter(Boolean)
+		}));
+		if (!gt.btns.includes('Clear pin')) bad(tag, `Gates tab offers no "Clear pin" (buttons: ${gt.btns.join(' | ') || 'none'})`);
+		const appr = gt.btns.filter((b) => /^(Approve|Review approval)/.test(b));
+		if (appr.length) bad(tag, `Gates tab offers "${appr.join('", "')}" on a pinned place, a pin is cleared, never approved`);
+		if (/Needs your approval|Waiting for approval/.test(gt.text)) bad(tag, 'Gates tab words the pin as an approval wait');
+		await read(base0, 3000);
+		const ov = await p.evaluate(() => ({
+			text: document.querySelector('main')?.innerText ?? '',
+			btns: [...document.querySelectorAll('main button, main a.btn')].map((b) => b.textContent.trim()).filter(Boolean)
+		}));
+		/* the builds the pin refuses: newer than the pinned version in the catalogue order, and not a build that already failed here */
+		const rels = (O.catalogue(pin) ?? []);
+		const at = rels.findIndex((x) => (x.tag ?? x.version) === pin.st.currentVersion);
+		const failedHere = new Set((pin.st.history ?? []).filter((h) => h.bakeStatus === 'Failed').map((h) => h.version?.tag ?? h.version?.version));
+		const want = (pin.st.candidates ?? []).filter((c) => at >= 0 && rels.findIndex((x) => x.tag === c.tag) > at && !failedHere.has(c.tag)).length;
+		const got = (ov.text.match(/Held by the pin/g) ?? []).length;
+		if (!want) bad(tag, 'the fixture pin refuses no build, so "Held by the pin" is not exercised');
+		else if (got !== want) bad(tag, `Overview says "Held by the pin" on ${got} builds, the pin refuses ${want} (newer than ${pin.st.currentVersion}, not failed here)`);
+		if (!ov.btns.includes('Clear pin')) bad(tag, 'Overview offers no "Clear pin"');
+		if (ov.btns.some((b) => /^(Approve|Review approval)/.test(b))) bad(tag, 'Overview offers an approval on a pinned place');
+		/* the app page: the environment cell's "Held N of M regions" counts the pin */
+		await read(`/apps/${pin.app}`, 3500);
+		const ap = await p.evaluate((tier) => ({
+			cells: [...document.querySelectorAll('main .env-cell')].map((c) => c.innerText.replace(/\s+/g, ' ').trim()).filter((t) => t.split(' ')[0] === tier),
+			rows: [...document.querySelectorAll('li[data-truth-kind=rollout]')].map((l) => ({ href: l.dataset.truthHref ?? '', state: l.dataset.truthState, text: l.innerText.replace(/\s+/g, ' ').trim() }))
+		}), pin.tier);
+		const mine = ap.rows.find((r) => placeKey(r.href) === pin.key);
+		const cell = ap.cells.map((t) => /Held (\d+) of (\d+) regions/.exec(t)).find(Boolean);
+		const tierPlaces = O.places.filter((q) => q.app === pin.app && q.tier === pin.tier);
+		const heldRows = ap.rows.filter((r) => O.places.some((q) => q.app === pin.app && q.tier === pin.tier && placeKey(r.href) === q.key) && /\bHeld\b|\bWaits (on|for)\b/.test(r.text));
+		if (!mine) bad(tag, `/apps/${pin.app} has no place row for the pin`);
+		else {
+			if (!/Held by the pin/.test(mine.text)) bad(tag, `/apps/${pin.app} place row does not say "Held by the pin": ${mine.text.slice(0, 90)}`);
+			if (mine.state !== 'held-by-rule') bad(tag, `/apps/${pin.app} place row carries state "${mine.state}", /rollouts says held-by-rule for the same pin`);
+		}
+		if (!cell) bad(tag, `/apps/${pin.app} ${pin.tier} environment cell prints no "Held N of M regions" (cells: ${ap.cells.join(' | ') || 'none'})`);
+		else {
+			if (+cell[2] !== tierPlaces.length) bad(tag, `${pin.tier} cell says "${cell[0]}" but the fixture has ${tierPlaces.length} ${pin.tier} places`);
+			if (+cell[1] !== heldRows.length) bad(tag, `${pin.tier} cell says "${cell[0]}" but ${heldRows.length} of its place rows read held (the pin is one of them: ${heldRows.some((r) => placeKey(r.href) === pin.key)})`);
+			if (+cell[1] < O.pins.filter((q) => q.app === pin.app && q.tier === pin.tier).length) bad(tag, `${pin.tier} cell "${cell[0]}" counts fewer holds than there are pins`);
+		}
+		console.log(`pin ${pin.app} ${pin.key.split('/')[0]}: /rollouts "${row?.word}" in ${row?.section}, Gates "Clear pin"${appr.length ? ' + APPROVAL' : ' only'}, Overview ${got}/${want} "Held by the pin", app cell "${cell?.[0] ?? '?'}"`);
+	}
+	/* N: every build row of an app page's Builds ledger says how far behind the newest release it is (data-truth-lag): that is its distance from the end of the source's catalogue order */
+	let nb = 0;
+	for (const app of [...new Set(O.places.filter((q) => q.spec.releaseSourceRef).map((q) => q.app))]) {
+		const q0 = O.places.find((q) => q.app === app && q.spec.releaseSourceRef);
+		const rels = O.catalogue(q0);
+		if (!rels?.length) continue;
+		await read(`/apps/${app}`, 2000);
+		const bs = await p.evaluate(() => [...document.querySelectorAll('li[data-truth-kind=build]')].map((l) => ({ build: l.dataset.truthBuild ?? '', lag: l.dataset.truthLag ?? '', text: l.innerText.replace(/\s+/g, ' ').trim() })));
+		for (const r of bs) {
+			const i = rels.findIndex((x) => x.version === r.build || x.tag === r.build);
+			const m = /\b(\d+) behind\b/.exec(r.text);
+			if (i < 0 || r.lag === 'custom') continue; /* a build the catalogue does not hold, or a custom build, has no place in its order */
+			const want = rels.length - 1 - i;
+			if (want === 0) {
+				if (m || (r.lag && r.lag !== '0')) bad(`behind /apps/${app} ${r.build}`, `the newest release says "${m?.[0] ?? 'lag ' + r.lag}"`);
+				continue;
+			}
+			nb++;
+			if (r.lag !== String(want) || (m && +m[1] !== want))
+				bad(`behind /apps/${app} ${r.build}`, `Builds row says ${m ? `"${m[0]}"` : 'nothing'} (data-truth-lag ${r.lag || 'none'}), the catalogue order puts it ${want} behind the newest (${rels.length} releases, position ${i + 1})`);
+		}
+	}
+	console.log(`behind: ${nb} "N behind" on app place rows compared with the catalogue order`);
+	await p.close();
+}
+if (process.env.NO_V2 !== '1') {
+	await useState('incident');
+	await v2Checks();
+}
 await browser.close();
-const uniq = [...new Set(problems)];
+const all = [...new Set(problems)];
+const knownOf = (m) => KNOWN.find((k) => k.re.test(m));
+const uniq = process.env.STRICT ? all : all.filter((m) => !knownOf(m));
+for (const m of all.filter((m) => knownOf(m) && !process.env.STRICT)) console.log(`KNOWN FINDING [${knownOf(m).id}] ${m}\n    -> ${knownOf(m).note}`);
 if (uniq.length) {
 	console.log(`\n${uniq.length} MISMATCH(ES):`);
 	for (const m of uniq) console.log(' - ' + m);
