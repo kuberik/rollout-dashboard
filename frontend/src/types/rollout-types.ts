@@ -56,28 +56,28 @@ export interface components {
         };
         /** @description Rollout is the Schema for the rollouts API. */
         Rollout: {
-            /** @description APIVersion defines the versioned schema of this representation of an object.
+            /**
+             * @description APIVersion defines the versioned schema of this representation of an object.
              *     Servers should convert recognized schemas to the latest internal value, and
              *     may reject unrecognized values.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+             */
             apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents.
+            /**
+             * @description Kind is a string value representing the REST resource this object represents.
              *     Servers may infer this from the endpoint the client submits requests to.
              *     Cannot be updated.
              *     In CamelCase.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+             */
             kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description RolloutSpec defines the desired state of Rollout. */
             spec?: {
-                /** @description ReleaseSourceRef names the ReleaseSource this rollout reads its catalogue from.
-                 *     Added by hand; not yet regenerated from the CRD. */
-                releaseSourceRef?: {
-                    name: string;
-                };
                 /**
                  * Format: int32
-                 * @description AvailableReleasesMinCount defines the minimum number of available releases to always keep
+                 * @description Deprecated: ignored; retention is ReleaseSource.spec.retention. Removed in the next release.
+                 *     AvailableReleasesMinCount defines the minimum number of available releases to always keep
                  *     When history is full, at least this many releases will be retained regardless of other criteria.
                  *     Defaults to 30 if not specified.
                  * @default 30
@@ -85,42 +85,55 @@ export interface components {
                 availableReleasesMinCount: number;
                 /**
                  * Format: int32
-                 * @description AvailableReleasesRetentionDays defines how many days of available releases to keep based on creation timestamp
+                 * @description Deprecated: ignored; retention is ReleaseSource.spec.retention. Removed in the next release.
+                 *     AvailableReleasesRetentionDays defines how many days of available releases to keep based on creation timestamp
                  *     When history is full, releases older than this retention period may be removed.
                  *     Defaults to 7 days if not specified.
                  * @default 7
                  */
                 availableReleasesRetentionDays: number;
-                /** @description BakeTime specifies how long to wait after bake starts before marking as successful
+                /**
+                 * @description BakeTime specifies how long to wait after bake starts before marking as successful
                  *     If no errors happen within the bake time, the rollout is baked successfully.
-                 *     If not specified, no bake time is enforced. */
+                 *     If not specified, no bake time is enforced.
+                 */
                 bakeTime?: string;
-                /** @description DeployTimeout specifies the maximum time to wait for bake to start before marking as failed
+                /**
+                 * @description DeployTimeout specifies the maximum time to wait for bake to start before marking as failed
                  *     If bake doesn't start within deployTimeout (i.e., health checks don't become healthy),
                  *     the rollout should be marked as failed.
-                 *     If not specified, the rollout will wait indefinitely for bake to start. */
+                 *     If not specified, the rollout will wait indefinitely for bake to start.
+                 */
                 deployTimeout?: string;
                 /** @description HealthCheckSelector specifies how to select HealthChecks for this rollout */
                 healthCheckSelector?: {
-                    /** @description NamespaceSelector specifies the namespace selector for matching HealthChecks
-                     *     If not specified, only HealthChecks in the same namespace as the Rollout will be considered */
+                    /**
+                     * @description NamespaceSelector specifies the namespace selector for matching HealthChecks
+                     *     If not specified, only HealthChecks in the same namespace as the Rollout will be considered
+                     */
                     namespaceSelector?: {
                         /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                         matchExpressions?: {
                             /** @description key is the label key that the selector applies to. */
                             key: string;
-                            /** @description operator represents a key's relationship to a set of values.
-                             *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                            /**
+                             * @description operator represents a key's relationship to a set of values.
+                             *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                             */
                             operator: string;
-                            /** @description values is an array of string values. If the operator is In or NotIn,
+                            /**
+                             * @description values is an array of string values. If the operator is In or NotIn,
                              *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                              *     the values array must be empty. This array is replaced during a strategic
-                             *     merge patch. */
+                             *     merge patch.
+                             */
                             values?: string[];
                         }[];
-                        /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                        /**
+                         * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                          *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                         *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                         *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                         */
                         matchLabels?: {
                             [key: string]: string;
                         };
@@ -131,25 +144,56 @@ export interface components {
                         matchExpressions?: {
                             /** @description key is the label key that the selector applies to. */
                             key: string;
-                            /** @description operator represents a key's relationship to a set of values.
-                             *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                            /**
+                             * @description operator represents a key's relationship to a set of values.
+                             *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                             */
                             operator: string;
-                            /** @description values is an array of string values. If the operator is In or NotIn,
+                            /**
+                             * @description values is an array of string values. If the operator is In or NotIn,
                              *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                              *     the values array must be empty. This array is replaced during a strategic
-                             *     merge patch. */
+                             *     merge patch.
+                             */
                             values?: string[];
                         }[];
-                        /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                        /**
+                         * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                          *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                         *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                         *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                         */
                         matchLabels?: {
                             [key: string]: string;
                         };
                     };
                 };
-                /** @description ReleasesImagePolicy specifies the ImagePolicy that provides available releases */
-                releasesImagePolicy: {
+                /**
+                 * @description ReleaseSourceRef names a ReleaseSource (kuberik.com, served by release-controller)
+                 *     in the same namespace that provides this Rollout's releases. When set (and the
+                 *     release-controller CRDs are installed) the Rollout reads its releases from the
+                 *     source's ReleaseSlice catalogue. This is the only release path: a Rollout
+                 *     without it gets no releases and reports ReleasesUpdated=False and Ready=False
+                 *     with reason ReleaseSourceRequired.
+                 */
+                releaseSourceRef?: {
+                    /**
+                     * @description Name of the referent.
+                     *     This field is effectively required, but due to backwards compatibility is
+                     *     allowed to be empty. Instances of this type with an empty value here are
+                     *     almost certainly wrong.
+                     *     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                     * @default
+                     */
+                    name: string;
+                };
+                /**
+                 * @description Deprecated: ignored; removed in the next release. Releases come from
+                 *     releaseSourceRef; to migrate an existing Flux ImagePolicy, create a
+                 *     ReleaseSource with spec.oci.imagePolicyRef. A Rollout that sets it reports
+                 *     ReleasesImagePolicyIgnored=True.
+                 *     A value type, so Go clients always send "releasesImagePolicy: {}".
+                 */
+                releasesImagePolicy?: {
                     /**
                      * @description Name of the referent.
                      *     This field is effectively required, but due to backwards compatibility is
@@ -171,32 +215,17 @@ export interface components {
             };
             /** @description RolloutStatus defines the observed state of Rollout. */
             status?: {
-                /** @description Candidates is the working set of releases for slices mode (newest first).
-                 *     Added by hand; not yet regenerated from the CRD. */
-                candidates?: {
-                    blockedBy?: string[];
-                    /** Format: date-time */
-                    created?: string;
-                    /** Format: date-time */
-                    firstSeen?: string;
-                    gated: boolean;
-                    tag: string;
-                }[];
-                /** @description ReleaseSource summarises the ReleaseSource named by spec.releaseSourceRef.
-                 *     Added by hand; not yet regenerated from the CRD. */
-                releaseSource?: {
-                    count?: number;
-                    name: string;
-                    newest?: string;
-                    /** Format: date-time */
-                    observedAt?: string;
-                    ready: boolean;
-                };
-                /** @description ArtifactType is the media/artifact type of the image extracted from the manifest.
+                /**
+                 * @description ArtifactType is the media/artifact type of the image extracted from the manifest.
                  *     This includes OCI artifact types, container image types, and other media types.
-                 *     This field is set once for the entire rollout based on the latest available release. */
+                 *     This field is set once for the entire rollout based on the latest available release.
+                 */
                 artifactType?: string;
-                /** @description AvailableReleases is a list of all releases available in the releases repository. */
+                /**
+                 * @description Deprecated: ignored; no longer written (cleared on reconcile). Read
+                 *     status.candidates and the ReleaseSlice catalogue instead. Removed in the next release.
+                 *     AvailableReleases is a list of all releases available in the releases repository.
+                 */
                 availableReleases?: {
                     /**
                      * Format: date-time
@@ -205,12 +234,60 @@ export interface components {
                     created?: string;
                     /** @description Digest is the image digest if available from the ImagePolicy. */
                     digest?: string;
+                    /**
+                     * @description MetadataUnresolved is true when this release's OCI manifest could not be
+                     *     read, so Requires and the version fields say nothing about the image.
+                     *     A RolloutDependency blocks such a release rather than reading the absent
+                     *     annotations as "declares no requirement", which would open the gate
+                     *     whenever the registry is unreachable.
+                     */
+                    metadataUnresolved?: boolean;
+                    /**
+                     * @description Requires maps a contract name to what this release requires of that
+                     *     contract, extracted from "com.kuberik.rollout.requires.<contract>" OCI
+                     *     annotations. Values are version constraints as defined by
+                     *     github.com/Masterminds/semver, applied verbatim — note that a bare version
+                     *     is an exact match there, not a floor.
+                     *     RolloutDependency uses these to gate this release on the deployed version of
+                     *     the Rollout providing each contract.
+                     *
+                     *     Bounded because it is populated from image annotations, which are outside
+                     *     this controller's trust boundary, and is stored on every release and every
+                     *     history entry.
+                     */
+                    requires?: {
+                        [key: string]: string;
+                    };
                     /** @description Revision is the revision information extracted from OCI annotations if available. */
                     revision?: string;
                     /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
                     tag: string;
                     /** @description Version is the semantic version extracted from OCI annotations if available. */
                     version?: string;
+                }[];
+                /**
+                 * @description Candidates is the working set in slices mode: the K newest releases newer
+                 *     than the deployed one, plus any release newer than the deployed one that a
+                 *     gate's allowedVersions, the force-deploy or bypass-gates annotation, or
+                 *     spec.wantedVersion names. Newest first.
+                 */
+                candidates?: {
+                    /** @description BlockedBy lists the gates that do not let this release through. */
+                    blockedBy?: string[];
+                    /**
+                     * Format: date-time
+                     * @description Created is the release creation time.
+                     */
+                    created?: string;
+                    /**
+                     * Format: date-time
+                     * @description FirstSeen is when the catalogue first admitted this release.
+                     */
+                    firstSeen?: string;
+                    /** @description Gated is true when the release passes every gate. */
+                    gated: boolean;
+                    /** @description Tag is the release tag. */
+                    tag: string;
                 }[];
                 /** @description Conditions represents the current state of the rollout process. */
                 conditions?: {
@@ -220,8 +297,10 @@ export interface components {
                      *     This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                      */
                     lastTransitionTime: string;
-                    /** @description message is a human readable message indicating details about the transition.
-                     *     This may be an empty string. */
+                    /**
+                     * @description message is a human readable message indicating details about the transition.
+                     *     This may be an empty string.
+                     */
                     message: string;
                     /**
                      * Format: int64
@@ -230,11 +309,13 @@ export interface components {
                      *     with respect to the current state of the instance.
                      */
                     observedGeneration?: number;
-                    /** @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                    /**
+                     * @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
                      *     Producers of specific condition types may define expected values and meanings for this field,
                      *     and whether the values are considered a guaranteed API.
                      *     The value should be a CamelCase string.
-                     *     This field may not be empty. */
+                     *     This field may not be empty.
+                     */
                     reason: string;
                     /**
                      * @description status of the condition, one of True, False, Unknown.
@@ -244,11 +325,17 @@ export interface components {
                     /** @description type of condition in CamelCase or in foo.example.com/CamelCase. */
                     type: string;
                 }[];
-                /** @description Description is the description of the image extracted from OCI annotations.
-                 *     This field is set once for the entire rollout based on the latest available release. */
+                /**
+                 * @description Description is the description of the image extracted from OCI annotations.
+                 *     This field is set once for the entire rollout based on the latest available release.
+                 */
                 description?: string;
-                /** @description GatedReleaseCandidates is a list of release candidates that have passed through all gates.
-                 *     This shows which versions are actually available for deployment after gate evaluation. */
+                /**
+                 * @description Deprecated: ignored; no longer written (cleared on reconcile). Read status.candidates
+                 *     (gated field) instead. Removed in the next release.
+                 *     GatedReleaseCandidates is a list of release candidates that have passed through all gates.
+                 *     This shows which versions are actually available for deployment after gate evaluation.
+                 */
                 gatedReleaseCandidates?: {
                     /**
                      * Format: date-time
@@ -257,6 +344,30 @@ export interface components {
                     created?: string;
                     /** @description Digest is the image digest if available from the ImagePolicy. */
                     digest?: string;
+                    /**
+                     * @description MetadataUnresolved is true when this release's OCI manifest could not be
+                     *     read, so Requires and the version fields say nothing about the image.
+                     *     A RolloutDependency blocks such a release rather than reading the absent
+                     *     annotations as "declares no requirement", which would open the gate
+                     *     whenever the registry is unreachable.
+                     */
+                    metadataUnresolved?: boolean;
+                    /**
+                     * @description Requires maps a contract name to what this release requires of that
+                     *     contract, extracted from "com.kuberik.rollout.requires.<contract>" OCI
+                     *     annotations. Values are version constraints as defined by
+                     *     github.com/Masterminds/semver, applied verbatim — note that a bare version
+                     *     is an exact match there, not a floor.
+                     *     RolloutDependency uses these to gate this release on the deployed version of
+                     *     the Rollout providing each contract.
+                     *
+                     *     Bounded because it is populated from image annotations, which are outside
+                     *     this controller's trust boundary, and is stored on every release and every
+                     *     history entry.
+                     */
+                    requires?: {
+                        [key: string]: string;
+                    };
                     /** @description Revision is the revision information extracted from OCI annotations if available. */
                     revision?: string;
                     /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
@@ -281,8 +392,10 @@ export interface components {
                     /** @description Added by the dashboard API: the gate's `gate.kuberik.com/pretty-name`, omitted when it has none. */
                     displayName?: string;
                 }[];
-                /** @description History tracks the deployment history of this Rollout.
-                 *     Each entry contains the version deployed and the timestamp of the deployment. */
+                /**
+                 * @description History tracks the deployment history of this Rollout.
+                 *     Each entry contains the version deployed and the timestamp of the deployment.
+                 */
                 history?: {
                     /**
                      * Format: date-time
@@ -296,14 +409,20 @@ export interface components {
                      *     This is when the rollout controller began monitoring the deployment for stability.
                      */
                     bakeStartTime?: string;
-                    /** @description BakeStatus tracks the bake state for this deployment (e.g., None, InProgress, Succeeded, Failed, Cancelled)
-                     *     The bake process ensures that the deployment is stable and healthy before marking as successful. */
+                    /**
+                     * @description BakeStatus tracks the bake state for this deployment (e.g., None, InProgress, Succeeded, Failed, Cancelled)
+                     *     The bake process ensures that the deployment is stable and healthy before marking as successful.
+                     */
                     bakeStatus?: string;
-                    /** @description BakeStatusMessage provides details about the bake state for this deployment
-                     *     This field contains human-readable information about why the bake status is what it is. */
+                    /**
+                     * @description BakeStatusMessage provides details about the bake state for this deployment
+                     *     This field contains human-readable information about why the bake status is what it is.
+                     */
                     bakeStatusMessage?: string;
-                    /** @description FailedHealthChecks contains all health checks that failed during bake.
-                     *     This field is populated when bake fails due to health check errors. */
+                    /**
+                     * @description FailedHealthChecks contains all health checks that failed during bake.
+                     *     This field is populated when bake fails due to health check errors.
+                     */
                     failedHealthChecks?: {
                         /** @description Message is the error message from the health check. */
                         message?: string;
@@ -311,34 +430,80 @@ export interface components {
                         name: string;
                         /** @description Namespace is the namespace of the health check. */
                         namespace: string;
+                        /**
+                         * @description Observations is a snapshot of the health check's status.observations taken
+                         *     when the failure was recorded. It is not updated afterwards, so the figure
+                         *     survives the health check recovering.
+                         */
+                        observations?: {
+                            /**
+                             * @description Direction, for Threshold: Above is bad when value > limit; Below is bad when value < limit.
+                             * @enum {string}
+                             */
+                            direction?: "Above" | "Below";
+                            /**
+                             * @description Healthy says whether this observation alone is within bounds, so a consumer
+                             *     can mark the offending one when several are listed.
+                             */
+                            healthy?: boolean;
+                            /**
+                             * @description Kind picks the drawing: Threshold (value vs limit), Ratio (value of total),
+                             *     Count (value), State (no number; label only).
+                             * @enum {string}
+                             */
+                            kind: "Threshold" | "Ratio" | "Count" | "State";
+                            /** @description Limit is the boundary for a Threshold observation, as a decimal string. */
+                            limit?: string;
+                            /** @description Name of the observed quantity, shown as the label ("error rate", "p99 latency"). */
+                            name: string;
+                            /**
+                             * Format: date-time
+                             * @description ObservedTime is when the provider last evaluated this observation.
+                             */
+                            observedTime?: string;
+                            /** @description Total is the denominator for a Ratio observation, as a decimal string. */
+                            total?: string;
+                            /** @description Unit of the numbers: Percent (a ratio 0..1), Milliseconds, Seconds, Count, or free text. */
+                            unit?: string;
+                            /** @description Value is the observed number, as a decimal string. */
+                            value?: string;
+                            /** @description Window the observation covers, e.g. "5m". */
+                            window?: string;
+                        }[];
                     }[];
                     /**
                      * Format: int64
                      * @description ID is a unique auto-incrementing identifier for this history entry.
                      */
                     id?: number;
-                    /** @description Message provides a descriptive message about this deployment entry
-                     *     This field contains human-readable information about the deployment context.
-                     *     For automatic deployments, it includes information about gate bypass and failed bake unblock.
-                     *     For manual deployments (when wantedVersion is specified), it can contain a custom message
-                     *     provided via the "rollout.kuberik.com/deployment-message" annotation, or defaults to "Manual deployment". */
-                    message?: string;
                     /**
                      * Format: date-time
                      * @description LastRetryTimestamp is the time when a retry was most recently requested for this deployment.
-                     *     Stale failure conditions with LastErrorTime older than this are ignored by the rollout controller.
+                     *     When set, downstream controllers (health checks, kruise rollout step gates) use this as a
+                     *     cutoff: stale failure conditions with LastTransitionTime older than LastRetryTimestamp are
+                     *     ignored as they reflect the pre-retry state.
                      */
                     lastRetryTimestamp?: string;
+                    /**
+                     * @description Message provides a descriptive message about this deployment entry
+                     *     This field contains human-readable information about the deployment context.
+                     *     For automatic deployments, it includes information about gate bypass and failed bake unblock.
+                     *     For manual deployments (when wantedVersion is specified), it can contain a custom message
+                     *     provided via the "rollout.kuberik.com/deployment-message" annotation, or defaults to "Manual deployment".
+                     */
+                    message?: string;
                     /**
                      * Format: date-time
                      * @description Timestamp is the time when the deployment occurred.
                      */
                     timestamp: string;
-                    /** @description TriggeredBy indicates what triggered this deployment.
+                    /**
+                     * @description TriggeredBy indicates what triggered this deployment.
                      *     Kind can be "User" for manual deployments triggered by a user, or "System" for automatic deployments.
                      *     Name contains the name of the user or system that triggered the deployment.
                      *     For user-triggered deployments, this is extracted from the "rollout.kuberik.com/deploy-user" annotation.
-                     *     For system-triggered deployments, this is typically "rollout-controller". */
+                     *     For system-triggered deployments, this is typically "rollout-controller".
+                     */
                     triggeredBy?: {
                         /**
                          * @description Kind indicates the type of trigger: "User" for manual deployments triggered by a user,
@@ -346,9 +511,11 @@ export interface components {
                          * @enum {string}
                          */
                         kind: "User" | "System";
-                        /** @description Name contains the name of the user or system that triggered the deployment.
+                        /**
+                         * @description Name contains the name of the user or system that triggered the deployment.
                          *     For user-triggered deployments, this is extracted from the "rollout.kuberik.com/deploy-user" annotation.
-                         *     For system-triggered deployments, this is typically "rollout-controller". */
+                         *     For system-triggered deployments, this is typically "rollout-controller".
+                         */
                         name: string;
                     };
                     /** @description Version is the version information that was deployed. */
@@ -360,6 +527,30 @@ export interface components {
                         created?: string;
                         /** @description Digest is the image digest if available from the ImagePolicy. */
                         digest?: string;
+                        /**
+                         * @description MetadataUnresolved is true when this release's OCI manifest could not be
+                         *     read, so Requires and the version fields say nothing about the image.
+                         *     A RolloutDependency blocks such a release rather than reading the absent
+                         *     annotations as "declares no requirement", which would open the gate
+                         *     whenever the registry is unreachable.
+                         */
+                        metadataUnresolved?: boolean;
+                        /**
+                         * @description Requires maps a contract name to what this release requires of that
+                         *     contract, extracted from "com.kuberik.rollout.requires.<contract>" OCI
+                         *     annotations. Values are version constraints as defined by
+                         *     github.com/Masterminds/semver, applied verbatim — note that a bare version
+                         *     is an exact match there, not a floor.
+                         *     RolloutDependency uses these to gate this release on the deployed version of
+                         *     the Rollout providing each contract.
+                         *
+                         *     Bounded because it is populated from image annotations, which are outside
+                         *     this controller's trust boundary, and is stored on every release and every
+                         *     history entry.
+                         */
+                        requires?: {
+                            [key: string]: string;
+                        };
                         /** @description Revision is the revision information extracted from OCI annotations if available. */
                         revision?: string;
                         /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
@@ -368,8 +559,12 @@ export interface components {
                         version?: string;
                     };
                 }[];
-                /** @description ReleaseCandidates is a list of releases that are candidates for the next deployment.
-                 *     These are filtered from AvailableReleases based on deployment history and version ordering. */
+                /**
+                 * @description Deprecated: ignored; no longer written (cleared on reconcile). Read status.candidates instead.
+                 *     Removed in the next release.
+                 *     ReleaseCandidates is a list of releases that are candidates for the next deployment.
+                 *     These are filtered from AvailableReleases based on deployment history and version ordering.
+                 */
                 releaseCandidates?: {
                     /**
                      * Format: date-time
@@ -378,6 +573,30 @@ export interface components {
                     created?: string;
                     /** @description Digest is the image digest if available from the ImagePolicy. */
                     digest?: string;
+                    /**
+                     * @description MetadataUnresolved is true when this release's OCI manifest could not be
+                     *     read, so Requires and the version fields say nothing about the image.
+                     *     A RolloutDependency blocks such a release rather than reading the absent
+                     *     annotations as "declares no requirement", which would open the gate
+                     *     whenever the registry is unreachable.
+                     */
+                    metadataUnresolved?: boolean;
+                    /**
+                     * @description Requires maps a contract name to what this release requires of that
+                     *     contract, extracted from "com.kuberik.rollout.requires.<contract>" OCI
+                     *     annotations. Values are version constraints as defined by
+                     *     github.com/Masterminds/semver, applied verbatim — note that a bare version
+                     *     is an exact match there, not a floor.
+                     *     RolloutDependency uses these to gate this release on the deployed version of
+                     *     the Rollout providing each contract.
+                     *
+                     *     Bounded because it is populated from image annotations, which are outside
+                     *     this controller's trust boundary, and is stored on every release and every
+                     *     history entry.
+                     */
+                    requires?: {
+                        [key: string]: string;
+                    };
                     /** @description Revision is the revision information extracted from OCI annotations if available. */
                     revision?: string;
                     /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
@@ -385,27 +604,54 @@ export interface components {
                     /** @description Version is the semantic version extracted from OCI annotations if available. */
                     version?: string;
                 }[];
-                /** @description Source is the source information extracted from OCI annotations.
+                /** @description ReleaseSource summarises the ReleaseSource this Rollout reads (slices mode only). */
+                releaseSource?: {
+                    /**
+                     * Format: int32
+                     * @description Count is the number of releases in the catalogue.
+                     */
+                    count?: number;
+                    /** @description Name of the ReleaseSource. */
+                    name: string;
+                    /** @description Newest is the tag of the newest release in the catalogue. */
+                    newest?: string;
+                    /**
+                     * Format: date-time
+                     * @description ObservedAt is when name, ready, count or newest last changed.
+                     */
+                    observedAt?: string;
+                    /** @description Ready mirrors the ReleaseSource Ready condition. */
+                    ready: boolean;
+                };
+                /**
+                 * @description Source is the source information extracted from OCI annotations.
                  *     This typically contains the repository URL or source code location.
-                 *     This field is set once for the entire rollout based on the latest available release. */
+                 *     This field is set once for the entire rollout based on the latest available release.
+                 */
                 source?: string;
-                /** @description Title is the title of the image extracted from OCI annotations.
-                 *     This field is set once for the entire rollout based on the latest available release. */
+                /**
+                 * @description Title is the title of the image extracted from OCI annotations.
+                 *     This field is set once for the entire rollout based on the latest available release.
+                 */
                 title?: string;
             };
         };
         /** @description RolloutGate is the Schema for the rolloutgates API. */
         RolloutGate: {
-            /** @description APIVersion defines the versioned schema of this representation of an object.
+            /**
+             * @description APIVersion defines the versioned schema of this representation of an object.
              *     Servers should convert recognized schemas to the latest internal value, and
              *     may reject unrecognized values.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+             */
             apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents.
+            /**
+             * @description Kind is a string value representing the REST resource this object represents.
              *     Servers may infer this from the endpoint the client submits requests to.
              *     Cannot be updated.
              *     In CamelCase.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+             */
             kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description RolloutGateSpec defines the desired state of RolloutGate. */
@@ -417,8 +663,10 @@ export interface components {
                  * @default true
                  */
                 passing: boolean;
-                /** @description LocalObjectReference contains enough information to let you locate the
-                 *     referenced object inside the same namespace. */
+                /**
+                 * @description LocalObjectReference contains enough information to let you locate the
+                 *     referenced object inside the same namespace.
+                 */
                 rolloutRef: {
                     /**
                      * @description Name of the referent.
@@ -436,16 +684,20 @@ export interface components {
         };
         /** @description HealthCheck is the Schema for the healthchecks API. */
         HealthCheck: {
-            /** @description APIVersion defines the versioned schema of this representation of an object.
+            /**
+             * @description APIVersion defines the versioned schema of this representation of an object.
              *     Servers should convert recognized schemas to the latest internal value, and
              *     may reject unrecognized values.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+             */
             apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents.
+            /**
+             * @description Kind is a string value representing the REST resource this object represents.
              *     Servers may infer this from the endpoint the client submits requests to.
              *     Cannot be updated.
              *     In CamelCase.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+             */
             kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description HealthCheckSpec defines the desired state of HealthCheck. */
@@ -467,22 +719,66 @@ export interface components {
                 lastErrorTime?: string;
                 /** @description Message provides additional details about the health status */
                 message?: string;
+                /**
+                 * @description Observations are the facts the check last evaluated, most important first.
+                 *     Consumers (the dashboard) draw the first one as the headline figure; Message
+                 *     stays the human sentence. Providers may leave this empty.
+                 */
+                observations?: {
+                    /**
+                     * @description Direction, for Threshold: Above is bad when value > limit; Below is bad when value < limit.
+                     * @enum {string}
+                     */
+                    direction?: "Above" | "Below";
+                    /**
+                     * @description Healthy says whether this observation alone is within bounds, so a consumer
+                     *     can mark the offending one when several are listed.
+                     */
+                    healthy?: boolean;
+                    /**
+                     * @description Kind picks the drawing: Threshold (value vs limit), Ratio (value of total),
+                     *     Count (value), State (no number; label only).
+                     * @enum {string}
+                     */
+                    kind: "Threshold" | "Ratio" | "Count" | "State";
+                    /** @description Limit is the boundary for a Threshold observation, as a decimal string. */
+                    limit?: string;
+                    /** @description Name of the observed quantity, shown as the label ("error rate", "p99 latency"). */
+                    name: string;
+                    /**
+                     * Format: date-time
+                     * @description ObservedTime is when the provider last evaluated this observation.
+                     */
+                    observedTime?: string;
+                    /** @description Total is the denominator for a Ratio observation, as a decimal string. */
+                    total?: string;
+                    /** @description Unit of the numbers: Percent (a ratio 0..1), Milliseconds, Seconds, Count, or free text. */
+                    unit?: string;
+                    /** @description Value is the observed number, as a decimal string. */
+                    value?: string;
+                    /** @description Window the observation covers, e.g. "5m". */
+                    window?: string;
+                }[];
                 /** @description Status indicates the health state of the check (e.g., 'Healthy', 'Unhealthy', 'Pending') */
                 status?: string;
             };
         };
         /** @description Environment is the Schema for the environments API */
         Environment: {
-            /** @description APIVersion defines the versioned schema of this representation of an object.
+            /**
+             * @description APIVersion defines the versioned schema of this representation of an object.
              *     Servers should convert recognized schemas to the latest internal value, and
              *     may reject unrecognized values.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+             */
             apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents.
+            /**
+             * @description Kind is a string value representing the REST resource this object represents.
              *     Servers may infer this from the endpoint the client submits requests to.
              *     Cannot be updated.
              *     In CamelCase.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+             */
             kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description spec defines the desired state of Environment */
@@ -501,24 +797,42 @@ export interface components {
                 };
                 /**
                  * @description Environment is the tier this Environment belongs to. Tiers have a fixed
-                 *     order, earliest first: dev, test, staging, prod. Aliases of one tier are the same environment.
+                 *     order, earliest first: dev, test, staging, prod. Each tier accepts the
+                 *     aliases listed below; aliases of one tier are the same environment for
+                 *     wave grouping, upstream lookup and GitHub matching (the GitHub
+                 *     environment name is kept as written here). An Environment is gated on
+                 *     the nearest earlier tier that has registered sites for the same name.
                  * @enum {string}
                  */
                 environment: "dev" | "development" | "test" | "qa" | "staging" | "stage" | "preprod" | "prod" | "production";
-                /** @description Lockstep, when true, stops the wave-1 leader from selecting a new version
-                 *     until every wave of this environment has baked the currently selected one. */
+                /**
+                 * @description Lockstep, when true, stops the wave-1 leader from selecting a new version
+                 *     until every wave of this environment has baked the currently selected one.
+                 *     The wave-1 leader's value governs; a disagreeing member surfaces a
+                 *     LockstepMismatch condition.
+                 */
                 lockstep?: boolean;
                 /** @description Name is the name of the GitHub deployment (the "kuberik" prefix will be automatically added for GitHub backend if not already present) */
                 name: string;
-                /** @description Site identifies where this instance of the environment runs (e.g. "eu-west-1"). Defaults to "default". */
-                site?: string;
                 /**
-                 * Format: int32
-                 * @description Wave is the rollout wave of this site within its environment. Defaults to 1.
+                 * @description Relationship is DEPRECATED and ignored: environment order is fixed
+                 *     (dev, test, staging, prod). It is still accepted so that existing
+                 *     manifests keep applying; the Environment reports a Deprecated condition.
+                 *     It will be removed in a later release.
                  */
-                wave?: number;
-                /** @description RequeueInterval specifies how often the controller should reconcile this Environment
-                 *     If not specified, defaults to 1 minute. Must be a valid duration string (e.g., "1m", "30s", "5m"). */
+                relationship?: {
+                    /** @description Environment is the environment name this environment related to. */
+                    environment: string;
+                    /**
+                     * @description Type is the relationship type.
+                     * @enum {string}
+                     */
+                    type: "After" | "Parallel" | "Alongside";
+                };
+                /**
+                 * @description RequeueInterval specifies how often the controller should reconcile this Environment
+                 *     If not specified, defaults to 1 minute. Must be a valid duration string (e.g., "1m", "30s", "5m").
+                 */
                 requeueInterval?: string;
                 /** @description RolloutRef is a reference to the Rollout that this Environment manages */
                 rolloutRef: {
@@ -532,10 +846,29 @@ export interface components {
                      */
                     name: string;
                 };
+                /**
+                 * @description Site identifies where this instance of the environment runs (e.g. a region
+                 *     or cluster name such as "eu-west-1"). Members of the same environment that
+                 *     run in different clusters are told apart by site. When empty, the
+                 *     controller's default site is used (key "site" of the optional
+                 *     kuberik-cluster-info ConfigMap in the controller namespace), and when that
+                 *     is not set either, the site is "default". Only one Environment (across
+                 *     clusters) may own a given deployment name, tier and site; a second one is
+                 *     reported with WaveReady=False, reason DuplicateSite, and posts nothing.
+                 */
+                site?: string;
+                /**
+                 * Format: int32
+                 * @description Wave is the rollout wave of this site within its environment ("prod wave 1").
+                 *     Waves of one environment roll out in order: wave N starts a version only
+                 *     after every site of wave N-1 baked it. Defaults to 1.
+                 */
+                wave?: number;
             };
             /** @description status defines the observed state of Environment */
             status?: {
-                /** @description conditions represent the current state of the Environment resource.
+                /**
+                 * @description conditions represent the current state of the Environment resource.
                  *     Each condition has a unique type and reflects the status of a specific aspect of the resource.
                  *
                  *     Standard condition types include:
@@ -543,7 +876,8 @@ export interface components {
                  *     - "Progressing": the resource is being created or updated
                  *     - "Degraded": the resource failed to reach or maintain its desired state
                  *
-                 *     The status of each condition is one of True, False, or Unknown. */
+                 *     The status of each condition is one of True, False, or Unknown.
+                 */
                 conditions?: {
                     /**
                      * Format: date-time
@@ -551,8 +885,10 @@ export interface components {
                      *     This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                      */
                     lastTransitionTime: string;
-                    /** @description message is a human readable message indicating details about the transition.
-                     *     This may be an empty string. */
+                    /**
+                     * @description message is a human readable message indicating details about the transition.
+                     *     This may be an empty string.
+                     */
                     message: string;
                     /**
                      * Format: int64
@@ -561,11 +897,13 @@ export interface components {
                      *     with respect to the current state of the instance.
                      */
                     observedGeneration?: number;
-                    /** @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                    /**
+                     * @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
                      *     Producers of specific condition types may define expected values and meanings for this field,
                      *     and whether the values are considered a guaranteed API.
                      *     The value should be a CamelCase string.
-                     *     This field may not be empty. */
+                     *     This field may not be empty.
+                     */
                     reason: string;
                     /**
                      * @description status of the condition, one of True, False, Unknown.
@@ -577,10 +915,12 @@ export interface components {
                 }[];
                 /** @description CurrentVersion is the current version being deployed */
                 currentVersion?: string;
-                /** @description EnvironmentInfos tracks deployment information for each environment.
-                 *     Each environment has an environment URL (not per version). */
+                /**
+                 * @description EnvironmentInfos tracks deployment information for each environment.
+                 *     Each environment has environment URL and relationships (not per version).
+                 */
                 environmentInfos?: {
-                    /** @description Environment is the environment name */
+                    /** @description Environment is the canonical tier name (dev, test, staging, prod) */
                     environment: string;
                     /** @description EnvironmentURL is the URL of the actual deployed environment (e.g., dashboard URL) */
                     environmentUrl?: string;
@@ -598,14 +938,20 @@ export interface components {
                          *     This is when the rollout controller began monitoring the deployment for stability.
                          */
                         bakeStartTime?: string;
-                        /** @description BakeStatus tracks the bake state for this deployment (e.g., None, InProgress, Succeeded, Failed, Cancelled)
-                         *     The bake process ensures that the deployment is stable and healthy before marking as successful. */
+                        /**
+                         * @description BakeStatus tracks the bake state for this deployment (e.g., None, InProgress, Succeeded, Failed, Cancelled)
+                         *     The bake process ensures that the deployment is stable and healthy before marking as successful.
+                         */
                         bakeStatus?: string;
-                        /** @description BakeStatusMessage provides details about the bake state for this deployment
-                         *     This field contains human-readable information about why the bake status is what it is. */
+                        /**
+                         * @description BakeStatusMessage provides details about the bake state for this deployment
+                         *     This field contains human-readable information about why the bake status is what it is.
+                         */
                         bakeStatusMessage?: string;
-                        /** @description FailedHealthChecks contains all health checks that failed during bake.
-                         *     This field is populated when bake fails due to health check errors. */
+                        /**
+                         * @description FailedHealthChecks contains all health checks that failed during bake.
+                         *     This field is populated when bake fails due to health check errors.
+                         */
                         failedHealthChecks?: {
                             /** @description Message is the error message from the health check. */
                             message?: string;
@@ -613,28 +959,80 @@ export interface components {
                             name: string;
                             /** @description Namespace is the namespace of the health check. */
                             namespace: string;
+                            /**
+                             * @description Observations is a snapshot of the health check's status.observations taken
+                             *     when the failure was recorded. It is not updated afterwards, so the figure
+                             *     survives the health check recovering.
+                             */
+                            observations?: {
+                                /**
+                                 * @description Direction, for Threshold: Above is bad when value > limit; Below is bad when value < limit.
+                                 * @enum {string}
+                                 */
+                                direction?: "Above" | "Below";
+                                /**
+                                 * @description Healthy says whether this observation alone is within bounds, so a consumer
+                                 *     can mark the offending one when several are listed.
+                                 */
+                                healthy?: boolean;
+                                /**
+                                 * @description Kind picks the drawing: Threshold (value vs limit), Ratio (value of total),
+                                 *     Count (value), State (no number; label only).
+                                 * @enum {string}
+                                 */
+                                kind: "Threshold" | "Ratio" | "Count" | "State";
+                                /** @description Limit is the boundary for a Threshold observation, as a decimal string. */
+                                limit?: string;
+                                /** @description Name of the observed quantity, shown as the label ("error rate", "p99 latency"). */
+                                name: string;
+                                /**
+                                 * Format: date-time
+                                 * @description ObservedTime is when the provider last evaluated this observation.
+                                 */
+                                observedTime?: string;
+                                /** @description Total is the denominator for a Ratio observation, as a decimal string. */
+                                total?: string;
+                                /** @description Unit of the numbers: Percent (a ratio 0..1), Milliseconds, Seconds, Count, or free text. */
+                                unit?: string;
+                                /** @description Value is the observed number, as a decimal string. */
+                                value?: string;
+                                /** @description Window the observation covers, e.g. "5m". */
+                                window?: string;
+                            }[];
                         }[];
                         /**
                          * Format: int64
                          * @description ID is a unique auto-incrementing identifier for this history entry.
                          */
                         id?: number;
-                        /** @description Message provides a descriptive message about this deployment entry
+                        /**
+                         * Format: date-time
+                         * @description LastRetryTimestamp is the time when a retry was most recently requested for this deployment.
+                         *     When set, downstream controllers (health checks, kruise rollout step gates) use this as a
+                         *     cutoff: stale failure conditions with LastTransitionTime older than LastRetryTimestamp are
+                         *     ignored as they reflect the pre-retry state.
+                         */
+                        lastRetryTimestamp?: string;
+                        /**
+                         * @description Message provides a descriptive message about this deployment entry
                          *     This field contains human-readable information about the deployment context.
                          *     For automatic deployments, it includes information about gate bypass and failed bake unblock.
                          *     For manual deployments (when wantedVersion is specified), it can contain a custom message
-                         *     provided via the "rollout.kuberik.com/deployment-message" annotation, or defaults to "Manual deployment". */
+                         *     provided via the "rollout.kuberik.com/deployment-message" annotation, or defaults to "Manual deployment".
+                         */
                         message?: string;
                         /**
                          * Format: date-time
                          * @description Timestamp is the time when the deployment occurred.
                          */
                         timestamp: string;
-                        /** @description TriggeredBy indicates what triggered this deployment.
+                        /**
+                         * @description TriggeredBy indicates what triggered this deployment.
                          *     Kind can be "User" for manual deployments triggered by a user, or "System" for automatic deployments.
                          *     Name contains the name of the user or system that triggered the deployment.
                          *     For user-triggered deployments, this is extracted from the "rollout.kuberik.com/deploy-user" annotation.
-                         *     For system-triggered deployments, this is typically "rollout-controller". */
+                         *     For system-triggered deployments, this is typically "rollout-controller".
+                         */
                         triggeredBy?: {
                             /**
                              * @description Kind indicates the type of trigger: "User" for manual deployments triggered by a user,
@@ -642,9 +1040,11 @@ export interface components {
                              * @enum {string}
                              */
                             kind: "User" | "System";
-                            /** @description Name contains the name of the user or system that triggered the deployment.
+                            /**
+                             * @description Name contains the name of the user or system that triggered the deployment.
                              *     For user-triggered deployments, this is extracted from the "rollout.kuberik.com/deploy-user" annotation.
-                             *     For system-triggered deployments, this is typically "rollout-controller". */
+                             *     For system-triggered deployments, this is typically "rollout-controller".
+                             */
                             name: string;
                         };
                         /** @description Version is the version information that was deployed. */
@@ -656,6 +1056,30 @@ export interface components {
                             created?: string;
                             /** @description Digest is the image digest if available from the ImagePolicy. */
                             digest?: string;
+                            /**
+                             * @description MetadataUnresolved is true when this release's OCI manifest could not be
+                             *     read, so Requires and the version fields say nothing about the image.
+                             *     A RolloutDependency blocks such a release rather than reading the absent
+                             *     annotations as "declares no requirement", which would open the gate
+                             *     whenever the registry is unreachable.
+                             */
+                            metadataUnresolved?: boolean;
+                            /**
+                             * @description Requires maps a contract name to what this release requires of that
+                             *     contract, extracted from "com.kuberik.rollout.requires.<contract>" OCI
+                             *     annotations. Values are version constraints as defined by
+                             *     github.com/Masterminds/semver, applied verbatim — note that a bare version
+                             *     is an exact match there, not a floor.
+                             *     RolloutDependency uses these to gate this release on the deployed version of
+                             *     the Rollout providing each contract.
+                             *
+                             *     Bounded because it is populated from image annotations, which are outside
+                             *     this controller's trust boundary, and is stored on every release and every
+                             *     history entry.
+                             */
+                            requires?: {
+                                [key: string]: string;
+                            };
                             /** @description Revision is the revision information extracted from OCI annotations if available. */
                             revision?: string;
                             /** @description Tag is the image tag (e.g., "v1.2.3", "latest"). */
@@ -670,54 +1094,6 @@ export interface components {
                  * @description LastStatusChangeTime is the last time the status was updated (only updated when status changes)
                  */
                 lastStatusChangeTime?: string;
-                /** @description Wave describes the site/wave view the controller used for the last gate decision. */
-                wave?: {
-                    /** @description Site is the effective site of this Environment. */
-                    site: string;
-                    /** @description Environment is the environment name this site was registered under in GitHub. */
-                    environment?: string;
-                    /** @description Name is the deployment name as written to GitHub (with the kuberik prefix). */
-                    name?: string;
-                    /**
-                     * Format: int32
-                     * @description Wave is the effective wave of this Environment.
-                     */
-                    wave: number;
-                    /**
-                     * @description Role is Leader or Follower within (environment, wave).
-                     * @enum {string}
-                     */
-                    role?: "Leader" | "Follower";
-                    /** @description Leader is the site leading this (environment, wave). */
-                    leader?: string;
-                    /** @description SelectedRevision is the revision the leader of this wave currently selected. */
-                    selectedRevision?: string;
-                    /** @description Blocker is the structured cause while WaveReady is False (controller PR #6; field names provisional). Absent when ready. */
-                    blocker?: {
-                        reason?: string;
-                        environment?: string;
-                        site?: string;
-                        waitingOn?: "Selection" | "Bake" | "Candidate" | "Sites";
-                        outcome?: "Failed" | "Cancelled";
-                        revision?: string;
-                        pinnedVersion?: string;
-                        selectedVersion?: string;
-                        owner?: { cluster?: string; namespace?: string; name?: string };
-                        waves?: number[];
-                        missingWaves?: number[];
-                        names?: string[];
-                    };
-                    /** @description Members are the sites of this environment and of its upstream environment. */
-                    members?: {
-                        environment: string;
-                        site: string;
-                        /** Format: int32 */
-                        wave: number;
-                        revision?: string;
-                        bakeStatus?: string;
-                        deregistered?: boolean;
-                    }[];
-                };
                 /** @description RolloutGateRef is a reference to the RolloutGate that was created/updated */
                 rolloutGateRef?: {
                     /**
@@ -730,20 +1106,112 @@ export interface components {
                      */
                     name: string;
                 };
+                /** @description Wave is set for Environments with a site and describes their wave state. */
+                wave?: {
+                    /** @description Blocker explains why the site is not Ready; nil when WaveReady is True. */
+                    blocker?: {
+                        /** @description Environment is the canonical tier of the member waited on or at fault. */
+                        environment?: string;
+                        /** @description MissingWaves are the waves absent from the sequence (InvalidTopology, wave gap). */
+                        missingWaves?: number[];
+                        /**
+                         * @description Names are the alias names registered for one tier (InvalidTopology), the
+                         *     offending name (UnknownTier), or, for DuplicateSite, names[0] is the
+                         *     deployment name the existing owner holds the site for.
+                         */
+                        names?: string[];
+                        /**
+                         * @description Outcome is set when a leader's bake ended badly.
+                         * @enum {string}
+                         */
+                        outcome?: "Failed" | "Cancelled";
+                        /** @description Owner is the existing owner of the site (DuplicateSite). */
+                        owner?: {
+                            cluster: string;
+                            name: string;
+                            namespace: string;
+                        };
+                        /** @description PinnedVersion is the version the Rollout pins (Pinned). */
+                        pinnedVersion?: string;
+                        /** @description Reason is the WaveReady reason. */
+                        reason: string;
+                        /** @description Revision is the full revision concerned. */
+                        revision?: string;
+                        /** @description SelectedVersion is the tag of the wave's pick (Pinned). */
+                        selectedVersion?: string;
+                        /** @description Site is the member waited on. */
+                        site?: string;
+                        /**
+                         * @description WaitingOn is what the wave waits for.
+                         * @enum {string}
+                         */
+                        waitingOn?: "Selection" | "Bake" | "Candidate" | "Sites";
+                        /** @description Waves are the waves present (InvalidTopology, wave gap). */
+                        waves?: number[];
+                    };
+                    /**
+                     * @description Environment is the environment name this site was registered under in
+                     *     GitHub. Deregistration uses it even after spec.environment changed.
+                     */
+                    environment?: string;
+                    /** @description Leader is the site leading this (environment, wave). */
+                    leader?: string;
+                    /** @description Members are the registered sites of this environment and of its upstream environment. */
+                    members?: {
+                        /** @description BakeStatus of the member's newest deployment. */
+                        bakeStatus?: string;
+                        /** @description Deregistered is true when the member was removed and no longer counts. */
+                        deregistered?: boolean;
+                        /** @description Environment of the member. */
+                        environment: string;
+                        /** @description Revision of the member's newest deployment. */
+                        revision?: string;
+                        /** @description Site of the member. */
+                        site: string;
+                        /**
+                         * Format: int32
+                         * @description Wave of the member.
+                         */
+                        wave: number;
+                    }[];
+                    /**
+                     * @description Name is the deployment name as written to GitHub (with the kuberik prefix).
+                     *     Deregistration uses it even after spec.name changed.
+                     */
+                    name?: string;
+                    /**
+                     * @description Role is Leader or Follower within (environment, wave). It is also the role
+                     *     recorded on the next GitHub deployment this site creates.
+                     */
+                    role?: string;
+                    /** @description SelectedRevision is the revision the leader of this wave currently selected. */
+                    selectedRevision?: string;
+                    /** @description Site is the effective site of this Environment (spec or controller default). */
+                    site: string;
+                    /**
+                     * Format: int32
+                     * @description Wave is the effective wave of this Environment.
+                     */
+                    wave: number;
+                };
             };
         };
         /** @description RolloutTest is the Schema for the rollouttests API */
         RolloutTest: {
-            /** @description APIVersion defines the versioned schema of this representation of an object.
+            /**
+             * @description APIVersion defines the versioned schema of this representation of an object.
              *     Servers should convert recognized schemas to the latest internal value, and
              *     may reject unrecognized values.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+             */
             apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents.
+            /**
+             * @description Kind is a string value representing the REST resource this object represents.
              *     Servers may infer this from the endpoint the client submits requests to.
              *     Cannot be updated.
              *     In CamelCase.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+             */
             kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description spec defines the desired state of RolloutTest */
@@ -776,7 +1244,8 @@ export interface components {
                      *     policy is Never. The field is immutable.
                      */
                     backoffLimitPerIndex?: number;
-                    /** @description completionMode specifies how Pod completions are tracked. It can be
+                    /**
+                     * @description completionMode specifies how Pod completions are tracked. It can be
                      *     `NonIndexed` (default) or `Indexed`.
                      *
                      *     `NonIndexed` means that the Job is considered complete when there have
@@ -797,7 +1266,8 @@ export interface components {
                      *     More completion modes can be added in the future.
                      *     If the Job controller observes a mode that it doesn't recognize, which
                      *     is possible during upgrades due to version skew, the controller
-                     *     skips updates for the Job. */
+                     *     skips updates for the Job.
+                     */
                     completionMode?: string;
                     /**
                      * Format: int32
@@ -809,7 +1279,8 @@ export interface components {
                      *     More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
                      */
                     completions?: number;
-                    /** @description ManagedBy field indicates the controller that manages a Job. The k8s Job
+                    /**
+                     * @description ManagedBy field indicates the controller that manages a Job. The k8s Job
                      *     controller reconciles jobs which don't have this field at all or the field
                      *     value is the reserved string `kubernetes.io/job-controller`, but skips
                      *     reconciling Jobs with a custom value for this field.
@@ -820,9 +1291,11 @@ export interface components {
                      *     This field is immutable.
                      *
                      *     This field is beta-level. The job controller accepts setting the field
-                     *     when the feature gate JobManagedBy is enabled (enabled by default). */
+                     *     when the feature gate JobManagedBy is enabled (enabled by default).
+                     */
                     managedBy?: string;
-                    /** @description manualSelector controls generation of pod labels and pod selectors.
+                    /**
+                     * @description manualSelector controls generation of pod labels and pod selectors.
                      *     Leave `manualSelector` unset unless you are certain what you are doing.
                      *     When false or unset, the system pick labels unique to this job
                      *     and appends those labels to the pod template.  When true,
@@ -831,7 +1304,8 @@ export interface components {
                      *     and other jobs to not function correctly.  However, You may see
                      *     `manualSelector=true` in jobs that were created with the old `extensions/v1beta1`
                      *     API.
-                     *     More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/#specifying-your-own-pod-selector */
+                     *     More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/#specifying-your-own-pod-selector
+                     */
                     manualSelector?: boolean;
                     /**
                      * Format: int32
@@ -854,21 +1328,26 @@ export interface components {
                      *     More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
                      */
                     parallelism?: number;
-                    /** @description Specifies the policy of handling failed pods. In particular, it allows to
+                    /**
+                     * @description Specifies the policy of handling failed pods. In particular, it allows to
                      *     specify the set of actions and conditions which need to be
                      *     satisfied to take the associated action.
                      *     If empty, the default behaviour applies - the counter of failed pods,
                      *     represented by the jobs's .status.failed field, is incremented and it is
                      *     checked against the backoffLimit. This field cannot be used in combination
-                     *     with restartPolicy=OnFailure. */
+                     *     with restartPolicy=OnFailure.
+                     */
                     podFailurePolicy?: {
-                        /** @description A list of pod failure policy rules. The rules are evaluated in order.
+                        /**
+                         * @description A list of pod failure policy rules. The rules are evaluated in order.
                          *     Once a rule matches a Pod failure, the remaining of the rules are ignored.
                          *     When no rule matches the Pod failure, the default handling applies - the
                          *     counter of pod failures is incremented and it is checked against
-                         *     the backoffLimit. At most 20 elements are allowed. */
+                         *     the backoffLimit. At most 20 elements are allowed.
+                         */
                         rules: {
-                            /** @description Specifies the action taken on a pod failure when the requirements are satisfied.
+                            /**
+                             * @description Specifies the action taken on a pod failure when the requirements are satisfied.
                              *     Possible values are:
                              *
                              *     - FailJob: indicates that the pod's job is marked as Failed and all
@@ -880,16 +1359,20 @@ export interface components {
                              *     - Count: indicates that the pod is handled in the default way - the
                              *       counter towards the .backoffLimit is incremented.
                              *     Additional values are considered to be added in the future. Clients should
-                             *     react to an unknown action by skipping the rule. */
+                             *     react to an unknown action by skipping the rule.
+                             */
                             action: string;
                             /** @description Represents the requirement on the container exit codes. */
                             onExitCodes?: {
-                                /** @description Restricts the check for exit codes to the container with the
+                                /**
+                                 * @description Restricts the check for exit codes to the container with the
                                  *     specified name. When null, the rule applies to all containers.
                                  *     When specified, it should match one the container or initContainer
-                                 *     names in the pod template. */
+                                 *     names in the pod template.
+                                 */
                                 containerName?: string;
-                                /** @description Represents the relationship between the container exit code(s) and the
+                                /**
+                                 * @description Represents the relationship between the container exit code(s) and the
                                  *     specified values. Containers completed with success (exit code 0) are
                                  *     excluded from the requirement check. Possible values are:
                                  *
@@ -900,30 +1383,40 @@ export interface components {
                                  *       (might be multiple if there are multiple containers not restricted
                                  *       by the 'containerName' field) is not in the set of specified values.
                                  *     Additional values are considered to be added in the future. Clients should
-                                 *     react to an unknown operator by assuming the requirement is not satisfied. */
+                                 *     react to an unknown operator by assuming the requirement is not satisfied.
+                                 */
                                 operator: string;
-                                /** @description Specifies the set of values. Each returned container exit code (might be
+                                /**
+                                 * @description Specifies the set of values. Each returned container exit code (might be
                                  *     multiple in case of multiple containers) is checked against this set of
                                  *     values with respect to the operator. The list of values must be ordered
                                  *     and must not contain duplicates. Value '0' cannot be used for the In operator.
-                                 *     At least one element is required. At most 255 elements are allowed. */
+                                 *     At least one element is required. At most 255 elements are allowed.
+                                 */
                                 values: number[];
                             };
-                            /** @description Represents the requirement on the pod conditions. The requirement is represented
+                            /**
+                             * @description Represents the requirement on the pod conditions. The requirement is represented
                              *     as a list of pod condition patterns. The requirement is satisfied if at
-                             *     least one pattern matches an actual pod condition. At most 20 elements are allowed. */
+                             *     least one pattern matches an actual pod condition. At most 20 elements are allowed.
+                             */
                             onPodConditions?: {
-                                /** @description Specifies the required Pod condition status. To match a pod condition
+                                /**
+                                 * @description Specifies the required Pod condition status. To match a pod condition
                                  *     it is required that the specified status equals the pod condition status.
-                                 *     Defaults to True. */
+                                 *     Defaults to True.
+                                 */
                                 status: string;
-                                /** @description Specifies the required Pod condition type. To match a pod condition
-                                 *     it is required that specified type equals the pod condition type. */
+                                /**
+                                 * @description Specifies the required Pod condition type. To match a pod condition
+                                 *     it is required that specified type equals the pod condition type.
+                                 */
                                 type: string;
                             }[];
                         }[];
                     };
-                    /** @description podReplacementPolicy specifies when to create replacement Pods.
+                    /**
+                     * @description podReplacementPolicy specifies when to create replacement Pods.
                      *     Possible values are:
                      *     - TerminatingOrFailed means that we recreate pods
                      *       when they are terminating (has a metadata.deletionTimestamp) or failed.
@@ -931,44 +1424,57 @@ export interface components {
                      *       Failed or Succeeded) before creating a replacement Pod.
                      *
                      *     When using podFailurePolicy, Failed is the the only allowed value.
-                     *     TerminatingOrFailed and Failed are allowed values when podFailurePolicy is not in use. */
+                     *     TerminatingOrFailed and Failed are allowed values when podFailurePolicy is not in use.
+                     */
                     podReplacementPolicy?: string;
-                    /** @description A label query over pods that should match the pod count.
+                    /**
+                     * @description A label query over pods that should match the pod count.
                      *     Normally, the system sets this field for you.
-                     *     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors */
+                     *     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
+                     */
                     selector?: {
                         /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                         matchExpressions?: {
                             /** @description key is the label key that the selector applies to. */
                             key: string;
-                            /** @description operator represents a key's relationship to a set of values.
-                             *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                            /**
+                             * @description operator represents a key's relationship to a set of values.
+                             *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                             */
                             operator: string;
-                            /** @description values is an array of string values. If the operator is In or NotIn,
+                            /**
+                             * @description values is an array of string values. If the operator is In or NotIn,
                              *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                              *     the values array must be empty. This array is replaced during a strategic
-                             *     merge patch. */
+                             *     merge patch.
+                             */
                             values?: string[];
                         }[];
-                        /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                        /**
+                         * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                          *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                         *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                         *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                         */
                         matchLabels?: {
                             [key: string]: string;
                         };
                     };
-                    /** @description successPolicy specifies the policy when the Job can be declared as succeeded.
+                    /**
+                     * @description successPolicy specifies the policy when the Job can be declared as succeeded.
                      *     If empty, the default behavior applies - the Job is declared as succeeded
                      *     only when the number of succeeded pods equals to the completions.
                      *     When the field is specified, it must be immutable and works only for the Indexed Jobs.
-                     *     Once the Job meets the SuccessPolicy, the lingering pods are terminated. */
+                     *     Once the Job meets the SuccessPolicy, the lingering pods are terminated.
+                     */
                     successPolicy?: {
-                        /** @description rules represents the list of alternative rules for the declaring the Jobs
+                        /**
+                         * @description rules represents the list of alternative rules for the declaring the Jobs
                          *     as successful before `.status.succeeded >= .spec.completions`. Once any of the rules are met,
                          *     the "SuccessCriteriaMet" condition is added, and the lingering pods are removed.
                          *     The terminal state for such a Job has the "Complete" condition.
                          *     Additionally, these rules are evaluated in order; Once the Job meets one of the rules,
-                         *     other rules are ignored. At most 20 elements are allowed. */
+                         *     other rules are ignored. At most 20 elements are allowed.
+                         */
                         rules: {
                             /**
                              * Format: int32
@@ -983,7 +1489,8 @@ export interface components {
                              *     When specified it needs to be a positive integer.
                              */
                             succeededCount?: number;
-                            /** @description succeededIndexes specifies the set of indexes
+                            /**
+                             * @description succeededIndexes specifies the set of indexes
                              *     which need to be contained in the actual set of the succeeded indexes for the Job.
                              *     The list of indexes must be within 0 to ".spec.completions-1" and
                              *     must not contain duplicates. At least one element is required.
@@ -994,27 +1501,36 @@ export interface components {
                              *     For example, if the completed indexes are 1, 3, 4, 5 and 7, they are
                              *     represented as "1,3-5,7".
                              *     When this field is null, this field doesn't default to any value
-                             *     and is never evaluated at any time. */
+                             *     and is never evaluated at any time.
+                             */
                             succeededIndexes?: string;
                         }[];
                     };
-                    /** @description suspend specifies whether the Job controller should create Pods or not. If
+                    /**
+                     * @description suspend specifies whether the Job controller should create Pods or not. If
                      *     a Job is created with suspend set to true, no Pods are created by the Job
                      *     controller. If a Job is suspended after creation (i.e. the flag goes from
                      *     false to true), the Job controller will delete all active Pods associated
                      *     with this Job. Users must design their workload to gracefully handle this.
                      *     Suspending a Job will reset the StartTime field of the Job, effectively
-                     *     resetting the ActiveDeadlineSeconds timer too. Defaults to false. */
+                     *     resetting the ActiveDeadlineSeconds timer too. Defaults to false.
+                     */
                     suspend?: boolean;
-                    /** @description Describes the pod that will be created when executing a job.
+                    /**
+                     * @description Describes the pod that will be created when executing a job.
                      *     The only allowed template.spec.restartPolicy values are "Never" or "OnFailure".
-                     *     More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/ */
+                     *     More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
+                     */
                     template: {
-                        /** @description Standard object's metadata.
-                         *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata */
+                        /**
+                         * @description Standard object's metadata.
+                         *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+                         */
                         metadata?: Record<string, never>;
-                        /** @description Specification of the desired behavior of the pod.
-                         *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status */
+                        /**
+                         * @description Specification of the desired behavior of the pod.
+                         *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
+                         */
                         spec?: {
                             /**
                              * Format: int64
@@ -1027,7 +1543,8 @@ export interface components {
                             affinity?: {
                                 /** @description Describes node affinity scheduling rules for the pod. */
                                 nodeAffinity?: {
-                                    /** @description The scheduler will prefer to schedule pods to nodes that satisfy
+                                    /**
+                                     * @description The scheduler will prefer to schedule pods to nodes that satisfy
                                      *     the affinity expressions specified by this field, but it may choose
                                      *     a node that violates one or more of the expressions. The node that is
                                      *     most preferred is the one with the greatest sum of weights, i.e.
@@ -1035,7 +1552,8 @@ export interface components {
                                      *     request, requiredDuringScheduling affinity expressions, etc.),
                                      *     compute a sum by iterating through the elements of this field and adding
                                      *     "weight" to the sum if the node matches the corresponding matchExpressions; the
-                                     *     node(s) with the highest sum are the most preferred. */
+                                     *     node(s) with the highest sum are the most preferred.
+                                     */
                                     preferredDuringSchedulingIgnoredDuringExecution?: {
                                         /** @description A node selector term, associated with the corresponding weight. */
                                         preference: {
@@ -1043,28 +1561,36 @@ export interface components {
                                             matchExpressions?: {
                                                 /** @description The label key that the selector applies to. */
                                                 key: string;
-                                                /** @description Represents a key's relationship to a set of values.
-                                                 *     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt. */
+                                                /**
+                                                 * @description Represents a key's relationship to a set of values.
+                                                 *     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                                 */
                                                 operator: string;
-                                                /** @description An array of string values. If the operator is In or NotIn,
+                                                /**
+                                                 * @description An array of string values. If the operator is In or NotIn,
                                                  *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                  *     the values array must be empty. If the operator is Gt or Lt, the values
                                                  *     array must have a single element, which will be interpreted as an integer.
-                                                 *     This array is replaced during a strategic merge patch. */
+                                                 *     This array is replaced during a strategic merge patch.
+                                                 */
                                                 values?: string[];
                                             }[];
                                             /** @description A list of node selector requirements by node's fields. */
                                             matchFields?: {
                                                 /** @description The label key that the selector applies to. */
                                                 key: string;
-                                                /** @description Represents a key's relationship to a set of values.
-                                                 *     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt. */
+                                                /**
+                                                 * @description Represents a key's relationship to a set of values.
+                                                 *     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                                 */
                                                 operator: string;
-                                                /** @description An array of string values. If the operator is In or NotIn,
+                                                /**
+                                                 * @description An array of string values. If the operator is In or NotIn,
                                                  *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                  *     the values array must be empty. If the operator is Gt or Lt, the values
                                                  *     array must have a single element, which will be interpreted as an integer.
-                                                 *     This array is replaced during a strategic merge patch. */
+                                                 *     This array is replaced during a strategic merge patch.
+                                                 */
                                                 values?: string[];
                                             }[];
                                         };
@@ -1074,11 +1600,13 @@ export interface components {
                                          */
                                         weight: number;
                                     }[];
-                                    /** @description If the affinity requirements specified by this field are not met at
+                                    /**
+                                     * @description If the affinity requirements specified by this field are not met at
                                      *     scheduling time, the pod will not be scheduled onto the node.
                                      *     If the affinity requirements specified by this field cease to be met
                                      *     at some point during pod execution (e.g. due to an update), the system
-                                     *     may or may not try to eventually evict the pod from its node. */
+                                     *     may or may not try to eventually evict the pod from its node.
+                                     */
                                     requiredDuringSchedulingIgnoredDuringExecution?: {
                                         /** @description Required. A list of node selector terms. The terms are ORed. */
                                         nodeSelectorTerms: {
@@ -1086,28 +1614,36 @@ export interface components {
                                             matchExpressions?: {
                                                 /** @description The label key that the selector applies to. */
                                                 key: string;
-                                                /** @description Represents a key's relationship to a set of values.
-                                                 *     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt. */
+                                                /**
+                                                 * @description Represents a key's relationship to a set of values.
+                                                 *     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                                 */
                                                 operator: string;
-                                                /** @description An array of string values. If the operator is In or NotIn,
+                                                /**
+                                                 * @description An array of string values. If the operator is In or NotIn,
                                                  *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                  *     the values array must be empty. If the operator is Gt or Lt, the values
                                                  *     array must have a single element, which will be interpreted as an integer.
-                                                 *     This array is replaced during a strategic merge patch. */
+                                                 *     This array is replaced during a strategic merge patch.
+                                                 */
                                                 values?: string[];
                                             }[];
                                             /** @description A list of node selector requirements by node's fields. */
                                             matchFields?: {
                                                 /** @description The label key that the selector applies to. */
                                                 key: string;
-                                                /** @description Represents a key's relationship to a set of values.
-                                                 *     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt. */
+                                                /**
+                                                 * @description Represents a key's relationship to a set of values.
+                                                 *     Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                                 */
                                                 operator: string;
-                                                /** @description An array of string values. If the operator is In or NotIn,
+                                                /**
+                                                 * @description An array of string values. If the operator is In or NotIn,
                                                  *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                  *     the values array must be empty. If the operator is Gt or Lt, the values
                                                  *     array must have a single element, which will be interpreted as an integer.
-                                                 *     This array is replaced during a strategic merge patch. */
+                                                 *     This array is replaced during a strategic merge patch.
+                                                 */
                                                 values?: string[];
                                             }[];
                                         }[];
@@ -1115,7 +1651,8 @@ export interface components {
                                 };
                                 /** @description Describes pod affinity scheduling rules (e.g. co-locate this pod in the same node, zone, etc. as some other pod(s)). */
                                 podAffinity?: {
-                                    /** @description The scheduler will prefer to schedule pods to nodes that satisfy
+                                    /**
+                                     * @description The scheduler will prefer to schedule pods to nodes that satisfy
                                      *     the affinity expressions specified by this field, but it may choose
                                      *     a node that violates one or more of the expressions. The node that is
                                      *     most preferred is the one with the greatest sum of weights, i.e.
@@ -1123,87 +1660,112 @@ export interface components {
                                      *     request, requiredDuringScheduling affinity expressions, etc.),
                                      *     compute a sum by iterating through the elements of this field and adding
                                      *     "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
-                                     *     node(s) with the highest sum are the most preferred. */
+                                     *     node(s) with the highest sum are the most preferred.
+                                     */
                                     preferredDuringSchedulingIgnoredDuringExecution?: {
                                         /** @description Required. A pod affinity term, associated with the corresponding weight. */
                                         podAffinityTerm: {
-                                            /** @description A label query over a set of resources, in this case pods.
-                                             *     If it's null, this PodAffinityTerm matches with no Pods. */
+                                            /**
+                                             * @description A label query over a set of resources, in this case pods.
+                                             *     If it's null, this PodAffinityTerm matches with no Pods.
+                                             */
                                             labelSelector?: {
                                                 /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                                 matchExpressions?: {
                                                     /** @description key is the label key that the selector applies to. */
                                                     key: string;
-                                                    /** @description operator represents a key's relationship to a set of values.
-                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                    /**
+                                                     * @description operator represents a key's relationship to a set of values.
+                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                     */
                                                     operator: string;
-                                                    /** @description values is an array of string values. If the operator is In or NotIn,
+                                                    /**
+                                                     * @description values is an array of string values. If the operator is In or NotIn,
                                                      *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                      *     the values array must be empty. This array is replaced during a strategic
-                                                     *     merge patch. */
+                                                     *     merge patch.
+                                                     */
                                                     values?: string[];
                                                 }[];
-                                                /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                                /**
+                                                 * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                                  *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                                 */
                                                 matchLabels?: {
                                                     [key: string]: string;
                                                 };
                                             };
-                                            /** @description MatchLabelKeys is a set of pod label keys to select which pods will
+                                            /**
+                                             * @description MatchLabelKeys is a set of pod label keys to select which pods will
                                              *     be taken into consideration. The keys are used to lookup values from the
                                              *     incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
                                              *     to select the group of existing pods which pods will be taken into consideration
                                              *     for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
                                              *     pod labels will be ignored. The default value is empty.
                                              *     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
-                                             *     Also, matchLabelKeys cannot be set when labelSelector isn't set. */
+                                             *     Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                             */
                                             matchLabelKeys?: string[];
-                                            /** @description MismatchLabelKeys is a set of pod label keys to select which pods will
+                                            /**
+                                             * @description MismatchLabelKeys is a set of pod label keys to select which pods will
                                              *     be taken into consideration. The keys are used to lookup values from the
                                              *     incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
                                              *     to select the group of existing pods which pods will be taken into consideration
                                              *     for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
                                              *     pod labels will be ignored. The default value is empty.
                                              *     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
-                                             *     Also, mismatchLabelKeys cannot be set when labelSelector isn't set. */
+                                             *     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                             */
                                             mismatchLabelKeys?: string[];
-                                            /** @description A label query over the set of namespaces that the term applies to.
+                                            /**
+                                             * @description A label query over the set of namespaces that the term applies to.
                                              *     The term is applied to the union of the namespaces selected by this field
                                              *     and the ones listed in the namespaces field.
                                              *     null selector and null or empty namespaces list means "this pod's namespace".
-                                             *     An empty selector ({}) matches all namespaces. */
+                                             *     An empty selector ({}) matches all namespaces.
+                                             */
                                             namespaceSelector?: {
                                                 /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                                 matchExpressions?: {
                                                     /** @description key is the label key that the selector applies to. */
                                                     key: string;
-                                                    /** @description operator represents a key's relationship to a set of values.
-                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                    /**
+                                                     * @description operator represents a key's relationship to a set of values.
+                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                     */
                                                     operator: string;
-                                                    /** @description values is an array of string values. If the operator is In or NotIn,
+                                                    /**
+                                                     * @description values is an array of string values. If the operator is In or NotIn,
                                                      *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                      *     the values array must be empty. This array is replaced during a strategic
-                                                     *     merge patch. */
+                                                     *     merge patch.
+                                                     */
                                                     values?: string[];
                                                 }[];
-                                                /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                                /**
+                                                 * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                                  *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                                 */
                                                 matchLabels?: {
                                                     [key: string]: string;
                                                 };
                                             };
-                                            /** @description namespaces specifies a static list of namespace names that the term applies to.
+                                            /**
+                                             * @description namespaces specifies a static list of namespace names that the term applies to.
                                              *     The term is applied to the union of the namespaces listed in this field
                                              *     and the ones selected by namespaceSelector.
-                                             *     null or empty namespaces list and null namespaceSelector means "this pod's namespace". */
+                                             *     null or empty namespaces list and null namespaceSelector means "this pod's namespace".
+                                             */
                                             namespaces?: string[];
-                                            /** @description This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
+                                            /**
+                                             * @description This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
                                              *     the labelSelector in the specified namespaces, where co-located is defined as running on a node
                                              *     whose value of the label with key topologyKey matches that of any node on which any of the
                                              *     selected pods is running.
-                                             *     Empty topologyKey is not allowed. */
+                                             *     Empty topologyKey is not allowed.
+                                             */
                                             topologyKey: string;
                                         };
                                         /**
@@ -1213,97 +1775,124 @@ export interface components {
                                          */
                                         weight: number;
                                     }[];
-                                    /** @description If the affinity requirements specified by this field are not met at
+                                    /**
+                                     * @description If the affinity requirements specified by this field are not met at
                                      *     scheduling time, the pod will not be scheduled onto the node.
                                      *     If the affinity requirements specified by this field cease to be met
                                      *     at some point during pod execution (e.g. due to a pod label update), the
                                      *     system may or may not try to eventually evict the pod from its node.
                                      *     When there are multiple elements, the lists of nodes corresponding to each
-                                     *     podAffinityTerm are intersected, i.e. all terms must be satisfied. */
+                                     *     podAffinityTerm are intersected, i.e. all terms must be satisfied.
+                                     */
                                     requiredDuringSchedulingIgnoredDuringExecution?: {
-                                        /** @description A label query over a set of resources, in this case pods.
-                                         *     If it's null, this PodAffinityTerm matches with no Pods. */
+                                        /**
+                                         * @description A label query over a set of resources, in this case pods.
+                                         *     If it's null, this PodAffinityTerm matches with no Pods.
+                                         */
                                         labelSelector?: {
                                             /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                             matchExpressions?: {
                                                 /** @description key is the label key that the selector applies to. */
                                                 key: string;
-                                                /** @description operator represents a key's relationship to a set of values.
-                                                 *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                /**
+                                                 * @description operator represents a key's relationship to a set of values.
+                                                 *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                 */
                                                 operator: string;
-                                                /** @description values is an array of string values. If the operator is In or NotIn,
+                                                /**
+                                                 * @description values is an array of string values. If the operator is In or NotIn,
                                                  *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                  *     the values array must be empty. This array is replaced during a strategic
-                                                 *     merge patch. */
+                                                 *     merge patch.
+                                                 */
                                                 values?: string[];
                                             }[];
-                                            /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                            /**
+                                             * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                              *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                             *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                             *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                             */
                                             matchLabels?: {
                                                 [key: string]: string;
                                             };
                                         };
-                                        /** @description MatchLabelKeys is a set of pod label keys to select which pods will
+                                        /**
+                                         * @description MatchLabelKeys is a set of pod label keys to select which pods will
                                          *     be taken into consideration. The keys are used to lookup values from the
                                          *     incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
                                          *     to select the group of existing pods which pods will be taken into consideration
                                          *     for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
                                          *     pod labels will be ignored. The default value is empty.
                                          *     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
-                                         *     Also, matchLabelKeys cannot be set when labelSelector isn't set. */
+                                         *     Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                         */
                                         matchLabelKeys?: string[];
-                                        /** @description MismatchLabelKeys is a set of pod label keys to select which pods will
+                                        /**
+                                         * @description MismatchLabelKeys is a set of pod label keys to select which pods will
                                          *     be taken into consideration. The keys are used to lookup values from the
                                          *     incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
                                          *     to select the group of existing pods which pods will be taken into consideration
                                          *     for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
                                          *     pod labels will be ignored. The default value is empty.
                                          *     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
-                                         *     Also, mismatchLabelKeys cannot be set when labelSelector isn't set. */
+                                         *     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                         */
                                         mismatchLabelKeys?: string[];
-                                        /** @description A label query over the set of namespaces that the term applies to.
+                                        /**
+                                         * @description A label query over the set of namespaces that the term applies to.
                                          *     The term is applied to the union of the namespaces selected by this field
                                          *     and the ones listed in the namespaces field.
                                          *     null selector and null or empty namespaces list means "this pod's namespace".
-                                         *     An empty selector ({}) matches all namespaces. */
+                                         *     An empty selector ({}) matches all namespaces.
+                                         */
                                         namespaceSelector?: {
                                             /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                             matchExpressions?: {
                                                 /** @description key is the label key that the selector applies to. */
                                                 key: string;
-                                                /** @description operator represents a key's relationship to a set of values.
-                                                 *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                /**
+                                                 * @description operator represents a key's relationship to a set of values.
+                                                 *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                 */
                                                 operator: string;
-                                                /** @description values is an array of string values. If the operator is In or NotIn,
+                                                /**
+                                                 * @description values is an array of string values. If the operator is In or NotIn,
                                                  *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                  *     the values array must be empty. This array is replaced during a strategic
-                                                 *     merge patch. */
+                                                 *     merge patch.
+                                                 */
                                                 values?: string[];
                                             }[];
-                                            /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                            /**
+                                             * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                              *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                             *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                             *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                             */
                                             matchLabels?: {
                                                 [key: string]: string;
                                             };
                                         };
-                                        /** @description namespaces specifies a static list of namespace names that the term applies to.
+                                        /**
+                                         * @description namespaces specifies a static list of namespace names that the term applies to.
                                          *     The term is applied to the union of the namespaces listed in this field
                                          *     and the ones selected by namespaceSelector.
-                                         *     null or empty namespaces list and null namespaceSelector means "this pod's namespace". */
+                                         *     null or empty namespaces list and null namespaceSelector means "this pod's namespace".
+                                         */
                                         namespaces?: string[];
-                                        /** @description This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
+                                        /**
+                                         * @description This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
                                          *     the labelSelector in the specified namespaces, where co-located is defined as running on a node
                                          *     whose value of the label with key topologyKey matches that of any node on which any of the
                                          *     selected pods is running.
-                                         *     Empty topologyKey is not allowed. */
+                                         *     Empty topologyKey is not allowed.
+                                         */
                                         topologyKey: string;
                                     }[];
                                 };
                                 /** @description Describes pod anti-affinity scheduling rules (e.g. avoid putting this pod in the same node, zone, etc. as some other pod(s)). */
                                 podAntiAffinity?: {
-                                    /** @description The scheduler will prefer to schedule pods to nodes that satisfy
+                                    /**
+                                     * @description The scheduler will prefer to schedule pods to nodes that satisfy
                                      *     the anti-affinity expressions specified by this field, but it may choose
                                      *     a node that violates one or more of the expressions. The node that is
                                      *     most preferred is the one with the greatest sum of weights, i.e.
@@ -1311,87 +1900,112 @@ export interface components {
                                      *     request, requiredDuringScheduling anti-affinity expressions, etc.),
                                      *     compute a sum by iterating through the elements of this field and subtracting
                                      *     "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
-                                     *     node(s) with the highest sum are the most preferred. */
+                                     *     node(s) with the highest sum are the most preferred.
+                                     */
                                     preferredDuringSchedulingIgnoredDuringExecution?: {
                                         /** @description Required. A pod affinity term, associated with the corresponding weight. */
                                         podAffinityTerm: {
-                                            /** @description A label query over a set of resources, in this case pods.
-                                             *     If it's null, this PodAffinityTerm matches with no Pods. */
+                                            /**
+                                             * @description A label query over a set of resources, in this case pods.
+                                             *     If it's null, this PodAffinityTerm matches with no Pods.
+                                             */
                                             labelSelector?: {
                                                 /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                                 matchExpressions?: {
                                                     /** @description key is the label key that the selector applies to. */
                                                     key: string;
-                                                    /** @description operator represents a key's relationship to a set of values.
-                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                    /**
+                                                     * @description operator represents a key's relationship to a set of values.
+                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                     */
                                                     operator: string;
-                                                    /** @description values is an array of string values. If the operator is In or NotIn,
+                                                    /**
+                                                     * @description values is an array of string values. If the operator is In or NotIn,
                                                      *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                      *     the values array must be empty. This array is replaced during a strategic
-                                                     *     merge patch. */
+                                                     *     merge patch.
+                                                     */
                                                     values?: string[];
                                                 }[];
-                                                /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                                /**
+                                                 * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                                  *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                                 */
                                                 matchLabels?: {
                                                     [key: string]: string;
                                                 };
                                             };
-                                            /** @description MatchLabelKeys is a set of pod label keys to select which pods will
+                                            /**
+                                             * @description MatchLabelKeys is a set of pod label keys to select which pods will
                                              *     be taken into consideration. The keys are used to lookup values from the
                                              *     incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
                                              *     to select the group of existing pods which pods will be taken into consideration
                                              *     for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
                                              *     pod labels will be ignored. The default value is empty.
                                              *     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
-                                             *     Also, matchLabelKeys cannot be set when labelSelector isn't set. */
+                                             *     Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                             */
                                             matchLabelKeys?: string[];
-                                            /** @description MismatchLabelKeys is a set of pod label keys to select which pods will
+                                            /**
+                                             * @description MismatchLabelKeys is a set of pod label keys to select which pods will
                                              *     be taken into consideration. The keys are used to lookup values from the
                                              *     incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
                                              *     to select the group of existing pods which pods will be taken into consideration
                                              *     for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
                                              *     pod labels will be ignored. The default value is empty.
                                              *     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
-                                             *     Also, mismatchLabelKeys cannot be set when labelSelector isn't set. */
+                                             *     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                             */
                                             mismatchLabelKeys?: string[];
-                                            /** @description A label query over the set of namespaces that the term applies to.
+                                            /**
+                                             * @description A label query over the set of namespaces that the term applies to.
                                              *     The term is applied to the union of the namespaces selected by this field
                                              *     and the ones listed in the namespaces field.
                                              *     null selector and null or empty namespaces list means "this pod's namespace".
-                                             *     An empty selector ({}) matches all namespaces. */
+                                             *     An empty selector ({}) matches all namespaces.
+                                             */
                                             namespaceSelector?: {
                                                 /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                                 matchExpressions?: {
                                                     /** @description key is the label key that the selector applies to. */
                                                     key: string;
-                                                    /** @description operator represents a key's relationship to a set of values.
-                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                    /**
+                                                     * @description operator represents a key's relationship to a set of values.
+                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                     */
                                                     operator: string;
-                                                    /** @description values is an array of string values. If the operator is In or NotIn,
+                                                    /**
+                                                     * @description values is an array of string values. If the operator is In or NotIn,
                                                      *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                      *     the values array must be empty. This array is replaced during a strategic
-                                                     *     merge patch. */
+                                                     *     merge patch.
+                                                     */
                                                     values?: string[];
                                                 }[];
-                                                /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                                /**
+                                                 * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                                  *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                                 */
                                                 matchLabels?: {
                                                     [key: string]: string;
                                                 };
                                             };
-                                            /** @description namespaces specifies a static list of namespace names that the term applies to.
+                                            /**
+                                             * @description namespaces specifies a static list of namespace names that the term applies to.
                                              *     The term is applied to the union of the namespaces listed in this field
                                              *     and the ones selected by namespaceSelector.
-                                             *     null or empty namespaces list and null namespaceSelector means "this pod's namespace". */
+                                             *     null or empty namespaces list and null namespaceSelector means "this pod's namespace".
+                                             */
                                             namespaces?: string[];
-                                            /** @description This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
+                                            /**
+                                             * @description This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
                                              *     the labelSelector in the specified namespaces, where co-located is defined as running on a node
                                              *     whose value of the label with key topologyKey matches that of any node on which any of the
                                              *     selected pods is running.
-                                             *     Empty topologyKey is not allowed. */
+                                             *     Empty topologyKey is not allowed.
+                                             */
                                             topologyKey: string;
                                         };
                                         /**
@@ -1401,127 +2015,164 @@ export interface components {
                                          */
                                         weight: number;
                                     }[];
-                                    /** @description If the anti-affinity requirements specified by this field are not met at
+                                    /**
+                                     * @description If the anti-affinity requirements specified by this field are not met at
                                      *     scheduling time, the pod will not be scheduled onto the node.
                                      *     If the anti-affinity requirements specified by this field cease to be met
                                      *     at some point during pod execution (e.g. due to a pod label update), the
                                      *     system may or may not try to eventually evict the pod from its node.
                                      *     When there are multiple elements, the lists of nodes corresponding to each
-                                     *     podAffinityTerm are intersected, i.e. all terms must be satisfied. */
+                                     *     podAffinityTerm are intersected, i.e. all terms must be satisfied.
+                                     */
                                     requiredDuringSchedulingIgnoredDuringExecution?: {
-                                        /** @description A label query over a set of resources, in this case pods.
-                                         *     If it's null, this PodAffinityTerm matches with no Pods. */
+                                        /**
+                                         * @description A label query over a set of resources, in this case pods.
+                                         *     If it's null, this PodAffinityTerm matches with no Pods.
+                                         */
                                         labelSelector?: {
                                             /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                             matchExpressions?: {
                                                 /** @description key is the label key that the selector applies to. */
                                                 key: string;
-                                                /** @description operator represents a key's relationship to a set of values.
-                                                 *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                /**
+                                                 * @description operator represents a key's relationship to a set of values.
+                                                 *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                 */
                                                 operator: string;
-                                                /** @description values is an array of string values. If the operator is In or NotIn,
+                                                /**
+                                                 * @description values is an array of string values. If the operator is In or NotIn,
                                                  *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                  *     the values array must be empty. This array is replaced during a strategic
-                                                 *     merge patch. */
+                                                 *     merge patch.
+                                                 */
                                                 values?: string[];
                                             }[];
-                                            /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                            /**
+                                             * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                              *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                             *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                             *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                             */
                                             matchLabels?: {
                                                 [key: string]: string;
                                             };
                                         };
-                                        /** @description MatchLabelKeys is a set of pod label keys to select which pods will
+                                        /**
+                                         * @description MatchLabelKeys is a set of pod label keys to select which pods will
                                          *     be taken into consideration. The keys are used to lookup values from the
                                          *     incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
                                          *     to select the group of existing pods which pods will be taken into consideration
                                          *     for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
                                          *     pod labels will be ignored. The default value is empty.
                                          *     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
-                                         *     Also, matchLabelKeys cannot be set when labelSelector isn't set. */
+                                         *     Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                         */
                                         matchLabelKeys?: string[];
-                                        /** @description MismatchLabelKeys is a set of pod label keys to select which pods will
+                                        /**
+                                         * @description MismatchLabelKeys is a set of pod label keys to select which pods will
                                          *     be taken into consideration. The keys are used to lookup values from the
                                          *     incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
                                          *     to select the group of existing pods which pods will be taken into consideration
                                          *     for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
                                          *     pod labels will be ignored. The default value is empty.
                                          *     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
-                                         *     Also, mismatchLabelKeys cannot be set when labelSelector isn't set. */
+                                         *     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                         */
                                         mismatchLabelKeys?: string[];
-                                        /** @description A label query over the set of namespaces that the term applies to.
+                                        /**
+                                         * @description A label query over the set of namespaces that the term applies to.
                                          *     The term is applied to the union of the namespaces selected by this field
                                          *     and the ones listed in the namespaces field.
                                          *     null selector and null or empty namespaces list means "this pod's namespace".
-                                         *     An empty selector ({}) matches all namespaces. */
+                                         *     An empty selector ({}) matches all namespaces.
+                                         */
                                         namespaceSelector?: {
                                             /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                             matchExpressions?: {
                                                 /** @description key is the label key that the selector applies to. */
                                                 key: string;
-                                                /** @description operator represents a key's relationship to a set of values.
-                                                 *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                /**
+                                                 * @description operator represents a key's relationship to a set of values.
+                                                 *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                 */
                                                 operator: string;
-                                                /** @description values is an array of string values. If the operator is In or NotIn,
+                                                /**
+                                                 * @description values is an array of string values. If the operator is In or NotIn,
                                                  *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                  *     the values array must be empty. This array is replaced during a strategic
-                                                 *     merge patch. */
+                                                 *     merge patch.
+                                                 */
                                                 values?: string[];
                                             }[];
-                                            /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                            /**
+                                             * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                              *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                             *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                             *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                             */
                                             matchLabels?: {
                                                 [key: string]: string;
                                             };
                                         };
-                                        /** @description namespaces specifies a static list of namespace names that the term applies to.
+                                        /**
+                                         * @description namespaces specifies a static list of namespace names that the term applies to.
                                          *     The term is applied to the union of the namespaces listed in this field
                                          *     and the ones selected by namespaceSelector.
-                                         *     null or empty namespaces list and null namespaceSelector means "this pod's namespace". */
+                                         *     null or empty namespaces list and null namespaceSelector means "this pod's namespace".
+                                         */
                                         namespaces?: string[];
-                                        /** @description This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
+                                        /**
+                                         * @description This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
                                          *     the labelSelector in the specified namespaces, where co-located is defined as running on a node
                                          *     whose value of the label with key topologyKey matches that of any node on which any of the
                                          *     selected pods is running.
-                                         *     Empty topologyKey is not allowed. */
+                                         *     Empty topologyKey is not allowed.
+                                         */
                                         topologyKey: string;
                                     }[];
                                 };
                             };
                             /** @description AutomountServiceAccountToken indicates whether a service account token should be automatically mounted. */
                             automountServiceAccountToken?: boolean;
-                            /** @description List of containers belonging to the pod.
+                            /**
+                             * @description List of containers belonging to the pod.
                              *     Containers cannot currently be added or removed.
                              *     There must be at least one container in a Pod.
-                             *     Cannot be updated. */
+                             *     Cannot be updated.
+                             */
                             containers: {
-                                /** @description Arguments to the entrypoint.
+                                /**
+                                 * @description Arguments to the entrypoint.
                                  *     The container image's CMD is used if this is not provided.
                                  *     Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
                                  *     cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced
                                  *     to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will
                                  *     produce the string literal "$(VAR_NAME)". Escaped references will never be expanded, regardless
                                  *     of whether the variable exists or not. Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell */
+                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
+                                 */
                                 args?: string[];
-                                /** @description Entrypoint array. Not executed within a shell.
+                                /**
+                                 * @description Entrypoint array. Not executed within a shell.
                                  *     The container image's ENTRYPOINT is used if this is not provided.
                                  *     Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
                                  *     cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced
                                  *     to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will
                                  *     produce the string literal "$(VAR_NAME)". Escaped references will never be expanded, regardless
                                  *     of whether the variable exists or not. Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell */
+                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
+                                 */
                                 command?: string[];
-                                /** @description List of environment variables to set in the container.
-                                 *     Cannot be updated. */
+                                /**
+                                 * @description List of environment variables to set in the container.
+                                 *     Cannot be updated.
+                                 */
                                 env?: {
-                                    /** @description Name of the environment variable.
-                                     *     May consist of any printable ASCII characters except '='. */
+                                    /**
+                                     * @description Name of the environment variable.
+                                     *     May consist of any printable ASCII characters except '='.
+                                     */
                                     name: string;
-                                    /** @description Variable references $(VAR_NAME) are expanded
+                                    /**
+                                     * @description Variable references $(VAR_NAME) are expanded
                                      *     using the previously defined environment variables in the container and
                                      *     any service environment variables. If a variable cannot be resolved,
                                      *     the reference in the input string will be unchanged. Double $$ are reduced
@@ -1529,7 +2180,8 @@ export interface components {
                                      *     "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
                                      *     Escaped references will never be expanded, regardless of whether the variable
                                      *     exists or not.
-                                     *     Defaults to "". */
+                                     *     Defaults to "".
+                                     */
                                     value?: string;
                                     /** @description Source for the environment variable's value. Cannot be used if value is not empty. */
                                     valueFrom?: {
@@ -1549,20 +2201,26 @@ export interface components {
                                             /** @description Specify whether the ConfigMap or its key must be defined */
                                             optional?: boolean;
                                         };
-                                        /** @description Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
-                                         *     spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs. */
+                                        /**
+                                         * @description Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                         *     spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                                         */
                                         fieldRef?: {
                                             /** @description Version of the schema the FieldPath is written in terms of, defaults to "v1". */
                                             apiVersion?: string;
                                             /** @description Path of the field to select in the specified API version. */
                                             fieldPath: string;
                                         };
-                                        /** @description FileKeyRef selects a key of the env file.
-                                         *     Requires the EnvFiles feature gate to be enabled. */
+                                        /**
+                                         * @description FileKeyRef selects a key of the env file.
+                                         *     Requires the EnvFiles feature gate to be enabled.
+                                         */
                                         fileKeyRef?: {
-                                            /** @description The key within the env file. An invalid key will prevent the pod from starting.
+                                            /**
+                                             * @description The key within the env file. An invalid key will prevent the pod from starting.
                                              *     The keys defined within a source may consist of any printable ASCII characters except '='.
-                                             *     During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters. */
+                                             *     During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                             */
                                             key: string;
                                             /**
                                              * @description Specify whether the file or its key must be defined. If the file or key
@@ -1575,14 +2233,18 @@ export interface components {
                                              * @default false
                                              */
                                             optional: boolean;
-                                            /** @description The path within the volume from which to select the file.
-                                             *     Must be relative and may not contain the '..' path or start with '..'. */
+                                            /**
+                                             * @description The path within the volume from which to select the file.
+                                             *     Must be relative and may not contain the '..' path or start with '..'.
+                                             */
                                             path: string;
                                             /** @description The name of the volume mount containing the env file. */
                                             volumeName: string;
                                         };
-                                        /** @description Selects a resource of the container: only resources limits and requests
-                                         *     (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported. */
+                                        /**
+                                         * @description Selects a resource of the container: only resources limits and requests
+                                         *     (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                                         */
                                         resourceFieldRef?: {
                                             /** @description Container name: required for volumes, optional for env vars */
                                             containerName?: string;
@@ -1609,12 +2271,14 @@ export interface components {
                                         };
                                     };
                                 }[];
-                                /** @description List of sources to populate environment variables in the container.
+                                /**
+                                 * @description List of sources to populate environment variables in the container.
                                  *     The keys defined within a source may consist of any printable ASCII characters except '='.
                                  *     When a key exists in multiple
                                  *     sources, the value associated with the last source will take precedence.
                                  *     Values defined by an Env with a duplicate key will take precedence.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 envFrom?: {
                                     /** @description The ConfigMap to select from */
                                     configMapRef?: {
@@ -1630,8 +2294,10 @@ export interface components {
                                         /** @description Specify whether the ConfigMap must be defined */
                                         optional?: boolean;
                                     };
-                                    /** @description Optional text to prepend to the name of each environment variable.
-                                     *     May consist of any printable ASCII characters except '='. */
+                                    /**
+                                     * @description Optional text to prepend to the name of each environment variable.
+                                     *     May consist of any printable ASCII characters except '='.
+                                     */
                                     prefix?: string;
                                     /** @description The Secret to select from */
                                     secretRef?: {
@@ -1648,55 +2314,73 @@ export interface components {
                                         optional?: boolean;
                                     };
                                 }[];
-                                /** @description Container image name.
+                                /**
+                                 * @description Container image name.
                                  *     More info: https://kubernetes.io/docs/concepts/containers/images
                                  *     This field is optional to allow higher level config management to default or override
-                                 *     container images in workload controllers like Deployments and StatefulSets. */
+                                 *     container images in workload controllers like Deployments and StatefulSets.
+                                 */
                                 image?: string;
-                                /** @description Image pull policy.
+                                /**
+                                 * @description Image pull policy.
                                  *     One of Always, Never, IfNotPresent.
                                  *     Defaults to Always if :latest tag is specified, or IfNotPresent otherwise.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images */
+                                 *     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images
+                                 */
                                 imagePullPolicy?: string;
-                                /** @description Actions that the management system should take in response to container lifecycle events.
-                                 *     Cannot be updated. */
+                                /**
+                                 * @description Actions that the management system should take in response to container lifecycle events.
+                                 *     Cannot be updated.
+                                 */
                                 lifecycle?: {
-                                    /** @description PostStart is called immediately after a container is created. If the handler fails,
+                                    /**
+                                     * @description PostStart is called immediately after a container is created. If the handler fails,
                                      *     the container is terminated and restarted according to its restart policy.
                                      *     Other management of the container blocks until the hook completes.
-                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks */
+                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
+                                     */
                                     postStart?: {
                                         /** @description Exec specifies a command to execute in the container. */
                                         exec?: {
-                                            /** @description Command is the command line to execute inside the container, the working directory for the
+                                            /**
+                                             * @description Command is the command line to execute inside the container, the working directory for the
                                              *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                              *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                              *     a shell, you need to explicitly call out to that shell.
-                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                             */
                                             command?: string[];
                                         };
                                         /** @description HTTPGet specifies an HTTP GET request to perform. */
                                         httpGet?: {
-                                            /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                             *     "Host" in httpHeaders instead. */
+                                            /**
+                                             * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                             *     "Host" in httpHeaders instead.
+                                             */
                                             host?: string;
                                             /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                             httpHeaders?: {
-                                                /** @description The header field name.
-                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                                /**
+                                                 * @description The header field name.
+                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                                 */
                                                 name: string;
                                                 /** @description The header field value */
                                                 value: string;
                                             }[];
                                             /** @description Path to access on the HTTP server. */
                                             path?: string;
-                                            /** @description Name or number of the port to access on the container.
+                                            /**
+                                             * @description Name or number of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
-                                            /** @description Scheme to use for connecting to the host.
-                                             *     Defaults to HTTP. */
+                                            /**
+                                             * @description Scheme to use for connecting to the host.
+                                             *     Defaults to HTTP.
+                                             */
                                             scheme?: string;
                                         };
                                         /** @description Sleep represents a duration that the container should sleep. */
@@ -1707,19 +2391,24 @@ export interface components {
                                              */
                                             seconds: number;
                                         };
-                                        /** @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
+                                        /**
+                                         * @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
                                          *     for backward compatibility. There is no validation of this field and
-                                         *     lifecycle hooks will fail at runtime when it is specified. */
+                                         *     lifecycle hooks will fail at runtime when it is specified.
+                                         */
                                         tcpSocket?: {
                                             /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                             host?: string;
-                                            /** @description Number or name of the port to access on the container.
+                                            /**
+                                             * @description Number or name of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
                                         };
                                     };
-                                    /** @description PreStop is called immediately before a container is terminated due to an
+                                    /**
+                                     * @description PreStop is called immediately before a container is terminated due to an
                                      *     API request or management event such as liveness/startup probe failure,
                                      *     preemption, resource contention, etc. The handler is not called if the
                                      *     container crashes or exits. The Pod's termination grace period countdown begins before the
@@ -1727,38 +2416,49 @@ export interface components {
                                      *     container will eventually terminate within the Pod's termination grace
                                      *     period (unless delayed by finalizers). Other management of the container blocks until the hook completes
                                      *     or until the termination grace period is reached.
-                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks */
+                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
+                                     */
                                     preStop?: {
                                         /** @description Exec specifies a command to execute in the container. */
                                         exec?: {
-                                            /** @description Command is the command line to execute inside the container, the working directory for the
+                                            /**
+                                             * @description Command is the command line to execute inside the container, the working directory for the
                                              *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                              *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                              *     a shell, you need to explicitly call out to that shell.
-                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                             */
                                             command?: string[];
                                         };
                                         /** @description HTTPGet specifies an HTTP GET request to perform. */
                                         httpGet?: {
-                                            /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                             *     "Host" in httpHeaders instead. */
+                                            /**
+                                             * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                             *     "Host" in httpHeaders instead.
+                                             */
                                             host?: string;
                                             /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                             httpHeaders?: {
-                                                /** @description The header field name.
-                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                                /**
+                                                 * @description The header field name.
+                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                                 */
                                                 name: string;
                                                 /** @description The header field value */
                                                 value: string;
                                             }[];
                                             /** @description Path to access on the HTTP server. */
                                             path?: string;
-                                            /** @description Name or number of the port to access on the container.
+                                            /**
+                                             * @description Name or number of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
-                                            /** @description Scheme to use for connecting to the host.
-                                             *     Defaults to HTTP. */
+                                            /**
+                                             * @description Scheme to use for connecting to the host.
+                                             *     Defaults to HTTP.
+                                             */
                                             scheme?: string;
                                         };
                                         /** @description Sleep represents a duration that the container should sleep. */
@@ -1769,35 +2469,45 @@ export interface components {
                                              */
                                             seconds: number;
                                         };
-                                        /** @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
+                                        /**
+                                         * @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
                                          *     for backward compatibility. There is no validation of this field and
-                                         *     lifecycle hooks will fail at runtime when it is specified. */
+                                         *     lifecycle hooks will fail at runtime when it is specified.
+                                         */
                                         tcpSocket?: {
                                             /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                             host?: string;
-                                            /** @description Number or name of the port to access on the container.
+                                            /**
+                                             * @description Number or name of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
                                         };
                                     };
-                                    /** @description StopSignal defines which signal will be sent to a container when it is being stopped.
+                                    /**
+                                     * @description StopSignal defines which signal will be sent to a container when it is being stopped.
                                      *     If not specified, the default is defined by the container runtime in use.
-                                     *     StopSignal can only be set for Pods with a non-empty .spec.os.name */
+                                     *     StopSignal can only be set for Pods with a non-empty .spec.os.name
+                                     */
                                     stopSignal?: string;
                                 };
-                                /** @description Periodic probe of container liveness.
+                                /**
+                                 * @description Periodic probe of container liveness.
                                  *     Container will be restarted if the probe fails.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes */
+                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                                 */
                                 livenessProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -1824,25 +2534,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -1867,9 +2585,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -1894,17 +2614,21 @@ export interface components {
                                      */
                                     timeoutSeconds?: number;
                                 };
-                                /** @description Name of the container specified as a DNS_LABEL.
+                                /**
+                                 * @description Name of the container specified as a DNS_LABEL.
                                  *     Each container in a pod must have a unique name (DNS_LABEL).
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 name: string;
-                                /** @description List of ports to expose from the container. Not specifying a port here
+                                /**
+                                 * @description List of ports to expose from the container. Not specifying a port here
                                  *     DOES NOT prevent that port from being exposed. Any port which is
                                  *     listening on the default "0.0.0.0" address inside a container will be
                                  *     accessible from the network.
                                  *     Modifying this array with strategic merge patch may corrupt the data.
                                  *     For more information See https://github.com/kubernetes/kubernetes/issues/108255.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 ports?: {
                                     /**
                                      * Format: int32
@@ -1922,9 +2646,11 @@ export interface components {
                                      *     Most containers do not need this.
                                      */
                                     hostPort?: number;
-                                    /** @description If specified, this must be an IANA_SVC_NAME and unique within the pod. Each
+                                    /**
+                                     * @description If specified, this must be an IANA_SVC_NAME and unique within the pod. Each
                                      *     named port in a pod must have a unique name. Name for the port that can be
-                                     *     referred to by services. */
+                                     *     referred to by services.
+                                     */
                                     name?: string;
                                     /**
                                      * @description Protocol for port. Must be UDP, TCP, or SCTP.
@@ -1933,18 +2659,22 @@ export interface components {
                                      */
                                     protocol: string;
                                 }[];
-                                /** @description Periodic probe of container service readiness.
+                                /**
+                                 * @description Periodic probe of container service readiness.
                                  *     Container will be removed from service endpoints if the probe fails.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes */
+                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                                 */
                                 readinessProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -1971,25 +2701,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -2014,9 +2752,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -2043,48 +2783,65 @@ export interface components {
                                 };
                                 /** @description Resources resize policy for the container. */
                                 resizePolicy?: {
-                                    /** @description Name of the resource to which this resource resize policy applies.
-                                     *     Supported values: cpu, memory. */
+                                    /**
+                                     * @description Name of the resource to which this resource resize policy applies.
+                                     *     Supported values: cpu, memory.
+                                     */
                                     resourceName: string;
-                                    /** @description Restart policy to apply when specified resource is resized.
-                                     *     If not specified, it defaults to NotRequired. */
+                                    /**
+                                     * @description Restart policy to apply when specified resource is resized.
+                                     *     If not specified, it defaults to NotRequired.
+                                     */
                                     restartPolicy: string;
                                 }[];
-                                /** @description Compute Resources required by this container.
+                                /**
+                                 * @description Compute Resources required by this container.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                 */
                                 resources?: {
-                                    /** @description Claims lists the names of resources, defined in spec.resourceClaims,
+                                    /**
+                                     * @description Claims lists the names of resources, defined in spec.resourceClaims,
                                      *     that are used by this container.
                                      *
                                      *     This field depends on the
                                      *     DynamicResourceAllocation feature gate.
                                      *
-                                     *     This field is immutable. It can only be set for containers. */
+                                     *     This field is immutable. It can only be set for containers.
+                                     */
                                     claims?: {
-                                        /** @description Name must match the name of one entry in pod.spec.resourceClaims of
+                                        /**
+                                         * @description Name must match the name of one entry in pod.spec.resourceClaims of
                                          *     the Pod where this field is used. It makes that resource available
-                                         *     inside a container. */
+                                         *     inside a container.
+                                         */
                                         name: string;
-                                        /** @description Request is the name chosen for a request in the referenced claim.
+                                        /**
+                                         * @description Request is the name chosen for a request in the referenced claim.
                                          *     If empty, everything from the claim is made available, otherwise
-                                         *     only the result of this request. */
+                                         *     only the result of this request.
+                                         */
                                         request?: string;
                                     }[];
-                                    /** @description Limits describes the maximum amount of compute resources allowed.
-                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                    /**
+                                     * @description Limits describes the maximum amount of compute resources allowed.
+                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                     */
                                     limits?: {
                                         [key: string]: number | string;
                                     };
-                                    /** @description Requests describes the minimum amount of compute resources required.
+                                    /**
+                                     * @description Requests describes the minimum amount of compute resources required.
                                      *     If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
                                      *     otherwise to an implementation-defined value. Requests cannot exceed Limits.
-                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                     */
                                     requests?: {
                                         [key: string]: number | string;
                                     };
                                 };
-                                /** @description RestartPolicy defines the restart behavior of individual containers in a pod.
+                                /**
+                                 * @description RestartPolicy defines the restart behavior of individual containers in a pod.
                                  *     This overrides the pod-level restart policy. When this field is not specified,
                                  *     the restart behavior is defined by the Pod's restart policy and the container type.
                                  *     Additionally, setting the RestartPolicy as "Always" for the init container will
@@ -2098,9 +2855,11 @@ export interface components {
                                  *     for the container to complete before proceeding to the next init
                                  *     container. Instead, the next init container starts immediately after this
                                  *     init container is started, or after any startupProbe has successfully
-                                 *     completed. */
+                                 *     completed.
+                                 */
                                 restartPolicy?: string;
-                                /** @description Represents a list of rules to be checked to determine if the
+                                /**
+                                 * @description Represents a list of rules to be checked to determine if the
                                  *     container should be restarted on exit. The rules are evaluated in
                                  *     order. Once a rule matches a container exit condition, the remaining
                                  *     rules are ignored. If no rule matches the container exit condition,
@@ -2110,77 +2869,102 @@ export interface components {
                                  *     - Rules can have the same action.
                                  *     - Identical rules are not forbidden in validations.
                                  *     When rules are specified, container MUST set RestartPolicy explicitly
-                                 *     even it if matches the Pod's RestartPolicy. */
+                                 *     even it if matches the Pod's RestartPolicy.
+                                 */
                                 restartPolicyRules?: {
-                                    /** @description Specifies the action taken on a container exit if the requirements
+                                    /**
+                                     * @description Specifies the action taken on a container exit if the requirements
                                      *     are satisfied. The only possible value is "Restart" to restart the
-                                     *     container. */
+                                     *     container.
+                                     */
                                     action: string;
                                     /** @description Represents the exit codes to check on container exits. */
                                     exitCodes?: {
-                                        /** @description Represents the relationship between the container exit code(s) and the
+                                        /**
+                                         * @description Represents the relationship between the container exit code(s) and the
                                          *     specified values. Possible values are:
                                          *     - In: the requirement is satisfied if the container exit code is in the
                                          *       set of specified values.
                                          *     - NotIn: the requirement is satisfied if the container exit code is
-                                         *       not in the set of specified values. */
+                                         *       not in the set of specified values.
+                                         */
                                         operator: string;
-                                        /** @description Specifies the set of values to check for container exit codes.
-                                         *     At most 255 elements are allowed. */
+                                        /**
+                                         * @description Specifies the set of values to check for container exit codes.
+                                         *     At most 255 elements are allowed.
+                                         */
                                         values?: number[];
                                     };
                                 }[];
-                                /** @description SecurityContext defines the security options the container should be run with.
+                                /**
+                                 * @description SecurityContext defines the security options the container should be run with.
                                  *     If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext.
-                                 *     More info: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/ */
+                                 *     More info: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+                                 */
                                 securityContext?: {
-                                    /** @description AllowPrivilegeEscalation controls whether a process can gain more
+                                    /**
+                                     * @description AllowPrivilegeEscalation controls whether a process can gain more
                                      *     privileges than its parent process. This bool directly controls if
                                      *     the no_new_privs flag will be set on the container process.
                                      *     AllowPrivilegeEscalation is true always when the container is:
                                      *     1) run as Privileged
                                      *     2) has CAP_SYS_ADMIN
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     allowPrivilegeEscalation?: boolean;
-                                    /** @description appArmorProfile is the AppArmor options to use by this container. If set, this profile
+                                    /**
+                                     * @description appArmorProfile is the AppArmor options to use by this container. If set, this profile
                                      *     overrides the pod's appArmorProfile.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     appArmorProfile?: {
-                                        /** @description localhostProfile indicates a profile loaded on the node that should be used.
+                                        /**
+                                         * @description localhostProfile indicates a profile loaded on the node that should be used.
                                          *     The profile must be preconfigured on the node to work.
                                          *     Must match the loaded name of the profile.
-                                         *     Must be set if and only if type is "Localhost". */
+                                         *     Must be set if and only if type is "Localhost".
+                                         */
                                         localhostProfile?: string;
-                                        /** @description type indicates which kind of AppArmor profile will be applied.
+                                        /**
+                                         * @description type indicates which kind of AppArmor profile will be applied.
                                          *     Valid options are:
                                          *       Localhost - a profile pre-loaded on the node.
                                          *       RuntimeDefault - the container runtime's default profile.
-                                         *       Unconfined - no AppArmor enforcement. */
+                                         *       Unconfined - no AppArmor enforcement.
+                                         */
                                         type: string;
                                     };
-                                    /** @description The capabilities to add/drop when running containers.
+                                    /**
+                                     * @description The capabilities to add/drop when running containers.
                                      *     Defaults to the default set of capabilities granted by the container runtime.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     capabilities?: {
                                         /** @description Added capabilities */
                                         add?: string[];
                                         /** @description Removed capabilities */
                                         drop?: string[];
                                     };
-                                    /** @description Run container in privileged mode.
+                                    /**
+                                     * @description Run container in privileged mode.
                                      *     Processes in privileged containers are essentially equivalent to root on the host.
                                      *     Defaults to false.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     privileged?: boolean;
-                                    /** @description procMount denotes the type of proc mount to use for the containers.
+                                    /**
+                                     * @description procMount denotes the type of proc mount to use for the containers.
                                      *     The default value is Default which uses the container runtime defaults for
                                      *     readonly paths and masked paths.
                                      *     This requires the ProcMountType feature flag to be enabled.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     procMount?: string;
-                                    /** @description Whether this container has a read-only root filesystem.
+                                    /**
+                                     * @description Whether this container has a read-only root filesystem.
                                      *     Default is false.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     readOnlyRootFilesystem?: boolean;
                                     /**
                                      * Format: int64
@@ -2191,12 +2975,14 @@ export interface components {
                                      *     Note that this field cannot be set when spec.os.name is windows.
                                      */
                                     runAsGroup?: number;
-                                    /** @description Indicates that the container must run as a non-root user.
+                                    /**
+                                     * @description Indicates that the container must run as a non-root user.
                                      *     If true, the Kubelet will validate the image at runtime to ensure that it
                                      *     does not run as UID 0 (root) and fail to start the container if it does.
                                      *     If unset or false, no such validation will be performed.
                                      *     May also be set in PodSecurityContext.  If set in both SecurityContext and
-                                     *     PodSecurityContext, the value specified in SecurityContext takes precedence. */
+                                     *     PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                     */
                                     runAsNonRoot?: boolean;
                                     /**
                                      * Format: int64
@@ -2207,11 +2993,13 @@ export interface components {
                                      *     Note that this field cannot be set when spec.os.name is windows.
                                      */
                                     runAsUser?: number;
-                                    /** @description The SELinux context to be applied to the container.
+                                    /**
+                                     * @description The SELinux context to be applied to the container.
                                      *     If unspecified, the container runtime will allocate a random SELinux context for each
                                      *     container.  May also be set in PodSecurityContext.  If set in both SecurityContext and
                                      *     PodSecurityContext, the value specified in SecurityContext takes precedence.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     seLinuxOptions?: {
                                         /** @description Level is SELinux level label that applies to the container. */
                                         level?: string;
@@ -2222,62 +3010,80 @@ export interface components {
                                         /** @description User is a SELinux user label that applies to the container. */
                                         user?: string;
                                     };
-                                    /** @description The seccomp options to use by this container. If seccomp options are
+                                    /**
+                                     * @description The seccomp options to use by this container. If seccomp options are
                                      *     provided at both the pod & container level, the container options
                                      *     override the pod options.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     seccompProfile?: {
-                                        /** @description localhostProfile indicates a profile defined in a file on the node should be used.
+                                        /**
+                                         * @description localhostProfile indicates a profile defined in a file on the node should be used.
                                          *     The profile must be preconfigured on the node to work.
                                          *     Must be a descending path, relative to the kubelet's configured seccomp profile location.
-                                         *     Must be set if type is "Localhost". Must NOT be set for any other type. */
+                                         *     Must be set if type is "Localhost". Must NOT be set for any other type.
+                                         */
                                         localhostProfile?: string;
-                                        /** @description type indicates which kind of seccomp profile will be applied.
+                                        /**
+                                         * @description type indicates which kind of seccomp profile will be applied.
                                          *     Valid options are:
                                          *
                                          *     Localhost - a profile defined in a file on the node should be used.
                                          *     RuntimeDefault - the container runtime default profile should be used.
-                                         *     Unconfined - no profile should be applied. */
+                                         *     Unconfined - no profile should be applied.
+                                         */
                                         type: string;
                                     };
-                                    /** @description The Windows specific settings applied to all containers.
+                                    /**
+                                     * @description The Windows specific settings applied to all containers.
                                      *     If unspecified, the options from the PodSecurityContext will be used.
                                      *     If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.
-                                     *     Note that this field cannot be set when spec.os.name is linux. */
+                                     *     Note that this field cannot be set when spec.os.name is linux.
+                                     */
                                     windowsOptions?: {
-                                        /** @description GMSACredentialSpec is where the GMSA admission webhook
+                                        /**
+                                         * @description GMSACredentialSpec is where the GMSA admission webhook
                                          *     (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the
-                                         *     GMSA credential spec named by the GMSACredentialSpecName field. */
+                                         *     GMSA credential spec named by the GMSACredentialSpecName field.
+                                         */
                                         gmsaCredentialSpec?: string;
                                         /** @description GMSACredentialSpecName is the name of the GMSA credential spec to use. */
                                         gmsaCredentialSpecName?: string;
-                                        /** @description HostProcess determines if a container should be run as a 'Host Process' container.
+                                        /**
+                                         * @description HostProcess determines if a container should be run as a 'Host Process' container.
                                          *     All of a Pod's containers must have the same effective HostProcess value
                                          *     (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).
-                                         *     In addition, if HostProcess is true then HostNetwork must also be set to true. */
+                                         *     In addition, if HostProcess is true then HostNetwork must also be set to true.
+                                         */
                                         hostProcess?: boolean;
-                                        /** @description The UserName in Windows to run the entrypoint of the container process.
+                                        /**
+                                         * @description The UserName in Windows to run the entrypoint of the container process.
                                          *     Defaults to the user specified in image metadata if unspecified.
                                          *     May also be set in PodSecurityContext. If set in both SecurityContext and
-                                         *     PodSecurityContext, the value specified in SecurityContext takes precedence. */
+                                         *     PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                         */
                                         runAsUserName?: string;
                                     };
                                 };
-                                /** @description StartupProbe indicates that the Pod has successfully initialized.
+                                /**
+                                 * @description StartupProbe indicates that the Pod has successfully initialized.
                                  *     If specified, no other probes are executed until this completes successfully.
                                  *     If this probe fails, the Pod will be restarted, just as if the livenessProbe failed.
                                  *     This can be used to provide different probe parameters at the beginning of a Pod's lifecycle,
                                  *     when it might take a long time to load data or warm a cache, than during steady-state operation.
                                  *     This cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes */
+                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                                 */
                                 startupProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -2304,25 +3110,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -2347,9 +3161,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -2374,36 +3190,46 @@ export interface components {
                                      */
                                     timeoutSeconds?: number;
                                 };
-                                /** @description Whether this container should allocate a buffer for stdin in the container runtime. If this
+                                /**
+                                 * @description Whether this container should allocate a buffer for stdin in the container runtime. If this
                                  *     is not set, reads from stdin in the container will always result in EOF.
-                                 *     Default is false. */
+                                 *     Default is false.
+                                 */
                                 stdin?: boolean;
-                                /** @description Whether the container runtime should close the stdin channel after it has been opened by
+                                /**
+                                 * @description Whether the container runtime should close the stdin channel after it has been opened by
                                  *     a single attach. When stdin is true the stdin stream will remain open across multiple attach
                                  *     sessions. If stdinOnce is set to true, stdin is opened on container start, is empty until the
                                  *     first client attaches to stdin, and then remains open and accepts data until the client disconnects,
                                  *     at which time stdin is closed and remains closed until the container is restarted. If this
                                  *     flag is false, a container processes that reads from stdin will never receive an EOF.
-                                 *     Default is false */
+                                 *     Default is false
+                                 */
                                 stdinOnce?: boolean;
-                                /** @description Optional: Path at which the file to which the container's termination message
+                                /**
+                                 * @description Optional: Path at which the file to which the container's termination message
                                  *     will be written is mounted into the container's filesystem.
                                  *     Message written is intended to be brief final status, such as an assertion failure message.
                                  *     Will be truncated by the node if greater than 4096 bytes. The total message length across
                                  *     all containers will be limited to 12kb.
                                  *     Defaults to /dev/termination-log.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 terminationMessagePath?: string;
-                                /** @description Indicate how the termination message should be populated. File will use the contents of
+                                /**
+                                 * @description Indicate how the termination message should be populated. File will use the contents of
                                  *     terminationMessagePath to populate the container status message on both success and failure.
                                  *     FallbackToLogsOnError will use the last chunk of container log output if the termination
                                  *     message file is empty and the container exited with an error.
                                  *     The log output is limited to 2048 bytes or 80 lines, whichever is smaller.
                                  *     Defaults to File.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 terminationMessagePolicy?: string;
-                                /** @description Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
-                                 *     Default is false. */
+                                /**
+                                 * @description Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
+                                 *     Default is false.
+                                 */
                                 tty?: boolean;
                                 /** @description volumeDevices is the list of block devices to be used by the container. */
                                 volumeDevices?: {
@@ -2412,25 +3238,34 @@ export interface components {
                                     /** @description name must match the name of a persistentVolumeClaim in the pod */
                                     name: string;
                                 }[];
-                                /** @description Pod volumes to mount into the container's filesystem.
-                                 *     Cannot be updated. */
+                                /**
+                                 * @description Pod volumes to mount into the container's filesystem.
+                                 *     Cannot be updated.
+                                 */
                                 volumeMounts?: {
-                                    /** @description Path within the container at which the volume should be mounted.  Must
-                                     *     not contain ':'. */
+                                    /**
+                                     * @description Path within the container at which the volume should be mounted.  Must
+                                     *     not contain ':'.
+                                     */
                                     mountPath: string;
-                                    /** @description mountPropagation determines how mounts are propagated from the host
+                                    /**
+                                     * @description mountPropagation determines how mounts are propagated from the host
                                      *     to container and the other way around.
                                      *     When not set, MountPropagationNone is used.
                                      *     This field is beta in 1.10.
                                      *     When RecursiveReadOnly is set to IfPossible or to Enabled, MountPropagation must be None or unspecified
-                                     *     (which defaults to None). */
+                                     *     (which defaults to None).
+                                     */
                                     mountPropagation?: string;
                                     /** @description This must match the Name of a Volume. */
                                     name: string;
-                                    /** @description Mounted read-only if true, read-write otherwise (false or unspecified).
-                                     *     Defaults to false. */
+                                    /**
+                                     * @description Mounted read-only if true, read-write otherwise (false or unspecified).
+                                     *     Defaults to false.
+                                     */
                                     readOnly?: boolean;
-                                    /** @description RecursiveReadOnly specifies whether read-only mounts should be handled
+                                    /**
+                                     * @description RecursiveReadOnly specifies whether read-only mounts should be handled
                                      *     recursively.
                                      *
                                      *     If ReadOnly is false, this field has no meaning and must be unspecified.
@@ -2445,88 +3280,120 @@ export interface components {
                                      *     If this field is set to IfPossible or Enabled, MountPropagation must be set to
                                      *     None (or be unspecified, which defaults to None).
                                      *
-                                     *     If this field is not specified, it is treated as an equivalent of Disabled. */
+                                     *     If this field is not specified, it is treated as an equivalent of Disabled.
+                                     */
                                     recursiveReadOnly?: string;
-                                    /** @description Path within the volume from which the container's volume should be mounted.
-                                     *     Defaults to "" (volume's root). */
+                                    /**
+                                     * @description Path within the volume from which the container's volume should be mounted.
+                                     *     Defaults to "" (volume's root).
+                                     */
                                     subPath?: string;
-                                    /** @description Expanded path within the volume from which the container's volume should be mounted.
+                                    /**
+                                     * @description Expanded path within the volume from which the container's volume should be mounted.
                                      *     Behaves similarly to SubPath but environment variable references $(VAR_NAME) are expanded using the container's environment.
                                      *     Defaults to "" (volume's root).
-                                     *     SubPathExpr and SubPath are mutually exclusive. */
+                                     *     SubPathExpr and SubPath are mutually exclusive.
+                                     */
                                     subPathExpr?: string;
                                 }[];
-                                /** @description Container's working directory.
+                                /**
+                                 * @description Container's working directory.
                                  *     If not specified, the container runtime's default will be used, which
                                  *     might be configured in the container image.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 workingDir?: string;
                             }[];
-                            /** @description Specifies the DNS parameters of a pod.
+                            /**
+                             * @description Specifies the DNS parameters of a pod.
                              *     Parameters specified here will be merged to the generated DNS
-                             *     configuration based on DNSPolicy. */
+                             *     configuration based on DNSPolicy.
+                             */
                             dnsConfig?: {
-                                /** @description A list of DNS name server IP addresses.
+                                /**
+                                 * @description A list of DNS name server IP addresses.
                                  *     This will be appended to the base nameservers generated from DNSPolicy.
-                                 *     Duplicated nameservers will be removed. */
+                                 *     Duplicated nameservers will be removed.
+                                 */
                                 nameservers?: string[];
-                                /** @description A list of DNS resolver options.
+                                /**
+                                 * @description A list of DNS resolver options.
                                  *     This will be merged with the base options generated from DNSPolicy.
                                  *     Duplicated entries will be removed. Resolution options given in Options
-                                 *     will override those that appear in the base DNSPolicy. */
+                                 *     will override those that appear in the base DNSPolicy.
+                                 */
                                 options?: {
-                                    /** @description Name is this DNS resolver option's name.
-                                     *     Required. */
+                                    /**
+                                     * @description Name is this DNS resolver option's name.
+                                     *     Required.
+                                     */
                                     name?: string;
                                     /** @description Value is this DNS resolver option's value. */
                                     value?: string;
                                 }[];
-                                /** @description A list of DNS search domains for host-name lookup.
+                                /**
+                                 * @description A list of DNS search domains for host-name lookup.
                                  *     This will be appended to the base search paths generated from DNSPolicy.
-                                 *     Duplicated search paths will be removed. */
+                                 *     Duplicated search paths will be removed.
+                                 */
                                 searches?: string[];
                             };
-                            /** @description Set DNS policy for the pod.
+                            /**
+                             * @description Set DNS policy for the pod.
                              *     Defaults to "ClusterFirst".
                              *     Valid values are 'ClusterFirstWithHostNet', 'ClusterFirst', 'Default' or 'None'.
                              *     DNS parameters given in DNSConfig will be merged with the policy selected with DNSPolicy.
                              *     To have DNS options set along with hostNetwork, you have to specify DNS policy
-                             *     explicitly to 'ClusterFirstWithHostNet'. */
+                             *     explicitly to 'ClusterFirstWithHostNet'.
+                             */
                             dnsPolicy?: string;
-                            /** @description EnableServiceLinks indicates whether information about services should be injected into pod's
+                            /**
+                             * @description EnableServiceLinks indicates whether information about services should be injected into pod's
                              *     environment variables, matching the syntax of Docker links.
-                             *     Optional: Defaults to true. */
+                             *     Optional: Defaults to true.
+                             */
                             enableServiceLinks?: boolean;
-                            /** @description List of ephemeral containers run in this pod. Ephemeral containers may be run in an existing
+                            /**
+                             * @description List of ephemeral containers run in this pod. Ephemeral containers may be run in an existing
                              *     pod to perform user-initiated actions such as debugging. This list cannot be specified when
                              *     creating a pod, and it cannot be modified by updating the pod spec. In order to add an
-                             *     ephemeral container to an existing pod, use the pod's ephemeralcontainers subresource. */
+                             *     ephemeral container to an existing pod, use the pod's ephemeralcontainers subresource.
+                             */
                             ephemeralContainers?: {
-                                /** @description Arguments to the entrypoint.
+                                /**
+                                 * @description Arguments to the entrypoint.
                                  *     The image's CMD is used if this is not provided.
                                  *     Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
                                  *     cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced
                                  *     to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will
                                  *     produce the string literal "$(VAR_NAME)". Escaped references will never be expanded, regardless
                                  *     of whether the variable exists or not. Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell */
+                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
+                                 */
                                 args?: string[];
-                                /** @description Entrypoint array. Not executed within a shell.
+                                /**
+                                 * @description Entrypoint array. Not executed within a shell.
                                  *     The image's ENTRYPOINT is used if this is not provided.
                                  *     Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
                                  *     cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced
                                  *     to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will
                                  *     produce the string literal "$(VAR_NAME)". Escaped references will never be expanded, regardless
                                  *     of whether the variable exists or not. Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell */
+                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
+                                 */
                                 command?: string[];
-                                /** @description List of environment variables to set in the container.
-                                 *     Cannot be updated. */
+                                /**
+                                 * @description List of environment variables to set in the container.
+                                 *     Cannot be updated.
+                                 */
                                 env?: {
-                                    /** @description Name of the environment variable.
-                                     *     May consist of any printable ASCII characters except '='. */
+                                    /**
+                                     * @description Name of the environment variable.
+                                     *     May consist of any printable ASCII characters except '='.
+                                     */
                                     name: string;
-                                    /** @description Variable references $(VAR_NAME) are expanded
+                                    /**
+                                     * @description Variable references $(VAR_NAME) are expanded
                                      *     using the previously defined environment variables in the container and
                                      *     any service environment variables. If a variable cannot be resolved,
                                      *     the reference in the input string will be unchanged. Double $$ are reduced
@@ -2534,7 +3401,8 @@ export interface components {
                                      *     "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
                                      *     Escaped references will never be expanded, regardless of whether the variable
                                      *     exists or not.
-                                     *     Defaults to "". */
+                                     *     Defaults to "".
+                                     */
                                     value?: string;
                                     /** @description Source for the environment variable's value. Cannot be used if value is not empty. */
                                     valueFrom?: {
@@ -2554,20 +3422,26 @@ export interface components {
                                             /** @description Specify whether the ConfigMap or its key must be defined */
                                             optional?: boolean;
                                         };
-                                        /** @description Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
-                                         *     spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs. */
+                                        /**
+                                         * @description Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                         *     spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                                         */
                                         fieldRef?: {
                                             /** @description Version of the schema the FieldPath is written in terms of, defaults to "v1". */
                                             apiVersion?: string;
                                             /** @description Path of the field to select in the specified API version. */
                                             fieldPath: string;
                                         };
-                                        /** @description FileKeyRef selects a key of the env file.
-                                         *     Requires the EnvFiles feature gate to be enabled. */
+                                        /**
+                                         * @description FileKeyRef selects a key of the env file.
+                                         *     Requires the EnvFiles feature gate to be enabled.
+                                         */
                                         fileKeyRef?: {
-                                            /** @description The key within the env file. An invalid key will prevent the pod from starting.
+                                            /**
+                                             * @description The key within the env file. An invalid key will prevent the pod from starting.
                                              *     The keys defined within a source may consist of any printable ASCII characters except '='.
-                                             *     During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters. */
+                                             *     During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                             */
                                             key: string;
                                             /**
                                              * @description Specify whether the file or its key must be defined. If the file or key
@@ -2580,14 +3454,18 @@ export interface components {
                                              * @default false
                                              */
                                             optional: boolean;
-                                            /** @description The path within the volume from which to select the file.
-                                             *     Must be relative and may not contain the '..' path or start with '..'. */
+                                            /**
+                                             * @description The path within the volume from which to select the file.
+                                             *     Must be relative and may not contain the '..' path or start with '..'.
+                                             */
                                             path: string;
                                             /** @description The name of the volume mount containing the env file. */
                                             volumeName: string;
                                         };
-                                        /** @description Selects a resource of the container: only resources limits and requests
-                                         *     (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported. */
+                                        /**
+                                         * @description Selects a resource of the container: only resources limits and requests
+                                         *     (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                                         */
                                         resourceFieldRef?: {
                                             /** @description Container name: required for volumes, optional for env vars */
                                             containerName?: string;
@@ -2614,12 +3492,14 @@ export interface components {
                                         };
                                     };
                                 }[];
-                                /** @description List of sources to populate environment variables in the container.
+                                /**
+                                 * @description List of sources to populate environment variables in the container.
                                  *     The keys defined within a source may consist of any printable ASCII characters except '='.
                                  *     When a key exists in multiple
                                  *     sources, the value associated with the last source will take precedence.
                                  *     Values defined by an Env with a duplicate key will take precedence.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 envFrom?: {
                                     /** @description The ConfigMap to select from */
                                     configMapRef?: {
@@ -2635,8 +3515,10 @@ export interface components {
                                         /** @description Specify whether the ConfigMap must be defined */
                                         optional?: boolean;
                                     };
-                                    /** @description Optional text to prepend to the name of each environment variable.
-                                     *     May consist of any printable ASCII characters except '='. */
+                                    /**
+                                     * @description Optional text to prepend to the name of each environment variable.
+                                     *     May consist of any printable ASCII characters except '='.
+                                     */
                                     prefix?: string;
                                     /** @description The Secret to select from */
                                     secretRef?: {
@@ -2653,52 +3535,68 @@ export interface components {
                                         optional?: boolean;
                                     };
                                 }[];
-                                /** @description Container image name.
-                                 *     More info: https://kubernetes.io/docs/concepts/containers/images */
+                                /**
+                                 * @description Container image name.
+                                 *     More info: https://kubernetes.io/docs/concepts/containers/images
+                                 */
                                 image?: string;
-                                /** @description Image pull policy.
+                                /**
+                                 * @description Image pull policy.
                                  *     One of Always, Never, IfNotPresent.
                                  *     Defaults to Always if :latest tag is specified, or IfNotPresent otherwise.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images */
+                                 *     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images
+                                 */
                                 imagePullPolicy?: string;
                                 /** @description Lifecycle is not allowed for ephemeral containers. */
                                 lifecycle?: {
-                                    /** @description PostStart is called immediately after a container is created. If the handler fails,
+                                    /**
+                                     * @description PostStart is called immediately after a container is created. If the handler fails,
                                      *     the container is terminated and restarted according to its restart policy.
                                      *     Other management of the container blocks until the hook completes.
-                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks */
+                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
+                                     */
                                     postStart?: {
                                         /** @description Exec specifies a command to execute in the container. */
                                         exec?: {
-                                            /** @description Command is the command line to execute inside the container, the working directory for the
+                                            /**
+                                             * @description Command is the command line to execute inside the container, the working directory for the
                                              *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                              *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                              *     a shell, you need to explicitly call out to that shell.
-                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                             */
                                             command?: string[];
                                         };
                                         /** @description HTTPGet specifies an HTTP GET request to perform. */
                                         httpGet?: {
-                                            /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                             *     "Host" in httpHeaders instead. */
+                                            /**
+                                             * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                             *     "Host" in httpHeaders instead.
+                                             */
                                             host?: string;
                                             /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                             httpHeaders?: {
-                                                /** @description The header field name.
-                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                                /**
+                                                 * @description The header field name.
+                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                                 */
                                                 name: string;
                                                 /** @description The header field value */
                                                 value: string;
                                             }[];
                                             /** @description Path to access on the HTTP server. */
                                             path?: string;
-                                            /** @description Name or number of the port to access on the container.
+                                            /**
+                                             * @description Name or number of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
-                                            /** @description Scheme to use for connecting to the host.
-                                             *     Defaults to HTTP. */
+                                            /**
+                                             * @description Scheme to use for connecting to the host.
+                                             *     Defaults to HTTP.
+                                             */
                                             scheme?: string;
                                         };
                                         /** @description Sleep represents a duration that the container should sleep. */
@@ -2709,19 +3607,24 @@ export interface components {
                                              */
                                             seconds: number;
                                         };
-                                        /** @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
+                                        /**
+                                         * @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
                                          *     for backward compatibility. There is no validation of this field and
-                                         *     lifecycle hooks will fail at runtime when it is specified. */
+                                         *     lifecycle hooks will fail at runtime when it is specified.
+                                         */
                                         tcpSocket?: {
                                             /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                             host?: string;
-                                            /** @description Number or name of the port to access on the container.
+                                            /**
+                                             * @description Number or name of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
                                         };
                                     };
-                                    /** @description PreStop is called immediately before a container is terminated due to an
+                                    /**
+                                     * @description PreStop is called immediately before a container is terminated due to an
                                      *     API request or management event such as liveness/startup probe failure,
                                      *     preemption, resource contention, etc. The handler is not called if the
                                      *     container crashes or exits. The Pod's termination grace period countdown begins before the
@@ -2729,38 +3632,49 @@ export interface components {
                                      *     container will eventually terminate within the Pod's termination grace
                                      *     period (unless delayed by finalizers). Other management of the container blocks until the hook completes
                                      *     or until the termination grace period is reached.
-                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks */
+                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
+                                     */
                                     preStop?: {
                                         /** @description Exec specifies a command to execute in the container. */
                                         exec?: {
-                                            /** @description Command is the command line to execute inside the container, the working directory for the
+                                            /**
+                                             * @description Command is the command line to execute inside the container, the working directory for the
                                              *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                              *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                              *     a shell, you need to explicitly call out to that shell.
-                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                             */
                                             command?: string[];
                                         };
                                         /** @description HTTPGet specifies an HTTP GET request to perform. */
                                         httpGet?: {
-                                            /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                             *     "Host" in httpHeaders instead. */
+                                            /**
+                                             * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                             *     "Host" in httpHeaders instead.
+                                             */
                                             host?: string;
                                             /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                             httpHeaders?: {
-                                                /** @description The header field name.
-                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                                /**
+                                                 * @description The header field name.
+                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                                 */
                                                 name: string;
                                                 /** @description The header field value */
                                                 value: string;
                                             }[];
                                             /** @description Path to access on the HTTP server. */
                                             path?: string;
-                                            /** @description Name or number of the port to access on the container.
+                                            /**
+                                             * @description Name or number of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
-                                            /** @description Scheme to use for connecting to the host.
-                                             *     Defaults to HTTP. */
+                                            /**
+                                             * @description Scheme to use for connecting to the host.
+                                             *     Defaults to HTTP.
+                                             */
                                             scheme?: string;
                                         };
                                         /** @description Sleep represents a duration that the container should sleep. */
@@ -2771,32 +3685,40 @@ export interface components {
                                              */
                                             seconds: number;
                                         };
-                                        /** @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
+                                        /**
+                                         * @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
                                          *     for backward compatibility. There is no validation of this field and
-                                         *     lifecycle hooks will fail at runtime when it is specified. */
+                                         *     lifecycle hooks will fail at runtime when it is specified.
+                                         */
                                         tcpSocket?: {
                                             /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                             host?: string;
-                                            /** @description Number or name of the port to access on the container.
+                                            /**
+                                             * @description Number or name of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
                                         };
                                     };
-                                    /** @description StopSignal defines which signal will be sent to a container when it is being stopped.
+                                    /**
+                                     * @description StopSignal defines which signal will be sent to a container when it is being stopped.
                                      *     If not specified, the default is defined by the container runtime in use.
-                                     *     StopSignal can only be set for Pods with a non-empty .spec.os.name */
+                                     *     StopSignal can only be set for Pods with a non-empty .spec.os.name
+                                     */
                                     stopSignal?: string;
                                 };
                                 /** @description Probes are not allowed for ephemeral containers. */
                                 livenessProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -2823,25 +3745,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -2866,9 +3796,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -2893,8 +3825,10 @@ export interface components {
                                      */
                                     timeoutSeconds?: number;
                                 };
-                                /** @description Name of the ephemeral container specified as a DNS_LABEL.
-                                 *     This name must be unique among all containers, init containers and ephemeral containers. */
+                                /**
+                                 * @description Name of the ephemeral container specified as a DNS_LABEL.
+                                 *     This name must be unique among all containers, init containers and ephemeral containers.
+                                 */
                                 name: string;
                                 /** @description Ports are not allowed for ephemeral containers. */
                                 ports?: {
@@ -2914,9 +3848,11 @@ export interface components {
                                      *     Most containers do not need this.
                                      */
                                     hostPort?: number;
-                                    /** @description If specified, this must be an IANA_SVC_NAME and unique within the pod. Each
+                                    /**
+                                     * @description If specified, this must be an IANA_SVC_NAME and unique within the pod. Each
                                      *     named port in a pod must have a unique name. Name for the port that can be
-                                     *     referred to by services. */
+                                     *     referred to by services.
+                                     */
                                     name?: string;
                                     /**
                                      * @description Protocol for port. Must be UDP, TCP, or SCTP.
@@ -2929,11 +3865,13 @@ export interface components {
                                 readinessProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -2960,25 +3898,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -3003,9 +3949,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -3032,122 +3980,166 @@ export interface components {
                                 };
                                 /** @description Resources resize policy for the container. */
                                 resizePolicy?: {
-                                    /** @description Name of the resource to which this resource resize policy applies.
-                                     *     Supported values: cpu, memory. */
+                                    /**
+                                     * @description Name of the resource to which this resource resize policy applies.
+                                     *     Supported values: cpu, memory.
+                                     */
                                     resourceName: string;
-                                    /** @description Restart policy to apply when specified resource is resized.
-                                     *     If not specified, it defaults to NotRequired. */
+                                    /**
+                                     * @description Restart policy to apply when specified resource is resized.
+                                     *     If not specified, it defaults to NotRequired.
+                                     */
                                     restartPolicy: string;
                                 }[];
-                                /** @description Resources are not allowed for ephemeral containers. Ephemeral containers use spare resources
-                                 *     already allocated to the pod. */
+                                /**
+                                 * @description Resources are not allowed for ephemeral containers. Ephemeral containers use spare resources
+                                 *     already allocated to the pod.
+                                 */
                                 resources?: {
-                                    /** @description Claims lists the names of resources, defined in spec.resourceClaims,
+                                    /**
+                                     * @description Claims lists the names of resources, defined in spec.resourceClaims,
                                      *     that are used by this container.
                                      *
                                      *     This field depends on the
                                      *     DynamicResourceAllocation feature gate.
                                      *
-                                     *     This field is immutable. It can only be set for containers. */
+                                     *     This field is immutable. It can only be set for containers.
+                                     */
                                     claims?: {
-                                        /** @description Name must match the name of one entry in pod.spec.resourceClaims of
+                                        /**
+                                         * @description Name must match the name of one entry in pod.spec.resourceClaims of
                                          *     the Pod where this field is used. It makes that resource available
-                                         *     inside a container. */
+                                         *     inside a container.
+                                         */
                                         name: string;
-                                        /** @description Request is the name chosen for a request in the referenced claim.
+                                        /**
+                                         * @description Request is the name chosen for a request in the referenced claim.
                                          *     If empty, everything from the claim is made available, otherwise
-                                         *     only the result of this request. */
+                                         *     only the result of this request.
+                                         */
                                         request?: string;
                                     }[];
-                                    /** @description Limits describes the maximum amount of compute resources allowed.
-                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                    /**
+                                     * @description Limits describes the maximum amount of compute resources allowed.
+                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                     */
                                     limits?: {
                                         [key: string]: number | string;
                                     };
-                                    /** @description Requests describes the minimum amount of compute resources required.
+                                    /**
+                                     * @description Requests describes the minimum amount of compute resources required.
                                      *     If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
                                      *     otherwise to an implementation-defined value. Requests cannot exceed Limits.
-                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                     */
                                     requests?: {
                                         [key: string]: number | string;
                                     };
                                 };
-                                /** @description Restart policy for the container to manage the restart behavior of each
+                                /**
+                                 * @description Restart policy for the container to manage the restart behavior of each
                                  *     container within a pod.
-                                 *     You cannot set this field on ephemeral containers. */
+                                 *     You cannot set this field on ephemeral containers.
+                                 */
                                 restartPolicy?: string;
-                                /** @description Represents a list of rules to be checked to determine if the
+                                /**
+                                 * @description Represents a list of rules to be checked to determine if the
                                  *     container should be restarted on exit. You cannot set this field on
-                                 *     ephemeral containers. */
+                                 *     ephemeral containers.
+                                 */
                                 restartPolicyRules?: {
-                                    /** @description Specifies the action taken on a container exit if the requirements
+                                    /**
+                                     * @description Specifies the action taken on a container exit if the requirements
                                      *     are satisfied. The only possible value is "Restart" to restart the
-                                     *     container. */
+                                     *     container.
+                                     */
                                     action: string;
                                     /** @description Represents the exit codes to check on container exits. */
                                     exitCodes?: {
-                                        /** @description Represents the relationship between the container exit code(s) and the
+                                        /**
+                                         * @description Represents the relationship between the container exit code(s) and the
                                          *     specified values. Possible values are:
                                          *     - In: the requirement is satisfied if the container exit code is in the
                                          *       set of specified values.
                                          *     - NotIn: the requirement is satisfied if the container exit code is
-                                         *       not in the set of specified values. */
+                                         *       not in the set of specified values.
+                                         */
                                         operator: string;
-                                        /** @description Specifies the set of values to check for container exit codes.
-                                         *     At most 255 elements are allowed. */
+                                        /**
+                                         * @description Specifies the set of values to check for container exit codes.
+                                         *     At most 255 elements are allowed.
+                                         */
                                         values?: number[];
                                     };
                                 }[];
-                                /** @description Optional: SecurityContext defines the security options the ephemeral container should be run with.
-                                 *     If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext. */
+                                /**
+                                 * @description Optional: SecurityContext defines the security options the ephemeral container should be run with.
+                                 *     If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext.
+                                 */
                                 securityContext?: {
-                                    /** @description AllowPrivilegeEscalation controls whether a process can gain more
+                                    /**
+                                     * @description AllowPrivilegeEscalation controls whether a process can gain more
                                      *     privileges than its parent process. This bool directly controls if
                                      *     the no_new_privs flag will be set on the container process.
                                      *     AllowPrivilegeEscalation is true always when the container is:
                                      *     1) run as Privileged
                                      *     2) has CAP_SYS_ADMIN
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     allowPrivilegeEscalation?: boolean;
-                                    /** @description appArmorProfile is the AppArmor options to use by this container. If set, this profile
+                                    /**
+                                     * @description appArmorProfile is the AppArmor options to use by this container. If set, this profile
                                      *     overrides the pod's appArmorProfile.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     appArmorProfile?: {
-                                        /** @description localhostProfile indicates a profile loaded on the node that should be used.
+                                        /**
+                                         * @description localhostProfile indicates a profile loaded on the node that should be used.
                                          *     The profile must be preconfigured on the node to work.
                                          *     Must match the loaded name of the profile.
-                                         *     Must be set if and only if type is "Localhost". */
+                                         *     Must be set if and only if type is "Localhost".
+                                         */
                                         localhostProfile?: string;
-                                        /** @description type indicates which kind of AppArmor profile will be applied.
+                                        /**
+                                         * @description type indicates which kind of AppArmor profile will be applied.
                                          *     Valid options are:
                                          *       Localhost - a profile pre-loaded on the node.
                                          *       RuntimeDefault - the container runtime's default profile.
-                                         *       Unconfined - no AppArmor enforcement. */
+                                         *       Unconfined - no AppArmor enforcement.
+                                         */
                                         type: string;
                                     };
-                                    /** @description The capabilities to add/drop when running containers.
+                                    /**
+                                     * @description The capabilities to add/drop when running containers.
                                      *     Defaults to the default set of capabilities granted by the container runtime.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     capabilities?: {
                                         /** @description Added capabilities */
                                         add?: string[];
                                         /** @description Removed capabilities */
                                         drop?: string[];
                                     };
-                                    /** @description Run container in privileged mode.
+                                    /**
+                                     * @description Run container in privileged mode.
                                      *     Processes in privileged containers are essentially equivalent to root on the host.
                                      *     Defaults to false.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     privileged?: boolean;
-                                    /** @description procMount denotes the type of proc mount to use for the containers.
+                                    /**
+                                     * @description procMount denotes the type of proc mount to use for the containers.
                                      *     The default value is Default which uses the container runtime defaults for
                                      *     readonly paths and masked paths.
                                      *     This requires the ProcMountType feature flag to be enabled.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     procMount?: string;
-                                    /** @description Whether this container has a read-only root filesystem.
+                                    /**
+                                     * @description Whether this container has a read-only root filesystem.
                                      *     Default is false.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     readOnlyRootFilesystem?: boolean;
                                     /**
                                      * Format: int64
@@ -3158,12 +4150,14 @@ export interface components {
                                      *     Note that this field cannot be set when spec.os.name is windows.
                                      */
                                     runAsGroup?: number;
-                                    /** @description Indicates that the container must run as a non-root user.
+                                    /**
+                                     * @description Indicates that the container must run as a non-root user.
                                      *     If true, the Kubelet will validate the image at runtime to ensure that it
                                      *     does not run as UID 0 (root) and fail to start the container if it does.
                                      *     If unset or false, no such validation will be performed.
                                      *     May also be set in PodSecurityContext.  If set in both SecurityContext and
-                                     *     PodSecurityContext, the value specified in SecurityContext takes precedence. */
+                                     *     PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                     */
                                     runAsNonRoot?: boolean;
                                     /**
                                      * Format: int64
@@ -3174,11 +4168,13 @@ export interface components {
                                      *     Note that this field cannot be set when spec.os.name is windows.
                                      */
                                     runAsUser?: number;
-                                    /** @description The SELinux context to be applied to the container.
+                                    /**
+                                     * @description The SELinux context to be applied to the container.
                                      *     If unspecified, the container runtime will allocate a random SELinux context for each
                                      *     container.  May also be set in PodSecurityContext.  If set in both SecurityContext and
                                      *     PodSecurityContext, the value specified in SecurityContext takes precedence.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     seLinuxOptions?: {
                                         /** @description Level is SELinux level label that applies to the container. */
                                         level?: string;
@@ -3189,44 +4185,58 @@ export interface components {
                                         /** @description User is a SELinux user label that applies to the container. */
                                         user?: string;
                                     };
-                                    /** @description The seccomp options to use by this container. If seccomp options are
+                                    /**
+                                     * @description The seccomp options to use by this container. If seccomp options are
                                      *     provided at both the pod & container level, the container options
                                      *     override the pod options.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     seccompProfile?: {
-                                        /** @description localhostProfile indicates a profile defined in a file on the node should be used.
+                                        /**
+                                         * @description localhostProfile indicates a profile defined in a file on the node should be used.
                                          *     The profile must be preconfigured on the node to work.
                                          *     Must be a descending path, relative to the kubelet's configured seccomp profile location.
-                                         *     Must be set if type is "Localhost". Must NOT be set for any other type. */
+                                         *     Must be set if type is "Localhost". Must NOT be set for any other type.
+                                         */
                                         localhostProfile?: string;
-                                        /** @description type indicates which kind of seccomp profile will be applied.
+                                        /**
+                                         * @description type indicates which kind of seccomp profile will be applied.
                                          *     Valid options are:
                                          *
                                          *     Localhost - a profile defined in a file on the node should be used.
                                          *     RuntimeDefault - the container runtime default profile should be used.
-                                         *     Unconfined - no profile should be applied. */
+                                         *     Unconfined - no profile should be applied.
+                                         */
                                         type: string;
                                     };
-                                    /** @description The Windows specific settings applied to all containers.
+                                    /**
+                                     * @description The Windows specific settings applied to all containers.
                                      *     If unspecified, the options from the PodSecurityContext will be used.
                                      *     If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.
-                                     *     Note that this field cannot be set when spec.os.name is linux. */
+                                     *     Note that this field cannot be set when spec.os.name is linux.
+                                     */
                                     windowsOptions?: {
-                                        /** @description GMSACredentialSpec is where the GMSA admission webhook
+                                        /**
+                                         * @description GMSACredentialSpec is where the GMSA admission webhook
                                          *     (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the
-                                         *     GMSA credential spec named by the GMSACredentialSpecName field. */
+                                         *     GMSA credential spec named by the GMSACredentialSpecName field.
+                                         */
                                         gmsaCredentialSpec?: string;
                                         /** @description GMSACredentialSpecName is the name of the GMSA credential spec to use. */
                                         gmsaCredentialSpecName?: string;
-                                        /** @description HostProcess determines if a container should be run as a 'Host Process' container.
+                                        /**
+                                         * @description HostProcess determines if a container should be run as a 'Host Process' container.
                                          *     All of a Pod's containers must have the same effective HostProcess value
                                          *     (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).
-                                         *     In addition, if HostProcess is true then HostNetwork must also be set to true. */
+                                         *     In addition, if HostProcess is true then HostNetwork must also be set to true.
+                                         */
                                         hostProcess?: boolean;
-                                        /** @description The UserName in Windows to run the entrypoint of the container process.
+                                        /**
+                                         * @description The UserName in Windows to run the entrypoint of the container process.
                                          *     Defaults to the user specified in image metadata if unspecified.
                                          *     May also be set in PodSecurityContext. If set in both SecurityContext and
-                                         *     PodSecurityContext, the value specified in SecurityContext takes precedence. */
+                                         *     PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                         */
                                         runAsUserName?: string;
                                     };
                                 };
@@ -3234,11 +4244,13 @@ export interface components {
                                 startupProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -3265,25 +4277,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -3308,9 +4328,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -3335,43 +4357,55 @@ export interface components {
                                      */
                                     timeoutSeconds?: number;
                                 };
-                                /** @description Whether this container should allocate a buffer for stdin in the container runtime. If this
+                                /**
+                                 * @description Whether this container should allocate a buffer for stdin in the container runtime. If this
                                  *     is not set, reads from stdin in the container will always result in EOF.
-                                 *     Default is false. */
+                                 *     Default is false.
+                                 */
                                 stdin?: boolean;
-                                /** @description Whether the container runtime should close the stdin channel after it has been opened by
+                                /**
+                                 * @description Whether the container runtime should close the stdin channel after it has been opened by
                                  *     a single attach. When stdin is true the stdin stream will remain open across multiple attach
                                  *     sessions. If stdinOnce is set to true, stdin is opened on container start, is empty until the
                                  *     first client attaches to stdin, and then remains open and accepts data until the client disconnects,
                                  *     at which time stdin is closed and remains closed until the container is restarted. If this
                                  *     flag is false, a container processes that reads from stdin will never receive an EOF.
-                                 *     Default is false */
+                                 *     Default is false
+                                 */
                                 stdinOnce?: boolean;
-                                /** @description If set, the name of the container from PodSpec that this ephemeral container targets.
+                                /**
+                                 * @description If set, the name of the container from PodSpec that this ephemeral container targets.
                                  *     The ephemeral container will be run in the namespaces (IPC, PID, etc) of this container.
                                  *     If not set then the ephemeral container uses the namespaces configured in the Pod spec.
                                  *
                                  *     The container runtime must implement support for this feature. If the runtime does not
-                                 *     support namespace targeting then the result of setting this field is undefined. */
+                                 *     support namespace targeting then the result of setting this field is undefined.
+                                 */
                                 targetContainerName?: string;
-                                /** @description Optional: Path at which the file to which the container's termination message
+                                /**
+                                 * @description Optional: Path at which the file to which the container's termination message
                                  *     will be written is mounted into the container's filesystem.
                                  *     Message written is intended to be brief final status, such as an assertion failure message.
                                  *     Will be truncated by the node if greater than 4096 bytes. The total message length across
                                  *     all containers will be limited to 12kb.
                                  *     Defaults to /dev/termination-log.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 terminationMessagePath?: string;
-                                /** @description Indicate how the termination message should be populated. File will use the contents of
+                                /**
+                                 * @description Indicate how the termination message should be populated. File will use the contents of
                                  *     terminationMessagePath to populate the container status message on both success and failure.
                                  *     FallbackToLogsOnError will use the last chunk of container log output if the termination
                                  *     message file is empty and the container exited with an error.
                                  *     The log output is limited to 2048 bytes or 80 lines, whichever is smaller.
                                  *     Defaults to File.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 terminationMessagePolicy?: string;
-                                /** @description Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
-                                 *     Default is false. */
+                                /**
+                                 * @description Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
+                                 *     Default is false.
+                                 */
                                 tty?: boolean;
                                 /** @description volumeDevices is the list of block devices to be used by the container. */
                                 volumeDevices?: {
@@ -3380,25 +4414,34 @@ export interface components {
                                     /** @description name must match the name of a persistentVolumeClaim in the pod */
                                     name: string;
                                 }[];
-                                /** @description Pod volumes to mount into the container's filesystem. Subpath mounts are not allowed for ephemeral containers.
-                                 *     Cannot be updated. */
+                                /**
+                                 * @description Pod volumes to mount into the container's filesystem. Subpath mounts are not allowed for ephemeral containers.
+                                 *     Cannot be updated.
+                                 */
                                 volumeMounts?: {
-                                    /** @description Path within the container at which the volume should be mounted.  Must
-                                     *     not contain ':'. */
+                                    /**
+                                     * @description Path within the container at which the volume should be mounted.  Must
+                                     *     not contain ':'.
+                                     */
                                     mountPath: string;
-                                    /** @description mountPropagation determines how mounts are propagated from the host
+                                    /**
+                                     * @description mountPropagation determines how mounts are propagated from the host
                                      *     to container and the other way around.
                                      *     When not set, MountPropagationNone is used.
                                      *     This field is beta in 1.10.
                                      *     When RecursiveReadOnly is set to IfPossible or to Enabled, MountPropagation must be None or unspecified
-                                     *     (which defaults to None). */
+                                     *     (which defaults to None).
+                                     */
                                     mountPropagation?: string;
                                     /** @description This must match the Name of a Volume. */
                                     name: string;
-                                    /** @description Mounted read-only if true, read-write otherwise (false or unspecified).
-                                     *     Defaults to false. */
+                                    /**
+                                     * @description Mounted read-only if true, read-write otherwise (false or unspecified).
+                                     *     Defaults to false.
+                                     */
                                     readOnly?: boolean;
-                                    /** @description RecursiveReadOnly specifies whether read-only mounts should be handled
+                                    /**
+                                     * @description RecursiveReadOnly specifies whether read-only mounts should be handled
                                      *     recursively.
                                      *
                                      *     If ReadOnly is false, this field has no meaning and must be unspecified.
@@ -3413,44 +4456,60 @@ export interface components {
                                      *     If this field is set to IfPossible or Enabled, MountPropagation must be set to
                                      *     None (or be unspecified, which defaults to None).
                                      *
-                                     *     If this field is not specified, it is treated as an equivalent of Disabled. */
+                                     *     If this field is not specified, it is treated as an equivalent of Disabled.
+                                     */
                                     recursiveReadOnly?: string;
-                                    /** @description Path within the volume from which the container's volume should be mounted.
-                                     *     Defaults to "" (volume's root). */
+                                    /**
+                                     * @description Path within the volume from which the container's volume should be mounted.
+                                     *     Defaults to "" (volume's root).
+                                     */
                                     subPath?: string;
-                                    /** @description Expanded path within the volume from which the container's volume should be mounted.
+                                    /**
+                                     * @description Expanded path within the volume from which the container's volume should be mounted.
                                      *     Behaves similarly to SubPath but environment variable references $(VAR_NAME) are expanded using the container's environment.
                                      *     Defaults to "" (volume's root).
-                                     *     SubPathExpr and SubPath are mutually exclusive. */
+                                     *     SubPathExpr and SubPath are mutually exclusive.
+                                     */
                                     subPathExpr?: string;
                                 }[];
-                                /** @description Container's working directory.
+                                /**
+                                 * @description Container's working directory.
                                  *     If not specified, the container runtime's default will be used, which
                                  *     might be configured in the container image.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 workingDir?: string;
                             }[];
-                            /** @description HostAliases is an optional list of hosts and IPs that will be injected into the pod's hosts
-                             *     file if specified. */
+                            /**
+                             * @description HostAliases is an optional list of hosts and IPs that will be injected into the pod's hosts
+                             *     file if specified.
+                             */
                             hostAliases?: {
                                 /** @description Hostnames for the above IP address. */
                                 hostnames?: string[];
                                 /** @description IP address of the host file entry. */
                                 ip: string;
                             }[];
-                            /** @description Use the host's ipc namespace.
-                             *     Optional: Default to false. */
+                            /**
+                             * @description Use the host's ipc namespace.
+                             *     Optional: Default to false.
+                             */
                             hostIPC?: boolean;
-                            /** @description Host networking requested for this pod. Use the host's network namespace.
+                            /**
+                             * @description Host networking requested for this pod. Use the host's network namespace.
                              *     When using HostNetwork you should specify ports so the scheduler is aware.
                              *     When `hostNetwork` is true, specified `hostPort` fields in port definitions must match `containerPort`,
                              *     and unspecified `hostPort` fields in port definitions are defaulted to match `containerPort`.
-                             *     Default to false. */
+                             *     Default to false.
+                             */
                             hostNetwork?: boolean;
-                            /** @description Use the host's pid namespace.
-                             *     Optional: Default to false. */
+                            /**
+                             * @description Use the host's pid namespace.
+                             *     Optional: Default to false.
+                             */
                             hostPID?: boolean;
-                            /** @description Use the host's user namespace.
+                            /**
+                             * @description Use the host's user namespace.
                              *     Optional: Default to true.
                              *     If set to true or not present, the pod will be run in the host user namespace, useful
                              *     for when the pod needs a feature only available to the host user namespace, such as
@@ -3458,12 +4517,16 @@ export interface components {
                              *     When set to false, a new userns is created for the pod. Setting false is useful for
                              *     mitigating container breakout vulnerabilities even allowing users to run their
                              *     containers as root without actually having root privileges on the host.
-                             *     This field is alpha-level and is only honored by servers that enable the UserNamespacesSupport feature. */
+                             *     This field is alpha-level and is only honored by servers that enable the UserNamespacesSupport feature.
+                             */
                             hostUsers?: boolean;
-                            /** @description Specifies the hostname of the Pod
-                             *     If not specified, the pod's hostname will be set to a system-defined value. */
+                            /**
+                             * @description Specifies the hostname of the Pod
+                             *     If not specified, the pod's hostname will be set to a system-defined value.
+                             */
                             hostname?: string;
-                            /** @description HostnameOverride specifies an explicit override for the pod's hostname as perceived by the pod.
+                            /**
+                             * @description HostnameOverride specifies an explicit override for the pod's hostname as perceived by the pod.
                              *     This field only specifies the pod's hostname and does not affect its DNS records.
                              *     When this field is set to a non-empty string:
                              *     - It takes precedence over the values set in `hostname` and `subdomain`.
@@ -3472,11 +4535,14 @@ export interface components {
                              *     - `hostNetwork` must be set to false.
                              *
                              *     This field must be a valid DNS subdomain as defined in RFC 1123 and contain at most 64 characters.
-                             *     Requires the HostnameOverride feature gate to be enabled. */
+                             *     Requires the HostnameOverride feature gate to be enabled.
+                             */
                             hostnameOverride?: string;
-                            /** @description ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images used by this PodSpec.
+                            /**
+                             * @description ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images used by this PodSpec.
                              *     If specified, these secrets will be passed to individual puller implementations for them to use.
-                             *     More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod */
+                             *     More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod
+                             */
                             imagePullSecrets?: {
                                 /**
                                  * @description Name of the referent.
@@ -3488,7 +4554,8 @@ export interface components {
                                  */
                                 name: string;
                             }[];
-                            /** @description List of initialization containers belonging to the pod.
+                            /**
+                             * @description List of initialization containers belonging to the pod.
                              *     Init containers are executed in order prior to containers being started. If any
                              *     init container fails, the pod is considered to have failed and is handled according
                              *     to its restartPolicy. The name for an init container or normal container must be
@@ -3500,33 +4567,43 @@ export interface components {
                              *     in a similar fashion.
                              *     Init containers cannot currently be added or removed.
                              *     Cannot be updated.
-                             *     More info: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/ */
+                             *     More info: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
+                             */
                             initContainers?: {
-                                /** @description Arguments to the entrypoint.
+                                /**
+                                 * @description Arguments to the entrypoint.
                                  *     The container image's CMD is used if this is not provided.
                                  *     Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
                                  *     cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced
                                  *     to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will
                                  *     produce the string literal "$(VAR_NAME)". Escaped references will never be expanded, regardless
                                  *     of whether the variable exists or not. Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell */
+                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
+                                 */
                                 args?: string[];
-                                /** @description Entrypoint array. Not executed within a shell.
+                                /**
+                                 * @description Entrypoint array. Not executed within a shell.
                                  *     The container image's ENTRYPOINT is used if this is not provided.
                                  *     Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
                                  *     cannot be resolved, the reference in the input string will be unchanged. Double $$ are reduced
                                  *     to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e. "$$(VAR_NAME)" will
                                  *     produce the string literal "$(VAR_NAME)". Escaped references will never be expanded, regardless
                                  *     of whether the variable exists or not. Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell */
+                                 *     More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
+                                 */
                                 command?: string[];
-                                /** @description List of environment variables to set in the container.
-                                 *     Cannot be updated. */
+                                /**
+                                 * @description List of environment variables to set in the container.
+                                 *     Cannot be updated.
+                                 */
                                 env?: {
-                                    /** @description Name of the environment variable.
-                                     *     May consist of any printable ASCII characters except '='. */
+                                    /**
+                                     * @description Name of the environment variable.
+                                     *     May consist of any printable ASCII characters except '='.
+                                     */
                                     name: string;
-                                    /** @description Variable references $(VAR_NAME) are expanded
+                                    /**
+                                     * @description Variable references $(VAR_NAME) are expanded
                                      *     using the previously defined environment variables in the container and
                                      *     any service environment variables. If a variable cannot be resolved,
                                      *     the reference in the input string will be unchanged. Double $$ are reduced
@@ -3534,7 +4611,8 @@ export interface components {
                                      *     "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
                                      *     Escaped references will never be expanded, regardless of whether the variable
                                      *     exists or not.
-                                     *     Defaults to "". */
+                                     *     Defaults to "".
+                                     */
                                     value?: string;
                                     /** @description Source for the environment variable's value. Cannot be used if value is not empty. */
                                     valueFrom?: {
@@ -3554,20 +4632,26 @@ export interface components {
                                             /** @description Specify whether the ConfigMap or its key must be defined */
                                             optional?: boolean;
                                         };
-                                        /** @description Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
-                                         *     spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs. */
+                                        /**
+                                         * @description Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                         *     spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                                         */
                                         fieldRef?: {
                                             /** @description Version of the schema the FieldPath is written in terms of, defaults to "v1". */
                                             apiVersion?: string;
                                             /** @description Path of the field to select in the specified API version. */
                                             fieldPath: string;
                                         };
-                                        /** @description FileKeyRef selects a key of the env file.
-                                         *     Requires the EnvFiles feature gate to be enabled. */
+                                        /**
+                                         * @description FileKeyRef selects a key of the env file.
+                                         *     Requires the EnvFiles feature gate to be enabled.
+                                         */
                                         fileKeyRef?: {
-                                            /** @description The key within the env file. An invalid key will prevent the pod from starting.
+                                            /**
+                                             * @description The key within the env file. An invalid key will prevent the pod from starting.
                                              *     The keys defined within a source may consist of any printable ASCII characters except '='.
-                                             *     During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters. */
+                                             *     During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                             */
                                             key: string;
                                             /**
                                              * @description Specify whether the file or its key must be defined. If the file or key
@@ -3580,14 +4664,18 @@ export interface components {
                                              * @default false
                                              */
                                             optional: boolean;
-                                            /** @description The path within the volume from which to select the file.
-                                             *     Must be relative and may not contain the '..' path or start with '..'. */
+                                            /**
+                                             * @description The path within the volume from which to select the file.
+                                             *     Must be relative and may not contain the '..' path or start with '..'.
+                                             */
                                             path: string;
                                             /** @description The name of the volume mount containing the env file. */
                                             volumeName: string;
                                         };
-                                        /** @description Selects a resource of the container: only resources limits and requests
-                                         *     (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported. */
+                                        /**
+                                         * @description Selects a resource of the container: only resources limits and requests
+                                         *     (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                                         */
                                         resourceFieldRef?: {
                                             /** @description Container name: required for volumes, optional for env vars */
                                             containerName?: string;
@@ -3614,12 +4702,14 @@ export interface components {
                                         };
                                     };
                                 }[];
-                                /** @description List of sources to populate environment variables in the container.
+                                /**
+                                 * @description List of sources to populate environment variables in the container.
                                  *     The keys defined within a source may consist of any printable ASCII characters except '='.
                                  *     When a key exists in multiple
                                  *     sources, the value associated with the last source will take precedence.
                                  *     Values defined by an Env with a duplicate key will take precedence.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 envFrom?: {
                                     /** @description The ConfigMap to select from */
                                     configMapRef?: {
@@ -3635,8 +4725,10 @@ export interface components {
                                         /** @description Specify whether the ConfigMap must be defined */
                                         optional?: boolean;
                                     };
-                                    /** @description Optional text to prepend to the name of each environment variable.
-                                     *     May consist of any printable ASCII characters except '='. */
+                                    /**
+                                     * @description Optional text to prepend to the name of each environment variable.
+                                     *     May consist of any printable ASCII characters except '='.
+                                     */
                                     prefix?: string;
                                     /** @description The Secret to select from */
                                     secretRef?: {
@@ -3653,55 +4745,73 @@ export interface components {
                                         optional?: boolean;
                                     };
                                 }[];
-                                /** @description Container image name.
+                                /**
+                                 * @description Container image name.
                                  *     More info: https://kubernetes.io/docs/concepts/containers/images
                                  *     This field is optional to allow higher level config management to default or override
-                                 *     container images in workload controllers like Deployments and StatefulSets. */
+                                 *     container images in workload controllers like Deployments and StatefulSets.
+                                 */
                                 image?: string;
-                                /** @description Image pull policy.
+                                /**
+                                 * @description Image pull policy.
                                  *     One of Always, Never, IfNotPresent.
                                  *     Defaults to Always if :latest tag is specified, or IfNotPresent otherwise.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images */
+                                 *     More info: https://kubernetes.io/docs/concepts/containers/images#updating-images
+                                 */
                                 imagePullPolicy?: string;
-                                /** @description Actions that the management system should take in response to container lifecycle events.
-                                 *     Cannot be updated. */
+                                /**
+                                 * @description Actions that the management system should take in response to container lifecycle events.
+                                 *     Cannot be updated.
+                                 */
                                 lifecycle?: {
-                                    /** @description PostStart is called immediately after a container is created. If the handler fails,
+                                    /**
+                                     * @description PostStart is called immediately after a container is created. If the handler fails,
                                      *     the container is terminated and restarted according to its restart policy.
                                      *     Other management of the container blocks until the hook completes.
-                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks */
+                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
+                                     */
                                     postStart?: {
                                         /** @description Exec specifies a command to execute in the container. */
                                         exec?: {
-                                            /** @description Command is the command line to execute inside the container, the working directory for the
+                                            /**
+                                             * @description Command is the command line to execute inside the container, the working directory for the
                                              *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                              *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                              *     a shell, you need to explicitly call out to that shell.
-                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                             */
                                             command?: string[];
                                         };
                                         /** @description HTTPGet specifies an HTTP GET request to perform. */
                                         httpGet?: {
-                                            /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                             *     "Host" in httpHeaders instead. */
+                                            /**
+                                             * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                             *     "Host" in httpHeaders instead.
+                                             */
                                             host?: string;
                                             /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                             httpHeaders?: {
-                                                /** @description The header field name.
-                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                                /**
+                                                 * @description The header field name.
+                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                                 */
                                                 name: string;
                                                 /** @description The header field value */
                                                 value: string;
                                             }[];
                                             /** @description Path to access on the HTTP server. */
                                             path?: string;
-                                            /** @description Name or number of the port to access on the container.
+                                            /**
+                                             * @description Name or number of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
-                                            /** @description Scheme to use for connecting to the host.
-                                             *     Defaults to HTTP. */
+                                            /**
+                                             * @description Scheme to use for connecting to the host.
+                                             *     Defaults to HTTP.
+                                             */
                                             scheme?: string;
                                         };
                                         /** @description Sleep represents a duration that the container should sleep. */
@@ -3712,19 +4822,24 @@ export interface components {
                                              */
                                             seconds: number;
                                         };
-                                        /** @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
+                                        /**
+                                         * @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
                                          *     for backward compatibility. There is no validation of this field and
-                                         *     lifecycle hooks will fail at runtime when it is specified. */
+                                         *     lifecycle hooks will fail at runtime when it is specified.
+                                         */
                                         tcpSocket?: {
                                             /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                             host?: string;
-                                            /** @description Number or name of the port to access on the container.
+                                            /**
+                                             * @description Number or name of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
                                         };
                                     };
-                                    /** @description PreStop is called immediately before a container is terminated due to an
+                                    /**
+                                     * @description PreStop is called immediately before a container is terminated due to an
                                      *     API request or management event such as liveness/startup probe failure,
                                      *     preemption, resource contention, etc. The handler is not called if the
                                      *     container crashes or exits. The Pod's termination grace period countdown begins before the
@@ -3732,38 +4847,49 @@ export interface components {
                                      *     container will eventually terminate within the Pod's termination grace
                                      *     period (unless delayed by finalizers). Other management of the container blocks until the hook completes
                                      *     or until the termination grace period is reached.
-                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks */
+                                     *     More info: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/#container-hooks
+                                     */
                                     preStop?: {
                                         /** @description Exec specifies a command to execute in the container. */
                                         exec?: {
-                                            /** @description Command is the command line to execute inside the container, the working directory for the
+                                            /**
+                                             * @description Command is the command line to execute inside the container, the working directory for the
                                              *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                              *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                              *     a shell, you need to explicitly call out to that shell.
-                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                             *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                             */
                                             command?: string[];
                                         };
                                         /** @description HTTPGet specifies an HTTP GET request to perform. */
                                         httpGet?: {
-                                            /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                             *     "Host" in httpHeaders instead. */
+                                            /**
+                                             * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                             *     "Host" in httpHeaders instead.
+                                             */
                                             host?: string;
                                             /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                             httpHeaders?: {
-                                                /** @description The header field name.
-                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                                /**
+                                                 * @description The header field name.
+                                                 *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                                 */
                                                 name: string;
                                                 /** @description The header field value */
                                                 value: string;
                                             }[];
                                             /** @description Path to access on the HTTP server. */
                                             path?: string;
-                                            /** @description Name or number of the port to access on the container.
+                                            /**
+                                             * @description Name or number of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
-                                            /** @description Scheme to use for connecting to the host.
-                                             *     Defaults to HTTP. */
+                                            /**
+                                             * @description Scheme to use for connecting to the host.
+                                             *     Defaults to HTTP.
+                                             */
                                             scheme?: string;
                                         };
                                         /** @description Sleep represents a duration that the container should sleep. */
@@ -3774,35 +4900,45 @@ export interface components {
                                              */
                                             seconds: number;
                                         };
-                                        /** @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
+                                        /**
+                                         * @description Deprecated. TCPSocket is NOT supported as a LifecycleHandler and kept
                                          *     for backward compatibility. There is no validation of this field and
-                                         *     lifecycle hooks will fail at runtime when it is specified. */
+                                         *     lifecycle hooks will fail at runtime when it is specified.
+                                         */
                                         tcpSocket?: {
                                             /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                             host?: string;
-                                            /** @description Number or name of the port to access on the container.
+                                            /**
+                                             * @description Number or name of the port to access on the container.
                                              *     Number must be in the range 1 to 65535.
-                                             *     Name must be an IANA_SVC_NAME. */
+                                             *     Name must be an IANA_SVC_NAME.
+                                             */
                                             port: number | string;
                                         };
                                     };
-                                    /** @description StopSignal defines which signal will be sent to a container when it is being stopped.
+                                    /**
+                                     * @description StopSignal defines which signal will be sent to a container when it is being stopped.
                                      *     If not specified, the default is defined by the container runtime in use.
-                                     *     StopSignal can only be set for Pods with a non-empty .spec.os.name */
+                                     *     StopSignal can only be set for Pods with a non-empty .spec.os.name
+                                     */
                                     stopSignal?: string;
                                 };
-                                /** @description Periodic probe of container liveness.
+                                /**
+                                 * @description Periodic probe of container liveness.
                                  *     Container will be restarted if the probe fails.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes */
+                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                                 */
                                 livenessProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -3829,25 +4965,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -3872,9 +5016,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -3899,17 +5045,21 @@ export interface components {
                                      */
                                     timeoutSeconds?: number;
                                 };
-                                /** @description Name of the container specified as a DNS_LABEL.
+                                /**
+                                 * @description Name of the container specified as a DNS_LABEL.
                                  *     Each container in a pod must have a unique name (DNS_LABEL).
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 name: string;
-                                /** @description List of ports to expose from the container. Not specifying a port here
+                                /**
+                                 * @description List of ports to expose from the container. Not specifying a port here
                                  *     DOES NOT prevent that port from being exposed. Any port which is
                                  *     listening on the default "0.0.0.0" address inside a container will be
                                  *     accessible from the network.
                                  *     Modifying this array with strategic merge patch may corrupt the data.
                                  *     For more information See https://github.com/kubernetes/kubernetes/issues/108255.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 ports?: {
                                     /**
                                      * Format: int32
@@ -3927,9 +5077,11 @@ export interface components {
                                      *     Most containers do not need this.
                                      */
                                     hostPort?: number;
-                                    /** @description If specified, this must be an IANA_SVC_NAME and unique within the pod. Each
+                                    /**
+                                     * @description If specified, this must be an IANA_SVC_NAME and unique within the pod. Each
                                      *     named port in a pod must have a unique name. Name for the port that can be
-                                     *     referred to by services. */
+                                     *     referred to by services.
+                                     */
                                     name?: string;
                                     /**
                                      * @description Protocol for port. Must be UDP, TCP, or SCTP.
@@ -3938,18 +5090,22 @@ export interface components {
                                      */
                                     protocol: string;
                                 }[];
-                                /** @description Periodic probe of container service readiness.
+                                /**
+                                 * @description Periodic probe of container service readiness.
                                  *     Container will be removed from service endpoints if the probe fails.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes */
+                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                                 */
                                 readinessProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -3976,25 +5132,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -4019,9 +5183,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -4048,48 +5214,65 @@ export interface components {
                                 };
                                 /** @description Resources resize policy for the container. */
                                 resizePolicy?: {
-                                    /** @description Name of the resource to which this resource resize policy applies.
-                                     *     Supported values: cpu, memory. */
+                                    /**
+                                     * @description Name of the resource to which this resource resize policy applies.
+                                     *     Supported values: cpu, memory.
+                                     */
                                     resourceName: string;
-                                    /** @description Restart policy to apply when specified resource is resized.
-                                     *     If not specified, it defaults to NotRequired. */
+                                    /**
+                                     * @description Restart policy to apply when specified resource is resized.
+                                     *     If not specified, it defaults to NotRequired.
+                                     */
                                     restartPolicy: string;
                                 }[];
-                                /** @description Compute Resources required by this container.
+                                /**
+                                 * @description Compute Resources required by this container.
                                  *     Cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                 */
                                 resources?: {
-                                    /** @description Claims lists the names of resources, defined in spec.resourceClaims,
+                                    /**
+                                     * @description Claims lists the names of resources, defined in spec.resourceClaims,
                                      *     that are used by this container.
                                      *
                                      *     This field depends on the
                                      *     DynamicResourceAllocation feature gate.
                                      *
-                                     *     This field is immutable. It can only be set for containers. */
+                                     *     This field is immutable. It can only be set for containers.
+                                     */
                                     claims?: {
-                                        /** @description Name must match the name of one entry in pod.spec.resourceClaims of
+                                        /**
+                                         * @description Name must match the name of one entry in pod.spec.resourceClaims of
                                          *     the Pod where this field is used. It makes that resource available
-                                         *     inside a container. */
+                                         *     inside a container.
+                                         */
                                         name: string;
-                                        /** @description Request is the name chosen for a request in the referenced claim.
+                                        /**
+                                         * @description Request is the name chosen for a request in the referenced claim.
                                          *     If empty, everything from the claim is made available, otherwise
-                                         *     only the result of this request. */
+                                         *     only the result of this request.
+                                         */
                                         request?: string;
                                     }[];
-                                    /** @description Limits describes the maximum amount of compute resources allowed.
-                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                    /**
+                                     * @description Limits describes the maximum amount of compute resources allowed.
+                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                     */
                                     limits?: {
                                         [key: string]: number | string;
                                     };
-                                    /** @description Requests describes the minimum amount of compute resources required.
+                                    /**
+                                     * @description Requests describes the minimum amount of compute resources required.
                                      *     If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
                                      *     otherwise to an implementation-defined value. Requests cannot exceed Limits.
-                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                     *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                     */
                                     requests?: {
                                         [key: string]: number | string;
                                     };
                                 };
-                                /** @description RestartPolicy defines the restart behavior of individual containers in a pod.
+                                /**
+                                 * @description RestartPolicy defines the restart behavior of individual containers in a pod.
                                  *     This overrides the pod-level restart policy. When this field is not specified,
                                  *     the restart behavior is defined by the Pod's restart policy and the container type.
                                  *     Additionally, setting the RestartPolicy as "Always" for the init container will
@@ -4103,9 +5286,11 @@ export interface components {
                                  *     for the container to complete before proceeding to the next init
                                  *     container. Instead, the next init container starts immediately after this
                                  *     init container is started, or after any startupProbe has successfully
-                                 *     completed. */
+                                 *     completed.
+                                 */
                                 restartPolicy?: string;
-                                /** @description Represents a list of rules to be checked to determine if the
+                                /**
+                                 * @description Represents a list of rules to be checked to determine if the
                                  *     container should be restarted on exit. The rules are evaluated in
                                  *     order. Once a rule matches a container exit condition, the remaining
                                  *     rules are ignored. If no rule matches the container exit condition,
@@ -4115,77 +5300,102 @@ export interface components {
                                  *     - Rules can have the same action.
                                  *     - Identical rules are not forbidden in validations.
                                  *     When rules are specified, container MUST set RestartPolicy explicitly
-                                 *     even it if matches the Pod's RestartPolicy. */
+                                 *     even it if matches the Pod's RestartPolicy.
+                                 */
                                 restartPolicyRules?: {
-                                    /** @description Specifies the action taken on a container exit if the requirements
+                                    /**
+                                     * @description Specifies the action taken on a container exit if the requirements
                                      *     are satisfied. The only possible value is "Restart" to restart the
-                                     *     container. */
+                                     *     container.
+                                     */
                                     action: string;
                                     /** @description Represents the exit codes to check on container exits. */
                                     exitCodes?: {
-                                        /** @description Represents the relationship between the container exit code(s) and the
+                                        /**
+                                         * @description Represents the relationship between the container exit code(s) and the
                                          *     specified values. Possible values are:
                                          *     - In: the requirement is satisfied if the container exit code is in the
                                          *       set of specified values.
                                          *     - NotIn: the requirement is satisfied if the container exit code is
-                                         *       not in the set of specified values. */
+                                         *       not in the set of specified values.
+                                         */
                                         operator: string;
-                                        /** @description Specifies the set of values to check for container exit codes.
-                                         *     At most 255 elements are allowed. */
+                                        /**
+                                         * @description Specifies the set of values to check for container exit codes.
+                                         *     At most 255 elements are allowed.
+                                         */
                                         values?: number[];
                                     };
                                 }[];
-                                /** @description SecurityContext defines the security options the container should be run with.
+                                /**
+                                 * @description SecurityContext defines the security options the container should be run with.
                                  *     If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext.
-                                 *     More info: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/ */
+                                 *     More info: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+                                 */
                                 securityContext?: {
-                                    /** @description AllowPrivilegeEscalation controls whether a process can gain more
+                                    /**
+                                     * @description AllowPrivilegeEscalation controls whether a process can gain more
                                      *     privileges than its parent process. This bool directly controls if
                                      *     the no_new_privs flag will be set on the container process.
                                      *     AllowPrivilegeEscalation is true always when the container is:
                                      *     1) run as Privileged
                                      *     2) has CAP_SYS_ADMIN
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     allowPrivilegeEscalation?: boolean;
-                                    /** @description appArmorProfile is the AppArmor options to use by this container. If set, this profile
+                                    /**
+                                     * @description appArmorProfile is the AppArmor options to use by this container. If set, this profile
                                      *     overrides the pod's appArmorProfile.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     appArmorProfile?: {
-                                        /** @description localhostProfile indicates a profile loaded on the node that should be used.
+                                        /**
+                                         * @description localhostProfile indicates a profile loaded on the node that should be used.
                                          *     The profile must be preconfigured on the node to work.
                                          *     Must match the loaded name of the profile.
-                                         *     Must be set if and only if type is "Localhost". */
+                                         *     Must be set if and only if type is "Localhost".
+                                         */
                                         localhostProfile?: string;
-                                        /** @description type indicates which kind of AppArmor profile will be applied.
+                                        /**
+                                         * @description type indicates which kind of AppArmor profile will be applied.
                                          *     Valid options are:
                                          *       Localhost - a profile pre-loaded on the node.
                                          *       RuntimeDefault - the container runtime's default profile.
-                                         *       Unconfined - no AppArmor enforcement. */
+                                         *       Unconfined - no AppArmor enforcement.
+                                         */
                                         type: string;
                                     };
-                                    /** @description The capabilities to add/drop when running containers.
+                                    /**
+                                     * @description The capabilities to add/drop when running containers.
                                      *     Defaults to the default set of capabilities granted by the container runtime.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     capabilities?: {
                                         /** @description Added capabilities */
                                         add?: string[];
                                         /** @description Removed capabilities */
                                         drop?: string[];
                                     };
-                                    /** @description Run container in privileged mode.
+                                    /**
+                                     * @description Run container in privileged mode.
                                      *     Processes in privileged containers are essentially equivalent to root on the host.
                                      *     Defaults to false.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     privileged?: boolean;
-                                    /** @description procMount denotes the type of proc mount to use for the containers.
+                                    /**
+                                     * @description procMount denotes the type of proc mount to use for the containers.
                                      *     The default value is Default which uses the container runtime defaults for
                                      *     readonly paths and masked paths.
                                      *     This requires the ProcMountType feature flag to be enabled.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     procMount?: string;
-                                    /** @description Whether this container has a read-only root filesystem.
+                                    /**
+                                     * @description Whether this container has a read-only root filesystem.
                                      *     Default is false.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     readOnlyRootFilesystem?: boolean;
                                     /**
                                      * Format: int64
@@ -4196,12 +5406,14 @@ export interface components {
                                      *     Note that this field cannot be set when spec.os.name is windows.
                                      */
                                     runAsGroup?: number;
-                                    /** @description Indicates that the container must run as a non-root user.
+                                    /**
+                                     * @description Indicates that the container must run as a non-root user.
                                      *     If true, the Kubelet will validate the image at runtime to ensure that it
                                      *     does not run as UID 0 (root) and fail to start the container if it does.
                                      *     If unset or false, no such validation will be performed.
                                      *     May also be set in PodSecurityContext.  If set in both SecurityContext and
-                                     *     PodSecurityContext, the value specified in SecurityContext takes precedence. */
+                                     *     PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                     */
                                     runAsNonRoot?: boolean;
                                     /**
                                      * Format: int64
@@ -4212,11 +5424,13 @@ export interface components {
                                      *     Note that this field cannot be set when spec.os.name is windows.
                                      */
                                     runAsUser?: number;
-                                    /** @description The SELinux context to be applied to the container.
+                                    /**
+                                     * @description The SELinux context to be applied to the container.
                                      *     If unspecified, the container runtime will allocate a random SELinux context for each
                                      *     container.  May also be set in PodSecurityContext.  If set in both SecurityContext and
                                      *     PodSecurityContext, the value specified in SecurityContext takes precedence.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     seLinuxOptions?: {
                                         /** @description Level is SELinux level label that applies to the container. */
                                         level?: string;
@@ -4227,62 +5441,80 @@ export interface components {
                                         /** @description User is a SELinux user label that applies to the container. */
                                         user?: string;
                                     };
-                                    /** @description The seccomp options to use by this container. If seccomp options are
+                                    /**
+                                     * @description The seccomp options to use by this container. If seccomp options are
                                      *     provided at both the pod & container level, the container options
                                      *     override the pod options.
-                                     *     Note that this field cannot be set when spec.os.name is windows. */
+                                     *     Note that this field cannot be set when spec.os.name is windows.
+                                     */
                                     seccompProfile?: {
-                                        /** @description localhostProfile indicates a profile defined in a file on the node should be used.
+                                        /**
+                                         * @description localhostProfile indicates a profile defined in a file on the node should be used.
                                          *     The profile must be preconfigured on the node to work.
                                          *     Must be a descending path, relative to the kubelet's configured seccomp profile location.
-                                         *     Must be set if type is "Localhost". Must NOT be set for any other type. */
+                                         *     Must be set if type is "Localhost". Must NOT be set for any other type.
+                                         */
                                         localhostProfile?: string;
-                                        /** @description type indicates which kind of seccomp profile will be applied.
+                                        /**
+                                         * @description type indicates which kind of seccomp profile will be applied.
                                          *     Valid options are:
                                          *
                                          *     Localhost - a profile defined in a file on the node should be used.
                                          *     RuntimeDefault - the container runtime default profile should be used.
-                                         *     Unconfined - no profile should be applied. */
+                                         *     Unconfined - no profile should be applied.
+                                         */
                                         type: string;
                                     };
-                                    /** @description The Windows specific settings applied to all containers.
+                                    /**
+                                     * @description The Windows specific settings applied to all containers.
                                      *     If unspecified, the options from the PodSecurityContext will be used.
                                      *     If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.
-                                     *     Note that this field cannot be set when spec.os.name is linux. */
+                                     *     Note that this field cannot be set when spec.os.name is linux.
+                                     */
                                     windowsOptions?: {
-                                        /** @description GMSACredentialSpec is where the GMSA admission webhook
+                                        /**
+                                         * @description GMSACredentialSpec is where the GMSA admission webhook
                                          *     (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the
-                                         *     GMSA credential spec named by the GMSACredentialSpecName field. */
+                                         *     GMSA credential spec named by the GMSACredentialSpecName field.
+                                         */
                                         gmsaCredentialSpec?: string;
                                         /** @description GMSACredentialSpecName is the name of the GMSA credential spec to use. */
                                         gmsaCredentialSpecName?: string;
-                                        /** @description HostProcess determines if a container should be run as a 'Host Process' container.
+                                        /**
+                                         * @description HostProcess determines if a container should be run as a 'Host Process' container.
                                          *     All of a Pod's containers must have the same effective HostProcess value
                                          *     (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).
-                                         *     In addition, if HostProcess is true then HostNetwork must also be set to true. */
+                                         *     In addition, if HostProcess is true then HostNetwork must also be set to true.
+                                         */
                                         hostProcess?: boolean;
-                                        /** @description The UserName in Windows to run the entrypoint of the container process.
+                                        /**
+                                         * @description The UserName in Windows to run the entrypoint of the container process.
                                          *     Defaults to the user specified in image metadata if unspecified.
                                          *     May also be set in PodSecurityContext. If set in both SecurityContext and
-                                         *     PodSecurityContext, the value specified in SecurityContext takes precedence. */
+                                         *     PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                         */
                                         runAsUserName?: string;
                                     };
                                 };
-                                /** @description StartupProbe indicates that the Pod has successfully initialized.
+                                /**
+                                 * @description StartupProbe indicates that the Pod has successfully initialized.
                                  *     If specified, no other probes are executed until this completes successfully.
                                  *     If this probe fails, the Pod will be restarted, just as if the livenessProbe failed.
                                  *     This can be used to provide different probe parameters at the beginning of a Pod's lifecycle,
                                  *     when it might take a long time to load data or warm a cache, than during steady-state operation.
                                  *     This cannot be updated.
-                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes */
+                                 *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                                 */
                                 startupProbe?: {
                                     /** @description Exec specifies a command to execute in the container. */
                                     exec?: {
-                                        /** @description Command is the command line to execute inside the container, the working directory for the
+                                        /**
+                                         * @description Command is the command line to execute inside the container, the working directory for the
                                          *     command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
                                          *     not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
                                          *     a shell, you need to explicitly call out to that shell.
-                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy. */
+                                         *     Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                         */
                                         command?: string[];
                                     };
                                     /**
@@ -4309,25 +5541,33 @@ export interface components {
                                     };
                                     /** @description HTTPGet specifies an HTTP GET request to perform. */
                                     httpGet?: {
-                                        /** @description Host name to connect to, defaults to the pod IP. You probably want to set
-                                         *     "Host" in httpHeaders instead. */
+                                        /**
+                                         * @description Host name to connect to, defaults to the pod IP. You probably want to set
+                                         *     "Host" in httpHeaders instead.
+                                         */
                                         host?: string;
                                         /** @description Custom headers to set in the request. HTTP allows repeated headers. */
                                         httpHeaders?: {
-                                            /** @description The header field name.
-                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header. */
+                                            /**
+                                             * @description The header field name.
+                                             *     This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                             */
                                             name: string;
                                             /** @description The header field value */
                                             value: string;
                                         }[];
                                         /** @description Path to access on the HTTP server. */
                                         path?: string;
-                                        /** @description Name or number of the port to access on the container.
+                                        /**
+                                         * @description Name or number of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
-                                        /** @description Scheme to use for connecting to the host.
-                                         *     Defaults to HTTP. */
+                                        /**
+                                         * @description Scheme to use for connecting to the host.
+                                         *     Defaults to HTTP.
+                                         */
                                         scheme?: string;
                                     };
                                     /**
@@ -4352,9 +5592,11 @@ export interface components {
                                     tcpSocket?: {
                                         /** @description Optional: Host name to connect to, defaults to the pod IP. */
                                         host?: string;
-                                        /** @description Number or name of the port to access on the container.
+                                        /**
+                                         * @description Number or name of the port to access on the container.
                                          *     Number must be in the range 1 to 65535.
-                                         *     Name must be an IANA_SVC_NAME. */
+                                         *     Name must be an IANA_SVC_NAME.
+                                         */
                                         port: number | string;
                                     };
                                     /**
@@ -4379,36 +5621,46 @@ export interface components {
                                      */
                                     timeoutSeconds?: number;
                                 };
-                                /** @description Whether this container should allocate a buffer for stdin in the container runtime. If this
+                                /**
+                                 * @description Whether this container should allocate a buffer for stdin in the container runtime. If this
                                  *     is not set, reads from stdin in the container will always result in EOF.
-                                 *     Default is false. */
+                                 *     Default is false.
+                                 */
                                 stdin?: boolean;
-                                /** @description Whether the container runtime should close the stdin channel after it has been opened by
+                                /**
+                                 * @description Whether the container runtime should close the stdin channel after it has been opened by
                                  *     a single attach. When stdin is true the stdin stream will remain open across multiple attach
                                  *     sessions. If stdinOnce is set to true, stdin is opened on container start, is empty until the
                                  *     first client attaches to stdin, and then remains open and accepts data until the client disconnects,
                                  *     at which time stdin is closed and remains closed until the container is restarted. If this
                                  *     flag is false, a container processes that reads from stdin will never receive an EOF.
-                                 *     Default is false */
+                                 *     Default is false
+                                 */
                                 stdinOnce?: boolean;
-                                /** @description Optional: Path at which the file to which the container's termination message
+                                /**
+                                 * @description Optional: Path at which the file to which the container's termination message
                                  *     will be written is mounted into the container's filesystem.
                                  *     Message written is intended to be brief final status, such as an assertion failure message.
                                  *     Will be truncated by the node if greater than 4096 bytes. The total message length across
                                  *     all containers will be limited to 12kb.
                                  *     Defaults to /dev/termination-log.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 terminationMessagePath?: string;
-                                /** @description Indicate how the termination message should be populated. File will use the contents of
+                                /**
+                                 * @description Indicate how the termination message should be populated. File will use the contents of
                                  *     terminationMessagePath to populate the container status message on both success and failure.
                                  *     FallbackToLogsOnError will use the last chunk of container log output if the termination
                                  *     message file is empty and the container exited with an error.
                                  *     The log output is limited to 2048 bytes or 80 lines, whichever is smaller.
                                  *     Defaults to File.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 terminationMessagePolicy?: string;
-                                /** @description Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
-                                 *     Default is false. */
+                                /**
+                                 * @description Whether this container should allocate a TTY for itself, also requires 'stdin' to be true.
+                                 *     Default is false.
+                                 */
                                 tty?: boolean;
                                 /** @description volumeDevices is the list of block devices to be used by the container. */
                                 volumeDevices?: {
@@ -4417,25 +5669,34 @@ export interface components {
                                     /** @description name must match the name of a persistentVolumeClaim in the pod */
                                     name: string;
                                 }[];
-                                /** @description Pod volumes to mount into the container's filesystem.
-                                 *     Cannot be updated. */
+                                /**
+                                 * @description Pod volumes to mount into the container's filesystem.
+                                 *     Cannot be updated.
+                                 */
                                 volumeMounts?: {
-                                    /** @description Path within the container at which the volume should be mounted.  Must
-                                     *     not contain ':'. */
+                                    /**
+                                     * @description Path within the container at which the volume should be mounted.  Must
+                                     *     not contain ':'.
+                                     */
                                     mountPath: string;
-                                    /** @description mountPropagation determines how mounts are propagated from the host
+                                    /**
+                                     * @description mountPropagation determines how mounts are propagated from the host
                                      *     to container and the other way around.
                                      *     When not set, MountPropagationNone is used.
                                      *     This field is beta in 1.10.
                                      *     When RecursiveReadOnly is set to IfPossible or to Enabled, MountPropagation must be None or unspecified
-                                     *     (which defaults to None). */
+                                     *     (which defaults to None).
+                                     */
                                     mountPropagation?: string;
                                     /** @description This must match the Name of a Volume. */
                                     name: string;
-                                    /** @description Mounted read-only if true, read-write otherwise (false or unspecified).
-                                     *     Defaults to false. */
+                                    /**
+                                     * @description Mounted read-only if true, read-write otherwise (false or unspecified).
+                                     *     Defaults to false.
+                                     */
                                     readOnly?: boolean;
-                                    /** @description RecursiveReadOnly specifies whether read-only mounts should be handled
+                                    /**
+                                     * @description RecursiveReadOnly specifies whether read-only mounts should be handled
                                      *     recursively.
                                      *
                                      *     If ReadOnly is false, this field has no meaning and must be unspecified.
@@ -4450,36 +5711,48 @@ export interface components {
                                      *     If this field is set to IfPossible or Enabled, MountPropagation must be set to
                                      *     None (or be unspecified, which defaults to None).
                                      *
-                                     *     If this field is not specified, it is treated as an equivalent of Disabled. */
+                                     *     If this field is not specified, it is treated as an equivalent of Disabled.
+                                     */
                                     recursiveReadOnly?: string;
-                                    /** @description Path within the volume from which the container's volume should be mounted.
-                                     *     Defaults to "" (volume's root). */
+                                    /**
+                                     * @description Path within the volume from which the container's volume should be mounted.
+                                     *     Defaults to "" (volume's root).
+                                     */
                                     subPath?: string;
-                                    /** @description Expanded path within the volume from which the container's volume should be mounted.
+                                    /**
+                                     * @description Expanded path within the volume from which the container's volume should be mounted.
                                      *     Behaves similarly to SubPath but environment variable references $(VAR_NAME) are expanded using the container's environment.
                                      *     Defaults to "" (volume's root).
-                                     *     SubPathExpr and SubPath are mutually exclusive. */
+                                     *     SubPathExpr and SubPath are mutually exclusive.
+                                     */
                                     subPathExpr?: string;
                                 }[];
-                                /** @description Container's working directory.
+                                /**
+                                 * @description Container's working directory.
                                  *     If not specified, the container runtime's default will be used, which
                                  *     might be configured in the container image.
-                                 *     Cannot be updated. */
+                                 *     Cannot be updated.
+                                 */
                                 workingDir?: string;
                             }[];
-                            /** @description NodeName indicates in which node this pod is scheduled.
+                            /**
+                             * @description NodeName indicates in which node this pod is scheduled.
                              *     If empty, this pod is a candidate for scheduling by the scheduler defined in schedulerName.
                              *     Once this field is set, the kubelet for this node becomes responsible for the lifecycle of this pod.
                              *     This field should not be used to express a desire for the pod to be scheduled on a specific node.
-                             *     https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodename */
+                             *     https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodename
+                             */
                             nodeName?: string;
-                            /** @description NodeSelector is a selector which must be true for the pod to fit on a node.
+                            /**
+                             * @description NodeSelector is a selector which must be true for the pod to fit on a node.
                              *     Selector which must match a node's labels for the pod to be scheduled on that node.
-                             *     More info: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/ */
+                             *     More info: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+                             */
                             nodeSelector?: {
                                 [key: string]: string;
                             };
-                            /** @description Specifies the OS of the containers in the pod.
+                            /**
+                             * @description Specifies the OS of the containers in the pod.
                              *     Some pod and container fields are restricted if this is set.
                              *
                              *     If the OS field is set to linux, the following fields must be unset:
@@ -4510,27 +5783,34 @@ export interface components {
                              *     - spec.containers[*].securityContext.allowPrivilegeEscalation
                              *     - spec.containers[*].securityContext.procMount
                              *     - spec.containers[*].securityContext.runAsUser
-                             *     - spec.containers[*].securityContext.runAsGroup */
+                             *     - spec.containers[*].securityContext.runAsGroup
+                             */
                             os?: {
-                                /** @description Name is the name of the operating system. The currently supported values are linux and windows.
+                                /**
+                                 * @description Name is the name of the operating system. The currently supported values are linux and windows.
                                  *     Additional value may be defined in future and can be one of:
                                  *     https://github.com/opencontainers/runtime-spec/blob/master/config.md#platform-specific-configuration
-                                 *     Clients should expect to handle additional values and treat unrecognized values in this field as os: null */
+                                 *     Clients should expect to handle additional values and treat unrecognized values in this field as os: null
+                                 */
                                 name: string;
                             };
-                            /** @description Overhead represents the resource overhead associated with running a pod for a given RuntimeClass.
+                            /**
+                             * @description Overhead represents the resource overhead associated with running a pod for a given RuntimeClass.
                              *     This field will be autopopulated at admission time by the RuntimeClass admission controller. If
                              *     the RuntimeClass admission controller is enabled, overhead must not be set in Pod create requests.
                              *     The RuntimeClass admission controller will reject Pod create requests which have the overhead already
                              *     set. If RuntimeClass is configured and selected in the PodSpec, Overhead will be set to the value
                              *     defined in the corresponding RuntimeClass, otherwise it will remain unset and treated as zero.
-                             *     More info: https://git.k8s.io/enhancements/keps/sig-node/688-pod-overhead/README.md */
+                             *     More info: https://git.k8s.io/enhancements/keps/sig-node/688-pod-overhead/README.md
+                             */
                             overhead?: {
                                 [key: string]: number | string;
                             };
-                            /** @description PreemptionPolicy is the Policy for preempting pods with lower priority.
+                            /**
+                             * @description PreemptionPolicy is the Policy for preempting pods with lower priority.
                              *     One of Never, PreemptLowerPriority.
-                             *     Defaults to PreemptLowerPriority if unset. */
+                             *     Defaults to PreemptLowerPriority if unset.
+                             */
                             preemptionPolicy?: string;
                             /**
                              * Format: int32
@@ -4541,22 +5821,27 @@ export interface components {
                              *     The higher the value, the higher the priority.
                              */
                             priority?: number;
-                            /** @description If specified, indicates the pod's priority. "system-node-critical" and
+                            /**
+                             * @description If specified, indicates the pod's priority. "system-node-critical" and
                              *     "system-cluster-critical" are two special keywords which indicate the
                              *     highest priorities with the former being the highest priority. Any other
                              *     name must be defined by creating a PriorityClass object with that name.
                              *     If not specified, the pod priority will be default or zero if there is no
-                             *     default. */
+                             *     default.
+                             */
                             priorityClassName?: string;
-                            /** @description If specified, all readiness gates will be evaluated for pod readiness.
+                            /**
+                             * @description If specified, all readiness gates will be evaluated for pod readiness.
                              *     A pod is ready when all its containers are ready AND
                              *     all conditions specified in the readiness gates have status equal to "True"
-                             *     More info: https://git.k8s.io/enhancements/keps/sig-network/580-pod-readiness-gates */
+                             *     More info: https://git.k8s.io/enhancements/keps/sig-network/580-pod-readiness-gates
+                             */
                             readinessGates?: {
                                 /** @description ConditionType refers to a condition in the pod's condition list with matching type. */
                                 conditionType: string;
                             }[];
-                            /** @description ResourceClaims defines which ResourceClaims must be allocated
+                            /**
+                             * @description ResourceClaims defines which ResourceClaims must be allocated
                              *     and reserved before the Pod is allowed to start. The resources
                              *     will be made available to those containers which consume them
                              *     by name.
@@ -4564,18 +5849,24 @@ export interface components {
                              *     This is an alpha field and requires enabling the
                              *     DynamicResourceAllocation feature gate.
                              *
-                             *     This field is immutable. */
+                             *     This field is immutable.
+                             */
                             resourceClaims?: {
-                                /** @description Name uniquely identifies this resource claim inside the pod.
-                                 *     This must be a DNS_LABEL. */
+                                /**
+                                 * @description Name uniquely identifies this resource claim inside the pod.
+                                 *     This must be a DNS_LABEL.
+                                 */
                                 name: string;
-                                /** @description ResourceClaimName is the name of a ResourceClaim object in the same
+                                /**
+                                 * @description ResourceClaimName is the name of a ResourceClaim object in the same
                                  *     namespace as this pod.
                                  *
                                  *     Exactly one of ResourceClaimName and ResourceClaimTemplateName must
-                                 *     be set. */
+                                 *     be set.
+                                 */
                                 resourceClaimName?: string;
-                                /** @description ResourceClaimTemplateName is the name of a ResourceClaimTemplate
+                                /**
+                                 * @description ResourceClaimTemplateName is the name of a ResourceClaimTemplate
                                  *     object in the same namespace as this pod.
                                  *
                                  *     The template will be used to create a new ResourceClaim, which will
@@ -4589,10 +5880,12 @@ export interface components {
                                  *     ResourceClaim.
                                  *
                                  *     Exactly one of ResourceClaimName and ResourceClaimTemplateName must
-                                 *     be set. */
+                                 *     be set.
+                                 */
                                 resourceClaimTemplateName?: string;
                             }[];
-                            /** @description Resources is the total amount of CPU and Memory resources required by all
+                            /**
+                             * @description Resources is the total amount of CPU and Memory resources required by all
                              *     containers in the pod. It supports specifying Requests and Limits for
                              *     "cpu", "memory" and "hugepages-" resource names only. ResourceClaims are not supported.
                              *
@@ -4600,78 +5893,107 @@ export interface components {
                              *     entire pod, allowing resource sharing among containers in a pod.
                              *
                              *     This is an alpha field and requires enabling the PodLevelResources feature
-                             *     gate. */
+                             *     gate.
+                             */
                             resources?: {
-                                /** @description Claims lists the names of resources, defined in spec.resourceClaims,
+                                /**
+                                 * @description Claims lists the names of resources, defined in spec.resourceClaims,
                                  *     that are used by this container.
                                  *
                                  *     This field depends on the
                                  *     DynamicResourceAllocation feature gate.
                                  *
-                                 *     This field is immutable. It can only be set for containers. */
+                                 *     This field is immutable. It can only be set for containers.
+                                 */
                                 claims?: {
-                                    /** @description Name must match the name of one entry in pod.spec.resourceClaims of
+                                    /**
+                                     * @description Name must match the name of one entry in pod.spec.resourceClaims of
                                      *     the Pod where this field is used. It makes that resource available
-                                     *     inside a container. */
+                                     *     inside a container.
+                                     */
                                     name: string;
-                                    /** @description Request is the name chosen for a request in the referenced claim.
+                                    /**
+                                     * @description Request is the name chosen for a request in the referenced claim.
                                      *     If empty, everything from the claim is made available, otherwise
-                                     *     only the result of this request. */
+                                     *     only the result of this request.
+                                     */
                                     request?: string;
                                 }[];
-                                /** @description Limits describes the maximum amount of compute resources allowed.
-                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                /**
+                                 * @description Limits describes the maximum amount of compute resources allowed.
+                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                 */
                                 limits?: {
                                     [key: string]: number | string;
                                 };
-                                /** @description Requests describes the minimum amount of compute resources required.
+                                /**
+                                 * @description Requests describes the minimum amount of compute resources required.
                                  *     If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
                                  *     otherwise to an implementation-defined value. Requests cannot exceed Limits.
-                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                 */
                                 requests?: {
                                     [key: string]: number | string;
                                 };
                             };
-                            /** @description Restart policy for all containers within the pod.
+                            /**
+                             * @description Restart policy for all containers within the pod.
                              *     One of Always, OnFailure, Never. In some contexts, only a subset of those values may be permitted.
                              *     Default to Always.
-                             *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy */
+                             *     More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy
+                             */
                             restartPolicy?: string;
-                            /** @description RuntimeClassName refers to a RuntimeClass object in the node.k8s.io group, which should be used
+                            /**
+                             * @description RuntimeClassName refers to a RuntimeClass object in the node.k8s.io group, which should be used
                              *     to run this pod.  If no RuntimeClass resource matches the named class, the pod will not be run.
                              *     If unset or empty, the "legacy" RuntimeClass will be used, which is an implicit class with an
                              *     empty definition that uses the default runtime handler.
-                             *     More info: https://git.k8s.io/enhancements/keps/sig-node/585-runtime-class */
+                             *     More info: https://git.k8s.io/enhancements/keps/sig-node/585-runtime-class
+                             */
                             runtimeClassName?: string;
-                            /** @description If specified, the pod will be dispatched by specified scheduler.
-                             *     If not specified, the pod will be dispatched by default scheduler. */
+                            /**
+                             * @description If specified, the pod will be dispatched by specified scheduler.
+                             *     If not specified, the pod will be dispatched by default scheduler.
+                             */
                             schedulerName?: string;
-                            /** @description SchedulingGates is an opaque list of values that if specified will block scheduling the pod.
+                            /**
+                             * @description SchedulingGates is an opaque list of values that if specified will block scheduling the pod.
                              *     If schedulingGates is not empty, the pod will stay in the SchedulingGated state and the
                              *     scheduler will not attempt to schedule the pod.
                              *
-                             *     SchedulingGates can only be set at pod creation time, and be removed only afterwards. */
+                             *     SchedulingGates can only be set at pod creation time, and be removed only afterwards.
+                             */
                             schedulingGates?: {
-                                /** @description Name of the scheduling gate.
-                                 *     Each scheduling gate must have a unique name field. */
+                                /**
+                                 * @description Name of the scheduling gate.
+                                 *     Each scheduling gate must have a unique name field.
+                                 */
                                 name: string;
                             }[];
-                            /** @description SecurityContext holds pod-level security attributes and common container settings.
-                             *     Optional: Defaults to empty.  See type description for default values of each field. */
+                            /**
+                             * @description SecurityContext holds pod-level security attributes and common container settings.
+                             *     Optional: Defaults to empty.  See type description for default values of each field.
+                             */
                             securityContext?: {
-                                /** @description appArmorProfile is the AppArmor options to use by the containers in this pod.
-                                 *     Note that this field cannot be set when spec.os.name is windows. */
+                                /**
+                                 * @description appArmorProfile is the AppArmor options to use by the containers in this pod.
+                                 *     Note that this field cannot be set when spec.os.name is windows.
+                                 */
                                 appArmorProfile?: {
-                                    /** @description localhostProfile indicates a profile loaded on the node that should be used.
+                                    /**
+                                     * @description localhostProfile indicates a profile loaded on the node that should be used.
                                      *     The profile must be preconfigured on the node to work.
                                      *     Must match the loaded name of the profile.
-                                     *     Must be set if and only if type is "Localhost". */
+                                     *     Must be set if and only if type is "Localhost".
+                                     */
                                     localhostProfile?: string;
-                                    /** @description type indicates which kind of AppArmor profile will be applied.
+                                    /**
+                                     * @description type indicates which kind of AppArmor profile will be applied.
                                      *     Valid options are:
                                      *       Localhost - a profile pre-loaded on the node.
                                      *       RuntimeDefault - the container runtime's default profile.
-                                     *       Unconfined - no AppArmor enforcement. */
+                                     *       Unconfined - no AppArmor enforcement.
+                                     */
                                     type: string;
                                 };
                                 /**
@@ -4688,13 +6010,15 @@ export interface components {
                                  *     Note that this field cannot be set when spec.os.name is windows.
                                  */
                                 fsGroup?: number;
-                                /** @description fsGroupChangePolicy defines behavior of changing ownership and permission of the volume
+                                /**
+                                 * @description fsGroupChangePolicy defines behavior of changing ownership and permission of the volume
                                  *     before being exposed inside Pod. This field will only apply to
                                  *     volume types which support fsGroup based ownership(and permissions).
                                  *     It will have no effect on ephemeral volume types such as: secret, configmaps
                                  *     and emptydir.
                                  *     Valid values are "OnRootMismatch" and "Always". If not specified, "Always" is used.
-                                 *     Note that this field cannot be set when spec.os.name is windows. */
+                                 *     Note that this field cannot be set when spec.os.name is windows.
+                                 */
                                 fsGroupChangePolicy?: string;
                                 /**
                                  * Format: int64
@@ -4706,12 +6030,14 @@ export interface components {
                                  *     Note that this field cannot be set when spec.os.name is windows.
                                  */
                                 runAsGroup?: number;
-                                /** @description Indicates that the container must run as a non-root user.
+                                /**
+                                 * @description Indicates that the container must run as a non-root user.
                                  *     If true, the Kubelet will validate the image at runtime to ensure that it
                                  *     does not run as UID 0 (root) and fail to start the container if it does.
                                  *     If unset or false, no such validation will be performed.
                                  *     May also be set in SecurityContext.  If set in both SecurityContext and
-                                 *     PodSecurityContext, the value specified in SecurityContext takes precedence. */
+                                 *     PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                 */
                                 runAsNonRoot?: boolean;
                                 /**
                                  * Format: int64
@@ -4723,7 +6049,8 @@ export interface components {
                                  *     Note that this field cannot be set when spec.os.name is windows.
                                  */
                                 runAsUser?: number;
-                                /** @description seLinuxChangePolicy defines how the container's SELinux label is applied to all volumes used by the Pod.
+                                /**
+                                 * @description seLinuxChangePolicy defines how the container's SELinux label is applied to all volumes used by the Pod.
                                  *     It has no effect on nodes that do not support SELinux or to volumes does not support SELinux.
                                  *     Valid values are "MountOption" and "Recursive".
                                  *
@@ -4745,14 +6072,17 @@ export interface components {
                                  *     This field affects only Pods that have SELinux label set, either in PodSecurityContext or in SecurityContext of all containers.
                                  *
                                  *     All Pods that use the same volume should use the same seLinuxChangePolicy, otherwise some pods can get stuck in ContainerCreating state.
-                                 *     Note that this field cannot be set when spec.os.name is windows. */
+                                 *     Note that this field cannot be set when spec.os.name is windows.
+                                 */
                                 seLinuxChangePolicy?: string;
-                                /** @description The SELinux context to be applied to all containers.
+                                /**
+                                 * @description The SELinux context to be applied to all containers.
                                  *     If unspecified, the container runtime will allocate a random SELinux context for each
                                  *     container.  May also be set in SecurityContext.  If set in
                                  *     both SecurityContext and PodSecurityContext, the value specified in SecurityContext
                                  *     takes precedence for that container.
-                                 *     Note that this field cannot be set when spec.os.name is windows. */
+                                 *     Note that this field cannot be set when spec.os.name is windows.
+                                 */
                                 seLinuxOptions?: {
                                     /** @description Level is SELinux level label that applies to the container. */
                                     level?: string;
@@ -4763,23 +6093,30 @@ export interface components {
                                     /** @description User is a SELinux user label that applies to the container. */
                                     user?: string;
                                 };
-                                /** @description The seccomp options to use by the containers in this pod.
-                                 *     Note that this field cannot be set when spec.os.name is windows. */
+                                /**
+                                 * @description The seccomp options to use by the containers in this pod.
+                                 *     Note that this field cannot be set when spec.os.name is windows.
+                                 */
                                 seccompProfile?: {
-                                    /** @description localhostProfile indicates a profile defined in a file on the node should be used.
+                                    /**
+                                     * @description localhostProfile indicates a profile defined in a file on the node should be used.
                                      *     The profile must be preconfigured on the node to work.
                                      *     Must be a descending path, relative to the kubelet's configured seccomp profile location.
-                                     *     Must be set if type is "Localhost". Must NOT be set for any other type. */
+                                     *     Must be set if type is "Localhost". Must NOT be set for any other type.
+                                     */
                                     localhostProfile?: string;
-                                    /** @description type indicates which kind of seccomp profile will be applied.
+                                    /**
+                                     * @description type indicates which kind of seccomp profile will be applied.
                                      *     Valid options are:
                                      *
                                      *     Localhost - a profile defined in a file on the node should be used.
                                      *     RuntimeDefault - the container runtime default profile should be used.
-                                     *     Unconfined - no profile should be applied. */
+                                     *     Unconfined - no profile should be applied.
+                                     */
                                     type: string;
                                 };
-                                /** @description A list of groups applied to the first process run in each container, in
+                                /**
+                                 * @description A list of groups applied to the first process run in each container, in
                                  *     addition to the container's primary GID and fsGroup (if specified).  If
                                  *     the SupplementalGroupsPolicy feature is enabled, the
                                  *     supplementalGroupsPolicy field determines whether these are in addition
@@ -4787,66 +6124,89 @@ export interface components {
                                  *     If unspecified, no additional groups are added, though group memberships
                                  *     defined in the container image may still be used, depending on the
                                  *     supplementalGroupsPolicy field.
-                                 *     Note that this field cannot be set when spec.os.name is windows. */
+                                 *     Note that this field cannot be set when spec.os.name is windows.
+                                 */
                                 supplementalGroups?: number[];
-                                /** @description Defines how supplemental groups of the first container processes are calculated.
+                                /**
+                                 * @description Defines how supplemental groups of the first container processes are calculated.
                                  *     Valid values are "Merge" and "Strict". If not specified, "Merge" is used.
                                  *     (Alpha) Using the field requires the SupplementalGroupsPolicy feature gate to be enabled
                                  *     and the container runtime must implement support for this feature.
-                                 *     Note that this field cannot be set when spec.os.name is windows. */
+                                 *     Note that this field cannot be set when spec.os.name is windows.
+                                 */
                                 supplementalGroupsPolicy?: string;
-                                /** @description Sysctls hold a list of namespaced sysctls used for the pod. Pods with unsupported
+                                /**
+                                 * @description Sysctls hold a list of namespaced sysctls used for the pod. Pods with unsupported
                                  *     sysctls (by the container runtime) might fail to launch.
-                                 *     Note that this field cannot be set when spec.os.name is windows. */
+                                 *     Note that this field cannot be set when spec.os.name is windows.
+                                 */
                                 sysctls?: {
                                     /** @description Name of a property to set */
                                     name: string;
                                     /** @description Value of a property to set */
                                     value: string;
                                 }[];
-                                /** @description The Windows specific settings applied to all containers.
+                                /**
+                                 * @description The Windows specific settings applied to all containers.
                                  *     If unspecified, the options within a container's SecurityContext will be used.
                                  *     If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.
-                                 *     Note that this field cannot be set when spec.os.name is linux. */
+                                 *     Note that this field cannot be set when spec.os.name is linux.
+                                 */
                                 windowsOptions?: {
-                                    /** @description GMSACredentialSpec is where the GMSA admission webhook
+                                    /**
+                                     * @description GMSACredentialSpec is where the GMSA admission webhook
                                      *     (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the
-                                     *     GMSA credential spec named by the GMSACredentialSpecName field. */
+                                     *     GMSA credential spec named by the GMSACredentialSpecName field.
+                                     */
                                     gmsaCredentialSpec?: string;
                                     /** @description GMSACredentialSpecName is the name of the GMSA credential spec to use. */
                                     gmsaCredentialSpecName?: string;
-                                    /** @description HostProcess determines if a container should be run as a 'Host Process' container.
+                                    /**
+                                     * @description HostProcess determines if a container should be run as a 'Host Process' container.
                                      *     All of a Pod's containers must have the same effective HostProcess value
                                      *     (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).
-                                     *     In addition, if HostProcess is true then HostNetwork must also be set to true. */
+                                     *     In addition, if HostProcess is true then HostNetwork must also be set to true.
+                                     */
                                     hostProcess?: boolean;
-                                    /** @description The UserName in Windows to run the entrypoint of the container process.
+                                    /**
+                                     * @description The UserName in Windows to run the entrypoint of the container process.
                                      *     Defaults to the user specified in image metadata if unspecified.
                                      *     May also be set in PodSecurityContext. If set in both SecurityContext and
-                                     *     PodSecurityContext, the value specified in SecurityContext takes precedence. */
+                                     *     PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                     */
                                     runAsUserName?: string;
                                 };
                             };
-                            /** @description DeprecatedServiceAccount is a deprecated alias for ServiceAccountName.
-                             *     Deprecated: Use serviceAccountName instead. */
+                            /**
+                             * @description DeprecatedServiceAccount is a deprecated alias for ServiceAccountName.
+                             *     Deprecated: Use serviceAccountName instead.
+                             */
                             serviceAccount?: string;
-                            /** @description ServiceAccountName is the name of the ServiceAccount to use to run this pod.
-                             *     More info: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/ */
+                            /**
+                             * @description ServiceAccountName is the name of the ServiceAccount to use to run this pod.
+                             *     More info: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+                             */
                             serviceAccountName?: string;
-                            /** @description If true the pod's hostname will be configured as the pod's FQDN, rather than the leaf name (the default).
+                            /**
+                             * @description If true the pod's hostname will be configured as the pod's FQDN, rather than the leaf name (the default).
                              *     In Linux containers, this means setting the FQDN in the hostname field of the kernel (the nodename field of struct utsname).
                              *     In Windows containers, this means setting the registry value of hostname for the registry key HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters to FQDN.
                              *     If a pod does not have FQDN, this has no effect.
-                             *     Default to false. */
+                             *     Default to false.
+                             */
                             setHostnameAsFQDN?: boolean;
-                            /** @description Share a single process namespace between all of the containers in a pod.
+                            /**
+                             * @description Share a single process namespace between all of the containers in a pod.
                              *     When this is set containers will be able to view and signal processes from other containers
                              *     in the same pod, and the first process in each container will not be assigned PID 1.
                              *     HostPID and ShareProcessNamespace cannot both be set.
-                             *     Optional: Default to false. */
+                             *     Optional: Default to false.
+                             */
                             shareProcessNamespace?: boolean;
-                            /** @description If specified, the fully qualified Pod hostname will be "<hostname>.<subdomain>.<pod namespace>.svc.<cluster domain>".
-                             *     If not specified, the pod will not have a domainname at all. */
+                            /**
+                             * @description If specified, the fully qualified Pod hostname will be "<hostname>.<subdomain>.<pod namespace>.svc.<cluster domain>".
+                             *     If not specified, the pod will not have a domainname at all.
+                             */
                             subdomain?: string;
                             /**
                              * Format: int64
@@ -4862,16 +6222,22 @@ export interface components {
                             terminationGracePeriodSeconds?: number;
                             /** @description If specified, the pod's tolerations. */
                             tolerations?: {
-                                /** @description Effect indicates the taint effect to match. Empty means match all taint effects.
-                                 *     When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute. */
+                                /**
+                                 * @description Effect indicates the taint effect to match. Empty means match all taint effects.
+                                 *     When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                                 */
                                 effect?: string;
-                                /** @description Key is the taint key that the toleration applies to. Empty means match all taint keys.
-                                 *     If the key is empty, operator must be Exists; this combination means to match all values and all keys. */
+                                /**
+                                 * @description Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                                 *     If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                                 */
                                 key?: string;
-                                /** @description Operator represents a key's relationship to the value.
+                                /**
+                                 * @description Operator represents a key's relationship to the value.
                                  *     Valid operators are Exists and Equal. Defaults to Equal.
                                  *     Exists is equivalent to wildcard for value, so that a pod can
-                                 *     tolerate all taints of a particular category. */
+                                 *     tolerate all taints of a particular category.
+                                 */
                                 operator?: string;
                                 /**
                                  * Format: int64
@@ -4881,39 +6247,52 @@ export interface components {
                                  *     negative values will be treated as 0 (evict immediately) by the system.
                                  */
                                 tolerationSeconds?: number;
-                                /** @description Value is the taint value the toleration matches to.
-                                 *     If the operator is Exists, the value should be empty, otherwise just a regular string. */
+                                /**
+                                 * @description Value is the taint value the toleration matches to.
+                                 *     If the operator is Exists, the value should be empty, otherwise just a regular string.
+                                 */
                                 value?: string;
                             }[];
-                            /** @description TopologySpreadConstraints describes how a group of pods ought to spread across topology
+                            /**
+                             * @description TopologySpreadConstraints describes how a group of pods ought to spread across topology
                              *     domains. Scheduler will schedule pods in a way which abides by the constraints.
-                             *     All topologySpreadConstraints are ANDed. */
+                             *     All topologySpreadConstraints are ANDed.
+                             */
                             topologySpreadConstraints?: {
-                                /** @description LabelSelector is used to find matching pods.
+                                /**
+                                 * @description LabelSelector is used to find matching pods.
                                  *     Pods that match this label selector are counted to determine the number of pods
-                                 *     in their corresponding topology domain. */
+                                 *     in their corresponding topology domain.
+                                 */
                                 labelSelector?: {
                                     /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                     matchExpressions?: {
                                         /** @description key is the label key that the selector applies to. */
                                         key: string;
-                                        /** @description operator represents a key's relationship to a set of values.
-                                         *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                        /**
+                                         * @description operator represents a key's relationship to a set of values.
+                                         *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                         */
                                         operator: string;
-                                        /** @description values is an array of string values. If the operator is In or NotIn,
+                                        /**
+                                         * @description values is an array of string values. If the operator is In or NotIn,
                                          *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                          *     the values array must be empty. This array is replaced during a strategic
-                                         *     merge patch. */
+                                         *     merge patch.
+                                         */
                                         values?: string[];
                                     }[];
-                                    /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                    /**
+                                     * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                      *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                     *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                     *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                     */
                                     matchLabels?: {
                                         [key: string]: string;
                                     };
                                 };
-                                /** @description MatchLabelKeys is a set of pod label keys to select the pods over which
+                                /**
+                                 * @description MatchLabelKeys is a set of pod label keys to select the pods over which
                                  *     spreading will be calculated. The keys are used to lookup values from the
                                  *     incoming pod labels, those key-value labels are ANDed with labelSelector
                                  *     to select the group of existing pods over which spreading will be calculated
@@ -4922,7 +6301,8 @@ export interface components {
                                  *     Keys that don't exist in the incoming pod labels will
                                  *     be ignored. A null or empty list means only match against labelSelector.
                                  *
-                                 *     This is a beta field and requires the MatchLabelKeysInPodTopologySpread feature gate to be enabled (enabled by default). */
+                                 *     This is a beta field and requires the MatchLabelKeysInPodTopologySpread feature gate to be enabled (enabled by default).
+                                 */
                                 matchLabelKeys?: string[];
                                 /**
                                  * Format: int32
@@ -4968,22 +6348,27 @@ export interface components {
                                  *     it will violate MaxSkew.
                                  */
                                 minDomains?: number;
-                                /** @description NodeAffinityPolicy indicates how we will treat Pod's nodeAffinity/nodeSelector
+                                /**
+                                 * @description NodeAffinityPolicy indicates how we will treat Pod's nodeAffinity/nodeSelector
                                  *     when calculating pod topology spread skew. Options are:
                                  *     - Honor: only nodes matching nodeAffinity/nodeSelector are included in the calculations.
                                  *     - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
                                  *
-                                 *     If this value is nil, the behavior is equivalent to the Honor policy. */
+                                 *     If this value is nil, the behavior is equivalent to the Honor policy.
+                                 */
                                 nodeAffinityPolicy?: string;
-                                /** @description NodeTaintsPolicy indicates how we will treat node taints when calculating
+                                /**
+                                 * @description NodeTaintsPolicy indicates how we will treat node taints when calculating
                                  *     pod topology spread skew. Options are:
                                  *     - Honor: nodes without taints, along with tainted nodes for which the incoming pod
                                  *     has a toleration, are included.
                                  *     - Ignore: node taints are ignored. All nodes are included.
                                  *
-                                 *     If this value is nil, the behavior is equivalent to the Ignore policy. */
+                                 *     If this value is nil, the behavior is equivalent to the Ignore policy.
+                                 */
                                 nodeTaintsPolicy?: string;
-                                /** @description TopologyKey is the key of node labels. Nodes that have a label with this key
+                                /**
+                                 * @description TopologyKey is the key of node labels. Nodes that have a label with this key
                                  *     and identical values are considered to be in the same topology.
                                  *     We consider each <key, value> as a "bucket", and try to put balanced number
                                  *     of pods into each bucket.
@@ -4992,9 +6377,11 @@ export interface components {
                                  *     nodeAffinityPolicy and nodeTaintsPolicy.
                                  *     e.g. If TopologyKey is "kubernetes.io/hostname", each Node is a domain of that topology.
                                  *     And, if TopologyKey is "topology.kubernetes.io/zone", each zone is a domain of that topology.
-                                 *     It's a required field. */
+                                 *     It's a required field.
+                                 */
                                 topologyKey: string;
-                                /** @description WhenUnsatisfiable indicates how to deal with a pod if it doesn't satisfy
+                                /**
+                                 * @description WhenUnsatisfiable indicates how to deal with a pod if it doesn't satisfy
                                  *     the spread constraint.
                                  *     - DoNotSchedule (default) tells the scheduler not to schedule it.
                                  *     - ScheduleAnyway tells the scheduler to schedule the pod in any location,
@@ -5011,22 +6398,29 @@ export interface components {
                                  *     to zone2(zone3) to become 3/2/1(3/1/2) as ActualSkew(2-1) on zone2(zone3) satisfies
                                  *     MaxSkew(1). In other words, the cluster can still be imbalanced, but scheduler
                                  *     won't make it *more* imbalanced.
-                                 *     It's a required field. */
+                                 *     It's a required field.
+                                 */
                                 whenUnsatisfiable: string;
                             }[];
-                            /** @description List of volumes that can be mounted by containers belonging to the pod.
-                             *     More info: https://kubernetes.io/docs/concepts/storage/volumes */
+                            /**
+                             * @description List of volumes that can be mounted by containers belonging to the pod.
+                             *     More info: https://kubernetes.io/docs/concepts/storage/volumes
+                             */
                             volumes?: {
-                                /** @description awsElasticBlockStore represents an AWS Disk resource that is attached to a
+                                /**
+                                 * @description awsElasticBlockStore represents an AWS Disk resource that is attached to a
                                  *     kubelet's host machine and then exposed to the pod.
                                  *     Deprecated: AWSElasticBlockStore is deprecated. All operations for the in-tree
                                  *     awsElasticBlockStore type are redirected to the ebs.csi.aws.com CSI driver.
-                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore */
+                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore
+                                 */
                                 awsElasticBlockStore?: {
-                                    /** @description fsType is the filesystem type of the volume that you want to mount.
+                                    /**
+                                     * @description fsType is the filesystem type of the volume that you want to mount.
                                      *     Tip: Ensure that the filesystem type is supported by the host operating system.
                                      *     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore
+                                     */
                                     fsType?: string;
                                     /**
                                      * Format: int32
@@ -5036,16 +6430,22 @@ export interface components {
                                      *     Similarly, the volume partition for /dev/sda is "0" (or you can leave the property empty).
                                      */
                                     partition?: number;
-                                    /** @description readOnly value true will force the readOnly setting in VolumeMounts.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore */
+                                    /**
+                                     * @description readOnly value true will force the readOnly setting in VolumeMounts.
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore
+                                     */
                                     readOnly?: boolean;
-                                    /** @description volumeID is unique ID of the persistent disk resource in AWS (Amazon EBS volume).
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore */
+                                    /**
+                                     * @description volumeID is unique ID of the persistent disk resource in AWS (Amazon EBS volume).
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#awselasticblockstore
+                                     */
                                     volumeID: string;
                                 };
-                                /** @description azureDisk represents an Azure Data Disk mount on the host and bind mount to the pod.
+                                /**
+                                 * @description azureDisk represents an Azure Data Disk mount on the host and bind mount to the pod.
                                  *     Deprecated: AzureDisk is deprecated. All operations for the in-tree azureDisk type
-                                 *     are redirected to the disk.csi.azure.com CSI driver. */
+                                 *     are redirected to the disk.csi.azure.com CSI driver.
+                                 */
                                 azureDisk?: {
                                     /** @description cachingMode is the Host Caching mode: None, Read Only, Read Write. */
                                     cachingMode?: string;
@@ -5069,35 +6469,49 @@ export interface components {
                                      */
                                     readOnly: boolean;
                                 };
-                                /** @description azureFile represents an Azure File Service mount on the host and bind mount to the pod.
+                                /**
+                                 * @description azureFile represents an Azure File Service mount on the host and bind mount to the pod.
                                  *     Deprecated: AzureFile is deprecated. All operations for the in-tree azureFile type
-                                 *     are redirected to the file.csi.azure.com CSI driver. */
+                                 *     are redirected to the file.csi.azure.com CSI driver.
+                                 */
                                 azureFile?: {
-                                    /** @description readOnly defaults to false (read/write). ReadOnly here will force
-                                     *     the ReadOnly setting in VolumeMounts. */
+                                    /**
+                                     * @description readOnly defaults to false (read/write). ReadOnly here will force
+                                     *     the ReadOnly setting in VolumeMounts.
+                                     */
                                     readOnly?: boolean;
                                     /** @description secretName is the  name of secret that contains Azure Storage Account Name and Key */
                                     secretName: string;
                                     /** @description shareName is the azure share Name */
                                     shareName: string;
                                 };
-                                /** @description cephFS represents a Ceph FS mount on the host that shares a pod's lifetime.
-                                 *     Deprecated: CephFS is deprecated and the in-tree cephfs type is no longer supported. */
+                                /**
+                                 * @description cephFS represents a Ceph FS mount on the host that shares a pod's lifetime.
+                                 *     Deprecated: CephFS is deprecated and the in-tree cephfs type is no longer supported.
+                                 */
                                 cephfs?: {
-                                    /** @description monitors is Required: Monitors is a collection of Ceph monitors
-                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it */
+                                    /**
+                                     * @description monitors is Required: Monitors is a collection of Ceph monitors
+                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
+                                     */
                                     monitors: string[];
                                     /** @description path is Optional: Used as the mounted root, rather than the full Ceph tree, default is / */
                                     path?: string;
-                                    /** @description readOnly is Optional: Defaults to false (read/write). ReadOnly here will force
+                                    /**
+                                     * @description readOnly is Optional: Defaults to false (read/write). ReadOnly here will force
                                      *     the ReadOnly setting in VolumeMounts.
-                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it */
+                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
+                                     */
                                     readOnly?: boolean;
-                                    /** @description secretFile is Optional: SecretFile is the path to key ring for User, default is /etc/ceph/user.secret
-                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it */
+                                    /**
+                                     * @description secretFile is Optional: SecretFile is the path to key ring for User, default is /etc/ceph/user.secret
+                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
+                                     */
                                     secretFile?: string;
-                                    /** @description secretRef is Optional: SecretRef is reference to the authentication secret for User, default is empty.
-                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it */
+                                    /**
+                                     * @description secretRef is Optional: SecretRef is reference to the authentication secret for User, default is empty.
+                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
+                                     */
                                     secretRef?: {
                                         /**
                                          * @description Name of the referent.
@@ -5109,26 +6523,36 @@ export interface components {
                                          */
                                         name: string;
                                     };
-                                    /** @description user is optional: User is the rados user name, default is admin
-                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it */
+                                    /**
+                                     * @description user is optional: User is the rados user name, default is admin
+                                     *     More info: https://examples.k8s.io/volumes/cephfs/README.md#how-to-use-it
+                                     */
                                     user?: string;
                                 };
-                                /** @description cinder represents a cinder volume attached and mounted on kubelets host machine.
+                                /**
+                                 * @description cinder represents a cinder volume attached and mounted on kubelets host machine.
                                  *     Deprecated: Cinder is deprecated. All operations for the in-tree cinder type
                                  *     are redirected to the cinder.csi.openstack.org CSI driver.
-                                 *     More info: https://examples.k8s.io/mysql-cinder-pd/README.md */
+                                 *     More info: https://examples.k8s.io/mysql-cinder-pd/README.md
+                                 */
                                 cinder?: {
-                                    /** @description fsType is the filesystem type to mount.
+                                    /**
+                                     * @description fsType is the filesystem type to mount.
                                      *     Must be a filesystem type supported by the host operating system.
                                      *     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
-                                     *     More info: https://examples.k8s.io/mysql-cinder-pd/README.md */
+                                     *     More info: https://examples.k8s.io/mysql-cinder-pd/README.md
+                                     */
                                     fsType?: string;
-                                    /** @description readOnly defaults to false (read/write). ReadOnly here will force
+                                    /**
+                                     * @description readOnly defaults to false (read/write). ReadOnly here will force
                                      *     the ReadOnly setting in VolumeMounts.
-                                     *     More info: https://examples.k8s.io/mysql-cinder-pd/README.md */
+                                     *     More info: https://examples.k8s.io/mysql-cinder-pd/README.md
+                                     */
                                     readOnly?: boolean;
-                                    /** @description secretRef is optional: points to a secret object containing parameters used to connect
-                                     *     to OpenStack. */
+                                    /**
+                                     * @description secretRef is optional: points to a secret object containing parameters used to connect
+                                     *     to OpenStack.
+                                     */
                                     secretRef?: {
                                         /**
                                          * @description Name of the referent.
@@ -5140,8 +6564,10 @@ export interface components {
                                          */
                                         name: string;
                                     };
-                                    /** @description volumeID used to identify the volume in cinder.
-                                     *     More info: https://examples.k8s.io/mysql-cinder-pd/README.md */
+                                    /**
+                                     * @description volumeID used to identify the volume in cinder.
+                                     *     More info: https://examples.k8s.io/mysql-cinder-pd/README.md
+                                     */
                                     volumeID: string;
                                 };
                                 /** @description configMap represents a configMap that should populate this volume */
@@ -5157,13 +6583,15 @@ export interface components {
                                      *     mode, like fsGroup, and the result can be other mode bits set.
                                      */
                                     defaultMode?: number;
-                                    /** @description items if unspecified, each key-value pair in the Data field of the referenced
+                                    /**
+                                     * @description items if unspecified, each key-value pair in the Data field of the referenced
                                      *     ConfigMap will be projected into the volume as a file whose name is the
                                      *     key and content is the value. If specified, the listed keys will be
                                      *     projected into the specified paths, and unlisted keys will not be
                                      *     present. If a key is specified which is not present in the ConfigMap,
                                      *     the volume setup will error unless it is marked optional. Paths must be
-                                     *     relative and may not contain the '..' path or start with '..'. */
+                                     *     relative and may not contain the '..' path or start with '..'.
+                                     */
                                     items?: {
                                         /** @description key is the key to project. */
                                         key: string;
@@ -5177,10 +6605,12 @@ export interface components {
                                          *     mode, like fsGroup, and the result can be other mode bits set.
                                          */
                                         mode?: number;
-                                        /** @description path is the relative path of the file to map the key to.
+                                        /**
+                                         * @description path is the relative path of the file to map the key to.
                                          *     May not be an absolute path.
                                          *     May not contain the path element '..'.
-                                         *     May not start with the string '..'. */
+                                         *     May not start with the string '..'.
+                                         */
                                         path: string;
                                     }[];
                                     /**
@@ -5197,18 +6627,24 @@ export interface components {
                                 };
                                 /** @description csi (Container Storage Interface) represents ephemeral storage that is handled by certain external CSI drivers. */
                                 csi?: {
-                                    /** @description driver is the name of the CSI driver that handles this volume.
-                                     *     Consult with your admin for the correct name as registered in the cluster. */
+                                    /**
+                                     * @description driver is the name of the CSI driver that handles this volume.
+                                     *     Consult with your admin for the correct name as registered in the cluster.
+                                     */
                                     driver: string;
-                                    /** @description fsType to mount. Ex. "ext4", "xfs", "ntfs".
+                                    /**
+                                     * @description fsType to mount. Ex. "ext4", "xfs", "ntfs".
                                      *     If not provided, the empty value is passed to the associated CSI driver
-                                     *     which will determine the default filesystem to apply. */
+                                     *     which will determine the default filesystem to apply.
+                                     */
                                     fsType?: string;
-                                    /** @description nodePublishSecretRef is a reference to the secret object containing
+                                    /**
+                                     * @description nodePublishSecretRef is a reference to the secret object containing
                                      *     sensitive information to pass to the CSI driver to complete the CSI
                                      *     NodePublishVolume and NodeUnpublishVolume calls.
                                      *     This field is optional, and  may be empty if no secret is required. If the
-                                     *     secret object contains more than one secret, all secret references are passed. */
+                                     *     secret object contains more than one secret, all secret references are passed.
+                                     */
                                     nodePublishSecretRef?: {
                                         /**
                                          * @description Name of the referent.
@@ -5220,11 +6656,15 @@ export interface components {
                                          */
                                         name: string;
                                     };
-                                    /** @description readOnly specifies a read-only configuration for the volume.
-                                     *     Defaults to false (read/write). */
+                                    /**
+                                     * @description readOnly specifies a read-only configuration for the volume.
+                                     *     Defaults to false (read/write).
+                                     */
                                     readOnly?: boolean;
-                                    /** @description volumeAttributes stores driver-specific properties that are passed to the CSI
-                                     *     driver. Consult your driver's documentation for supported values. */
+                                    /**
+                                     * @description volumeAttributes stores driver-specific properties that are passed to the CSI
+                                     *     driver. Consult your driver's documentation for supported values.
+                                     */
                                     volumeAttributes?: {
                                         [key: string]: string;
                                     };
@@ -5264,8 +6704,10 @@ export interface components {
                                         mode?: number;
                                         /** @description Required: Path is  the relative path name of the file to be created. Must not be absolute or contain the '..' path. Must be utf-8 encoded. The first item of the relative path must not start with '..' */
                                         path: string;
-                                        /** @description Selects a resource of the container: only resources limits and requests
-                                         *     (limits.cpu, limits.memory, requests.cpu and requests.memory) are currently supported. */
+                                        /**
+                                         * @description Selects a resource of the container: only resources limits and requests
+                                         *     (limits.cpu, limits.memory, requests.cpu and requests.memory) are currently supported.
+                                         */
                                         resourceFieldRef?: {
                                             /** @description Container name: required for volumes, optional for env vars */
                                             containerName?: string;
@@ -5276,23 +6718,30 @@ export interface components {
                                         };
                                     }[];
                                 };
-                                /** @description emptyDir represents a temporary directory that shares a pod's lifetime.
-                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir */
+                                /**
+                                 * @description emptyDir represents a temporary directory that shares a pod's lifetime.
+                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
+                                 */
                                 emptyDir?: {
-                                    /** @description medium represents what type of storage medium should back this directory.
+                                    /**
+                                     * @description medium represents what type of storage medium should back this directory.
                                      *     The default is "" which means to use the node's default medium.
                                      *     Must be an empty string (default) or Memory.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
+                                     */
                                     medium?: string;
-                                    /** @description sizeLimit is the total amount of local storage required for this EmptyDir volume.
+                                    /**
+                                     * @description sizeLimit is the total amount of local storage required for this EmptyDir volume.
                                      *     The size limit is also applicable for memory medium.
                                      *     The maximum usage on memory medium EmptyDir would be the minimum value between
                                      *     the SizeLimit specified here and the sum of memory limits of all containers in a pod.
                                      *     The default is nil which means that the limit is undefined.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
+                                     */
                                     sizeLimit?: number | string;
                                 };
-                                /** @description ephemeral represents a volume that is handled by a cluster storage driver.
+                                /**
+                                 * @description ephemeral represents a volume that is handled by a cluster storage driver.
                                  *     The volume's lifecycle is tied to the pod that defines it - it will be created before the pod starts,
                                  *     and deleted when the pod is removed.
                                  *
@@ -5315,9 +6764,11 @@ export interface components {
                                  *     more information.
                                  *
                                  *     A pod can use both types of ephemeral volumes and
-                                 *     persistent volumes at the same time. */
+                                 *     persistent volumes at the same time.
+                                 */
                                 ephemeral?: {
-                                    /** @description Will be used to create a stand-alone PVC to provision the volume.
+                                    /**
+                                     * @description Will be used to create a stand-alone PVC to provision the volume.
                                      *     The pod in which this EphemeralVolumeSource is embedded will be the
                                      *     owner of the PVC, i.e. the PVC will be deleted together with the
                                      *     pod.  The name of the PVC will be `<pod name>-<volume name>` where
@@ -5337,39 +6788,51 @@ export interface components {
                                      *     This field is read-only and no changes will be made by Kubernetes
                                      *     to the PVC after it has been created.
                                      *
-                                     *     Required, must not be nil. */
+                                     *     Required, must not be nil.
+                                     */
                                     volumeClaimTemplate?: {
-                                        /** @description May contain labels and annotations that will be copied into the PVC
+                                        /**
+                                         * @description May contain labels and annotations that will be copied into the PVC
                                          *     when creating it. No other fields are allowed and will be rejected during
-                                         *     validation. */
+                                         *     validation.
+                                         */
                                         metadata?: Record<string, never>;
-                                        /** @description The specification for the PersistentVolumeClaim. The entire content is
+                                        /**
+                                         * @description The specification for the PersistentVolumeClaim. The entire content is
                                          *     copied unchanged into the PVC that gets created from this
                                          *     template. The same fields as in a PersistentVolumeClaim
-                                         *     are also valid here. */
+                                         *     are also valid here.
+                                         */
                                         spec: {
-                                            /** @description accessModes contains the desired access modes the volume should have.
-                                             *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#access-modes-1 */
+                                            /**
+                                             * @description accessModes contains the desired access modes the volume should have.
+                                             *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#access-modes-1
+                                             */
                                             accessModes?: string[];
-                                            /** @description dataSource field can be used to specify either:
+                                            /**
+                                             * @description dataSource field can be used to specify either:
                                              *     * An existing VolumeSnapshot object (snapshot.storage.k8s.io/VolumeSnapshot)
                                              *     * An existing PVC (PersistentVolumeClaim)
                                              *     If the provisioner or an external controller can support the specified data source,
                                              *     it will create a new volume based on the contents of the specified data source.
                                              *     When the AnyVolumeDataSource feature gate is enabled, dataSource contents will be copied to dataSourceRef,
                                              *     and dataSourceRef contents will be copied to dataSource when dataSourceRef.namespace is not specified.
-                                             *     If the namespace is specified, then dataSourceRef will not be copied to dataSource. */
+                                             *     If the namespace is specified, then dataSourceRef will not be copied to dataSource.
+                                             */
                                             dataSource?: {
-                                                /** @description APIGroup is the group for the resource being referenced.
+                                                /**
+                                                 * @description APIGroup is the group for the resource being referenced.
                                                  *     If APIGroup is not specified, the specified Kind must be in the core API group.
-                                                 *     For any other third-party types, APIGroup is required. */
+                                                 *     For any other third-party types, APIGroup is required.
+                                                 */
                                                 apiGroup?: string;
                                                 /** @description Kind is the type of resource being referenced */
                                                 kind: string;
                                                 /** @description Name is the name of resource being referenced */
                                                 name: string;
                                             };
-                                            /** @description dataSourceRef specifies the object from which to populate the volume with data, if a non-empty
+                                            /**
+                                             * @description dataSourceRef specifies the object from which to populate the volume with data, if a non-empty
                                              *     volume is desired. This may be any object from a non-empty API group (non
                                              *     core object) or a PersistentVolumeClaim object.
                                              *     When this field is specified, volume binding will only succeed if the type of
@@ -5391,36 +6854,47 @@ export interface components {
                                              *     * While dataSource only allows local objects, dataSourceRef allows objects
                                              *       in any namespaces.
                                              *     (Beta) Using this field requires the AnyVolumeDataSource feature gate to be enabled.
-                                             *     (Alpha) Using the namespace field of dataSourceRef requires the CrossNamespaceVolumeDataSource feature gate to be enabled. */
+                                             *     (Alpha) Using the namespace field of dataSourceRef requires the CrossNamespaceVolumeDataSource feature gate to be enabled.
+                                             */
                                             dataSourceRef?: {
-                                                /** @description APIGroup is the group for the resource being referenced.
+                                                /**
+                                                 * @description APIGroup is the group for the resource being referenced.
                                                  *     If APIGroup is not specified, the specified Kind must be in the core API group.
-                                                 *     For any other third-party types, APIGroup is required. */
+                                                 *     For any other third-party types, APIGroup is required.
+                                                 */
                                                 apiGroup?: string;
                                                 /** @description Kind is the type of resource being referenced */
                                                 kind: string;
                                                 /** @description Name is the name of resource being referenced */
                                                 name: string;
-                                                /** @description Namespace is the namespace of resource being referenced
+                                                /**
+                                                 * @description Namespace is the namespace of resource being referenced
                                                  *     Note that when a namespace is specified, a gateway.networking.k8s.io/ReferenceGrant object is required in the referent namespace to allow that namespace's owner to accept the reference. See the ReferenceGrant documentation for details.
-                                                 *     (Alpha) This field requires the CrossNamespaceVolumeDataSource feature gate to be enabled. */
+                                                 *     (Alpha) This field requires the CrossNamespaceVolumeDataSource feature gate to be enabled.
+                                                 */
                                                 namespace?: string;
                                             };
-                                            /** @description resources represents the minimum resources the volume should have.
+                                            /**
+                                             * @description resources represents the minimum resources the volume should have.
                                              *     If RecoverVolumeExpansionFailure feature is enabled users are allowed to specify resource requirements
                                              *     that are lower than previous value but must still be higher than capacity recorded in the
                                              *     status field of the claim.
-                                             *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources */
+                                             *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#resources
+                                             */
                                             resources?: {
-                                                /** @description Limits describes the maximum amount of compute resources allowed.
-                                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                                /**
+                                                 * @description Limits describes the maximum amount of compute resources allowed.
+                                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                                 */
                                                 limits?: {
                                                     [key: string]: number | string;
                                                 };
-                                                /** @description Requests describes the minimum amount of compute resources required.
+                                                /**
+                                                 * @description Requests describes the minimum amount of compute resources required.
                                                  *     If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
                                                  *     otherwise to an implementation-defined value. Requests cannot exceed Limits.
-                                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ */
+                                                 *     More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                                                 */
                                                 requests?: {
                                                     [key: string]: number | string;
                                                 };
@@ -5431,26 +6905,35 @@ export interface components {
                                                 matchExpressions?: {
                                                     /** @description key is the label key that the selector applies to. */
                                                     key: string;
-                                                    /** @description operator represents a key's relationship to a set of values.
-                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                    /**
+                                                     * @description operator represents a key's relationship to a set of values.
+                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                     */
                                                     operator: string;
-                                                    /** @description values is an array of string values. If the operator is In or NotIn,
+                                                    /**
+                                                     * @description values is an array of string values. If the operator is In or NotIn,
                                                      *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                      *     the values array must be empty. This array is replaced during a strategic
-                                                     *     merge patch. */
+                                                     *     merge patch.
+                                                     */
                                                     values?: string[];
                                                 }[];
-                                                /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                                /**
+                                                 * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                                  *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                                 */
                                                 matchLabels?: {
                                                     [key: string]: string;
                                                 };
                                             };
-                                            /** @description storageClassName is the name of the StorageClass required by the claim.
-                                             *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#class-1 */
+                                            /**
+                                             * @description storageClassName is the name of the StorageClass required by the claim.
+                                             *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#class-1
+                                             */
                                             storageClassName?: string;
-                                            /** @description volumeAttributesClassName may be used to set the VolumeAttributesClass used by this claim.
+                                            /**
+                                             * @description volumeAttributesClassName may be used to set the VolumeAttributesClass used by this claim.
                                              *     If specified, the CSI driver will create or update the volume with the attributes defined
                                              *     in the corresponding VolumeAttributesClass. This has a different purpose than storageClassName,
                                              *     it can be changed after the claim is created. An empty string or nil value indicates that no
@@ -5459,10 +6942,13 @@ export interface components {
                                              *     If the resource referred to by volumeAttributesClass does not exist, this PersistentVolumeClaim will be
                                              *     set to a Pending state, as reflected by the modifyVolumeStatus field, until such as a resource
                                              *     exists.
-                                             *     More info: https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/ */
+                                             *     More info: https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/
+                                             */
                                             volumeAttributesClassName?: string;
-                                            /** @description volumeMode defines what type of volume is required by the claim.
-                                             *     Value of Filesystem is implied when not included in claim spec. */
+                                            /**
+                                             * @description volumeMode defines what type of volume is required by the claim.
+                                             *     Value of Filesystem is implied when not included in claim spec.
+                                             */
                                             volumeMode?: string;
                                             /** @description volumeName is the binding reference to the PersistentVolume backing this claim. */
                                             volumeName?: string;
@@ -5471,46 +6957,60 @@ export interface components {
                                 };
                                 /** @description fc represents a Fibre Channel resource that is attached to a kubelet's host machine and then exposed to the pod. */
                                 fc?: {
-                                    /** @description fsType is the filesystem type to mount.
+                                    /**
+                                     * @description fsType is the filesystem type to mount.
                                      *     Must be a filesystem type supported by the host operating system.
-                                     *     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified. */
+                                     *     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
+                                     */
                                     fsType?: string;
                                     /**
                                      * Format: int32
                                      * @description lun is Optional: FC target lun number
                                      */
                                     lun?: number;
-                                    /** @description readOnly is Optional: Defaults to false (read/write). ReadOnly here will force
-                                     *     the ReadOnly setting in VolumeMounts. */
+                                    /**
+                                     * @description readOnly is Optional: Defaults to false (read/write). ReadOnly here will force
+                                     *     the ReadOnly setting in VolumeMounts.
+                                     */
                                     readOnly?: boolean;
                                     /** @description targetWWNs is Optional: FC target worldwide names (WWNs) */
                                     targetWWNs?: string[];
-                                    /** @description wwids Optional: FC volume world wide identifiers (wwids)
-                                     *     Either wwids or combination of targetWWNs and lun must be set, but not both simultaneously. */
+                                    /**
+                                     * @description wwids Optional: FC volume world wide identifiers (wwids)
+                                     *     Either wwids or combination of targetWWNs and lun must be set, but not both simultaneously.
+                                     */
                                     wwids?: string[];
                                 };
-                                /** @description flexVolume represents a generic volume resource that is
+                                /**
+                                 * @description flexVolume represents a generic volume resource that is
                                  *     provisioned/attached using an exec based plugin.
-                                 *     Deprecated: FlexVolume is deprecated. Consider using a CSIDriver instead. */
+                                 *     Deprecated: FlexVolume is deprecated. Consider using a CSIDriver instead.
+                                 */
                                 flexVolume?: {
                                     /** @description driver is the name of the driver to use for this volume. */
                                     driver: string;
-                                    /** @description fsType is the filesystem type to mount.
+                                    /**
+                                     * @description fsType is the filesystem type to mount.
                                      *     Must be a filesystem type supported by the host operating system.
-                                     *     Ex. "ext4", "xfs", "ntfs". The default filesystem depends on FlexVolume script. */
+                                     *     Ex. "ext4", "xfs", "ntfs". The default filesystem depends on FlexVolume script.
+                                     */
                                     fsType?: string;
                                     /** @description options is Optional: this field holds extra command options if any. */
                                     options?: {
                                         [key: string]: string;
                                     };
-                                    /** @description readOnly is Optional: defaults to false (read/write). ReadOnly here will force
-                                     *     the ReadOnly setting in VolumeMounts. */
+                                    /**
+                                     * @description readOnly is Optional: defaults to false (read/write). ReadOnly here will force
+                                     *     the ReadOnly setting in VolumeMounts.
+                                     */
                                     readOnly?: boolean;
-                                    /** @description secretRef is Optional: secretRef is reference to the secret object containing
+                                    /**
+                                     * @description secretRef is Optional: secretRef is reference to the secret object containing
                                      *     sensitive information to pass to the plugin scripts. This may be
                                      *     empty if no secret object is specified. If the secret object
                                      *     contains more than one secret, all secrets are passed to the plugin
-                                     *     scripts. */
+                                     *     scripts.
+                                     */
                                     secretRef?: {
                                         /**
                                          * @description Name of the referent.
@@ -5523,25 +7023,33 @@ export interface components {
                                         name: string;
                                     };
                                 };
-                                /** @description flocker represents a Flocker volume attached to a kubelet's host machine. This depends on the Flocker control service being running.
-                                 *     Deprecated: Flocker is deprecated and the in-tree flocker type is no longer supported. */
+                                /**
+                                 * @description flocker represents a Flocker volume attached to a kubelet's host machine. This depends on the Flocker control service being running.
+                                 *     Deprecated: Flocker is deprecated and the in-tree flocker type is no longer supported.
+                                 */
                                 flocker?: {
-                                    /** @description datasetName is Name of the dataset stored as metadata -> name on the dataset for Flocker
-                                     *     should be considered as deprecated */
+                                    /**
+                                     * @description datasetName is Name of the dataset stored as metadata -> name on the dataset for Flocker
+                                     *     should be considered as deprecated
+                                     */
                                     datasetName?: string;
                                     /** @description datasetUUID is the UUID of the dataset. This is unique identifier of a Flocker dataset */
                                     datasetUUID?: string;
                                 };
-                                /** @description gcePersistentDisk represents a GCE Disk resource that is attached to a
+                                /**
+                                 * @description gcePersistentDisk represents a GCE Disk resource that is attached to a
                                  *     kubelet's host machine and then exposed to the pod.
                                  *     Deprecated: GCEPersistentDisk is deprecated. All operations for the in-tree
                                  *     gcePersistentDisk type are redirected to the pd.csi.storage.gke.io CSI driver.
-                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk */
+                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk
+                                 */
                                 gcePersistentDisk?: {
-                                    /** @description fsType is filesystem type of the volume that you want to mount.
+                                    /**
+                                     * @description fsType is filesystem type of the volume that you want to mount.
                                      *     Tip: Ensure that the filesystem type is supported by the host operating system.
                                      *     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk
+                                     */
                                     fsType?: string;
                                     /**
                                      * Format: int32
@@ -5552,58 +7060,79 @@ export interface components {
                                      *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk
                                      */
                                     partition?: number;
-                                    /** @description pdName is unique name of the PD resource in GCE. Used to identify the disk in GCE.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk */
+                                    /**
+                                     * @description pdName is unique name of the PD resource in GCE. Used to identify the disk in GCE.
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk
+                                     */
                                     pdName: string;
-                                    /** @description readOnly here will force the ReadOnly setting in VolumeMounts.
+                                    /**
+                                     * @description readOnly here will force the ReadOnly setting in VolumeMounts.
                                      *     Defaults to false.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#gcepersistentdisk
+                                     */
                                     readOnly?: boolean;
                                 };
-                                /** @description gitRepo represents a git repository at a particular revision.
+                                /**
+                                 * @description gitRepo represents a git repository at a particular revision.
                                  *     Deprecated: GitRepo is deprecated. To provision a container with a git repo, mount an
                                  *     EmptyDir into an InitContainer that clones the repo using git, then mount the EmptyDir
-                                 *     into the Pod's container. */
+                                 *     into the Pod's container.
+                                 */
                                 gitRepo?: {
-                                    /** @description directory is the target directory name.
+                                    /**
+                                     * @description directory is the target directory name.
                                      *     Must not contain or start with '..'.  If '.' is supplied, the volume directory will be the
                                      *     git repository.  Otherwise, if specified, the volume will contain the git repository in
-                                     *     the subdirectory with the given name. */
+                                     *     the subdirectory with the given name.
+                                     */
                                     directory?: string;
                                     /** @description repository is the URL */
                                     repository: string;
                                     /** @description revision is the commit hash for the specified revision. */
                                     revision?: string;
                                 };
-                                /** @description glusterfs represents a Glusterfs mount on the host that shares a pod's lifetime.
-                                 *     Deprecated: Glusterfs is deprecated and the in-tree glusterfs type is no longer supported. */
+                                /**
+                                 * @description glusterfs represents a Glusterfs mount on the host that shares a pod's lifetime.
+                                 *     Deprecated: Glusterfs is deprecated and the in-tree glusterfs type is no longer supported.
+                                 */
                                 glusterfs?: {
                                     /** @description endpoints is the endpoint name that details Glusterfs topology. */
                                     endpoints: string;
-                                    /** @description path is the Glusterfs volume path.
-                                     *     More info: https://examples.k8s.io/volumes/glusterfs/README.md#create-a-pod */
+                                    /**
+                                     * @description path is the Glusterfs volume path.
+                                     *     More info: https://examples.k8s.io/volumes/glusterfs/README.md#create-a-pod
+                                     */
                                     path: string;
-                                    /** @description readOnly here will force the Glusterfs volume to be mounted with read-only permissions.
+                                    /**
+                                     * @description readOnly here will force the Glusterfs volume to be mounted with read-only permissions.
                                      *     Defaults to false.
-                                     *     More info: https://examples.k8s.io/volumes/glusterfs/README.md#create-a-pod */
+                                     *     More info: https://examples.k8s.io/volumes/glusterfs/README.md#create-a-pod
+                                     */
                                     readOnly?: boolean;
                                 };
-                                /** @description hostPath represents a pre-existing file or directory on the host
+                                /**
+                                 * @description hostPath represents a pre-existing file or directory on the host
                                  *     machine that is directly exposed to the container. This is generally
                                  *     used for system agents or other privileged things that are allowed
                                  *     to see the host machine. Most containers will NOT need this.
-                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath */
+                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath
+                                 */
                                 hostPath?: {
-                                    /** @description path of the directory on the host.
+                                    /**
+                                     * @description path of the directory on the host.
                                      *     If the path is a symlink, it will follow the link to the real path.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath
+                                     */
                                     path: string;
-                                    /** @description type for HostPath Volume
+                                    /**
+                                     * @description type for HostPath Volume
                                      *     Defaults to ""
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath
+                                     */
                                     type?: string;
                                 };
-                                /** @description image represents an OCI object (a container image or artifact) pulled and mounted on the kubelet's host machine.
+                                /**
+                                 * @description image represents an OCI object (a container image or artifact) pulled and mounted on the kubelet's host machine.
                                  *     The volume is resolved at pod startup depending on which PullPolicy value is provided:
                                  *
                                  *     - Always: the kubelet always attempts to pull the reference. Container creation will fail If the pull fails.
@@ -5616,38 +7145,49 @@ export interface components {
                                  *     The OCI object gets mounted in a single directory (spec.containers[*].volumeMounts.mountPath) by merging the manifest layers in the same way as for container images.
                                  *     The volume will be mounted read-only (ro) and non-executable files (noexec).
                                  *     Sub path mounts for containers are not supported (spec.containers[*].volumeMounts.subpath) before 1.33.
-                                 *     The field spec.securityContext.fsGroupChangePolicy has no effect on this volume type. */
+                                 *     The field spec.securityContext.fsGroupChangePolicy has no effect on this volume type.
+                                 */
                                 image?: {
-                                    /** @description Policy for pulling OCI objects. Possible values are:
+                                    /**
+                                     * @description Policy for pulling OCI objects. Possible values are:
                                      *     Always: the kubelet always attempts to pull the reference. Container creation will fail If the pull fails.
                                      *     Never: the kubelet never pulls the reference and only uses a local image or artifact. Container creation will fail if the reference isn't present.
                                      *     IfNotPresent: the kubelet pulls if the reference isn't already present on disk. Container creation will fail if the reference isn't present and the pull fails.
-                                     *     Defaults to Always if :latest tag is specified, or IfNotPresent otherwise. */
+                                     *     Defaults to Always if :latest tag is specified, or IfNotPresent otherwise.
+                                     */
                                     pullPolicy?: string;
-                                    /** @description Required: Image or artifact reference to be used.
+                                    /**
+                                     * @description Required: Image or artifact reference to be used.
                                      *     Behaves in the same way as pod.spec.containers[*].image.
                                      *     Pull secrets will be assembled in the same way as for the container image by looking up node credentials, SA image pull secrets, and pod spec image pull secrets.
                                      *     More info: https://kubernetes.io/docs/concepts/containers/images
                                      *     This field is optional to allow higher level config management to default or override
-                                     *     container images in workload controllers like Deployments and StatefulSets. */
+                                     *     container images in workload controllers like Deployments and StatefulSets.
+                                     */
                                     reference?: string;
                                 };
-                                /** @description iscsi represents an ISCSI Disk resource that is attached to a
+                                /**
+                                 * @description iscsi represents an ISCSI Disk resource that is attached to a
                                  *     kubelet's host machine and then exposed to the pod.
-                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes/#iscsi */
+                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes/#iscsi
+                                 */
                                 iscsi?: {
                                     /** @description chapAuthDiscovery defines whether support iSCSI Discovery CHAP authentication */
                                     chapAuthDiscovery?: boolean;
                                     /** @description chapAuthSession defines whether support iSCSI Session CHAP authentication */
                                     chapAuthSession?: boolean;
-                                    /** @description fsType is the filesystem type of the volume that you want to mount.
+                                    /**
+                                     * @description fsType is the filesystem type of the volume that you want to mount.
                                      *     Tip: Ensure that the filesystem type is supported by the host operating system.
                                      *     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#iscsi */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#iscsi
+                                     */
                                     fsType?: string;
-                                    /** @description initiatorName is the custom iSCSI Initiator Name.
+                                    /**
+                                     * @description initiatorName is the custom iSCSI Initiator Name.
                                      *     If initiatorName is specified with iscsiInterface simultaneously, new iSCSI interface
-                                     *     <target portal>:<volume name> will be created for the connection. */
+                                     *     <target portal>:<volume name> will be created for the connection.
+                                     */
                                     initiatorName?: string;
                                     /** @description iqn is the target iSCSI Qualified Name. */
                                     iqn: string;
@@ -5662,11 +7202,15 @@ export interface components {
                                      * @description lun represents iSCSI Target Lun number.
                                      */
                                     lun: number;
-                                    /** @description portals is the iSCSI Target Portal List. The portal is either an IP or ip_addr:port if the port
-                                     *     is other than default (typically TCP ports 860 and 3260). */
+                                    /**
+                                     * @description portals is the iSCSI Target Portal List. The portal is either an IP or ip_addr:port if the port
+                                     *     is other than default (typically TCP ports 860 and 3260).
+                                     */
                                     portals?: string[];
-                                    /** @description readOnly here will force the ReadOnly setting in VolumeMounts.
-                                     *     Defaults to false. */
+                                    /**
+                                     * @description readOnly here will force the ReadOnly setting in VolumeMounts.
+                                     *     Defaults to false.
+                                     */
                                     readOnly?: boolean;
                                     /** @description secretRef is the CHAP Secret for iSCSI target and initiator authentication */
                                     secretRef?: {
@@ -5680,60 +7224,88 @@ export interface components {
                                          */
                                         name: string;
                                     };
-                                    /** @description targetPortal is iSCSI Target Portal. The Portal is either an IP or ip_addr:port if the port
-                                     *     is other than default (typically TCP ports 860 and 3260). */
+                                    /**
+                                     * @description targetPortal is iSCSI Target Portal. The Portal is either an IP or ip_addr:port if the port
+                                     *     is other than default (typically TCP ports 860 and 3260).
+                                     */
                                     targetPortal: string;
                                 };
-                                /** @description name of the volume.
+                                /**
+                                 * @description name of the volume.
                                  *     Must be a DNS_LABEL and unique within the pod.
-                                 *     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names */
+                                 *     More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                 */
                                 name: string;
-                                /** @description nfs represents an NFS mount on the host that shares a pod's lifetime
-                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs */
+                                /**
+                                 * @description nfs represents an NFS mount on the host that shares a pod's lifetime
+                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                 */
                                 nfs?: {
-                                    /** @description path that is exported by the NFS server.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs */
+                                    /**
+                                     * @description path that is exported by the NFS server.
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                     */
                                     path: string;
-                                    /** @description readOnly here will force the NFS export to be mounted with read-only permissions.
+                                    /**
+                                     * @description readOnly here will force the NFS export to be mounted with read-only permissions.
                                      *     Defaults to false.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                     */
                                     readOnly?: boolean;
-                                    /** @description server is the hostname or IP address of the NFS server.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs */
+                                    /**
+                                     * @description server is the hostname or IP address of the NFS server.
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                     */
                                     server: string;
                                 };
-                                /** @description persistentVolumeClaimVolumeSource represents a reference to a
+                                /**
+                                 * @description persistentVolumeClaimVolumeSource represents a reference to a
                                  *     PersistentVolumeClaim in the same namespace.
-                                 *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims */
+                                 *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                 */
                                 persistentVolumeClaim?: {
-                                    /** @description claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims */
+                                    /**
+                                     * @description claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                     */
                                     claimName: string;
-                                    /** @description readOnly Will force the ReadOnly setting in VolumeMounts.
-                                     *     Default false. */
+                                    /**
+                                     * @description readOnly Will force the ReadOnly setting in VolumeMounts.
+                                     *     Default false.
+                                     */
                                     readOnly?: boolean;
                                 };
-                                /** @description photonPersistentDisk represents a PhotonController persistent disk attached and mounted on kubelets host machine.
-                                 *     Deprecated: PhotonPersistentDisk is deprecated and the in-tree photonPersistentDisk type is no longer supported. */
+                                /**
+                                 * @description photonPersistentDisk represents a PhotonController persistent disk attached and mounted on kubelets host machine.
+                                 *     Deprecated: PhotonPersistentDisk is deprecated and the in-tree photonPersistentDisk type is no longer supported.
+                                 */
                                 photonPersistentDisk?: {
-                                    /** @description fsType is the filesystem type to mount.
+                                    /**
+                                     * @description fsType is the filesystem type to mount.
                                      *     Must be a filesystem type supported by the host operating system.
-                                     *     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified. */
+                                     *     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
+                                     */
                                     fsType?: string;
                                     /** @description pdID is the ID that identifies Photon Controller persistent disk */
                                     pdID: string;
                                 };
-                                /** @description portworxVolume represents a portworx volume attached and mounted on kubelets host machine.
+                                /**
+                                 * @description portworxVolume represents a portworx volume attached and mounted on kubelets host machine.
                                  *     Deprecated: PortworxVolume is deprecated. All operations for the in-tree portworxVolume type
                                  *     are redirected to the pxd.portworx.com CSI driver when the CSIMigrationPortworx feature-gate
-                                 *     is on. */
+                                 *     is on.
+                                 */
                                 portworxVolume?: {
-                                    /** @description fSType represents the filesystem type to mount
+                                    /**
+                                     * @description fSType represents the filesystem type to mount
                                      *     Must be a filesystem type supported by the host operating system.
-                                     *     Ex. "ext4", "xfs". Implicitly inferred to be "ext4" if unspecified. */
+                                     *     Ex. "ext4", "xfs". Implicitly inferred to be "ext4" if unspecified.
+                                     */
                                     fsType?: string;
-                                    /** @description readOnly defaults to false (read/write). ReadOnly here will force
-                                     *     the ReadOnly setting in VolumeMounts. */
+                                    /**
+                                     * @description readOnly defaults to false (read/write). ReadOnly here will force
+                                     *     the ReadOnly setting in VolumeMounts.
+                                     */
                                     readOnly?: boolean;
                                     /** @description volumeID uniquely identifies a Portworx volume */
                                     volumeID: string;
@@ -5750,10 +7322,13 @@ export interface components {
                                      *     mode, like fsGroup, and the result can be other mode bits set.
                                      */
                                     defaultMode?: number;
-                                    /** @description sources is the list of volume projections. Each entry in this list
-                                     *     handles one source. */
+                                    /**
+                                     * @description sources is the list of volume projections. Each entry in this list
+                                     *     handles one source.
+                                     */
                                     sources?: {
-                                        /** @description ClusterTrustBundle allows a pod to access the `.spec.trustBundle` field
+                                        /**
+                                         * @description ClusterTrustBundle allows a pod to access the `.spec.trustBundle` field
                                          *     of ClusterTrustBundle objects in an auto-updating file.
                                          *
                                          *     Alpha, gated by the ClusterTrustBundleProjection feature gate.
@@ -5765,58 +7340,75 @@ export interface components {
                                          *     into the pod filesystem.  Esoteric PEM features such as inter-block
                                          *     comments and block headers are stripped.  Certificates are deduplicated.
                                          *     The ordering of certificates within the file is arbitrary, and Kubelet
-                                         *     may change the order over time. */
+                                         *     may change the order over time.
+                                         */
                                         clusterTrustBundle?: {
-                                            /** @description Select all ClusterTrustBundles that match this label selector.  Only has
+                                            /**
+                                             * @description Select all ClusterTrustBundles that match this label selector.  Only has
                                              *     effect if signerName is set.  Mutually-exclusive with name.  If unset,
                                              *     interpreted as "match nothing".  If set but empty, interpreted as "match
-                                             *     everything". */
+                                             *     everything".
+                                             */
                                             labelSelector?: {
                                                 /** @description matchExpressions is a list of label selector requirements. The requirements are ANDed. */
                                                 matchExpressions?: {
                                                     /** @description key is the label key that the selector applies to. */
                                                     key: string;
-                                                    /** @description operator represents a key's relationship to a set of values.
-                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist. */
+                                                    /**
+                                                     * @description operator represents a key's relationship to a set of values.
+                                                     *     Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                     */
                                                     operator: string;
-                                                    /** @description values is an array of string values. If the operator is In or NotIn,
+                                                    /**
+                                                     * @description values is an array of string values. If the operator is In or NotIn,
                                                      *     the values array must be non-empty. If the operator is Exists or DoesNotExist,
                                                      *     the values array must be empty. This array is replaced during a strategic
-                                                     *     merge patch. */
+                                                     *     merge patch.
+                                                     */
                                                     values?: string[];
                                                 }[];
-                                                /** @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                                /**
+                                                 * @description matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
                                                  *     map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed. */
+                                                 *     operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                                 */
                                                 matchLabels?: {
                                                     [key: string]: string;
                                                 };
                                             };
-                                            /** @description Select a single ClusterTrustBundle by object name.  Mutually-exclusive
-                                             *     with signerName and labelSelector. */
+                                            /**
+                                             * @description Select a single ClusterTrustBundle by object name.  Mutually-exclusive
+                                             *     with signerName and labelSelector.
+                                             */
                                             name?: string;
-                                            /** @description If true, don't block pod startup if the referenced ClusterTrustBundle(s)
+                                            /**
+                                             * @description If true, don't block pod startup if the referenced ClusterTrustBundle(s)
                                              *     aren't available.  If using name, then the named ClusterTrustBundle is
                                              *     allowed not to exist.  If using signerName, then the combination of
                                              *     signerName and labelSelector is allowed to match zero
-                                             *     ClusterTrustBundles. */
+                                             *     ClusterTrustBundles.
+                                             */
                                             optional?: boolean;
                                             /** @description Relative path from the volume root to write the bundle. */
                                             path: string;
-                                            /** @description Select all ClusterTrustBundles that match this signer name.
+                                            /**
+                                             * @description Select all ClusterTrustBundles that match this signer name.
                                              *     Mutually-exclusive with name.  The contents of all selected
-                                             *     ClusterTrustBundles will be unified and deduplicated. */
+                                             *     ClusterTrustBundles will be unified and deduplicated.
+                                             */
                                             signerName?: string;
                                         };
                                         /** @description configMap information about the configMap data to project */
                                         configMap?: {
-                                            /** @description items if unspecified, each key-value pair in the Data field of the referenced
+                                            /**
+                                             * @description items if unspecified, each key-value pair in the Data field of the referenced
                                              *     ConfigMap will be projected into the volume as a file whose name is the
                                              *     key and content is the value. If specified, the listed keys will be
                                              *     projected into the specified paths, and unlisted keys will not be
                                              *     present. If a key is specified which is not present in the ConfigMap,
                                              *     the volume setup will error unless it is marked optional. Paths must be
-                                             *     relative and may not contain the '..' path or start with '..'. */
+                                             *     relative and may not contain the '..' path or start with '..'.
+                                             */
                                             items?: {
                                                 /** @description key is the key to project. */
                                                 key: string;
@@ -5830,10 +7422,12 @@ export interface components {
                                                  *     mode, like fsGroup, and the result can be other mode bits set.
                                                  */
                                                 mode?: number;
-                                                /** @description path is the relative path of the file to map the key to.
+                                                /**
+                                                 * @description path is the relative path of the file to map the key to.
                                                  *     May not be an absolute path.
                                                  *     May not contain the path element '..'.
-                                                 *     May not start with the string '..'. */
+                                                 *     May not start with the string '..'.
+                                                 */
                                                 path: string;
                                             }[];
                                             /**
@@ -5871,8 +7465,10 @@ export interface components {
                                                 mode?: number;
                                                 /** @description Required: Path is  the relative path name of the file to be created. Must not be absolute or contain the '..' path. Must be utf-8 encoded. The first item of the relative path must not start with '..' */
                                                 path: string;
-                                                /** @description Selects a resource of the container: only resources limits and requests
-                                                 *     (limits.cpu, limits.memory, requests.cpu and requests.memory) are currently supported. */
+                                                /**
+                                                 * @description Selects a resource of the container: only resources limits and requests
+                                                 *     (limits.cpu, limits.memory, requests.cpu and requests.memory) are currently supported.
+                                                 */
                                                 resourceFieldRef?: {
                                                     /** @description Container name: required for volumes, optional for env vars */
                                                     containerName?: string;
@@ -5883,7 +7479,8 @@ export interface components {
                                                 };
                                             }[];
                                         };
-                                        /** @description Projects an auto-rotating credential bundle (private key and certificate
+                                        /**
+                                         * @description Projects an auto-rotating credential bundle (private key and certificate
                                          *     chain) that the pod can use either as a TLS client or server.
                                          *
                                          *     Kubelet generates a private key and uses it to send a
@@ -5916,16 +7513,20 @@ export interface components {
                                          *
                                          *     The named signer controls chooses the format of the certificate it
                                          *     issues; consult the signer implementation's documentation to learn how to
-                                         *     use the certificates it issues. */
+                                         *     use the certificates it issues.
+                                         */
                                         podCertificate?: {
-                                            /** @description Write the certificate chain at this path in the projected volume.
+                                            /**
+                                             * @description Write the certificate chain at this path in the projected volume.
                                              *
                                              *     Most applications should use credentialBundlePath.  When using keyPath
                                              *     and certificateChainPath, your application needs to check that the key
                                              *     and leaf certificate are consistent, because it is possible to read the
-                                             *     files mid-rotation. */
+                                             *     files mid-rotation.
+                                             */
                                             certificateChainPath?: string;
-                                            /** @description Write the credential bundle at this path in the projected volume.
+                                            /**
+                                             * @description Write the credential bundle at this path in the projected volume.
                                              *
                                              *     The credential bundle is a single file that contains multiple PEM blocks.
                                              *     The first PEM block is a PRIVATE KEY block, containing a PKCS#8 private
@@ -5937,19 +7538,24 @@ export interface components {
                                              *     Using credentialBundlePath lets your Pod's application code make a single
                                              *     atomic read that retrieves a consistent key and certificate chain.  If you
                                              *     project them to separate files, your application code will need to
-                                             *     additionally check that the leaf certificate was issued to the key. */
+                                             *     additionally check that the leaf certificate was issued to the key.
+                                             */
                                             credentialBundlePath?: string;
-                                            /** @description Write the key at this path in the projected volume.
+                                            /**
+                                             * @description Write the key at this path in the projected volume.
                                              *
                                              *     Most applications should use credentialBundlePath.  When using keyPath
                                              *     and certificateChainPath, your application needs to check that the key
                                              *     and leaf certificate are consistent, because it is possible to read the
-                                             *     files mid-rotation. */
+                                             *     files mid-rotation.
+                                             */
                                             keyPath?: string;
-                                            /** @description The type of keypair Kubelet will generate for the pod.
+                                            /**
+                                             * @description The type of keypair Kubelet will generate for the pod.
                                              *
                                              *     Valid values are "RSA3072", "RSA4096", "ECDSAP256", "ECDSAP384",
-                                             *     "ECDSAP521", and "ED25519". */
+                                             *     "ECDSAP521", and "ED25519".
+                                             */
                                             keyType: string;
                                             /**
                                              * Format: int32
@@ -5975,13 +7581,15 @@ export interface components {
                                         };
                                         /** @description secret information about the secret data to project */
                                         secret?: {
-                                            /** @description items if unspecified, each key-value pair in the Data field of the referenced
+                                            /**
+                                             * @description items if unspecified, each key-value pair in the Data field of the referenced
                                              *     Secret will be projected into the volume as a file whose name is the
                                              *     key and content is the value. If specified, the listed keys will be
                                              *     projected into the specified paths, and unlisted keys will not be
                                              *     present. If a key is specified which is not present in the Secret,
                                              *     the volume setup will error unless it is marked optional. Paths must be
-                                             *     relative and may not contain the '..' path or start with '..'. */
+                                             *     relative and may not contain the '..' path or start with '..'.
+                                             */
                                             items?: {
                                                 /** @description key is the key to project. */
                                                 key: string;
@@ -5995,10 +7603,12 @@ export interface components {
                                                  *     mode, like fsGroup, and the result can be other mode bits set.
                                                  */
                                                 mode?: number;
-                                                /** @description path is the relative path of the file to map the key to.
+                                                /**
+                                                 * @description path is the relative path of the file to map the key to.
                                                  *     May not be an absolute path.
                                                  *     May not contain the path element '..'.
-                                                 *     May not start with the string '..'. */
+                                                 *     May not start with the string '..'.
+                                                 */
                                                 path: string;
                                             }[];
                                             /**
@@ -6015,10 +7625,12 @@ export interface components {
                                         };
                                         /** @description serviceAccountToken is information about the serviceAccountToken data to project */
                                         serviceAccountToken?: {
-                                            /** @description audience is the intended audience of the token. A recipient of a token
+                                            /**
+                                             * @description audience is the intended audience of the token. A recipient of a token
                                              *     must identify itself with an identifier specified in the audience of the
                                              *     token, and otherwise should reject the token. The audience defaults to the
-                                             *     identifier of the apiserver. */
+                                             *     identifier of the apiserver.
+                                             */
                                             audience?: string;
                                             /**
                                              * Format: int64
@@ -6030,44 +7642,64 @@ export interface components {
                                              *     and must be at least 10 minutes.
                                              */
                                             expirationSeconds?: number;
-                                            /** @description path is the path relative to the mount point of the file to project the
-                                             *     token into. */
+                                            /**
+                                             * @description path is the path relative to the mount point of the file to project the
+                                             *     token into.
+                                             */
                                             path: string;
                                         };
                                     }[];
                                 };
-                                /** @description quobyte represents a Quobyte mount on the host that shares a pod's lifetime.
-                                 *     Deprecated: Quobyte is deprecated and the in-tree quobyte type is no longer supported. */
+                                /**
+                                 * @description quobyte represents a Quobyte mount on the host that shares a pod's lifetime.
+                                 *     Deprecated: Quobyte is deprecated and the in-tree quobyte type is no longer supported.
+                                 */
                                 quobyte?: {
-                                    /** @description group to map volume access to
-                                     *     Default is no group */
+                                    /**
+                                     * @description group to map volume access to
+                                     *     Default is no group
+                                     */
                                     group?: string;
-                                    /** @description readOnly here will force the Quobyte volume to be mounted with read-only permissions.
-                                     *     Defaults to false. */
+                                    /**
+                                     * @description readOnly here will force the Quobyte volume to be mounted with read-only permissions.
+                                     *     Defaults to false.
+                                     */
                                     readOnly?: boolean;
-                                    /** @description registry represents a single or multiple Quobyte Registry services
+                                    /**
+                                     * @description registry represents a single or multiple Quobyte Registry services
                                      *     specified as a string as host:port pair (multiple entries are separated with commas)
-                                     *     which acts as the central registry for volumes */
+                                     *     which acts as the central registry for volumes
+                                     */
                                     registry: string;
-                                    /** @description tenant owning the given Quobyte volume in the Backend
-                                     *     Used with dynamically provisioned Quobyte volumes, value is set by the plugin */
+                                    /**
+                                     * @description tenant owning the given Quobyte volume in the Backend
+                                     *     Used with dynamically provisioned Quobyte volumes, value is set by the plugin
+                                     */
                                     tenant?: string;
-                                    /** @description user to map volume access to
-                                     *     Defaults to serivceaccount user */
+                                    /**
+                                     * @description user to map volume access to
+                                     *     Defaults to serivceaccount user
+                                     */
                                     user?: string;
                                     /** @description volume is a string that references an already created Quobyte volume by name. */
                                     volume: string;
                                 };
-                                /** @description rbd represents a Rados Block Device mount on the host that shares a pod's lifetime.
-                                 *     Deprecated: RBD is deprecated and the in-tree rbd type is no longer supported. */
+                                /**
+                                 * @description rbd represents a Rados Block Device mount on the host that shares a pod's lifetime.
+                                 *     Deprecated: RBD is deprecated and the in-tree rbd type is no longer supported.
+                                 */
                                 rbd?: {
-                                    /** @description fsType is the filesystem type of the volume that you want to mount.
+                                    /**
+                                     * @description fsType is the filesystem type of the volume that you want to mount.
                                      *     Tip: Ensure that the filesystem type is supported by the host operating system.
                                      *     Examples: "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#rbd */
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#rbd
+                                     */
                                     fsType?: string;
-                                    /** @description image is the rados image name.
-                                     *     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it */
+                                    /**
+                                     * @description image is the rados image name.
+                                     *     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
+                                     */
                                     image: string;
                                     /**
                                      * @description keyring is the path to key ring for RBDUser.
@@ -6076,8 +7708,10 @@ export interface components {
                                      * @default /etc/ceph/keyring
                                      */
                                     keyring: string;
-                                    /** @description monitors is a collection of Ceph monitors.
-                                     *     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it */
+                                    /**
+                                     * @description monitors is a collection of Ceph monitors.
+                                     *     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
+                                     */
                                     monitors: string[];
                                     /**
                                      * @description pool is the rados pool name.
@@ -6086,14 +7720,18 @@ export interface components {
                                      * @default rbd
                                      */
                                     pool: string;
-                                    /** @description readOnly here will force the ReadOnly setting in VolumeMounts.
+                                    /**
+                                     * @description readOnly here will force the ReadOnly setting in VolumeMounts.
                                      *     Defaults to false.
-                                     *     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it */
+                                     *     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
+                                     */
                                     readOnly?: boolean;
-                                    /** @description secretRef is name of the authentication secret for RBDUser. If provided
+                                    /**
+                                     * @description secretRef is name of the authentication secret for RBDUser. If provided
                                      *     overrides keyring.
                                      *     Default is nil.
-                                     *     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it */
+                                     *     More info: https://examples.k8s.io/volumes/rbd/README.md#how-to-use-it
+                                     */
                                     secretRef?: {
                                         /**
                                          * @description Name of the referent.
@@ -6113,8 +7751,10 @@ export interface components {
                                      */
                                     user: string;
                                 };
-                                /** @description scaleIO represents a ScaleIO persistent volume attached and mounted on Kubernetes nodes.
-                                 *     Deprecated: ScaleIO is deprecated and the in-tree scaleIO type is no longer supported. */
+                                /**
+                                 * @description scaleIO represents a ScaleIO persistent volume attached and mounted on Kubernetes nodes.
+                                 *     Deprecated: ScaleIO is deprecated and the in-tree scaleIO type is no longer supported.
+                                 */
                                 scaleIO?: {
                                     /**
                                      * @description fsType is the filesystem type to mount.
@@ -6128,11 +7768,15 @@ export interface components {
                                     gateway: string;
                                     /** @description protectionDomain is the name of the ScaleIO Protection Domain for the configured storage. */
                                     protectionDomain?: string;
-                                    /** @description readOnly Defaults to false (read/write). ReadOnly here will force
-                                     *     the ReadOnly setting in VolumeMounts. */
+                                    /**
+                                     * @description readOnly Defaults to false (read/write). ReadOnly here will force
+                                     *     the ReadOnly setting in VolumeMounts.
+                                     */
                                     readOnly?: boolean;
-                                    /** @description secretRef references to the secret for ScaleIO user and other
-                                     *     sensitive information. If this is not provided, Login operation will fail. */
+                                    /**
+                                     * @description secretRef references to the secret for ScaleIO user and other
+                                     *     sensitive information. If this is not provided, Login operation will fail.
+                                     */
                                     secretRef: {
                                         /**
                                          * @description Name of the referent.
@@ -6156,12 +7800,16 @@ export interface components {
                                     storagePool?: string;
                                     /** @description system is the name of the storage system as configured in ScaleIO. */
                                     system: string;
-                                    /** @description volumeName is the name of a volume already created in the ScaleIO system
-                                     *     that is associated with this volume source. */
+                                    /**
+                                     * @description volumeName is the name of a volume already created in the ScaleIO system
+                                     *     that is associated with this volume source.
+                                     */
                                     volumeName?: string;
                                 };
-                                /** @description secret represents a secret that should populate this volume.
-                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#secret */
+                                /**
+                                 * @description secret represents a secret that should populate this volume.
+                                 *     More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                                 */
                                 secret?: {
                                     /**
                                      * Format: int32
@@ -6174,13 +7822,15 @@ export interface components {
                                      *     mode, like fsGroup, and the result can be other mode bits set.
                                      */
                                     defaultMode?: number;
-                                    /** @description items If unspecified, each key-value pair in the Data field of the referenced
+                                    /**
+                                     * @description items If unspecified, each key-value pair in the Data field of the referenced
                                      *     Secret will be projected into the volume as a file whose name is the
                                      *     key and content is the value. If specified, the listed keys will be
                                      *     projected into the specified paths, and unlisted keys will not be
                                      *     present. If a key is specified which is not present in the Secret,
                                      *     the volume setup will error unless it is marked optional. Paths must be
-                                     *     relative and may not contain the '..' path or start with '..'. */
+                                     *     relative and may not contain the '..' path or start with '..'.
+                                     */
                                     items?: {
                                         /** @description key is the key to project. */
                                         key: string;
@@ -6194,30 +7844,42 @@ export interface components {
                                          *     mode, like fsGroup, and the result can be other mode bits set.
                                          */
                                         mode?: number;
-                                        /** @description path is the relative path of the file to map the key to.
+                                        /**
+                                         * @description path is the relative path of the file to map the key to.
                                          *     May not be an absolute path.
                                          *     May not contain the path element '..'.
-                                         *     May not start with the string '..'. */
+                                         *     May not start with the string '..'.
+                                         */
                                         path: string;
                                     }[];
                                     /** @description optional field specify whether the Secret or its keys must be defined */
                                     optional?: boolean;
-                                    /** @description secretName is the name of the secret in the pod's namespace to use.
-                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#secret */
+                                    /**
+                                     * @description secretName is the name of the secret in the pod's namespace to use.
+                                     *     More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                                     */
                                     secretName?: string;
                                 };
-                                /** @description storageOS represents a StorageOS volume attached and mounted on Kubernetes nodes.
-                                 *     Deprecated: StorageOS is deprecated and the in-tree storageos type is no longer supported. */
+                                /**
+                                 * @description storageOS represents a StorageOS volume attached and mounted on Kubernetes nodes.
+                                 *     Deprecated: StorageOS is deprecated and the in-tree storageos type is no longer supported.
+                                 */
                                 storageos?: {
-                                    /** @description fsType is the filesystem type to mount.
+                                    /**
+                                     * @description fsType is the filesystem type to mount.
                                      *     Must be a filesystem type supported by the host operating system.
-                                     *     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified. */
+                                     *     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
+                                     */
                                     fsType?: string;
-                                    /** @description readOnly defaults to false (read/write). ReadOnly here will force
-                                     *     the ReadOnly setting in VolumeMounts. */
+                                    /**
+                                     * @description readOnly defaults to false (read/write). ReadOnly here will force
+                                     *     the ReadOnly setting in VolumeMounts.
+                                     */
                                     readOnly?: boolean;
-                                    /** @description secretRef specifies the secret to use for obtaining the StorageOS API
-                                     *     credentials.  If not specified, default values will be attempted. */
+                                    /**
+                                     * @description secretRef specifies the secret to use for obtaining the StorageOS API
+                                     *     credentials.  If not specified, default values will be attempted.
+                                     */
                                     secretRef?: {
                                         /**
                                          * @description Name of the referent.
@@ -6229,24 +7891,32 @@ export interface components {
                                          */
                                         name: string;
                                     };
-                                    /** @description volumeName is the human-readable name of the StorageOS volume.  Volume
-                                     *     names are only unique within a namespace. */
+                                    /**
+                                     * @description volumeName is the human-readable name of the StorageOS volume.  Volume
+                                     *     names are only unique within a namespace.
+                                     */
                                     volumeName?: string;
-                                    /** @description volumeNamespace specifies the scope of the volume within StorageOS.  If no
+                                    /**
+                                     * @description volumeNamespace specifies the scope of the volume within StorageOS.  If no
                                      *     namespace is specified then the Pod's namespace will be used.  This allows the
                                      *     Kubernetes name scoping to be mirrored within StorageOS for tighter integration.
                                      *     Set VolumeName to any name to override the default behaviour.
                                      *     Set to "default" if you are not using namespaces within StorageOS.
-                                     *     Namespaces that do not pre-exist within StorageOS will be created. */
+                                     *     Namespaces that do not pre-exist within StorageOS will be created.
+                                     */
                                     volumeNamespace?: string;
                                 };
-                                /** @description vsphereVolume represents a vSphere volume attached and mounted on kubelets host machine.
+                                /**
+                                 * @description vsphereVolume represents a vSphere volume attached and mounted on kubelets host machine.
                                  *     Deprecated: VsphereVolume is deprecated. All operations for the in-tree vsphereVolume type
-                                 *     are redirected to the csi.vsphere.vmware.com CSI driver. */
+                                 *     are redirected to the csi.vsphere.vmware.com CSI driver.
+                                 */
                                 vsphereVolume?: {
-                                    /** @description fsType is filesystem type to mount.
+                                    /**
+                                     * @description fsType is filesystem type to mount.
                                      *     Must be a filesystem type supported by the host operating system.
-                                     *     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified. */
+                                     *     Ex. "ext4", "xfs", "ntfs". Implicitly inferred to be "ext4" if unspecified.
+                                     */
                                     fsType?: string;
                                     /** @description storagePolicyID is the storage Policy Based Management (SPBM) profile ID associated with the StoragePolicyName. */
                                     storagePolicyID?: string;
@@ -6293,8 +7963,10 @@ export interface components {
                      *     This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                      */
                     lastTransitionTime: string;
-                    /** @description message is a human readable message indicating details about the transition.
-                     *     This may be an empty string. */
+                    /**
+                     * @description message is a human readable message indicating details about the transition.
+                     *     This may be an empty string.
+                     */
                     message: string;
                     /**
                      * Format: int64
@@ -6303,11 +7975,13 @@ export interface components {
                      *     with respect to the current state of the instance.
                      */
                     observedGeneration?: number;
-                    /** @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                    /**
+                     * @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
                      *     Producers of specific condition types may define expected values and meanings for this field,
                      *     and whether the values are considered a guaranteed API.
                      *     The value should be a CamelCase string.
-                     *     This field may not be empty. */
+                     *     This field may not be empty.
+                     */
                     reason: string;
                     /**
                      * @description status of the condition, one of True, False, Unknown.
@@ -6324,14 +7998,16 @@ export interface components {
                 failedPods?: number;
                 /** @description JobName is the name of the Job created for this test */
                 jobName?: string;
-                /** @description ObservedCanaryRevision is the canaryRevision from the Rollout that the current job was created for.
-                 *     When the canaryRevision changes, it indicates a new rollout and the old job should be deleted. */
+                /**
+                 * @description ObservedCanaryRevision is the canaryRevision from the Rollout that the current job was created for.
+                 *     When the canaryRevision changes, it indicates a new rollout and the old job should be deleted.
+                 */
                 observedCanaryRevision?: string;
                 /**
                  * @description Phase represents the current phase of the RolloutTest
                  * @enum {string}
                  */
-                phase?: "WaitingForStep" | "Pending" | "Running" | "Succeeded" | "Failed" | "Cancelled";
+                phase?: "WaitingForStep" | "Pending" | "Running" | "Succeeded" | "Failed" | "Cancelled" | "Skipped";
                 /**
                  * Format: int32
                  * @description RetryCount is the number of times the job has been retried (from job status)
@@ -6346,24 +8022,32 @@ export interface components {
         };
         /** @description Kustomization is the Schema for the kustomizations API. */
         Kustomization: {
-            /** @description APIVersion defines the versioned schema of this representation of an object.
+            /**
+             * @description APIVersion defines the versioned schema of this representation of an object.
              *     Servers should convert recognized schemas to the latest internal value, and
              *     may reject unrecognized values.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+             */
             apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents.
+            /**
+             * @description Kind is a string value representing the REST resource this object represents.
              *     Servers may infer this from the endpoint the client submits requests to.
              *     Cannot be updated.
              *     In CamelCase.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+             */
             kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
-            /** @description KustomizationSpec defines the configuration to calculate the desired state
-             *     from a Source using Kustomize. */
+            /**
+             * @description KustomizationSpec defines the configuration to calculate the desired state
+             *     from a Source using Kustomize.
+             */
             spec?: {
-                /** @description CommonMetadata specifies the common labels and annotations that are
+                /**
+                 * @description CommonMetadata specifies the common labels and annotations that are
                  *     applied to all resources. Any existing label or annotation will be
-                 *     overridden if its key matches a common one. */
+                 *     overridden if its key matches a common one.
+                 */
                 commonMetadata?: {
                     /** @description Annotations to be added to the object's metadata. */
                     annotations?: {
@@ -6383,19 +8067,23 @@ export interface components {
                      * @enum {string}
                      */
                     provider: "sops";
-                    /** @description The secret name containing the private OpenPGP keys used for decryption.
+                    /**
+                     * @description The secret name containing the private OpenPGP keys used for decryption.
                      *     A static credential for a cloud provider defined inside the Secret
                      *     takes priority to secret-less authentication with the ServiceAccountName
-                     *     field. */
+                     *     field.
+                     */
                     secretRef?: {
                         /** @description Name of the referent. */
                         name: string;
                     };
-                    /** @description ServiceAccountName is the name of the service account used to
+                    /**
+                     * @description ServiceAccountName is the name of the service account used to
                      *     authenticate with KMS services from cloud providers. If a
                      *     static credential for a given cloud provider is defined
                      *     inside the Secret referenced by SecretRef, that static
-                     *     credential takes priority. */
+                     *     credential takes priority.
+                     */
                     serviceAccountName?: string;
                 };
                 /**
@@ -6406,9 +8094,11 @@ export interface components {
                  * @enum {string}
                  */
                 deletionPolicy?: "MirrorPrune" | "Delete" | "WaitForTermination" | "Orphan";
-                /** @description DependsOn may contain a meta.NamespacedObjectReference slice
+                /**
+                 * @description DependsOn may contain a meta.NamespacedObjectReference slice
                  *     with references to Kustomization resources that must be ready before this
-                 *     Kustomization can be reconciled. */
+                 *     Kustomization can be reconciled.
+                 */
                 dependsOn?: {
                     /** @description Name of the referent. */
                     name: string;
@@ -6421,20 +8111,28 @@ export interface components {
                  * @default false
                  */
                 force: boolean;
-                /** @description HealthCheckExprs is a list of healthcheck expressions for evaluating the
+                /**
+                 * @description HealthCheckExprs is a list of healthcheck expressions for evaluating the
                  *     health of custom resources using Common Expression Language (CEL).
-                 *     The expressions are evaluated only when Wait or HealthChecks are specified. */
+                 *     The expressions are evaluated only when Wait or HealthChecks are specified.
+                 */
                 healthCheckExprs?: {
                     /** @description APIVersion of the custom resource under evaluation. */
                     apiVersion: string;
-                    /** @description Current is the CEL expression that determines if the status
-                     *     of the custom resource has reached the desired state. */
+                    /**
+                     * @description Current is the CEL expression that determines if the status
+                     *     of the custom resource has reached the desired state.
+                     */
                     current: string;
-                    /** @description Failed is the CEL expression that determines if the status
-                     *     of the custom resource has failed to reach the desired state. */
+                    /**
+                     * @description Failed is the CEL expression that determines if the status
+                     *     of the custom resource has failed to reach the desired state.
+                     */
                     failed?: string;
-                    /** @description InProgress is the CEL expression that determines if the status
-                     *     of the custom resource has not yet reached the desired state. */
+                    /**
+                     * @description InProgress is the CEL expression that determines if the status
+                     *     of the custom resource has not yet reached the desired state.
+                     */
                     inProgress?: string;
                     /** @description Kind of the custom resource under evaluation. */
                     kind: string;
@@ -6450,12 +8148,16 @@ export interface components {
                     /** @description Namespace of the referent, when not specified it acts as LocalObjectReference. */
                     namespace?: string;
                 }[];
-                /** @description Images is a list of (image name, new name, new tag or digest)
+                /**
+                 * @description Images is a list of (image name, new name, new tag or digest)
                  *     for changing image names, tags or digests. This can also be achieved with a
-                 *     patch, but this operator is simpler to specify. */
+                 *     patch, but this operator is simpler to specify.
+                 */
                 images?: {
-                    /** @description Digest is the value used to replace the original image tag.
-                     *     If digest is present NewTag value is ignored. */
+                    /**
+                     * @description Digest is the value used to replace the original image tag.
+                     *     If digest is present NewTag value is ignored.
+                     */
                     digest?: string;
                     /** @description Name is a tag-less image name. */
                     name: string;
@@ -6464,26 +8166,32 @@ export interface components {
                     /** @description NewTag is the value used to replace the original tag. */
                     newTag?: string;
                 }[];
-                /** @description The interval at which to reconcile the Kustomization.
+                /**
+                 * @description The interval at which to reconcile the Kustomization.
                  *     This interval is approximate and may be subject to jitter to ensure
-                 *     efficient use of resources. */
+                 *     efficient use of resources.
+                 */
                 interval: string;
-                /** @description The KubeConfig for reconciling the Kustomization on a remote cluster.
+                /**
+                 * @description The KubeConfig for reconciling the Kustomization on a remote cluster.
                  *     When used in combination with KustomizationSpec.ServiceAccountName,
                  *     forces the controller to act on behalf of that Service Account at the
                  *     target cluster.
                  *     If the --default-service-account flag is set, its value will be used as
                  *     a controller level fallback for when KustomizationSpec.ServiceAccountName
-                 *     is empty. */
+                 *     is empty.
+                 */
                 kubeConfig?: {
-                    /** @description SecretRef holds the name of a secret that contains a key with
+                    /**
+                     * @description SecretRef holds the name of a secret that contains a key with
                      *     the kubeconfig file as the value. If no key is set, the key will default
                      *     to 'value'.
                      *     It is recommended that the kubeconfig is self-contained, and the secret
                      *     is regularly updated if credentials such as a cloud-access-token expire.
                      *     Cloud specific `cmd-path` auth helpers will not function without adding
                      *     binaries and credentials to the Pod that is responsible for reconciling
-                     *     Kubernetes resources. */
+                     *     Kubernetes resources.
+                     */
                     secretRef: {
                         /** @description Key in the Secret, when not specified an implementation-specific default key is used. */
                         key?: string;
@@ -6495,69 +8203,93 @@ export interface components {
                 namePrefix?: string;
                 /** @description NameSuffix will suffix the names of all managed resources. */
                 nameSuffix?: string;
-                /** @description Strategic merge and JSON patches, defined as inline YAML objects,
-                 *     capable of targeting objects based on kind, label and annotation selectors. */
+                /**
+                 * @description Strategic merge and JSON patches, defined as inline YAML objects,
+                 *     capable of targeting objects based on kind, label and annotation selectors.
+                 */
                 patches?: {
-                    /** @description Patch contains an inline StrategicMerge patch or an inline JSON6902 patch with
-                     *     an array of operation objects. */
+                    /**
+                     * @description Patch contains an inline StrategicMerge patch or an inline JSON6902 patch with
+                     *     an array of operation objects.
+                     */
                     patch: string;
                     /** @description Target points to the resources that the patch document should be applied to. */
                     target?: {
-                        /** @description AnnotationSelector is a string that follows the label selection expression
+                        /**
+                         * @description AnnotationSelector is a string that follows the label selection expression
                          *     https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
-                         *     It matches with the resource annotations. */
+                         *     It matches with the resource annotations.
+                         */
                         annotationSelector?: string;
-                        /** @description Group is the API group to select resources from.
+                        /**
+                         * @description Group is the API group to select resources from.
                          *     Together with Version and Kind it is capable of unambiguously identifying and/or selecting resources.
-                         *     https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md */
+                         *     https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md
+                         */
                         group?: string;
-                        /** @description Kind of the API Group to select resources from.
+                        /**
+                         * @description Kind of the API Group to select resources from.
                          *     Together with Group and Version it is capable of unambiguously
                          *     identifying and/or selecting resources.
-                         *     https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md */
+                         *     https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md
+                         */
                         kind?: string;
-                        /** @description LabelSelector is a string that follows the label selection expression
+                        /**
+                         * @description LabelSelector is a string that follows the label selection expression
                          *     https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
-                         *     It matches with the resource labels. */
+                         *     It matches with the resource labels.
+                         */
                         labelSelector?: string;
                         /** @description Name to match resources with. */
                         name?: string;
                         /** @description Namespace to select resources from. */
                         namespace?: string;
-                        /** @description Version of the API Group to select resources from.
+                        /**
+                         * @description Version of the API Group to select resources from.
                          *     Together with Group and Kind it is capable of unambiguously identifying and/or selecting resources.
-                         *     https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md */
+                         *     https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md
+                         */
                         version?: string;
                     };
                 }[];
-                /** @description Path to the directory containing the kustomization.yaml file, or the
+                /**
+                 * @description Path to the directory containing the kustomization.yaml file, or the
                  *     set of plain YAMLs a kustomization.yaml should be generated for.
-                 *     Defaults to 'None', which translates to the root path of the SourceRef. */
+                 *     Defaults to 'None', which translates to the root path of the SourceRef.
+                 */
                 path?: string;
-                /** @description PostBuild describes which actions to perform on the YAML manifest
-                 *     generated by building the kustomize overlay. */
+                /**
+                 * @description PostBuild describes which actions to perform on the YAML manifest
+                 *     generated by building the kustomize overlay.
+                 */
                 postBuild?: {
-                    /** @description Substitute holds a map of key/value pairs.
+                    /**
+                     * @description Substitute holds a map of key/value pairs.
                      *     The variables defined in your YAML manifests that match any of the keys
                      *     defined in the map will be substituted with the set value.
                      *     Includes support for bash string replacement functions
-                     *     e.g. ${var:=default}, ${var:position} and ${var/substring/replacement}. */
+                     *     e.g. ${var:=default}, ${var:position} and ${var/substring/replacement}.
+                     */
                     substitute?: {
                         [key: string]: string;
                     };
-                    /** @description SubstituteFrom holds references to ConfigMaps and Secrets containing
+                    /**
+                     * @description SubstituteFrom holds references to ConfigMaps and Secrets containing
                      *     the variables and their values to be substituted in the YAML manifests.
                      *     The ConfigMap and the Secret data keys represent the var names, and they
                      *     must match the vars declared in the manifests for the substitution to
-                     *     happen. */
+                     *     happen.
+                     */
                     substituteFrom?: {
                         /**
                          * @description Kind of the values referent, valid values are ('Secret', 'ConfigMap').
                          * @enum {string}
                          */
                         kind: "Secret" | "ConfigMap";
-                        /** @description Name of the values referent. Should reside in the same namespace as the
-                         *     referring resource. */
+                        /**
+                         * @description Name of the values referent. Should reside in the same namespace as the
+                         *     referring resource.
+                         */
                         name: string;
                         /**
                          * @description Optional indicates whether the referenced resource must exist, or whether to
@@ -6570,12 +8302,16 @@ export interface components {
                 };
                 /** @description Prune enables garbage collection. */
                 prune: boolean;
-                /** @description The interval at which to retry a previously failed reconciliation.
+                /**
+                 * @description The interval at which to retry a previously failed reconciliation.
                  *     When not specified, the controller uses the KustomizationSpec.Interval
-                 *     value to retry failures. */
+                 *     value to retry failures.
+                 */
                 retryInterval?: string;
-                /** @description The name of the Kubernetes service account to impersonate
-                 *     when reconciling this Kustomization. */
+                /**
+                 * @description The name of the Kubernetes service account to impersonate
+                 *     when reconciling this Kustomization.
+                 */
                 serviceAccountName?: string;
                 /** @description Reference of the source where the kustomization file is. */
                 sourceRef: {
@@ -6588,21 +8324,31 @@ export interface components {
                     kind: "OCIRepository" | "GitRepository" | "Bucket";
                     /** @description Name of the referent. */
                     name: string;
-                    /** @description Namespace of the referent, defaults to the namespace of the Kubernetes
-                     *     resource object that contains the reference. */
+                    /**
+                     * @description Namespace of the referent, defaults to the namespace of the Kubernetes
+                     *     resource object that contains the reference.
+                     */
                     namespace?: string;
                 };
-                /** @description This flag tells the controller to suspend subsequent kustomize executions,
-                 *     it does not apply to already started executions. Defaults to false. */
+                /**
+                 * @description This flag tells the controller to suspend subsequent kustomize executions,
+                 *     it does not apply to already started executions. Defaults to false.
+                 */
                 suspend?: boolean;
-                /** @description TargetNamespace sets or overrides the namespace in the
-                 *     kustomization.yaml file. */
+                /**
+                 * @description TargetNamespace sets or overrides the namespace in the
+                 *     kustomization.yaml file.
+                 */
                 targetNamespace?: string;
-                /** @description Timeout for validation, apply and health checking operations.
-                 *     Defaults to 'Interval' duration. */
+                /**
+                 * @description Timeout for validation, apply and health checking operations.
+                 *     Defaults to 'Interval' duration.
+                 */
                 timeout?: string;
-                /** @description Wait instructs the controller to check the health of all the reconciled
-                 *     resources. When enabled, the HealthChecks are ignored. Defaults to false. */
+                /**
+                 * @description Wait instructs the controller to check the health of all the reconciled
+                 *     resources. When enabled, the HealthChecks are ignored. Defaults to false.
+                 */
                 wait?: boolean;
             };
             /**
@@ -6619,8 +8365,10 @@ export interface components {
                      *     This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                      */
                     lastTransitionTime: string;
-                    /** @description message is a human readable message indicating details about the transition.
-                     *     This may be an empty string. */
+                    /**
+                     * @description message is a human readable message indicating details about the transition.
+                     *     This may be an empty string.
+                     */
                     message: string;
                     /**
                      * Format: int64
@@ -6629,11 +8377,13 @@ export interface components {
                      *     with respect to the current state of the instance.
                      */
                     observedGeneration?: number;
-                    /** @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                    /**
+                     * @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
                      *     Producers of specific condition types may define expected values and meanings for this field,
                      *     and whether the values are considered a guaranteed API.
                      *     The value should be a CamelCase string.
-                     *     This field may not be empty. */
+                     *     This field may not be empty.
+                     */
                     reason: string;
                     /**
                      * @description status of the condition, one of True, False, Unknown.
@@ -6643,32 +8393,42 @@ export interface components {
                     /** @description type of condition in CamelCase or in foo.example.com/CamelCase. */
                     type: string;
                 }[];
-                /** @description Inventory contains the list of Kubernetes resource object references that
-                 *     have been successfully applied. */
+                /**
+                 * @description Inventory contains the list of Kubernetes resource object references that
+                 *     have been successfully applied.
+                 */
                 inventory?: {
                     /** @description Entries of Kubernetes resource object references. */
                     entries: {
-                        /** @description ID is the string representation of the Kubernetes resource object's metadata,
-                         *     in the format '<namespace>_<name>_<group>_<kind>'. */
+                        /**
+                         * @description ID is the string representation of the Kubernetes resource object's metadata,
+                         *     in the format '<namespace>_<name>_<group>_<kind>'.
+                         */
                         id: string;
                         /** @description Version is the API version of the Kubernetes resource object's kind. */
                         v: string;
                     }[];
                 };
-                /** @description The last successfully applied origin revision.
+                /**
+                 * @description The last successfully applied origin revision.
                  *     Equals the origin revision of the applied Artifact from the referenced Source.
                  *     Usually present on the Metadata of the applied Artifact and depends on the
                  *     Source type, e.g. for OCI it's the value associated with the key
-                 *     "org.opencontainers.image.revision". */
+                 *     "org.opencontainers.image.revision".
+                 */
                 lastAppliedOriginRevision?: string;
-                /** @description The last successfully applied revision.
-                 *     Equals the Revision of the applied Artifact from the referenced Source. */
+                /**
+                 * @description The last successfully applied revision.
+                 *     Equals the Revision of the applied Artifact from the referenced Source.
+                 */
                 lastAppliedRevision?: string;
                 /** @description LastAttemptedRevision is the revision of the last reconciliation attempt. */
                 lastAttemptedRevision?: string;
-                /** @description LastHandledReconcileAt holds the value of the most recent
+                /**
+                 * @description LastHandledReconcileAt holds the value of the most recent
                  *     reconcile request value, so a change of the annotation value
-                 *     can be detected. */
+                 *     can be detected.
+                 */
                 lastHandledReconcileAt?: string;
                 /**
                  * Format: int64
@@ -6679,21 +8439,26 @@ export interface components {
         };
         /** @description OCIRepository is the Schema for the ocirepositories API */
         OCIRepository: {
-            /** @description APIVersion defines the versioned schema of this representation of an object.
+            /**
+             * @description APIVersion defines the versioned schema of this representation of an object.
              *     Servers should convert recognized schemas to the latest internal value, and
              *     may reject unrecognized values.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+             */
             apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents.
+            /**
+             * @description Kind is a string value representing the REST resource this object represents.
              *     Servers may infer this from the endpoint the client submits requests to.
              *     Cannot be updated.
              *     In CamelCase.
-             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+             *     More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+             */
             kind?: string;
             metadata?: components["schemas"]["KubernetesMetadata"];
             /** @description OCIRepositorySpec defines the desired state of OCIRepository */
             spec?: {
-                /** @description CertSecretRef can be given the name of a Secret containing
+                /**
+                 * @description CertSecretRef can be given the name of a Secret containing
                  *     either or both of
                  *
                  *     - a PEM-encoded client certificate (`tls.crt`) and private
@@ -6704,27 +8469,36 @@ export interface components {
                  *     registry. The client cert and key are useful if you are
                  *     authenticating with a certificate; the CA cert is useful if
                  *     you are using a self-signed server certificate. The Secret must
-                 *     be of type `Opaque` or `kubernetes.io/tls`. */
+                 *     be of type `Opaque` or `kubernetes.io/tls`.
+                 */
                 certSecretRef?: {
                     /** @description Name of the referent. */
                     name: string;
                 };
-                /** @description Ignore overrides the set of excluded patterns in the .sourceignore format
+                /**
+                 * @description Ignore overrides the set of excluded patterns in the .sourceignore format
                  *     (which is the same as .gitignore). If not provided, a default will be used,
-                 *     consult the documentation for your version to find out what those are. */
+                 *     consult the documentation for your version to find out what those are.
+                 */
                 ignore?: string;
                 /** @description Insecure allows connecting to a non-TLS HTTP container registry. */
                 insecure?: boolean;
-                /** @description Interval at which the OCIRepository URL is checked for updates.
+                /**
+                 * @description Interval at which the OCIRepository URL is checked for updates.
                  *     This interval is approximate and may be subject to jitter to ensure
-                 *     efficient use of resources. */
+                 *     efficient use of resources.
+                 */
                 interval: string;
-                /** @description LayerSelector specifies which layer should be extracted from the OCI artifact.
-                 *     When not specified, the first layer found in the artifact is selected. */
+                /**
+                 * @description LayerSelector specifies which layer should be extracted from the OCI artifact.
+                 *     When not specified, the first layer found in the artifact is selected.
+                 */
                 layerSelector?: {
-                    /** @description MediaType specifies the OCI media type of the layer
+                    /**
+                     * @description MediaType specifies the OCI media type of the layer
                      *     which should be extracted from the OCI Artifact. The
-                     *     first layer matching this type is selected. */
+                     *     first layer matching this type is selected.
+                     */
                     mediaType?: string;
                     /**
                      * @description Operation specifies how the selected layer should be processed.
@@ -6742,36 +8516,48 @@ export interface components {
                  * @enum {string}
                  */
                 provider: "generic" | "aws" | "azure" | "gcp";
-                /** @description ProxySecretRef specifies the Secret containing the proxy configuration
-                 *     to use while communicating with the container registry. */
+                /**
+                 * @description ProxySecretRef specifies the Secret containing the proxy configuration
+                 *     to use while communicating with the container registry.
+                 */
                 proxySecretRef?: {
                     /** @description Name of the referent. */
                     name: string;
                 };
-                /** @description The OCI reference to pull and monitor for changes,
-                 *     defaults to the latest tag. */
+                /**
+                 * @description The OCI reference to pull and monitor for changes,
+                 *     defaults to the latest tag.
+                 */
                 ref?: {
-                    /** @description Digest is the image digest to pull, takes precedence over SemVer.
-                     *     The value should be in the format 'sha256:<HASH>'. */
+                    /**
+                     * @description Digest is the image digest to pull, takes precedence over SemVer.
+                     *     The value should be in the format 'sha256:<HASH>'.
+                     */
                     digest?: string;
-                    /** @description SemVer is the range of tags to pull selecting the latest within
-                     *     the range, takes precedence over Tag. */
+                    /**
+                     * @description SemVer is the range of tags to pull selecting the latest within
+                     *     the range, takes precedence over Tag.
+                     */
                     semver?: string;
                     /** @description SemverFilter is a regex pattern to filter the tags within the SemVer range. */
                     semverFilter?: string;
                     /** @description Tag is the image tag to pull, defaults to latest. */
                     tag?: string;
                 };
-                /** @description SecretRef contains the secret name containing the registry login
+                /**
+                 * @description SecretRef contains the secret name containing the registry login
                  *     credentials to resolve image metadata.
-                 *     The secret must be of type kubernetes.io/dockerconfigjson. */
+                 *     The secret must be of type kubernetes.io/dockerconfigjson.
+                 */
                 secretRef?: {
                     /** @description Name of the referent. */
                     name: string;
                 };
-                /** @description ServiceAccountName is the name of the Kubernetes ServiceAccount used to authenticate
+                /**
+                 * @description ServiceAccountName is the name of the Kubernetes ServiceAccount used to authenticate
                  *     the image pull if the service account has attached pull secrets. For more information:
-                 *     https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#add-imagepullsecrets-to-a-service-account */
+                 *     https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#add-imagepullsecrets-to-a-service-account
+                 */
                 serviceAccountName?: string;
                 /** @description This flag tells the controller to suspend the reconciliation of this source. */
                 suspend?: boolean;
@@ -6780,25 +8566,35 @@ export interface components {
                  * @default 60s
                  */
                 timeout: string;
-                /** @description URL is a reference to an OCI artifact repository hosted
-                 *     on a remote container registry. */
+                /**
+                 * @description URL is a reference to an OCI artifact repository hosted
+                 *     on a remote container registry.
+                 */
                 url: string;
-                /** @description Verify contains the secret name containing the trusted public keys
+                /**
+                 * @description Verify contains the secret name containing the trusted public keys
                  *     used to verify the signature and specifies which provider to use to check
-                 *     whether OCI image is authentic. */
+                 *     whether OCI image is authentic.
+                 */
                 verify?: {
-                    /** @description MatchOIDCIdentity specifies the identity matching criteria to use
+                    /**
+                     * @description MatchOIDCIdentity specifies the identity matching criteria to use
                      *     while verifying an OCI artifact which was signed using Cosign keyless
                      *     signing. The artifact's identity is deemed to be verified if any of the
-                     *     specified matchers match against the identity. */
+                     *     specified matchers match against the identity.
+                     */
                     matchOIDCIdentity?: {
-                        /** @description Issuer specifies the regex pattern to match against to verify
+                        /**
+                         * @description Issuer specifies the regex pattern to match against to verify
                          *     the OIDC issuer in the Fulcio certificate. The pattern must be a
-                         *     valid Go regular expression. */
+                         *     valid Go regular expression.
+                         */
                         issuer: string;
-                        /** @description Subject specifies the regex pattern to match against to verify
+                        /**
+                         * @description Subject specifies the regex pattern to match against to verify
                          *     the identity subject in the Fulcio certificate. The pattern must
-                         *     be a valid Go regular expression. */
+                         *     be a valid Go regular expression.
+                         */
                         subject: string;
                     }[];
                     /**
@@ -6807,8 +8603,10 @@ export interface components {
                      * @enum {string}
                      */
                     provider: "cosign" | "notation";
-                    /** @description SecretRef specifies the Kubernetes Secret containing the
-                     *     trusted public keys. */
+                    /**
+                     * @description SecretRef specifies the Kubernetes Secret containing the
+                     *     trusted public keys.
+                     */
                     secretRef?: {
                         /** @description Name of the referent. */
                         name: string;
@@ -6836,21 +8634,27 @@ export interface components {
                     metadata?: {
                         [key: string]: string;
                     };
-                    /** @description Path is the relative file path of the Artifact. It can be used to locate
+                    /**
+                     * @description Path is the relative file path of the Artifact. It can be used to locate
                      *     the file in the root of the Artifact storage on the local file system of
-                     *     the controller managing the Source. */
+                     *     the controller managing the Source.
+                     */
                     path: string;
-                    /** @description Revision is a human-readable identifier traceable in the origin source
-                     *     system. It can be a Git commit SHA, Git tag, a Helm chart version, etc. */
+                    /**
+                     * @description Revision is a human-readable identifier traceable in the origin source
+                     *     system. It can be a Git commit SHA, Git tag, a Helm chart version, etc.
+                     */
                     revision: string;
                     /**
                      * Format: int64
                      * @description Size is the number of bytes in the file.
                      */
                     size?: number;
-                    /** @description URL is the HTTP address of the Artifact as exposed by the controller
+                    /**
+                     * @description URL is the HTTP address of the Artifact as exposed by the controller
                      *     managing the Source. It can be used to retrieve the Artifact for
-                     *     consumption, e.g. by another controller applying the Artifact contents. */
+                     *     consumption, e.g. by another controller applying the Artifact contents.
+                     */
                     url: string;
                 };
                 /** @description Conditions holds the conditions for the OCIRepository. */
@@ -6861,8 +8665,10 @@ export interface components {
                      *     This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
                      */
                     lastTransitionTime: string;
-                    /** @description message is a human readable message indicating details about the transition.
-                     *     This may be an empty string. */
+                    /**
+                     * @description message is a human readable message indicating details about the transition.
+                     *     This may be an empty string.
+                     */
                     message: string;
                     /**
                      * Format: int64
@@ -6871,11 +8677,13 @@ export interface components {
                      *     with respect to the current state of the instance.
                      */
                     observedGeneration?: number;
-                    /** @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                    /**
+                     * @description reason contains a programmatic identifier indicating the reason for the condition's last transition.
                      *     Producers of specific condition types may define expected values and meanings for this field,
                      *     and whether the values are considered a guaranteed API.
                      *     The value should be a CamelCase string.
-                     *     This field may not be empty. */
+                     *     This field may not be empty.
+                     */
                     reason: string;
                     /**
                      * @description status of the condition, one of True, False, Unknown.
@@ -6885,24 +8693,32 @@ export interface components {
                     /** @description type of condition in CamelCase or in foo.example.com/CamelCase. */
                     type: string;
                 }[];
-                /** @description LastHandledReconcileAt holds the value of the most recent
+                /**
+                 * @description LastHandledReconcileAt holds the value of the most recent
                  *     reconcile request value, so a change of the annotation value
-                 *     can be detected. */
+                 *     can be detected.
+                 */
                 lastHandledReconcileAt?: string;
                 /**
                  * Format: int64
                  * @description ObservedGeneration is the last observed generation.
                  */
                 observedGeneration?: number;
-                /** @description ObservedIgnore is the observed exclusion patterns used for constructing
-                 *     the source artifact. */
+                /**
+                 * @description ObservedIgnore is the observed exclusion patterns used for constructing
+                 *     the source artifact.
+                 */
                 observedIgnore?: string;
-                /** @description ObservedLayerSelector is the observed layer selector used for constructing
-                 *     the source artifact. */
+                /**
+                 * @description ObservedLayerSelector is the observed layer selector used for constructing
+                 *     the source artifact.
+                 */
                 observedLayerSelector?: {
-                    /** @description MediaType specifies the OCI media type of the layer
+                    /**
+                     * @description MediaType specifies the OCI media type of the layer
                      *     which should be extracted from the OCI Artifact. The
-                     *     first layer matching this type is selected. */
+                     *     first layer matching this type is selected.
+                     */
                     mediaType?: string;
                     /**
                      * @description Operation specifies how the selected layer should be processed.
@@ -6941,14 +8757,18 @@ export interface components {
                         failureThreshold?: number | string;
                         /** @description Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%) */
                         steps?: {
-                            /** @description Matches define conditions used for matching incoming HTTP requests to the canary service. Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
-                             *      It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured. In such cases, Matches takes precedence. */
+                            /**
+                             * @description Matches define conditions used for matching incoming HTTP requests to the canary service. Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
+                             *      It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured. In such cases, Matches takes precedence.
+                             */
                             matches?: {
                                 /** @description Headers specifies HTTP request header matchers. Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route. */
                                 headers?: {
-                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                    /**
+                                     * @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
                                      *      If multiple entries specify equivalent header names, only the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
-                                     *      When a header is repeated in an HTTP request, it is implementation-specific behavior as to how this is represented. Generally, proxies should follow the guidance from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding processing a repeated header, with special handling for "Set-Cookie". */
+                                     *      When a header is repeated in an HTTP request, it is implementation-specific behavior as to how this is represented. Generally, proxies should follow the guidance from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding processing a repeated header, with special handling for "Set-Cookie".
+                                     */
                                     name: string;
                                     /**
                                      * @description Type specifies how to match against the value of the header.
@@ -6980,10 +8800,12 @@ export interface components {
                                 };
                                 /** @description QueryParams specifies HTTP query parameter matchers. Multiple match values are ANDed together, meaning, a request must match all the specified query parameters to select the route. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1 Header/Cookie > QueryParams - Gateway API */
                                 queryParams?: {
-                                    /** @description Name is the name of the HTTP query param to be matched. This must be an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
+                                    /**
+                                     * @description Name is the name of the HTTP query param to be matched. This must be an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
                                      *      If multiple entries specify equivalent query param names, only the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent query param name MUST be ignored.
                                      *      If a query param is repeated in an HTTP request, the behavior is purposely left undefined, since different data planes have different capabilities. However, it is *recommended* that implementations should match against the first value of the param if the data plane supports it, as this behavior is expected in other load balancing contexts outside of the Gateway API.
-                                     *      Users SHOULD NOT route traffic based on repeated query params to guard themselves against potential differences in the implementations. */
+                                     *      Users SHOULD NOT route traffic based on repeated query params to guard themselves against potential differences in the implementations.
+                                     */
                                     name: string;
                                     /**
                                      * @description Type specifies how to match against the value of the query parameter.
@@ -7008,34 +8830,46 @@ export interface components {
                             };
                             /** @description Replicas is the number of expected canary pods in this batch it can be an absolute number (ex: 5) or a percentage of total pods. */
                             replicas?: number | string;
-                            /** @description Set overwrites the request with the given header (name, value) before the action.
+                            /**
+                             * @description Set overwrites the request with the given header (name, value) before the action.
                              *      Input: GET /foo HTTP/1.1 my-header: foo
                              *      requestHeaderModifier: set: - name: "my-header" value: "bar"
-                             *      Output: GET /foo HTTP/1.1 my-header: bar */
+                             *      Output: GET /foo HTTP/1.1 my-header: bar
+                             */
                             requestHeaderModifier?: {
-                                /** @description Add adds the given header(s) (name, value) to the request before the action. It appends to any existing values associated with the header name.
+                                /**
+                                 * @description Add adds the given header(s) (name, value) to the request before the action. It appends to any existing values associated with the header name.
                                  *      Input: GET /foo HTTP/1.1 my-header: foo
                                  *      Config: add: - name: "my-header" value: "bar,baz"
-                                 *      Output: GET /foo HTTP/1.1 my-header: foo,bar,baz */
+                                 *      Output: GET /foo HTTP/1.1 my-header: foo,bar,baz
+                                 */
                                 add?: {
-                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent. */
+                                    /**
+                                     * @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+                                     */
                                     name: string;
                                     /** @description Value is the value of HTTP Header to be matched. */
                                     value: string;
                                 }[];
-                                /** @description Remove the given header(s) from the HTTP request before the action. The value of Remove is a list of HTTP header names. Note that the header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+                                /**
+                                 * @description Remove the given header(s) from the HTTP request before the action. The value of Remove is a list of HTTP header names. Note that the header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
                                  *      Input: GET /foo HTTP/1.1 my-header1: foo my-header2: bar my-header3: baz
                                  *      Config: remove: ["my-header1", "my-header3"]
-                                 *      Output: GET /foo HTTP/1.1 my-header2: bar */
+                                 *      Output: GET /foo HTTP/1.1 my-header2: bar
+                                 */
                                 remove?: string[];
-                                /** @description Set overwrites the request with the given header (name, value) before the action.
+                                /**
+                                 * @description Set overwrites the request with the given header (name, value) before the action.
                                  *      Input: GET /foo HTTP/1.1 my-header: foo
                                  *      Config: set: - name: "my-header" value: "bar"
-                                 *      Output: GET /foo HTTP/1.1 my-header: bar */
+                                 *      Output: GET /foo HTTP/1.1 my-header: bar
+                                 */
                                 set?: {
-                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent. */
+                                    /**
+                                     * @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+                                     */
                                     name: string;
                                     /** @description Value is the value of HTTP Header to be matched. */
                                     value: string;
@@ -7100,14 +8934,18 @@ export interface components {
                         };
                         /** @description Steps define the order of phases to execute release in batches(20%, 40%, 60%, 80%, 100%) */
                         steps?: {
-                            /** @description Matches define conditions used for matching incoming HTTP requests to the canary service. Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
-                             *      It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured. In such cases, Matches takes precedence. */
+                            /**
+                             * @description Matches define conditions used for matching incoming HTTP requests to the canary service. Each match is independent, i.e. this rule will be matched as long as **any** one of the matches is satisfied.
+                             *      It cannot support Traffic (weight-based routing) and Matches simultaneously, if both are configured. In such cases, Matches takes precedence.
+                             */
                             matches?: {
                                 /** @description Headers specifies HTTP request header matchers. Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route. */
                                 headers?: {
-                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                    /**
+                                     * @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
                                      *      If multiple entries specify equivalent header names, only the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
-                                     *      When a header is repeated in an HTTP request, it is implementation-specific behavior as to how this is represented. Generally, proxies should follow the guidance from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding processing a repeated header, with special handling for "Set-Cookie". */
+                                     *      When a header is repeated in an HTTP request, it is implementation-specific behavior as to how this is represented. Generally, proxies should follow the guidance from the RFC: https://www.rfc-editor.org/rfc/rfc7230.html#section-3.2.2 regarding processing a repeated header, with special handling for "Set-Cookie".
+                                     */
                                     name: string;
                                     /**
                                      * @description Type specifies how to match against the value of the header.
@@ -7139,10 +8977,12 @@ export interface components {
                                 };
                                 /** @description QueryParams specifies HTTP query parameter matchers. Multiple match values are ANDed together, meaning, a request must match all the specified query parameters to select the route. Supported list: - Istio: https://istio.io/latest/docs/reference/config/networking/virtual-service/#HTTPMatchRequest - MSE Ingress: https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/annotations-supported-by-mse-ingress-gateways-1 Header/Cookie > QueryParams - Gateway API */
                                 queryParams?: {
-                                    /** @description Name is the name of the HTTP query param to be matched. This must be an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
+                                    /**
+                                     * @description Name is the name of the HTTP query param to be matched. This must be an exact string match. (See https://tools.ietf.org/html/rfc7230#section-2.7.3).
                                      *      If multiple entries specify equivalent query param names, only the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent query param name MUST be ignored.
                                      *      If a query param is repeated in an HTTP request, the behavior is purposely left undefined, since different data planes have different capabilities. However, it is *recommended* that implementations should match against the first value of the param if the data plane supports it, as this behavior is expected in other load balancing contexts outside of the Gateway API.
-                                     *      Users SHOULD NOT route traffic based on repeated query params to guard themselves against potential differences in the implementations. */
+                                     *      Users SHOULD NOT route traffic based on repeated query params to guard themselves against potential differences in the implementations.
+                                     */
                                     name: string;
                                     /**
                                      * @description Type specifies how to match against the value of the query parameter.
@@ -7167,34 +9007,46 @@ export interface components {
                             };
                             /** @description Replicas is the number of expected canary pods in this batch it can be an absolute number (ex: 5) or a percentage of total pods. */
                             replicas?: number | string;
-                            /** @description Set overwrites the request with the given header (name, value) before the action.
+                            /**
+                             * @description Set overwrites the request with the given header (name, value) before the action.
                              *      Input: GET /foo HTTP/1.1 my-header: foo
                              *      requestHeaderModifier: set: - name: "my-header" value: "bar"
-                             *      Output: GET /foo HTTP/1.1 my-header: bar */
+                             *      Output: GET /foo HTTP/1.1 my-header: bar
+                             */
                             requestHeaderModifier?: {
-                                /** @description Add adds the given header(s) (name, value) to the request before the action. It appends to any existing values associated with the header name.
+                                /**
+                                 * @description Add adds the given header(s) (name, value) to the request before the action. It appends to any existing values associated with the header name.
                                  *      Input: GET /foo HTTP/1.1 my-header: foo
                                  *      Config: add: - name: "my-header" value: "bar,baz"
-                                 *      Output: GET /foo HTTP/1.1 my-header: foo,bar,baz */
+                                 *      Output: GET /foo HTTP/1.1 my-header: foo,bar,baz
+                                 */
                                 add?: {
-                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent. */
+                                    /**
+                                     * @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+                                     */
                                     name: string;
                                     /** @description Value is the value of HTTP Header to be matched. */
                                     value: string;
                                 }[];
-                                /** @description Remove the given header(s) from the HTTP request before the action. The value of Remove is a list of HTTP header names. Note that the header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+                                /**
+                                 * @description Remove the given header(s) from the HTTP request before the action. The value of Remove is a list of HTTP header names. Note that the header names are case-insensitive (see https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
                                  *      Input: GET /foo HTTP/1.1 my-header1: foo my-header2: bar my-header3: baz
                                  *      Config: remove: ["my-header1", "my-header3"]
-                                 *      Output: GET /foo HTTP/1.1 my-header2: bar */
+                                 *      Output: GET /foo HTTP/1.1 my-header2: bar
+                                 */
                                 remove?: string[];
-                                /** @description Set overwrites the request with the given header (name, value) before the action.
+                                /**
+                                 * @description Set overwrites the request with the given header (name, value) before the action.
                                  *      Input: GET /foo HTTP/1.1 my-header: foo
                                  *      Config: set: - name: "my-header" value: "bar"
-                                 *      Output: GET /foo HTTP/1.1 my-header: bar */
+                                 *      Output: GET /foo HTTP/1.1 my-header: bar
+                                 */
                                 set?: {
-                                    /** @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
-                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent. */
+                                    /**
+                                     * @description Name is the name of the HTTP Header to be matched. Name matching MUST be case insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+                                     *      If multiple entries specify equivalent header names, the first entry with an equivalent name MUST be considered for a match. Subsequent entries with an equivalent header name MUST be ignored. Due to the case-insensitivity of header names, "foo" and "Foo" are considered equivalent.
+                                     */
                                     name: string;
                                     /** @description Value is the value of HTTP Header to be matched. */
                                     value: string;

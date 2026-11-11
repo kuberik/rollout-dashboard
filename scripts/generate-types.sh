@@ -8,9 +8,9 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 # Create output directory
 mkdir -p frontend/src/types
 
-# Install openapi-typescript if not already installed
-if ! command -v openapi-typescript &> /dev/null; then
-  npm install -g openapi-typescript
+# Install the pinned openapi-typescript (output depends on its version)
+if [ "$(openapi-typescript --version 2>/dev/null)" != "v7.13.0" ]; then
+  npm install -g openapi-typescript@7.13.0
 fi
 
 local_crds=false
@@ -23,15 +23,15 @@ if [ "$local_crds" = true ]; then
   cp ../openkruise-controller/config/crd/bases/rollout.kuberik.com_rollouttests.yaml $TEMP_DIR/rollouttest.yaml
 else
 # Download the CRDs
-  curl -s -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
-  curl -s -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
-  curl -s -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
-  curl -s -o $TEMP_DIR/environment.yaml https://raw.githubusercontent.com/kuberik/environment-controller/main/config/crd/bases/environments.kuberik.com_environments.yaml
-  curl -s -o $TEMP_DIR/rollouttest.yaml https://raw.githubusercontent.com/kuberik/openkruise-controller/main/config/crd/bases/rollout.kuberik.com_rollouttests.yaml
+  curl -fsS -o $TEMP_DIR/rollout.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rollouts.yaml
+  curl -fsS -o $TEMP_DIR/rolloutgate.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_rolloutgates.yaml
+  curl -fsS -o $TEMP_DIR/healthcheck.yaml https://raw.githubusercontent.com/kuberik/rollout-controller/main/config/crd/bases/kuberik.com_healthchecks.yaml
+  curl -fsS -o $TEMP_DIR/environment.yaml https://raw.githubusercontent.com/kuberik/environment-controller/main/config/crd/bases/environments.kuberik.com_environments.yaml
+  curl -fsS -o $TEMP_DIR/rollouttest.yaml https://raw.githubusercontent.com/kuberik/openkruise-controller/main/config/crd/bases/rollout.kuberik.com_rollouttests.yaml
 fi
-curl -s -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.6.1/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
-curl -s -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.6.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
-curl -s -o $TEMP_DIR/kruise-rollout.yaml https://raw.githubusercontent.com/openkruise/charts/refs/tags/kruise-rollout-0.6.1/versions/kruise-rollout/0.6.1/templates/rollouts.kruise.io_rollouts.yaml
+curl -fsS -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.6.1/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
+curl -fsS -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.6.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
+curl -fsS -o $TEMP_DIR/kruise-rollout.yaml https://raw.githubusercontent.com/openkruise/charts/refs/tags/kruise-rollout-0.6.1/versions/kruise-rollout/0.6.1/templates/rollouts.kruise.io_rollouts.yaml
 
 # Extract the schemas and manually fix metadata
 ROLLOUT_SCHEMA=$(yq -j eval '.spec.versions[0].schema.openAPIV3Schema' $TEMP_DIR/rollout.yaml)
@@ -163,29 +163,5 @@ EOL
 # Generate TypeScript types
 openapi-typescript $TEMP_DIR/schema.json --output frontend/src/types/rollout-types.ts --root-types
 
-# Create index file
-cat > frontend/src/types/index.ts << EOL
-import type { components } from './rollout-types';
-import type { ManagedResourceStatus as ManagedResourceStatusType } from './managed-resource';
-
-export type Rollout = components['schemas']['Rollout'];
-export type RolloutGate = components['schemas']['RolloutGate'];
-export type HealthCheck = components['schemas']['HealthCheck'];
-export type Environment = components['schemas']['Environment'];
-export type RolloutTest = components['schemas']['RolloutTest'];
-export type Kustomization = components['schemas']['Kustomization'];
-export type OCIRepository = components['schemas']['OCIRepository'];
-export type KruiseRollout = components['schemas']['KruiseRollout'];
-export type ManagedResourceStatus = ManagedResourceStatusType;
-EOL
-
-# Generate environment subobject types automatically
-cat > frontend/src/types/environment-types.ts << EOL
-import type { components } from './rollout-types';
-
-// Auto-generated: Extract array element types from Environment status schema
-type EnvironmentStatus = Required<components['schemas']['Environment']>['status'];
-export type EnvironmentInfo = Required<EnvironmentStatus>['environmentInfos'][number];
-// EnvironmentStatusEntry is now the history entry from EnvironmentInfo
-export type EnvironmentStatusEntry = Required<EnvironmentInfo>['history'][number];
-EOL
+# index.ts and environment-types.ts are hand-written (aliases, derived types,
+# the dependency exports) and are never written by this script.
