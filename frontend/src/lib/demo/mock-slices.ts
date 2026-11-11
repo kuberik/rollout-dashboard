@@ -27,7 +27,7 @@ import type { ReleaseCandidate, ReleaseSliceObject, ReleaseSourceObject, SliceRe
 export const UNSOURCED_APPS: ReadonlySet<string> = new Set(['recommender-svc']);
 
 export const RELEASE_SOURCE_REQUIRED_MESSAGE =
-	'This Rollout has no spec.releaseSourceRef. Create a ReleaseSource for its releases repository and reference it to see releases.';
+	'This Rollout has no spec.releaseSourceRef, so it has no releases. Create a ReleaseSource for its releases repository and reference it to see releases.';
 
 type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 

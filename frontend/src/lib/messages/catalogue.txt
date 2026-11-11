@@ -240,6 +240,7 @@ lib/components/ChangeVersionModal.svelte	code	needs … …
 lib/components/ChangeVersionModal.svelte	code	needs a newer …
 lib/components/ChangeVersionModal.svelte	code	Newer than running
 lib/components/ChangeVersionModal.svelte	text	No commit revision known for this build — the commit list is unavailable.
+lib/components/ChangeVersionModal.svelte	text	No release source
 lib/components/ChangeVersionModal.svelte	text	No source repository linked — the commit list is unavailable.
 lib/components/ChangeVersionModal.svelte	text	No versions available
 lib/components/ChangeVersionModal.svelte	code	Not deployed here
@@ -572,7 +573,7 @@ lib/components/new/app/AppActivity.svelte	title	Recent activity
 lib/components/new/app/AppActivity.svelte	code	Rolled back
 lib/components/new/app/AppBuilds.svelte	text	… builds not running anywhere
 lib/components/new/app/AppBuilds.svelte	text	… failing
-lib/components/new/app/AppBuilds.svelte	aria-label	…, …{s.title ? `, $…` : ''}
+lib/components/new/app/AppBuilds.svelte	aria-label	…{noSource ? '' : `, $…`}{s.title ? `, $…` : ''}
 lib/components/new/app/AppBuilds.svelte	text	Builds appear once a rollout deploys it.
 lib/components/new/app/AppBuilds.svelte	aria-label	Deploy … to …
 lib/components/new/app/AppBuilds.svelte	text	No details recorded for this build
@@ -771,6 +772,7 @@ lib/components/new/data.ts	code	Held by a rule
 lib/components/new/data.ts	code	held: …
 lib/components/new/data.ts	code	In … · not in … yet
 lib/components/new/data.ts	code	its provider ships a newer version
+lib/components/new/data.ts	code	No release source
 lib/components/new/data.ts	code	on the newest
 lib/components/new/data.ts	code	Pinned to … in ${placeLabel({ tier: tierOfEnv(e), regions: [e.label] })}
 lib/components/new/data.ts	code	prod regions
@@ -1048,7 +1050,9 @@ lib/components/RecoveryModeWarningModal.svelte	code	The last deploy failed
 lib/components/RecoveryModeWarningModal.svelte	code	The last deploy was cancelled before it finished
 lib/components/RecoveryModeWarningModal.svelte	code	this environment
 lib/components/RecoveryModeWarningModal.svelte	text	to cancel
+lib/components/ReleaseSourceNotice.svelte	text	is set but is ignored: set
 lib/components/ReleaseSourceNotice.svelte	title	No release source
+lib/components/ReleaseSourceNotice.svelte	text	on the ReleaseSource to read from that ImagePolicy ( … ). … …
 lib/components/RepoCard.svelte	title	deploys …
 lib/components/ResourcesCard.svelte	title	… — Deployment
 lib/components/ResourcesCard.svelte	text	… … … ready resource …
@@ -1379,6 +1383,7 @@ lib/view-models/changes.ts	code	held · …
 lib/view-models/changes.ts	code	held in …
 lib/view-models/changes.ts	code	live everywhere
 lib/view-models/changes.ts	code	no release
+lib/view-models/changes.ts	code	no release source
 lib/view-models/changes.ts	code	not built here
 lib/view-models/changes.ts	code	not deployed anywhere
 lib/view-models/changes.ts	code	not yet
@@ -1624,6 +1629,7 @@ lib/view-models/release-delta.ts	code	Same commit as …. What changed: requires
 lib/view-models/repo-card.ts	code	… failing
 lib/view-models/repo-card.ts	code	… moving
 lib/view-models/repo-card.ts	code	… waiting
+lib/view-models/repo-card.ts	code	no release source
 lib/view-models/revision-coverage.ts	code	: envs}
 lib/view-models/revision-coverage.ts	code	… · has not reached … yet
 lib/view-models/revision-coverage.ts	code	… · held in …
@@ -1937,6 +1943,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Pinned to …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Pinned to … — automatic deploys are paused until the pin is cleared.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Ready to deploy
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Recovery mode
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Releases unknown: no release source
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Retry started
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Roll back to …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back
@@ -1960,6 +1967,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	View on GitHub
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Waiting for health checks
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	waiting for health checks · …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Waiting on …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Without a release source there is no list of releases, so nothing here can be called newer or current.
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	… of …
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	Automatic …
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	Both builds render the same resources; only the image behind the tag can differ.

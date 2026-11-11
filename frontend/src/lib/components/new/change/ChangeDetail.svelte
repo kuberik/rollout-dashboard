@@ -41,12 +41,14 @@
 	import ChangeCard from './ChangeCard.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ChangeHistory from './ChangeHistory.svelte';
-	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, type TChange, type HomeState } from '../data';
+	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, type TChange, type HomeState, noSourceApp } from '../data';
 	import { actionHref, rowAction, holdWord } from '../rollout-view';
 	import { isViewer, plural } from '../change-view';
 	import { classified, stripOf, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, buildGroups, changeProd, notReached, type Place } from './detail-model';
 
 	let { change: c, scenario = 'incident', checks = null }: { change: TChange; scenario?: HomeState; checks?: { text: string; href: string | null } | null } = $props();
+	/** the change's apps have no release source: nothing will carry it to production */
+	const noSource = $derived(c.apps.length > 0 && c.apps.every(noSourceApp));
 
 	const causes = $derived(heldCauses(scenario));
 	const cl = $derived(classified(c, scenario));
@@ -172,7 +174,7 @@
 			<Group icon={MapPinAltOutline} title="Where it runs" rollup={whereRollup} adverse={whereAdverse} held={whereHeld} class="cd-focal" id="where-it-runs">
 				{#each groups as g (g.key)}
 					<li class="cd-bld" data-build-group={g.build} data-build-carries={g.carries ? '' : undefined}>
-						<div class="cd-bh flex h-9 items-center gap-3 bg-subtle px-4"><span class="w-4 shrink-0" aria-hidden="true"></span><span class="dot-list min-w-0 flex-1"><span class="dot-list-row flex min-w-0 items-baseline">{#if multiApp}<span class="t-meta inline-flex shrink-0 items-center gap-1 text-fg-muted"><AppGlyph name={g.app} size={16} class="shrink-0" />{g.app}</span>{/if}<span class="t-code-sm shrink-0 text-fg" data-build-id>{g.build}</span><span class="t-meta whitespace-nowrap text-fg-subtle {multiApp ? 'min-w-0 truncate sm:shrink-0' : 'shrink-0'}"><span class="sm:hidden">{relOf(g, true)}</span><span class="max-sm:hidden">{relOf(g, false)}</span></span>{#if g.newest}<span class="t-meta shrink-0 text-fg-subtle max-sm:hidden">newest</span>{/if}</span></span><span class="dot-list shrink-0"><span class="dot-list-row flex items-baseline whitespace-nowrap">{#each countOf(g) as k (k.text)}<span class="t-meta tabular-nums {k.ink}" data-build-count>{k.text}</span>{/each}</span></span></div>
+						<div class="cd-bh flex h-9 items-center gap-3 bg-subtle px-4"><span class="w-4 shrink-0" aria-hidden="true"></span><span class="dot-list min-w-0 flex-1"><span class="dot-list-row flex min-w-0 items-baseline">{#if multiApp}<span class="t-meta inline-flex shrink-0 items-center gap-1 text-fg-muted"><AppGlyph name={g.app} size={16} class="shrink-0" />{g.app}</span>{/if}<span class="t-code-sm shrink-0 text-fg" data-build-id>{g.build}</span><span class="t-meta whitespace-nowrap text-fg-subtle {multiApp ? 'min-w-0 truncate sm:shrink-0' : 'shrink-0'}"><span class="sm:hidden">{relOf(g, true)}</span><span class="max-sm:hidden">{relOf(g, false)}</span></span>{#if g.newest && !noSource}<span class="t-meta shrink-0 text-fg-subtle max-sm:hidden">newest</span>{/if}</span></span><span class="dot-list shrink-0"><span class="dot-list-row flex items-baseline whitespace-nowrap">{#each countOf(g) as k (k.text)}<span class="t-meta tabular-nums {k.ink}" data-build-count>{k.text}</span>{/each}</span></span></div>
 						<ul class="divide-y divide-line-subtle">
 							{#each g.rows as r (r.p.href)}{@const i = rows.indexOf(r)}<ChangePlaceRow place={r.p} also={r.also} {scenario} open={i === 0 && leadOpen} canOpen={g.carries} landed={c.group === 'landed'} {reserve} inStatement={i === 0 && (st.kind === 'failed' || st.kind === 'waiting' || st.kind === 'held')} changeCommit={cm.commits[0] ? { title: cm.commits[0].title, author: cm.commits[0].author } : null} omitTitle={c.title} />{/each}
 						</ul>
@@ -189,7 +191,7 @@
 			<ChangeHistory {events} {multiApp} class="cd-history" />
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
-					{#each [[`${c.prNumber != null ? 'Merged' : 'Committed'} to first deploy`, how.toFirst ?? 'not deployed yet'], ...(how.toProd || prod.of <= 1 ? [[`${c.prNumber != null ? 'Merged' : 'Committed'} to production`, how.toProd ?? 'not in production yet']] : []), ...(prod.of > 1 ? [[multiApp ? 'Production places running it' : 'Production regions running it', `${prod.healthy} of ${prod.of}`]] : []), ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
+					{#each [[`${c.prNumber != null ? 'Merged' : 'Committed'} to first deploy`, how.toFirst ?? 'not deployed yet'], ...(how.toProd || prod.of <= 1 ? [[`${c.prNumber != null ? 'Merged' : 'Committed'} to production`, how.toProd ?? (noSource ? "won't reach production: no release source" : 'not in production yet')]] : []), ...(prod.of > 1 ? [[multiApp ? 'Production places running it' : 'Production regions running it', `${prod.healthy} of ${prod.of}`]] : []), ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
 						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{v}</dd></div>
 					{/each}
 				</dl>

@@ -42,6 +42,7 @@
  * CURRENT behaviour so a future fix has something concrete to change.
  */
 import { availableReleases } from '$lib/releases/registry.svelte';
+import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
 import type { Rollout, Environment, RolloutDependency } from '$lib/../types';
 import { releaseMetadataUnresolved } from '$lib/../types';
 import { getDisplayVersion } from '$lib/utils';
@@ -397,6 +398,8 @@ export type PrHistoryMatch = {
 
 export type PrService = {
 	appName: string;
+	/** this app's rollouts have no release source: no build of it will be promoted past the place it is in */
+	noSource?: boolean;
 	/** `github.com/owner/repo`, this app's OWN `status.source`, normalised. */
 	sourceRepo: string;
 	cells: PrCell[];
@@ -1993,6 +1996,7 @@ export function buildPrPipeline(
 
 		services.push({
 			appName: group.appName,
+			noSource: matching.length > 0 && matching.every((m) => !!releaseSourceRequiredMessage(m.rollout)),
 			sourceRepo: repoLabel(matching[0].repoKey),
 			cells,
 			furthest: furthestSentence(cells),

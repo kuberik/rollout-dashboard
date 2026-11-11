@@ -20,7 +20,7 @@
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
 	import { UndoOutline, ChevronDownOutline } from 'flowbite-svelte-icons';
 	import ChangeSlipway from './ChangeSlipway.svelte';
-	import { ago, type HomeState } from '../data';
+	import { ago, noSourceOf, type HomeState } from '../data';
 	import { envTheme, markOf, rowAction, actionHref } from '../rollout-view';
 	import { actionWords } from '../change-view';
 	import { behindWords, restSteps, envFull, notReached, type Place } from './detail-model';
@@ -40,7 +40,8 @@
 	const newerFail = $derived(p.kind === 'running' && !!p.newerFails);
 	const mark = $derived(na ? 'none' : newerFail ? 'failed' : p.kind === 'waiting' ? 'held' : p.kind === 'running' && !moving ? 'rest' : row ? markOf(row) : 'rest');
 	const newerFailStep = $derived(p.tabRow?.steps.find((s) => s.state === 'fail')?.name ?? 'Check');
-	const cur = $derived(newerFail || moving ? '' : behind === 'on the newest' ? 'Up to date' : behind);
+	/* no release source: no lag words at all (not "Up to date", not "N behind") */
+	const cur = $derived(newerFail || moving || noSourceOf(p.href) ? '' : behind === 'on the newest' ? 'Up to date' : behind);
 	const reach = $derived(notReached(p, scenario));
 	const all = $derived([p, ...also]);
 	const grouped = $derived(also.length > 0);

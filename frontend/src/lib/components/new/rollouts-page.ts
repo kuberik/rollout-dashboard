@@ -77,7 +77,7 @@ const sinceDesc = (a: { since?: string | null }, b: { since?: string | null }) =
 /** [state word, what the strand cannot draw]. Never "step N of M". */
 /** `clockInSentence: false` — the row has an age slot (the aligned column) that already prints the wait's clock, so the sentence does not say "for 5h" a second time (QA2 #8). */
 export function sentenceOf(r: TRow, hs: HomeState, o: { clockInSentence?: boolean } = {}): [string, string] {
-	if (r.noSource && r.group !== 'failed') return ['No release source', r.noSource];
+	if (r.noSource && r.group !== 'failed') return ['No release source', ''];
 	if (r.group === 'approval') {
 		return [approvalWord(!!r.needsYou && !r.stillChecking), r.stillChecking ? 'check still running' : o.clockInSentence === false ? '' : `for ${ago(waitClock(r, hs))}`];
 	}
@@ -149,7 +149,7 @@ function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState, sett
 			if (covered(p, app)) continue;
 			const label = p.label.replace(/^prod-/, '');
 			const place = !label || TIER_WORDS.has(label) || label === p.tier ? p.tier : `${p.tier} · ${label}`;
-			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence: noSourceOf(p.href) ?? restSentence(p, settled), code: noSourceOf(p.href) ? '' : (p.version ?? ''), age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
+			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence: noSourceOf(p.href) ? 'No release source' : restSentence(p, settled), code: noSourceOf(p.href) ? '' : (p.version ?? ''), age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
 		}
 	}
 	out.sort((a, b) => a.app.localeCompare(b.app) || a.o - b.o || a.place.localeCompare(b.place));

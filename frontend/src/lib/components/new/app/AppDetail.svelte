@@ -125,7 +125,8 @@
 		const swap = new Map<unknown, typeof L.stages[number]>();
 		const fix = (n: typeof L.stages[number]) => {
 			const k = places.find((x) => x.href === hrefFor(n))?.heldBuilds.length ?? 0;
-			const m = k ? { ...n, behind: k } : n;
+			/* no release source: no lag and no "newest" (a neutral ring), whatever the history says */
+			const m = noSource ? { ...n, behind: 0, state: n.state === 'newest' ? ('behind' as const) : n.state } : k ? { ...n, behind: k } : n;
 			swap.set(n, m);
 			return m;
 		};
@@ -301,7 +302,7 @@
 				</div>
 			{/if}
 		</header>
-		{#if noSource}<ReleaseSourceNotice text={noSource} class="mt-4" />{/if}
+		{#if noSource}<ReleaseSourceNotice text={noSource} class="mt-6 mb-4" />{/if}
 
 		<div class="mt-6 flex flex-col gap-4">
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}
@@ -326,7 +327,7 @@
 			<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:grid-cols-[minmax(0,1fr)_452px]">
 				<div class="flex min-w-0 flex-col gap-4">
 					<div id="regions" class="ad-places scroll-mt-16" class:ad-owned={!!failRow}>
-						<AppBuilds {stops} {places} {view} {phone} nested hs={scenario} onDeploy={openDeploy} />
+						<AppBuilds {stops} {places} {view} {phone} nested hs={scenario} noSource={!!noSource} onDeploy={openDeploy} />
 					</div>
 				</div>
 

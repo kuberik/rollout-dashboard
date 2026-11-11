@@ -6,7 +6,7 @@
  */
 export type BeadState = 'failed' | 'approval-yours' | 'approval' | 'held' | 'deploying' | 'checking' | 'landed';
 
-export type BeadChange = { ref: string; title?: string; state: BeadState; href?: string; key?: string };
+export type BeadChange = { ref: string; title?: string; state: BeadState; href?: string; key?: string; /** the change's apps have no release source: it will not be promoted past the place it is in */ noSource?: boolean };
 export type Bead = {
 	state: BeadState;
 	/** refs printed (<= 2 uncompacted, 1 otherwise) */

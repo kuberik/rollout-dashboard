@@ -6,6 +6,7 @@
 	import { sourceDashboardURL } from '$lib/source-dashboard';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
+	import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
 	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
 	import { sourceTreeUrl } from '$lib/source-url';
@@ -275,6 +276,8 @@
 
 	// Maintain existing local vars used throughout
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	/** the controller's `ReleaseSourceRequired` message: this Rollout has no release source, so it has no releases to compare */
+	const noSource = $derived(releaseSourceRequiredMessage(rollout));
 	// Failure panel collapse (2026-09-26, film critic 25): the panel used to
 	// vanish in one frame when the failure cleared, the page reflowing upward by
 	// its height. Svelte's own `transition:slide` runs on the Web Animations
@@ -3262,7 +3265,7 @@
 					onMeta={(t) => (scheduleMetaText = t)}
 				/>
 				<!-- QA #3: a block-level sibling directly above the banner slot, rendered whatever the candidate count -->
-				<ReleaseSourceNotice {rollout} class="mb-4" />
+				<ReleaseSourceNotice {rollout} class="mt-6 mb-4" />
 				{#if myClusterErrors.length}
 					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
 				{/if}
@@ -3831,7 +3834,9 @@
 									newest`, `All on the newest`).
 								-->
 										<div class="ml-auto flex items-center gap-2">
-											{#if newerBuilds.length > 0}
+											{#if noSource}
+												<span class="t-ui-sm text-fg-subtle" data-no-release-source>Releases unknown: no release source</span>
+											{:else if newerBuilds.length > 0}
 												<!-- r34 tabs-nb r2 (#5): the baseline's rollup, back. Same count as the page
 												     header's "↑ N newer" (both read `newerBuilds.length`). -->
 												<span class="t-ui-sm text-fg-subtle tabular-nums"
@@ -4658,6 +4663,10 @@
 												</li>
 											{/if}
 										</ul>
+									{:else if noSource}
+										<p class="t-meta text-fg-subtle px-4 py-3">
+											Without a release source there is no list of releases, so nothing here can be called newer or current.
+										</p>
 									{:else if newerBuilds.length === 0}
 										<!-- (2026-09-03, from the human: "when there's no available version,
 								     we don't display anything.") The header's rollup is the verdict;

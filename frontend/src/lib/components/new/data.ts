@@ -92,6 +92,8 @@ const relsOf = (r: RawRollout | null | undefined) => availableReleases(r as unkn
 const candsOf = (r: RawRollout | null | undefined) => releaseCandidates(r as unknown as Rollout) as RawRel[] | undefined;
 /** the controller's ReleaseSourceRequired message for the Rollout behind a place's href, or undefined */
 export const noSourceOf = (href: string): string | undefined => releaseSourceRequiredMessage(rawOf(href) as unknown as Rollout);
+/** an app none of whose rollouts has a release source (by rollout name): its changes cannot be promoted */
+export const noSourceApp = (app: string): boolean => { const rs = raws().filter((r) => r.metadata.name === app); return rs.length > 0 && rs.every((r) => !!releaseSourceRequiredMessage(r as unknown as Rollout)); };
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
 
 /* ═══ steps (defects 7, 8) ═══ */
@@ -707,7 +709,7 @@ export function apps(state: HomeState) {
 			const lag = order.map((t) => ({ t, ps: placeList.filter((p) => p.tier === t && !p.onNewest && p.state !== 'failed') })).find((x) => x.ps.length);
 			if (lag) { const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 1)); fact = `Ready to promote to ${lag.t} · ${n} behind`; promoteHref = lag.ps[0].href; }
 			/* no ReleaseSource: there are no builds to promote; say why, in the controller's words */
-			if (noSourceMsg) { fact = noSourceMsg; promoteHref = null; }
+			if (noSourceMsg) { fact = 'No release source'; promoteHref = null; }
 		}
 		if (w && (w.state === 'held-by-rule' || w.state === 'awaiting-approval') && w.group !== 'failed') {
 			const hc = causes.find((c) => c.rows.some((r) => r.href === w.href));
