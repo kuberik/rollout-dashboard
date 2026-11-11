@@ -23,7 +23,8 @@
  *
  *   - `.svelte` markup text nodes (Svelte `{expressions}` collapsed to a gap)
  *   - `title` / `aria-label` / `alt` / `placeholder` / `aria-description`
- *     attribute values on any element
+ *     attribute values on any element, and the text props of shared
+ *     components (`sentence`, `label`, `description`, `message`, ...)
  *   - string and template literals in `.ts` files and in `<script>` blocks
  *
  * -- WHAT IT CANNOT SEE, STATED HONESTLY ----------------------------------
@@ -259,7 +260,31 @@ function scanScript(src: string, file: string, out: Literal[]): void {
 	}
 }
 
-const ATTRS = new Set(['title', 'aria-label', 'alt', 'placeholder', 'aria-description']);
+/**
+ * Native attributes plus the TEXT PROPS of the shared components (batch4, QA30 M5): `<UnavailableCard sentence="..." />` carried a
+ * whole operator-visible sentence that the scanner never saw, so a retired word in it passed the vocabulary guard. A quoted literal on
+ * any element for one of these names is a message like any other.
+ */
+const ATTRS = new Set([
+	'title',
+	'aria-label',
+	'alt',
+	'placeholder',
+	'aria-description',
+	'sentence',
+	'label',
+	'description',
+	'message',
+	'subtitle',
+	'heading',
+	'caption',
+	'hint',
+	'tooltip',
+	'verdict',
+	'verdictTitle',
+	'headline',
+	'emptyMessage'
+]);
 
 /**
  * A hand-rolled walk rather than a regex, because a Svelte tag can span
