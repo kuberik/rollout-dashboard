@@ -9,7 +9,7 @@
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
 import {
-	rollouts, placesOf, regionStates, ago, buildOf, buildIdentity, deployedBuild, waitingBuild, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
+	rollouts, placesOf, placeBehind, regionStates, ago, buildOf, buildIdentity, deployedBuild, waitingBuild, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
@@ -130,8 +130,14 @@ export function attentionItem(r: TRow, hs: HomeState): AttentionItem {
 	return { key: r.key, row: r, model, app: r.app, href: r.href, rollbackHref: failed ? hrefRollback : null, openHref: r.href, yours: !failed };
 }
 
+/** a rest place's sentence: "Rolled back"; else its currency from the ONE behind count (a newer build held by a gate counts; one that failed or was rolled back does not): "N behind" (the Runs-in word) or "On the newest". Before the fleet answers, or while the lag is unknown, no currency is claimed: "Healthy". */
+function restSentence(p: { state: string; href: string }, settled: boolean): string {
+	if (p.state === 'rolled-back') return 'Rolled back';
+	const n = placeBehind(p.href, settled);
+	return n === null ? 'Healthy' : n > 0 ? `${n} behind` : 'On the newest';
+}
 /** the rows that have no section of their own on the page above: at rest = every place not covered by a row, healthy or rolled back */
-function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState): RestRow[] {
+function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState, settled: boolean): RestRow[] {
 	const order: Record<string, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
 	const covered = (p: { href: string; label: string; tier: string }, app: string) =>
 		rows.some((r) => r.href === p.href || (r.app === app && r.tier === p.tier && (r.regions.includes(p.label))));
@@ -142,7 +148,7 @@ function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState): Res
 			if (covered(p, app)) continue;
 			const label = p.label.replace(/^prod-/, '');
 			const place = !label || TIER_WORDS.has(label) || label === p.tier ? p.tier : `${p.tier} · ${label}`;
-			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence: p.state === 'rolled-back' ? 'Rolled back' : 'On the newest', code: p.version ?? '', age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
+			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence: restSentence(p, settled), code: p.version ?? '', age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
 		}
 	}
 	out.sort((a, b) => a.app.localeCompare(b.app) || a.o - b.o || a.place.localeCompare(b.place));
@@ -150,7 +156,7 @@ function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState): Res
 	return out.map(({ o: _o, ...x }) => { const rep = x.app === prev; prev = x.app; return { ...x, rep }; });
 }
 
-export function rolloutsPage(hs: HomeState): RolloutsPage {
+export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): RolloutsPage {
 	const R = rollouts(hs);
 	const rows = R.rows;
 	const failedRows = rows.filter((r) => r.group === 'failed');
@@ -163,7 +169,7 @@ export function rolloutsPage(hs: HomeState): RolloutsPage {
 	const moving = strand((r) => r.group === 'moving');
 	const waiting = strand((r) => r.group === 'approval');
 	const held = strand((r) => r.group === 'held');
-	const rest = restRows(rows, R.restAll ?? R.rest, hs);
+	const rest = restRows(rows, R.restAll ?? R.rest, hs, o.settled ?? true);
 	const groups = ([['moving', moving], ['waiting', waiting], ['held', held]] as [GroupKey, StrandRow[]][]).filter(([, g]) => g.length).map(([key, g]) => ({ key, word: GROUP_WORD[key], rows: g }));
 	return {
 		banner, attention: attentionRows.map((r) => attentionItem(r, hs)), failing: failedRows.length, toApprove: yours.length,
