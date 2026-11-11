@@ -798,13 +798,10 @@ function buildAppEnvs(
 	}));
 }
 
-/** The other hold an approval ask names. A gate the BACKEND calls `schedule` is a window (clears by itself) even where the schedule join has not loaded on this page (the classifier then says `a check`); otherwise the verdict's own cause label. */
+/** The other hold an approval ask names, from the verdict's own `alsoHold` (`held.ts`): a window or promotion order clears by itself, any other refuser does not and is named. */
 function alsoApprovalOf(c: RolloutCard): { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null {
-	if (!c.heldAlsoApproval) return null;
-	const win = (c.rollout?.status?.gates ?? []).find((g) => gateKindOf(g as { kind?: string | null }) === 'schedule' && g.passing === false);
-	if (win || c.heldCause === 'clock') return { other: win ? gateDisplayName(win.name ?? '') : (c.heldCauseLabel ?? 'a deploy window'), persistent: false, kind: 'window' };
-	if (c.heldCause === 'order') return { other: 'promotion order', persistent: false, kind: 'order' };
-	return { other: c.heldCauseLabel ?? 'a rule', persistent: true, kind: 'hold' };
+	if (!c.heldAlsoApproval || !c.heldAlso) return null;
+	return { other: c.heldAlso.other, persistent: c.heldAlso.kind === 'hold', kind: c.heldAlso.kind };
 }
 
 function pulseWord(kind: FleetSignal['kind']): string {

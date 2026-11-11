@@ -876,7 +876,7 @@ export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'
 	const gs = st?.gates ?? [];
 	const holding = refusingGates(gs, buildInQuestion({ href: row.href, app: row.key.split('@')[0] }));
 	const own = approvalGateOf(gs, (st?.releaseCandidates ?? []).map((c) => c.tag ?? c.version ?? ''));
-	const g = (row.state === 'awaiting-approval' ? holding.find((x) => x === own || gateKindOf(x) === 'approval') : null) ?? (row.state === 'held-by-rule' ? holding.find((x) => x !== own && gateKindOf(x) !== 'approval') : null) /* blame order: a held row names the rule, never the approval that cannot unblock it */ ?? holding[0];
+	const g = (row.state === 'awaiting-approval' ? holding.find((x) => x === own || gateKindOf(x) === 'approval') : null) ?? (row.state === 'held-by-rule' ? ((rules) => rules.find((x) => gateKindOf(x) !== 'schedule' && gateKindOf(x) !== 'promotion') ?? rules[0])(holding.filter((x) => x !== own && gateKindOf(x) !== 'approval')) : null) /* blame order: a held row names the rule, never the approval that cannot unblock it */ ?? holding[0];
 	if (!g) return null;
 	const title = holdTitleOf(row.href, g, state, row.key.split('@')[0], row.key);
 	const kind = gateKindOf(g);

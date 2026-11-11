@@ -324,6 +324,8 @@ export type ClassifiedGate = {
 	 * the rest of the record first.
 	 */
 	displayName?: string;
+	/** the kind the BACKEND wrote on the gate summary (`GateSummary.kind`), kept beside the joined `kind` so a closed window still reads as one before the schedule join loads. */
+	backendKind?: string | null;
 	/**
 	 * ⭐ THE `until …` FORM, and it is deliberately a NOUN CLAUSE, lowercase,
 	 * never a sentence. Every clause composes behind ONE opener — *"Nothing
@@ -1041,7 +1043,7 @@ export function classifyGate(
 ): ClassifiedGate {
 	const out = classifyGateInner(gate, namespace, ctx);
 	const id = gate?.name ?? 'a rule';
-	return { ...out, displayName: gateDisplayName(id, ctx.pretty?.get(key(namespace, id)) ?? null) };
+	return { ...out, displayName: gateDisplayName(id, ctx.pretty?.get(key(namespace, id)) ?? null), backendKind: (gate as { kind?: string | null } | undefined)?.kind ?? null };
 }
 
 function classifyGateInner(

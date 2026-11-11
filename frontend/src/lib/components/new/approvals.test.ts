@@ -304,10 +304,25 @@ describe('one classification for the toast, the row, the Holding card and the bu
 			const c = compass('incident');
 			expect(c.v.lead?.kind, 'the approval leads').toBe('approval');
 			expect(c.v.approvals.length, 'and is the only ask, so v.approvals is empty').toBe(0);
-			expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /deploy window opens/.test(i.reason)), 'the inbox keeps the ask').toBe(true);
+expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /deploy window opens/.test(i.reason)), 'the inbox keeps the ask').toBe(true);
 		});
 	});
 	alsoCase('eu-west-like: a closed deploy window', { name: 'schedule-gate-zvsqr', kind: 'schedule', passing: false, allowedVersions: null }, /^Approve now; it deploys when the deploy window opens( .+)?$/, true);
+	/* the ask says the build deploys when a window opens ONLY when every other refuser clears by itself; a failing check or a dependency does not, and is named by its display name */
+	it('a window AND a failing check, plus the approval: the ask names the check, never the window', () => {
+		withWindow(() => patched([{ name: 'schedule-gate-zvsqr', kind: 'schedule', passing: false, allowedVersions: null }, { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }], () => {
+			const ask = inbox('incident').items.find((i) => i.row.app === 'payments-core' && i.row.tier === 'prod');
+			expect(ask?.reason).toBe("Approving won't deploy until Smoke check clears");
+			expect(sentenceOf(prodRow(), 'incident')[0]).toBe('Held by Smoke check · also needs your approval');
+		}));
+	});
+	it('a window AND a dependency, plus the approval: the ask names the dependency, never the window', () => {
+		withWindow(() => patched([{ name: 'schedule-gate-zvsqr', kind: 'schedule', passing: false, allowedVersions: null }, { name: 'dependency-payments-svc', kind: 'dependency', passing: false, allowedVersions: null }], () => {
+			const ask = inbox('incident').items.find((i) => i.row.app === 'payments-core' && i.row.tier === 'prod');
+			expect(ask?.reason).toMatch(/^Approving won't deploy until .+ clears$/);
+			expect(ask?.reason).not.toMatch(/window/i);
+		}));
+	});
 	alsoCase('a persistent hold (a failing check)', { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }, /^Approving won't deploy until .+ clears$/);
 	it('QA14 row: X permits the newest, the approved build is older: the row shows the newest build\'s own "Needs your approval"', () => {
 		const { newest } = targetAndNewest();

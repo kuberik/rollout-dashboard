@@ -142,7 +142,8 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 		const isLead = !!L && leadApp === p.app && ((L.kind === 'failing' && p.state === 'failed') || (L.kind === 'approval' && p.state === 'awaiting-approval'));
 		const nyEntry = needs.get(`${p.app}@${p.env}`);
 		const failMine = p.state === 'failed' && (!!change?.mine || isLead || v.failures.some((f) => f.app === p.app) || starred.has(p.app));
-		const needsYou = failMine || (p.state === 'awaiting-approval' && !!ap) || (p.state === 'held-by-rule' && !!p.also && (!!appr.get(p.app) || (L?.kind === 'approval' && leadApp === p.app))); /* the viewer's only approval is the LEAD, which `v.approvals` leaves out; a rule holds the build but the approval ALSO refuses it: Home keeps the ask */
+		const viewerAsks = !!appr.get(p.app) || (L?.kind === 'approval' && leadApp === p.app); /* the viewer can give this approval: it is in `v.approvals`, or it is the lead (which `v.approvals` leaves out); ONE expression for needsYou and alsoApproval.yours */
+		const needsYou = failMine || (p.state === 'awaiting-approval' && !!ap) || (p.state === 'held-by-rule' && !!p.also && viewerAsks); /* a rule holds the build but the approval ALSO refuses it: Home keeps the ask */
 		const word =
 			p.state === 'failed' ? 'Failing'
 			: p.state === 'awaiting-approval' ? (ap ? 'Waits for your approval' : 'Waits for approval')
@@ -158,7 +159,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 				: p.state === 'failed' && needsYou ? { label: 'Roll back', href: p.href, kind: 'rollback' }
 				: p.state === 'awaiting-approval' && ap ? { label: 'Approve', href: p.href, kind: 'approve' } : null,
 			cause, pipeline: p.pipeline,
-			alsoApproval: p.also ? { ...p.also, yours: !!appr.get(p.app) } : null
+			alsoApproval: p.also ? { ...p.also, yours: viewerAsks } : null
 		});
 	}
 	const TR: Record<TierKey, number> = { prod: 0, staging: 1, test: 2, dev: 3 };

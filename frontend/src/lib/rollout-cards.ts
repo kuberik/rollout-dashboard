@@ -403,6 +403,8 @@ export type RolloutCard = {
 	heldCauseLabel: string | null;
 	/** an approval also refuses this place's frontier build while a rule gate is the primary `heldCause` (`verdictForGates`' `alsoAwaitingApproval`) */
 	heldAlsoApproval?: boolean;
+	/** the other hold that ask names (`AlsoHold`) */
+	heldAlso?: { kind: 'window' | 'order' | 'hold'; other: string } | null;
 	/**
 	 * Set exactly when NOT held because an earlier-tier promotion gate (this
 	 * app's own chain) has not deployed the candidate here yet — the
@@ -632,6 +634,7 @@ export function buildRolloutCards(
 			// cause for an OLDER candidate this environment really refuses.
 			heldCauseLabel: heldCardVerdict.held ? (heldCardVerdict.frontier?.causeLabel ?? null) : null,
 			heldAlsoApproval: heldCardVerdict.held && !!heldCardVerdict.frontier?.alsoApproval,
+			heldAlso: heldCardVerdict.held ? (heldCardVerdict.frontier?.alsoApproval ?? null) : null,
 			waitsForEnv: heldCardVerdict.waitsForEnv,
 			waveWait: heldCardVerdict.waveWait ?? null,
 			rollout: r,
