@@ -825,6 +825,7 @@
 		const base = buildGateContext({
 			environments: listQuery.data?.environments ?? (environment ? { items: [environment] } : null),
 			rolloutDependencies: { items: allDeps },
+			rollouts: rollout ? [rollout] : null,
 			rolloutGates:
 				(rolloutQuery.data as { rolloutGates?: { items?: RolloutGate[] } } | undefined)
 					?.rolloutGates ?? null

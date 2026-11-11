@@ -112,6 +112,7 @@ export function cardContext(input: {
 		environments: input.environments ?? null,
 		rolloutDependencies: input.rolloutDependencies ?? null,
 		rolloutGates: input.rolloutGates ?? null,
+		rollouts: input.rollouts,
 		schedulesExpected: input.schedulesExpected
 	});
 

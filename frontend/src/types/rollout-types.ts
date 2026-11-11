@@ -248,6 +248,10 @@ export interface components {
                     message?: string;
                     /** @description Name is the name of the gate. */
                     name: string;
+                    /** @description Added by the dashboard API (not the CRD): the gate's kind (approval, schedule, ...). */
+                    kind?: string;
+                    /** @description Added by the dashboard API: the gate's `gate.kuberik.com/pretty-name`, omitted when it has none. */
+                    displayName?: string;
                     /** @description Passing is true if the gate is passing, false if it is blocking. */
                     passing?: boolean;
                 }[];
