@@ -91,6 +91,13 @@ describe('every printed "N newer builds" uses the live rule (batch4 #3d, QA17 ru
 		expect(stuck.candidateCount).toBe(2);
 		expect(stuck.newerCount).toBe(1);
 	});
+	it('settled:false (fleet still loading): no sentence prints a count; settled (default): the live count', () => {
+		const pinned = follower({ spec: { wantedVersion: 'b-45' } });
+		const pending = blockingStory(pinned, undefined, { settled: false });
+		expect(pending.consequence).toBe('Newer builds are available and none of them will deploy while the pin is set.');
+		expect(pending.countPending).toBe(true);
+		expect(blockingStory(pinned, undefined, { fleet: sfleet('running'), settled: true }).consequence).toMatch(/^1 newer build is available/);
+	});
 	/* QA21 W5: the card builder hands detectRolloutStuck its OWN fleet. Dropping or replacing that argument left every direct-call test green. */
 	it('buildRolloutCards passes the fleet to detectRolloutStuck: the card stuck reason carries the live count', () => {
 		const f = sfleet('running');

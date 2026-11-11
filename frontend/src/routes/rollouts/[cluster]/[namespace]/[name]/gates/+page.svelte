@@ -142,6 +142,7 @@
 		joinClauses,
 		type ClassifiedGate
 	} from '$lib/view-models/blocking-story';
+	import { fleetSettled } from '$lib/view-models/behind';
 	import { gateFact } from '$lib/view-models/gate-fact';
 	import { now } from '$lib/stores/time';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
@@ -854,7 +855,8 @@
 		blockingStory(rollout, gateContext, {
 			place: environment?.spec?.environment ?? null,
 			now: $now,
-			fleet: { environments: listEnvironments, rollouts: listRollouts }
+			fleet: { environments: listEnvironments, rollouts: listRollouts },
+			settled: fleetSettled(listQuery)
 		})
 	);
 
