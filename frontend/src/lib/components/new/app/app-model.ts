@@ -25,6 +25,7 @@ import {
 	type TRow,
 	type TierKey
 } from '../data';
+import { lastFailureMs } from '$lib/view-models/event-age';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
 
@@ -689,7 +690,6 @@ export function weekSummary(
 	let deploys = 0,
 		failed = 0,
 		rolledBack = 0,
-		last: number | null = null,
 		open = false;
 	const durations: number[] = [];
 	const day = new Set<string>();
@@ -702,7 +702,6 @@ export function weekSummary(
 			if (r.rolledBack[i]) rolledBack++;
 			if (h.bakeStatus === 'Failed') {
 				failed++;
-				if (last === null || t > last) last = t;
 				if (i === 0) open = true;
 			}
 			if (h.bakeStatus === 'Succeeded' && h.bakeEndTime) {
@@ -723,7 +722,11 @@ export function weekSummary(
 		failed,
 		rolledBack,
 		medianHealthyMs,
-		lastFailureMs: last,
+		lastFailureMs: lastFailureMs(
+			rollouts.map((r) => r.history),
+			from,
+			nowMs
+		),
 		daysWithData: day.size,
 		openFailure: open
 	};

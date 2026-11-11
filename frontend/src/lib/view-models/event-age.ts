@@ -45,6 +45,7 @@
  * different name ("behind since …").
  */
 import type { RolloutCard } from '../rollout-cards';
+import { formatTimeAgoCompact } from '../utils';
 import { waitingSince } from './fleet-facts';
 import type { NodeState } from './promotion-lanes';
 
@@ -71,6 +72,30 @@ export type HistoryEntryLike = {
  *  `RolloutCard`) reads the identical rule. */
 export function historyEntrySince(h: HistoryEntryLike): string | null {
 	return h?.bakeEndTime ?? h?.timestamp ?? null;
+}
+
+/**
+ * THE ONE "last failure" of a set of histories: the newest failed entry's own failure instant (`historyEntrySince`: when its bake ended),
+ * as epoch ms, or null when none failed. The App summary, the History tab's summary and the Recent activity row all read it, so the card
+ * that says "Last failure 48m ago" and the row that says "Check failed 10:31" name the same instant. `from`/`to` bound the DEPLOY's start.
+ */
+export function lastFailureMs(histories: ReadonlyArray<ReadonlyArray<(NonNullable<HistoryEntryLike> & { bakeStatus?: string | null }) | null | undefined>>, from = -Infinity, to = Infinity): number | null {
+	let last: number | null = null;
+	for (const hist of histories)
+		for (const h of hist) {
+			if (h?.bakeStatus !== 'Failed') continue;
+			const start = h.timestamp ? new Date(h.timestamp).getTime() : NaN;
+			if (!(start >= from && start <= to)) continue;
+			const t = new Date(historyEntrySince(h) ?? '').getTime();
+			if (Number.isFinite(t) && (last === null || t > last)) last = t;
+		}
+	return last;
+}
+
+/** "31m ago" for the last failure of `histories` (see lastFailureMs), or null when none failed: the History tab's Summary prints it */
+export function lastFailureAgoOf(histories: Parameters<typeof lastFailureMs>[0], now: Date): string | null {
+	const ms = lastFailureMs(histories);
+	return ms === null ? null : `${formatTimeAgoCompact(new Date(ms).toISOString(), now)} ago`;
 }
 
 /**
