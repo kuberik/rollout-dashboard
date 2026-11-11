@@ -2481,14 +2481,19 @@
 	role="dialog"
 	aria-modal="true"
 	classes={{
-		body: 'max-sm:h-full',
+		body: selectedVersion ? 'max-sm:max-h-dvh' : 'max-sm:h-full',
 		close:
 			'end-4 top-[23px] -translate-y-1/2 rounded-sm max-sm:h-11 max-sm:w-11 max-sm:p-0 max-sm:flex max-sm:items-center max-sm:justify-center'
 	}}
-	class="max-w-[640px] max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none sm:mt-[12vh] sm:mb-auto [&>div]:p-0"
+	class="max-w-[640px] max-sm:m-0 max-sm:w-screen max-sm:max-w-none sm:mt-[12vh] sm:mb-auto [&>div]:p-0 {selectedVersion
+		? 'max-sm:mt-auto max-sm:mb-0 max-sm:h-fit max-sm:max-h-dvh max-sm:rounded-b-none'
+		: 'max-sm:h-dvh max-sm:max-h-none max-sm:rounded-none'}"
 	aria-labelledby="cvm-title"
 >
-	<div class="flex max-h-[85dvh] flex-col max-sm:h-full max-sm:max-h-none">
+	<!-- Below `sm` the dialog has two shapes. Picking a build (long list) is the full-screen sheet above. A chosen build (the confirm,
+	     which is the whole of a rollback) is content-sized and sits on the bottom edge like the Approve confirm: the box ends where its
+	     footer ends, so a short confirm no longer carries a blank band between its last line and its buttons. -->
+	<div class="flex max-h-[85dvh] flex-col {selectedVersion ? 'max-sm:max-h-dvh' : 'max-sm:h-full max-sm:max-h-none'}">
 		<!-- Header.
 
 		     ⛔ ONE CLOSE AFFORDANCE, NOT TWO. (cosmetic, coordinator operator
