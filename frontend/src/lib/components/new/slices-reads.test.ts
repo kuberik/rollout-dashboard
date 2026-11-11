@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { fixtureSource, homeModel, resetHomeModel } from '$lib/components/home/sketch/home-data';
-import { apps, approvalTarget, pathPosition, placeHolds, rollouts } from './data';
+import { apps, approvalTarget, gateName, pathPosition, placeHolds, regionStates, rollouts, runsIn } from './data';
+import { regionSquares } from './change-truth';
+import { envPage } from './env/env-page';
 import { applySlicesMode } from '$lib/demo/mock-slices';
 import {
 	ingestReleaseSlices,
@@ -10,12 +12,17 @@ import {
 } from '$lib/releases/registry.svelte';
 
 /**
- * The four reads the merge moved from `status.releaseCandidates` onto the catalogue accessors (data.ts: `failedWaveCand`, the
- * `approvalGateOf` input behind `gateName`, `candidatesOf`; rollout-cards.ts: `liveForPlace(r, releaseCandidates(r) ?? [], fleet)`),
- * proven on the two shapes the product serves, never through the legacy test adapter:
+ * The four reads the merge moved from `status.releaseCandidates` onto the catalogue accessors, and what each test pins:
+ *   - `failedWaveCand` (data.ts): "the wave hold" test (a failed build that exists only as a catalogue candidate holds the wave leader);
+ *   - `candidatesOf` (data.ts): "approvalTarget names the deploy tag value" (the `deploys` build is the candidate's `version`, which differs from its tag);
+ *   - the `approvalGateOf` input behind `gateName` (data.ts): "gateName picks the approval gate by name" (gates WITHOUT `kind`, where only
+ *     the candidate-aware `own` can tell the approval gate from the other refusers);
+ *   - `liveForPlace(r, releaseCandidates(r) ?? [], fleet)` (rollout-cards.ts): the place verdict test.
+ * Proven on the two shapes the product serves, never through the legacy test adapter:
  *   - a Rollout WITH `spec.releaseSourceRef` whose releases are ReleaseSlices (candidates = the catalogue after the deployed build);
  *   - a real no-source Rollout (no ref, the controller's ReleaseSourceRequired condition): no releases, so no candidates, no holds.
- * A revert to a direct `status.releaseCandidates` read passes neither.
+ * Each of the four reads, reverted to `status.releaseCandidates`, fails one of these tests; the last describe pins the no-releases
+ * place's currency (excluded from "newest" and "behind") on every consumer.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const REQUIRED = {
@@ -226,5 +233,108 @@ describe('mixed app: one place has no releases, another on the same build has', 
 		const row = rollouts('incident').rows.find((r) => r.app === APP)!;
 		const text = pathPosition(row);
 		expect(text).toMatch(new RegExp(`of ${total - 1} place`));
+	});
+});
+
+/** the payments-core prod places that carry candidates, edited by `f` (the rest of the fleet untouched) */
+const prodEdit = (f: (r: any) => any) =>
+	(fixtureSource().rollouts as any[]).map((r) =>
+		/^payments-core-prod-/.test(r.metadata.namespace) &&
+		r.metadata.namespace !== 'payments-core-prod-sa-east' &&
+		r.status.releaseCandidates?.length
+			? f(r)
+			: r
+	);
+const renamed = (list: any[] | undefined) =>
+	(list ?? []).map((x) => (x.tag === 'f4a2c19' ? { ...x, tag: 'v9.9.9' } : x));
+
+describe('the moved reads, pinned by value', () => {
+	it('approvalTarget names the deploy tag value: the candidate version, not its tag (candidatesOf)', () => {
+		/* the approval gate allows the newest candidate (tag v9.9.9, version f4a2c19) but not the build in question: approving it deploys f4a2c19 */
+		const rs = prodEdit((r) => ({
+			...r,
+			status: {
+				...r.status,
+				releaseCandidates: renamed(r.status.releaseCandidates),
+				availableReleases: renamed(r.status.availableReleases),
+				gates: [{ ...r.status.gates[0], allowedVersions: ['v9.9.9'] }]
+			}
+		}));
+		serve(rs, true);
+		const row = rollouts('incident').rows.find((r) => r.app === 'payments-core' && r.tier === 'prod')!;
+		expect(approvalTarget(row, 'incident')?.deploys).toBe('f4a2c19');
+	});
+
+	it('gateName picks the approval gate by name when no gate has a kind (approvalGateOf over the catalogue candidates)', () => {
+		/* [a legacy approval that already allows every candidate, a freeze window, the approval that refuses them]: only `own` (the
+		   approval gate that refuses EVERY candidate) names the third; without the candidates the first approval-named gate wins and the
+		   row is blamed on the freeze window */
+		const rs = prodEdit((r) => ({
+			...r,
+			status: {
+				...r.status,
+				gates: [
+					{ name: 'approval-legacy', allowedVersions: [...r.status.releaseCandidates.map((x: any) => x.tag), '9b7e410'], passing: true },
+					{ name: 'freeze-window', allowedVersions: ['9b7e410'] },
+					{ name: 'release-approval', allowedVersions: ['9b7e410'] }
+				]
+			}
+		}));
+		serve(rs, true);
+		const row = rollouts('incident').rows.find(
+			(r) => r.app === 'payments-core' && r.tier === 'prod' && r.state === 'awaiting-approval'
+		)!;
+		expect(gateName(row, 'incident')?.name).toBe('Release approval');
+	});
+});
+
+/**
+ * B1 (ruling): a place WITHOUT releases is EXCLUDED from currency (`currency: 'none'`): neither newest nor behind. One mixed fixture per
+ * consumer: that place has no releases, its siblings have. Each consumer must skip it.
+ */
+describe('a place without releases is excluded from currency', () => {
+	const hrefOf = (app: string, pick: (p: any) => boolean) => {
+		serve(fixtureSource().rollouts as any[], true);
+		return apps('quiet').items.find((a) => a.app === app)!.placeList.find(pick)!.href;
+	};
+	/** serve the fleet with the Rollout behind `href` stripped of its release source */
+	const without = (href: string) => {
+		const rs = fixtureSource().rollouts as any[];
+		const victim = rs.find((r) => href.endsWith(`${r.metadata.namespace}/${r.metadata.name}`))!;
+		serve(rs, (r) => !(r.metadata.namespace === victim.metadata.namespace && r.metadata.name === victim.metadata.name));
+	};
+	const tierHref = (app: string, tier: string) => hrefOf(app, (p) => p.tier === tier);
+
+	it('apps(): it is never the promotion target ("Ready to promote to dev · 1 behind")', () => {
+		const href = tierHref('billing-worker', 'dev');
+		without(href);
+		const item = apps('quiet').items.find((a) => a.app === 'billing-worker')!;
+		const place = item.placeList.find((p) => p.href === href)!;
+		expect(item.fact).not.toMatch(/Ready to promote|behind/);
+		expect(item.behind).toBeNull();
+		expect(place.currency).toBe('none');
+	});
+
+	it('runsIn(): it carries no currency word', () => {
+		const href = tierHref('billing-worker', 'dev');
+		without(href);
+		expect(runsIn('billing-worker', 'quiet').find((r) => r.href === href)!.word).toBe('');
+	});
+
+	it('regionStates / regionSquares: the prod square is health only, never "behind" or "not reached"', () => {
+		const href = tierHref('telemetry-collector', 'prod');
+		without(href);
+		expect(regionStates('telemetry-collector', 'quiet').find((r) => r.href === href)!.currency).toBe('none');
+		const sq = regionSquares('telemetry-collector', 'quiet');
+		expect(sq.inks).not.toContain('behind');
+		expect(sq.sentence).not.toMatch(/not reached|behind/);
+	});
+
+	it('/envs: it does not count as behind and says "No releases yet" on the at-rest row', () => {
+		const href = tierHref('billing-api', 'dev');
+		without(href);
+		const rest = envPage('quiet', 'dev')!.atRest.filter((x) => x.app === 'billing-api');
+		expect(rest.length).toBe(1);
+		expect(rest[0].sentence).toBe('No releases yet');
 	});
 });
