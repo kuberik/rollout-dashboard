@@ -23,8 +23,15 @@ const clearTimer = () => { if (timer) clearTimeout(timer); timer = null; };
 /** the row's Approve button the confirm opened from; where focus returns when the toast goes (if it still exists) */
 let returnTo: HTMLElement | null = null;
 /** the toast keeps its 8 s only while nobody is on it: hovering or focusing it pauses, leaving restarts */
-export function pauseDone(): void { clearTimer(); }
-export function resumeDone(): void { if (approvalUi.done && !timer) timer = setTimeout(dismissDone, UNDO_MS); }
+/** hover and focus are separate holds: the timer runs only when neither holds (a pointer leaving never closes the toast under a keyboard user on Undo) */
+const holds = { hover: false, focus: false };
+function syncTimer(): void {
+	if (holds.hover || holds.focus) clearTimer();
+	else if (approvalUi.done && !timer) timer = setTimeout(dismissDone, UNDO_MS);
+}
+export function holdDone(kind: 'hover' | 'focus', on: boolean): void { holds[kind] = on; syncTimer(); }
+export const pauseDone = (kind: 'hover' | 'focus' = 'hover'): void => holdDone(kind, true);
+export const resumeDone = (kind: 'hover' | 'focus' = 'hover'): void => holdDone(kind, false);
 /** Where focus lands when the toast is gone: the row's trigger if it is still mounted, else the page's main heading. Never BODY. */
 export function stableFocusTarget(): HTMLElement | null {
 	if (returnTo?.isConnected) return returnTo;
@@ -95,9 +102,9 @@ export function undoApprove(f?: typeof fetch): void {
 function handOffFocus(): void {
 	if (typeof document === 'undefined') return;
 	const a = document.activeElement;
-	if (!a || a === document.body || !a.isConnected || a.matches('[data-action="approve-undo"], [data-action="approve-dismiss"]')) stableFocusTarget()?.focus();
+	if (!a || a === document.body || !a.isConnected || a.closest('[data-approve-toast]')) stableFocusTarget()?.focus();
 }
-export function dismissDone(): void { clearTimer(); approvalUi.done = null; handOffFocus(); }
+export function dismissDone(): void { holds.hover = holds.focus = false; clearTimer(); approvalUi.done = null; handOffFocus(); }
 
 /** the banner / slipway form of the action: an ActRow `Act` that opens the same confirm */
 export function approveAct(target: ApprovalTarget | null, o: Partial<Act> = {}): Act | undefined {

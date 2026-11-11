@@ -57,6 +57,7 @@
 	});
 	function key(e: KeyboardEvent) {
 		if (e.key === 'Escape' && approvalUi.ask) { e.stopPropagation(); cancelApprove(); }
+		else if (e.key === 'Escape' && approvalUi.done) dismissDone();
 	}
 </script>
 
@@ -88,7 +89,7 @@
 
 {#if done}
 	{@const w = doneWords(done.target)}
-	<div role="presentation" onpointerover={pauseDone} onpointerout={resumeDone} onfocusin={pauseDone} onfocusout={resumeDone} style="display: contents">
+	<div role="presentation" data-approve-toast onpointerover={() => pauseDone('hover')} onpointerout={() => resumeDone('hover')} onfocusin={() => pauseDone('focus')} onfocusout={() => resumeDone('focus')} style="display: contents">
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
 		tone={done.error ? 'danger' : 'success'}

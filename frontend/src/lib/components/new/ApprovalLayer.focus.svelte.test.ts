@@ -50,6 +50,8 @@ describe('the toast auto-dismiss waits for the person and never drops focus to B
 	it('hovering or focusing the toast pauses the 8 s timer; leaving restarts it', async () => {
 		render(ApprovalLayer);
 		await open();
+		await tick(); await raf(); await raf();
+		(document.activeElement as HTMLElement)?.blur(); // focus has left the toast: only the pointer holds
 		pauseDone();
 		vi.advanceTimersByTime(UNDO_MS * 3);
 		expect(approvalUi.done).not.toBeNull();
@@ -80,4 +82,38 @@ describe('the toast auto-dismiss waits for the person and never drops focus to B
 		await tick(); await tick(); await raf();
 		expect(document.activeElement).toBe(trigger);
 	});
+	it("the toast's own x (any control inside it) hands focus off too, never BODY", async () => {
+		render(ApprovalLayer);
+		const main = document.createElement('main'); main.innerHTML = '<h1>Apps</h1>'; document.body.append(main);
+		const trigger = await open();
+		await tick(); await raf(); await raf();
+		trigger.remove();
+		const x = document.querySelector<HTMLButtonElement>('[aria-label="Dismiss"]')!;
+		x.focus(); x.click();
+		await tick(); await raf();
+		expect(document.activeElement).toBe(main.querySelector('h1'));
+	});
+	it('Escape dismisses the toast with the same hand-off', async () => {
+		render(ApprovalLayer);
+		const main = document.createElement('main'); main.innerHTML = '<h1>Apps</h1>'; document.body.append(main);
+		const trigger = await open();
+		await tick(); await raf(); await raf();
+		trigger.remove();
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		await tick();
+		expect(approvalUi.done).toBeNull();
+		expect(document.activeElement).toBe(main.querySelector('h1'));
+	});
+	it('hover and focus are separate holds: the pointer leaving while focus is on Undo does not start the clock', async () => {
+		render(ApprovalLayer);
+		await open();
+		await tick(); await raf(); await raf();
+		const undo = document.querySelector<HTMLButtonElement>('[data-action="approve-undo"]')!;
+		expect(document.activeElement).toBe(undo);
+		undo.dispatchEvent(new Event('pointerover', { bubbles: true }));
+		undo.dispatchEvent(new Event('pointerout', { bubbles: true }));
+		vi.advanceTimersByTime(UNDO_MS * 2);
+		expect(approvalUi.done).not.toBeNull();
+	});
 });
+
