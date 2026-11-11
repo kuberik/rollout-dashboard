@@ -880,7 +880,8 @@ function holdOracle(raw, at) {
 	for (const v of cat.values()) v.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
 	const behind = (p) => {
 		const rels = cat.get(`${p.ns}/${p.spec.releaseSourceRef?.name}`);
-		const i = rels ? rels.findIndex((x) => (x.tag ?? x.version) === p.st.currentVersion || x.version === p.st.currentVersion) : -1;
+		const run = tagOf(p.st.history?.[0]?.version) || p.st.currentVersion; /* the build a place runs is its newest history entry (the tab's "Running here"); status.currentVersion can lag it in the fixture */
+		const i = rels ? rels.findIndex((x) => x.tag === run || x.version === run) : -1;
 		return i < 0 ? null : rels.length - 1 - i;
 	};
 	return {
@@ -1099,7 +1100,7 @@ async function fleetChecks(statesToCheck) {
 			if (path === '/rollouts') {
 				const yours = { total: 0, byTier: {} };
 				for (const x of r.els) {
-					const g = x.kind === 'rollout' && x.group === 'approval' && x.word === 'Needs your approval' ? O.groupOf(x.href) : null;
+					const g = (x.kind === 'rollout' || x.kind === 'attention') && x.group === 'approval' && x.word === 'Needs your approval' ? O.groupOf(x.href) : null;
 					if (!g) continue;
 					yours.total += g.keys.length;
 					yours.byTier[g.tier] = (yours.byTier[g.tier] ?? 0) + g.keys.length;
@@ -1358,9 +1359,15 @@ async function waitClockChecks() {
 	} catch (e) {
 		return bad('waitclock', `could not read the raw fixture (${String(e.message).slice(0, 120)}): nothing was checked`);
 	}
-	const groups = [...O.groups.values()].filter((g) => !g.checking && g.clocks.size);
-	if (!groups.length) return bad('waitclock', 'the raw fixture has no approval waits, so nothing was checked');
 	const p = await ctx.newPage();
+	/* the waits the PAGE shows as approvals (rows and cards of /rollouts); the oracle supplies each one's clock. A place whose gate refuses a build but that /rollouts does not list as an approval is not a wait here. */
+	await p.goto(`${base}/rollouts?scenario=incident`, { waitUntil: 'load' });
+	await p.waitForSelector('li[data-truth-kind=rollout],[data-truth-kind=attention]', { timeout: 60000 }).catch(() => {});
+	await p.waitForTimeout(1500);
+	const shown = await p.evaluate(() => [...document.querySelectorAll('[data-truth-kind=rollout],[data-truth-kind=attention]')].filter((e) => e.dataset.truthGroup === 'approval').map((e) => e.dataset.truthHref ?? ''));
+	const groups = [...new Set(shown.map((h) => O.groupOf(h)).filter(Boolean))].filter((g) => !g.checking && g.clocks.size);
+	if (!shown.length) return bad('waitclock', '/rollouts lists no approval wait, so nothing was checked');
+	if (!groups.length) return bad('waitclock', `/rollouts lists ${shown.length} approval waits but the raw fixture has no approval gate refusing a build at any of them`);
 	let n = 0;
 	for (const g of groups) {
 		holdClock.set(`${g.app}|${g.tier}`, g.wait);
@@ -1407,9 +1414,20 @@ async function v2Checks() {
 	}
 	const p = await ctx.newPage();
 	const read = async (path, settle = 2500) => {
-		await p.goto(base + path, { waitUntil: 'load' });
+		for (let attempt = 0; ; attempt++) {
+			try {
+				await p.goto(base + path, { waitUntil: 'load', timeout: 60000 });
+				break;
+			} catch (e) {
+				if (attempt) {
+					bad(`v2 ${path}`, `page did not load (${String(e.message).split('\n')[0].slice(0, 80)})`);
+					return false;
+				}
+			}
+		}
 		await p.waitForFunction(() => (document.querySelector('main')?.innerText || '').trim().length > 80, null, { timeout: 30000 }).catch(() => {});
 		await p.waitForTimeout(settle);
+		return true;
 	};
 	if (!O.pins.length) bad('pin', 'the raw fixture has no pinned place (spec.wantedVersion), so the pinned-place case is not exercised');
 	await read('/rollouts', 3500);
@@ -1490,7 +1508,7 @@ async function v2Checks() {
 		const q0 = O.places.find((q) => q.app === app && q.spec.releaseSourceRef);
 		const rels = O.catalogue(q0);
 		if (!rels?.length) continue;
-		await read(`/apps/${app}`, 2000);
+		if (!(await read(`/apps/${app}`, 2000))) continue;
 		const bs = await p.evaluate(() => [...document.querySelectorAll('li[data-truth-kind=build]')].map((l) => ({ build: l.dataset.truthBuild ?? '', lag: l.dataset.truthLag ?? '', text: l.innerText.replace(/\s+/g, ' ').trim() })));
 		for (const r of bs) {
 			const i = rels.findIndex((x) => x.version === r.build || x.tag === r.build);
