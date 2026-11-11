@@ -228,7 +228,7 @@ describe('one classification for the toast, the row, the Holding card and the bu
 			expect(doneWords(t).detail).toBe(`payments-core waits on Permits newest only for ${t.where}`);
 			grant(t);
 			expect(rollouts('incident').rows.some((r) => r.app === 'payments-core' && r.tier === 'prod' && (r.state === 'deploying' || r.state === 'checking'))).toBe(false);
-			/* the row follows promotionBlock (unchanged): no gate stops every candidate, so it names the gate that stops the NEWEST (its own approval); the toast and card name X */
+			/* the row, the toast and the card all name X (ruling 4) */
 			expect(placeHolds('payments-core', 'incident').find((h) => h.tier === 'prod')?.gate?.name).toBe('Permits newest only');
 			expect(gatesOf('payments-core', 'incident').find((g) => g.id === 'permits-newest-only')?.holding).toBe(true);
 		});
@@ -324,10 +324,19 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 		}));
 	});
 	alsoCase('a persistent hold (a failing check)', { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }, /^Approving won't deploy until .+ clears$/);
-	it('QA14 row: X permits the newest, the approved build is older: the row shows the newest build\'s own "Needs your approval"', () => {
+	it('QA14 row: X permits only the newest, so no approval of the approved build can deploy it: the row says X holds it, with no ask, before and after the grant (the row reads the same per-build refusers as the toast and the Holding card)', () => {
 		const { newest } = targetAndNewest();
 		patched([{ name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] }], () => {
-			expect(sentenceOf(prodRow(), 'incident')[0]).toBe('Needs your approval');
+			const t = approvalTarget(row('payments-core')!, 'incident')!;
+			expect(t.waitsOn).toBe('Permits newest only');
+			const check = () => {
+				expect(sentenceOf(prodRow(), 'incident')[0]).toBe('Held by Permits newest only');
+				expect(sentenceOf(prodRow(), 'incident')[0]).not.toMatch(/approval/i);
+				expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask').toBe(false);
+			};
+			check();
+			grant(t);
+			check();
 		});
 	});
 	it('refuses every build: held after Approve, and the toast, the row and the Holding card name the same gate', () => {

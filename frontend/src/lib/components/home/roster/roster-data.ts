@@ -78,7 +78,12 @@ const isLiveHealthy = (s: string) => s !== 'failed' && s !== 'not-deployed' && s
 /** craft r2: a git sha shortens to 7; a semver tag ("4.43.0-43") is already short and is never cut. */
 const shortVersion = (v: string | null | undefined): string | null => (!v ? null : /^[0-9a-f]{8,40}$/.test(v) ? v.slice(0, 7) : v);
 
-export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.apps) {
+/** The per-build refusers (the toast's `waitsOn`, the Holding card, `placeHolds`): data.ts registers the one function that names the rule still refusing the build a person is APPROVING at a place once the approval is written, else null.
+ *  The env's own state reads the frontier (newest) build; an approval is asked for another build, and if a rule refuses THAT build no approval can deploy it, so the place is held by that rule, with no ask (ruling 4). */
+let ruleAfterApproval: ((href: string, app: string, state: HomeState) => string | null) | null = null;
+export const setRuleAfterApproval = (f: typeof ruleAfterApproval): void => { ruleAfterApproval = f; };
+
+export function rollouts(state: HomeState) {
 	const c = compass(state);
 	const { v, m } = c;
 	const L = v.lead;
@@ -111,8 +116,9 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 				continue;
 			}
 			const my = e.myChanges.find((ch) => ch.state === e.state) ?? null;
+			const ruleHeld = e.state === 'awaiting-approval' && !!ruleAfterApproval?.(e.href, a.app, state);
 			busy.push({
-				prov: e.state === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: e.state, version: shortVersion(e.version),
+				prov: e.state === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: ruleHeld ? 'held-by-rule' : e.state, version: shortVersion(e.version),
 				/* craft r7 (nit): a failing place's age is the failure's (the change's failed entry), not the deploy's */
 				since: (e.state === 'awaiting-approval' || e.state === 'held-by-rule' ? e.heldSince : null) ?? (e.state === 'failed' ? e.myChanges.find((ch) => ch.state === 'failed')?.since : null) ?? e.arrivedAt,
 				href: e.href, also: e.state === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
