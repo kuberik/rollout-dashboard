@@ -823,15 +823,18 @@ lib/components/new/env/EnvPage.svelte	text	Roll back
 lib/components/new/env/EnvPage.svelte	text	Show … earlier
 lib/components/new/env/EnvPage.svelte	title	Today in …
 lib/components/new/env/GangwayTile.svelte	text	from …
+lib/components/new/environments-page.ts	code	… failed the bake
 lib/components/new/environments-page.ts	code	… failing
 lib/components/new/environments-page.ts	code	… for you
 lib/components/new/environments-page.ts	code	… healthy
-lib/components/new/environments-page.ts	code	… held · ${failed ?
+lib/components/new/environments-page.ts	code	… held · … failed the bake
 lib/components/new/environments-page.ts	code	… places: … failing, … waiting, … …, … healthy
 lib/components/new/environments-page.ts	code	… waiting
+lib/components/new/environments-page.ts	code	… waiting for …
 lib/components/new/environments-page.ts	code	All … healthy
 lib/components/new/environments-page.ts	code	in progress
 lib/components/new/environments-page.ts	code	rolled back
+lib/components/new/environments-page.ts	code	waiting for …
 lib/components/new/Environments.svelte	title	Arrived in prod
 lib/components/new/Environments.svelte	text	Environments appear here as soon as a rollout is deployed to one.
 lib/components/new/Environments.svelte	text	No environments yet

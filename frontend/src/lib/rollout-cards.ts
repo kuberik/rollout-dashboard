@@ -3,6 +3,7 @@
 // so stuck/behind/failure classification logic lives in exactly one place.
 
 import { behindOfRollout } from './view-models/behind';
+import { liveForPlace, newerReleaseCountLive, type Fleet } from './view-models/failed-builds';
 import type { Rollout, Environment } from '../types';
 import { getRolloutEnvironmentTheme, shortEnvLabel } from './environment-theme';
 import {
@@ -15,12 +16,11 @@ import {
 import type { StuckReason } from './utils';
 import { compareEnvironmentNames } from './env-order';
 import {
-	newerReleaseCount,
 	promotionBlock,
 	blockNeedsPerson,
 	detectStuckPromotion
 } from './view-models/promotion';
-import type { PromotionStuckReason } from './view-models/promotion';
+import { promotionCandidates, type PromotionStuckReason } from './view-models/promotion';
 import { rankVerdictsByRollout, rankBehindBy } from './view-models/env-rank';
 import type { RankVerdict } from './view-models/env-rank';
 import { checkFailure } from './view-models/health-witness';
@@ -102,12 +102,14 @@ export function detectRolloutStuck(
 		gateContext?: GateContext;
 		bakeThresholdMs?: number;
 		behindThresholdMs?: number;
+		/** the fleet lists the wave chain lives in: the promotion reason's printed count subtracts a build that failed upstream (batch4 #3d) */
+		fleet?: Fleet;
 	} = {}
 ): StuckReason | PromotionStuckReason | null {
 	const own = detectStuck(rollout, { now: options.now, bakeThresholdMs: options.bakeThresholdMs });
 	if (own) return own;
 	const promo = detectStuckPromotion(rollout, { now: options.now, gateContext: options.gateContext });
-	if (promo) return promo;
+	if (promo) return { ...promo, newerCount: liveForPlace(rollout as never, promotionCandidates(rollout) as never, options.fleet).length };
 	const block = promotionBlock(rollout);
 	if (block.blocked && !blockNeedsPerson(rollout, block, options.gateContext)) {
 		// Held by a clock/upstream gate that correctly refuses every
@@ -364,6 +366,8 @@ export type RolloutCard = {
 	 * a perfectly ordinary rollout — see the note on `computeBehind`.
 	 */
 	behind: { fromEnv: string; version: string; behindBy: number | null } | null;
+	/** the "N newer builds" count the cards, palette and lanes print: `behindOfRollout` over this build's own fleet lists, so a build that failed upstream in its wave chain is not counted (batch4 #3b) */
+	behindCount?: number;
 	/**
 	 * ⛔ "1 BEHIND" AND "1 BEHIND, AND STUCK THERE" LOOK IDENTICAL WITHOUT
 	 * THIS. `rank`/`behind` only say a newer build exists; they say nothing
@@ -467,7 +471,8 @@ function buildAppIndex(
 function computeBehind(
 	r: Rollout,
 	envName: string,
-	appIndex: Map<string, { envName: string; rollout: Rollout }[]>
+	appIndex: Map<string, { envName: string; rollout: Rollout }[]>,
+	fleet?: Fleet
 ): { fromEnv: string; version: string; behindBy: number | null } | null {
 	if (r.spec?.wantedVersion) return null;
 	const peers = appIndex.get(r.metadata?.name ?? '');
@@ -481,7 +486,7 @@ function computeBehind(
 		if (!best || (candidate.behindBy ?? 0) > (best.behindBy ?? 0)) best = candidate;
 	}
 
-	const myNewer = newerReleaseCount(r);
+	const myNewer = newerReleaseCountLive(r as never, fleet); /* the ONE behind rule: a failed or rolled-back build is no lag */
 	// `null` = lag is unknowable (current version aged out of its own
 	// availableReleases). Say nothing rather than something false, and leave
 	// whatever compareRollouts managed to work out.
@@ -495,7 +500,7 @@ function computeBehind(
 	let ahead: { envName: string; version: string; newer: number } | null = null;
 	for (const peer of peers) {
 		if (peer.envName === envName) continue;
-		const peerNewer = newerReleaseCount(peer.rollout);
+		const peerNewer = newerReleaseCountLive(peer.rollout as never, fleet);
 		if (peerNewer === null || peerNewer >= myNewer) continue; // not ahead of me
 		const peerV = peer.rollout.status?.history?.[0]?.version
 			? getDisplayVersion(peer.rollout.status.history[0].version)
@@ -553,7 +558,7 @@ export function buildRolloutCards(
 		const rank: RankVerdict = ranks.get(r) ?? { kind: 'unknown' };
 		// Attribution keeps its peer; the NUMBER comes off the ladder so the
 		// card and the app row cannot print two answers for one rollout.
-		const attribution = envName ? computeBehind(r, envName, appIndex) : null;
+		const attribution = envName ? computeBehind(r, envName, appIndex, { environments, rollouts }) : null;
 		const behind = attribution ? { ...attribution, behindBy: rankBehindBy(rank) } : null;
 		const peers = (appIndex.get(r.metadata?.name ?? '') ?? []).filter(
 			(p) => p.envName !== envName
@@ -582,8 +587,8 @@ export function buildRolloutCards(
 		// needs to tell a chain gate from a same-tier order gate — at the
 		// same cost `promotionBlock(r).blocked` already paid.
 		const cardStory = contractHoldsFor
-			? blockingStory(r, gateContext, { contractHolds: contractHoldsFor(r), now })
-			: blockingStory(r, gateContext, { now });
+			? blockingStory(r, gateContext, { contractHolds: contractHoldsFor(r), now, fleet: { environments, rollouts } })
+			: blockingStory(r, gateContext, { now, fleet: { environments, rollouts } });
 		const heldCardVerdict = heldVerdict(cardStory, envName);
 		return {
 			ns: r.metadata?.namespace || '',
@@ -610,10 +615,11 @@ export function buildRolloutCards(
 			previousSucceededVersion,
 			pinnedVersion: r.spec?.wantedVersion || null,
 			rolledBack: detectRollback(r),
-			stuck: detectRolloutStuck(r, peers, { now, gateContext }),
+			stuck: detectRolloutStuck(r, peers, { now, gateContext, fleet: { environments, rollouts } }),
 			checkFailure: checkFailure(r),
 			rank,
 			behind,
+			behindCount: behindOfRollout(r, rank, { environments, rollouts }),
 			held: heldCardVerdict.held,
 			heldCause: heldCardVerdict.cause,
 			// ⭐ qa12 (squad-rollout gates-2 follow-up, 2026-10-11): the
@@ -703,7 +709,7 @@ export function buildRolloutCards(
  * env chip and ONE `[verdict][build]` chip, and that is the whole budget.
  */
 export function cardVerdict(
-	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held' | 'rank' | 'rollout'>>,
+	c: Pick<RolloutCard, 'rolledBack' | 'pinnedVersion'> & Partial<Pick<RolloutCard, 'held' | 'rank' | 'rollout' | 'behindCount'>>,
 	rankWord: string,
 	rankSentence: string
 ): { label: string; title: string } {
@@ -713,7 +719,7 @@ export function cardVerdict(
 	// upgrade path's size, and beside "no rule lets it through yet" it read
 	// as a contradiction. For a held row the number is how many are WAITING.
 	if (mark?.kind === 'held') {
-		const n = c.rank ? behindOfRollout(c.rollout, c.rank) : 0;
+		const n = c.rank ? (c.behindCount ?? behindOfRollout(c.rollout, c.rank)) : 0;
 		const waiting =
 			n > 0 ? ` ${n} newer build${n === 1 ? ' is' : 's are'} waiting.` : '';
 		return { label: rankWord, title: `${mark.title}${waiting}` };

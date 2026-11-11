@@ -511,7 +511,7 @@
 	function shapedConsequence(s: BlockingStory | null | undefined): string {
 		if (!s) return '';
 		if (s.gates.length === 1 && s.clock.length === 1 && s.clearsAt) {
-			const n = s.candidateCount;
+			const n = s.newerCount ?? s.candidateCount; /* the live count (failed-builds.ts) */
 			const lead =
 				n > 0 ? `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} waiting. ` : '';
 			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} — ${formatAbsoluteReopen(s.clearsAt)}.`;

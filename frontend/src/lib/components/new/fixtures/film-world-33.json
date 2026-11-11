@@ -1,0 +1,1265 @@
+{
+ "_source": "scenario-derived: website islands/src/islands/film/scenario.ts worldAt(33) (landing-v5 worktree .work/wt-landing-v5, b901b78), story second 33; checkout-api places only. Regenerate, do not hand-edit.",
+ "rollouts": [
+  {
+   "apiVersion": "kuberik.com/v1alpha1",
+   "kind": "Rollout",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-staging",
+    "labels": {
+     "environment": "staging"
+    },
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "staging"
+    }
+   },
+   "spec": {
+    "releasesImagePolicy": "checkout-api-staging/checkout-api",
+    "versionHistoryLimit": 20,
+    "minBakeTime": "2m",
+    "bakeTime": "1m",
+    "healthCheckSelector": {
+     "matchLabels": {
+      "app": "checkout-api",
+      "env": "staging"
+     }
+    }
+   },
+   "status": {
+    "source": "github.com/exampleco/checkout-api",
+    "wantedVersion": "b-46",
+    "currentVersion": "b-46",
+    "previousVersion": "b-45",
+    "availableReleases": [
+     {
+      "tag": "b-44",
+      "version": "4.44.0-44",
+      "revision": "b44d3e19a0c7e5a1f2b8c9d04e6a7b1c2d3e4f50",
+      "created": "2026-11-09T03:02:00.000Z"
+     },
+     {
+      "tag": "b-45",
+      "version": "4.45.0-45",
+      "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+      "created": "2026-11-10T05:02:00.000Z"
+     },
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "releaseCandidates": [],
+    "history": [
+     {
+      "id": 2,
+      "version": {
+       "tag": "b-46",
+       "version": "4.46.0-46",
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "created": "2026-11-10T09:01:58.892Z",
+       "requires": {
+        "payments": "^3.1.0"
+       }
+      },
+      "timestamp": "2026-11-10T09:02:00.000Z",
+      "bakeStatus": "Succeeded",
+      "bakeStartTime": "2026-11-10T09:08:16.615Z",
+      "bakeEndTime": "2026-11-10T09:10:07.384Z",
+      "triggeredBy": {
+       "kind": "System",
+       "name": "System"
+      }
+     },
+     {
+      "id": 1,
+      "version": {
+       "tag": "b-45",
+       "version": "4.45.0-45",
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "created": "2026-11-10T05:02:00.000Z"
+      },
+      "timestamp": "2026-11-10T06:02:00.000Z",
+      "bakeStatus": "Succeeded",
+      "bakeStartTime": "2026-11-10T06:02:00.000Z",
+      "bakeEndTime": "2026-11-10T06:12:00.000Z",
+      "triggeredBy": {
+       "kind": "System",
+       "name": "System"
+      }
+     }
+    ],
+    "gates": []
+   }
+  },
+  {
+   "apiVersion": "kuberik.com/v1alpha1",
+   "kind": "Rollout",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-us-east-1",
+    "labels": {
+     "environment": "prod-us-east-1"
+    },
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "releasesImagePolicy": "checkout-api-prod-us-east-1/checkout-api",
+    "versionHistoryLimit": 20,
+    "minBakeTime": "2m",
+    "bakeTime": "50s",
+    "healthCheckSelector": {
+     "matchLabels": {
+      "app": "checkout-api",
+      "env": "prod-us-east-1"
+     }
+    }
+   },
+   "status": {
+    "source": "github.com/exampleco/checkout-api",
+    "wantedVersion": "b-46",
+    "currentVersion": "b-46",
+    "previousVersion": "b-45",
+    "availableReleases": [
+     {
+      "tag": "b-44",
+      "version": "4.44.0-44",
+      "revision": "b44d3e19a0c7e5a1f2b8c9d04e6a7b1c2d3e4f50",
+      "created": "2026-11-09T03:02:00.000Z"
+     },
+     {
+      "tag": "b-45",
+      "version": "4.45.0-45",
+      "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+      "created": "2026-11-10T05:02:00.000Z"
+     },
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "releaseCandidates": [],
+    "history": [
+     {
+      "id": 2,
+      "version": {
+       "tag": "b-46",
+       "version": "4.46.0-46",
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "created": "2026-11-10T09:01:58.892Z",
+       "requires": {
+        "payments": "^3.1.0"
+       }
+      },
+      "timestamp": "2026-11-10T10:00:12.857Z",
+      "bakeStatus": "Failed",
+      "bakeStartTime": "2026-11-10T10:20:40.000Z",
+      "bakeEndTime": "2026-11-10T10:31:00.000Z",
+      "message": "Health check error-rate failed",
+      "failedHealthChecks": [
+       {
+        "name": "error-rate",
+        "message": "3.2% of requests failed, over a 1% budget",
+        "observations": [
+         {
+          "name": "error rate",
+          "kind": "Threshold",
+          "value": "3.2",
+          "limit": "1",
+          "unit": "%",
+          "direction": "Above",
+          "healthy": false
+         }
+        ]
+       }
+      ],
+      "triggeredBy": {
+       "kind": "System",
+       "name": "System"
+      }
+     },
+     {
+      "id": 1,
+      "version": {
+       "tag": "b-45",
+       "version": "4.45.0-45",
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "created": "2026-11-10T05:02:00.000Z"
+      },
+      "timestamp": "2026-11-10T06:02:00.000Z",
+      "bakeStatus": "Succeeded",
+      "bakeStartTime": "2026-11-10T06:02:00.000Z",
+      "bakeEndTime": "2026-11-10T06:12:00.000Z",
+      "triggeredBy": {
+       "kind": "System",
+       "name": "System"
+      }
+     }
+    ],
+    "gates": [
+     {
+      "name": "dependency-checkout-api-needs-payments",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "deploy-window",
+      "passing": true,
+      "allowedVersions": null,
+      "message": "Gate is passing"
+     },
+     {
+      "name": "promotion-prod-us-east-1",
+      "allowedVersions": [
+       "b-46",
+       "b-45"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "release-approval",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "kuberik.com/v1alpha1",
+   "kind": "Rollout",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-us-east-2",
+    "labels": {
+     "environment": "prod-us-east-2"
+    },
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "releasesImagePolicy": "checkout-api-prod-us-east-2/checkout-api",
+    "versionHistoryLimit": 20,
+    "minBakeTime": "2m",
+    "bakeTime": "1m",
+    "healthCheckSelector": {
+     "matchLabels": {
+      "app": "checkout-api",
+      "env": "prod-us-east-2"
+     }
+    }
+   },
+   "status": {
+    "source": "github.com/exampleco/checkout-api",
+    "wantedVersion": "b-45",
+    "currentVersion": "b-45",
+    "previousVersion": "b-44",
+    "availableReleases": [
+     {
+      "tag": "b-44",
+      "version": "4.44.0-44",
+      "revision": "b44d3e19a0c7e5a1f2b8c9d04e6a7b1c2d3e4f50",
+      "created": "2026-11-09T03:02:00.000Z"
+     },
+     {
+      "tag": "b-45",
+      "version": "4.45.0-45",
+      "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+      "created": "2026-11-10T05:02:00.000Z"
+     },
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "releaseCandidates": [
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "history": [
+     {
+      "id": 1,
+      "version": {
+       "tag": "b-45",
+       "version": "4.45.0-45",
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "created": "2026-11-10T05:02:00.000Z"
+      },
+      "timestamp": "2026-11-10T06:02:00.000Z",
+      "bakeStatus": "Succeeded",
+      "bakeStartTime": "2026-11-10T06:02:00.000Z",
+      "bakeEndTime": "2026-11-10T06:12:00.000Z",
+      "triggeredBy": {
+       "kind": "System",
+       "name": "System"
+      }
+     }
+    ],
+    "gates": [
+     {
+      "name": "dependency-checkout-api-needs-payments",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "deploy-window",
+      "passing": true,
+      "allowedVersions": null,
+      "message": "Gate is passing"
+     },
+     {
+      "name": "promotion-prod-us-east-2",
+      "allowedVersions": [
+       "b-45"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "release-approval",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "kuberik.com/v1alpha1",
+   "kind": "Rollout",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-eu-west-1",
+    "labels": {
+     "environment": "prod-eu-west-1"
+    },
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "releasesImagePolicy": "checkout-api-prod-eu-west-1/checkout-api",
+    "versionHistoryLimit": 20,
+    "minBakeTime": "2m",
+    "bakeTime": "1m",
+    "healthCheckSelector": {
+     "matchLabels": {
+      "app": "checkout-api",
+      "env": "prod-eu-west-1"
+     }
+    }
+   },
+   "status": {
+    "source": "github.com/exampleco/checkout-api",
+    "wantedVersion": "b-45",
+    "currentVersion": "b-45",
+    "previousVersion": "b-44",
+    "availableReleases": [
+     {
+      "tag": "b-44",
+      "version": "4.44.0-44",
+      "revision": "b44d3e19a0c7e5a1f2b8c9d04e6a7b1c2d3e4f50",
+      "created": "2026-11-09T03:02:00.000Z"
+     },
+     {
+      "tag": "b-45",
+      "version": "4.45.0-45",
+      "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+      "created": "2026-11-10T05:02:00.000Z"
+     },
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "releaseCandidates": [
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "history": [
+     {
+      "id": 1,
+      "version": {
+       "tag": "b-45",
+       "version": "4.45.0-45",
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "created": "2026-11-10T05:02:00.000Z"
+      },
+      "timestamp": "2026-11-10T06:02:00.000Z",
+      "bakeStatus": "Succeeded",
+      "bakeStartTime": "2026-11-10T06:02:00.000Z",
+      "bakeEndTime": "2026-11-10T06:12:00.000Z",
+      "triggeredBy": {
+       "kind": "System",
+       "name": "System"
+      }
+     }
+    ],
+    "gates": [
+     {
+      "name": "dependency-checkout-api-needs-payments",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "deploy-window",
+      "passing": true,
+      "allowedVersions": null,
+      "message": "Gate is passing"
+     },
+     {
+      "name": "promotion-prod-eu-west-1",
+      "allowedVersions": [
+       "b-45"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "release-approval",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "kuberik.com/v1alpha1",
+   "kind": "Rollout",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-eu-central-1",
+    "labels": {
+     "environment": "prod-eu-central-1"
+    },
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "releasesImagePolicy": "checkout-api-prod-eu-central-1/checkout-api",
+    "versionHistoryLimit": 20,
+    "minBakeTime": "2m",
+    "bakeTime": "1m",
+    "healthCheckSelector": {
+     "matchLabels": {
+      "app": "checkout-api",
+      "env": "prod-eu-central-1"
+     }
+    }
+   },
+   "status": {
+    "source": "github.com/exampleco/checkout-api",
+    "wantedVersion": "b-45",
+    "currentVersion": "b-45",
+    "previousVersion": "b-44",
+    "availableReleases": [
+     {
+      "tag": "b-44",
+      "version": "4.44.0-44",
+      "revision": "b44d3e19a0c7e5a1f2b8c9d04e6a7b1c2d3e4f50",
+      "created": "2026-11-09T03:02:00.000Z"
+     },
+     {
+      "tag": "b-45",
+      "version": "4.45.0-45",
+      "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+      "created": "2026-11-10T05:02:00.000Z"
+     },
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "releaseCandidates": [
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "history": [
+     {
+      "id": 1,
+      "version": {
+       "tag": "b-45",
+       "version": "4.45.0-45",
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "created": "2026-11-10T05:02:00.000Z"
+      },
+      "timestamp": "2026-11-10T06:02:00.000Z",
+      "bakeStatus": "Succeeded",
+      "bakeStartTime": "2026-11-10T06:02:00.000Z",
+      "bakeEndTime": "2026-11-10T06:12:00.000Z",
+      "triggeredBy": {
+       "kind": "System",
+       "name": "System"
+      }
+     }
+    ],
+    "gates": [
+     {
+      "name": "dependency-checkout-api-needs-payments",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "deploy-window",
+      "passing": true,
+      "allowedVersions": null,
+      "message": "Gate is passing"
+     },
+     {
+      "name": "promotion-prod-eu-central-1",
+      "allowedVersions": [
+       "b-45"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "release-approval",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "kuberik.com/v1alpha1",
+   "kind": "Rollout",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-ap-southeast-2",
+    "labels": {
+     "environment": "prod-ap-southeast-2"
+    },
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "releasesImagePolicy": "checkout-api-prod-ap-southeast-2/checkout-api",
+    "versionHistoryLimit": 20,
+    "minBakeTime": "2m",
+    "bakeTime": "1m",
+    "healthCheckSelector": {
+     "matchLabels": {
+      "app": "checkout-api",
+      "env": "prod-ap-southeast-2"
+     }
+    }
+   },
+   "status": {
+    "source": "github.com/exampleco/checkout-api",
+    "wantedVersion": "b-45",
+    "currentVersion": "b-45",
+    "previousVersion": "b-44",
+    "availableReleases": [
+     {
+      "tag": "b-44",
+      "version": "4.44.0-44",
+      "revision": "b44d3e19a0c7e5a1f2b8c9d04e6a7b1c2d3e4f50",
+      "created": "2026-11-09T03:02:00.000Z"
+     },
+     {
+      "tag": "b-45",
+      "version": "4.45.0-45",
+      "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+      "created": "2026-11-10T05:02:00.000Z"
+     },
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "releaseCandidates": [
+     {
+      "tag": "b-46",
+      "version": "4.46.0-46",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+      "created": "2026-11-10T09:01:58.892Z",
+      "requires": {
+       "payments": "^3.1.0"
+      }
+     }
+    ],
+    "history": [
+     {
+      "id": 1,
+      "version": {
+       "tag": "b-45",
+       "version": "4.45.0-45",
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "created": "2026-11-10T05:02:00.000Z"
+      },
+      "timestamp": "2026-11-10T06:02:00.000Z",
+      "bakeStatus": "Succeeded",
+      "bakeStartTime": "2026-11-10T06:02:00.000Z",
+      "bakeEndTime": "2026-11-10T06:12:00.000Z",
+      "triggeredBy": {
+       "kind": "System",
+       "name": "System"
+      }
+     }
+    ],
+    "gates": [
+     {
+      "name": "dependency-checkout-api-needs-payments",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "deploy-window",
+      "passing": true,
+      "allowedVersions": null,
+      "message": "Gate is passing"
+     },
+     {
+      "name": "promotion-prod-ap-southeast-2",
+      "allowedVersions": [
+       "b-45"
+      ],
+      "message": "Gate is passing"
+     },
+     {
+      "name": "release-approval",
+      "allowedVersions": [
+       "b-44",
+       "b-45",
+       "b-46"
+      ],
+      "message": "Gate is passing"
+     }
+    ]
+   }
+  }
+ ],
+ "environments": [
+  {
+   "apiVersion": "environments.kuberik.com/v1alpha1",
+   "kind": "Environment",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-staging",
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "staging"
+    }
+   },
+   "spec": {
+    "environment": "staging",
+    "name": "checkout-api-service",
+    "rolloutRef": {
+     "name": "checkout-api"
+    }
+   },
+   "status": {
+    "currentVersion": "b-46",
+    "lastStatusChangeTime": "2026-11-10T09:02:00.000Z",
+    "wave": {
+     "site": "default",
+     "environment": "staging",
+     "name": "kuberik-checkout-api-service",
+     "wave": 1,
+     "role": "Leader",
+     "leader": "default",
+     "selectedRevision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+     "members": [
+      {
+       "environment": "staging",
+       "site": "default",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Succeeded"
+      }
+     ]
+    },
+    "conditions": [
+     {
+      "type": "WaveReady",
+      "status": "True",
+      "reason": "Ready",
+      "message": "site may deploy the allowed versions",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     },
+     {
+      "type": "LockstepConsistent",
+      "status": "True",
+      "reason": "Consistent",
+      "message": "all members agree on lockstep",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "environments.kuberik.com/v1alpha1",
+   "kind": "Environment",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-us-east-1",
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "environment": "prod",
+    "name": "checkout-api-service",
+    "rolloutRef": {
+     "name": "checkout-api"
+    },
+    "site": "us-east-1",
+    "wave": 1
+   },
+   "status": {
+    "rolloutGateRef": {
+     "name": "promotion-prod-us-east-1"
+    },
+    "currentVersion": "b-46",
+    "lastStatusChangeTime": "2026-11-10T10:00:12.857Z",
+    "wave": {
+     "site": "us-east-1",
+     "environment": "prod",
+     "name": "kuberik-checkout-api-service",
+     "wave": 1,
+     "role": "Leader",
+     "leader": "us-east-1",
+     "selectedRevision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+     "members": [
+      {
+       "environment": "prod",
+       "site": "us-east-1",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Failed"
+      },
+      {
+       "environment": "prod",
+       "site": "ap-southeast-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-central-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-west-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "us-east-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "staging",
+       "site": "default",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Succeeded"
+      }
+     ]
+    },
+    "conditions": [
+     {
+      "type": "WaveReady",
+      "status": "True",
+      "reason": "Ready",
+      "message": "site may deploy the allowed versions",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     },
+     {
+      "type": "LockstepConsistent",
+      "status": "True",
+      "reason": "Consistent",
+      "message": "all members agree on lockstep",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "environments.kuberik.com/v1alpha1",
+   "kind": "Environment",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-us-east-2",
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "environment": "prod",
+    "name": "checkout-api-service",
+    "rolloutRef": {
+     "name": "checkout-api"
+    },
+    "site": "us-east-2",
+    "wave": 2
+   },
+   "status": {
+    "rolloutGateRef": {
+     "name": "promotion-prod-us-east-2"
+    },
+    "currentVersion": "b-45",
+    "lastStatusChangeTime": "2026-11-10T06:02:00.000Z",
+    "wave": {
+     "site": "us-east-2",
+     "environment": "prod",
+     "name": "kuberik-checkout-api-service",
+     "wave": 2,
+     "role": "Follower",
+     "leader": "ap-southeast-2",
+     "selectedRevision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+     "members": [
+      {
+       "environment": "prod",
+       "site": "us-east-1",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Failed"
+      },
+      {
+       "environment": "prod",
+       "site": "ap-southeast-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-central-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-west-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "us-east-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "staging",
+       "site": "default",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Succeeded"
+      }
+     ]
+    },
+    "conditions": [
+     {
+      "type": "WaveReady",
+      "status": "True",
+      "reason": "Ready",
+      "message": "site may deploy the allowed versions",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     },
+     {
+      "type": "LockstepConsistent",
+      "status": "True",
+      "reason": "Consistent",
+      "message": "all members agree on lockstep",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "environments.kuberik.com/v1alpha1",
+   "kind": "Environment",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-eu-west-1",
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "environment": "prod",
+    "name": "checkout-api-service",
+    "rolloutRef": {
+     "name": "checkout-api"
+    },
+    "site": "eu-west-1",
+    "wave": 2
+   },
+   "status": {
+    "rolloutGateRef": {
+     "name": "promotion-prod-eu-west-1"
+    },
+    "currentVersion": "b-45",
+    "lastStatusChangeTime": "2026-11-10T06:02:00.000Z",
+    "wave": {
+     "site": "eu-west-1",
+     "environment": "prod",
+     "name": "kuberik-checkout-api-service",
+     "wave": 2,
+     "role": "Follower",
+     "leader": "ap-southeast-2",
+     "selectedRevision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+     "members": [
+      {
+       "environment": "prod",
+       "site": "us-east-1",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Failed"
+      },
+      {
+       "environment": "prod",
+       "site": "ap-southeast-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-central-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-west-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "us-east-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "staging",
+       "site": "default",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Succeeded"
+      }
+     ]
+    },
+    "conditions": [
+     {
+      "type": "WaveReady",
+      "status": "True",
+      "reason": "Ready",
+      "message": "site may deploy the allowed versions",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     },
+     {
+      "type": "LockstepConsistent",
+      "status": "True",
+      "reason": "Consistent",
+      "message": "all members agree on lockstep",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "environments.kuberik.com/v1alpha1",
+   "kind": "Environment",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-eu-central-1",
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "environment": "prod",
+    "name": "checkout-api-service",
+    "rolloutRef": {
+     "name": "checkout-api"
+    },
+    "site": "eu-central-1",
+    "wave": 2
+   },
+   "status": {
+    "rolloutGateRef": {
+     "name": "promotion-prod-eu-central-1"
+    },
+    "currentVersion": "b-45",
+    "lastStatusChangeTime": "2026-11-10T06:02:00.000Z",
+    "wave": {
+     "site": "eu-central-1",
+     "environment": "prod",
+     "name": "kuberik-checkout-api-service",
+     "wave": 2,
+     "role": "Follower",
+     "leader": "ap-southeast-2",
+     "selectedRevision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+     "members": [
+      {
+       "environment": "prod",
+       "site": "us-east-1",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Failed"
+      },
+      {
+       "environment": "prod",
+       "site": "ap-southeast-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-central-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-west-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "us-east-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "staging",
+       "site": "default",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Succeeded"
+      }
+     ]
+    },
+    "conditions": [
+     {
+      "type": "WaveReady",
+      "status": "True",
+      "reason": "Ready",
+      "message": "site may deploy the allowed versions",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     },
+     {
+      "type": "LockstepConsistent",
+      "status": "True",
+      "reason": "Consistent",
+      "message": "all members agree on lockstep",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "environments.kuberik.com/v1alpha1",
+   "kind": "Environment",
+   "metadata": {
+    "name": "checkout-api",
+    "namespace": "checkout-api-prod-ap-southeast-2",
+    "annotations": {
+     "rollout-dashboard.kuberik.com/source-cluster": "prod"
+    }
+   },
+   "spec": {
+    "environment": "prod",
+    "name": "checkout-api-service",
+    "rolloutRef": {
+     "name": "checkout-api"
+    },
+    "site": "ap-southeast-2",
+    "wave": 2
+   },
+   "status": {
+    "rolloutGateRef": {
+     "name": "promotion-prod-ap-southeast-2"
+    },
+    "currentVersion": "b-45",
+    "lastStatusChangeTime": "2026-11-10T06:02:00.000Z",
+    "wave": {
+     "site": "ap-southeast-2",
+     "environment": "prod",
+     "name": "kuberik-checkout-api-service",
+     "wave": 2,
+     "role": "Leader",
+     "leader": "ap-southeast-2",
+     "selectedRevision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+     "members": [
+      {
+       "environment": "prod",
+       "site": "us-east-1",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Failed"
+      },
+      {
+       "environment": "prod",
+       "site": "ap-southeast-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-central-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "eu-west-1",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "prod",
+       "site": "us-east-2",
+       "wave": 2,
+       "revision": "b45a7c2e9d1f03b4a5c6d7e8f9a0b1c2d3e4f561",
+       "bakeStatus": "Succeeded"
+      },
+      {
+       "environment": "staging",
+       "site": "default",
+       "wave": 1,
+       "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72",
+       "bakeStatus": "Succeeded"
+      }
+     ],
+     "blocker": {
+      "reason": "WaitingFor",
+      "environment": "prod",
+      "site": "us-east-1",
+      "waitingOn": "Bake",
+      "revision": "e1c7a04b8d2f19a3c5e7091b3d5f7a9c1e3b5d72"
+     }
+    },
+    "conditions": [
+     {
+      "type": "WaveReady",
+      "status": "False",
+      "reason": "WaitingFor",
+      "message": "prod/us-east-1 bake on e1c7a04",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     },
+     {
+      "type": "LockstepConsistent",
+      "status": "True",
+      "reason": "Consistent",
+      "message": "all members agree on lockstep",
+      "lastTransitionTime": "2026-11-10T09:02:00.000Z"
+     }
+    ]
+   }
+  }
+ ]
+}

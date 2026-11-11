@@ -163,6 +163,8 @@ export type GraphNode = {
 	build: string | null;
 	/** Newer builds it could take. */
 	candidateCount: number;
+	/** what the tooltip prints: candidateCount minus builds that failed here (failed-builds.ts, the one behind rule) */
+	newerCount?: number;
 	/** Held at all — including by a clock that reopens on its own. */
 	waiting: boolean;
 	/**
@@ -561,6 +563,7 @@ export function buildRolloutGraph(args: {
 				unresolved: !r,
 				build: displayBuild(r),
 				candidateCount: 0,
+				newerCount: 0,
 				waiting: false,
 				blocked: false,
 				holds: []
@@ -785,8 +788,9 @@ export function buildRolloutGraph(args: {
 		const r = rolloutById.get(n.id);
 		if (!r) continue;
 		const contractHolds = holdsIndex.get(n.id);
-		const story = blockingStory(r, ctx, { place: n.env, contractHolds });
+		const story = blockingStory(r, ctx, { place: n.env, contractHolds, fleet: { environments: args.environments, rollouts: args.rollouts } });
 		n.candidateCount = story.candidateCount;
+		n.newerCount = story.newerCount ?? story.candidateCount;
 		n.waiting = story.blocked;
 		n.blocked = story.blocked && !story.selfClearing;
 		const drawn = inboundGates.get(n.id) ?? new Set<string>();

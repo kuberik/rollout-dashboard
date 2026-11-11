@@ -322,9 +322,10 @@ export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = f
  */
 export type PlaceWait = { on: string; fact: string };
 /** the places a waiting place waits on (placeWait's rule), by name; null when it is not waiting */
-function waitingOn(p: PlaceHold, places: PlaceHold[]): { on: PlaceHold[]; name: string } | null {
+/** `viaFailure`: also a place an APPROVAL holds, when a build failed upstream in its wave chain (`upstreamFailed`): the approval must not mask the failure */
+function waitingOn(p: PlaceHold, places: PlaceHold[], viaFailure = false): { on: PlaceHold[]; name: string } | null {
 	const w = p.wave;
-	if (!w || p.state !== 'healthy' || p.holdReason !== 'rule' || holdWord(p) || !p.heldBuilds.length) return null;
+	if (!w || p.state !== 'healthy' || (p.holdReason !== 'rule' && !(viaFailure && p.holdReason === 'approval' && p.upstreamFailed)) || (holdWord(p) && !(viaFailure && p.holdReason === 'approval')) || !(p.heldBuilds.length || p.upstreamFailed)) return null;
 	let on: PlaceHold[];
 	let name: string;
 	if (!w.leader) {
@@ -345,9 +346,9 @@ function waitingOn(p: PlaceHold, places: PlaceHold[]): { on: PlaceHold[]; name: 
 }
 export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
 	const o = waitingOn(p, places);
-	if (!o) return null;
+	if (!o || !p.heldBuilds.length) return null; /* a place held only by a build that failed upstream has no build waiting: the sentence is waveHold's */
 	const started = o.on.some((q) => q.state === 'checking') ? 'finish checking' : o.on.some((q) => q.state === 'deploying') ? 'finish deploying' : 'deploy';
-	return { on: o.name, fact: `to ${started} ${p.heldBuilds[0].build}` };
+	return { on: o.name, fact: `to ${started} ${p.heldBuilds[0]?.build ?? p.upstreamFailed}` };
 }
 /**
  * batch4 #3 (landing v5 R5): the same wait, with its CAUSE. After a wave-1 catch (us-east-1 failed the bake) the wave-2 places the environment
@@ -355,11 +356,25 @@ export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
  * `on` = who they wait on (placeWait's own name, one blocker source), `failed` = the site(s) among them that failed the held build, else null.
  */
 export function waveHold(p: PlaceHold, places: PlaceHold[], failedAt: (q: PlaceHold, build: string) => boolean = bakeFailedOn): { on: string; failed: string | null } | null {
-	const o = waitingOn(p, places);
+	const o = waitingOn(p, places, true);
 	if (!o) return null;
-	const build = p.heldBuilds[0].build;
-	const f = o.on.filter((q) => failedAt(q, build)).map((q) => q.label);
-	return { on: o.name, failed: f.length ? [...new Set(f)].join(', ') : null };
+	/* an approval hold on a NEWER build must not mask an upstream failure: ask about the failed build first, then the held one, and show the failure (QA8 ruling 4) */
+	const builds = [p.upstreamFailed, p.heldBuilds[0]?.build].filter((b): b is string => !!b);
+	if (!builds.length) return null; /* nothing is held here (a rolled-back failure holds nobody): no wave line at all */
+	const f = [...new Set(builds.flatMap((b) => failedAlong(p, b, places, failedAt)))];
+	return { on: o.name, failed: f.length ? f.join(', ') : null };
+}
+/**
+ * batch4 #3d (H-new): the sites that failed `build` anywhere along `p`'s wave chain. A follower waits on its LEADER, and a leader held by an upstream
+ * failure is held by it too, so the failure is followed leader by leader (a place is "held by the failure" when it carries `upstreamFailed` or still
+ * lists the build as held). A plain wave-order wait, with no failure anywhere upstream, resolves to [].
+ */
+function failedAlong(p: PlaceHold, build: string, places: PlaceHold[], failedAt: (q: PlaceHold, build: string) => boolean, depth = 0): string[] {
+	const o = waitingOn(p, places, true);
+	if (!o || depth > 6) return [];
+	const direct = o.on.filter((q) => failedAt(q, build)).map((q) => q.label);
+	if (direct.length) return direct;
+	return o.on.filter((q) => q.upstreamFailed === build || q.heldBuilds.some((b) => b.build === build)).flatMap((q) => failedAlong(q, build, places, failedAt, depth + 1));
 }
 /** the places a "Pinned to <build> in <place>" hold (data.ts holds) names, by PlaceHold.place */
 export const pinnedPlaces = (holds: string[]): Set<string> => new Set(holds.map((h) => /^Pinned to \S+ in (.+)$/.exec(h)?.[1]).filter((x): x is string => !!x));

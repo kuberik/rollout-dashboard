@@ -4,24 +4,40 @@
  * carries no such list (`releaseCandidates` absent) falls back to its position in `availableReleases`, and then to the cross-peer rank.
  */
 import { rankBehindBy, type RankVerdict } from './env-rank';
-import { liveOf } from './failed-builds';
+import { liveForPlace, newerReleaseCountLive, type Fleet } from './failed-builds';
 
 type Status = { releaseCandidates?: unknown[]; currentVersion?: string; availableReleases?: { tag?: string; version?: string; revision?: string }[]; history?: { bakeStatus?: string | null; version?: { tag?: string; version?: string; revision?: string } | null }[] } | null | undefined;
 
-/** candidates minus the builds that failed in this place and were rolled back from (failed-builds.ts) */
-const live = <T>(st: NonNullable<Status>, xs: T[]): T[] => liveOf(st, xs as never) as unknown as T[];
+type Ro = { metadata?: { name?: string; namespace?: string } | null; status?: unknown } | null | undefined;
+/** candidates minus the builds that failed here (latest attempt) or upstream in this place's wave chain (failed-builds.ts: the ONE rule) */
+const live = <T>(r: Ro, xs: T[], fleet?: Fleet | null): T[] => liveForPlace(r as never, xs as never, fleet) as unknown as T[];
 
-export function behindOfStatus(st: Status): number {
+/** the place's own count: `rollout` is the rollout object (metadata + status), `fleet` the Environments + rollouts its wave chain lives in (none: nothing is subtracted) */
+export function behindOfStatus(rollout: Ro, fleet?: Fleet | null): number {
+	const st = rollout?.status as Status;
 	if (!st) return 0;
-	if (Array.isArray(st.releaseCandidates)) return live(st, st.releaseCandidates).length;
+	const n = newerReleaseCountLive(rollout as never, fleet); /* the ONE count: shared with the rank, so no surface can disagree */
+	if (n !== null) return n;
+	if (Array.isArray(st.releaseCandidates)) return live(rollout, st.releaseCandidates, fleet).length;
 	const rel = st.availableReleases ?? [];
 	const idx = rel.findIndex((r) => r.tag === st.currentVersion || r.version === st.currentVersion);
-	return idx < 0 ? 0 : live(st, rel.slice(idx + 1)).length;
+	return idx < 0 ? 0 : live(rollout, rel.slice(idx + 1), fleet).length;
 }
 
 /** a rollout card / matrix cell: its own list when it has one, else the rank's distance */
-export function behindOfRollout(rollout: { status?: unknown } | null | undefined, rank?: RankVerdict | null): number {
+export function behindOfRollout(rollout: Ro, rank?: RankVerdict | null, fleet?: Fleet | null): number {
 	const st = rollout?.status as Status;
-	if (st && Array.isArray(st.releaseCandidates)) return live(st, st.releaseCandidates).length;
-	return rank ? rankBehindBy(rank) : behindOfStatus(st);
+	if (st && Array.isArray(st.releaseCandidates)) return live(rollout, st.releaseCandidates, fleet).length;
+	return rank ? rankBehindBy(rank) : behindOfStatus(rollout, fleet);
+}
+
+/**
+ * The count a ROUTE prints while its fleet query loads: `null` until the fleet has answered (success, or error: then the best list-only count and it
+ * stays), never a number that is later corrected by the wave subtraction. A surface given null prints NO count (batch4 #3d, QA8).
+ */
+export function behindWhenSettled(rollout: Ro, fleet: Fleet | null | undefined, settled: boolean, rank?: RankVerdict | null): number | null {
+	if (!settled) return null;
+	/* an UNKNOWN lag (the current build aged out of availableReleases: the rank says null) is no count, never 0 / "Up to date" (batch4 #3d, QA17) */
+	if (!rank && newerReleaseCountLive(rollout as never, fleet) === null) return null;
+	return behindOfRollout(rollout, rank, fleet);
 }

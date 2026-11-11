@@ -3,7 +3,7 @@ import type { AppGroup, AppCell } from '$lib/version-utils';
 import { groupRolloutsByApp } from '$lib/version-utils';
 import { getDisplayVersion } from '$lib/utils';
 import { buildLadder, divergedFromLine } from './build-ladder';
-import { newerReleaseCount } from './promotion';
+import { newerReleaseCountLive } from './failed-builds';
 
 /**
  * ⛔ WHAT "N BEHIND" MEANS. ONE DEFINITION, AND IT IS THE ROLLOUT'S OWN LIST.
@@ -170,6 +170,7 @@ function cellDeployedMs(cell: AppCell): number {
 export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 	const ladder = buildLadder(group.cells);
 	const out = new Map<AppCell, RankVerdict>();
+	const fleet = { environments: group.cells.map((c) => c.environment).filter((e): e is Environment => !!e), rollouts: group.cells.map((c) => c.rollout) };
 	for (const cell of group.cells) {
 		const version = cellVersion(cell);
 		if (!version) {
@@ -184,7 +185,7 @@ export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 			out.set(cell, { kind: 'diverged' });
 			continue;
 		}
-		const own = newerReleaseCount(cell.rollout);
+		const own = newerReleaseCountLive(cell.rollout as never, fleet); /* the ONE behind rule (failed-builds.ts): a failed or rolled-back build is not behind */
 		if (own !== null) {
 			out.set(cell, own === 0 ? { kind: 'newest' } : { kind: 'behind', by: own });
 			continue;

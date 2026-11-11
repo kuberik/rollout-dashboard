@@ -45,7 +45,7 @@
 		if (c.stuck?.kind === 'baking') return 'Checking for over an hour';
 		if (c.stuck?.kind === 'deploying') return 'Deploying for over an hour';
 		if (c.stuck?.kind === 'promotion')
-			return `${c.stuck.candidateCount} release${c.stuck.candidateCount === 1 ? '' : 's'} waiting`;
+			{ const n = c.stuck.newerCount ?? c.stuck.candidateCount; return `${n} release${n === 1 ? '' : 's'} waiting`; }
 		return `Stuck behind ${c.stuck?.peerEnv ?? 'its upstream'}`;
 	}
 

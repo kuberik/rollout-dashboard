@@ -142,6 +142,7 @@
 		rowShowsFailed
 	} from '$lib/view-models/deploy-risk';
 	import { blockingGateNames, promotionCandidates } from '$lib/view-models/promotion';
+	import { behindWhenSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
@@ -642,6 +643,7 @@
 		blockingStory(rollout, gateContext, {
 			place: environment?.spec?.environment ?? null,
 			now: $now,
+			fleet: { environments: listQuery.data?.environments?.items, rollouts: listQuery.data?.rollouts?.items }, /* the printed newer-builds count: the ONE behind rule */
 			// A8: builds an earlier stage already passed over read "skipped", never "waiting for staging".
 			skipped: skippedFn,
 			// ⭐ THE HOLD-ONE-RULE. See `contractHoldsIn`'s own comment, above.
@@ -1165,6 +1167,8 @@
 		}[]
 	);
 	const newestCandidate = $derived(newerBuilds[0] ?? null);
+	/* the header's "N newer builds": the ONE behind rule (behind.ts), the same subtraction History's current-row chip makes (batch4 #3d): a build that failed here or upstream in the wave chain is not counted. The deploy-anyway "Newer builds" card below lists what a person CAN deploy and keeps its own list. */
+	const headerNewer = $derived(behindWhenSettled(rollout, { environments: listQuery.data?.environments?.items, rollouts: listQuery.data?.rollouts?.items }, listQuery.isSuccess || listQuery.isError) ?? 0); /* 0 = no chip until the fleet has answered: the number never changes after load */
 	// Newer builds ledger fold (r34 AD r3 TB6): the newest + the first NB_FOLD older builds are drawn;
 	// the rest sit behind a footer that expands in place. `nbOpen` = narrow-card rows opened by a tap.
 	// TB14/TB22/TB24 (r5): the fold is a phone/tablet thing. At >=1024 NO fold: every older row shows (the
@@ -2844,8 +2848,8 @@
 						>{formatTimeAgoCompact(latestEntry.timestamp, $now)} ago</span
 					>
 					<span class="t-meta contents"
-						>{#if isCurrentVersionCustom || (rollout.status?.releaseCandidates?.length ?? 0) > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)) || scheduleMetaText}
-							{#if rollout.status?.releaseCandidates && rollout.status.releaseCandidates.length > 0}
+						>{#if isCurrentVersionCustom || headerNewer > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)) || scheduleMetaText}
+							{#if headerNewer > 0}
 								<!--
 															⭐ `available` MEANS `allowed`, AND A PIN ALLOWS
 															NOTHING. (P10, operator-walk finding) This line said
@@ -2883,27 +2887,27 @@
 									     clause arrives after the health checks, and a wrap there pushed the whole header down 20px. -->
 									<span class="min-w-0 max-sm:truncate">
 										{#if blockStory.pinnedTo}
-										{rollout.status.releaseCandidates.length} newer · held by the pin
+										{headerNewer} newer · held by the pin
 									{:else if blockStory.blocked}
 										<!-- One fact, once: the held banner below names every
 																     cause (gate and contract); the meta only counts. -->
-										{rollout.status.releaseCandidates.length}
-										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+										{headerNewer}
+										{headerNewer === 1 ? 'newer build' : 'newer builds'}
 									{:else if newestCandidateBlockedByGate}
-										{rollout.status.releaseCandidates.length}
-										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+										{headerNewer}
+										{headerNewer === 1 ? 'newer build' : 'newer builds'}
 										· held: {newestGateHoldClause}
 									{:else if newestHeldByHealth}
-										{rollout.status.releaseCandidates.length}
-										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+										{headerNewer}
+										{headerNewer === 1 ? 'newer build' : 'newer builds'}
 										· held: {newestHealthHoldClause}
 									{:else if justOpenedHealthGate}
-										{rollout.status.releaseCandidates.length}
-										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+										{headerNewer}
+										{headerNewer === 1 ? 'newer build' : 'newer builds'}
 										· promoting
 									{:else}
-										{rollout.status.releaseCandidates.length}
-										{rollout.status.releaseCandidates.length === 1 ? 'newer build' : 'newer builds'}
+										{headerNewer}
+										{headerNewer === 1 ? 'newer build' : 'newer builds'}
 									{/if}</span>
 								</span>
 							{/if}

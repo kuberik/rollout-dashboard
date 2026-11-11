@@ -46,7 +46,7 @@
 				</a>
 			{/each}
 			{#if tile.regions.healthy}<span class="et-region more t-meta">{plural(tile.regions.healthy, 'region')} healthy</span>{/if}
-			{#if tile.regions.held}<span class="et-region more t-meta" data-wave-held><span><span class="text-held">{plural(tile.regions.held.regions, 'region')} held</span>{' · '}{tile.regions.held.because}</span></span>{/if}
+			{#if tile.regions.held}<span class="et-region more t-meta" data-wave-held><span><span class="text-held">{plural(tile.regions.held.regions, 'region')} held</span>{' · '}{tile.regions.held.because}</span></span>{/if}{#if tile.regions.waiting}<span class="et-region more t-meta" data-wave-waiting><span>{plural(tile.regions.waiting.regions, 'region')} {tile.regions.waiting.because}</span></span>{/if}
 		</div>
 	{/if}
 

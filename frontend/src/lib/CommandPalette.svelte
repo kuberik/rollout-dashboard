@@ -526,7 +526,7 @@
 		// A held rollout needs a person or another deploy; it lists above one
 		// that is merely behind and will catch up on its own.
 		if (c.held) return 1.5;
-		if (behindOfRollout(c.rollout, c.rank) > 0) return 1;
+		if ((c.behindCount ?? behindOfRollout(c.rollout, c.rank)) > 0) return 1;
 		return 0;
 	}
 
@@ -599,7 +599,7 @@
 			const own = cards.filter((c) =>
 				cells.some((e) => rolloutMatchesEnvironment(c.rollout, e))
 			);
-			const deepest = own.reduce((m, c) => Math.max(m, behindOfRollout(c.rollout, c.rank)), 0);
+			const deepest = own.reduce((m, c) => Math.max(m, c.behindCount ?? behindOfRollout(c.rollout, c.rank)), 0);
 			const allNewest = own.length > 0 && own.every((c) => c.rank.kind === 'newest');
 			out.push({
 				kind: 'app',
@@ -898,7 +898,7 @@
 	const approvalStories = $derived.by(() => {
 		const m = new Map<RolloutCard, BlockingStory>();
 		if (!gateContext) return m;
-		for (const c of approvalCards) m.set(c, blockingStory(c.rollout, gateContext, { place: c.envDisplay, now: $now }));
+		for (const c of approvalCards) m.set(c, blockingStory(c.rollout, gateContext, { place: c.envDisplay, now: $now, fleet: { environments, rollouts } }));
 		return m;
 	});
 	function approvalGateLabel(c: RolloutCard): string | null {

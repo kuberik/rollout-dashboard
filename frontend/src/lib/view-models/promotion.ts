@@ -361,6 +361,8 @@ export function promotionBlock(rollout: Rollout | null | undefined): PromotionBl
 export type PromotionStuckReason = {
 	kind: 'promotion';
 	candidateCount: number;
+	/** what the badge PRINTS: candidateCount minus builds that failed here / upstream (failed-builds.ts); absent = candidateCount */
+	newerCount?: number;
 	waitingMs: number;
 	blockingGates: string[];
 };

@@ -102,7 +102,7 @@ function toNode(c: RolloutCard): LaneNode {
 		tier: tierOf(c.envName || env),
 		env,
 		state: nodeState(c),
-		behind: behindOfRollout(c.rollout, c.rank)
+		behind: c.behindCount ?? behindOfRollout(c.rollout, c.rank)
 	};
 }
 

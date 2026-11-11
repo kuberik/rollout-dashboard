@@ -36,8 +36,8 @@
 import { formatTimeAgoCompact } from '$lib/utils';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus } from '$lib/view-models/behind';
-import { failedHere, liveOf } from '$lib/view-models/failed-builds';
-import { waveReady } from '$lib/view-models/sites-waves';
+import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } from '$lib/view-models/failed-builds';
+import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
 import { heldHereOf, heldKeyOfHref } from '$lib/view-models/held-here.svelte';
@@ -81,7 +81,7 @@ export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */
 type RawEntry = { message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
-type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; releaseCandidates?: { tag?: string; version?: string; created?: string }[]; availableReleases?: { tag?: string; version?: string; revision?: string; created?: string }[]; wantedVersion?: string; currentVersion?: string } };
+type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; releaseCandidates?: { tag?: string; version?: string; revision?: string; created?: string }[]; availableReleases?: { tag?: string; version?: string; revision?: string; created?: string }[]; wantedVersion?: string; currentVersion?: string } };
 const raws = (): RawRollout[] => source().rollouts as unknown as RawRollout[];
 const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean); return p[0] === 'rollouts' ? { cluster: p[1], ns: p[2], name: p[3] } : null; };
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
@@ -650,7 +650,7 @@ function behindCount(href: string, version: string | null): number | null {
 	const st = rawOf(href)?.status as { releaseCandidates?: unknown[]; currentVersion?: string; availableReleases?: { tag?: string; version?: string; revision?: string }[] } | undefined;
 	const rel = st?.availableReleases ?? [];
 	const idx = rel.findIndex((r) => [r.tag, r.version, r.revision?.slice(0, 7)].some((x) => x && shortBuild(x) === version));
-	return idx < 0 ? null : behindOfStatus(st);
+	return idx < 0 ? null : behindOfStatus(rawOf(href), envsOfSource());
 }
 export type RunsIn = { label: string; tier: TierKey; build: string | null; word: string; href: string; state: EnvState };
 /** The Gates tab's Runs-in rows for an app: one per deployed place in the tab's order, with the build as the tab prints it and its word ("on the newest" / "N behind" / "failing"). */
@@ -802,7 +802,7 @@ export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'wo
 	const st = rawOf(row.href)?.status as { availableReleases?: { tag?: string; version?: string }[] } | undefined;
 	const cur = rawOf(row.href)?.status.currentVersion;
 	const rel = st?.availableReleases ?? [];
-	const count = behindOfStatus(rawOf(row.href)?.status as never);
+	const count = behindOfStatus(rawOf(row.href) as never, envsOfSource());
 	if (!count) return null;
 	const why = row.state === 'awaiting-approval' ? 'waiting for approval' : row.state === 'held-by-rule' ? row.word.replace(/^Waits on /, 'waiting on ') : row.state === 'failed' ? 'waiting for health checks' : null;
 	const nw = rel[rel.length - 1];
@@ -863,7 +863,8 @@ export function fleetCounts(state: HomeState) {
 export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'>, state: HomeState = 'incident'): { name: string; sentence: string } | null {
 	if (row.state !== 'awaiting-approval' && row.state !== 'held-by-rule') return null;
 	const st = rawOf(row.href)?.status;
-	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version;
+	/* a place whose only candidates failed upstream still has the gate that refuses them: name it from the published list when no live candidate is left (batch4 #3c M2) */
+	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version ?? st?.releaseCandidates?.[0]?.tag ?? st?.releaseCandidates?.[0]?.version;
 	const gs = st?.gates ?? [];
 	const holding = gs.filter((g) => g.allowedVersions != null && !!cand && !g.allowedVersions.includes(cand));
 	if (!holding.length) holding.push(...gs.filter((g) => g.passing === false));
@@ -1168,13 +1169,17 @@ export function waveInfoOfHref(href: string): WaveInfo | null {
 	const follows = node.isLeader ? null : (upstreamOf(topo, node)[0]?.site ?? null);
 	return { site: node.site, wave: node.wave, leader: node.isLeader, follows, multi: tier.waves.length > 1 };
 }
-/** true when `build` (as the tab names it) failed its bake in the place a rollout href names: a Failed entry in its history (batch4 #3: "us-east-1 failed the bake") */
+/** true when `build` (as the tab names it) failed its bake in the place a rollout href names AND the place still RUNS it (failedHereVerdict, the ONE rule:
+   latest attempt failed, nothing replaced it: rolledBackAt == null). A site that rolled back to an older healthy build holds nobody, whatever its retained
+   Failed entry says. The guard is load-bearing: a same-wave leader that failed a build and rolled back would otherwise be blamed again by its followers
+   (wave-failed-sameleader.test.ts, the controller's real Selection blocker shape). */
 export function bakeFailedOn(q: { href: string }, build: string): boolean {
 	const st = rawOf(q.href)?.status;
 	const entry = (st?.history ?? []).find((h) => [h.version.version, h.version.tag, h.version.revision].some((x) => x && shortBuild(x) === build));
-	return !!entry && failedHere(st as never, entry.version); /* the ONE failed-build rule (failed-builds.ts): that build's latest attempt here failed */
+	const v = entry ? failedHereVerdict({ status: st } as never, entry.version) : null;
+	return !!entry && v?.kind === 'failed' && v.rolledBackAt == null;
 }
-export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; heldBuilds: ReturnType<typeof candidateBuilds>; runs: string | null };
+export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; heldBuilds: ReturnType<typeof candidateBuilds>; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.
  *  invoice-api: eu-west failed (health), us-east and us-west held by the manual-approval gate (allowed a11c404 only). */
 export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHold[] {
@@ -1182,11 +1187,16 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const approval = approvalHold(p.href) > 0;
 		const held = candidateBuilds({ app, href: p.href });
 		const gs = rawOf(p.href)?.status.gates ?? [];
-		const cand = liveCands(rawOf(p.href)?.status)?.[0]?.tag;
+		/* batch4 #3b/#3c: a build that failed upstream in the wave chain, while its failing site still RUNS it, is no candidate here but the gates still refuse it: the place is held BY THE WAVE (`upstreamFailed` names the build), with no build waiting. Once the failing site has rolled back from it nothing holds the wave (failed-builds.ts waveBlockingRevisions). */
+		const rawC = rawOf(p.href)?.status.releaseCandidates ?? [], liveC = liveCands(rawOf(p.href)?.status) ?? [];
+		const blocking = waveBlockingRevisions(rawOf(p.href) as never, envsOfSource());
+		const failedC = blocking.length ? rawC.find((c) => !liveC.includes(c) && blocking.some((r) => shaNamesBuild(r, c))) : undefined;
+		const upstreamFailed = failedC ? (shortBuild(failedC.version ?? failedC.tag) ?? null) : null;
+		const cand = liveC[0]?.tag ?? failedC?.tag;
 		const rule = !approval && !!cand && gs.some((g) => g.allowedVersions != null && !g.allowedVersions.includes(cand));
 		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
 		const g = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
-		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, heldBuilds: held, runs: p.version };
+		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, heldBuilds: held, runs: p.version };
 	});
 }
 /** Where a build already runs (the Builds list's "live in us-east, us-west"): the app's places whose deployed build is `build` (tab name, tag or SHA). */
@@ -1301,15 +1311,12 @@ export const personOf = (login: string | null | undefined): string | null => (is
 export type Inbound = { app: string; build: string; from: TierKey | null; reason: string | null; href: string | null };
 /** (aa) Builds NOT yet running in an environment: the app's newest build runs elsewhere (upstream) but no place of this tier runs it; `reason` is why the tier holds it. A build already checking in the tier belongs to its row. */
 /** the place's release candidates minus the builds that failed here and were rolled back from (view-models/failed-builds.ts): THE "Newer builds" list every count and hold reads */
+/** the fleet lists the wave chain of every place lives in (live source, else the pinned fixture) */
+const envsOfSource = () => ({ environments: source().environments as unknown as Environment[], rollouts: source().rollouts as unknown[] });
+/** the place's release candidates minus the builds that failed here or upstream in its wave chain (view-models/failed-builds.ts, ONE rule): THE "Newer builds" list every count reads. `st` is a place's status (found back in the rollouts by identity) */
 function liveCands<C extends { tag?: string; version?: string; revision?: string }>(st: { releaseCandidates?: C[]; history?: RawEntry[] } | null | undefined): C[] | undefined {
-	return st?.releaseCandidates ? liveOf(st as never, st.releaseCandidates) : undefined;
-}
-/** the short shas the place's Environment names in `WaitingFor bake failed on <rev>` (view-models/failed-builds.ts waveRevs) */
-function waveRevsOfPlace(href: string): string[] {
-	const h = hrefParts(href);
-	const env = h ? (source().environments as unknown as Environment[]).find((e) => e.metadata?.namespace === h.ns && e.spec?.rolloutRef?.name === h.name) : null;
-	const b = env ? waveReady(env).blocker : null;
-	return b && b.kind === 'member' && b.outcome === 'failed' && b.rev ? [b.rev] : [];
+	if (!st?.releaseCandidates) return undefined;
+	return liveForPlace(raws().find((r) => r.status === (st as unknown)) as never, st.releaseCandidates, envsOfSource());
 }
 export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 	const causes = heldCauses(state);
@@ -1321,7 +1328,7 @@ export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 		const newest = ps[0]?.newest;
 		if (!newest || here.some((p) => p.version === newest)) continue;
 		/* batch4 #1: a build that failed in a place of this tier (history, or the wave's own `bake failed on <rev>`) and was rolled back is not inbound while the tier runs its rollback target */
-		if (here.some((p) => failedHere(rawOf(p.href)?.status as never, { tag: newest, version: newest, revision: newest }, waveRevsOfPlace(p.href)))) continue;
+		if (here.some((p) => failedHere(rawOf(p.href)?.status as never, { tag: newest, version: newest, revision: newest }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())))) continue;
 		const up = ps.filter((p) => p.version === newest && p.state !== 'failed').map((p) => p.tier).sort((x, y) => RANK_T[y] - RANK_T[x])[0] ?? null;
 		const hold = here.map((p) => causes.find((c) => c.rows.some((r) => r.href === p.href))).find(Boolean);
 		out.push({ app: a.app, build: buildName(a.app, newest) ?? newest, from: up, reason: hold?.cause ?? null, href: here[0].href });
