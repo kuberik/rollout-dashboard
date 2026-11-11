@@ -18,7 +18,7 @@ const appRow = model.apps.find((a) => a.app === 'checkout-api')!.envs.find((e) =
 const cards = buildRolloutCards(input.rollouts, input.environments, input.now);
 const card = cards.find((c) => c.name === 'checkout-api' && c.envName === 'prod-us-east-2')!;
 
-function tileText(peerState: Parameters<typeof peerHeldMap>[0]): string {
+function renderTile(peerState: Parameters<typeof peerHeldMap>[0]): Element | null {
 	const link = {
 		key: 'link:chain', side: 'upstream', writer: 'promotion', state: 'clear', held: [], contract: null, requiredVersion: null, providedVersion: null,
 		cyclic: false, gate: 'promotion', chainPredecessor: true,
@@ -27,8 +27,13 @@ function tileText(peerState: Parameters<typeof peerHeldMap>[0]): string {
 	const focus = { ...link.node, name: 'checkout-api', env: 'prod-af-south-1' };
 	const hood = { focus, upstream: [link], downstream: [], gates: [], heldLinks: 0, total: 1, holding: 0, heldBuilds: [] } as unknown as Hood;
 	const { container } = render(RolloutNeighbourhood, { props: { hood, peerHeldByEnv: peerHeldMap(peerState) } });
-	return (container.querySelector('[data-key="link:chain"]')?.textContent ?? '').replace(/\s+/g, ' ');
+	return container.querySelector('[data-key="link:chain"]');
 }
+function tileText(peerState: Parameters<typeof peerHeldMap>[0]): string {
+	return (renderTile(peerState)?.textContent ?? '').replace(/\s+/g, ' ');
+}
+/** The held mark is StatusMark's pause glyph (two bars). */
+const HELD_GLYPH = 'path[d="M9 5.5v13M15 5.5v13"]';
 
 describe('Gates peer tile, checkout-api prod-us-east-2 (home-incident)', () => {
 	test('the app page row, /rollouts and the Gates tile all say Checking', () => {
@@ -41,5 +46,12 @@ describe('Gates peer tile, checkout-api prod-us-east-2 (home-incident)', () => {
 	test('a place past the build still prints the passed line', () => {
 		const done = { ...card, bakeStatus: 'Succeeded', statusKey: 'succeeded', stuck: null, held: false } as typeof card;
 		expect(tileText(new Map([['prod-us-east-2', done]]))).toContain('Nothing held');
+	});
+	test('a held peer reads "held on <cause>" beside the held mark, never the passed dot', () => {
+		const heldCard = cards.find((c) => c.envName === 'prod-us-east-2' && peerHeldMap(new Map([['x', c]])).get('x')?.held && c.heldCauseLabel)
+			?? cards.find((c) => peerHeldMap(new Map([['x', c]])).get('x')?.held && c.heldCauseLabel)!;
+		const tile = renderTile(new Map([['prod-us-east-2', heldCard]]));
+		expect((tile?.textContent ?? '').replace(/\s+/g, ' ')).toContain('held on');
+		expect(tile?.querySelector(HELD_GLYPH)).not.toBeNull();
 	});
 });

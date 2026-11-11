@@ -294,9 +294,11 @@
 		const peer = peerHeldByEnv?.get(l.node.env);
 		return peer && !peer.held ? stateWord(peer.state) : null;
 	}
-	/** The tile's mark: the peer's own verdict (checking / deploying / failing) when it has not passed the build, else the passed mark. */
-	function chainMark(l: NeighbourLink): 'newest' | 'checking' | 'deploying' | 'failed' {
-		const st = peerHeldByEnv?.get(l.node.env)?.state;
+	/** The tile's mark: the held mark for a held peer (its line says "held on <cause>"), the peer's own verdict (checking / deploying / failing) when it has not passed the build, else the passed mark. */
+	function chainMark(l: NeighbourLink): 'held' | 'newest' | 'checking' | 'deploying' | 'failed' {
+		const peer = peerHeldByEnv?.get(l.node.env);
+		if (peer?.held && peer.causeLabel) return 'held';
+		const st = peer?.state;
 		return peerWord(l) && (st === 'checking' || st === 'deploying' || st === 'failed') ? st : 'newest';
 	}
 	/**
