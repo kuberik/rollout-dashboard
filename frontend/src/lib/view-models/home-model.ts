@@ -328,8 +328,8 @@ export type HomeModelInput = {
 	 *  the other half, "has one of my changes", is derived). */
 	starredApps?: ReadonlySet<string>;
 	pulseRange?: PulseRange;
-	/** hc-v2: the rollouts whose HealthChecks are KNOWN, from `GET /api/health-checks`
-	 *  through `rolloutHealthChecks(res)` (`api/health-checks.ts`, which drops what
+	/** hc-v2: the rollouts whose HealthChecks are KNOWN, from the fleet health-checks endpoint
+	 *  through `rolloutHealthChecks(res)` (the fleet-health-checks api module, which drops what
 	 *  `partialReads` covers). Feeds `fleetSignals`' check-recovered / check-flapping.
 	 *  A rollout with no group is unknown, never "no checks": it gets no check signal
 	 *  either way, so no claim comes from absence. Absent or null: no check signals

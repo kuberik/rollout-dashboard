@@ -8,57 +8,104 @@ import { join, relative, sep } from 'node:path';
  * request itself and resolved a 500 to `{healthChecks: []}` poisoned the shared
  * cache key and hid the recovery warning (batch4 #8).
  *
- * The scan is on the PATH SEGMENT, not on a call shape, so a URL built into a
- * variable, a template with encodeURIComponent, or a wrapper function all trip
- * it. Imports and comments are stripped first. Deliberately exempt: test files,
- * and the demo/fixture responders that SERVE the endpoint (they answer it, they
- * never request it): `lib/demo/` and `lib/messages/fleet-fixture.ts`.
+ * THE SCAN IS ON RAW TEXT. No comment or string is stripped, so no trick
+ * (a `//` inside a template, a `'//'` or `/*` string, a wrapper function, a
+ * variable, encodeURIComponent) can hide a URL from it. The only lines it skips
+ * are import/export-from lines, whose module PATH ends in `health-checks`.
+ * Product comments that name the endpoint are reworded instead of exempted.
+ *
+ * Allow-list is by EXACT FILE, with the reason: the owner, and the mock servers
+ * that SERVE (never request) the endpoint. Test files (`*.test.ts`) stub it and
+ * are skipped by suffix.
+ *
+ * Second rule: product code may import a `lib/demo` module that mentions the
+ * endpoint only from the exact importers listed below.
  */
-const SEGMENT = /\/health-checks(?![\w-])/;
-const EXEMPT = [`lib${sep}demo${sep}`, `lib${sep}messages${sep}fleet-fixture.ts`];
 const OWNER = join('lib', 'api', 'health-checks.ts');
+const MOCK_SERVERS = new Set([
+	join('lib', 'demo', 'respond.ts'),
+	join('lib', 'demo', 'home-incident.ts'),
+	join('lib', 'messages', 'fleet-fixture.ts')
+]);
+/** Product files that import a mock server, each deliberate (fixture builders). */
+const MOCK_IMPORTERS = new Set([
+	join('lib', 'view-models', 'home', 'fixture.ts'),
+	join('lib', 'view-models', 'gates-tab-reference.testkit.ts'),
+	join('lib', 'components', 'new', 'github-read.svelte.ts')
+]);
+const SEGMENT = /\/health-checks(?![\w-])/;
+const IMPORT_LINE = /^\s*(?:import|export)\b[^\n]*\bfrom\s*['"][^'"\n]*['"]|\bimport\(\s*['"][^'"\n]*['"]\s*\)/;
 
-function stripNonCode(src: string): string {
-	return src
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/(^|[^:\\])\/\/[^\n]*/g, '$1')
-		.replace(/\bfrom\s+(['"])[^'"\n]*\1/g, '')
-		.replace(/\bimport\(\s*(['"])[^'"\n]*\1\s*\)/g, '');
+export function mentionsEndpoint(raw: string): boolean {
+	return raw.split('\n').some((line) => !IMPORT_LINE.test(line) && SEGMENT.test(line));
 }
-const touchesEndpoint = (src: string) => SEGMENT.test(stripNonCode(src));
+
+/** files: relative path (under src) -> raw text. */
+export function findOffenders(files: Record<string, string>): string[] {
+	const out: string[] = [];
+	const demoMentioning = new Set(
+		Object.entries(files)
+			.filter(([rel, t]) => rel.startsWith(`lib${sep}demo${sep}`) && mentionsEndpoint(t))
+			.map(([rel]) => rel)
+	);
+	for (const [rel, text] of Object.entries(files)) {
+		if (rel === OWNER || MOCK_SERVERS.has(rel)) continue;
+		if (mentionsEndpoint(text)) out.push(`${rel}: mentions /health-checks`);
+		if (!rel.startsWith(`lib${sep}demo${sep}`) && !MOCK_IMPORTERS.has(rel)) {
+			for (const m of text.matchAll(/(?:from\s*|import\(\s*)['"][^'"\n]*\/demo\/([\w-]+)['"]/g)) {
+				const target = join('lib', 'demo', `${m[1]}.ts`);
+				if (demoMentioning.has(target) || MOCK_SERVERS.has(target))
+					out.push(`${rel}: imports ${target}, which carries the endpoint`);
+			}
+		}
+	}
+	return out;
+}
 
 const SRC = join(__dirname, '..', '..');
 function walk(dir: string, out: string[] = []): string[] {
 	for (const f of readdirSync(dir)) {
 		const p = join(dir, f);
 		if (statSync(p).isDirectory()) walk(p, out);
-		else if (/\.(svelte|ts)$/.test(f) && !/\.test\.ts$/.test(f)) out.push(p);
+		else if (/\.(svelte|ts|js)$/.test(f) && !/\.test\.(ts|js)$/.test(f)) out.push(p);
 	}
 	return out;
 }
 
 describe('the /health-checks URL has exactly one owner', () => {
-	const variants: Record<string, string> = {
+	const planted: Record<string, string> = {
 		'a plain fetch': 'await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/health-checks`))',
 		'a URL built in a variable': 'const u = `/rollouts/${ns}/${n}/health-checks`;\nconst r = await go(u);',
 		'a template with encodeURIComponent':
 			'const u = `/rollouts/${encodeURIComponent(ns)}/${encodeURIComponent(n)}/health-checks`;',
-		'a wrapper function': "function hc(base: string) { return get(base + '/health-checks'); }"
+		'a wrapper function': "function hc(base: string) { return get(base + '/health-checks'); }",
+		'a `//` inside a template': 'const u = `https://h//${ns}/${n}/health-checks`;',
+		"a '//' string before it": "const s = '//'; const u = '/rollouts/' + n + '/health-checks';",
+		'a `/*` inside a string before it': "const s = '/*'; const u = `/rollouts/${n}/health-checks`;"
 	};
-	for (const [name, src] of Object.entries(variants)) {
-		it(`trips on ${name}`, () => expect(touchesEndpoint(src)).toBe(true));
+	for (const [name, src] of Object.entries(planted)) {
+		it(`trips on ${name}`, () => expect(findOffenders({ [join('lib', 'x.ts')]: src })).not.toEqual([]));
 	}
-	it('does not trip on imports, comments, or the hyphenated reason names', () => {
-		expect(touchesEndpoint("import { a } from '$lib/api/health-checks';")).toBe(false);
-		expect(touchesEndpoint('// GET /rollouts/x/y/health-checks\nconst a = 1;')).toBe(false);
-		expect(touchesEndpoint("const r = 'health-checks-unavailable';")).toBe(false);
+	it('trips on a fetch planted in lib/demo/embed.ts (no whole-directory exemption)', () => {
+		expect(
+			findOffenders({ [join('lib', 'demo', 'embed.ts')]: 'fetch(`/rollouts/${n}/${m}/health-checks`)' })
+		).not.toEqual([]);
 	});
-	it('only api/health-checks.ts mentions it in source', () => {
-		const offenders = walk(SRC)
-			.map((p) => relative(SRC, p))
-			.filter((rel) => rel !== OWNER && !EXEMPT.some((e) => rel.startsWith(e) || rel === e))
-			.filter((rel) => touchesEndpoint(readFileSync(join(SRC, rel), 'utf8')));
-		expect(offenders).toEqual([]);
+	it('trips on product code importing a demo module that carries the endpoint', () => {
+		expect(
+			findOffenders({
+				[join('lib', 'demo', 'embed.ts')]: "export const a = 'x/health-checks';",
+				[join('routes', 'p.svelte')]: "import { a } from '$lib/demo/embed';"
+			}).some((o) => o.includes('imports'))
+		).toBe(true);
+	});
+	it('does not trip on a module path import or a hyphenated reason name', () => {
+		expect(findOffenders({ [join('lib', 'x.ts')]: "import { a } from '$lib/api/health-checks';" })).toEqual([]);
+		expect(findOffenders({ [join('lib', 'x.ts')]: "const r = 'health-checks-unavailable';" })).toEqual([]);
+	});
+	it('the real source tree: only the owner and the named mock servers mention it', () => {
+		const files: Record<string, string> = {};
+		for (const p of walk(SRC)) files[relative(SRC, p)] = readFileSync(p, 'utf8');
+		expect(findOffenders(files)).toEqual([]);
 	});
 });
