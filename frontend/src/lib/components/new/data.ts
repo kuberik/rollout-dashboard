@@ -1238,7 +1238,7 @@ export function approvalScope(row: Pick<RolloutRow, 'app' | 'tier' | 'regions' |
  *  The wire contract (src/lib/api/approvals.ts): one `POST /api/rollouts/<ns>/<name>/approve {version}` per place. */
 export type ApprovalTarget = { key: string; app: string; build: string; where: string; count: number; places: { href: string; label: string; tag: string }[]; href: string; /** what STILL holds the build once approved (a dependency's provider, another rule's name); null when nothing else does, i.e. the build really deploys */ waitsOn?: string | null; /** the same hold as the row words it (`holdCause`) */ cause?: string | null; /** the build that will actually deploy when it is NOT the approved one (the newest build every gate allows after the approval); null when the approved build deploys */ deploys?: string | null };
 type GateLite = { name: string; kind?: string | null; allowedVersions?: string[] | null; passing?: boolean | null };
-/** The candidate a failed upstream build in the wave chain still names while its failing site RUNS it: no live candidate, but the gates still refuse it (batch4 #3b/#3c). */
+/** The candidate a failed upstream build in the wave chain still names while its failing site RUNS it: no live candidate, but the gates still refuse it. */
 function failedWaveCand(href: string) {
 	const st = rawOf(href)?.status;
 	const rawC = st?.releaseCandidates ?? [], liveC = liveCands(st) ?? [];

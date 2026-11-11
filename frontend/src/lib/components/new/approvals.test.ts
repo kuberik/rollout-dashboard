@@ -394,7 +394,7 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 	causeCase('an unnamed deploy window (the pretty name is not published yet)', { name: 'schedule-gate-qqqqq', kind: 'schedule', passing: false, allowedVersions: null }, 'Waits for the deploy window');
 	causeCase('a published deploy window (the schedule join names it)', { name: 'schedule-gate-zvsqr', kind: 'schedule', passing: false, allowedVersions: null }, 'Held by Business hours', true);
 	causeCase('a failing check', { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }, 'Held by Smoke check');
-	/* viewer-owned: the viewer CAN approve payments-core (its other regions still ask), but ONE region is held by a static allow-list that lacks the build: that region asks nothing (no approval ever deploys it), while its siblings keep the ask. Kills QA28 M10 (a rule-held row taking needsYou from the app's ask). */
+	/* viewer-owned: the viewer CAN approve payments-core (its other regions still ask), but ONE region is held by a static allow-list that lacks the build: that region asks nothing (no approval ever deploys it), while its siblings keep the ask. Kills the mutant where (a rule-held row taking needsYou from the app's ask). */
 	it('a viewer-owned approval with ONE region held by a rule that never clears for the build: that region asks nothing, the others keep the ask', () => {
 		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
 		const rs = (source().rollouts as unknown as R[]);
@@ -420,7 +420,7 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			expect(t.waitsOn ?? null).toBeNull();
 			expect(t.deploys ?? null).toBeNull();
 			expect(doneWords(t).detail).toBe(`payments-core is deploying to ${t.where}`);
-			/* the build being approved is permitted by every other gate, so the approval is the ONLY thing between it and deploying: the ask is kept, in the row and in the inbox (QA28 regression: the row read "Held by Release approval · also needs your approval") */
+			/* the build being approved is permitted by every other gate, so the approval is the ONLY thing between it and deploying: the ask is kept, in the row and in the inbox */
 			const prod = rollouts('incident').rows.filter((x) => x.app === 'payments-core' && x.tier === 'prod');
 			expect(prod.length).toBeGreaterThan(0);
 			for (const r of prod) { expect(r.state).toBe('awaiting-approval'); expect(sentenceOf(r, 'incident')[0]).toBe('Needs your approval'); expect(r.needsYou).toBe(true); expect(r.alsoApproval ?? null).toBeNull(); }
@@ -453,7 +453,7 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 	});
 });
 
-/* QA28 M9: on a phone the second ask of a held row ("· also needs your approval") wraps, never an ellipsis: the wrap rule must stay in the row's stylesheet */
+/* on a phone the second ask of a held row ("· also needs your approval") wraps, never an ellipsis: the wrap rule must stay in the row's stylesheet */
 import { readFileSync } from 'node:fs';
 it('a wrapping held row keeps its phone wrap rule (white-space: normal, no ellipsis)', () => {
 	const css = readFileSync(new URL('./StrandRow.svelte', import.meta.url), 'utf8');

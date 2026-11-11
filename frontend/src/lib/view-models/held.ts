@@ -458,7 +458,7 @@ function verdictForGatesPrimary(
 	const clock = gates.filter((g) => g.clears === 'clock');
 	const checks = gates.filter((g) => g.clears === 'check');
 
-	/* BLAME ORDER (tl ruling, batch4 #92): rule gates (anything refusing that is not the approval) come before the approval. The approval is the cause only when it is the SOLE thing between the build and deploying: no approval can unblock a build another gate refuses, so asking for one is a false call to action. */
+	/* BLAME ORDER: rule gates (anything refusing that is not the approval) come before the approval. The approval is the cause only when it is the SOLE thing between the build and deploying: no approval can unblock a build another gate refuses, so asking for one is a false call to action. */
 	if (person.length > 0 && person.length === gates.length) return { held: true, cause: 'person', waitsForEnv: null };
 	if (unknown.length > 0) return { held: true, cause: 'unknown', waitsForEnv: null };
 	if (upstream.some((g) => g.kind === 'dependency') || options.hasContract) {
