@@ -96,3 +96,15 @@ export function gatesPinBox<B extends { kind: string; state: string; held: strin
 	const pinBoxHeld = boxes.find((b) => b.kind === 'pin')?.held ?? [];
 	return { boxes, heldBuildsOverride: a.pinnedTo ? pinBoxHeld : a.hereBuilds, clearPinDisabled: !dashboardManagesWantedVersion(a.rollout) };
 }
+
+/** The history entries that ARE a pin: the dashboard's pin call and a rollback (which pins what it went back to). */
+const PIN_EVENT_RES = [/^Pinned version$/, /^Pinned to version /, /^Rolled back/];
+/**
+ * WHEN A PIN STARTED HOLDING, ONE HELPER: the time of the pin / rollback event in the rollout's history (newest first). The /rollouts Held
+ * row, the app page's Holding row and the rollout page's Clear pin dialog all print this, so "13h / 4h / 5h" cannot recur. Null when the history
+ * carries no such event (a pin set by `kubectl`): the caller prints no age, never an arrival or deploy time standing in for it.
+ */
+export function pinSince(rollout: Pick<Rollout, 'status'> | null | undefined): string | null {
+	const h = (rollout?.status?.history ?? []) as { timestamp?: string; message?: string | null }[];
+	return h.find((e) => PIN_EVENT_RES.some((re) => re.test(e.message ?? '')))?.timestamp ?? null;
+}

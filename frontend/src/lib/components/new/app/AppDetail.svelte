@@ -55,7 +55,7 @@
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
-	import { apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
+	import { apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
 	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
@@ -89,7 +89,7 @@
 		const dep = deployedBuild({ app: name, href: p.href, version: p.runs });
 		return {
 			key: `${name}@${p.env}`, app: name, tier: p.tier, where: p.place, regions: p.tier === 'prod' ? [p.label] : [], state: p.state, group: 'rest', glyph: 'rest', word: '', change: null,
-			version: p.runs, since: dep.at, href: p.href, needsYou: false, lead: false, action: null, cause: null, pipeline: null,
+			version: p.runs, since: pins.has(p.place) ? pinSinceOfHref(p.href) : dep.at, href: p.href, needsYou: false, lead: false, action: null, cause: null, pipeline: null,
 			steps: stepsOf({ state: 'healthy', pipeline: null }).map((s) => ({ ...s, state: 'done' as const })), failure: null, place: p.place, deployedAt: dep.at, regionsOf: null, stillChecking: false
 		} as unknown as TRow;
 	};

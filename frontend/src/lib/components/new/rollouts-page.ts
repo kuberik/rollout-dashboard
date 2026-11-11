@@ -9,7 +9,7 @@
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
 import {
-	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
+	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
@@ -183,7 +183,7 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 	const held = [...rows.filter((r) => !inAttention.has(r.key) && r.group === 'held'), ...pinPlaces.map((p) => pinRow(p, hs))].sort(sinceDesc).map((r) => {
 		const sr = strandRow(r, hs);
 		/* the pin outranks the rules (held-chip.ts): a pin-only place's whole cause is the pin */
-		return pinHrefs.has(r.href) ? { ...sr, lead: HELD_BY_PIN, rest: '' } : sr;
+		return pinHrefs.has(r.href) ? { ...sr, lead: HELD_BY_PIN, rest: '', age: ago(pinSinceOfHref(r.href)) } : sr;
 	});
 	const rest = restRows(rows, R.restAll ?? R.rest, hs, o.settled ?? true).filter((p) => !pinHrefs.has(p.href));
 	const groups = ([['moving', moving], ['waiting', waiting], ['held', held]] as [GroupKey, StrandRow[]][]).filter(([, g]) => g.length).map(([key, g]) => ({ key, word: GROUP_WORD[key], rows: g }));

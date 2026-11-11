@@ -38,7 +38,7 @@
 	import { pinnedByWho as pinnedByWhoOf } from '$lib/view-models/pin-hold';
 	import { rolloutEnvironmentName } from '$lib/view-models/deploy-risk';
 	import { formatTimeAgoCompact } from '$lib/utils';
-	import { dashboardManagesWantedVersion } from '$lib/view-models/pin-hold';
+	import { dashboardManagesWantedVersion, pinSince } from '$lib/view-models/pin-hold';
 	import { shortRevision } from '$lib/version-utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
@@ -150,12 +150,8 @@
 	 * history entry at all — `whenIso` stays null there, and the line
 	 * degrades to naming only who, per "whichever facts exist."
 	 */
-	const PIN_HISTORY_RE = [/^Pinned version$/, /^Pinned to version /];
 	const pinnedByWho = $derived(pinnedByWhoOf(rollout));
-	const pinnedAtIso = $derived(
-		(rollout?.status?.history ?? []).find((h) => PIN_HISTORY_RE.some((re) => re.test(h.message ?? '')))
-			?.timestamp ?? null
-	);
+	const pinnedAtIso = $derived(pinSince(rollout));
 	const pinnedByLine = $derived.by(() => {
 		if (!pinnedByWho && !pinnedAtIso) return null;
 		const when = pinnedAtIso ? `${formatTimeAgoCompact(pinnedAtIso)} ago` : null;

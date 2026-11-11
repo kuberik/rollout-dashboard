@@ -36,7 +36,7 @@
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact } from '$lib/utils';
-import { HELD_BY_PIN, newerBuildsShown } from '$lib/view-models/pin-hold';
+import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
 import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } from '$lib/view-models/failed-builds';
@@ -876,6 +876,8 @@ export function placeCauses(app: string, state: HomeState = 'incident'): { state
  * carries it. Every count of held places adds exactly these to the rows' places: a place a rule AND the pin hold has a row and is counted once,
  * by it; a place only the pin holds is counted once, here. `skip` = row keys already shown elsewhere (an ask, "yours").
  */
+/** when the pin at this place started holding (`pinSince` of its rollout): the app page's pin-only place row reads it, as /rollouts and the rollout page do */
+export const pinSinceOfHref = (href: string): string | null => pinSince(rawOf(href) as never);
 export type PinOnlyPlace = { app: string; tier: TierKey; label: string; href: string; key: string; since: string };
 export function pinOnlyPlaces(
 	apps: { app: string; envs: { env: string; label: string; tier: TierKey; state: EnvState; pinned?: boolean; href: string; arrivedAt?: string | null }[] }[],
@@ -892,7 +894,7 @@ export function pinOnlyPlaces(
 			if (seen.has(id) || skip?.has(key)) continue;
 			if (rows.some((r) => r.href === e.href || (r.app === a.app && r.tier === e.tier && r.regions.includes(e.label)))) continue;
 			seen.add(id);
-			out.push({ app: a.app, tier: e.tier, label: e.label, href: e.href, key, since: e.arrivedAt ?? '' });
+			out.push({ app: a.app, tier: e.tier, label: e.label, href: e.href, key, since: pinSince(rawOf(e.href) as never) ?? '' });
 		}
 	}
 	return out;
