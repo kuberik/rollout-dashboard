@@ -1051,10 +1051,9 @@ lib/components/RecoveryModeWarningModal.svelte	code	The last deploy failed
 lib/components/RecoveryModeWarningModal.svelte	code	The last deploy was cancelled before it finished
 lib/components/RecoveryModeWarningModal.svelte	code	this environment
 lib/components/RecoveryModeWarningModal.svelte	text	to cancel
-lib/components/ReleaseSourceNotice.svelte	text	is ignored. … …
+lib/components/ReleaseSourceNotice.svelte	text	… … … … … Set
 lib/components/ReleaseSourceNotice.svelte	title	No release source
-lib/components/ReleaseSourceNotice.svelte	text	on the ReleaseSource to read from that ImagePolicy ( … ). …
-lib/components/ReleaseSourceNotice.svelte	code	This app's rollout
+lib/components/ReleaseSourceNotice.svelte	text	on the ReleaseSource to read from that ImagePolicy ( … ). … …
 lib/components/RepoCard.svelte	title	deploys …
 lib/components/ResourcesCard.svelte	title	… — Deployment
 lib/components/ResourcesCard.svelte	text	… … … ready resource …
@@ -1186,7 +1185,12 @@ lib/pr-cell-copy.ts	code	waiting for … to deploy it first
 lib/pr-cell-copy.ts	code	waiting on …
 lib/releases/catalogue.ts	code	No release source
 lib/releases/catalogue.ts	code	No releases yet
-lib/releases/catalogue.ts	code	This Rollout's release source has not published any releases yet.
+lib/releases/notice-copy.ts	code	… has no release source, so it has no releases.
+lib/releases/notice-copy.ts	code	… sets spec.releasesImagePolicy, which is ignored.
+lib/releases/notice-copy.ts	code	The release source of this app's rollout has not published any releases yet.
+lib/releases/notice-copy.ts	code	This app's rollout
+lib/releases/notice-copy.ts	code	This Rollout
+lib/releases/notice-copy.ts	code	This Rollout's release source has not published any releases yet.
 lib/rollout-cards.ts	code	… newer build… waiting.
 lib/rollout-cards.ts	code	Held: a newer build exists, but no rule lets it through yet.
 lib/rollout-cards.ts	code	Not pinned, so it can move forward again.
