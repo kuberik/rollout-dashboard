@@ -370,6 +370,39 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			expect(gatesOf('payments-core', 'incident').find((g) => g.id === 'refuses-all')?.holding).toBe(true);
 		});
 	});
+	/* ONE cause formatter (data.ts `holdCause`): the row's lead and the toast's detail carry the identical cause string for the same verdict. Until a gate's pretty name is published an unnamed window reads "Waits for the deploy window" in both; once published, both read the published name. */
+	const causeCase = (what: string, gate: G, expected: string, window = false) => it(`${what}: the row and the toast print the identical cause string`, () => {
+		(window ? withWindow : (f: () => void) => f())(() => patched([gate], () => {
+			const t = approvalTarget(row('payments-core')!, 'incident')!;
+			expect(t.cause).toBe(expected);
+			const lead = sentenceOf(prodRow(), 'incident')[0];
+			expect(lead === t.cause || lead.startsWith(`${t.cause} ·`), `row "${lead}" starts with the cause`).toBe(true);
+			expect(doneWords(t).detail).toBe(`payments-core: ${t.cause} · ${t.where}`);
+		}));
+	});
+	causeCase('an unnamed deploy window (the pretty name is not published yet)', { name: 'schedule-gate-qqqqq', kind: 'schedule', passing: false, allowedVersions: null }, 'Waits for the deploy window');
+	causeCase('a published deploy window (the schedule join names it)', { name: 'schedule-gate-zvsqr', kind: 'schedule', passing: false, allowedVersions: null }, 'Held by Business hours', true);
+	causeCase('a failing check', { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }, 'Held by Smoke check');
+	/* viewer-owned: the viewer CAN approve payments-core (its other regions still ask), but ONE region is held by a static allow-list that lacks the build: that region asks nothing (no approval ever deploys it), while its siblings keep the ask. Kills QA28 M10 (a rule-held row taking needsYou from the app's ask). */
+	it('a viewer-owned approval with ONE region held by a rule that never clears for the build: that region asks nothing, the others keep the ask', () => {
+		const { newest } = targetAndNewest();
+		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
+		const rs = (source().rollouts as unknown as R[]);
+		const one = rs.find((r) => `${r.metadata.namespace}/${r.metadata.name}` === t0.places[0].href.split('/').slice(3, 5).join('/'))!;
+		const gate = { name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] };
+		one.status.gates!.push(gate); resetHomeModel();
+		try {
+			const prod = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
+			const held = prod.filter((r) => r.state === 'held-by-rule'), asking = prod.filter((r) => r.state === 'awaiting-approval');
+			expect(held.length, 'one region is rule-held').toBe(1);
+			expect(asking.length, 'the siblings still ask').toBeGreaterThan(0);
+			for (const r of held) { expect(r.needsYou, 'no false call to action on the rule-held region').toBe(false); expect(sentenceOf(r, 'incident')[0]).toBe('Held by Permits newest only'); }
+			for (const r of asking) expect(r.needsYou).toBe(true);
+			const keys = inbox('incident').items.filter((i) => i.row.app === 'payments-core').map((i) => i.row.key);
+			expect(keys).not.toContain(held[0].key);
+			expect(keys).toContain(asking[0].key);
+		} finally { one.status.gates = one.status.gates!.filter((g) => g.name !== gate.name); resetHomeModel(); }
+	});
 	it('permits the target, refuses only the newest: BEFORE the grant the row and the inbox ask for the approval (it deploys the target), plain toast', () => {
 		const { target } = targetAndNewest();
 		patched([{ name: 'permits-target-only', kind: 'unknown', allowedVersions: [target] }], () => {
