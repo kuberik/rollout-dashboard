@@ -54,6 +54,8 @@ export type RolloutRow = {
 	version: string | null;
 	since: string | null;
 	href: string;
+	/** every place a FOLDED row covers (href of each); absent on a single-place row. The wait clock of a folded row is the oldest of these (waitClock). */
+	hrefs?: string[];
 	/** a failure of your change, or an approval you can give */
 	needsYou: boolean;
 	/** the place reads its approval or rule hold while its own build is still baking */
@@ -129,6 +131,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 		const same = rows.find((r) => r.app === p.app && r.tier === 'prod' && p.tier === 'prod' && r.state === p.state && (r.glyph === 'waiting') === !!p.prov && r.stillChecking === p.stillChecking && (p.state === 'awaiting-approval' || p.state === 'held-by-rule' || r.version === p.version));
 		if (same) {
 			same.regions.push(p.label);
+			(same.hrefs ??= [same.href]).push(p.href);
 			same.where = `${same.regions.length} prod regions`;
 			continue;
 		}
