@@ -6,10 +6,12 @@ import (
 
 	"encoding/json"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sync"
 	"testing"
 
 	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
@@ -191,4 +193,69 @@ func TestReleaseSourceLastSyncTimeOnlyUpdateIsNotPublished(t *testing.T) {
 	if !shouldPublishUpdate("ReleaseSource", a, c) {
 		t.Fatal("metadata change must publish")
 	}
+}
+
+// The CRDs appear AFTER startup: the background poll registers each informer
+// as discovery resolves it, with no restart.
+func TestOptionalInformersStartWhenCRDsAppearAfterStartup(t *testing.T) {
+	scheme, _ := buildScheme()
+	m := &lockedMapper{DefaultRESTMapper: mapperFor(t, requiredObjs()...)}
+	g := &syncGetter{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		retryOptionalInformers(ctx, 5*time.Millisecond, g, m, scheme, optionalCachedObjects(), func(string, cache.Informer) {})
+		close(done)
+	}()
+	time.Sleep(30 * time.Millisecond)
+	if n := g.count(); n != 0 {
+		t.Fatalf("informers started before the CRDs existed: %d", n)
+	}
+	m.add(releasev1alpha1.GroupVersion.WithKind("ReleaseSource"))
+	m.add(releasev1alpha1.GroupVersion.WithKind("ReleaseSlice"))
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the poll never picked up the CRDs")
+	}
+	if n := g.count(); n != 2 {
+		t.Fatalf("informers started = %d, want 2", n)
+	}
+}
+
+type syncGetter struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (s *syncGetter) GetInformer(context.Context, client.Object, ...cache.InformerGetOption) (cache.Informer, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.n++
+	return nil, nil
+}
+
+func (s *syncGetter) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.n
+}
+
+// lockedMapper lets a test install CRDs while the poll reads the mapper.
+type lockedMapper struct {
+	*meta.DefaultRESTMapper
+	mu sync.Mutex
+}
+
+func (l *lockedMapper) add(gvk schema.GroupVersionKind) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.DefaultRESTMapper.Add(gvk, meta.RESTScopeNamespace)
+}
+
+func (l *lockedMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*meta.RESTMapping, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.DefaultRESTMapper.RESTMapping(gk, versions...)
 }

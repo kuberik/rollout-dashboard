@@ -109,7 +109,25 @@ func optionalCachedObjects() []client.Object {
 }
 
 // optionalRetryInterval is how often unresolved optional kinds are retried.
-var optionalRetryInterval = 60 * time.Second
+var optionalRetryInterval = 30 * time.Second
+
+// retryOptionalInformers polls discovery every interval until every pending
+// kind resolves and has its informer, so a CRD installed after startup starts
+// streaming without a restart. Until then reads of the kind return the
+// cache's no-match error, which the handlers answer as an empty catalogue.
+func retryOptionalInformers(ctx context.Context, interval time.Duration, g informerGetter, mapper meta.RESTMapper, scheme *runtime.Scheme, pending []client.Object, attach func(kind string, inf cache.Informer)) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for len(pending) > 0 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		meta.MaybeResetRESTMapper(mapper)
+		pending = registerOptionalInformers(ctx, g, mapper, scheme, pending, attach)
+	}
+}
 
 // informerGetter is the slice of cache.Cache registerOptionalInformers needs.
 type informerGetter interface {
@@ -429,19 +447,7 @@ func InitReadCache(ctx context.Context, syncTimeout time.Duration) {
 	// in the background so a release-controller installed after this process
 	// started streams without a restart.
 	if pending := registerOptionalInformers(ctx, c, mapper, scheme, optionalCachedObjects(), attachChangeHandlers); len(pending) > 0 {
-		go func() {
-			t := time.NewTicker(optionalRetryInterval)
-			defer t.Stop()
-			for len(pending) > 0 {
-				select {
-				case <-ctx.Done():
-					return
-				case <-t.C:
-				}
-				meta.MaybeResetRESTMapper(mapper)
-				pending = registerOptionalInformers(ctx, c, mapper, scheme, pending, attachChangeHandlers)
-			}
-		}()
+		go retryOptionalInformers(ctx, optionalRetryInterval, c, mapper, scheme, pending, attachChangeHandlers)
 	}
 
 	cl, err := client.New(cfg, client.Options{
