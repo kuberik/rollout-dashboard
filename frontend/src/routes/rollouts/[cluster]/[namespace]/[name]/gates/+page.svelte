@@ -2231,7 +2231,7 @@
 					     the `minmax(22rem,2fr)` track unconditionally (see that
 					     grid's own comment above), so a 2-up inner split would
 					     cram two cards into one already-narrow rail. -->
-						<div class="grid min-w-0 content-start gap-4">
+						<div class="grid min-w-0 content-start gap-4 lg:col-start-2">
 							{#if hasChain}
 								<!-- CARD 3 — "Runs in". The vertical chain of nodes the old
 							     network graph drew is this: one row per environment, a
