@@ -11,8 +11,19 @@ describe('approve popover placement', () => {
 		const p = approvePlace({ top: 100, left: 1300, right: 1430, bottom: 130 }, 1440, 900, main);
 		expect(p.left + p.width).toBeLessThanOrEqual(main.right - 8);
 	});
-	it('right-aligns to the trigger when there is room', () => {
-		expect(approvePlace({ top: 0, left: 700, right: 800, bottom: 30 }, 1440, 900, main).left).toBe(480);
+	it('hangs under its own button: left edge to the trigger left when there is room', () => {
+		const p = approvePlace({ top: 0, left: 700, right: 800, bottom: 30 }, 1440, 900, main);
+		expect(p.left).toBe(700);
+		expect(p.left).toBeLessThanOrEqual(800);
+	});
+	it('flips to the trigger right edge when start-aligned would run past main', () => {
+		const p = approvePlace({ top: 0, left: 1250, right: 1360, bottom: 30 }, 1440, 900, main);
+		expect(p.left + p.width).toBe(1360);
+	});
+	it('a full-width card button gives the panel its own width, inside the card', () => {
+		const p = approvePlace({ top: 0, left: 277, right: 563, bottom: 30 }, 1440, 900, main);
+		expect(p.left).toBe(277);
+		expect(p.left + p.width).toBe(563);
 	});
 	it('falls back to the viewport without bounds', () => {
 		expect(approvePlace({ top: 0, left: 0, right: 50, bottom: 30 }, 1000, 900).left).toBe(8);
