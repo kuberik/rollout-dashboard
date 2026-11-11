@@ -167,7 +167,9 @@ export const replacedBuild = (row: Pick<RolloutRow, 'state' | 'href'>) => replac
 /** The Gates tab's Runs-in rollup, word for word (up-to-date.ts): the tab counts by BUILD, so a failing place on the newest build counts.
  *  Apps' own `onNewest` is a different rule on purpose (the app page says "2 of 3 · 1 failed"). */
 export function pathPosition(row: Pick<RolloutRow, 'app'>, state: HomeState = 'incident'): string {
-	const p = placesOf(state, row.app);
+	/* no release = not affected: a place whose Rollout has no releases is not counted (each place's own truth: it says "No releases yet"), unless NO place has any */
+	const all = placesOf(state, row.app);
+	const p = all.some((x) => !noReleasesAt(x.href)) ? all.filter((x) => !noReleasesAt(x.href)) : all;
 	/* r6 T1: the Gates tab's "Runs in" counts a place as on the newest when it runs the NEWEST BUILD OF THE APP'S LADDER (the last of the rollout's availableReleases,
 	   which can be a build no place runs yet: hello-world staging "0 of 3"), not the newest build a place happens to run. Same rule as `runsIn`/`behindCount`. */
 	const ladder = p.map((x) => relsOf(rawOf(x.href))).find((s) => s?.length);
@@ -599,7 +601,7 @@ export function placesOf(state: HomeState, app: string): (AppPlace & { newest: s
 		return (q.arrivedAt ?? '').localeCompare(p.arrivedAt ?? '');
 	})[0];
 	const newest = newestEnv ? shortBuild(newestEnv.version) : null;
-	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, href: e.href, version: shortBuild(e.version), onNewest: shortBuild(e.version) === newest && e.state !== 'failed', onBuild: shortBuild(e.version) === newest, newest }));
+	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, href: e.href, version: shortBuild(e.version), onNewest: shortBuild(e.version) === newest && e.state !== 'failed' && !noReleasesAt(e.href), onBuild: shortBuild(e.version) === newest && !noReleasesAt(e.href), newest }));
 }
 export type AppFailing = { build: string | null; place: string; href: string; line: string };
 export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; href: string; version: string | null; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean };
@@ -691,7 +693,7 @@ export function apps(state: HomeState) {
 			return (q.arrivedAt ?? '').localeCompare(p.arrivedAt ?? '');
 		})[0];
 		const newest = newestEnv ? shortBuild(newestEnv.version) : a.newest;
-		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, href: e.href, version: shortBuild(e.version), onNewest: shortBuild(e.version) === newest && e.state !== 'failed', onBuild: shortBuild(e.version) === newest }));
+		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, href: e.href, version: shortBuild(e.version), onNewest: shortBuild(e.version) === newest && e.state !== 'failed' && !noReleasesAt(e.href), onBuild: shortBuild(e.version) === newest && !noReleasesAt(e.href) }));
 		const onNewest = placeList.filter((p) => p.onNewest).length;
 		const prodPl = placeList.filter((p) => p.tier === 'prod');
 		/* the outcome is recomputed from OUR pick (production first among equals) so the text and its link name the same place */

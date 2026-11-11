@@ -3018,6 +3018,7 @@
 							class="btn btn-secondary max-lg:h-11"
 							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
 							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
+							aria-describedby={noReleases ? "change-version-reason-1" : undefined}
 							onclick={() => {
 								if (isDashboardManagingWantedVersion) {
 									isPinVersionMode = false;
@@ -3030,7 +3031,7 @@
 							<EditOutline class="h-4 w-4" aria-hidden="true" />
 							Change version
 						</button>
-						{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
+						{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" id="change-version-reason-1" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
 						<!-- ⛔ `Rollback` PRE-SELECTED `history[1]`, WHICH IS NOT
 										     NECESSARILY OLDER. A live critic pressed it on a rollout
 										     that had itself been rolled back and got a modal headed
@@ -4878,6 +4879,7 @@
 								class="btn btn-primary"
 								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
 							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
+							aria-describedby={noReleases ? "change-version-reason-2" : undefined}
 								onclick={() => {
 									if (isDashboardManagingWantedVersion) {
 										isPinVersionMode = false;
@@ -4890,7 +4892,7 @@
 								<EditOutline />
 								Change version
 							</button>
-							{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
+							{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" id="change-version-reason-2" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
 						{/if}
 					{/snippet}
 				</PageHeader>

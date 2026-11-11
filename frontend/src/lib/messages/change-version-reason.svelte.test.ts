@@ -97,6 +97,9 @@ describe('the Change version reason', () => {
 			);
 			expect(btn).toBeTruthy();
 			expect(btn!.disabled).toBe(true);
+			const id = btn!.getAttribute('aria-describedby');
+			expect(id).toBeTruthy();
+			expect(c.querySelector(`#${id}`)?.hasAttribute('data-change-version-reason')).toBe(true);
 		}
 	);
 

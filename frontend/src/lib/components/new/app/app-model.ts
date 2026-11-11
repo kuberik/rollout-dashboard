@@ -8,7 +8,20 @@
  * runs HEALTHY in the tier upstream of it, for a place no approval or rule holds.
  */
 import { approvalWord, severity } from '../state-words';
-import { tabPill, deployedHistory, bakeFailedOn, streamBuilds, newestBuild, ago, buildIdentity, type PlaceHold, type GateInfo, type TRow, type TierKey } from '../data';
+import {
+	tabPill,
+	deployedHistory,
+	bakeFailedOn,
+	streamBuilds,
+	newestBuild,
+	noReleasesAt,
+	ago,
+	buildIdentity,
+	type PlaceHold,
+	type GateInfo,
+	type TRow,
+	type TierKey
+} from '../data';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
 
@@ -33,7 +46,10 @@ export function holdWord(p: PlaceHold): string | null {
 
 export type HoldGroup = { word: string; places: string[]; tiers: string[] };
 /** "5 prod regions" when three or more places are all production regions, else the names ("us-east, us-west"); the header's and the Builds strip's one phrase for a set of places */
-export const placesPhrase = (names: string[], tiers: string[]): string => (names.length >= 3 && tiers.every((t) => t === 'prod') ? `${names.length} prod regions` : names.join(', '));
+export const placesPhrase = (names: string[], tiers: string[]): string =>
+	names.length >= 3 && tiers.every((t) => t === 'prod')
+		? `${names.length} prod regions`
+		: names.join(', ');
 /** the holds of an app per place, one group per reason in severity order: [{approval, [us-east, us-west]}, {health checks, [eu-west]}] */
 export function holdGroups(places: PlaceHold[]): HoldGroup[] {
 	const out = new Map<string, HoldGroup>();
@@ -49,7 +65,11 @@ export function holdGroups(places: PlaceHold[]): HoldGroup[] {
 	return [...out.values()].sort((a, b) => rank(a.word) - rank(b.word));
 }
 /** the hold reason per place group, said once (the header's meta): "waiting for approval in 5 prod regions" (the tab's words), "held by health checks in eu-west" */
-export const holdSentences = (places: PlaceHold[]): string[] => holdGroups(places).map((g) => `${g.word === 'approval' ? 'waiting for approval' : `held by ${g.word}`} in ${placesPhrase(g.places, g.tiers)}`);
+export const holdSentences = (places: PlaceHold[]): string[] =>
+	holdGroups(places).map(
+		(g) =>
+			`${g.word === 'approval' ? 'waiting for approval' : `held by ${g.word}`} in ${placesPhrase(g.places, g.tiers)}`
+	);
 /** how many of the app's newer builds some gate or failing check holds somewhere (the Builds strip's "N held") */
 export const heldCount = (places: PlaceHold[]): number => {
 	const s = new Set<string>();
@@ -61,11 +81,15 @@ export const heldCount = (places: PlaceHold[]): number => {
 export function deployTargets(places: PlaceHold[]): Map<string, PlaceHold[]> {
 	const out = new Map<string, PlaceHold[]>();
 	for (const p of places) {
-		if (p.holdReason === 'approval' || (p.holdReason === 'rule')) continue;
+		if (p.holdReason === 'approval' || p.holdReason === 'rule') continue;
 		if (p.state === 'deploying' || p.state === 'checking') continue;
 		const up = upstreamTier(places, p.tier);
 		if (!up || !p.heldBuilds.length) continue;
-		const ready = new Set(places.filter((x) => x.tier === up && x.state === 'healthy' && x.deployedBuild).map((x) => x.deployedBuild as string));
+		const ready = new Set(
+			places
+				.filter((x) => x.tier === up && x.state === 'healthy' && x.deployedBuild)
+				.map((x) => x.deployedBuild as string)
+		);
 		const pick = p.heldBuilds.find((h) => ready.has(h.build));
 		if (!pick) continue;
 		out.set(pick.build, [...(out.get(pick.build) ?? []), p]);
@@ -73,7 +97,16 @@ export function deployTargets(places: PlaceHold[]): Map<string, PlaceHold[]> {
 	return out;
 }
 
-export type AppBuild = { build: string; title: string | null; author: string | null; created: string | null; runsIn: string[]; runsTiers: string[]; moving: boolean; deployTo: PlaceHold[] };
+export type AppBuild = {
+	build: string;
+	title: string | null;
+	author: string | null;
+	created: string | null;
+	runsIn: string[];
+	runsTiers: string[];
+	moving: boolean;
+	deployTo: PlaceHold[];
+};
 /** the builds newer than something: the union over the app's places, newest first, each with where it already runs and where the chain would deploy it */
 export function buildsOf(places: PlaceHold[], only: Set<string> | null = null): AppBuild[] {
 	const m = new Map<string, AppBuild>();
@@ -82,12 +115,19 @@ export function buildsOf(places: PlaceHold[], only: Set<string> | null = null): 
 		for (const h of p.heldBuilds) {
 			if (m.has(h.build) || (only && !only.has(h.build))) continue;
 			const at = places.filter((x) => x.deployedBuild === h.build);
-			m.set(h.build, { ...h, runsIn: at.map((x) => x.place), runsTiers: at.map((x) => x.tier), moving: at.length > 0 && at.every((x) => x.state === 'deploying' || x.state === 'checking'), deployTo: targets.get(h.build) ?? [] });
+			m.set(h.build, {
+				...h,
+				runsIn: at.map((x) => x.place),
+				runsTiers: at.map((x) => x.tier),
+				moving: at.length > 0 && at.every((x) => x.state === 'deploying' || x.state === 'checking'),
+				deployTo: targets.get(h.build) ?? []
+			});
 		}
 	return [...m.values()].sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''));
 }
 /** "live in us-east, us-west" / "deploying in dev" — where a build already is */
-export const whereIs = (b: Pick<AppBuild, 'runsIn' | 'moving'>): string | null => (b.runsIn.length ? `${b.moving ? 'deploying' : 'running'} in ${b.runsIn.join(', ')}` : null);
+export const whereIs = (b: Pick<AppBuild, 'runsIn' | 'moving'>): string | null =>
+	b.runsIn.length ? `${b.moving ? 'deploying' : 'running'} in ${b.runsIn.join(', ')}` : null;
 
 /** the Places row's second line: the next build to arrive at a place and what, if anything, holds it. A place with nothing newer (or one that is itself failing / moving, where the pill and the pane already say so) prints nothing.
  *  AP13: an approval is said ONCE per page (the statement and the Holding card), so an approval-held row says only "next f4a2c19"; a health hold uses the tab's own sentence ("7 newer builds · held: waiting for health checks"). */
@@ -98,33 +138,56 @@ export function nextOf(places: PlaceHold[], href: string): string | null {
 	if (!nxt) return null;
 	const n = p.heldBuilds.length;
 	const up = upstreamTier(places, p.tier);
-	if (p.holdReason === 'failed' || p.holdReason === 'health') return `${n} build${n === 1 ? '' : 's'} behind`; /* r5 AQ5: one phrasing, the failing check is the row's cause and the Holding card's */
+	if (p.holdReason === 'failed' || p.holdReason === 'health')
+		return `${n} build${n === 1 ? '' : 's'} behind`; /* r5 AQ5: one phrasing, the failing check is the row's cause and the Holding card's */
 	if (p.holdReason === 'approval') return `next ${nxt.build}`;
 	if (p.holdReason === 'rule' && isPromotion(p) && up) {
 		/* QA #23: a build the upstream tier has already moved PAST will never arrive there: say it was skipped instead of "after staging" */
 		const stream = streamBuilds(p.href);
 		const at = (b: string | null) => (b ? stream.indexOf(b) : -1);
-		const passed = places.filter((x) => x.tier === up && at(x.deployedBuild) > at(nxt.build) && at(nxt.build) >= 0).map((x) => x.deployedBuild)[0];
+		const passed = places
+			.filter((x) => x.tier === up && at(x.deployedBuild) > at(nxt.build) && at(nxt.build) >= 0)
+			.map((x) => x.deployedBuild)[0];
 		if (passed) return `${nxt.build} was skipped · ${up} runs ${passed}`;
 	}
-	if (p.holdReason === 'rule') return isPromotion(p) ? `next ${nxt.build} · ${up ? `after ${up}` : 'in sequence'}` : `next ${nxt.build} · held: waiting on ${p.gate?.name ?? 'a rule'}`;
+	if (p.holdReason === 'rule')
+		return isPromotion(p)
+			? `next ${nxt.build} · ${up ? `after ${up}` : 'in sequence'}`
+			: `next ${nxt.build} · held: waiting on ${p.gate?.name ?? 'a rule'}`;
 	if (p.state === 'deploying' || p.state === 'checking') return null;
 	return `next ${nxt.build} · ready to deploy`;
 }
 
 /** the builds an app's page counts as "newer": those the FOCUS place (what production runs) still lacks, so the header, the Builds card and the Holding card count the same builds (the tab's "N newer builds") */
-export const newerThan = (focus: PlaceHold | null, places: PlaceHold[]): Set<string> | null => (focus ? new Set(focus.heldBuilds.map((h) => h.build)) : null);
+export const newerThan = (focus: PlaceHold | null, places: PlaceHold[]): Set<string> | null =>
+	focus ? new Set(focus.heldBuilds.map((h) => h.build)) : null;
 
 /** the places that RUN `build` in the state the pill names: "FAILED in production" lists only failing places, "DEPLOYED in 4 prod regions" only the settled ones */
 export function placesInPillState(places: PlaceHold[], build: string, pill: string): PlaceHold[] {
 	const on = places.filter((p) => p.deployedBuild === build);
 	const word = pill.toUpperCase();
-	const want = (p: PlaceHold) => word === 'FAILED' ? p.state === 'failed' : word === 'CHECKING' ? p.state === 'checking' : word === 'DEPLOYING' ? p.state === 'deploying' : p.state !== 'failed' && p.state !== 'checking' && p.state !== 'deploying';
+	const want = (p: PlaceHold) =>
+		word === 'FAILED'
+			? p.state === 'failed'
+			: word === 'CHECKING'
+				? p.state === 'checking'
+				: word === 'DEPLOYING'
+					? p.state === 'deploying'
+					: p.state !== 'failed' && p.state !== 'checking' && p.state !== 'deploying';
 	return on.filter(want);
 }
 
 /** the builds some gate or failing check holds somewhere (Builds' held mark) */
-export const heldBuilds = (builds: AppBuild[], places: PlaceHold[]): Set<string> => new Set(builds.filter((b) => !b.moving && places.some((p) => holdWord(p) && p.heldBuilds.some((h) => h.build === b.build))).map((b) => b.build));
+export const heldBuilds = (builds: AppBuild[], places: PlaceHold[]): Set<string> =>
+	new Set(
+		builds
+			.filter(
+				(b) =>
+					!b.moving &&
+					places.some((p) => holdWord(p) && p.heldBuilds.some((h) => h.build === b.build))
+			)
+			.map((b) => b.build)
+	);
 
 /** the Builds card's rollup: "6 held · 1 deploying" (the header's, owner §7), else "N newer" when nothing is classified, "on the newest" when there are none */
 export function buildRollup(builds: AppBuild[], places: PlaceHold[]): string {
@@ -135,7 +198,17 @@ export function buildRollup(builds: AppBuild[], places: PlaceHold[]): string {
 	return parts.length ? parts.join(' · ') : `${builds.length} newer`;
 }
 
-export type HoldRow = { key: string; kind: 'approval' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other'; name: string; holding: boolean; places: string[]; held: string[]; sentence: string; href: string; /** the held-HERE count is still unknown: the card shows a pending bar, never a guessed number */ pending?: boolean };
+export type HoldRow = {
+	key: string;
+	kind: 'approval' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
+	name: string;
+	holding: boolean;
+	places: string[];
+	held: string[];
+	sentence: string;
+	href: string;
+	/** the held-HERE count is still unknown: the card shows a pending bar, never a guessed number */ pending?: boolean;
+};
 /** the gate's name without the app it sits in (the page already says the app): "Invoice api manual approval" -> "Manual approval" */
 export const shortGate = (name: string, app: string): string => {
 	const a = app.replace(/[-_.]+/g, ' ').toLowerCase();
@@ -143,30 +216,72 @@ export const shortGate = (name: string, app: string): string => {
 	return n.charAt(0).toUpperCase() + n.slice(1);
 };
 /** the Holding card of an app: each of ITS gates (approvals included) once, then the health hold; holding ones first. Links open the first guarded place's Gates tab. */
-export function holdRows(gates: GateInfo[], places: PlaceHold[], only: Set<string> | null = null, app = ''): HoldRow[] {
+export function holdRows(
+	gates: GateInfo[],
+	places: PlaceHold[],
+	only: Set<string> | null = null,
+	app = ''
+): HoldRow[] {
 	const hrefOf = (label: string) => `${places.find((p) => p.place === label)?.href ?? ''}/gates`;
-	const rows: HoldRow[] = gates.map((g) => ({ key: `gate:${g.id}`, kind: g.kind === 'promotion' ? 'other' : g.kind, name: shortGate(g.name, app), holding: g.holding, pending: g.heldPending, places: g.places, held: only ? g.held.filter((b) => only.has(b)) : g.held, sentence: g.sentence, href: hrefOf(g.places[0]) }));
+	const rows: HoldRow[] = gates.map((g) => ({
+		key: `gate:${g.id}`,
+		kind: g.kind === 'promotion' ? 'other' : g.kind,
+		name: shortGate(g.name, app),
+		holding: g.holding,
+		pending: g.heldPending,
+		places: g.places,
+		held: only ? g.held.filter((b) => only.has(b)) : g.held,
+		sentence: g.sentence,
+		href: hrefOf(g.places[0])
+	}));
 	const hp = places.filter((p) => p.holdReason === 'failed' || p.holdReason === 'health');
 	if (hp.length) {
 		const held: string[] = [];
-		for (const p of hp) for (const h of p.heldBuilds) if (!held.includes(h.build) && (!only || only.has(h.build))) held.push(h.build);
-		rows.push({ key: 'health', kind: 'health', name: 'Health checks', holding: true, places: hp.map((p) => p.place), held, sentence: 'Releases when the check starts passing', href: `${hp[0].href}/gates` });
+		for (const p of hp)
+			for (const h of p.heldBuilds)
+				if (!held.includes(h.build) && (!only || only.has(h.build))) held.push(h.build);
+		rows.push({
+			key: 'health',
+			kind: 'health',
+			name: 'Health checks',
+			holding: true,
+			places: hp.map((p) => p.place),
+			held,
+			sentence: 'Releases when the check starts passing',
+			href: `${hp[0].href}/gates`
+		});
 	}
 	return rows.sort((a, b) => Number(b.holding) - Number(a.holding));
 }
 
 /** the place order of the rows: urgency first, then the promotion order (dev → prod), then the name */
-export const placeOrder = (a: { tier: string; label: string; rank: number }, b: { tier: string; label: string; rank: number }): number =>
+export const placeOrder = (
+	a: { tier: string; label: string; rank: number },
+	b: { tier: string; label: string; rank: number }
+): number =>
 	a.rank - b.rank || tierRank(a.tier) - tierRank(b.tier) || a.label.localeCompare(b.label);
 
-export type RegionCell = { label: string; place: string; href: string; state: PlaceHold['state']; build: string | null; word: string; action: TRow['action'] };
+export type RegionCell = {
+	label: string;
+	place: string;
+	href: string;
+	state: PlaceHold['state'];
+	build: string | null;
+	word: string;
+	action: TRow['action'];
+};
 
 /**
  * apps-11 AS2 (truth) — ?calm / ?quiet mask the places (data.ts calm/quiet models) while the tab's pill is read from the served incident
  * fixture: a FAILED pill beside cells the scenario shows Live is two sources. Outside the incident, a FAILED tab word over a place the
  * masked model does not call failed says what the masked place says (the tab's own word for a settled build: DEPLOYED).
  */
-export function scenarioPill<T extends { word: string; role: string }>(pill: T, scenario: string, placeState: string | null | undefined, settled: { word: string; role: string }): { word: string; role: string } {
+export function scenarioPill<T extends { word: string; role: string }>(
+	pill: T,
+	scenario: string,
+	placeState: string | null | undefined,
+	settled: { word: string; role: string }
+): { word: string; role: string } {
 	if (scenario !== 'incident' && pill.word === 'FAILED' && placeState !== 'failed') return settled;
 	return { word: pill.word, role: pill.role };
 }
@@ -179,14 +294,26 @@ export function scenarioPill<T extends { word: string; role: string }>(pill: T, 
  * only maps a fixture FAILED word the masked model does not call failed (scenarioPill). A DEPLOYED word on an app with a Held cell
  * (approval or rule) is drawn neutral: green is not spent on an app that holds a build.
  */
-const POSE: Record<string, number> = { failed: 0, 'awaiting-approval': 1, 'held-by-rule': 2, deploying: 3, checking: 4 };
+const POSE: Record<string, number> = {
+	failed: 0,
+	'awaiting-approval': 1,
+	'held-by-rule': 2,
+	deploying: 3,
+	checking: 4
+};
 const poseOf = (s: string) => POSE[s] ?? 9;
-export function headlinePlace<T extends { tier: string; state: string; label: string }>(places: T[]): T | null {
+export function headlinePlace<T extends { tier: string; state: string; label: string }>(
+	places: T[]
+): T | null {
 	const rank = (p: T) => poseOf(p.state);
-	const pick = (xs: T[]) => [...xs].sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label))[0] ?? null;
+	const pick = (xs: T[]) =>
+		[...xs].sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label))[0] ?? null;
 	return pick(places.filter((p) => p.tier === 'prod')) ?? pick(places);
 }
-export function pillOf<T extends { tier: string; state: string; label: string; href: string }>(places: T[], scenario: string): { word: string; role: string; place: T } | null {
+export function pillOf<T extends { tier: string; state: string; label: string; href: string }>(
+	places: T[],
+	scenario: string
+): { word: string; role: string; place: T } | null {
 	const place = headlinePlace(places);
 	if (!place) return null;
 	const t = tabPill({ href: place.href });
@@ -205,9 +332,20 @@ export function recentBuilds(places: PlaceHold[], limit = 8): AppBuild[] {
 		for (const h of deployedHistory(p.href, limit)) {
 			if (m.has(h.build)) continue;
 			const at = places.filter((x) => x.deployedBuild === h.build);
-			m.set(h.build, { build: h.build, title: h.title, author: h.author, created: h.at, runsIn: at.map((x) => x.place), runsTiers: at.map((x) => x.tier), moving: false, deployTo: [] });
+			m.set(h.build, {
+				build: h.build,
+				title: h.title,
+				author: h.author,
+				created: h.at,
+				runsIn: at.map((x) => x.place),
+				runsTiers: at.map((x) => x.tier),
+				moving: false,
+				deployTo: []
+			});
 		}
-	return [...m.values()].sort((a, b) => (b.created ?? '').localeCompare(a.created ?? '')).slice(0, limit);
+	return [...m.values()]
+		.sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))
+		.slice(0, limit);
 }
 
 /**
@@ -216,9 +354,14 @@ export function recentBuilds(places: PlaceHold[], limit = 8): AppBuild[] {
  * Never a cross-app version. Health is a different fact (the state word); the two are never merged into one word.
  */
 export function currencyOf(href: string, app = ''): { behind: number; word: string } {
+	/* no release = not affected: a place without releases has no currency to print (its own word is "No releases yet") */
+	if (noReleasesAt(href)) return { behind: 0, word: '' };
 	const nb = newestBuild({ app, href, state: 'healthy', word: '' } as never);
 	const behind = nb?.count ?? 0;
-	return { behind, word: behind ? `${behind} build${behind === 1 ? '' : 's'} behind` : 'Up to date' };
+	return {
+		behind,
+		word: behind ? `${behind} build${behind === 1 ? '' : 's'} behind` : 'Up to date'
+	};
 }
 
 /**
@@ -229,16 +372,35 @@ export function currencyOf(href: string, app = ''): { behind: number; word: stri
  * labelled, never counted. The sequence is rebuilt from the places' own newer-build lists: the longest list is the spine, the build
  * its place runs is its last stop; every shorter list is a prefix of it (pinned in app-model.test.ts for every app in all three states).
  */
-export type Stop = { key: string; build: string; title: string | null; author: string | null; created: string | null; age: string; pr: number | null; /** index in the sequence = builds behind the newest; null for a custom build */ index: number | null; custom: boolean; places: PlaceHold[]; deployTo: PlaceHold[] };
-export const lagWord = (n: number): string => (n === 0 ? 'Up to date' : `${n} build${n === 1 ? '' : 's'} behind`);
+export type Stop = {
+	key: string;
+	build: string;
+	title: string | null;
+	author: string | null;
+	created: string | null;
+	age: string;
+	pr: number | null;
+	/** index in the sequence = builds behind the newest; null for a custom build */ index:
+		| number
+		| null;
+	custom: boolean;
+	places: PlaceHold[];
+	deployTo: PlaceHold[];
+};
+export const lagWord = (n: number): string =>
+	n === 0 ? 'Up to date' : `${n} build${n === 1 ? '' : 's'} behind`;
 /**
  * Where a place sits among the places of ONE stop: THE ONE SEVERITY ORDER (state-words `severity`: failing, waiting for approval, held,
  * checking, deploying, rolled back, healthy), so the place that needs reading is the first row under its build, never the last of five
  * regions alphabetised. A healthy place a promotion gate holds a newer build from (it waits on its wave) ranks with the held places, not at rest.
  * Array.sort is stable: places of one rank keep the order they came in.
  */
-export const placeRank = (p: PlaceHold): number => (p.state === 'healthy' && p.holdReason === 'rule' && p.heldBuilds.length ? severity('held-by-rule') : severity(p.state));
-export const bySeverity = (places: PlaceHold[]): PlaceHold[] => [...places].sort((a, b) => placeRank(a) - placeRank(b));
+export const placeRank = (p: PlaceHold): number =>
+	p.state === 'healthy' && p.holdReason === 'rule' && p.heldBuilds.length
+		? severity('held-by-rule')
+		: severity(p.state);
+export const bySeverity = (places: PlaceHold[]): PlaceHold[] =>
+	[...places].sort((a, b) => placeRank(a) - placeRank(b));
 export function ledgerOf(places: PlaceHold[]): Stop[] {
 	if (!places.length) return [];
 	const spinePlace = [...places].sort((a, b) => b.heldBuilds.length - a.heldBuilds.length)[0];
@@ -246,43 +408,93 @@ export function ledgerOf(places: PlaceHold[]): Stop[] {
 	let seq = spine.length && spinePlace.deployedBuild ? [...spine, spinePlace.deployedBuild] : spine;
 	if (!seq.length) {
 		/* nothing newer anywhere: every place is on the newest; the newest deploy names it, any other build is custom */
-		const top = [...places].filter((p) => p.deployedBuild).sort((a, b) => (deployedHistory(b.href, 1)[0]?.at ?? '').localeCompare(deployedHistory(a.href, 1)[0]?.at ?? ''))[0]?.deployedBuild;
+		const top = [...places]
+			.filter((p) => p.deployedBuild)
+			.sort((a, b) =>
+				(deployedHistory(b.href, 1)[0]?.at ?? '').localeCompare(
+					deployedHistory(a.href, 1)[0]?.at ?? ''
+				)
+			)[0]?.deployedBuild;
 		seq = top ? [top] : [];
 	}
-	const info = new Map<string, { title: string | null; author: string | null; created: string | null }>();
+	const info = new Map<
+		string,
+		{ title: string | null; author: string | null; created: string | null }
+	>();
 	for (const p of places) {
-		for (const h of p.heldBuilds) if (!info.has(h.build)) info.set(h.build, { title: h.title, author: h.author, created: h.created });
+		for (const h of p.heldBuilds)
+			if (!info.has(h.build))
+				info.set(h.build, { title: h.title, author: h.author, created: h.created });
 	}
-	for (const p of places) for (const h of deployedHistory(p.href, 8)) { const cur = info.get(h.build); if (!cur) info.set(h.build, { title: h.title, author: h.author, created: h.at }); else if (!cur.title && h.title) info.set(h.build, { ...cur, title: h.title, author: cur.author ?? h.author }); }
+	for (const p of places)
+		for (const h of deployedHistory(p.href, 8)) {
+			const cur = info.get(h.build);
+			if (!cur) info.set(h.build, { title: h.title, author: h.author, created: h.at });
+			else if (!cur.title && h.title)
+				info.set(h.build, { ...cur, title: h.title, author: cur.author ?? h.author });
+		}
 	const targets = deployTargets(places);
 	const mk = (build: string, index: number | null, custom: boolean): Stop => {
 		const i = info.get(build);
-		return { key: build, build, title: i?.title ?? null, author: i?.author ?? null, created: i?.created ?? null, age: ago(i?.created), pr: buildIdentity(build, places[0]?.href)?.pr ?? null, index, custom, places: bySeverity(places.filter((p) => p.deployedBuild === build)), deployTo: targets.get(build) ?? [] };
+		return {
+			key: build,
+			build,
+			title: i?.title ?? null,
+			author: i?.author ?? null,
+			created: i?.created ?? null,
+			age: ago(i?.created),
+			pr: buildIdentity(build, places[0]?.href)?.pr ?? null,
+			index,
+			custom,
+			places: bySeverity(places.filter((p) => p.deployedBuild === build)),
+			deployTo: targets.get(build) ?? []
+		};
 	};
 	const stops = seq.map((b, i) => mk(b, i, false));
-	const outside = [...new Set(places.map((p) => p.deployedBuild).filter((b): b is string => !!b && !seq.includes(b)))];
+	const outside = [
+		...new Set(
+			places.map((p) => p.deployedBuild).filter((b): b is string => !!b && !seq.includes(b))
+		)
+	];
 	/* QA #23: a build that is in the app's release stream (availableReleases) is a release that was SUPERSEDED (a newer one went past it): it takes its place in
 	   the sequence, newest first, after the spine. Only a build outside the app's release stream (a hotfix, a pin to a foreign build) is a "Custom build" (never counted). */
 	const rank = new Map<string, number>();
-	for (const p of places) streamBuilds(p.href).forEach((b, i) => rank.set(b, Math.max(rank.get(b) ?? -1, i)));
-	const superseded = outside.filter((b) => rank.has(b)).sort((a, b) => (rank.get(b) ?? 0) - (rank.get(a) ?? 0));
+	for (const p of places)
+		streamBuilds(p.href).forEach((b, i) => rank.set(b, Math.max(rank.get(b) ?? -1, i)));
+	const superseded = outside
+		.filter((b) => rank.has(b))
+		.sort((a, b) => (rank.get(b) ?? 0) - (rank.get(a) ?? 0));
 	const custom = outside.filter((b) => !rank.has(b));
-	return [...stops, ...superseded.map((b, i) => mk(b, seq.length + i, false)), ...custom.map((b) => mk(b, null, true))];
+	return [
+		...stops,
+		...superseded.map((b, i) => mk(b, seq.length + i, false)),
+		...custom.map((b) => mk(b, null, true))
+	];
 }
-export type LedgerItem = { kind: 'stop'; stop: Stop } | { kind: 'fold'; key: string; stops: Stop[] };
+export type LedgerItem =
+	| { kind: 'stop'; stop: Stop }
+	| { kind: 'fold'; key: string; stops: Stop[] };
 /** runs of FOLD or more consecutive stops no place stands on fold into one grey row (the sequence's first and last stops never fold); `open` lists fold keys the reader expanded */
-export function foldLedger(stops: Stop[], open: ReadonlySet<string> = new Set(), fold = 4): LedgerItem[] {
+export function foldLedger(
+	stops: Stop[],
+	open: ReadonlySet<string> = new Set(),
+	fold = 4
+): LedgerItem[] {
 	const out: LedgerItem[] = [];
 	let run: Stop[] = [];
 	const flush = (edge: boolean) => {
-		if (run.length >= fold && !edge && !open.has(run[0].key)) out.push({ kind: 'fold', key: run[0].key, stops: run });
+		if (run.length >= fold && !edge && !open.has(run[0].key))
+			out.push({ kind: 'fold', key: run[0].key, stops: run });
 		else for (const s of run) out.push({ kind: 'stop', stop: s });
 		run = [];
 	};
 	stops.forEach((s, i) => {
 		const unused = !s.places.length && !s.custom && i > 0 && i < stops.length - 1;
 		if (unused) run.push(s);
-		else { flush(false); out.push({ kind: 'stop', stop: s }); }
+		else {
+			flush(false);
+			out.push({ kind: 'stop', stop: s });
+		}
 	});
 	flush(false);
 	return out;
@@ -291,16 +503,24 @@ export function foldLedger(stops: Stop[], open: ReadonlySet<string> = new Set(),
 export const tabLag = (p: PlaceHold): number => p.heldBuilds.length;
 
 /** what a place says about its own currency when its tab disagrees with the stop it stands on (the tab's list is shorter: a gate filters what it is offered): null when they agree */
-export const placeNote = (stop: Pick<Stop, 'index' | 'custom'>, p: PlaceHold): string | null => (stop.custom || stop.index === tabLag(p) ? null : lagWord(tabLag(p)));
+export const placeNote = (stop: Pick<Stop, 'index' | 'custom'>, p: PlaceHold): string | null =>
+	stop.custom || stop.index === tabLag(p) ? null : lagWord(tabLag(p));
 /** the stop's own word: "Newest", "N builds behind" (the tab's count), "Custom build" (never counted) */
-export const stopWord = (s: Pick<Stop, 'index' | 'custom'>): string => (s.custom ? 'Custom build' : s.index === 0 ? 'Newest' : lagWord(s.index ?? 0));
+export const stopWord = (s: Pick<Stop, 'index' | 'custom'>): string =>
+	s.custom ? 'Custom build' : s.index === 0 ? 'Newest' : lagWord(s.index ?? 0);
 
 /** r2 apps fix 8: the stop's lag as the ledger's 64px right track prints it ("Newest", "5 behind"); the full words ("5 builds behind") stay in the row's title and aria-label */
-export const stopShort = (s: Pick<Stop, 'index' | 'custom'>): string => (s.custom ? 'Custom' : s.index === 0 ? 'Newest' : `${s.index ?? 0} behind`);
+export const stopShort = (s: Pick<Stop, 'index' | 'custom'>): string =>
+	s.custom ? 'Custom' : s.index === 0 ? 'Newest' : `${s.index ?? 0} behind`;
 
 /** The wave clause of a place row: "wave 2" / "follows eu-west-1", null where the tier has one wave and no follower (nothing to say).
  *  The row prints it after the state word as `Healthy · wave 2`: a real space, then the dot GLUED to the clause (non-breaking), so a wrap never strands the dot at a line end. */
-export function waveFactOf(w: { site: string; leader: boolean; follows: string | null; multi: boolean; wave: number } | null | undefined): string | null {
+export function waveFactOf(
+	w:
+		| { site: string; leader: boolean; follows: string | null; multi: boolean; wave: number }
+		| null
+		| undefined
+): string | null {
 	if (!w || w.site === '') return null;
 	if (!w.leader) return `follows ${w.follows ?? 'its leader'}`;
 	return w.multi ? `wave ${w.wave}` : null;
@@ -311,7 +531,18 @@ export const waveClause = (fact: string): string => `\u00b7\u00a0${fact}`;
 export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = false): string {
 	if (pinned) return 'Held by the pin';
 	/* detail pass 2026-11-08: one approval word on every page (approvalWord): "Needs your approval" when the viewer can give it */
-	return ({ failed: 'Failing', 'awaiting-approval': approvalWord(yours), 'held-by-rule': 'Held', deploying: 'Deploying', checking: 'Checking', 'rolled-back': 'Rolled back' } as Record<string, string>)[p.state] ?? 'Healthy';
+	return (
+		(
+			{
+				failed: 'Failing',
+				'awaiting-approval': approvalWord(yours),
+				'held-by-rule': 'Held',
+				deploying: 'Deploying',
+				checking: 'Checking',
+				'rolled-back': 'Rolled back'
+			} as Record<string, string>
+		)[p.state] ?? 'Healthy'
+	);
 }
 /**
  * landing v5 (2026-11-10): a place that runs a build older than the newest while its rollout order has not reached it was printed
@@ -324,9 +555,20 @@ export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = f
 export type PlaceWait = { on: string; fact: string };
 /** the places a waiting place waits on (placeWait's rule), by name; null when it is not waiting */
 /** `viaFailure`: also a place an APPROVAL holds, when a build failed upstream in its wave chain (`upstreamFailed`): the approval must not mask the failure */
-function waitingOn(p: PlaceHold, places: PlaceHold[], viaFailure = false): { on: PlaceHold[]; name: string } | null {
+function waitingOn(
+	p: PlaceHold,
+	places: PlaceHold[],
+	viaFailure = false
+): { on: PlaceHold[]; name: string } | null {
 	const w = p.wave;
-	if (!w || p.state !== 'healthy' || (p.holdReason !== 'rule' && !(viaFailure && p.holdReason === 'approval' && p.upstreamFailed)) || (holdWord(p) && !(viaFailure && p.holdReason === 'approval')) || !(p.heldBuilds.length || p.upstreamFailed)) return null;
+	if (
+		!w ||
+		p.state !== 'healthy' ||
+		(p.holdReason !== 'rule' && !(viaFailure && p.holdReason === 'approval' && p.upstreamFailed)) ||
+		(holdWord(p) && !(viaFailure && p.holdReason === 'approval')) ||
+		!(p.heldBuilds.length || p.upstreamFailed)
+	)
+		return null;
 	let on: PlaceHold[];
 	let name: string;
 	if (!w.leader) {
@@ -336,7 +578,10 @@ function waitingOn(p: PlaceHold, places: PlaceHold[], viaFailure = false): { on:
 		const before = places.filter((q) => q.tier === p.tier && q.wave && q.wave.wave < w.wave);
 		const top = Math.max(...before.map((q) => q.wave!.wave));
 		on = before.filter((q) => q.wave!.wave === top);
-		name = placesPhrase(on.map((q) => q.wave!.site), on.map((q) => q.tier));
+		name = placesPhrase(
+			on.map((q) => q.wave!.site),
+			on.map((q) => q.tier)
+		);
 		if (!on.length) {
 			const t = upstreamTier(places, p.tier);
 			on = t ? places.filter((q) => q.tier === t) : [];
@@ -347,8 +592,13 @@ function waitingOn(p: PlaceHold, places: PlaceHold[], viaFailure = false): { on:
 }
 export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
 	const o = waitingOn(p, places);
-	if (!o || !p.heldBuilds.length) return null; /* a place held only by a build that failed upstream has no build waiting: the sentence is waveHold's */
-	const started = o.on.some((q) => q.state === 'checking') ? 'finish checking' : o.on.some((q) => q.state === 'deploying') ? 'finish deploying' : 'deploy';
+	if (!o || !p.heldBuilds.length)
+		return null; /* a place held only by a build that failed upstream has no build waiting: the sentence is waveHold's */
+	const started = o.on.some((q) => q.state === 'checking')
+		? 'finish checking'
+		: o.on.some((q) => q.state === 'deploying')
+			? 'finish deploying'
+			: 'deploy';
 	return { on: o.name, fact: `to ${started} ${p.heldBuilds[0]?.build ?? p.upstreamFailed}` };
 }
 /**
@@ -356,12 +606,17 @@ export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
  * controller refuses read plain "healthy" on Environments. They are healthy on the old build, but a wave holds them, and the page says so:
  * `on` = who they wait on (placeWait's own name, one blocker source), `failed` = the site(s) among them that failed the held build, else null.
  */
-export function waveHold(p: PlaceHold, places: PlaceHold[], failedAt: (q: PlaceHold, build: string) => boolean = bakeFailedOn): { on: string; failed: string | null } | null {
+export function waveHold(
+	p: PlaceHold,
+	places: PlaceHold[],
+	failedAt: (q: PlaceHold, build: string) => boolean = bakeFailedOn
+): { on: string; failed: string | null } | null {
 	const o = waitingOn(p, places, true);
 	if (!o) return null;
 	/* an approval hold on a NEWER build must not mask an upstream failure: ask about the failed build first, then the held one, and show the failure (QA8 ruling 4) */
 	const builds = [p.upstreamFailed, p.heldBuilds[0]?.build].filter((b): b is string => !!b);
-	if (!builds.length) return null; /* nothing is held here (a rolled-back failure holds nobody): no wave line at all */
+	if (!builds.length)
+		return null; /* nothing is held here (a rolled-back failure holds nobody): no wave line at all */
 	const f = [...new Set(builds.flatMap((b) => failedAlong(p, b, places, failedAt)))];
 	return { on: o.name, failed: f.length ? f.join(', ') : null };
 }
@@ -370,15 +625,24 @@ export function waveHold(p: PlaceHold, places: PlaceHold[], failedAt: (q: PlaceH
  * failure is held by it too, so the failure is followed leader by leader (a place is "held by the failure" when it carries `upstreamFailed` or still
  * lists the build as held). A plain wave-order wait, with no failure anywhere upstream, resolves to [].
  */
-function failedAlong(p: PlaceHold, build: string, places: PlaceHold[], failedAt: (q: PlaceHold, build: string) => boolean, depth = 0): string[] {
+function failedAlong(
+	p: PlaceHold,
+	build: string,
+	places: PlaceHold[],
+	failedAt: (q: PlaceHold, build: string) => boolean,
+	depth = 0
+): string[] {
 	const o = waitingOn(p, places, true);
 	if (!o || depth > 6) return [];
 	const direct = o.on.filter((q) => failedAt(q, build)).map((q) => q.label);
 	if (direct.length) return direct;
-	return o.on.filter((q) => q.upstreamFailed === build || q.heldBuilds.some((b) => b.build === build)).flatMap((q) => failedAlong(q, build, places, failedAt, depth + 1));
+	return o.on
+		.filter((q) => q.upstreamFailed === build || q.heldBuilds.some((b) => b.build === build))
+		.flatMap((q) => failedAlong(q, build, places, failedAt, depth + 1));
 }
 /** the places a "Pinned to <build> in <place>" hold (data.ts holds) names, by PlaceHold.place */
-export const pinnedPlaces = (holds: string[]): Set<string> => new Set(holds.map((h) => /^Pinned to \S+ in (.+)$/.exec(h)?.[1]).filter((x): x is string => !!x));
+export const pinnedPlaces = (holds: string[]): Set<string> =>
+	new Set(holds.map((h) => /^Pinned to \S+ in (.+)$/.exec(h)?.[1]).filter((x): x is string => !!x));
 
 /**
  * r2 apps fix 4 — the figures of the detail page's "Summary" card (the History tab's own HistorySummaryCard pattern: a rollup plus a few stat
@@ -389,9 +653,25 @@ export const pinnedPlaces = (holds: string[]): Set<string> => new Set(holds.map(
  */
 export type WeekHistory = { timestamp?: string; bakeStatus?: string; bakeEndTime?: string };
 export type WeekRollout = { history: WeekHistory[]; rolledBack: boolean[] };
-export function weekSummary(rollouts: WeekRollout[], days: number, nowMs: number): { deploys: number; failed: number; rolledBack: number; medianHealthyMs: number | null; lastFailureMs: number | null; daysWithData: number; openFailure: boolean } {
+export function weekSummary(
+	rollouts: WeekRollout[],
+	days: number,
+	nowMs: number
+): {
+	deploys: number;
+	failed: number;
+	rolledBack: number;
+	medianHealthyMs: number | null;
+	lastFailureMs: number | null;
+	daysWithData: number;
+	openFailure: boolean;
+} {
 	const from = nowMs - days * 86_400_000;
-	let deploys = 0, failed = 0, rolledBack = 0, last: number | null = null, open = false;
+	let deploys = 0,
+		failed = 0,
+		rolledBack = 0,
+		last: number | null = null,
+		open = false;
 	const durations: number[] = [];
 	const day = new Set<string>();
 	for (const r of rollouts) {
@@ -401,18 +681,38 @@ export function weekSummary(rollouts: WeekRollout[], days: number, nowMs: number
 			deploys++;
 			day.add(new Date(t).toDateString());
 			if (r.rolledBack[i]) rolledBack++;
-			if (h.bakeStatus === 'Failed') { failed++; if (last === null || t > last) last = t; if (i === 0) open = true; }
-			if (h.bakeStatus === 'Succeeded' && h.bakeEndTime) { const e = new Date(h.bakeEndTime).getTime(); if (e > t) durations.push(e - t); }
+			if (h.bakeStatus === 'Failed') {
+				failed++;
+				if (last === null || t > last) last = t;
+				if (i === 0) open = true;
+			}
+			if (h.bakeStatus === 'Succeeded' && h.bakeEndTime) {
+				const e = new Date(h.bakeEndTime).getTime();
+				if (e > t) durations.push(e - t);
+			}
 		});
 	}
 	durations.sort((a, b) => a - b);
 	const mid = Math.floor(durations.length / 2);
-	const medianHealthyMs = durations.length ? (durations.length % 2 ? durations[mid] : (durations[mid - 1] + durations[mid]) / 2) : null;
-	return { deploys, failed, rolledBack, medianHealthyMs, lastFailureMs: last, daysWithData: day.size, openFailure: open };
+	const medianHealthyMs = durations.length
+		? durations.length % 2
+			? durations[mid]
+			: (durations[mid - 1] + durations[mid]) / 2
+		: null;
+	return {
+		deploys,
+		failed,
+		rolledBack,
+		medianHealthyMs,
+		lastFailureMs: last,
+		daysWithData: day.size,
+		openFailure: open
+	};
 }
 
 /** the approval banner's line: the count only once the place's held-HERE answer is known; while it is pending the sentence carries no number (never a guess that flips) */
-export const waitingSentence = (heldN: number | null): string => `${newerBuildsAre(heldN ?? 0, heldN == null)} waiting here.`;
+export const waitingSentence = (heldN: number | null): string =>
+	`${newerBuildsAre(heldN ?? 0, heldN == null)} waiting here.`;
 
 /**
  * landing v5 (2026-11-10): an approval at the head of a rollout order opens the order, it does not finish it. The places that come AFTER a
@@ -422,14 +722,33 @@ export const waitingSentence = (heldN: number | null): string => `${newerBuildsA
 export function placesAfter(p: Pick<PlaceHold, 'tier' | 'wave'>, places: PlaceHold[]): PlaceHold[] {
 	const w = p.wave;
 	if (!w) return [];
-	return places.filter((q) => q.wave && q.tier === p.tier && q.wave.site !== w.site && (q.wave.wave > w.wave || (w.leader && q.wave.wave === w.wave && !q.wave.leader)));
+	return places.filter(
+		(q) =>
+			q.wave &&
+			q.tier === p.tier &&
+			q.wave.site !== w.site &&
+			(q.wave.wave > w.wave || (w.leader && q.wave.wave === w.wave && !q.wave.leader))
+	);
 }
 /** "Then 4 more regions follow." (prod places are regions, the product's word for several prod sites; any other tier says places). null when none follow. */
 export function followSentence(after: readonly Pick<PlaceHold, 'tier'>[]): string | null {
 	const n = after.length;
 	if (!n) return null;
-	const noun = after.every((q) => q.tier === 'prod') ? (n === 1 ? 'region' : 'regions') : n === 1 ? 'place' : 'places';
+	const noun = after.every((q) => q.tier === 'prod')
+		? n === 1
+			? 'region'
+			: 'regions'
+		: n === 1
+			? 'place'
+			: 'places';
 	return `Then ${n} more ${noun} follow${n === 1 ? 's' : ''}.`;
 }
 /** the approval banner's message for the place it names: what waits here, then what comes after it ("1 newer build is waiting here. Then 4 more regions follow.") */
-export const approvalMessage = (heldN: number | null, focus: PlaceHold | null, places: PlaceHold[]): string => [waitingSentence(heldN), focus ? followSentence(placesAfter(focus, places)) : null].filter(Boolean).join(' ');
+export const approvalMessage = (
+	heldN: number | null,
+	focus: PlaceHold | null,
+	places: PlaceHold[]
+): string =>
+	[waitingSentence(heldN), focus ? followSentence(placesAfter(focus, places)) : null]
+		.filter(Boolean)
+		.join(' ');

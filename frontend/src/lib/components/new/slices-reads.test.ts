@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { fixtureSource, homeModel, resetHomeModel } from '$lib/components/home/sketch/home-data';
-import { approvalTarget, placeHolds, rollouts } from './data';
+import { apps, approvalTarget, pathPosition, placeHolds, rollouts } from './data';
 import { applySlicesMode } from '$lib/demo/mock-slices';
 import {
 	ingestReleaseSlices,
@@ -26,26 +26,26 @@ const REQUIRED = {
 };
 
 /** Serve `old` (old-shape fixtures) the way the product does: slices + a ref, or (withSource false) a real no-source Rollout. */
-const serve = (old: any[], withSource: boolean, environments?: any[]) => {
+const serve = (old: any[], withSource: boolean | ((r: any) => boolean), environments?: any[]) => {
 	const fx = fixtureSource();
 	const m = applySlicesMode(old);
 	resetReleaseCatalogue();
 	ingestReleaseSources(m.sources as any, { replaceAll: true });
 	ingestReleaseSlices(m.slices as any, []);
-	const served = withSource
-		? m.rollouts
-		: (m.rollouts as any[]).map((r) => {
-				const { releaseSourceRef: _ref, ...spec } = r.spec ?? {};
-				return {
-					...r,
-					spec,
-					status: {
-						...r.status,
-						candidates: undefined,
-						conditions: [...(r.status?.conditions ?? []), REQUIRED]
-					}
-				};
-			});
+	const keep = (r: any) => (typeof withSource === 'function' ? withSource(r) : withSource);
+	const served = (m.rollouts as any[]).map((r) => {
+		if (keep(r)) return r;
+		const { releaseSourceRef: _ref, ...spec } = r.spec ?? {};
+		return {
+			...r,
+			spec,
+			status: {
+				...r.status,
+				candidates: undefined,
+				conditions: [...(r.status?.conditions ?? []), REQUIRED]
+			}
+		};
+	});
 	installLiveSource({
 		...fx,
 		rollouts: served as any,
@@ -192,5 +192,39 @@ describe('checkout-api: the wave hold (failedWaveCand) reads the catalogue', () 
 		const p = placeHolds('checkout-api', 'incident').find((x) => x.label === leadLabel)!;
 		expect(p.upstreamFailed ?? null).toBeNull();
 		expect(p.heldBuilds).toEqual([]);
+	});
+});
+
+/**
+ * Each place's own truth wins: a place whose Rollout has no releases is "No releases yet" everywhere and is NOT COUNTED as "on the newest"
+ * (no release = not affected), even when it runs the same build as a place that has releases.
+ */
+describe('mixed app: one place has no releases, another on the same build has', () => {
+	const APP = 'payments-core';
+	/** a place that IS on the newest build while it has releases */
+	const setup = () => {
+		const rs = fixtureSource().rollouts as any[];
+		serve(rs, true);
+		const base = apps('incident').items.find((a) => a.app === APP)!;
+		const on = base.placeList.find((p) => p.onNewest)!;
+		const victim = rs.find((r) => on.href.endsWith(`${r.metadata.namespace}/${r.metadata.name}`))!;
+		const baseN = Number(
+			/of (\d+) place/.exec(pathPosition(rollouts('incident').rows.find((r) => r.app === APP)!))![1]
+		);
+		const same = (r: any) =>
+			r.metadata.namespace === victim.metadata.namespace &&
+			r.metadata.name === victim.metadata.name;
+		serve(rs, (r) => !same(r));
+		return { href: on.href, total: baseN };
+	};
+	it('the app list does not count the no-release place on the newest, and the app page rollup excludes it', () => {
+		const { href, total } = setup();
+		const item = apps('incident').items.find((a) => a.app === APP)!;
+		const place = item.placeList.find((p) => p.href === href)!;
+		expect(place.onNewest).toBe(false);
+		expect(place.onBuild).toBe(false);
+		const row = rollouts('incident').rows.find((r) => r.app === APP)!;
+		const text = pathPosition(row);
+		expect(text).toMatch(new RegExp(`of ${total - 1} place`));
 	});
 });

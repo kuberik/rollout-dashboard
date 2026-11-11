@@ -31,4 +31,8 @@ describe('Facia tile footer on a quiet tile', () => {
 	it('with releases: no footer', () => {
 		expect(mount(undefined).querySelector('[data-fp-footer]')).toBeNull();
 	});
+	it('the tile lead keeps its health word beside "No releases yet"', () => {
+		const t = mount({ label: 'No releases yet' }).textContent ?? '';
+		expect(t).toMatch(/All healthy\s*·\s*No releases yet/);
+	});
 });
