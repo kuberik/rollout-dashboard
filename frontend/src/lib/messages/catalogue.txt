@@ -127,6 +127,7 @@ lib/components/atoms/LeadBar.svelte	code	…h${m % 60 ?
 lib/components/atoms/LeadBar.svelte	code	merged; first deploy … later
 lib/components/atoms/LeadBar.svelte	aria-label	reached prod in …
 lib/components/atoms/LeadBar.svelte	code	waited … before …
+lib/components/AttentionCard.svelte	label	… of … …
 lib/components/AttentionCard.svelte	aria-label	…… against the limit
 lib/components/AttentionCard.svelte	code	Open rollout
 lib/components/AttentionCard.svelte	text	Roll back
@@ -527,6 +528,7 @@ lib/components/LogsViewer.svelte	text	This build
 lib/components/LogsViewer.svelte	text	Time ( … )
 lib/components/LogsViewer.svelte	code	Unknown error
 lib/components/LogsViewer.svelte	aria-label	Visible columns
+lib/components/LogsViewer.svelte	label	visible log lines
 lib/components/ManifestDiff.svelte	text	… line … :
 lib/components/ManifestDiff.svelte	text	… unchanged line … below
 lib/components/new/app/app-model.ts	code	: 'in sequence'}
@@ -536,8 +538,8 @@ lib/components/new/app/app-model.ts	code	… deploying
 lib/components/new/app/app-model.ts	code	… held
 lib/components/new/app/app-model.ts	code	… in …
 lib/components/new/app/app-model.ts	code	… newer
-lib/components/new/app/app-model.ts	code	… newer build… waiting here.
 lib/components/new/app/app-model.ts	code	… prod regions
+lib/components/new/app/app-model.ts	code	… waiting here.
 lib/components/new/app/app-model.ts	code	… was skipped · … runs …
 lib/components/new/app/app-model.ts	code	} in …
 lib/components/new/app/app-model.ts	code	a rule
@@ -549,7 +551,6 @@ lib/components/new/app/app-model.ts	code	health checks
 lib/components/new/app/app-model.ts	code	Health checks
 lib/components/new/app/app-model.ts	code	Held by the pin
 lib/components/new/app/app-model.ts	code	its leader
-lib/components/new/app/app-model.ts	code	Newer builds are waiting here.
 lib/components/new/app/app-model.ts	code	next …
 lib/components/new/app/app-model.ts	code	next … · ${up ?
 lib/components/new/app/app-model.ts	code	next … · held: waiting on …
@@ -583,6 +584,7 @@ lib/components/new/app/AppDetail.svelte	code	Deploy … to ….
 lib/components/new/app/AppDetail.svelte	text	deployed … ago
 lib/components/new/app/AppDetail.svelte	title	Deployment failed
 lib/components/new/app/AppDetail.svelte	code	The health checks are running.
+lib/components/new/app/AppDetail.svelte	headline	This app does not exist
 lib/components/new/app/AppGates.svelte	aria-label	… details of …
 lib/components/new/app/AppGates.svelte	text	How to approve
 lib/components/new/app/PlaceRow.svelte	aria-label	… in …
@@ -630,6 +632,7 @@ lib/components/new/change/ChangeDetail.svelte	text	… (merged by … )
 lib/components/new/change/ChangeDetail.svelte	code	… build… carr… it
 lib/components/new/change/ChangeDetail.svelte	code	… failing
 lib/components/new/change/ChangeDetail.svelte	code	… held
+lib/components/new/change/ChangeDetail.svelte	verdict	… since …
 lib/components/new/change/ChangeDetail.svelte	code	… waiting
 lib/components/new/change/ChangeDetail.svelte	code	+… newer
 lib/components/new/change/ChangeDetail.svelte	text	A place shows here once a build that carries this change reaches it.
@@ -646,6 +649,8 @@ lib/components/new/change/ChangeDetail.svelte	code	this change’s own build
 lib/components/new/change/ChangeDetail.svelte	code	Waiting for approval
 lib/components/new/change/ChangeDetail.svelte	aria-label	What holds this change and what happened to it
 lib/components/new/change/ChangeDetail.svelte	title	Where it runs
+lib/components/new/change/ChangeHistory.svelte	verdict	… events
+lib/components/new/change/ChangeHistory.svelte	label	Rolled back
 lib/components/new/change/ChangeHistory.svelte	text	Show … more
 lib/components/new/change/ChangeHistory.svelte	text	Show fewer
 lib/components/new/change/ChangePlaceRow.svelte	code	… of … steps
@@ -658,6 +663,7 @@ lib/components/new/change/ChangePlaceRow.svelte	title	the age of this place's cu
 lib/components/new/change/ChangePlaceRow.svelte	code	Up to date
 lib/components/new/change/ChangeSlipway.svelte	text	… … &nbsp;· … …
 lib/components/new/change/ChangeSlipway.svelte	text	&nbsp;·&nbsp; …
+lib/components/new/change/ChangeSlipway.svelte	label	Deployment pipeline of … in …
 lib/components/new/change/ChangeSlipway.svelte	text	in … &nbsp;·&nbsp;
 lib/components/new/change/ChangeSlipway.svelte	text	incl. …
 lib/components/new/change/ChangeSlipway.svelte	text	Newer build
@@ -966,6 +972,7 @@ lib/components/new/Slipway.svelte	code	…… ago
 lib/components/new/Slipway.svelte	text	1 of … regions
 lib/components/new/Slipway.svelte	code	Check timer
 lib/components/new/Slipway.svelte	code	Checking · …
+lib/components/new/Slipway.svelte	label	Deployment pipeline of …
 lib/components/new/Slipway.svelte	code	Final check
 lib/components/new/Slipway.svelte	code	Final check · Checking
 lib/components/new/Slipway.svelte	code	Health checks
@@ -983,10 +990,12 @@ lib/components/new/Slipway.svelte	text	Your change
 lib/components/new/state-words.ts	code	… … approval
 lib/components/new/state-words.ts	code	Needs your approval
 lib/components/new/state-words.ts	code	Waiting for approval
+lib/components/new/StrandRow.svelte	label	… steps
 lib/components/new/StrandRow.svelte	text	to prod
 lib/components/new/TraySteps.svelte	code	In progress
 lib/components/new/TraySteps.svelte	code	not started
 lib/components/new/TraySteps.svelte	aria-label	Pipeline steps
+lib/components/new/TraySteps.svelte	label	Pipeline steps
 lib/components/NextStep.svelte	code	btn … …
 lib/components/NextStep.svelte	code	Deploy newest
 lib/components/NextStep.svelte	code	Review approval
@@ -1092,14 +1101,13 @@ lib/components/RolloutNeighbourhood.svelte	code	Waits for … · … held on …
 lib/components/RolloutTabHeader.svelte	text	Roll back
 lib/components/RolloutTabHeader.svelte	title	Roll back to …
 lib/components/ScheduleStatus.svelte	text	… Automatic deploys resume in
-lib/components/ScheduleStatus.svelte	code	… newer build… … waiting.
 lib/components/ScheduleStatus.svelte	text	… rule …
+lib/components/ScheduleStatus.svelte	code	… waiting.
 lib/components/ScheduleStatus.svelte	code	…Nothing promotes itself for another … — ….
 lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	code	Failed to load schedules
 lib/components/ScheduleStatus.svelte	text	Held by … rule … …
-lib/components/ScheduleStatus.svelte	code	Newer builds are waiting.
 lib/components/SourceViewer.svelte	code	Failed to fetch files
 lib/components/SourceViewer.svelte	code	Failed to fetch files: …
 lib/components/SourceViewer.svelte	text	Source files for
@@ -1739,6 +1747,7 @@ lib/workers/logParser.worker.ts	code	Unknown parsing error
 routes/+error.svelte	title	Not found
 routes/+error.svelte	code	Nothing in the dashboard answers to this address. … is a real section, so the name after it is probably the part that is wrong.
 routes/+error.svelte	code	Nothing in the dashboard answers to this address. It may have been renamed, or the link that brought you here may be out of date.
+routes/+error.svelte	headline	This address does not exist
 routes/+layout.svelte	code	(min-width: 640px)
 routes/+layout.svelte	text	Skip to main content
 routes/activity/+page.svelte	code	, and … more
@@ -1772,12 +1781,15 @@ routes/activity/+page.svelte	code	Deploys that did not finish cleanly
 routes/activity/+page.svelte	code	Deploys that moved a rollout to an OLDER build than it was already running
 routes/activity/+page.svelte	text	Every version a rollout puts live shows up here, newest first.
 routes/activity/+page.svelte	code	In flight
+routes/activity/+page.svelte	label	In flight
 routes/activity/+page.svelte	code	In the last hour
+routes/activity/+page.svelte	label	Median to prod
 routes/activity/+page.svelte	text	Most active
 routes/activity/+page.svelte	text	Nothing has deployed yet
 routes/activity/+page.svelte	text	Open rollout ›
 routes/activity/+page.svelte	code	Press Failed below to see all ….
 routes/activity/+page.svelte	code	Rolled back
+routes/activity/+page.svelte	label	Rolled back
 routes/activity/+page.svelte	text	Show … more
 routes/activity/+page.svelte	text	Showing only:
 routes/activity/+page.svelte	title	Stop showing only …
@@ -1798,6 +1810,7 @@ routes/activity/+page.svelte	code	vs … …
 routes/activity/+page.svelte	text	Widen to 30 days
 routes/activity/+page.svelte	text	Widen to all time
 routes/changes/[...slug]/+page.svelte	text	Change …
+routes/changes/[...slug]/+page.svelte	headline	This change does not exist
 routes/dependencies/+page.svelte	text	… … across … rollout … , none depends on another. … rule … across … rollout … … ·
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
@@ -1824,6 +1837,7 @@ routes/dependencies/+page.svelte	code	One rollout is held
 routes/dependencies/+page.svelte	text	Open ›
 routes/dependencies/+page.svelte	text	Show held links
 routes/dependencies/+page.svelte	code	Waiting until ….
+routes/envs/[name]/+page.svelte	headline	This environment does not exist
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … … …
 routes/namespaces/[name]/+page.svelte	text	… … rollout … … ·
 routes/namespaces/[name]/+page.svelte	text	… deploy …
@@ -1833,12 +1847,15 @@ routes/namespaces/[name]/+page.svelte	text	… failing
 routes/namespaces/[name]/+page.svelte	code	… next
 routes/namespaces/[name]/+page.svelte	code	… of … failing
 routes/namespaces/[name]/+page.svelte	code	… of … held
+routes/namespaces/[name]/+page.svelte	verdict	… of … newest
 routes/namespaces/[name]/+page.svelte	code	all … deployed cleanly
 routes/namespaces/[name]/+page.svelte	text	Back to rollouts
+routes/namespaces/[name]/+page.svelte	verdictTitle	Counts the last deploy of every rollout in this namespace
 routes/namespaces/[name]/+page.svelte	text	Namespace not found
 routes/namespaces/[name]/+page.svelte	text	never deployed
 routes/namespaces/[name]/+page.svelte	text	No rollouts in namespace
 routes/namespaces/[name]/+page.svelte	title	Recent activity
+routes/namespaces/[name]/+page.svelte	verdictTitle	Rollouts in this namespace running the newest build their own release list offers them
 routes/namespaces/[name]/+page.svelte	text	Show … more rollout …
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
 routes/namespaces/[name]/+page.svelte	text	View all activity
@@ -1931,6 +1948,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This clears on it
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This clears on its own.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This dashboard cannot tell what clears this — it may or may not need a person.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This rollout
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	headline	This rollout does not exist
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This will not clear on its own.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	View all apps in …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	View logs
@@ -1943,6 +1961,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	Au
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	Both builds render the same resources; only the image behind the tag can differ.
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	title	Changed resources
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	title	Changes in the cluster
+routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	label	Changes to …
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	deployed … ago
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	Failed checks
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	First deploy
@@ -1960,6 +1979,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	text	Th
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	code	The registry no longer holds that build’s manifests, so its changes cannot be shown. Its code change is on GitHub.
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	code	The same build was deployed again, so nothing in the cluster changed.
 routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	title	This deploy
+routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte	headline	This rollout does not exist
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	… … … not holding …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	… A health check is failing, but there is no newer build for it to hold back. … A health check is still pending, but there is no newer build for it to hold back. … … … … … Its health checks are passing. … A gate — an approval, a deploy window, a dependency or a health check — holds a build until its rule passes. …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	… held elsewhere
@@ -1972,6 +1992,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	a check sta
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	a check to start passing
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	All dependencies ›
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	an approval
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	verdictTitle	Builds of this app that are currently held — THIS rollout's own count first, then the rest of the app
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Depends on this
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Each environment waits on its own copy of … .
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Environments of this app that are on its newest version
@@ -1993,12 +2014,15 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	Nothing pro
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Open … and see this same relation from its side
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Open the … rollout
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Other environments
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	sentence	Rules couldn't be loaded, so the dashboard can't tell what holds this rollout or what waits on it.
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Runs in
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	verdictTitle	Services, in any environment of this app, that wait on a contract it provides
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Skipped by …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	someone approves it
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	the deploy window reopens
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	the deploy window to reopen
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	this rollout
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	headline	This rollout does not exist
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	to allow
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	to deploy
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	to ship
@@ -2048,5 +2072,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show all
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show sibling environments on the timeline
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … release …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Started …, checks finished ….
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	headline	This rollout does not exist
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Triggered by
 routes/rollouts/[cluster]/[namespace]/[name]/logs/+page.svelte	text	… pod …
+routes/rollouts/[cluster]/[namespace]/[name]/logs/+page.svelte	headline	This rollout does not exist

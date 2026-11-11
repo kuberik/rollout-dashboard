@@ -6,7 +6,7 @@ import * as D from './data';
  *
  * Dev tool, not an assertion: SKIPPED unless TRUTH_DUMP=1 (so CI and plain `vitest run` skip it).
  * Output path comes from TRUTH_DUMP_OUT (required when TRUTH_DUMP=1), e.g.
- *   TRUTH_DUMP=1 TRUTH_DUMP_OUT=/home/luka/projects/kuberik/.work/home-r34/truth/dump.json \
+ *   TRUTH_DUMP=1 TRUTH_DUMP_OUT=./dump.json \
  *     pnpm exec vitest run src/lib/components/new/truth-dump.test.ts
  */
 it.skipIf(process.env.TRUTH_DUMP !== '1')('dump', () => {
