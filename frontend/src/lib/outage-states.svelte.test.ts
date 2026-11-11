@@ -189,9 +189,9 @@ describe('a partial answer is declared, on every page that renders one', () => {
 			expect(
 				screen.getByText(/missing from these counts, not healthy in them/i)
 			).toBeInTheDocument();
-			// Plain words from the typed reason; the raw fetch error is not shown.
+			// Plain words from the typed reason, and the raw error beneath them.
 			expect(screen.getByText(/Could not be reached\./)).toBeInTheDocument();
-			expect(screen.queryByText(/dial tcp/)).toBeNull();
+			expect(screen.getByText('dial tcp: i/o timeout')).toBeInTheDocument();
 		});
 	}
 });
