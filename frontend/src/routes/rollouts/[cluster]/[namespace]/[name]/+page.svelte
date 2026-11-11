@@ -2010,6 +2010,7 @@
 	// Computed property to determine if current version is custom (not in available releases)
 	const isCurrentVersionCustom = $derived.by(() => {
 		const releases = availableReleases(rollout);
+		if (noReleases) return false; /* no catalogue to be "custom" against */
 		if (!rollout?.status?.history?.[0] || !releases) return false;
 		const currentVersionTag = rollout.status.history[0].version.tag;
 		return !releases.some((ar) => ar.tag === currentVersionTag);
