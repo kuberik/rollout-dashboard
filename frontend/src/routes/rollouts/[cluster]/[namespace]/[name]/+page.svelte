@@ -72,7 +72,7 @@
 	import { href } from '$lib/paths';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
-	import { askHeadline } from '$lib/components/new/state-words';
+	import { askView } from '$lib/components/new/state-words';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
 	import { prettyNameOf } from '$lib/view-models/gate-name';
 	import { detectRollback } from '$lib/rollout-cards';
@@ -154,7 +154,7 @@
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
 	import EventsCard from '$lib/components/EventsCard.svelte';
-	import { fly, blur } from 'svelte/transition';
+	import { fly, blur, fade } from 'svelte/transition';
 	import {
 		getEnvironmentThemeStyle,
 		getRolloutEnvironmentTheme,
@@ -3409,8 +3409,9 @@
 					     say ("Needs your approval", one `approvalWord`) and carries Home's Approve (`ApproveButton`, the shared confirm); otherwise today's words. -->
 					<RolloutAsk href={rolloutPath(cluster, namespace, name)}>
 					{#snippet children(ask)}
+					{@const view = askView(ask, holdCausePhrase(blockStory, { place: environment?.spec?.environment ?? null }), environment?.spec?.environment ?? null)}
 					{#snippet blockedActions()}
-						{#if ask}<ApproveButton target={ask} class="btn btn-primary btn-sm" icon />{/if}
+						{#if view.slot === 'approve' && typeof ask === 'object' && ask}<span in:fade={{ duration: 150 }}><ApproveButton target={ask} class="btn btn-primary btn-sm" icon /></span>{:else if view.slot === 'reserved'}<span class="inline-block h-8 w-[104px]" aria-hidden="true" data-approve-slot></span>{/if}
 						<!-- ONE FACT, ONCE (design review 2026-10-08): the rule count is
 						     the disclosure's label below; this slot now always offers
 						     the place the rules live, the Gates tab. -->
@@ -3421,9 +3422,7 @@
 					{/snippet}
 					<BlockingStoryPanel
 						story={blockStory}
-						title={askHeadline(holdCausePhrase(blockStory, {
-							place: environment?.spec?.environment ?? null
-						}), !!ask, environment?.spec?.environment ?? null)}
+						title={view.headline}
 						open={(hereCard?.held ?? blockStory.blocked) && blockStory.clock.length === 0}
 						actions={blockedActions}
 						secondaryFact={rollbackFoldedIntoGateBanner && rolledBack

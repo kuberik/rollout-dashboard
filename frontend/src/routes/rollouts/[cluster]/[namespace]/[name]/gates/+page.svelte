@@ -159,7 +159,7 @@
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import RolloutNeighbourhood from '$lib/components/RolloutNeighbourhood.svelte';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
-	import { askHeadline } from '$lib/components/new/state-words';
+	import { askView } from '$lib/components/new/state-words';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { autoDeployState } from '$lib/view-models/auto-deploy';
 	import { gatesPinBox, pinLeadSentence } from '$lib/view-models/pin-hold';
@@ -1934,7 +1934,7 @@
 												? 'text-held'
 												: 'text-fg-subtle'}"
 										>
-											{askHeadline(leadSentence.headline, !!ask, environment?.spec?.environment ?? null)}
+											{askView(ask, leadSentence.headline, environment?.spec?.environment ?? null).headline}
 										</p>
 										<p class="t-body text-fg-muted mt-0.5">{leadSentence.consequence}</p>
 									{/if}

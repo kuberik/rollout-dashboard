@@ -28,11 +28,21 @@ describe('approvalAskAt: the viewer\'s approval at one rollout page', () => {
 	});
 });
 
-import { askHeadline } from './state-words';
-describe('askHeadline: the held banner says Home\'s word where the viewer can approve', () => {
-	it('swaps only the approval wait, only for an approver', () => {
-		expect(askHeadline('prod is waiting on an approval', true, 'prod')).toBe('Needs your approval in prod');
-		expect(askHeadline('prod is waiting on an approval', false, 'prod')).toBe('prod is waiting on an approval');
-		expect(askHeadline('prod is waiting on payments-svc', true, 'prod')).toBe('prod is waiting on payments-svc');
+import { askView, ASK_LOADING } from './state-words';
+describe('askView: while the fleet answers, nothing flips and the action slot is reserved', () => {
+	const place = 'prod';
+	const wait = 'prod is waiting on an approval';
+	it('loading: neutral headline, slot reserved, no Approve', () => {
+		const v = askView(ASK_LOADING, wait, place);
+		expect(v.headline).toBe('Waiting for approval in prod');
+		expect(v.slot).toBe('reserved');
+	});
+	it('loading never reserves a slot for a hold that is not an approval wait', () => {
+		expect(askView(ASK_LOADING, 'prod is waiting on payments-svc', place)).toEqual({ headline: 'prod is waiting on payments-svc', slot: 'none' });
+	});
+	it('resolved: approver gets Home\'s word and the button; non-approver gets today\'s wording and the slot collapses', () => {
+		const t = approvalAskAt(rows().find((r) => r.app === 'payments-core' && r.tier === 'prod')!.href, 'incident')!;
+		expect(askView(t, wait, place)).toEqual({ headline: 'Needs your approval in prod', slot: 'approve' });
+		expect(askView(null, wait, place)).toEqual({ headline: wait, slot: 'none' });
 	});
 });
