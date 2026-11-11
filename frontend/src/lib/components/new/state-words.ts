@@ -57,3 +57,6 @@ export const SEVERITY = ['failed', 'awaiting-approval', 'held-by-rule', 'checkin
 export const severity = (state: string | null | undefined): number => { const i = (SEVERITY as readonly string[]).indexOf(state ?? ''); return i < 0 ? SEVERITY.length : i; };
 /** the most severe item (first among equals), by the item's state */
 export const mostSevere = <T>(xs: readonly T[], stateOf: (x: T) => string | null | undefined): T | null => xs.reduce<T | null>((b, x) => (!b || severity(stateOf(x)) < severity(stateOf(b)) ? x : b), null);
+
+/** The held banner's headline on the rollout page and its Gates tab: where the viewer can give the approval it waits on, "prod is waiting on an approval" reads "Needs your approval in prod" (Home's word, `approvalIn`); every other headline stays. */
+export const askHeadline = <T extends string | null>(headline: T, yours: boolean, place: string | null | undefined): T | string => (yours && headline && /waiting on an approval$/.test(headline) ? approvalIn(true, place) : headline);

@@ -158,6 +158,8 @@
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import RolloutNeighbourhood from '$lib/components/RolloutNeighbourhood.svelte';
+	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
+	import { askHeadline } from '$lib/components/new/state-words';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { autoDeployState } from '$lib/view-models/auto-deploy';
 	import { gatesPinBox, pinLeadSentence } from '$lib/view-models/pin-hold';
@@ -1905,6 +1907,9 @@
 						     `mb-3` — unchanged, this is a phone-only saving) frees
 						     ~12px so the focus tile's own held line lands inside the
 						     first screen more often. -->
+							<!-- ONE RolloutAsk for the whole card: the lead sentence and the gate tile read the same ask (two gates would overwrite each other's installed source) -->
+							<RolloutAsk href={rolloutPath(cluster, namespace, name)}>
+							{#snippet children(ask)}
 							<div class="border-line-subtle -mx-4 -mt-4 mb-2 border-b px-4 py-2.5 sm:mb-3 sm:py-3">
 								{#if (holdBreakdown.anyHeld || blockStory.pinnedTo) && leadSentence}
 									{#if blockStory.kindPending}
@@ -1929,7 +1934,7 @@
 												? 'text-held'
 												: 'text-fg-subtle'}"
 										>
-											{leadSentence.headline}
+											{askHeadline(leadSentence.headline, !!ask, environment?.spec?.environment ?? null)}
 										</p>
 										<p class="t-body text-fg-muted mt-0.5">{leadSentence.consequence}</p>
 									{/if}
@@ -1945,6 +1950,7 @@
 								{/if}
 							</div>
 							<RolloutNeighbourhood
+								approveAsk={ask}
 								{hood}
 								themeOf={themeFor}
 								hrefOf={(n) => rolloutPath(n.cluster || cluster, n.namespace, n.name, 'gates')}
@@ -1957,6 +1963,8 @@
 								{focusWaitsFor}
 								chainWait={waitsForFact?.wave ? { stage: waitsForFact.stage, text: waitsForFact.wave } : null}
 							/>
+							{/snippet}
+							</RolloutAsk>
 						</Card>
 					{:else if hood.focus}
 						<!-- No graph to draw (no gates, or none this rollout can see): the SAME full-width top slot holds the "No gates" card, so every kind of rollout has one layout. An early rollout (no chain, no contracts, no dependents) is this card alone, with no empty right column. Drawn ONLY when this rollout is in the fleet list: a list that lacks it cannot say "no gates". -->

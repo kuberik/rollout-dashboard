@@ -34,7 +34,8 @@
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 
-	let { subject = 'the fleet', children }: { subject?: string; children: Snippet } = $props();
+	/** `bare`: a page that owns its own loading and failure states (the rollout detail and its Gates tab) mounts the gate only to install the live source for the model helpers (`approvalAskAt`): no skeleton, no error card, children always render and are told whether the source is `ready`. */
+	let { subject = 'the fleet', bare = false, children }: { subject?: string; bare?: boolean; children: Snippet<[boolean]> } = $props();
 	/* stream-aware like every fleet list: the change stream invalidates ['rollouts','all'], so a healthy stream backs the poll off */
 	const query = createQuery(() =>
 		rolloutsListQueryOptions({ options: { staleTime: staleTimeWhenHealthy(10000, 30000), refetchInterval: pollWhenHealthy(10000, 60000) } })
@@ -95,7 +96,9 @@
 	const ready = $derived(!!src && liveSource() === src);
 </script>
 
-{#if query.isError}
+{#if bare}
+	{@render children(ready)}
+{:else if query.isError}
 	<div class="w-full px-4 py-6 sm:px-6">
 		<ErrorState
 			error={query.error}
@@ -114,7 +117,7 @@
 		</div>
 	{/if}
 	{#if ready}
-		{@render children()}
+		{@render children(true)}
 	{:else}
 		<div class="w-full px-4 py-6 sm:px-6" data-fleet-loading aria-busy="true">
 			<div class="flex flex-col gap-8">

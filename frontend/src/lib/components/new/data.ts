@@ -1414,6 +1414,17 @@ export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | '
 	const deploys = dep && dep !== places[0].tag ? (shortBuild(candidatesOf(places[0].href).find((c) => (c.tag ?? c.version) === dep)?.version ?? dep) ?? dep) : null;
 	return { key: `${row.app}|${row.tier}|${places.map((p) => p.href).sort().join(',')}`, app: row.app, build: buildInQuestionFacts({ app: row.app, href: places[0].href })?.build ?? places[0].tag, where, count: places.length, places, href: row.href, waitsOn, cause: holds?.cause ?? null, deploys };
 }
+/** THE viewer's approval at ONE rollout page (the rollout detail and its Gates tab): the very target Home, /apps and /envs offer for the row that folds this place, or null when the viewer cannot give the approval (or nothing asks). Same predicate, `actionFor` + `approvalTarget`; never a second one. */
+export function approvalAskAt(href: string, state: HomeState = 'incident'): ApprovalTarget | null {
+	const norm = (h: string) => h.split(/[?#]/)[0].replace(/\/(gates)?\/?$/, '');
+	const want = norm(href);
+	for (const row of rollouts(state).rows) {
+		if (actionFor(row)?.kind !== 'approve') continue;
+		const t = approvalTarget(row, state);
+		if (t?.places.some((p) => norm(p.href) === want)) return t;
+	}
+	return null;
+}
 type Snap = { r: RawRollout; status: RawRollout['status'] };
 const SNAPS = new Map<string, Snap[]>();
 /** Apply an approval to the fixture in place (the optimistic step): each place's approval gate allows its held builds and the named build starts deploying, unless another hold (`t.waitsOn`) still refuses it: then it stays a held candidate. */

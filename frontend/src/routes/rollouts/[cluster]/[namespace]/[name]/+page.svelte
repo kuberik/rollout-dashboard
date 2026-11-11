@@ -70,6 +70,9 @@
 	import { pollWhenHealthy, staleTimeWhenHealthy, apiFetch } from '$lib/api/errors';
 	import { repoKeyFor, repoSlug } from '$lib/version-utils';
 	import { href } from '$lib/paths';
+	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
+	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
+	import { askHeadline } from '$lib/components/new/state-words';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
 	import { prettyNameOf } from '$lib/view-models/gate-name';
 	import { detectRollback } from '$lib/rollout-cards';
@@ -3402,7 +3405,12 @@
 						the same rule count the disclosure below already states, so
 						the banner is never rendered with a bare unused column.
 					-->
+					<!-- THE VIEWER'S ASK (batch4 approve-rollout): when the viewer can give the approval this banner waits on, it says what Home, /apps and /envs
+					     say ("Needs your approval", one `approvalWord`) and carries Home's Approve (`ApproveButton`, the shared confirm); otherwise today's words. -->
+					<RolloutAsk href={rolloutPath(cluster, namespace, name)}>
+					{#snippet children(ask)}
 					{#snippet blockedActions()}
+						{#if ask}<ApproveButton target={ask} class="btn btn-primary btn-sm" icon />{/if}
 						<!-- ONE FACT, ONCE (design review 2026-10-08): the rule count is
 						     the disclosure's label below; this slot now always offers
 						     the place the rules live, the Gates tab. -->
@@ -3413,15 +3421,17 @@
 					{/snippet}
 					<BlockingStoryPanel
 						story={blockStory}
-						title={holdCausePhrase(blockStory, {
+						title={askHeadline(holdCausePhrase(blockStory, {
 							place: environment?.spec?.environment ?? null
-						})}
+						}), !!ask, environment?.spec?.environment ?? null)}
 						open={(hereCard?.held ?? blockStory.blocked) && blockStory.clock.length === 0}
 						actions={blockedActions}
 						secondaryFact={rollbackFoldedIntoGateBanner && rolledBack
 							? rollbackWent(rolledBack, autoDeploy)
 							: undefined}
 					/>
+					{/snippet}
+					</RolloutAsk>
 					<!--
 						⭐ REFUSED HERE VS NOT REACHED YET (shared/held-predicate,
 						2026-10-11). `blockStory.blocked` used to mean "held", full
