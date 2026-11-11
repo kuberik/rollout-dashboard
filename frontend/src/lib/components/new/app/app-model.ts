@@ -398,11 +398,12 @@ export function restCurrency(
 
 /**
  * r34 builds-lag (B) — THE SOUNDING LEDGER's model. One app, one build sequence (newest first), every place exactly once, standing on the
- * build it runs. LAG = the place's own position in THIS app's sequence = the length of the "Newer builds" list its rollout tab prints
- * (data.ts heldBuilds, the tab's promotionCandidates), never data.ts newestBuild (availableReleases arithmetic: the fixture's staging
- * says 2 where its tab says 1) and never a cross-app version. A place on a build that is not in the sequence is a "Custom build":
- * labelled, never counted. The sequence is rebuilt from the places' own newer-build lists: the longest list is the spine, the build
- * its place runs is its last stop; every shorter list is a prefix of it (pinned in app-model.test.ts for every app in all three states).
+ * build it runs. The sequence is the release catalogue's ONE order (releases/order.ts: every place's own catalogue joined, because spokes trim
+ * on their own schedule and a position inside one list means nothing in another). The stop at index 0 is "Newest" even when it failed (its row
+ * says so), and LAG = the build's distance from it: c1 is 2 behind c3 whatever happened to c2. The tab's own list (`tabLag`: what a place is
+ * OFFERED, minus builds that failed upstream or are gated) can be shorter; the row says so (`placeNote`), the stop never relabels. A place on a
+ * build that is not in the order is a "Custom build": labelled, never counted. Only an app with no catalogue at all (a mock, a list that has not
+ * loaded) falls back to the places' own newer-build lists: the longest is the spine.
  */
 export type Stop = {
 	key: string;
