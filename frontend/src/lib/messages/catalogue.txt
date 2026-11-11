@@ -947,6 +947,7 @@ lib/components/new/rollout-view.ts	code	Next: … waits for approval in ….
 lib/components/new/rollout-view.ts	code	Roll back
 lib/components/new/rollout-view.ts	code	Waiting for approval
 lib/components/new/rollout-view.ts	code	Your approval
+lib/components/new/rollouts-page.ts	code	… behind
 lib/components/new/rollouts-page.ts	code	… of … regions
 lib/components/new/rollouts-page.ts	code	… regions
 lib/components/new/rollouts-page.ts	code	check still running

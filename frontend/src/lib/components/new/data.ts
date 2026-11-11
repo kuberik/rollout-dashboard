@@ -35,7 +35,7 @@
  */
 import { formatTimeAgoCompact } from '$lib/utils';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
-import { behindOfStatus } from '$lib/view-models/behind';
+import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
 import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } from '$lib/view-models/failed-builds';
 import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey } from '$lib/view-models/regions';
@@ -652,6 +652,8 @@ function behindCount(href: string, version: string | null): number | null {
 	const idx = rel.findIndex((r) => [r.tag, r.version, r.revision?.slice(0, 7)].some((x) => x && shortBuild(x) === version));
 	return idx < 0 ? null : behindOfStatus(rawOf(href), envsOfSource());
 }
+/** the place's "N behind" for a surface that prints it beside "on the newest" (the Rollouts rest row): the ONE count (`behindWhenSettled`, behind.ts), null until the fleet has answered or while the lag is unknown */
+export const placeBehind = (href: string, settled: boolean): number | null => behindWhenSettled(rawOf(href) as never, envsOfSource(), settled);
 export type RunsIn = { label: string; tier: TierKey; build: string | null; word: string; href: string; state: EnvState };
 /** The Gates tab's Runs-in rows for an app: one per deployed place in the tab's order, with the build as the tab prints it and its word ("on the newest" / "N behind" / "failing"). */
 export function runsIn(app: string, state: HomeState = 'incident'): RunsIn[] {

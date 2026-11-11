@@ -28,7 +28,7 @@ it('a place covered by a row is not also At rest; rest rows are healthy or rolle
 	const hrefs = new Set(D.rollouts('incident').rows.map((r) => r.href));
 	expect(P.rest.every((r) => !hrefs.has(r.href))).toBe(true);
 	expect(new Set(P.rest.map((r) => r.href)).size).toBe(P.rest.length);
-	expect(P.rest.every((r) => r.sentence === 'On the newest' || r.sentence === 'Rolled back')).toBe(true);
+	expect(P.rest.every((r) => /^(On the newest|Rolled back|Healthy|\d+ behind)$/.test(r.sentence))).toBe(true);
 });
 it('chipPlace: a folded region set is a count, a tier-only place is null', () => {
 	const rows = D.rollouts('incident').rows;
