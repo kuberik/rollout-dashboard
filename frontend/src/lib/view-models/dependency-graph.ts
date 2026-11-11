@@ -788,7 +788,7 @@ export function buildRolloutGraph(args: {
 		const r = rolloutById.get(n.id);
 		if (!r) continue;
 		const contractHolds = holdsIndex.get(n.id);
-		const story = blockingStory(r, ctx, { place: n.env, contractHolds });
+		const story = blockingStory(r, ctx, { place: n.env, contractHolds, fleet: { environments: args.environments, rollouts: args.rollouts } });
 		n.candidateCount = story.candidateCount;
 		n.newerCount = story.newerCount ?? story.candidateCount;
 		n.waiting = story.blocked;

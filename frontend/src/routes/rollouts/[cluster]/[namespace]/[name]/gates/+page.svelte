@@ -853,7 +853,8 @@
 	const blockStory = $derived(
 		blockingStory(rollout, gateContext, {
 			place: environment?.spec?.environment ?? null,
-			now: $now
+			now: $now,
+			fleet: { environments: listEnvironments, rollouts: listRollouts }
 		})
 	);
 
@@ -1054,7 +1055,8 @@
 			const story = blockingStory(rollout, gateContext, {
 				place: environment?.spec?.environment ?? null,
 				now: $now,
-				contractHolds
+				contractHolds,
+				fleet: { environments: listEnvironments, rollouts: listRollouts }
 			});
 			// The banner's own title (holdCausePhrase), so the Gates lead row and
 			// the Overview banner print one sentence for one fact.

@@ -898,7 +898,7 @@
 	const approvalStories = $derived.by(() => {
 		const m = new Map<RolloutCard, BlockingStory>();
 		if (!gateContext) return m;
-		for (const c of approvalCards) m.set(c, blockingStory(c.rollout, gateContext, { place: c.envDisplay, now: $now }));
+		for (const c of approvalCards) m.set(c, blockingStory(c.rollout, gateContext, { place: c.envDisplay, now: $now, fleet: { environments, rollouts } }));
 		return m;
 	});
 	function approvalGateLabel(c: RolloutCard): string | null {

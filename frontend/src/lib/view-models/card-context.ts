@@ -149,6 +149,6 @@ export function cardContext(input: {
 		providerNetwork,
 		contractHoldsFor,
 		storyFor: (rollout, options = {}) =>
-			blockingStory(rollout, gateContext, { ...options, contractHolds: contractHoldsFor(rollout) })
+			blockingStory(rollout, gateContext, { fleet: { environments: envItems, rollouts: input.rollouts }, ...options, contractHolds: contractHoldsFor(rollout) })
 	};
 }

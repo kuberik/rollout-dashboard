@@ -3,6 +3,9 @@ import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svel
 import { fixtureSource } from '$lib/components/home/sketch/home-data';
 import { environmentsPage } from '$lib/components/new/environments-page';
 import { placeHolds } from '$lib/components/new/data';
+import { cardContext } from '$lib/view-models/card-context';
+import { buildRolloutCards } from '$lib/rollout-cards';
+import { buildRolloutGraph } from '$lib/view-models/dependency-graph';
 import { waveHold } from '$lib/components/new/app/app-model';
 import { plural } from '$lib/components/new/envs-model';
 import { behindOfStatus } from '$lib/view-models/behind';
@@ -81,5 +84,24 @@ describe('landing film worlds: the Production tile wave line, exact strings', ()
 		const P = placeHolds('checkout-api', 'incident'), ap = P.find((p) => p.label === 'ap-southeast-2')!;
 		expect(ap.heldBuilds.map((b) => b.build)).toContain('4.47.0-47');
 		expect(waveHold(ap, P)!.failed).toBe('us-east-1');
+	});
+	it('t=46: ONE count for one fact: the card (palette, lanes), the story (cardContext.storyFor) and the dependency-graph node print the same number for every wave-2 region', () => {
+		const rollouts = w46.rollouts as any[], environments = w46.environments as any[];
+		const cards = buildRolloutCards(rollouts, environments, new Date('2026-11-10T12:00:00Z'));
+		const ctx = cardContext({ rollouts, environments: { items: environments } });
+		const graph = buildRolloutGraph({ rollouts, environments, dependencies: [], envOrder: [], gates: ctx.gateContext, focus: { cluster: '', namespace: roOf(w46, WAVE2[0]).metadata.namespace, name: roOf(w46, WAVE2[0]).metadata.name } } as any);
+		let checked = 0;
+		for (const s of WAVE2) {
+			const ro = roOf(w46, s);
+			const card = cards.find((c) => c.rollout === ro)!;
+			const story = ctx.storyFor(ro).newerCount;
+			const node = (graph.nodes as any[]).find((n) => n.name === ro.metadata.name && n.namespace === ro.metadata.namespace)?.newerCount;
+			expect(story).toBe(behindOfStatus(ro, fleetOf(w46)));
+			expect(card.behindCount ?? 0).toBe(story);
+			if (s === WAVE2[0]) expect(node).toBe(story); /* the focused node: the graph tooltip prints the same number */
+			checked++;
+		}
+		expect(checked).toBe(WAVE2.length);
+		expect(WAVE2.some((s) => (roOf(w46, s).status.releaseCandidates ?? []).length > 0)).toBe(true); /* the raw list is non-empty: the subtraction is what makes it 0 */
 	});
 });

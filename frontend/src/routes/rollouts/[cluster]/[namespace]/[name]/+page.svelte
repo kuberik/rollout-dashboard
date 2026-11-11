@@ -643,6 +643,7 @@
 		blockingStory(rollout, gateContext, {
 			place: environment?.spec?.environment ?? null,
 			now: $now,
+			fleet: { environments: listQuery.data?.environments?.items, rollouts: listQuery.data?.rollouts?.items }, /* the printed newer-builds count: the ONE behind rule */
 			// A8: builds an earlier stage already passed over read "skipped", never "waiting for staging".
 			skipped: skippedFn,
 			// ⭐ THE HOLD-ONE-RULE. See `contractHoldsIn`'s own comment, above.
