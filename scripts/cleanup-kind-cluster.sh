@@ -10,6 +10,8 @@ echo "Cleaning up Kind cluster..."
 kind delete cluster --name rollout-dev
 # Multi-cluster setup (setup-multi-cluster-dev.sh) also creates the hub.
 kind delete cluster --name rollout-prod
+# release-controller went with the clusters; drop its resolved manifests too.
+rm -f "${PROJECT_ROOT}"/../.work/release-controller/resolved-rollout-{prod,dev}.yaml
 
 # Stop the socat container
 docker compose -f "${PROJECT_ROOT}/docker-compose.socat.yaml" down

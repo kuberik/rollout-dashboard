@@ -27,10 +27,10 @@ replacements:
         fieldPaths:
           - metadata.annotations.[dashboard.rollout.kuberik.com/theme]
       - select:
-          kind: ImageRepository
+          kind: ReleaseSource
           name: hello-world-manifests
         fieldPaths:
-          - spec.image
+          - spec.oci.image
         options:
           delimiter: "/"
           index: 3

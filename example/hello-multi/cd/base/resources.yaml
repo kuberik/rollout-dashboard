@@ -12,7 +12,7 @@ metadata:
     dashboard.rollout.kuberik.com/description: "Hello Multi app / __ENVIRONMENT__"
     dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
 spec:
-  releasesImagePolicy:
+  releaseSourceRef:
     name: hello-multi-app
   versionHistoryLimit: 5
   bakeTime: 15s
@@ -44,6 +44,20 @@ spec:
   policy:
     alphabetical:
       order: asc
+---
+apiVersion: kuberik.com/v1alpha1
+kind: ReleaseSource
+metadata:
+  name: hello-multi-app
+spec:
+  interval: 1m
+  retention:
+    days: 7
+    minCount: 30
+  oci:
+    # Bridge: reuse the Flux ImagePolicy (and its ImageRepository) above.
+    imagePolicyRef:
+      name: hello-multi-app
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository

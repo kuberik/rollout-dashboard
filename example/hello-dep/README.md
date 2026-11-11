@@ -150,7 +150,7 @@ $ kubectl -n hello-dep-dev run probe --rm -i --restart=Never \
 ```
 app/    the workloads: hello-api and hello-frontend Deployments and Services,
         published per environment as an OCI manifest artifact
-cd/     the control plane: one Rollout, ImageRepository, ImagePolicy and
+cd/     the control plane: one Rollout, ReleaseSource and
         Environment per service, the RolloutDependency joining them, and the
         shared OCIRepository, Kustomization and HealthCheck
 ```

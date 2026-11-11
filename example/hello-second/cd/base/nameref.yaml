@@ -1,12 +1,8 @@
 nameReference:
-  - kind: ImagePolicy
+  - kind: ReleaseSource
     fieldSpecs:
       - kind: Rollout
-        path: spec/releasesImagePolicy/name
-  - kind: ImageRepository
-    fieldSpecs:
-      - kind: ImagePolicy
-        path: spec/imageRepositoryRef/name
+        path: spec/releaseSourceRef/name
   - kind: Environment
     fieldSpecs:
       - kind: Rollout
