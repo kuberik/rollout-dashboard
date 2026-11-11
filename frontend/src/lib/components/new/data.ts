@@ -812,7 +812,7 @@ export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state:
 		const ts: string[] = [];
 		for (const p of lower) for (const h of rawOf(p.href)?.status.history ?? []) if (shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) === b.build) ts.push(h.timestamp);
 		if (!ts.length) return null;
-		const arrived = ts.sort()[0];
+		const arrived = oldestClock(ts)!;
 		return b.created && b.created > arrived ? b.created : arrived;
 	};
 	const arrivals = here.map(arrivalOf).filter((x): x is string => !!x).sort();
@@ -824,8 +824,14 @@ export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state:
 export function waitClock(row: Pick<RolloutRow, 'app' | 'href' | 'tier'> & { since?: string | null; hrefs?: string[] }, state: HomeState = 'incident'): string | null {
 	const own = (href: string): string | null => holdSince({ app: row.app, tier: row.tier, href }, state) ?? buildInQuestionFacts({ app: row.app, href })?.since ?? (href === row.href ? row.since ?? null : null);
 	/* A row that covers SEVERAL places (a folded prod row, "5 of 6 prod regions") shows the LONGEST wait among them: the clock of its oldest held place. */
-	const clocks = (row.hrefs?.length ? row.hrefs : [row.href]).map(own).filter((x): x is string => !!x).sort();
-	return clocks[0] ?? row.since ?? null;
+	const clocks = (row.hrefs?.length ? row.hrefs : [row.href]).map(own).filter((x): x is string => !!x);
+	return oldestClock(clocks) ?? row.since ?? null;
+}
+/** The earliest of several ISO timestamps, compared as INSTANTS: a string sort puts "…:00.5Z" before "…:00Z" and "…T11:00+02:00" after "…T10:00Z". Unparseable entries lose to parseable ones. */
+export function oldestClock(clocks: string[]): string | null {
+	let best: string | null = null, bestMs = Infinity;
+	for (const c of clocks) { const ms = Date.parse(c); if (!Number.isNaN(ms) && ms < bestMs) { best = c; bestMs = ms; } }
+	return best ?? clocks[0] ?? null;
 }
 /** The DEPLOYED build of a place with its own commit: the change title the History headline prints (fixture change by sha, else the range head) and the range head's author. */
 export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>): { build: string; meta: string | null; title: string | null; author: string | null; at: string | null } {
