@@ -70,6 +70,10 @@ export type ReleaseSliceObject = {
 		labels?: Record<string, string> | null;
 		annotations?: Record<string, string> | null;
 		resourceVersion?: string;
+		/** Bumped by the API server on every change to the slice's content; see `isNewerSlice`. */
+		generation?: number;
+		uid?: string;
+		creationTimestamp?: string;
 	};
 	source: string;
 	sealed?: boolean;

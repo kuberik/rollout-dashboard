@@ -37,16 +37,51 @@ function mergedFor(key: string): VersionInfo[] | undefined {
 }
 
 /**
- * Replace the catalogues a full list response covers. Every source that
+ * Is `incoming` at least as new as `held`? A slice must never be replaced by
+ * an older copy of itself: the hub's fan-in cache serves spoke lists up to
+ * tens of seconds stale, so a refetch that follows an SSE event can carry
+ * the slice as it was BEFORE the event.
+ *
+ * The monotonic field is `metadata.generation`. ReleaseSlice has no status
+ * subresource, so the API server bumps generation on every content change
+ * (a release added, backfilled, retired, or `sealed` flipped) and never lowers
+ * it. `resourceVersion` is opaque and is deliberately not compared. A slice
+ * deleted and recreated under the same name is a new object (different uid):
+ * the later `creationTimestamp` wins. When either copy carries no generation
+ * (an old API, a mock), nothing proves the incoming one older, so it wins.
+ */
+export function isNewerSlice(incoming: ReleaseSliceObject, held: ReleaseSliceObject): boolean {
+	const a = incoming.metadata;
+	const h = held.metadata;
+	if (a.uid && h.uid && a.uid !== h.uid) return Date.parse(a.creationTimestamp ?? '') >= Date.parse(h.creationTimestamp ?? '') || Number.isNaN(Date.parse(h.creationTimestamp ?? ''));
+	if (typeof a.generation !== 'number' || typeof h.generation !== 'number') return true;
+	return a.generation >= h.generation;
+}
+
+/** Slices that arrived by SSE and no list has confirmed yet (key: catalogue key + name) → arrival ms. */
+const pending = new Map<string, number>();
+/**
+ * How long a list that lacks an SSE-delivered slice is assumed stale rather
+ * than a deletion (the hub fan-in cache window is 10s; deletions arrive as SSE
+ * events of their own).
+ */
+const PENDING_GRACE_MS = 60_000;
+const pendingKey = (k: string, name: string) => `${k}\u0001${name}`;
+
+/**
+ * Fold a full list response into the catalogues it covers. Every source that
  * appears in `slices` (or is named in `knownSources`, keys from
- * `catalogueKey`) is replaced wholesale, so a slice deleted by retention
- * disappears. Sources absent from both are left untouched.
+ * `catalogueKey`) is replaced, so a slice deleted by retention disappears,
+ * EXCEPT that a listed slice never replaces a newer one already held, and a
+ * slice delivered by SSE a moment ago is kept when the list does not mention
+ * it yet. Sources absent from both are left untouched.
  */
 export function ingestReleaseSlices(
 	slices: readonly ReleaseSliceObject[],
 	knownSources: readonly string[] = [],
-	opts: { dropUnnamed?: boolean } = {}
+	opts: { dropUnnamed?: boolean; now?: number } = {}
 ): void {
+	const now = opts.now ?? Date.now();
 	const next = new Map<string, Map<string, ReleaseSliceObject>>();
 	for (const k of knownSources) next.set(k, new Map());
 	for (const s of slices) {
@@ -56,19 +91,34 @@ export function ingestReleaseSlices(
 		m.set(s.metadata.name, s);
 	}
 	if (opts.dropUnnamed) for (const k of [...catalogues.keys()]) if (!next.has(k)) catalogues.delete(k);
-	for (const [k, m] of next) {
+	for (const [k, listed] of next) {
 		const prev = catalogues.get(k);
+		const m = new Map(listed);
+		if (prev) {
+			for (const [name, held] of prev) {
+				const l = listed.get(name);
+				const pk = pendingKey(k, name);
+				if (l) {
+					if (!isNewerSlice(l, held)) m.set(name, held);
+					else pending.delete(pk);
+				} else if (now - (pending.get(pk) ?? -Infinity) < PENDING_GRACE_MS) m.set(name, held);
+				else pending.delete(pk);
+			}
+		}
 		if (prev && sameSlices(prev, m)) continue;
 		catalogues.set(k, m);
 	}
 }
 
-/** One slice added or updated (an SSE event carrying the object). */
-export function upsertReleaseSlice(slice: ReleaseSliceObject): void {
+/** One slice added or updated (an SSE event carrying the object). Never replaces a newer copy. */
+export function upsertReleaseSlice(slice: ReleaseSliceObject, now: number = Date.now()): void {
 	const k = sliceCatalogueKey(slice);
+	const held = catalogues.get(k)?.get(slice.metadata.name);
+	if (held && !isNewerSlice(slice, held)) return;
 	const m = new Map(catalogues.get(k) ?? []);
 	m.set(slice.metadata.name, slice);
 	catalogues.set(k, m);
+	pending.set(pendingKey(k, slice.metadata.name), now);
 }
 
 /** One slice deleted. `key` from `catalogueKey(cluster, namespace, source)`; unknown source → scan. */
@@ -79,6 +129,7 @@ export function removeReleaseSlice(cluster: string, namespace: string, name: str
 		if (!k.startsWith(`${cluster}\u0000`)) continue;
 		const next = new Map(m);
 		next.delete(name);
+		pending.delete(pendingKey(k, name));
 		catalogues.set(k, next);
 	}
 }
@@ -86,6 +137,7 @@ export function removeReleaseSlice(cluster: string, namespace: string, name: str
 /** Tests only. */
 export function resetReleaseCatalogue(): void {
 	catalogues.clear();
+	pending.clear();
 }
 
 function sameSlices(a: Map<string, ReleaseSliceObject>, b: Map<string, ReleaseSliceObject>): boolean {

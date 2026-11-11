@@ -14,14 +14,17 @@ export const slice = (
 	name: string,
 	source: string,
 	releases: SliceRelease[],
-	o: { ns?: string; cluster?: string; sealed?: boolean; rv?: string } = {}
+	o: { ns?: string; cluster?: string; sealed?: boolean; rv?: string; gen?: number; uid?: string; created?: string } = {}
 ): ReleaseSliceObject => ({
 	metadata: {
 		name,
 		namespace: o.ns ?? 'ns',
 		labels: { 'kuberik.com/release-source': source },
 		annotations: o.cluster === undefined ? null : { [SOURCE_CLUSTER_ANNOTATION]: o.cluster },
-		resourceVersion: o.rv
+		resourceVersion: o.rv,
+		generation: o.gen,
+		uid: o.uid,
+		creationTimestamp: o.created
 	},
 	source,
 	sealed: o.sealed,
