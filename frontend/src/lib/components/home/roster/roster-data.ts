@@ -57,6 +57,8 @@ export type RolloutRow = {
 	href: string;
 	/** a failure of your change, or an approval you can give */
 	needsYou: boolean;
+	/** the place reads its approval or rule hold while its own build is still baking */
+	stillChecking?: boolean;
 	lead: boolean;
 	action: { label: string; href: string; kind: 'rollback' | 'approve' | 'open' } | null;
 	/** one line of cause, from the model's own words (failing check, hold reason) */
@@ -78,11 +80,6 @@ const isLiveHealthy = (s: string) => s !== 'failed' && s !== 'not-deployed' && s
 /** craft r2: a git sha shortens to 7; a semver tag ("4.43.0-43") is already short and is never cut. */
 const shortVersion = (v: string | null | undefined): string | null => (!v ? null : /^[0-9a-f]{8,40}$/.test(v) ? v.slice(0, 7) : v);
 
-/** The per-build refusers (the toast's `waitsOn`, the Holding card, `placeHolds`): data.ts registers the one function that names the rule still refusing the build a person is APPROVING at a place once the approval is written, else null.
- *  The env's own state reads the frontier (newest) build; an approval is asked for another build, and if a rule refuses THAT build no approval can deploy it, so the place is held by that rule, with no ask (ruling 4). */
-let ruleAfterApproval: ((href: string, app: string, state: HomeState) => string | null) | null = null;
-export const setRuleAfterApproval = (f: typeof ruleAfterApproval): void => { ruleAfterApproval = f; };
-
 export function rollouts(state: HomeState) {
 	const c = compass(state);
 	const { v, m } = c;
@@ -91,7 +88,7 @@ export function rollouts(state: HomeState) {
 	const appr = new Map(v.approvals.map((a) => [a.app, a]));
 	const needs = new Map(m.fleet.needsYou.map((n) => [`${n.app}@${n.env}`, n]));
 
-	type P = { prov: string | null; app: string; env: string; label: string; tier: TierKey; state: EnvState; version: string | null; since: string | null; href: string; mine: Change | null; pipeline: EnvPipeline | null; also: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null };
+	type P = { prov: string | null; app: string; env: string; label: string; tier: TierKey; state: EnvState; version: string | null; since: string | null; href: string; mine: Change | null; pipeline: EnvPipeline | null; also: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null; stillChecking: boolean };
 	/* craft r7 (N5): a held place waits on a PROVIDER when its tab says so. `needsYou` holds one entry per app and hold
 	   category, so a held place with no entry of its own takes the app's held entries when they all agree (the tab's sentence is the
 	   same gate: "waiting for payments-svc"); an entry of its own with another reason (a check, a pin) is never overridden. */
@@ -116,12 +113,11 @@ export function rollouts(state: HomeState) {
 				continue;
 			}
 			const my = e.myChanges.find((ch) => ch.state === e.state) ?? null;
-			const ruleHeld = e.state === 'awaiting-approval' && !!ruleAfterApproval?.(e.href, a.app, state);
 			busy.push({
-				prov: e.state === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: ruleHeld ? 'held-by-rule' : e.state, version: shortVersion(e.version),
+				prov: e.state === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: e.state, version: shortVersion(e.version),
 				/* craft r7 (nit): a failing place's age is the failure's (the change's failed entry), not the deploy's */
 				since: (e.state === 'awaiting-approval' || e.state === 'held-by-rule' ? e.heldSince : null) ?? (e.state === 'failed' ? e.myChanges.find((ch) => ch.state === 'failed')?.since : null) ?? e.arrivedAt,
-				href: e.href, also: e.state === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
+				href: e.href, stillChecking: !!e.stillChecking, also: e.state === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
 			});
 		}
 
@@ -129,7 +125,7 @@ export function rollouts(state: HomeState) {
 	const rows: RolloutRow[] = [];
 	for (const p of busy) {
 		const g = groupOf(p.state);
-		const same = rows.find((r) => r.app === p.app && r.tier === 'prod' && p.tier === 'prod' && r.state === p.state && (r.glyph === 'waiting') === !!p.prov && (p.state === 'awaiting-approval' || p.state === 'held-by-rule' || r.version === p.version));
+		const same = rows.find((r) => r.app === p.app && r.tier === 'prod' && p.tier === 'prod' && r.state === p.state && (r.glyph === 'waiting') === !!p.prov && r.stillChecking === p.stillChecking && (p.state === 'awaiting-approval' || p.state === 'held-by-rule' || r.version === p.version));
 		if (same) {
 			same.regions.push(p.label);
 			same.where = `${same.regions.length} prod regions`;
@@ -160,7 +156,7 @@ export function rollouts(state: HomeState) {
 			key: `${p.app}@${p.env}`, app: p.app, tier: p.tier,
 			where: p.tier === 'prod' ? (p.label === 'prod' ? 'production' : p.label) : p.label,
 			regions: [p.label], state: p.state, group: g, glyph: p.prov ? 'waiting' : glyphOf(p.state), word, change, version: p.version, since: p.since, href: p.href,
-			needsYou, lead: isLead,
+			needsYou, lead: isLead, stillChecking: p.stillChecking,
 			action: isLead && L?.action ? { label: L.action.label.replace(/ to [0-9a-f]{7}$/, ''), href: L.action.href, kind: 'rollback' }
 				: p.state === 'failed' && needsYou ? { label: 'Roll back', href: p.href, kind: 'rollback' }
 				: p.state === 'awaiting-approval' && ap ? { label: 'Approve', href: p.href, kind: 'approve' } : null,

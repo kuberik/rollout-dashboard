@@ -14,7 +14,7 @@ import {
 	detectStuckBehind
 } from './utils';
 import type { StuckReason } from './utils';
-import { compareEnvironmentNames } from './env-order';
+import { compareEnvironmentNames, getEnvironmentRank } from './env-order';
 import {
 	promotionBlock,
 	blockNeedsPerson,
@@ -32,8 +32,9 @@ import {
 } from './source-dashboard';
 import { blockingStory } from './view-models/blocking-story';
 import type { BlockingStory, GateContext, ContractHolds } from './view-models/blocking-story';
-import { heldVerdict } from './view-models/held';
-import type { HeldCause } from './view-models/held';
+import { heldVerdict, causeLabelForGates } from './view-models/held';
+import { placeVerdict, targetBuild, type PlaceVerdict } from './view-models/place-verdict';
+import type { HeldCause, AlsoHold } from './view-models/held';
 import { displayVersionForTag } from './version-utils';
 import { formatAbsoluteReopen } from './api/schedules';
 import type { PrCell } from './view-models/pr-pipeline';
@@ -247,6 +248,52 @@ export function worstChangeCell<
 
 export type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
 
+/** The tags one candidate / history entry goes by */
+const refTags = (x: { tag?: string; version?: string; revision?: string } | null | undefined): string[] => [x?.tag, x?.version, x?.revision].filter((t): t is string => !!t);
+
+/**
+ * THE PER-PLACE VERDICT, read for one rollout (`place-verdict.ts` holds the rule; this only gathers its inputs). The build in question is
+ * the live candidate that got furthest through the lower tiers (`targetBuild`, peers' newest history entries), and the gates are the
+ * rollout's own published gates. Null when no approval is pending here: the frontier verdict stands. Everything the card says about its
+ * hold (`held`, `heldCause`, `heldCauseLabel`, `heldAlso`) follows this verdict, so the env model, the rows and the inbox cannot read another build.
+ */
+function placeVerdictOf(
+	r: Rollout,
+	envName: string,
+	peers: { envName: string; rollout: Rollout }[],
+	story: BlockingStory,
+	fleet: Fleet
+): { verdict: PlaceVerdict; held: boolean; cause: HeldCause | null; causeLabel: string | null; also: AlsoHold | null } | null {
+	const gates = (r.status?.gates ?? []) as { name: string; kind?: string | null; passing?: boolean | null; allowedVersions?: string[] | null }[];
+	if (!gates.length) return null;
+	const live = liveForPlace(r, r.status?.releaseCandidates ?? [], fleet);
+	const tagOf = (c: { tag?: string; version?: string }) => c.tag ?? c.version ?? '';
+	const cands = live.map(tagOf);
+	const mine = getEnvironmentRank(envName);
+	const reachOf = (t: string): number => {
+		const c = live.find((x) => tagOf(x) === t);
+		const names = c ? refTags(c) : [t];
+		let best = -1;
+		for (const p of peers) {
+			const rk = getEnvironmentRank(p.envName);
+			if (rk >= mine || rk <= best) continue;
+			const h = refTags(p.rollout.status?.history?.[0]?.version);
+			if (h.some((x) => names.includes(x))) best = rk;
+		}
+		return best;
+	};
+	const h0 = r.status?.history?.[0];
+	const v = placeVerdict({ gates, cands, target: targetBuild(cands, reachOf), running: h0 ? { tag: h0.version?.tag ?? h0.version?.version ?? '', bake: h0.bakeStatus } : null });
+	if (!v) return null;
+	if (v.state === 'running') return { verdict: v, held: false, cause: null, causeLabel: null, also: null };
+	if (v.state === 'awaiting-approval') return { verdict: v, held: true, cause: 'person', causeLabel: causeLabelForGates(story.gates, 'person'), also: null };
+	const cg = story.gates.find((g) => g.id === v.first.name) ?? null;
+	const cause: HeldCause = v.also.kind === 'window' ? 'clock' : v.also.kind === 'order' ? 'order' : cg?.kind === 'dependency' || cg?.clears === 'upstream' ? 'dependency' : cg?.clears === 'check' ? 'check' : 'unknown';
+	const name = cg ? (cg.kind === 'dependency' && cg.subject ? cg.subject : (cg.displayName ?? cg.label)) : v.first.name;
+	const also: AlsoHold = { kind: v.also.kind, other: v.also.kind === 'order' ? 'promotion order' : name };
+	return { verdict: v, held: true, cause, causeLabel: cg ? causeLabelForGates([cg], cause) : null, also };
+}
+
 /**
  * ⛔ GOING BACKWARDS IS A DIFFERENT EVENT FROM GOING FORWARDS, AND EVERY LIST
  * SURFACE DREW IT AS THE SAME EVENT.
@@ -403,6 +450,8 @@ export type RolloutCard = {
 	heldCauseLabel: string | null;
 	/** an approval also refuses this place's frontier build while a rule gate is the primary `heldCause` (`verdictForGates`' `alsoAwaitingApproval`) */
 	heldAlsoApproval?: boolean;
+	/** THE per-place verdict (`place-verdict.ts`): set exactly when an approval is pending here; it replaces the frontier read for such a place (`held`, `heldCause`, `heldAlso` below follow it). */
+	placeVerdict?: PlaceVerdict | null;
 	/** the other hold that ask names (`AlsoHold`) */
 	heldAlso?: { kind: 'window' | 'order' | 'hold'; other: string } | null;
 	/**
@@ -413,7 +462,8 @@ export type RolloutCard = {
 	 * itself is not moving.
 	 */
 	waitsForEnv: string | null;
-	/** The wave/site wording of that wait ("Waiting for us-east-1 to finish checking c6f19d2"); null for a plain tier wait. */
+	
+/** The wave/site wording of that wait ("Waiting for us-east-1 to finish checking c6f19d2"); null for a plain tier wait. */
 	waveWait: string | null;
 	rollout: Rollout;
 	sourceURL: string; // dashboard URL this rollout belongs to (empty = local)
@@ -594,6 +644,7 @@ export function buildRolloutCards(
 			? blockingStory(r, gateContext, { contractHolds: contractHoldsFor(r), now, fleet: { environments, rollouts } })
 			: blockingStory(r, gateContext, { now, fleet: { environments, rollouts } });
 		const heldCardVerdict = heldVerdict(cardStory, envName);
+		const pv = placeVerdictOf(r, envName, peers, cardStory, { environments, rollouts });
 		return {
 			ns: r.metadata?.namespace || '',
 			name: r.metadata?.name || '',
@@ -624,19 +675,20 @@ export function buildRolloutCards(
 			rank,
 			behind,
 			behindCount: behindOfRollout(r, rank, { environments, rollouts }),
-			held: heldCardVerdict.held,
-			heldCause: heldCardVerdict.cause,
+			held: pv ? pv.held : heldCardVerdict.held,
+			heldCause: pv ? pv.cause : heldCardVerdict.cause,
+			placeVerdict: pv?.verdict ?? null,
 			// ⭐ qa12 (squad-rollout gates-2 follow-up, 2026-10-11): the
 			// FRONTIER candidate's own label, never the whole-story blend
 			// — `heldVerdict`'s own `.frontier.causeLabel` is read off ONLY
 			// the eligible candidate's `classifiedGates`, which is what
 			// keeps a newer chain-refused candidate's gate from naming the
 			// cause for an OLDER candidate this environment really refuses.
-			heldCauseLabel: heldCardVerdict.held ? (heldCardVerdict.frontier?.causeLabel ?? null) : null,
-			heldAlsoApproval: heldCardVerdict.held && !!heldCardVerdict.frontier?.alsoApproval,
-			heldAlso: heldCardVerdict.held ? (heldCardVerdict.frontier?.alsoApproval ?? null) : null,
-			waitsForEnv: heldCardVerdict.waitsForEnv,
-			waveWait: heldCardVerdict.waveWait ?? null,
+			heldCauseLabel: pv ? pv.causeLabel : heldCardVerdict.held ? (heldCardVerdict.frontier?.causeLabel ?? null) : null,
+			heldAlsoApproval: pv ? !!pv.also : heldCardVerdict.held && !!heldCardVerdict.frontier?.alsoApproval,
+			heldAlso: pv ? pv.also : heldCardVerdict.held ? (heldCardVerdict.frontier?.alsoApproval ?? null) : null,
+			waitsForEnv: pv ? null : heldCardVerdict.waitsForEnv,
+			waveWait: pv ? null : heldCardVerdict.waveWait ?? null,
 			rollout: r,
 			sourceURL: sourceDashboardURL(r),
 			sourceCluster: sourceClusterName(r)

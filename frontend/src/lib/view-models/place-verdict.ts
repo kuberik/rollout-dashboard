@@ -12,7 +12,7 @@ import { gateKindOf, type GateKind } from './gate-kind';
  *                                                                  (a persistent check / dependency / unknown, then a promotion order, then a window),
  *                                                                  and `also`: the approval is ALSO pending for that build
  *  - ... unless the place's own newest history entry is the approved build and it is running (Deploying / InProgress): the approval did
- *    its work, the place reads its own bake state, and a hold on the NEXT build does not outrank it (`null`: the caller reads the bake)
+ *    its work, the place reads its own bake state, and a hold on the NEXT build does not outrank it (`running`)
  *
  * A leaf module (no data-layer imports): the model, the roster and the page layer all import it.
  */
@@ -50,6 +50,8 @@ export function targetBuild(cands: readonly string[], reachOf: (tag: string) => 
 export type AlsoKind = 'window' | 'order' | 'hold';
 export type PlaceVerdict<G extends VGate = VGate> =
 	| { state: 'awaiting-approval'; target: string }
+	/** the approved build is itself Deploying / InProgress here: the place reads its own bake state, whatever refuses the next build */
+	| { state: 'running'; target: string }
 	| { state: 'held-by-rule'; target: string; first: G; refusers: G[]; /** the approval is also pending for this build */ also: { kind: AlsoKind } };
 
 /** blame order: a persistent refuser (a failing check, a dependency, an unattributed gate) decides over a promotion order, which decides over a window (clears by itself) */
@@ -66,14 +68,14 @@ export type PlaceVerdictInput<G extends VGate> = {
 	running?: { tag: string; bake?: string | null } | null;
 };
 
-/** null: no approval is pending at this place (the caller reads the gates as they are), or the approved build is itself running. */
+/** null: no approval is pending at this place (the caller reads the gates as they are). */
 export function placeVerdict<G extends VGate>(i: PlaceVerdictInput<G>): PlaceVerdict<G> | null {
 	const own = approvalGateOf(i.gates, i.cands);
 	if (!own || !i.cands.length || !i.target) return null;
 	const refusers = refusingGatesAfterApproval(i.gates, own, i.target);
 	if (!refusers.length) return { state: 'awaiting-approval', target: i.target };
 	const r = i.running;
-	if (r && (r.bake === 'Deploying' || r.bake === 'InProgress') && gateWrites(i.gates, own, r.tag)) return null;
+	if (r && (r.bake === 'Deploying' || r.bake === 'InProgress') && gateWrites(i.gates, own, r.tag)) return { state: 'running', target: i.target };
 	const sorted = [...refusers].sort((a, b) => BLAME(a) - BLAME(b));
 	return { state: 'held-by-rule', target: i.target, first: sorted[0], refusers: sorted, also: { kind: alsoKindOf(sorted[0]) } };
 }

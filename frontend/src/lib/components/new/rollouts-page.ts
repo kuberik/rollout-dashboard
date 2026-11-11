@@ -9,7 +9,7 @@
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
 import {
-	rollouts, placesOf, placeBehind, regionStates, ago, buildOf, buildIdentity, deployedBuild, waitingBuild, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
+=======
 	type TRow, type HomeState
 } from './data';
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
@@ -82,7 +82,7 @@ export function sentenceOf(r: TRow, hs: HomeState, o: { clockInSentence?: boolea
 	}
 	if (r.group === 'held') {
 		const g = gateName(r, hs);
-		return [(holdWord(r, hs) ?? (g ? `Held by ${g.name}` : r.word)) + (r.alsoApproval ? ` · also needs ${r.alsoApproval.yours ? 'your ' : ''}approval` : ''), g?.sentence ?? ''];
+		return [(placeCause(r.href, r.app, r.key, hs) ?? holdWord(r, hs) ?? (g ? `Held by ${g.name}` : r.word)) + (r.alsoApproval ? ` · also needs ${r.alsoApproval.yours ? 'your ' : ''}approval` : ''), g?.sentence ?? ''];
 	}
 	const title = buildIdentity(buildOf(r), r.href)?.title ?? deployedBuild(r).title ?? '';
 	if (r.state === 'deploying') {
