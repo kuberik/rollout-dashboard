@@ -25,6 +25,7 @@ import {
 	type TRow,
 	type TierKey
 } from '../data';
+import { lastFailureMs } from '$lib/view-models/event-age';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
 
@@ -420,20 +421,35 @@ export const placeRank = (p: PlaceHold): number =>
 		: severity(p.state);
 export const bySeverity = (places: PlaceHold[]): PlaceHold[] =>
 	[...places].sort((a, b) => placeRank(a) - placeRank(b));
+/**
+ * THE ONE "Newest" of an app: the newest build in the release catalogue (`status.availableReleases`, the places' own streams), whatever was
+ * deployed last. A rollback is the most recent deploy and is never the newest build. Only an app whose places carry no catalogue falls back
+ * to the build its most recent deploy named.
+ */
+export function newestBuildOf(places: PlaceHold[]): string | null {
+	const rank = new Map<string, number>();
+	for (const p of places)
+		streamBuilds(p.href).forEach((b, i) => rank.set(b, Math.max(rank.get(b) ?? -1, i)));
+	const top = [...rank].sort((a, b) => b[1] - a[1])[0]?.[0];
+	if (top) return top;
+	return (
+		[...places]
+			.filter((p) => p.deployedBuild)
+			.sort((a, b) =>
+				(deployedHistory(b.href, 1)[0]?.at ?? '').localeCompare(
+					deployedHistory(a.href, 1)[0]?.at ?? ''
+				)
+			)[0]?.deployedBuild ?? null
+	);
+}
 export function ledgerOf(places: PlaceHold[]): Stop[] {
 	if (!places.length) return [];
 	const spinePlace = [...places].sort((a, b) => b.heldBuilds.length - a.heldBuilds.length)[0];
 	const spine = spinePlace.heldBuilds.map((h) => h.build);
 	let seq = spine.length && spinePlace.deployedBuild ? [...spine, spinePlace.deployedBuild] : spine;
 	if (!seq.length) {
-		/* nothing newer anywhere: every place is on the newest; the newest deploy names it, any other build is custom */
-		const top = [...places]
-			.filter((p) => p.deployedBuild)
-			.sort((a, b) =>
-				(deployedHistory(b.href, 1)[0]?.at ?? '').localeCompare(
-					deployedHistory(a.href, 1)[0]?.at ?? ''
-				)
-			)[0]?.deployedBuild;
+		/* nothing newer anywhere (no place holds a build back, or the newer one failed upstream): the newest build is the catalogue's, never the latest deploy */
+		const top = newestBuildOf(places);
 		seq = top ? [top] : [];
 	}
 	const info = new Map<
@@ -689,7 +705,6 @@ export function weekSummary(
 	let deploys = 0,
 		failed = 0,
 		rolledBack = 0,
-		last: number | null = null,
 		open = false;
 	const durations: number[] = [];
 	const day = new Set<string>();
@@ -702,7 +717,6 @@ export function weekSummary(
 			if (r.rolledBack[i]) rolledBack++;
 			if (h.bakeStatus === 'Failed') {
 				failed++;
-				if (last === null || t > last) last = t;
 				if (i === 0) open = true;
 			}
 			if (h.bakeStatus === 'Succeeded' && h.bakeEndTime) {
@@ -723,7 +737,11 @@ export function weekSummary(
 		failed,
 		rolledBack,
 		medianHealthyMs,
-		lastFailureMs: last,
+		lastFailureMs: lastFailureMs(
+			rollouts.map((r) => r.history),
+			from,
+			nowMs
+		),
 		daysWithData: day.size,
 		openFailure: open
 	};

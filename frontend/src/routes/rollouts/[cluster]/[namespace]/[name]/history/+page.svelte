@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { lastFailureMs } from '$lib/view-models/event-age';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import { currentRowChip } from '$lib/view-models/history-current-chip';
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
@@ -817,8 +818,8 @@
 		return durations.length % 2 === 0 ? (durations[mid - 1] + durations[mid]) / 2 : durations[mid];
 	});
 	const lastFailureAgo = $derived.by(() => {
-		const f = filteredHistory.find(({ e }) => e.bakeStatus === 'Failed');
-		return f ? `${formatTimeAgoCompact(f.e.timestamp, $now)} ago` : null;
+		const ms = lastFailureMs([filteredHistory.map(({ e }) => e)]);
+		return ms === null ? null : `${formatTimeAgoCompact(new Date(ms).toISOString(), $now)} ago`;
 	});
 	/**
 	 * ⭐ "Keeps up to N", ONLY WHEN AT THE LIMIT (round 3, item 5, squad

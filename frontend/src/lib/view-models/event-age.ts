@@ -74,6 +74,24 @@ export function historyEntrySince(h: HistoryEntryLike): string | null {
 }
 
 /**
+ * THE ONE "last failure" of a set of histories: the newest failed entry's own failure instant (`historyEntrySince`: when its bake ended),
+ * as epoch ms, or null when none failed. The App summary, the History tab's summary and the Recent activity row all read it, so the card
+ * that says "Last failure 48m ago" and the row that says "Check failed 10:31" name the same instant. `from`/`to` bound the DEPLOY's start.
+ */
+export function lastFailureMs(histories: ReadonlyArray<ReadonlyArray<(NonNullable<HistoryEntryLike> & { bakeStatus?: string | null }) | null | undefined>>, from = -Infinity, to = Infinity): number | null {
+	let last: number | null = null;
+	for (const hist of histories)
+		for (const h of hist) {
+			if (h?.bakeStatus !== 'Failed') continue;
+			const start = h.timestamp ? new Date(h.timestamp).getTime() : NaN;
+			if (!(start >= from && start <= to)) continue;
+			const t = new Date(historyEntrySince(h) ?? '').getTime();
+			if (Number.isFinite(t) && (last === null || t > last)) last = t;
+		}
+	return last;
+}
+
+/**
  * ⭐ THE ONE CALL EVERY SURFACE SHARES. Returns the ISO instant of the event
  * that put `card` into its current `kind` of state, or `null` when nothing
  * in the rollout can answer it (e.g. `held`/`behind` with no resolvable

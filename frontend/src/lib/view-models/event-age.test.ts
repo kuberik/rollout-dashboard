@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Rollout } from '../../types';
 import { buildRolloutCards } from '$lib/rollout-cards';
-import { eventAge, historyEntrySince } from './event-age';
+import { eventAge, historyEntrySince, lastFailureMs } from './event-age';
+import { weekSummary } from '../components/new/app/app-model';
 
 const NOW = new Date('2026-10-12T12:00:00Z');
 
@@ -149,5 +150,16 @@ describe('the incident failure — one instant across every surface (shared/age-
 		expect(new Date(eventAge(card, 'failed')!).getTime()).toBe(expectedMs);
 		// historyEntrySince (ActivityRail's own, card-free path) agrees too.
 		expect(new Date(historyEntrySince(rollout.status!.history![0])!).getTime()).toBe(expectedMs);
+	});
+});
+
+describe('lastFailureMs: one last-failure instant for every surface', () => {
+	const failed = { timestamp: '2026-11-10T10:00:00Z', bakeEndTime: '2026-11-10T10:31:00Z', bakeStatus: 'Failed' };
+	it('is the failure instant (bake end), not the deploy start', () => {
+		expect(lastFailureMs([[failed]])).toBe(new Date('2026-11-10T10:31:00Z').getTime());
+	});
+	it('the app summary and the activity row agree on it', () => {
+		const sum = weekSummary([{ history: [failed], rolledBack: [false] }], 7, new Date('2026-11-10T10:48:00Z').getTime());
+		expect(sum.lastFailureMs).toBe(new Date(historyEntrySince(failed)!).getTime());
 	});
 });
