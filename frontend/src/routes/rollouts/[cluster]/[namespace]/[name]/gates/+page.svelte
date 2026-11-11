@@ -159,7 +159,7 @@
 	import RolloutNeighbourhood from '$lib/components/RolloutNeighbourhood.svelte';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { autoDeployState } from '$lib/view-models/auto-deploy';
-	import { dashboardManagesWantedVersion, newerBuildsShown, pinLeadSentence } from '$lib/view-models/pin-hold';
+	import { gatesPinBox, pinLeadSentence } from '$lib/view-models/pin-hold';
 	import { getDisplayVersion } from '$lib/utils';
 	import { rolloutPermissionsQueryOptions } from '$lib/api/rollouts';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
@@ -1213,15 +1213,18 @@
 
 	// A5: a gate box names the builds it holds HERE (`heldBuilds`), not every candidate the gate refuses: the approval gate refuses all of
 	// them, two of which have not reached this place yet.
-	const gateBoxes = $derived.by(() => {
-		const hereBuilds = new Set(reallyHeldHere.map((h) => h.build));
-		/* the pin card counts what the header counts (`newerBuildsShown`): a build that failed here or upstream is not held by the pin */
-		const pinHeld = newerBuildsShown(rollout, { environments: listEnvironments, rollouts: listRollouts }, fleetSettled(listQuery))
-			.map((c) => getDisplayVersion(c as { version?: string; revision?: string; tag: string }));
-		return gateBoxesRaw.map((b) =>
-			b.kind === 'pin' ? (b.state === 'blocked' ? { ...b, held: [...new Set(pinHeld)] } : b) : b.state === 'blocked' ? { ...b, held: b.held.filter((x) => hereBuilds.has(x)) } : b
-		);
-	});
+	const gatesPin = $derived(
+		gatesPinBox({
+			boxes: gateBoxesRaw,
+			rollout,
+			fleet: { environments: listEnvironments, rollouts: listRollouts },
+			settled: fleetSettled(listQuery),
+			hereBuilds: reallyHeldHere.map((h) => h.build),
+			pinnedTo: blockStory.pinnedTo,
+			displayVersion: (c) => getDisplayVersion(c as { version?: string; revision?: string; tag: string })
+		})
+	);
+	const gateBoxes = $derived(gatesPin.boxes);
 
 	const hood = $derived(
 		rolloutNeighbourhood({
@@ -1950,9 +1953,9 @@
 								{hood}
 								themeOf={themeFor}
 								hrefOf={(n) => rolloutPath(n.cluster || cluster, n.namespace, n.name, 'gates')}
-								heldBuildsOverride={blockStory.pinnedTo ? gateBoxes.find((b) => b.kind === 'pin')?.held : reallyHeldHere.map((h) => h.build)}
+								heldBuildsOverride={gatesPin.heldBuildsOverride}
 								onClearPin={canModify && blockStory.pinnedTo ? () => (showClearPinModal = true) : null}
-								clearPinDisabled={!dashboardManagesWantedVersion(rollout)}
+								clearPinDisabled={gatesPin.clearPinDisabled}
 								reconciledUpstream={reconciled.upstream}
 								elsewhereCountOverride={elsewhereCounts}
 								{peerHeldByEnv}

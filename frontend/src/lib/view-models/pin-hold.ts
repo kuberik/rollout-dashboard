@@ -72,3 +72,27 @@ export function newerBuildsShown(rollout: Rollout | null | undefined, fleet: Fle
 	const live = liveForPlace(rollout as never, all as never, fleet) as unknown as ReleaseRef[];
 	return live.length > 0 ? live : all;
 }
+
+/**
+ * THE GATES TAB'S PIN BOX, ONE MAPPING. The tab draws one box per gate (and one for the pin); this decides what each says it holds and what the
+ * Held-here node and Clear pin button read, so the rules are testable without the route:
+ *  - a blocked gate box names only the builds held HERE (`hereBuilds`), not every candidate the gate refuses;
+ *  - a blocked PIN box names `newerBuildsShown` (the list the header counts), never the gate list: a build that failed here or upstream is not held by the pin;
+ *  - the focus node's held builds are the pin box's list while pinned, and the builds held here otherwise (a pinned place must not tell you to approve);
+ *  - Clear pin is disabled exactly when `dashboardManagesWantedVersion` says another manager owns the field.
+ */
+export function gatesPinBox<B extends { kind: string; state: string; held: string[] }>(a: {
+	boxes: B[];
+	rollout: Rollout | null | undefined;
+	fleet: Fleet | null | undefined;
+	settled: boolean;
+	hereBuilds: string[];
+	pinnedTo: string | null | undefined;
+	displayVersion: (c: ReleaseRef) => string;
+}): { boxes: B[]; heldBuildsOverride: string[]; clearPinDisabled: boolean } {
+	const here = new Set(a.hereBuilds);
+	const pinHeld = [...new Set(newerBuildsShown(a.rollout, a.fleet, a.settled).map(a.displayVersion))];
+	const boxes = a.boxes.map((b) => (b.kind === 'pin' ? (b.state === 'blocked' ? { ...b, held: pinHeld } : b) : b.state === 'blocked' ? { ...b, held: b.held.filter((x) => here.has(x)) } : b));
+	const pinBoxHeld = boxes.find((b) => b.kind === 'pin')?.held ?? [];
+	return { boxes, heldBuildsOverride: a.pinnedTo ? pinBoxHeld : a.hereBuilds, clearPinDisabled: !dashboardManagesWantedVersion(a.rollout) };
+}

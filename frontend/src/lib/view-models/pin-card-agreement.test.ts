@@ -48,7 +48,7 @@ describe('the Gates tab pin card and the header share one list', () => {
 		const dir = new URL('../../routes/rollouts/[cluster]/[namespace]/[name]/', import.meta.url);
 		for (const u of [new URL('+page.svelte', dir), new URL('gates/+page.svelte', dir)]) {
 			const s = readFileSync(u, 'utf8');
-			expect(s).toContain('newerBuildsShown(');
+			expect(s).toMatch(/newerBuildsShown\(|gatesPinBox\(/);
 			expect(s).not.toMatch(/newerCountShown\(/);
 		}
 	});
@@ -68,7 +68,7 @@ describe('Clear pin disabled state is one predicate', () => {
 		const dir = new URL('../../routes/rollouts/[cluster]/[namespace]/[name]/', import.meta.url);
 		const srcs = [new URL('+page.svelte', dir), new URL('gates/+page.svelte', dir), new URL('../../../../../lib/components/ClearPinModal.svelte', dir)].map((u) => readFileSync(u, 'utf8'));
 		for (const s of srcs) {
-			expect(s).toContain('dashboardManagesWantedVersion');
+			expect(s).toMatch(/dashboardManagesWantedVersion|gatesPinBox/);
 			expect(s).not.toMatch(/isFieldManagedByOtherManager\(/);
 		}
 	});
