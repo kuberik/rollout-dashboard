@@ -247,7 +247,7 @@
 	const TIERS = ['dev', 'test', 'staging', 'other', 'prod'] as const;
 	const AT_REST = new Set(['newest', 'behind', 'none']);
 	const tierList = $derived(TIERS.filter((t) => lane.byTier[t]?.length));
-	const restTiers = $derived(tierList.filter((t) => lane.byTier[t]!.every((n) => AT_REST.has(n.state))));
+	const restTiers = $derived(tierList.filter((t) => lane.byTier[t]!.every((n) => AT_REST.has(n.state) && (n.state !== 'none' || n.noReleases))));
 	const shownTiers = $derived(tierList.filter((t) => !restTiers.includes(t)));
 	const allRest = $derived(tierList.length > 0 && !shownTiers.length);
 	/** one name per tier: a prod set of regions is "prod" */

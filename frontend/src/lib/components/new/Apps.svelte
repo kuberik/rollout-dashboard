@@ -12,6 +12,7 @@
 	import { InboxOutline, ClockOutline, CheckOutline } from 'flowbite-svelte-icons';
 	import { groupByState, attentionRollup } from './apps-page';
 	import Facia from './Facia.svelte';
+	import { maskLane as masked, nodeHref, NOISY } from './apps-lane';
 	import { laneOf, approvalOf } from './Footprint.svelte';
 	import { apps, changes, tabPill, fleetCounts, type TApp, type TRow } from './data';
 	import { runwayRow, rowAction } from './rollout-view';
@@ -20,8 +21,7 @@
 	import { rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import { buildRolloutCards } from '$lib/rollout-cards';
-	import { buildLanes, STATE_ORDER, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
-	import { rolloutPath } from '$lib/source-dashboard';
+	import { buildLanes, type Lane, type LaneNode, type Tier } from '$lib/view-models/promotion-lanes';
 	import { buildGateContext } from '$lib/view-models/blocking-story';
 	import { buildRolloutGraph, contractHoldsForRollout } from '$lib/view-models/dependency-graph';
 	import { compareEnvironmentNames } from '$lib/env-order';
@@ -113,24 +113,6 @@
 	 * never the raw health the list query carries: a node whose masked place is not failing/held/moving is drawn neutral
 	 * (newest, or behind when it lags), a node whose masked place is in a state takes that state. The lead is re-picked.
 	 */
-	const NS: Partial<Record<string, NodeState>> = { failed: 'failed', 'awaiting-approval': 'held', 'held-by-rule': 'held', deploying: 'deploying', checking: 'checking' };
-	const NOISY = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
-	const nodeHref = (n: LaneNode) => { const c = n.card as unknown as { href?: string; sourceCluster?: string; ns: string; name: string }; return c.href ?? rolloutPath(c.sourceCluster || '', c.ns, c.name); };
-	function masked(a: TApp, lane: Lane): Lane {
-		const byHref = new Map(a.placeList.map((p) => [p.href, p]));
-		const fix = (n: LaneNode): LaneNode => {
-			const p = byHref.get(nodeHref(n));
-			if (!p) return n;
-			const want = NS[p.state] ?? (p.currency === 'none' ? 'none' : NOISY.has(n.state) ? (n.behind > 0 ? 'behind' : 'newest') : n.state);
-			return want === n.state ? n : { ...n, state: want };
-		};
-		const byTier: Lane['byTier'] = {};
-		for (const [t, ns] of Object.entries(lane.byTier)) byTier[t as Tier] = ns!.map(fix);
-		const stages = lane.stages.map((n) => byTier[n.tier]!.find((m) => m.card === n.card) ?? n);
-		const prod = lane.prod.map((n) => byTier.prod!.find((m) => m.card === n.card) ?? n);
-		const lead = [...stages, ...prod].reduce<LaneNode | null>((b, n) => (!b || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), null);
-		return { ...lane, byTier, stages, prod, lead, state: lead?.state ?? 'none' };
-	}
 	/**
 	 * r6 P3 — ONE tinted cell per strip, and it is the focus place (the place the tile's state lives in: its approval row, else its
 	 * worst row). PromotionLane tints only `lane.lead`, so the lead is handed the focus node; a focus in a prod SET has no node tint
