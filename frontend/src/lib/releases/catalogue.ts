@@ -102,8 +102,12 @@ export type ReleaseCandidate = {
 
 export const RELEASE_SOURCE_LABEL = 'kuberik.com/release-source';
 
-type Annotated = { metadata?: { annotations?: Record<string, string> | null } | null } | null | undefined;
-const clusterOf = (o: Annotated): string => o?.metadata?.annotations?.[SOURCE_CLUSTER_ANNOTATION] ?? '';
+type Annotated =
+	| { metadata?: { annotations?: Record<string, string> | null } | null }
+	| null
+	| undefined;
+const clusterOf = (o: Annotated): string =>
+	o?.metadata?.annotations?.[SOURCE_CLUSTER_ANNOTATION] ?? '';
 
 /** Registry key for one catalogue: (cluster, namespace, source name). */
 export function catalogueKey(cluster: string, namespace: string, source: string): string {
@@ -118,7 +122,8 @@ export function sliceCatalogueKey(slice: ReleaseSliceObject): string {
 
 /** The catalogue key a Rollout reads, or null when it has no `spec.releaseSourceRef`. */
 export function rolloutCatalogueKey(r: Rollout | null | undefined): string | null {
-	const ref = (r?.spec as { releaseSourceRef?: { name?: string } } | undefined)?.releaseSourceRef?.name;
+	const ref = (r?.spec as { releaseSourceRef?: { name?: string } } | undefined)?.releaseSourceRef
+		?.name;
 	if (!r || !ref) return null;
 	return catalogueKey(clusterOf(r as Annotated), r.metadata?.namespace ?? '', ref);
 }
@@ -137,7 +142,15 @@ export function toVersionInfo(rel: SliceRelease): VersionInfo {
 	}
 	return v as VersionInfo;
 }
-const COPIED: Record<string, true> = { tag: true, digest: true, version: true, revision: true, created: true, requires: true, metadataUnresolved: true };
+const COPIED: Record<string, true> = {
+	tag: true,
+	digest: true,
+	version: true,
+	revision: true,
+	created: true,
+	requires: true,
+	metadataUnresolved: true
+};
 
 /**
  * Merge every slice of ONE source into one list, oldest → newest by
@@ -191,11 +204,18 @@ export type NoReleases = {
 };
 
 /** The shared rule, over an already-resolved state. See `noReleasesOf` (registry) for the Rollout-level accessor. */
-export function noReleasesFrom(r: Rollout | null | undefined, releases: RolloutReleases): NoReleases | null {
+export function noReleasesFrom(
+	r: Rollout | null | undefined,
+	releases: RolloutReleases
+): NoReleases | null {
 	const msg = releaseSourceRequiredMessage(r);
 	if (msg) return { kind: 'no-source', label: 'No release source', message: msg };
 	if (releases.state === 'ready' && (releases.availableReleases?.length ?? 0) === 0) {
-		return { kind: 'empty', label: 'No releases yet', message: 'This Rollout\'s release source has not published any releases yet.' };
+		return {
+			kind: 'empty',
+			label: 'No releases yet',
+			message: "This Rollout's release source has not published any releases yet."
+		};
 	}
 	return null;
 }
@@ -204,7 +224,10 @@ export function noReleasesFrom(r: Rollout | null | undefined, releases: RolloutR
  * Pure core: a Rollout's three release lists given its merged catalogue
  * (`undefined` = catalogue not known yet).
  */
-export function rolloutReleases(r: Rollout | null | undefined, catalogue: readonly VersionInfo[] | undefined): RolloutReleases {
+export function rolloutReleases(
+	r: Rollout | null | undefined,
+	catalogue: readonly VersionInfo[] | undefined
+): RolloutReleases {
 	const none = (state: ReleasesState): RolloutReleases => ({
 		availableReleases: undefined,
 		releaseCandidates: undefined,
@@ -213,7 +236,9 @@ export function rolloutReleases(r: Rollout | null | undefined, catalogue: readon
 	});
 	if (!rolloutCatalogueKey(r)) return none('source-required');
 	if (catalogue === undefined) return none('loading');
-	const st = (r?.status ?? undefined) as (RolloutStatus & { candidates?: ReleaseCandidate[] }) | undefined;
+	const st = (r?.status ?? undefined) as
+		| (RolloutStatus & { candidates?: ReleaseCandidate[] })
+		| undefined;
 	const available = catalogue as VersionInfo[];
 	// Newer-than-deployed comes from the CATALOGUE (status.candidates is capped
 	// at K, the old list was not): the controller's getNextReleaseCandidates rule
@@ -242,5 +267,10 @@ export function rolloutReleases(r: Rollout | null | undefined, catalogue: readon
 	// old fields' Go `omitempty` (behind.ts branches on undefined vs []).
 	const candidates: VersionInfo[] | undefined = newer.length ? newer : undefined;
 	const gated: VersionInfo[] | undefined = passing.length ? passing : undefined;
-	return { availableReleases: available, releaseCandidates: candidates, gatedReleaseCandidates: gated, state: 'ready' };
+	return {
+		availableReleases: available,
+		releaseCandidates: candidates,
+		gatedReleaseCandidates: gated,
+		state: 'ready'
+	};
 }

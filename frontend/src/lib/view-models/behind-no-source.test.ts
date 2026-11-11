@@ -8,7 +8,14 @@ const noSource = {
 	status: {
 		currentVersion: 'v1',
 		history: [{ version: { tag: 'v1' } }],
-		conditions: [{ type: 'ReleasesUpdated', status: 'False', reason: 'ReleaseSourceRequired', message: 'Create a ReleaseSource.' }]
+		conditions: [
+			{
+				type: 'ReleasesUpdated',
+				status: 'False',
+				reason: 'ReleaseSourceRequired',
+				message: 'Create a ReleaseSource.'
+			}
+		]
 	}
 };
 

@@ -23,7 +23,12 @@ describe('no old-field reads', () => {
 		releaseCandidates: [{ tag: 'b' }],
 		gatedReleaseCandidates: [{ tag: 'c' }]
 	};
-	const cond = { type: 'ReleasesUpdated', status: 'False', reason: 'ReleaseSourceRequired', message: 'Create a ReleaseSource.' };
+	const cond = {
+		type: 'ReleasesUpdated',
+		status: 'False',
+		reason: 'ReleaseSourceRequired',
+		message: 'Create a ReleaseSource.'
+	};
 	it('no ref: nothing, even when old fields and a catalogue exist; the controller message is surfaced', () => {
 		ingestReleaseSlices([slice('s1', 'src', [rel('x', 1)])], [K]);
 		const r = rollout({ status: { ...old, conditions: [cond] } });
@@ -32,7 +37,9 @@ describe('no old-field reads', () => {
 		expect(gatedReleaseCandidates(r)).toBeUndefined();
 		expect(releasesOf(r).state).toBe('source-required');
 		expect(releaseSourceRequiredMessage(r)).toBe('Create a ReleaseSource.');
-		expect(releaseSourceRequiredMessage(rollout({ ref: 'src', status: { conditions: [cond] } }))).toBeUndefined();
+		expect(
+			releaseSourceRequiredMessage(rollout({ ref: 'src', status: { conditions: [cond] } }))
+		).toBeUndefined();
 	});
 	it('ref set but catalogue unknown: loading, never the old fields', () => {
 		const r = rollout({ ref: 'src', status: old });
@@ -41,11 +48,17 @@ describe('no old-field reads', () => {
 		expect(gatedReleaseCandidates(r)).toBeUndefined();
 		expect(releasesOf(r).state).toBe('loading');
 	});
-	it('a ref\'d Rollout with the old fields absent reads the newer counts and candidates from slices + status.candidates', () => {
+	it("a ref'd Rollout with the old fields absent reads the newer counts and candidates from slices + status.candidates", () => {
 		ingestReleaseSlices([slice('s1', 'src', [rel('v1', 1), rel('v2', 2), rel('v3', 3)])], [K]);
 		const r = rollout({
 			ref: 'src',
-			status: { history: [{ version: { tag: 'v1' } }], candidates: [{ tag: 'v3', gated: true }, { tag: 'v2', gated: false }] }
+			status: {
+				history: [{ version: { tag: 'v1' } }],
+				candidates: [
+					{ tag: 'v3', gated: true },
+					{ tag: 'v2', gated: false }
+				]
+			}
 		});
 		expect(tags(availableReleases(r))).toEqual(['v1', 'v2', 'v3']);
 		expect(tags(releaseCandidates(r))).toEqual(['v3', 'v2']);
@@ -54,7 +67,14 @@ describe('no old-field reads', () => {
 	});
 	it('deployed tag left the catalogue: status.candidates, not old fields', () => {
 		ingestReleaseSlices([slice('s1', 'src', [rel('v2', 2)])], [K]);
-		const r = rollout({ ref: 'src', status: { ...old, history: [{ version: { tag: 'gone' } }], candidates: [{ tag: 'v2', gated: false }] } });
+		const r = rollout({
+			ref: 'src',
+			status: {
+				...old,
+				history: [{ version: { tag: 'gone' } }],
+				candidates: [{ tag: 'v2', gated: false }]
+			}
+		});
 		expect(tags(releaseCandidates(r))).toEqual(['v2']);
 	});
 });
@@ -72,7 +92,9 @@ describe('slices path', () => {
 		const r = rollout({ ref: 'src', status: {} });
 		expect(tags(availableReleases(r))).toEqual(['v1', 'v2', 'v3', 'v4', 'dup']);
 		// the duplicate keeps its highest-sequence entry
-		expect(mergeSlices([slice('a', 'src', [rel('dup', 3)]), slice('b', 'src', [rel('dup', 6)])])).toHaveLength(1);
+		expect(
+			mergeSlices([slice('a', 'src', [rel('dup', 3)]), slice('b', 'src', [rel('dup', 6)])])
+		).toHaveLength(1);
 	});
 	it('known but empty catalogue is slices mode (empty list)', () => {
 		ingestReleaseSlices([], [K]);
@@ -81,17 +103,38 @@ describe('slices path', () => {
 	});
 	it('maps entries field for field', () => {
 		ingestReleaseSlices(
-			[slice('s1', 'src', [rel('v1', 1, { digest: 'd', version: '1.0', revision: 'abc', requires: { a: '1' }, metadataUnresolved: true })])],
+			[
+				slice('s1', 'src', [
+					rel('v1', 1, {
+						digest: 'd',
+						version: '1.0',
+						revision: 'abc',
+						requires: { a: '1' },
+						metadataUnresolved: true
+					})
+				])
+			],
 			[K]
 		);
 		expect(availableReleases(rollout({ ref: 'src' }))).toEqual([
-			{ tag: 'v1', digest: 'd', version: '1.0', revision: 'abc', created: '2026-01-02T00:00:00Z', requires: { a: '1' }, metadataUnresolved: true }
+			{
+				tag: 'v1',
+				digest: 'd',
+				version: '1.0',
+				revision: 'abc',
+				created: '2026-01-02T00:00:00Z',
+				requires: { a: '1' },
+				metadataUnresolved: true
+			}
 		]);
 	});
 });
 
 describe('candidates', () => {
-	const cat = [slice('s1', 'src', [rel('v1', 1), rel('v2', 2)]), slice('s2', 'src', [rel('v3', 3), rel('v4', 4)])];
+	const cat = [
+		slice('s1', 'src', [rel('v1', 1), rel('v2', 2)]),
+		slice('s2', 'src', [rel('v3', 3), rel('v4', 4)])
+	];
 	beforeEach(() => ingestReleaseSlices(cat, [K]));
 
 	const hist = (tag: string) => [{ version: { tag } }];
@@ -112,12 +155,17 @@ describe('candidates', () => {
 		expect(releaseCandidates(r)![0].created).toBe('2026-01-05T00:00:00Z'); // catalogue entries, not stubs
 	});
 	it('no history → every catalogue release; deployed newest → undefined (omitempty)', () => {
-		expect(tags(releaseCandidates(rollout({ ref: 'src', status: {} })))).toEqual(['v4', 'v3', 'v2', 'v1']);
+		expect(tags(releaseCandidates(rollout({ ref: 'src', status: {} })))).toEqual([
+			'v4',
+			'v3',
+			'v2',
+			'v1'
+		]);
 		const top = rollout({ ref: 'src', status: { history: hist('v4'), candidates: [] } });
 		expect(releaseCandidates(top)).toBeUndefined();
 		expect(gatedReleaseCandidates(top)).toBeUndefined();
 	});
-	it('deployed tag left the catalogue → the controller\'s own status.candidates, stubs in place', () => {
+	it("deployed tag left the catalogue → the controller's own status.candidates, stubs in place", () => {
 		const r = rollout({
 			ref: 'src',
 			status: {
@@ -132,14 +180,19 @@ describe('candidates', () => {
 		expect(out[0]).toEqual({ tag: 'ghost', created: '2026-12-01T00:00:00Z' });
 		expect(tags(out)).toEqual(['ghost', 'v4']);
 		expect(tags(gatedReleaseCandidates(r))).toEqual(['ghost']);
-		expect(releaseCandidates(rollout({ ref: 'src', status: { history: hist('gone') } }))).toBeUndefined();
+		expect(
+			releaseCandidates(rollout({ ref: 'src', status: { history: hist('gone') } }))
+		).toBeUndefined();
 	});
 });
 
 describe('cluster isolation', () => {
 	it('same namespace and source on two clusters never mix', () => {
 		ingestReleaseSlices(
-			[slice('s', 'src', [rel('a1', 1)], { cluster: 'east' }), slice('s', 'src', [rel('b1', 1), rel('b2', 2)], { cluster: 'west' })],
+			[
+				slice('s', 'src', [rel('a1', 1)], { cluster: 'east' }),
+				slice('s', 'src', [rel('b1', 1), rel('b2', 2)], { cluster: 'west' })
+			],
 			[catalogueKey('east', 'ns', 'src'), catalogueKey('west', 'ns', 'src')]
 		);
 		expect(tags(availableReleases(rollout({ ref: 'src', cluster: 'east' })))).toEqual(['a1']);
@@ -154,7 +207,10 @@ describe('cluster isolation', () => {
 
 describe('registry', () => {
 	it('ingest replaces a source wholesale: a retention-deleted slice disappears', () => {
-		ingestReleaseSlices([slice('s1', 'src', [rel('v1', 1)]), slice('s2', 'src', [rel('v2', 2)])], [K]);
+		ingestReleaseSlices(
+			[slice('s1', 'src', [rel('v1', 1)]), slice('s2', 'src', [rel('v2', 2)])],
+			[K]
+		);
 		const r = rollout({ ref: 'src' });
 		expect(tags(availableReleases(r))).toEqual(['v1', 'v2']);
 		ingestReleaseSlices([slice('s2', 'src', [rel('v2', 2)])], [K]);

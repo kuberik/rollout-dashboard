@@ -12,12 +12,21 @@
 	import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
 	import type { Rollout } from '$lib/../types';
 
-	let { rollout, text, class: className = '' }: { rollout?: Rollout | null; /** the message itself, when the caller already has it */ text?: string | null; class?: string } = $props();
+	let {
+		rollout,
+		text,
+		class: className = ''
+	}: {
+		rollout?: Rollout | null;
+		/** the message itself, when the caller already has it */ text?: string | null;
+		class?: string;
+	} = $props();
 	const gap = ' ';
 	const message = $derived(text ?? releaseSourceRequiredMessage(rollout));
 	/** `spec.releasesImagePolicy` is no longer read; when a Rollout still sets it, say so and where it goes now. */
 	const legacyPolicy = $derived.by(() => {
-		const raw = (rollout?.spec as { releasesImagePolicy?: string | { name?: string } } | undefined)?.releasesImagePolicy;
+		const raw = (rollout?.spec as { releasesImagePolicy?: string | { name?: string } } | undefined)
+			?.releasesImagePolicy;
 		const name = typeof raw === 'string' ? raw.split('/').pop() : raw?.name;
 		return name || null;
 	});
@@ -30,7 +39,11 @@
 {/snippet}
 
 {#snippet body()}
-	{@render code(message ?? '')}{#if legacyPolicy}{gap}<code class="t-code">spec.releasesImagePolicy</code> is set but is ignored: set <code class="t-code">oci.imagePolicyRef</code> on the ReleaseSource to read from that ImagePolicy ({legacyPolicy}).{/if}
+	{@render code(message ?? '')}{#if legacyPolicy}{gap}<code class="t-code"
+			>spec.releasesImagePolicy</code
+		>
+		is set but is ignored: set <code class="t-code">oci.imagePolicyRef</code> on the ReleaseSource
+		to read from that ImagePolicy ({legacyPolicy}).{/if}
 {/snippet}
 
 {#if message}

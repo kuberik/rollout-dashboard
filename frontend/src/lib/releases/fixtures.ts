@@ -3,7 +3,11 @@ import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
 import type { ReleaseSliceObject, SliceRelease, ReleaseSourceObject } from './catalogue';
 import type { Rollout } from '../../types';
 
-export const rel = (tag: string, sequence: number, extra: Partial<SliceRelease> = {}): SliceRelease => ({
+export const rel = (
+	tag: string,
+	sequence: number,
+	extra: Partial<SliceRelease> = {}
+): SliceRelease => ({
 	tag,
 	sequence,
 	created: `2026-01-0${(sequence % 9) + 1}T00:00:00Z`,
@@ -14,7 +18,15 @@ export const slice = (
 	name: string,
 	source: string,
 	releases: SliceRelease[],
-	o: { ns?: string; cluster?: string; sealed?: boolean; rv?: string; gen?: number; uid?: string; created?: string } = {}
+	o: {
+		ns?: string;
+		cluster?: string;
+		sealed?: boolean;
+		rv?: string;
+		gen?: number;
+		uid?: string;
+		created?: string;
+	} = {}
 ): ReleaseSliceObject => ({
 	metadata: {
 		name,
@@ -31,7 +43,10 @@ export const slice = (
 	releases
 });
 
-export const source = (name: string, o: { ns?: string; cluster?: string } = {}): ReleaseSourceObject => ({
+export const source = (
+	name: string,
+	o: { ns?: string; cluster?: string } = {}
+): ReleaseSourceObject => ({
 	metadata: {
 		name,
 		namespace: o.ns ?? 'ns',

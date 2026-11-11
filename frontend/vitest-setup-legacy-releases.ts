@@ -12,9 +12,13 @@
  */
 import { expect, vi } from 'vitest';
 
-type R = { spec?: { releaseSourceRef?: unknown }; status?: Record<string, unknown> } | null | undefined;
+type R =
+	| { spec?: { releaseSourceRef?: unknown }; status?: Record<string, unknown> }
+	| null
+	| undefined;
 
-const REAL_SUITES = /\/src\/lib\/(releases|demo\/mock-slices)|\/src\/lib\/components\/ReleaseSourceNotice/;
+const REAL_SUITES =
+	/\/src\/lib\/(releases|demo\/mock-slices)|\/src\/lib\/components\/ReleaseSourceNotice/;
 
 vi.mock('./src/lib/releases/registry.svelte', async (importOriginal) => {
 	const real = await importOriginal<typeof import('./src/lib/releases/registry.svelte')>();
@@ -25,7 +29,8 @@ vi.mock('./src/lib/releases/registry.svelte', async (importOriginal) => {
 		if (!st) return null;
 		/* a rollout the product serves in slices shape (a ref, or the no-source condition) is never adapted */
 		if (JSON.stringify(st.conditions ?? []).includes('ReleaseSourceRequired')) return null;
-		if (!['availableReleases', 'releaseCandidates', 'gatedReleaseCandidates'].some((f) => f in st)) return null;
+		if (!['availableReleases', 'releaseCandidates', 'gatedReleaseCandidates'].some((f) => f in st))
+			return null;
 		return st;
 	};
 	return {
@@ -41,9 +46,12 @@ vi.mock('./src/lib/releases/registry.svelte', async (importOriginal) => {
 					}
 				: real.releasesOf(r as never);
 		},
-		availableReleases: (r: R) => (legacy(r) ? legacy(r)!.availableReleases : real.availableReleases(r as never)),
-		releaseCandidates: (r: R) => (legacy(r) ? legacy(r)!.releaseCandidates : real.releaseCandidates(r as never)),
-		gatedReleaseCandidates: (r: R) => (legacy(r) ? legacy(r)!.gatedReleaseCandidates : real.gatedReleaseCandidates(r as never))
+		availableReleases: (r: R) =>
+			legacy(r) ? legacy(r)!.availableReleases : real.availableReleases(r as never),
+		releaseCandidates: (r: R) =>
+			legacy(r) ? legacy(r)!.releaseCandidates : real.releaseCandidates(r as never),
+		gatedReleaseCandidates: (r: R) =>
+			legacy(r) ? legacy(r)!.gatedReleaseCandidates : real.gatedReleaseCandidates(r as never)
 	};
 });
 
@@ -61,7 +69,10 @@ vi.mock('./src/lib/demo/respond', async (importOriginal) => {
 			const out = real.respond(...args);
 			if (REAL_SUITES.test(expect.getState().testPath ?? '')) return out;
 			const [method, url] = args;
-			if (method === 'GET' && /^\/api\/(clusters\/[^/]+\/)?rollouts(\/[^/?]+\/[^/?]+)?(\?.*)?$/.test(url)) {
+			if (
+				method === 'GET' &&
+				/^\/api\/(clusters\/[^/]+\/)?rollouts(\/[^/?]+\/[^/?]+)?(\?.*)?$/.test(url)
+			) {
 				const list = /rollouts(\?.*)?$/.test(url) ? out : real.respond('GET', '/api/rollouts');
 				try {
 					ingestListResponse(JSON.parse(list.body ?? '{}'));
@@ -82,7 +93,12 @@ vi.mock('./src/lib/demo/home-incident', async (importOriginal) => {
 		...real,
 		respondHomeIncident: (...args: Parameters<typeof real.respondHomeIncident>) => {
 			const out = real.respondHomeIncident(...args);
-			if (out && !REAL_SUITES.test(expect.getState().testPath ?? '') && args[0] === 'GET' && /\/rollouts(\?.*)?$/.test(args[1])) {
+			if (
+				out &&
+				!REAL_SUITES.test(expect.getState().testPath ?? '') &&
+				args[0] === 'GET' &&
+				/\/rollouts(\?.*)?$/.test(args[1])
+			) {
 				try {
 					ingestListResponse(JSON.parse(out.body ?? '{}'));
 				} catch {

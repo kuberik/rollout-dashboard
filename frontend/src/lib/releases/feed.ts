@@ -49,7 +49,7 @@ export function ingestListResponse(data: unknown, opts: { fleetWide?: boolean } 
 	// A complete fleet-wide list (no failed spoke, no failed read) is the whole
 	// truth: catalogues it no longer names (source deleted, CRDs uninstalled)
 	// are dropped. Anything less only replaces what it names.
-	const complete = !!opts.fleetWide && !(d.clusterErrors?.length);
+	const complete = !!opts.fleetWide && !d.clusterErrors?.length;
 	if (!Array.isArray(sources) && !Array.isArray(slices)) {
 		if (complete) ingestReleaseSlices([], [], { dropUnnamed: true });
 		return;
@@ -65,7 +65,8 @@ export function ingestListResponse(data: unknown, opts: { fleetWide?: boolean } 
 	ingestReleaseSlices(Array.isArray(slices) ? slices : [], known, { dropUnnamed: complete });
 }
 
-const isRolloutsList = (key: readonly unknown[]) => key[0] === 'rollouts' && (key[1] === 'all' || key[1] === 'namespace');
+const isRolloutsList = (key: readonly unknown[]) =>
+	key[0] === 'rollouts' && (key[1] === 'all' || key[1] === 'namespace');
 
 export function installReleaseCatalogueFeed(queryClient: QueryClient): () => void {
 	const cache = queryClient.getQueryCache();
@@ -76,7 +77,12 @@ export function installReleaseCatalogueFeed(queryClient: QueryClient): () => voi
 		if (event.type !== 'updated' && event.type !== 'added') return;
 		const q = event.query;
 		if (!isRolloutsList(q.queryKey)) return;
-		if (event.type === 'updated' && event.action.type !== 'success' && event.action.type !== 'setState') return;
+		if (
+			event.type === 'updated' &&
+			event.action.type !== 'success' &&
+			event.action.type !== 'setState'
+		)
+			return;
 		feed(q);
 	});
 	return unsubscribe;

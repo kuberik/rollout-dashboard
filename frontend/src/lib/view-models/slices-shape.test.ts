@@ -4,7 +4,11 @@ import { respondHomeIncident, type HomeFixture } from '../demo/home-incident';
 import { newerReleaseCount, promotionCandidates } from './promotion';
 import { behindOfStatus } from './behind';
 import { rankVerdictsByRollout } from './env-rank';
-import { availableReleases, releaseCandidates, gatedReleaseCandidates } from '../releases/registry.svelte';
+import {
+	availableReleases,
+	releaseCandidates,
+	gatedReleaseCandidates
+} from '../releases/registry.svelte';
 import type { Environment, Rollout } from '../../types';
 
 /**
@@ -12,8 +16,12 @@ import type { Environment, Rollout } from '../../types';
  * its releases come from ReleaseSlices plus status.candidates (never the old lists). Nothing here goes through the
  * old-shape test adapter: the served rollouts have a ref, and the adapter never applies to those.
  */
-const fixture = JSON.parse(readFileSync(new URL('./home/fixtures/incident-input.json', import.meta.url), 'utf8')) as HomeFixture;
-const body = JSON.parse(respondHomeIncident('GET', '/api/rollouts', fixture, new Date(fixture.capturedAt))!.body!) as {
+const fixture = JSON.parse(
+	readFileSync(new URL('./home/fixtures/incident-input.json', import.meta.url), 'utf8')
+) as HomeFixture;
+const body = JSON.parse(
+	respondHomeIncident('GET', '/api/rollouts', fixture, new Date(fixture.capturedAt))!.body!
+) as {
 	rollouts: { items: Rollout[] };
 	environments: { items: Environment[] };
 };
@@ -29,9 +37,11 @@ describe('slices-shape view-models (home-incident, as served)', () => {
 	it('serves no old fields and a ref on every rollout (but the one without a source)', () => {
 		for (const r of rollouts) {
 			const st = (r.status ?? {}) as Record<string, unknown>;
-			for (const f of ['availableReleases', 'releaseCandidates', 'gatedReleaseCandidates']) expect(st[f], `${r.metadata?.name} ${f}`).toBeUndefined();
+			for (const f of ['availableReleases', 'releaseCandidates', 'gatedReleaseCandidates'])
+				expect(st[f], `${r.metadata?.name} ${f}`).toBeUndefined();
 			const spec = r.spec as { releaseSourceRef?: unknown };
-			if (r.metadata?.name !== 'recommender-svc') expect(spec.releaseSourceRef, r.metadata?.name).toBeTruthy();
+			if (r.metadata?.name !== 'recommender-svc')
+				expect(spec.releaseSourceRef, r.metadata?.name).toBeTruthy();
 		}
 	});
 
@@ -58,6 +68,9 @@ describe('slices-shape view-models (home-incident, as served)', () => {
 	it('the place verdict (rank) agrees with the counts', () => {
 		const ranks = rankVerdictsByRollout(rollouts, body.environments.items);
 		expect(ranks.get(at('orders-api-staging', 'orders-api'))).toEqual({ kind: 'behind', by: 1 });
-		expect(ranks.get(at('checkout-edge-prod', 'checkout-edge'))).toEqual({ kind: 'behind', by: 19 });
+		expect(ranks.get(at('checkout-edge-prod', 'checkout-edge'))).toEqual({
+			kind: 'behind',
+			by: 19
+		});
 	});
 });

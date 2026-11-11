@@ -201,7 +201,6 @@ export function rankVerdicts(group: AppGroup): Map<AppCell, RankVerdict> {
 		//   · NO list exists at all → there is no own-stream witness, and the
 		//     ladder (built from deploy history) is the only ordering there
 		//     is. Does not occur on any live rollout.
-		const st = cell.rollout?.status;
 		const publishesNothing =
 			!Array.isArray(availableReleases(cell.rollout)) && !Array.isArray(releaseCandidates(cell.rollout));
 		if (!publishesNothing) {

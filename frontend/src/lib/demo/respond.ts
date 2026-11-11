@@ -486,8 +486,8 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				]));
 		return json({
 			rollouts: { items: slicesMode.rollouts.map(stampSourceCluster) },
-			releaseSources: { items: slicesMode.sources.map((x) => stampSourceCluster(x as any)) },
-			releaseSlices: { items: slicesMode.slices.map((x) => stampSourceCluster(x as any)) },
+			releaseSources: { items: slicesMode.sources.map((x) => stampSourceCluster(x as never)) },
+			releaseSlices: { items: slicesMode.slices.map((x) => stampSourceCluster(x as never)) },
 			environments: {
 				items: [
 					...mockFleetEnvironments,

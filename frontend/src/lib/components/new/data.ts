@@ -817,8 +817,6 @@ export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>)
 }
 /** "7 newer builds · held: waiting for health checks": the newest-build line of the tab header. null when the place is on the newest. */
 export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'word'>): { count: number; sentence: string; newest: string | null } | null {
-	const st = rawOf(row.href)?.status;
-	const cur = rawOf(row.href)?.status.currentVersion;
 	const rel = relsOf(rawOf(row.href)) ?? [];
 	const count = behindOfStatus(rawOf(row.href) as never, envsOfSource());
 	if (!count) return null;

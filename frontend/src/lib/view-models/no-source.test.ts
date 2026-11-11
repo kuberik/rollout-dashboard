@@ -7,24 +7,47 @@ import { groupRolloutsByApp } from '../version-utils';
 import { releaseSourceRequiredMessage } from '../releases/catalogue';
 import type { Rollout } from '../../types';
 
-const cond = { type: 'ReleasesUpdated', status: 'False', reason: 'ReleaseSourceRequired', message: 'Create a ReleaseSource.' };
+const cond = {
+	type: 'ReleasesUpdated',
+	status: 'False',
+	reason: 'ReleaseSourceRequired',
+	message: 'Create a ReleaseSource.'
+};
 const rollout = (name: string, ns: string, tag: string, withCond = true) =>
 	({
 		metadata: { name, namespace: ns },
 		spec: {},
-		status: { currentVersion: tag, history: [{ version: { tag }, timestamp: '2026-11-01T00:00:00Z', bakeStatus: 'Succeeded' }], ...(withCond ? { conditions: [cond] } : {}) }
+		status: {
+			currentVersion: tag,
+			history: [{ version: { tag }, timestamp: '2026-11-01T00:00:00Z', bakeStatus: 'Succeeded' }],
+			...(withCond ? { conditions: [cond] } : {})
+		}
 	}) as unknown as Rollout;
 
 describe('a change or rollout with no release source', () => {
 	it('is not "moving": the repo rollup says so', () => {
-		expect(rollupParts([{ state: 'checking', noReleases: 'No release source' }]).map((p) => p.text)).toEqual(['no release source']);
-		expect(rollupParts([{ state: 'checking' }, { state: 'deploying', noReleases: 'No release source' }]).map((p) => p.text)).toEqual(['1 moving', 'no release source']);
+		expect(
+			rollupParts([{ state: 'checking', noReleases: 'No release source' }]).map((p) => p.text)
+		).toEqual(['no release source']);
+		expect(
+			rollupParts([
+				{ state: 'checking' },
+				{ state: 'deploying', noReleases: 'No release source' }
+			]).map((p) => p.text)
+		).toEqual(['1 moving', 'no release source']);
 	});
 	it('stands as "no release source", never queued or moving (failures still read as failures)', () => {
-		const row = { verdictTone: 'moving', grid: { services: [] }, services: [], noReleases: 'No release source' } as never;
+		const row = {
+			verdictTone: 'moving',
+			grid: { services: [] },
+			services: [],
+			noReleases: 'No release source'
+		} as never;
 		expect(standingWords(row)).toBe('no release source');
 		expect(standingWordsCompact(row)).toBe('no release source');
-		expect(standingWords({ ...(row as object), verdictTone: 'failed' } as never)).not.toBe('no release source');
+		expect(standingWords({ ...(row as object), verdictTone: 'failed' } as never)).not.toBe(
+			'no release source'
+		);
 	});
 	it('has no lag count and no "newest": the rank is unknown and nothing is behind', () => {
 		const dev = rollout('app', 'app-dev', 'b2');
@@ -43,7 +66,11 @@ describe('a change or rollout with no release source', () => {
 	});
 });
 
-import { ingestReleaseSlices, noReleasesOf, resetReleaseCatalogue } from '../releases/registry.svelte';
+import {
+	ingestReleaseSlices,
+	noReleasesOf,
+	resetReleaseCatalogue
+} from '../releases/registry.svelte';
 import { catalogueKey } from '../releases/catalogue';
 import { rel, rollout as fixtureRollout, slice } from '../releases/fixtures';
 
@@ -65,10 +92,22 @@ describe('one rule for "no releases": no source, and a source that published not
 	it('the same state word reaches the shared view-models: behind counts, rank, rollup and standing words', () => {
 		resetReleaseCatalogue();
 		ingestReleaseSlices([], [catalogueKey('', 'ns', 'src')]);
-		const r = fixtureRollout({ ref: 'src', status: { currentVersion: 'v1', history: [{ version: { tag: 'v1' } }] } });
+		const r = fixtureRollout({
+			ref: 'src',
+			status: { currentVersion: 'v1', history: [{ version: { tag: 'v1' } }] }
+		});
 		expect(behindOfStatus(r)).toBe(0);
 		expect(behindOfRollout(r, { kind: 'behind', by: 2 } as never)).toBe(0);
-		expect(rollupParts([{ state: 'checking', noReleases: 'No releases yet' }]).map((p) => p.text)).toEqual(['no releases yet']);
-		expect(standingWords({ verdictTone: 'moving', grid: { services: [] }, services: [], noReleases: 'No releases yet' } as never)).toBe('no releases yet');
+		expect(
+			rollupParts([{ state: 'checking', noReleases: 'No releases yet' }]).map((p) => p.text)
+		).toEqual(['no releases yet']);
+		expect(
+			standingWords({
+				verdictTone: 'moving',
+				grid: { services: [] },
+				services: [],
+				noReleases: 'No releases yet'
+			} as never)
+		).toBe('no releases yet');
 	});
 });

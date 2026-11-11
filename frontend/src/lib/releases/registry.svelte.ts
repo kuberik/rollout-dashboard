@@ -8,6 +8,7 @@
  * their signatures. Reactive: a `$derived` that calls `availableReleases(r)`
  * re-runs when that Rollout's slices change.
  */
+/* eslint-disable svelte/prefer-svelte-reactivity -- the reactive store is the SvelteMap `catalogues` (and `sources`); the plain Maps below are bookkeeping read only inside these functions, or per-key slice maps replaced wholesale through `catalogues.set` */
 import { SvelteMap } from 'svelte/reactivity';
 import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
 import {
@@ -58,7 +59,11 @@ function mergedFor(key: string): VersionInfo[] | undefined {
 export function isNewerSlice(incoming: ReleaseSliceObject, held: ReleaseSliceObject): boolean {
 	const a = incoming.metadata;
 	const h = held.metadata;
-	if (a.uid && h.uid && a.uid !== h.uid) return Date.parse(a.creationTimestamp ?? '') >= Date.parse(h.creationTimestamp ?? '') || Number.isNaN(Date.parse(h.creationTimestamp ?? ''));
+	if (a.uid && h.uid && a.uid !== h.uid)
+		return (
+			Date.parse(a.creationTimestamp ?? '') >= Date.parse(h.creationTimestamp ?? '') ||
+			Number.isNaN(Date.parse(h.creationTimestamp ?? ''))
+		);
 	if (typeof a.generation !== 'number' || typeof h.generation !== 'number') return true;
 	return a.generation >= h.generation;
 }
@@ -106,7 +111,8 @@ export function ingestReleaseSlices(
 		if (!m) next.set(k, (m = new Map()));
 		m.set(s.metadata.name, s);
 	}
-	if (opts.dropUnnamed) for (const k of [...catalogues.keys()]) if (!next.has(k)) catalogues.delete(k);
+	if (opts.dropUnnamed)
+		for (const k of [...catalogues.keys()]) if (!next.has(k)) catalogues.delete(k);
 	for (const [k, listed] of next) {
 		const prev = catalogues.get(k);
 		const m = new Map(listed);
@@ -139,7 +145,12 @@ export function upsertReleaseSlice(slice: ReleaseSliceObject, now: number = Date
 }
 
 /** One slice deleted. `key` from `catalogueKey(cluster, namespace, source)`; unknown source → scan. */
-export function removeReleaseSlice(cluster: string, namespace: string, name: string, now: number = Date.now()): void {
+export function removeReleaseSlice(
+	cluster: string,
+	namespace: string,
+	name: string,
+	now: number = Date.now()
+): void {
 	for (const [k, m] of catalogues) {
 		const s = m.get(name);
 		if (!s || (s.metadata.namespace ?? '') !== namespace) continue;
@@ -156,7 +167,10 @@ export function removeReleaseSlice(cluster: string, namespace: string, name: str
 const sources = new SvelteMap<string, ReleaseSourceObject>();
 
 /** Fold the ReleaseSources of a list response in; a complete fleet list also drops the ones it no longer names. */
-export function ingestReleaseSources(list: readonly ReleaseSourceObject[], opts: { replaceAll?: boolean } = {}): void {
+export function ingestReleaseSources(
+	list: readonly ReleaseSourceObject[],
+	opts: { replaceAll?: boolean } = {}
+): void {
 	if (opts.replaceAll) sources.clear();
 	for (const s of list) {
 		const k = catalogueKey(
@@ -183,7 +197,10 @@ export function resetReleaseCatalogue(): void {
 	sources.clear();
 }
 
-function sameSlices(a: Map<string, ReleaseSliceObject>, b: Map<string, ReleaseSliceObject>): boolean {
+function sameSlices(
+	a: Map<string, ReleaseSliceObject>,
+	b: Map<string, ReleaseSliceObject>
+): boolean {
 	if (a.size !== b.size) return false;
 	for (const [n, s] of a) {
 		const o = b.get(n);
