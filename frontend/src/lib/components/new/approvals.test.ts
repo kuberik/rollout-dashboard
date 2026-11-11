@@ -252,7 +252,7 @@ describe('one classification for the toast, the row, the Holding card and the bu
 	it('X refuses EVERY candidate and the approval is also pending: no approval can unblock it, so the row reads "Held by X"; the toast and the Holding card agree', () => {
 		patched([{ name: 'refuses-all', kind: 'unknown', allowedVersions: [] }], () => {
 			expect(rollouts('incident').rows.some((r) => r.app === 'payments-core' && r.state === 'awaiting-approval' && r.needsYou), 'no false call to action').toBe(false);
-			expect(sentenceOf(prodRow(), 'incident')[0]).toBe('Held by Refuses all · also needs your approval');
+			expect(sentenceOf(prodRow(), 'incident')[0], 'a hand-written allow-list that lacks the build never clears for it: the row names it and asks for nothing').toBe('Held by Refuses all');
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
 			expect(t.waitsOn).toBe('Refuses all');
 			expect(gatesOf('payments-core', 'incident').some((g) => g.holding && g.name === 'Refuses all')).toBe(true);
@@ -370,16 +370,33 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			expect(gatesOf('payments-core', 'incident').find((g) => g.id === 'refuses-all')?.holding).toBe(true);
 		});
 	});
-	it('permits the target, refuses only the newest: the approved build deploys, plain toast', () => {
+	it('permits the target, refuses only the newest: BEFORE the grant the row and the inbox ask for the approval (it deploys the target), plain toast', () => {
 		const { target } = targetAndNewest();
 		patched([{ name: 'permits-target-only', kind: 'unknown', allowedVersions: [target] }], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
 			expect(t.waitsOn ?? null).toBeNull();
 			expect(t.deploys ?? null).toBeNull();
 			expect(doneWords(t).detail).toBe(`payments-core is deploying to ${t.where}`);
+			/* the build being approved is permitted by every other gate, so the approval is the ONLY thing between it and deploying: the ask is kept, in the row and in the inbox (QA28 regression: the row read "Held by Release approval · also needs your approval") */
+			const prod = rollouts('incident').rows.filter((x) => x.app === 'payments-core' && x.tier === 'prod');
+			expect(prod.length).toBeGreaterThan(0);
+			for (const r of prod) { expect(r.state).toBe('awaiting-approval'); expect(sentenceOf(r, 'incident')[0]).toBe('Needs your approval'); expect(r.needsYou).toBe(true); expect(r.alsoApproval ?? null).toBeNull(); }
+			const ask = inbox('incident').items.find((i) => i.row.app === 'payments-core' && i.row.tier === 'prod');
+			expect(ask?.reason, 'the inbox keeps the ask, with no "won\'t deploy until" qualifier').toBe('Needs your approval');
+		});
+	});
+	it('permits the target, refuses only the newest: AFTER the grant c0d3e88 (the approved build) is deploying, and the place reads Deploying while f4a2c19 waits behind Permits target only', () => {
+		const { target, newest } = targetAndNewest();
+		patched([{ name: 'permits-target-only', kind: 'unknown', allowedVersions: [target] }], () => {
+			const t = approvalTarget(row('payments-core')!, 'incident')!;
+			expect(t.places.map((p) => p.tag)).toEqual(t.places.map(() => target));
 			grant(t);
-			/* the approved build left the candidates and started deploying. The newest awaits its own approval, but permits-target-only refuses it, so no approval can deploy it: the place reads that rule's hold with no ask (F1, the same per-build refusers as the toast). Old expectation (released(): no row held) was written before the row read per-build refusers. */
-			for (const r of rollouts('incident').rows.filter((x) => x.app === 'payments-core' && x.tier === 'prod')) { expect(sentenceOf(r, 'incident')[0]).toBe('Held by Permits target only'); expect(r.needsYou).toBe(false); }
+			/* the approved build left the candidates and started deploying; the newest awaits its own approval but permits-target-only refuses it. The approved build deploying outranks a hold on the NEXT build */
+			const prod = rollouts('incident').rows.filter((x) => x.app === 'payments-core' && x.tier === 'prod');
+			expect(prod.length).toBeGreaterThan(0);
+			for (const r of prod) { expect(r.state).toBe('deploying'); expect(sentenceOf(r, 'incident')[0]).toBe('Deploying'); expect(r.needsYou).toBe(false); }
+			expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask for the build that cannot deploy').toBe(false);
+			expect(newest).not.toBe(target);
 		});
 	});
 	it('a promotion gate named ghd-* (the live naming) decides where a build is held', () => {

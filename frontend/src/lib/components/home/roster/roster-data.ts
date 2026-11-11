@@ -113,11 +113,13 @@ export function rollouts(state: HomeState) {
 				continue;
 			}
 			const my = e.myChanges.find((ch) => ch.state === e.state) ?? null;
+			/* a place still baking its OWN build reads that bake in the model; its row reads the place verdict (`AppEnv.placeVerdict`, place-verdict.ts): the same awaiting-approval / held-by-rule every other place has */
+			const st: EnvState = e.stillChecking && e.placeVerdict && e.placeVerdict.state !== 'running' ? e.placeVerdict.state : e.state;
 			busy.push({
-				prov: e.state === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: e.state, version: shortVersion(e.version),
+				prov: st === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: st, version: shortVersion(e.version),
 				/* craft r7 (nit): a failing place's age is the failure's (the change's failed entry), not the deploy's */
 				since: (e.state === 'awaiting-approval' || e.state === 'held-by-rule' ? e.heldSince : null) ?? (e.state === 'failed' ? e.myChanges.find((ch) => ch.state === 'failed')?.since : null) ?? e.arrivedAt,
-				href: e.href, stillChecking: !!e.stillChecking, also: e.state === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
+				href: e.href, stillChecking: !!e.stillChecking, also: st === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
 			});
 		}
 

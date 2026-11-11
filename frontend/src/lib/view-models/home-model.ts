@@ -76,7 +76,7 @@ import { changePath } from '../pr-ref';
 import { getEnvironmentRank } from '../env-order';
 import { derivePipeline, kruiseRolloutsForRollout, type StageState } from '../pipeline';
 import { buildLanes, type Lane, type LaneNode, type Tier } from './promotion-lanes';
-import { isHeld, isNeedsYou } from './fleet-groups';
+import { isHeld, isNeedsYou, isTrailing } from './fleet-groups';
 import { fleetFacts, type FleetFacts, type PulseRange } from './fleet-facts';
 import {
 	fleetSignals,
@@ -721,6 +721,13 @@ function ledgerForApp(
 
 // ── APP-LEVEL CURRENT STATE (not a per-change fact — see module doc). ─────
 
+/** The card's place verdict, where it applies: a place that is behind its newest build (trailing) or still baking. A healthy place at the head of its list has nothing an approval could release, whatever allow-lists its gates still publish. */
+function cardVerdict(c: RolloutCard): PlaceVerdict | null {
+	const pv = c.placeVerdict ?? null;
+	if (!pv) return null;
+	return isTrailing(c) || c.bakeStatus === 'Deploying' || c.bakeStatus === 'InProgress' || c.stuck != null ? pv : null;
+}
+
 function appEnvState(c: RolloutCard): EnvState {
 	if (c.statusKey === 'failed' || c.checkFailure != null) return 'failed';
 	// QA #7 (2026-11-09): "rolled back" is the QUIET place state (SEVERITY in
@@ -730,8 +737,10 @@ function appEnvState(c: RolloutCard): EnvState {
 	// A pin-only hold keeps the rolled-back word (the rollback pins).
 	if (c.rolledBack && c.bakeStatus !== 'Deploying' && c.bakeStatus !== 'InProgress' && !c.held)
 		return 'rolled-back';
-	/* THE per-place verdict (place-verdict.ts): a place with an approval pending reads the build being approved and what still refuses it, whether or not its own build is still baking. `running`: the approved build itself is baking, so the bake below speaks. */
-	if (c.placeVerdict && c.placeVerdict.state !== 'running') return c.placeVerdict.state;
+	/* THE per-place verdict (place-verdict.ts): a place with an approval pending reads the build being approved and what still refuses it. */
+	const pv = cardVerdict(c);
+	const baking = c.bakeStatus === 'Deploying' || c.bakeStatus === 'InProgress' || c.stuck != null;
+	if (pv && pv.state !== 'running' && !baking) return pv.state; /* a place still baking its own build reads the bake here; its approval / rule verdict rides on `AppEnv.placeVerdict` for the rows (`stillChecking`) */
 	if (isHeld(c)) return c.heldCause === 'person' ? 'awaiting-approval' : 'held-by-rule';
 	if (c.bakeStatus === 'Deploying') return 'deploying';
 	if (c.bakeStatus === 'InProgress' || c.stuck != null) return 'checking';
@@ -797,8 +806,8 @@ function buildAppEnvs(
 		arrivedAt: node.card.timestamp,
 		heldSince: ageKindFor(appEnvState(node.card)) === 'held' ? eventAge(node.card, 'held') : null,
 		alsoApproval: alsoApprovalOf(node.card),
-		placeVerdict: node.card.placeVerdict ?? null,
-		stillChecking: !!node.card.placeVerdict && node.card.placeVerdict.state !== 'running' && (node.card.bakeStatus === 'Deploying' || node.card.bakeStatus === 'InProgress' || node.card.stuck != null),
+		placeVerdict: cardVerdict(node.card),
+		stillChecking: !!cardVerdict(node.card) && cardVerdict(node.card)!.state !== 'running' && (node.card.bakeStatus === 'Deploying' || node.card.bakeStatus === 'InProgress' || node.card.stuck != null),
 		myChanges: ledger.byEnv.get(node.card.envName) ?? [],
 		pipeline: buildEnvPipeline(node.card, kustomizations, kruiseRollouts),
 		href: cardHref(node.card)
@@ -1200,7 +1209,7 @@ function heldHere(
 			}
 		}
 	}
-	const pv = card.placeVerdict;
+	const pv = cardVerdict(card);
 	return { since: since != null ? new Date(since).toISOString() : null, ...(pv && pv.state !== 'running' ? { verdict: pv.state } : {}) };
 }
 
