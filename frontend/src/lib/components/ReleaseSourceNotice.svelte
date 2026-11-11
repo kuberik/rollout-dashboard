@@ -15,14 +15,19 @@
 	let {
 		rollout,
 		text,
+		app = false,
 		class: className = ''
 	}: {
 		rollout?: Rollout | null;
 		/** the message itself, when the caller already has it */ text?: string | null;
+		/** on an app page the notice speaks about the app's rollout, not "This Rollout" */ app?: boolean;
 		class?: string;
 	} = $props();
 	const gap = ' ';
-	const message = $derived(text ?? releaseSourceRequiredMessage(rollout));
+	const message = $derived.by(() => {
+		const m = text ?? releaseSourceRequiredMessage(rollout);
+		return app && m ? m.replace(/^This Rollout\b/, "This app's rollout") : m;
+	});
 	/** `spec.releasesImagePolicy` is no longer read; when a Rollout still sets it, say so and where it goes now. */
 	const legacyPolicy = $derived.by(() => {
 		const raw = (rollout?.spec as { releasesImagePolicy?: string | { name?: string } } | undefined)
@@ -39,13 +44,17 @@
 {/snippet}
 
 {#snippet body()}
-	{@render code(message ?? '')}{#if legacyPolicy}{gap}<code class="t-code"
-			>spec.releasesImagePolicy</code
-		>
-		is set but is ignored: set <code class="t-code">oci.imagePolicyRef</code> on the ReleaseSource
-		to read from that ImagePolicy ({legacyPolicy}).{/if}
+	{@render code(message ?? '')}{#if legacyPolicy}{gap}<code class="t-code">spec.releasesImagePolicy</code> is ignored.{/if}
+{/snippet}
+
+{#snippet more()}
+	Set <code class="t-code">oci.imagePolicyRef</code> on the ReleaseSource to read from that ImagePolicy ({legacyPolicy}).
 {/snippet}
 
 {#if message}
-	<AlertPanel severity="warning" title="No release source" messageBody={body} class={className} />
+	<AlertPanel severity="warning" title="No release source" messageBody={body}
+		footnoteBody={legacyPolicy ? more : undefined}
+		footnoteLabel="What to set instead"
+		class={className}
+	/>
 {/if}

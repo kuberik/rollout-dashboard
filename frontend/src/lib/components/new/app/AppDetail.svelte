@@ -301,9 +301,9 @@
 				</div>
 			{/if}
 		</header>
-		{#if noReleases?.kind === 'no-source'}<ReleaseSourceNotice text={noReleases.message} class="mt-6 mb-4" />{/if}
+		{#if noReleases?.kind === 'no-source'}<ReleaseSourceNotice app text={noReleases.message} class="mt-6 mb-4" />{/if}
 
-		<div class="mt-6 flex flex-col gap-4">
+		<div class="mt-4 flex flex-col gap-4">
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}
 				<!-- AA4: the wait is a statement in the tab's own box: the gate sentence, the one Approve the viewer can give (the tab's destination), Open rollout -->
 				<div data-ad-statement data-ad-wait>

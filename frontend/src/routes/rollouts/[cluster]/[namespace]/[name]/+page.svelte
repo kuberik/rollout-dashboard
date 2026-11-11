@@ -3029,6 +3029,7 @@
 							<EditOutline class="h-4 w-4" aria-hidden="true" />
 							Change version
 						</button>
+						{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
 						<!-- ⛔ `Rollback` PRE-SELECTED `history[1]`, WHICH IS NOT
 										     NECESSARILY OLDER. A live critic pressed it on a rollout
 										     that had itself been rolled back and got a modal headed
@@ -4888,6 +4889,7 @@
 								<EditOutline />
 								Change version
 							</button>
+							{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
 						{/if}
 					{/snippet}
 				</PageHeader>
