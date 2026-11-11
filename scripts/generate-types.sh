@@ -163,29 +163,5 @@ EOL
 # Generate TypeScript types
 openapi-typescript $TEMP_DIR/schema.json --output frontend/src/types/rollout-types.ts --root-types
 
-# Create index file
-cat > frontend/src/types/index.ts << EOL
-import type { components } from './rollout-types';
-import type { ManagedResourceStatus as ManagedResourceStatusType } from './managed-resource';
-
-export type Rollout = components['schemas']['Rollout'];
-export type RolloutGate = components['schemas']['RolloutGate'];
-export type HealthCheck = components['schemas']['HealthCheck'];
-export type Environment = components['schemas']['Environment'];
-export type RolloutTest = components['schemas']['RolloutTest'];
-export type Kustomization = components['schemas']['Kustomization'];
-export type OCIRepository = components['schemas']['OCIRepository'];
-export type KruiseRollout = components['schemas']['KruiseRollout'];
-export type ManagedResourceStatus = ManagedResourceStatusType;
-EOL
-
-# Generate environment subobject types automatically
-cat > frontend/src/types/environment-types.ts << EOL
-import type { components } from './rollout-types';
-
-// Auto-generated: Extract array element types from Environment status schema
-type EnvironmentStatus = Required<components['schemas']['Environment']>['status'];
-export type EnvironmentInfo = Required<EnvironmentStatus>['environmentInfos'][number];
-// EnvironmentStatusEntry is now the history entry from EnvironmentInfo
-export type EnvironmentStatusEntry = Required<EnvironmentInfo>['history'][number];
-EOL
+# index.ts and environment-types.ts are hand-written (aliases, derived types,
+# the dependency exports) and are never written by this script.
