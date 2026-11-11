@@ -31,6 +31,7 @@
  * its own page. Health checks and events are DERIVED from that same head
  * entry, so the page agrees with the Home row that linked to it.
  */
+import { staleClusterErrors, type StaleMockMode } from './cluster-errors-mock';
 import type { MockResult } from './respond';
 import { applySlicesMode, sliceDetailRollout } from './mock-slices';
 import { respondGithub as respondGithubRange, avatarFor as avatarForLogin } from './github-data';
@@ -360,7 +361,7 @@ export function homeIncidentHealthChecks(
  * answer), so Home and the rollout detail page read one truth. Shape as the
  * real endpoint (design: .work/home-build/hc-v2/QUESTIONS.md).
  */
-export function homeIncidentFleetHealthChecks(f: HomeFixture): Record<string, unknown> {
+export function homeIncidentFleetHealthChecks(f: HomeFixture, staleMode: StaleMockMode | null = null): Record<string, unknown> {
 	return {
 		rolloutHealthChecks: {
 			items: f.rollouts.map((r) => ({
@@ -373,7 +374,7 @@ export function homeIncidentFleetHealthChecks(f: HomeFixture): Record<string, un
 			}))
 		},
 		clusters: HOME_INCIDENT_CLUSTERS,
-		clusterErrors: []
+		clusterErrors: staleClusterErrors(staleMode)
 	};
 }
 
@@ -526,7 +527,8 @@ export function respondHomeIncident(
 	method: string,
 	rawUrl: string,
 	fixture: HomeFixture,
-	now: Date = new Date()
+	now: Date = new Date(),
+	staleMode: StaleMockMode | null = null
 ): MockResult | null {
 	if (method !== 'GET') return null;
 	const [rawPath, query = ''] = rawUrl.split('?');
@@ -546,7 +548,7 @@ export function respondHomeIncident(
 			kustomizations: { items: f.kustomizations },
 			kruiseRollouts: { items: f.kruiseRollouts },
 			clusters: HOME_INCIDENT_CLUSTERS,
-			clusterErrors: []
+			clusterErrors: staleClusterErrors(staleMode, now)
 		});
 	}
 
@@ -574,7 +576,7 @@ export function respondHomeIncident(
 			});
 	}
 
-	if (path === '/api/health-checks') return json(homeIncidentFleetHealthChecks(live()));
+	if (path === '/api/health-checks') return json(homeIncidentFleetHealthChecks(live(), staleMode));
 
 	const m = path.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)(\/health-checks|\/events)?$/);
 	if (m) {

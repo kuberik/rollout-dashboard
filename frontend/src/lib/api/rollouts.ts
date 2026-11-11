@@ -44,6 +44,8 @@ export type ClusterError = {
     stale?: boolean;
     /** when the stale items were last fetched OK (RFC3339) */
     lastSeen?: string;
+    /** why the cluster's data is stale or missing: 'slow' = it is up but did not answer in time (cached data shown); 'unreachable' = fetch error / breaker open. Absent on older hubs: read as unreachable. */
+    reason?: 'slow' | 'unreachable';
 };
 
 export type RolloutsListResponse = {

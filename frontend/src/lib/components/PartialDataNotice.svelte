@@ -37,6 +37,7 @@
 	import FactList, { type Fact } from './FactList.svelte';
 	import type { ClusterError } from '$lib/api/rollouts';
 	import { formatClockTime } from '$lib/display-time';
+	import { clusterNoticeCopy } from '$lib/view-models/cluster-errors';
 	import { RefreshOutline } from 'flowbite-svelte-icons';
 
 	let {
@@ -54,26 +55,11 @@
 		class?: string;
 	} = $props();
 
-	const names = $derived(errors.map((e) => e.name).filter(Boolean));
-	/* QA #3: a spoke whose LAST-KNOWN items are still merged is not "missing" — its rollouts are on the page, but stale. */
+	/* QA #3 / MED-2: the copy (stale vs missing, slow vs unreachable) is decided by `clusterNoticeCopy` from the server's typed `reason`. */
 	const lastSeenText = $derived(errors[0]?.lastSeen ? formatClockTime(errors[0].lastSeen) : '');
-	const stale = $derived(errors.length > 0 && errors.every((e) => e.stale));
-	const title = $derived(
-		stale
-			? names.length === 1
-				? `${names[0]} is unreachable — its rollouts show their last known state`
-				: `${names.length} clusters are unreachable — their rollouts show their last known state`
-			: names.length === 1
-			? `${names[0]} did not answer — this page is incomplete`
-			: `${names.length} clusters did not answer — this page is incomplete`
-	);
-	const message = $derived(
-		stale
-			? `${names.length === 1 ? names[0] : 'These clusters'} stopped answering${lastSeenText ? ` after ${lastSeenText}` : ''}. What you see for ${names.length === 1 ? 'it' : 'them'} is the last copy the hub holds, not live state.`
-			: `Everything on ${subject} covers only the clusters that replied — a rollout on ${
-			names.length === 1 ? names[0] : 'one of these'
-		} is missing from these counts, not healthy in them.`
-	);
+	const copy = $derived(clusterNoticeCopy(errors, subject, lastSeenText));
+	const title = $derived(copy.title);
+	const message = $derived(copy.message);
 	const facts = $derived<Fact[]>(
 		errors.map((ce) => ({ label: ce.name, value: ce.error || 'the hub gave no reason.' }))
 	);
