@@ -101,10 +101,24 @@ export function gatesPinBox<B extends { kind: string; state: string; held: strin
 const PIN_EVENT_RES = [/^Pinned version$/, /^Pinned to version /, /^Rolled back/];
 /**
  * WHEN A PIN STARTED HOLDING, ONE HELPER: the time of the pin / rollback event in the rollout's history (newest first). The /rollouts Held
- * row, the app page's Holding row and the rollout page's Clear pin dialog all print this, so "13h / 4h / 5h" cannot recur. Null when the history
- * carries no such event (a pin set by `kubectl`): the caller prints no age, never an arrival or deploy time standing in for it.
+ * row, the app page's Holding row and the rollout page's Clear pin dialog all print this, so "13h / 4h / 5h" cannot recur.
+ *
+ * It never prints a wrong age. The newest pin / rollback event counts only while no deploy of a DIFFERENT version came after it: a rollback,
+ * then a cleared pin, then newer deploys, then a `kubectl` re-pin leaves a stale rollback event whose time is not when THIS pin began. Then
+ * (and when the history carries no such event) the answer is null: an empty slot, never an arrival, deploy or stale rollback time.
  */
 export function pinSince(rollout: Pick<Rollout, 'status'> | null | undefined): string | null {
-	const h = (rollout?.status?.history ?? []) as { timestamp?: string; message?: string | null }[];
-	return h.find((e) => PIN_EVENT_RES.some((re) => re.test(e.message ?? '')))?.timestamp ?? null;
+	type E = { timestamp?: string; message?: string | null; version?: { tag?: string; version?: string } | null };
+	const h = (rollout?.status?.history ?? []) as E[];
+	const isPin = (e: E) => PIN_EVENT_RES.some((re) => re.test(e.message ?? ''));
+	const ver = (e: E) => e.version?.tag ?? e.version?.version ?? null;
+	const i = h.findIndex(isPin);
+	if (i < 0) return null;
+	const pinVer = ver(h[i]) ?? /^Pinned to version (.+)$/.exec(h[i].message ?? '')?.[1] ?? null;
+	for (const e of h.slice(0, i)) {
+		if (isPin(e)) continue;
+		const v = ver(e);
+		if (pinVer == null || v == null || v !== pinVer) return null;
+	}
+	return h[i].timestamp ?? null;
 }
