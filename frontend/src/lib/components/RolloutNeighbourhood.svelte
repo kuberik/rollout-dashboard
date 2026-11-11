@@ -701,7 +701,7 @@
 				<span class="mt-0.5 self-start" in:fade={{ duration: 150 }}><ApproveButton target={ask} class="btn btn-primary btn-xs" /></span>
 			{:else if loading}
 				<!-- the button's own box, reserved while the fleet answers: Approve or "How to approve" lands in it, nothing moves -->
-				<span class="mt-0.5 inline-block h-6 w-[72px] self-start" aria-hidden="true" data-approve-slot></span>
+				<span class="mt-0.5 inline-block h-7 w-[72px] self-start" aria-hidden="true" data-approve-slot></span>
 			{/if}
 			{#if docsHref}
 				<!-- ⭐ THE ↗ EXTERNAL GLYPH (final polish round, D2, AD ruling):
