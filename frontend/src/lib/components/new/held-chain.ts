@@ -18,7 +18,7 @@ export type ChainLine = { provider: string; upstream: string; text: string; href
 export function fleetGraph(src: Pick<FleetSource, 'rollouts' | 'environments' | 'rolloutDependencies'> | null): RolloutGraph {
 	if (!src || !src.rollouts.length) return EMPTY_GRAPH;
 	const envs = src.environments;
-	const gates = buildGateContext({ environments: { items: envs }, rolloutDependencies: src.rolloutDependencies ?? null, rolloutGates: null });
+	const gates = buildGateContext({ environments: { items: envs }, rolloutDependencies: src.rolloutDependencies ?? null, rollouts: src.rollouts, rolloutGates: null });
 	return buildRolloutGraph({
 		rollouts: src.rollouts, environments: envs, dependencies: src.rolloutDependencies?.items ?? [],
 		envOrder: [...new Set(envs.map((e) => e.spec?.environment).filter(Boolean) as string[])].sort(compareEnvironmentNames), gates
