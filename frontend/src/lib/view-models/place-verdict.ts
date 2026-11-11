@@ -41,8 +41,9 @@ export function deployableTags(gates: readonly VGate[], cands: readonly string[]
  * THE build a person is deciding on at a place, ONE pick for every surface: the newest candidate that every NON-approval gate lets
  * through (a check, a dependency and the promotion order decide here), and among those the one that got furthest through
  * the tiers below (what an approval is for), not a newer build still behind it; the newest on a tie. The clock (a schedule gate) is
- * ignored by the pick: a closed window refuses every candidate and must not change which build is in question. When a rule that never
- * clears refuses everything, the same furthest-reach rule picks among all candidates, so the hold still names a build.
+ * ignored by the pick: a closed window refuses every candidate and must not change which build is in question. When every candidate is
+ * refused by a gate other than the approval or the window (a failing check, a promotion order, a static allow-list), the same furthest-reach
+ * rule picks among all candidates, so the hold still names a build.
  * `reachOf` is -1 for a build no lower tier has finished; a peer still deploying a build has not reached the next stage with it.
  * '' when nothing is a candidate.
  */

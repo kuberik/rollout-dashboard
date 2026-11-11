@@ -95,8 +95,6 @@ export type FrontierEntry = {
 	/** The same fact as `cause`, in words — `causeLabelForGates` run on the
 	 *  frontier's OWN gates, never a blend with any other candidate's. */
 	causeLabel: string | null;
-	/** an approval also refuses here (see `GateVerdict.alsoAwaitingApproval`), with the other hold it is behind */
-	alsoApproval?: AlsoHold;
 };
 
 /** One upstream stage, and how many of the place's own candidates are
@@ -303,8 +301,7 @@ function frontierVerdict(
 				build: b.build,
 				held: v.held,
 				cause: v.cause,
-				causeLabel: causeLabelForGates(b.classifiedGates, v.cause),
-				...(v.alsoHold ? { alsoApproval: v.alsoHold } : {})
+				causeLabel: causeLabelForGates(b.classifiedGates, v.cause)
 			},
 			waitingBehind: waitingByStage.map((stage) => ({ stage, count: countByStage.get(stage) ?? 0, ...(waveByStage.get(stage) ? { wave: waveByStage.get(stage) } : {}) }))
 		};
@@ -350,7 +347,7 @@ export function heldVerdict(story: BlockingStory, placeEnv: string | null | unde
 			held: true,
 			cause: v.cause,
 			waitsForEnv: null,
-			frontier: { build: '', held: true, cause: v.cause, causeLabel: causeLabelForGates(story.gates, v.cause), ...(v.alsoHold ? { alsoApproval: v.alsoHold } : {}) },
+			frontier: { build: '', held: true, cause: v.cause, causeLabel: causeLabelForGates(story.gates, v.cause), },
 			waitingBehind: v.waitsForEnv ? [{ stage: v.waitsForEnv, count: 1 }] : []
 		};
 	}
@@ -391,10 +388,6 @@ export type GateVerdict = {
 	cause: HeldCause | null;
 	waitsForEnv: string | null;
 	waveWait?: string | null;
-	/** An approval also refuses here but is NOT the primary cause (a rule gate is): set from the same refusers list as `cause`, never a second rule. The row says "also needs approval" and Home keeps the ask. */
-	alsoAwaitingApproval?: boolean;
-	/** the other hold an approval is behind: a window or promotion order clears by itself; anything else (a failing check, a dependency, an unattributed rule) does not */
-	alsoHold?: AlsoHold;
 };
 
 /** `window`/`order` clear on their own; `hold` does not, and `other` names it (its display name, or a dependency's provider). */
@@ -419,25 +412,7 @@ export function verdictForGates(
 	options: { hasContract?: boolean } = {}
 ): GateVerdict {
 	/* ONE classification per gate within a verdict: a gate the backend calls `schedule` is a window (clock) even before the schedule join has loaded and `classifyGate` could only call it a check */
-	const byKind = gates.map((x) => (x.backendKind === 'schedule' && x.clears !== 'clock' && x.clears !== 'person' ? { ...x, clears: 'clock' as const } : x));
-	gates = byKind;
-	const v = verdictForGatesPrimary(gates, placeEnv, options);
-	if (!(v.held && v.cause !== 'person' && gates.some((g) => g.clears === 'person'))) return v;
-	return { ...v, alsoAwaitingApproval: true, alsoHold: alsoHoldOf(gates, !!options.hasContract) };
-}
-
-/** What an approval is behind, read off the same gates as the cause. A refuser that does not clear by itself (a check, a dependency, an unattributed rule) decides: approving ahead will not deploy until IT clears, and the ask names it. Only when EVERY non-approval refuser is a window or promotion order does the ask say the build deploys when it opens. A gate the backend calls `schedule` is a window even before the schedule join has loaded. */
-function alsoHoldOf(gates: readonly ClassifiedGate[], hasContract: boolean): AlsoHold {
-	const rules = gates.filter((g) => g.clears !== 'person');
-	const name = (g: ClassifiedGate) => g.displayName ?? g.label;
-	const isWindow = (g: ClassifiedGate) => g.kind === 'schedule' || g.backendKind === 'schedule';
-	const persistent = rules.find((g) => !isWindow(g) && (g.clears === 'unknown' || g.clears === 'check' || (g.clears === 'upstream' && g.kind === 'dependency')));
-	if (persistent) return { kind: 'hold', other: persistent.kind === 'dependency' && persistent.subject ? persistent.subject : name(persistent) };
-	if (hasContract) return { kind: 'hold', other: 'a dependency' };
-	const order = rules.find((g) => g.clears === 'upstream');
-	if (order) return { kind: 'order', other: 'promotion order' };
-	const win = rules.find((g) => g.clears === 'clock' || isWindow(g));
-	return { kind: 'window', other: win ? name(win) : 'a deploy window' };
+	return verdictForGatesPrimary(gates.map((x) => (x.backendKind === 'schedule' && x.clears !== 'clock' && x.clears !== 'person' ? { ...x, clears: 'clock' as const } : x)), placeEnv, options);
 }
 
 function verdictForGatesPrimary(

@@ -454,10 +454,9 @@ export type RolloutCard = {
 	 */
 	heldCause: HeldCause | null;
 	heldCauseLabel: string | null;
-	/** an approval also refuses this place's frontier build while a rule gate is the primary `heldCause` (`verdictForGates`' `alsoAwaitingApproval`) */
 	/** THE per-place verdict (`place-verdict.ts`): set exactly when an approval is pending here; it replaces the frontier read for such a place (`held`, `heldCause`, `heldAlso` below follow it). */
 	placeVerdict?: PlaceVerdict | null;
-	/** the other hold that ask names (`AlsoHold`) */
+	/** the other hold the approval ask names (`AlsoHold`); set only with `placeVerdict`, so an ask always has its Approve button */
 	heldAlso?: { kind: 'window' | 'order' | 'hold'; other: string } | null;
 	/**
 	 * Set exactly when NOT held because an earlier-tier promotion gate (this
@@ -689,7 +688,7 @@ export function buildRolloutCards(
 			// keeps a newer chain-refused candidate's gate from naming the
 			// cause for an OLDER candidate this environment really refuses.
 			heldCauseLabel: pv ? pv.causeLabel : heldCardVerdict.held ? (heldCardVerdict.frontier?.causeLabel ?? null) : null,
-			heldAlso: pv ? pv.also : heldCardVerdict.held ? (heldCardVerdict.frontier?.alsoApproval ?? null) : null,
+			heldAlso: pv ? pv.also : null, /* the ask follows the place verdict (and so `approvalTarget`): with no verdict there is no Approve button, so the row names no approval */
 			waitsForEnv: pv ? null : heldCardVerdict.waitsForEnv,
 			waveWait: pv ? null : heldCardVerdict.waveWait ?? null,
 			rollout: r,
