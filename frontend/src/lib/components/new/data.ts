@@ -277,7 +277,7 @@ export function actionFor(row: Pick<TRow, 'group' | 'action'>, _state?: HomeStat
 	if (row.group === 'approval') return a.kind === 'approve' ? a : null;
 	return null;
 }
-export function rollouts(state: HomeState, starred: ReadonlySet<string> = new Set()) {
+export function rollouts(state: HomeState, starred?: ReadonlySet<string>) {
 	const R = RD.rollouts(state, starred);
 	const rows = R.rows.map(enrich);
 	/* AD v2 (a): a deploying/checking place that the tab shows as waiting on an approval IS an approval wait: class, word, group, counts all follow the tab.
@@ -1428,7 +1428,7 @@ export function appHolds(item: Pick<TApp, 'app' | 'holds'>, state: HomeState): H
 }
 /* ═══ inbox, arrivals, held causes ═══ */
 export type InboxItem = { row: TRow; action: RolloutRow['action']; reason: string; steps: Step[] };
-export function inbox(state: HomeState, starred: ReadonlySet<string> = new Set()) {
+export function inbox(state: HomeState, starred?: ReadonlySet<string>) {
 	const R = rollouts(state, starred);
 	const items: InboxItem[] = R.rows.filter((r) => r.needsYou).sort(urgency).map((r) => ({
 		row: r, action: r.action, steps: r.steps,

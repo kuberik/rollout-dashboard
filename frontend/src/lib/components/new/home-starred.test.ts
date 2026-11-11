@@ -1,33 +1,45 @@
-import { it, expect } from 'vitest';
+import { it, expect, afterEach } from 'vitest';
 import { homePage } from './home-page';
-import { rollouts } from './data';
+import { rolloutsPage } from './rollouts-page';
+import { inbox, rollouts, needsYouCount } from './data';
+import { stars, toggleStar } from '$lib/stores/stars.svelte';
 
-const none = new Set<string>();
+/* needsYou means the same on every surface and a starred app counts as the viewer's: rollouts() reads stars.apps by default. */
 const FOREIGN = 'hello-frontend-app';
-const cards = (P: ReturnType<typeof homePage>, app: string) => P.asks.filter((a) => a.app === app);
+afterEach(() => stars.apps.clear());
+const asks = (app: string) => homePage('incident').asks.filter((a) => a.app === app);
 
-it('a starred app whose failure is not the viewer\'s is a Home ask with Roll back, and leaves Fleet trouble', () => {
-	const base = homePage('incident', none);
-	expect(cards(base, FOREIGN)).toHaveLength(0);
-	const P = homePage('incident', new Set([FOREIGN]));
-	expect(P.asks.length).toBe(base.asks.length + 1);
-	const card = cards(P, FOREIGN).find((a) => a.failed);
-	expect(card).toBeDefined();
-	expect(card!.rollbackHref).toBeTruthy();
-	expect(rollouts('incident', new Set([FOREIGN])).rows.find((r) => r.app === FOREIGN && r.group === 'failed')?.action?.label).toBe('Roll back');
+it("a starred app whose failure is not the viewer's: Home ask with Roll back, /rollouts Attention, badge +1", () => {
+	const asksBefore = homePage('incident').asks.length;
+	const badgeBefore = inbox('incident').count;
+	expect(asks(FOREIGN)).toHaveLength(0);
+	toggleStar(FOREIGN, true);
+	const P = homePage('incident');
+	expect(P.asks.length).toBe(asksBefore + 1);
+	expect(asks(FOREIGN).find((a) => a.failed)?.rollbackHref).toBeTruthy();
 	expect(P.fleet.trouble.some((t) => t.app === FOREIGN && t.failing)).toBe(false);
+	expect(rolloutsPage('incident').attention.some((a) => a.app === FOREIGN)).toBe(true); // /rollouts lists every failure; it must still list this one
+	const R = rollouts('incident').rows.find((r) => r.app === FOREIGN && r.group === 'failed')!;
+	expect(R.needsYou).toBe(true);
+	expect(R.action?.label).toBe('Roll back');
+	expect(inbox('incident').count).toBe(badgeBefore + 1);
+	expect(needsYouCount('incident')).toBe(badgeBefore + 1);
 });
 
 it('starring an app whose failure is already yours changes nothing and gives one card', () => {
-	const base = homePage('incident', none);
+	const base = homePage('incident');
 	const mine = base.asks.find((a) => a.failed)!;
-	const P = homePage('incident', new Set([mine.app]));
+	toggleStar(mine.app, true);
+	const P = homePage('incident');
 	expect(P.asks.length).toBe(base.asks.length);
-	expect(cards(P, mine.app)).toHaveLength(cards(base, mine.app).length);
+	expect(P.asks.filter((a) => a.app === mine.app)).toHaveLength(base.asks.filter((a) => a.app === mine.app).length);
 });
 
-it('un-starring restores the original asks', () => {
-	const base = homePage('incident', none).asks.length;
-	expect(homePage('incident', new Set([FOREIGN])).asks.length).toBe(base + 1);
-	expect(homePage('incident', none).asks.length).toBe(base);
+it('un-starring restores the original asks and badge', () => {
+	const n = homePage('incident').asks.length, b = inbox('incident').count;
+	toggleStar(FOREIGN, true);
+	expect(homePage('incident').asks.length).toBe(n + 1);
+	toggleStar(FOREIGN, false);
+	expect(homePage('incident').asks.length).toBe(n);
+	expect(inbox('incident').count).toBe(b);
 });

@@ -10,7 +10,6 @@
  * figure; an approval ask leads with "N of M prod regions" only when `regionStates` says several prod regions wait (the count the change's own
  * line prints), else it is title-led. The viewer is 'you', never their own avatar; the lane drawing is built by the component (Footprint `laneOf`).
  */
-import { stars } from '$lib/stores/stars.svelte';
 import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { approvalIdentity,
 	inbox, rollouts, fleet24hEvents, ago, isViewer, personOf, holdSince, waitingBuild, gateName, regionStates, pretty, buildIdentity, NOW, type HomeState, type TRow
@@ -84,7 +83,7 @@ export function askOf(r: TRow, hs: HomeState, o: { noTier?: boolean } = {}): Ask
 	return { key: r.key, row: r, model, app: r.app, href: r.href, failed, rollbackHref: failed && a?.kind === 'rollback' ? actionHref(a) : null, id };
 }
 
-export function homePage(hs: HomeState, starred: ReadonlySet<string> = new Set()): HomePage {
+export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	const R = rollouts(hs, starred);
 	/* failures first (prod before the rest: the roster's urgency order already does it), then approvals; the sort is stable */
 	const rows = inbox(hs, starred).items.map((i) => i.row).sort((a, b) => Number(b.group === 'failed') - Number(a.group === 'failed'));
@@ -160,5 +159,5 @@ export { plural as _plural, TIERS as _TIERS };
  */
 export function homeAskCount(): number | null {
 	if (!liveSource()) return null;
-	return inbox('incident', stars.apps).items.length;
+	return inbox('incident').items.length;
 }

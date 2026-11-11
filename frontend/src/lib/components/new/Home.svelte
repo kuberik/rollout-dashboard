@@ -20,7 +20,6 @@
 	import { bandSpec } from '$lib/view-models/attention';
 	import { apps, approvalTarget, truthAttrs } from './data';
 	import { homePage } from './home-page';
-	import { stars } from '$lib/stores/stars.svelte';
 	import type { PageProps } from './pages';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import { githubAbsence } from './data';
@@ -28,7 +27,7 @@
 
 	let { state: hs }: PageProps = $props();
 	const ab = $derived(githubAbsence());
-	const P = $derived(homePage(hs, stars.apps));
+	const P = $derived(homePage(hs));
 	const A = $derived(apps(hs));
 	const span = $derived(false); // owner 2026-11-08: no card spans a row
 </script>

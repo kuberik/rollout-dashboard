@@ -8,6 +8,7 @@
  * home-incident fixture) and depot's helpers. Only the grouping is new. ADD ONLY: older versions
  * import from here and must keep rendering unchanged.
  */
+import { stars } from '$lib/stores/stars.svelte';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, type HomeState } from '../sketch/home-data';
 import { changesDoor, compass, TIERS, type TierKey } from '../pocket/pocket-data';
@@ -75,7 +76,7 @@ const isLiveHealthy = (s: string) => s !== 'failed' && s !== 'not-deployed' && s
 /** craft r2: a git sha shortens to 7; a semver tag ("4.43.0-43") is already short and is never cut. */
 const shortVersion = (v: string | null | undefined): string | null => (!v ? null : /^[0-9a-f]{8,40}$/.test(v) ? v.slice(0, 7) : v);
 
-export function rollouts(state: HomeState, starred: ReadonlySet<string> = new Set()) {
+export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.apps) {
 	const c = compass(state);
 	const { v, m } = c;
 	const L = v.lead;
