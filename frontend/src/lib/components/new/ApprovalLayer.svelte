@@ -22,6 +22,8 @@
 	const ask = $derived(approvalUi.ask);
 	const done = $derived(approvalUi.done);
 	let panel: HTMLElement | undefined = $state();
+	/** the panel's measured height (0 until measured): kept by a ResizeObserver so the above/below flip never reads a stale height inside a $derived */
+	let panelH = $state(0);
 	let vw = $state(1024);
 	let vh = $state(800);
 	const phone = $derived(vw < 640);
@@ -30,11 +32,21 @@
 		const a = ask?.anchor;
 		if (phone || !a) return '';
 		const m = typeof document === 'undefined' ? null : document.querySelector('main')?.getBoundingClientRect();
-		const p = approvePlace(a, vw, vh, m && m.width > 0 ? { left: m.left, right: m.right } : null, undefined, ownCard(ask?.trigger ?? null), panel?.offsetHeight || undefined);
+		const p = approvePlace(a, vw, vh, m && m.width > 0 ? { left: m.left, right: m.right } : null, undefined, ownCard(ask?.trigger ?? null), panelH || undefined);
 		const below = 'top' in p;
 		return `left:${p.left}px;width:${p.width}px;${below ? `top:${p.top}px` : `bottom:${p.bottom}px`}`;
 	});
 
+	$effect(() => {
+		const el = panel;
+		if (!el) { panelH = 0; return; }
+		const measure = () => { panelH = el.offsetHeight; };
+		measure();
+		if (typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 	$effect(() => {
 		if (ask) tick().then(() => panel?.querySelector<HTMLButtonElement>('[data-action="approve-confirm"]')?.focus());
 	});
