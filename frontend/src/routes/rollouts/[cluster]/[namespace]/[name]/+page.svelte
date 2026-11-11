@@ -71,7 +71,7 @@
 	import { repoKeyFor, repoSlug } from '$lib/version-utils';
 	import { href } from '$lib/paths';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
-	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
+	import BlockedActions from '$lib/components/new/BlockedActions.svelte';
 	import { askView } from '$lib/components/new/state-words';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
 	import { prettyNameOf } from '$lib/view-models/gate-name';
@@ -3411,14 +3411,9 @@
 					{#snippet children(ask)}
 					{@const view = askView(ask, holdCausePhrase(blockStory, { place: environment?.spec?.environment ?? null }), environment?.spec?.environment ?? null)}
 					{#snippet blockedActions()}
-						{#if view.slot === 'approve' && typeof ask === 'object' && ask}<span in:fade={{ duration: 150 }}><ApproveButton target={ask} class="btn btn-primary btn-sm" icon /></span>{:else if view.slot === 'reserved'}<span class="inline-block h-8 w-[104px]" aria-hidden="true" data-approve-slot></span>{/if}
-						<!-- ONE FACT, ONCE (design review 2026-10-08): the rule count is
-						     the disclosure's label below; this slot now always offers
-						     the place the rules live, the Gates tab. -->
-						<a href={rolloutPath(cluster, namespace, name, 'gates')} class="nav-link">
-							Gates
-							<ChevronRightOutline class="h-3 w-3" />
-						</a>
+						<!-- ONE FACT, ONCE (design review 2026-10-08): the rule count is the disclosure's label below; this slot always offers the place the rules live, the Gates tab.
+						     The approve slot TRAILS it (batch4 b4-49, see BlockedActions) so its collapse never moves the link. -->
+						<BlockedActions state={view.slot} {ask} gatesHref={rolloutPath(cluster, namespace, name, 'gates')} />
 					{/snippet}
 					<BlockingStoryPanel
 						story={blockStory}
