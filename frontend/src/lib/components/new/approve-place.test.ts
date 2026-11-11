@@ -91,5 +91,20 @@ describe('approve popover placement', () => {
 				expect(ownCard(btn)).toBeNull();
 			} finally { globalThis.getComputedStyle = orig; }
 		});
+		/* each clause of the rule must be load-bearing: a card needs a border AND rounded corners AND to be wider than the trigger */
+		const probe = (b: string, rad: string, cardL: number, cardR: number, w = 286) => {
+			const card = { tagName: 'DIV', parentElement: { tagName: 'MAIN' }, ...rect(cardL, cardR) } as unknown as HTMLElement;
+			const btn = { parentElement: card, getBoundingClientRect: () => ({ width: w }) } as unknown as HTMLElement;
+			const orig = globalThis.getComputedStyle;
+			globalThis.getComputedStyle = (() => ({ borderTopWidth: b, borderTopLeftRadius: rad })) as unknown as typeof getComputedStyle;
+			try { return ownCard(btn); } finally { globalThis.getComputedStyle = orig; }
+		};
+		it('a border without rounded corners is not a card', () => { expect(probe('1px', '0px', 256, 584)).toBeNull(); });
+		it('rounded corners without a border is not a card', () => { expect(probe('0px', '8px', 256, 584)).toBeNull(); });
+		it('an ancestor not wider than the trigger (within 10px) is not a card; wider than that is', () => {
+			expect(probe('1px', '8px', 270, 556)).toBeNull(); // 286 wide = the trigger
+			expect(probe('1px', '8px', 270, 566)).toBeNull(); // 296 = trigger + 10: not wider enough
+			expect(probe('1px', '8px', 270, 567)).toEqual({ top: 0, left: 270, right: 567, bottom: 100 });
+		});
 	});
 });
