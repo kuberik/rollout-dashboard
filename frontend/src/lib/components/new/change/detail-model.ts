@@ -10,7 +10,7 @@ import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import {
 	changes, candidateBuilds, shortBuild, placesOfChange, historyOfChange, changeCommits, runsIn, rowsOf, rollouts, heldBehind, lastHealthy, ago,
-	waitingBuild, deployedBuild, stepsOf, buildTitle, pathPosition, buildCommitOf,
+	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathPosition, buildCommitOf,
 	type TChange, type TRow, type HomeState, type TierKey, type Step
 } from '../data';
 import { stateWord, approvalWord } from '../state-words';
@@ -255,7 +255,7 @@ export function commitsOf(c: TChange, scenario: HomeState, lead: Place | null = 
 	commits = (bc?.commits.length ? [...bc.commits].reverse() : []).map((k) => ({ sha: k.sha, title: k.title, author: k.author }));
 	/* changedetail-9 CE2: the commit is the build that FIRST carried the change (c0d3e88), also while a NEWER build (f4a2c19) waits; only a change no place has run yet reads the waiting build's head */
 	if (!commits.length && lead?.kind === 'waiting' && lead.row) {
-		const w = candidateBuilds(lead.row).find((h) => h.build === lead.build) ?? waitingBuild(lead.row);
+		const w = candidateBuilds(lead.row).find((h) => h.build === lead.build) ?? buildInQuestionFacts(lead.row);
 		if (w) commits = [{ sha: first?.build ?? w.build, title: w.title ?? '', author: w.author }];
 	}
 	/* an app with no mocked range: the change's own head commit (the PR's) stands */
@@ -455,7 +455,7 @@ export type Opened = {
 	state: 'failed' | 'waiting' | 'moving' | 'rest';
 	/** the pane's state title: "Deployment failed", "Waiting for approval", "Live in us-west" */
 	title: string;
-	/** how long, in the page's one age form; for a waiting build it is the time the build has WAITED (waitingBuild's candidate), never the deployed build's age */
+	/** how long, in the page's one age form; for a waiting build it is the time the build has WAITED (buildInQuestionFacts's candidate), never the deployed build's age */
 	since: string;
 	/** a failed deploy's timer, finished: "Check failed after 1m" (never PENDING) */
 	took: string | null;
@@ -494,7 +494,7 @@ export function openedOf(p: Place, scenario: HomeState, landed = false): Opened 
 	}
 	if (row && p.kind === 'waiting') {
 		const hb = candidateBuilds(row).find((h) => h.build === p.build);
-		const w = hb ? { build: hb.build, title: hb.title, author: hb.author, at: hb.created } : (() => { const x = waitingBuild(row); return x ? { build: x.build, title: x.title, author: x.author, at: x.since } : null; })();
+		const w = hb ? { build: hb.build, title: hb.title, author: hb.author, at: hb.created } : (() => { const x = buildInQuestionFacts(row); return x ? { build: x.build, title: x.title, author: x.author, at: x.since } : null; })();
 		const dep = deployedBuild(row);
 		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(w?.at ?? p.since), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (h.created ?? '') > (w?.at ?? '')).sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
 	}

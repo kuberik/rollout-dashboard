@@ -2214,7 +2214,7 @@
 			const said = classifyGate(
 				{ name: gateName },
 				namespace,
-				buildGateContext({ environments: { items: overrideEnvironments } })
+				buildGateContext({ environments: { items: overrideEnvironments }, rollouts: rollout ? [rollout] : null })
 			);
 			return { label: said.label, value: said.short };
 		}

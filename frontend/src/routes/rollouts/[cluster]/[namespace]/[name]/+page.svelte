@@ -586,6 +586,7 @@
 			// gate to `unknown` instead of promoting it to an approval.
 			environments: listData?.environments || environment ? { items: envItems } : null,
 			rolloutDependencies: listData?.rolloutDependencies ?? null,
+			rollouts: rollout ? [rollout] : null,
 			rolloutGates: rolloutQuery.data?.rolloutGates ?? null
 		});
 		return scheduleObjects !== null

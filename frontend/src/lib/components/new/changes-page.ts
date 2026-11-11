@@ -11,7 +11,7 @@
  * a prod approval card counts its regions (the region meter, as on Home); other approvals stay title-led.
  */
 import {
-	changes, rollouts, ago, isViewer, personOf, personName, holdSince, waitingBuild, avatarSrc, regionStates, type HomeState, type TChange, type TRow, type TierKey, noReleasesApp
+	changes, rollouts, ago, isViewer, personOf, personName, holdSince, buildInQuestionFacts, avatarSrc, regionStates, type HomeState, type TChange, type TRow, type TierKey, noReleasesApp
 } from './data';
 import { rides, waitsOnMe, rideAction, ownTier, TIERS, type Ride } from './change-view';
 import { dedupeCommitOfPr } from './change-cards';
@@ -142,7 +142,7 @@ export function changesPage(hs: HomeState): ChangesPage {
 	/* Attention: your changes that need you (failing, or an approval you can give), minus the banner's; failing first, then oldest ask first */
 	const askSince = (p: PChange): string | null => {
 		const r = rowOf(p);
-		if (p.state === 'approval-yours') return (r ? holdSince(r, hs) ?? waitingBuild(r)?.since : null) ?? p.ride.since ?? p.c.since;
+		if (p.state === 'approval-yours') return (r ? holdSince(r, hs) ?? buildInQuestionFacts(r)?.since : null) ?? p.ride.since ?? p.c.since;
 		return p.ride.since ?? p.c.since;
 	};
 	const attP = mineP.filter((p) => (p.state === 'failed' || p.state === 'approval-yours') && p !== lead)

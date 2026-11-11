@@ -1696,6 +1696,7 @@ function mkTmRollout(s: TmCellSpec) {
 				gates: [
 					{
 						name: `${s.app}-manual-approval`,
+						kind: 'approval',
 						allowedVersions: [TM_OLD],
 						passing: false
 					}
@@ -2058,7 +2059,9 @@ function ckGates(env: string) {
 	const newer = CK_RELEASES.slice(CK_RELEASES.findIndex((r) => r.tag === CK_LIVE[env]) + 1).map(
 		(r) => r.tag
 	);
+	/* a `promotion-<env>` gate summary: kind promotion is what the backend says of an Environment-owned gate (the mock has no RolloutGate object behind it) */
 	const gate = (name: string, allowed: string[]) => ({
+		kind: 'promotion',
 		name,
 		allowedVersions: allowed,
 		passing: newer.every((t) => allowed.includes(t))
@@ -2094,8 +2097,8 @@ export const CK_SCHEDULE = 'checkout-business-hours';
 export function ckOtherGates(env: string) {
 	if (env !== 'staging') return [];
 	return [
-		{ name: CK_SCHEDULE_GATE, passing: true },
-		{ name: CK_APPROVAL_GATE, allowedVersions: CK_RELEASES.map((r) => r.tag), passing: true }
+		{ name: CK_SCHEDULE_GATE, kind: 'schedule', passing: true },
+		{ name: CK_APPROVAL_GATE, kind: 'approval', allowedVersions: CK_RELEASES.map((r) => r.tag), passing: true }
 	];
 }
 
@@ -3091,7 +3094,7 @@ export function mkHwvRollouts(scenario: HwvScenario) {
 			wantedVersion: l.tag,
 			currentVersion: l.tag,
 			history: hist.get(key),
-			gates: ups.length ? [{ name: `promotion-${key}`, allowedVersions: allowed, passing: newer.every((t) => allowed.includes(t)) }] : []
+			gates: ups.length ? [{ name: `promotion-${key}`, kind: 'promotion', allowedVersions: allowed, passing: newer.every((t) => allowed.includes(t)) }] : []
 		});
 	});
 	if (scenario === 'wide') {
@@ -3101,7 +3104,7 @@ export function mkHwvRollouts(scenario: HwvScenario) {
 				wantedVersion: '0f1f88a',
 				currentVersion: '0f1f88a',
 				history: hwvHistory('0f1f88a', 'Succeeded'),
-				gates: [{ name: 'promotion-prod-us-east-1-scratch', allowedVersions: [], passing: false }]
+				gates: [{ name: 'promotion-prod-us-east-1-scratch', kind: 'promotion', allowedVersions: [], passing: false }]
 			})
 		);
 	}

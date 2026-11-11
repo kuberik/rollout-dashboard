@@ -244,13 +244,15 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "dependency"
      },
      {
       "name": "deploy-window",
       "passing": true,
       "allowedVersions": null,
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "schedule"
      },
      {
       "name": "promotion-prod-us-east-1",
@@ -258,7 +260,8 @@
        "b-46",
        "b-45"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "promotion"
      },
      {
       "name": "release-approval",
@@ -267,7 +270,8 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "approval"
      }
     ],
     "conditions": [
@@ -372,20 +376,23 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "dependency"
      },
      {
       "name": "deploy-window",
       "passing": true,
       "allowedVersions": null,
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "schedule"
      },
      {
       "name": "promotion-prod-us-east-2",
       "allowedVersions": [
        "b-45"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "promotion"
      },
      {
       "name": "release-approval",
@@ -394,7 +401,8 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "approval"
      }
     ]
    }
@@ -490,20 +498,23 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "dependency"
      },
      {
       "name": "deploy-window",
       "passing": true,
       "allowedVersions": null,
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "schedule"
      },
      {
       "name": "promotion-prod-eu-west-1",
       "allowedVersions": [
        "b-45"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "promotion"
      },
      {
       "name": "release-approval",
@@ -512,7 +523,8 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "approval"
      }
     ]
    }
@@ -608,20 +620,23 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "dependency"
      },
      {
       "name": "deploy-window",
       "passing": true,
       "allowedVersions": null,
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "schedule"
      },
      {
       "name": "promotion-prod-eu-central-1",
       "allowedVersions": [
        "b-45"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "promotion"
      },
      {
       "name": "release-approval",
@@ -630,7 +645,8 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "approval"
      }
     ]
    }
@@ -726,20 +742,23 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "dependency"
      },
      {
       "name": "deploy-window",
       "passing": true,
       "allowedVersions": null,
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "schedule"
      },
      {
       "name": "promotion-prod-ap-southeast-2",
       "allowedVersions": [
        "b-45"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "promotion"
      },
      {
       "name": "release-approval",
@@ -748,7 +767,8 @@
        "b-45",
        "b-46"
       ],
-      "message": "Gate is passing"
+      "message": "Gate is passing",
+      "kind": "approval"
      }
     ]
    }

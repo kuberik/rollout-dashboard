@@ -12,7 +12,7 @@
  */
 import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { approvalIdentity,
-	inbox, rollouts, fleet24hEvents, ago, isViewer, personOf, holdSince, waitingBuild, gateName, regionStates, pretty, buildIdentity, NOW, type HomeState, type TRow
+	inbox, rollouts, fleet24hEvents, ago, isViewer, personOf, holdSince, buildInQuestionFacts, gateName, regionStates, pretty, buildIdentity, NOW, type HomeState, type TRow
 } from './data';
 import { rowAction, actionHref } from './rollout-view';
 import { chipPlace, changeLineOf } from './rollouts-page';
@@ -72,7 +72,7 @@ export function askOf(r: TRow, hs: HomeState, o: { noTier?: boolean } = {}): Ask
 	const id = identityOf(r, hs, failed);
 	const model = attentionModel({
 		state: failed ? 'failed' : 'approval',
-		age: failed ? ago(r.since) : ago(holdSince(r, hs) ?? waitingBuild(r)?.since ?? r.since),
+		age: failed ? ago(r.since) : ago(holdSince(r, hs) ?? buildInQuestionFacts(r)?.since ?? r.since),
 		tier: o.noTier ? '' : r.tier, place: (/regions?$/.test(chipPlace(r) ?? '') ? '' : chipPlace(r)) ?? '',
 		check: failed ? { name: r.failure?.check ?? null, message: r.failure?.message ?? r.failure?.line ?? '' } : null,
 		observations: failed ? r.failure?.observations ?? null : null,

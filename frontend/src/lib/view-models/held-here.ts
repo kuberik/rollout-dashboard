@@ -11,7 +11,7 @@ type Detail = { rollout?: Rollout | null; environment?: Environment | null; roll
 export function heldHereOfDetail(d: Detail): { count: number; ids: Set<string>; waiting: number; stage: string | null } | null {
 	if (!d?.rollout) return null;
 	const placeEnv = d.environment?.spec?.environment ?? null;
-	const ctx = buildGateContext({ environments: d.environment ? { items: [d.environment] } : null, rolloutDependencies: { items: [] }, rolloutGates: (d.rolloutGates ?? null) as never });
+	const ctx = buildGateContext({ environments: d.environment ? { items: [d.environment] } : null, rolloutDependencies: { items: [] }, rollouts: [d.rollout], rolloutGates: (d.rolloutGates ?? null) as never });
 	const { held, waiting } = heldBuilds(promotionHoldBreakdown(d.rollout, ctx, { place: placeEnv }), placeEnv);
 	return { count: held.length, ids: new Set(held.map((h) => h.build)), waiting: waiting.length, stage: waiting[0]?.stage ?? null };
 }

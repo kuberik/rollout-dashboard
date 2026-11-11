@@ -302,7 +302,7 @@ export function rolloutGateBoxes(args: {
 		} else {
 			phrase = passing === false ? 'not passing' : 'passing';
 		}
-		const pretty = prettyNameOf(obj?.metadata);
+		const pretty = prettyNameOf(obj?.metadata) ?? sum?.displayName;
 		const title = gateDisplayName(g, pretty);
 		const kindWord = approval ? 'Approval' : 'Gate';
 		out.push({
@@ -337,7 +337,7 @@ export function rolloutGateBoxes(args: {
 			key: owner ? scheduleKey(owner.namespace, owner.name) : `gate:${h.gate}`,
 			kind: clock ? 'schedule' : 'gate',
 			state: 'blocked',
-			title: clock ? 'Deploy window' : gateDisplayName(h.gate),
+			title: clock ? 'Deploy window' : gateDisplayName(h.gate, prettyNameOf(objects.get(h.gate)?.metadata) ?? summaries.get(h.gate)?.displayName),
 			kindWord: null,
 			phrase: h.short.charAt(0).toLowerCase() + h.short.slice(1),
 			held: heldBy([h.gate]),

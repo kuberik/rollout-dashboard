@@ -1848,7 +1848,7 @@ export function prPipelineGraph(
 		environments,
 		dependencies: rolloutDependencies?.items ?? [],
 		envOrder: [],
-		gates: buildGateContext({ environments: { items: environments }, rolloutDependencies })
+		gates: buildGateContext({ environments: { items: environments }, rolloutDependencies, rollouts })
 	});
 }
 
@@ -1864,7 +1864,8 @@ export function buildPrPipeline(
 	const set = buildContainedSet(meta);
 	const gateCtx = buildGateContext({
 		environments: { items: environments },
-		rolloutDependencies
+		rolloutDependencies,
+		rollouts
 	});
 	// ⭐ THE HOLD-ONE-RULE (design/rollout 69941ab, squad-rollout) — "held"
 	// now means a GATE or a CONTRACT holds the build. `promotionHoldBreakdown`

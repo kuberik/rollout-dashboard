@@ -90,11 +90,11 @@ function rolloutFor(app: string, tier: string, cluster: string, shape: Shape) {
 	const suffix = `${app[0]}${tier[0]}${tier.length}`;
 	const gates =
 		shape.hold === 'approval'
-			? [{ name: `ghd-${suffix}`, passing: true, allowedVersions: [] as string[] }]
+			? [{ name: `ghd-${suffix}`, passing: true /* no kind: this hold shape is the payload an older backend sent; the classifier eliminates its way to an approval */, allowedVersions: [] as string[] }]
 			: shape.hold === 'schedule'
-				? [{ name: `schedule-gate-${suffix}`, passing: false }]
+				? [{ name: `schedule-gate-${suffix}`, kind: 'schedule', passing: false }]
 				: shape.hold === 'dependency'
-					? [{ name: depGate(suffix), passing: true, allowedVersions: [] as string[] }]
+					? [{ name: depGate(suffix), kind: 'dependency', passing: true, allowedVersions: [] as string[] }]
 					: [];
 	return {
 		metadata: {

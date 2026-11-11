@@ -11,10 +11,10 @@ it('R1: a fallback-pipeline deploy is Started done, Check active, health Waiting
 });
 it('R3: the waiting build of a held place is the one its own gate holds', () => {
 	const r = D.rollouts('incident').rows.find((x) => x.app === 'checkout-api' && x.group === 'held' && x.tier === 'prod')!;
-	expect(D.waitingBuild(r)?.build).toBe('4.43.0-43');
+	expect(D.buildInQuestionFacts(r)?.build).toBe('4.43.0-43');
 });
 it('R4: no boilerplate title, one headline per build', () => {
-	for (const r of D.rollouts('incident').rows) { expect(D.deployedBuild(r).title ?? '').not.toMatch(/^Release commit for build/); expect(D.waitingBuild(r)?.title ?? '').not.toMatch(/^Release commit for build/); }
+	for (const r of D.rollouts('incident').rows) { expect(D.deployedBuild(r).title ?? '').not.toMatch(/^Release commit for build/); expect(D.buildInQuestionFacts(r)?.title ?? '').not.toMatch(/^Release commit for build/); }
 	expect(D.deployedBuild(find('incident', 'invoice-api', 'prod')).title).toBe('Retry webhook delivery with exponential backoff');
 });
 it('R6/R11: scope and rollup carry their units', () => {
@@ -31,7 +31,7 @@ it('R17: the lead is the first row of the first non-empty group', () => {
 		const order = ['failed', 'approval', 'held', 'moving'] as const;
 		expect(l.group).toBe(order.find((g) => R.some((r) => r.group === g)));
 	}
-	expect(headerFacts(D.rollouts('calm').rows).map((f) => f.text)).toContain('9 places waiting for approval');
+	expect(headerFacts(D.rollouts('calm').rows).map((f) => f.text)).toContain('8 places waiting for approval');
 });
 it('r6 T1: pathPosition = the Gates tab Runs in (newest of the ladder)', () => {
 	expect(D.pathPosition({ app: 'hello-world' }, 'incident')).toBe('0 of 3 places on the newest build');
@@ -42,7 +42,7 @@ it('r6 T5: one title per sha (the approval row prints the dev row\'s title)', ()
 	const dev = R.find((x) => x.app === 'invoice-api' && x.tier === 'dev')!;
 	const appr = R.find((x) => x.app === 'invoice-api' && x.group === 'approval')!;
 	expect(D.deployedBuild(dev).title).toBeTruthy();
-	const wb = D.waitingBuild(appr)!;
+	const wb = D.buildInQuestionFacts(appr)!;
 	expect(wb.title).toBe(D.buildIdentity(wb.build, appr.href)?.title ?? wb.title); /* one title per sha: the held build prints its change's title */
 });
 it('r6 T3/T6: recovery of a failed entry and the hold start', () => {
@@ -50,5 +50,5 @@ it('r6 T3/T6: recovery of a failed entry and the hold start', () => {
 	expect(D.recoveredAt(tc.href, tc.at)).toBeTruthy();
 	const held = D.rollouts('incident').rows.find((x) => x.app === 'checkout-api' && x.group === 'held' && x.tier === 'prod')!;
 	const hs = D.holdSince(held, 'incident');
-	expect(hs === null || hs > (D.waitingBuild(held)?.since ?? '')).toBe(true);
+	expect(hs === null || hs > (D.buildInQuestionFacts(held)?.since ?? '')).toBe(true);
 });
