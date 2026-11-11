@@ -132,6 +132,22 @@ for repo in rollout-controller environment-controller openkruise-controller prom
   fi
 done
 
+# release-controller: the one release path. Every example Rollout names a
+# ReleaseSource via spec.releaseSourceRef, so the controller and its CRD must be
+# in the cluster BEFORE the example manifests are applied below. It has no
+# `make dev-deploy`; hack/deploy-kind.sh does ko resolve + kubectl --context
+# (idempotent) and --readers adds the ClusterRoleBindings that let the
+# dashboard, rollout-controller and environment-controller service accounts
+# read release slices. Uses its own leader-election lease.
+if [ ! -d "$KUBERIK_SRC_DIR/release-controller" ]; then
+  echo "ERROR: $KUBERIK_SRC_DIR/release-controller not found; set KUBERIK_SRC_DIR to the directory holding the kuberik checkouts" >&2
+  exit 1
+fi
+kubectl create ns kuberik-system -o yaml --dry-run=client | kubectl apply -f -
+KUSTOMIZE="$(command -v kustomize)" \
+  "$KUBERIK_SRC_DIR/release-controller/hack/deploy-kind.sh" "${CLUSTER_NAME}" "kind-${CLUSTER_NAME}" --readers
+kubectl wait --for=condition=Established crd/releasesources.kuberik.com --timeout=60s
+
 # Frontend is served by the vite dev server, not the in-cluster pod.
 # Skip the npm build — the dashboard pod only needs to serve /api in dev.
 # Ensure kodata exists so ko doesn't complain about a missing directory.

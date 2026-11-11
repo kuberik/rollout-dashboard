@@ -12,6 +12,9 @@ echo "Cleaning up multi-cluster dev environment..."
 # Delete both Kind clusters
 kind delete cluster --name rollout-prod
 kind delete cluster --name rollout-dev
+# release-controller lives in those clusters, so deleting them removes it; drop
+# the manifests deploy-kind.sh resolved for them too.
+rm -f "${PROJECT_ROOT}"/../.work/release-controller/resolved-rollout-{prod,dev}.yaml
 
 # Stop the haproxy SNI router
 docker compose -f "${PROJECT_ROOT}/docker-compose.sni-proxy.yaml" down

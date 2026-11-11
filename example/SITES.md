@@ -16,3 +16,33 @@ that sets `spec.targetNamespace` (the app manifests hard-code `<app>-prod`).
 
 dev/staging, hello-multi and hello-dep stay single-site. The cluster-scoped
 `ClusterRolloutSchedule` is emitted once (eu-west) and deleted from the other sites.
+
+## Release sources
+
+Every Rollout gets its releases from a release-controller `ReleaseSource` named by
+`spec.releaseSourceRef`; `spec.releasesImagePolicy` is deprecated and inert, so a
+Rollout without a ref receives no releases. Each app or stream in `cd/base/resources.yaml`
+has one `ReleaseSource` (same name as its Rollout) that lists the OCI repository
+itself: `spec.oci.image`, `secretRef`, `filterTags` and `policy`, translated from the
+Flux ImageRepository/ImagePolicy pair it replaced. Nothing else in these examples
+used the Flux image objects (no ImageUpdateAutomation), so they were removed. The
+env overlays retarget the per-environment manifests image at
+`ReleaseSource` `spec.oci.image`. Every prod site gets its own copy of the sources.
+
+**hello-multi is the deliberate migration example.** It keeps its Flux ImageRepository
+and ImagePolicy, and its ReleaseSource points at the policy with `oci.imagePolicyRef`
+instead of repeating the image and policy. Use this bridge to move an existing Flux
+image-policy setup over without rewriting it; the Rollout still uses
+`releaseSourceRef` and no longer sets `releasesImagePolicy`.
+
+## How the examples reach the clusters
+
+The `cd/` overlays (Rollouts, ReleaseSources, Environments) reach the clusters by
+`scripts/setup-dev-environment.sh` running `kustomize build example/<app>/cd/deployments/<env> | kubectl apply -f -`
+from the local checkout; Flux does not pull them. `scripts/build-and-push.sh` also copies
+`example/**` into the `LittleChimera/kuberik-testing` (hello-world at the root, hello-multi
+under `multi/`, hello-dep under `dep/`) and `LittleChimera/kuberik-testing-second`
+(hello-second) repos, so ReleaseSources show up there on the next build-and-push, as a
+reference copy only. Flux pulls only the `app/` manifest artifacts built from them.
+The setup script installs release-controller (with its readers RBAC) before applying the
+overlays, because they contain `ReleaseSource` objects.
