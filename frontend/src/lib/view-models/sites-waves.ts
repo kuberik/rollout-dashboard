@@ -77,7 +77,7 @@ export function waveOf(env: Environment): number {
 
 /** Leader or Follower as the controller last reported it; null before the first reconcile. */
 export function roleOf(env: Environment): WaveRole | null {
-	return env.status?.wave?.role ?? null;
+	return (env.status?.wave?.role as WaveRole | undefined) ?? null;
 }
 
 export function lockstepOf(env: Environment): boolean {
@@ -284,7 +284,8 @@ export function relationshipIgnored(env: Environment): boolean {
 }
 
 /** The WaveReady condition, structured. Never throws. */
-type StatusBlocker = NonNullable<NonNullable<NonNullable<Environment['status']>['wave']>['blocker']>;
+/** Partial: the CRD marks `reason` required, but this reader also takes blockers built from fields alone. */
+type StatusBlocker = Partial<NonNullable<NonNullable<NonNullable<Environment['status']>['wave']>['blocker']>>;
 
 /**
  * The controller's structured blocker (status.wave.blocker) as a WaveBlocker.

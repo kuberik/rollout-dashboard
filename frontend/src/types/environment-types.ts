@@ -12,7 +12,8 @@ export type EnvironmentSpec = components['schemas']['Environment']['spec'];
 export type TierName = EnvironmentSpec['environment'];
 export type WaveStatus = Required<EnvironmentStatus>['wave'];
 export type WaveMember = Required<WaveStatus>['members'][number];
-export type WaveRole = Required<WaveStatus>['role'];
+/** The CRD now types status.wave.role as a plain string; the controller only writes these two. */
+export type WaveRole = 'Leader' | 'Follower';
 /** Condition reasons of WaveReady / LockstepConsistent. */
 export type WaveReadyReason =
 	| 'Ready'
