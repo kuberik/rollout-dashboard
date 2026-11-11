@@ -1,4 +1,3 @@
-import { gateKindOf } from './gate-kind';
 /**
  * HOME ROUND 12 — THE ONE DATA MODEL, CONSOLIDATED (2026-10-18).
  *
@@ -58,7 +57,6 @@ import { gateKindOf } from './gate-kind';
  *     `HOME_PULSE_WORTH_LOOK` (`fleet-signals.ts`, sharedfix 13749e4d) —
  *     `'stall'` (idle) is deliberately excluded from that set.
  */
-import { gateDisplayName } from './gate-name';
 import type {
 	Rollout,
 	Environment,

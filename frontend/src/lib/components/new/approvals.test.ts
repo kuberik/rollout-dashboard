@@ -339,6 +339,26 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			check();
 		});
 	});
+	it('QA14 row while the place is still checking or deploying: the same per-build refusers apply (F1): "Held by Permits newest only", no ask, no inbox entry', () => {
+		const { newest } = targetAndNewest();
+		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
+		const rs = (source().rollouts as unknown as { metadata: { name: string; namespace: string }; status: { history?: { bakeStatus?: string }[] } }[]).filter((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`));
+		const was = rs.map((r) => r.status.history![0].bakeStatus);
+		try {
+			for (const bake of ['InProgress', 'Deploying']) {
+				rs.forEach((r) => { r.status.history![0].bakeStatus = bake; });
+				patched([{ name: 'permits-newest-only', kind: 'unknown', allowedVersions: [newest] }], () => {
+					const pr = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
+					expect(pr.length).toBeGreaterThan(0);
+					for (const r of pr) {
+						expect(sentenceOf(r, 'incident')[0], bake).toBe('Held by Permits newest only');
+						expect(r.needsYou, bake).toBe(false);
+					}
+					expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && i.row.tier === 'prod'), 'no ask').toBe(false);
+				});
+			}
+		} finally { rs.forEach((r, i) => { r.status.history![0].bakeStatus = was[i]; }); resetHomeModel(); }
+	});
 	it('refuses every build: held after Approve, and the toast, the row and the Holding card name the same gate', () => {
 		patched([{ name: 'refuses-all', kind: 'unknown', allowedVersions: [] }], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
@@ -358,8 +378,8 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			expect(t.deploys ?? null).toBeNull();
 			expect(doneWords(t).detail).toBe(`payments-core is deploying to ${t.where}`);
 			grant(t);
-			expect(released(), 'the approved build is released: no row is held by another gate').toBe(true);
-			/* the approved build left the candidates and started deploying; the newest awaits its own approval, which is no hold of permits-target-only's making */
+			/* the approved build left the candidates and started deploying. The newest awaits its own approval, but permits-target-only refuses it, so no approval can deploy it: the place reads that rule's hold with no ask (F1, the same per-build refusers as the toast). Old expectation (released(): no row held) was written before the row read per-build refusers. */
+			for (const r of rollouts('incident').rows.filter((x) => x.app === 'payments-core' && x.tier === 'prod')) { expect(sentenceOf(r, 'incident')[0]).toBe('Held by Permits target only'); expect(r.needsYou).toBe(false); }
 		});
 	});
 	it('a promotion gate named ghd-* (the live naming) decides where a build is held', () => {

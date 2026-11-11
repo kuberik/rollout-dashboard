@@ -292,10 +292,13 @@ export function rollouts(state: HomeState, starred?: ReadonlySet<string>) {
 	for (const r of rows) {
 		r.word = rosterWait(r.word);
 		if ((r.state === 'checking' || r.state === 'deploying') && approvalHold(r.href) > 0) {
-			r.state = 'awaiting-approval'; r.group = 'approval'; r.glyph = 'approval';
-			r.needsYou = yours.has(r.app);
-			r.word = sharedWord('approval', { yours: r.needsYou })!;
+			/* F1: the same per-build refusers as the awaiting-approval case: a rule that refuses the build being approved holds the place, with no ask */
+			const ruleHeld = !!ruleAfterApproval(r.href, r.app, state);
+			r.state = ruleHeld ? 'held-by-rule' : 'awaiting-approval'; r.group = ruleHeld ? 'held' : 'approval'; r.glyph = ruleHeld ? 'held' : 'approval';
+			r.needsYou = !ruleHeld && yours.has(r.app);
+			r.word = ruleHeld ? 'Held by a rule' : sharedWord('approval', { yours: r.needsYou })!;
 			r.action = r.needsYou ? { label: 'Approve', href: r.href, kind: 'approve' } : null;
+			if (ruleHeld) r.alsoApproval = null;
 			(r as TRow).stillChecking = true;
 			r.steps = pipelineNodes(r.pipeline);
 		} else (r as TRow).stillChecking = false;
@@ -1320,7 +1323,8 @@ export function stillHeldAfterApproval(href: string, tag: string, state: HomeSta
 	return g ? holdTitleOf(href, g, state, app, null) : null;
 }
 /* ruling 4: the row and the inbox read the SAME per-build refusers as the toast (waitsOn), the Holding card and placeHolds: a place the env model calls awaiting-approval (its newest build asks only for the approval) is held by the rule that refuses the build being APPROVED */
-RD.setRuleAfterApproval((href, app, state) => { if (!approvalGateOf(rawOf(href)?.status.gates ?? [])) return null; /* this data layer finds no approval gate here (the fixture's kindless ghd-* gate): nothing to read per build */ const tag = buildInQuestion({ href, app }); return tag ? stillHeldAfterApproval(href, tag, state, app) : null; });
+const ruleAfterApproval = (href: string, app: string, state: HomeState): string | null => { if (!approvalGateOf(rawOf(href)?.status.gates ?? [])) return null; /* this data layer finds no approval gate here (the fixture's kindless ghd-* gate): nothing to read per build */ const tag = buildInQuestion({ href, app }); return tag ? stillHeldAfterApproval(href, tag, state, app) : null; };
+RD.setRuleAfterApproval(ruleAfterApproval);
 /** The newest build that deploys after `tag` is approved at a place (null: nothing deploys). */
 const deploysAfterApproval = (href: string, tag: string): string | null => deployableTags(rawOf(href)?.status.gates ?? [], candTags(href), tag)[0] ?? null;
 export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | 'regions'>, state: HomeState = 'incident'): ApprovalTarget | null {

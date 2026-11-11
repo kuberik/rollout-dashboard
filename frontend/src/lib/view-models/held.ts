@@ -418,6 +418,9 @@ export function verdictForGates(
 	placeEnv: string | null | undefined,
 	options: { hasContract?: boolean } = {}
 ): GateVerdict {
+	/* ONE classification per gate within a verdict: a gate the backend calls `schedule` is a window (clock) even before the schedule join has loaded and `classifyGate` could only call it a check (F2, rule: classify by backend kind) */
+	const byKind = gates.map((x) => (x.backendKind === 'schedule' && x.clears !== 'clock' && x.clears !== 'person' ? { ...x, clears: 'clock' as const } : x));
+	gates = byKind;
 	const v = verdictForGatesPrimary(gates, placeEnv, options);
 	if (!(v.held && v.cause !== 'person' && gates.some((g) => g.clears === 'person'))) return v;
 	return { ...v, alsoAwaitingApproval: true, alsoHold: alsoHoldOf(gates, !!options.hasContract) };
