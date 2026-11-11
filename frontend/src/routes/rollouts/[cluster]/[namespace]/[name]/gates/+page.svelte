@@ -1059,7 +1059,8 @@
 				place: environment?.spec?.environment ?? null,
 				now: $now,
 				contractHolds,
-				fleet: { environments: listEnvironments, rollouts: listRollouts }
+				fleet: { environments: listEnvironments, rollouts: listRollouts },
+				settled: fleetSettled(listQuery)
 			});
 			// The banner's own title (holdCausePhrase), so the Gates lead row and
 			// the Overview banner print one sentence for one fact.
@@ -1510,6 +1511,26 @@
 	>
 </svelte:head>
 
+{#snippet railSkeleton()}
+	<!-- The rail's two cards ("Runs in", "Depends on this") as placeholders, shared by the load-outage skeleton and the pending-fleet skeleton so nothing pops in once the list answers. -->
+	<div class="grid min-w-0 content-start gap-4">
+		<CardSkeleton
+			titleWidth="w-20"
+			rollupWidth="w-24"
+			rows={4}
+			rowHeight={40}
+			padded={false}
+		/>
+		<CardSkeleton
+			titleWidth="w-28"
+			rollupWidth="w-16"
+			rows={2}
+			rowHeight={40}
+			padded={false}
+		/>
+	</div>
+{/snippet}
+
 <div class="mx-auto w-full">
 	{#if gatesOutage.loading}
 		<div class="px-4 py-6 sm:px-6">
@@ -1544,22 +1565,7 @@
 				<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={240} />
 				<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
 					<div></div>
-					<div class="grid min-w-0 content-start gap-4">
-						<CardSkeleton
-							titleWidth="w-20"
-							rollupWidth="w-24"
-							rows={4}
-							rowHeight={40}
-							padded={false}
-						/>
-						<CardSkeleton
-							titleWidth="w-28"
-							rollupWidth="w-16"
-							rows={2}
-							rowHeight={40}
-							padded={false}
-						/>
-					</div>
+					{@render railSkeleton()}
 				</div>
 			</div>
 		</div>
@@ -1705,9 +1711,32 @@
 				{/snippet}
 			</RolloutTabHeader>
 
-			{#if !fleetSettled(listQuery)}
+			{#if listQuery.isError && listQuery.data === undefined}
+				<!-- The fleet list failed and there is nothing cached: hasChain / hasContracts / the graph are all read off it, so "No gates on this rollout" would be a false answer, and a newer-builds count has no fleet to be right about. Same unavailable treatment as the health rows (they say it could not be loaded instead of guessing), in the empty-state anatomy; ErrorState would repeat the tab header here. -->
+				<Card icon={ShareNodesOutline} title="Gates" padded={false} class="min-w-0">
+					<div class="flex flex-col items-start gap-2 px-4 py-8 text-left" role="alert">
+						<ShareNodesOutline class="text-fg-disabled h-5 w-5" aria-hidden="true" />
+						<p class="t-ui text-fg">Gates could not be loaded</p>
+						<p class="t-meta text-fg-subtle max-w-md">
+							The dashboard could not read the list of rollouts this rollout's gates and environments are drawn from, so it cannot tell what holds this rollout or what waits on it.
+						</p>
+						<button
+							type="button"
+							class="btn btn-secondary mt-1"
+							disabled={listQuery.isFetching}
+							onclick={() => listQuery.refetch()}>{listQuery.isFetching ? 'Trying again…' : 'Try again'}</button
+						>
+					</div>
+				</Card>
+			{:else if !fleetSettled(listQuery)}
 				<!-- The fleet list has not answered: hasChain / hasContracts / hood are all read off it, so "No gates on this rollout" would be a finished, false sentence. The same skeleton the loaded page's graph card uses (below). -->
-				<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={176} />
+				<div class="grid gap-4" data-testid="gates-pending">
+					<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={176} />
+					<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
+						<!-- No spacer: with no main column the loaded rail takes the first track (the common case, a rollout holding nothing), so the placeholder sits there too and does not jump sideways. -->
+						{@render railSkeleton()}
+					</div>
+				</div>
 			{:else if !hasChain && !hasContracts && !hasDependents && hood.total === 0}
 				<!-- ⛔ THE EMPTY STATE IS DELIBERATE AND IT IS ONE SENTENCE. Most
 				     rollouts hold nobody and are held by nothing. It is a GENUINE

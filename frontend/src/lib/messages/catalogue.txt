@@ -1092,14 +1092,13 @@ lib/components/RolloutNeighbourhood.svelte	code	Waits for … · … held on …
 lib/components/RolloutTabHeader.svelte	text	Roll back
 lib/components/RolloutTabHeader.svelte	title	Roll back to …
 lib/components/ScheduleStatus.svelte	text	… Automatic deploys resume in
-lib/components/ScheduleStatus.svelte	code	… newer build… … waiting.
 lib/components/ScheduleStatus.svelte	text	… rule …
+lib/components/ScheduleStatus.svelte	code	… waiting.
 lib/components/ScheduleStatus.svelte	code	…Nothing promotes itself for another … — ….
 lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	code	Failed to load schedules
 lib/components/ScheduleStatus.svelte	text	Held by … rule … …
-lib/components/ScheduleStatus.svelte	code	Newer builds are waiting.
 lib/components/SourceViewer.svelte	code	Failed to fetch files
 lib/components/SourceViewer.svelte	code	Failed to fetch files: …
 lib/components/SourceViewer.svelte	text	Source files for
@@ -1975,6 +1974,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	an approval
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Depends on this
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Each environment waits on its own copy of … .
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Environments of this app that are on its newest version
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Gates could not be loaded
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Held builds
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Held here
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	holding … …
@@ -1996,6 +1996,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Other envir
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Runs in
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Skipped by …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	someone approves it
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	The dashboard could not read the list of rollouts this rollout's gates and environments are drawn from, so it cannot tell what holds this rollout or what waits on it.
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	the deploy window reopens
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	the deploy window to reopen
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	this rollout

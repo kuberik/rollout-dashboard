@@ -8,7 +8,7 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout } from '$lib/types';
 	import AlertPanel from './AlertPanel.svelte';
-	import type { BlockingStory } from '$lib/view-models/blocking-story';
+	import { newerBuildsAre, type BlockingStory } from '$lib/view-models/blocking-story';
 	import { iconForStory } from './BlockingStoryPanel.svelte';
 	import {
 		formatAbsoluteReopen,
@@ -512,7 +512,7 @@
 		if (!s) return '';
 		if (s.gates.length === 1 && s.clock.length === 1 && s.clearsAt) {
 			const n = s.newerCount ?? s.candidateCount; /* the live count (failed-builds.ts) */
-			const lead = n > 0 ? (s.countPending ? 'Newer builds are waiting. ' : `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} waiting. `) : '';
+			const lead = n > 0 ? `${newerBuildsAre(n, !!s.countPending)} waiting. ` : '';
 			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} — ${formatAbsoluteReopen(s.clearsAt)}.`;
 		}
 		return s.consequence;

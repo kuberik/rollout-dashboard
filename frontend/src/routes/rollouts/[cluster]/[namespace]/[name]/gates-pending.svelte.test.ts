@@ -57,9 +57,37 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		await new Promise((r) => setTimeout(r, 500));
 		expect(text()).not.toMatch(/No gates on this rollout/);
 		expect(container.querySelector('.skel-block, [aria-hidden="true"].animate-pulse, [data-skeleton]')).not.toBeNull();
+		// the rail's two cards ("Runs in", "Depends on this") are placeholders too, so nothing pops in once the list answers (batch4 followup 5)
+		const pending = container.querySelector('[data-testid="gates-pending"]');
+		expect(pending).not.toBeNull();
+		const rail = pending!.querySelector('.content-start');
+		expect(rail?.children.length).toBe(2);
+		expect(rail!.querySelectorAll('.skel-block').length).toBeGreaterThan(4);
 		release();
 		await waitFor(() => expect(text()).toMatch(/No gates on this rollout/), { timeout: 8000 });
 		obs.disconnect();
 		expect(seen.indexOf(true)).toBeGreaterThanOrEqual(0);
 	}, 30000);
+
+	test('a failed fleet fetch shows the unavailable card, never "No gates" and never a newer-builds count', async () => {
+		const f = async (req: any) => {
+			const url = String(typeof req === 'string' ? req : (req?.url ?? req));
+			if (/\/clusters\/prod\/rollouts\/app-prod-eu-west-1\/app(\?|$)/.test(url)) return json({ rollout: { ...ro, status: { ...ro.status, releaseCandidates: [{ tag: 'b-46', version: '4.46.0-46', revision: 'bbbbbbb2222222' }] } }, environment: env, rolloutGates: { items: [] } });
+			if (url.includes('/permissions')) return json({ canDeploy: true, canPin: true });
+			if (url.includes('/api/cluster')) return json({ name: 'prod', clusters: [{ name: 'prod', url: 'https://x' }] });
+			if (url.includes('/api/commits') || url.includes('/api/github')) return json({ connected: false });
+			if (!/\/api\/rollouts(\?|$)/.test(url)) return json({ items: [] });
+			return json({ error: 'boom' }, 500);
+		};
+		vi.stubGlobal('fetch', vi.fn(f));
+		reactivePage.params = { cluster: 'prod', namespace: 'app-prod-eu-west-1', name: 'app' };
+		reactivePage.url = new URL('http://localhost/rollouts/prod/app-prod-eu-west-1/app/gates');
+		const { container } = render(WithQueryClient, { props: { component: RolloutGates as any } });
+		const text = () => container.textContent ?? '';
+		await waitFor(() => expect(text()).toMatch(/Gates could not be loaded/), { timeout: 20000 });
+		expect(text()).not.toMatch(/No gates on this rollout/);
+		expect(text()).not.toMatch(/\d+ newer builds?/);
+		expect(container.querySelector('[data-testid="gates-pending"]')).toBeNull();
+		expect(text()).toMatch(/Try again/);
+	}, 40000);
 });

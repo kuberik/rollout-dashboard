@@ -1761,6 +1761,10 @@ function orderedUpstream(upstream: ClassifiedGate[]): ClassifiedGate[] {
 	return [...dependencies, ...rest];
 }
 
+/** THE one phrase for "N newer builds are": with the fleet pending it carries no number. Every surface printing "... waiting." goes through it. */
+export const newerBuildsAre = (n: number, pending: boolean): string =>
+	pending ? 'Newer builds are' : `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'}`;
+
 /**
  * ⭐ THE ONE STORY. Every surface calls this and renders the same three
  * strings, so two pages cannot answer the 3am question differently again.
@@ -1805,7 +1809,6 @@ export function blockingStory(
 	const newerCount = liveForPlace(rollout as never, promotionCandidates(rollout) as never, options.fleet).length; /* what sentences print (batch4 #3d) */
 	const countPending = options.settled === false; /* the fleet has not answered: say it without the number */
 	const shownNewer = countPending ? candidateCount : newerCount; /* pending: only whether any build waits, never how many */
-	const newerNoun = (n: number) => (countPending ? 'Newer builds are' : `${n} newer build${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'}`);
 	// An environment is a NAME, set as written, never uppercased (design
 	// language principle 11; uppercase is for state labels only). Was
 	// `toUpperCase()`: "hello-world in PROD", "PROD-EU-" / "CENTRAL" at 390.
@@ -1864,7 +1867,7 @@ export function blockingStory(
 			headline: `${subjectLead} ${isVerb} pinned to ${pinnedToDisplay}`,
 			consequence:
 				shownNewer > 0
-					? `${newerNoun(newerCount)} available and none of them will deploy while the pin is set.`
+					? `${newerBuildsAre(newerCount, countPending)} available and none of them will deploy while the pin is set.`
 					: 'Automatic updates are off here until the pin is cleared.',
 			verdict: 'Clearing the pin is the only thing that restarts automatic deploys.',
 			resolution: 'Clearing the pin is the only thing that restarts automatic deploys.',
@@ -2062,7 +2065,7 @@ export function blockingStory(
 					(nSkip > 0 && skippedStage ? `; ${nSkip} ${nSkip === 1 ? 'was' : 'were'} skipped by ${skippedStage}, which runs a newer ${plural(1)}` : '') +
 					'. '
 				: shownNewer > 0
-				? `${newerNoun(newerCount)} waiting. `
+				? `${newerBuildsAre(newerCount, countPending)} waiting. `
 				: ''
 			: '';
 	const consequence = `${lead}Nothing promotes itself until ${joinClauses(parts)}.`;
