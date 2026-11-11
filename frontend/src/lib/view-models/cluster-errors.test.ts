@@ -41,3 +41,15 @@ it('MED-2: the notice takes its copy from the view-model', () => {
 	const src = readFileSync('src/lib/components/PartialDataNotice.svelte', 'utf8');
 	expect(src).toMatch(/clusterNoticeCopy/);
 });
+it('the slow message agrees in number, and no stale copy uses "live" as a state word', () => {
+	expect(clusterNoticeCopy([stale('prod', 'slow')], 'Home', '').message).toBe(
+		'Its rollouts show the last known state the hub holds. They refresh as soon as prod answers.'
+	);
+	expect(clusterNoticeCopy([stale('prod', 'slow'), stale('dev', 'slow')], 'Home', '').message).toBe(
+		'Their rollouts show the last known state the hub holds. They refresh as soon as the clusters answer.'
+	);
+	for (const errs of [[stale('prod', 'slow')], [stale('prod', 'unreachable')], [stale('a', 'unreachable'), stale('b', 'unreachable')]]) {
+		const c = clusterNoticeCopy(errs, 'Home', '09:41');
+		expect(`${c.title} ${c.message}`).not.toMatch(/\blive\b/i);
+	}
+});

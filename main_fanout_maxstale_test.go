@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -232,5 +233,28 @@ func TestSpokeNameCacheNeverWaitsForRefresh(t *testing.T) {
 	}
 	if d := time.Since(start); d > 100*time.Millisecond {
 		t.Fatalf("name read waited %s", d)
+	}
+}
+
+// A spoke whose last refresh FAILED and whose next one hangs is still
+// unreachable: the stale-wait timeout must not relabel a failing cluster as
+// merely slow (the label would flip on every breaker probe).
+func TestSWRTimeoutAfterFailedRefreshKeepsTheFailure(t *testing.T) {
+	c, now := seedOld(t)
+	c.staleWait = 30 * time.Millisecond
+	failure := errors.New("dial tcp: connection refused")
+	if _, meta, _ := c.loadMeta(context.Background(), "k", func(context.Context) (string, error) { return "", failure }); !errors.Is(meta.StaleErr, failure) {
+		t.Fatalf("first read StaleErr %v, want the fetch failure", meta.StaleErr)
+	}
+	waitForFanoutBackground()
+	*now = now.Add(c.skipWait + time.Second) // past the skip window: the next read waits and times out
+	release := make(chan struct{})
+	defer close(release)
+	v, meta, _ := c.loadMeta(context.Background(), "k", func(context.Context) (string, error) { <-release; return "new", nil })
+	if v != "old" {
+		t.Fatalf("got %q, want the old payload", v)
+	}
+	if got := clusterErrorReason(meta.StaleErr); got != clusterReasonUnreachable {
+		t.Fatalf("reason %q (StaleErr %v), want %q", got, meta.StaleErr, clusterReasonUnreachable)
 	}
 }

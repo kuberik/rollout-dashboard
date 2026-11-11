@@ -278,7 +278,14 @@ func (c *swrCache[T]) loadMeta(ctx context.Context, key string, fetch func(conte
 			e.skipUntil = c.now().Add(c.skipWait)
 			c.mu.Unlock()
 			log.Printf("fanout cache: serving %s-old spoke data, refresh still running after %s", now.Sub(okAt).Round(time.Second), c.staleWait)
-			return staleVal, swrMeta{StaleErr: errSpokeStaleTimeout, LastOK: okAt}, nil
+			// A spoke whose last refresh failed stays failed: only a
+			// cluster that last answered is "slow" (same rule as the
+			// skip branch above).
+			m := staleMeta
+			if m.StaleErr == nil {
+				m = swrMeta{StaleErr: errSpokeStaleTimeout, LastOK: okAt}
+			}
+			return staleVal, m, nil
 		case <-ctx.Done():
 			var zero T
 			return zero, swrMeta{}, ctx.Err()

@@ -153,3 +153,26 @@ func TestClusterErrorReason(t *testing.T) {
 		}
 	}
 }
+
+// A spoke that never answered (no cached payload) is reported as a plain
+// error, not stale, and its typed reason is "unreachable".
+func TestFanOutColdDeadSpokeIsUnreachable(t *testing.T) {
+	spoke := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/cluster" {
+			fmt.Fprint(w, `{"name":"spoke"}`)
+			return
+		}
+		http.Error(w, "gone", http.StatusServiceUnavailable)
+	}))
+	defer spoke.Close()
+	swapFanoutState(t, 2*time.Second)
+
+	localURL := "https://kuberik.hub.example"
+	_, _, errs := fanOutRollouts(context.Background(), localDataWith(envsWithSpoke(localURL, spoke.URL)), localURL, "")
+	if len(errs) != 1 {
+		t.Fatalf("want one clusterError for the dead spoke, got %+v", errs)
+	}
+	if e := errs[0]; e.Stale || e.Reason != clusterReasonUnreachable {
+		t.Fatalf("want a non-stale error with reason %q, got %+v", clusterReasonUnreachable, e)
+	}
+}
