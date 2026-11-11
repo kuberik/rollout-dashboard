@@ -83,10 +83,10 @@ export function askOf(r: TRow, hs: HomeState, o: { noTier?: boolean } = {}): Ask
 	return { key: r.key, row: r, model, app: r.app, href: r.href, failed, rollbackHref: failed && a?.kind === 'rollback' ? actionHref(a) : null, id };
 }
 
-export function homePage(hs: HomeState): HomePage {
-	const R = rollouts(hs);
+export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
+	const R = rollouts(hs, starred);
 	/* failures first (prod before the rest: the roster's urgency order already does it), then approvals; the sort is stable */
-	const rows = inbox(hs).items.map((i) => i.row).sort((a, b) => Number(b.group === 'failed') - Number(a.group === 'failed'));
+	const rows = inbox(hs, starred).items.map((i) => i.row).sort((a, b) => Number(b.group === 'failed') - Number(a.group === 'failed'));
 	const asks = rows.map((r) => askOf(r, hs));
 	const failing = asks.filter((a) => a.failed).length;
 	const toApprove = asks.length - failing;

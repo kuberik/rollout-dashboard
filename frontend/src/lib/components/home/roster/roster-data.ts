@@ -8,6 +8,7 @@
  * home-incident fixture) and depot's helpers. Only the grouping is new. ADD ONLY: older versions
  * import from here and must keep rendering unchanged.
  */
+import { stars } from '$lib/stores/stars.svelte';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, type HomeState } from '../sketch/home-data';
 import { changesDoor, compass, TIERS, type TierKey } from '../pocket/pocket-data';
@@ -75,7 +76,7 @@ const isLiveHealthy = (s: string) => s !== 'failed' && s !== 'not-deployed' && s
 /** craft r2: a git sha shortens to 7; a semver tag ("4.43.0-43") is already short and is never cut. */
 const shortVersion = (v: string | null | undefined): string | null => (!v ? null : /^[0-9a-f]{8,40}$/.test(v) ? v.slice(0, 7) : v);
 
-export function rollouts(state: HomeState) {
+export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.apps) {
 	const c = compass(state);
 	const { v, m } = c;
 	const L = v.lead;
@@ -138,7 +139,7 @@ export function rollouts(state: HomeState) {
 		if (change && change.ref && change.title === `build ${change.ref}`) change.ref = null;
 		const isLead = !!L && leadApp === p.app && ((L.kind === 'failing' && p.state === 'failed') || (L.kind === 'approval' && p.state === 'awaiting-approval'));
 		const nyEntry = needs.get(`${p.app}@${p.env}`);
-		const failMine = p.state === 'failed' && (!!change?.mine || isLead || v.failures.some((f) => f.app === p.app));
+		const failMine = p.state === 'failed' && (!!change?.mine || isLead || v.failures.some((f) => f.app === p.app) || starred.has(p.app));
 		const needsYou = failMine || (p.state === 'awaiting-approval' && !!ap);
 		const word =
 			p.state === 'failed' ? 'Failing'
