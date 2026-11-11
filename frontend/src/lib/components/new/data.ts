@@ -818,8 +818,11 @@ export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state:
 /** QA2 #8: THE ONE CLOCK OF A WAIT. A row that waits (approval / rule) has one time for the fact "how long": when the hold began (`holdSince`), else the waiting
  *  build's own age, else the row's. The sentence ("Waiting for approval for 5h"), the row's age slot and the /apps card's age all read THIS, so one row never shows
  *  two disagreeing unlabelled clocks (the build's own age stays on the Newer-builds list, where it is labelled). */
-export function waitClock(row: Pick<RolloutRow, 'app' | 'href' | 'tier'> & { since?: string | null }, state: HomeState = 'incident'): string | null {
-	return holdSince(row, state) ?? buildInQuestionFacts(row)?.since ?? row.since ?? null;
+export function waitClock(row: Pick<RolloutRow, 'app' | 'href' | 'tier'> & { since?: string | null; hrefs?: string[] }, state: HomeState = 'incident'): string | null {
+	const own = (href: string): string | null => holdSince({ app: row.app, tier: row.tier, href }, state) ?? buildInQuestionFacts({ app: row.app, href })?.since ?? (href === row.href ? row.since ?? null : null);
+	/* A row that covers SEVERAL places (a folded prod row, "5 of 6 prod regions") shows the LONGEST wait among them: the clock of its oldest held place. */
+	const clocks = (row.hrefs?.length ? row.hrefs : [row.href]).map(own).filter((x): x is string => !!x).sort();
+	return clocks[0] ?? row.since ?? null;
 }
 /** The DEPLOYED build of a place with its own commit: the change title the History headline prints (fixture change by sha, else the range head) and the range head's author. */
 export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>): { build: string; meta: string | null; title: string | null; author: string | null; at: string | null } {
@@ -1443,7 +1446,7 @@ export function rowsOf(state: HomeState, tier: TierKey, label: string): TRow[] {
 	for (const r of rollouts(state).rows) {
 		if (r.tier !== tier || !(r.regions.includes(label) || r.regions.includes(raw))) continue;
 		const pl = placesOf(state, r.app).find((p) => p.tier === tier && (p.label === label || p.label === raw));
-		out.push(r.regions.length === 1 ? r : { ...r, key: `${r.app}@${label}`, regions: [label], where: label, place: label, href: pl?.href ?? r.href, regionsOf: null });
+		out.push(r.regions.length === 1 ? r : { ...r, key: `${r.app}@${label}`, regions: [label], where: label, place: label, href: pl?.href ?? r.href, regionsOf: null, hrefs: undefined });
 	}
 	return out;
 }

@@ -1244,7 +1244,8 @@ async function waitClockChecks() {
 					app: r.app,
 					tier: r.tier,
 					href: r.href.split('?')[0].replace(/\/$/, ''),
-					wait: D.ago(D.waitClock(r, 'incident'))
+					/* a PLACE row covers one place: a folded row (5 of 6 regions) shows the longest wait on /rollouts, but the app page's row for its first place prints that place's own clock */
+					wait: D.ago(D.waitClock({ ...r, hrefs: undefined }, 'incident'))
 				}));
 		})
 		.catch(() => []);
