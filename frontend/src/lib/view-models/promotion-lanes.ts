@@ -13,6 +13,7 @@
  * never disagree with the rest of the page about a rollout's state.
  */
 import { behindOfRollout } from './behind';
+import { noReleasesOf } from '$lib/releases/registry.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 import { getEnvironmentRank } from '$lib/env-order';
 import { canonicalTier } from '$lib/view-models/sites-waves';
@@ -99,12 +100,16 @@ export function nodeState(c: RolloutCard): NodeState {
 
 function toNode(c: RolloutCard): LaneNode {
 	const env = shortEnvLabel(c.theme) || c.envName || c.envDisplay || '';
+	/* no release = no currency: health (failed, held, moving) still wins; a place that would read newest/behind is drawn 'none', from the catalogue rule, never a label */
+	const base = nodeState(c);
+	const none = (base === 'newest' || base === 'behind' || base === 'none') && !!noReleasesOf(c.rollout);
 	return {
 		card: c,
 		tier: tierOf(c.envName || env),
 		env,
-		state: nodeState(c),
-		behind: c.behindCount ?? behindOfRollout(c.rollout, c.rank)
+		state: none ? 'none' : base,
+		behind: none ? 0 : (c.behindCount ?? behindOfRollout(c.rollout, c.rank)),
+		...(none ? { noReleases: true } : {})
 	};
 }
 
@@ -192,14 +197,4 @@ export function stairRise(tier: Tier, tiers: readonly Tier[]): number {
 
 export function stairColumns(tiers: readonly Tier[]): string {
 	return tiers.map((t) => (t === 'prod' ? 'minmax(160px, 1.5fr)' : 'minmax(88px, 1fr)')).join(' ');
-}
-
-/**
- * The settled sentences of a lane (nobody failing, held or moving). A place without releases is not "on the newest" and
- * is not "nothing deployed": rows read "No releases yet", so the lane reads the same words.
- */
-export function settledSentence(lane: Lane, kind: 'newest' | 'none'): string {
-	const none = [...lane.stages, ...lane.prod].some((n) => n.noReleases);
-	if (kind === 'newest') return none ? 'On the newest where released' : 'On the newest everywhere';
-	return lane.lead?.noReleases ? 'No releases yet' : 'Nothing deployed yet';
 }

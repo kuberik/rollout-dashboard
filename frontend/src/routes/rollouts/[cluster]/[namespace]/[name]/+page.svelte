@@ -3203,7 +3203,6 @@
 											rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name)}
 										current={{ ns: namespace, name }}
 										youAreHere
-										showApp={false}
 									/>
 								</div>
 								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0"

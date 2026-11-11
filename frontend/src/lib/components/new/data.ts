@@ -1409,6 +1409,8 @@ export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 		const ps = placesOf(state, a.app);
 		const here = ps.filter((p) => p.tier === tier);
 		if (!here.length) continue;
+		/* no release = not affected: a tier whose places have no releases is not an arrival point for any build */
+		if (here.every((p) => noReleasesAt(p.href))) continue;
 		const newest = ps[0]?.newest;
 		if (!newest || here.some((p) => p.version === newest)) continue;
 		/* batch4 #1: a build that failed in a place of this tier (history, or the wave's own `bake failed on <rev>`) and was rolled back is not inbound while the tier runs its rollback target */

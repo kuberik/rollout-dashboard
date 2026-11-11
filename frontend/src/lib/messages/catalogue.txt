@@ -1023,17 +1023,9 @@ lib/components/PartialDataNotice.svelte	code	this page
 lib/components/pin-copy.ts	code	Clear pin
 lib/components/pin-copy.ts	code	Clear the pin on … in …?
 lib/components/PromotionLane.svelte	code	… behind
-lib/components/PromotionLane.svelte	code	… in …${nextName ?
 lib/components/PromotionLane.svelte	code	……: …${r.card.version ?
 lib/components/PromotionLane.svelte	code	· wave …
-lib/components/PromotionLane.svelte	code	Checking … in …${age ?
-lib/components/PromotionLane.svelte	code	Deploy failed in …
-lib/components/PromotionLane.svelte	code	Deploying … to …${age ?
-lib/components/PromotionLane.svelte	code	Health check failing in …
-lib/components/PromotionLane.svelte	code	Held in …${n.card.heldCauseLabel ?
-lib/components/PromotionLane.svelte	code	Newest build not deployed yet
-lib/components/PromotionLane.svelte	code	Stuck in …
-lib/components/PromotionLane.svelte	code	Waits for you in …
+lib/components/PromotionLane.svelte	code	no releases
 lib/components/PromotionLane.svelte	code	wave …
 lib/components/RecoveryModeWarningModal.svelte	code	… failed
 lib/components/RecoveryModeWarningModal.svelte	code	… hasn't finished (it is still deploying or baking)
@@ -1623,10 +1615,6 @@ lib/view-models/pr-pipeline.ts	code	waiting for the next reconcile
 lib/view-models/pr-pipeline.ts	code	waiting on … to reach …
 lib/view-models/promotion-lanes.ts	code	minmax(160px, 1.5fr)
 lib/view-models/promotion-lanes.ts	code	minmax(88px, 1fr)
-lib/view-models/promotion-lanes.ts	code	No releases yet
-lib/view-models/promotion-lanes.ts	code	Nothing deployed yet
-lib/view-models/promotion-lanes.ts	code	On the newest everywhere
-lib/view-models/promotion-lanes.ts	code	On the newest where released
 lib/view-models/regions.ts	code	… … across … builds
 lib/view-models/regions.ts	code	… … with no deploy yet
 lib/view-models/regions.ts	code	… …regions

@@ -349,7 +349,7 @@
 {#snippet envRow(cls: string)}
 	<!-- r39 (owner 2026-11-08: "Apps tiles use the boxed env row"): the SAME PromotionLane every page draws, neutral boxes (no current), bare = no app name column.
 	     The tile is one link, so nothing inside the row is a target. -->
-	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} showApp={false} fill={lead ? 'L' : 'M'} {calm} /></div>
+	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} fill={lead ? 'L' : 'M'} {calm} /></div>
 {/snippet}
 
 {#snippet facts(t: string)}{#each chunks(t) as c}{#if c.nw}<span class="whitespace-nowrap">{c.x}</span>{:else}{c.x}{/if}{/each}{/snippet}

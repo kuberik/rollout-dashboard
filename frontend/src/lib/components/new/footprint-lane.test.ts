@@ -1,6 +1,5 @@
 import { it, expect } from 'vitest';
 import { laneOf } from './Footprint.svelte';
-import { settledSentence } from '$lib/view-models/promotion-lanes';
 
 /* QA #11: an env-less rollout (hello-world-manifests) has a blank place label; its lane node is named by its tier, never an empty box. */
 it('laneOf names an unlabelled place by its tier', () => {
@@ -25,20 +24,7 @@ it('laneOf lets health win over a no-release place', () => {
 	expect(names(l)).toEqual({ prod: 'failed' });
 });
 
-it('an all-no-release lane leads with none and reads "No releases yet"', () => {
+it('an all-no-release lane leads with none', () => {
 	const l = lane2([place('dev', 'dev', { currency: 'none', version: 'bbb' }), place('prod', 'prod', { currency: 'none', version: 'bbb' })]);
 	expect(l.state).toBe('none');
-	expect(settledSentence(l, 'none')).toBe('No releases yet');
-});
-
-it('a pending lane (no flag) still reads "Nothing deployed yet"', () => {
-	const l = lane2([place('dev', 'dev', { currency: 'newest', state: 'healthy', version: null, onNewest: false })]);
-	expect(settledSentence({ ...l, state: 'none', lead: { ...l.lead!, state: 'none', noReleases: undefined } }, 'none')).toBe('Nothing deployed yet');
-});
-
-it('newest-everywhere is not claimed while a place has no releases', () => {
-	const l = lane2([place('dev', 'dev', { version: 'bbb', onNewest: true, currency: 'newest' }), place('prod', 'prod', { currency: 'none', version: null })]);
-	expect(settledSentence(l, 'newest')).not.toMatch(/everywhere/);
-	const all = lane2([place('dev', 'dev', { version: 'bbb', onNewest: true, currency: 'newest' })]);
-	expect(settledSentence(all, 'newest')).toBe('On the newest everywhere');
 });
