@@ -7,6 +7,7 @@
 import type { AppEnv, AppModel, EnvState, HomeModel } from '$lib/view-models/home-model';
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
 import { liveSource } from './fleet-source.svelte';
+import { formatTransitionAt } from '$lib/api/schedules';
 
 export type Tone = 'danger' | 'held' | 'active' | 'progress' | 'success' | 'neutral';
 export type Stop = { label: string; tier: string; state: EnvState; prod: boolean; here: boolean; since: string | null; prev: string | null };
@@ -35,7 +36,16 @@ export type YourChange = {
 	rollbackTo: string | null;
 };
 
+/** The ONE wording of the ask a rule hold leaves with the approval. A window is named as the deploy window (never by its gate's name), with its opening time when the schedule is joined (`opensAt`, as `windowCause` prints it); promotion order says so; any other hold is named and will not clear by itself. */
+export const alsoApprovalAsk = (a: { other: string; persistent: boolean; kind?: 'window' | 'order' | 'hold' }, opensAt: string | null = null): string => {
+	const kind = a.kind ?? (a.persistent ? 'hold' : 'window');
+	if (kind === 'window') return `Approve now; it deploys when the deploy window opens${opensAt ? ` ${formatTransitionAt(opensAt)}` : ''}`;
+	if (kind === 'order') return 'Approve now; it deploys when promotion order allows it';
+	return `Approving won't deploy until ${a.other} clears`;
+};
 export type Elsewhere = {
+	/** the other hold an approval ask names (`alsoApprovalAsk`); null for a plain approval */
+	ask?: string | null;
 	key: string;
 	app: string;
 	href: string;
@@ -271,13 +281,17 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 	for (const a of m.apps) {
 		const whose = ownerOf(a.app, me);
 		a.envs.forEach((e) => {
-			if (e.myChanges.some((c) => RANK[c.state] <= 2)) return; // covered by yours
+			/* covered by yours, except the ask: a place held by a rule that ALSO needs an approval keeps its approval entry, whoever's change it is (the yours row cannot carry the ask) */
+			const own = e.myChanges.some((c) => RANK[c.state] <= 2);
+			if (own && !(e.state === 'held-by-rule' && e.alsoApproval)) return;
 			if (e.state === 'awaiting-approval' || e.state === 'held-by-rule' || e.state === 'failed') {
-				const kind = e.state === 'awaiting-approval' ? 'approval' : e.state === 'failed' ? 'failing' : 'held';
+			/* a held place whose approval ALSO refuses the build keeps BOTH entries: the rule hold, and the ask (approving ahead is useful; the ask names the other hold) */
+			for (const kind of (e.state === 'held-by-rule' && e.alsoApproval ? (own ? ['approval'] : ['held', 'approval']) : [e.state === 'awaiting-approval' ? 'approval' : e.state === 'failed' ? 'failing' : 'held']) as ('approval' | 'failing' | 'held')[]) {
+				const ask = kind === 'approval' && e.state === 'held-by-rule' ? e.alsoApproval : null;
 				const prev = elsewhere.find((x) => x.app === a.app && x.kind === kind);
 				if (prev) {
-					prev.status = `${VERB[e.state]} ${prev.status.match(/(\d+) prod/) ? Number(prev.status.match(/(\d+) prod/)![1]) + 1 : 2} prod regions`;
-					return;
+					prev.status = `${VERB[kind === 'approval' ? 'awaiting-approval' : e.state]} ${prev.status.match(/(\d+) prod/) ? Number(prev.status.match(/(\d+) prod/)![1]) + 1 : 2} prod regions`;
+					continue;
 				}
 				const need = m.fleet.needsYou.find((n) => n.app === a.app && n.env === e.env);
 				elsewhere.push({
@@ -287,15 +301,18 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 					whose: myApps.has(a.app) && whose === 'you' ? 'you' : whose,
 					kind,
 					status:
-						kind === 'held' && need
+						ask ? `${VERB['awaiting-approval']} ${e.env} · ${alsoApprovalAsk(ask, need?.facts.window?.opensAt ?? null).replace(/^\w/, (c) => c.toLowerCase())}`
+						: kind === 'held' && need
 							? `${need.phrase.replace(/^\w/, (c) => c.toUpperCase())} in ${e.env}`
 							: `${VERB[e.state]} ${e.env}`,
 					since: e.heldSince ?? e.arrivedAt,
 					tone: toneOf(e.state),
 					canAct: kind === 'approval',
+					ask: ask ? alsoApprovalAsk(ask, need?.facts.window?.opensAt ?? null) : null,
 					action: kind === 'approval' ? { label: 'Review', href: e.href } : null,
 					change: changeOf(a.app)
 				});
+			}
 			}
 		});
 	}

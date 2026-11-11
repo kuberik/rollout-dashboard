@@ -5,8 +5,7 @@
  * distinct glyph per state; one drawn object only where it carries structure (Environments).
  *
  * No new truth: everything derives from pocket's `compass` (the real HomeModel over the pinned
- * home-incident fixture) and depot's helpers. Only the grouping is new. ADD ONLY: older versions
- * import from here and must keep rendering unchanged.
+ * home-incident fixture) and depot's helpers. Only the grouping is new. Older lab versions still import from here; keep exports additive so they render unchanged.
  */
 import { stars } from '$lib/stores/stars.svelte';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
@@ -57,10 +56,14 @@ export type RolloutRow = {
 	href: string;
 	/** a failure of your change, or an approval you can give */
 	needsYou: boolean;
+	/** the place reads its approval or rule hold while its own build is still baking */
+	stillChecking?: boolean;
 	lead: boolean;
 	action: { label: string; href: string; kind: 'rollback' | 'approve' | 'open' } | null;
 	/** one line of cause, from the model's own words (failing check, hold reason) */
 	cause: string | null;
+	/** a held-by-rule row whose approval ALSO refuses the build: the row says so; `yours` = the viewer can approve (Home keeps the ask) */
+	alsoApproval?: { yours: boolean; other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null;
 	/** v05: this place's own rollout steps (main's Home RolloutStepper data) */
 	pipeline?: EnvPipeline | null;
 };
@@ -84,7 +87,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 	const appr = new Map(v.approvals.map((a) => [a.app, a]));
 	const needs = new Map(m.fleet.needsYou.map((n) => [`${n.app}@${n.env}`, n]));
 
-	type P = { prov: string | null; app: string; env: string; label: string; tier: TierKey; state: EnvState; version: string | null; since: string | null; href: string; mine: Change | null; pipeline: EnvPipeline | null };
+	type P = { prov: string | null; app: string; env: string; label: string; tier: TierKey; state: EnvState; version: string | null; since: string | null; href: string; mine: Change | null; pipeline: EnvPipeline | null; also: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null; stillChecking: boolean };
 	/* craft r7 (N5): a held place waits on a PROVIDER when its tab says so. `needsYou` holds one entry per app and hold
 	   category, so a held place with no entry of its own takes the app's held entries when they all agree (the tab's sentence is the
 	   same gate: "waiting for payments-svc"); an entry of its own with another reason (a check, a pin) is never overridden. */
@@ -109,11 +112,13 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 				continue;
 			}
 			const my = e.myChanges.find((ch) => ch.state === e.state) ?? null;
+			/* a place still baking its OWN build reads that bake in the model; its row reads the place verdict (`AppEnv.placeVerdict`, place-verdict.ts): the same awaiting-approval / held-by-rule every other place has */
+			const st: EnvState = e.stillChecking && e.placeVerdict && e.placeVerdict.state !== 'running' ? e.placeVerdict.state : e.state;
 			busy.push({
-				prov: e.state === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: e.state, version: shortVersion(e.version),
+				prov: st === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: st, version: shortVersion(e.version),
 				/* craft r7 (nit): a failing place's age is the failure's (the change's failed entry), not the deploy's */
 				since: (e.state === 'awaiting-approval' || e.state === 'held-by-rule' ? e.heldSince : null) ?? (e.state === 'failed' ? e.myChanges.find((ch) => ch.state === 'failed')?.since : null) ?? e.arrivedAt,
-				href: e.href, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
+				href: e.href, stillChecking: !!e.stillChecking, also: st === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
 			});
 		}
 
@@ -121,7 +126,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 	const rows: RolloutRow[] = [];
 	for (const p of busy) {
 		const g = groupOf(p.state);
-		const same = rows.find((r) => r.app === p.app && r.tier === 'prod' && p.tier === 'prod' && r.state === p.state && (r.glyph === 'waiting') === !!p.prov && (p.state === 'awaiting-approval' || p.state === 'held-by-rule' || r.version === p.version));
+		const same = rows.find((r) => r.app === p.app && r.tier === 'prod' && p.tier === 'prod' && r.state === p.state && (r.glyph === 'waiting') === !!p.prov && r.stillChecking === p.stillChecking && (p.state === 'awaiting-approval' || p.state === 'held-by-rule' || r.version === p.version));
 		if (same) {
 			same.regions.push(p.label);
 			same.where = `${same.regions.length} prod regions`;
@@ -140,7 +145,8 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 		const isLead = !!L && leadApp === p.app && ((L.kind === 'failing' && p.state === 'failed') || (L.kind === 'approval' && p.state === 'awaiting-approval'));
 		const nyEntry = needs.get(`${p.app}@${p.env}`);
 		const failMine = p.state === 'failed' && (!!change?.mine || isLead || v.failures.some((f) => f.app === p.app) || starred.has(p.app));
-		const needsYou = failMine || (p.state === 'awaiting-approval' && !!ap);
+		const viewerAsks = !!appr.get(p.app) || (L?.kind === 'approval' && leadApp === p.app); /* the viewer can give this approval: it is in `v.approvals`, or it is the lead (which `v.approvals` leaves out); ONE expression for needsYou and alsoApproval.yours */
+		const needsYou = failMine || (p.state === 'awaiting-approval' && !!ap) || (p.state === 'held-by-rule' && !!p.also && viewerAsks); /* a rule holds the build but the approval ALSO refuses it: Home keeps the ask */
 		const word =
 			p.state === 'failed' ? 'Failing'
 			: p.state === 'awaiting-approval' ? (ap ? 'Waits for your approval' : 'Waits for approval')
@@ -151,11 +157,12 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 			key: `${p.app}@${p.env}`, app: p.app, tier: p.tier,
 			where: p.tier === 'prod' ? (p.label === 'prod' ? 'production' : p.label) : p.label,
 			regions: [p.label], state: p.state, group: g, glyph: p.prov ? 'waiting' : glyphOf(p.state), word, change, version: p.version, since: p.since, href: p.href,
-			needsYou, lead: isLead,
+			needsYou, lead: isLead, stillChecking: p.stillChecking,
 			action: isLead && L?.action ? { label: L.action.label.replace(/ to [0-9a-f]{7}$/, ''), href: L.action.href, kind: 'rollback' }
 				: p.state === 'failed' && needsYou ? { label: 'Roll back', href: p.href, kind: 'rollback' }
 				: p.state === 'awaiting-approval' && ap ? { label: 'Approve', href: p.href, kind: 'approve' } : null,
-			cause, pipeline: p.pipeline
+			cause, pipeline: p.pipeline,
+			alsoApproval: p.also ? { ...p.also, yours: viewerAsks } : null
 		});
 	}
 	const TR: Record<TierKey, number> = { prod: 0, staging: 1, test: 2, dev: 3 };

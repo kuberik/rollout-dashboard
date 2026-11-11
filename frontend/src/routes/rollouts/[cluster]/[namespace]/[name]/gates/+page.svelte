@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { providerScopeCounts } from '$lib/view-models/dependency-hold';
+	import { waitsForText } from '$lib/view-models/waits-for-text';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { outageEscalation } from '$lib/view-models/outage-escalation.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
@@ -632,29 +633,6 @@
 		if (scope.here > 0) return `holding ${builds(scope.here)} here`;
 		if (scope.elsewhere > 0) return `holding ${builds(scope.elsewhere)} elsewhere`;
 		return 'not holding';
-	}
-
-	/**
-	 * ⭐ THE "WAITS FOR …" CLAUSE, RE-INFLECTED (squad-rollout Lane G round
-	 * 5 and 6). `classifyGate`'s own `clause` text is written to follow
-	 * "until" elsewhere on this tab ("staging deploys it first", "someone
-	 * approves it") — correct there, wrong grammar as this row's OWN verb
-	 * ("Waits for staging deploys it first" has two finite verbs with no
-	 * connective). Each KNOWN clause shape is re-inflected to the
-	 * infinitive; "someone approves it" gets its own short form (round 6,
-	 * item 1's exact wording: "Waits for an approval", not the grammatically
-	 * fine but longer "Waits for someone to approve it"). Display-only —
-	 * `classifyGate`'s own text is never touched.
-	 */
-	function waitsForText(clauses: string[]): string {
-		const text = joinClauses(clauses);
-		if (text === 'someone approves it') return 'an approval';
-		if (text === 'the deploy window reopens') return 'the deploy window to reopen';
-		if (text === 'a check starts passing') return 'a check to start passing';
-		return text
-			.replace(/\bdeploys\b/g, 'to deploy')
-			.replace(/\bships\b/g, 'to ship')
-			.replace(/\ballows\b/g, 'to allow');
 	}
 
 	/**

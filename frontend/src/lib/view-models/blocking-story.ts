@@ -324,6 +324,8 @@ export type ClassifiedGate = {
 	 * the rest of the record first.
 	 */
 	displayName?: string;
+	/** the kind the BACKEND wrote on the gate summary (`GateSummary.kind`), kept beside the joined `kind` so a closed window still reads as one before the schedule join loads. */
+	backendKind?: string | null;
 	/**
 	 * ⭐ THE `until …` FORM, and it is deliberately a NOUN CLAUSE, lowercase,
 	 * never a sentence. Every clause composes behind ONE opener — *"Nothing
@@ -757,7 +759,7 @@ export function withSchedules(
 	return next;
 }
 
-type GateSummary = { name?: string; passing?: boolean; allowedVersions?: string[] | null };
+type GateSummary = { name?: string; kind?: string | null; passing?: boolean; allowedVersions?: string[] | null };
 
 const shortRev = (rev: string | undefined): string => (rev ? rev.slice(0, 7) : '');
 
@@ -1041,7 +1043,7 @@ export function classifyGate(
 ): ClassifiedGate {
 	const out = classifyGateInner(gate, namespace, ctx);
 	const id = gate?.name ?? 'a rule';
-	return { ...out, displayName: gateDisplayName(id, ctx.pretty?.get(key(namespace, id)) ?? null) };
+	return { ...out, displayName: gateDisplayName(id, ctx.pretty?.get(key(namespace, id)) ?? null), backendKind: (gate as { kind?: string | null } | undefined)?.kind ?? null };
 }
 
 function classifyGateInner(
@@ -1193,7 +1195,10 @@ function classifyGateInner(
 	// ⛔ THIS IS THE BRANCH THAT SHIPPED THE DEFECT TWICE. It used to return
 	// `person` unconditionally. It now returns `person` only from EVIDENCE.
 
-	const owner = ctx.owners.get(k);
+	const owner0 = ctx.owners.get(k);
+	// The backend's `kind` is the classification when present: promotion / dependency stand for their controllers' owner even where the joins missed.
+	const said = gate?.kind;
+	const owner = said === 'promotion' ? { kind: 'Environment', name: null } : said === 'dependency' ? { kind: 'RolloutDependency', name: null } : owner0;
 
 	// (1) POSITIVE MACHINE EVIDENCE — a controller owns the object. Whatever
 	// the joins missed, no human can approve this, so `person` is off the table.
@@ -1252,7 +1257,9 @@ function classifyGateInner(
 	// owns it; `sources` all true means every automated writer was consulted.
 	// Either is enough to say a person wrote this, and nothing else is.
 	const provenanceComplete = ctx.sources.environments && ctx.sources.dependencies;
-	if ((owner && owner.kind === null) || provenanceComplete) {
+	// ⭐ THE BACKEND'S `kind` IS THE CLASSIFICATION WHEN PRESENT. `approval` is a person whatever the joins saw; `unknown` is never a person
+	// (the backend looked and could not say). Approval-by-elimination below is only the fallback for a payload WITHOUT `kind` (an older backend).
+	if (said === 'approval' || (said == null && ((owner && owner.kind === null) || provenanceComplete))) {
 		return {
 			id,
 			kind: 'approval',

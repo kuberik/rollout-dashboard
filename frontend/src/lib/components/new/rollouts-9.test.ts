@@ -12,7 +12,7 @@ for (const s of ['incident', 'calm', 'quiet'] as const) {
 	});
 }
 it('W1: an approval whose change is the viewer\'s says "Your approval"', () => {
-	const own = D.rollouts('incident').rows.filter((r) => r.group === 'approval').filter((r) => D.waitingBuild(r)?.author === VIEWER || D.deployedBuild(r)?.author === VIEWER);
+	const own = D.rollouts('incident').rows.filter((r) => r.group === 'approval').filter((r) => D.buildInQuestionFacts(r)?.author === VIEWER || D.deployedBuild(r)?.author === VIEWER);
 	expect(own.length).toBeGreaterThan(0);
 	for (const r of own) { const w = stateWordOf(r, 'incident'); if (r.needsYou) expect(w).toBe('Waiting for your approval'); else expect(w).toMatch(/^Waiting for approval( · \d+ regions)?$/); }
 });

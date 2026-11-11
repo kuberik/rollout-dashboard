@@ -18,7 +18,7 @@
 import { heldHere } from '../data';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import {
-	rollouts, environments, placeHolds, inbound, rowsOf, ago, waitingBuild, deployedBuild, holdSince, commitHeadline, buildIdentity, isViewer, TIER_NAME, TIERS, apps as appsOf, fleet24hEvents,
+	rollouts, environments, placeHolds, inbound, rowsOf, ago, buildInQuestionFacts, deployedBuild, holdSince, commitHeadline, buildIdentity, isViewer, TIER_NAME, TIERS, apps as appsOf, fleet24hEvents,
 	type HomeState, type TierKey, type TRow, type TApp, type PlaceHold, type Inbound
 } from '../data';
 import { environmentsPage, stateLine, barSegments, type EnvTile } from '../environments-page';
@@ -225,7 +225,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 	for (const a of active) {
 		const r = a.row;
 		if (!r) continue;
-		const b = r.state === 'awaiting-approval' || r.state === 'held-by-rule' ? waitingBuild(r)?.build : deployedBuild(r).build;
+		const b = r.state === 'awaiting-approval' || r.state === 'held-by-rule' ? buildInQuestionFacts(r)?.build : deployedBuild(r).build;
 		if (b) named.add(`${a.app}@${b}`);
 	}
 	const here = new Set(byApp.keys());

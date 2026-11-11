@@ -95,6 +95,8 @@ export type FrontierEntry = {
 	/** The same fact as `cause`, in words — `causeLabelForGates` run on the
 	 *  frontier's OWN gates, never a blend with any other candidate's. */
 	causeLabel: string | null;
+	/** an approval also refuses here (see `GateVerdict.alsoAwaitingApproval`), with the other hold it is behind */
+	alsoApproval?: AlsoHold;
 };
 
 /** One upstream stage, and how many of the place's own candidates are
@@ -301,7 +303,8 @@ function frontierVerdict(
 				build: b.build,
 				held: v.held,
 				cause: v.cause,
-				causeLabel: causeLabelForGates(b.classifiedGates, v.cause)
+				causeLabel: causeLabelForGates(b.classifiedGates, v.cause),
+				...(v.alsoHold ? { alsoApproval: v.alsoHold } : {})
 			},
 			waitingBehind: waitingByStage.map((stage) => ({ stage, count: countByStage.get(stage) ?? 0, ...(waveByStage.get(stage) ? { wave: waveByStage.get(stage) } : {}) }))
 		};
@@ -347,7 +350,7 @@ export function heldVerdict(story: BlockingStory, placeEnv: string | null | unde
 			held: true,
 			cause: v.cause,
 			waitsForEnv: null,
-			frontier: { build: '', held: true, cause: v.cause, causeLabel: causeLabelForGates(story.gates, v.cause) },
+			frontier: { build: '', held: true, cause: v.cause, causeLabel: causeLabelForGates(story.gates, v.cause), ...(v.alsoHold ? { alsoApproval: v.alsoHold } : {}) },
 			waitingBehind: v.waitsForEnv ? [{ stage: v.waitsForEnv, count: 1 }] : []
 		};
 	}
@@ -388,7 +391,14 @@ export type GateVerdict = {
 	cause: HeldCause | null;
 	waitsForEnv: string | null;
 	waveWait?: string | null;
+	/** An approval also refuses here but is NOT the primary cause (a rule gate is): set from the same refusers list as `cause`, never a second rule. The row says "also needs approval" and Home keeps the ask. */
+	alsoAwaitingApproval?: boolean;
+	/** the other hold an approval is behind: a window or promotion order clears by itself; anything else (a failing check, a dependency, an unattributed rule) does not */
+	alsoHold?: AlsoHold;
 };
+
+/** `window`/`order` clear on their own; `hold` does not, and `other` names it (its display name, or a dependency's provider). */
+export type AlsoHold = { kind: 'window' | 'order' | 'hold'; other: string };
 
 const GATE_NOT_HELD: GateVerdict = { held: false, cause: null, waitsForEnv: null };
 
@@ -408,6 +418,33 @@ export function verdictForGates(
 	placeEnv: string | null | undefined,
 	options: { hasContract?: boolean } = {}
 ): GateVerdict {
+	/* ONE classification per gate within a verdict: a gate the backend calls `schedule` is a window (clock) even before the schedule join has loaded and `classifyGate` could only call it a check */
+	const byKind = gates.map((x) => (x.backendKind === 'schedule' && x.clears !== 'clock' && x.clears !== 'person' ? { ...x, clears: 'clock' as const } : x));
+	gates = byKind;
+	const v = verdictForGatesPrimary(gates, placeEnv, options);
+	if (!(v.held && v.cause !== 'person' && gates.some((g) => g.clears === 'person'))) return v;
+	return { ...v, alsoAwaitingApproval: true, alsoHold: alsoHoldOf(gates, !!options.hasContract) };
+}
+
+/** What an approval is behind, read off the same gates as the cause. A refuser that does not clear by itself (a check, a dependency, an unattributed rule) decides: approving ahead will not deploy until IT clears, and the ask names it. Only when EVERY non-approval refuser is a window or promotion order does the ask say the build deploys when it opens. A gate the backend calls `schedule` is a window even before the schedule join has loaded. */
+function alsoHoldOf(gates: readonly ClassifiedGate[], hasContract: boolean): AlsoHold {
+	const rules = gates.filter((g) => g.clears !== 'person');
+	const name = (g: ClassifiedGate) => g.displayName ?? g.label;
+	const isWindow = (g: ClassifiedGate) => g.kind === 'schedule' || g.backendKind === 'schedule';
+	const persistent = rules.find((g) => !isWindow(g) && (g.clears === 'unknown' || g.clears === 'check' || (g.clears === 'upstream' && g.kind === 'dependency')));
+	if (persistent) return { kind: 'hold', other: persistent.kind === 'dependency' && persistent.subject ? persistent.subject : name(persistent) };
+	if (hasContract) return { kind: 'hold', other: 'a dependency' };
+	const order = rules.find((g) => g.clears === 'upstream');
+	if (order) return { kind: 'order', other: 'promotion order' };
+	const win = rules.find((g) => g.clears === 'clock' || isWindow(g));
+	return { kind: 'window', other: win ? name(win) : 'a deploy window' };
+}
+
+function verdictForGatesPrimary(
+	gates: readonly ClassifiedGate[],
+	placeEnv: string | null | undefined,
+	options: { hasContract?: boolean } = {}
+): GateVerdict {
 	const upstream = gates.filter((g) => g.clears === 'upstream');
 	const promo = upstream.filter((g) => g.kind === 'promotion');
 	const { chainUpstream, chainGate, order, unresolved } = splitPromotionGates(promo, placeEnv);
@@ -421,11 +458,13 @@ export function verdictForGates(
 	const clock = gates.filter((g) => g.clears === 'clock');
 	const checks = gates.filter((g) => g.clears === 'check');
 
-	if (person.length > 0) return { held: true, cause: 'person', waitsForEnv: null };
+	/* BLAME ORDER: rule gates (anything refusing that is not the approval) come before the approval. The approval is the cause only when it is the SOLE thing between the build and deploying: no approval can unblock a build another gate refuses, so asking for one is a false call to action. */
+	if (person.length > 0 && person.length === gates.length) return { held: true, cause: 'person', waitsForEnv: null };
 	if (unknown.length > 0) return { held: true, cause: 'unknown', waitsForEnv: null };
 	if (upstream.some((g) => g.kind === 'dependency') || options.hasContract) {
 		return { held: true, cause: 'dependency', waitsForEnv: null };
 	}
+	if (checks.length > 0 && (order || clock.length > 0)) return { held: true, cause: 'check', waitsForEnv: null }; /* a persistent hold is the cause over one that clears by itself */
 	if (order) return { held: true, cause: 'order', waitsForEnv: null };
 	if (clock.length > 0) return { held: true, cause: 'clock', waitsForEnv: null };
 	if (checks.length > 0) return { held: true, cause: 'check', waitsForEnv: null };
@@ -439,6 +478,7 @@ export function verdictForGates(
 	// nothing: `unknown` says exactly that, the same as an allow-list gate
 	// no join could attribute at all.
 	if (unresolved) return { held: true, cause: 'unknown', waitsForEnv: null };
+	if (person.length > 0) return { held: true, cause: 'person', waitsForEnv: null };
 	return GATE_NOT_HELD;
 }
 
@@ -543,8 +583,10 @@ export function causeLabelForGates(gates: readonly ClassifiedGate[], cause: Held
 			return 'promotion order';
 		case 'clock':
 			return gates.find((g) => g.clears === 'clock')?.label ?? 'a deploy window';
-		case 'check':
-			return 'a check';
+		case 'check': {
+			const names = [...new Set(gates.filter((g) => g.clears === 'check' && g.label).map((g) => g.label))];
+			return names.length > 0 ? joinClauses(names) : 'a check';
+		}
 	}
 }
 

@@ -1,7 +1,7 @@
 import { it, expect } from 'vitest';
 import fs from 'node:fs';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
-import { holdSince, waitingBuild } from './data';
+import { holdSince, buildInQuestionFacts } from './data';
 
 /* QA round 2 A6: live hub data, prod waits on an approval; newer builds keep arriving. The wait clock starts when the OLDEST still-held build
    reached its gate, so a newer build never resets it. */
@@ -12,7 +12,7 @@ it('holdSince is the arrival of the oldest held build, not of the build the appr
 		const prod = d.rollouts.find((r: any) => r.metadata.namespace === 'hello-world-prod');
 		const row = { app: 'hello-world-app', href: '/rollouts/prod/hello-world-prod/hello-world-app', tier: 'prod' } as never;
 		const since = holdSince(row);
-		const named = waitingBuild(row);
+		const named = buildInQuestionFacts(row);
 		const lower = d.rollouts.filter((r: any) => r.metadata.namespace !== 'hello-world-prod');
 		const arrivals = lower.flatMap((r: any) => r.status.history.map((h: any) => h.timestamp)).sort();
 		/* d993f4d (held) reached dev/staging at 13:58:21; e7c1b60, the build the approval is named after, arrived hours later */

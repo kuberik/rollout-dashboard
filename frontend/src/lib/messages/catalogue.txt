@@ -592,11 +592,12 @@ lib/components/new/app/PlaceRow.svelte	aria-label	… the deployment pipeline of
 lib/components/new/app/PlaceRow.svelte	text	… Waiting for
 lib/components/new/app/PlaceRow.svelte	title	Held by the pin
 lib/components/new/ApprovalLayer.svelte	code	left:…px;width:…px;${below ?
+lib/components/new/approvals.svelte.ts	code	… is deploying … to …
 lib/components/new/approvals.svelte.ts	code	… is deploying to …
-lib/components/new/approvals.svelte.ts	code	… waits on … for …
 lib/components/new/approvals.svelte.ts	code	Approval failed
 lib/components/new/approvals.svelte.ts	code	Approve … … …?
 lib/components/new/approvals.svelte.ts	code	Approved …
+lib/components/new/approvals.svelte.ts	code	Held by …
 lib/components/new/approvals.svelte.ts	code	main h1
 lib/components/new/ApproveButton.svelte	text	… Approve
 lib/components/new/ApproveButton.svelte	aria-label	Approve … in …
@@ -766,6 +767,7 @@ lib/components/new/data.ts	code	Failing in …
 lib/components/new/data.ts	code	Final check
 lib/components/new/data.ts	code	Flux Deployment
 lib/components/new/data.ts	code	GitHub did not answer.
+lib/components/new/data.ts	code	Held by …
 lib/components/new/data.ts	code	held by a rule
 lib/components/new/data.ts	code	Held by a rule
 lib/components/new/data.ts	code	held: …
@@ -786,7 +788,6 @@ lib/components/new/data.ts	code	Releases when the rule allows this build
 lib/components/new/data.ts	code	Rolled back from … to …
 lib/components/new/data.ts	code	someone approves
 lib/components/new/data.ts	code	Stage …
-lib/components/new/data.ts	code	the check passes
 lib/components/new/data.ts	code	the rule allows it
 lib/components/new/data.ts	code	the window opens
 lib/components/new/data.ts	code	waiting for approval
@@ -798,7 +799,9 @@ lib/components/new/data.ts	code	Waiting on
 lib/components/new/data.ts	code	Waiting on …
 lib/components/new/data.ts	code	Waiting on a check
 lib/components/new/data.ts	code	Waiting on a dependency
+lib/components/new/data.ts	code	Waits for the deploy window
 lib/components/new/data.ts	code	Waits on
+lib/components/new/data.ts	code	Waits on …
 lib/components/new/data.ts	code	waits on approval
 lib/components/new/env/DayRow.svelte	text	Rolled back
 lib/components/new/env/env-page.ts	code	: ''} … leads${w.followers.length ?
@@ -950,6 +953,7 @@ lib/components/new/rollout-view.ts	code	Your approval
 lib/components/new/rollouts-page.ts	code	… behind
 lib/components/new/rollouts-page.ts	code	… of … regions
 lib/components/new/rollouts-page.ts	code	… regions
+lib/components/new/rollouts-page.ts	code	· also needs …approval
 lib/components/new/rollouts-page.ts	code	check still running
 lib/components/new/rollouts-page.ts	code	Held by …
 lib/components/new/rollouts-page.ts	code	In flight
@@ -1182,6 +1186,7 @@ lib/rollout-cards.ts	code	Pinned there.
 lib/rollout-cards.ts	code	pinned to …
 lib/rollout-cards.ts	code	Pinned to … — automatic deploys are paused until the pin is cleared.
 lib/rollout-cards.ts	code	pinned to … by …
+lib/rollout-cards.ts	code	promotion order
 lib/rollout-cards.ts	code	reopens … on its own
 lib/rollout-cards.ts	code	rolled back
 lib/rollout-cards.ts	code	Rolled back … version…: … → ….…
@@ -1743,6 +1748,15 @@ lib/view-models/verdict.ts	code	is not moving
 lib/view-models/verdict.ts	code	is waiting on …
 lib/view-models/verdict.ts	code	waiting on …
 lib/view-models/wait-cause.ts	code	a dependency
+lib/view-models/waits-for-text.ts	code	a check starts passing
+lib/view-models/waits-for-text.ts	code	a check to start passing
+lib/view-models/waits-for-text.ts	code	an approval
+lib/view-models/waits-for-text.ts	code	someone approves it
+lib/view-models/waits-for-text.ts	code	the deploy window reopens
+lib/view-models/waits-for-text.ts	code	the deploy window to reopen
+lib/view-models/waits-for-text.ts	code	to allow
+lib/view-models/waits-for-text.ts	code	to deploy
+lib/view-models/waits-for-text.ts	code	to ship
 lib/view-models/wave-reference.testkit.ts	code	wave 1 (eu-central, us-east-1)
 lib/workers/logParser.worker.ts	code	Unknown parsing error
 routes/+error.svelte	title	Not found
@@ -1989,10 +2003,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	… is not
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	… no longer holds it
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	… no version reported yet … in …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	… released
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	a check starts passing
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	a check to start passing
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	All dependencies ›
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	an approval
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	verdictTitle	Builds of this app that are currently held — THIS rollout's own count first, then the rest of the app
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Depends on this
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Each environment waits on its own copy of … .
@@ -2019,14 +2030,8 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	sentence	Rules c
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Runs in
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	verdictTitle	Services, in any environment of this app, that wait on a contract it provides
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Skipped by …
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	someone approves it
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	the deploy window reopens
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	the deploy window to reopen
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	this rollout
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	headline	This rollout does not exist
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	to allow
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	to deploy
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	to ship
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	Waiting for …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Waiting on
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	Waits for …

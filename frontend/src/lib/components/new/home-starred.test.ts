@@ -28,11 +28,18 @@ it("a starred app whose failure is not the viewer's: Home ask with Roll back, /r
 
 it('starring an app whose failure is already yours changes nothing and gives one card', () => {
 	const base = homePage('incident');
-	const mine = base.asks.find((a) => a.failed)!;
+	const failedRows = (app: string) => rollouts('incident').rows.filter((r) => r.app === app && r.group === 'failed');
+	const mine = base.asks.find((a) => a.failed && failedRows(a.app).every((r) => r.needsYou))!;
+	expect(mine, 'the fixture has a failure that is already the viewer\'s').toBeTruthy();
+	const cardsBefore = base.asks.filter((a) => a.app === mine.app).length, rowsBefore = failedRows(mine.app).length, badge = inbox('incident').count;
+	expect(cardsBefore, 'one card before starring').toBe(1);
 	toggleStar(mine.app, true);
 	const P = homePage('incident');
+	expect(P.asks.filter((a) => a.app === mine.app), 'still one card for the app (yours and starred are one)').toHaveLength(1);
+	expect(failedRows(mine.app)).toHaveLength(rowsBefore);
 	expect(P.asks.length).toBe(base.asks.length);
-	expect(P.asks.filter((a) => a.app === mine.app)).toHaveLength(base.asks.filter((a) => a.app === mine.app).length);
+	expect(new Set(P.asks.map((a) => a.key ?? `${a.app}|${a.href}`)).size, 'no two cards share a key').toBe(P.asks.length);
+	expect(inbox('incident').count).toBe(badge);
 });
 
 it('un-starring restores the original asks and badge', () => {

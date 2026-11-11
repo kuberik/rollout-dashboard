@@ -174,7 +174,7 @@ function recomputeCkGates(rollouts: Obj[]): void {
 		const cur = CK_RELEASES.findIndex((x) => x.tag === r.status.currentVersion);
 		const newer = CK_RELEASES.slice(cur + 1).map((x) => x.tag);
 		r.status.gates = [
-			{ name: `promotion-${env}`, allowedVersions: allowed, passing: newer.every((t) => allowed.includes(t)) },
+			{ name: `promotion-${env}`, kind: 'promotion', allowedVersions: allowed, passing: newer.every((t) => allowed.includes(t)) },
 			// The deploy window and the approval on staging (mock-data.ts
 			// `ckOtherGates`) are not promotion gates and survive the rewrite.
 			...ckOtherGates(env)

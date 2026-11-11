@@ -68,6 +68,7 @@ import type { Change } from '../api/changes';
 import type { NetworkSchedules } from '../api/schedules';
 import { healthChecksByRollout, type RolloutHealthChecks } from '../api/health-checks';
 import { buildRolloutCards, type RolloutCard } from '../rollout-cards';
+import type { PlaceVerdict } from './place-verdict';
 import { deployActs } from '../history-marks';
 import { rolloutPath } from '../source-dashboard';
 import { href as toHref } from '../paths';
@@ -75,7 +76,7 @@ import { changePath } from '../pr-ref';
 import { getEnvironmentRank } from '../env-order';
 import { derivePipeline, kruiseRolloutsForRollout, type StageState } from '../pipeline';
 import { buildLanes, type Lane, type LaneNode, type Tier } from './promotion-lanes';
-import { isHeld, isNeedsYou } from './fleet-groups';
+import { isHeld, isNeedsYou, isTrailing } from './fleet-groups';
 import { fleetFacts, type FleetFacts, type PulseRange } from './fleet-facts';
 import {
 	fleetSignals,
@@ -208,7 +209,7 @@ export type EnvChange = {
 /** What a place refusing a change's build knows about the hold: since when
  *  the change has waited there (its build's arrival one tier upstream),
  *  `null` when no upstream tier ever ran it. */
-type HeldHere = { since: string | null };
+type HeldHere = { since: string | null; /** the place's own verdict (`place-verdict.ts`) when an approval is pending there: it decides awaiting vs held for every change held at the place */ verdict?: 'awaiting-approval' | 'held-by-rule' };
 
 /** ROUND 12 DATA R3 — the pipeline Home's own `ControlCenter.svelte` draws
  *  per app ("5/14 stages done · 4 rolling out", "deploying · step 1/3"),
@@ -259,6 +260,12 @@ export type AppEnv = {
 	 *  (`eventAge(card, 'held')`, the instant the app's figure counts from when
 	 *  this place leads), else `null`. Product-only (`home/parity.test.ts`). */
 	heldSince: string | null;
+	/** A rule gate is the primary hold here, and an approval ALSO refuses the build (`RolloutCard.heldAlso`): the approval ask stays, naming the other hold. `persistent`: it will not clear by itself (a failing check, a dependency, an unattributed rule); a window or promotion order clears on its own. */
+	alsoApproval?: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null;
+	/** the place reads its approval or rule hold while its OWN build is still baking (`placeVerdict`): the row keeps the bake's pipeline nodes */
+	stillChecking?: boolean;
+	/** THE per-place verdict (`place-verdict.ts`): null when no approval is pending here. Its `target` is the build in question every surface judges. */
+	placeVerdict?: PlaceVerdict | null;
 	/** The viewer's own changes positioned at this exact place — see the
 	 *  module doc's fix 3/4/5/7. Newest first. Never capped for a
 	 *  `'failed'`/`'rolled-back'` entry. */
@@ -541,7 +548,7 @@ function cellToEnvChange(
 		const held: EnvChange = {
 			...base,
 			since: cell.since ?? hold?.since ?? null,
-			state: approval ? 'awaiting-approval' : 'held-by-rule'
+			state: hold?.verdict ?? (approval ? 'awaiting-approval' : 'held-by-rule')
 		};
 		// A dependency gate refusing THIS build names its provider
 		// (`classifyGate`'s RolloutDependency join, the controller-written
@@ -714,6 +721,13 @@ function ledgerForApp(
 
 // ── APP-LEVEL CURRENT STATE (not a per-change fact — see module doc). ─────
 
+/** The card's place verdict, where it applies: a place that is behind its newest build (trailing) or still baking. A healthy place at the head of its list has nothing an approval could release, whatever allow-lists its gates still publish. */
+function cardVerdict(c: RolloutCard): PlaceVerdict | null {
+	const pv = c.placeVerdict ?? null;
+	if (!pv) return null;
+	return isTrailing(c) || c.bakeStatus === 'Deploying' || c.bakeStatus === 'InProgress' || c.stuck != null ? pv : null;
+}
+
 function appEnvState(c: RolloutCard): EnvState {
 	if (c.statusKey === 'failed' || c.checkFailure != null) return 'failed';
 	// QA #7 (2026-11-09): "rolled back" is the QUIET place state (SEVERITY in
@@ -723,6 +737,10 @@ function appEnvState(c: RolloutCard): EnvState {
 	// A pin-only hold keeps the rolled-back word (the rollback pins).
 	if (c.rolledBack && c.bakeStatus !== 'Deploying' && c.bakeStatus !== 'InProgress' && !c.held)
 		return 'rolled-back';
+	/* THE per-place verdict (place-verdict.ts): a place with an approval pending reads the build being approved and what still refuses it. */
+	const pv = cardVerdict(c);
+	const baking = c.bakeStatus === 'Deploying' || c.bakeStatus === 'InProgress' || c.stuck != null;
+	if (pv && pv.state !== 'running' && !baking) return pv.state; /* a place still baking its own build reads the bake here; its approval / rule verdict rides on `AppEnv.placeVerdict` for the rows (`stillChecking`) */
 	if (isHeld(c)) return c.heldCause === 'person' ? 'awaiting-approval' : 'held-by-rule';
 	if (c.bakeStatus === 'Deploying') return 'deploying';
 	if (c.bakeStatus === 'InProgress' || c.stuck != null) return 'checking';
@@ -787,10 +805,19 @@ function buildAppEnvs(
 		version: node.card.version,
 		arrivedAt: node.card.timestamp,
 		heldSince: ageKindFor(appEnvState(node.card)) === 'held' ? eventAge(node.card, 'held') : null,
+		alsoApproval: alsoApprovalOf(node.card),
+		placeVerdict: cardVerdict(node.card),
+		stillChecking: !!cardVerdict(node.card) && cardVerdict(node.card)!.state !== 'running' && (node.card.bakeStatus === 'Deploying' || node.card.bakeStatus === 'InProgress' || node.card.stuck != null),
 		myChanges: ledger.byEnv.get(node.card.envName) ?? [],
 		pipeline: buildEnvPipeline(node.card, kustomizations, kruiseRollouts),
 		href: cardHref(node.card)
 	}));
+}
+
+/** The other hold an approval ask names, from the verdict's own `alsoHold` (`held.ts`): a window or promotion order clears by itself, any other refuser does not and is named. */
+function alsoApprovalOf(c: RolloutCard): { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null {
+	if (!c.heldAlso) return null;
+	return { other: c.heldAlso.other, persistent: c.heldAlso.kind === 'hold', kind: c.heldAlso.kind };
 }
 
 function pulseWord(kind: FleetSignal['kind']): string {
@@ -1182,7 +1209,8 @@ function heldHere(
 			}
 		}
 	}
-	return { since: since != null ? new Date(since).toISOString() : null };
+	const pv = cardVerdict(card);
+	return { since: since != null ? new Date(since).toISOString() : null, ...(pv && pv.state !== 'running' ? { verdict: pv.state } : {}) };
 }
 
 export function buildHomeModel(input: HomeModelInput): HomeModel {
