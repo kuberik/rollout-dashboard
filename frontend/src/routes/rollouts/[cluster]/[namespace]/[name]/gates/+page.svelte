@@ -1704,7 +1704,10 @@
 				{/snippet}
 			</RolloutTabHeader>
 
-			{#if !hasChain && !hasContracts && !hasDependents && hood.total === 0}
+			{#if !fleetSettled(listQuery)}
+				<!-- The fleet list has not answered: hasChain / hasContracts / hood are all read off it, so "No gates on this rollout" would be a finished, false sentence. The same skeleton the loaded page's graph card uses (below). -->
+				<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={176} />
+			{:else if !hasChain && !hasContracts && !hasDependents && hood.total === 0}
 				<!-- ⛔ THE EMPTY STATE IS DELIBERATE AND IT IS ONE SENTENCE. Most
 				     rollouts hold nobody and are held by nothing. It is a GENUINE
 				     empty state now, not an unreachable one — U-32(a) widened the
