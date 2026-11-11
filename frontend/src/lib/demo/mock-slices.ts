@@ -1,6 +1,6 @@
 /**
  * MOCK MODE, SLICES SHAPE (D4). Serves some mock Rollouts the way
- * rollout-controller v0.11 does in slices mode: `spec.releaseSourceRef` +
+ * rollout-controller does in slices mode: `spec.releaseSourceRef` +
  * `status.releaseSource` + `status.candidates`, with the old
  * `availableReleases` / `releaseCandidates` / `gatedReleaseCandidates`
  * REMOVED, and the catalogue as ReleaseSource / ReleaseSlice objects in the
@@ -13,7 +13,7 @@
  * `SLICES_MODE_APPS`, and ones lacking all three old lists or having fewer
  * than two releases, stay on the old fields. The single-rollout detail GET is
  * NOT converted: a detail page loaded directly has no catalogue yet, so it
- * must keep the old fields (the real controller dual-writes in v0.11).
+ * must keep the old fields (the real controller dual-writes during the transition).
  *
  * Each converted catalogue is split over two slices (the older half sealed,
  * the rest open); `sequence` = position in the old oldest-first list.

@@ -1,13 +1,13 @@
 /**
  * THE ONE PLACE A ROLLOUT'S RELEASES COME FROM (D4, release-controller).
  *
- * rollout-controller v0.11 moves the release catalogue out of
+ * rollout-controller moves the release catalogue out of
  * `Rollout.status.availableReleases` into ReleaseSlices (release-controller,
  * `kuberik.com/v1alpha1`), selected by the label `kuberik.com/release-source`.
  * A Rollout that reads a catalogue names it in `spec.releaseSourceRef`; its
  * working set lives in `status.candidates` (tag + gated + blockedBy, newest
  * first). Old Rollouts keep `availableReleases` / `releaseCandidates` /
- * `gatedReleaseCandidates`. Both shapes exist until v0.12, so EVERY reader of
+ * `gatedReleaseCandidates`. Both shapes exist during the transition, so EVERY reader of
  * those three lists goes through the accessors below, never the status fields.
  *
  * Rule:
@@ -34,7 +34,7 @@
  * Return values keep the old fields' `undefined`-vs-`[]` distinction on
  * purpose: some readers (behind.ts) branch on it.
  *
- * Remove the fallback (and this paragraph) in v0.12.
+ * Remove the fallback (and this paragraph) in a later release.
  */
 import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
 import type { Rollout } from '../../types';

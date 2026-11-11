@@ -169,6 +169,8 @@ github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd2
 github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd24bd/go.mod h1:zspF0vX+/dYnu5u5DaF0rxd95ABRwboYptk5590POTs=
 github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd h1:KI5Drf1YnZ2uNMDVLF3GY8CdMZ4WARPOS1lXOicojh0=
 github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd/go.mod h1:03WmZ9qq4oNkSD8A5zGKlG29kVsJ3ofhHuNyKjNoVfw=
+github.com/kuberik/rollout-controller v0.11.1-0.20261110100003-dcb885cf768c h1:c5vVMBrRS+a3zZVoHNv4zjw3+RbKxQ3LFH35W61ILJ8=
+github.com/kuberik/rollout-controller v0.11.1-0.20261110100003-dcb885cf768c/go.mod h1:wp5fXV4kZQZV3HxA4DSqP6RmthIp6Bk+DVkRsoYapc4=
 github.com/leodido/go-urn v1.2.0/go.mod h1:+8+nEpDfqqsY+g338gtMEUOtuK+4dEMhiQEgxpxOKII=
 github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=
 github.com/leodido/go-urn v1.4.0/go.mod h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI=
