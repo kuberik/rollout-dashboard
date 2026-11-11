@@ -34,11 +34,13 @@ describe('a gate summary displayName names the gate with no gate object loaded',
 	it('the held-cause row reads the displayName, never "Gate"', () => {
 		withDisplayName('Business Hours Only');
 		const causes = heldCauses('incident').map((c) => c.cause).filter((c) => /^Waiting on /.test(c));
+		expect(causes.length).toBeGreaterThan(0);
+		expect(causes).toContain('Waiting on Business Hours Only');
 		for (const c of causes) expect(c).not.toMatch(/Gate\b/);
 	});
 });
 
-import { buildGateContext, blockingStory } from '$lib/view-models/blocking-story';
+import { buildGateContext } from '$lib/view-models/blocking-story';
 import { rolloutGateBoxes } from '$lib/view-models/rollout-gates';
 
 const summaryRollout = (displayName?: string) => ({

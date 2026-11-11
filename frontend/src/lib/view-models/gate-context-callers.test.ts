@@ -8,7 +8,9 @@ vi.mock('./blocking-story', async (orig) => {
 	return { ...m, buildGateContext: vi.fn(m.buildGateContext) };
 });
 import { fleetGraph } from '$lib/components/new/held-chain';
-import { prPipelineGraph } from './pr-pipeline';
+import { prPipelineGraph, buildPrPipeline } from './pr-pipeline';
+import { cardContext } from './card-context';
+import { heldHereOfDetail } from './held-here';
 
 const rollout = { metadata: { name: 'app', namespace: 'ns' }, spec: {}, status: { gates: [{ name: 'g-1', displayName: 'Business Hours Only' }] } } as never;
 const seeded = () => (bs.buildGateContext as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].rollouts);
@@ -22,6 +24,22 @@ describe('buildGateContext is handed the rollouts', () => {
 	it('pr-pipeline prPipelineGraph', () => {
 		vi.mocked(bs.buildGateContext).mockClear();
 		prPipelineGraph([rollout], [], null);
+		expect(seeded()).toEqual([[rollout]]);
+	});
+	it('pr-pipeline buildPrPipeline', () => {
+		vi.mocked(bs.buildGateContext).mockClear();
+		const meta = { owner: 'o', repo: 'r', mergedAt: null, mergeCommitSha: null, containedIn: [], containedInAll: true };
+		buildPrPipeline(meta as never, [rollout], [], null);
+		expect(seeded()).toContainEqual([rollout]);
+	});
+	it('card-context cardContext', () => {
+		vi.mocked(bs.buildGateContext).mockClear();
+		cardContext({ rollouts: [rollout], environments: null });
+		expect(seeded()).toContainEqual([rollout]);
+	});
+	it('held-here heldHereOfDetail', () => {
+		vi.mocked(bs.buildGateContext).mockClear();
+		heldHereOfDetail({ rollout, environment: null });
 		expect(seeded()).toEqual([[rollout]]);
 	});
 });
