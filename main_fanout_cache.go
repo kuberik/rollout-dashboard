@@ -92,6 +92,12 @@ const (
 	// before falling back to the old payload, flagged as stale.
 	spokeStaleWait = 3 * time.Second
 
+	// spokeSkipWait is how long, after a wait on a spoke timed out or its
+	// refresh failed, reads of that entry skip the wait and get the flagged
+	// stale value at once. Keeps a dead spoke with a closed breaker to one slow
+	// request per window. A successful refresh clears it immediately.
+	spokeSkipWait = 30 * time.Second
+
 	// swrMaxEntries caps the payload cache so a stream of distinct tokens
 	// cannot grow it without bound.
 	swrMaxEntries = 512
@@ -138,6 +144,7 @@ type swrEntry[T any] struct {
 	okAt       time.Time // last SUCCESSFUL refresh (when val was actually true)
 	lastAccess time.Time
 	done       chan struct{} // non-nil while a refresh is in flight
+	skipUntil  time.Time     // until then an over-age read does not wait
 }
 
 // swrCache is a small stale-while-revalidate cache with per-key
@@ -155,6 +162,7 @@ type swrCache[T any] struct {
 	// served until the refresh finishes or staleWait elapses. 0 disables.
 	maxStale  time.Duration
 	staleWait time.Duration
+	skipWait  time.Duration
 }
 
 func newSWRCache[T any](ttl, coldGrace, refreshTimeout time.Duration) *swrCache[T] {
@@ -166,6 +174,7 @@ func newSWRCache[T any](ttl, coldGrace, refreshTimeout time.Duration) *swrCache[
 		refreshTimeout: refreshTimeout,
 		maxStale:       spokeMaxStale,
 		staleWait:      spokeStaleWait,
+		skipWait:       spokeSkipWait,
 	}
 }
 
@@ -243,15 +252,31 @@ func (c *swrCache[T]) loadMeta(ctx context.Context, key string, fetch func(conte
 	// failed refresh keeps the existing behaviour: the old value is served
 	// with StaleErr set. A slow one is served flagged the same way.
 	if tooOld {
+		c.mu.Lock()
+		skipping := now.Before(e.skipUntil)
+		c.mu.Unlock()
+		if skipping {
+			m := staleMeta
+			if m.StaleErr == nil {
+				m = swrMeta{StaleErr: errSpokeStaleTimeout, LastOK: okAt}
+			}
+			return staleVal, m, nil
+		}
 		t := time.NewTimer(c.staleWait)
 		defer t.Stop()
 		select {
 		case <-done:
 			c.mu.Lock()
 			val, meta := e.val, e.metaLocked()
+			if meta.StaleErr != nil {
+				e.skipUntil = c.now().Add(c.skipWait)
+			}
 			c.mu.Unlock()
 			return val, meta, nil
 		case <-t.C:
+			c.mu.Lock()
+			e.skipUntil = c.now().Add(c.skipWait)
+			c.mu.Unlock()
 			log.Printf("fanout cache: serving %s-old spoke data, refresh still running after %s", now.Sub(okAt).Round(time.Second), c.staleWait)
 			return staleVal, swrMeta{StaleErr: errSpokeStaleTimeout, LastOK: okAt}, nil
 		case <-ctx.Done():
@@ -331,6 +356,7 @@ func (c *swrCache[T]) refresh(key string, fetch func(context.Context) (T, error)
 		e.ok = true
 		e.err = nil
 		e.okAt = c.now()
+		e.skipUntil = time.Time{}
 	} else {
 		e.err = err
 		// A failed refresh deliberately leaves any previous value in place

@@ -132,3 +132,51 @@ func TestSWRTooOldConcurrentReadersShareOneRefresh(t *testing.T) {
 		}
 	}
 }
+
+// After one wait times out, the next over-age read on the same entry must not
+// wait again (one slow request per spoke per window).
+func TestSWRSkipWaitAfterTimeout(t *testing.T) {
+	c, _ := seedOld(t)
+	c.staleWait = 30 * time.Millisecond
+	release := make(chan struct{})
+	defer close(release)
+	hang := func(context.Context) (string, error) { <-release; return "new", nil }
+
+	if v, _, _ := c.loadMeta(context.Background(), "k", hang); v != "old" {
+		t.Fatalf("first read %q", v)
+	}
+	c.staleWait = 5 * time.Second // a second wait would blow the budget below
+	start := time.Now()
+	v, meta, _ := c.loadMeta(context.Background(), "k", hang)
+	if v != "old" || meta.StaleErr == nil {
+		t.Fatalf("second read %q / %v, want old flagged", v, meta.StaleErr)
+	}
+	if d := time.Since(start); d > 100*time.Millisecond {
+		t.Fatalf("second read waited %s", d)
+	}
+}
+
+// A successful refresh clears the mark: the next over-age read waits again.
+func TestSWRSuccessfulRefreshClearsSkipWait(t *testing.T) {
+	c, now := seedOld(t)
+	c.staleWait = 30 * time.Millisecond
+	release := make(chan struct{})
+	hang := func(context.Context) (string, error) { <-release; return "new", nil }
+	c.loadMeta(context.Background(), "k", hang) // times out, mark set
+	close(release)                              // refresh lands, mark cleared
+	waitForFanoutBackground()
+
+	*now = now.Add(time.Minute) // over-age again
+	release2 := make(chan struct{})
+	defer close(release2)
+	done := make(chan struct{})
+	go func() {
+		c.loadMeta(context.Background(), "k", func(context.Context) (string, error) { <-release2; return "newer", nil })
+		close(done)
+	}()
+	select {
+	case <-done:
+		t.Fatal("read after a successful refresh did not wait")
+	case <-time.After(10 * time.Millisecond):
+	}
+}
