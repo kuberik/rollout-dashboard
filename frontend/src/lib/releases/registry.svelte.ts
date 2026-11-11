@@ -17,6 +17,7 @@ import {
 	rolloutReleases,
 	sliceCatalogueKey,
 	type ReleaseSliceObject,
+	type ReleaseSourceObject,
 	type RolloutReleases,
 	type VersionInfo
 } from './catalogue';

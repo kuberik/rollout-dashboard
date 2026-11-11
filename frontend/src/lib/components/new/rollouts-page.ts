@@ -9,7 +9,7 @@
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
 import {
-	rollouts, placesOf, placeBehind, regionStates, ago, buildOf, buildIdentity, deployedBuild, waitingBuild, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
+	rollouts, placesOf, placeBehind, regionStates, noSourceOf, ago, buildOf, buildIdentity, deployedBuild, waitingBuild, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
@@ -149,7 +149,7 @@ function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState, sett
 			if (covered(p, app)) continue;
 			const label = p.label.replace(/^prod-/, '');
 			const place = !label || TIER_WORDS.has(label) || label === p.tier ? p.tier : `${p.tier} · ${label}`;
-			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence: restSentence(p, settled), code: p.version ?? '', age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
+			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence: noSourceOf(p.href) ?? restSentence(p, settled), code: noSourceOf(p.href) ? '' : (p.version ?? ''), age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
 		}
 	}
 	out.sort((a, b) => a.app.localeCompare(b.app) || a.o - b.o || a.place.localeCompare(b.place));

@@ -299,7 +299,7 @@
 			case 'deploying': return { ink: 'text-active', lead: '', rest: '', build: build, badge: true };
 			case 'checking': return { ink: 'text-progress', lead: '', rest: '', build: build, badge: true };
 			case 'ready': return { ink: 'text-fg', lead: 'Ready to promote to prod', rest: '', build: '', badge: false };
-			case 'quiet': return restLine || /at rest|healthy/i.test(item.fact) ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: prodWord(item.fact), rest: '', build: '', badge: false };
+			case 'quiet': if (item.noSource) return { ink: 'text-fg-muted', lead: 'No release source', rest: item.noSource, build: '', badge: false }; return restLine || /at rest|healthy/i.test(item.fact) ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: prodWord(item.fact), rest: '', build: '', badge: false };
 			default: return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: line2.replace(/^./, (c) => c.toUpperCase()), rest: '', build: '', badge: false };
 		}
 	});

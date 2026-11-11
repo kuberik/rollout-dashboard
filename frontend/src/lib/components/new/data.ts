@@ -619,6 +619,8 @@ export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {
 	/** the outcome line; a held app names its blocker ("Waits on payments-svc in staging") (AD i) */
 	fact: string;
 	blocker: string | null;
+	/** the controller's `ReleaseSourceRequired` message when a place of the app has no ReleaseSource (it has no builds to show), else null */
+	noSource: string | null;
 	/** places that deployed but failed: the app page's "2 of 3 on the newest · 1 failed" suffix. onNewest never includes them. */
 	failedCount: number;
 	/** the app's worst region: how many releases behind the newest, and where */
@@ -697,6 +699,7 @@ export function apps(state: HomeState) {
 		/* the outcome is recomputed from OUR pick (production first among equals) so the text and its link name the same place */
 		let fact = w ? outcomeOf(w) : a.fact, blocker: string | null = null;
 		let promoteHref: string | null = null;
+		const noSourceMsg = placeList.map((p) => noSourceOf(p.href)).find(Boolean);
 		const behindOf = (p: AppPlace) => behindCount(p.href, p.version);
 		if (!w) {
 			/* a quiet app with a place behind the newest: the app page's "Ready to promote · prod 1 behind" */
@@ -704,8 +707,7 @@ export function apps(state: HomeState) {
 			const lag = order.map((t) => ({ t, ps: placeList.filter((p) => p.tier === t && !p.onNewest && p.state !== 'failed') })).find((x) => x.ps.length);
 			if (lag) { const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 1)); fact = `Ready to promote to ${lag.t} · ${n} behind`; promoteHref = lag.ps[0].href; }
 			/* no ReleaseSource: there are no builds to promote; say why, in the controller's words */
-			const noSource = placeList.map((p) => releaseSourceRequiredMessage(rawOf(p.href) as unknown as Rollout)).find(Boolean);
-			if (noSource) { fact = noSource; promoteHref = null; }
+			if (noSourceMsg) { fact = noSourceMsg; promoteHref = null; }
 		}
 		if (w && (w.state === 'held-by-rule' || w.state === 'awaiting-approval') && w.group !== 'failed') {
 			const hc = causes.find((c) => c.rows.some((r) => r.href === w.href));
@@ -726,7 +728,7 @@ export function apps(state: HomeState) {
 			if (pin && e.state !== 'not-deployed') holds.push(`Pinned to ${shortBuild(e.version) ?? pin} in ${placeLabel({ tier: tierOfEnv(e), regions: [e.label] })}`);
 		}
 		const outcome = [fact, ...holds.filter((h) => !fact.includes(h))].join(' · ');
-		return Object.assign(a, { approval: !!w && w.state === 'awaiting-approval' && w.group !== 'failed', behind: (() => { let best: { n: number; place: string } | null = null; for (const p of placeList) { const n = behindCount(p.href, p.version) ?? 0; if (n > (best?.n ?? 0)) best = { n, place: placeLabel({ tier: p.tier, regions: [p.label] }) }; } return best; })(), row: w, outcomeHref: w?.href ?? promoteHref ?? placeList[0]?.href ?? a.href, failedCount: placeList.filter((p) => p.state === 'failed').length, holds, outcome, newest, onNewest, fact, blocker, failing, placeList, prod: { regions: prodPl.length, onNewest: prodPl.filter((p) => p.onNewest).length } }) as unknown as TApp;
+		return Object.assign(a, { approval: !!w && w.state === 'awaiting-approval' && w.group !== 'failed', behind: (() => { let best: { n: number; place: string } | null = null; for (const p of placeList) { const n = behindCount(p.href, p.version) ?? 0; if (n > (best?.n ?? 0)) best = { n, place: placeLabel({ tier: p.tier, regions: [p.label] }) }; } return best; })(), row: w, outcomeHref: w?.href ?? promoteHref ?? placeList[0]?.href ?? a.href, failedCount: placeList.filter((p) => p.state === 'failed').length, holds, outcome, noSource: noSourceMsg ?? null, newest, onNewest, fact, blocker, failing, placeList, prod: { regions: prodPl.length, onNewest: prodPl.filter((p) => p.onNewest).length } }) as unknown as TApp;
 	});
 	const L = lead(state);
 	for (const it of items) it.lead = !!L && it.row?.href === L.href;

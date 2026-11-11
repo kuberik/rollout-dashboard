@@ -5,6 +5,7 @@
  */
 import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
+import { releaseSourceRequiredMessage } from '$lib/releases/catalogue';
 import { rankBehindBy, type RankVerdict } from './env-rank';
 import { liveForPlace, newerReleaseCountLive, type Fleet } from './failed-builds';
 
@@ -17,6 +18,7 @@ const live = <T>(r: Ro, xs: T[], fleet?: Fleet | null): T[] => liveForPlace(r as
 
 /** the place's own count: `rollout` is the rollout object (metadata + status), `fleet` the Environments + rollouts its wave chain lives in (none: nothing is subtracted) */
 export function behindOfStatus(rollout: Ro, fleet?: Fleet | null): number {
+	if (releaseSourceRequiredMessage(rollout as unknown as Rollout)) return 0; /* no release source: no builds to be behind */
 	const st = rollout?.status as Status;
 	if (!st) return 0;
 	const n = newerReleaseCountLive(rollout as never, fleet); /* the ONE count: shared with the rank, so no surface can disagree */
@@ -30,6 +32,7 @@ export function behindOfStatus(rollout: Ro, fleet?: Fleet | null): number {
 
 /** a rollout card / matrix cell: its own list when it has one, else the rank's distance */
 export function behindOfRollout(rollout: Ro, rank?: RankVerdict | null, fleet?: Fleet | null): number {
+	if (releaseSourceRequiredMessage(rollout as unknown as Rollout)) return 0; /* no release source: no builds to be behind */
 	const st = rollout?.status as Status;
 	const cands = releaseCandidates(rollout as unknown as Rollout);
 	if (st && Array.isArray(cands)) return live(rollout, cands, fleet).length;
