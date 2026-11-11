@@ -40,7 +40,6 @@ describe('a gate summary displayName names the gate with no gate object loaded',
 
 import { buildGateContext, blockingStory } from '$lib/view-models/blocking-story';
 import { rolloutGateBoxes } from '$lib/view-models/rollout-gates';
-import { stillHeldAfterApproval } from './data';
 
 const summaryRollout = (displayName?: string) => ({
 	metadata: { name: 'app', namespace: 'ns' },
@@ -56,12 +55,8 @@ describe('the gate context and the Gates tab read the summary displayName', () =
 	});
 	it('a gate box with no object is titled by the summary displayName, else "Gate"', () => {
 		const focus = { holds: [{ gate: 'ghd-6p5hd', clears: 'check', short: 'Not passing' }] } as never;
-		const title = (dn?: string) => rolloutGateBoxes({ focus, rollout: summaryRollout(dn), rolloutGates: [], schedules: [], healthChecks: null, edgeGates: new Set() }).map((b) => b.title);
+		const title = (dn?: string) => rolloutGateBoxes({ focus, rollout: summaryRollout(dn), rolloutGates: [], schedules: [], healthChecks: null, edgeGates: new Set() }).map((b: { title: string }) => b.title);
 		expect(title('Business Hours Only')).toContain('Business Hours Only');
 		expect(title()).not.toContain('Business Hours Only');
-	});
-	it('the toast names the still-holding gate through the same pretty reader', () => {
-		const gates = [{ name: 'ghd-6p5hd', allowedVersions: [] as string[] }];
-		expect(stillHeldAfterApproval(gates, 'r2', null, (n) => (n === 'ghd-6p5hd' ? 'Business Hours Only' : n))).toBe('Business Hours Only');
 	});
 });

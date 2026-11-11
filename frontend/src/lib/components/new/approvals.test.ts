@@ -49,7 +49,7 @@ describe('approving in place', () => {
 	it('a build something else still holds reads that hold after the approval, never deploying; undo restores it', () => {
 		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
 		/* the real shape: each approval place also carries a controller-written `dependency-<name>` gate that refuses the held build, backed by its RolloutDependency (provider payments-svc) */
-		type G = { name: string; kind?: string; passing?: boolean; allowedVersions?: string[] | null };
+		type G = { name: string; kind?: string; displayName?: string; passing?: boolean; allowedVersions?: string[] | null };
 		type R = { metadata: { name: string; namespace: string }; status: { gates?: G[]; releaseCandidates?: { tag?: string }[] } };
 		const src = source() as unknown as { rollouts: R[]; rolloutDependencies: { items: object[] } };
 		const rs = src.rollouts.filter((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`));
@@ -86,7 +86,7 @@ describe('approving in place', () => {
 		}
 	});
 	/* a place's gates are patched in the fixture (the payload carries names, `kind`, `passing` and allow-lists), the model rebuilt, everything restored */
-	type G = { name: string; kind?: string; passing?: boolean; allowedVersions?: string[] | null };
+	type G = { name: string; kind?: string; displayName?: string; passing?: boolean; allowedVersions?: string[] | null };
 	type R = { metadata: { name: string; namespace: string }; status: { gates?: G[] } };
 	const withGate = (gate: G, run: (t: NonNullable<ReturnType<typeof approvalTarget>>, nss: string[]) => void) => {
 		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
@@ -125,6 +125,18 @@ describe('approving in place', () => {
 			expect(t.waitsOn ?? null).toBeNull();
 			grant(t);
 			expect(released(), 'the approved build is released: no row is held by another gate').toBe(true);
+			revokeApproval(t);
+		});
+	});
+	it('a schedule gate with no gate object loaded is named by the API displayName on the row cause and the toast alike', () => {
+		withGate({ name: 'schedule-gate-zvsqr', kind: 'schedule', displayName: 'Business Hours Only', passing: false, allowedVersions: null }, (t) => {
+			expect(t.waitsOn).toBe('Business Hours Only');
+			expect(t.cause).toBe('Held by Business Hours Only');
+			expect(doneWords(t).detail).toBe(`payments-core: Held by Business Hours Only · ${t.where}`);
+			grant(t);
+			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
+			expect(sentenceOf(mine[0], 'incident')[0]).toBe('Held by Business Hours Only');
+			expect(heldCauses('incident').map((c) => c.cause).join('|')).not.toMatch(/Gate\b|Waits for the deploy window/);
 			revokeApproval(t);
 		});
 	});
@@ -168,7 +180,7 @@ describe('an older backend (gates carry no kind)', () => {
 
 describe('the approval name match is for a payload with NO kind field only', () => {
 	it('kind "unknown" with an approval-looking name is not an approval: it holds after Approve', () => {
-		type G = { name: string; kind?: string; passing?: boolean; allowedVersions?: string[] | null };
+		type G = { name: string; kind?: string; displayName?: string; passing?: boolean; allowedVersions?: string[] | null };
 		type R = { metadata: { name: string; namespace: string }; status: { gates?: G[] } };
 		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
 		const rs = (source().rollouts as unknown as R[]).filter((r) => t0.places.some((p) => p.href.split('/').slice(3, 5).join('/') === `${r.metadata.namespace}/${r.metadata.name}`));
@@ -181,7 +193,7 @@ describe('the approval name match is for a payload with NO kind field only', () 
 });
 
 describe('one classification for the toast, the row, the Holding card and the builds', () => {
-	type G = { name: string; kind?: string; passing?: boolean; allowedVersions?: string[] | null };
+	type G = { name: string; kind?: string; displayName?: string; passing?: boolean; allowedVersions?: string[] | null };
 	type R = { metadata: { name: string; namespace: string }; status: { gates?: G[] } };
 	const patched = (gates: G[], run: () => void) => {
 		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
