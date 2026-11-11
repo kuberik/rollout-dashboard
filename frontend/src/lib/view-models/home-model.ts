@@ -260,7 +260,7 @@ export type AppEnv = {
 	 *  (`eventAge(card, 'held')`, the instant the app's figure counts from when
 	 *  this place leads), else `null`. Product-only (`home/parity.test.ts`). */
 	heldSince: string | null;
-	/** A rule gate is the primary hold here, and an approval ALSO refuses the build (`RolloutCard.heldAlsoApproval`): the approval ask stays, naming the other hold. `persistent`: it will not clear by itself (a failing check, a dependency, an unattributed rule); a window or promotion order clears on its own. */
+	/** A rule gate is the primary hold here, and an approval ALSO refuses the build (`RolloutCard.heldAlso`): the approval ask stays, naming the other hold. `persistent`: it will not clear by itself (a failing check, a dependency, an unattributed rule); a window or promotion order clears on its own. */
 	alsoApproval?: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null;
 	/** the place reads its approval or rule hold while its OWN build is still baking (`placeVerdict`): the row keeps the bake's pipeline nodes */
 	stillChecking?: boolean;
@@ -816,7 +816,7 @@ function buildAppEnvs(
 
 /** The other hold an approval ask names, from the verdict's own `alsoHold` (`held.ts`): a window or promotion order clears by itself, any other refuser does not and is named. */
 function alsoApprovalOf(c: RolloutCard): { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null {
-	if (!c.heldAlsoApproval || !c.heldAlso) return null;
+	if (!c.heldAlso) return null;
 	return { other: c.heldAlso.other, persistent: c.heldAlso.kind === 'hold', kind: c.heldAlso.kind };
 }
 

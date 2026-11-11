@@ -86,7 +86,7 @@
 		.lr-id { grid-column: 2; grid-row: 1; }
 		.lr-age { grid-column: 3; grid-row: 1; }
 		.lr-sn { grid-column: 2 / 4; grid-row: 2; }
-		/* F4: "· also needs your approval" is the second ask of a held row; on a phone it wraps, never an ellipsis */
+		/* "· also needs your approval" is the second ask of a held row; on a phone it wraps, never an ellipsis */
 		.lr-sn.wrap { white-space: normal; overflow: visible; text-overflow: clip; }
 		.lr-dr { grid-column: 2 / 4; grid-row: 3; }
 		.lr.q .lr-dr { display: none; }

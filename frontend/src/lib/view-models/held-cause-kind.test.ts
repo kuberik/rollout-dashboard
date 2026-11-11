@@ -8,7 +8,7 @@ const check = g({ id: 'smoke', kind: 'check', clears: 'check' });
 const window = g({ id: 'win', kind: 'schedule', clears: 'clock' });
 const order = g({ id: 'ord', kind: 'promotion', clears: 'upstream', subjectKind: 'environment', subject: 'prod-eu' });
 
-describe('the primary cause classifies a gate by its backend kind (F2)', () => {
+describe('the primary cause classifies a gate by its backend kind', () => {
 	it('a schedule-kind gate with a cold join (kind unresolved, clears check) plus an approval is a window, not a check', () => {
 		const cold = g({ id: 'sched', kind: 'check', clears: 'check', backendKind: 'schedule' });
 		const v = verdictForGates([approval, cold], 'prod-us');
@@ -20,7 +20,7 @@ describe('the primary cause classifies a gate by its backend kind (F2)', () => {
 	});
 });
 
-describe('a persistent check outranks a window or an order hold in the cause (F3, kills the window-before-check mutation)', () => {
+describe('a persistent check outranks a window or an order hold in the cause', () => {
 	it('check + window: the check is the cause', () => { expect(verdictForGates([check, window], 'prod-us').cause).toBe('check'); });
 	it('check + order: the check is the cause', () => { expect(verdictForGates([check, order], 'prod-us').cause).toBe('check'); });
 	it('check + window + approval: still the check', () => { expect(verdictForGates([approval, check, window], 'prod-us').cause).toBe('check'); });

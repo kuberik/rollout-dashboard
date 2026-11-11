@@ -394,7 +394,7 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 	causeCase('an unnamed deploy window (the pretty name is not published yet)', { name: 'schedule-gate-qqqqq', kind: 'schedule', passing: false, allowedVersions: null }, 'Waits for the deploy window');
 	causeCase('a published deploy window (the schedule join names it)', { name: 'schedule-gate-zvsqr', kind: 'schedule', passing: false, allowedVersions: null }, 'Held by Business hours', true);
 	causeCase('a failing check', { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }, 'Held by Smoke check');
-	/* viewer-owned: the viewer CAN approve payments-core (its other regions still ask), but ONE region is held by a static allow-list that lacks the build: that region asks nothing (no approval ever deploys it), while its siblings keep the ask. Kills the mutant where (a rule-held row taking needsYou from the app's ask). */
+	/* viewer-owned: the viewer CAN approve payments-core (its other regions still ask), but ONE region is held by a static allow-list that lacks the build: that region asks nothing (no approval ever deploys it), while its siblings keep the ask. A rule-held row never takes needsYou from the app's ask. */
 	it('a viewer-owned approval with ONE region held by a rule that never clears for the build: that region asks nothing, the others keep the ask', () => {
 		const t0 = approvalTarget(row('payments-core')!, 'incident')!;
 		const rs = (source().rollouts as unknown as R[]);

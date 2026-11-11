@@ -36,7 +36,6 @@ export type YourChange = {
 	rollbackTo: string | null;
 };
 
-/** THE ask text of an approval that is not the only hold (Home, the row's inbox reason): one function, one wording. A window or promotion order clears by itself, so approving ahead is useful; a failing check or dependency does not. */
 /** The ONE wording of the ask a rule hold leaves with the approval. A window is named as the deploy window (never by its gate's name), with its opening time when the schedule is joined (`opensAt`, as `windowCause` prints it); promotion order says so; any other hold is named and will not clear by itself. */
 export const alsoApprovalAsk = (a: { other: string; persistent: boolean; kind?: 'window' | 'order' | 'hold' }, opensAt: string | null = null): string => {
 	const kind = a.kind ?? (a.persistent ? 'hold' : 'window');
