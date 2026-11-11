@@ -826,6 +826,7 @@ lib/components/new/env/GangwayTile.svelte	text	from …
 lib/components/new/environments-page.ts	code	… failing
 lib/components/new/environments-page.ts	code	… for you
 lib/components/new/environments-page.ts	code	… healthy
+lib/components/new/environments-page.ts	code	… held · ${failed ?
 lib/components/new/environments-page.ts	code	… places: … failing, … waiting, … …, … healthy
 lib/components/new/environments-page.ts	code	… waiting
 lib/components/new/environments-page.ts	code	All … healthy
@@ -866,6 +867,7 @@ lib/components/new/envs-model.ts	code	Waiting on check
 lib/components/new/EnvTile.svelte	text	… arriving
 lib/components/new/EnvTile.svelte	text	… failing
 lib/components/new/EnvTile.svelte	text	… healthy
+lib/components/new/EnvTile.svelte	text	… held
 lib/components/new/EnvTile.svelte	text	… places · … apps
 lib/components/new/EnvTile.svelte	text	… waiting
 lib/components/new/EnvTile.svelte	text	Last deploy
