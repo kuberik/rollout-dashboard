@@ -35,7 +35,7 @@
  */
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import type { NoReleases } from '$lib/releases/catalogue';
-import { formatTimeAgoCompact } from '$lib/utils';
+import { formatTimeAgoCompact, buildAge } from '$lib/utils';
 import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
@@ -86,6 +86,8 @@ const rosterWait = (t: string): string => t.replace(/^Waits for (your )?approval
 
 /** ONE age format everywhere: the tab header's compact form ("25m", "9h", "3d"), counted from the fixture clock. */
 export const ago = (iso: string | null | undefined): string => (iso ? formatTimeAgoCompact(iso, RD.NOW) : '');
+/** a build's OWN age, labelled ("built 11mo ago"), in the fixture clock: the one form wherever a build's age sits beside a place or a hold */
+export const builtAgo = (iso: string | null | undefined): string => (iso ? buildAge(iso, RD.NOW) : '');
 export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */

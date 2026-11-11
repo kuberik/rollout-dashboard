@@ -97,6 +97,7 @@ describe('r34 builds-lag: the Sounding ledger (lag = position in THIS app\'s own
 		expect(stopWord(at('a11c202'))).toBe('7 builds behind');
 		expect(at('a11c909').title).toBe('Add idempotency key to invoice creation');
 		expect(at('a11c909').age).toBeTruthy();
+		expect(at('a11c909').ageLabel).toBe(`built ${at('a11c909').age} ago`);
 	});
 	it('payments-core: eu-central runs a build outside the app\'s sequence = "Custom build", last, never counted', () => {
 		const L = ledgerOf(placeHolds('payments-core', 'incident'));
