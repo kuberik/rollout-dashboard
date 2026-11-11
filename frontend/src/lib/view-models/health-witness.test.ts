@@ -360,7 +360,7 @@ describe('healthQuietState — the Gates tab`s empty-state sentence, three state
 		expect(healthQuietState([check('Unhealthy', '2026-08-30T23:00:00Z')], window)).toBe('passing');
 	});
 
-	it('null healthChecks (not yet loaded) reads as `passing`, same as `[]`', () => {
+	it('null healthChecks (not yet loaded) reads as `unknown`, never `passing`', () => {
 		expect(healthQuietState(null, window)).toBe('unknown');
 	});
 });

@@ -1052,15 +1052,31 @@
 		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
 	}));
 	const healthChecks = $derived<HealthCheck[]>(healthChecksQuery.data?.healthChecks ?? []);
-	/** The load failed, remembered through "Try again"'s refetch (see `healthLoadFailed`). */
-	let healthChecksFailedLatch = $state(false);
+	/**
+	 * The load failed, remembered through "Try again"'s refetch (see
+	 * `healthLoadFailed`). The latch is KEYED to the health-checks query key, so
+	 * a client navigation to another rollout (same component instance) never
+	 * inherits it, and it is never applied to a rollout with no selector (whose
+	 * query is disabled and whose card says "none select this rollout").
+	 */
+	const healthChecksKey = $derived(JSON.stringify(healthChecksQueryOptions(namespace, name, cluster).queryKey));
+	let healthChecksLatch = $state({ key: '', failed: false });
 	$effect(() => {
-		healthChecksFailedLatch = healthLoadFailed(untrack(() => healthChecksFailedLatch), {
-			isError: healthChecksQuery.isError,
-			isSuccess: healthChecksQuery.isSuccess
-		});
+		const key = healthChecksKey;
+		const prev = untrack(() => healthChecksLatch);
+		healthChecksLatch = {
+			key,
+			failed: healthLoadFailed(prev.key === key && prev.failed, {
+				isError: healthChecksQuery.isError,
+				isSuccess: healthChecksQuery.isSuccess
+			})
+		};
 	});
-	const healthChecksFailed = $derived(healthChecksQuery.isError || healthChecksFailedLatch);
+	const healthChecksFailed = $derived(
+		Boolean(rollout?.spec?.healthCheckSelector) &&
+			(healthChecksQuery.isError ||
+				(healthChecksLatch.key === healthChecksKey && healthChecksLatch.failed))
+	);
 	/** Same shape as `managedResourcesKnown` — see that field's own comment. */
 	const healthChecksKnown = $derived(
 		!rollout?.spec?.healthCheckSelector || healthChecksQuery.isSuccess || healthChecksFailed
@@ -3749,6 +3765,7 @@
 									{pipelineValidTests}
 									healthChecks={visibleHealthChecks}
 									healthChecksUnavailable={healthChecksFailed}
+									healthChecksPending={!healthChecksKnown}
 									{canUpdate}
 									{namespace}
 									{name}

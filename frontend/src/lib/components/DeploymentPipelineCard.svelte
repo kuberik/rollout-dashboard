@@ -78,6 +78,8 @@
 		healthChecks: HealthCheck[];
 		/** The health-checks load failed: the checks are unknown, never Healthy. */
 		healthChecksUnavailable?: boolean;
+		/** The health-checks list has not arrived yet: `[]` here is "not known", not "none". */
+		healthChecksPending?: boolean;
 		canUpdate: boolean;
 		namespace: string;
 		name: string;
@@ -92,6 +94,7 @@
 		pipelineValidTests,
 		healthChecks,
 		healthChecksUnavailable = false,
+		healthChecksPending = false,
 		canUpdate,
 		namespace,
 		name,
@@ -188,9 +191,11 @@
 	);
 	// The timer reads Failed ("the bake timed out") only when the checks are KNOWN
 	// healthy. On an unreadable list: the history's own snapshot of failing
-	// checks stands in (so it reads as when the list is known), else unknown.
+	// checks stands in (so it reads as when the list is known), else unknown. A list still
+	// LOADING is unknown in the same way.
+	let hcUnknown = $derived(healthChecksUnavailable || healthChecksPending);
 	let timerHCHealthy = $derived<boolean | null>(
-		healthChecksUnavailable ? (recordedFailedCheckNames.length > 0 ? false : null) : allHCHealthy
+		hcUnknown ? (recordedFailedCheckNames.length > 0 ? false : null) : allHCHealthy
 	);
 	let hasMultipleKRs = $derived(pipelineValidRollouts.length > 1);
 
@@ -576,9 +581,11 @@
 		(() => {
 			// The recorded failure wins over an unreadable LIVE list: "Unavailable"
 			// describes only the current load, never the history's verdict.
-			if (bakeIsFailed && healthChecksUnavailable) return { status: 'failed', label: 'Failed' };
+			if (bakeIsFailed && hcUnknown) return { status: 'failed', label: 'Failed' };
 			if (healthChecksUnavailable)
 				return { status: 'pending', label: HEALTH_CHECKS_UNAVAILABLE.label };
+			// A list that has not arrived is `[]` only by default: never Healthy.
+			if (healthChecksPending) return { status: 'pending', label: 'Pending' };
 			if (bakeIsFailed && !allHCHealthy) return { status: 'failed', label: 'Failed' };
 			// Once any bake activity has started, report checks as healthy as soon
 			// as they actually are — don't keep showing "Waiting" just because the
