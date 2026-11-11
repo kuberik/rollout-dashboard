@@ -818,6 +818,7 @@ lib/components/new/env/env-page.ts	code	… regions
 lib/components/new/env/env-page.ts	code	… to approve
 lib/components/new/env/env-page.ts	code	from …
 lib/components/new/env/env-page.ts	code	leads · ${w.followers.length === 1 ?
+lib/components/new/env/env-page.ts	code	No releases yet
 lib/components/new/env/env-page.ts	code	On the newest
 lib/components/new/env/env-page.ts	code	Rolled back
 lib/components/new/env/env-page.ts	code	Since the build began waiting
@@ -1051,7 +1052,7 @@ lib/components/RecoveryModeWarningModal.svelte	code	The last deploy failed
 lib/components/RecoveryModeWarningModal.svelte	code	The last deploy was cancelled before it finished
 lib/components/RecoveryModeWarningModal.svelte	code	this environment
 lib/components/RecoveryModeWarningModal.svelte	text	to cancel
-lib/components/ReleaseSourceNotice.svelte	text	… … … … … Set
+lib/components/ReleaseSourceNotice.svelte	text	… … … … . … … … Set
 lib/components/ReleaseSourceNotice.svelte	title	No release source
 lib/components/ReleaseSourceNotice.svelte	text	on the ReleaseSource to read from that ImagePolicy ( … ). … …
 lib/components/RepoCard.svelte	title	deploys …

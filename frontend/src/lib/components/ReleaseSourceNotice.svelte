@@ -17,11 +17,13 @@
 	let {
 		rollout,
 		text,
+		legacyPolicy: legacyPolicyProp = null,
 		app = false,
 		class: className = ''
 	}: {
 		rollout?: Rollout | null;
 		/** the message itself, when the caller already has it */ text?: string | null;
+		/** the `spec.releasesImagePolicy` name, when the caller has no `rollout` (an app page reads it off its places) */ legacyPolicy?: string | null;
 		/** on an app page the notice speaks about the app's rollout, not "This Rollout" */ app?: boolean;
 		class?: string;
 	} = $props();
@@ -34,7 +36,7 @@
 		const raw = (rollout?.spec as { releasesImagePolicy?: string | { name?: string } } | undefined)
 			?.releasesImagePolicy;
 		const name = typeof raw === 'string' ? raw.split('/').pop() : raw?.name;
-		return name || null;
+		return name || legacyPolicyProp || null;
 	});
 </script>
 
@@ -49,7 +51,7 @@
 {/snippet}
 
 {#snippet more()}
-	{@render code(controllerMessage ?? '')}{#if legacyPolicy}{gap}{@render code(
+	{@render code(controllerMessage ?? '')}{#if legacyPolicy}{#if !/[.!?]\s*$/.test(controllerMessage ?? '')}.{/if}{gap}{@render code(
 			noticeLead('ReleasesImagePolicyIgnored', app)
 		)} Set <code class="t-code">oci.imagePolicyRef</code> on the ReleaseSource to read from that
 		ImagePolicy ({legacyPolicy}).{/if}

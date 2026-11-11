@@ -214,8 +214,9 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 		if (a.waves.length) return { key: `rest-${a.app}`, app: a.app, href: a.href, place: plural(a.places.length, 'region'), rep: false, sentence: `${a.waves.length} builds`, code: a.waves.map((w) => w.build ?? '').filter(Boolean).join(' · '), age: ago(a.since), tier: tierKey };
 		const label = !ph || ph.label === tierKey || ph.label === 'production' ? '' : ph.label;
 		const base = A.items.find((x) => x.app === a.app);
-		const behind = base && !base.placeList.filter((x) => x.tier === tierKey && (!region || x.label === region)).every((x) => x.onNewest) ? (base.behind?.n ?? 0) : 0;
-		return { key: `rest-${a.app}`, app: a.app, href: ph?.href ?? a.href, place: label, rep: false, sentence: ph?.state === 'rolled-back' ? 'Rolled back' : behind ? `${behind} behind` : REST_FILL, code: ph?.deployedBuild ?? p?.version ?? '', age: ago(p?.since ?? a.since), tier: tierKey };
+		const counted = base?.placeList.filter((x) => x.tier === tierKey && (!region || x.label === region) && x.currency !== 'none') ?? [];
+		const behind = base && !counted.every((x) => x.onNewest) ? (base.behind?.n ?? 0) : 0;
+		return { key: `rest-${a.app}`, app: a.app, href: ph?.href ?? a.href, place: label, rep: false, sentence: ph?.state === 'rolled-back' ? 'Rolled back' : behind ? `${behind} behind` : ph && base?.placeList.some((x) => x.href === ph.href && x.currency === 'none') ? 'No releases yet' : REST_FILL, code: ph?.deployedBuild ?? p?.version ?? '', age: ago(p?.since ?? a.since), tier: tierKey };
 	}).sort((x, y) => 0 * (x.age.length - y.age.length));
 	const sinceOf = new Map(apps.map((a) => [a.app, a.since ?? '']));
 	atRest.sort((x, y) => (sinceOf.get(y.app) ?? '').localeCompare(sinceOf.get(x.app) ?? '') || x.app.localeCompare(y.app));

@@ -65,6 +65,18 @@ describe('ReleaseSourceNotice', () => {
 		);
 	});
 
+	it('the app page (message + legacyPolicy, no rollout) carries the same legacy sentence, with the full stop', () => {
+		const { container } = render(ReleaseSourceNotice, {
+			app: true,
+			text: 'spec.releaseSourceRef is not set: create a ReleaseSource and point spec.releaseSourceRef at it',
+			legacyPolicy: 'hello'
+		});
+		const t = text(container);
+		expect(t).toContain('pointing at it'.replace('pointing', 'point spec.releaseSourceRef at'));
+		expect(t).toContain("at it. This app's rollout sets spec.releasesImagePolicy, which is ignored.");
+		expect(t).toContain('ImagePolicy (hello)');
+	});
+
 	it('renders nothing for a Rollout that has a source', () => {
 		const r = rollout({});
 		(r.spec as Record<string, unknown>).releaseSourceRef = { name: 'x' };

@@ -55,7 +55,7 @@
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
-	import { apps, heldHere, ago, approvalTarget, appHolds, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
+	import { apps, heldHere, ago, approvalTarget, appHolds, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
 	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
@@ -301,7 +301,7 @@
 				</div>
 			{/if}
 		</header>
-		{#if noReleases?.kind === 'no-source'}<ReleaseSourceNotice app text={noReleases.message} class="mt-6 mb-4" />{/if}
+		{#if noReleases?.kind === 'no-source'}<ReleaseSourceNotice app text={noReleases.message} legacyPolicy={item?.placeList.map((p) => legacyPolicyAt(p.href)).find(Boolean) ?? null} class="mt-6 mb-4" />{/if}
 
 		<div class="mt-4 flex flex-col gap-4">
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}

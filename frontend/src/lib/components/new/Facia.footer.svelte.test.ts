@@ -33,6 +33,7 @@ describe('Facia tile footer on a quiet tile', () => {
 	});
 	it('the tile lead keeps its health word beside "No releases yet"', () => {
 		const t = mount({ label: 'No releases yet' }).textContent ?? '';
-		expect(t).toMatch(/All healthy\s*·\s*No releases yet/);
+		expect(t).toMatch(/All healthy\s+no releases yet/);
+		expect(t).not.toMatch(/·\s*no releases yet/i);
 	});
 });
