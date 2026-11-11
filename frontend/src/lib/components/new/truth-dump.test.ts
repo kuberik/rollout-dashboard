@@ -2,8 +2,16 @@ import { it } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import * as D from './data';
 
-/* r34 truth lane: dumps the derived facts to .work/home-r34/truth/dump.json for tools/truth.mjs and hand inspection. */
-it('dump', () => {
+/* r34 truth lane: dumps the derived facts to a JSON file for tools/truth.mjs and hand inspection.
+ *
+ * Dev tool, not an assertion: SKIPPED unless TRUTH_DUMP=1 (so CI and plain `vitest run` skip it).
+ * Output path comes from TRUTH_DUMP_OUT (required when TRUTH_DUMP=1), e.g.
+ *   TRUTH_DUMP=1 TRUTH_DUMP_OUT=/home/luka/projects/kuberik/.work/home-r34/truth/dump.json \
+ *     pnpm exec vitest run src/lib/components/new/truth-dump.test.ts
+ */
+it.skipIf(process.env.TRUTH_DUMP !== '1')('dump', () => {
+	const outPath = process.env.TRUTH_DUMP_OUT;
+	if (!outPath) throw new Error('TRUTH_DUMP=1 requires TRUTH_DUMP_OUT=<path to dump.json>');
 	const out: Record<string, unknown> = {};
 	for (const s of ['incident', 'calm', 'quiet'] as const) {
 		const R = D.rollouts(s);
@@ -14,5 +22,5 @@ it('dump', () => {
 			apps: D.apps(s).items.map((a) => ({ app: a.app, group: a.group, fact: a.fact, href: a.href }))
 		};
 	}
-	writeFileSync('/home/luka/projects/kuberik/.work/home-r34/truth/dump.json', JSON.stringify(out, null, 1));
+	writeFileSync(outPath, JSON.stringify(out, null, 1));
 });
