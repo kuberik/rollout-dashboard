@@ -43,6 +43,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import { ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
 	import { CLEAR_PIN_LABEL } from './pin-copy';
+	import { stateWord } from '$lib/components/new/state-words';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { StableOrder, RetainedRows } from '$lib/view-models/stable-order';
 	import { holdHeight } from '$lib/smooth-height';
@@ -135,7 +136,7 @@
 		 * the canvas. `undefined`/absent: a chain link still reads "Waits
 		 * for `<env>`" with no second clause, never a guess.
 		 */
-		peerHeldByEnv?: ReadonlyMap<string, { held: boolean; causeLabel: string | null }>;
+		peerHeldByEnv?: ReadonlyMap<string, { state?: string; held: boolean; causeLabel: string | null }>;
 		/**
 		 * ⭐ "WAITS FOR `<stage>`", ON THE FOCUS BOX TOO (qa11 finding,
 		 * squad-rollout gates-2 follow-up, 2026-10-11). When
@@ -289,6 +290,15 @@
 		return 'newest';
 	}
 
+	function peerWord(l: NeighbourLink): string | null {
+		const peer = peerHeldByEnv?.get(l.node.env);
+		return peer && !peer.held ? stateWord(peer.state) : null;
+	}
+	/** The tile's mark: the peer's own verdict (checking / deploying / failing) when it has not passed the build, else the passed mark. */
+	function chainMark(l: NeighbourLink): 'newest' | 'checking' | 'deploying' | 'failed' {
+		const st = peerHeldByEnv?.get(l.node.env)?.state;
+		return peerWord(l) && (st === 'checking' || st === 'deploying' || st === 'failed') ? st : 'newest';
+	}
 	/**
 	 * ⭐ "WAITS FOR `<stage>`", NEUTRAL — THE CHAIN LINK'S OWN SENTENCE
 	 * (qa11 finding, squad-rollout gates-2 follow-up, 2026-10-11). A
@@ -309,6 +319,9 @@
 		// rows already print ("Waits for staging"), never the Chip's own
 		// abbreviated label.
 		if (peer?.held && peer.causeLabel) return `Waits for ${l.node.env} · ${l.node.env} held on ${peer.causeLabel}`;
+		// A peer still checking / deploying / failing its own build has NOT passed: it reads the place verdict word the app page and /rollouts print.
+		const word = peerWord(l);
+		if (word) return `${word} · Promotion`;
 		// Reaching here means the predecessor holds nothing (no chain wait, no held peer): the build already passed it. "Waits for staging"
 		// beside a green dot read as staging itself waiting (QA, TL follow-up).
 		return 'Nothing held · Promotion';
@@ -595,7 +608,7 @@
 		     the wrapped box's full height. -->
 		<p class="flex min-w-0 items-start gap-1.5 t-meta {held ? 'text-held' : 'text-fg-subtle'}">
 			<span class="mt-0.5 shrink-0"
-				><StatusMark state={l.chainPredecessor ? 'newest' : markState(l.state)} /></span
+				><StatusMark state={l.chainPredecessor ? chainMark(l) : markState(l.state)} /></span
 			>
 			<span class="min-w-0 break-words">{l.chainPredecessor ? chainWaitsForText(l) : statusLine(l)}</span>
 		</p>

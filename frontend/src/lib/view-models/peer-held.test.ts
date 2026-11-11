@@ -11,9 +11,10 @@ describe('the Gates tab neighbour tile reads the place verdict, not the frontier
 		expect(baking.held).toBe(true);
 		expect(placeVerdictHeld(baking)).toBe(false);
 		expect(peerHeldMap(new Map([['prod-us-east-2', baking]])).get('prod-us-east-2')?.held).toBe(false);
+		expect(peerHeldMap(new Map([['prod-us-east-2', baking]])).get('prod-us-east-2')?.state).toBe('checking');
 	});
 	it('a place the verdict holds stays held, with its cause label', () => {
 		const m = peerHeldMap(new Map([['staging', waiting]]));
-		expect(m.get('staging')).toEqual({ held: true, causeLabel: 'payments-svc' });
+		expect(m.get('staging')).toMatchObject({ held: true, causeLabel: 'payments-svc' });
 	});
 });

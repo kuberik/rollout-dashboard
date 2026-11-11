@@ -761,10 +761,13 @@ export function placeVerdictHeld(c: RolloutCard): boolean {
 	return s === 'awaiting-approval' || s === 'held-by-rule';
 }
 
-/** The Gates tab's peer map (env name to held + cause), read off the place verdict (`placeVerdictHeld`). */
-export function peerHeldMap(peers: ReadonlyMap<string, RolloutCard>): Map<string, { held: boolean; causeLabel: string | null }> {
-	const m = new Map<string, { held: boolean; causeLabel: string | null }>();
-	for (const [envName, card] of peers) m.set(envName, { held: placeVerdictHeld(card), causeLabel: card.heldCauseLabel });
+/** One neighbour place as the Gates tab's tile reads it: the place VERDICT (`state`, the app page's and /rollouts' word), never a held boolean. */
+export type PeerPlace = { state: EnvState; held: boolean; causeLabel: string | null };
+
+/** The Gates tab's peer map (env name to place verdict + cause), read off `appEnvState`. A checking place is "checking", not "not held". */
+export function peerHeldMap(peers: ReadonlyMap<string, RolloutCard>): Map<string, PeerPlace> {
+	const m = new Map<string, PeerPlace>();
+	for (const [envName, card] of peers) m.set(envName, { state: appEnvState(card), held: placeVerdictHeld(card), causeLabel: card.heldCauseLabel });
 	return m;
 }
 
