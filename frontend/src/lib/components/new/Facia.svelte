@@ -468,7 +468,7 @@
 	{/if}
 	<!-- tile footer, two fixed tracks: the change (commit icon · title · #PR · age) | who ships to it (avatar stack). Phone: folds behind the state line's chevron.
 	     LEAD (r2 apps fix 1): the footer names the change of the build the title and banner are about (title · #PR | its author, no second age), or is omitted. -->
-	{#if lead ? leadChange : !isQuiet && (lastChange || shippers.length)}
+	{#if lead ? leadChange : (!isQuiet || !!item.noReleases) && (lastChange || shippers.length)}
 		<div class="fp-foot-row mt-auto grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 {lead ? '' : 'border-t border-line-subtle pt-4'} " data-fp-footer>
 			{#if lead && leadChange}
 				<span class="t-meta flex min-w-0 items-center gap-2 text-fg-muted">
