@@ -78,6 +78,7 @@ export function confirmApprove(f?: typeof fetch): void {
 	if (!a) return;
 	const t = a.target;
 	returnTo = a.trigger;
+	holds.hover = holds.focus = false; // a new toast never inherits a held state
 	approvalUi.ask = null;
 	clearTimer();
 	grantApproval(t);
@@ -92,6 +93,7 @@ export function undoApprove(f?: typeof fetch): void {
 	const d = approvalUi.done;
 	if (!d || d.error) return;
 	const t = d.target;
+	holds.hover = holds.focus = false;
 	clearTimer();
 	revokeApproval(t);
 	approvalUi.done = null;

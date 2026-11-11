@@ -57,7 +57,7 @@
 	});
 	function key(e: KeyboardEvent) {
 		if (e.key === 'Escape' && approvalUi.ask) { e.stopPropagation(); cancelApprove(); }
-		else if (e.key === 'Escape' && approvalUi.done) dismissDone();
+		else if (e.key === 'Escape' && approvalUi.done && !e.defaultPrevented && !document.querySelector('[role="dialog"][aria-modal="true"], dialog[open]')) dismissDone(); // another overlay already took this Escape
 	}
 </script>
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import ApprovalLayer from './ApprovalLayer.svelte';
-import { approvalUi, askApprove, confirmApprove, pauseDone, resumeDone, UNDO_MS } from './approvals.svelte';
+import { approvalUi, askApprove, confirmApprove, pauseDone, resumeDone, undoApprove, UNDO_MS } from './approvals.svelte';
 import { rollouts, approvalTarget, revokeApproval } from './data';
 
 const raf = () => new Promise((r) => requestAnimationFrame(() => r(0)));
@@ -114,6 +114,29 @@ describe('the toast auto-dismiss waits for the person and never drops focus to B
 		undo.dispatchEvent(new Event('pointerout', { bubbles: true }));
 		vi.advanceTimersByTime(UNDO_MS * 2);
 		expect(approvalUi.done).not.toBeNull();
+	});
+	it('Escape already taken by another overlay (defaultPrevented, or a modal dialog open) does not dismiss the toast', async () => {
+		render(ApprovalLayer);
+		await open();
+		await tick();
+		const e = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+		e.preventDefault();
+		window.dispatchEvent(e);
+		expect(approvalUi.done).not.toBeNull();
+		const dlg = document.createElement('div'); dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); document.body.append(dlg);
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		expect(approvalUi.done).not.toBeNull();
+	});
+	it('a new toast never inherits a held state from the previous one', async () => {
+		render(ApprovalLayer);
+		await open();
+		pauseDone('hover'); pauseDone('focus');
+		undoApprove((async () => new Response('{}')) as unknown as typeof fetch);
+		await open();
+		await tick(); await raf(); await raf();
+		(document.activeElement as HTMLElement)?.blur(); // focus leaves; a stale hover hold would keep the clock stopped
+		vi.advanceTimersByTime(UNDO_MS + 1);
+		expect(approvalUi.done).toBeNull();
 	});
 });
 
