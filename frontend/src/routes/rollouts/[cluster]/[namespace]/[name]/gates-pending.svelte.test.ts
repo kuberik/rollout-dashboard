@@ -84,7 +84,7 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		reactivePage.url = new URL('http://localhost/rollouts/prod/app-prod-eu-west-1/app/gates');
 		const { container } = render(WithQueryClient, { props: { component: RolloutGates as any } });
 		const text = () => container.textContent ?? '';
-		await waitFor(() => expect(text()).toMatch(/Gates could not be loaded/), { timeout: 20000 });
+		await waitFor(() => expect(text()).toMatch(/Rules couldn't be loaded/), { timeout: 20000 });
 		expect(text()).not.toMatch(/No gates on this rollout/);
 		expect(text()).not.toMatch(/\d+ newer builds?/);
 		expect(container.querySelector('[data-testid="gates-pending"]')).toBeNull();

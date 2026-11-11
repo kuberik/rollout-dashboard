@@ -83,6 +83,7 @@
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import { pageTitle } from '$lib/page-title';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import UnavailableCard from '$lib/components/UnavailableCard.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import {
 		dependencySourceCluster,
@@ -1278,6 +1279,8 @@
 	// ⛔ `twoColumns` (whether to split the grid) is RETIRED (squad-rollout
 	// Lane G round 5, AD ruling): the main+rail split is unconditional now —
 	// see the grid's own comment where it renders, below.
+	/** Does the main track hold cards (Waiting on / Held builds)? When it does not and the graph has nothing to draw, the main track holds the "No gates" card instead. */
+	const hasMainContent = $derived(hasContracts || holdBreakdown.held.length > 0);
 </script>
 
 <!-- ⭐ THE "Here" GROUP'S OWN ROW (squad-rollout Lane G round 3, item 4,
@@ -1511,6 +1514,39 @@
 	>
 </svelte:head>
 
+{#snippet noGatesCard()}
+	<!-- THE one "No gates on this rollout" card (§3.15 empty anatomy), always drawn in the MAIN track of the 3fr/2fr grid so the settled page uses the same tracks as a gated one and the pending skeleton can mirror it. -->
+	<div class="min-w-0">
+		<Card icon={ShareNodesOutline} title="Gates" padded={false} class="min-w-0">
+		<div class="flex flex-col items-start gap-2 px-4 py-6 text-left">
+			<ShareNodesOutline class="text-fg-disabled h-5 w-5" aria-hidden="true" />
+			<p class="t-ui text-fg">No gates on this rollout</p>
+			<p class="t-meta text-fg-subtle max-w-md">
+				{#if rollout?.spec?.healthCheckSelector && healthQuiet === 'failing'}
+					A health check is failing, but there is no newer build for it to hold back.
+				{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'pending'}
+					A health check is still pending, but there is no newer build for it to hold
+					back.
+				{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'unknown'}
+					{#if healthChecksQuery.isError}{HEALTH_CHECKS_UNAVAILABLE.sentence}{/if}
+				{:else if rollout?.spec?.healthCheckSelector}
+					Its health checks are passing.
+				{:else}
+					A gate — an approval, a deploy window, a dependency or a health check — holds a
+					build until its rule passes.
+				{/if}
+			</p>
+			<a
+				href="https://docs.kuberik.com/concepts/gates"
+				target="_blank"
+				rel="noreferrer"
+				class="nav-link t-ui-sm">Learn about gates ›</a
+			>
+		</div>
+	</Card>
+	</div>
+{/snippet}
+
 {#snippet railSkeleton()}
 	<!-- The rail's two cards ("Runs in", "Depends on this") as placeholders, shared by the load-outage skeleton and the pending-fleet skeleton so nothing pops in once the list answers. -->
 	<div class="grid min-w-0 content-start gap-4">
@@ -1713,27 +1749,20 @@
 
 			{#if listQuery.isError && listQuery.data === undefined}
 				<!-- The fleet list failed and there is nothing cached: hasChain / hasContracts / the graph are all read off it, so "No gates on this rollout" would be a false answer, and a newer-builds count has no fleet to be right about. Same unavailable treatment as the health rows (they say it could not be loaded instead of guessing), in the empty-state anatomy; ErrorState would repeat the tab header here. -->
-				<Card icon={ShareNodesOutline} title="Gates" padded={false} class="min-w-0">
-					<div class="flex flex-col items-start gap-2 px-4 py-8 text-left" role="alert">
-						<ShareNodesOutline class="text-fg-disabled h-5 w-5" aria-hidden="true" />
-						<p class="t-ui text-fg">Gates could not be loaded</p>
-						<p class="t-meta text-fg-subtle max-w-md">
-							The dashboard could not read the list of rollouts this rollout's gates and environments are drawn from, so it cannot tell what holds this rollout or what waits on it.
-						</p>
-						<button
-							type="button"
-							class="btn btn-secondary mt-1"
-							disabled={listQuery.isFetching}
-							onclick={() => listQuery.refetch()}>{listQuery.isFetching ? 'Trying again…' : 'Try again'}</button
-						>
-					</div>
-				</Card>
+				<UnavailableCard
+					icon={ShareNodesOutline}
+					title="Gates"
+					sentence="Rules couldn't be loaded, so the dashboard can't tell what holds this rollout or what waits on it."
+					onRetry={() => listQuery.refetch()}
+					isRetrying={listQuery.isFetching}
+					class="min-w-0"
+				/>
 			{:else if !fleetSettled(listQuery)}
 				<!-- The fleet list has not answered: hasChain / hasContracts / hood are all read off it, so "No gates on this rollout" would be a finished, false sentence. The same skeleton the loaded page's graph card uses (below). -->
 				<div class="grid gap-4" data-testid="gates-pending">
-					<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={176} />
 					<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
-						<!-- No spacer: with no main column the loaded rail takes the first track (the common case, a rollout holding nothing), so the placeholder sits there too and does not jump sideways. -->
+						<!-- Mirrors the settled layout: main track (the graph / "No gates" card, or Waiting on) and the rail on the right, so nothing jumps sideways. -->
+						<CardSkeleton titleWidth="w-16" rollupWidth="w-28" bodyHeight={120} />
 						{@render railSkeleton()}
 					</div>
 				</div>
@@ -1751,41 +1780,9 @@
 				     something to draw) — 20px outline icon in `fg-disabled`, a
 				     `t-ui` one-line headline, `t-meta` next-step line. Replaces the
 				     bare `rounded-xl` box with no icon and no card header. -->
-				<Card icon={ShareNodesOutline} title="Gates" padded={false} class="min-w-0">
-					<!-- ⭐ "NO GATES", LEFT-ALIGNED, §3.15 (squad-rollout Lane G round
-					     2, item 4): this tab's own vocabulary is "gate" (the
-					     allowlisted exception above) — the generic-anatomy word this
-					     empty state used to borrow ("Nothing gates this rollout")
-					     still works as a sentence but read like the tab had changed
-					     its mind about its own noun from one card to the next. Same
-					     left-aligned §3.15 shape as the calm/no-gates card below, a
-					     next-step sentence that defines the word for a first-time
-					     reader, and a docs link out. -->
-					<div class="flex flex-col items-start gap-2 px-4 py-8 text-left">
-						<ShareNodesOutline class="text-fg-disabled h-5 w-5" aria-hidden="true" />
-						<p class="t-ui text-fg">No gates on this rollout</p>
-						<p class="t-meta text-fg-subtle max-w-md">
-							{#if rollout?.spec?.healthCheckSelector && healthQuiet === 'failing'}
-								A health check is failing, but there is no newer build for it to hold back.
-							{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'pending'}
-								A health check is still pending, but there is no newer build for it to hold back.
-							{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'unknown'}
-								{#if healthChecksQuery.isError}{HEALTH_CHECKS_UNAVAILABLE.sentence}{/if}
-							{:else if rollout?.spec?.healthCheckSelector}
-								Its health checks are passing.
-							{:else}
-								A gate — an approval, a deploy window, a dependency or a health check — holds a
-								build until its rule passes.
-							{/if}
-						</p>
-						<a
-							href="https://docs.kuberik.com/concepts/gates"
-							target="_blank"
-							rel="noreferrer"
-							class="nav-link t-ui-sm">Learn about gates ›</a
-						>
-					</div>
-				</Card>
+				<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
+					{@render noGatesCard()}
+				</div>
 			{:else}
 				<div class="grid gap-4">
 					<!-- ══ THE GRAPH — the tab's centrepiece, full width above the
@@ -1947,58 +1944,8 @@
 								chainWait={waitsForFact?.wave ? { stage: waitsForFact.stage, text: waitsForFact.wave } : null}
 							/>
 						</Card>
-					{:else if hood.focus}
-						<!-- ⭐ U-32(a), 2026-10-08 (polish pass): THIS ROLLOUT QUALIFIES
-					     FOR THE TAB BUT HAS NOTHING TO DRAW RIGHT NOW — the widened
-					     tab predicate (health selector / `DeploymentBlocked`) means
-					     a rollout can land here with zero edges and zero gate boxes
-					     (health is passing, nothing else gates it). The graph card
-					     itself still shows nothing was skipped — reusing `Card`'s
-					     own shell rather than rendering no card at all, which on a
-					     page with a "Runs in"/"Depends on this" rail beside it would
-					     read as the tab having silently dropped the one thing it is
-					     named for. -->
-						<!-- Same §3.15 empty anatomy as the tab's own top-level empty state
-					     — this is that state's CARD-scale twin (something else on
-					     this rollout earns the rail beside it, so the graph still
-					     needs its own card rather than disappearing). -->
-						<!-- ⭐ "NO GATES", LEFT-ALIGNED, §3.15 (squad-rollout Lane G round
-					     2, item 4) — this is the exact card the reviewer screenshotted
-					     live on `payments-core-prod-us-east`: a big box with one
-					     centred line and no next step. Same anatomy as the tab's own
-					     top-level empty state above: icon, `t-ui` headline, a `t-meta`
-					     next-step sentence that defines the word "gate" even when
-					     nothing else on the page needs to (THIS branch is reached
-					     with no health selector at all, so it used to fall through to
-					     an empty `<p>` and show nothing but the headline — exactly
-					     the "big empty box" complaint). -->
-						<Card icon={ShareNodesOutline} title="Gates" padded={false} class="min-w-0">
-							<div class="flex flex-col items-start gap-2 px-4 py-6 text-left">
-								<ShareNodesOutline class="text-fg-disabled h-5 w-5" aria-hidden="true" />
-								<p class="t-ui text-fg">No gates on this rollout</p>
-								<p class="t-meta text-fg-subtle max-w-md">
-									{#if rollout?.spec?.healthCheckSelector && healthQuiet === 'failing'}
-										A health check is failing, but there is no newer build for it to hold back.
-									{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'pending'}
-										A health check is still pending, but there is no newer build for it to hold
-										back.
-									{:else if rollout?.spec?.healthCheckSelector && healthQuiet === 'unknown'}
-										{#if healthChecksQuery.isError}{HEALTH_CHECKS_UNAVAILABLE.sentence}{/if}
-									{:else if rollout?.spec?.healthCheckSelector}
-										Its health checks are passing.
-									{:else}
-										A gate — an approval, a deploy window, a dependency or a health check — holds a
-										build until its rule passes.
-									{/if}
-								</p>
-								<a
-									href="https://docs.kuberik.com/concepts/gates"
-									target="_blank"
-									rel="noreferrer"
-									class="nav-link t-ui-sm">Learn about gates ›</a
-								>
-							</div>
-						</Card>
+					{:else if hood.focus && hasMainContent}
+						{@render noGatesCard()}
 					{/if}
 					<!-- ══ MAIN HOLDS WHAT HAS TO MOVE; THE RAIL HOLDS WHERE THINGS
 				     ARE — the Overview tab's own split, same tracks, ALWAYS
@@ -2026,7 +1973,7 @@
 					     "Held builds", gate-only holds included) — the two cards below
 					     each still gate themselves independently; this only decides
 					     whether the MAIN COLUMN renders at all. -->
-						{#if hasContracts || holdBreakdown.held.length > 0}
+						{#if hasMainContent}
 							<div class="grid min-w-0 content-start gap-4">
 								{#if holdBreakdown.held.length > 0 || heldOtherShown.length > 0}
 									<!-- CARD 1 — "Held builds". A hold is not an alert; the
@@ -2277,6 +2224,8 @@
 									</Card>
 								{/if}
 							</div>
+						{:else if hood.focus && hood.total === 0}
+							{@render noGatesCard()}
 						{/if}
 
 						<!-- RAIL — the column that holds LOCATORS: where things are,

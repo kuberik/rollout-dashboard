@@ -10,6 +10,7 @@
 import { approvalWord, severity } from '../state-words';
 import { tabPill, deployedHistory, bakeFailedOn, streamBuilds, newestBuild, ago, buildIdentity, type PlaceHold, type GateInfo, type TRow, type TierKey } from '../data';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+import { newerBuildsAre } from '$lib/view-models/blocking-story';
 
 const ORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
 export const tierRank = (t: string) => ORDER.indexOf(t as TierKey);
@@ -411,7 +412,7 @@ export function weekSummary(rollouts: WeekRollout[], days: number, nowMs: number
 }
 
 /** the approval banner's line: the count only once the place's held-HERE answer is known; while it is pending the sentence carries no number (never a guess that flips) */
-export const waitingSentence = (heldN: number | null): string => (heldN == null ? 'Newer builds are waiting here.' : `${heldN} newer build${heldN === 1 ? ' is' : 's are'} waiting here.`);
+export const waitingSentence = (heldN: number | null): string => `${newerBuildsAre(heldN ?? 0, heldN == null)} waiting here.`;
 
 /**
  * landing v5 (2026-11-10): an approval at the head of a rollout order opens the order, it does not finish it. The places that come AFTER a
