@@ -9,6 +9,7 @@ import (
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	releasev1alpha1 "github.com/kuberik/rollout-dashboard/pkg/apis/release/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -26,6 +27,21 @@ type ReleaseImage struct {
 	Repository *imagereflectorv1.ImageRepository
 }
 
+// releaseSourceRefName reads spec.releaseSourceRef.name from the live Rollout
+// as unstructured, because the pinned rollout-controller API has no such field.
+func (c *Client) releaseSourceRefName(ctx context.Context, rollout *rolloutv1alpha1.Rollout) (string, error) {
+	u := &unstructured.Unstructured{}
+	u.SetGroupVersionKind(rolloutv1alpha1.GroupVersion.WithKind("Rollout"))
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: rollout.Namespace, Name: rollout.Name}, u); err != nil {
+		return "", fmt.Errorf("failed to get rollout %s: %w", rollout.Name, err)
+	}
+	name, _, err := unstructured.NestedString(u.Object, "spec", "releaseSourceRef", "name")
+	if err != nil {
+		return "", fmt.Errorf("rollout %s has a malformed spec.releaseSourceRef: %w", rollout.Name, err)
+	}
+	return name, nil
+}
+
 // ResolveReleaseImage resolves the image repository of a rollout:
 //  1. spec.releaseSourceRef -> ReleaseSource spec.oci.image, or
 //     spec.oci.imagePolicyRef -> ImagePolicy -> ImageRepository;
@@ -38,7 +54,12 @@ func (c *Client) ResolveReleaseImage(ctx context.Context, rollout *rolloutv1alph
 		return nil, ErrNoReleaseImage
 	}
 	ns := rollout.Namespace
-	if ref := rollout.Spec.ReleaseSourceRef; ref != nil && ref.Name != "" {
+	refName, err := c.releaseSourceRefName(ctx, rollout)
+	if err != nil {
+		return nil, err
+	}
+	if refName != "" {
+		ref := struct{ Name string }{refName}
 		src := &releasev1alpha1.ReleaseSource{}
 		if err := c.client.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, src); err != nil {
 			return nil, fmt.Errorf("failed to get release source %s: %w", ref.Name, err)

@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -20,16 +21,31 @@ import (
 func releaseImageClient(t *testing.T, objs ...client.Object) *Client {
 	t.Helper()
 	s := runtime.NewScheme()
-	require.NoError(t, rolloutv1alpha1.AddToScheme(s))
 	require.NoError(t, releasev1alpha1.AddToScheme(s))
 	require.NoError(t, imagereflectorv1.AddToScheme(s))
 	return &Client{client: fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).Build()}
 }
 
-func rolloutWithRef(mut func(*rolloutv1alpha1.Rollout)) *rolloutv1alpha1.Rollout {
+// rolloutWithRef returns the typed Rollout (which has no releaseSourceRef
+// field in the pinned API) and the stored object, which carries
+// spec.releaseSourceRef and/or spec.releasesImagePolicy.
+func rolloutWithRef(sourceRef, legacyPolicy string) (*rolloutv1alpha1.Rollout, client.Object) {
 	r := &rolloutv1alpha1.Rollout{ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "ns"}}
-	mut(r)
-	return r
+	if legacyPolicy != "" {
+		r.Spec.ReleasesImagePolicy = corev1.LocalObjectReference{Name: legacyPolicy}
+	}
+	spec := map[string]interface{}{}
+	if sourceRef != "" {
+		spec["releaseSourceRef"] = map[string]interface{}{"name": sourceRef}
+	}
+	if legacyPolicy != "" {
+		spec["releasesImagePolicy"] = map[string]interface{}{"name": legacyPolicy}
+	}
+	u := &unstructured.Unstructured{Object: map[string]interface{}{"spec": spec}}
+	u.SetGroupVersionKind(rolloutv1alpha1.GroupVersion.WithKind("Rollout"))
+	u.SetName("app")
+	u.SetNamespace("ns")
+	return r, u
 }
 
 func policyAndRepo() []client.Object {
@@ -55,8 +71,8 @@ func TestResolveReleaseImage_ReleaseSourceImage(t *testing.T) {
 			Image: "ghcr.io/o/app", SecretRef: &corev1.LocalObjectReference{Name: "pull"},
 		}},
 	}
-	r := rolloutWithRef(func(r *rolloutv1alpha1.Rollout) { r.Spec.ReleaseSourceRef = &corev1.LocalObjectReference{Name: "src"} })
-	got, err := releaseImageClient(t, src).ResolveReleaseImage(context.Background(), r)
+	r, ro := rolloutWithRef("src", "")
+	got, err := releaseImageClient(t, ro, src).ResolveReleaseImage(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, "ghcr.io/o/app", got.Image)
 	require.Equal(t, "pull", got.SecretName)
@@ -70,8 +86,8 @@ func TestResolveReleaseImage_ReleaseSourceImagePolicyRef(t *testing.T) {
 			ImagePolicyRef: &corev1.LocalObjectReference{Name: "pol"},
 		}},
 	}
-	r := rolloutWithRef(func(r *rolloutv1alpha1.Rollout) { r.Spec.ReleaseSourceRef = &corev1.LocalObjectReference{Name: "src"} })
-	got, err := releaseImageClient(t, append(policyAndRepo(), src)...).ResolveReleaseImage(context.Background(), r)
+	r, ro := rolloutWithRef("src", "")
+	got, err := releaseImageClient(t, append(policyAndRepo(), ro, src)...).ResolveReleaseImage(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, "ghcr.io/o/legacy", got.Image)
 	require.Equal(t, "creds", got.SecretName)
@@ -79,10 +95,8 @@ func TestResolveReleaseImage_ReleaseSourceImagePolicyRef(t *testing.T) {
 }
 
 func TestResolveReleaseImage_LegacyReleasesImagePolicy(t *testing.T) {
-	r := rolloutWithRef(func(r *rolloutv1alpha1.Rollout) {
-		r.Spec.ReleasesImagePolicy = corev1.LocalObjectReference{Name: "pol"}
-	})
-	got, err := releaseImageClient(t, policyAndRepo()...).ResolveReleaseImage(context.Background(), r)
+	r, ro := rolloutWithRef("", "pol")
+	got, err := releaseImageClient(t, append(policyAndRepo(), ro)...).ResolveReleaseImage(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, "ghcr.io/o/legacy", got.Image)
 }
@@ -92,11 +106,8 @@ func TestResolveReleaseImage_SourceWinsOverLegacy(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "src", Namespace: "ns"},
 		Spec:       releasev1alpha1.ReleaseSourceSpec{OCI: &releasev1alpha1.OCISource{Image: "ghcr.io/o/new"}},
 	}
-	r := rolloutWithRef(func(r *rolloutv1alpha1.Rollout) {
-		r.Spec.ReleaseSourceRef = &corev1.LocalObjectReference{Name: "src"}
-		r.Spec.ReleasesImagePolicy = corev1.LocalObjectReference{Name: "pol"}
-	})
-	got, err := releaseImageClient(t, append(policyAndRepo(), src)...).ResolveReleaseImage(context.Background(), r)
+	r, ro := rolloutWithRef("src", "pol")
+	got, err := releaseImageClient(t, append(policyAndRepo(), ro, src)...).ResolveReleaseImage(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, "ghcr.io/o/new", got.Image)
 }
@@ -104,14 +115,15 @@ func TestResolveReleaseImage_SourceWinsOverLegacy(t *testing.T) {
 func TestResolveReleaseImage_MissingIsNotA500(t *testing.T) {
 	ctx := context.Background()
 	// no source at all
-	_, err := releaseImageClient(t).ResolveReleaseImage(ctx, rolloutWithRef(func(*rolloutv1alpha1.Rollout) {}))
+	r, ro := rolloutWithRef("", "")
+	_, err := releaseImageClient(t, ro).ResolveReleaseImage(ctx, r)
 	st, ok := IsReleaseImageUnresolvable(err)
 	require.True(t, ok)
 	require.Equal(t, 422, st)
 
 	// dangling releaseSourceRef
-	r := rolloutWithRef(func(r *rolloutv1alpha1.Rollout) { r.Spec.ReleaseSourceRef = &corev1.LocalObjectReference{Name: "gone"} })
-	_, err = releaseImageClient(t).ResolveReleaseImage(ctx, r)
+	r, ro = rolloutWithRef("gone", "")
+	_, err = releaseImageClient(t, ro).ResolveReleaseImage(ctx, r)
 	require.True(t, apierrors.IsNotFound(err))
 	st, ok = IsReleaseImageUnresolvable(err)
 	require.True(t, ok)
@@ -122,14 +134,28 @@ func TestResolveReleaseImage_MissingIsNotA500(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "src", Namespace: "ns"},
 		Spec:       releasev1alpha1.ReleaseSourceSpec{OCI: &releasev1alpha1.OCISource{ImagePolicyRef: &corev1.LocalObjectReference{Name: "nope"}}},
 	}
-	r = rolloutWithRef(func(r *rolloutv1alpha1.Rollout) { r.Spec.ReleaseSourceRef = &corev1.LocalObjectReference{Name: "src"} })
-	_, err = releaseImageClient(t, src).ResolveReleaseImage(ctx, r)
+	r, ro = rolloutWithRef("src", "")
+	_, err = releaseImageClient(t, ro, src).ResolveReleaseImage(ctx, r)
 	st, ok = IsReleaseImageUnresolvable(err)
 	require.True(t, ok)
 	require.Equal(t, 404, st)
 
 	// source without oci
 	empty := &releasev1alpha1.ReleaseSource{ObjectMeta: metav1.ObjectMeta{Name: "src", Namespace: "ns"}}
-	_, err = releaseImageClient(t, empty).ResolveReleaseImage(ctx, r)
+	_, err = releaseImageClient(t, ro, empty).ResolveReleaseImage(ctx, r)
 	require.Error(t, err)
+}
+
+// The typed Rollout has no releaseSourceRef field; resolution must still work
+// from the stored object alone.
+func TestResolveReleaseImage_TypedRolloutHasNoRefField(t *testing.T) {
+	src := &releasev1alpha1.ReleaseSource{
+		ObjectMeta: metav1.ObjectMeta{Name: "src", Namespace: "ns"},
+		Spec:       releasev1alpha1.ReleaseSourceSpec{OCI: &releasev1alpha1.OCISource{Image: "ghcr.io/o/app"}},
+	}
+	r, ro := rolloutWithRef("src", "")
+	require.Empty(t, r.Spec.ReleasesImagePolicy.Name)
+	got, err := releaseImageClient(t, ro, src).ResolveReleaseImage(context.Background(), r)
+	require.NoError(t, err)
+	require.Equal(t, "ghcr.io/o/app", got.Image)
 }
