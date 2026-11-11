@@ -65,12 +65,12 @@ describe('the build in question is one pick', () => {
 		}));
 	});
 
-	it('with no promotion gate the build staging already finished is the target while staging deploys a newer one, and a closed window changes nothing', () => {
+	it('with no promotion gate the newest build is the target while staging deploys it, and a closed window changes nothing', () => {
 		withStagingDeploying(() => {
 			for (const gs of [[], [WINDOW]]) withGates(gs, () => {
 				const t = approvalTarget(prodRow(), 'incident')!;
-				expect(t.build).toBe(STAGED);
-				expect(t.places.map((p) => p.tag)).toEqual(t.places.map(() => STAGED));
+				expect(t.build).toBe(NEWEST);
+				expect(t.places.map((p) => p.tag)).toEqual(t.places.map(() => NEWEST));
 			});
 		});
 	});
