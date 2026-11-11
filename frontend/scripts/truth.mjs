@@ -787,7 +787,7 @@ const closeAge = (a, b) => {
 	);
 };
 const hasAge = (text, age) => new RegExp(`(?<![\\w.-])${escRe(age)}(?![\\w.])`).test(text);
-/* ── checks A (the viewer's action per row per page = data.ts actionFor), B (approval dwell = ago(waitingBuild.since) beside waitingBuild.build; a checking
+/* ── checks A (the viewer's action per row per page = data.ts actionFor), B (approval dwell = ago(buildInQuestionFacts.since) beside buildInQuestionFacts.build; a checking
       place's age = the tab's CHECKING age), C (every "N to approve" / "N waiting for approval" = fleetCounts(state).places.approval). The app's own modules are
       imported INTO the page from the vite server, so the expectations are the model's, the observations the DOM's. ── */
 async function fleetChecks(statesToCheck) {
@@ -891,7 +891,7 @@ async function fleetChecks(statesToCheck) {
 					const dwell = rows
 						.filter((x) => x.group === 'approval')
 						.map((x) => {
-							const wb = D.waitingBuild(x);
+							const wb = D.buildInQuestionFacts(x);
 							return {
 								app: x.app,
 								href: norm(x.href),
