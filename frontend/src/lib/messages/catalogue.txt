@@ -1011,7 +1011,6 @@ lib/components/NextStep.svelte	code	Roll back
 lib/components/NextStep.svelte	code	See what's blocking
 lib/components/NotFound.svelte	text	Go back
 lib/components/NotFound.svelte	title	Where to look
-lib/components/PartialDataNotice.svelte	code	the hub gave no reason.
 lib/components/PartialDataNotice.svelte	code	this page
 lib/components/pin-copy.ts	code	Clear pin
 lib/components/pin-copy.ts	code	Clear the pin on … in …?
@@ -1398,7 +1397,9 @@ lib/view-models/cluster-errors.ts	code	… is slow to answer${lastSeenText ?
 lib/view-models/cluster-errors.ts	code	… is unreachable — its rollouts show their last known state
 lib/view-models/cluster-errors.ts	code	… rollouts show the last known state the hub holds. They refresh as soon as ${one ?
 lib/view-models/cluster-errors.ts	code	… stopped answering${lastSeenText ?
+lib/view-models/cluster-errors.ts	code	Could not be reached.
 lib/view-models/cluster-errors.ts	code	Everything on … covers only the clusters that replied — a rollout on … is missing from these counts, not healthy in them.
+lib/view-models/cluster-errors.ts	code	Is up, but did not answer in time.
 lib/view-models/dependencies.ts	code	… version… ahead
 lib/view-models/dependencies.ts	code	… version… waiting to move
 lib/view-models/dependencies.ts	code	its leader

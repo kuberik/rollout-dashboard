@@ -189,8 +189,9 @@ describe('a partial answer is declared, on every page that renders one', () => {
 			expect(
 				screen.getByText(/missing from these counts, not healthy in them/i)
 			).toBeInTheDocument();
-			// The hub's own sentence, verbatim.
-			expect(screen.getByText(/dial tcp: i\/o timeout/)).toBeInTheDocument();
+			// Plain words from the typed reason; the raw fetch error is not shown.
+			expect(screen.getByText(/Could not be reached\./)).toBeInTheDocument();
+			expect(screen.queryByText(/dial tcp/)).toBeNull();
 		});
 	}
 });
