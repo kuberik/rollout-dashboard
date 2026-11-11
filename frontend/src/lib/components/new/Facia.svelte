@@ -122,7 +122,7 @@
 	const waitRow = $derived(stateRow && (stateRow.state === 'awaiting-approval' || stateRow.state === 'held-by-rule') ? stateRow : null);
 	const wait = $derived(waitRow ? buildInQuestionFacts(waitRow) : null);
 	/** apps-7 Q1: a wait's age is `waitClock` (QA2 #8) — the same clock the Rollouts row's sentence prints; otherwise the row's */
-	const age = $derived(isQuiet ? '' : ago((waitRow ? waitClock(waitRow) : null) ?? (appr?.row ?? item.row)?.since ?? item.since));
+	const age = $derived(isQuiet ? '' : ago((waitRow ? waitClock(waitRow, scenario) : null) ?? (appr?.row ?? item.row)?.since ?? item.since));
 	/** r6 P2: the lag of the focus place in words a first-time reader can place: "prod is 7 builds behind the newest" (not a link). Skipped when the one newer build IS the waiting "next" build. */
 	const placeName = $derived.by(() => {
 		const r = stateRow;
