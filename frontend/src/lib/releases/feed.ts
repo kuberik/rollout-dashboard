@@ -21,7 +21,7 @@
  */
 import type { QueryClient } from '@tanstack/svelte-query';
 import { catalogueKey, type ReleaseSliceObject, type ReleaseSourceObject } from './catalogue';
-import { ingestReleaseSlices } from './registry.svelte';
+import { ingestReleaseSlices, ingestReleaseSources } from './registry.svelte';
 import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
 
 type ListLike = {
@@ -54,6 +54,7 @@ export function ingestListResponse(data: unknown, opts: { fleetWide?: boolean } 
 		if (complete) ingestReleaseSlices([], [], { dropUnnamed: true });
 		return;
 	}
+	if (Array.isArray(sources)) ingestReleaseSources(sources, { replaceAll: complete });
 	const known = (Array.isArray(sources) ? sources : []).map((s) =>
 		catalogueKey(
 			s.metadata.annotations?.[SOURCE_CLUSTER_ANNOTATION] ?? '',

@@ -75,3 +75,17 @@ describe('deletion and complete lists', () => {
 		expect(availableReleases(r())).toBeUndefined();
 	});
 });
+
+describe('release source image', () => {
+	it('reads the registry image of the Rollout\'s ReleaseSource, per cluster', async () => {
+		const { ingestReleaseSources, releaseSourceImage } = await import('./registry.svelte');
+		ingestReleaseSources([
+			{ metadata: { name: 'src', namespace: 'ns' }, spec: { oci: { image: 'registry.example/app' } } },
+			{ metadata: { name: 'src', namespace: 'ns', annotations: { 'rollout-dashboard.kuberik.com/source-cluster': 'east' } }, spec: { oci: { image: 'registry.example/east' } } }
+		]);
+		expect(releaseSourceImage(rollout({ ref: 'src' }))).toBe('registry.example/app');
+		expect(releaseSourceImage(rollout({ ref: 'src', cluster: 'east' }))).toBe('registry.example/east');
+		expect(releaseSourceImage(rollout({}))).toBeUndefined();
+		expect(releaseSourceImage(rollout({ ref: 'other' }))).toBeUndefined();
+	});
+});

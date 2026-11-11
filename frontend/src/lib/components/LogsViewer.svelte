@@ -407,6 +407,7 @@
 	import FactList from '$lib/components/FactList.svelte';
 	import LogHistogram, { type HistogramEntry } from '$lib/components/LogHistogram.svelte';
 	import type { Rollout } from '../../types';
+	import { releaseSourceImage } from '$lib/releases/registry.svelte';
 
 	interface Props {
 		namespace: string;
@@ -1061,10 +1062,9 @@
 
 	/**
 	 * ⭐ "This build" — THE SOURCES PANE'S OWN FACTS BLOCK (art director
-	 * round 1, must-fix #6, 2026-10-09 re-review). `image` is built from
-	 * `spec.releasesImagePolicy` (the ImagePolicy this rollout watches,
-	 * the closest thing to a registry path the `Rollout` object itself
-	 * carries) plus the running build's own tag — honest about what is
+	 * round 1, must-fix #6, 2026-10-09 re-review). `image` is the registry
+	 * path of the rollout's ReleaseSource (`spec.oci.image`) plus the
+	 * running build's own tag — honest about what is
 	 * actually on the wire rather than inventing a field. `started` reads
 	 * the SAME `bakeStartTime`/`timestamp` fallback `+page.svelte`'s own
 	 * header meta already uses, in the SAME `formatTimeAgoCompact` format
@@ -1078,16 +1078,10 @@
 		if (!rollout) return [];
 		const latest = rollout.status?.history?.[0];
 		const facts: { label: string; value: string; handle?: boolean }[] = [];
-		// ⭐ THE GENERATED TYPE SAYS `{ name: string }` (a real k8s object
-		// reference); every fixture in this demo — and every other reader
-		// of this same field already in the codebase — writes it as a
-		// plain string instead. Read defensively rather than trust either
-		// shape exclusively.
-		const policyRaw = rollout.spec?.releasesImagePolicy as string | { name?: string } | undefined;
-		const policy = typeof policyRaw === 'string' ? policyRaw : policyRaw?.name;
+		const image = releaseSourceImage(rollout);
 		const tag = latest?.version?.tag;
-		if (policy) {
-			facts.push({ label: 'Image', value: tag ? `${policy}:${tag}` : policy, handle: true });
+		if (image) {
+			facts.push({ label: 'Image', value: tag ? `${image}:${tag}` : image, handle: true });
 		}
 		const since = latest?.bakeStartTime || latest?.timestamp;
 		if (since) {

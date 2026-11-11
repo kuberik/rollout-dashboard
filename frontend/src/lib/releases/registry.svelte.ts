@@ -9,7 +9,9 @@
  * re-runs when that Rollout's slices change.
  */
 import { SvelteMap } from 'svelte/reactivity';
+import { SOURCE_CLUSTER_ANNOTATION } from '../source-dashboard';
 import {
+	catalogueKey,
 	mergeSlices,
 	rolloutCatalogueKey,
 	rolloutReleases,
@@ -134,10 +136,34 @@ export function removeReleaseSlice(cluster: string, namespace: string, name: str
 	}
 }
 
+/** Every ReleaseSource the dashboard has seen, keyed like the catalogues (the latest list wins). */
+const sources = new SvelteMap<string, ReleaseSourceObject>();
+
+/** Fold the ReleaseSources of a list response in; a complete fleet list also drops the ones it no longer names. */
+export function ingestReleaseSources(list: readonly ReleaseSourceObject[], opts: { replaceAll?: boolean } = {}): void {
+	if (opts.replaceAll) sources.clear();
+	for (const s of list) {
+		const k = catalogueKey(
+			s.metadata.annotations?.[SOURCE_CLUSTER_ANNOTATION] ?? '',
+			s.metadata.namespace ?? '',
+			s.metadata.name
+		);
+		sources.set(k, s);
+	}
+}
+
+/** The registry image a Rollout's ReleaseSource reads from (`spec.oci.image`), when that source is known. */
+export function releaseSourceImage(r: Rollout | null | undefined): string | undefined {
+	const key = rolloutCatalogueKey(r);
+	const img = (key ? sources.get(key) : undefined)?.spec?.oci as { image?: string } | undefined;
+	return img?.image || undefined;
+}
+
 /** Tests only. */
 export function resetReleaseCatalogue(): void {
 	catalogues.clear();
 	pending.clear();
+	sources.clear();
 }
 
 function sameSlices(a: Map<string, ReleaseSliceObject>, b: Map<string, ReleaseSliceObject>): boolean {

@@ -74,6 +74,7 @@ export function convertRollout(r: Obj): { rollout: Obj; source: ReleaseSourceObj
 	const newest: Obj | undefined = available[available.length - 1];
 	const source: ReleaseSourceObject = {
 		metadata: { name: sourceName, namespace: ns, ...(annotations ? { annotations } : {}) },
+		spec: { oci: { image: `registry.example.com/${ns}/${r.metadata.name}` } },
 		status: { count: available.length, ...(newest ? { newest: { tag: newest.tag, created: newest.created, revision: newest.revision } } : {}) }
 	};
 	const candidates: ReleaseCandidate[] = ((r.status?.releaseCandidates ?? []) as Obj[]).map((c) => ({
