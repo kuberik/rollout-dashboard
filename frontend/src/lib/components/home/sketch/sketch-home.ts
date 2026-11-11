@@ -276,6 +276,8 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 	}
 
 	// ── elsewhere: not-yours apps needing someone
+	/* a place is said by its display name (`eu-west`), never its raw environment (`prod-eu-west`) */
+	const placeName = (e: { env: string; label: string; isProdRegion?: boolean }): string => (e.isProdRegion ? e.label : e.env);
 	const elsewhere: Elsewhere[] = [];
 	const myApps = new Set(yours.map((y) => y.app));
 	for (const a of m.apps) {
@@ -301,10 +303,10 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 					whose: myApps.has(a.app) && whose === 'you' ? 'you' : whose,
 					kind,
 					status:
-						ask ? `${VERB['awaiting-approval']} ${e.env} · ${alsoApprovalAsk(ask, need?.facts.window?.opensAt ?? null).replace(/^\w/, (c) => c.toLowerCase())}`
+						ask ? `${VERB['awaiting-approval']} ${placeName(e)} · ${alsoApprovalAsk(ask, need?.facts.window?.opensAt ?? null).replace(/^\w/, (c) => c.toLowerCase())}`
 						: kind === 'held' && need
-							? `${need.phrase.replace(/^\w/, (c) => c.toUpperCase())} in ${e.env}`
-							: `${VERB[e.state]} ${e.env}`,
+							? `${need.phrase.replace(/^\w/, (c) => c.toUpperCase())} in ${placeName(e)}`
+							: `${VERB[e.state]} ${placeName(e)}`,
 					since: e.heldSince ?? e.arrivedAt,
 					tone: toneOf(e.state),
 					canAct: kind === 'approval',

@@ -42,6 +42,8 @@
 	 */
 	import Chip from '$lib/components/Chip.svelte';
 	import { ArrowUpRightFromSquareOutline } from 'flowbite-svelte-icons';
+	import { CLEAR_PIN_LABEL } from './pin-copy';
+	import { stateWord } from '$lib/components/new/state-words';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { StableOrder, RetainedRows } from '$lib/view-models/stable-order';
 	import { holdHeight } from '$lib/smooth-height';
@@ -54,7 +56,7 @@
 	import {
 		wideWires,
 		narrowWires,
-		narrowUpstreamOrder,
+		holdingFirst,
 		maxRise,
 		type Wire,
 		type WireIn
@@ -65,6 +67,8 @@
 		themeOf = () => null,
 		hrefOf = () => null,
 		heldBuildsOverride,
+		onClearPin = null,
+		clearPinDisabled = false,
 		reconciledUpstream,
 		elsewhereCountOverride,
 		peerHeldByEnv,
@@ -93,6 +97,10 @@
 		 * other caller of this component.
 		 */
 		heldBuildsOverride?: string[];
+		/** The pin box's own action: the Overview's Clear pin, one dialog. Null draws no button (no permission, or not pinned). */
+		onClearPin?: (() => void) | null;
+		/** Another manager owns `spec.wantedVersion`: the same disabled state the Overview's Clear pin shows (`dashboardManagesWantedVersion`). */
+		clearPinDisabled?: boolean;
 		/**
 		 * ⭐ THE "Gated by" COLUMN'S OWN LINKS, RECONCILED (2026-10-10 — round
 		 * 4, item 1). `hood.upstream`'s per-edge `state` can disagree with
@@ -128,7 +136,7 @@
 		 * the canvas. `undefined`/absent: a chain link still reads "Waits
 		 * for `<env>`" with no second clause, never a guess.
 		 */
-		peerHeldByEnv?: ReadonlyMap<string, { held: boolean; causeLabel: string | null }>;
+		peerHeldByEnv?: ReadonlyMap<string, { state?: string; held: boolean; causeLabel: string | null }>;
 		/**
 		 * ⭐ "WAITS FOR `<stage>`", ON THE FOCUS BOX TOO (qa11 finding,
 		 * squad-rollout gates-2 follow-up, 2026-10-11). When
@@ -164,7 +172,6 @@
 	/** Widened gutter when the fan is steep (see `measure`); kept for the focus. */
 	let steep = $state(false);
 	let steepFor: string | null = null;
-	const wide = $derived(width >= WIDE_AT);
 
 	const focus = $derived(hood.focus);
 
@@ -237,9 +244,7 @@
 	 */
 	const upOrder = new StableOrder();
 	const downOrder = new StableOrder();
-	// Narrow puts held upstream items LAST (next to the focus, see
-	// `narrowUpstreamOrder`); the mode is part of the key so switching layout
-	// re-sorts, while a live update within one layout keeps rows in place.
+	// A live update within one focus keeps rows in place; navigating re-sorts.
 	//
 	// ⭐ THE ITEM COUNT RIDES THE KEY TOO. (2026-10-08) Gate boxes are not all
 	// known on the same frame: `schedules`/`healthChecks` resolve a request
@@ -252,21 +257,14 @@
 	// locks in once (arrival), not on the first INCOMPLETE frame.
 	const upMerged = $derived(mergedUpstream(upstreamLinks, displayedGates));
 	/**
-	 * ⭐ ONE STABLE ORDER AT EVERY WIDTH (round 4, item 2). Before the item-1
-	 * fix, the staging link's WRONG `clear` state put it in a different
-	 * bucket than the ALREADY-correct payments-svc link, so WIDE (arrival
-	 * order, held-first) and NARROW (`narrowUpstreamOrder`, held-LAST) sorted
-	 * them oppositely — "payments-svc on top" at 1440, "staging on top" at
-	 * 390. With `upstreamLinks` reconciled, every held gate reports the same
-	 * state at every width, so both orderings agree (and where they would
-	 * still legitimately differ — a genuinely CLEAR link — the mode stays
-	 * part of the key on purpose: narrow deliberately puts held items last,
-	 * next to the focus; wide puts them first, where the eye lands).
+	 * ⭐ ONE ORDER AT EVERY WIDTH. `holdingFirst`: a link or gate that holds this rollout is first, at 1440 and at 390, so the card
+	 * that says why nothing moves is never the one a phone's fold slices. (It used to put held items LAST at narrow, to keep the
+	 * orange trunk short; the reader's first need outranks the wire's economy.)
 	 */
 	const upstream = $derived(
 		upOrder.apply(
-			`${focus?.id ?? ''}|${wide ? 'wide' : 'narrow'}|${upMerged.length}`,
-			wide ? upMerged : narrowUpstreamOrder(upMerged),
+			`${focus?.id ?? ''}|${upMerged.length}`,
+			holdingFirst(upMerged),
 			(i) => i.key
 		)
 	);
@@ -292,6 +290,17 @@
 		return 'newest';
 	}
 
+	function peerWord(l: NeighbourLink): string | null {
+		const peer = peerHeldByEnv?.get(l.node.env);
+		return peer && !peer.held ? stateWord(peer.state) : null;
+	}
+	/** The tile's mark: the held mark for a held peer (its line says "held on <cause>"), the peer's own verdict (checking / deploying / failing) when it has not passed the build, else the passed mark. */
+	function chainMark(l: NeighbourLink): 'held' | 'newest' | 'checking' | 'deploying' | 'failed' {
+		const peer = peerHeldByEnv?.get(l.node.env);
+		if (peer?.held && peer.causeLabel) return 'held';
+		const st = peer?.state;
+		return peerWord(l) && (st === 'checking' || st === 'deploying' || st === 'failed') ? st : 'newest';
+	}
 	/**
 	 * ⭐ "WAITS FOR `<stage>`", NEUTRAL — THE CHAIN LINK'S OWN SENTENCE
 	 * (qa11 finding, squad-rollout gates-2 follow-up, 2026-10-11). A
@@ -312,6 +321,9 @@
 		// rows already print ("Waits for staging"), never the Chip's own
 		// abbreviated label.
 		if (peer?.held && peer.causeLabel) return `Waits for ${l.node.env} · ${l.node.env} held on ${peer.causeLabel}`;
+		// A peer still checking / deploying / failing its own build has NOT passed: it reads the place verdict word the app page and /rollouts print.
+		const word = peerWord(l);
+		if (word) return `${word} · Promotion`;
 		// Reaching here means the predecessor holds nothing (no chain wait, no held peer): the build already passed it. "Waits for staging"
 		// beside a green dot read as staging itself waiting (QA, TL follow-up).
 		return 'Nothing held · Promotion';
@@ -432,6 +444,7 @@
 	 *  `gateMark`), so this never re-decides what kind of gate it is. */
 	function gateBoxReleaseSentence(b: GateBox): string | null {
 		if (b.state !== 'blocked') return null;
+		if (b.mark.clears === 'pin') return 'Releases when the pin is cleared';
 		if (b.mark.clears === 'person') return 'Releases when someone approves';
 		if (b.mark.clears === 'clock') return 'Releases when the deploy window opens';
 		if (b.mark.clears === 'check') return 'Releases when the check starts passing';
@@ -597,7 +610,7 @@
 		     the wrapped box's full height. -->
 		<p class="flex min-w-0 items-start gap-1.5 t-meta {held ? 'text-held' : 'text-fg-subtle'}">
 			<span class="mt-0.5 shrink-0"
-				><StatusMark state={l.chainPredecessor ? 'newest' : markState(l.state)} /></span
+				><StatusMark state={l.chainPredecessor ? chainMark(l) : markState(l.state)} /></span
 			>
 			<span class="min-w-0 break-words">{l.chainPredecessor ? chainWaitsForText(l) : statusLine(l)}</span>
 		</p>
@@ -671,6 +684,9 @@
 		</p>
 		{#if held}
 			<p class="t-meta min-w-0 break-words text-fg-muted">{gateBoxReleaseSentence(b)}</p>
+			{#if b.kind === 'pin' && onClearPin}
+				<button type="button" class="btn btn-xs btn-secondary mt-0.5 self-start" disabled={clearPinDisabled} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
+			{/if}
 			{#if docsHref}
 				<!-- ⭐ THE ↗ EXTERNAL GLYPH (final polish round, D2, AD ruling):
 				     this button leaves the dashboard (the docs site), unlike

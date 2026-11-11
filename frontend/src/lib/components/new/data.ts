@@ -36,6 +36,7 @@
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact } from '$lib/utils';
+import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
 import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } from '$lib/view-models/failed-builds';
@@ -45,6 +46,7 @@ import { gateDisplayName } from '$lib/view-models/rollout-gates';
 import { approvalWrite, approvalGateOf, refusingGates, deployableTags, type PlaceVerdict } from '$lib/view-models/place-verdict';
 export { deployableTags, approvalWrite };
 import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
+import { windowHeld, windowNameOf, windowOpensClause } from '$lib/view-models/window-words';
 import { heldHereOf, heldKeyOfHref } from '$lib/view-models/held-here.svelte';
 import { displayVersionForTag } from '$lib/version-utils';
 import { gatePrettyOf } from '$lib/view-models/gate-pretty.svelte';
@@ -66,6 +68,7 @@ import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { buildTopology, deployNameOf, siteNodeOf, upstreamOf, type AppTopology } from '$lib/view-models/sites-waves';
 import type { Environment, HealthObservation } from '../../../types';
 import type { Rollout } from '$lib/../types';
+import { placeStateWithPin } from '$lib/view-models/pin-hold';
 import type { TierKey, RolloutRow, ChangeItem, ChangeGroupKey, Region as RDRegion, AppItem, ArrivalRow } from '$lib/components/home/roster/roster-data';
 
 export {
@@ -606,7 +609,7 @@ export function placesOf(state: HomeState, app: string): (AppPlace & { newest: s
 		return (q.arrivedAt ?? '').localeCompare(p.arrivedAt ?? '');
 	})[0];
 	const newest = newestEnv ? shortBuild(newestEnv.version) : null;
-	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', newest }));
+	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', newest }));
 }
 export type AppFailing = { build: string | null; place: string; href: string; line: string };
 /**
@@ -617,7 +620,7 @@ export type AppFailing = { build: string | null; place: string; href: string; li
  * Every reader that turns `!onNewest` into "behind" must check `currency !== 'none'` first (onNewest/onBuild are false for it).
  */
 export type PlaceCurrency = 'newest' | 'behind' | 'none';
-export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean };
+export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean };
 /** the place's currency against `newest` (see PlaceCurrency) */
 const currencyOfPlace = (href: string, version: string | null, newest: string | null): PlaceCurrency => noReleasesAt(href) ? 'none' : version === newest ? 'newest' : 'behind';
 export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {
@@ -708,7 +711,7 @@ export function apps(state: HomeState) {
 			return (q.arrivedAt ?? '').localeCompare(p.arrivedAt ?? '');
 		})[0];
 		const newest = newestEnv ? shortBuild(newestEnv.version) : a.newest;
-		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' }));
+		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' }));
 		const onNewest = placeList.filter((p) => p.onNewest).length;
 		const prodPl = placeList.filter((p) => p.tier === 'prod');
 		/* the outcome is recomputed from OUR pick (production first among equals) so the text and its link name the same place */
@@ -845,13 +848,13 @@ export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'wo
 /** The pill word for a place in the ROW's vocabulary (never "DEPLOYED" on a build held in prod). `tabPill` keeps the rollout tab's own pill. */
 export const stateWord = (row: Pick<RolloutRow, 'state'>): string =>
 	({ failed: 'FAILED', deploying: 'DEPLOYING', checking: 'CHECKING', 'awaiting-approval': 'WAITING', 'held-by-rule': 'HELD', healthy: 'DEPLOYED' } as Record<string, string>)[row.state] ?? 'DEPLOYED';
-export type RegionState = { label: string; state: EnvState; ink: 'failed' | 'waiting' | 'moving' | 'healthy'; href: string; build: string | null; onNewest: boolean; /** 'none' = no releases: health only, never behind (PlaceCurrency) */ currency: PlaceCurrency };
+export type RegionState = { label: string; state: EnvState; /** a pin holds newer builds here (separate from `ink`, which the approval counts read) */ pinned: boolean; ink: 'failed' | 'waiting' | 'moving' | 'healthy'; href: string; build: string | null; onNewest: boolean; /** 'none' = no releases: health only, never behind (PlaceCurrency) */ currency: PlaceCurrency };
 /** Every production region of an app in the tab's order with its own state ink, as the Overview's "prod 0/3" strip encodes it (invoice-api: eu-west red, us-east and us-west orange).
  *  ink: failed = red, waiting = orange (approval or rule hold, including a checking place the tab shows as gated), moving = deploying/checking, healthy otherwise. */
 export function regionStates(app: string, state: HomeState = 'incident'): RegionState[] {
 	return placesOf(state, app).filter((p) => p.tier === 'prod').map((p) => {
 		const st: EnvState = p.state;
-		return { label: p.label, state: st, ink: st === 'failed' ? 'failed' : st === 'awaiting-approval' || st === 'held-by-rule' ? 'waiting' : st === 'deploying' || st === 'checking' ? 'moving' : 'healthy', href: p.href, build: p.version, onNewest: p.onBuild, currency: p.currency };
+		return { label: p.label, state: st, pinned: p.pinned, ink: st === 'failed' ? 'failed' : st === 'awaiting-approval' || st === 'held-by-rule' ? 'waiting' : st === 'deploying' || st === 'checking' ? 'moving' : 'healthy', href: p.href, build: p.version, onNewest: p.onBuild, currency: p.currency };
 	});
 }
 /** An app's production regions split by cause (invoice-api: eu-west failed, us-east/us-west waiting for approval): [{state, cause, labels}] in severity order. */
@@ -868,6 +871,42 @@ export function placeCauses(app: string, state: HomeState = 'incident'): { state
 	}
 	return [...out.values()];
 }
+/**
+ * THE PLACES ONLY A PIN HOLDS: a pinned place with newer builds whose own state is quiet (rolled back, or healthy and behind), so no rollout row
+ * carries it. Every count of held places adds exactly these to the rows' places: a place a rule AND the pin hold has a row and is counted once,
+ * by it; a place only the pin holds is counted once, here. `skip` = row keys already shown elsewhere (an ask, "yours").
+ */
+/** when the pin at this place started holding (`pinSince` of its rollout): the app page's pin-only place row reads it, as /rollouts and the rollout page do */
+export const pinSinceOfHref = (href: string): string | null => pinSince(rawOf(href) as never);
+export type PinOnlyPlace = { app: string; tier: TierKey; label: string; href: string; key: string; since: string };
+export function pinOnlyPlaces(
+	apps: { app: string; envs: { env: string; label: string; tier: TierKey; state: EnvState; pinned?: boolean; href: string; arrivedAt?: string | null }[] }[],
+	rows: { app: string; tier: string; href: string; regions: string[] }[],
+	skip?: ReadonlySet<string>
+): PinOnlyPlace[] {
+	const out: PinOnlyPlace[] = [];
+	const seen = new Set<string>();
+	for (const a of apps) {
+		for (const e of a.envs) {
+			if (!e.pinned || placeStateWithPin(e.state, e.pinned) === e.state) continue; /* only a quiet state the pin turns into held */
+			const key = `${a.app}@${e.env}`;
+			const id = `${a.app}|${e.tier}|${e.label}`;
+			if (seen.has(id) || skip?.has(key)) continue;
+			if (rows.some((r) => r.href === e.href || (r.app === a.app && r.tier === e.tier && r.regions.includes(e.label)))) continue;
+			seen.add(id);
+			out.push({ app: a.app, tier: e.tier, label: e.label, href: e.href, key, since: pinSince(rawOf(e.href) as never) ?? '' });
+		}
+	}
+	return out;
+}
+/** A place only the pin holds, drawn as the held ROW the other held places have (state held-by-rule, group held, cause "Held by the pin"), so every list that counts held places can list it. Its link is the place's own rollout page (Clear pin lives there). */
+export function pinRow(p: PinOnlyPlace, state: HomeState = 'incident'): TRow {
+	const pl = placesOf(state, p.app).find((x) => x.href === p.href);
+	return enrich({
+		key: p.href, app: p.app, tier: p.tier, where: p.label, regions: [p.label], state: 'held-by-rule', group: 'held', glyph: 'held', word: HELD_BY_PIN, change: null,
+		version: pl?.version ?? null, since: p.since || null, href: p.href, needsYou: false, lead: false, action: null, cause: HELD_BY_PIN, alsoApproval: null
+	} as unknown as RolloutRow);
+}
 /** ONE counting vocabulary. Everything is available in both units; recommended wording is PLACES for every count of holds/approvals ("6 places held", "8 places waiting for approval"),
  *  and "N rollouts" only for rows that fold several regions of one app ("5 rollouts held"). */
 export function fleetCounts(state: HomeState) {
@@ -875,13 +914,17 @@ export function fleetCounts(state: HomeState) {
 	const causes = heldCauses(state);
 	const places = (rows: TRow[]) => rows.reduce((n, r) => n + r.regions.length, 0);
 	const appr = R.rows.filter((r) => r.group === 'approval'), held = R.rows.filter((r) => r.group === 'held'), fail = R.rows.filter((r) => r.group === 'failed');
+	/* a pin is a hold (`pinHoldsBuilds`): the places only the pin holds join the held count by union (a place a rule also holds already has its row) */
+	const pinOnly = pinOnlyPlaces(R.c.m.apps as never, R.rows);
+	const pinRows = new Set(pinOnly.filter((p) => !held.some((r) => r.app === p.app && r.tier === p.tier)).map((p) => `${p.app}|${p.tier}`)).size;
+	const heldPlaces = places(held) + pinOnly.length;
 	return {
-		places: { approval: places(appr), held: places(held), waiting: places(appr) + places(held), failing: places(fail), moving: places(R.rows.filter((r) => r.group === 'moving')) },
-		rollouts: { approval: appr.length, held: held.length, waiting: appr.length + held.length, failing: fail.length },
-		apps: { approval: new Set(appr.map((r) => r.app)).size, held: new Set(held.map((r) => r.app)).size, waiting: new Set([...appr, ...held].map((r) => r.app)).size },
+		places: { approval: places(appr), held: heldPlaces, waiting: places(appr) + heldPlaces, failing: places(fail), moving: places(R.rows.filter((r) => r.group === 'moving')) },
+		rollouts: { approval: appr.length, held: held.length + pinRows, waiting: appr.length + held.length + pinRows, failing: fail.length },
+		apps: { approval: new Set(appr.map((r) => r.app)).size, held: new Set([...held.map((r) => r.app), ...pinOnly.map((p) => p.app)]).size, waiting: new Set([...appr.map((r) => r.app), ...held.map((r) => r.app), ...pinOnly.map((p) => p.app)]).size },
 		/* every approval wait in one place: the sum of its rows' regions is `places.approval` (checkout-edge 1 + telemetry-indexer 1 + payments-core 5 + invoice-api 2 = 9) */
 		/* ONE hold unit: places held, and how many distinct causes they share */
-		holds: { places: places(appr) + places(held), causes: causes.length, sentence: `${places(appr) + places(held)} places held · ${causes.length} cause${causes.length === 1 ? '' : 's'}` },
+		holds: { places: places(appr) + heldPlaces, causes: causes.length, sentence: `${places(appr) + heldPlaces} places held · ${causes.length} cause${causes.length === 1 ? '' : 's'}` },
 		approvals: appr.map((r) => ({ app: r.app, places: r.regions.length, place: r.place, href: r.href, yours: r.needsYou })),
 		causes: causes.length,
 		wording: { places: 'places', rollouts: 'rollouts', recommended: 'places' as const }
@@ -904,7 +947,7 @@ export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'
 	const title = holdTitleOf(row.href, g, state, row.key.split('@')[0], row.key);
 	const kind = gateKindOf(g);
 	/* a dependency gate is titled by its provider ("payments-svc"), not by the gate's slug */
-	if (title !== gateDisplayName(g.name, prettyOfGate(row.href, g.name))) return { name: title, sentence: `Releases when ${title} ships a newer version` };
+	if (kind !== 'schedule' && title !== gateDisplayName(g.name, prettyOfGate(row.href, g.name))) return { name: title, sentence: `Releases when ${title} ships a newer version` };
 	const sentence = row.state === 'awaiting-approval' ? 'Releases when someone approves'
 		: kind === 'dependency' ? 'Releases when its dependency ships a newer version'
 		: kind === 'schedule' ? 'Releases when the deploy window opens'
@@ -1207,7 +1250,7 @@ export function bakeFailedOn(q: { href: string }, build: string): boolean {
 	const v = entry ? failedHereVerdict({ status: st } as never, entry.version) : null;
 	return !!entry && v?.kind === 'failed' && v.rolledBackAt == null;
 }
-export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; heldBuilds: ReturnType<typeof candidateBuilds>; runs: string | null };
+export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; heldBuilds: ReturnType<typeof candidateBuilds>; /** the builds a pin holds AT THIS PLACE: `newerBuildsShown`, the list the rollout's Overview and Gates tab count (a pin is per place, never the app baseline) */ newerShown: string[]; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.
  *  invoice-api: eu-west failed (health), us-east and us-west held by the manual-approval gate (allowed a11c404 only). */
 export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHold[] {
@@ -1225,7 +1268,7 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		/* the row's own verdict: a place that runs its build (`running`) holds nothing here, whatever it still refuses for another build */
 		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : pv?.state === 'running' ? null : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
 		const g = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
-		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, heldBuilds: held, runs: p.version };
+		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, heldBuilds: held, newerShown: newerBuildsShown(rawOf(p.href) as never, envsOfSource(), true).map((c) => { const b = (c as { version?: string; tag?: string }).version ?? (c as { tag?: string }).tag ?? ''; return shortBuild(b) ?? b; }), runs: p.version };
 	});
 }
 /** Where a build already runs (the Builds list's "live in us-east, us-west"): the app's places whose deployed build is `build` (tab name, tag or SHA). */
@@ -1233,7 +1276,7 @@ export function buildPlaces(app: string, build: string, state: HomeState = 'inci
 	const want = buildName(app, build) ?? build;
 	return placesOf(state, app).filter((p) => buildName(app, p.version) === want).map((p) => ({ place: placeLabel({ tier: p.tier, regions: [p.label] }), href: p.href, state: p.state }));
 }
-export type GateInfo = { /** identity, unique per gate: the gate's resource name (dependency gates folded). `name` is only a display name and repeats (every generated `ghd-xxxxx` reads "Gate"). */ id: string; name: string; kind: 'approval' | 'dependency' | 'schedule' | 'promotion' | 'other'; sentence: string; holding: boolean; places: string[]; held: string[]; releasedBy: string; /** the held-HERE count is not known yet (the place's detail has not answered): print a pending state, never `held.length` */ heldPending: boolean };
+export type GateInfo = { /** identity, unique per gate: the gate's resource name (dependency gates folded). `name` is only a display name and repeats (every generated `ghd-xxxxx` reads "Gate"). */ id: string; name: string; kind: 'approval' | 'dependency' | 'schedule' | 'promotion' | 'other'; sentence: string; holding: boolean; places: string[]; /** the places this gate holds a build at RIGHT NOW (a subset of `places`, the ones it guards): the Holding card lists and counts only these */ holdsAt: string[]; held: string[]; releasedBy: string; /** the held-HERE count is not known yet (the place's detail has not answered): print a pending state, never `held.length` */ heldPending: boolean };
 /** A detail page's OWN gates, approvals included (the list pages exclude approvals by rule): each gate once, the places it guards, the builds it holds, who/what releases it. */
 export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] {
 	const out = new Map<string, GateInfo>();
@@ -1247,10 +1290,14 @@ export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] 
 			const h0bake = st?.history?.[0]?.bakeStatus;
 			const runs = h0bake === 'Deploying' || h0bake === 'InProgress'; /* a place that is deploying or checking its own build holds nothing: a rule that refuses a newer build is not this place's hold */
 			const holding = cands.length > 0 && !runs && refusingGates([g], buildInQuestion({ href: p.href, app })).length > 0; /* the one rule, for the build in question: the approval target's where there is one (what the toast names), else the newest */
-			const k = kind === 'dependency' ? `dependency-${dependencyProviderOf(p.href, g.name) ?? g.name}` : g.name; /* one card per provider, from the RolloutDependency join: no name is parsed */
-			const e = out.get(k) ?? { id: k, name: gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : 'the rule allows it' };
+			const win = kind === 'schedule' ? windowNameOf(gateDisplayName(g.name, prettyOfGate(p.href, g.name))) : null;
+			/* one card per provider (the RolloutDependency join: no name is parsed) and one per window by its published name: each place's schedule gate is its own object, but "Business Hours Only" is one card, not one per place */
+			const k = kind === 'dependency' ? `dependency-${dependencyProviderOf(p.href, g.name) ?? g.name}` : kind === 'schedule' ? `schedule-${win ?? 'unnamed'}` : g.name;
+			const e = out.get(k) ?? { id: k, name: kind === 'schedule' ? (win ?? 'Deploy window') : gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], holdsAt: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : 'the rule allows it' };
 			e.places.push(placeLabel({ tier: p.tier, regions: [p.label] }));
 			const hh = holding ? heldHere(p.href) : null;
+			/* the place's own verdict decides whether it is held NOW: a healthy place whose gate would refuse a newer build, or one still checking its own build, is not held by this cause */
+			if (holding && (p.state === 'held-by-rule' || p.state === 'awaiting-approval')) e.holdsAt.push(placeLabel({ tier: p.tier, regions: [p.label] }));
 			if (holding && !hh) e.heldPending = true;
 			if (holding) { e.holding = true; for (const c of cands) { if (hh && !hh.has({ tag: c })) continue; const n = buildName(app, c) ?? c; if (!e.held.includes(n)) e.held.push(n); } }
 			e.sentence = `Releases when ${e.releasedBy}`;
@@ -1322,14 +1369,16 @@ export function holdTitleOf(href: string, g: GateLite, state: HomeState, app: st
 		const provider = (key ? ny.find((n) => `${n.app}@${n.env}` === key)?.facts?.provider : null) ?? ny.find((n) => n.app === app && n.facts?.provider)?.facts?.provider;
 		if (provider) return provider;
 	}
-	return gateDisplayName(g.name, prettyOfGate(href, g.name));
+	const name = gateDisplayName(g.name, prettyOfGate(href, g.name));
+	/* a window nobody has named yet is "Deploy window", never the bare "Gate" */
+	return gateKindOf(g) === 'schedule' ? (windowNameOf(name) ?? 'Deploy window') : name;
 }
 /** THE ONE CAUSE FORMATTER: what a place says it is held by, the same string on the row ("Held by Permits newest only") and the Approved toast. A window nobody has named yet (the display name is still the generic "Gate",
  *  until the gate's pretty name is published) reads as what it is, "Waits for the deploy window"; once named, "Held by Business Hours Only". */
 export function holdCause(href: string, g: GateLite, state: HomeState, app: string, key: string | null): string {
 	const title = holdTitleOf(href, g, state, app, key);
 	const kind = gateKindOf(g);
-	return kind === 'schedule' && title === 'Gate' ? 'Waits for the deploy window' : kind === 'dependency' || !!dependencyProviderOf(href, g.name) ? `Waits on ${title}` : `Held by ${title}`;
+	return kind === 'schedule' ? windowHeld(title) : title === 'Gate' ? 'Held by a rule' : kind === 'dependency' || !!dependencyProviderOf(href, g.name) ? `Waits on ${title}` : `Held by ${title}`;
 }
 /** the cause of a place the verdict holds by a rule (null: the place is not held by a rule, or its verdict is awaiting-approval) */
 export function placeCause(href: string, app: string, key: string | null, state: HomeState = 'incident'): string | null {
@@ -1419,8 +1468,11 @@ export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 		/* batch4 #1: a build that failed in a place of this tier (history, or the wave's own `bake failed on <rev>`) and was rolled back is not inbound while the tier runs its rollback target */
 		if (here.some((p) => failedHere(rawOf(p.href)?.status as never, { tag: newest, version: newest, revision: newest }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())))) continue;
 		const up = ps.filter((p) => p.version === newest && p.state !== 'failed').map((p) => p.tier).sort((x, y) => RANK_T[y] - RANK_T[x])[0] ?? null;
-		const hold = here.map((p) => causes.find((c) => c.rows.some((r) => r.href === p.href))).find(Boolean);
-		out.push({ app: a.app, build: buildName(a.app, newest) ?? newest, from: up, reason: hold?.cause ?? null, href: here[0].href });
+		const causeOf = (p: AppPlace) => causes.find((c) => c.rows.some((r) => r.href === p.href));
+		const holder = here.find((p) => causeOf(p));
+		const hold = holder ? causeOf(holder) : undefined;
+		/* the tile names a cause and links to a place that cause holds, never to a sibling (a pinned region) it does not */
+		out.push({ app: a.app, build: buildName(a.app, newest) ?? newest, from: up, reason: hold?.cause ?? null, href: (holder ?? here[0]).href });
 	}
 	return out;
 }
@@ -1502,6 +1554,28 @@ export function heldBehind(row: Pick<RolloutRow, 'app' | 'href'>): { count: numb
 	return { count: builds.length, builds, includesViewer: builds.some((b) => b.mine) };
 }
 
+/**
+ * The places an app is held at, every cause counted once (rules, approvals and a pin alike; `placeStateWithPin`): the banner's headline
+ * ("Held in staging and 3 prod regions"). The chip's prod figure is this same set restricted to prod. Null when nothing is held.
+ */
+export function heldUnion(item: Pick<TApp, 'placeList'>): { count: number; sentence: string } | null {
+	const held = item.placeList.filter((p) => { const st = placeStateWithPin(p.state, p.pinned); return st === 'held-by-rule' || st === 'awaiting-approval'; });
+	if (!held.length) return null;
+	const tiers = [...new Set(held.map((p) => p.tier))];
+	return { count: held.length, sentence: `Held in ${tiers.map((t) => placeLabel({ tier: t, regions: held.filter((p) => p.tier === t).map((p) => p.label) })).join(' and ')}` };
+}
+/** The app's production regions held right now, every cause and the pin counted once (`heldUnion`'s prod set): "3 of 5 regions" / "5 regions" when all, null when one region or none is held. Home's Fleet chip and the rollout page's region scope read this one phrase. */
+export function heldRegionsPhrase(app: string, state: HomeState = 'incident'): string | null {
+	const prod = placesOf(state, app).filter((p) => p.tier === 'prod');
+	const k = prod.filter((p) => { const st = placeStateWithPin(p.state, p.pinned); return st === 'held-by-rule' || st === 'awaiting-approval'; }).length;
+	return prod.length > 1 && k > 1 ? (k === prod.length ? `${k} regions` : `${k} of ${prod.length} regions`) : null;
+}
+/** The held banner of an app held by more than one cause: the headline counts every held place (`heldUnion`), the message lists each cause once. Null when one cause (or none) holds it: that cause's own sentence is the headline. */
+export function heldBanner(item: Pick<TApp, 'placeList'>, holds: { text: string }[]): { title: string; message: string } | null {
+	const causes = [...new Set(holds.map((h) => h.text))];
+	const u = causes.length > 1 ? heldUnion(item) : null;
+	return u ? { title: u.sentence, message: causes.join(' · ') } : null;
+}
 /** One hold of an app, as a sentence plus what kind it is: pages branch on `approval`, never on the sentence's words. The approval hold says "your" when the viewer can give it. */
 export type Hold = { text: string; approval: boolean };
 export function appHolds(item: Pick<TApp, 'app' | 'holds'>, state: HomeState): Hold[] {
@@ -1511,9 +1585,15 @@ export function appHolds(item: Pick<TApp, 'app' | 'holds'>, state: HomeState): H
 		if (!mine.length) continue;
 		const approval = hc.cause === sharedWord('approval');
 		const word = approval ? sharedWord('approval', { yours: mine.some((r) => actionFor(r)?.kind === 'approve') })! : hc.cause.replace(/^Waiting/, 'Waits');
-		out.push({ text: `${word} in ${mine.map((r) => r.place).join(' and ')}`, approval });
+		out.push({ text: `${word} in ${mine.map((r) => r.place).join(' and ')}${hc.window?.opens ? ` · ${hc.window.opens}` : ''}`, approval });
 	}
 	return [...out, ...item.holds.filter((h) => /^Pinned/.test(h)).map((text) => ({ text, approval: false }))];
+}
+/** The lead of a waiting app's state line (Apps list tile): the hold's own words without its place or clock. "Waits on payments-svc in prod" -> "Waiting on payments-svc"; a window or a rule keeps its own wording ("Held by Business Hours Only", "Waits for the deploy window"), it is never wrapped again in "Waiting on". */
+export function holdLead(text: string): string {
+	const t = text.replace(/ · opens .*$/, '').replace(/ in [\w.-]+(?: and [\w.-]+)*$/, '').replace(/ in \d+ (?:prod regions|places)$/, '');
+	if (/^Waits on /.test(t)) return t.replace(/^Waits on /, 'Waiting on ');
+	return /^(Held by|Waits for|Pinned)\b/.test(t) ? t : `Waiting on ${t}`;
 }
 /* ═══ inbox, arrivals, held causes ═══ */
 export type InboxItem = { row: TRow; action: RolloutRow['action']; reason: string; steps: Step[] };
@@ -1534,11 +1614,15 @@ export function arrivals(state: HomeState): TArrival[] {
 		return { ...a, build: e ? buildName(a.app, e.version) : null, href: e?.href ?? null };
 	});
 }
-/** A closed deploy window says the window and its clock, as every schedule does elsewhere (`formatTransitionAt`: "Mon 09:00 UTC"): "Deploy window opens Mon 09:00 UTC"; with no published transition, "Waiting for the deploy window". */
-export function windowCause(w: { label: string; opensAt: string | null } | undefined, now: Date = new Date()): string {
-	return w?.opensAt ? `Deploy window opens ${formatTransitionAt(w.opensAt, now)}` : 'Waiting for the deploy window';
+/** A closed deploy window is named one way everywhere (`window-words.ts`): "Held by Business Hours Only", or "Waits for the deploy window" until a name is published. Its clock is a separate clause (`windowOpens`). */
+export function windowCause(w: { label: string; opensAt: string | null } | undefined): string {
+	return windowHeld(w?.label);
 }
-export type HeldCause = { key: string; cause: string; places: string[]; rows: TRow[] };
+/** "opens Mon 09:00 UTC" (`formatTransitionAt`, as every schedule prints its instant); null with no published transition */
+export function windowOpens(w: { label: string; opensAt: string | null } | undefined, now: Date = new Date()): string | null {
+	return windowOpensClause(w?.opensAt ? formatTransitionAt(w.opensAt, now) : null);
+}
+export type HeldCause = { key: string; cause: string; places: string[]; rows: TRow[]; /** set when a deploy window holds these places: the clause that says when it opens ("opens Mon 09:00 UTC"), null with no published transition */ window?: { opens: string | null } };
 /** One entry per hold cause, from the model's needsYou facts: "Waiting for approval", "Waiting on payments-svc", "Waiting on Integration tests" (a check is named as the Gates tab prints its gate). */
 export function heldCauses(state: HomeState, tier?: TierKey): HeldCause[] {
 	const R = rollouts(state);
@@ -1547,16 +1631,21 @@ export function heldCauses(state: HomeState, tier?: TierKey): HeldCause[] {
 	for (const r of R.rows) {
 		if (r.group !== 'approval' && r.group !== 'held') continue;
 		if (tier && r.tier !== tier) continue;
-		const n = ny.get(r.key);
+		/* a multi-region row is keyed by its first region, the needs-you entry by its lead one: look the row's other regions up too, or its window loses its clock */
+		const n = ny.get(r.key) ?? r.regions.map((g) => ny.get(`${r.app}@${r.tier}-${g}`)).find((x) => !!x);
 		const f = n?.facts;
+		/* a window hold: the model's own clock fact, or the place verdict's first refuser being a schedule (the same predicate the row's cause reads) */
+		const vf = verdictAt(r.href, state);
+		const byVerdict = vf?.state === 'held-by-rule' && gateKindOf(vf.first) === 'schedule' ? { label: holdTitleOf(r.href, vf.first, state, r.app, r.key), opensAt: f?.window?.opensAt ?? null } : null;
+		const win = f?.reason === 'clock' ? (f.window ?? byVerdict ?? { label: '', opensAt: null }) : byVerdict;
 		const cause =
 			r.state === 'awaiting-approval' ? 'Waiting for approval'
+			: win ? windowCause(win)
 			: f?.reason === 'dependency' ? (f.provider ? `Waiting on ${f.provider}` : 'Waiting on a dependency')
 			: f?.reason === 'check' ? (f.checks?.length ? `Waiting on ${f.checks.map((c) => gateDisplayName(c, prettyOfGate(r.href, c))).join(', ')}` : 'Waiting on a check')
 			: f?.reason === 'pinned' ? 'Pinned'
-			: f?.reason === 'clock' ? windowCause(f.window)
 			: r.word.startsWith('Waits on') ? r.word.replace('Waits on', 'Waiting on') : 'Held by a rule';
-		const e = out.get(cause) ?? { key: cause, cause, places: [], rows: [] };
+		const e = out.get(cause) ?? { key: cause, cause, places: [], rows: [], ...(win ? { window: { opens: windowOpens(win) } } : {}) };
 		e.places.push(`${r.app} · ${r.place}`);
 		e.rows.push(r);
 		out.set(cause, e);

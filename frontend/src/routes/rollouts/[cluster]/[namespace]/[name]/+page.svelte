@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
+	import { heldChipLead, heldChipPhrase } from '$lib/view-models/held-chip';
 	import { kruiseStatusIsPreviousDeploy, freshestKruise } from '$lib/pipeline';
 	import { sourceDashboardURL } from '$lib/source-dashboard';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
@@ -144,7 +145,8 @@
 		rowShowsFailed
 	} from '$lib/view-models/deploy-risk';
 	import { blockingGateNames, promotionCandidates } from '$lib/view-models/promotion';
-	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
+	import { dashboardManagesWantedVersion, newerBuildsShown } from '$lib/view-models/pin-hold';
+	import { fleetSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
@@ -1167,7 +1169,11 @@
 	);
 	const newestCandidate = $derived(newerBuilds[0] ?? null);
 	/* the header's "N newer builds": the ONE behind rule (behind.ts), the same subtraction History's current-row chip makes (batch4 #3d): a build that failed here or upstream in the wave chain is not counted. The deploy-anyway "Newer builds" card below lists what a person CAN deploy and keeps its own list. */
-	const headerNewer = $derived(behindWhenSettled(rollout, { environments: listQuery.data?.environments?.items, rollouts: listQuery.data?.rollouts?.items }, fleetSettled(listQuery)) ?? 0); /* 0 = no chip until the fleet has answered: the number never changes after load */
+	/* the ONE newer-builds list (pin-hold.ts): the header's "N newer" is its length and the Gates tab's pin card is the same list. Before the fleet answers the header shows no chip (the number never changes after load); the card rollup shows the list it can see. */
+	const fleetAnswered = $derived(fleetSettled(listQuery));
+	const newerListShown = $derived(newerBuildsShown(rollout, { environments: listQuery.data?.environments?.items, rollouts: listQuery.data?.rollouts?.items }, fleetAnswered));
+	const headerNewer = $derived(fleetAnswered ? newerListShown.length : 0);
+	const newerShown = $derived(newerListShown.length);
 	// Newer builds ledger fold (r34 AD r3 TB6): the newest + the first NB_FOLD older builds are drawn;
 	// the rest sit behind a footer that expands in place. `nbOpen` = narrow-card rows opened by a tap.
 	// TB14/TB22/TB24 (r5): the fold is a phone/tablet thing. At >=1024 NO fold: every older row shows (the
@@ -1871,7 +1877,7 @@
 	 * the singular.
 	 */
 	function heldCountPhrase(gates: ClassifiedGate[]): string {
-		return gates.length === 1 ? 'by a rule' : `by ${gates.length} rules`;
+		return heldChipPhrase(gates);
 	}
 
 	/**
@@ -1892,9 +1898,11 @@
 	}
 
 	function heldClears(gates: ClassifiedGate[]): string {
-		if (gates.length === 0) return '';
 		if (blockStory.pinnedTo)
-			return 'Clearing the pin is what lets this deploy automatically — the rules below may also still apply.';
+			return gates.length === 0
+				? 'Clearing the pin is what lets this deploy automatically.'
+				: 'Clearing the pin is what lets this deploy automatically — the rules below may also still apply.';
+		if (gates.length === 0) return '';
 		if (gates.some((g) => g.clears === 'unknown'))
 			return 'This dashboard cannot tell what clears this — it may or may not need a person.';
 		if (gates.some((g) => g.clears === 'person')) return 'This will not clear on its own.';
@@ -1919,41 +1927,7 @@
 	}
 
 	// Computed property to determine if dashboard is managing the wantedVersion field
-	const isDashboardManagingWantedVersion = $derived.by(() => {
-		if (!rollout) return false;
-
-		// If no wantedVersion is set, dashboard can manage it
-		if (rollout.spec?.wantedVersion === undefined) return true;
-
-		// Check if dashboard is managing the wantedVersion field through managedFields
-		if (rollout.metadata?.managedFields) {
-			if (
-				isFieldManagedByManager(
-					rollout.metadata.managedFields,
-					'rollout-dashboard',
-					'spec.wantedVersion'
-				)
-			) {
-				return true;
-			}
-		}
-
-		// Check if any other manager is managing the wantedVersion field
-		if (rollout.metadata?.managedFields) {
-			if (
-				isFieldManagedByOtherManager(
-					rollout.metadata.managedFields,
-					'rollout-dashboard',
-					'spec.wantedVersion'
-				)
-			) {
-				return false; // Another manager is managing this field
-			}
-		}
-
-		// Default to allowing management if no conflicts detected
-		return true;
-	});
+	const isDashboardManagingWantedVersion = $derived(dashboardManagesWantedVersion(rollout)); /* the ONE predicate (pin-hold.ts), shared with the Gates tab's Clear pin */
 
 	/**
 	 * THE ROLLBACK TARGET, PROVED BACKWARDS. See `view-models/deploy-risk.ts`
@@ -2525,6 +2499,95 @@
 		}
 	}
 </script>
+
+{#snippet heldBuildChip(held: ClassifiedGate[], releaseCandidate: { tag: string; version?: string; revision?: string })}
+																	<button
+																		type="button"
+																		aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
+																		class="hit-32 inline-flex cursor-pointer items-center gap-1 rounded-xs"
+																	>
+																		<!-- `held` is a gate correctly refusing a candidate, not an
+															     adverse outcome — `role="blocked"` (red) was the wrong
+															     word wearing the wrong ink; a held rollout is not failing
+															     or diverged. `role="held"` aliases the same deep orange
+															     every status disc in the product already resolves `held`
+															     to (`getStatusCircleClass`), and the orange pin banner
+															     30px above says the identical thing. The Dependencies tab
+															     draws its own `Chip role="blocked" label="held"` from a
+															     separate template (not shared markup) and still needs
+															     the same fix — flagged to the graph lane. -->
+																		<!--
+																⭐ THE COUNT IS ON THE CHIP. (2026-09-18, from the human:
+																"held needs to display how many gates are blocking it".)
+																It was a bare `held` with the count as loose text beside
+																it; `Chip`'s joined form is exactly this shape, so the
+																chip now answers "how many" on its own.
+
+																⚠️ `heldWord` IS STILL PRINTED WHEN IT SAYS MORE THAN THE
+																COUNT. It usually returns `by N rules` — redundant once
+																the chip carries N — but for a pin, or for a clock gate
+																with a real countdown, it returns the CLAUSE instead
+																(`reopens in 3h`). Dropping it wholesale would have
+																deleted that. So it is printed only when it differs from
+																the plain count form.
+															-->
+																		<span class="t-meta text-fg-muted">{heldChipLead(held, !!blockStory.pinnedTo)}</span>
+																		{#if !blockStory.pinnedTo && heldWord(held) !== heldCountPhrase(held)}
+																			<span class="t-meta min-w-0 truncate text-fg-subtle">{heldWord(held)}</span>
+																		{/if}
+																		<!-- ⛔ A CHEVRON, NOT A QUESTION MARK. `?` with `cursor-help`
+															     is a HOVER affordance and says nothing on a phone, which
+															     is where this control most needs to read as openable. A
+															     chevron is the product's own "there is more behind this"
+															     mark. `hit-32` supplies the touch floor — its `::before`
+															     is scoped to `@media (pointer: coarse), (max-width: 639px)`,
+															     so it costs desktop nothing. -->
+																		<ChevronDownOutline
+																			class="text-fg-subtle h-3 w-3"
+																			aria-hidden="true"
+																		/>
+																	</button>
+																	<!--
+													⛔ THE LINES, NOT THE RECORD. (2026-09-18, third attempt, and the
+													second one is why this comment exists.)
+
+													This started as a paragraph. I replaced it with `GateRecord` —
+													the right OBJECT, wrong PLACE — and the human's verdict was:
+													"you have to show it visually, what you did here is just created
+													a table-like interface for each one with different values. in
+													the end, they look the same again."
+
+													Exactly so. A record is an aligned block of labelled facts, so
+													five gates render as five identical tables and a 14px icon is
+													the only thing telling them apart. `BlockingStoryLines` had
+													already solved this for the other surface, against the SAME
+													complaint ("i feel like you could better visualize this rather
+													than just putting ascii icons in there"), by COMPOSING the line
+													instead of narrating it — the provider at full ink, the contract
+													as `[db|1.262.0] → [1.263]`, the window with its own countdown.
+
+													Those lines are `GateLines` now, so this draws them instead of
+													inventing a third shape. Kinds differ here because some kinds
+													HAVE a second object to draw and some do not — `check`,
+													`approval` and `unknown` keep their sentence, deliberately.
+
+													⚠️ `GateRecord` IS NOT GONE FROM THE PRODUCT — it is what sits
+													behind `BlockingStoryLines`' own `RulePopover`. It was never the
+													wrong object, only the wrong one to put in the foreground. This
+													host is itself a popover, so it cannot nest that control; the
+													lines plus the verdict are what it shows.
+												-->
+																	<Popover class="t-body max-w-sm" title={heldTitle(held)}>
+																		<div class="p-1">
+																			<GateLines gates={held} />
+																			<p
+																				class="border-line-subtle t-meta text-fg-subtle mt-2 border-t pt-2"
+																			>
+																				{heldFoot(held)}
+																			</p>
+																		</div>
+																	</Popover>
+{/snippet}
 
 <svelte:head>
 	<title
@@ -3848,9 +3911,9 @@
 												<span class="t-ui-sm text-fg-subtle" data-no-releases>{noReleases.label}</span>
 											{:else if newerBuilds.length > 0}
 												<!-- r34 tabs-nb r2 (#5): the baseline's rollup, back. Same count as the page
-												     header's "↑ N newer" (both read `newerBuilds.length`). -->
+												     header's "↑ N newer" (both read `newerBuildsShown`). -->
 												<span class="t-ui-sm text-fg-subtle tabular-nums"
-													>{newerBuilds.length} newer</span
+													>{newerShown} newer</span
 												>
 											{:else if stillCatchingUp}
 												<!-- ⭐ P10: NOT `on the newest` YET. `releaseCandidates` is
@@ -4085,7 +4148,7 @@
 														? rowChain
 															? 'behind'
 															: 'held'
-														: contractHold || heldByHealth
+														: blockStory.pinnedTo || contractHold || heldByHealth
 															? 'held'
 															: promotingByHealth
 																? 'deploying'
@@ -4296,93 +4359,11 @@
 														     release-candidate row with no role at all. Flex item either
 														     way, preflight strips the button chrome — same 12px, same
 														     yellow, same pill. -->
-																	<button
-																		type="button"
-																		aria-label={`${getDisplayVersion(releaseCandidate)} — ${heldTitle(held).toLowerCase()}. ${heldClears(held)} A deploy you start by hand still applies immediately.`}
-																		class="hit-32 inline-flex cursor-pointer items-center gap-1 rounded-xs"
-																	>
-																		<!-- `held` is a gate correctly refusing a candidate, not an
-															     adverse outcome — `role="blocked"` (red) was the wrong
-															     word wearing the wrong ink; a held rollout is not failing
-															     or diverged. `role="held"` aliases the same deep orange
-															     every status disc in the product already resolves `held`
-															     to (`getStatusCircleClass`), and the orange pin banner
-															     30px above says the identical thing. The Dependencies tab
-															     draws its own `Chip role="blocked" label="held"` from a
-															     separate template (not shared markup) and still needs
-															     the same fix — flagged to the graph lane. -->
-																		<!--
-																⭐ THE COUNT IS ON THE CHIP. (2026-09-18, from the human:
-																"held needs to display how many gates are blocking it".)
-																It was a bare `held` with the count as loose text beside
-																it; `Chip`'s joined form is exactly this shape, so the
-																chip now answers "how many" on its own.
-
-																⚠️ `heldWord` IS STILL PRINTED WHEN IT SAYS MORE THAN THE
-																COUNT. It usually returns `by N rules` — redundant once
-																the chip carries N — but for a pin, or for a clock gate
-																with a real countdown, it returns the CLAUSE instead
-																(`reopens in 3h`). Dropping it wholesale would have
-																deleted that. So it is printed only when it differs from
-																the plain count form.
-															-->
-																		<span class="t-meta text-fg-muted">Held {heldCountPhrase(held)}</span>
-																		{#if heldWord(held) !== heldCountPhrase(held)}
-																			<span class="t-meta min-w-0 truncate text-fg-subtle">{heldWord(held)}</span>
-																		{/if}
-																		<!-- ⛔ A CHEVRON, NOT A QUESTION MARK. `?` with `cursor-help`
-															     is a HOVER affordance and says nothing on a phone, which
-															     is where this control most needs to read as openable. A
-															     chevron is the product's own "there is more behind this"
-															     mark. `hit-32` supplies the touch floor — its `::before`
-															     is scoped to `@media (pointer: coarse), (max-width: 639px)`,
-															     so it costs desktop nothing. -->
-																		<ChevronDownOutline
-																			class="text-fg-subtle h-3 w-3"
-																			aria-hidden="true"
-																		/>
-																	</button>
-																	<!--
-													⛔ THE LINES, NOT THE RECORD. (2026-09-18, third attempt, and the
-													second one is why this comment exists.)
-
-													This started as a paragraph. I replaced it with `GateRecord` —
-													the right OBJECT, wrong PLACE — and the human's verdict was:
-													"you have to show it visually, what you did here is just created
-													a table-like interface for each one with different values. in
-													the end, they look the same again."
-
-													Exactly so. A record is an aligned block of labelled facts, so
-													five gates render as five identical tables and a 14px icon is
-													the only thing telling them apart. `BlockingStoryLines` had
-													already solved this for the other surface, against the SAME
-													complaint ("i feel like you could better visualize this rather
-													than just putting ascii icons in there"), by COMPOSING the line
-													instead of narrating it — the provider at full ink, the contract
-													as `[db|1.262.0] → [1.263]`, the window with its own countdown.
-
-													Those lines are `GateLines` now, so this draws them instead of
-													inventing a third shape. Kinds differ here because some kinds
-													HAVE a second object to draw and some do not — `check`,
-													`approval` and `unknown` keep their sentence, deliberately.
-
-													⚠️ `GateRecord` IS NOT GONE FROM THE PRODUCT — it is what sits
-													behind `BlockingStoryLines`' own `RulePopover`. It was never the
-													wrong object, only the wrong one to put in the foreground. This
-													host is itself a popover, so it cannot nest that control; the
-													lines plus the verdict are what it shows.
-												-->
-																	<Popover class="t-body max-w-sm" title={heldTitle(held)}>
-																		<div class="p-1">
-																			<GateLines gates={held} />
-																			<p
-																				class="border-line-subtle t-meta text-fg-subtle mt-2 border-t pt-2"
-																			>
-																				{heldFoot(held)}
-																			</p>
-																		</div>
-																	</Popover>
+																	{@render heldBuildChip(held, releaseCandidate)}
 																{/if}
+															{:else if blockStory.pinnedTo}
+																<!-- a build the pin holds and no rule also names: the same chip and popover the rule-held rows above draw (`heldBuildChip`), one drawing of "Held by the pin" -->
+																{@render heldBuildChip([], releaseCandidate)}
 															{:else if contractHold}
 																<!--
 													⭐ HELD BY A CONTRACT, NOT A PUBLISHED GATE. (U-5,

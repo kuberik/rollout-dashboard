@@ -68,7 +68,7 @@ export type GateBox = {
 	/** Display versions of THIS rollout's builds it holds, newest first. Empty unless blocked. */
 	held: string[];
 	/** For `gateMark` (`GateRecord.svelte`): the product's one icon rule per kind. */
-	mark: { kind: 'schedule' | 'approval' | 'check' | 'unknown'; clears: 'clock' | 'person' | 'check' | 'unknown' };
+	mark: { kind: 'schedule' | 'approval' | 'check' | 'unknown'; clears: 'clock' | 'person' | 'check' | 'unknown' | 'pin' };
 	/** The Kubernetes names behind the box, for a tooltip. Never a headline. */
 	gates: string[];
 };
@@ -95,6 +95,8 @@ const KIND_ORDER: Record<GateBoxKind, number> = {
 
 export { humanizeGateName, isGeneratedGateName, gateDisplayName, resolveGateName, prettyNameOf } from './gate-name';
 import { gateDisplayName, prettyNameOf } from './gate-name';
+import { isApprovalLike } from './place-verdict';
+import { pinnedByWho } from './pin-hold';
 
 /** `b-44, b-45` / `b-43, b-44 +2` — the link box's own short-list rule. */
 export function shortList(builds: string[]): string {
@@ -220,15 +222,16 @@ export function rolloutGateBoxes(args: {
 	if (pinned) {
 		const candidates = promotionCandidates(rollout);
 		const build = displayVersionForTag(rollout, pinned) || pinned;
+		const who = pinnedByWho(rollout);
 		out.push({
 			key: 'pin',
 			kind: 'pin',
 			state: candidates.length > 0 ? 'blocked' : 'clear',
-			title: 'Pinned',
+			title: who ? `Pinned to ${build} by ${who}` : `Pinned to ${build}`,
 			kindWord: null,
 			phrase: `to ${build} until the pin is cleared`,
 			held: candidates.length > 0 ? display(candidates) : [],
-			mark: { kind: 'approval', clears: 'person' },
+			mark: { kind: 'approval', clears: 'pin' },
 			gates: []
 		});
 		claimed.add(pinned);
@@ -286,11 +289,13 @@ export function rolloutGateBoxes(args: {
 		const sum = summaries.get(g);
 		const allowed = sum?.allowedVersions ?? obj?.spec?.allowedVersions ?? null;
 		const passing = sum?.passing ?? obj?.spec?.passing;
-		const approval = Array.isArray(allowed);
+		/* an allow-list says what the gate lets through, not what it IS: it is an approval only by the one predicate every surface reads (`isApprovalLike`: `kind`, a name only when the payload carries no kind). A hand-written allow-list of unknown kind is a gate with a list. */
+		const listed = Array.isArray(allowed);
+		const approval = isApprovalLike({ name: g, kind: sum?.kind ?? null, allowedVersions: listed ? allowed : null });
 		const state = stateOf([g]);
 		const candidates = promotionCandidates(rollout);
 		let phrase: string;
-		if (approval) {
+		if (listed) {
 			const ok = display(candidates.filter((c) => allowed!.includes(c.tag ?? '')));
 			const refused = display(candidates.filter((c) => !allowed!.includes(c.tag ?? '')));
 			phrase =
@@ -313,7 +318,7 @@ export function rolloutGateBoxes(args: {
 			kindWord: title.toLowerCase() === kindWord.toLowerCase() ? null : kindWord,
 			phrase,
 			held: state === 'blocked' ? heldBy([g]) : [],
-			mark: approval ? { kind: 'approval', clears: 'person' } : { kind: 'check', clears: 'check' },
+			mark: approval ? { kind: 'approval', clears: 'person' } : listed ? { kind: 'unknown', clears: 'unknown' } : { kind: 'check', clears: 'check' },
 			gates: [g]
 		});
 	}

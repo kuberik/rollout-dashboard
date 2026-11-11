@@ -121,6 +121,7 @@
 	} from '$lib/view-models/dependency-graph';
 	import { skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { buildLanes } from '$lib/view-models/promotion-lanes';
+	import { peerHeldMap } from '$lib/view-models/home-model';
 	import { countLabel } from '$lib/disclosure';
 	import { buildRolloutCards } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
@@ -157,6 +158,11 @@
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import RolloutNeighbourhood from '$lib/components/RolloutNeighbourhood.svelte';
+	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
+	import { autoDeployState } from '$lib/view-models/auto-deploy';
+	import { gatesPinBox, pinLeadSentence } from '$lib/view-models/pin-hold';
+	import { getDisplayVersion } from '$lib/utils';
+	import { rolloutPermissionsQueryOptions } from '$lib/api/rollouts';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import type { HealthCheck, RolloutGate } from '../../../../../../types';
 
@@ -253,6 +259,17 @@
 	const fleetFailed = $derived(fleetLatch.failed && listQuery.data === undefined);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
+
+	// Clear pin, the Overview's own action: the same permission read, the same dialog.
+	const permissionsQuery = createQuery(() => ({
+		...rolloutPermissionsQueryOptions({ namespace: page.params.namespace as string, name: page.params.name as string, cluster: page.params.cluster as string }),
+		enabled: !rolloutQuery.isError
+	}));
+	const canModify = $derived(
+		(permissionsQuery.data?.permissions?.update ?? false) || (permissionsQuery.data?.permissions?.patch ?? false)
+	);
+	let showClearPinModal = $state(false);
+	const autoDeploy = $derived(autoDeployState(rollout, (rolloutQuery.data?.rolloutGates?.items ?? []) as RolloutGate[]));
 
 	/**
 	 * ⭐ U-32(a)'s empty-state sentence must not CLAIM health is passing when
@@ -974,13 +991,7 @@
 	 * `waitsForFact` already prints for the lead row, reaching the
 	 * canvas without a second copy of the join.
 	 */
-	const peerHeldByEnv = $derived.by(() => {
-		const m = new Map<string, { held: boolean; causeLabel: string | null }>();
-		for (const [envName, card] of peersByEnv) {
-			m.set(envName, { held: card.held, causeLabel: card.heldCauseLabel });
-		}
-		return m;
-	});
+	const peerHeldByEnv = $derived(peerHeldMap(peersByEnv));
 
 	/**
 	 * ⭐ THE LEAD ROW'S ONE SENTENCE, COMPOSED HERE NOW (squad-rollout Lane G
@@ -1012,6 +1023,9 @@
 		consequence: string;
 		tone: 'held' | 'neutral';
 	} | null>(() => {
+		// A pin refuses every newer build, so it is the whole sentence: never "<builds> can deploy".
+		const pinLead = pinLeadSentence(blockStory);
+		if (pinLead) return { ...pinLead, tone: 'held' };
 		if (!holdBreakdown.anyHeld) return null;
 		// ⭐ qa11b CORRECTION (squad-rollout gates-2 follow-up, 2026-10-11):
 		// the gate is `reallyHeldHere.length === 0`, NEVER `!hereCard.held`.
@@ -1194,10 +1208,18 @@
 
 	// A5: a gate box names the builds it holds HERE (`heldBuilds`), not every candidate the gate refuses: the approval gate refuses all of
 	// them, two of which have not reached this place yet.
-	const gateBoxes = $derived.by(() => {
-		const hereBuilds = new Set(reallyHeldHere.map((h) => h.build));
-		return gateBoxesRaw.map((b) => (b.state === 'blocked' && b.kind !== 'pin' ? { ...b, held: b.held.filter((x) => hereBuilds.has(x)) } : b));
-	});
+	const gatesPin = $derived(
+		gatesPinBox({
+			boxes: gateBoxesRaw,
+			rollout,
+			fleet: { environments: listEnvironments, rollouts: listRollouts },
+			settled: fleetSettled(listQuery),
+			hereBuilds: reallyHeldHere.map((h) => h.build),
+			pinnedTo: blockStory.pinnedTo,
+			displayVersion: (c) => getDisplayVersion(c as { version?: string; revision?: string; tag: string })
+		})
+	);
+	const gateBoxes = $derived(gatesPin.boxes);
 
 	const hood = $derived(
 		rolloutNeighbourhood({
@@ -1884,7 +1906,7 @@
 						     ~12px so the focus tile's own held line lands inside the
 						     first screen more often. -->
 							<div class="border-line-subtle -mx-4 -mt-4 mb-2 border-b px-4 py-2.5 sm:mb-3 sm:py-3">
-								{#if holdBreakdown.anyHeld && leadSentence}
+								{#if (holdBreakdown.anyHeld || blockStory.pinnedTo) && leadSentence}
 									{#if blockStory.kindPending}
 										<SkeletonBar width="w-72" height="h-3.5" />
 									{:else}
@@ -1926,7 +1948,9 @@
 								{hood}
 								themeOf={themeFor}
 								hrefOf={(n) => rolloutPath(n.cluster || cluster, n.namespace, n.name, 'gates')}
-								heldBuildsOverride={reallyHeldHere.map((h) => h.build)}
+								heldBuildsOverride={gatesPin.heldBuildsOverride}
+								onClearPin={canModify && blockStory.pinnedTo ? () => (showClearPinModal = true) : null}
+								clearPinDisabled={gatesPin.clearPinDisabled}
 								reconciledUpstream={reconciled.upstream}
 								elsewhereCountOverride={elsewhereCounts}
 								{peerHeldByEnv}
@@ -2408,6 +2432,16 @@
 		</div>
 	{/if}
 </div>
+
+{#if rollout}
+	<ClearPinModal
+		bind:open={showClearPinModal}
+		{rollout}
+		{cluster}
+		{autoDeploy}
+		onSuccess={() => rolloutQuery.refetch()}
+	/>
+{/if}
 
 <style>
 	/* The Gates card's rollup, full/compact — same 559.98px CARD-width

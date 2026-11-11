@@ -96,7 +96,7 @@ export type GangTile = {
 	foot: { title: string | null; ref: string; age: string; ageLabel: string; ageTitle: string; from: string | null };
 };
 export type DayRow = { key: string; kind: 'deploy' | 'failed' | 'rolledBack'; app: string; href: string; place: string; title: string | null; build: string; who: string; age: string; /** a person pressed deploy (not the controller) */ mark: 'manual' | null; /** the reason they typed, or null (QA #14) */ reason: string | null };
-export type Gangway = { held: GangTile[]; ready: GangTile[]; heldRollup: Rollup; inStep: { app: string; href: string }[]; today: DayRow[]; todayRollup: Rollup };
+export type Gangway = { held: GangTile[]; ready: GangTile[]; heldRollup: Rollup; inStep: { app: string; href: string }[]; /** apps here that run an older build and have nothing inbound: the same "N behind" the at-rest predicate prints, so they are never listed In step */ behind: { app: string; href: string; n: number }[]; today: DayRow[]; todayRollup: Rollup };
 
 /* a NAMED site: not empty and not a tier word (regions.ts siteKey, the one default-site rule) */
 const SITE_NOT = (_tier: string) => (l: string) => siteKey(l) !== 'default';
@@ -142,6 +142,20 @@ export function cellsOf(a: Pick<EnvApp, 'waves' | 'places' | 'row'>, tier: strin
 }
 
 const REST_FILL = 'On the newest';
+
+/**
+ * ONE predicate for "how far behind its newest build is this app HERE" (an app's places in this environment, or in the one region): the at-rest rows'
+ * "N behind" and the In step / Behind lists both read it, so an app cannot be 1 behind in one place on the page and in step in another.
+ */
+export const behindOfApp = (base: { placeList: readonly { tier: string; label: string; onNewest: boolean; currency?: string }[]; behind?: { n: number } | null } | null, tierKey: string, region: string | null): number =>
+	base && !base.placeList.filter((x) => x.tier === tierKey && (!region || x.label === region) && x.currency !== 'none').every((x) => x.onNewest) ? (base.behind?.n ?? 0) : 0;
+/** the apps with nothing inbound split by that predicate: on the newest build (In step) or an older one (Behind, with its number) */
+export function stepSplit<A extends { app: string; href: string }>(apps: readonly A[], behindOf: (app: string) => number): { inStep: { app: string; href: string }[]; behind: { app: string; href: string; n: number }[] } {
+	return {
+		inStep: apps.filter((a) => behindOf(a.app) === 0).map((a) => ({ app: a.app, href: a.href })),
+		behind: apps.filter((a) => behindOf(a.app) > 0).map((a) => ({ app: a.app, href: a.href, n: behindOf(a.app) }))
+	};
+}
 
 export function envPage(hs: HomeState, name: string): EnvPage | null {
 	const target = resolveEnv(name, hs);
@@ -206,6 +220,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 	const active = [...act.filter((a) => a.waves.length), ...act.filter((a) => !a.waves.length)];
 	const appsRollup = [`${act.length} not at rest`];
 
+	const behindHere = (app: string): number => behindOfApp(A.items.find((x) => x.app === app) ?? null, tierKey, region);
 	/* At rest: a quiet row per app that has nothing to say here, newest deploy first */
 	const restApps = apps.filter((a) => a.quiet);
 	const atRest: RestRow[] = restApps.map((a) => {
@@ -214,8 +229,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 		if (a.waves.length) return { key: `rest-${a.app}`, app: a.app, href: a.href, place: plural(a.places.length, 'region'), rep: false, sentence: `${a.waves.length} builds`, code: a.waves.map((w) => w.build ?? '').filter(Boolean).join(' · '), age: ago(a.since), tier: tierKey };
 		const label = !ph || ph.label === tierKey || ph.label === 'production' ? '' : ph.label;
 		const base = A.items.find((x) => x.app === a.app);
-		const counted = base?.placeList.filter((x) => x.tier === tierKey && (!region || x.label === region) && x.currency !== 'none') ?? [];
-		const behind = base && !counted.every((x) => x.onNewest) ? (base.behind?.n ?? 0) : 0;
+		const behind = behindHere(a.app);
 		return { key: `rest-${a.app}`, app: a.app, href: ph?.href ?? a.href, place: label, rep: false, sentence: ph?.state === 'rolled-back' ? 'Rolled back' : behind ? `${behind} behind` : ph && base?.placeList.some((x) => x.href === ph.href && x.currency === 'none') ? 'No releases yet' : REST_FILL, code: ph?.deployedBuild ?? p?.version ?? '', age: ago(p?.since ?? a.since), tier: tierKey };
 	}).sort((x, y) => 0 * (x.age.length - y.age.length));
 	const sinceOf = new Map(apps.map((a) => [a.app, a.since ?? '']));
@@ -277,7 +291,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 	const heldRollup: Rollup = [...(nAp ? [{ text: needApprovalCount(nAp), ink: 'held' as const }] : []), ...(held.length - nAp ? [`${held.length - nAp} held`] : [])];
 	const failedApps = new Set(rows.filter((r) => r.group === 'failed').map((r) => r.app));
 	const inSet = new Set(inb.map((t) => t.app));
-	const inStep = apps.filter((a) => !inSet.has(a.app) && !failedApps.has(a.app)).map((a) => ({ app: a.app, href: a.href }));
+	const { inStep, behind } = stepSplit(apps.filter((a) => !inSet.has(a.app) && !failedApps.has(a.app)), behindHere);
 	const evs = fleet24hEvents(hs, tierKey).filter((e) => !region || e.place === region || e.place === `prod-${region}` || e.place.endsWith(region));
 	const today: DayRow[] = evs.map((e, i) => {
 		const pl = e.place.replace(/^prod-/, '');
@@ -287,7 +301,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 	});
 	const nFailed = today.filter((d) => d.kind === 'failed').length;
 	const todayRollup: Rollup = [plural(today.length, 'deploy'), ...(nFailed ? [{ text: `${nFailed} failed`, ink: 'danger' as const }] : [])];
-	const gangway: Gangway = { held, ready, heldRollup, inStep, today, todayRollup };
+	const gangway: Gangway = { held, ready, heldRollup, inStep, behind, today, todayRollup };
 
 	void fleet24hEvents; void TIER_NAME; void stateWord; void barSegments;
 	const title = region ? `prod-${region}` : (TIER_NAME[tierKey] ?? tierKey);

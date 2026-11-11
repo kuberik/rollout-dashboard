@@ -204,7 +204,7 @@ export function buildRollup(builds: AppBuild[], places: PlaceHold[]): string {
 
 export type HoldRow = {
 	key: string;
-	kind: 'approval' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
+	kind: 'approval' | 'pin' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
 	name: string;
 	holding: boolean;
 	places: string[];
@@ -224,7 +224,9 @@ export function holdRows(
 	gates: GateInfo[],
 	places: PlaceHold[],
 	only: Set<string> | null = null,
-	app = ''
+	app = '',
+	pins: ReadonlySet<string> = new Set(),
+	pinVersion: string | null = null
 ): HoldRow[] {
 	const hrefOf = (label: string) => `${places.find((p) => p.place === label)?.href ?? ''}/gates`;
 	const rows: HoldRow[] = gates.map((g) => ({
@@ -233,7 +235,7 @@ export function holdRows(
 		name: shortGate(g.name, app),
 		holding: g.holding,
 		pending: g.heldPending,
-		places: g.places,
+		places: g.holding ? g.holdsAt : g.places,
 		held: only ? g.held.filter((b) => only.has(b)) : g.held,
 		sentence: g.sentence,
 		href: hrefOf(g.places[0])
@@ -254,6 +256,14 @@ export function holdRows(
 			sentence: 'Releases when the check starts passing',
 			href: `${hp[0].href}/gates`
 		});
+	}
+	/* a pin is a hold like any gate: the place rows say "Held by the pin" (`placeWord`), so this card must list it, or the page says "Nothing held" beside a held place */
+	const pinned = places.filter((p) => pins.has(p.place));
+	if (pinned.length) {
+		/* a pin is per place: the builds it holds are those the place's own Overview and Gates tab count (`newerBuildsShown`), not the app baseline's `only` */
+		const held: string[] = [];
+		for (const p of pinned) for (const b of p.newerShown) if (!held.includes(b)) held.push(b);
+		rows.push({ key: 'pin', kind: 'pin', name: pinVersion ? `Pinned to ${pinVersion}` : 'Pinned', holding: true, places: pinned.map((p) => p.place), held, sentence: 'Releases when the pin is cleared', href: `${pinned[0].href}` });
 	}
 	return rows.sort((a, b) => Number(b.holding) - Number(a.holding));
 }
@@ -660,6 +670,11 @@ function failedAlong(
 		.filter((q) => q.upstreamFailed === build || q.heldBuilds.some((b) => b.build === build))
 		.flatMap((q) => failedAlong(q, build, places, failedAt, depth + 1));
 }
+/** the ONE build every "Pinned to <build> in <place>" hold names (the Holding row's title); null when there are none or they name different builds */
+export const pinnedVersion = (holds: string[]): string | null => {
+	const v = new Set(holds.map((h) => /^Pinned to (\S+) in /.exec(h)?.[1]).filter((x): x is string => !!x));
+	return v.size === 1 ? [...v][0] : null;
+};
 /** the places a "Pinned to <build> in <place>" hold (data.ts holds) names, by PlaceHold.place */
 export const pinnedPlaces = (holds: string[]): Set<string> =>
 	new Set(holds.map((h) => /^Pinned to \S+ in (.+)$/.exec(h)?.[1]).filter((x): x is string => !!x));
@@ -779,3 +794,13 @@ export const approvalMessage = (
  *  every other place prints since its deployed build landed. The waiting build's own age is not this row's to say. */
 export const placeAge = (row: TRow, hs: HomeState = 'incident'): string =>
 	ago((row.group === 'approval' || row.group === 'held') && !row.stillChecking ? waitClock(row, hs) : (deployedBuild(row)?.at ?? row.since));
+
+/** The banner message of a single-cause app: the parts after the lead, minus any that repeats the lead (the held cause and the app's own fact can both carry the hold's sentence). Null when nothing is left. */
+export function causeLine(parts: string[]): string | null {
+	return (
+		parts
+			.slice(1)
+			.filter((p) => p !== parts[0])
+			.join(' · ') || null
+	);
+}

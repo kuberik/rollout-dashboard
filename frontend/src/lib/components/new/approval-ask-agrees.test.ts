@@ -46,3 +46,37 @@ describe('after an approval, with the window open and the approved build not yet
 		}
 	});
 });
+
+describe('after an approval, with the window opened and no promotion order', () => {
+	it('every surface asks if and only if an Approve button exists', () => {
+		const gates = [{ name: 'schedule-gate-qqqqq', kind: 'schedule', passing: false, allowedVersions: null }];
+		const rs = prodRs();
+		rs.forEach((r) => r.status.gates.push(...gates.map((g) => ({ ...g }))));
+		resetHomeModel();
+		let t: ReturnType<typeof approvalTarget> = null;
+		try {
+			t = approvalTarget(prodRow(), 'incident')!;
+			expect(t, 'before the grant there is something to approve').not.toBeNull();
+			grantApproval(t);
+			/* the window opens before the controller deploys the approved build */
+			rs.forEach((r) => { r.status.gates.find((g: any) => g.name === 'schedule-gate-qqqqq').passing = true; });
+			resetHomeModel();
+			const row = prodRow();
+			/* the place may have no row at all (nothing to ask, nothing held): then no surface asks */
+			const button = row ? approvalTarget(row, 'incident') != null : false;
+			const asks = {
+				row: row ? /approval/.test(sentenceOf(row, 'incident')[0]) : false,
+				needsYou: row?.needsYou ?? false,
+				inbox: inbox('incident').items.some((i) => i.row.app === APP && /^Approve/.test(i.reason ?? '')),
+				home: compass('incident').v.approvals.some((a) => a.app === APP),
+				sketch: buildSketch(homeModel('incident'), ME).elsewhere.some((x) => x.app === APP && x.kind === 'approval'),
+			};
+			for (const [surface, asked] of Object.entries(asks)) expect(asked, `${surface} asks ⇔ the Approve button exists (button: ${button})`).toBe(button);
+		} finally {
+			if (t) revokeApproval(t);
+			rs.forEach((r) => { r.status.gates = r.status.gates.filter((g: any) => !gates.some((x) => x.name === g.name)); });
+			resetHomeModel();
+		}
+	});
+});
+

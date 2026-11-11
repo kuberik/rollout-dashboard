@@ -92,6 +92,7 @@ import { prodTargets } from './home-status';
 import type { CheckFailure } from './health-witness';
 import { failureKind, formatTimeAgoCompact } from '../utils';
 import * as msg from '$lib/paraglide/messages';
+import { pinHoldsBuilds } from './pin-hold';
 import { eventAge, historyEntrySince, type EventAgeKind } from './event-age';
 
 // ── THE PER-ENVIRONMENT STATE WORD, ONE ENUM FOR BOTH THE APP'S CURRENT
@@ -260,6 +261,8 @@ export type AppEnv = {
 	 *  (`eventAge(card, 'held')`, the instant the app's figure counts from when
 	 *  this place leads), else `null`. Product-only (`home/parity.test.ts`). */
 	heldSince: string | null;
+	/** a pin holds newer builds at this place (`pinHoldsBuilds`); a flag beside `state`, never folded into it */
+	pinned: boolean;
 	/** A rule gate is the primary hold here, and an approval ALSO refuses the build (`RolloutCard.heldAlso`): the approval ask stays, naming the other hold. `persistent`: it will not clear by itself (a failing check, a dependency, an unattributed rule); a window or promotion order clears on its own. */
 	alsoApproval?: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null;
 	/** the place reads its approval or rule hold while its OWN build is still baking (`placeVerdict`): the row keeps the bake's pipeline nodes */
@@ -748,6 +751,26 @@ function appEnvState(c: RolloutCard): EnvState {
 	return 'healthy'; // newest or behind — both are a running, unheld deploy
 }
 
+/**
+ * THE PLACE VERDICT AS A HELD FACT, the one every surface reads for "is this place held": the app page's strip, /rollouts and the Gates tab's
+ * neighbour tiles. A place still baking its own build reads "Checking" even when the frontier read (`card.held`) would refuse the next one, so
+ * the Gates tab's "us-east-2 held on payments-svc" must come from here, never from `card.held`.
+ */
+export function placeVerdictHeld(c: RolloutCard): boolean {
+	const s = appEnvState(c);
+	return s === 'awaiting-approval' || s === 'held-by-rule';
+}
+
+/** One neighbour place as the Gates tab's tile reads it: the place VERDICT (`state`, the app page's and /rollouts' word), never a held boolean. */
+export type PeerPlace = { state: EnvState; held: boolean; causeLabel: string | null };
+
+/** The Gates tab's peer map (env name to place verdict + cause), read off `appEnvState`. A checking place is "checking", not "not held". */
+export function peerHeldMap(peers: ReadonlyMap<string, RolloutCard>): Map<string, PeerPlace> {
+	const m = new Map<string, PeerPlace>();
+	for (const [envName, card] of peers) m.set(envName, { state: appEnvState(card), held: placeVerdictHeld(card), causeLabel: card.heldCauseLabel });
+	return m;
+}
+
 function laneEnvLabel(env: string, isProd: boolean): string {
 	return isProd ? env.replace(/^prod-?/i, '') || env : env;
 }
@@ -805,6 +828,7 @@ function buildAppEnvs(
 		version: node.card.version,
 		arrivedAt: node.card.timestamp,
 		heldSince: ageKindFor(appEnvState(node.card)) === 'held' ? eventAge(node.card, 'held') : null,
+		pinned: pinHoldsBuilds(node.card),
 		alsoApproval: alsoApprovalOf(node.card),
 		placeVerdict: cardVerdict(node.card),
 		stillChecking: !!cardVerdict(node.card) && cardVerdict(node.card)!.state !== 'running' && (node.card.bakeStatus === 'Deploying' || node.card.bakeStatus === 'InProgress' || node.card.stuck != null),
@@ -814,7 +838,7 @@ function buildAppEnvs(
 	}));
 }
 
-/** The other hold an approval ask names, from the verdict's own `alsoHold` (`held.ts`): a window or promotion order clears by itself, any other refuser does not and is named. */
+/** The other hold an approval ask names, read off the card's `heldAlso` (set only when the place verdict has an Approve target, `place-verdict.ts`): a window or promotion order clears by itself, any other refuser does not and is named; null when the card has no such ask. */
 function alsoApprovalOf(c: RolloutCard): { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null {
 	if (!c.heldAlso) return null;
 	return { other: c.heldAlso.other, persistent: c.heldAlso.kind === 'hold', kind: c.heldAlso.kind };

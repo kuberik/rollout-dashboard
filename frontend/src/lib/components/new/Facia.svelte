@@ -35,7 +35,7 @@
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { TChange } from './data';
 	import type { Lane } from '$lib/view-models/promotion-lanes';
-	import { ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
+	import { holdLead, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
 	import { plural, rowAction, actionLabel, actionHref, markOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
@@ -288,14 +288,13 @@
 	 */
 	/* r2-cleanup: the strand beside the line says the state word (Checking / Deploying / Waiting) in its hue; the line keeps the badge + the reason (what is needed, the check, the build) and does not say the word twice */
 	const stateLine = $derived.by((): { ink: string; lead: string; rest: string; build: string; badge: boolean } => {
-		const gateWord = (parts[0] ?? '').replace(/^Waits on /, '');
 		switch (kind) {
 			case 'failed': return { ink: 'text-danger', lead: (failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), ''), rest: failMsg ?? '', build: '', badge: true };
 			case 'wait': return checkingNow
 				? { ink: 'text-progress', lead: '', rest: waitRow?.state === 'awaiting-approval' ? `Then waits for ${rowAction(waitRow)?.kind === 'approve' ? 'your ' : ''}approval` : '', build: wait?.build ?? '', badge: true }
 				: waitRow?.state === 'awaiting-approval'
 				? { ink: 'text-held', lead: approvalIn(rowAction(waitRow)?.kind === 'approve', placeName), rest: '', build: wait?.build ?? '', badge: true }
-				: { ink: 'text-held', lead: `Waiting on ${prodWord(gateWord).replace(/ in (prod|[\w.-]+)$/, '')}`, rest: '', build: wait?.build ?? '', badge: true };
+				: { ink: 'text-held', lead: holdLead(prodWord(parts[0] ?? '')), rest: '', build: wait?.build ?? '', badge: true };
 			case 'deploying': return { ink: 'text-active', lead: '', rest: '', build: build, badge: true };
 			case 'checking': return { ink: 'text-progress', lead: '', rest: '', build: build, badge: true };
 			case 'ready': return { ink: 'text-fg', lead: 'Ready to promote to prod', rest: '', build: '', badge: false };

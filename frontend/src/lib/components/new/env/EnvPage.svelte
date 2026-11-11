@@ -13,6 +13,7 @@
 	 *   Held              body concept B "Gangway" (owner-approved 2026-11-08): one GangwayTile per app with something waiting to enter THIS
 	 *                     environment and held (its unlanded changes as beads in the environments before this one, then this box with the gate's word)
 	 *   Ready to promote  the same tile, nothing holding it
+	 *   Behind            apps here on an older build with nothing inbound: the same line, each with its "N behind"
 	 *   In step           apps already on their newest build: one quiet line of monograms + names
 	 *   Today in <env>    the deploys that reached this environment today (DayRow in a ListCard), folding at 8 rows
 	 * New by design: GangwayTile and DayRow (see their comments). The sites-and-waves drawing and At rest / Arriving next are retired from this page. Composition lives in env-page.ts (unit-tested); this file draws.
@@ -106,6 +107,15 @@
 			<section id="ready" data-section="ready">
 				<SectionHeader title="Ready to promote" icon={ArrowRightOutline} rollup={[plural(G.ready.length, 'app')]} />
 				<ul class="ap-grid" style="--cols:{cols}">{#each G.ready as t (t.app)}<GangwayTile tile={t} />{/each}</ul>
+			</section>
+		{/if}
+
+		{#if G.behind.length}
+			<section id="behind" data-section="behind">
+				<SectionHeader title="Behind" icon={ClockOutline} rollup={[`${plural(G.behind.length, 'app')} on an older build`]} />
+				<div class="instep" data-instep-behind>
+					{#each G.behind as a (a.app)}<a href={a.href} class="instep-a"><AppGlyph name={a.app} size={20} /><span>{a.app}</span><span class="t-body text-fg-subtle tabular-nums">{a.n} behind</span></a>{/each}
+				</div>
 			</section>
 		{/if}
 

@@ -34,7 +34,7 @@ import {
 import { blockingStory } from './view-models/blocking-story';
 import type { BlockingStory, GateContext, ContractHolds } from './view-models/blocking-story';
 import { heldVerdict, verdictForGates, causeLabelForGates } from './view-models/held';
-import { placeVerdict, pickBuildInQuestion, alsoKindOf, type PlaceVerdict } from './view-models/place-verdict';
+import { placeVerdict, pickBuildInQuestion, alsoKindOf, isApprovalLike, type PlaceVerdict } from './view-models/place-verdict';
 import type { HeldCause, AlsoHold } from './view-models/held';
 import { displayVersionForTag } from './version-utils';
 import { formatAbsoluteReopen } from './api/schedules';
@@ -264,7 +264,7 @@ function placeVerdictOf(
 	peers: { envName: string; rollout: Rollout }[],
 	story: BlockingStory,
 	fleet: Fleet
-): { verdict: PlaceVerdict; held: boolean; cause: HeldCause | null; causeLabel: string | null; also: AlsoHold | null } | null {
+): { verdict: PlaceVerdict | null; held: boolean; cause: HeldCause | null; causeLabel: string | null; also: AlsoHold | null } | null {
 	const gates = (r.status?.gates ?? []) as { name: string; kind?: string | null; passing?: boolean | null; allowedVersions?: string[] | null }[];
 	if (!gates.length) return null;
 	const live = liveForPlace(r, releaseCandidates(r) ?? [], fleet);
@@ -290,7 +290,11 @@ function placeVerdictOf(
 	const tb = (story.candidates ?? []).find((b) => b.build === (displayVersionForTag(r, target) || target));
 	if (tb) { const cv = verdictForGates(tb.classifiedGates, envName, { hasContract: tb.contracts.length > 0 }); if (!cv.held && cv.waitsForEnv) return null; }
 	const v = placeVerdict({ gates, cands, target, running: h0 ? { tag: h0.version?.tag ?? h0.version?.version ?? '', bake: h0.bakeStatus } : null });
-	if (!v) return null;
+	if (!v) {
+		/* an approval is on file for the build in question and nothing refuses it: it deploys. A NEWER candidate the approval still refuses is not this place's ask (it has no Approve target until this one deploys), so the frontier read must not call the place held or ask */
+		const pending = gates.some((g) => isApprovalLike(g) && cands.some((c) => !g.allowedVersions!.includes(c)));
+		return target && pending ? { verdict: null, held: false, cause: null, causeLabel: null, also: null } : null;
+	}
 	if (v.state === 'running') return { verdict: v, held: false, cause: null, causeLabel: null, also: null };
 	if (v.state === 'awaiting-approval') return { verdict: v, held: true, cause: 'person', causeLabel: causeLabelForGates(story.gates, 'person'), also: null };
 	const cg = story.gates.find((g) => g.id === v.first.name) ?? null;
@@ -648,7 +652,10 @@ export function buildRolloutCards(
 			? blockingStory(r, gateContext, { contractHolds: contractHoldsFor(r), now, fleet: { environments, rollouts } })
 			: blockingStory(r, gateContext, { now, fleet: { environments, rollouts } });
 		const heldCardVerdict = heldVerdict(cardStory, envName);
-		const pv = placeVerdictOf(r, envName, peers, cardStory, { environments, rollouts });
+		const pvAll = placeVerdictOf(r, envName, peers, cardStory, { environments, rollouts });
+		const pv = pvAll?.verdict ? pvAll : null;
+		/* the approval on file already covers the build in question: the frontier read may not ask for the approval of a newer build, which has no Approve target until this one deploys */
+		const noAsk = !!pvAll && !pv && heldCardVerdict.cause === 'person';
 		return {
 			ns: r.metadata?.namespace || '',
 			name: r.metadata?.name || '',
@@ -679,8 +686,8 @@ export function buildRolloutCards(
 			rank,
 			behind,
 			behindCount: behindOfRollout(r, rank, { environments, rollouts }),
-			held: pv ? pv.held : heldCardVerdict.held,
-			heldCause: pv ? pv.cause : heldCardVerdict.cause,
+			held: pv ? pv.held : noAsk ? false : heldCardVerdict.held,
+			heldCause: pv ? pv.cause : noAsk ? null : heldCardVerdict.cause,
 			placeVerdict: pv?.verdict ?? null,
 			// ⭐ qa12 (squad-rollout gates-2 follow-up, 2026-10-11): the
 			// FRONTIER candidate's own label, never the whole-story blend
@@ -688,7 +695,7 @@ export function buildRolloutCards(
 			// the eligible candidate's `classifiedGates`, which is what
 			// keeps a newer chain-refused candidate's gate from naming the
 			// cause for an OLDER candidate this environment really refuses.
-			heldCauseLabel: pv ? pv.causeLabel : heldCardVerdict.held ? (heldCardVerdict.frontier?.causeLabel ?? null) : null,
+			heldCauseLabel: pv ? pv.causeLabel : noAsk ? null : heldCardVerdict.held ? (heldCardVerdict.frontier?.causeLabel ?? null) : null,
 			heldAlso: pv ? pv.also : null, /* the ask follows the place verdict (and so `approvalTarget`): with no verdict there is no Approve button, so the row names no approval */
 			waitsForEnv: pv ? null : heldCardVerdict.waitsForEnv,
 			waveWait: pv ? null : heldCardVerdict.waveWait ?? null,

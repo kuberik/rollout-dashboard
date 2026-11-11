@@ -35,8 +35,10 @@
 		type AutoDeployState
 	} from '$lib/view-models/auto-deploy';
 	import { newestDeployableCandidate, promotionCandidates } from '$lib/view-models/promotion';
+	import { pinnedByWho as pinnedByWhoOf } from '$lib/view-models/pin-hold';
 	import { rolloutEnvironmentName } from '$lib/view-models/deploy-risk';
-	import { isFieldManagedByManager, isFieldManagedByOtherManager, formatTimeAgoCompact } from '$lib/utils';
+	import { formatTimeAgoCompact } from '$lib/utils';
+	import { dashboardManagesWantedVersion, pinSince } from '$lib/view-models/pin-hold';
 	import { shortRevision } from '$lib/version-utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
@@ -148,14 +150,8 @@
 	 * history entry at all — `whenIso` stays null there, and the line
 	 * degrades to naming only who, per "whichever facts exist."
 	 */
-	const PIN_HISTORY_RE = [/^Pinned version$/, /^Pinned to version /];
-	const pinnedByWho = $derived(
-		rollout?.metadata?.annotations?.['rollout.kuberik.com/deploy-user'] || null
-	);
-	const pinnedAtIso = $derived(
-		(rollout?.status?.history ?? []).find((h) => PIN_HISTORY_RE.some((re) => re.test(h.message ?? '')))
-			?.timestamp ?? null
-	);
+	const pinnedByWho = $derived(pinnedByWhoOf(rollout));
+	const pinnedAtIso = $derived(pinSince(rollout));
 	const pinnedByLine = $derived.by(() => {
 		if (!pinnedByWho && !pinnedAtIso) return null;
 		const when = pinnedAtIso ? `${formatTimeAgoCompact(pinnedAtIso)} ago` : null;
@@ -200,17 +196,7 @@
 	 * `spec.wantedVersion`, clearing it here will be fought over. Said, not
 	 * hidden — the operator can still press it.
 	 */
-	const isDashboardManaging = $derived.by(() => {
-		if (!rollout) return false;
-		if (rollout.spec?.wantedVersion === undefined) return true;
-		const managed = rollout.metadata?.managedFields;
-		if (managed) {
-			if (isFieldManagedByManager(managed, 'rollout-dashboard', 'spec.wantedVersion')) return true;
-			if (isFieldManagedByOtherManager(managed, 'rollout-dashboard', 'spec.wantedVersion'))
-				return false;
-		}
-		return true;
-	});
+	const isDashboardManaging = $derived(dashboardManagesWantedVersion(rollout));
 
 	let busy = $state(false);
 

@@ -142,9 +142,9 @@ describe('approving in place', () => {
 	});
 	it('cold cache: an unpublished window name reads the same in the toast and the row; once published, both read the published name', () => {
 		withGate({ name: 'schedule-gate-zvsqr', kind: 'schedule', passing: false, allowedVersions: null }, (t, nss) => {
-			expect(t.waitsOn).toBe('Gate');
+			expect(t.waitsOn).toBe('Deploy window');
 			grant(t);
-			expect(gatesOf('payments-core', 'incident').some((g) => g.holding && g.name === 'Gate')).toBe(true);
+			expect(gatesOf('payments-core', 'incident').some((g) => g.holding && g.name === 'Deploy window')).toBe(true);
 			revokeApproval(t);
 			for (const ns of nss) publishGatePretty('prod', ns, new Map([['schedule-gate-zvsqr', 'Business hours']]));
 			const w = approvalTarget(row('payments-core')!, 'incident')!;
@@ -343,6 +343,21 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 			const ask = inbox('incident').items.find((i) => i.row.app === 'payments-core' && i.row.tier === 'prod');
 			expect(ask?.reason).toMatch(/^Approving won't deploy until .+ clears$/);
 			expect(ask?.reason).not.toMatch(/window/i);
+		}));
+	});
+	it("Home's ask for a single prod place names it by its display name, not the raw environment (prod-eu-west)", () => {
+		withWindow(() => patched([{ name: 'schedule-gate-zvsqr', kind: 'schedule', passing: false, allowedVersions: null }], () => {
+			const m = homeModel('incident');
+			const app = m.apps.find((a) => a.app === 'payments-core')!;
+			const envs = app.envs.filter((e) => e.state === 'held-by-rule' && e.alsoApproval);
+			expect(envs.length).toBeGreaterThan(1);
+			envs.slice(1).forEach((e) => { e.alsoApproval = null; e.state = 'healthy'; });
+			const one = envs[0];
+			one.myChanges = [];
+			const e = buildSketch(m, ME).elsewhere.find((x) => x.app === 'payments-core' && x.kind === 'approval');
+			expect(one.env, 'the fixture place is a raw prod-<site> environment').toMatch(/^prod-/);
+			expect(e?.status).not.toContain(one.env);
+			expect(e?.status).toContain(one.label);
 		}));
 	});
 	alsoCase('a persistent hold (a failing check)', { name: 'smoke-check', kind: 'unknown', passing: false, allowedVersions: null }, /^Approving won't deploy until .+ clears$/);

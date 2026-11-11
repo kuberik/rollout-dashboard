@@ -24,13 +24,13 @@ export type Cause = { key: string; tier: TierKey; title: string; releases: strin
 export const gatesHref = (href: string) => (/\/gates$/.test(href) ? href : href.replace(/\/$/, '') + '/gates');
 /** "Waiting on X" (data.ts) -> the product's "Waits on X" */
 export const waitsWord = (cause: string) => cause.replace(/^Waiting /, 'Waits ');
-const releasesOf = (cause: string) =>
+const releasesOf = (cause: string, window = false) =>
+	window ? 'Releases when the window opens' :
 	cause === 'Waiting for approval' ? 'Releases when someone approves'
 	: cause.startsWith('Waiting on check') ? 'Releases when the check passes'
 	: cause.startsWith('Waiting on a dependency') ? 'Releases when the dependency is healthy'
 	: cause.startsWith('Waiting on ') ? `Releases when ${cause.slice(11)} is healthy`
 	: cause === 'Pinned' ? 'Releases when it is unpinned'
-	: cause === 'Waiting for the deploy window' ? 'Releases when the window opens'
 	: 'Releases when the rule allows it';
 
 /** One cause per (tier, hold cause) from data.ts heldCauses; places counted per region. */
@@ -38,7 +38,7 @@ function causesFrom(hc: HeldCause[]): Cause[] {
 	const by = new Map<string, Cause>();
 	for (const h of hc) for (const r of h.rows) {
 		const id = `${r.tier}|${h.key}`;
-		const c = by.get(id) ?? { key: h.key, tier: r.tier as TierKey, title: waitsWord(h.cause), releases: releasesOf(h.cause), places: 0, apps: [], href: gatesHref(r.href), rule: h.cause !== 'Waiting for approval' };
+		const c = by.get(id) ?? { key: h.key, tier: r.tier as TierKey, title: waitsWord(h.cause), releases: releasesOf(h.cause, !!h.window), places: 0, apps: [], href: gatesHref(r.href), rule: h.cause !== 'Waiting for approval' };
 		c.places += Math.max(1, r.regions?.length ?? 1);
 		if (!c.apps.includes(r.app)) c.apps.push(r.app);
 		by.set(id, c);

@@ -12,7 +12,7 @@
  */
 import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { approvalIdentity,
-	inbox, rollouts, fleet24hEvents, ago, isViewer, personOf, waitClock, gateName, regionStates, pretty, buildIdentity, NOW, type HomeState, type TRow
+	inbox, rollouts, pinOnlyPlaces, heldRegionsPhrase, type PinOnlyPlace, fleet24hEvents, ago, isViewer, personOf, waitClock, gateName, regionStates, pretty, buildIdentity, NOW, type HomeState, type TRow
 } from './data';
 import { rowAction, actionHref } from './rollout-view';
 import { chipPlace, changeLineOf } from './rollouts-page';
@@ -83,6 +83,26 @@ export function askOf(r: TRow, hs: HomeState, o: { noTier?: boolean } = {}): Ask
 	return { key: r.key, row: r, model, app: r.app, href: r.href, failed, rollbackHref: failed && a?.kind === 'rollback' ? actionHref(a) : null, id };
 }
 
+/**
+ * Folds the places only a pin holds into each app's one held row of Home's Fleet (`${app}|held`): the row's place for a tier names the regions
+ * its held rows already name PLUS the pinned ones, each label once, so "Held 3 of 5" reads the same as the Apps tile, the app page and the
+ * rollout page. Any tier (a staging pin included); `heldRegions` = app -> tier -> the regions the held rows name.
+ */
+export function foldPinIntoFleet(by: Map<string, FleetTrouble & { since: string }>, heldRegions: Map<string, Map<string, string[]>>, pins: PinOnlyPlace[]): void {
+	for (const p of pins) {
+		const k = `${p.app}|held`;
+		const regs = heldRegions.get(p.app) ?? heldRegions.set(p.app, new Map()).get(p.app)!;
+		const x = by.get(k) ?? { key: k, app: p.app, failing: false, mark: 'held' as const, word: 'Held' as const, href: p.href, places: [] as FleetTrouble['places'], since: p.since };
+		const mine = [...new Set([...(regs.get(p.tier) ?? []), p.label])];
+		regs.set(p.tier, mine);
+		const place = chipPlace({ tier: p.tier, regions: mine, where: '' }) ?? '';
+		const at = x.places.findIndex((q) => q.tier === p.tier);
+		if (at >= 0) x.places[at] = { tier: p.tier, place };
+		else x.places.push({ tier: p.tier, place });
+		by.set(k, x);
+	}
+}
+
 export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	const R = rollouts(hs, starred);
 	/* failures first (prod before the rest: the roster's urgency order already does it), then approvals; the sort is stable */
@@ -108,6 +128,7 @@ export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage
 	/* Fleet: what is going on elsewhere = failing / held / approval-waiting / moving rollouts that are not the viewer's and not an ask, one per app + state */
 	const mineKeys = new Set(mineP.map((p) => p.ride.row?.key).filter((k): k is string => !!k));
 	const by = new Map<string, FleetTrouble & { since: string }>();
+	const heldRegions = new Map<string, Map<string, string[]>>(); /* app -> tier -> the regions its held rows name */
 	for (const r of R.rows) {
 		if ((r.group !== 'failed' && r.group !== 'held' && r.group !== 'approval' && r.group !== 'moving') || askKeys.has(r.key) || mineKeys.has(r.key)) continue;
 		const failedRow = r.group === 'failed';
@@ -121,7 +142,12 @@ export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage
 		x.places.push({ tier: r.tier, place });
 		if ((r.since ?? '') < x.since) x.since = r.since ?? '';
 		by.set(k, x);
+		if (r.group === 'held') (heldRegions.get(r.app) ?? heldRegions.set(r.app, new Map()).get(r.app)!).set(r.tier, [...(heldRegions.get(r.app)?.get(r.tier) ?? []), ...r.regions]);
 	}
+	/* a place a pin holds is held (`pinHoldsBuilds`): only the places no row, ask or "yours" already carries join the app's held row, by union */
+	foldPinIntoFleet(by, heldRegions, pinOnlyPlaces(R.c.m.apps as never, R.rows, new Set([...askKeys, ...mineKeys])));
+	/* a held app's prod chip says the same count the Apps tile, the app page and the rollout page say: "3 of 5 regions" (every cause and the pin once), not the rows' own region count */
+	for (const x of by.values()) if (x.mark === 'held') { const ph = heldRegionsPhrase(x.app, hs); const pr = x.places.find((q) => q.tier === 'prod'); if (ph && pr) pr.place = ph; }
 	const trouble = [...by.values()].sort((a, b) => TROUBLE_ORDER(a.mark) - TROUBLE_ORDER(b.mark) || a.since.localeCompare(b.since)).map(({ since: _s, ...t }) => t);
 
 	const failingApps = new Set(R.rows.filter((r) => r.group === 'failed').map((r) => r.app));

@@ -9,7 +9,7 @@
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
 import {
-	rollouts, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, waitClock, gateName, isViewer, personOf, avatarSrc,
+	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
@@ -18,6 +18,7 @@ import { holdWord } from './rollout-view';
 import { approvalWord } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
+import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import { regionsPhrase, siteCount } from '$lib/view-models/regions';
 
 const TIER_WORDS = new Set(['production', 'prod', 'staging', 'dev', 'test']);
@@ -176,8 +177,15 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 	const strand = (g: (r: TRow) => boolean) => rows.filter((r) => !inAttention.has(r.key) && g(r)).sort(sinceDesc).map((r) => strandRow(r, hs));
 	const moving = strand((r) => r.group === 'moving');
 	const waiting = strand((r) => r.group === 'approval');
-	const held = strand((r) => r.group === 'held');
-	const rest = restRows(rows, R.restAll ?? R.rest, hs, o.settled ?? true);
+	/* a place only the pin holds is listed under Held as a held row of its own (cause "Held by the pin") and drawn nowhere else; every total below is its list's length */
+	const pinPlaces = pinOnlyPlaces(R.c.m.apps as never, rows);
+	const pinHrefs = new Set(pinPlaces.map((p) => p.href));
+	const held = [...rows.filter((r) => !inAttention.has(r.key) && r.group === 'held'), ...pinPlaces.map((p) => pinRow(p, hs))].sort(sinceDesc).map((r) => {
+		const sr = strandRow(r, hs);
+		/* the pin outranks the rules (held-chip.ts): a pin-only place's whole cause is the pin */
+		return pinHrefs.has(r.href) ? { ...sr, lead: HELD_BY_PIN, rest: '', age: ago(pinSinceOfHref(r.href)) } : sr;
+	});
+	const rest = restRows(rows, R.restAll ?? R.rest, hs, o.settled ?? true).filter((p) => !pinHrefs.has(p.href));
 	const groups = ([['moving', moving], ['waiting', waiting], ['held', held]] as [GroupKey, StrandRow[]][]).filter(([, g]) => g.length).map(([key, g]) => ({ key, word: GROUP_WORD[key], rows: g }));
 	return {
 		banner, attention: attentionRows.map((r) => attentionItem(r, hs)), failing: failedRows.length, toApprove: yours.length,
