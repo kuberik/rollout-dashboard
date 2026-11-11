@@ -35,6 +35,9 @@ export function behindOfRollout(rollout: Ro, rank?: RankVerdict | null, fleet?: 
  * The count a ROUTE prints while its fleet query loads: `null` until the fleet has answered (success, or error: then the best list-only count and it
  * stays), never a number that is later corrected by the wave subtraction. A surface given null prints NO count (batch4 #3d, QA8).
  */
+/** THE settle rule for every route that prints a behind / newer count off the fleet query: answered, by success or by error (then the list-only count stays). */
+export const fleetSettled = (q: { isSuccess: boolean; isError: boolean }): boolean => q.isSuccess || q.isError;
+
 export function behindWhenSettled(rollout: Ro, fleet: Fleet | null | undefined, settled: boolean, rank?: RankVerdict | null): number | null {
 	if (!settled) return null;
 	/* an UNKNOWN lag (the current build aged out of availableReleases: the rank says null) is no count, never 0 / "Up to date" (batch4 #3d, QA17) */

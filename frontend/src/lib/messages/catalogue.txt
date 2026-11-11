@@ -1099,6 +1099,7 @@ lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	code	Failed to load schedules
 lib/components/ScheduleStatus.svelte	text	Held by … rule … …
+lib/components/ScheduleStatus.svelte	code	Newer builds are waiting.
 lib/components/SourceViewer.svelte	code	Failed to fetch files
 lib/components/SourceViewer.svelte	code	Failed to fetch files: …
 lib/components/SourceViewer.svelte	text	Source files for
@@ -1244,6 +1245,7 @@ lib/view-models/blocking-story.ts	code	… … waiting on an approval
 lib/view-models/blocking-story.ts	code	… … waiting on another deploy
 lib/view-models/blocking-story.ts	code	… allows this build
 lib/view-models/blocking-story.ts	code	… and …
+lib/view-models/blocking-story.ts	code	… available and none of them will deploy while the pin is set.
 lib/view-models/blocking-story.ts	code	… in … — …
 lib/view-models/blocking-story.ts	code	… is held
 lib/view-models/blocking-story.ts	code	… is waiting for …
@@ -1251,14 +1253,14 @@ lib/view-models/blocking-story.ts	code	… is waiting on a rule this dashboard c
 lib/view-models/blocking-story.ts	code	… is waiting on an approval
 lib/view-models/blocking-story.ts	code	… is waiting on promotion order
 lib/view-models/blocking-story.ts	code	… newer … … waiting here
-lib/view-models/blocking-story.ts	code	… newer build… … available and none of them will deploy while the pin is set.
-lib/view-models/blocking-story.ts	code	… newer build… … waiting.
+lib/view-models/blocking-story.ts	code	… newer build… …
 lib/view-models/blocking-story.ts	code	… of …
 lib/view-models/blocking-story.ts	code	… ships …
 lib/view-models/blocking-story.ts	code	… ships a newer …
 lib/view-models/blocking-story.ts	code	… ships a newer … than …
 lib/view-models/blocking-story.ts	code	… ships a newer version
 lib/view-models/blocking-story.ts	code	… things are holding …
+lib/view-models/blocking-story.ts	code	… waiting.
 lib/view-models/blocking-story.ts	code	…Nothing promotes itself until ….
 lib/view-models/blocking-story.ts	code	's check
 lib/view-models/blocking-story.ts	code	's pick
@@ -1304,6 +1306,7 @@ lib/view-models/blocking-story.ts	code	its upstream environment deploys this bui
 lib/view-models/blocking-story.ts	code	lockstep with
 lib/view-models/blocking-story.ts	code	Lockstep: waiting for
 lib/view-models/blocking-story.ts	code	Needs ……
+lib/view-models/blocking-story.ts	code	Newer builds are
 lib/view-models/blocking-story.ts	code	No approval will unblock this. Someone has to ……; until then the only way forward is a hand-started deploy, which bypasses the check.
 lib/view-models/blocking-story.ts	code	Nobody has to approve anything — this clears when the deploy in front of it lands.
 lib/view-models/blocking-story.ts	code	one name is used per tier (split with sites and waves)

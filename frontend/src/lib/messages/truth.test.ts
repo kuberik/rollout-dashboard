@@ -835,6 +835,11 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		);
 	});
 
+	test('pinned while the fleet list has not answered -- the same sentence with no count', () => {
+		const s = blockingStory(rollout({ at: 1, pinned: 'b2' }), ctxFull, { settled: false });
+		says(s.consequence, 'Newer builds are available and none of them will deploy while the pin is set.');
+	});
+
 	test('one approval gate -- the only state whose verdict is escalate', () => {
 		const r = rollout({ at: 0, gates: [{ name: 'manual', allowedVersions: [] }] });
 		const s = blockingStory(r, ctxFull, { place: 'staging' });

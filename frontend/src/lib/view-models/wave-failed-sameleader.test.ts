@@ -8,7 +8,7 @@ import { plural } from '$lib/components/new/envs-model';
 import type { Environment } from '../../types';
 import { behindOfRollout } from './behind';
 import { blockingStory } from './blocking-story';
-import { detectRolloutStuck } from '../rollout-cards';
+import { buildRolloutCards, detectRolloutStuck } from '../rollout-cards';
 import { waveFailedRevisions, waveBlockingRevisions } from './failed-builds';
 import w46 from '$lib/components/new/fixtures/film-world-46.json';
 
@@ -87,6 +87,23 @@ describe('every printed "N newer builds" uses the live rule (batch4 #3d, QA17 ru
 	});
 	it('the promotion stuck reason (StuckBadge, BlockedRow) carries the live count', () => {
 		const stuck = detectRolloutStuck(follower(), [], { now: new Date('2026-06-01T00:00:00Z'), fleet: sfleet('running') }) as any;
+		expect(stuck?.kind).toBe('promotion');
+		expect(stuck.candidateCount).toBe(2);
+		expect(stuck.newerCount).toBe(1);
+	});
+	it('settled:false (fleet still loading): no sentence prints a count; settled (default): the live count', () => {
+		const pinned = follower({ spec: { wantedVersion: 'b-45' } });
+		const pending = blockingStory(pinned, undefined, { settled: false });
+		expect(pending.consequence).toBe('Newer builds are available and none of them will deploy while the pin is set.');
+		expect(pending.countPending).toBe(true);
+		expect(blockingStory(pinned, undefined, { fleet: sfleet('running'), settled: true }).consequence).toMatch(/^1 newer build is available/);
+	});
+	/* QA21 W5: the card builder hands detectRolloutStuck its OWN fleet. Dropping or replacing that argument left every direct-call test green. */
+	it('buildRolloutCards passes the fleet to detectRolloutStuck: the card stuck reason carries the live count', () => {
+		const f = sfleet('running');
+		const mk = () => { const rs = f.rollouts.map((r: any) => JSON.parse(JSON.stringify(r))); const r = rs.find((x: any) => x.metadata.namespace.endsWith('eu-west-1')); r.status.releaseCandidates = [v47, { ...sv46, created: '2026-01-01T00:00:00Z' }]; r.status.availableReleases = [sv45, sv46, v47]; return rs; };
+		const card = buildRolloutCards(mk(), f.environments, new Date('2026-06-01T00:00:00Z')).find((c) => c.rollout.metadata?.namespace?.endsWith('eu-west-1'))!;
+		const stuck = card.stuck as any;
 		expect(stuck?.kind).toBe('promotion');
 		expect(stuck.candidateCount).toBe(2);
 		expect(stuck.newerCount).toBe(1);
