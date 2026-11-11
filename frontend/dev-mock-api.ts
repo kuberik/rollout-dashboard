@@ -18,6 +18,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 import { respond, type MockResult } from './src/lib/demo/respond';
+import { staleMockMode } from './src/lib/demo/cluster-errors-mock';
 import {
 	homeScenarioFixture,
 	homeScenarioOf,
@@ -106,6 +107,8 @@ export function mockApiPlugin(): Plugin {
 				 *                   missing and the spoke named in `clusterErrors`.
 				 *                   The page is then PARTLY true, which is the same lie
 				 *                   in miniature.
+				 *   MOCK_PARTIAL=slow|unreachable  one cluster's LAST-KNOWN data stays on the
+				 *                   page, flagged stale with that typed reason.
 				 *   MOCK_FAIL=1     the rollout's events list gains a Normal/Warning
 				 *                   pair, so `EventsCard`'s info glyph is reachable.
 				 *
@@ -136,9 +139,10 @@ export function mockApiPlugin(): Plugin {
 			function handle(req: any, res: any, body?: string) {
 				let fx: HomeFixture | null;
 				const result: MockResult =
-					((fx = fixtureFor(req.headers?.cookie)) && respondHomeIncident(req.method ?? 'GET', req.url, fx)) ||
+					((fx = fixtureFor(req.headers?.cookie)) && respondHomeIncident(req.method ?? 'GET', req.url, fx, new Date(), staleMockMode(process.env.MOCK_PARTIAL))) ||
 					respond(req.method ?? 'GET', req.url, {
-					partial: !!process.env.MOCK_PARTIAL,
+					partial: !!process.env.MOCK_PARTIAL && !staleMockMode(process.env.MOCK_PARTIAL),
+					stale: staleMockMode(process.env.MOCK_PARTIAL),
 					fail: !!process.env.MOCK_FAIL,
 					body
 				});

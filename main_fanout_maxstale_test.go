@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -160,13 +161,14 @@ func TestSWRSkipWaitAfterTimeout(t *testing.T) {
 func TestSWRSuccessfulRefreshClearsSkipWait(t *testing.T) {
 	c, now := seedOld(t)
 	c.staleWait = 30 * time.Millisecond
+	c.maxStale = 5 * time.Second // over-age again after 10s, well inside the 30s skip window
 	release := make(chan struct{})
 	hang := func(context.Context) (string, error) { <-release; return "new", nil }
 	c.loadMeta(context.Background(), "k", hang) // times out, mark set
 	close(release)                              // refresh lands, mark cleared
 	waitForFanoutBackground()
 
-	*now = now.Add(time.Minute) // over-age again
+	*now = now.Add(10 * time.Second) // under skipWait: only the reset can make this read wait
 	release2 := make(chan struct{})
 	defer close(release2)
 	done := make(chan struct{})
@@ -178,5 +180,81 @@ func TestSWRSuccessfulRefreshClearsSkipWait(t *testing.T) {
 	case <-done:
 		t.Fatal("read after a successful refresh did not wait")
 	case <-time.After(10 * time.Millisecond):
+	}
+}
+
+// A refresh that FAILS fast must still open the skip window: the next over-age
+// read serves the old payload at once instead of waiting again.
+func TestSWRSkipWaitAfterFailedRefresh(t *testing.T) {
+	c, now := seedOld(t)
+	fail := func(context.Context) (string, error) { return "", context.DeadlineExceeded }
+	if v, meta, _ := c.loadMeta(context.Background(), "k", fail); v != "old" || meta.StaleErr == nil {
+		t.Fatalf("first read %q / %v, want old flagged", v, meta.StaleErr)
+	}
+	waitForFanoutBackground()
+	*now = now.Add(15 * time.Second) // past ttl, inside the 30s skip window
+	c.staleWait = 5 * time.Second    // a second wait would blow the budget below
+	release := make(chan struct{})
+	defer close(release)
+	start := time.Now()
+	v, meta, _ := c.loadMeta(context.Background(), "k", func(context.Context) (string, error) { <-release; return "new", nil })
+	if v != "old" || meta.StaleErr == nil {
+		t.Fatalf("second read %q / %v, want old flagged", v, meta.StaleErr)
+	}
+	if d := time.Since(start); d > 100*time.Millisecond {
+		t.Fatalf("second read waited %s after a failed refresh", d)
+	}
+}
+
+// A cluster name never goes out of date: the name cache is exempt from the
+// max-staleness wait, so an old name is served at once.
+func TestSpokeNameCacheNeverWaitsForRefresh(t *testing.T) {
+	const key = "https://name-cache-exemption.test"
+	now := time.Now()
+	oldNow := spokeNameCache.now
+	spokeNameCache.now = func() time.Time { return now }
+	defer func() {
+		waitForFanoutBackground()
+		spokeNameCache.mu.Lock()
+		delete(spokeNameCache.m, key)
+		spokeNameCache.now = oldNow
+		spokeNameCache.mu.Unlock()
+	}()
+	if _, err := spokeNameCache.load(context.Background(), key, func(context.Context) (string, error) { return "east", nil }); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	now = now.Add(16 * time.Minute)
+	release := make(chan struct{})
+	defer close(release)
+	start := time.Now()
+	v, meta, _ := spokeNameCache.loadMeta(context.Background(), key, func(context.Context) (string, error) { <-release; return "west", nil })
+	if v != "east" || meta.StaleErr != nil {
+		t.Fatalf("got %q / %v, want east served unflagged", v, meta.StaleErr)
+	}
+	if d := time.Since(start); d > 100*time.Millisecond {
+		t.Fatalf("name read waited %s", d)
+	}
+}
+
+// A spoke whose last refresh FAILED and whose next one hangs is still
+// unreachable: the stale-wait timeout must not relabel a failing cluster as
+// merely slow (the label would flip on every breaker probe).
+func TestSWRTimeoutAfterFailedRefreshKeepsTheFailure(t *testing.T) {
+	c, now := seedOld(t)
+	c.staleWait = 30 * time.Millisecond
+	failure := errors.New("dial tcp: connection refused")
+	if _, meta, _ := c.loadMeta(context.Background(), "k", func(context.Context) (string, error) { return "", failure }); !errors.Is(meta.StaleErr, failure) {
+		t.Fatalf("first read StaleErr %v, want the fetch failure", meta.StaleErr)
+	}
+	waitForFanoutBackground()
+	*now = now.Add(c.skipWait + time.Second) // past the skip window: the next read waits and times out
+	release := make(chan struct{})
+	defer close(release)
+	v, meta, _ := c.loadMeta(context.Background(), "k", func(context.Context) (string, error) { <-release; return "new", nil })
+	if v != "old" {
+		t.Fatalf("got %q, want the old payload", v)
+	}
+	if got := clusterErrorReason(meta.StaleErr); got != clusterReasonUnreachable {
+		t.Fatalf("reason %q (StaleErr %v), want %q", got, meta.StaleErr, clusterReasonUnreachable)
 	}
 }

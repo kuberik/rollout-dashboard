@@ -17,6 +17,7 @@
  * ⛔ NOTHING NODE-SPECIFIC MAY ENTER THIS FILE — see `./mock-data.ts`.
  */
 
+import { staleClusterErrors, type StaleMockMode } from './cluster-errors-mock';
 import { applySlicesMode, sliceDetailRollout } from './mock-slices';
 import {
 	NAMESPACE,
@@ -102,6 +103,8 @@ export type MockOptions = {
 	 * missing and the spoke named in `clusterErrors`.
 	 */
 	partial?: boolean;
+	/** `MOCK_PARTIAL=slow|unreachable` — one cluster's LAST-KNOWN data, flagged stale with that reason (./cluster-errors-mock). */
+	stale?: StaleMockMode | null;
 	/**
 	 * `MOCK_FAIL` — adds the one `Normal` + one `Warning` event pair that the
 	 * base fixture never produces, so `EventsCard`'s info glyph has a
@@ -508,7 +511,9 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 			kustomizations: { items: [] },
 			kruiseRollouts: { items: [] },
 			clusters: opts.partial ? mockClusters.slice(0, 2) : mockClusters,
-			clusterErrors: opts.partial
+			clusterErrors: opts.stale
+				? staleClusterErrors(opts.stale)
+				: opts.partial
 				? [
 						{
 							name: 'prod',

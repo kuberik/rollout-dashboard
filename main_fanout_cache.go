@@ -119,7 +119,7 @@ func waitForFanoutBackground() { fanoutBackgroundWG.Wait() }
 
 // errSpokeStaleTimeout is the StaleErr reported when an over-age entry's
 // refresh did not finish inside staleWait and the old payload was served.
-var errSpokeStaleTimeout = errors.New("spoke refresh exceeded the wait for an out-of-date read; showing its last known state")
+var errSpokeStaleTimeout = errors.New("took too long to answer, so its last known state is shown")
 
 var errSpokeColdTimeout = errors.New("spoke fetch exceeded cold-start grace window; serving without it")
 
@@ -278,7 +278,14 @@ func (c *swrCache[T]) loadMeta(ctx context.Context, key string, fetch func(conte
 			e.skipUntil = c.now().Add(c.skipWait)
 			c.mu.Unlock()
 			log.Printf("fanout cache: serving %s-old spoke data, refresh still running after %s", now.Sub(okAt).Round(time.Second), c.staleWait)
-			return staleVal, swrMeta{StaleErr: errSpokeStaleTimeout, LastOK: okAt}, nil
+			// A spoke whose last refresh failed stays failed: only a
+			// cluster that last answered is "slow" (same rule as the
+			// skip branch above).
+			m := staleMeta
+			if m.StaleErr == nil {
+				m = swrMeta{StaleErr: errSpokeStaleTimeout, LastOK: okAt}
+			}
+			return staleVal, m, nil
 		case <-ctx.Done():
 			var zero T
 			return zero, swrMeta{}, ctx.Err()

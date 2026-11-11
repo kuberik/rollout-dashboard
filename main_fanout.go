@@ -48,13 +48,35 @@ type ClusterInfo struct {
 // the cluster's items are absent) from "the items shown for this cluster are
 // its LAST KNOWN state, not current" (true: the spoke stopped answering, the
 // hub is still serving its cached payload, LastSeen is when that payload was
-// last fetched successfully). Either way the cluster is unreachable.
+// last fetched successfully).
+//
+// Reason says WHY, as a typed value the UI branches on (never the Error text):
+// "slow" is a reachable cluster whose answer did not arrive inside the wait,
+// so the cached payload was served; "unreachable" is a real fetch error or an
+// open breaker. Absent (older hubs) reads as unreachable.
 type ClusterError struct {
 	URL      string     `json:"url"`
 	Name     string     `json:"name"`
 	Error    string     `json:"error"`
 	Stale    bool       `json:"stale,omitempty"`
 	LastSeen *time.Time `json:"lastSeen,omitempty"`
+	Reason   string     `json:"reason,omitempty"`
+}
+
+// ClusterError.Reason values.
+const (
+	clusterReasonSlow        = "slow"
+	clusterReasonUnreachable = "unreachable"
+)
+
+// clusterErrorReason classifies a spoke failure. Only the stale-wait timeout
+// (errSpokeStaleTimeout, set by the cache itself) is "slow"; anything else
+// the fetch layer reported, including an open breaker, is "unreachable".
+func clusterErrorReason(err error) string {
+	if errors.Is(err, errSpokeStaleTimeout) {
+		return clusterReasonSlow
+	}
+	return clusterReasonUnreachable
 }
 
 // dashboardBaseURL extracts scheme+host from a URL string.
@@ -586,9 +608,10 @@ func fanOut(
 		}
 		if r.spoke.err != nil {
 			clusterErrors = append(clusterErrors, ClusterError{
-				URL:   r.spoke.url,
-				Name:  r.name,
-				Error: r.spoke.err.Error(),
+				URL:    r.spoke.url,
+				Name:   r.name,
+				Error:  r.spoke.err.Error(),
+				Reason: clusterErrorReason(r.spoke.err),
 			})
 			continue
 		}
@@ -606,6 +629,7 @@ func fanOut(
 				Error:    r.meta.StaleErr.Error(),
 				Stale:    true,
 				LastSeen: &seen,
+				Reason:   clusterErrorReason(r.meta.StaleErr),
 			})
 		}
 		// Annotate and merge each key.
