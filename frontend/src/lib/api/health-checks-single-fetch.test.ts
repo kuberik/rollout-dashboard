@@ -34,7 +34,15 @@ const MOCK_IMPORTERS = new Set([
 	join('lib', 'components', 'new', 'github-read.svelte.ts')
 ]);
 const SEGMENT = /\/health-checks(?![\w-])/;
-const IMPORT_LINE = /^\s*(?:import|export)\b[^\n]*\bfrom\s*['"][^'"\n]*['"]|\bimport\(\s*['"][^'"\n]*['"]\s*\)/;
+/**
+ * A TRUE import/export-from line, anchored at both ends: the whole line is the
+ * clause, `from`, a module path ending in `health-checks`, and an optional `;`.
+ * A trailing comment, a second statement or a dynamic `import()` on the line
+ * all fail the anchor, so they are scanned (QA18 n1, n2, n5). The bare
+ * `} from '...'` tail of a multi-line import is the same shape.
+ */
+const IMPORT_LINE =
+	/^\s*(?:(?:import|export)\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^}]*\}|\w+(?:\s*,\s*\{[^}]*\})?)|\})\s*from\s*['"][^'"\n]*health-checks['"]\s*;?\s*$/;
 
 export function mentionsEndpoint(raw: string): boolean {
 	return raw.split('\n').some((line) => !IMPORT_LINE.test(line) && SEGMENT.test(line));
@@ -52,7 +60,7 @@ export function findOffenders(files: Record<string, string>): string[] {
 		if (rel === OWNER || MOCK_SERVERS.has(rel)) continue;
 		if (mentionsEndpoint(text)) out.push(`${rel}: mentions /health-checks`);
 		if (!rel.startsWith(`lib${sep}demo${sep}`) && !MOCK_IMPORTERS.has(rel)) {
-			for (const m of text.matchAll(/(?:from\s*|import\(\s*)['"][^'"\n]*\/demo\/([\w-]+)['"]/g)) {
+			for (const m of text.matchAll(/(?:from\s*|import\(\s*)['"][^'"\n]*\/demo\/([\w-]+)(?:\.[jt]s)?['"]/g)) {
 				const target = join('lib', 'demo', `${m[1]}.ts`);
 				if (demoMentioning.has(target) || MOCK_SERVERS.has(target))
 					out.push(`${rel}: imports ${target}, which carries the endpoint`);
@@ -86,6 +94,41 @@ describe('the /health-checks URL has exactly one owner', () => {
 	for (const [name, src] of Object.entries(planted)) {
 		it(`trips on ${name}`, () => expect(findOffenders({ [join('lib', 'x.ts')]: src })).not.toEqual([]));
 	}
+	// QA18 plants n1, n2, n3, n5: each slipped a URL past the first IMPORT_LINE.
+	// n4 (the literal split across a concatenation: '/health' + '-checks') is an
+	// ACCEPTED LIMIT of any text scan; the real guard against it is review.
+	const bypasses: Record<string, [string, string]> = {
+		'n1 a dynamic import() on the same line': [
+			join('lib', 'x.ts'),
+			"export async function a(n: string) {\n\treturn fetch(`/rollouts/${n}/health-checks`).then((r) => import('./p1').then(() => r));\n}"
+		],
+		'n2 a dynamic import() after the fetch in a .svelte file': [
+			join('routes', 'x.svelte'),
+			"<script lang=\"ts\">\n\tconst load = () => fetch(`/api/rollouts/${n}/health-checks`); import('svelte');\n</script>"
+		],
+		'n3 a mock-server import with a .ts extension': [
+			join('lib', 'x.ts'),
+			"import { respond } from '$lib/demo/respond.ts';\nexport const x = respond;"
+		],
+		"n5 an export line with a trailing comment quoting 'from api/health-checks'": [
+			join('lib', 'x.ts'),
+			"export const hcUrl = (n: string) => `/rollouts/${n}/health-checks`; // shape copied from 'api/health-checks'"
+		]
+	};
+	for (const [name, [rel, src]] of Object.entries(bypasses)) {
+		it(`trips on ${name}`, () => expect(findOffenders({ [rel]: src })).not.toEqual([]));
+	}
+	it('still lets true import/export-from lines through, including a multi-line import tail', () => {
+		for (const l of [
+			"import { a } from '$lib/api/health-checks';",
+			"import type { A } from '$lib/api/health-checks';",
+			"import * as hc from '$lib/api/health-checks';",
+			"export { a } from './health-checks';",
+			"export * from './health-checks';",
+			"} from '$lib/api/health-checks';"
+		])
+			expect(findOffenders({ [join('lib', 'x.ts')]: l }), l).toEqual([]);
+	});
 	it('trips on a fetch planted in lib/demo/embed.ts (no whole-directory exemption)', () => {
 		expect(
 			findOffenders({ [join('lib', 'demo', 'embed.ts')]: 'fetch(`/rollouts/${n}/${m}/health-checks`)' })
