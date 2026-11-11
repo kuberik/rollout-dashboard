@@ -40,6 +40,8 @@ import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } 
 import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
+import { gateAllows } from '$lib/view-models/promotion';
+import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
 import { heldHereOf, heldKeyOfHref } from '$lib/view-models/held-here.svelte';
 import { displayVersionForTag } from '$lib/version-utils';
 import { gatePrettyOf } from '$lib/view-models/gate-pretty.svelte';
@@ -53,6 +55,7 @@ import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { deployActs } from '$lib/history-marks';
 import { upToDateHeadline } from '$lib/view-models/up-to-date';
 import * as RD from '$lib/components/home/roster/roster-data';
+import { alsoApprovalAsk } from '../home/sketch/sketch-home';
 import { changeBySha, homeModel, resetHomeModel, source, isLive, viewerLogin, NOW, type HomeState } from '$lib/components/home/sketch/home-data';
 import { approvalRev, bumpApprovals } from './approval-rev.svelte';
 import { stateWord as sharedWord, severity } from './state-words';
@@ -81,7 +84,7 @@ export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */
 type RawEntry = { message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
-type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; releaseCandidates?: { tag?: string; version?: string; revision?: string; created?: string }[]; availableReleases?: { tag?: string; version?: string; revision?: string; created?: string }[]; wantedVersion?: string; currentVersion?: string } };
+type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; kind?: GateKind; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; releaseCandidates?: { tag?: string; version?: string; revision?: string; created?: string }[]; availableReleases?: { tag?: string; version?: string; revision?: string; created?: string }[]; wantedVersion?: string; currentVersion?: string } };
 const raws = (): RawRollout[] => source().rollouts as unknown as RawRollout[];
 const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean); return p[0] === 'rollouts' ? { cluster: p[1], ns: p[2], name: p[3] } : null; };
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
@@ -264,9 +267,12 @@ const approvalHold = (href: string): number => {
 	const st = rawOf(href)?.status;
 	const cands = (liveCands(st) ?? []).map((c) => c.tag ?? c.version ?? '');
 	if (!cands.length) return 0;
-	const g = (st?.gates ?? []).find((x) => /approval/.test(x.name) && x.allowedVersions != null && cands.every((c) => !x.allowedVersions!.includes(c)));
-	return g ? cands.length : 0;
+	return approvalGateOf(st?.gates ?? [], cands) ? cands.length : 0;
 };
+/** The approval gate that refuses every candidate: the gate an ApprovalTarget is built from. `kind` says it; only a payload without `kind` falls back to the gate's name. */
+const approvalGateOf = <G extends { name: string; kind?: GateKind | null; allowedVersions?: string[] | null }>(gates: readonly G[], cands?: readonly string[]): G | undefined =>
+	/* THE ONLY place a name is read: a gate with NO `kind` field at all (an older backend; never one that says `unknown`) is the approval if it is called so. Every other path asks `kind` or this gate's identity. */
+	gates.find((x) => (x.kind == null ? /approval/.test(x.name) : x.kind === 'approval') && x.allowedVersions != null && (!cands || cands.every((c) => !x.allowedVersions!.includes(c))));
 /** THE viewer's action on a row (the one helper every page asks; hand-rolled copies are defects). data.ts answers "the viewer's action": Roll back on a failing place and Approve on an approval the
  *  signed-in viewer can give, exactly as the model labels them, and NOTHING else. A row with no action (hello-frontend-app production, a calm approval someone else gives) offers no button: its row
  *  links to the rollout tab, which answers "available actions" (Retry, Roll back, Review approval) for anyone. `state` is accepted so callers pass the page's state, but the model already carries it. */
@@ -868,22 +874,19 @@ export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'
 	/* a place whose only candidates failed upstream still has the gate that refuses them: name it from the published list when no live candidate is left (batch4 #3c M2) */
 	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version ?? st?.releaseCandidates?.[0]?.tag ?? st?.releaseCandidates?.[0]?.version;
 	const gs = st?.gates ?? [];
-	const holding = gs.filter((g) => g.allowedVersions != null && !!cand && !g.allowedVersions.includes(cand));
-	if (!holding.length) holding.push(...gs.filter((g) => g.passing === false));
-	const g = (row.state === 'awaiting-approval' ? holding.find((x) => /approval/.test(x.name)) : null) ?? holding[0];
+	const holding = refusingGates(gs, buildInQuestion({ href: row.href, app: row.key.split('@')[0] }));
+	const own = approvalGateOf(gs, (st?.releaseCandidates ?? []).map((c) => c.tag ?? c.version ?? ''));
+	const g = (row.state === 'awaiting-approval' ? holding.find((x) => x === own || gateKindOf(x) === 'approval') : null) ?? (row.state === 'held-by-rule' ? holding.find((x) => x !== own && gateKindOf(x) !== 'approval') : null) /* blame order: a held row names the rule, never the approval that cannot unblock it */ ?? holding[0];
 	if (!g) return null;
-	/* a dependency gate is titled by the provider the Gates tab names ("payments-svc"), not by the gate's slug */
-	if (/^dependency-/.test(g.name)) {
-		const ny = homeModel(state).fleet.needsYou;
-		/* a place without its own entry is gated by the same provider as the app's other dependency holds */
-		const provider = ny.find((n) => `${n.app}@${n.env}` === row.key)?.facts?.provider ?? ny.find((n) => n.app === row.key.split('@')[0] && n.facts?.provider)?.facts?.provider;
-		if (provider) return { name: provider, sentence: `Releases when ${provider} ships a newer version` };
-	}
+	const title = holdTitleOf(row.href, g, state, row.key.split('@')[0], row.key);
+	const kind = gateKindOf(g);
+	/* a dependency gate is titled by its provider ("payments-svc"), not by the gate's slug */
+	if (title !== gateDisplayName(g.name, prettyOfGate(row.href, g.name))) return { name: title, sentence: `Releases when ${title} ships a newer version` };
 	const sentence = row.state === 'awaiting-approval' ? 'Releases when someone approves'
-		: /^dependency-/.test(g.name) || /^Waits on [a-z]/.test(row.word) ? 'Releases when its dependency ships a newer version'
-		: /schedule|window|freeze/.test(g.name) ? 'Releases when the deploy window opens'
-		: /check|health|test/.test(g.name) || homeModel(state).fleet.needsYou.find((n) => `${n.app}@${n.env}` === row.key)?.facts?.reason === 'check' ? 'Releases when the check starts passing' : 'Releases when the rule allows this build';
-	return { name: gateDisplayName(g.name, prettyOfGate(row.href, g.name)), sentence };
+		: kind === 'dependency' ? 'Releases when its dependency ships a newer version'
+		: kind === 'schedule' ? 'Releases when the deploy window opens'
+		: homeModel(state).fleet.needsYou.find((n) => `${n.app}@${n.env}` === row.key)?.facts?.reason === 'check' ? 'Releases when the check starts passing' : 'Releases when the rule allows this build';
+	return { name: title, sentence };
 }
 /* ═══ ONE commit identity per build (AD v2 m) ═══ */
 /**
@@ -983,7 +986,7 @@ export function heldHere(href: string): { has: (c: { tag?: string; version?: str
 /** EVERY release candidate of the place, with its commit title and author (the Overview's "Newer builds" list). `here` is the allow-list reading; the COUNT of builds a hold refuses HERE is `heldHere` (held.ts's `heldBuilds`, the one definition) and `here` follows it once the place's detail has answered. */
 export function candidateBuilds(row: Pick<RolloutRow, 'app' | 'href'>): { build: string; title: string | null; author: string | null; created: string | null; here: boolean }[] {
 	const st = rawOf(row.href)?.status;
-	const promo = (st?.gates ?? []).filter((g) => /^promotion-/.test(g.name) && g.allowedVersions != null);
+	const promo = (st?.gates ?? []).filter((g) => gateKindOf(g) === 'promotion' && g.allowedVersions != null);
 	const hh = heldHere(row.href);
 	return (liveCands(st) ?? []).map((c) => {
 		const b = c.tag ?? c.version ?? '';
@@ -1131,7 +1134,7 @@ export function cleared(state: HomeState): Cleared[] {
 			const prev = hist[i + 1];
 			if (prev && (prev.bakeStatus ?? '') === 'Failed' && (h.bakeStatus ?? 'Succeeded') === 'Succeeded' && !(act && act.kind === 'rollback'))
 				out.push({ kind: 'recovered', app: a.app, place, what: `Recovered after ${(prev.version.revision ?? prev.version.tag ?? '').slice(0, 7)} failed`, who: who(h), at: h.timestamp, href: e.href });
-			if (h.triggeredBy?.kind === 'User' && act && act.kind === 'forward' && (raw.status.gates ?? []).some((g) => /approval/.test(g.name)))
+			if (h.triggeredBy?.kind === 'User' && act && act.kind === 'forward' && (raw.status.gates ?? []).some((g) => gateKindOf(g) === 'approval'))
 				out.push({ kind: 'approved', app: a.app, place, what: `Approved ${act.to}`, who: who(h), at: h.timestamp, href: e.href });
 		});
 	}
@@ -1194,8 +1197,9 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const blocking = waveBlockingRevisions(rawOf(p.href) as never, envsOfSource());
 		const failedC = blocking.length ? rawC.find((c) => !liveC.includes(c) && blocking.some((r) => shaNamesBuild(r, c))) : undefined;
 		const upstreamFailed = failedC ? (shortBuild(failedC.version ?? failedC.tag) ?? null) : null;
-		const cand = liveC[0]?.tag ?? failedC?.tag;
-		const rule = !approval && !!cand && gs.some((g) => g.allowedVersions != null && !g.allowedVersions.includes(cand));
+		const cands = candTags(p.href);
+		/* the one hold rule (gatesOf, the toast's waitsOn): held only when NO candidate is deployable, and some gate refuses the build in question */
+		const rule = !approval && cands.length > 0 && !deployableTags(gs, cands).length && refusingGates(gs, buildInQuestion({ href: p.href, app })).length > 0;
 		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
 		const g = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
 		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, heldBuilds: held, runs: p.version };
@@ -1206,7 +1210,7 @@ export function buildPlaces(app: string, build: string, state: HomeState = 'inci
 	const want = buildName(app, build) ?? build;
 	return placesOf(state, app).filter((p) => buildName(app, p.version) === want).map((p) => ({ place: placeLabel({ tier: p.tier, regions: [p.label] }), href: p.href, state: p.state }));
 }
-export type GateInfo = { /** identity, unique per gate: the gate's resource name (dependency gates folded). `name` is only a display name and repeats (every generated `ghd-xxxxx` reads "Gate"). */ id: string; name: string; kind: 'approval' | 'dependency' | 'check' | 'schedule' | 'promotion' | 'other'; sentence: string; holding: boolean; places: string[]; held: string[]; releasedBy: string; /** the held-HERE count is not known yet (the place's detail has not answered): print a pending state, never `held.length` */ heldPending: boolean };
+export type GateInfo = { /** identity, unique per gate: the gate's resource name (dependency gates folded). `name` is only a display name and repeats (every generated `ghd-xxxxx` reads "Gate"). */ id: string; name: string; kind: 'approval' | 'dependency' | 'schedule' | 'promotion' | 'other'; sentence: string; holding: boolean; places: string[]; held: string[]; releasedBy: string; /** the held-HERE count is not known yet (the place's detail has not answered): print a pending state, never `held.length` */ heldPending: boolean };
 /** A detail page's OWN gates, approvals included (the list pages exclude approvals by rule): each gate once, the places it guards, the builds it holds, who/what releases it. */
 export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] {
 	const out = new Map<string, GateInfo>();
@@ -1214,11 +1218,12 @@ export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] 
 		const st = rawOf(p.href)?.status;
 		const cands = (liveCands(st) ?? []).map((c) => c.tag ?? c.version ?? '');
 		for (const g of st?.gates ?? []) {
-			const kind: GateInfo['kind'] = /approval/.test(g.name) ? 'approval' : /^dependency-/.test(g.name) ? 'dependency' : /^promotion-/.test(g.name) ? 'promotion' : /schedule|window|freeze/.test(g.name) ? 'schedule' : /check|health|test|eval/.test(g.name) ? 'check' : 'other';
+			const gk = gateKindOf(g);
+			const kind: GateInfo['kind'] = gk === 'approval' || gk === 'dependency' || gk === 'promotion' || gk === 'schedule' ? gk : 'other'; /* the backend's kind only: no name is read here */
 			if (kind === 'promotion') continue; /* sequencing, not a hold anyone releases */
-			const holding = g.allowedVersions != null && cands.length > 0 && cands.every((c) => !g.allowedVersions!.includes(c));
-			const k = g.name.replace(/^dependency-.*-needs-/, 'dependency-');
-			const e = out.get(k) ?? { id: k, name: gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : kind === 'check' ? 'the check passes' : 'the rule allows it' };
+			const holding = cands.length > 0 && !deployableTags(st?.gates ?? [], cands).length && refusingGates([g], buildInQuestion({ href: p.href, app })).length > 0; /* the one rule, for the build in question: the approval target's where there is one (what the toast names), else the newest */
+			const k = kind === 'dependency' ? `dependency-${dependencyProviderOf(p.href, g.name) ?? g.name}` : g.name; /* one card per provider, from the RolloutDependency join: no name is parsed */
+			const e = out.get(k) ?? { id: k, name: gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : 'the rule allows it' };
 			e.places.push(placeLabel({ tier: p.tier, regions: [p.label] }));
 			const hh = holding ? heldHere(p.href) : null;
 			if (holding && !hh) e.heldPending = true;
@@ -1247,36 +1252,84 @@ export function approvalScope(row: Pick<RolloutRow, 'app' | 'tier' | 'regions' |
 /* ═══ approving in place (r34 r3-approve) ═══ */
 /** What one Approve press releases: the build, the places (a folded prod row = every region whose own gate refuses it), and the tag each rollout is asked to allow.
  *  The wire contract (src/lib/api/approvals.ts): one `POST /api/rollouts/<ns>/<name>/approve {version}` per place. */
-export type ApprovalTarget = { key: string; app: string; build: string; where: string; count: number; places: { href: string; label: string; tag: string }[]; href: string; /** what STILL holds the build once approved (a dependency's provider, another rule's name); null when nothing else does, i.e. the build really deploys */ waitsOn?: string | null };
-type GateLite = { name: string; allowedVersions?: string[] | null; passing?: boolean | null };
-/** The gate other than the approval that still refuses `tag` after the approval is given (null: the approval was the only hold). A dependency gate is named by its provider. */
-export function stillHeldAfterApproval(gates: readonly GateLite[], tag: string, provider: string | null | ((gateName: string) => string | null), pretty: (name: string) => string = (n) => n): string | null {
-	const g = gates.find((x) => !/approval/.test(x.name) && x.allowedVersions != null && !x.allowedVersions.includes(tag));
-	if (!g) return null;
-	const p = typeof provider === 'function' ? provider(g.name) : provider;
-	return /^dependency-/.test(g.name) && p ? p : pretty(g.name);
+export type ApprovalTarget = { key: string; app: string; build: string; where: string; count: number; places: { href: string; label: string; tag: string }[]; href: string; /** what STILL holds the build once approved (a dependency's provider, another rule's name); null when nothing else does, i.e. the build really deploys */ waitsOn?: string | null; /** the build that will actually deploy when it is NOT the approved one (the newest build every gate allows after the approval); null when the approved build deploys */ deploys?: string | null };
+type GateLite = { name: string; kind?: string | null; allowedVersions?: string[] | null; passing?: boolean | null };
+/** The gates that refuse `tag`, always the build that deploys NEXT (the newest candidate; the toast, the row and the Holding card all ask about that one): its allow-list lacks it, or (no allow-list: a closed deploy window, a failing check) the gate is not passing. */
+const refusingGates = <G extends GateLite>(gates: readonly G[], tag: string): G[] => gates.filter((x) => (x.allowedVersions != null ? !!tag && !x.allowedVersions.includes(tag) : x.passing === false));
+/** THE build a hold is judged against, for one place: the build a person is deciding on. At a place with an approval gate that is the approval target's build (`waitingBuild`: the one the toast names), otherwise the newest
+ *  candidate (the one the rollout deploys next). Every caller of `refusingGates` (the approval target, the held row's title, the Holding card) asks THIS, so they cannot check different builds. '' when nothing is a candidate. */
+export function buildInQuestion(place: { href: string; app: string }): string {
+	const st = rawOf(place.href)?.status;
+	const cands = liveCands(st) ?? [];
+	if (!cands.length) return '';
+	if (approvalGateOf(st?.gates ?? [])) {
+		const wb = waitingBuild(place);
+		const c = wb ? cands.find((x) => shortBuild(x.version ?? x.tag ?? '') === wb.build) : null;
+		if (c) return c.tag ?? c.version ?? '';
+	}
+	return cands[0].tag ?? cands[0].version ?? '';
 }
-/** The provider a `dependency-<name>` gate waits on, from the RolloutDependency join (namespace + `status.gateName`; `spec.providerRef.name`): the SAME source the held row's "Waits on <provider>" is built from (blocking-story's `ctx.dependency`). */
+/** The provider a dependency gate waits on, from the RolloutDependency join (namespace + `status.gateName`; `spec.providerRef.name`): the SAME source the held row's "Waits on <provider>" is built from (blocking-story's `ctx.dependency`). */
 const dependencyProviderOf = (href: string, gateName: string): string | null => {
 	const ns = hrefParts(href)?.ns;
 	const items = ((source() as unknown as { rolloutDependencies?: { items?: { metadata?: { namespace?: string }; spec?: { providerRef?: { name?: string } }; status?: { gateName?: string } }[] } }).rolloutDependencies?.items) ?? [];
 	return items.find((d) => d.metadata?.namespace === ns && d.status?.gateName === gateName)?.spec?.providerRef?.name ?? null;
 };
+/** THE one title of the gate that holds a build: the held row's "Held by <title>" and the Approved toast's "waits on <title>" both print THIS, so they cannot differ (cold cache or warm).
+ *  A dependency is titled by its provider (the RolloutDependency join, else the app's own dependency hold when the backend says `dependency`); every other gate (a window, a check, a kind this dashboard has no word for)
+ *  by `gateDisplayName`, the one gate name: the published pretty name, else the readable resource name, else the plain word "Gate" until a name is published. Same source as `causeLabelForGates`' `dependency` subject and `clock` label. */
+export function holdTitleOf(href: string, g: GateLite, state: HomeState, app: string, key: string | null): string {
+	const joined = dependencyProviderOf(href, g.name);
+	if (joined) return joined;
+	if (gateKindOf(g) === 'dependency') {
+		const ny = homeModel(state).fleet.needsYou;
+		/* a place without its own entry is gated by the same provider as the app's other dependency holds */
+		const provider = (key ? ny.find((n) => `${n.app}@${n.env}` === key)?.facts?.provider : null) ?? ny.find((n) => n.app === app && n.facts?.provider)?.facts?.provider;
+		if (provider) return provider;
+	}
+	return gateDisplayName(g.name, prettyOfGate(href, g.name));
+}
+/** THE APPROVAL WRITE, ONE FUNCTION: what a person's Approve does to the approval gate's allow-list. Conservative, per-build: it allows ONLY the approved build. Both `grantApproval`'s optimistic write and the
+ *  deployability simulation below use it, so they cannot diverge. There is no real approve endpoint yet (lib/api/approvals.ts); this MUST match the real write once the approval API lands. */
+export const approvalWrite = (allowed: readonly string[], approvedTag: string): string[] => [...new Set([...allowed, approvedTag])];
+/** The candidates (newest first) that EVERY gate allows: `promotionBlock`'s own predicate (`gateAllows`), applied after `approvedTag` has been written to the place's approval gate(s) (none: the gates as they are). */
+export function deployableTags(gates: readonly { name: string; kind?: GateKind | null; passing?: boolean | null; allowedVersions?: string[] | null }[], cands: readonly string[], approvedTag?: string): string[] {
+	const own = approvalGateOf(gates);
+	return cands.filter((c) => gates.every((g) => {
+		const isApproval = approvedTag != null && g.allowedVersions != null && (g === own || gateKindOf(g) === 'approval');
+		return gateAllows({ passing: g.passing ?? undefined, allowedVersions: isApproval ? approvalWrite(g.allowedVersions!, approvedTag!) : g.allowedVersions }, c);
+	}));
+}
+const candidatesOf = (href: string) => rawOf(href)?.status.releaseCandidates ?? [];
+const candTags = (href: string): string[] => (liveCands(rawOf(href)?.status) ?? []).map((c) => c.tag ?? c.version ?? '');
+/** What still holds the build once `tag` is approved at a place: null when some candidate is deployable after the approval write (the rollout deploys, `promotionBlock`'s own "not blocked"); otherwise the first
+ *  refusing gate that is not the approval (`kind`, or the target's own gate by identity), titled by `holdTitleOf`. */
+export function stillHeldAfterApproval(href: string, tag: string, state: HomeState, app: string): string | null {
+	const gates = rawOf(href)?.status.gates ?? [];
+	const cands = candTags(href);
+	if (deployableTags(gates, cands, tag).length) return null;
+	const own = approvalGateOf(gates, cands);
+	/* a gate of kind approval is the approval only when it carries an allow-list (what Approve edits): an ownerless check the backend can only call `approval`, with no allow-list, still refuses and still holds */
+	const notApproval = (x: (typeof gates)[number]) => x !== own && !(gateKindOf(x) === 'approval' && x.allowedVersions != null);
+	const g = refusingGates(gates, tag).find(notApproval) ?? gates.find((x) => notApproval(x) && cands.some((c) => refusingGates([x], c).length > 0));
+	return g ? holdTitleOf(href, g, state, app, null) : null;
+}
+/** The newest build that deploys after `tag` is approved at a place (null: nothing deploys). */
+const deploysAfterApproval = (href: string, tag: string): string | null => deployableTags(rawOf(href)?.status.gates ?? [], candTags(href), tag)[0] ?? null;
 export function approvalTarget(row: Pick<RolloutRow, 'app' | 'tier' | 'href' | 'regions'>, state: HomeState = 'incident'): ApprovalTarget | null {
 	const own = placesOf(state, row.app).filter((p) => p.tier === row.tier && approvalHold(p.href) > 0 && (p.href === row.href || !row.regions.length || row.regions.includes(p.label)));
 	const ps = own.length ? own : approvalHold(row.href) > 0 ? placesOf(state, row.app).filter((p) => p.href === row.href) : [];
 	if (!ps.length) return null;
 	const wb = waitingBuild({ app: row.app, href: ps[0].href });
 	const places = ps.map((p) => {
-		const cands = liveCands(rawOf(p.href)?.status) ?? [];
-		const c = cands.find((x) => shortBuild(x.version ?? x.tag ?? '') === wb?.build) ?? cands[0];
-		return { href: p.href, label: p.label, tag: c?.tag ?? c?.version ?? '' };
+		return { href: p.href, label: p.label, tag: buildInQuestion({ href: p.href, app: row.app }) };
 	}).filter((p) => p.tag);
 	if (!places.length) return null;
 	const where = placeLabel({ tier: row.tier as TierKey, regions: places.map((p) => p.label) });
-	const provider = homeModel(state).fleet.needsYou.find((n) => n.app === row.app && n.facts?.provider)?.facts?.provider ?? null;
-	const waitsOn = places.map((p) => stillHeldAfterApproval(rawOf(p.href)?.status.gates ?? [], p.tag, (g) => dependencyProviderOf(p.href, g) ?? provider, (n) => gateDisplayName(n, prettyOfGate(p.href, n)))).find((x) => !!x) ?? null;
-	return { key: `${row.app}|${row.tier}|${places.map((p) => p.href).sort().join(',')}`, app: row.app, build: wb?.build ?? places[0].tag, where, count: places.length, places, href: row.href, waitsOn };
+	const waitsOn = places.map((p) => stillHeldAfterApproval(p.href, p.tag, state, row.app)).find((x) => !!x) ?? null;
+	const dep = waitsOn ? null : deploysAfterApproval(places[0].href, places[0].tag);
+	const deploys = dep && dep !== places[0].tag ? (shortBuild(candidatesOf(places[0].href).find((c) => (c.tag ?? c.version) === dep)?.version ?? dep) ?? dep) : null;
+	return { key: `${row.app}|${row.tier}|${places.map((p) => p.href).sort().join(',')}`, app: row.app, build: wb?.build ?? places[0].tag, where, count: places.length, places, href: row.href, waitsOn, deploys };
 }
 type Snap = { r: RawRollout; status: RawRollout['status'] };
 const SNAPS = new Map<string, Snap[]>();
@@ -1289,12 +1342,14 @@ export function grantApproval(t: ApprovalTarget): void {
 		snaps.push({ r, status: structuredClone(r.status) });
 		const st = r.status;
 		const held = (st.releaseCandidates ?? []).map((c) => c.tag ?? c.version ?? '');
-		for (const g of st.gates ?? []) if (/approval/.test(g.name) && g.allowedVersions != null) g.allowedVersions = [...new Set([...g.allowedVersions, ...held])];
+		const own = approvalGateOf(st.gates ?? [], held);
+		const deployTag = deploysAfterApproval(p.href, p.tag);
+		for (const g of st.gates ?? []) if ((g === own || gateKindOf(g) === 'approval') && g.allowedVersions != null) g.allowedVersions = approvalWrite(g.allowedVersions, p.tag);
 		/* something other than the approval (a dependency, another rule: `t.waitsOn`, the same predicate as the toast) still refuses the build:
 		   it stays a held candidate, which the product already renders as that hold, and nothing is claimed to be deploying */
-		if (t.waitsOn) continue;
-		st.releaseCandidates = (st.releaseCandidates ?? []).filter((c) => (c.tag ?? c.version) !== p.tag);
-		st.history = [{ version: { tag: p.tag, version: p.tag, revision: p.tag }, timestamp: RD.NOW.toISOString(), bakeStatus: 'Deploying', bakeStartTime: RD.NOW.toISOString(), triggeredBy: { kind: 'User', name: viewerLogin() } }, ...(st.history ?? [])];
+		if (t.waitsOn || !deployTag) continue;
+		st.releaseCandidates = (st.releaseCandidates ?? []).filter((c) => (c.tag ?? c.version) !== deployTag);
+		st.history = [{ version: { tag: deployTag, version: deployTag, revision: deployTag }, timestamp: RD.NOW.toISOString(), bakeStatus: 'Deploying', bakeStartTime: RD.NOW.toISOString(), triggeredBy: { kind: 'User', name: viewerLogin() } }, ...(st.history ?? [])];
 	}
 	SNAPS.set(t.key, snaps);
 	resetHomeModel(); bumpApprovals();
@@ -1434,7 +1489,7 @@ export function inbox(state: HomeState, starred?: ReadonlySet<string>) {
 	const R = rollouts(state, starred);
 	const items: InboxItem[] = R.rows.filter((r) => r.needsYou).sort(urgency).map((r) => ({
 		row: r, action: r.action, steps: r.steps,
-		reason: r.failure?.line ?? (r.state === 'awaiting-approval' ? sharedWord('approval', { yours: true })! : r.cause ?? r.word)
+		reason: r.failure?.line ?? (r.state === 'awaiting-approval' ? sharedWord('approval', { yours: true })! : r.alsoApproval ? alsoApprovalAsk(r.alsoApproval, R.c.m.fleet.needsYou.find((n) => n.app === r.app && `${n.app}@${n.env}` === r.key)?.facts.window?.opensAt ?? null) : r.cause ?? r.word)
 	}));
 	return { items, count: items.length, R };
 }

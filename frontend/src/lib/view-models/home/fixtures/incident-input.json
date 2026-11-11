@@ -365,6 +365,7 @@
 				"gates": [
 					{
 						"name": "integration-tests",
+						"kind": "unknown",
 						"passing": false,
 						"allowedVersions": null,
 						"message": "Gate is not passing"
@@ -497,6 +498,7 @@
 				"gates": [
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"7c14e2a"
 						],
@@ -838,6 +840,7 @@
 				"gates": [
 					{
 						"name": "offline-eval",
+						"kind": "unknown",
 						"passing": false,
 						"allowedVersions": null,
 						"message": "Gate is not passing"
@@ -2283,6 +2286,7 @@
 				"gates": [
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"d09e6f4"
 						],
@@ -3149,6 +3153,7 @@
 				"gates": [
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"9b7e410"
 						],
@@ -3359,6 +3364,7 @@
 				"gates": [
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"9b7e410"
 						],
@@ -3569,6 +3575,7 @@
 				"gates": [
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"9b7e410"
 						],
@@ -3779,6 +3786,7 @@
 				"gates": [
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"9b7e410"
 						],
@@ -3979,6 +3987,7 @@
 				"gates": [
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"2a55f0c"
 						],
@@ -6468,6 +6477,7 @@
 				"gates": [
 					{
 						"name": "telemetry-indexer-manual-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"7b3c9f1"
 						],
@@ -7055,6 +7065,7 @@
 				"gates": [
 					{
 						"name": "promotion-test",
+						"kind": "promotion",
 						"allowedVersions": [],
 						"message": "Gate does not allow any release candidate"
 					}
@@ -7287,6 +7298,7 @@
 				"gates": [
 					{
 						"name": "promotion-staging",
+						"kind": "promotion",
 						"allowedVersions": [],
 						"message": "Gate does not allow any release candidate"
 					}
@@ -7497,6 +7509,7 @@
 				"gates": [
 					{
 						"name": "invoice-api-manual-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"a11c404"
 						],
@@ -7675,6 +7688,7 @@
 				"gates": [
 					{
 						"name": "invoice-api-manual-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"a11c404"
 						],
@@ -8291,6 +8305,7 @@
 				"gates": [
 					{
 						"name": "dependency-hello-frontend-needs-api",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"rel-63",
@@ -8409,6 +8424,7 @@
 				"gates": [
 					{
 						"name": "dependency-hello-frontend-needs-api",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"rel-63",
@@ -8543,6 +8559,7 @@
 				"gates": [
 					{
 						"name": "dependency-hello-frontend-needs-api",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"rel-63",
@@ -8709,6 +8726,7 @@
 				"gates": [
 					{
 						"name": "dependency-checkout-api-needs-identity",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"b-41",
@@ -8721,6 +8739,7 @@
 					},
 					{
 						"name": "dependency-checkout-api-needs-search",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"b-40",
@@ -8887,6 +8906,7 @@
 				"gates": [
 					{
 						"name": "dependency-checkout-api-needs-identity",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"b-41",
@@ -8899,6 +8919,7 @@
 					},
 					{
 						"name": "dependency-checkout-api-needs-payments",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"b-40",
@@ -8909,6 +8930,7 @@
 					},
 					{
 						"name": "promotion-staging",
+						"kind": "promotion",
 						"allowedVersions": [
 							"b-45",
 							"b-44"
@@ -8917,6 +8939,7 @@
 					},
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"b-40",
 							"b-41",
@@ -8929,6 +8952,7 @@
 					},
 					{
 						"name": "schedule-gate-ck7qx",
+						"kind": "schedule",
 						"passing": true,
 						"allowedVersions": null,
 						"message": "Gate is passing"
@@ -9089,6 +9113,7 @@
 				"gates": [
 					{
 						"name": "dependency-checkout-api-needs-payments",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"b-40",
@@ -9099,6 +9124,7 @@
 					},
 					{
 						"name": "promotion-prod-eu-central",
+						"kind": "promotion",
 						"allowedVersions": [],
 						"message": "Gate does not allow any release candidate"
 					}
@@ -9248,6 +9274,7 @@
 				"gates": [
 					{
 						"name": "dependency-checkout-api-needs-payments",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"b-40",
@@ -9258,6 +9285,7 @@
 					},
 					{
 						"name": "promotion-prod-us-east-1",
+						"kind": "promotion",
 						"allowedVersions": [
 							"b-43"
 						],
@@ -9410,6 +9438,7 @@
 				"gates": [
 					{
 						"name": "dependency-checkout-api-needs-payments",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"b-40",
@@ -9420,6 +9449,7 @@
 					},
 					{
 						"name": "promotion-prod-us-east-2",
+						"kind": "promotion",
 						"allowedVersions": [
 							"b-43"
 						],
@@ -9571,6 +9601,7 @@
 				"gates": [
 					{
 						"name": "dependency-checkout-api-needs-payments",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"b-40",
@@ -9581,6 +9612,7 @@
 					},
 					{
 						"name": "promotion-prod-ap-southeast-2",
+						"kind": "promotion",
 						"allowedVersions": [
 							"b-43"
 						],
@@ -9743,6 +9775,7 @@
 				"gates": [
 					{
 						"name": "promotion-prod-af-south-1",
+						"kind": "promotion",
 						"allowedVersions": [
 							"b-43",
 							"b-42",
@@ -9837,6 +9870,7 @@
 				"gates": [
 					{
 						"name": "dependency-standalone-api-needs-ledger",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"s-10"
@@ -9915,6 +9949,7 @@
 				"gates": [
 					{
 						"name": "dependency-payments-svc-needs-ledger",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"pay-239",
@@ -9994,6 +10029,7 @@
 				"gates": [
 					{
 						"name": "payments-svc-manual-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"pay-241"
 						],
@@ -10054,6 +10090,7 @@
 				"gates": [
 					{
 						"name": "ledger-core-manual-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"led-510"
 						],
@@ -10126,6 +10163,7 @@
 				"gates": [
 					{
 						"name": "dependency-fulfillment-svc-needs-payments",
+						"kind": "dependency",
 						"passing": true,
 						"allowedVersions": [
 							"o-12"
@@ -10317,6 +10355,7 @@
 				"gates": [
 					{
 						"name": "promotion-staging",
+						"kind": "promotion",
 						"allowedVersions": [],
 						"message": "Gate does not allow any release candidate"
 					}
@@ -10436,11 +10475,13 @@
 				"gates": [
 					{
 						"name": "promotion-prod",
+						"kind": "promotion",
 						"allowedVersions": [],
 						"message": "Gate does not allow any release candidate"
 					},
 					{
 						"name": "release-approval",
+						"kind": "approval",
 						"allowedVersions": [
 							"a1b2c3d"
 						],

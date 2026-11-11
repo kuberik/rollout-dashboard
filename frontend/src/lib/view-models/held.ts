@@ -95,6 +95,8 @@ export type FrontierEntry = {
 	/** The same fact as `cause`, in words — `causeLabelForGates` run on the
 	 *  frontier's OWN gates, never a blend with any other candidate's. */
 	causeLabel: string | null;
+	/** an approval also refuses here (see `GateVerdict.alsoAwaitingApproval`) */
+	alsoApproval?: boolean;
 };
 
 /** One upstream stage, and how many of the place's own candidates are
@@ -301,7 +303,8 @@ function frontierVerdict(
 				build: b.build,
 				held: v.held,
 				cause: v.cause,
-				causeLabel: causeLabelForGates(b.classifiedGates, v.cause)
+				causeLabel: causeLabelForGates(b.classifiedGates, v.cause),
+				...(v.alsoAwaitingApproval ? { alsoApproval: true } : {})
 			},
 			waitingBehind: waitingByStage.map((stage) => ({ stage, count: countByStage.get(stage) ?? 0, ...(waveByStage.get(stage) ? { wave: waveByStage.get(stage) } : {}) }))
 		};
@@ -347,7 +350,7 @@ export function heldVerdict(story: BlockingStory, placeEnv: string | null | unde
 			held: true,
 			cause: v.cause,
 			waitsForEnv: null,
-			frontier: { build: '', held: true, cause: v.cause, causeLabel: causeLabelForGates(story.gates, v.cause) },
+			frontier: { build: '', held: true, cause: v.cause, causeLabel: causeLabelForGates(story.gates, v.cause), ...(v.alsoAwaitingApproval ? { alsoApproval: true } : {}) },
 			waitingBehind: v.waitsForEnv ? [{ stage: v.waitsForEnv, count: 1 }] : []
 		};
 	}
@@ -388,6 +391,8 @@ export type GateVerdict = {
 	cause: HeldCause | null;
 	waitsForEnv: string | null;
 	waveWait?: string | null;
+	/** An approval also refuses here but is NOT the primary cause (a rule gate is): set from the same refusers list as `cause`, never a second rule. The row says "also needs approval" and Home keeps the ask. */
+	alsoAwaitingApproval?: boolean;
 };
 
 const GATE_NOT_HELD: GateVerdict = { held: false, cause: null, waitsForEnv: null };
@@ -408,6 +413,15 @@ export function verdictForGates(
 	placeEnv: string | null | undefined,
 	options: { hasContract?: boolean } = {}
 ): GateVerdict {
+	const v = verdictForGatesPrimary(gates, placeEnv, options);
+	return v.held && v.cause !== 'person' && gates.some((g) => g.clears === 'person') ? { ...v, alsoAwaitingApproval: true } : v;
+}
+
+function verdictForGatesPrimary(
+	gates: readonly ClassifiedGate[],
+	placeEnv: string | null | undefined,
+	options: { hasContract?: boolean } = {}
+): GateVerdict {
 	const upstream = gates.filter((g) => g.clears === 'upstream');
 	const promo = upstream.filter((g) => g.kind === 'promotion');
 	const { chainUpstream, chainGate, order, unresolved } = splitPromotionGates(promo, placeEnv);
@@ -421,7 +435,8 @@ export function verdictForGates(
 	const clock = gates.filter((g) => g.clears === 'clock');
 	const checks = gates.filter((g) => g.clears === 'check');
 
-	if (person.length > 0) return { held: true, cause: 'person', waitsForEnv: null };
+	/* BLAME ORDER (tl ruling, batch4 #92): rule gates (anything refusing that is not the approval) come before the approval. The approval is the cause only when it is the SOLE thing between the build and deploying: no approval can unblock a build another gate refuses, so asking for one is a false call to action. */
+	if (person.length > 0 && person.length === gates.length) return { held: true, cause: 'person', waitsForEnv: null };
 	if (unknown.length > 0) return { held: true, cause: 'unknown', waitsForEnv: null };
 	if (upstream.some((g) => g.kind === 'dependency') || options.hasContract) {
 		return { held: true, cause: 'dependency', waitsForEnv: null };
@@ -439,6 +454,7 @@ export function verdictForGates(
 	// nothing: `unknown` says exactly that, the same as an allow-list gate
 	// no join could attribute at all.
 	if (unresolved) return { held: true, cause: 'unknown', waitsForEnv: null };
+	if (person.length > 0) return { held: true, cause: 'person', waitsForEnv: null };
 	return GATE_NOT_HELD;
 }
 
@@ -543,8 +559,10 @@ export function causeLabelForGates(gates: readonly ClassifiedGate[], cause: Held
 			return 'promotion order';
 		case 'clock':
 			return gates.find((g) => g.clears === 'clock')?.label ?? 'a deploy window';
-		case 'check':
-			return 'a check';
+		case 'check': {
+			const names = [...new Set(gates.filter((g) => g.clears === 'check' && g.label).map((g) => g.label))];
+			return names.length > 0 ? joinClauses(names) : 'a check';
+		}
 	}
 }
 

@@ -266,7 +266,7 @@ function mkHwRollout(env: 'staging' | 'prod') {
 			// `respond.ts`'s per-fixture wrapper calls `recomputeReleaseCandidates`
 			// on every entry (the CK/CW pattern) — left unset here so that ONE
 			// function stays the source of truth for the newest-first list.
-			gates: [{ name: gate, passing: false, allowedVersions: [...HW_GATE_ALLOWED[env]] }],
+			gates: [{ name: gate, kind: 'promotion', passing: false, allowedVersions: [...HW_GATE_ALLOWED[env]] }],
 			history: [
 				{
 					version: { tag: current, version: current, revision: current },

@@ -1,3 +1,4 @@
+import { gateKindOf } from './gate-kind';
 /**
  * HOME ROUND 12 — THE ONE DATA MODEL, CONSOLIDATED (2026-10-18).
  *
@@ -57,6 +58,7 @@
  *     `HOME_PULSE_WORTH_LOOK` (`fleet-signals.ts`, sharedfix 13749e4d) —
  *     `'stall'` (idle) is deliberately excluded from that set.
  */
+import { gateDisplayName } from './gate-name';
 import type {
 	Rollout,
 	Environment,
@@ -259,6 +261,8 @@ export type AppEnv = {
 	 *  (`eventAge(card, 'held')`, the instant the app's figure counts from when
 	 *  this place leads), else `null`. Product-only (`home/parity.test.ts`). */
 	heldSince: string | null;
+	/** A rule gate is the primary hold here, and an approval ALSO refuses the build (`RolloutCard.heldAlsoApproval`): the approval ask stays, naming the other hold. `persistent`: it will not clear by itself (a failing check, a dependency, an unattributed rule); a window or promotion order clears on its own. */
+	alsoApproval?: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null;
 	/** The viewer's own changes positioned at this exact place — see the
 	 *  module doc's fix 3/4/5/7. Newest first. Never capped for a
 	 *  `'failed'`/`'rolled-back'` entry. */
@@ -787,10 +791,20 @@ function buildAppEnvs(
 		version: node.card.version,
 		arrivedAt: node.card.timestamp,
 		heldSince: ageKindFor(appEnvState(node.card)) === 'held' ? eventAge(node.card, 'held') : null,
+		alsoApproval: alsoApprovalOf(node.card),
 		myChanges: ledger.byEnv.get(node.card.envName) ?? [],
 		pipeline: buildEnvPipeline(node.card, kustomizations, kruiseRollouts),
 		href: cardHref(node.card)
 	}));
+}
+
+/** The other hold an approval ask names. A gate the BACKEND calls `schedule` is a window (clears by itself) even where the schedule join has not loaded on this page (the classifier then says `a check`); otherwise the verdict's own cause label. */
+function alsoApprovalOf(c: RolloutCard): { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null {
+	if (!c.heldAlsoApproval) return null;
+	const win = (c.rollout?.status?.gates ?? []).find((g) => gateKindOf(g as { kind?: string | null }) === 'schedule' && g.passing === false);
+	if (win || c.heldCause === 'clock') return { other: win ? gateDisplayName(win.name ?? '') : (c.heldCauseLabel ?? 'a deploy window'), persistent: false, kind: 'window' };
+	if (c.heldCause === 'order') return { other: 'promotion order', persistent: false, kind: 'order' };
+	return { other: c.heldCauseLabel ?? 'a rule', persistent: true, kind: 'hold' };
 }
 
 function pulseWord(kind: FleetSignal['kind']): string {

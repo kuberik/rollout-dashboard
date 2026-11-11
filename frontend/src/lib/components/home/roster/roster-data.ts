@@ -61,6 +61,8 @@ export type RolloutRow = {
 	action: { label: string; href: string; kind: 'rollback' | 'approve' | 'open' } | null;
 	/** one line of cause, from the model's own words (failing check, hold reason) */
 	cause: string | null;
+	/** a held-by-rule row whose approval ALSO refuses the build: the row says so; `yours` = the viewer can approve (Home keeps the ask) */
+	alsoApproval?: { yours: boolean; other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null;
 	/** v05: this place's own rollout steps (main's Home RolloutStepper data) */
 	pipeline?: EnvPipeline | null;
 };
@@ -84,7 +86,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 	const appr = new Map(v.approvals.map((a) => [a.app, a]));
 	const needs = new Map(m.fleet.needsYou.map((n) => [`${n.app}@${n.env}`, n]));
 
-	type P = { prov: string | null; app: string; env: string; label: string; tier: TierKey; state: EnvState; version: string | null; since: string | null; href: string; mine: Change | null; pipeline: EnvPipeline | null };
+	type P = { prov: string | null; app: string; env: string; label: string; tier: TierKey; state: EnvState; version: string | null; since: string | null; href: string; mine: Change | null; pipeline: EnvPipeline | null; also: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null };
 	/* craft r7 (N5): a held place waits on a PROVIDER when its tab says so. `needsYou` holds one entry per app and hold
 	   category, so a held place with no entry of its own takes the app's held entries when they all agree (the tab's sentence is the
 	   same gate: "waiting for payments-svc"); an entry of its own with another reason (a check, a pin) is never overridden. */
@@ -113,7 +115,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 				prov: e.state === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: e.state, version: shortVersion(e.version),
 				/* craft r7 (nit): a failing place's age is the failure's (the change's failed entry), not the deploy's */
 				since: (e.state === 'awaiting-approval' || e.state === 'held-by-rule' ? e.heldSince : null) ?? (e.state === 'failed' ? e.myChanges.find((ch) => ch.state === 'failed')?.since : null) ?? e.arrivedAt,
-				href: e.href, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
+				href: e.href, also: e.state === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
 			});
 		}
 
@@ -140,7 +142,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 		const isLead = !!L && leadApp === p.app && ((L.kind === 'failing' && p.state === 'failed') || (L.kind === 'approval' && p.state === 'awaiting-approval'));
 		const nyEntry = needs.get(`${p.app}@${p.env}`);
 		const failMine = p.state === 'failed' && (!!change?.mine || isLead || v.failures.some((f) => f.app === p.app) || starred.has(p.app));
-		const needsYou = failMine || (p.state === 'awaiting-approval' && !!ap);
+		const needsYou = failMine || (p.state === 'awaiting-approval' && !!ap) || (p.state === 'held-by-rule' && !!p.also && (!!appr.get(p.app) || (L?.kind === 'approval' && leadApp === p.app))); /* the viewer's only approval is the LEAD, which `v.approvals` leaves out; a rule holds the build but the approval ALSO refuses it: Home keeps the ask */
 		const word =
 			p.state === 'failed' ? 'Failing'
 			: p.state === 'awaiting-approval' ? (ap ? 'Waits for your approval' : 'Waits for approval')
@@ -155,7 +157,8 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 			action: isLead && L?.action ? { label: L.action.label.replace(/ to [0-9a-f]{7}$/, ''), href: L.action.href, kind: 'rollback' }
 				: p.state === 'failed' && needsYou ? { label: 'Roll back', href: p.href, kind: 'rollback' }
 				: p.state === 'awaiting-approval' && ap ? { label: 'Approve', href: p.href, kind: 'approve' } : null,
-			cause, pipeline: p.pipeline
+			cause, pipeline: p.pipeline,
+			alsoApproval: p.also ? { ...p.also, yours: !!appr.get(p.app) } : null
 		});
 	}
 	const TR: Record<TierKey, number> = { prod: 0, staging: 1, test: 2, dev: 3 };

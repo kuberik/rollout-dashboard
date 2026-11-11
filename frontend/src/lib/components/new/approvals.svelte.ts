@@ -46,7 +46,7 @@ export const targetOf = (row: Pick<TRow, 'app' | 'tier' | 'href' | 'regions'>, s
 /** the confirm sentence: "Approve f4a2c19 for 5 prod regions?" / "Approve f4a2c19 in eu-west?" */
 export const askSentence = (t: ApprovalTarget): string => `Approve ${t.build} ${t.count > 1 ? 'for' : 'in'} ${t.where}?`;
 /** The toast after Approve. It says what is TRUE: a build a dependency (or another rule) still holds is approved, not deploying. */
-export const doneWords = (t: ApprovalTarget): { title: string; detail: string } => ({ title: `Approved ${t.build}`, detail: t.waitsOn ? `${t.app} waits on ${t.waitsOn} for ${t.where}` : `${t.app} is deploying to ${t.where}` });
+export const doneWords = (t: ApprovalTarget): { title: string; detail: string } => ({ title: `Approved ${t.build}`, detail: t.waitsOn ? `${t.app} waits on ${t.waitsOn} for ${t.where}` : t.deploys ? `${t.app} is deploying ${t.deploys} to ${t.where}` : `${t.app} is deploying to ${t.where}` });
 
 /** open the confirm next to the pressed control (a phone gets a sheet; the layer decides from the viewport) */
 export function askApprove(target: ApprovalTarget | null, ev?: Event | null): void {

@@ -82,7 +82,7 @@ export function sentenceOf(r: TRow, hs: HomeState, o: { clockInSentence?: boolea
 	}
 	if (r.group === 'held') {
 		const g = gateName(r, hs);
-		return [holdWord(r, hs) ?? (g ? `Held by ${g.name}` : r.word), g?.sentence ?? ''];
+		return [(holdWord(r, hs) ?? (g ? `Held by ${g.name}` : r.word)) + (r.alsoApproval ? ` · also needs ${r.alsoApproval.yours ? 'your ' : ''}approval` : ''), g?.sentence ?? ''];
 	}
 	const title = buildIdentity(buildOf(r), r.href)?.title ?? deployedBuild(r).title ?? '';
 	if (r.state === 'deploying') {

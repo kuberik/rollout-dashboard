@@ -54,7 +54,7 @@ export type Lead = {
 	next: string;
 	preview: { rows: PreviewRow[]; action: string; rest: string | null; foot: string } | null;
 };
-export type Approval = { key: string; app: string; ref: string | null; title: string; author: string; places: number; placeWord: string; since: string | null; href: string; build: string | null };
+export type Approval = { /** the other hold an approval ask names, when the approval is not the only hold (`alsoApprovalAsk`) */ note?: string | null; key: string; app: string; ref: string | null; title: string; author: string; places: number; placeWord: string; since: string | null; href: string; build: string | null };
 export type Fail = YourChange & { place: string };
 export type Moving = YourChange & { reached: number; total: number };
 export type NotYours = { key: string; app: string; ref: string | null; title: string | null; whose: string; status: string; since: string | null; href: string; flapping: boolean };
@@ -94,7 +94,7 @@ function approvalOf(m: HomeModel, e: Elsewhere): Approval {
 	const pre = a.envs.filter((x) => !x.isProdRegion && x.tier !== 'prod' && x.state === 'healthy');
 	const build = pre.length ? pre[pre.length - 1].version : null;
 	const ch = changeBySha(e.app, build);
-	const waiting = a.envs.filter((x) => x.state === 'awaiting-approval');
+	const waiting = a.envs.filter((x) => x.state === 'awaiting-approval' || (x.state === 'held-by-rule' && x.alsoApproval));
 	let passed: string | null = null;
 	for (const x of pre) {
 		const hh = historyAt(e.app, x.env).find((q) => build && q.sha === build.slice(0, 7));
@@ -111,7 +111,8 @@ function approvalOf(m: HomeModel, e: Elsewhere): Approval {
 		placeWord: waiting.length === 1 ? waiting[0].env : `${waiting.length} prod regions`,
 		since,
 		href: e.href,
-		build: build ? build.slice(0, 7) : null
+		build: build ? build.slice(0, 7) : null,
+		note: e.ask ?? null
 	};
 }
 
