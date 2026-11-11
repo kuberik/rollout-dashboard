@@ -757,7 +757,15 @@ func setupRouter() *gin.Engine {
 
 			var rolloutOut interface{} = rollout
 			if rollout != nil {
-				rolloutOut = kubernetes.RolloutWithGateKinds{Rollout: rollout, Kinds: k8sClient.GateKindIndex(c.Request.Context())}
+				// Stamp the rollout with its source like the list does, on a copy (the cached object is shared).
+				stamped := rollout.DeepCopy()
+				if stamped.Annotations == nil {
+					stamped.Annotations = map[string]string{}
+				}
+				for k, v := range sourceAnnotations(localDashboardURL(c), localClusterName(c)) {
+					stamped.Annotations[k] = v
+				}
+				rolloutOut = kubernetes.RolloutWithGateKinds{Rollout: stamped, Kinds: k8sClient.GateKindIndex(c.Request.Context())}
 			}
 			writeJSONWithETag(c, http.StatusOK, gin.H{
 				"rollout":           rolloutOut,

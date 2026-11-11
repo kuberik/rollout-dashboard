@@ -202,6 +202,12 @@ func extractSpokeURLs(envs *parsedEnvironments, selfURLs []string) []string {
 	return result
 }
 
+// sourceAnnotations is the pair every item (a list item or a single rollout)
+// carries so the frontend knows which dashboard and cluster it came from.
+func sourceAnnotations(sourceURL, sourceName string) map[string]string {
+	return map[string]string{sourceDashboardAnnotation: sourceURL, sourceClusterAnnotation: sourceName}
+}
+
 // annotateItemsWithSource stamps every item with the source dashboard URL and
 // cluster name so the frontend knows which cluster each merged item came from.
 func annotateItemsWithSource(listJSON json.RawMessage, sourceURL, sourceName string) json.RawMessage {
@@ -226,8 +232,9 @@ func annotateItemsWithSource(listJSON json.RawMessage, sourceURL, sourceName str
 			annotations = make(map[string]interface{})
 			metadata["annotations"] = annotations
 		}
-		annotations[sourceDashboardAnnotation] = sourceURL
-		annotations[sourceClusterAnnotation] = sourceName
+		for k, v := range sourceAnnotations(sourceURL, sourceName) {
+			annotations[k] = v
+		}
 	}
 	result, err := json.Marshal(list)
 	if err != nil {
