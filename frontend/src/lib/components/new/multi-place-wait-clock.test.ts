@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rollouts, ago, waitClock } from './data';
+import { rollouts, ago, waitClock, rowsOf } from './data';
 import { rolloutsPage } from './rollouts-page';
 import { placeAge } from './app/app-model';
 
@@ -12,6 +12,7 @@ describe('multi-place wait clock (mock scenario incident)', () => {
 	it('payments-core 5 of 6 prod regions reads "1d" on every surface that prints its wait', () => {
 		const r = row();
 		expect(r.regions).toHaveLength(5);
+		expect(r.hrefs, 'the fold keeps one href per place').toHaveLength(5);
 		expect(ago(waitClock(r, S))).toBe('1d');
 		const page = rolloutsPage(S);
 		const listed = page.groups.flatMap((g) => g.rows).find((x) => x.row.key === r.key);
@@ -20,6 +21,11 @@ describe('multi-place wait clock (mock scenario incident)', () => {
 		if (listed) expect(listed.age).toBe('1d');
 		if (card) expect(card.model.forAge).toBe('for 1d');
 		expect(placeAge(r, S)).toBe('1d');
+	});
+	it('a folded row split back into one place keeps that place\'s own clock', () => {
+		const us = rowsOf(S, 'prod', 'us-east').find((x) => x.app === 'payments-core');
+		expect(us, 'payments-core us-east is a place row').toBeTruthy();
+		expect(placeAge(us!, S)).toBe('4h');
 	});
 	it('a single-place row keeps its own clock', () => {
 		const r = rollouts(S).rows.find((x) => x.app === 'invoice-api' && x.tier === 'prod' && x.group === 'approval')!;
