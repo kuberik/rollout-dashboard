@@ -23,7 +23,9 @@
 	}: {
 		rollout?: Rollout | null;
 		/** the message itself, when the caller already has it */ text?: string | null;
-		/** the `spec.releasesImagePolicy` name, when the caller has no `rollout` (an app page reads it off its places) */ legacyPolicy?: string | null;
+		/** the `spec.releasesImagePolicy` name, when the caller has no `rollout` (an app page reads it off its places) */ legacyPolicy?:
+			| string
+			| null;
 		/** on an app page the notice speaks about the app's rollout, not "This Rollout" */ app?: boolean;
 		class?: string;
 	} = $props();
@@ -51,7 +53,9 @@
 {/snippet}
 
 {#snippet more()}
-	{@render code(controllerMessage ?? '')}{#if legacyPolicy}{#if !/[.!?]\s*$/.test(controllerMessage ?? '')}.{/if}{gap}{@render code(
+	{@render code(
+		controllerMessage ?? ''
+	)}{#if legacyPolicy}{#if !/[.!?]\s*$/.test(controllerMessage ?? '')}.{/if}{gap}{@render code(
 			noticeLead('ReleasesImagePolicyIgnored', app)
 		)} Set <code class="t-code">oci.imagePolicyRef</code> on the ReleaseSource to read from that
 		ImagePolicy ({legacyPolicy}).{/if}

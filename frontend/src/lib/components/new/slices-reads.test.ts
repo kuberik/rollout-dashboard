@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { fixtureSource, homeModel, resetHomeModel } from '$lib/components/home/sketch/home-data';
-import { apps, approvalTarget, gateName, pathPosition, placeHolds, regionStates, rollouts, runsIn } from './data';
+import {
+	apps,
+	approvalTarget,
+	gateName,
+	pathPosition,
+	placeHolds,
+	regionStates,
+	rollouts,
+	runsIn
+} from './data';
 import { regionSquares } from './change-truth';
 import { envPage } from './env/env-page';
 import { applySlicesMode } from '$lib/demo/mock-slices';
@@ -261,7 +270,9 @@ describe('the moved reads, pinned by value', () => {
 			}
 		}));
 		serve(rs, true);
-		const row = rollouts('incident').rows.find((r) => r.app === 'payments-core' && r.tier === 'prod')!;
+		const row = rollouts('incident').rows.find(
+			(r) => r.app === 'payments-core' && r.tier === 'prod'
+		)!;
 		expect(approvalTarget(row, 'incident')?.deploys).toBe('f4a2c19');
 	});
 
@@ -299,13 +310,22 @@ describe('the moved reads, pinned by value', () => {
 describe('a place without releases is excluded from currency', () => {
 	const hrefOf = (app: string, pick: (p: any) => boolean) => {
 		serve(fixtureSource().rollouts as any[], true);
-		return apps('quiet').items.find((a) => a.app === app)!.placeList.find(pick)!.href;
+		return apps('quiet')
+			.items.find((a) => a.app === app)!
+			.placeList.find(pick)!.href;
 	};
 	/** serve the fleet with the Rollout behind `href` stripped of its release source */
 	const without = (href: string) => {
 		const rs = fixtureSource().rollouts as any[];
 		const victim = rs.find((r) => href.endsWith(`${r.metadata.namespace}/${r.metadata.name}`))!;
-		serve(rs, (r) => !(r.metadata.namespace === victim.metadata.namespace && r.metadata.name === victim.metadata.name));
+		serve(
+			rs,
+			(r) =>
+				!(
+					r.metadata.namespace === victim.metadata.namespace &&
+					r.metadata.name === victim.metadata.name
+				)
+		);
 	};
 	const tierHref = (app: string, tier: string) => hrefOf(app, (p) => p.tier === tier);
 
@@ -328,7 +348,9 @@ describe('a place without releases is excluded from currency', () => {
 	it('regionStates / regionSquares: the prod square is health only, never "behind" or "not reached"', () => {
 		const href = tierHref('telemetry-collector', 'prod');
 		without(href);
-		expect(regionStates('telemetry-collector', 'quiet').find((r) => r.href === href)!.currency).toBe('none');
+		expect(
+			regionStates('telemetry-collector', 'quiet').find((r) => r.href === href)!.currency
+		).toBe('none');
 		const sq = regionSquares('telemetry-collector', 'quiet');
 		expect(sq.inks).not.toContain('behind');
 		expect(sq.sentence).not.toMatch(/not reached|behind/);

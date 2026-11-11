@@ -72,7 +72,9 @@ describe('ReleaseSourceNotice', () => {
 			legacyPolicy: 'hello'
 		});
 		const t = text(container);
-		expect(t).toContain("at it. This app's rollout sets spec.releasesImagePolicy, which is ignored.");
+		expect(t).toContain(
+			"at it. This app's rollout sets spec.releasesImagePolicy, which is ignored."
+		);
 		expect(t).toContain('ImagePolicy (hello)');
 	});
 
