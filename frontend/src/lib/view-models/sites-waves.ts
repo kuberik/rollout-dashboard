@@ -283,8 +283,7 @@ export function relationshipIgnored(env: Environment): boolean {
 	);
 }
 
-/** The WaveReady condition, structured. Never throws. */
-/** Partial: the CRD marks `reason` required, but this reader also takes blockers built from fields alone. */
+/** The controller's status.wave.blocker, Partial: the CRD marks `reason` required, but this reader also takes blockers built from fields alone. */
 type StatusBlocker = Partial<NonNullable<NonNullable<NonNullable<Environment['status']>['wave']>['blocker']>>;
 
 /**
