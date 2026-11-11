@@ -11,7 +11,7 @@ import { availableReleases, releaseCandidates } from '$lib/releases/registry.sve
 import {
 	changes, candidateBuilds, shortBuild, placesOfChange, historyOfChange, changeCommits, runsIn, rowsOf, rollouts, heldBehind, lastHealthy, ago,
 	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathPosition, buildCommitOf,
-	type TChange, type TRow, type HomeState, type TierKey, type Step
+	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock
 } from '../data';
 import { stateWord, approvalWord } from '../state-words';
 import { holdWord as holdText } from '../rollout-view';
@@ -86,7 +86,7 @@ export function classified(c: TChange, scenario: HomeState): { all: Unit[]; plac
 		if (u.row && (u.group === 'approval' || u.group === 'held')) {
 			/* CE2: the wait is THIS change's build: the OLDEST candidate that carries it (c0d3e88, "Held by a rule · 4h" on the tab), never the newest build behind it (f4a2c19 is the labelled "Newer build") */
 			const cand = ((releaseCandidates(rawOf(u.href) as unknown as Rollout) as RawC[] | undefined) ?? []).filter((x) => carriesBuild(c, x)).sort((a, b) => (a.created ?? '').localeCompare(b.created ?? ''))[0];
-			if (cand) places.push({ ...u, kind: 'waiting', since: cand.created ?? u.row.since, build: shortBuild(cand.version ?? cand.tag ?? cand.revision), at: cand.created ?? u.row.since });
+			if (cand) { const wait = waitClock(u.row, scenario) ?? cand.created ?? u.row.since; places.push({ ...u, kind: 'waiting', since: wait, build: shortBuild(cand.version ?? cand.tag ?? cand.revision), at: wait }); }
 		}
 	}
 	const ownRank = (p: Place) => (p.kind === 'running' && p.current === firstBuild ? 0 : 1);
@@ -372,9 +372,10 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 	const waits = new Map<string, Ev>();
 	for (const p of places.filter((x) => x.kind === 'waiting')) {
 		const kind: EvKind = p.group === 'held' ? 'held' : 'waiting';
-		const k = `${kind}|${p.build}|${p.since}`;
+		const k = `${kind}|${p.app}|${p.build}`;
 		const e = waits.get(k);
-		if (e) { e.places.push({ label: p.label, tier: p.tier, href: p.href }); continue; }
+		/* one event per waiting build; each place carries its own hold clock (waitClock), the event prints the oldest */
+		if (e) { e.places.push({ label: p.label, tier: p.tier, href: p.href }); if (p.since && (!e.at || p.since < e.at)) { e.at = p.since; const ld = hist.filter((h) => h.build === p.build && h.app === p.app && h.kind !== 'rollback').map((h) => h.at).sort().pop() ?? ''; e.order = ld > p.since ? ld : p.since; } continue; }
 		/* AD r4 (1): a wait cannot precede the deploys of the build it waits for (the candidate is created at build time, before dev ever ran it): its `at` (the printed age) stays the tab's candidate age, its `order` (where it sits on the spine) is the later of that and the last deploy of the build in an earlier place, so the spine stays causal */
 		const lastDeploy = hist.filter((h) => h.build === p.build && h.app === p.app && h.kind !== 'rollback').map((h) => h.at).sort().pop() ?? '';
 		waits.set(k, { key: k, kind, app: p.app, build: p.build, place: p.label, places: [{ label: p.label, tier: p.tier, href: p.href }], tier: p.tier, at: p.since, order: (p.since && lastDeploy > p.since ? lastDeploy : p.since) ?? undefined, who: null, words: kind === 'held' ? 'Held' : 'Waiting for approval', href: `${p.href}/gates` });
@@ -496,7 +497,7 @@ export function openedOf(p: Place, scenario: HomeState, landed = false): Opened 
 		const hb = candidateBuilds(row).find((h) => h.build === p.build);
 		const w = hb ? { build: hb.build, title: hb.title, author: hb.author, at: hb.created } : (() => { const x = buildInQuestionFacts(row); return x ? { build: x.build, title: x.title, author: x.author, at: x.since } : null; })();
 		const dep = deployedBuild(row);
-		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(w?.at ?? p.since), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (h.created ?? '') > (w?.at ?? '')).sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
+		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(waitClock(row, scenario) ?? w?.at ?? p.since), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (h.created ?? '') > (w?.at ?? '')).sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
 	}
 	const bc = buildCommitOf(p.href, p.current);
 	const moving = !!row && (row.state === 'deploying' || row.state === 'checking');

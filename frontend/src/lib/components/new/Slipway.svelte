@@ -24,7 +24,7 @@
 	import TraySteps from './TraySteps.svelte';
 	import PipelineCard from './PipelineCard.svelte';
 	import ActRow, { type Act } from '$lib/components/ActRow.svelte';
-	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, replacedBuild, newestBuild, pathPosition, stepDetail, healthChecks, healthTally, testsSub, checkClock, buildInQuestionFacts, approvalScope, approvalTarget, bakeDuration, holdSince, type TRow, type HomeState } from './data';
+	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, replacedBuild, newestBuild, pathPosition, stepDetail, healthChecks, healthTally, testsSub, checkClock, buildInQuestionFacts, approvalScope, approvalTarget, bakeDuration, waitClock, type TRow, type HomeState } from './data';
 	import { approveAct } from './approvals.svelte';
 	import { slipwayTitle, slipwayLeadSplit, actionHref, actionLabel, approvalFact, envTheme, VIEWER } from './rollout-view';
 
@@ -38,9 +38,9 @@
 	   "X replaces X". Walk back one entry so the line reads the tab's "Roll back to <previous>". */
 	const gatedRow = $derived(row.state === 'awaiting-approval' || row.state === 'held-by-rule');
 	const wb = $derived(gatedRow ? buildInQuestionFacts(row) : null);
-	/* r6 T12/T6: ONE age per item, the same source as the row. A moving/failing place: the row's own since. An approval: the waiting build's age (the tab's Newer-builds age = the row's). A held place:
-	   since the waiting build ARRIVED at this gate (holdSince), blank when the mock cannot tell — never the deployed build's age. */
-	const sinceAge = $derived(ago(gatedRow ? (row.group === 'held' ? holdSince(row, hs) : (wb?.since ?? row.since)) : row.since));
+	/* ONE age per item, the same source as the row. A moving/failing place: the row's own since. Any wait (approval or held): `waitClock`, the hold clock the /rollouts row prints;
+	   the waiting build's own age is only said where labelled (Newer builds). */
+	const sinceAge = $derived(ago(gatedRow ? waitClock(row, hs) : row.since));
 	const since = $derived(row.group === 'approval' && row.stillChecking && checkClock(row) ? `Checking · ${checkClock(row)}` : sinceAge);
 	/* a gated lead puts the build that WAITS in focus (the one Approve releases, held here per the Gates tab); the build it replaces is the line beside it */
 	const build = $derived(wb ? wb.build : buildTitle(row));
