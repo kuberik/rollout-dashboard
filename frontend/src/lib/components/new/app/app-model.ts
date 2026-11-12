@@ -259,6 +259,14 @@ export function holdRows(
 			href: `${hp[0].href}/gates`
 		});
 	}
+	/* a place the model says is held by a rule while no gate object lists it (the dependency is a RolloutDependency join, not a gate): its own cause is a row, the same words the banner prints */
+	for (const p of places.filter((x) => x.state === 'held-by-rule' && x.holdReason === 'rule' && x.gate && !isPromotion(x) && !rows.some((r) => r.holding && r.places.includes(x.place)))) {
+		const held = p.heldBuilds.map((h) => h.build).filter((b) => !only || only.has(b));
+		const k = `place:${p.gate!.name}`;
+		const e = rows.find((r) => r.key === k);
+		if (e) { e.places.push(p.place); for (const b of held) if (!e.held.includes(b)) e.held.push(b); continue; }
+		rows.push({ key: k, kind: 'rule', name: p.gate!.name, holding: true, places: [p.place], held, sentence: p.gate!.sentence, href: `${p.href}/gates` });
+	}
 	/* a pin is a hold like any gate: the place rows say "Held by the pin" (`placeWord`), so this card must list it, or the page says "Nothing held" beside a held place */
 	const pinned = places.filter((p) => pins.has(p.place));
 	if (pinned.length) {
