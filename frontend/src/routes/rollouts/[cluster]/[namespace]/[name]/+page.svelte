@@ -70,6 +70,9 @@
 	import { pollWhenHealthy, staleTimeWhenHealthy, apiFetch } from '$lib/api/errors';
 	import { repoKeyFor, repoSlug } from '$lib/version-utils';
 	import { href } from '$lib/paths';
+	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
+	import BlockedActions from '$lib/components/new/BlockedActions.svelte';
+	import { askView } from '$lib/components/new/state-words';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
 	import { prettyNameOf } from '$lib/view-models/gate-name';
 	import { detectRollback } from '$lib/rollout-cards';
@@ -3402,26 +3405,27 @@
 						the same rule count the disclosure below already states, so
 						the banner is never rendered with a bare unused column.
 					-->
+					<!-- THE VIEWER'S ASK (batch4 approve-rollout): when the viewer can give the approval this banner waits on, it says what Home, /apps and /envs
+					     say ("Needs your approval", one `approvalWord`) and carries Home's Approve (`ApproveButton`, the shared confirm); otherwise today's words. -->
+					<RolloutAsk href={rolloutPath(cluster, namespace, name)}>
+					{#snippet children(ask)}
+					{@const view = askView(ask, holdCausePhrase(blockStory, { place: environment?.spec?.environment ?? null }), environment?.spec?.environment ?? null)}
 					{#snippet blockedActions()}
-						<!-- ONE FACT, ONCE (design review 2026-10-08): the rule count is
-						     the disclosure's label below; this slot now always offers
-						     the place the rules live, the Gates tab. -->
-						<a href={rolloutPath(cluster, namespace, name, 'gates')} class="nav-link">
-							Gates
-							<ChevronRightOutline class="h-3 w-3" />
-						</a>
+						<!-- ONE FACT, ONCE (design review 2026-10-08): the rule count is the disclosure's label below; this slot always offers the place the rules live, the Gates tab.
+						     The approve slot TRAILS it (batch4 b4-49, see BlockedActions) so its collapse never moves the link. -->
+						<BlockedActions state={view.slot} {ask} gatesHref={rolloutPath(cluster, namespace, name, 'gates')} />
 					{/snippet}
 					<BlockingStoryPanel
 						story={blockStory}
-						title={holdCausePhrase(blockStory, {
-							place: environment?.spec?.environment ?? null
-						})}
+						title={view.headline}
 						open={(hereCard?.held ?? blockStory.blocked) && blockStory.clock.length === 0}
 						actions={blockedActions}
 						secondaryFact={rollbackFoldedIntoGateBanner && rolledBack
 							? rollbackWent(rolledBack, autoDeploy)
 							: undefined}
 					/>
+					{/snippet}
+					</RolloutAsk>
 					<!--
 						⭐ REFUSED HERE VS NOT REACHED YET (shared/held-predicate,
 						2026-10-11). `blockStory.blocked` used to mean "held", full

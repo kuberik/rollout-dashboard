@@ -57,3 +57,18 @@ export const SEVERITY = ['failed', 'awaiting-approval', 'held-by-rule', 'checkin
 export const severity = (state: string | null | undefined): number => { const i = (SEVERITY as readonly string[]).indexOf(state ?? ''); return i < 0 ? SEVERITY.length : i; };
 /** the most severe item (first among equals), by the item's state */
 export const mostSevere = <T>(xs: readonly T[], stateOf: (x: T) => string | null | undefined): T | null => xs.reduce<T | null>((b, x) => (!b || severity(stateOf(x)) < severity(stateOf(b)) ? x : b), null);
+
+/** `RolloutAsk` hands its page this until the fleet data `approvalAskAt` reads has answered. */
+export const ASK_LOADING = 'loading' as const;
+export type AskState = typeof ASK_LOADING | object | null;
+/**
+ * The held banner on the rollout page and its Gates tab, as ONE view (no late pop-in, the owner's rule: a view loads in place).
+ * An approval wait ("prod is waiting on an approval") reads, by what is known: while the fleet loads, the neutral "Waiting for approval in prod" with
+ * the action slot RESERVED at the button's size; for an approver "Needs your approval in prod" with the button; for anyone else today's wording and
+ * no slot (it collapses). Every other headline is the same in all three states and reserves nothing.
+ */
+export function askView(ask: AskState, headline: string | null, place: string | null | undefined): { headline: string | null; slot: 'reserved' | 'approve' | 'none' } {
+	if (!headline || !/waiting on an approval$/.test(headline)) return { headline, slot: 'none' };
+	if (ask === ASK_LOADING) return { headline: approvalIn(false, place), slot: 'reserved' };
+	return ask ? { headline: approvalIn(true, place), slot: 'approve' } : { headline, slot: 'none' };
+}

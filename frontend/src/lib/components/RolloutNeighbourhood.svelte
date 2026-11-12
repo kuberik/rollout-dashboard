@@ -51,6 +51,10 @@
 	import type { GraphNode } from '$lib/view-models/dependency-graph';
 	import type { NeighbourLink, RolloutNeighbourhood } from '$lib/view-models/rollout-neighbourhood';
 	import type { GateBox } from '$lib/view-models/rollout-gates';
+	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
+	import { approvalWord, ASK_LOADING } from '$lib/components/new/state-words';
+	import { fade } from 'svelte/transition';
+	import type { ApprovalTarget } from '$lib/components/new/data';
 	import { theme as themeStore } from '$lib/stores/theme';
 	import { ARROW, ARROW_PATH, ARROW_VIEWBOX, WIRE_INK, DASH, dashOffsetForLength, wireKind } from '$lib/graph-arrow';
 	import {
@@ -68,6 +72,7 @@
 		hrefOf = () => null,
 		heldBuildsOverride,
 		onClearPin = null,
+		approveAsk = null,
 		clearPinDisabled = false,
 		reconciledUpstream,
 		elsewhereCountOverride,
@@ -99,6 +104,8 @@
 		heldBuildsOverride?: string[];
 		/** The pin box's own action: the Overview's Clear pin, one dialog. Null draws no button (no permission, or not pinned). */
 		onClearPin?: (() => void) | null;
+		/** The approval the viewer can give at this rollout (data.ts `approvalAskAt`, the one Home offers): the held approval gate says "Needs your approval" and carries Approve instead of "How to approve". Null: today's words. */
+		approveAsk?: ApprovalTarget | typeof ASK_LOADING | null;
 		/** Another manager owns `spec.wantedVersion`: the same disabled state the Overview's Clear pin shows (`dashboardManagesWantedVersion`). */
 		clearPinDisabled?: boolean;
 		/**
@@ -647,7 +654,10 @@
 	     spec names only Approve/Open-provider/Open-env as actions, so none
 	     is invented for them, and no button is drawn where the only
 	     destination would be this same page. -->
-	{@const docsHref = held && b.mark.clears === 'person' ? 'https://docs.kuberik.com/concepts/gates#approvals' : null}
+	{@const askRaw = held && b.mark.clears === 'person' ? approveAsk : null}
+	{@const loading = askRaw === ASK_LOADING}
+	{@const ask = askRaw && askRaw !== ASK_LOADING ? askRaw : null}
+	{@const docsHref = held && b.mark.clears === 'person' && !ask && !loading ? 'https://docs.kuberik.com/concepts/gates#approvals' : null}
 	<!--
 		⭐ NEW BY DESIGN. (2026-10-08, the Gates tab.) ROLE: a gate holding this
 		rollout that has NO rollout on the far end — a deploy window, a freeze,
@@ -683,9 +693,15 @@
 			<span class="min-w-0 break-words">{gateBoxStatusLine(b)}</span>
 		</p>
 		{#if held}
-			<p class="t-meta min-w-0 break-words text-fg-muted">{gateBoxReleaseSentence(b)}</p>
+			<p class="t-meta min-w-0 break-words text-fg-muted">{ask ? approvalWord(true) : loading ? approvalWord(false) : gateBoxReleaseSentence(b)}</p>
 			{#if b.kind === 'pin' && onClearPin}
 				<button type="button" class="btn btn-xs btn-secondary mt-0.5 self-start" disabled={clearPinDisabled} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
+			{/if}
+			{#if ask}
+				<span class="mt-0.5 self-start" in:fade={{ duration: 150 }}><ApproveButton target={ask} class="btn btn-primary btn-xs" /></span>
+			{:else if loading}
+				<!-- the button's own box, reserved while the fleet answers: Approve or "How to approve" lands in it, nothing moves -->
+				<span class="mt-0.5 inline-block h-7 w-[72px] self-start" aria-hidden="true" data-approve-slot></span>
 			{/if}
 			{#if docsHref}
 				<!-- ⭐ THE ↗ EXTERNAL GLYPH (final polish round, D2, AD ruling):
