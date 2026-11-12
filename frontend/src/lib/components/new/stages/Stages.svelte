@@ -83,7 +83,7 @@
 							<span class="t-body flex min-w-0 items-center truncate {INK[p.state]}" title={p.word}>{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>
 							<span class="t-meta flex min-w-0 gap-1 whitespace-nowrap text-fg-subtle">{#each tail as t, ti (ti)}{#if ti > 0}<span aria-hidden="true">·</span>{/if}<span class="{ti === 0 && p.build ? 't-code ' : ''}truncate">{t}</span>{/each}{#if !tail.length}{'\u00a0'}{/if}</span>
 						{:else}
-							<span class="t-body flex min-w-0 items-center gap-2 text-fg">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
+							<span class="t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
 							<span class="t-meta flex min-w-0 gap-1 whitespace-nowrap {INK[p.state]}" title={p.word}><span class="flex min-w-0 items-center truncate">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build}<span class="t-code shrink-0 text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="shrink-0 text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="shrink-0 text-fg-subtle">· {p.age}</span>{/if}</span>
 						{/if}
 					</span>
@@ -112,7 +112,7 @@
 	<div class="canvas-dots stg-canvas px-4 py-4" bind:clientWidth={w} data-stages data-stages-form={horizontal ? 'graph' : 'list'}>
 		{#if horizontal}
 			<!-- tiles top-aligned, never stretched to the lane (coordinator ruling: a one-place tile keeps its own height); the header rows and the tiles are placed on explicit tracks, with 12px between a tier's waves and 24px between tiers -->
-			<div class="stg-graph grid w-full items-start gap-y-3" style="justify-content: center; grid-template-columns: {gridCols};">
+			<div class="stg-graph grid w-full items-start gap-y-3" style="grid-template-columns: {gridCols};">
 				{#each groups as g (g.tier)}
 					<div class="min-w-0 self-start" style="grid-column: {track(g.first)} / {track(g.last) + 1}; grid-row: 1;">{@render tierHead(g)}</div>
 					{#if g.multi}{#each stages.columns as _, i (i)}{#if i >= g.first && i <= g.last}<div class="min-w-0 self-start" style="grid-column: {track(i)}; grid-row: 2;">{@render waveHead(i)}</div>{/if}{/each}{/if}
@@ -131,7 +131,7 @@
 							{#if g.multi}{@render waveHead(i)}{/if}
 							{#if multiApp}
 								<!-- one tile per stage on a phone: every app's places of this stage as rows, the app named on each (the lane labels of the graph) -->
-								<div class="stg-tile border border-line bg-surface" data-stage-tile="*|{colKey(i)}">
+								<div class="stg-tile {stages.lanes.some((l) => l.cells[i]?.places.some((p) => p.live)) ? 'is-live' : ''} {stages.lanes.every((l) => (l.cells[i]?.places ?? []).every((p) => p.state === 'notreached')) ? 'stg-quiet' : ''} border border-line bg-surface" data-stage-tile="*|{colKey(i)}">
 									{#each stages.lanes as lane (lane.app)}{#each lane.cells[i]?.places ?? [] as p, pi (p.href)}
 										{@render row(p, pi > 0 || lane !== stages.lanes.find((l) => l.cells[i]), true)}
 									{/each}{/each}
@@ -152,10 +152,13 @@
 	.stg-rollup { max-width: calc(100cqw - 140px); overflow: hidden; }
 	.stg-short { display: none; }
 	@container (max-width: 559.98px) { .stg-long { display: none; } .stg-short { display: inline; } }
+	/* graph group: start-aligned at the card padding; centred only past 2300 where the 280px column cap leaves space (the Gates canvas rule for very wide) */
+	.stg-graph { justify-content: start; }
+	@media (min-width: 2300px) { .stg-graph { justify-content: center; } }
 	.stg-tile { position: relative; border-radius: 8px; }
 	/* a place the pipeline has not reached: quieter, no surface fill, dashed hairline (style only: same box, same rows) */
 	.stg-tile.is-live { border-color: var(--k-active-line); box-shadow: var(--k-glow-active); }
-	.stg-tile.stg-quiet { background: transparent; border-style: dashed; border-color: var(--k-line); }
+	.stg-tile.stg-quiet { background: var(--k-ground); border-style: dashed; border-color: var(--k-line); }
 	/* rollout scope: the place being viewed rests on the hover fill (same row size and position, no new hue) */
 	.stg-row.stg-here { background: var(--k-hover); }
 	/* the connector: one 1px line in line-strong at the first row's mark centre (row 44px: centre 22px), from the previous tile across the 24px gap */

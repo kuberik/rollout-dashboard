@@ -1255,3 +1255,5 @@ dialog[role='dialog'][aria-modal='true'] {
 	--id-ink: oklch(0.88 var(--id-c-ink) var(--h)); --id-edge: oklch(0.44 calc(var(--id-c-field) * 1.4) var(--h)); }
 .app-glyph.id0 { --h: 203; } .app-glyph.id1 { --h: 345; } .app-glyph.id2 { --h: 308; } .app-glyph.id3 { --h: 130; }
 .app-glyph.id4 { --h: 245; } .app-glyph.id5 { --h: 175; } .app-glyph.id6 { --h: 110; } .app-glyph.id7 { --h: 280; }
+
+/* change-stages r3: token-only tail (the component styles live in Stages.svelte / ChangeDetail.svelte) */

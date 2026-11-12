@@ -161,7 +161,7 @@
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
 					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], [`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')], ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
-						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{v}</dd></div>
+						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{#if /^(not |won't )/.test(v)}<span class="t-meta text-fg-subtle" data-pending>{v}</span>{:else}{v}{/if}</dd></div>
 					{/each}
 				</dl>
 			</Card>
@@ -172,14 +172,14 @@
 
 <style>
 	.cd-main { container: cdm / inline-size; }
-	/* the 4K rule: the row is the cap, not the page. >= 2300 the four cards are items of ONE grid, History | Change | (Holding over Summary): three columns, no lone column */
+	/* the 4K rule: the row is the cap, not the page. >= 2300 the four cards are items of ONE grid, History | (Holding over Summary) | Change (the rail's own order): three columns, no lone column */
 	@media (min-width: 2300px) {
 		.cd-main, .cd-rail { display: contents !important; }
-		.cd-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(22rem, 0.8fr); grid-template-rows: auto 1fr; align-items: start; }
+		.cd-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(22rem, 0.8fr) minmax(0, 1fr); grid-template-rows: auto 1fr; align-items: start; }
 		.cd-split :global(.cd-history) { grid-column: 1; grid-row: 1 / span 2; }
-		.cd-split :global(.cd-change) { grid-column: 2; grid-row: 1 / span 2; }
-		.cd-split :global(.cd-hold) { grid-column: 3; grid-row: 1; }
-		.cd-split :global(.cd-summary) { grid-column: 3; grid-row: var(--sr); }
+		.cd-split :global(.cd-change) { grid-column: 3; grid-row: 1 / span 2; }
+		.cd-split :global(.cd-hold) { grid-column: 2; grid-row: 1; }
+		.cd-split :global(.cd-summary) { grid-column: 2; grid-row: var(--sr); }
 	}
-	@media (min-width: 3400px) { .cd-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(22rem, 760px); } }
+	@media (min-width: 3400px) { .cd-split { grid-template-columns: minmax(0, 1fr) minmax(22rem, 760px) minmax(0, 1fr); } }
 </style>
