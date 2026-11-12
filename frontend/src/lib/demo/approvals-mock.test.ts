@@ -14,12 +14,12 @@ describe('the mock approvals API', () => {
 	afterEach(() => resetDemoState('calm'));
 
 	it('approve -> the gate allows the version and the history row carries the approval; Undo -> held again', () => {
-		const a = post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'f68d0ac' });
+		const a = post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'e2c9b47' });
 		expect(a.status).toBe(200);
-		expect(json(a).approval).toEqual({ name: 'hello-world-f68d0ac', version: 'f68d0ac', by: 'oidc:danielreed' });
-		expect(gate().allowedVersions).toContain('f68d0ac');
-		expect(head().approval).toEqual({ name: 'hello-world-f68d0ac', by: 'oidc:danielreed' });
-		const r = post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'f68d0ac', revoke: true });
+		expect(json(a).approval).toEqual({ name: 'hello-world-e2c9b47', version: 'e2c9b47', by: 'oidc:danielreed' });
+		expect(gate().allowedVersions).toContain('e2c9b47');
+		expect(head().approval).toEqual({ name: 'hello-world-e2c9b47', by: 'oidc:danielreed' });
+		const r = post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'e2c9b47', revoke: true });
 		expect(r.status).toBe(200);
 		expect(json(r)).toEqual({});
 		expect(gate().allowedVersions).toEqual(['old1']);
@@ -27,9 +27,9 @@ describe('the mock approvals API', () => {
 	});
 
 	it('Undo answers stillApproved while a git approval names the version, and the approval stays', () => {
-		post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'f68d0ac' });
-		post('/api/demo/approvals', { namespace: NS, name: NAME, version: 'f68d0ac', approvalName: 'hello-world-hotfix' });
-		const r = json(post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'f68d0ac', revoke: true }));
+		post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'e2c9b47' });
+		post('/api/demo/approvals', { namespace: NS, name: NAME, version: 'e2c9b47', approvalName: 'hello-world-hotfix' });
+		const r = json(post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'e2c9b47', revoke: true }));
 		expect(r).toEqual({ stillApproved: true, approvals: [{ name: 'hello-world-hotfix' }] });
 		const list = json(respond('GET', `/api/rollouts/${NS}/${NAME}/approvals`));
 		expect(list.byVerified).toBe(true);
@@ -44,5 +44,19 @@ describe('the mock approvals API', () => {
 		expect(by).toContain('oidc:wyatt');
 		expect(by).toContain(undefined);
 		expect(json(respond('GET', '/api/rollouts/default/hello-world/approvals')).approvals.every((a: { by?: string }) => a.by === undefined || a.by.startsWith('oidc:'))).toBe(true);
+	});
+
+	it('approving a version that is not a current release candidate is 409, like the Go handler', () => {
+		const r = post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'nope123' });
+		expect(r.status).toBe(409);
+		expect(json(r).error).toBe(`version nope123 is not a current release candidate of ${NAME}`);
+		expect(gate().allowedVersions).toEqual(['old1']);
+	});
+
+	it('home-incident: payments-core c0d3e88 in ap-south already has a git approval, so Undo answers stillApproved', () => {
+		const path = '/api/rollouts/payments-core-prod-ap-south/payments-core/approve';
+		expect(post(path, { version: 'c0d3e88' }).status).toBe(200);
+		const r = json(post(path, { version: 'c0d3e88', revoke: true }));
+		expect(r).toEqual({ stillApproved: true, approvals: [{ name: 'payments-core-c0d3e88-git' }] });
 	});
 });

@@ -117,16 +117,27 @@ export function undoApprove(f?: typeof fetch): void {
 	approvalUi.done = null;
 	handOffFocus();
 	void inflight
-		.then(() => Promise.all(t.places.map((p) => postApproval(p.href, p.tag, true, f))))
-		.then((replies) => {
-			const kept = t.places.filter((_, i) => replies[i]?.stillApproved);
+		.then(() => Promise.allSettled(t.places.map((p) => postApproval(p.href, p.tag, true, f))))
+		.then((results) => {
+			// a place whose revoke was rejected (the server may still approve it) or answered stillApproved is put back: never left reverted
+			const kept = t.places.filter((_, i) => { const r = results[i]; return r.status === 'rejected' || r.value?.stillApproved; });
 			if (!kept.length) return;
+			const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+			// another toast took over meanwhile: its own timer and words stay; the places are still re-granted
+			const other = approvalUi.done && approvalUi.done.target.key !== t.key;
 			grantApproval({ ...t, key: `${t.key}#still`, places: kept });
-			const w = stillApprovedWords(t, replies.filter((r) => r.stillApproved));
-			approvalUi.done = { target: t, error: null, still: { who: w.who, title: w.full } };
+			if (other) return;
+			clearTimer();
+			if (rejected) {
+				const e = rejected.reason as Error | undefined;
+				approvalUi.done = { target: t, error: e?.message || 'Undo failed, the approval stands' };
+			} else {
+				const replies = results.flatMap((r) => (r.status === 'fulfilled' && r.value?.stillApproved ? [r.value] : []));
+				const w = stillApprovedWords(t, replies);
+				approvalUi.done = { target: t, error: null, still: { who: w.who, title: w.full } };
+			}
 			timer = setTimeout(dismissDone, UNDO_MS);
-		})
-		.catch(() => {});
+		});
 }
 /** the toast is going (auto-dismiss, Dismiss, Undo): if focus was on it or nowhere, hand it to a stable target, never BODY */
 function handOffFocus(): void {

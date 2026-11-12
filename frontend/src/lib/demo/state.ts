@@ -2083,6 +2083,8 @@ function seedApprovals(): void {
 	};
 	at(1, MOCK_APPROVERS.dashboard);
 	at(2);
+	/* home-incident / home-edge: payments-core's held c0d3e88 (the folded multi-region row) already has a git-style approval (no `by`) in ap-south, so approving it in the dashboard and pressing Undo meets `stillApproved` for that region (and a plain revert for the others) */
+	approvalsOf('payments-core-prod-ap-south', 'payments-core').push({ name: 'payments-core-c0d3e88-git', version: 'c0d3e88', createdAt: demoNow().toISOString() });
 }
 
 /** `POST /api/demo/approvals` (respond.ts): a git-style approval (another RolloutApproval, no `by`) appears for a version, so an Undo of the dashboard's own approval answers `stillApproved`. */
@@ -2116,6 +2118,17 @@ export type ApproveResult =
  * and the snapshot taken at approve restores the rest, so Undo inside its window leaves no trace. Every open tab hears the rollout change.
  */
 const approvalUndo = new Map<string, { gates: unknown; history: unknown; previousVersion: unknown; currentVersion: unknown; wantedVersion: unknown }>();
+/** The Go handler's rule: only a current release candidate can be approved (in `releaseCandidates`, or a catalogue release newer than `history[0]`). */
+function isReleaseCandidate(rollout: { status: { history?: { version?: { tag?: string } | string }[]; releaseCandidates?: { tag?: string }[]; availableReleases?: unknown[] } }, version: string): boolean {
+	const st = rollout.status;
+	if (st.releaseCandidates?.some((r) => r.tag === version)) return true;
+	const rel = (st.availableReleases ?? []) as { tag: string }[];
+	const hv = st.history?.[0]?.version;
+	const head = typeof hv === 'string' ? hv : hv?.tag;
+	const at = head ? rel.findIndex((r) => r.tag === head) : -1;
+	return rel.some((r, i) => r.tag === version && i > at);
+}
+
 export function approveRollout(
 	namespace: string,
 	name: string,
@@ -2141,6 +2154,7 @@ export function approveRollout(
 	const cluster = clusterHint ?? f.def.cluster;
 	const rollout = rolloutOf(f);
 	const key = fixtureKey(namespace, name);
+	if (!body?.revoke && !isReleaseCandidate(rollout as never, version)) return { ok: false, status: 409, error: `version ${version} is not a current release candidate of ${name}` };
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const gates = ((rollout.status as any).gates ?? []) as ApprovalGate[];
 	if (body?.revoke) {
