@@ -36,6 +36,12 @@ import (
 //     rather than all stampeding a host that is probably still down. Success
 //     closes the breaker and resets the cooldown; failure re-opens it.
 //
+// Expected recovery after a spoke comes back: the worst case is a probe that
+// failed just before the resume (a real failure, so the cooldown doubles to
+// breakerMaxCooldown) plus up to one cache TTL (spokeDataTTL) before the
+// refresh that probes again. Live a7ecbd44: cleared 31.4s after SIGCONT,
+// inside the 40s target. Not a bug to design around.
+//
 // A single success anywhere resets the failure count — spokes flap, and a
 // spoke that answers is healthy regardless of what it did a minute ago.
 const (
@@ -72,11 +78,12 @@ func (e *errSpokeCircuitOpen) Error() string {
 	if remaining > 0 {
 		return fmt.Sprintf("circuit open, retry in %s (last error: %v)", remaining, e.lastErr)
 	}
-	// Cooldown already elapsed: either a probe is in flight, or a leaked
-	// probe left probing=true. Never render a negative duration (SRE-753
-	// showed "circuit open for -1h36m15s" and skipped a live spoke until
-	// the hub pod was deleted).
-	return fmt.Sprintf("circuit open, probe in flight (last error: %v)", e.lastErr)
+	// The retry time has passed. This text is rendered when the response is
+	// built, and a refusal is cached, so it can be read long after it was
+	// made: never claim a probe exists (live a7ecbd44 showed "probe in
+	// flight" for 5s with no probe running), and never a negative duration
+	// (SRE-753: "circuit open for -1h36m15s").
+	return fmt.Sprintf("circuit open, waiting to retry (last error: %v)", e.lastErr)
 }
 
 func (e *errSpokeCircuitOpen) Unwrap() error { return e.lastErr }

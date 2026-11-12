@@ -250,7 +250,7 @@ func TestBreakerErrorStringNeverNegative(t *testing.T) {
 	if msg == "" {
 		t.Fatal("empty error string")
 	}
-	if msg != fmt.Sprintf("circuit open, probe in flight (last error: %v)", err.lastErr) {
+	if msg != fmt.Sprintf("circuit open, waiting to retry (last error: %v)", err.lastErr) {
 		t.Fatalf("unexpected message (must not show negative duration): %q", msg)
 	}
 	if containsNegativeDuration(msg) {
@@ -303,5 +303,14 @@ func TestBreakerLeakedProbeIsReclaimed(t *testing.T) {
 	ok, probeErr := b.allow("https://spoke")
 	if !ok {
 		t.Fatalf("leaked probe should be reclaimed after %v: %v", breakerProbeTimeout, probeErr)
+	}
+}
+
+// A cached refusal is rendered after its retry time; it must say so, not
+// claim a probe exists (live a7ecbd44).
+func TestBreakerRefusalNeverClaimsProbeInFlight(t *testing.T) {
+	err := &errSpokeCircuitOpen{lastErr: errors.New("timeout"), until: time.Now().Add(-time.Second)}
+	if containsSubstring(err.Error(), "probe in flight") {
+		t.Fatalf("refusal past its retry time claims a probe: %q", err.Error())
 	}
 }
