@@ -19,7 +19,7 @@ import { holdWordParts } from './rollout-view';
 import { approvalWord } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
-import { causeText, joinCause, gateLabelText, type Cause } from '$lib/view-models/gate-label';
+import { causeText, joinCause, gateLabelText, labelPart, type Cause } from '$lib/view-models/gate-label';
 import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import { regionsPhrase, siteCount } from '$lib/view-models/regions';
 
@@ -96,7 +96,7 @@ export function sentenceParts(r: TRow, hs: HomeState, o: { clockInSentence?: boo
 	}
 	if (r.group === 'held') {
 		const g = gateName(r, hs);
-		return [joinCause(placeCause(r.href, r.app, r.key, hs) ?? holdWordParts(r, hs) ?? (g ? ['Held by ', ...(g.label.kind === 'promotion' ? [g.label] : [g.name])] : r.word), r.alsoApproval ? ` · also needs ${r.alsoApproval.yours ? 'your ' : ''}approval` : ''), g?.sentence ?? ''];
+		return [joinCause(placeCause(r.href, r.app, r.key, hs) ?? holdWordParts(r, hs) ?? (g ? ['Held by ', labelPart(g.label)] : r.word), r.alsoApproval ? ` · also needs ${r.alsoApproval.yours ? 'your ' : ''}approval` : ''), g?.sentence ?? ''];
 	}
 	const title = buildIdentity(buildOf(r), r.href)?.title ?? deployedBuild(r).title ?? '';
 	if (r.state === 'deploying') {
