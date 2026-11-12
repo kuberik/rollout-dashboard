@@ -240,10 +240,7 @@
 	apart the way the capsule and the bare word already did once.
 -->
 {#snippet stateChip(word: keyof typeof CHECK_TONE, title: string | undefined)}
-	<span
-		class="chip t-label chip-wide shrink-0 {CHECK_TONE[word]}"
-		{title}>{word}</span
-	>
+	<span class="chip t-label chip-wide shrink-0 {CHECK_TONE[word]}" {title}>{word}</span>
 {/snippet}
 
 {#if loadError}
@@ -289,8 +286,7 @@
 					>{healthyChecks.length} passing · {recovered.length} recovered</span
 				>
 			{:else}
-				<span class="t-ui-sm text-success"
-					>{healthChecks.length}/{healthChecks.length} healthy</span
+				<span class="t-ui-sm text-success">{healthChecks.length}/{healthChecks.length} healthy</span
 				>
 			{/if}
 		{/snippet}
@@ -327,94 +323,86 @@
 				{@const passingRow = state === 'passing'}
 				<div
 					data-testid="hc-row"
-					class="flex items-start gap-3 border-b border-line-subtle px-4 py-3 last:border-b-0 {failing
+					class="border-line-subtle flex items-start gap-3 border-b px-4 py-3 last:border-b-0 {failing
 						? ''
 						: pending || recoveredRow
 							? ''
 							: ''}"
 				>
 					{#if failing}
-						<ExclamationCircleSolid
-							class="mt-0.5 h-4 w-4 flex-shrink-0 text-danger"
-						/>
+						<ExclamationCircleSolid class="text-danger mt-0.5 h-4 w-4 flex-shrink-0" />
 					{:else if pending}
 						<StatusSpinner size="4" color="yellow" class="mt-0.5" />
 					{:else if recoveredRow}
-						<ClockArrowOutline
-							class="mt-0.5 h-4 w-4 flex-shrink-0 text-progress"
-						/>
+						<ClockArrowOutline class="text-progress mt-0.5 h-4 w-4 flex-shrink-0" />
 					{:else}
-						<CheckCircleSolid class="mt-0.5 h-4 w-4 flex-shrink-0 text-success" />
+						<CheckCircleSolid class="text-success mt-0.5 h-4 w-4 flex-shrink-0" />
 					{/if}
 					<div class="min-w-0 flex-1">
-						<span
-							class="block min-w-0"
-							class:t-card-title={failing}
-							class:text-fg={failing}
-							class:t-body={!failing}
-							class:text-fg-muted={!failing}
-							class:truncate={passingRow}
-						>
+						<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
 							{displayName(hc)}
 						</span>
+						<!--
+							⭐ EVERY STATE DRAWS EXACTLY TWO LINES: the name and ONE fact line.
+							(2026-11-12, owner rule: nothing moves as state changes.) A pending
+							row used to carry a sub-line and a passing row none, so each check
+							that passed shrank its row by a line and everything below it moved
+							up; a failing row stacked a state line, a 3-line message and a
+							button. The fact line is a single truncated line in every state
+							(`truncate`, full text in `title`), so the row height is the same
+							whatever the check is doing. A failing row's message is the one
+							thing that wants more room: the fact line is then a button that
+							opens the full text, a reader's own action, never a state change.
+						-->
 						{#if failing}
-							<!-- The state and its age sit under the name (AD round 3 nit):
-							     a right-hand column squeezed the description to 4 lines. -->
-							<span class="t-meta block text-danger"
-								>failing{#if hc.status?.lastChangeTime}{' · '}{formatAgoCompact(hc.status.lastChangeTime, $now)}{/if}</span
-							>
-						{/if}
-						{#if failing && hc.status?.message}
 							{@const expanded = expandedMessages.has(key)}
-							<p
-								class="t-body mt-0.5 leading-relaxed text-fg-muted"
-								class:line-clamp-3={!expanded}
-							>
-								{hc.status.message}
-							</p>
-							{#if hc.status.message.length > 200}
+							{@const msg = hc.status?.message}
+							{#if msg}
 								<button
+									type="button"
+									data-testid="hc-sub"
+									aria-expanded={expanded}
+									title={expanded ? undefined : msg}
 									onclick={() => toggleMessage(key)}
-									class="t-ui-sm mt-1 text-fg-subtle hover:text-fg"
+									class="t-meta text-fg-muted hover:text-fg block w-full min-w-0 text-left {expanded
+										? 'whitespace-normal'
+										: 'truncate'}"
+									><span class="text-danger"
+										>failing{#if hc.status?.lastChangeTime}{' · '}{formatAgoCompact(
+												hc.status.lastChangeTime,
+												$now
+											)}{/if}</span
+									>
+									— {msg}</button
 								>
-									{expanded ? 'Show less' : 'Show more'}
-								</button>
+							{:else}
+								<span data-testid="hc-sub" class="t-meta text-danger block truncate"
+									>failing{#if hc.status?.lastChangeTime}{' · '}{formatAgoCompact(
+											hc.status.lastChangeTime,
+											$now
+										)}{/if}</span
+								>
 							{/if}
 						{:else if pending}
-							<!--
-								⭐ A REAL COUNTDOWN, NOT A BAKED STRING. (2026-09-21, film critic
-								finding 1.) `pendingProbeClause` derives the remaining seconds
-								from the check's own `nextProbeAt` against `$now` — a store that
-								ticks every 100ms — so this line recomputes, and the number
-								actually falls, every render. A check with no `nextProbeAt` (a
-								real backend, or a mock check nobody wired up) falls back to
-								`status.message`, which is kept unless the WHOLE message is a
-								complete healthy form (batch4 #6), else "Not evaluated yet".
-							-->
+							<!-- A real countdown from `nextProbeAt` against `$now`, else the
+							     check's own message, else "Not evaluated yet". -->
 							{@const text = pendingRowText(hc, $now)}
-							{#if text}
-								<p class="t-body mt-0.5 leading-relaxed text-fg-muted">
-									{text}
-								</p>
-							{/if}
+							<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={text}>
+								{text}
+							</p>
 						{:else if recoveredRow}
-							<!--
-								⭐ THE ROW THAT DID NOT EXIST. A check that is passing NOW but
-								errored inside this deploy's window reads as RECOVERED, not
-								clean.
-
-								⚠️ THE STATE COMES FIRST — *"passing, last errored 2m ago"*. The
-								check really is passing and a reader who takes only the first
-								word must not be misled into paging someone; a reader who stops
-								at the second clause has still learned the thing their alert was
-								about.
-							-->
-							<p class="t-body mt-0.5 leading-relaxed text-fg-muted">
-								<!-- ⚠️ THE SEPARATOR IS INSIDE THE EXPRESSION. Written as literal
-									     text around the `{#if}`, Svelte trims the leading space and it
-									     rendered `3 minutes ago— p99 latency…`, which reads as a
-									     hyphenated word rather than a clause break. -->
-								{recoveredLabel(errorAgo(hc))}{#if hc.status?.message}{` — ${hc.status.message}`}{/if}
+							<!-- The state comes first: "passing, last errored 2m ago", then the
+							     message. The separator is inside the expression so Svelte does
+							     not trim it. -->
+							{@const text = `${recoveredLabel(errorAgo(hc))}${hc.status?.message ? ` — ${hc.status.message}` : ''}`}
+							<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={text}>
+								{text}
+							</p>
+						{:else}
+							<p data-testid="hc-sub" class="t-meta text-fg-subtle block truncate">
+								passing{#if hc.status?.lastChangeTime}{' · '}<span class="tabular-nums"
+										>{formatAgoCompact(hc.status.lastChangeTime, $now)}</span
+									>{/if}
 							</p>
 						{/if}
 					</div>
@@ -434,11 +422,7 @@
 						{#if failing}
 							<!-- stated under the name -->
 						{:else if passingRow}
-							{#if hc.status?.lastChangeTime}
-								<span class="t-meta text-fg-subtle tabular-nums"
-									>{formatAgoCompact(hc.status.lastChangeTime, $now)}</span
-								>
-							{/if}
+							<!-- the age lives in the fact line -->
 						{:else}
 							{@render stateChip(
 								state,
@@ -454,7 +438,7 @@
 	<!-- An honest empty state instead of nothing (AD round 4: the deploying
 	     Overview's rail was a lone card over empty space). -->
 	<Card icon={HeartOutline} title="Health checks" verdict="none" padded={false}>
-		<p class="t-meta px-4 py-3 text-fg-subtle">
+		<p class="t-meta text-fg-subtle px-4 py-3">
 			No health checks select this rollout, so a deploy counts as done when its steps finish.
 		</p>
 	</Card>

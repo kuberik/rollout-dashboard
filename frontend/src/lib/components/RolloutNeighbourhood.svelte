@@ -1049,7 +1049,17 @@
 	 * empty-column override right below is harmless but now redundant
 	 * (inherits `start` from the row); left in place since it still
 	 * documents that specific case's own reasoning. */
-	@container (min-width: 672px) {
+	@container (min-width: 800px) {
+		/* THE GUTTERS SHRINK WITH THE CONTAINER (2026-11-12). Fixed 8/9rem
+		   gutters plus a 240px tile floor summed to 878px inside an 812px
+		   container, and the section's `overflow-hidden` sliced the downstream
+		   card. Gutters are now fluid, so they give back space first; the tile
+		   floor only applies once the container can afford it (`.hood-tile`
+		   block below). */
+		.hood-grid {
+			--hood-gutter: clamp(5rem, 12cqi, 8rem);
+			--hood-gutter-steep: clamp(5.5rem, 13cqi, 9rem);
+		}
 		.hood-list {
 			/* Back to the full 24px at wide — no fold to protect here, and
 			   the extra air reads better across a 400/480px-wide column. */
@@ -1076,7 +1086,7 @@
 			   centre: three content-sized tracks summing to LESS than the
 			   canvas width is "one compact group", with the dots filling
 			   what is left on both sides. */
-			grid-template-columns: minmax(0, 400px) 8rem minmax(0, 480px) 8rem minmax(0, 400px);
+			grid-template-columns: minmax(0, 400px) var(--hood-gutter) minmax(0, 480px) var(--hood-gutter) minmax(0, 400px);
 			align-items: start;
 			justify-content: center;
 		}
@@ -1091,7 +1101,7 @@
 		   the S-curves stay shallow enough to read — still inside round 6's
 		   120–160px fixed-gutter band (8rem base, 9rem steep). */
 		.hood--steep .hood-grid {
-			grid-template-columns: minmax(0, 400px) 9rem minmax(0, 480px) 9rem minmax(0, 400px);
+			grid-template-columns: minmax(0, 400px) var(--hood-gutter-steep) minmax(0, 480px) var(--hood-gutter-steep) minmax(0, 400px);
 		}
 		.hood-up {
 			grid-column: 1;
@@ -1123,10 +1133,10 @@
 		   `justify-content: center` (set above) re-centres the remaining
 		   one or two columns in the canvas. */
 		.hood-grid--no-up {
-			grid-template-columns: 0 0 minmax(0, 480px) 8rem minmax(0, 400px);
+			grid-template-columns: 0 0 minmax(0, 480px) var(--hood-gutter) minmax(0, 400px);
 		}
 		.hood-grid--no-down {
-			grid-template-columns: minmax(0, 400px) 8rem minmax(0, 480px) 0 0;
+			grid-template-columns: minmax(0, 400px) var(--hood-gutter) minmax(0, 480px) 0 0;
 		}
 		.hood-grid--no-up.hood-grid--no-down {
 			grid-template-columns: minmax(0, 480px);
@@ -1158,11 +1168,19 @@
 	.hood-tile {
 		min-width: 0;
 	}
-	@container (min-width: 672px) {
+	@container (min-width: 800px) {
 		.hood-tile {
-			min-width: 240px;
 			max-width: 400px;
 		}
+	}
+	/* The 240px floor only applies from 1100px of container; below that the
+	   tracks shrink and tiles truncate instead of overflowing. */
+	@container (min-width: 1100px) {
+		.hood-tile {
+			min-width: 240px;
+		}
+	}
+	@container (min-width: 800px) {
 		/* The focus tile is not `.hood-tile` (it is the canvas's one raised
 		   object, not a service tile) — capped at 480px (≈1.2× the 400px gate
 		   tiles), same reasoning. */
