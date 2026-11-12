@@ -138,3 +138,30 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: rollout-dashboard
+---
+# Lets the dashboard's own service account check that the by-annotation
+# admission binding exists, so it only shows who approved when the API server
+# enforces it (APPROVALS-API.md section 8.4). rollout-dashboard-view already
+# grants this through its wildcard read; this keeps it working if that role is
+# ever narrowed.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rollout-dashboard-approval-by
+rules:
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingadmissionpolicybindings"]
+    resourceNames: ["kuberik-rolloutapproval-by"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rollout-dashboard-approval-by
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rollout-dashboard-approval-by
+subjects:
+  - kind: ServiceAccount
+    name: rollout-dashboard

@@ -13,14 +13,18 @@ import (
 // using SelfSubjectAccessReview API
 // Uses the stored REST config which includes the user's OIDC token
 func (c *Client) CheckPermission(ctx context.Context, apiGroup, resource, verb, namespace, name string) (bool, error) {
-	if c.config == nil {
-		return false, fmt.Errorf("REST config is nil - client was not properly initialized")
-	}
-
-	// Create clientset using the stored config (which includes the OIDC token)
-	clientset, err := kubernetes.NewForConfig(c.config)
-	if err != nil {
-		return false, fmt.Errorf("failed to create clientset: %w", err)
+	// c.clientset is built from the same config (the user's OIDC token); it is
+	// preferred so tests can substitute a fake clientset.
+	var clientset kubernetes.Interface = c.clientset
+	if clientset == nil {
+		if c.config == nil {
+			return false, fmt.Errorf("REST config is nil - client was not properly initialized")
+		}
+		cs, err := kubernetes.NewForConfig(c.config)
+		if err != nil {
+			return false, fmt.Errorf("failed to create clientset: %w", err)
+		}
+		clientset = cs
 	}
 
 	// Create SelfSubjectAccessReview

@@ -841,6 +841,8 @@ func setupRouter() *gin.Engine {
 			})
 		})
 
+		registerApprovalRoutes(api)
+
 		api.POST("/rollouts/:namespace/:name/pin", func(c *gin.Context) {
 			k8sClient, ok := getK8sWriteClient(c)
 			if !ok {
@@ -1772,6 +1774,13 @@ func setupRouter() *gin.Engine {
 			}
 
 			permissions := make(map[string]bool)
+			// approve = create a RolloutApproval in the namespace (manual approvals API).
+			if allowed, err := k8sClient.CheckPermission(context.Background(), "kuberik.com", "rolloutapprovals", "create", namespace, ""); err != nil {
+				log.Printf("Error checking permission for approve: %v", err)
+				permissions["approve"] = false
+			} else {
+				permissions["approve"] = allowed
+			}
 			for action, verb := range actions {
 				allowed, err := k8sClient.CheckRolloutPermission(context.Background(), verb, namespace, name)
 				if err != nil {
