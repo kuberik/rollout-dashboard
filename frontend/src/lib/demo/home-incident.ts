@@ -128,22 +128,24 @@ export function correctedHomeFixture(f: HomeFixture): HomeFixture {
  * THE PROMOTION-HELD PLACES (batch4 #75). In the pinned capture every promotion gate sits beside a build the source environment has not
  * finished, which the product reads as "Waits for <env>" (chain sequencing, `held.ts`), never as a hold the gate itself causes. The owner rule
  * (a promotion gate is drawn as the » glyph + its source environment, never by its name) had no state to be seen in. Two places are served with a
- * promotion gate that refuses the candidate, beside the approval they already carry (`placeVerdict`: held by the promotion gate, `also` needs the approval):
+ * promotion gate that refuses the candidate. payments-svc keeps the approval it carries; telemetry-indexer prod is a PURE promotion hold (its approval gate is dropped,
+ * tl-dash-batch4s ruling: a place with an approval AND a promotion hold reads "Needs your approval" while held-by-rule, out of scope for #128):
  *  - telemetry-indexer prod: its Environment publishes no gate relationship, so the gate names no upstream (the "relationship not ready yet" state:
  *    cause `unknown`, a real hold). /rollouts, Home, the app page and the Holding card name the source from the topology (dev); the Gates tab, which
  *    reads the rollout's own story, has none and draws "» Promotion".
  *  - payments-svc staging: no Environment object at all (a service the dependency join knows): "» Promotion" everywhere, no source.
  * Served-only, like `correctedHomeFixture`'s other edits; nothing else in the fixture changes.
  */
-const PROMOTION_HELD: { ns: string; name: string; gate: string }[] = [
-	{ ns: 'telemetry-indexer-prod', name: 'telemetry-indexer', gate: 'promotion-prod' },
+const PROMOTION_HELD: { ns: string; name: string; gate: string; dropApproval?: boolean }[] = [
+	{ ns: 'telemetry-indexer-prod', name: 'telemetry-indexer', gate: 'promotion-prod', dropApproval: true },
 	{ ns: 'platform-staging', name: 'payments-svc', gate: 'promotion-staging' }
 ];
 export function withPromotionHolds(f: HomeFixture): HomeFixture {
 	const rollouts = f.rollouts.map((r) => {
 		const h = PROMOTION_HELD.find((x) => x.ns === r.metadata.namespace && x.name === r.metadata.name);
 		if (!h) return r;
-		const gates = [...((r.status?.gates ?? []) as unknown[]), { name: h.gate, kind: 'promotion', allowedVersions: [], message: 'Gate does not allow any release candidate' }];
+		const own = ((r.status?.gates ?? []) as { name: string }[]).filter((g) => !(h.dropApproval && /approval/.test(g.name)));
+		const gates = [...own, { name: h.gate, kind: 'promotion', allowedVersions: [], message: 'Gate does not allow any release candidate' }];
 		return { ...r, status: { ...r.status, gates } };
 	});
 	return { ...f, rollouts };
