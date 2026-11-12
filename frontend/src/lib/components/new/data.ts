@@ -1501,14 +1501,26 @@ export function inbound(state: HomeState, tier: TierKey): Inbound[] {
 		if (!newest || here.some((p) => p.version === newest)) continue;
 		/* batch4 #1: a build that failed in a place of this tier (history, or the wave's own `bake failed on <rev>`) and was rolled back is not inbound while the tier runs its rollback target */
 		if (here.some((p) => failedHere(rawOf(p.href)?.status as never, { tag: newest, version: newest, revision: newest }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())))) continue;
-		const up = ps.filter((p) => p.version === newest && p.state !== 'failed').map((p) => p.tier).sort((x, y) => RANK_T[y] - RANK_T[x])[0] ?? null;
+		let build = newest;
+		let up = ps.filter((p) => p.version === newest && p.state !== 'failed').map((p) => p.tier).sort((x, y) => RANK_T[y] - RANK_T[x])[0] ?? null;
+		/* the catalogue's newest runs nowhere: the newest build a healthy LOWER tier runs, newer than this tier's, is still the promote target (the tab's "Ready to promote") */
+		if (!up) {
+			const order = appOrder(a.app, state);
+			const hereAt = Math.max(...here.map((p) => behindIn(order, p.version) ?? Infinity));
+			for (let i = order.length - 1; i >= 0 && !up; i--) {
+				const cand = order[i];
+				if (behindIn(order, cand)! >= hereAt) break;
+				const src = ps.filter((p) => p.version === cand && p.state !== 'failed' && RANK_T[p.tier] < RANK_T[tier]).map((p) => p.tier).sort((x, y) => RANK_T[y] - RANK_T[x])[0];
+				if (src && !here.some((p) => failedHere(rawOf(p.href)?.status as never, { tag: cand, version: cand, revision: cand }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())))) { up = src; build = cand; }
+			}
+		}
 		const causeOf = (p: AppPlace) => causes.find((c) => c.rows.some((r) => r.href === p.href));
 		const holder = here.find((p) => causeOf(p));
 		const hold = holder ? causeOf(holder) : undefined;
 		/* a newer catalogue build that no other place runs (healthy) and nothing holds here is nothing to promote: the app is Behind (env-page), not inbound. Held, it is inbound: the hold is the story. */
 		if (!up && !hold) continue;
 		/* the tile names a cause and links to a place that cause holds, never to a sibling (a pinned region) it does not */
-		out.push({ app: a.app, build: buildName(a.app, newest) ?? newest, from: up, reason: hold?.cause ?? null, href: (holder ?? here[0]).href });
+		out.push({ app: a.app, build: buildName(a.app, build) ?? build, from: up, reason: hold?.cause ?? null, href: (holder ?? here[0]).href });
 	}
 	return out;
 }
