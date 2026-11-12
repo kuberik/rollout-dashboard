@@ -45,4 +45,11 @@ describe('the mock approvals API', () => {
 		expect(by).toContain(undefined);
 		expect(json(respond('GET', '/api/rollouts/default/hello-world/approvals')).approvals.every((a: { by?: string }) => a.by === undefined || a.by.startsWith('oidc:'))).toBe(true);
 	});
+
+	it('approving a version that is not a current release candidate is 409, like the Go handler', () => {
+		const r = post(`/api/rollouts/${NS}/${NAME}/approve`, { version: 'nope123' });
+		expect(r.status).toBe(409);
+		expect(json(r).error).toBe(`version nope123 is not a current release candidate of ${NAME}`);
+		expect(gate().allowedVersions).toEqual(['old1']);
+	});
 });

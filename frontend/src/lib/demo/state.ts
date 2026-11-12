@@ -2116,6 +2116,16 @@ export type ApproveResult =
  * and the snapshot taken at approve restores the rest, so Undo inside its window leaves no trace. Every open tab hears the rollout change.
  */
 const approvalUndo = new Map<string, { gates: unknown; history: unknown; previousVersion: unknown; currentVersion: unknown; wantedVersion: unknown }>();
+/** The Go handler's rule: only a current release candidate can be approved (in `releaseCandidates`, or a catalogue release newer than `history[0]`). */
+function isReleaseCandidate(rollout: { status: { history?: { version?: string }[]; releaseCandidates?: { tag?: string }[]; availableReleases?: unknown[] } }, version: string): boolean {
+	const st = rollout.status;
+	if (st.releaseCandidates?.some((r) => r.tag === version)) return true;
+	const rel = (st.availableReleases ?? []) as { tag: string }[];
+	const head = st.history?.[0]?.version;
+	const at = head ? rel.findIndex((r) => r.tag === head) : -1;
+	return rel.some((r, i) => r.tag === version && i > at);
+}
+
 export function approveRollout(
 	namespace: string,
 	name: string,
@@ -2141,6 +2151,7 @@ export function approveRollout(
 	const cluster = clusterHint ?? f.def.cluster;
 	const rollout = rolloutOf(f);
 	const key = fixtureKey(namespace, name);
+	if (!body?.revoke && !isReleaseCandidate(rollout, version)) return { ok: false, status: 409, error: `version ${version} is not a current release candidate of ${name}` };
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const gates = ((rollout.status as any).gates ?? []) as ApprovalGate[];
 	if (body?.revoke) {
