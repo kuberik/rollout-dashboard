@@ -28,7 +28,7 @@ export type Wire = { key: string; state: WireState; d: string; tip: [number, num
 /** The focus box's ring, outside its border (`ring-2`). */
 export const FOCUS_RING = 2;
 /** Spine x in the narrow layout, and the radius of its corner. */
-export const SPINE_X = 12;
+export const SPINE_X = 4;
 export const CORNER = 6;
 /** Minimum gap between heads, on top of the head's own width. */
 export const SLOT_GAP = 4;

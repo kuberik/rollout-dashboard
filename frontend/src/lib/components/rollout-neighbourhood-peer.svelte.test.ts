@@ -43,15 +43,21 @@ describe('Gates peer tile, checkout-api prod-us-east-2 (home-incident)', () => {
 		expect(text).toMatch(/Checking/i);
 		expect(text).not.toContain('Nothing held');
 	});
-	test('a place past the build still prints the passed line', () => {
+	test('a place past the build draws the passed mark and no held line (it never says "Nothing held")', () => {
 		const done = { ...card, bakeStatus: 'Succeeded', statusKey: 'succeeded', stuck: null, held: false } as typeof card;
-		expect(tileText(new Map([['prod-us-east-2', done]]))).toContain('Nothing held');
+		const el = renderTile(new Map([['prod-us-east-2', done]]));
+		expect(el?.getAttribute('data-gate-type')).toBe('promotion');
+		expect(el?.querySelector('[data-gate-mark]')?.getAttribute('data-gate-mark')).toBe('newest');
+		expect(el?.querySelector('[data-gate-release]')).toBeNull();
+		expect(tileText(new Map([['prod-us-east-2', done]]))).not.toContain('Nothing held');
 	});
-	test('a held peer reads "held on <cause>" beside the held mark, never the passed dot', () => {
+	test('a held peer reads "Waits on <cause>" beside the behind mark, never the passed dot', () => {
 		const heldCard = cards.find((c) => c.envName === 'prod-us-east-2' && peerHeldMap(new Map([['x', c]])).get('x')?.held && c.heldCauseLabel)
 			?? cards.find((c) => peerHeldMap(new Map([['x', c]])).get('x')?.held && c.heldCauseLabel)!;
 		const tile = renderTile(new Map([['prod-us-east-2', heldCard]]));
-		expect((tile?.textContent ?? '').replace(/\s+/g, ' ')).toContain('held on');
-		expect(tile?.querySelector(HELD_GLYPH)).not.toBeNull();
+		// a held predecessor is never drawn held (it does not hold THIS build): line "Waits on <cause>", mark 'behind', never the passed dot
+		expect((tile?.textContent ?? '').replace(/\s+/g, ' ')).toContain('Waits on');
+		expect(tile?.querySelector('[data-gate-mark]')?.getAttribute('data-gate-mark')).toBe('behind');
+		expect(tile?.querySelector(HELD_GLYPH)).toBeNull();
 	});
 });

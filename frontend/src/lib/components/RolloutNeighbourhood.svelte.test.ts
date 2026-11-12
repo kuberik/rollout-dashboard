@@ -146,7 +146,11 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 		const el = container.querySelector('[data-hood-link="downstream"]');
 		expect(el?.textContent).toContain('identity-svc');
-		expect(el?.textContent).toContain('Nothing held');
+		// Gatehouse: a passing tile says nothing about being clear (no "Nothing held"), no release line; the header names the type, the mark is passed.
+		expect(el?.textContent).not.toContain('Nothing held');
+		expect(el?.querySelector('[data-gate-release]')).toBeNull();
+		expect(el?.getAttribute('data-gate-type')).toBe('dependency');
+		expect(el?.querySelector('[data-gate-mark]')?.getAttribute('data-gate-mark')).toBe('newest');
 		expect(el?.textContent).not.toContain('this-app (identity)');
 		expect(el?.textContent).not.toContain('identity-svc (identity)');
 	});
@@ -172,10 +176,16 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		expect(text).toContain('Downstream · 1');
 		expect(text).not.toMatch(/Gates · \d/);
 		const el = container.querySelector('[data-hood-link="downstream"]');
-		expect(el?.textContent).toContain('held downstream');
-		// batch4 nits: the release line names both ends (releases TO the box WHEN the focus deploys), never "Releases when <the box> deploys"
-		expect(el?.textContent).toMatch(/Releases to \S+ when \S+ deploys 4\.45\.0-45/);
-		expect(el?.textContent).not.toMatch(/Releases when/);
+		// Gatehouse: the downstream place's own hold is the held mark on its tile plus ONE release line naming the focus env and the build
+		// ("After <focus env> deploys <build>"), the far end's own env chip in the identity row — never "Releases when <the box> deploys".
+		// A downstream tile waits on THIS rollout, it does not hold it: never the held mark ('behind'), the line quiet, the wire drawn clear
+		// (data-state keeps the real state).
+		expect(el?.querySelector('[data-gate-mark]')?.getAttribute('data-gate-mark')).toBe('behind');
+		expect(el?.getAttribute('data-state')).toBe('blocked');
+		expect(el?.getAttribute('data-wire-state')).toBe('clear');
+		expect(el?.querySelector('[data-gate-release]')).toHaveClass('text-fg-muted');
+		expect(el?.querySelector('[data-gate-release]')?.textContent).toMatch(/^After \S+ deploys 4\.45\.0-45$/);
+		expect(el?.textContent).not.toMatch(/Releases (to|when)/);
 	});
 
 	test('batch4 nits: an empty held list never dangles an "it", and env names are unbreakable tokens', () => {
@@ -185,11 +195,12 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		} as unknown as NeighbourLink;
 		const hood = { focus: node('this-app', 'prod-eu-central'), upstream: [], downstream: [held], gates: [], heldLinks: 1, total: 1, holding: 0, heldBuilds: [] } as unknown as Hood;
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
-		const p = container.querySelector('[data-hood-link="downstream"] p.break-words');
+		const p = container.querySelector('[data-hood-link="downstream"] [data-gate-release]');
 		expect(p?.textContent).toMatch(/deploys its first build$/);
 		expect(p?.textContent).not.toMatch(/ it$/);
-		const nb = [...(p?.querySelectorAll('span.whitespace-nowrap') ?? [])].map((e) => e.textContent);
-		expect(nb).toContain('prod-eu-central');
+		// the env is named by its chip (one shrink-0 token that never wraps mid-name), with the full env in its title
+		const chip = container.querySelector('[data-hood-focus] [title="prod-eu-central"], [data-hood-focus] .shrink-0');
+		expect(chip).not.toBeNull();
 	});
 
 	test('a gate box carries the link box shell, not a link, with no destination today', () => {
@@ -251,8 +262,12 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		});
 		const el = container.querySelector('[data-hood-link="upstream"]');
 		expect(el?.tagName).toBe('A');
-		expect(el?.textContent).toContain('Releases when payments-svc ships');
-		expect(el?.textContent).toContain('Open payments-svc');
+		// Gatehouse: the tile is the link (no drawn "Open X" button); one release line names the version the provider must reach.
+		expect(el?.querySelector('[data-gate-release]')?.textContent).toBe('Needs ~2.9.0');
+		expect(el?.textContent).toContain('payments-svc');
+		expect(el?.textContent).not.toContain('Open payments-svc');
+		expect(el?.getAttribute('data-gate-type')).toBe('dependency');
+		expect(el?.querySelector('[class*="pointer-events-none"]')).toBeNull();
 	});
 
 	test('SPEC §7: a held promotion link names the specific build the upstream env must deploy', () => {
@@ -281,10 +296,13 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 			holding: 1,
 			heldBuilds: ['4.45.0-45', '4.44.0-44']
 		};
-		const { container } = render(RolloutNeighbourhood, { props: { hood } });
+		const { container } = render(RolloutNeighbourhood, { props: { hood, hrefOf: () => '/rollouts/c/ns/checkout-api' } });
 		const el = container.querySelector('[data-hood-link="upstream"]');
-		expect(el?.textContent).toContain('Releases when staging deploys 4.45.0-45');
-		expect(el?.textContent).toContain('Open staging');
+		expect(el?.querySelector('[data-gate-release]')?.textContent).toMatch(/^After \S+ deploys 4\.45\.0-45$/);
+		expect(el?.querySelector('[data-gate-release]')?.textContent).not.toContain('4.44.0-44');
+		expect(el?.tagName).toBe('A');
+		expect(el?.textContent).not.toContain('Open staging');
+		expect(el?.getAttribute('data-gate-type')).toBe('promotion');
 	});
 
 	test('SPEC §7: a held approval gate box has no in-product Approve action, so it links to the docs instead', () => {
@@ -307,8 +325,16 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		const el = container.querySelector('[data-hood-link="upstream"]');
 		expect(el?.tagName).toBe('A');
 		expect(el).toHaveAttribute('href', 'https://docs.kuberik.com/concepts/gates#approvals');
-		expect(el?.textContent).toContain('Releases when someone approves');
-		expect(el?.textContent).toContain('How to approve');
+		// Gatehouse: no fake "How to approve" button; the whole tile is the docs link, marked by an external glyph in the one 28px approval row.
+		expect(el?.getAttribute('target')).toBe('_blank');
+		expect(el?.getAttribute('data-gate-type')).toBe('approval');
+		// no drawn "How to approve" text and no external-link glyph: the dashed "can't approve" slot in the row says it, the line says "Needs approval"
+		expect(el?.querySelector('[data-approval-row]')).not.toBeNull();
+		expect(el?.querySelector('[data-approve-none]')?.getAttribute('title')).toBe("You can't approve this build here");
+		expect(el?.querySelector('[data-gate-release]')?.textContent?.trim()).toBe('Needs approval');
+		expect(el?.textContent).not.toContain('How to approve');
+		expect(el?.getAttribute('title')).toBe('How to approve a held build');
+		expect(el?.querySelector('button')).toBeNull();
 	});
 
 	test('SPEC §7: a CLEAR tile states no release sentence and draws no action', () => {
@@ -339,7 +365,8 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		};
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 		const el = container.querySelector('[data-hood-link="upstream"]');
-		expect(el?.textContent).not.toContain('Releases when');
+		expect(el?.querySelector('[data-gate-release]')).toBeNull();
+		expect(el?.textContent).not.toContain('Needs ');
 		expect(el?.textContent).not.toContain('Open payments-svc');
 	});
 });
@@ -367,16 +394,15 @@ describe('RolloutNeighbourhood: the focus node states its own held state in word
 		};
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 		const focusBox = container.querySelector('[data-hood-focus]');
-		expect(focusBox?.textContent).toContain('Held:');
-		expect(focusBox?.textContent).toContain('4.43.0-43');
+		const held = focusBox?.querySelector('[data-focus-held]');
+		expect(held?.textContent?.replace(/\s+/g, ' ').trim()).toBe('4.43.0-43 held here');
+		expect(focusBox?.textContent).not.toContain('Held:');
 		// ⭐ qa11b, item 2 correction (squad-rollout gates-2 follow-up,
 		// 2026-10-11): "here", never "waits here" — "wait(s)" is reserved
 		// for a build merely queued behind an earlier stage.
-		expect(focusBox?.textContent).toContain('build here');
 		expect(focusBox?.textContent).not.toMatch(/waits?\s+here/i);
 		// No chip — a held focus is a word in held ink, never a filled label.
-		expect(focusBox?.querySelector('.chip, [class*="chip-"]')).toBeNull();
-		expect(focusBox?.textContent).not.toMatch(/held here/i);
+		expect(held?.querySelector('.chip, [class*="chip-"]')).toBeNull();
 	});
 
 	test('several held builds read the plural noun, still no "wait" and no chip', () => {
@@ -392,7 +418,12 @@ describe('RolloutNeighbourhood: the focus node states its own held state in word
 		};
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 		const focusBox = container.querySelector('[data-hood-focus]');
-		expect(focusBox?.textContent).toContain('builds here');
+		const held = focusBox?.querySelector('[data-focus-held]');
+		// one line, the builds named once, then "held here" (no "N builds here" sentence above a second list)
+		expect(held?.textContent).toContain('4.43.0-43');
+		expect(held?.textContent).toContain('4.44.0-44');
+		expect(held?.textContent).toContain('held here');
+		expect(focusBox?.textContent).not.toMatch(/builds here/);
 		expect(focusBox?.textContent).not.toMatch(/waits?\s+here/i);
 	});
 
@@ -409,7 +440,11 @@ describe('RolloutNeighbourhood: the focus node states its own held state in word
 		};
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 		const focusBox = container.querySelector('[data-hood-focus]');
-		expect(focusBox?.textContent).toContain('No build held here');
+		// a calm focus prints nothing: no held line, and no "No build held here" sentence about nothing
+		expect(focusBox?.querySelector('[data-focus-held]')).toBeNull();
+		expect(focusBox?.textContent).not.toContain('held here');
+		expect(focusBox?.textContent).not.toContain('No build held');
+		expect(focusBox?.querySelector('.chip, [class*="chip-"]')).toBeNull();
 	});
 });
 
@@ -479,22 +514,29 @@ describe('RolloutNeighbourhood: "Gated by · N" counts gates only and names the 
 		};
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 		const label = container.querySelector('.hood-label')?.textContent ?? '';
-		expect(label.replace(/\s+/g, ' ')).toBe('Gated by · 1 + dev')
+		expect(label.replace(/\s+/g, ' ')).toBe('Gated by · 1');
+		// the predecessor's env is named in the head's title, not in its text
+		expect(container.querySelector('.hood-label [title]')?.getAttribute('title') ?? '').toMatch(/1 gate, after /);
 		// A9: one meaning per slot — the predecessor's status line names its KIND (Promotion), never an environment, and the head label stays in the label case
 		expect(container.querySelector('.hood-label .normal-case')).toBeNull();
 		expect(container.querySelectorAll('.hood-up .hood-list > *').length).toBe(2);
 	});
 });
 
-/** batch4 #128: the upstream promotion tile's status line ("Nothing held · Promotion") names the edge's KIND; it is drawn (» Promotion), never typed as text. */
+/** batch4 #128: the upstream promotion tile names the edge's KIND in its header (type glyph + "Promotion" word, `data-gate-type`). */
 describe('RolloutNeighbourhood: a promotion tile draws its kind', () => {
 	test('the chain-predecessor status line carries the drawn promotion label', () => {
 		const pred = { ...link({ key: 'link:staging', state: 'clear', name: 'app-staging', writer: 'promotion' }), chainPredecessor: true };
 		const hood: Hood = { focus, upstream: [pred], downstream: [], gates: [], heldLinks: 0, total: 1, holding: 0, heldBuilds: [] };
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 		const tile = container.querySelector('[data-hood-link="upstream"]')!;
-		expect(tile.querySelector('[data-gate-label="promotion"]')).not.toBeNull();
-		expect(tile.textContent).toContain('Nothing held');
+		// Gatehouse: the 36px header names the kind (type word + glyph); a passed predecessor is never drawn held and never says "Nothing held".
+		// AD r2: the type is a glyph + sr-only "Promotion:" word on the tile root (`data-gate-type`), no visible header.
+		expect(tile.getAttribute('data-gate-type')).toBe('promotion');
+		expect(tile.querySelector('.sr-only')?.textContent).toContain('Promotion');
+		expect(tile.querySelector('[data-gate-mark]')?.getAttribute('data-gate-mark')).toBe('newest');
+		expect(tile.textContent).not.toContain('Nothing held');
+		expect(tile.querySelector('[data-gate-release]')).toBeNull();
 	});
 	test('QA71 Q5: a gate box that is a promotion draws its label, not the published sentence (GateBox.title is only the plain form)', () => {
 		const SENTENCE = 'Previous environment not ready yet';
@@ -507,5 +549,64 @@ describe('RolloutNeighbourhood: a promotion tile draws its kind', () => {
 		c.querySelectorAll('.sr-only,[aria-hidden="true"]').forEach((n) => n.remove());
 		expect(c.textContent).not.toContain('Promotion from');
 		expect(container.textContent).not.toContain(SENTENCE);
+	});
+});
+
+describe('RolloutNeighbourhood: Gatehouse tile details', () => {
+	const winBox = (over: Record<string, unknown>) =>
+		({
+			...box({ key: 'schedule:w', title: 'Business hours', state: 'blocked', kind: 'schedule' }),
+			window: { action: 'Allow', timezone: 'UTC', rules: [{ timeRange: { start: '09:00', end: '17:00' }, dateRange: { start: '2000-01-01', end: '2000-01-02' } }], active: false, when: 'Mon 09:00 UTC' },
+			...over
+		}) as GateBox;
+	const renderBox = (b: GateBox) =>
+		render(RolloutNeighbourhood, { props: { hood: { focus, upstream: [], downstream: [], gates: [b], heldLinks: 0, total: 1, holding: 1, heldBuilds: ['b2'] } as unknown as Hood } }).container;
+
+	test('a holding window draws its shut hours in held ink, the now tick held, and the words on the held line', () => {
+		const c = renderBox(winBox({}));
+		const tile = c.querySelector('[data-hood-link="upstream"]');
+		expect(tile?.getAttribute('data-gate-type')).toBe('window');
+		expect(tile?.querySelector('[data-window-bar] .gh-bar-shut')).not.toBeNull();
+		expect(tile?.querySelector('[data-window-bar] .gh-bar-now')).toHaveClass('gh-bar-now--held');
+		expect(tile?.querySelector('[data-gate-release]')?.textContent?.trim()).toBe('Closed · opens Mon 09:00 UTC');
+	});
+
+	test('a passing window draws the bar with no shut spans and no caption line (the words are in the title)', () => {
+		const c = renderBox(winBox({ state: 'clear', held: [], window: { action: 'Allow', timezone: 'UTC', rules: [{}], active: true, when: 'Fri 18:00 UTC' } }));
+		const tile = c.querySelector('[data-hood-link="upstream"]');
+		expect(tile?.querySelector('[data-window-bar]')).not.toBeNull();
+		expect(tile?.querySelector('.gh-bar-shut')).toBeNull();
+		expect(tile?.querySelector('[data-gate-release]')).toBeNull();
+		expect(tile?.getAttribute('title')).toContain('Open · closes Fri 18:00 UTC');
+	});
+
+	test('a Deny schedule is a freeze tile, held line "Frozen · until …"', () => {
+		const c = renderBox(winBox({ window: { action: 'Deny', timezone: 'UTC', rules: [{}], active: true, when: 'Mon 06:00 UTC' } }));
+		const tile = c.querySelector('[data-hood-link="upstream"]');
+		expect(tile?.getAttribute('data-gate-type')).toBe('freeze');
+		expect(tile?.querySelector('[data-gate-release]')?.textContent?.trim()).toBe('Frozen · until Mon 06:00 UTC');
+	});
+
+	test('a held dependency says "Needs <requiredVersions[0]>", preferring it over requiredVersion; without either, "Needs a newer version"', () => {
+		const dep = (over: Partial<NeighbourLink>): NeighbourLink => ({
+			...link({ key: 'contract:p', state: 'blocked', name: 'payments-svc', writer: 'contract' }),
+			...over
+		});
+		const text = (l: NeighbourLink) =>
+			render(RolloutNeighbourhood, { props: { hood: { focus, upstream: [l], downstream: [], gates: [], heldLinks: 1, total: 1, holding: 1, heldBuilds: ['b2'] } as unknown as Hood } }).container
+				.querySelector('[data-hood-link="upstream"] [data-gate-release]')?.textContent?.trim();
+		expect(text(dep({ requiredVersions: ['^3.0.0', '~2.9.0'], requiredVersion: '~2.9.0' }))).toBe('Needs ^3.0.0');
+		expect(text(dep({ requiredVersions: [], requiredVersion: '~2.9.0' }))).toBe('Needs ~2.9.0');
+		expect(text(dep({ requiredVersions: undefined, requiredVersion: null }))).toBe('Needs a newer version');
+	});
+
+	test('a promotion tile carries its build in the title, not in the tile: "Open <app> in <env> (runs <build>)"', () => {
+		const l = { ...link({ key: 'promotion:s', state: 'clear', name: 'this-app', writer: 'promotion' }), node: { ...node('this-app', 'staging'), build: '4.45.0-45' } } as NeighbourLink;
+		const { container } = render(RolloutNeighbourhood, {
+			props: { hood: { focus, upstream: [l], downstream: [], gates: [], heldLinks: 0, total: 1, holding: 0, heldBuilds: [] } as unknown as Hood, hrefOf: () => '/rollouts/c/ns/this-app' }
+		});
+		const tile = container.querySelector('[data-hood-link="upstream"]');
+		expect(tile?.getAttribute('title')).toBe('Open this-app in staging (runs 4.45.0-45)');
+		expect(tile?.querySelector('[data-gate-version]')).toBeNull();
 	});
 });

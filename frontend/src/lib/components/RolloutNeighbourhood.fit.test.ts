@@ -3,11 +3,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /**
- * jsdom has no layout, so "the graph fits at every container width from 800px"
- * is asserted on the arithmetic of the stylesheet: at the narrowest three-column
- * container (672px) the gutters are at their floor and the tile floor is off, and
- * at 812px (the width the landing film lane measured, 878px of grid) the fixed
- * minimums fit. The real-browser measurement lives in the PR description.
+ * jsdom has no layout, so "the graph fits at every container width" is asserted on the arithmetic of the stylesheet: below the
+ * three-column breakpoint the layers stack (always fits); at the breakpoint (1000px of container since the Gatehouse tiles, #140 set
+ * 800) the gutters are fluid and the tile floor is off, and a tile track still has >= 240px, so one-row tiles keep their names whole.
+ * The real-browser measurement lives in the PR description.
  */
 const src = readFileSync(
 	fileURLToPath(new URL('./RolloutNeighbourhood.svelte', import.meta.url)),
@@ -35,25 +34,27 @@ function blocks(query: string): string {
 }
 
 describe('RolloutNeighbourhood fits its container', () => {
-	test('the 240px tile floor is not applied at the 800px three-column breakpoint', () => {
-		expect(blocks('800px')).not.toMatch(/min-width:\s*240px/);
+	test('the 240px tile floor is not applied at the 1000px three-column breakpoint', () => {
+		expect(blocks('1000px')).not.toMatch(/min-width:\s*240px/);
 		expect(blocks('1100px')).toMatch(/\.hood-tile\s*\{\s*min-width:\s*240px/);
 	});
 
 	test('gutters are fluid, never a fixed 8rem/9rem', () => {
-		const wide = blocks('800px');
+		const wide = blocks('1000px');
 		expect(wide).not.toMatch(/minmax\(0,\s*\d+px\)\s+\d+rem/);
 		expect(wide).toMatch(/--hood-gutter:\s*clamp\(5rem,/);
 	});
 
-	test('812px of container (above the 800px breakpoint) fits', () => {
-		// Floors at 812: gutters clamp(5rem, 12cqi, 8rem) -> max(80, min(97, 128)) = 97.
-		const gutter = Math.min(128, Math.max(80, 0.12 * 812));
-		const steep = Math.min(144, Math.max(88, 0.13 * 812));
+	test('1012px of container (above the 1000px breakpoint) fits, and every tile track keeps >= 240px', () => {
+		// At 1012: gutters clamp(5rem, 12cqi, 8rem) -> max(80, min(121, 128)) = 121; steep max(88, min(132, 144)) = 132.
+		const gutter = Math.min(128, Math.max(80, 0.12 * 1012));
+		const steep = Math.min(144, Math.max(88, 0.13 * 1012));
+		// Gatehouse tiles (2026-11-12): the breakpoint moved from 800 to 1000 so a tile's name never breaks mid-word.
+		expect((1012 - 2 * steep) / 3).toBeGreaterThanOrEqual(240);
 		// Tracks are minmax(0, ...): their floor is 0 once the tile floor is off.
-		expect(2 * steep).toBeLessThan(812);
-		expect(2 * gutter).toBeLessThan(812);
-		// And the old numbers did not fit: 240 + 240 + 240 + 2 * 9rem = 1008 at 812.
+		expect(2 * steep).toBeLessThan(1012);
+		expect(2 * gutter).toBeLessThan(1012);
+		// And the pre-#140 numbers did not fit at #140's own 812: 240 * 3 + 2 * 9rem = 1008.
 		expect(240 * 3 + 2 * 144).toBeGreaterThan(812);
 	});
 });

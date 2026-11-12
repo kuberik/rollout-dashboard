@@ -7,6 +7,7 @@ import {
 	maxRise,
 	holdingFirst,
 	narrowWires,
+	SPINE_X,
 	slotPitch,
 	slots,
 	wideWires,
@@ -86,7 +87,7 @@ describe('the head comes after the path, and its tip lands on the painted edge',
 		const d = ws.find((w) => w.key === 'd')!;
 		expect(endOf(u.d)[1]).toBe(f.top - FOCUS_RING - ARROW.held.length);
 		expect(u.tip[1]).toBe(f.top - FOCUS_RING);
-		expect(d.d.startsWith(`M ${crisp(12, 'quiet')} ${f.bottom + FOCUS_RING}`)).toBe(true);
+		expect(d.d.startsWith(`M ${crisp(SPINE_X, 'quiet')} ${f.bottom + FOCUS_RING}`)).toBe(true);
 		expect(endOf(d.d)[0]).toBeCloseTo(32 - ARROW.quiet.length, 5);
 	});
 });
