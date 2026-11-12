@@ -44,14 +44,22 @@ func newApprovalEnv(t *testing.T, fc *kubernetes.Client, identity string) *appro
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	env := &approvalEnv{fc: fc}
-	t.Cleanup(kubernetes.SetReadClientForTest(fc))
+	// The read seam is a separate client serving fc's live state whose writes
+	// fail the test, so a write moved onto the service account is caught.
+	rc, err := kubernetes.NewReadMirrorForTest(fc, func(op string) {
+		t.Errorf("write (%s) went through the read/service-account client", op)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(kubernetes.SetReadClientForTest(rc))
 	t.Cleanup(kubernetes.SetListRolloutsPermissionCheckForTest(func(*gin.Context, string) (bool, error) { return true, nil }))
 	prevW, prevI, prevL, prevV := writeClientFn, approverIdentityFn, approvalsListClientFn, approvalByVerified
 	writeClientFn = func(*gin.Context) (*kubernetes.Client, error) { return fc, nil }
 	approverIdentityFn = func(context.Context, *kubernetes.Client) (string, bool, error) {
 		return identity, strings.HasPrefix(identity, "system:serviceaccount:"), nil
 	}
-	approvalsListClientFn = func() (*kubernetes.Client, error) { return fc, nil }
+	approvalsListClientFn = func() (*kubernetes.Client, error) { return rc, nil }
 	approvalByVerified = func(context.Context) bool { return env.verified }
 	t.Cleanup(func() {
 		writeClientFn, approverIdentityFn, approvalsListClientFn, approvalByVerified = prevW, prevI, prevL, prevV
@@ -557,5 +565,61 @@ func TestApproveRoutes_FanOutToSpokeLikePin(t *testing.T) {
 		hits[0].method != "POST" || hits[0].path != "/api/rollouts/shop/checkout/approve?" || hits[0].body != `{"version":"v1.42.0"}` ||
 		hits[1].method != "GET" || hits[1].path != "/api/rollouts/shop/checkout/approvals?" {
 		t.Fatalf("spoke saw %+v", hits)
+	}
+}
+
+// forbidGateUpdate makes every RolloutGate Update fail as an approver without
+// rolloutgates rights would.
+func forbidGateUpdate() interceptor.Funcs {
+	return interceptor.Funcs{
+		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			if _, ok := obj.(*rolloutv1alpha1.RolloutGate); ok {
+				return apierrors.NewForbidden(schema.GroupResource{Group: "kuberik.com", Resource: "rolloutgates"}, "x", nil)
+			}
+			return c.Update(ctx, obj, opts...)
+		},
+	}
+}
+
+func TestApprove_ApproverWithoutGateRightsAndNoLegacyGateIs200(t *testing.T) {
+	fc, _ := kubernetes.NewTestClientWithInterceptor(forbidGateUpdate(), approvalRollout())
+	env := newApprovalEnv(t, fc, "oidc:luka")
+	if w := env.approve("v1.42.0"); w.Code != 200 {
+		t.Fatalf("approve status %d: %s", w.Code, w.Body.String())
+	}
+	if env.getApproval(t, "checkout-v1-42-0") == nil {
+		t.Fatal("RolloutApproval not created")
+	}
+	if w := env.revoke("v1.42.0"); w.Code != 200 {
+		t.Fatalf("revoke status %d: %s", w.Code, w.Body.String())
+	}
+	if env.getApproval(t, "checkout-v1-42-0") != nil {
+		t.Fatal("RolloutApproval not deleted")
+	}
+}
+
+func TestApprove_LegacyGateForbiddenLeavesNothingCreated(t *testing.T) {
+	fc, _ := kubernetes.NewTestClientWithInterceptor(forbidGateUpdate(), approvalRollout(), legacyGate("manual"))
+	env := newApprovalEnv(t, fc, "oidc:luka")
+	w := env.approve("v1.42.0")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	if env.getApproval(t, "checkout-v1-42-0") != nil {
+		t.Fatal("RolloutApproval was created despite the refused gate update")
+	}
+}
+
+func TestRevoke_LegacyGateForbiddenLeavesApprovalInPlace(t *testing.T) {
+	// Seed through a permissive path, then revoke as the gate-less approver.
+	seed := gitApproval("checkout-v1-42-0", "v1.42.0", "")
+	fc, _ := kubernetes.NewTestClientWithInterceptor(forbidGateUpdate(), approvalRollout(), legacyGate("manual", "v1.42.0"), seed)
+	env := newApprovalEnv(t, fc, "oidc:luka")
+	w := env.revoke("v1.42.0")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	if env.getApproval(t, "checkout-v1-42-0") == nil {
+		t.Fatal("RolloutApproval was deleted despite the refused gate update")
 	}
 }

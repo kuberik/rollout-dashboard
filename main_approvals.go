@@ -64,8 +64,15 @@ func handleApprove(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 
+	// Legacy gates are found with the dashboard's own read client: an approver
+	// holds only rolloutapprovals rights (design.md 6.1).
+	rc, ok := getK8sReadClient(c)
+	if !ok {
+		return
+	}
+
 	if req.Revoke {
-		res, err := wc.RevokeVersion(ctx, namespace, name, req.Version)
+		res, err := wc.RevokeVersion(ctx, rc, namespace, name, req.Version)
 		if err != nil {
 			log.Printf("approve: revoke %s/%s %q: %v", namespace, name, req.Version, err)
 			writeUpstreamError(c, "Failed to revoke approval", err)
@@ -90,10 +97,6 @@ func handleApprove(c *gin.Context) {
 		writeUpstreamError(c, "Failed to get rollout", err)
 		return
 	}
-	rc, ok := getK8sReadClient(c)
-	if !ok {
-		return
-	}
 	catalogue, err := rc.RolloutCatalogueTags(ctx, rollout)
 	if err != nil {
 		log.Printf("approve: catalogue for %s/%s: %v", namespace, name, err)
@@ -111,7 +114,7 @@ func handleApprove(c *gin.Context) {
 	} else {
 		log.Printf("approve: identity for %s/%s: %v (approval is created without by)", namespace, name, err)
 	}
-	ap, err := wc.ApproveVersion(ctx, rollout, req.Version, by)
+	ap, err := wc.ApproveVersion(ctx, rc, rollout, req.Version, by)
 	if err != nil {
 		if errors.Is(err, kubernetes.ErrApprovalCollision) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})

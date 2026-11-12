@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 
@@ -158,8 +159,12 @@ func (c *Client) RolloutCatalogueTags(ctx context.Context, r *rolloutv1alpha1.Ro
 // with a different spec it is ErrApprovalCollision. by is the approver
 // identity, already filtered through ApproverIdentity ("" omits the annotation).
 // When legacy approval gates exist their allowedVersions gain the version too
-// (migration dual-write, removed in the cleanup PR).
-func (c *Client) ApproveVersion(ctx context.Context, rollout *rolloutv1alpha1.Rollout, version, by string) (*rolloutv1alpha1.RolloutApproval, error) {
+// (migration dual-write, removed in the cleanup PR). Legacy gates are FOUND
+// with reader (the dashboard's own read client: an approver holds no
+// rolloutgates rights) and written with c; the gate write comes first so a
+// refused gate update leaves nothing half-written, and is undone if the
+// RolloutApproval write then fails.
+func (c *Client) ApproveVersion(ctx context.Context, reader *Client, rollout *rolloutv1alpha1.Rollout, version, by string) (*rolloutv1alpha1.RolloutApproval, error) {
 	ap := &rolloutv1alpha1.RolloutApproval{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: rollout.Namespace,
@@ -179,6 +184,19 @@ func (c *Client) ApproveVersion(ctx context.Context, rollout *rolloutv1alpha1.Ro
 	if by != "" {
 		ap.Annotations = map[string]string{AnnotationApprovalBy: by}
 	}
+	changed, err := c.setLegacyGateVersion(ctx, reader, rollout.Namespace, rollout.Name, version, true, nil)
+	if err != nil {
+		return nil, err
+	}
+	ap, err = c.createApproval(ctx, ap, rollout, version)
+	if err != nil {
+		c.undoLegacy(ctx, reader, rollout.Namespace, rollout.Name, version, true, changed)
+		return nil, err
+	}
+	return ap, nil
+}
+
+func (c *Client) createApproval(ctx context.Context, ap *rolloutv1alpha1.RolloutApproval, rollout *rolloutv1alpha1.Rollout, version string) (*rolloutv1alpha1.RolloutApproval, error) {
 	if err := c.client.Create(ctx, ap); err != nil {
 		if !apierrors.IsAlreadyExists(err) {
 			return nil, fmt.Errorf("failed to create RolloutApproval %s/%s: %w", ap.Namespace, ap.Name, err)
@@ -192,10 +210,22 @@ func (c *Client) ApproveVersion(ctx context.Context, rollout *rolloutv1alpha1.Ro
 		}
 		ap = existing
 	}
-	if err := c.setLegacyGateVersion(ctx, rollout.Namespace, rollout.Name, version, true); err != nil {
-		return nil, err
-	}
 	return ap, nil
+}
+
+// undoLegacy best-effort reverts gate changes (names) made by an operation
+// whose RolloutApproval write then failed.
+func (c *Client) undoLegacy(ctx context.Context, reader *Client, namespace, rolloutName, version string, add bool, names []string) {
+	if len(names) == 0 {
+		return
+	}
+	only := map[string]bool{}
+	for _, n := range names {
+		only[n] = true
+	}
+	if _, err := c.setLegacyGateVersion(ctx, reader, namespace, rolloutName, version, !add, only); err != nil {
+		log.Printf("approvals: undo of legacy gate change for %s/%s %q failed: %v", namespace, rolloutName, version, err)
+	}
 }
 
 // RevokeResult is what RevokeVersion found after deleting.
@@ -209,18 +239,15 @@ type RevokeResult struct {
 // success) and reports any other approval of the same rollout and version. It
 // never deletes an approval it did not create under the deterministic name.
 // Legacy gates lose the version only when nothing else still approves it.
-func (c *Client) RevokeVersion(ctx context.Context, namespace, rolloutName, version string) (*RevokeResult, error) {
+func (c *Client) RevokeVersion(ctx context.Context, reader *Client, namespace, rolloutName, version string) (*RevokeResult, error) {
 	name := ApprovalName(rolloutName, version)
 	existing := &rolloutv1alpha1.RolloutApproval{}
 	err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, existing)
+	ours := false
 	switch {
 	case err == nil:
 		// Only delete our own: a colliding name for another rollout/version is not ours.
-		if existing.Spec.RolloutRef.Name == rolloutName && existing.Spec.Version == version {
-			if derr := c.client.Delete(ctx, existing); derr != nil && !apierrors.IsNotFound(derr) {
-				return nil, fmt.Errorf("failed to delete RolloutApproval %s/%s: %w", namespace, name, derr)
-			}
-		}
+		ours = existing.Spec.RolloutRef.Name == rolloutName && existing.Spec.Version == version
 	case apierrors.IsNotFound(err):
 	default:
 		return nil, fmt.Errorf("failed to read RolloutApproval %s/%s: %w", namespace, name, err)
@@ -231,13 +258,21 @@ func (c *Client) RevokeVersion(ctx context.Context, namespace, rolloutName, vers
 	}
 	res := &RevokeResult{}
 	for _, a := range all {
-		if a.Spec.Version == version {
+		if a.Spec.Version == version && !(ours && a.Name == name) {
 			res.Remaining = append(res.Remaining, a)
 		}
 	}
+	var changed []string
 	if len(res.Remaining) == 0 {
-		if err := c.setLegacyGateVersion(ctx, namespace, rolloutName, version, false); err != nil {
+		// Gate first: a refused gate update leaves the approval in place.
+		if changed, err = c.setLegacyGateVersion(ctx, reader, namespace, rolloutName, version, false, nil); err != nil {
 			return nil, err
+		}
+	}
+	if ours {
+		if derr := c.client.Delete(ctx, existing); derr != nil && !apierrors.IsNotFound(derr) {
+			c.undoLegacy(ctx, reader, namespace, rolloutName, version, false, changed)
+			return nil, fmt.Errorf("failed to delete RolloutApproval %s/%s: %w", namespace, name, derr)
 		}
 	}
 	return res, nil
@@ -290,22 +325,29 @@ func IsLegacyApprovalGate(g *rolloutv1alpha1.RolloutGate) bool {
 // written with a resourceVersion-checked Update retried on conflict, so a
 // concurrent edit is merged, never overwritten. An empty result stays [] (nil
 // would mean "no opinion" and open the gate).
-func (c *Client) setLegacyGateVersion(ctx context.Context, namespace, rolloutName, version string, add bool) error {
-	gates, err := c.GetRolloutGatesByRolloutReference(ctx, namespace, rolloutName)
+//
+// Gates are found and re-read with reader (the dashboard's own client; the
+// user may hold no rolloutgates rights) and only the Update goes through c.
+// only, when non-nil, restricts the work to those gate names. Returns the
+// names of the gates actually changed.
+func (c *Client) setLegacyGateVersion(ctx context.Context, reader *Client, namespace, rolloutName, version string, add bool, only map[string]bool) ([]string, error) {
+	gates, err := reader.GetRolloutGatesByRolloutReference(ctx, namespace, rolloutName)
 	if err != nil {
 		if IsCRDNotInstalled(err) {
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
+	var changed []string
 	for i := range gates.Items {
-		if !IsLegacyApprovalGate(&gates.Items[i]) {
+		if !IsLegacyApprovalGate(&gates.Items[i]) || (only != nil && !only[gates.Items[i].Name]) {
 			continue
 		}
 		key := client.ObjectKeyFromObject(&gates.Items[i])
+		wrote := false
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			g := &rolloutv1alpha1.RolloutGate{}
-			if err := c.client.Get(ctx, key, g); err != nil {
+			if err := reader.client.Get(ctx, key, g); err != nil {
 				return err
 			}
 			if !IsLegacyApprovalGate(g) {
@@ -330,16 +372,25 @@ func (c *Client) setLegacyGateVersion(ctx context.Context, namespace, rolloutNam
 				next = append(next, version)
 			}
 			g.Spec.AllowedVersions = &next
-			return c.client.Update(ctx, g)
+			if err := c.client.Update(ctx, g); err != nil {
+				return err
+			}
+			wrote = true
+			return nil
 		})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			return fmt.Errorf("failed to update legacy approval gate %s/%s: %w", key.Namespace, key.Name, err)
+			// Roll back the gates already changed in this call.
+			c.undoLegacy(ctx, reader, namespace, rolloutName, version, add, changed)
+			return nil, fmt.Errorf("failed to update legacy approval gate %s/%s: %w", key.Namespace, key.Name, err)
+		}
+		if wrote {
+			changed = append(changed, key.Name)
 		}
 	}
-	return nil
+	return changed, nil
 }
 
 func corev1LocalRef(name string) corev1.LocalObjectReference {
