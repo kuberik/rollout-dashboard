@@ -600,6 +600,8 @@ lib/components/new/app/PlaceRow.svelte	aria-label	… the deployment pipeline of
 lib/components/new/app/PlaceRow.svelte	text	… Waiting for
 lib/components/new/app/PlaceRow.svelte	title	Held by the pin
 lib/components/new/ApprovalLayer.svelte	code	left:…px;width:…px;${below ?
+lib/components/new/approvals.svelte.ts	code	… … approved
+lib/components/new/approvals.svelte.ts	code	… and …
 lib/components/new/approvals.svelte.ts	code	… is deploying … to …
 lib/components/new/approvals.svelte.ts	code	… is deploying to …
 lib/components/new/approvals.svelte.ts	code	… stays approved
@@ -611,6 +613,7 @@ lib/components/new/approvals.svelte.ts	code	main h1
 lib/components/new/approvals.svelte.ts	code	Undo failed, the approval stands
 lib/components/new/ApproveButton.svelte	text	… Approve
 lib/components/new/ApproveButton.svelte	aria-label	Approve … in …
+lib/components/new/ApproveButton.svelte	code	Approve all … regions
 lib/components/new/apps-page.ts	code	… failing
 lib/components/new/apps-page.ts	code	… yours
 lib/components/new/Apps.svelte	title	At rest
@@ -2106,6 +2109,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Checking 
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Choose "All" on the cadence strip above to see every deploy.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Commit …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	deploy …
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	deployed by
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Deploying for
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Deployment timeline
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	First deploy

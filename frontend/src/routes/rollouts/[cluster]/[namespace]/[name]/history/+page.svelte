@@ -2206,6 +2206,7 @@
 												     as `title` and `aria-label`, so nothing accessible is
 												     lost. -->
 																			<span class="inline-flex min-w-0 items-center gap-1">
+																				{#if approved && actor.kind !== 'controller'}<span class="shrink-0 text-fg-muted">deployed by</span>{/if}
 																				<!-- ⭐ `actorFrom` (shared adapter, `lib/actor.ts`) + `Avatar`:
 													     identity before reading — a person's monogram or
 													     photo, the kuberik mark for the controller, never the
@@ -2224,7 +2225,7 @@
 																					<span class="trigger-name">Automatic</span>
 																				{:else}
 																					<span class="trigger-name max-w-40 truncate"
-																						>{approved ? 'deployed by ' : ''}{actor.name}</span
+																						>{actor.name}</span
 																					>
 																				{/if}
 																			</span>

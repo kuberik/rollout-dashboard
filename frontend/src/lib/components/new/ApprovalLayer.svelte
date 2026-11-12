@@ -111,7 +111,7 @@
 		{#snippet action()}
 			<!-- Dismiss is the toast's own ×; an error or an Undo that did not revert has no second verb to offer beside it -->
 			{#if !done.error && !done.still}
-				<button type="button" class="nav-link" data-action="approve-undo" onclick={() => undoApprove()}>Undo</button>
+				<button type="button" class="nav-link -mx-1 rounded-md px-2 py-1" data-action="approve-undo" onclick={() => undoApprove()}>Undo</button>
 			{/if}
 		{/snippet}
 	</Toast>
