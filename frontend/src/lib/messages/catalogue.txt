@@ -400,6 +400,7 @@ lib/components/FleetCard.svelte	text	No deploys in the last 24 h
 lib/components/FleetCard.svelte	text	Recent deploys
 lib/components/FleetCard.svelte	text	Show all
 lib/components/GateLabel.svelte	text	… from
+lib/components/GateLabel.svelte	aria-label	Open …
 lib/components/GateLines.svelte	title	… serves … …
 lib/components/GateLines.svelte	title	The rule holding this: …
 lib/components/GateRecord.svelte	code	deploy window
@@ -550,11 +551,10 @@ lib/components/new/app/app-model.ts	code	} failed here
 lib/components/new/app/app-model.ts	code	} in …
 lib/components/new/app/app-model.ts	code	a rule
 lib/components/new/app/app-model.ts	code	Custom build
-lib/components/new/app/app-model.ts	code	finish checking
-lib/components/new/app/app-model.ts	code	finish deploying
 lib/components/new/app/app-model.ts	code	follows …
 lib/components/new/app/app-model.ts	code	health checks
 lib/components/new/app/app-model.ts	code	Health checks
+lib/components/new/app/app-model.ts	code	Held by
 lib/components/new/app/app-model.ts	code	Held by the pin
 lib/components/new/app/app-model.ts	code	its leader
 lib/components/new/app/app-model.ts	code	next …
@@ -568,7 +568,6 @@ lib/components/new/app/app-model.ts	code	Releases when the check starts passing
 lib/components/new/app/app-model.ts	code	Releases when the pin is cleared
 lib/components/new/app/app-model.ts	code	Rolled back
 lib/components/new/app/app-model.ts	code	Then … more … follow….
-lib/components/new/app/app-model.ts	code	to … …
 lib/components/new/app/app-model.ts	code	Up to date
 lib/components/new/app/app-model.ts	code	wave …
 lib/components/new/app/AppActivity.svelte	code	… of …
@@ -596,6 +595,7 @@ lib/components/new/app/AppDetail.svelte	title	Deployment failed
 lib/components/new/app/AppDetail.svelte	code	The health checks are running.
 lib/components/new/app/AppDetail.svelte	headline	This app does not exist
 lib/components/new/app/AppGates.svelte	aria-label	… details of …
+lib/components/new/app/AppGates.svelte	text	… Held by
 lib/components/new/app/AppGates.svelte	text	How to approve
 lib/components/new/app/PlaceRow.svelte	aria-label	… in …
 lib/components/new/app/PlaceRow.svelte	aria-label	… the deployment pipeline of … in …
@@ -801,6 +801,7 @@ lib/components/new/data.ts	code	Releases when the rule allows this build
 lib/components/new/data.ts	code	Rolled back from … to …
 lib/components/new/data.ts	code	someone approves
 lib/components/new/data.ts	code	Stage …
+lib/components/new/data.ts	code	the previous environment is ready
 lib/components/new/data.ts	code	the rule allows it
 lib/components/new/data.ts	code	the window opens
 lib/components/new/data.ts	code	waiting for approval
@@ -993,7 +994,7 @@ lib/components/new/Rollouts.svelte	text	Open rollout ›
 lib/components/new/Rollouts.svelte	text	Roll back
 lib/components/new/Rollouts.svelte	text	Rollouts appear here as soon as one is deployed.
 lib/components/new/Slipway.svelte	code	…… ago
-lib/components/new/Slipway.svelte	code	…${n.hold ?
+lib/components/new/Slipway.svelte	code	…${n.hold && !n.holdC ?
 lib/components/new/Slipway.svelte	text	1 of … regions
 lib/components/new/Slipway.svelte	code	Check timer
 lib/components/new/Slipway.svelte	code	Checking · …
@@ -1790,6 +1791,10 @@ lib/view-models/verdict.ts	code	is not moving
 lib/view-models/verdict.ts	code	is waiting on …
 lib/view-models/verdict.ts	code	waiting on …
 lib/view-models/wait-cause.ts	code	a dependency
+lib/view-models/wait-fact.ts	code	finish checking
+lib/view-models/wait-fact.ts	code	finish deploying
+lib/view-models/wait-fact.ts	code	to … …
+lib/view-models/wait-fact.ts	code	Waiting for … …
 lib/view-models/waits-for-text.ts	code	a check starts passing
 lib/view-models/waits-for-text.ts	code	a check to start passing
 lib/view-models/waits-for-text.ts	code	an approval

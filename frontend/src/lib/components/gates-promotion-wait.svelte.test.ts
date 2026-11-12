@@ -77,7 +77,7 @@ describe('promotion gate box: the chip links to the source environment Gates tab
 	test('the source chip is an anchor to that environment Gates tab with an accessible name', () => {
 		const a = draw('staging', [link('staging')]).querySelector('a[href]');
 		expect(a).toHaveAttribute('href', '/rollouts/c/ns/staging/gates');
-		expect(a).toHaveAttribute('aria-label', 'Gates of staging');
+		expect(a).toHaveAttribute('aria-label', 'Open staging');
 	});
 	test('no known rollout for the source: chip stays unlinked; unknown source reads the word', () => {
 		expect(draw('staging', []).querySelector('a[href]')).toBeNull();

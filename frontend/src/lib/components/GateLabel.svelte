@@ -22,7 +22,7 @@
 		{#if glyph}<ChevronDoubleRightOutline class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />{/if}
 		{#if label.source}
 			<span class="sr-only">{PROMOTION_WORD} from </span>
-			{#if href}<a {href} class="inline-flex min-w-0 rounded-sm hover:opacity-80" aria-label="Gates of {label.source}"><Chip role="env" label={label.source} theme={getRolloutEnvironmentTheme(null, label.source)} wide /></a>
+			{#if href}<a {href} class="inline-flex min-w-0 rounded-sm hover:opacity-80" aria-label="Open {label.source}"><Chip role="env" label={label.source} theme={getRolloutEnvironmentTheme(null, label.source)} wide /></a>
 			{:else}<Chip role="env" label={label.source} theme={getRolloutEnvironmentTheme(null, label.source)} wide />{/if}
 		{:else}
 			<span class="min-w-0">{PROMOTION_WORD}</span>
