@@ -76,13 +76,16 @@ npm run build         # Output to frontend/dist
 
 ```
 GET  /api/health                               # Health check
-GET  /api/rollouts                             # List all rollouts (+ kustomizations, environments, kruiseRollouts,
+GET  /api/rollouts                             # List all rollouts (every status.gates[] entry carries kind, displayName?
+                                               #   and rule {kind,name,namespace?}) (+ kustomizations, environments, kruiseRollouts,
                                                #   rolloutDependencies, releaseSources, releaseSlices; the last three
                                                #   are {items}|null, null = CRD not installed; real read failures are
                                                #   named in partialReads; all fan-out merged + source-cluster stamped)
 GET  /api/rollouts/:namespace/:name            # Get rollout details
 POST /api/rollouts/:namespace/:name/pin        # Pin version to rollout
-POST /api/rollouts/:namespace/:name/bypass-gates  # Add bypass-gates annotation
+POST /api/rollouts/:namespace/:name/bypass-gates  # Let a build through gates. Body {version, rule?:{kind,name,namespace?}, gates?:[names]};
+                                               #   200 {rollout, version, gates, scope:"only"|"all"}; 409 version not a
+                                               #   candidate / lock conflict; 422 rule or gate matches nothing (see Bypass Gates Feature)
 ```
 
 ## Kubernetes client: reads vs. writes, and per-user visibility
@@ -138,20 +141,39 @@ The dashboard finds kustomizations that reference a specific rollout.
 
 ## Bypass Gates Feature
 
-Allow rollout controller to bypass gate checks for specific version:
+Let one build through gates once (annotations on the Rollout, both cleared by the
+controller after the deploy):
 
 ```bash
-# Add bypass annotation
-kubectl annotate rollout <rollout-name> rollout.kuberik.com/bypass-gates="v1.2.3"
-
-# Remove bypass annotation
-kubectl annotate rollout <rollout-name> rollout.kuberik.com/bypass-gates-
+kubectl annotate rollout <name> rollout.kuberik.com/bypass-gates="v1.2.3"            # every gate
+kubectl annotate rollout <name> rollout.kuberik.com/bypass-gates-only="gateA,gateB"  # only these gates
 ```
 
-**How it works:**
-- When set, rollout controller can deploy specified version without waiting for gates
-- Useful for emergency deployments or testing
-- Dashboard provides UI to manage this annotation safely
+- `bypass-gates-only` (comma-separated RolloutGate names, sorted, no spaces) narrows `bypass-gates`:
+  unlisted gates still apply. Absent/empty = every gate. Does nothing without `bypass-gates`.
+- The controller ignores a bypass for a build that is not a release candidate.
+- Who set it is NOT recorded anywhere (history message only names skipped gates). Do not show a person.
+
+**Endpoint** `POST /api/rollouts/:ns/:name/bypass-gates`, body
+`{"version": "1.4.2", "rule": {"kind": "ClusterRolloutSchedule", "name": "business-hours"}, "gates": ["optional"]}`:
+- no `rule`/`gates`: bypass every gate and delete any stale `bypass-gates-only`.
+- `rule` resolves to this rollout's gates whose `pkg/kubernetes.GateRule` matches (kind, name, namespace when
+  given); `gates` are explicit names; both = union. 422 when the rule matches no gate or a gate is not one of
+  this rollout's RolloutGates.
+- 409 when `version` is not in `status.candidates[].tag`, or when the rollout changed under us (optimistic lock
+  on resourceVersion).
+- Accumulates: same version already bypassed with an only-list unions the new names; a full bypass of the same
+  version stays full; a different version is replaced.
+- Write = JSON merge patch on metadata.annotations (null deletes), field owner `rollout-dashboard`, via the
+  operator's own token (`getK8sWriteClient`). Gates are listed through the read client.
+- 200: `{rollout, version, gates: [resolved names], scope: "only"|"all"}`.
+- Per-cluster: a spoke cluster is reached through `/api/clusters/:cluster/...`, which resolves its own gates.
+  "Many rollouts" is the frontend calling this once per rollout.
+
+**Rule identity** (`GateRule`, serialised as `rule` on every `status.gates[]` entry): ownerReferences first
+(RolloutSchedule, ClusterRolloutSchedule, RolloutDependency, ApprovalPolicy, ClusterApprovalPolicy, Environment),
+then `gate.kuberik.com/{schedule,dependency,approval-policy}-*` labels, else `{kind:"RolloutGate", name: gate}`.
+`namespace` is omitted for cluster-scoped rules and unowned gates.
 
 **Warning:** Use carefully as it bypasses important safety checks.
 

@@ -938,9 +938,7 @@ func setupRouter() *gin.Engine {
 			namespace := c.Param("namespace")
 			name := c.Param("name")
 
-			var bypassRequest struct {
-				Version string `json:"version" binding:"required"`
-			}
+			var bypassRequest kubernetes.BypassRequest
 			if err := c.ShouldBindJSON(&bypassRequest); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{
 					"error":   "Invalid request body",
@@ -949,16 +947,48 @@ func setupRouter() *gin.Engine {
 				return
 			}
 
-			// Add the bypass-gates annotation with the specific version
-			updatedRollout, err := k8sClient.AddBypassGatesAnnotation(context.Background(), namespace, name, bypassRequest.Version)
+			ctx := c.Request.Context()
+			// Read the rollout live with the operator's token so the
+			// resourceVersion we lock on is current; list the gates through the
+			// shared read client (a read; the write is the patch below).
+			rollout, err := k8sClient.GetRollout(ctx, namespace, name)
 			if err != nil {
-				log.Printf("Error adding bypass-gates annotation: %v", err)
+				log.Printf("Error reading rollout for bypass-gates: %v", err)
+				writeUpstreamError(c, "Failed to read rollout", err)
+				return
+			}
+			gateReader := k8sClient
+			if rc, rerr := kubernetes.GetReadClient(c); rerr == nil {
+				gateReader = rc
+			}
+			gates, err := gateReader.ListRolloutGates(ctx, namespace)
+			if err != nil {
+				log.Printf("Error listing rollout gates for bypass-gates: %v", err)
+				writeUpstreamError(c, "Failed to list rollout gates", err)
+				return
+			}
+			plan, err := kubernetes.ResolveBypass(gates, rollout, bypassRequest)
+			if err != nil {
+				var be *kubernetes.BypassError
+				if errors.As(err, &be) {
+					c.JSON(be.Status, gin.H{"error": be.Message})
+					return
+				}
+				writeUpstreamError(c, "Failed to resolve bypass", err)
+				return
+			}
+			updatedRollout, err := k8sClient.PatchRolloutAnnotations(ctx, rollout, plan.Annotations)
+			if err != nil {
+				log.Printf("Error patching bypass-gates annotations: %v", err)
 				writeUpstreamError(c, "Failed to add bypass-gates annotation", err)
 				return
 			}
 
 			c.JSON(http.StatusOK, gin.H{
 				"rollout": rolloutWithGateKinds(c, updatedRollout),
+				"version": plan.Version,
+				"gates":   plan.Gates,
+				"scope":   plan.Scope,
 			})
 		})
 

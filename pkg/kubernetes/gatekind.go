@@ -92,6 +92,90 @@ func GateKind(gate *rolloutv1alpha1.RolloutGate) string {
 	return GateKindUnknown
 }
 
+// Label keys carrying the namespace / kind of the rule that generated a gate
+// (rollout-controller rolloutschedule_helpers.go LabelScheduleNamespace,
+// approval_helpers.go LabelApprovalPolicyKind / LabelApprovalPolicyNamespace).
+const (
+	gateLabelScheduleNamespace       = "gate.kuberik.com/schedule-namespace"
+	gateLabelApprovalPolicyKind      = "gate.kuberik.com/approval-policy-kind"
+	gateLabelApprovalPolicyNamespace = "gate.kuberik.com/approval-policy-namespace"
+)
+
+// RuleKindGate is the rule kind of a gate no controller owns (hand-written).
+const RuleKindGate = "RolloutGate"
+
+// RuleRef identifies the rule an operator names for a gate. One rule generates
+// one RolloutGate per rollout, so this, not the gate name, is the stable
+// identity. Namespace is empty for cluster-scoped rules and unowned gates.
+type RuleRef struct {
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+func ruleOwnerKindNamespaced(kind string) bool {
+	switch kind {
+	case "RolloutSchedule", "RolloutDependency", "ApprovalPolicy", "Environment":
+		return true
+	}
+	return false
+}
+
+// GateRule derives the rule identity of a RolloutGate: ownerReferences first
+// (RolloutSchedule, ClusterRolloutSchedule, RolloutDependency, ApprovalPolicy,
+// ClusterApprovalPolicy, Environment), then the gate.kuberik.com/* labels, else
+// {RolloutGate, gate name}. Owners of namespaced kinds live in the gate's own
+// namespace (cross-namespace owners are not allowed by Kubernetes).
+func GateRule(gate *rolloutv1alpha1.RolloutGate) RuleRef {
+	if gate == nil {
+		return RuleRef{Kind: RuleKindGate}
+	}
+	for _, o := range gate.OwnerReferences {
+		switch o.Kind {
+		case "RolloutSchedule", "ClusterRolloutSchedule", "RolloutDependency",
+			"ApprovalPolicy", "ClusterApprovalPolicy", "Environment":
+			r := RuleRef{Kind: o.Kind, Name: o.Name}
+			if ruleOwnerKindNamespaced(o.Kind) {
+				r.Namespace = gate.Namespace
+			}
+			return r
+		}
+	}
+	l := gate.Labels
+	if n := l[gateLabelScheduleName]; n != "" {
+		ns := l[gateLabelScheduleNamespace]
+		kind := l[gateLabelScheduleKind]
+		if kind == "" {
+			kind = "ClusterRolloutSchedule"
+			if ns != "" {
+				kind = "RolloutSchedule"
+			}
+		}
+		if kind == "ClusterRolloutSchedule" {
+			ns = ""
+		}
+		return RuleRef{Kind: kind, Name: n, Namespace: ns}
+	}
+	if n := l[gateLabelDependencyName]; n != "" {
+		return RuleRef{Kind: "RolloutDependency", Name: n, Namespace: gate.Namespace}
+	}
+	if n := l[gateLabelApprovalPolicyName]; n != "" {
+		ns := l[gateLabelApprovalPolicyNamespace]
+		kind := l[gateLabelApprovalPolicyKind]
+		if kind == "" {
+			kind = "ClusterApprovalPolicy"
+			if ns != "" {
+				kind = "ApprovalPolicy"
+			}
+		}
+		if kind == "ClusterApprovalPolicy" {
+			ns = ""
+		}
+		return RuleRef{Kind: kind, Name: n, Namespace: ns}
+	}
+	return RuleRef{Kind: RuleKindGate, Name: gate.Name}
+}
+
 // gateAnnotationPrettyName is the display-name annotation the controllers
 // stamp on gates (rollout-controller rolloutschedule_helpers.go:384, 434 and
 // rolloutdependency_controller.go:287; environment-controller
@@ -105,6 +189,7 @@ const gateAnnotationPrettyName = "gate.kuberik.com/pretty-name"
 type GateInfo struct {
 	Kind        string
 	DisplayName string
+	Rule        RuleRef
 }
 
 // GateKindIndex maps "namespace/name" of a RolloutGate to its GateInfo.
@@ -116,14 +201,14 @@ func (i GateKindIndex) Lookup(namespace, name string) GateInfo {
 	if k, ok := i[namespace+"/"+name]; ok {
 		return k
 	}
-	return GateInfo{Kind: GateKindUnknown}
+	return GateInfo{Kind: GateKindUnknown, Rule: RuleRef{Kind: RuleKindGate, Name: name}}
 }
 
 // NewGateKindIndex indexes gates by namespace/name.
 func NewGateKindIndex(gates []rolloutv1alpha1.RolloutGate) GateKindIndex {
 	idx := make(GateKindIndex, len(gates))
 	for i := range gates {
-		idx[gates[i].Namespace+"/"+gates[i].Name] = GateInfo{Kind: GateKind(&gates[i]), DisplayName: gates[i].Annotations[gateAnnotationPrettyName]}
+		idx[gates[i].Namespace+"/"+gates[i].Name] = GateInfo{Kind: GateKind(&gates[i]), DisplayName: gates[i].Annotations[gateAnnotationPrettyName], Rule: GateRule(&gates[i])}
 	}
 	return idx
 }
@@ -148,6 +233,9 @@ type gateSummaryWithKind struct {
 	rolloutv1alpha1.RolloutGateStatusSummary
 	Kind        string `json:"kind"`
 	DisplayName string `json:"displayName,omitempty"`
+	// Rule is the operator-facing rule that generated the gate (see GateRule);
+	// always present.
+	Rule RuleRef `json:"rule"`
 }
 
 type rolloutStatusWithKinds struct {
@@ -169,7 +257,7 @@ func toKindJSON(r *rolloutv1alpha1.Rollout, kinds GateKindIndex) rolloutWithKind
 		out.Status.Gates = make([]gateSummaryWithKind, len(r.Status.Gates))
 		for i, g := range r.Status.Gates {
 			info := kinds.Lookup(r.Namespace, g.Name)
-			out.Status.Gates[i] = gateSummaryWithKind{RolloutGateStatusSummary: g, Kind: info.Kind, DisplayName: info.DisplayName}
+			out.Status.Gates[i] = gateSummaryWithKind{RolloutGateStatusSummary: g, Kind: info.Kind, DisplayName: info.DisplayName, Rule: info.Rule}
 		}
 	}
 	return out

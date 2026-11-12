@@ -97,7 +97,7 @@ func TestRolloutListWithGateKinds_InjectsKindOnEverySummary(t *testing.T) {
 	}
 }
 
-// The typed encoder must be the plain encoding plus kind, nothing else.
+// The typed encoder must be the plain encoding plus kind, displayName and rule, nothing else.
 func TestRolloutListWithGateKinds_OnlyAddsKind(t *testing.T) {
 	l, idx := benchList(5)
 	plain, _ := json.Marshal(l)
@@ -117,8 +117,12 @@ func TestRolloutListWithGateKinds_OnlyAddsKind(t *testing.T) {
 			if m["displayName"] != "Business hours" {
 				t.Fatalf("displayName = %v", m["displayName"])
 			}
+			if m["rule"] == nil {
+				t.Fatalf("rule missing: %v", m)
+			}
 			delete(m, "kind")
 			delete(m, "displayName")
+			delete(m, "rule")
 		}
 	}
 	if !reflect.DeepEqual(a, b) {

@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	imagereflectorv1 "github.com/fluxcd/image-reflector-controller/api/v1"
 	"io"
@@ -38,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -526,36 +528,33 @@ func (c *Client) ResetHealthChecksToPending(ctx context.Context, namespace, name
 	return nil
 }
 
-// AddBypassGatesAnnotation adds the rollout.kuberik.com/bypass-gates annotation to a rollout
-// This allows the rollout to bypass gate checks for a specific version
-func (c *Client) AddBypassGatesAnnotation(ctx context.Context, namespace, name string, version string) (*rolloutv1alpha1.Rollout, error) {
-	// Create an unstructured patch object with only the annotation
-	patch := &unstructured.Unstructured{}
-	patch.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "kuberik.com",
-		Version: "v1alpha1",
-		Kind:    "Rollout",
-	})
-	patch.SetNamespace(namespace)
-	patch.SetName(name)
-
-	// Set the bypass-gates annotation with the specific version
-	patch.SetAnnotations(map[string]string{
-		"rollout.kuberik.com/bypass-gates": version,
-	})
-
-	// Use server-side apply to update only the annotation
-	if err := c.client.Patch(ctx, patch, client.Merge, client.FieldOwner("rollout-dashboard")); err != nil {
-		return nil, fmt.Errorf("failed to add bypass-gates annotation using server-side apply: %w", err)
+// ListRolloutGates lists the RolloutGates of one namespace.
+func (c *Client) ListRolloutGates(ctx context.Context, namespace string) ([]rolloutv1alpha1.RolloutGate, error) {
+	gates := &rolloutv1alpha1.RolloutGateList{}
+	if err := c.client.List(ctx, gates, client.InNamespace(namespace)); err != nil {
+		return nil, err
 	}
+	return gates.Items, nil
+}
 
-	// Get the updated rollout to return
-	updatedRollout := &rolloutv1alpha1.Rollout{}
-	if err := c.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, updatedRollout); err != nil {
-		return nil, fmt.Errorf("failed to get updated rollout: %w", err)
+// PatchRolloutAnnotations applies a JSON merge patch to metadata.annotations
+// (a nil value deletes the key), guarded by the rollout's resourceVersion so a
+// concurrent change yields a 409 Conflict instead of a lost update.
+func (c *Client) PatchRolloutAnnotations(ctx context.Context, rollout *rolloutv1alpha1.Rollout, annotations map[string]*string) (*rolloutv1alpha1.Rollout, error) {
+	body, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"resourceVersion": rollout.ResourceVersion,
+			"annotations":     annotations,
+		},
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	return updatedRollout, nil
+	target := &rolloutv1alpha1.Rollout{ObjectMeta: metav1.ObjectMeta{Namespace: rollout.Namespace, Name: rollout.Name}}
+	if err := c.client.Patch(ctx, target, client.RawPatch(types.MergePatchType, body), client.FieldOwner("rollout-dashboard")); err != nil {
+		return nil, fmt.Errorf("failed to patch rollout annotations: %w", err)
+	}
+	return target, nil
 }
 
 // AddForceDeployAnnotation adds the rollout.kuberik.com/force-deploy annotation to a rollout
