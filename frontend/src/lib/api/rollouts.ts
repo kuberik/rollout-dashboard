@@ -50,6 +50,8 @@ export type ClusterError = {
     kind?: 'timeout' | 'unreachable' | 'rejected' | 'bad_answer';
     /** the HTTP status when kind is 'rejected' */
     status?: number;
+    /** what was wrong with a 'bad_answer': 'not_json' | 'wrong_shape' */
+    detail?: string;
 };
 
 export type RolloutsListResponse = {

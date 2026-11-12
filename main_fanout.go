@@ -70,6 +70,29 @@ type ClusterError struct {
 	// hubs. Error stays for compatibility.
 	Kind   string `json:"kind,omitempty"`
 	Status int    `json:"status,omitempty"`
+	// Detail says what was wrong with a bad_answer: "not_json" (the body is
+	// not JSON, e.g. a login page) or "wrong_shape" (JSON, but not an object
+	// of lists). Absent for other kinds.
+	Detail string `json:"detail,omitempty"`
+}
+
+// ClusterError.Detail values.
+const (
+	clusterDetailNotJSON    = "not_json"
+	clusterDetailWrongShape = "wrong_shape"
+)
+
+// clusterErrorDetail is the typed detail of a bad_answer, else "".
+func clusterErrorDetail(err error) string {
+	var de *spokeDecodeError
+	if !errors.As(err, &de) {
+		return ""
+	}
+	var ute *json.UnmarshalTypeError
+	if errors.As(de.err, &ute) {
+		return clusterDetailWrongShape
+	}
+	return clusterDetailNotJSON
 }
 
 // ClusterError.Kind values.
@@ -664,6 +687,7 @@ func fanOut(
 				Reason: clusterErrorReason(r.spoke.err),
 				Kind:   kind,
 				Status: status,
+				Detail: clusterErrorDetail(r.spoke.err),
 			})
 			continue
 		}
@@ -685,6 +709,7 @@ func fanOut(
 				Reason:   clusterErrorReason(r.meta.StaleErr),
 				Kind:     kind,
 				Status:   status,
+				Detail:   clusterErrorDetail(r.meta.StaleErr),
 			})
 		}
 		// Annotate and merge each key.

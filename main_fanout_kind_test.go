@@ -70,3 +70,30 @@ func TestDoFetchSpokeTypesFailures(t *testing.T) {
 		}
 	}
 }
+
+// A bad_answer says what was wrong with the answer, typed.
+func TestClusterErrorDetail(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{"html login page", "<html>login</html>", clusterDetailNotJSON},
+		{"empty body", "", clusterDetailNotJSON},
+		{"json array", `[1,2]`, clusterDetailWrongShape},
+		{"json string", `"hi"`, clusterDetailWrongShape},
+	} {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, tc.body) }))
+		_, err := doFetchSpoke(context.Background(), s.URL, "/api/rollouts", "")
+		s.Close()
+		if kind, _ := clusterErrorKind(err); kind != clusterKindBadAnswer {
+			t.Errorf("%s: kind %q", tc.name, kind)
+		}
+		if got := clusterErrorDetail(err); got != tc.want {
+			t.Errorf("%s: detail %q want %q", tc.name, got, tc.want)
+		}
+	}
+	if d := clusterErrorDetail(&spokeStatusError{status: 502}); d != "" {
+		t.Errorf("status error carries detail %q", d)
+	}
+}

@@ -182,7 +182,7 @@ describe('a partial answer is declared, on every page that renders one', () => {
 			render(WithQueryClient, { props: { component: Comp as any } });
 			await waitFor(() =>
 				expect(
-					screen.getByText(/spoke-b did not answer · this page is incomplete/i)
+					screen.getByText(/spoke-b did not answer — this page is incomplete/i)
 				).toBeInTheDocument()
 			);
 			// Absent is not healthy — said in words, not left to inference.
