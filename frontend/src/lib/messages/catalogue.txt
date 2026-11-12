@@ -532,16 +532,19 @@ lib/components/LogsViewer.svelte	label	visible log lines
 lib/components/ManifestDiff.svelte	text	… line … :
 lib/components/ManifestDiff.svelte	text	… unchanged line … below
 lib/components/new/app/app-model.ts	code	: 'in sequence'}
+lib/components/new/app/app-model.ts	code	… · ${failed.length === 1 ? failed[0] :
 lib/components/new/app/app-model.ts	code	… behind
 lib/components/new/app/app-model.ts	code	… build… behind
 lib/components/new/app/app-model.ts	code	… deploying
 lib/components/new/app/app-model.ts	code	… held
+lib/components/new/app/app-model.ts	code	… here
 lib/components/new/app/app-model.ts	code	… in …
 lib/components/new/app/app-model.ts	code	… newer
-lib/components/new/app/app-model.ts	code	… newer on its tab
 lib/components/new/app/app-model.ts	code	… prod regions
+lib/components/new/app/app-model.ts	code	… to deploy
 lib/components/new/app/app-model.ts	code	… waiting here.
 lib/components/new/app/app-model.ts	code	… was skipped · … runs …
+lib/components/new/app/app-model.ts	code	} failed here
 lib/components/new/app/app-model.ts	code	} in …
 lib/components/new/app/app-model.ts	code	a rule
 lib/components/new/app/app-model.ts	code	Custom build
@@ -556,7 +559,7 @@ lib/components/new/app/app-model.ts	code	next …
 lib/components/new/app/app-model.ts	code	next … · ${up ?
 lib/components/new/app/app-model.ts	code	next … · held: waiting on …
 lib/components/new/app/app-model.ts	code	next … · ready to deploy
-lib/components/new/app/app-model.ts	code	Nothing inbound
+lib/components/new/app/app-model.ts	code	Nothing to deploy
 lib/components/new/app/app-model.ts	code	On the newest build
 lib/components/new/app/app-model.ts	code	Pinned to …
 lib/components/new/app/app-model.ts	code	Releases when the check starts passing
@@ -760,12 +763,13 @@ lib/components/new/data.ts	code	… places
 lib/components/new/data.ts	code	… places held · … cause…
 lib/components/new/data.ts	code	… prod regions
 lib/components/new/data.ts	code	… regions
+lib/components/new/data.ts	code	· … behind
 lib/components/new/data.ts	code	${sharedWord('approval', { yours: row.needsYou })} · …
 lib/components/new/data.ts	code	$1 of $2 places on the newest build
 lib/components/new/data.ts	code	$1 of 1 place
 lib/components/new/data.ts	code	All … places on the newest build
 lib/components/new/data.ts	code	Approved …
-lib/components/new/data.ts	code	Behind in … · … behind
+lib/components/new/data.ts	code	Behind in ……
 lib/components/new/data.ts	code	Changes could not be read
 lib/components/new/data.ts	code	Changes need GitHub
 lib/components/new/data.ts	code	Deploy window
@@ -783,7 +787,7 @@ lib/components/new/data.ts	code	its provider ships a newer version
 lib/components/new/data.ts	code	on the newest
 lib/components/new/data.ts	code	Pinned to … in ${placeLabel({ tier: tierOfEnv(e), regions: [e.label] })}
 lib/components/new/data.ts	code	prod regions
-lib/components/new/data.ts	code	Ready to promote to … · … behind
+lib/components/new/data.ts	code	Ready to promote to ……
 lib/components/new/data.ts	code	Recovered after … failed
 lib/components/new/data.ts	code	Releases when …
 lib/components/new/data.ts	code	Releases when … ships a newer version
@@ -820,9 +824,12 @@ lib/components/new/env/env-page.ts	code	… not at rest
 lib/components/new/env/env-page.ts	code	… places: … failing, … waiting, … …, … healthy
 lib/components/new/env/env-page.ts	code	… regions
 lib/components/new/env/env-page.ts	code	… to approve
+lib/components/new/env/env-page.ts	code	… to deploy
+lib/components/new/env/env-page.ts	code	… waiting on a check
 lib/components/new/env/env-page.ts	code	from …
 lib/components/new/env/env-page.ts	code	leads · ${w.followers.length === 1 ?
 lib/components/new/env/env-page.ts	code	No releases yet
+lib/components/new/env/env-page.ts	code	nothing inbound
 lib/components/new/env/env-page.ts	code	On the newest
 lib/components/new/env/env-page.ts	code	Rolled back
 lib/components/new/env/env-page.ts	code	Since the build began waiting
@@ -830,7 +837,7 @@ lib/components/new/env/env-page.ts	code	Waits on
 lib/components/new/env/env-page.ts	code	Wave …
 lib/components/new/env/env-page.ts	code	Wave …${w.build ?
 lib/components/new/env/env-page.ts	code	When the oldest waiting change was merged
-lib/components/new/env/EnvPage.svelte	text	… … behind · nothing inbound
+lib/components/new/env/EnvPage.svelte	text	… … behind · …
 lib/components/new/env/EnvPage.svelte	text	A rollout deployed to this environment shows up here.
 lib/components/new/env/EnvPage.svelte	title	In step
 lib/components/new/env/EnvPage.svelte	text	Nothing runs here yet
@@ -979,6 +986,7 @@ lib/components/new/Rollouts.svelte	text	Open rollout ›
 lib/components/new/Rollouts.svelte	text	Roll back
 lib/components/new/Rollouts.svelte	text	Rollouts appear here as soon as one is deployed.
 lib/components/new/Slipway.svelte	code	…… ago
+lib/components/new/Slipway.svelte	code	…${n.hold ?
 lib/components/new/Slipway.svelte	text	1 of … regions
 lib/components/new/Slipway.svelte	code	Check timer
 lib/components/new/Slipway.svelte	code	Checking · …
@@ -988,13 +996,13 @@ lib/components/new/Slipway.svelte	code	Final check · Checking
 lib/components/new/Slipway.svelte	code	Health checks
 lib/components/new/Slipway.svelte	code	Hide details
 lib/components/new/Slipway.svelte	code	Last healthy
-lib/components/new/Slipway.svelte	code	Newer builds
 lib/components/new/Slipway.svelte	code	Newest build
 lib/components/new/Slipway.svelte	text	Next build
 lib/components/new/Slipway.svelte	code	Open rollout
 lib/components/new/Slipway.svelte	code	reached … of … place…
 lib/components/new/Slipway.svelte	code	reached all … places
 lib/components/new/Slipway.svelte	code	Rolled back from
+lib/components/new/Slipway.svelte	code	To deploy
 lib/components/new/Slipway.svelte	code	Your approval
 lib/components/new/Slipway.svelte	text	Your change
 lib/components/new/state-words.ts	code	… … approval

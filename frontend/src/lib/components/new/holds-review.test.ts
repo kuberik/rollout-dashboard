@@ -12,7 +12,7 @@ afterEach(() => { vi.useRealTimers(); installLiveSource(null); resetHomeModel();
 describe('/envs Behind draws "N behind" in the body role (400), as /apps and /rollouts do', () => {
 	it('the figure carries t-body, never the link\'s 500', () => {
 		const s = src('./env/EnvPage.svelte');
-		const fig = /<span class="([^"]*)">\{a\.place[^<]*\{a\.n\} behind · nothing inbound<\/span>/.exec(s);
+		const fig = /<span class="([^"]*)">\{a\.place[^<]*\{a\.n\} behind · \{a\.why\}<\/span>/.exec(s);
 		expect(fig, 'the figure span exists').not.toBeNull();
 		expect(fig![1]).toMatch(/\bt-body\b/);
 	});
