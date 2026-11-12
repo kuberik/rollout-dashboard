@@ -734,7 +734,7 @@ lib/components/new/Changes.svelte	text	No changes of yours yet
 lib/components/new/Changes.svelte	text	Open rollout ›
 lib/components/new/Changes.svelte	text	Roll back
 lib/components/new/Changes.svelte	title	Your changes
-lib/components/new/Changes.svelte	text	Your changes show up here once they are released, while they move toward prod.
+lib/components/new/Changes.svelte	text	Your changes show up here once released, until they reach prod.
 lib/components/new/ChangesPlumb.svelte	text	… services
 lib/components/new/ChangesPlumb.svelte	text	· none
 lib/components/new/ChangesPlumb.svelte	title	at this stop
@@ -832,9 +832,11 @@ lib/components/new/env/env-page.ts	code	No releases yet
 lib/components/new/env/env-page.ts	code	nothing inbound
 lib/components/new/env/env-page.ts	code	On the newest
 lib/components/new/env/env-page.ts	code	Rolled back
+lib/components/new/env/env-page.ts	code	since commit
 lib/components/new/env/env-page.ts	code	since merge
 lib/components/new/env/env-page.ts	code	Since the build began waiting
 lib/components/new/env/env-page.ts	code	Since the oldest waiting change merged
+lib/components/new/env/env-page.ts	code	Since the oldest waiting change was committed
 lib/components/new/env/env-page.ts	code	Waits on
 lib/components/new/env/env-page.ts	code	Wave …
 lib/components/new/env/env-page.ts	code	Wave …${w.build ?
@@ -940,7 +942,7 @@ lib/components/new/home-page.ts	code	Waiting for approval
 lib/components/new/Home.svelte	text	… landed today ›
 lib/components/new/Home.svelte	text	Nothing of yours in flight
 lib/components/new/Home.svelte	title	Your changes
-lib/components/new/Home.svelte	text	Your changes show up here once they are released, while they move toward prod.
+lib/components/new/Home.svelte	text	Your changes show up here once released, until they reach prod.
 lib/components/new/MiniPipeline.svelte	title	… more: …
 lib/components/new/MiniPipeline.svelte	code	not started
 lib/components/new/MiniPipeline.svelte	code	waiting for approval
