@@ -21,6 +21,7 @@
  * tested against a literal date.
  */
 import type { Environment } from '../../types';
+import { approvalPolicyMeta } from './gate-kind';
 import { buildTopology, deployNameOf, placeKeyOf, upstreamOf } from '../view-models/sites-waves';
 
 
@@ -2128,7 +2129,7 @@ export function ckGateObjects(env: string) {
 		{
 			apiVersion: 'kuberik.com/v1alpha1',
 			kind: 'RolloutGate',
-			metadata: { name: CK_APPROVAL_GATE, namespace: ns },
+			metadata: { name: CK_APPROVAL_GATE, namespace: ns, ...approvalPolicyMeta(ns, CK_APP, 'prod-needs-approval', 'Release approval') },
 			spec: { rolloutRef: { name: CK_APP }, passing: true, allowedVersions: CK_RELEASES.map((r) => r.tag) }
 		}
 	];
