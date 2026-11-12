@@ -64,3 +64,25 @@ describe('Gates header count (promotion wait counts as holding)', () => {
 		expect(gatesOnThisRollout({ upstream: [...up, blocked], downstream: [], gates: [] }, 'test')).toEqual({ total: 2, holding: 2 });
 	});
 });
+
+describe('promotion gate box: the chip links to the source environment Gates tab (F4)', () => {
+	const mkBox = (source: string | null) => ({
+		key: 'gate:promo', kind: 'unknown', state: 'blocked', title: 'Promotion', kindWord: null, phrase: 'holding b2', held: ['b2'],
+		mark: { kind: 'unknown', clears: 'unknown' }, gates: ['promo'], label: { kind: 'promotion', source }
+	});
+	const draw = (source: string | null, upstream: NeighbourLink[]) => {
+		const hood = { focus: { ...link('x').node, env: 'prod' }, upstream, downstream: [], gates: [mkBox(source)], heldLinks: 0, total: 1, holding: 1, heldBuilds: ['b2'] } as unknown as Hood;
+		return render(RolloutNeighbourhood, { props: { hood, hrefOf: (n: { env: string }) => `/rollouts/c/ns/${n.env}/gates` } }).container.querySelector('[data-key="gate:gate:promo"]')!;
+	};
+	test('the source chip is an anchor to that environment Gates tab with an accessible name', () => {
+		const a = draw('staging', [link('staging')]).querySelector('a[href]');
+		expect(a).toHaveAttribute('href', '/rollouts/c/ns/staging/gates');
+		expect(a).toHaveAttribute('aria-label', 'Gates of staging');
+	});
+	test('no known rollout for the source: chip stays unlinked; unknown source reads the word', () => {
+		expect(draw('staging', []).querySelector('a[href]')).toBeNull();
+		const el = draw(null, []);
+		expect(el.querySelector('a[href]')).toBeNull();
+		expect(el.textContent).toContain('Promotion');
+	});
+});

@@ -52,6 +52,7 @@
 	import type { NeighbourLink, RolloutNeighbourhood } from '$lib/view-models/rollout-neighbourhood';
 	import { withoutSupersededBoxes, type GateBox } from '$lib/view-models/rollout-gates';
 	import GateLabel from './GateLabel.svelte';
+	import type { GateLabel as GateLabelT } from '$lib/view-models/gate-label';
 	import CauseText from './CauseText.svelte';
 	import type { Cause } from '$lib/view-models/gate-label';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
@@ -339,6 +340,13 @@
 		// Reaching here means the predecessor holds nothing (no chain wait, no held peer): the build already passed it. "Waits for staging"
 		// beside a green dot read as staging itself waiting (QA, TL follow-up).
 		return ['Nothing held · ', PROMOTION_EDGE]; /* the edge's kind, drawn (» Promotion), never the text */
+	}
+
+	/** batch4 #76: the Gates tab of a promotion label's source environment, when the upstream column has that environment's rollout; else no link. */
+	function sourceGatesHref(label: GateLabelT): string | null {
+		if (label.kind !== 'promotion' || !label.source) return null;
+		const l = upstreamLinks.find((x) => x.node.env === label.source);
+		return l ? hrefOf(l.node) : null;
 	}
 
 	/** The headline half of a tile's one status line: the edge's state, held first and loud. */
@@ -691,7 +699,7 @@
 			{docsHref ? 'hover:border-line-strong' : ''}"
 	>
 		<span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-			<span class="t-card-title min-w-0 break-words text-fg">{#if b.label}<GateLabel label={b.label} />{:else}{b.title}{/if}</span>
+			<span class="t-card-title min-w-0 break-words text-fg">{#if b.label}<GateLabel label={b.label} href={docsHref ? null : sourceGatesHref(b.label)} />{:else}{b.title}{/if}</span>
 		</span>
 		<p class="flex min-w-0 items-start gap-1.5 t-meta {held ? 'text-held' : 'text-fg-subtle'}">
 			<span class="mt-0.5 shrink-0"><StatusMark state={markState(b.state)} /></span>

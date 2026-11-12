@@ -14,7 +14,7 @@
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import { PROMOTION_WORD, type GateLabel } from '$lib/view-models/gate-label';
 
-	let { label, glyph = true }: { label: GateLabel; /** the host already draws the kind's glyph beside this (GateRecord's name line does) */ glyph?: boolean } = $props();
+	let { label, glyph = true, href = null }: { label: GateLabel; /** the host already draws the kind's glyph beside this (GateRecord's name line does) */ glyph?: boolean; /** the source environment's Gates tab: the chip becomes a link (batch4 #76). Never set where the host is itself a link. */ href?: string | null } = $props();
 </script>
 
 {#if label.kind === 'promotion'}
@@ -22,7 +22,8 @@
 		{#if glyph}<ChevronDoubleRightOutline class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />{/if}
 		{#if label.source}
 			<span class="sr-only">{PROMOTION_WORD} from </span>
-			<Chip role="env" label={label.source} theme={getRolloutEnvironmentTheme(null, label.source)} wide />
+			{#if href}<a {href} class="inline-flex min-w-0 rounded-sm hover:opacity-80" aria-label="Gates of {label.source}"><Chip role="env" label={label.source} theme={getRolloutEnvironmentTheme(null, label.source)} wide /></a>
+			{:else}<Chip role="env" label={label.source} theme={getRolloutEnvironmentTheme(null, label.source)} wide />{/if}
 		{:else}
 			<span class="min-w-0">{PROMOTION_WORD}</span>
 		{/if}
