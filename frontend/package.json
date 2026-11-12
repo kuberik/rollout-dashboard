@@ -32,6 +32,7 @@
 		"@testing-library/svelte": "^5.2.8",
 		"@types/dagre": "^0.7.53",
 		"@types/diff": "^7.0.2",
+		"@types/node": "^22.20.5",
 		"diff": "^7.0.0",
 		"eslint": "^9.34.0",
 		"eslint-config-prettier": "^10.1.8",
