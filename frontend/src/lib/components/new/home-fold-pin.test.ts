@@ -48,7 +48,12 @@ describe("foldPinIntoFleet: the app's held row names each pinned region once", (
 	});
 });
 
-describe('M5 is equivalent: the askKeys/mineKeys skip never changes pinOnlyPlaces', () => {
+/*
+ * M5 (Home's askKeys/mineKeys skip dropped) is EQUIVALENT because pinOnlyPlaces' quiet-state filter (data.ts, `placeStateWithPin(e.state, e.pinned) === e.state`)
+ * already drops every place an ask or a "yours" row could name: those places are not quiet, so the pin never turns them into held. It is NOT because of the
+ * `rows.some` skip. The block below is a SMOKE check only: QA72's mutant Q1 (the `rows.some` skip removed) survives it, so it pins nothing about the skip.
+ */
+describe('smoke: the askKeys/mineKeys skip leaves pinOnlyPlaces unchanged on the incident and edge fixtures', () => {
 	afterEach(() => {
 		installLiveSource(null);
 		resetHomeModel();

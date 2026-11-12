@@ -54,9 +54,9 @@ describe('item 6: door-lock, signal-box, ledger-export', () => {
 		const hc = held('door-lock');
 		expect(hc.map((h) => h.cause)).toEqual(['Held by After Hours']);
 		expect(hc[0].reason).toBe('clock');
-		expect(hc[0].window?.opens).toMatch(/^opens \w{3} \d\d:\d\d UTC$/);
+		expect(hc[0].window?.opens).toMatch(/^opens (Mon|Tue|Wed|Thu|Fri) 09:00 UTC$/);
 		expect(appHolds(appRow('door-lock') as never, 'incident')[0].text).toMatch(
-			/^Held by After Hours in production · opens \w{3} \d\d:\d\d UTC$/
+			/^Held by After Hours in production · opens (Mon|Tue|Wed|Thu|Fri) 09:00 UTC$/
 		);
 		const p = place('door-lock');
 		expect(p.state).toBe('held-by-rule');

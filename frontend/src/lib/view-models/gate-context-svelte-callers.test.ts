@@ -7,7 +7,13 @@ import { readFileSync } from 'node:fs';
  * (a page, a modal, the Apps grid), so the test reads the call's argument object from the source: SOURCE-SHAPE tests, honest about it. Each fails when
  * its caller drops the `rollouts` key or passes something other than the rollout(s) it has in hand.
  */
-const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
+/** source with comments removed (JS block/line comments and Svelte HTML comments), so a commented-out call never counts as a caller */
+const stripComments = (src: string): string =>
+	src
+		.replace(/<!--[\s\S]*?-->/g, '')
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
+const read = (p: string) => stripComments(readFileSync(new URL(p, import.meta.url), 'utf8'));
 /** the `{ ... }` argument of every `buildGateContext(` call in the file, balanced on braces */
 const calls = (src: string): string[] => {
 	const out: string[] = [];

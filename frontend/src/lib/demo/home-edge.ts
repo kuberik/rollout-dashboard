@@ -2,12 +2,13 @@
  * THE `home-edge` SCENARIO: the pinned incident fixture PLUS a handful of small apps that exist only to reach states no other fixture reaches.
  *
  * Role: a review and test scenario, opt-in like `home-calm` (`MOCK_API=1 MOCK_SCENARIO=home-edge`, or the `kuberik_scenario=edge` cookie). It is the
- * incident fixture untouched with four apps added, so every count the incident tests pin (held, failing, approvals) stays what it is: the new apps are
+ * incident fixture untouched with nine apps added, so every count the incident tests pin (held, failing, approvals) stays what it is: the new apps are
  * quiet, at rest, or held only by what each one is here to show. Unit tests read the same data through `edgeSource()` (src/lib/testing/edge-source.ts).
  *
  * What each added app is for (the app named is the one place that carries the state; each has a dev place and a prod place, so /envs/prod lists it):
  *   search-indexer  prod runs m1, the source built m2, dev has not taken m2 yet: nothing inbound to prod, so /envs/prod lists it under Behind, "nothing inbound".
- *   mail-relay      prod is PINNED to m1 while m2 is built and waiting on dev: Behind AND held by the pin (item 2, pin).
+ *   mail-relay      prod is PINNED to m1 while m2 is built and waiting on dev: a pin is a hold, so /envs/prod lists it under Held ("Pinned"),
+ *                   never under Behind (item 2, pin).
  *   media-resizer   prod has two sites, a leader on m2 and a follower that did not follow it and still runs m1 (item 2, failed follower).
  *   auth-proxy      prod has two waves; the wave-2 leader waits on wave 1's bake of m2 (WaveReady False): Behind with a paused wave (item 2, paused wave).
  *   deploy-pin-fail a prod place that is pinned AND whose newest deploy failed its bake (item 7, QA68): which state wins.
@@ -561,15 +562,20 @@ export function edgeDependencies(f: HomeFixture): K8sObject[] {
 		}
 	];
 }
-/** RolloutSchedules: both windows are CLOSED, named, and reopen at a fixed weekday time of the fixture's own week */
+/**
+ * When a closed weekday 09:00-17:00 UTC window next opens, as the controller would publish it: the first weekday 09:00 UTC strictly after `from`
+ * (derived from the rule, not a fixed offset, so the fixture never claims a reopening the rule could not produce).
+ */
+export function nextWeekdayNine(from: string): string {
+	const d = new Date(from);
+	const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9));
+	while (t.getTime() <= d.getTime() || t.getUTCDay() === 0 || t.getUTCDay() === 6)
+		t.setUTCDate(t.getUTCDate() + 1);
+	return t.toISOString();
+}
+/** RolloutSchedules: both windows are CLOSED, named, and reopen when their weekday 09:00-17:00 UTC rule next opens */
 export function edgeSchedules(f: HomeFixture): K8sObject[] {
-	const sched = (
-		ns: string,
-		name: string,
-		pretty: string,
-		gate: string,
-		hoursAhead: number
-	): K8sObject => ({
+	const sched = (ns: string, name: string, pretty: string, gate: string): K8sObject => ({
 		apiVersion: 'kuberik.com/v1alpha1',
 		kind: 'RolloutSchedule',
 		metadata: { name, namespace: ns, annotations: { 'gate.kuberik.com/pretty-name': pretty } },
@@ -587,14 +593,14 @@ export function edgeSchedules(f: HomeFixture): K8sObject[] {
 		},
 		status: {
 			active: false,
-			nextTransition: at(f, -hoursAhead),
+			nextTransition: nextWeekdayNine(f.capturedAt),
 			managedGates: [gate],
 			matchingRollouts: 1
 		}
 	});
 	return [
-		sched('tide-gauge-prod', 'release-freeze', 'Release Freeze', 'schedule-gate-tg1xx', 20),
-		sched('door-lock-prod', 'after-hours', 'After Hours', 'schedule-gate-dl1xx', 20)
+		sched('tide-gauge-prod', 'release-freeze', 'Release Freeze', 'schedule-gate-tg1xx'),
+		sched('door-lock-prod', 'after-hours', 'After Hours', 'schedule-gate-dl1xx')
 	];
 }
 
