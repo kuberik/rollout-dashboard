@@ -18,8 +18,10 @@ import { gateKindOf, type GateKind } from './gate-kind';
  */
 export type VGate = { name: string; kind?: string | null; passing?: boolean | null; allowedVersions?: string[] | null };
 
-/** THE APPROVAL WRITE, ONE FUNCTION: what a person's Approve does to the approval gate's allow-list. Conservative, per-build: it allows ONLY the approved build. There is no real approve endpoint yet (lib/api/approvals.ts); this MUST match the real write once the approval API lands. */
+/** THE APPROVAL WRITE, ONE FUNCTION: what a person's Approve does to the approval gate's allow-list. Conservative, per-build: it allows ONLY the approved build. It mirrors what the real approve write does to the policy-owned gate (design/APPROVALS-API.md §5.1: one RolloutApproval per rollout+version; §8.3: the gate admits exactly the approved versions); POST /approve is lib/api/approvals.ts. */
 export const approvalWrite = (allowed: readonly string[], approvedTag: string): string[] => [...new Set([...allowed, approvedTag])];
+/** THE INVERSE of `approvalWrite`, for the optimistic Undo: removes ONLY that tag, every other approved build stays (design/APPROVALS-API.md §5.1/§8.3: revoke deletes one RolloutApproval). */
+export const approvalUnwrite = (allowed: readonly string[], approvedTag: string): string[] => allowed.filter((v) => v !== approvedTag);
 
 /** The approval gate that refuses every candidate: `kind` says it; only a payload without `kind` falls back to the gate's name (THE ONLY place a name is read). */
 export const approvalGateOf = <G extends VGate>(gates: readonly G[], cands?: readonly string[]): G | undefined =>
