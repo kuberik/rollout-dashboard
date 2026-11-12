@@ -79,7 +79,7 @@
 	import StatusSpinner from './StatusSpinner.svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
-	import { gateLabel, gateLabelText, labelPart, causeText, type Cause } from '$lib/view-models/gate-label';
+	import { gateLabel, gateLabelText, promotionSourceOf, labelPart, causeText, type Cause } from '$lib/view-models/gate-label';
 	import CauseText from './CauseText.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { modEnterHint } from '$lib/shortcut-hint';
@@ -2234,8 +2234,11 @@
 		// in a `FactList` row.
 		/* a promotion gate is named by its KIND (gate-label.ts): when the join above missed it (the namespace fetch failed, no rolloutGateRef) the gate's own published sentence must not leak here */
 		const kind = rollout?.status?.gates?.find((g) => g.name === gateName)?.kind ?? null;
-		const label = gateLabel({ kind, name: gateName }, nameOfGate(gateName));
-		return { label: 'Rule', value: label.kind === 'promotion' ? gateLabelText(label) : resolveGateName(gateName, gateObjects) };
+		const said = kind === 'promotion' ? classifyGate({ name: gateName }, namespace, buildGateContext({ environments: { items: overrideEnvironments }, rollouts: rollout ? [rollout] : null })) : null;
+		const label = gateLabel({ kind, name: gateName }, nameOfGate(gateName), said ? promotionSourceOf(said) : null);
+		return label.kind === 'promotion'
+			? { label: 'Rule', value: gateLabelText(label), gate: label }
+			: { label: 'Rule', value: resolveGateName(gateName, gateObjects) };
 	}
 
 	/**

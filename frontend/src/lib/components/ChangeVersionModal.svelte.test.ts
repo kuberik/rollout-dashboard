@@ -1413,3 +1413,32 @@ describe('F1: the override fallback never prints the promotion sentence', () => 
 		expect(container.textContent).not.toContain(SENTENCE);
 	});
 });
+
+/** batch4 #128 (lane 78): the deploy dialog's "Rule" row draws a promotion gate through GateLabel: » + source chip, or "» Promotion". */
+describe('the override Rule row draws the promotion gate by kind', () => {
+	test('no source known: the row is the » glyph and the word Promotion, not a plain string', async () => {
+		const rollout = rolloutFixture({
+			status: {
+				availableReleases: [
+					{ tag: 'rel-66', version: '1.66.0-66', created: daysAgo(35) },
+					{ tag: 'rel-67', version: '2.67.0-67', created: daysAgo(1) }
+				],
+				gates: [{ name: 'ghd-promo', kind: 'promotion', passing: true, allowedVersions: ['rel-66'] }],
+				conditions: [{ type: 'GatesPassing', status: 'False', reason: 'NoAllowedVersions' }],
+				history: [{ version: { tag: 'rel-66', version: '1.66.0-66' }, bakeStatus: 'Succeeded', timestamp: daysAgo(4) }]
+			}
+		});
+		const base = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
+			return base(input);
+		});
+		const { container } = renderModal({ rollout });
+		await selectRow('2.67.0-67');
+		await waitFor(() => expect(container.querySelector('dl [data-gate-label="promotion"]')).not.toBeNull());
+		const row = container.querySelector('dl [data-gate-label="promotion"]')!;
+		expect(row.querySelector('svg')).not.toBeNull();
+		expect(row.textContent).toContain('Promotion');
+	});
+});
