@@ -73,12 +73,12 @@
 {/snippet}
 
 {#snippet row(p: StagePlace, sep: boolean, withApp: boolean)}
-	{@const tail = [p.build, p.progress && !p.build ? `step ${p.progress}` : p.age].filter(Boolean)}
-				<a href={toHref(p.href)} aria-current={p.here ? 'location' : undefined} class="stg-row {p.here ? 'stg-here' : ''} {sep ? 'border-t border-line-subtle' : ''} flex h-11 min-w-0 items-center gap-2 px-3 hover:bg-hover" data-stage-row="{p.app}|{p.href}" data-stage-state={ATTR[p.state]}>
+				<a href={toHref(p.href)} aria-current={p.here ? 'location' : undefined} class="stg-row {p.here ? 'stg-here' : ''} {sep ? 'border-t border-line-subtle' : ''} flex min-h-11 min-w-0 items-center gap-2 px-2 py-1 hover:bg-hover" data-stage-row="{p.app}|{p.href}" data-stage-state={ATTR[p.state]}>
 					<span class="flex h-4 w-4 shrink-0 items-center justify-center"><WaveMark mark={waveMark([{ state: SITE[p.state] }])} /></span>
 					<span class="flex min-w-0 flex-col">
 											<span class="t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
-							<span class="t-meta flex min-w-0 gap-1 overflow-hidden whitespace-nowrap {INK[p.state]}" title={p.word}><span class="flex max-w-full flex-none items-center truncate {p.state === 'notreached' && p.word === 'Not reached' ? 'stg-nrw' : ''}">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build}<span class="shrink-0 text-fg-subtle {p.state === 'notreached' && p.word === 'Not reached' ? 'stg-nrw' : ''}" aria-hidden="true">·</span><span class="t-code-sm min-w-0 truncate text-fg-subtle">{p.build}</span>{/if}{#if p.progress && !p.build}<span class="min-w-0 shrink-[3] truncate text-fg-subtle">· <span class="stg-stepw">step&nbsp;</span>{p.progress}</span>{:else if p.age}<span class="min-w-0 shrink-[3] truncate text-fg-subtle">· {p.age}</span>{/if}</span>
+							<!-- line 2: the state word / cause never shrinks (it wraps before it is cut); the tail sheds the build first, then the age or step -->
+							<span class="t-meta flex min-w-0 gap-1 overflow-hidden {INK[p.state]}" title={p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build}<span class="t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
 									</span>
 				</a>
 {/snippet}
@@ -109,14 +109,14 @@
 			{#snippet releaseBody()}
 				<span class="t-code shrink-0 text-fg" data-release-build>{release.build}</span>
 				{#if release.title}<span class="t-body min-w-0 truncate text-fg-muted" title={release.title}>{release.title}</span>{/if}
-				{#if release.author}<span class="t-meta flex shrink-0 items-center gap-2 text-fg-muted max-sm:hidden"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" />{release.author}</span>{/if}
+				{#if release.author}<span class="t-meta flex shrink-0 items-center gap-2 text-fg-muted"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" />{release.author}</span>{/if}
 				{#if release.built}<span class="t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
 			{/snippet}
 			<!-- THE RELEASE: the build the drawing is about; a link to its change page when the fleet knows one -->
 			{#if release.href}
-				<a href={toHref(release.href)} class="mb-4 flex min-h-5 min-w-0 items-center gap-3 hover:text-fg" data-stages-release>{@render releaseBody()}</a>
+				<a href={toHref(release.href)} class="mb-4 flex min-h-5 min-w-0 items-center gap-3 hover:text-fg max-sm:gap-2" data-stages-release>{@render releaseBody()}</a>
 			{:else}
-				<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3" data-stages-release>{@render releaseBody()}</div>
+				<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3 max-sm:gap-2" data-stages-release>{@render releaseBody()}</div>
 			{/if}
 		{/if}
 		{#if horizontal}
@@ -166,8 +166,6 @@
 	.stg-graph { justify-content: start; }
 	@media (min-width: 2300px) { .stg-graph { justify-content: center; } }
 	.stg-tile { position: relative; border-radius: 8px; container-type: inline-size; }
-	/* a narrow tile (the 148px floor): the build is the fact that matters on a not-reached row, so its word steps aside (the hollow mark and the muted ink say it); "step" gives way to "1 of 2" */
-	@container (max-width: 189.98px) { .stg-nrw { display: none; } .stg-stepw { display: none; } }
 	/* a place the pipeline has not reached: quieter, no surface fill, dashed hairline (style only: same box, same rows) */
 	.stg-tile.is-live { border-color: var(--k-active-line); box-shadow: var(--k-glow-active); }
 	.stg-tile.stg-quiet { background: var(--k-ground); border-style: dashed; border-color: var(--k-line); }

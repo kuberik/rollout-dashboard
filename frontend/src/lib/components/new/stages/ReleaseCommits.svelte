@@ -8,7 +8,7 @@
 	 * when GitHub answers and sits on the author line, so nothing moves.
 	 * EMPTY: every place already runs the release: said inside the card, in the card's own proportions (a 47px header, one body line).
 	 * No loading or error state of its own: the page is gated by FleetGate, and a diffstat that is not (yet) known is simply absent.
-	 * Below 1024 the page does not draw it (the list-form graph already fills the phone's fold); the Builds card on the Overview has the same rows.
+	 * It shows at every width, below the graph (rows are 44px+ links: the title link is stretched over the row).
 	 */
 	import Card from '$lib/components/Card.svelte';
 	import { CodeBranchOutline } from 'flowbite-svelte-icons';

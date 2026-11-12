@@ -369,8 +369,8 @@
 			{#if pipe}
 				<!-- Pipeline tab: the canvas, full width, no rail (like the Gates tab) -->
 				<Stages stages={pipe} {release} class="min-w-0" />
-				<!-- "In this release": a second card from 1024 up; below it the list-form graph already fills the phone's fold -->
-				{#if inRelease}<ReleaseCommits release={inRelease} class="min-w-0 max-lg:hidden" />{/if}
+				<!-- "In this release": the second card, at every width -->
+				{#if inRelease}<ReleaseCommits release={inRelease} class="min-w-0" />{/if}
 			{:else}
 			<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:grid-cols-[minmax(0,1fr)_452px]">
 				<div class="flex min-w-0 flex-col gap-4">

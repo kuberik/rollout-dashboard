@@ -138,7 +138,7 @@ function appStages(app: string, cols: Map<string, StageColumn>, scenario: HomeSt
 		else st = onRelease ? 'deployed' : 'notreached';
 		/* a place moving a build that is NOT the release: quiet, its own state as plain words (no glow, not counted) */
 		const word = inFlight && !onRelease && st === 'notreached' ? (row?.state === 'checking' ? 'Checking' : 'Deploying') : undefined;
-		items.push({ p, col, site: siteOf(wi, x.label, x.tier), leader: wi?.leader ?? false, build: st === 'notreached' || (st !== 'notaffected' && !onRelease) ? x.version : null, st, word });
+		items.push({ p, col, site: siteOf(wi, x.label, x.tier), leader: wi?.leader ?? false, build: st === 'held' || st === 'approval' ? null : st === 'notreached' || (st !== 'notaffected' && !onRelease) ? x.version : null, st, word });
 	}
 	const out = assemble([app], items, columnsOf(cols), scenario, { text: '', parts: [] }, null);
 	const ps = out.lanes[0].cells.flatMap((c) => c?.places ?? []);

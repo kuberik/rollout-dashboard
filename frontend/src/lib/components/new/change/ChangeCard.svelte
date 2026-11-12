@@ -30,9 +30,9 @@
 	{#snippet rollup()}<span class="t-ui-sm tabular-nums text-fg-subtle" data-change-rollup>{lead}{#if lead && stat?.add != null}{' · '}{/if}{#if stat?.add != null}<span class="text-success" data-diff-add>+{stat.add}</span>{' '}<span class="text-danger" data-diff-del>−{stat.del}</span>{/if}{#if tail}{' · '}{tail}{/if}</span>{/snippet}
 	<ul class="divide-y divide-line-subtle">
 	{#each max ? commits.slice(0, max) : commits as k (k.sha + k.title)}
-		<li class="cc-row px-4 py-3" data-commit={k.sha}>
+		<li class="cc-row relative px-4 py-3" data-commit={k.sha}>
 			<span class="cc-mark flex h-5 items-center justify-center"><ChangeKindMark kind="commit" label="Commit" /></span>
-			<p class="cc-main t-body min-w-0 text-fg [overflow-wrap:anywhere]">{#if k.href}<a href={toHref(k.href)} class="hover:underline" data-commit-link>{k.title}</a>{:else}{k.title}{/if}</p>
+			<p class="cc-main t-body min-w-0 text-fg [overflow-wrap:anywhere]">{#if k.href}<a href={toHref(k.href)} class="hover:underline before:absolute before:inset-0" data-commit-link>{k.title}</a>{:else}{k.title}{/if}</p>
 			{#if k.sha}<span class="cc-id t-code-sm flex h-5 items-center whitespace-nowrap text-fg-subtle">{k.sha}</span>{/if}
 			{#if k.author}<p class="cc-sub t-meta flex min-w-0 items-center gap-1.5 text-fg-subtle" data-commit-author><Avatar name={k.author} src={avatarSrc(k.author)} size={20} /><span class="min-w-0 break-words text-fg-muted">{k.author}</span>{#if isViewer(k.author)}<span>(you)</span>{/if}{#if k.add != null}<span class="ml-2 tabular-nums" data-commit-stat><span class="text-success">+{k.add}</span>{' '}<span class="text-danger">−{k.del}</span></span>{/if}</p>{/if}
 		</li>
