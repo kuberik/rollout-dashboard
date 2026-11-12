@@ -89,8 +89,11 @@
 			now: clock
 		};
 	});
-	/* installed BEFORE the children render, so their first derivation already reads the live source */
-	$effect.pre(() => { if (src) installLiveSource(src); });
+	/* installed BEFORE the children render, so their first derivation already reads the live source.
+	 * It also READS the installed source, so it re-runs whenever someone clears or replaces it: on a client-side navigation the previous
+	 * route's gate tears down (clearing the slot) AFTER this one installed, and an effect that only tracked `src` never ran again, leaving
+	 * the page on its skeleton for good (2026-11-12; e2e/fleetgate-nav.test.ts). */
+	$effect.pre(() => { if (src && liveSource() !== src) installLiveSource(src); });
 	/* the live source never outlives its gate: a stale snapshot must not shadow the route that mounts next (batch4 #3b M1) */
 	$effect(() => () => installLiveSource(null));
 	const ready = $derived(!!src && liveSource() === src);
