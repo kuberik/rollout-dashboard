@@ -79,7 +79,7 @@ func handleGitHubPullRequest(c *gin.Context) {
 		// GitHub secret (the frontend's palette already lists every source
 		// repo it knows about), so it is safe to say so distinctly from "the
 		// PR/repo doesn't exist on GitHub" below.
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": "repo"})
+		c.JSON(http.StatusNotFound, notFoundRepoBody(clusterErrors))
 		return
 	}
 
@@ -347,6 +347,17 @@ func commitsSinceMerge(ctx context.Context, ghClient *github.Client, owner, repo
 		shas = []string{}
 	}
 	return shas, cutAt300, nil
+}
+
+// notFoundRepoBody is the "repo not visible" 404 body. When a spoke could not
+// be read, the repo may live only there, so the body names the spoke (same
+// clusterErrors shape as /api/rollouts) instead of reading as a plain absence.
+func notFoundRepoBody(clusterErrors []ClusterError) gin.H {
+	body := gin.H{"error": "not_found", "scope": "repo"}
+	if len(clusterErrors) > 0 {
+		body["clusterErrors"] = clusterErrors
+	}
+	return body
 }
 
 // visibleGitHubSources returns the set of normalised "owner/repo" keys — see

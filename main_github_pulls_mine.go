@@ -94,7 +94,7 @@ func handleGitHubPullsMine(c *gin.Context) {
 		// Same cluster-scope 404 shape as the other two GitHub endpoints —
 		// nothing to look up at all, distinguished from "connected, zero PRs
 		// in range" (a normal 200 with empty arrays below).
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": "repo"})
+		c.JSON(http.StatusNotFound, notFoundRepoBody(clusterErrors))
 		return
 	}
 

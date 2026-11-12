@@ -87,3 +87,43 @@ func TestGitHubPullsMine_ReportsClusterErrors(t *testing.T) {
 		t.Fatalf("clusterErrors = %+v, want the dead spoke %s", errs, spoke)
 	}
 }
+
+// A repo deployed only on a spoke that cannot answer is not "not deployed
+// here": the 404 must say which spoke could not be read.
+func TestGitHubPullRequest_404CarriesClusterErrors(t *testing.T) {
+	swapFanoutState(t, 2*time.Second)
+	localURL := "https://kuberik.hub.example"
+	t.Setenv("DASHBOARD_URL", localURL)
+	spoke := deadSpokeURL(t)
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutObj("team-a", "app-1"), // no source: nothing local deploys octo/only-on-spoke
+		envObj("team-a", localURL, spoke),
+	})
+	w := doGitHubPullsRequest(r, "/api/github/pulls/octo/only-on-spoke/42", "ghu_tok")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	errs := clusterErrorsOf(t, w.Body.Bytes())
+	if len(errs) != 1 || errs[0].URL != spoke {
+		t.Fatalf("404 clusterErrors = %+v, want the dead spoke %s", errs, spoke)
+	}
+}
+
+func TestGitHubPullsMine_404CarriesClusterErrors(t *testing.T) {
+	swapFanoutState(t, 2*time.Second)
+	localURL := "https://kuberik.hub.example"
+	t.Setenv("DASHBOARD_URL", localURL)
+	spoke := deadSpokeURL(t)
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutObj("team-a", "app-1"),
+		envObj("team-a", localURL, spoke),
+	})
+	w := doGitHubPullsRequest(r, "/api/github/pulls/mine?days=30", "ghu_tok")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	errs := clusterErrorsOf(t, w.Body.Bytes())
+	if len(errs) != 1 || errs[0].URL != spoke {
+		t.Fatalf("404 clusterErrors = %+v, want the dead spoke %s", errs, spoke)
+	}
+}
