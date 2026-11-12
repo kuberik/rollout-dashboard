@@ -75,10 +75,10 @@
 		{ title: 'Check timer', label: sd.checkTimer === 'Checking' && clock ? (checkingGate ? clock : `Checking · ${clock}`) : sd.checkTimer, tone: sd.checkTimer === 'Done' ? 'ok' : sd.checkTimer === 'Checking' ? 'wait' : 'pending' }
 	]);
 	const DOT = { ok: 'bg-success-solid', bad: 'bg-danger-solid', wait: 'bg-progress-solid animate-pulse', pending: 'bg-line-strong' } as const;
-	/* U9: the dl's rows. prev = the build this one replaces / the last healthy one; reach = the tab's Runs-in rollup (compact: the tab header's newer-builds sentence) split into label + value */
+	/* U9: the dl's rows. prev = the build this one replaces / the last healthy one; reach = the tab's Runs-in rollup (compact: "To deploy", the tab's own Newer builds count and its hold clause; never the catalogue distance the app page prints) split into label + value */
 	const prev = $derived(wb ? { label: 'Replaces', build: buildTitle(row), age: `${ago(row.deployedAt)} ago` } : replaced ? { label: failing ? 'Last healthy' : 'rolledBack' in replaced ? 'Rolled back from' : 'Replaces', build: replaced.build, age: `${failing ? 'deployed ' : ''}${ago(replaced.at)} ago` } : null);
 	const reach = $derived.by(() => {
-		if (compact) { const n = newestBuild(row); if (!n || failing) return null; return { label: 'Newer builds', build: null as string | null, value: n.sentence.replace(/^(\d+) newer builds?/, '$1') }; /* lead r9: the tab's own sentence, count first ('2 · held: waiting for approval'), never 'N, held:' */ }
+		if (compact) { const n = newestBuild(row); if (!n || failing || !n.toDeploy) return null; /* the TAB's own count (what this place is offered to deploy), never the catalogue distance the app page's ledger prints */ return { label: 'To deploy', build: null as string | null, value: `${n.toDeploy}${n.hold ? ` · ${n.hold}` : ''}` }; /* lead r9: the tab's own sentence, count first ('2 · held: waiting for approval'), never 'N, held:' */ }
 		if (!facts) return null;
 		const m = /^(\d+) of (\d+) places? on the newest build$/.exec(facts), all = /^All (\d+) places? on the newest build$/.exec(facts);
 		/* rollouts-8 V10: the newest build is NAMED (mono) and the fraction carries its unit */

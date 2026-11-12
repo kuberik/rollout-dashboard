@@ -114,7 +114,7 @@
 			<section id="behind" data-section="behind">
 				<SectionHeader title="Behind" icon={ClockOutline} rollup={[`${plural(G.behind.length, 'app')} on an older build`]} />
 				<div class="instep" data-instep-behind>
-					{#each G.behind as a (a.app)}<a href={a.href} class="instep-a"><AppGlyph name={a.app} size={20} /><span>{a.app}</span><span class="t-body text-fg-subtle tabular-nums">{a.n} behind</span></a>{/each}
+					{#each G.behind as a (a.app)}<a href={a.href} class="instep-a instep-behind"><AppGlyph name={a.app} size={20} /><span class="whitespace-nowrap">{a.app}</span><span class="instep-why t-body text-fg-subtle tabular-nums">{a.place ? `${a.place} · ` : ''}{a.n} behind · {a.why}</span></a>{/each}
 				</div>
 			</section>
 		{/if}
@@ -155,6 +155,10 @@
 	.instep { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 16px; border: 1px solid var(--k-line); border-radius: 8px; background: var(--k-surface); }
 	.instep-a { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--k-fg-muted); }
 	.instep-a:hover { color: var(--k-fg); }
+	/* a Behind row carries a reason: on a phone it drops under the name (indented past the glyph) instead of squeezing the name onto two lines */
+	.instep-behind { flex-wrap: wrap; }
+	.instep-why { flex-basis: 100%; padding-left: 28px; }
+	@media (min-width: 640px) { .instep-why { flex-basis: auto; padding-left: 0; } }
 	.more { display: block; width: calc(100% - 32px); margin: 8px 16px 16px; }
 	.empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 32px 16px; text-align: center; border: 1px solid var(--k-line); border-radius: 8px; }
 	.empty p { margin: 0; }

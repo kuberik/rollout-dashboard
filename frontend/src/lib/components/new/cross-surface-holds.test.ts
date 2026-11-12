@@ -94,14 +94,16 @@ describe('a pin is a hold on every page of the app', () => {
 describe('/envs In step is the at-rest predicate', () => {
 	it('an app one build behind here with nothing inbound is listed Behind with its number, never In step', () => {
 		const items = new Map([
-			['one-behind', { placeList: [{ tier: 'staging', label: 'staging', onNewest: false }], behind: { n: 1 } }],
-			['newest', { placeList: [{ tier: 'staging', label: 'staging', onNewest: true }], behind: { n: 0 } }],
-			['behind-elsewhere', { placeList: [{ tier: 'prod', label: 'eu', onNewest: false }, { tier: 'staging', label: 'staging', onNewest: true }], behind: { n: 3 } }]
+			['one-behind', { placeList: [{ tier: 'staging', label: 'staging', behind: 1 }] }],
+			['newest', { placeList: [{ tier: 'staging', label: 'staging', behind: 0 }] }],
+			['behind-elsewhere', { placeList: [{ tier: 'prod', label: 'eu', behind: 3 }, { tier: 'staging', label: 'staging', behind: 0 }] }],
+			['one-here-three-there', { placeList: [{ tier: 'staging', label: 'staging', behind: 1 }, { tier: 'prod', label: 'eu', behind: 3 }] }]
 		]);
 		const behindOf = (app: string) => behindOfApp(items.get(app) ?? null, 'staging', null);
-		const s = stepSplit(['one-behind', 'newest', 'behind-elsewhere'].map((app) => ({ app, href: `/apps/${app}` })), behindOf);
+		const s = stepSplit(['one-behind', 'newest', 'behind-elsewhere', 'one-here-three-there'].map((app) => ({ app, href: `/apps/${app}` })), behindOf);
 		expect(s.inStep.map((a) => a.app)).toEqual(['newest', 'behind-elsewhere']);
-		expect(s.behind).toEqual([{ app: 'one-behind', href: '/apps/one-behind', n: 1 }]);
+		/* THIS environment's distance, not the app's maximum over every place: 1 behind in staging, not 3 */
+		expect(s.behind).toEqual([{ app: 'one-behind', href: '/apps/one-behind', n: 1 }, { app: 'one-here-three-there', href: '/apps/one-here-three-there', n: 1 }]);
 	});
 });
 

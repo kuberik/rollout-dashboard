@@ -12,4 +12,9 @@ describe('PlaceRow never clips', () => {
 		expect(src).not.toContain('text-overflow: ellipsis');
 		expect(src).toContain('168px minmax(200px, max-content) minmax(0, 1fr) 64px');
 	});
+	it('the place note (the tab disagrees with the build row) shows on a phone, on its own line, and only when it carries a note', () => {
+		expect(src).not.toContain('.pl-note, .pl-since { display: none; }');
+		expect(src).toContain('.pl-note { grid-column: 1 / -1; white-space: normal; }');
+		expect(src).toContain('.pl-note:empty { display: none; }');
+	});
 });
