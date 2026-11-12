@@ -440,7 +440,7 @@ export type Stop = {
 export const lagWord = (n: number): string =>
 	n === 0 ? 'Up to date' : `${n} build${n === 1 ? '' : 's'} behind`;
 /**
- * Where a place sits among the places of ONE stop: THE ONE SEVERITY ORDER (state-words `severity`: failing, waiting for approval, held,
+ * (No longer the ledger's order, see byTopology.) Where a place sits among the places of ONE stop: THE ONE SEVERITY ORDER (state-words `severity`: failing, waiting for approval, held,
  * checking, deploying, rolled back, healthy), so the place that needs reading is the first row under its build, never the last of five
  * regions alphabetised. A healthy place a promotion gate holds a newer build from (it waits on its wave) ranks with the held places, not at rest.
  * Array.sort is stable: places of one rank keep the order they came in.
@@ -449,6 +449,19 @@ export const placeRank = (p: PlaceHold): number =>
 	p.state === 'healthy' && p.holdReason === 'rule' && p.heldBuilds.length
 		? severity('held-by-rule')
 		: severity(p.state);
+/**
+ * The order of the places under one build is the TOPOLOGY's, never the state's (owner 2026-11-12, "environments jumping"): tier (dev → prod), then
+ * wave, leader first, then site name. A place that fails, deploys or finishes keeps its row; only its word and mark change.
+ */
+export const byTopology = (places: PlaceHold[]): PlaceHold[] =>
+	[...places].sort(
+		(a, b) =>
+			tierRank(a.tier) - tierRank(b.tier) ||
+			(a.wave?.wave ?? 0) - (b.wave?.wave ?? 0) ||
+			Number(!!b.wave?.leader) - Number(!!a.wave?.leader) ||
+			a.label.localeCompare(b.label)
+	);
+/** the state-severity order, kept for callers that want the place needing a read first (the ledger no longer uses it) */
 export const bySeverity = (places: PlaceHold[]): PlaceHold[] =>
 	[...places].sort((a, b) => placeRank(a) - placeRank(b));
 export function ledgerOf(places: PlaceHold[]): Stop[] {
@@ -503,7 +516,7 @@ export function ledgerOf(places: PlaceHold[]): Stop[] {
 			pr: buildIdentity(build, places[0]?.href)?.pr ?? null,
 			index,
 			custom,
-			places: bySeverity(places.filter((p) => p.deployedBuild === build)),
+			places: byTopology(places.filter((p) => p.deployedBuild === build)),
 			deployTo: targets.get(build) ?? []
 		};
 	};

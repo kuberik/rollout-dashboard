@@ -1982,7 +1982,7 @@ export const CK_LIVE: Record<string, string> = {
 	'prod-eu-central': 'b-43',
 	'prod-us-east-1': 'b-42',
 	'prod-us-east-2': 'b-42',
-	'prod-ap-southeast-2': 'b-42',
+	'prod-ap-southeast-2': 'b-40',
 	'prod-af-south-1': 'b-40'
 };
 export const CK_BAKE: Record<string, string> = {
@@ -2180,7 +2180,7 @@ export function mockSchedules(namespace?: string) {
  *   wave 1  eu-central (leader, b-43)  and  us-east-1 (follower, on b-42: it follows the pick)
  *   wave 2  us-east-2                  baking b-42 (InProgress)
  *   wave 3  af-south-1 (leader)        its bake of b-40 FAILED, and the next pick waits on wave 2
- *           ap-southeast-2 (follower)  still on b-42
+ *           ap-southeast-2 (follower)  on b-40 (Succeeded): wave 3 sits behind wave 2, which is baking b-42
  *
  * The PLACE KEY of a prod site is `prod-<site>` (the tier has several live sites), so every
  * namespace, URL and fixture keeps the name it always had.
@@ -2950,11 +2950,44 @@ export const HWV_PLACES: HwvPlace[] = [
 	{ ns: 'hello-waves-prod-ap-south-1', tier: 'prod', site: 'ap-south-1', wave: 2, cluster: 'prod' }
 ];
 
+export const HWV_BEATS = ['arm', 'staging', 'wave1', 'wave1-done', 'wave2', 'done'] as const;
+export type HwvBeat = (typeof HWV_BEATS)[number];
+/** The stepped waves story's current beat (waves-story.ts). `null` until a beat is fired: the scenario rules. */
+let hwvBeat: HwvBeat | null = null;
+export const setHwvBeat = (b: HwvBeat | null) => {
+	hwvBeat = b;
+};
+
+type Live = { tag: string; bake: string; msg?: string };
+/** Per beat, what each site (dev, staging, prod's sites) runs: c6f19d2 is NEW, 0f1f88a the build prod still runs. */
+function hwvBeatLive(beat: HwvBeat, key: string): Live {
+	const NEW = 'c6f19d2';
+	const OLD = '0f1f88a';
+	const ok = (tag: string): Live => ({ tag, bake: 'Succeeded' });
+	const checking: Live = { tag: NEW, bake: 'InProgress', msg: 'checking' };
+	const deploying: Live = { tag: NEW, bake: 'Deploying', msg: 'Waiting for health checks to become healthy before starting bake.' };
+	switch (beat) {
+		case 'arm':
+			return key === 'dev' ? ok(NEW) : key === 'staging' ? checking : ok(OLD);
+		case 'staging':
+			return key === 'dev' || key === 'staging' ? ok(NEW) : ok(OLD);
+		case 'wave1':
+			return key === 'dev' || key === 'staging' ? ok(NEW) : key === 'eu-west-1' ? checking : key === 'us-east-1' ? deploying : ok(OLD);
+		case 'wave1-done':
+			return key === 'ap-south-1' ? ok(OLD) : ok(NEW);
+		case 'wave2':
+			return key === 'ap-south-1' ? checking : ok(NEW);
+		case 'done':
+			return ok(NEW);
+	}
+}
+
 /** What each site runs and how its bake stands, per scenario. */
-function hwvLive(scenario: HwvScenario, p: HwvPlace): { tag: string; bake: string; msg?: string } {
+function hwvLive(scenario: HwvScenario, p: HwvPlace): Live {
 	const NEW = 'c6f19d2';
 	const OLD = '0f1f88a';
 	const key = p.tier === 'prod' ? p.site : p.tier;
+	if (hwvBeat) return hwvBeatLive(hwvBeat, key);
 	if (scenario === 'incident') {
 		if (key === 'eu-west-1') return { tag: NEW, bake: 'InProgress' };
 		if (key === 'us-east-1') return { tag: NEW, bake: 'Deploying', msg: 'Waiting for health checks to become healthy before starting bake.' };

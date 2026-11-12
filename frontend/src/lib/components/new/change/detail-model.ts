@@ -87,7 +87,12 @@ export function classified(c: TChange, scenario: HomeState): { all: Unit[]; plac
 		if (u.row && (u.group === 'approval' || u.group === 'held')) {
 			/* CE2: the wait is THIS change's build: the OLDEST candidate that carries it (c0d3e88, "Held by a rule · 4h" on the tab), never the newest build behind it (f4a2c19 is the labelled "Newer build") */
 			const cand = ((releaseCandidates(rawOf(u.href) as unknown as Rollout) as RawC[] | undefined) ?? []).filter((x) => carriesBuild(c, x)).sort((a, b) => oldestFirst(a.created, b.created))[0];
-			if (cand) { const wait = waitClock(u.row, scenario) ?? cand.created ?? u.row.since; places.push({ ...u, kind: 'waiting', since: wait, build: shortBuild(cand.version ?? cand.tag ?? cand.revision), at: wait }); }
+			if (cand) {
+				const cb = shortBuild(cand.version ?? cand.tag ?? cand.revision);
+				/* the ONE wait clock, for THIS change's build (data.ts `waitClock(row, s, build)`: never before the build reached the place's gate) */
+				const wait = waitClock(u.row, scenario, cb) ?? cand.created ?? u.row.since;
+				places.push({ ...u, kind: 'waiting', since: wait, build: cb, at: wait });
+			}
 		}
 	}
 	const ownRank = (p: Place) => (p.kind === 'running' && p.current === firstBuild ? 0 : 1);
@@ -325,9 +330,28 @@ const causeOf = (href: string, at: string): string | null => {
 	return m ? m.replace(/^Rolled back:\s*/i, '') : null;
 };
 /* ═══ History (S7): the PR's life on a spine, oldest first ═══ */
-export type EvKind = 'merged' | 'deployed' | 'moving' | 'failed' | 'rollback' | 'redeploy' | 'waiting' | 'held';
+export type EvKind = 'merged' | 'released' | 'deployed' | 'moving' | 'failed' | 'rollback' | 'redeploy' | 'waiting' | 'held';
 export type EvPlace = { label: string; tier: TierKey; href: string };
 export type Ev = { /** CE4: a rollback's source, as the tab prints it ("Rolled back from a11c303") */ from?: string; /** AD r4 (1): the instant the event sorts by when it differs from `at` (a wait sits after the deploys of its build) */ order?: string; /** AD r5 N2: the app the event belongs to (a change in two apps names it on every row) */ app?: string; key: string; kind: EvKind; build: string | null; /** the first place (kept for text dumps and single-place rows) */ place: string | null; /** every place the event happened in (a waiting build waits in five regions = ONE event, five chips) */ places: EvPlace[]; tier: TierKey | null; at: string | null; who: string | null; words: string; href: string | null; /** changedetail-12 CD1: why the tab says it was rolled back ("duplicate invoice numbers"), the rollback row's muted second-line cause */ cause?: string; /** changedetail-9 CE3: a failure of a NEWER build in a place that already ran this change healthily: not this change's own failed deploy */ newer?: boolean };
+/**
+ * THE RELEASE INSTANT of the build that first carried the change in an app: the `created` of that build's release in the catalogue of any
+ * place's rollout (availableReleases + releaseCandidates), the oldest wins. null when no catalogue lists the build (then History says nothing:
+ * the data has no release time, it is not invented).
+ */
+export function releasedAtOf(app: string, hist: { app: string; build: string; href: string }[]): { build: string; at: string } | null {
+	const first = hist.find((h) => h.app === app);
+	if (!first) return null;
+	const ts: string[] = [];
+	for (const h of hist.filter((x) => x.app === app)) {
+		const raw = rawOf(h.href);
+		if (!raw) continue;
+		for (const r of [...((availableReleases(raw as unknown as Rollout) as RawC[] | undefined) ?? []), ...((releaseCandidates(raw as unknown as Rollout) as RawC[] | undefined) ?? [])]) {
+			if (r.created && shortBuild(r.version ?? r.tag ?? r.revision) === first.build) ts.push(r.created);
+		}
+	}
+	const at = earliest(ts);
+	return at ? { build: first.build, at } : null;
+}
 /**
  * Every deploy of the build(s) that carried the change, per place, oldest first (CD6: a place's LATER deploys of newer builds that still
  * carry it — us-east's a11c303 and a11c404 — are events too), SCENARIO-MASKED (CD3): calm and quiet have no failures and no rollbacks, so
@@ -370,6 +394,17 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		const at = failed && !newerFail && pl?.kind === 'failed' && cur && pl.at ? pl.at : h.at;
 		out.push({ key: `${h.href}|${h.at}`, kind, app: h.app, build: h.build, place: h.place, places: tier ? [{ label: h.place, tier, href: h.href }] : [], tier, at, who: h.who, words, href: `${h.href}/history`, ...(newerFail ? { newer: true } : {}), ...(kind === 'rollback' && fromOf.get(`${h.href}|${h.at}`) ? { from: fromOf.get(`${h.href}|${h.at}`)!.build } : {}), ...(kind === 'rollback' && causeOf(h.href, h.at) ? { cause: causeOf(h.href, h.at)! } : {}) });
 	}
+	/* RELEASED: the build that first carried the change in each app was released (created in the catalogue) after the merge; only when the data has that instant */
+	/* apps that shipped the SAME release (a monorepo build: four services, one build, one instant) are ONE event; a lone app is named */
+	const rels = new Map<string, { build: string; at: string; apps: string[] }>();
+	for (const app of c.apps) {
+		const rel = releasedAtOf(app, hist);
+		if (!rel || !isNotEarlier(rel.at, c.mergedAt)) continue;
+		const k = `${rel.build}|${rel.at}`;
+		const g = rels.get(k) ?? { ...rel, apps: [] };
+		g.apps.push(app); rels.set(k, g);
+	}
+	for (const [k, g] of rels) out.push({ key: `released|${k}`, kind: 'released', ...(c.apps.length > 1 && g.apps.length === 1 ? { app: g.apps[0] } : {}), build: g.build, place: null, places: [], tier: null, at: g.at, who: null, words: 'Released', href: null });
 	const waits = new Map<string, Ev>();
 	for (const p of places.filter((x) => x.kind === 'waiting')) {
 		const kind: EvKind = p.group === 'held' ? 'held' : 'waiting';
@@ -498,7 +533,7 @@ export function openedOf(p: Place, scenario: HomeState, landed = false): Opened 
 		const hb = candidateBuilds(row).find((h) => h.build === p.build);
 		const w = hb ? { build: hb.build, title: hb.title, author: hb.author, at: hb.created } : (() => { const x = buildInQuestionFacts(row); return x ? { build: x.build, title: x.title, author: x.author, at: x.since } : null; })();
 		const dep = deployedBuild(row);
-		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(waitClock(row, scenario) ?? w?.at ?? p.since), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (w?.at ? isLater(h.created, w.at) : !!h.created)).sort((a, b) => newestFirst(a.created, b.created))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
+		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(waitClock(row, scenario, p.build) ?? p.since ?? w?.at), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (w?.at ? isLater(h.created, w.at) : !!h.created)).sort((a, b) => newestFirst(a.created, b.created))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
 	}
 	const bc = buildCommitOf(p.href, p.current);
 	const moving = !!row && (row.state === 'deploying' || row.state === 'checking');

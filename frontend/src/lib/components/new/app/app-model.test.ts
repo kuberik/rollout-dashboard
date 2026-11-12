@@ -166,18 +166,18 @@ describe('QA #23: superseded vs custom', () => {
 
 /* landing v5 (2026-11-10): the ledger listed the places of one stop alphabetically, so the waiting prod region came last of five. Within a
    stop the order is the product's one severity order (state-words SEVERITY); places of one rank keep their order. */
-describe('ledger: the place that needs reading leads its stop', () => {
+describe('ledger: places keep a fixed topology order (owner 2026-11-12, supersedes the severity order)', () => {
 	const hb = (build: string) => ({ build, title: null, author: null, created: '2026-01-02T00:00:00Z', here: true });
 	const mk = (name: string, state: string, extra: Record<string, unknown> = {}) => ({ wave: null, env: name, label: name, place: name, tier: 'prod', state, href: `/x/${name}`, deployedBuild: 'b0', holdReason: null, gate: null, heldBuilds: [hb('b1')], runs: null, ...extra }) as never;
-	it('failing, waiting for approval, held, checking, deploying, then at rest; ties keep their order', () => {
+	it('same tier and wave: site name order, whatever the states', () => {
 		const places = [mk('a-rest', 'healthy', { heldBuilds: [] }), mk('b-deploying', 'deploying'), mk('c-checking', 'checking'), mk('d-held', 'held-by-rule'), mk('e-approval', 'awaiting-approval'), mk('f-failed', 'failed'), mk('g-approval', 'awaiting-approval')];
 		const stop = ledgerOf(places).find((s) => s.build === 'b0')!;
-		expect(stop.places.map((p) => p.place)).toEqual(['f-failed', 'e-approval', 'g-approval', 'd-held', 'c-checking', 'b-deploying', 'a-rest']);
+		expect(stop.places.map((p) => p.place)).toEqual(['a-rest', 'b-deploying', 'c-checking', 'd-held', 'e-approval', 'f-failed', 'g-approval']);
 	});
-	it('a healthy place a promotion gate holds a newer build from ranks with the held places, above one at rest', () => {
+	it('a place that starts deploying or is held by a gate does not move', () => {
 		const places = [mk('a-rest', 'healthy', { heldBuilds: [] }), mk('b-waits', 'healthy', { holdReason: 'rule', gate: { name: 'Promotion from staging', sentence: '', label: { kind: 'promotion', source: 'staging' } } }), mk('c-deploying', 'deploying')];
 		const stop = ledgerOf(places).find((s) => s.build === 'b0')!;
-		expect(stop.places.map((p) => p.place)).toEqual(['b-waits', 'c-deploying', 'a-rest']);
+		expect(stop.places.map((p) => p.place)).toEqual(['a-rest', 'b-waits', 'c-deploying']);
 	});
 });
 
@@ -275,5 +275,27 @@ describe('batch4: placeNote names the gap in the place\'s own words', () => {
 		const af = P.find((p) => p.label === 'af-south-1')!;
 		const note = placeNote(ledgerOf(P).find((s) => s.places.includes(af))!, af);
 		expect(note).toBe('4 to deploy · 4.41.0-41 failed here');
+	});
+});
+
+import { byTopology } from './app-model';
+describe('byTopology (fixed place order under a build)', () => {
+	const mk = (label: string, tier: string, wave: number | null, leader = false, state = 'healthy') =>
+		({ label, tier, state, wave: wave === null ? null : { site: label, wave, leader, follows: null, multi: true } }) as never;
+	it('orders tier, then wave, leader first, then site name, whatever the state', () => {
+		const a = [mk('us-west', 'prod', 2, false, 'failed'), mk('eu', 'prod', 1, false), mk('ap', 'prod', 1, true, 'deploying'), mk('stg', 'staging', null), mk('dev', 'dev', null)];
+		const names = (xs: { label: string }[]) => xs.map((x) => x.label);
+		expect(names(byTopology(a))).toEqual(['dev', 'stg', 'ap', 'eu', 'us-west']);
+		const flipped = a.map((p) => ({ ...(p as object), state: (p as { label: string }).label === 'eu' ? 'failed' : 'healthy' }));
+		expect(names(byTopology(flipped as never))).toEqual(['dev', 'stg', 'ap', 'eu', 'us-west']);
+	});
+});
+
+import { readFileSync } from 'node:fs';
+describe('no auto-opened step pane on the App page', () => {
+	it('AppDetail opens a pane only on the reader click', () => {
+		const src = readFileSync(new URL('./AppDetail.svelte', import.meta.url), 'utf8');
+		expect(src).toMatch(/const leadKey: string \| null = null;/);
+		expect(src).not.toMatch(/leadOpenKey/);
 	});
 });

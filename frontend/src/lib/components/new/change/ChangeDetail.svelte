@@ -31,20 +31,18 @@
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
-	import AppGlyph from '$lib/components/AppGlyph.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import { MapPinAltOutline, ChartLineUpOutline, UndoOutline, GithubSolid, PlaySolid, CheckOutline } from 'flowbite-svelte-icons';
-	import Group from '../Group.svelte';
-	import ChangePlaceRow from './ChangePlaceRow.svelte';
+	import { ChartLineUpOutline, UndoOutline, GithubSolid, PlaySolid, CheckOutline } from 'flowbite-svelte-icons';
 	import HoldingCard from '../HoldingCard.svelte';
-	import ChangeStrip from './ChangeStrip.svelte';
+	import ChangeStages from './ChangeStages.svelte';
+	import { stagesOf } from './stages-model';
 	import ChangeCard from './ChangeCard.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ChangeHistory from './ChangeHistory.svelte';
 	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, type TChange, type HomeState, noReleasesApp } from '../data';
 	import { actionHref, rowAction, holdWord } from '../rollout-view';
 	import { isViewer, plural } from '../change-view';
-	import { classified, stripOf, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, buildGroups, changeProd, notReached, type Place } from './detail-model';
+	import { classified, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, changeProd, notReached, type Place } from './detail-model';
 
 	let { change: c, scenario = 'incident', checks = null }: { change: TChange; scenario?: HomeState; checks?: { text: string; href: string | null } | null } = $props();
 	/** the change's apps have no releases (no source, or an empty catalogue): nothing will carry it to production */
@@ -53,7 +51,7 @@
 	const causes = $derived(heldCauses(scenario));
 	const cl = $derived(classified(c, scenario));
 	const places = $derived(cl.places);
-	const tiles = $derived(stripOf(c, scenario));
+	const stages = $derived(stagesOf(c, scenario));
 	const st = $derived(statementOf(c, places, cl.all));
 	const lead = $derived(st.lead ?? places[0] ?? null);
 	const cm = $derived(commitsOf(c, scenario, lead));
@@ -94,18 +92,7 @@
 	const backHref = $derived(lead?.row?.action?.kind === 'rollback' ? actionHref(lead.row.action) : lead ? `${lead.href}?action=rollback` : null);
 	/* a check line that says "passing" while the change fails in production would be a lie: only the link survives a failure */
 	const checkText = $derived(checks && !checks.href && !failed.length ? checks.text : null);
-	/* r4 (BUILD-R4): "Where it runs" groups the place rows BY BUILD (own build first); the rollup counts places and the builds that carry the change */
-	const groups = $derived(buildGroups(c, scenario, rows, cl.unaffected));
-	const carrying = $derived(groups.filter((g) => g.carries).length);
-	const whereRollup = $derived([plural(cl.all.length, 'place'), carrying ? `${carrying} build${carrying === 1 ? '' : 's'} carr${carrying === 1 ? 'ies' : 'y'} it` : ''].filter(Boolean).join(' · '));
-	const whereAdverse = $derived(cn.failing ? `${cn.failing} failing` : null);
-	const whereHeld = $derived([cn.waiting ? `${cn.waiting} waiting` : '', cn.held ? `${cn.held} held` : ''].filter(Boolean).join(' · ') || null);
 	const prod = $derived(changeProd(c, scenario));
-	/* AD r1 (3): a waiting place does not RUN the build: the subheader counts the places that run it and, apart, the places that wait for it */
-	/* AD r3 (1): the subheader counts as the header does: the adverse count first, in its ink, then the group's total ("1 failing · 1 place", "5 waiting · 6 places") */
-	const countOf = (g: (typeof groups)[number]): { text: string; ink: string }[] => { const cnt = (f: (p: Place) => boolean) => g.rows.filter((r) => f(r.p)).reduce((n, r) => n + 1 + r.also.length, 0); const w = cnt((p) => p.kind === 'waiting' && p.group !== 'held'), h = cnt((p) => p.kind === 'waiting' && p.group === 'held'), f = cnt((p) => p.kind === 'failed' || !!p.newerFails); return [...(f ? [{ text: `${f} failing`, ink: 'text-danger' }] : []), ...(w ? [{ text: `${w} waiting`, ink: 'text-held' }] : []), ...(h ? [{ text: `${h} held`, ink: 'text-held' }] : []), { text: plural(cnt(() => true), 'place'), ink: 'text-fg-subtle' }]; };
-	/* the relation is the subheader's one fact that never truncates (AD r2 4); on a phone it is its short form */
-	const relOf = (g: (typeof groups)[number], short = false) => g.own ? (short ? 'own build' : 'this change\u2019s own build') : !g.carries ? (g.rows.some((r) => notReached(r.p, scenario) !== null) ? 'does not carry it yet' : 'does not carry it') : !g.newer ? 'carries it' : short ? `+${g.newer} newer` : `carries it · +${g.newer} newer change${g.newer === 1 ? '' : 's'}`;
 </script>
 
 {#snippet links()}
@@ -138,14 +125,11 @@
 		{#snippet actions()}
 			<span data-desktop-only class="contents">{@render links()}</span>
 		{/snippet}
-		{#snippet below()}
-			<div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-				{#if tiles.length}<ChangeStrip {tiles} change={c} {scenario} />{/if}
-			</div>
-		{/snippet}
 	</PageHeader>
 
-	<div class="mt-6 max-sm:mt-4 empty:hidden" data-statement>
+	<ChangeStages {stages} class="mt-6 max-sm:mt-4" />
+
+	<div class="mt-4 empty:hidden" data-statement>
 		{#if st.kind === 'failed' && check}
 			<!-- changedetail-9 CE8: the tab's set and order for a failed deploy: [Retry] [Roll back] + the quiet "Open rollout ›"; r34 S1a: the shared StatementBanner owns the shell and the phone action row -->
 			<StatementBanner severity="failed" title={failTitle} {check}
@@ -170,28 +154,14 @@
 	<!-- the tab's main/rail split (BUILD-R4): 3fr / minmax(22rem, 2fr), 16px gap; past 2300 the four cards are composed by height: Where it runs | History | Summary over Change (AD r2 6); past 3400 the first column caps at the 1150px row width -->
 	<div class="cd-split mt-4 flex flex-col gap-4 lg:grid lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
 		<div class="cd-main flex min-w-0 flex-col gap-4">
-			<!-- WHERE IT RUNS (r4, the centrepiece): the places that run a build carrying this change, grouped by build; a 36px subheader says what the build is to the change -->
-			<Group icon={MapPinAltOutline} title="Where it runs" rollup={whereRollup} adverse={whereAdverse} held={whereHeld} class="cd-focal" id="where-it-runs">
-				{#each groups as g (g.key)}
-					<li class="cd-bld" data-build-group={g.build} data-build-carries={g.carries ? '' : undefined}>
-						<div class="cd-bh flex h-9 items-center gap-3 bg-subtle px-4"><span class="w-4 shrink-0" aria-hidden="true"></span><span class="dot-list min-w-0 flex-1"><span class="dot-list-row flex min-w-0 items-baseline">{#if multiApp}<span class="t-meta inline-flex shrink-0 items-center gap-1 text-fg-muted"><AppGlyph name={g.app} size={16} class="shrink-0" />{g.app}</span>{/if}<span class="t-code-sm shrink-0 text-fg" data-build-id>{g.build}</span><span class="t-meta whitespace-nowrap text-fg-subtle {multiApp ? 'min-w-0 truncate sm:shrink-0' : 'shrink-0'}"><span class="sm:hidden">{relOf(g, true)}</span><span class="max-sm:hidden">{relOf(g, false)}</span></span>{#if g.newest && !noReleases}<span class="t-meta shrink-0 text-fg-subtle max-sm:hidden">newest</span>{/if}</span></span><span class="dot-list shrink-0"><span class="dot-list-row flex items-baseline whitespace-nowrap">{#each countOf(g) as k (k.text)}<span class="t-meta tabular-nums {k.ink}" data-build-count>{k.text}</span>{/each}</span></span></div>
-						<ul class="divide-y divide-line-subtle">
-							{#each g.rows as r (r.p.href)}{@const i = rows.indexOf(r)}<ChangePlaceRow place={r.p} also={r.also} {scenario} open={i === 0 && leadOpen} canOpen={g.carries} landed={c.group === 'landed'} {reserve} inStatement={i === 0 && (st.kind === 'failed' || st.kind === 'waiting' || st.kind === 'held')} changeCommit={cm.commits[0] ? { title: cm.commits[0].title, author: cm.commits[0].author } : null} omitTitle={c.title} />{/each}
-						</ul>
-					</li>
-				{/each}
-				{#if !places.length && !cl.unaffected.length}
-					<li class="flex items-start gap-3 px-4 py-3"><MapPinAltOutline class="h-5 w-5 shrink-0 text-fg-disabled" aria-hidden="true" /><div><p class="t-ui text-fg">Not running anywhere yet</p><p class="t-meta mt-0.5 text-fg-subtle">A place shows here once a build that carries this change reaches it.</p></div></li>
-				{/if}
-			</Group>
+			<ChangeHistory {events} {multiApp} class="cd-history" />
 			<ChangeCard commits={cm.commits} stat={head.stat} checkText={checkText} class="cd-change" />
 		</div>
 		<aside class="cd-rail grid min-w-0 gap-4 lg:sticky lg:top-6 lg:flex lg:flex-col" aria-label="What holds this change and what happened to it">
 			{#if holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href)}<HoldingCard {holds} class="cd-hold" />{/if}
-			<ChangeHistory {events} {multiApp} class="cd-history" />
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
-					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], ...(how.toProd || prod.of <= 1 ? [[`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')]] : []), ...(prod.of > 1 ? [[multiApp ? 'Production places running it' : 'Production regions running it', `${prod.healthy} of ${prod.of}`]] : []), ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
+					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], ...(how.toProd || prod.of <= 1 ? [[`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')]] : []), ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
 						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{v}</dd></div>
 					{/each}
 				</dl>
@@ -202,20 +172,13 @@
 
 <style>
 	.cd-main { container: cdm / inline-size; }
-	/* the build subheader: 36px, the rows' text x (16 pad + 16 mark + 12 gap), a hairline under it; the next group gets 4px of air above */
-	.cd-bh { border-bottom: 1px solid var(--k-line-subtle); }
-	.cd-bld + .cd-bld .cd-bh { margin-top: 4px; }
-	/* the 4K rule (mock NOTES): the row is the cap, not the page. >= 2300 the main is 2-up (Where it runs | Change, each under the ~1150px row cap) and the rail 2-up (History | Summary); AD r1 (6): no lone card, no 2100px row */
+	/* the 4K rule: the row is the cap, not the page. >= 2300 the four cards are items of ONE grid, History | Change | (Holding over Summary): three columns, no lone column */
 	@media (min-width: 2300px) {
-		/* the four cards become items of ONE grid, placed by height: Where it runs | History | Summary over Change (and Holding above them when it exists); no lone card, no 2100px row */
-		.cd-main, .cd-rail { display: contents !important; }
-		.cd-split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(22rem, 2fr) minmax(22rem, 2fr); grid-template-areas: 'where history summary' 'where history change' 'where history hold' 'where history .'; grid-template-rows: max-content max-content max-content 1fr; align-items: start; }
-		/* the spanning cards (where, history) size the 1fr row, so the third column's cards stack from the top (max-content rows take only their own card) */
-		.cd-split :global(.cd-focal) { grid-area: where; }
+		.cd-main { display: contents !important; }
+		.cd-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(22rem, 0.8fr); grid-template-areas: 'history change rail'; align-items: start; }
 		.cd-split :global(.cd-history) { grid-area: history; }
-		.cd-split :global(.cd-hold) { grid-area: hold; }
-		.cd-split :global(.cd-summary) { grid-area: summary; }
 		.cd-split :global(.cd-change) { grid-area: change; }
+		.cd-rail { grid-area: rail; }
 	}
-	@media (min-width: 3400px) { .cd-split { grid-template-columns: minmax(0, 1fr) minmax(22rem, 760px) minmax(22rem, 760px); } }
+	@media (min-width: 3400px) { .cd-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(22rem, 760px); } }
 </style>

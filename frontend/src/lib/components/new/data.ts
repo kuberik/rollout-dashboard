@@ -817,6 +817,17 @@ export function buildInQuestionFacts(row: Pick<RolloutRow, 'app' | 'href'>): { b
 /** r6 T6: when the build that waits at a gated place ARRIVED AT ITS GATE: the later of the build's creation and the moment the app's lower tiers deployed it (a promotion gate lets a build
  *  through only once the tier below runs it). null when no age can be told: the build waits for a promotion step that has not happened, or nothing waits.
  *  The build's own age (`buildInQuestionFacts().since`, the tab's Newer-builds age) is NOT the hold's age: 4.43.0-43 was created 10h ago and reached staging 1h ago. */
+/** THE ARRIVAL of a build at a gated place: the later of its creation and the first time any LOWER tier of the app ran it (a promotion gate lets a build
+ *  through only once the tier below runs it). The place's own tier has nothing below it: the creation. null when no lower tier ran it yet. */
+export function buildArrival(row: Pick<RolloutRow, 'app' | 'tier'>, b: { build: string; created: string | null }, state: HomeState = 'incident'): string | null {
+	const lower = placesOf(state, row.app).filter((p) => RANK_T[p.tier] < RANK_T[row.tier as TierKey]);
+	if (!lower.length) return b.created;
+	const ts: string[] = [];
+	for (const p of lower) for (const h of rawOf(p.href)?.status.history ?? []) if (shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) === b.build) ts.push(h.timestamp);
+	if (!ts.length) return null;
+	const arrived = oldestClock(ts)!;
+	return b.created && Date.parse(b.created) > Date.parse(arrived) ? b.created : arrived;
+}
 export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state: HomeState = 'incident'): string | null {
 	const wb = buildInQuestionFacts(row);
 	if (!wb) return null;
@@ -824,21 +835,21 @@ export function holdSince(row: Pick<RolloutRow, 'app' | 'href' | 'tier'>, state:
 	   unanswered approval must not reset "waiting for 2h" to "3m". */
 	const all = candidateBuilds(row);
 	const here = all.some((x) => x.here) ? all.filter((x) => x.here) : all;
-	const lower = placesOf(state, row.app).filter((p) => RANK_T[p.tier] < RANK_T[row.tier as TierKey]);
-	const arrivalOf = (b: { build: string; created: string | null }): string | null => {
-		if (!lower.length) return b.created;
-		const ts: string[] = [];
-		for (const p of lower) for (const h of rawOf(p.href)?.status.history ?? []) if (shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) === b.build) ts.push(h.timestamp);
-		if (!ts.length) return null;
-		const arrived = oldestClock(ts)!;
-		return b.created && Date.parse(b.created) > Date.parse(arrived) ? b.created : arrived;
-	};
-	return oldestClock(here.map(arrivalOf).filter((x): x is string => !!x));
+	return oldestClock(here.map((b) => buildArrival(row, b, state)).filter((x): x is string => !!x));
 }
 /** QA2 #8: THE ONE CLOCK OF A WAIT. A row that waits (approval / rule) has one time for the fact "how long": when the hold began (`holdSince`), else the waiting
  *  build's own age, else the row's. The sentence ("Waiting for approval for 5h"), the row's age slot and the /apps card's age all read THIS, so one row never shows
  *  two disagreeing unlabelled clocks (the build's own age stays on the Newer-builds list, where it is labelled). */
-export function waitClock(row: Pick<RolloutRow, 'app' | 'href' | 'tier'> & { since?: string | null; hrefs?: string[] }, state: HomeState = 'incident'): string | null {
+/*  change-stages r2 (coordinator ruling: ONE wait clock): `build` asks for the wait of ONE build at the place (the Change page's change): the same row clock,
+ *  clamped so it never starts before that build reached the place's gate (`buildArrival`); a hold on a change cannot predate the change arriving upstream.
+ *  Without `build` it is the row's clock (the oldest held build's). Every surface that prints a change's wait passes the change's build here. */
+export function waitClock(row: Pick<RolloutRow, 'app' | 'href' | 'tier'> & { since?: string | null; hrefs?: string[] }, state: HomeState = 'incident', build?: string | null): string | null {
+	if (build) {
+		const base = waitClock(row, state);
+		const cand = candidateBuilds(row).find((b) => b.build === build);
+		const arr = buildArrival(row, { build, created: cand?.created ?? null }, state);
+		return arr && (!base || Date.parse(arr) > Date.parse(base)) ? arr : base;
+	}
 	const own = (href: string): string | null => holdSince({ app: row.app, tier: row.tier, href }, state) ?? buildInQuestionFacts({ app: row.app, href })?.since ?? (href === row.href ? row.since ?? null : null);
 	/* A row that covers SEVERAL places (a folded prod row, "5 of 6 prod regions") shows the LONGEST wait among them: the clock of its oldest held place. */
 	const clocks = (row.hrefs?.length ? row.hrefs : [row.href]).map(own).filter((x): x is string => !!x);

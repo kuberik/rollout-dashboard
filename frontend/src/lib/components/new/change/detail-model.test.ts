@@ -124,10 +124,11 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(cand.created).toBeTruthy();
 		const oldest = places
 			.filter((x) => x.kind === 'waiting')
-			.map((x) => waitClock(x.row!, 'incident')!)
+			.map((x) => waitClock(x.row!, 'incident', x.build)!)
 			.sort()[0];
+		/* change-stages r2: ONE clock, asked for the change's build (never before it reached the gate) */
 		expect([w.build, w.at]).toEqual(['c0d3e88', oldest]);
-		expect(oldest).toBe('2026-10-23T18:51:26.893Z'); // the oldest of the five waiting places, not the lead's
+		expect(oldest).toBe('2026-10-24T14:56:26.893Z'); // the oldest of the five waiting places, clamped to c0d3e88's arrival upstream (r2), not the lead's
 	});
 	it("#37 (CD5, re-pinned r6 CG6): build subject = the tab's commit (danielreed, the PR title); the change subject stays the PR's", () => {
 		const { c, places } = at(P37, 'incident');

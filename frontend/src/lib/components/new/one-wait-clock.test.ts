@@ -42,7 +42,9 @@ describe('one clock per wait (mock scenario incident)', () => {
 			const { places } = classified(c, S);
 			for (const p of places.filter((x) => x.kind === 'waiting' && x.row)) {
 				n++;
-				expect([c.title, p.label, ago(p.at ?? p.since), openedOf(p, S).since]).toEqual([c.title, p.label, ago(waitClock(p.row!, S)), ago(waitClock(p.row!, S))]);
+				/* change-stages r2: ONE clock, asked for THIS change's build (data.ts `waitClock(row, s, build)` clamps it to the build's arrival upstream) */
+				expect([c.title, p.label, ago(p.at ?? p.since), openedOf(p, S).since]).toEqual([c.title, p.label, ago(waitClock(p.row!, S, p.build)), ago(waitClock(p.row!, S, p.build))]);
+				expect(Date.parse(waitClock(p.row!, S, p.build)!)).toBeGreaterThanOrEqual(Date.parse(waitClock(p.row!, S)!));
 			}
 		}
 		expect(n).toBeGreaterThan(0);
