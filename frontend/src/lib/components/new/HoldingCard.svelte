@@ -14,10 +14,13 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import { plural, tabEnv, envTheme } from './rollout-view';
 	import type { HeldCause, TRow } from './data';
-
+	import CauseText from '$lib/components/CauseText.svelte';
+	import type { CausePart } from '$lib/view-models/gate-label';
+	
 	let { holds, class: className = '', quiet = false, rollup = '', id = undefined }: { holds: HeldCause[]; class?: string; /** r3-filters: the anchor the old /rollouts?state=held link lands on */ id?: string; /** Environments: the card's rollup in PLACES ("6 held"), the unit the hold callouts above it sum to */ rollup?: string; /** NO LONGER CHANGES ANYTHING (one colouring on every page: held orange on the pause glyph only, no dot clusters); kept so callers type-check. Was: /changes only (budget, "neutral at rest"): no app glyphs, no place dots, grey strip; the cause word and the figure carry the row */ quiet?: boolean } = $props();
 	/** EF6: "Waiting on X" (data.ts) is said "Waits on X" everywhere a row says it; "Waiting for …" keeps its own words. */
-	const waitsTitle = (c: string) => c.replace(/^Waiting on /, 'Waits on ');
+	/* "Waiting on X" reads "Waits on X" here; only the leading plain run is rewritten, a label part is never touched */
+	const waitsParts = (ps: readonly CausePart[]): CausePart[] => ps.map((p, i) => (i === 0 && typeof p === 'string' ? p.replace(/^Waiting on /, 'Waits on ') : p));
 	/* rollouts-11 W20: ONE vocabulary: the rollup counts the same rollouts the Held chip counts ("5 rollouts · 4 causes"); a row names its places ("3 places") */
 	const rollouts = $derived(new Set(holds.flatMap((h) => h.rows.map((r) => r.key))).size);
 	const placesOf = (rows: TRow[]) => rows.reduce((n, r) => n + Math.max(1, r.regions?.length ?? 1), 0);
@@ -35,7 +38,7 @@
 				{@const n = placesOf(h.rows)}
 				<li class="hc tap-zone grid min-w-0 gap-x-3 px-4 py-3 hover:bg-hover" data-truth-kind="hold" data-truth-cause={h.cause} data-truth-href={h.rows[0].href} data-truth-hrefs={h.rows.map((r) => r.href).join(" ")}>
 					<span class="hc-mark flex h-5 items-center">{#if h.rows[0].state === 'awaiting-approval'}<StatusMark state="approval" />{:else}<HeldGlyph size={16} class="text-held" title="Held" />{/if}</span>
-					<a href="{h.rows[0].href}/gates" class="hc-cause tap-link t-ui min-w-0 break-words font-medium text-fg hover:underline">{waitsTitle(h.cause)}</a>
+					<a href="{h.rows[0].href}/gates" class="hc-cause tap-link t-ui min-w-0 break-words font-medium text-fg hover:underline"><CauseText parts={waitsParts(h.parts)} /></a>
 					<span class="hc-places t-meta whitespace-nowrap text-right tabular-nums text-fg-subtle" data-truth-kind="hold-places">{plural(n, 'place')}</span>
 					<div class="hc-apps flex min-w-0 flex-col gap-1.5">
 						{#each byApp(h.rows) as [app, places] (app)}

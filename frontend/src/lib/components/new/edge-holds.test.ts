@@ -30,7 +30,7 @@ describe('item 4 (M20): a closed window and a dependency hold tide-gauge at prod
 		const p = place('tide-gauge');
 		expect(p.state).toBe('held-by-rule');
 		expect(p.holdReason).toBe('rule');
-		expect(p.gate).toEqual({
+		expect(p.gate).toMatchObject({
 			name: 'ledger-core',
 			sentence: 'Releases when ledger-core ships a newer version'
 		});
@@ -60,7 +60,7 @@ describe('item 6: door-lock, signal-box, ledger-export', () => {
 		);
 		const p = place('door-lock');
 		expect(p.state).toBe('held-by-rule');
-		expect(p.gate).toEqual({
+		expect(p.gate).toMatchObject({
 			name: 'After Hours',
 			sentence: 'Releases when the deploy window opens'
 		});
@@ -75,7 +75,7 @@ describe('item 6: door-lock, signal-box, ledger-export', () => {
 		]);
 		const p = place('signal-box');
 		expect(p.state).toBe('held-by-rule');
-		expect(p.gate).toEqual({
+		expect(p.gate).toMatchObject({
 			name: 'Manual vet',
 			sentence: 'Releases when the rule allows this build'
 		});

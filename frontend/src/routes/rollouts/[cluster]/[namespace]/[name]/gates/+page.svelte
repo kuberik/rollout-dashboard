@@ -167,6 +167,7 @@
 	import { gatesPinBox, pinLeadSentence } from '$lib/view-models/pin-hold';
 	import { getDisplayVersion } from '$lib/utils';
 	import { rolloutPermissionsQueryOptions } from '$lib/api/rollouts';
+	import { chainWaitOf } from '$lib/view-models/wait-fact';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import type { HealthCheck, RolloutGate } from '../../../../../../types';
 
@@ -1267,7 +1268,10 @@
 	 * gates). Replaces `hood.holding` everywhere this tab states that count.
 	 */
 	const gatesHere = $derived(
-		gatesOnThisRollout({ upstream: reconciled.upstream, downstream: hood.downstream, gates: hood.gates })
+		gatesOnThisRollout(
+			{ upstream: reconciled.upstream, downstream: hood.downstream, gates: hood.gates },
+			waitsForFact?.stage ?? null
+		)
 	);
 	const reconciledHolding = $derived(gatesHere.holding);
 
@@ -1972,7 +1976,7 @@
 								elsewhereCountOverride={elsewhereCounts}
 								{peerHeldByEnv}
 								{focusWaitsFor}
-								chainWait={waitsForFact?.wave ? { stage: waitsForFact.stage, text: waitsForFact.wave } : null}
+								chainWait={chainWaitOf(waitsForFact, peerHeldByEnv.get(waitsForFact?.stage ?? '')?.state, holdBreakdown.held[0]?.build)}
 							/>
 							{/snippet}
 							</RolloutAsk>

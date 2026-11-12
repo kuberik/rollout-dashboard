@@ -5,6 +5,7 @@ import {
 	rebasedHomeFixture,
 	respondHomeIncident,
 	withObservationSnapshots,
+	withPromotionHolds,
 	type HomeFixture
 } from './home-incident';
 import { applySlicesMode } from './mock-slices';
@@ -61,7 +62,7 @@ describe('respondHomeIncident', () => {
 			const { body } = get(url);
 			/* apps-10/11: invoice-api's and hello-frontend-app's older history entries are SPREAD over the week in the served response (same names, same count), so those two compare by shape */
 			/* r39: the served list also carries the failing checks' observations on the head history entry (withObservationSnapshots) */
-			const served = rebasedHomeFixture(withObservationSnapshots(fixture), now);
+			const served = rebasedHomeFixture(withObservationSnapshots(withPromotionHolds(fixture)), now);
 			const plain = (items: { metadata: { name: string } }[]) => items.filter((r) => !/^(invoice-api|hello-frontend-app)/.test(r.metadata.name));
 			/* the served list is the fixture with the serve-time slices conversion applied (./mock-slices.ts) */
 			expect(plain(body.rollouts.items)).toEqual(plain(applySlicesMode(served.rollouts).rollouts));
@@ -175,5 +176,19 @@ describe('home-incident rollout detail: the gates the controllers write', () => 
 			(g) => g.metadata.name === 'promotion-prod-ap-southeast-2'
 		)!;
 		expect(promo.metadata.ownerReferences).toBeUndefined();
+	});
+});
+
+describe('withPromotionHolds (batch4 #75): the served fixture has places a promotion gate itself holds', () => {
+	it('adds one refusing promotion gate to exactly two places (checkout-edge staging a pure hold with a known source, payments-svc staging with none), and changes nothing else', () => {
+		const out = withPromotionHolds(fixture);
+		const diff = out.rollouts.filter((r, i) => r !== fixture.rollouts[i]).map((r) => `${r.metadata.namespace}/${r.metadata.name}`);
+		expect(diff).toEqual(['checkout-edge-staging/checkout-edge', 'platform-staging/payments-svc']);
+		for (const r of out.rollouts.filter((r, i) => r !== fixture.rollouts[i])) {
+			const gates = (r.status as { gates: { kind: string; allowedVersions: string[] }[] }).gates;
+			expect(gates.filter((g) => g.kind === 'promotion')).toEqual([expect.objectContaining({ allowedVersions: [] })]);
+			expect(gates.some((g) => g.kind === 'approval'), r.metadata.name).toBe(r.metadata.name === 'payments-svc');
+		}
+		expect(out.environments).toEqual(fixture.environments);
 	});
 });

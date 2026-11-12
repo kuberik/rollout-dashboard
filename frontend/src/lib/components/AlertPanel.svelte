@@ -2,6 +2,8 @@
 
 <script lang="ts">
 	import HeldGlyph from './HeldGlyph.svelte';
+	import CauseText from './CauseText.svelte';
+	import type { Cause } from '$lib/view-models/gate-label';
 	import Avatar from './Avatar.svelte';
 	import BangGlyph from './BangGlyph.svelte';
 	import type { Snippet, Component } from 'svelte';
@@ -66,8 +68,9 @@
 		 * role that exists for exactly this — a bold, page-level lead — so it
 		 * moves onto it rather than earning a tenth role for one component.
 		 */
-		title: string;
-		message?: string;
+		/** a typed cause draws a promotion gate as » + its source chip (`CauseText`); a string prints as text */
+		title: string | Cause;
+		message?: string | Cause;
 		/**
 		 * ⭐ THE ONLY REASON THIS EXISTS: `FailurePanel` WAS A COPY OF THIS
 		 * COMPONENT because its message is a LIST, not a sentence. A rollout can
@@ -761,7 +764,7 @@
 								</div>
 							</div>
 						</div>
-						<p class="t-heading {palette.title} {compact ? 'ap-title-clamp' : ''}">{title}</p>
+						<p class="t-heading {palette.title} {compact ? 'ap-title-clamp' : ''}">{#if typeof title === 'string'}{title}{:else}<CauseText parts={title} />{/if}</p>
 					</div>
 					{#if extra}{@render extra()}{/if}
 				</div>
@@ -815,7 +818,7 @@
 								stays printed in full at every width, as `message`'s own
 								doc comment has always promised ("ALWAYS PRINTED").
 							-->
-							<p class="t-body mt-0.5 break-words {palette.message}">{message}</p>
+							<p class="t-body mt-0.5 break-words {palette.message}">{#if typeof message === 'string'}{message}{:else}<CauseText parts={message} />{/if}</p>
 						{/if}
 						{#if change}
 							<p class="ap-change t-meta mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-fg-subtle" data-ap-change>

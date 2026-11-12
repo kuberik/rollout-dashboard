@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { deployableTags, placeHolds, inbox, gatesOf, gateName, candidateBuilds, rollouts, approvalTarget, grantApproval, revokeApproval, appHolds, apps, heldCauses, stateVerb, type TRow } from './data';
-import { sentenceOf } from './rollouts-page';
+import { sentenceOf, sentenceParts } from './rollouts-page';
 import { publishGatePretty } from '$lib/view-models/gate-pretty.svelte';
 import { source, resetHomeModel, homeModel, ME } from '$lib/components/home/sketch/home-data';
 import { buildSketch, alsoApprovalAsk } from '../home/sketch/sketch-home';
 import { compass } from '$lib/components/home/pocket/pocket-data';
 import { askSentence, doneWords } from './approvals.svelte';
+import { causeText, gateLabelText } from '$lib/view-models/gate-label';
 
 /* r34 r3-approve: Approve acts in place. The target names the build and every region whose own gate refuses it; granting moves
    those places out of the approval group on EVERY derivation (rows, changes, apps), and revoking restores them exactly. */
@@ -102,13 +103,13 @@ describe('approving in place', () => {
 	const holds = (what: string, gate: G) => it(`${what} still holds after the approval: no Deploying, and the toast and the held row name the same hold`, () => {
 		withGate(gate, (t) => {
 			expect(t.waitsOn, 'approvalTarget sees the hold').toBeTruthy();
-			expect(doneWords(t).detail).toBe(`payments-core: ${t.cause} · ${t.where}`);
+			expect(doneWords(t).detail).toBe(`payments-core: ${causeText(t.cause!)} · ${t.where}`);
 			const before = rollouts('incident').rows.filter((r) => r.app === 'payments-core').map((r) => `${r.key}:${r.state}`).sort();
 			grant(t);
 			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
 			expect(mine.length).toBeGreaterThan(0);
 			expect(mine.some((r) => r.state === 'deploying' || r.state === 'checking')).toBe(false);
-			expect(sentenceOf(mine[0], 'incident')[0], 'the held row names the toast\'s hold').toBe(t.cause);
+			expect(sentenceOf(mine[0], 'incident')[0], 'the held row names the toast\'s hold').toBe(causeText(t.cause!));
 			/* per-build: the newest build still awaits its OWN approval, so the row may read that wait; the Holding card names the toast's gate */
 			expect(gatesOf('payments-core', 'incident').some((g) => g.holding && g.name === t.waitsOn), 'the Holding card names the toast gate').toBe(true);
 			revokeApproval(t);
@@ -131,7 +132,7 @@ describe('approving in place', () => {
 	it('a schedule gate with no gate object loaded is named by the API displayName on the row cause and the toast alike', () => {
 		withGate({ name: 'schedule-gate-zvsqr', kind: 'schedule', displayName: 'Business Hours Only', passing: false, allowedVersions: null }, (t) => {
 			expect(t.waitsOn).toBe('Business Hours Only');
-			expect(t.cause).toBe('Held by Business Hours Only');
+			expect(causeText(t.cause!)).toBe('Held by Business Hours Only');
 			expect(doneWords(t).detail).toBe(`payments-core: Held by Business Hours Only · ${t.where}`);
 			grant(t);
 			const mine = rollouts('incident').rows.filter((r) => r.app === 'payments-core' && r.tier === 'prod');
@@ -293,7 +294,7 @@ describe('one classification for the toast, the row, the Holding card and the bu
 		(window ? withWindow : (f: () => void) => f())(() => patched([gate], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
 			expect(t.waitsOn, 'the toast waits on the rule').toBeTruthy();
-			expect(doneWords(t).detail).toBe(`payments-core: ${t.cause} · ${t.where}`);
+			expect(doneWords(t).detail).toBe(`payments-core: ${causeText(t.cause!)} · ${t.where}`);
 			expect(sentenceOf(prodRow(), 'incident')[0], 'the row names the rule, and the approval too').toBe(`Held by ${t.waitsOn} · also needs your approval`);
 			const ask = inbox('incident').items.find((i) => i.row.app === 'payments-core' && i.row.tier === 'prod');
 			expect(ask?.reason, 'Home keeps the ask and names the other hold').toMatch(ask_);
@@ -306,6 +307,21 @@ describe('one classification for the toast, the row, the Holding card and the bu
 			for (const env of envs) env.myChanges = [{ ref: '#9', title: 'mine', href: env.href, mergedAt: '2026-11-10T00:00:00Z', since: '2026-11-10T01:00:00Z', state: 'held-by-rule', checkingMinutesLeft: null, repo: 'x', apps: ['payments-core'] } as never];
 			expect(buildSketch(m, ME).elsewhere.find((x) => x.app === 'payments-core' && x.kind === 'approval')?.ask, 'own change: Home still asks').toMatch(ask_);
 		}));
+	});
+	/* batch4 #128 (QA71 F3/Q2): a promotion gate that refuses beside the approval is named by KIND everywhere: the toast target carries a typed label, the row keeps it in its lead, no surface gets the controller's sentence */
+	it('a promotion gate that also refuses: the toast target, the row lead and the card keep a typed promotion label, never the published sentence', () => {
+		const SENTENCE = 'Previous environment not ready yet';
+		patched([{ name: 'ghd-promo', kind: 'promotion', displayName: SENTENCE, passing: false, allowedVersions: ['0.0.0'] }], () => {
+			const t = approvalTarget(row('payments-core')!, 'incident')!;
+			expect(t.waitsOnLabel?.kind, 'the toast waits on a typed promotion label').toBe('promotion');
+			expect(t.cause?.some((x) => typeof x !== 'string'), 'the cause keeps the label part').toBe(true);
+			expect(causeText(t.cause!)).not.toContain(SENTENCE);
+			const [lead] = sentenceParts(prodRow(), 'incident');
+			expect(lead.some((x) => typeof x !== 'string'), 'the row lead keeps the label part').toBe(true);
+			expect(causeText(lead)).not.toContain(SENTENCE);
+			/* the other hold behind "also needs approval" is a promotion ORDER, named as such, never the gate's sentence */
+			expect(prodRow().alsoApproval?.other ?? 'promotion order').toBe('promotion order');
+		});
 	});
 	it('one wording per kind of other hold', () => {
 		const base = { other: 'Business hours gate', persistent: false };
@@ -412,10 +428,10 @@ expect(inbox('incident').items.some((i) => i.row.app === 'payments-core' && /dep
 	const causeCase = (what: string, gate: G, expected: string, window = false) => it(`${what}: the row and the toast print the identical cause string`, () => {
 		(window ? withWindow : (f: () => void) => f())(() => patched([gate], () => {
 			const t = approvalTarget(row('payments-core')!, 'incident')!;
-			expect(t.cause).toBe(expected);
+			expect(causeText(t.cause!)).toBe(expected);
 			const lead = sentenceOf(prodRow(), 'incident')[0];
-			expect(lead === t.cause || lead.startsWith(`${t.cause} ·`), `row "${lead}" starts with the cause`).toBe(true);
-			expect(doneWords(t).detail).toBe(`payments-core: ${t.cause} · ${t.where}`);
+			expect(lead === causeText(t.cause!) || lead.startsWith(`${causeText(t.cause!)} ·`), `row "${lead}" starts with the cause`).toBe(true);
+			expect(doneWords(t).detail).toBe(`payments-core: ${causeText(t.cause!)} · ${t.where}`);
 		}));
 	});
 	causeCase('an unnamed deploy window (the pretty name is not published yet)', { name: 'schedule-gate-qqqqq', kind: 'schedule', passing: false, allowedVersions: null }, 'Waits for the deploy window');

@@ -31,6 +31,8 @@
 	import FailedCheckLine from './FailedCheckLine.svelte';
 	import { splitOpensClause } from '$lib/view-models/window-words';
 	import HeldGlyph from './HeldGlyph.svelte';
+	import CauseText from './CauseText.svelte';
+	import type { Cause } from '$lib/view-models/gate-label';
 	import ObservationFigure from './ObservationFigure.svelte';
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
@@ -79,14 +81,15 @@
 		class: className = 'mb-0'
 	}: {
 		severity: Severity;
-		title: string;
+		title: string | Cause;
 		/** the failing check: printed as the tab prints it (red mark · name · message) */
 		check?: { name: string; message?: string };
 		/** the failing check's HealthCheck observations: a failed banner leads with the first drawable one as a figure (as the failure cards do) and the check line keeps its name + the budget */
 		observations?: HealthObservation[] | null;
 		checkInk?: boolean;
 		/** one sentence under the title (what the wait or hold means) */
-		message?: string;
+		/** a string, or a typed cause (a promotion gate drawn as » + chip) */
+		message?: string | Cause;
 		/** phone shows less (owner §5): the sentence is one tap away on the rollout, not printed below 640 */
 		messageDesktopOnly?: boolean;
 		/** the place this statement is about: an env chip */
@@ -171,7 +174,7 @@
 					</div>
 				{/if}
 				{#if shownCheck && checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} />{/if}
-				{#if message}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{#each splitOpensClause(message) as part}{#if part.unit}<span class="whitespace-nowrap" data-opens-clause>{part.text}</span>{:else}{part.text}{/if}{/each}</p>{/if}
+				{#if message}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{#if typeof message !== 'string'}<CauseText parts={message} />{:else}{#each splitOpensClause(message) as part}{#if part.unit}<span class="whitespace-nowrap" data-opens-clause>{part.text}</span>{:else}{part.text}{/if}{/each}{/if}</p>{/if}
 				{#if body}{@render body()}{/if}
 			</div>
 {/snippet}

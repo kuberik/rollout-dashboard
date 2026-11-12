@@ -1,5 +1,6 @@
 /** r34 rollouts lane: view-model of the Rollouts and Needs-you pages. Facts come ONLY from ./data. */
 import { oldestFirst, newestFirst } from '$lib/instant';
+import { causeText, type Cause } from '$lib/view-models/gate-label';
 import { placeLabel, heldCauses, checkClock, approvalScope, actionFor } from './data';
 import type { TRow, GroupKey, HomeState, Step } from './data';
 import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
@@ -96,10 +97,15 @@ export function withoutLead<T extends { key: string }>(rows: T[], lead: { key: s
 export const rowAction = (row: Pick<TRow, 'group' | 'action'>): TRow['action'] => actionFor(row);
 /** r34 r4: a held row says what holds it in the rail's own words ("Waits on check integration-tests"), never "a rule"/"a check". */
 export function holdWord(row: Pick<TRow, 'key' | 'group' | 'word'>, hs: HomeState): string | null {
+	const p = holdWordParts(row, hs);
+	return p ? causeText(p) : null;
+}
+/** `holdWord`, typed: the Holding card's cause with its gate label kept, so the row draws a promotion hold by kind */
+export function holdWordParts(row: Pick<TRow, 'key' | 'group' | 'word'>, hs: HomeState): Cause | null {
 	if (row.group !== 'held') return null;
 	const h = heldCauses(hs).find((c) => c.rows.some((r) => r.key === row.key));
 	if (!h || h.cause === 'Held by a rule') return null;
-	return h.cause.replace(/^Waiting/, 'Waits');
+	return h.parts.map((p, i) => (i === 0 && typeof p === 'string' ? p.replace(/^Waiting/, 'Waits') : p));
 }
 
 /* ── r34 v2 RO: the Slipway's facts ─────────────────────────────────────────────────────────────────────────────── */

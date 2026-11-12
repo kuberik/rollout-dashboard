@@ -1,6 +1,8 @@
 <svelte:options runes={true} />
 
 <script module lang="ts">
+	import GateLabelView from './GateLabel.svelte';
+	import type { GateLabel } from '$lib/view-models/gate-label';
 	/**
 	 * One row of a record: the field's NAME and the field's VALUE.
 	 *
@@ -13,7 +15,10 @@
 	 */
 	export type Fact = {
 		label: string;
+		/** The plain text of the value; also the accessible/text fallback when `gate` draws it. */
 		value: string;
+		/** A gate's name drawn by kind (GateLabel: `» [SOURCE]` / `» Promotion`). Typed data, so the row never carries marker characters. */
+		gate?: GateLabel;
 		/**
 		 * A HANDLE — a Kubernetes object name, a URL path, an HTTP status. Mono,
 		 * `break-all`, and muted where the tone has a muted step: it is a string
@@ -169,7 +174,9 @@
 		>
 			{#each facts as f, i (`${f.label}-${i}`)}
 				<dt class="t-label {ink.label}">{f.label}</dt>
-				{#if f.handle}
+				{#if f.gate}
+					<dd class="t-meta min-w-0 break-words {ink.value}"><GateLabelView label={f.gate} /></dd>
+				{:else if f.handle}
 					<!-- A HANDLE IS DRESSED AS ONE: mono, and wrapped only at its own
 					     `-`/`/` joints (see `handleParts` above) so a name wider than
 					     the column wraps AT A TOKEN, not through one. -->

@@ -16,6 +16,7 @@
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { plural } from '../rollout-view';
 	import type { HoldRow } from './app-model';
+	import GateLabel from '$lib/components/GateLabel.svelte';
 
 	let { rows }: { rows: HoldRow[] } = $props();
 	/* AA7: the card lists what HOLDS (a passing gate is the Gates tab's row, not this card's), so "N holding" is its row count; the held builds are counted ("holds 2 builds"), never listed: the Builds card lists them (AP13) */
@@ -38,7 +39,7 @@
 							{#if r.kind === 'approval'}<StatusMark state="approval" />{:else if r.kind === 'health'}<StatusMark state="failed" />{:else}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{/if}
 						</span>
 						<div class="min-w-0 flex-1">
-							<a href={r.href} class="tap-link t-ui break-words text-fg hover:underline">{r.name}</a>
+							<a href={r.href} class="tap-link t-ui break-words text-fg hover:underline">{#if r.label}Held by <GateLabel label={r.label} />{:else}{r.name}{/if}</a>
 							<!-- apps-9 AQ9: places are a dot strip (one dot per place, state-tinted: P8 anchor), the builds it holds the figure at the right; names wait behind the chevron -->
 							<p class="t-meta flex items-center gap-2 text-fg-subtle">
 								<span class="h-1.5 w-1.5 shrink-0 rounded-full {r.kind === 'approval' ? 'bg-held-solid' : r.kind === 'health' ? 'bg-danger-solid' : 'bg-fg-subtle'}" aria-hidden="true"></span>

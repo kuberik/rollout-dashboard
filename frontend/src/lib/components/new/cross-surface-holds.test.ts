@@ -32,7 +32,7 @@ describe('a deploy window is named one way on every surface', () => {
 			expect(sentenceOf(row, 'incident')[0]).toBe('Held by Business Hours Only · also needs your approval');
 			const hc = heldCauses('incident').find((c) => c.rows.some((r) => r.href === row.href));
 			expect(hc?.cause, 'the held cause (banner, /environments) reads the row\'s own wording').toBe('Held by Business Hours Only');
-			expect(appHolds({ app: 'payments-core', holds: [] }, 'incident').some((h) => h.text.startsWith('Held by Business Hours Only in ')), 'the app banner').toBe(true);
+			expect(appHolds({ app: 'payments-core', holdCauses: [] }, 'incident').some((h) => h.text.startsWith('Held by Business Hours Only in ')), 'the app banner').toBe(true);
 			const g = gatesOf('payments-core', 'incident').find((x) => x.kind === 'schedule');
 			expect(g?.name, 'the Holding card names the window the same way').toBe('Business Hours Only');
 		});
@@ -44,7 +44,7 @@ describe('a deploy window is named one way on every surface', () => {
 			expect(s).toMatch(/^Waits for the deploy window/);
 			expect(s).not.toMatch(/Held by (Gate|a rule)/);
 			expect(heldCauses('incident').find((c) => c.rows.some((r) => r.href === row.href))?.cause).toBe('Waits for the deploy window');
-			expect(appHolds({ app: 'payments-core', holds: [] }, 'incident').some((h) => /^Waits for the deploy window in /.test(h.text))).toBe(true);
+			expect(appHolds({ app: 'payments-core', holdCauses: [] }, 'incident').some((h) => /^Waits for the deploy window in /.test(h.text))).toBe(true);
 			expect(gatesOf('payments-core', 'incident').find((x) => x.kind === 'schedule')?.name).toBe('Deploy window');
 		});
 	});

@@ -79,6 +79,8 @@
 	import StatusSpinner from './StatusSpinner.svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
+	import { gateLabel, gateLabelText, promotionSourceOf, labelPart, causeText, type Cause } from '$lib/view-models/gate-label';
+	import CauseText from './CauseText.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { modEnterHint } from '$lib/shortcut-hint';
 	import { apiPath } from '$lib/api/urls';
@@ -1063,10 +1065,10 @@
 		versionTag: string,
 		displayVersion: string,
 		isGateHeld: boolean
-	): string | null {
+	): Cause | null {
 		if (isGateHeld) {
 			const gate = (rollout?.status?.gates ?? []).find((g) => !gateAllows(g, versionTag));
-			return gate?.name ? `Held by ${nameOfGate(gate.name)}` : null;
+			return gate?.name ? ['Held by ', labelPart(gateLabel(gate, nameOfGate(gate.name)))] : null; /* a promotion gate is named by kind, never by its published sentence */
 		}
 		const edge = selfHeldGraph.edges.find(
 			(e) => e.writer === 'contract' && e.state === 'blocked' && e.held.includes(displayVersion)
@@ -1075,9 +1077,11 @@
 		const needClause = edge.requiredVersion
 			? `needs ${edge.contract ?? 'a contract'} ${edge.requiredVersion}`
 			: `needs a newer ${edge.contract ?? 'contract'}`;
-		return edge.providedVersion
-			? `Held — ${needClause}, has ${edge.providedVersion}`
-			: `Held — ${needClause}`;
+		return [
+			edge.providedVersion
+				? `Held — ${needClause}, has ${edge.providedVersion}`
+				: `Held — ${needClause}`
+		];
 	}
 
 	async function getAnnotations(version: string) {
@@ -2181,6 +2185,11 @@
 		void loadOverrideContext(namespace);
 	});
 
+	/** One classification of an overridden gate against the join data (the Environment the gate belongs to, this rollout). */
+	function classifyOverride(gateName: string, namespace: string | undefined) {
+		return classifyGate({ name: gateName }, namespace, buildGateContext({ environments: { items: overrideEnvironments }, rollouts: rollout ? [rollout] : null }));
+	}
+
 	function overrideFact(
 		gateName: string | undefined,
 		tag: string,
@@ -2211,11 +2220,7 @@
 			// The promotion rule in the product's one wording (sites & waves):
 			// "after staging", "after wave 1 (eu-west-1, us-east-1)", "follows
 			// eu-west-1's pick", "Lockstep: waiting for ap-south-1 …".
-			const said = classifyGate(
-				{ name: gateName },
-				namespace,
-				buildGateContext({ environments: { items: overrideEnvironments }, rollouts: rollout ? [rollout] : null })
-			);
+			const said = classifyOverride(gateName, namespace);
 			return { label: said.label, value: said.short };
 		}
 		// ⭐ SUPERSEDED, 2026-10-09 (squad-rollout, Lane D, round 3 — AD item 5:
@@ -2228,7 +2233,13 @@
 		// are mono, never shouted). `handle: true` on the value gives it
 		// `t-code-sm`, unchanged case, same as every other k8s object name
 		// in a `FactList` row.
-		return { label: 'Rule', value: resolveGateName(gateName, gateObjects) };
+		/* a promotion gate is named by its KIND (gate-label.ts): when the join above missed it (the namespace fetch failed, no rolloutGateRef) the gate's own published sentence must not leak here */
+		const kind = rollout?.status?.gates?.find((g) => g.name === gateName)?.kind ?? null;
+		const said = kind === 'promotion' ? classifyOverride(gateName, namespace) : null;
+		const label = gateLabel({ kind, name: gateName }, nameOfGate(gateName), said ? promotionSourceOf(said) : null);
+		return label.kind === 'promotion'
+			? { label: 'Rule', value: gateLabelText(label), gate: label }
+			: { label: 'Rule', value: resolveGateName(gateName, gateObjects) };
 	}
 
 	/**
@@ -2902,7 +2913,7 @@
 									{:else if isHeld}
 										<HeldGlyph
 											class="text-held h-4 w-4"
-											title={heldReason ??
+											title={heldReason ? causeText(heldReason) :
 												'Held — a rule currently blocks this build from deploying automatically'}
 										/>
 									{:else if isCurrent}
@@ -2975,7 +2986,7 @@
 										     already does). The REASON when one is known
 										     (`heldReasonFor`, round 3), "held" bare only when it
 										     is not. -->
-										<span class="t-meta text-held min-w-0 truncate">{heldReason ?? 'held'}</span>
+										<span class="t-meta text-held min-w-0 truncate">{#if heldReason}<CauseText parts={heldReason} />{:else}held{/if}</span>
 									{/if}
 								</div>
 								<!-- ⭐ SUPERSEDED, 2026-10-10 (squad-rollout, Lane D, round 4

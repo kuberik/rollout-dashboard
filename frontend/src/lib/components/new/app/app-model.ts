@@ -31,10 +31,13 @@ import { lastFailureMs } from '$lib/view-models/event-age';
 import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
+import { waitFact } from '$lib/view-models/wait-fact';
+import { causeText, joinCause, labelPart, type Cause, type GateLabel } from '$lib/view-models/gate-label';
 
 const ORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
 export const tierRank = (t: string) => ORDER.indexOf(t as TierKey);
-export const isPromotion = (p: PlaceHold) => !!p.gate && /^Promotion /i.test(p.gate.name);
+/* a promotion place hold: the backend's kind, carried as the gate's label (data.ts gateName sets it); never a guess from the gate's name */
+export const isPromotion = (p: PlaceHold) => p.gate?.label.kind === 'promotion';
 
 /** the tier upstream of `tier` among the app's own places (dev has none) */
 export function upstreamTier(places: PlaceHold[], tier: string): TierKey | null {
@@ -207,6 +210,8 @@ export function buildRollup(builds: AppBuild[], places: PlaceHold[]): string {
 
 export type HoldRow = {
 	key: string;
+	/** a promotion hold's typed label: the card draws `Held by » [SOURCE]` (GateLabel), `name` is only its plain-text form */
+	label?: GateLabel;
 	kind: 'approval' | 'pin' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
 	name: string;
 	holding: boolean;
@@ -235,7 +240,8 @@ export function holdRows(
 	const rows: HoldRow[] = gates.map((g) => ({
 		key: `gate:${g.id}`,
 		kind: g.kind === 'promotion' ? 'other' : g.kind,
-		name: shortGate(g.name, app),
+		name: g.label ? causeText(['Held by ', labelPart(g.label)]) : shortGate(g.name, app),
+		...(g.label ? { label: g.label } : {}),
 		holding: g.holding,
 		pending: g.heldPending,
 		places: g.holding ? g.holdsAt : g.places,
@@ -642,12 +648,7 @@ export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
 	const o = waitingOn(p, places);
 	if (!o || !p.heldBuilds.length)
 		return null; /* a place held only by a build that failed upstream has no build waiting: the sentence is waveHold's */
-	const started = o.on.some((q) => q.state === 'checking')
-		? 'finish checking'
-		: o.on.some((q) => q.state === 'deploying')
-			? 'finish deploying'
-			: 'deploy';
-	return { on: o.name, fact: `to ${started} ${p.heldBuilds[0]?.build ?? p.upstreamFailed}` };
+	return { on: o.name, fact: waitFact(o.on.map((q) => q.state), (p.heldBuilds[0]?.build ?? p.upstreamFailed)!) };
 }
 /**
  * batch4 #3 (landing v5 R5): the same wait, with its CAUSE. After a wave-1 catch (us-east-1 failed the bake) the wave-2 places the environment
@@ -814,6 +815,11 @@ export const placeAge = (row: TRow, hs: HomeState = 'incident'): string =>
 	ago((row.group === 'approval' || row.group === 'held') && !row.stillChecking ? waitClock(row, hs) : (deployedBuild(row)?.at ?? row.since));
 
 /** The banner message of a single-cause app: the parts after the lead, minus any that repeats the lead (the held cause and the app's own fact can both carry the hold's sentence). Null when nothing is left. */
+/** `causeLine` over typed causes: what the banner's message adds beyond its lead, a promotion label kept as a label */
+export function causeLineOf(parts: Cause[]): Cause | null {
+	const rest = parts.slice(1).filter((p) => causeText(p) !== causeText(parts[0] ?? []));
+	return rest.length ? joinCause(...rest.flatMap((c, i) => (i ? [' · ', c] : [c]))) : null;
+}
 export function causeLine(parts: string[]): string | null {
 	return (
 		parts

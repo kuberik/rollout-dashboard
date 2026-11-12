@@ -33,13 +33,14 @@ describe('heldUnion: every cause counts, approvals included', () => {
 	});
 });
 
+const h = (text: string) => ({ text, parts: [text] });
 describe('heldBanner: a headline of its own only when more than one cause holds the app', () => {
 	const list = { placeList: [place('us-east', 'prod', 'awaiting-approval'), place('eu-west', 'prod', 'held-by-rule')] };
 	it('one cause: null, that cause\'s own sentence is the headline', () => {
-		expect(heldBanner(list, [{ text: 'Waits on payments-svc' }, { text: 'Waits on payments-svc' }])).toBeNull();
+		expect(heldBanner(list, [h('Waits on payments-svc'), h('Waits on payments-svc')])).toBeNull();
 	});
 	it('two causes: the union headline and each cause once', () => {
-		expect(heldBanner(list, [{ text: 'Waits on payments-svc' }, { text: 'Pinned to 1.0' }, { text: 'Pinned to 1.0' }])).toEqual({ title: 'Held in 2 prod regions', message: 'Waits on payments-svc · Pinned to 1.0' });
+		expect(heldBanner(list, [h('Waits on payments-svc'), h('Pinned to 1.0'), h('Pinned to 1.0')])).toEqual({ title: 'Held in 2 prod regions', message: ['Waits on payments-svc · Pinned to 1.0'] });
 	});
 });
 

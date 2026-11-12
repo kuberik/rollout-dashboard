@@ -17,7 +17,8 @@
 	import { fade, fly } from 'svelte/transition';
 	import { approvePlace, ownCard } from './approve-place';
 	import Toast from '$lib/components/Toast.svelte';
-	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
+	import CauseText from '$lib/components/CauseText.svelte';
+		import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
 
 	const ask = $derived(approvalUi.ask);
 	const done = $derived(approvalUi.done);
@@ -108,6 +109,7 @@
 		message={done.error ? `Could not approve ${done.target.build}` : done.still ? done.still.headline : `${w.title} · ${w.detail}`}
 		description={done.error ?? (done.still ? (done.still.who ? `also approved by ${done.still.who}` : 'another approval stands') : '')}
 	>
+		{#snippet children()}{#if done.error}{`Could not approve ${done.target.build}`}<span class="text-fg-muted"> · {done.error}</span>{:else}{w.title} · <CauseText parts={w.parts} />{/if}{/snippet}
 		{#snippet action()}
 			<!-- Dismiss is the toast's own ×; an error or an Undo that did not revert has no second verb to offer beside it -->
 			{#if !done.error && !done.still}

@@ -7,7 +7,7 @@ import { holdRows, holdWord, holdSentences } from './app-model';
  * says is held by a rule, with no gate object listing it (a dependency is a RolloutDependency join), has the card row of
  * its own cause, never "Health checks".
  */
-const place = (o: Partial<PlaceHold>): PlaceHold => ({ wave: null, env: 'staging', label: 'staging', place: 'staging', tier: 'staging', state: 'held-by-rule', href: '/rollouts/staging/x/x', deployedBuild: '4.43.0-43', holdReason: 'rule', gate: { name: 'payments-svc', sentence: 'Releases when payments-svc ships' }, upstreamFailed: null, heldBuilds: [{ build: '4.44.0-44' }, { build: '4.45.0-45' }] as never, newerShown: [], runs: null, ...o }) as PlaceHold;
+const place = (o: Partial<PlaceHold>): PlaceHold => ({ wave: null, env: 'staging', label: 'staging', place: 'staging', tier: 'staging', state: 'held-by-rule', href: '/rollouts/staging/x/x', deployedBuild: '4.43.0-43', holdReason: 'rule', gate: { name: 'payments-svc', sentence: 'Releases when payments-svc ships', label: { kind: 'named', text: 'payments-svc' } }, upstreamFailed: null, heldBuilds: [{ build: '4.44.0-44' }, { build: '4.45.0-45' }] as never, newerShown: [], runs: null, ...o }) as PlaceHold;
 
 describe('holding card and banner name one cause', () => {
 	const P = [place({})];

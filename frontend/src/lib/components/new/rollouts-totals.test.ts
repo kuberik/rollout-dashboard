@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { pinOnlyPlaces, rollouts, fleetCounts } from './data';
 import { rolloutsPage } from './rollouts-page';
+import { causeText } from '$lib/view-models/gate-label';
 
 /** Every total on /rollouts is the length of the list under it; a place only the pin holds is listed under Held, never at rest. */
 for (const hs of ['incident', 'calm'] as const) {
@@ -15,7 +16,7 @@ for (const hs of ['incident', 'calm'] as const) {
 		it('a pin-only place is a Held row, not an at-rest row', () => {
 			const held = P.groups.find((g) => g.key === 'held')?.rows ?? [];
 			for (const p of pins) {
-				expect(held.some((r) => r.href === p.href && r.lead === 'Held by the pin')).toBe(true);
+				expect(held.some((r) => r.href === p.href && causeText(r.lead) === 'Held by the pin')).toBe(true);
 				expect(P.rest.some((r) => r.href === p.href)).toBe(false);
 			}
 		});
@@ -24,6 +25,6 @@ for (const hs of ['incident', 'calm'] as const) {
 describe('home-incident literal', () => {
 	it('checkout-api af-south-1 is listed under Held', () => {
 		const held = rolloutsPage('incident').groups.find((g) => g.key === 'held')!.rows;
-		expect(held.some((r) => r.app === 'checkout-api' && r.href.includes('af-south-1') && r.lead === 'Held by the pin')).toBe(true);
+		expect(held.some((r) => r.app === 'checkout-api' && r.href.includes('af-south-1') && causeText(r.lead) === 'Held by the pin')).toBe(true);
 	});
 });

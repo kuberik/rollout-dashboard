@@ -30,12 +30,15 @@
 	import StarToggle from '$lib/components/StarToggle.svelte';
 	import PromotionLane from '$lib/components/PromotionLane.svelte';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
+	import CauseText from '$lib/components/CauseText.svelte';
+	import GateLabel from '$lib/components/GateLabel.svelte';
+	import { causeText, joinCause, mapPlain, splitCause, type Cause } from '$lib/view-models/gate-label';
 	import type { Act } from '$lib/components/ActRow.svelte';
 	import { CodeBranchOutline, UndoOutline, CheckOutline, ClockOutline, ArrowUpRightFromSquareOutline, ChevronDownOutline, MapPinOutline } from 'flowbite-svelte-icons';
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { TChange } from './data';
 	import type { Lane } from '$lib/view-models/promotion-lanes';
-	import { holdLead, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
+	import { holdLeadCause, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
 	import { plural, rowAction, actionLabel, actionHref, markOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
@@ -93,13 +96,16 @@
 	const fail = $derived(item.group === 'needs' ? item.row?.failure ?? null : null);
 	const failCheck = $derived(fail ? { name: fail.check ?? fail.line, message: fail.check ? (fail.message ?? undefined) : undefined } : null);
 	const holds = $derived(appHolds(item, scenario));
-	const factLine = $derived(item.approval && holds.some((h) => h.approval) ? [] : [item.fact]);
-	const outcomeText = $derived([...factLine, ...holds.map((h) => h.text).filter((h) => !item.fact.includes(h))].join(' · '));
+	/* the tile's outcome as TYPED causes (a promotion hold keeps its label); `parts` is their plain text for every test and sink */
+	const factLineC = $derived<Cause[]>(item.approval && holds.some((h) => h.approval) ? [] : [item.factCause]);
+	const outcomeC = $derived<Cause[]>([...factLineC, ...holds.filter((h) => !item.fact.includes(h.text)).map((h) => h.parts)].flatMap((c) => splitCause(c, ' · ')));
 	const apprText = $derived((appr && appr.n === 1 && appr.row.regions ? approvalScope(appr.row, scenario).sentence : appr?.text) ?? holds.find((h) => h.approval)?.text ?? '');
-	const parts = $derived(appr ? [apprText, ...(item.approval || /^(Deploying|Checking)\b/.test(item.fact) ? [] : [item.fact])] : readyPromote ? ['Ready to promote to prod · needs a person'] : isQuiet ? [item.fact] : outcomeText.split(' · '));
+	const partsC = $derived<Cause[]>(appr ? [[apprText], ...(item.approval || /^(Deploying|Checking)\b/.test(item.fact) ? [] : [item.factCause])] : readyPromote ? [['Ready to promote to prod · needs a person']] : isQuiet ? [item.factCause] : outcomeC);
+	const parts = $derived(partsC.map(causeText));
 	/** r6 P6: one vocabulary for a hold — "Held: waiting on X" / "Waiting for approval" (never "Waits on …") */
 	const vocab = (t: string) => t.replace(/^Waits on /, 'held: waiting on ').replace(/^Held: /, 'held: ').replace(/\bproduction\b/g, 'prod');
 	const cause = $derived(parts.slice(1).map(vocab).join(' · ') || null);
+	const prodWordC = (c: Cause): Cause => mapPlain(c, prodWord);
 	/** apps-7 Q7: "prod" everywhere on a tile, never "production" */
 	const prodWord = (t: string) => t.replace(/\bproduction\b/g, 'prod');
 	/** A8: a quiet app that is simply at rest says so in its name row on a phone (one line), so its fact line folds away there */
@@ -190,7 +196,9 @@
 		const p = prodWord(waitRow.place);
 		return p === 'prod' ? '' : p;
 	});
-	const gate = $derived(prodWord((parts[0] ?? '').replace(/^Waits on /, '')).replace(/ in (prod|[\w.-]+)$/, ''));
+	/** what the hold waits on, typed: the cause without its "Waits on " lead and its trailing " in <place>", a promotion label kept */
+	const gateC = $derived<Cause>(mapPlain(partsC[0] ?? [], (t, i, n) => { let x = t; if (i === 0) x = x.replace(/^Waits on /, ''); x = prodWord(x); if (i === n - 1) x = x.replace(/ in (prod|[\w.-]+)$/, ''); return x; }));
+	const gate = $derived(causeText(gateC));
 	/**
 	 * apps-8 AP4 (P8 tile meta) — at most TWO keyed slot lines, each a row of a 44px key track | build (mono) | cause | right figure:
 	 * NEXT (a build that waits: its cause and, right, how long) and CHECK (the failing check and its one figure), RUNS (build + its currency) for a settled
@@ -200,18 +208,18 @@
 	const headCurrency = $derived(restCurrency(item.placeList, headPill?.place.href ?? null, item.app));
 	const slots = $derived.by(() => {
 		/* apps collapsed r1: no CHECK/NEXT/RUNS keys; a slot says only what the lane does not. A deploying or checking place is already its cell's mark + word; a settled app is the rest line. */
-		const out: { key: string; build?: string; pre?: string; text: string; right?: string }[] = [];
+		const out: { key: string; build?: string; pre?: string; text: string; textC?: Cause; right?: string }[] = [];
 		if (kind === 'wait') {
 			/* the build that waits and its dwell (truth-5); the sentence only where it adds a scope ("your approval · 5 of 6 regions"), never the bare word the cell already says */
 			const approval = waitRow?.state === 'awaiting-approval';
-			out.push({ key: 'wait', build: wait?.build ?? '', pre: approval && rowAction(waitRow!)?.kind === 'approve' ? 'your ' : '', text: approval ? (waitScope ? `approval · ${waitScope}` : '') : `waiting on ${gate}`, right: '' });
+			out.push({ key: 'wait', build: wait?.build ?? '', pre: approval && rowAction(waitRow!)?.kind === 'approve' ? 'your ' : '', text: approval ? (waitScope ? `approval · ${waitScope}` : '') : `waiting on ${gate}`, ...(approval ? {} : { textC: joinCause('waiting on ', gateC) }), right: '' });
 		} else if (kind === 'failed') out.push({ key: 'check', text: `Check · ${(failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), '')}` });
 		else if (kind === 'ready') out.push({ key: 'ready', text: 'Ready to promote' });
 		return out;
 	});
-	const line2 = $derived.by(() => {
+	const line2 = $derived.by((): string | Cause => {
 		switch (kind) {
-			case 'wait': return waitRow?.state === 'awaiting-approval' ? `${rowAction(waitRow) ?.kind === 'approve' ? 'your ' : ''}approval${waitScope ? ` · ${waitScope}` : ''}` : `held: waiting on ${gate}`;
+			case 'wait': return waitRow?.state === 'awaiting-approval' ? `${rowAction(waitRow) ?.kind === 'approve' ? 'your ' : ''}approval${waitScope ? ` · ${waitScope}` : ''}` : joinCause('held: waiting on ', gateC);
 			case 'failed': return `${(failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), '')} · ${placeName}`;
 			case 'deploying': return `deploying to ${placeName}`;
 			case 'checking': return `checking in ${placeName}`;
@@ -288,19 +296,19 @@
 	 * A place the tab shows CHECKING that is also gated says "Checking" (clock, progress hue), then "waits for approval"; it is not "Waiting for approval" in orange beside a Checking cell.
 	 */
 	/* r2-cleanup: the strand beside the line says the state word (Checking / Deploying / Waiting) in its hue; the line keeps the badge + the reason (what is needed, the check, the build) and does not say the word twice */
-	const stateLine = $derived.by((): { ink: string; lead: string; rest: string; build: string; badge: boolean } => {
+	const stateLine = $derived.by((): { ink: string; lead: string; leadC?: Cause; rest: string; build: string; badge: boolean } => {
 		switch (kind) {
 			case 'failed': return { ink: 'text-danger', lead: (failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), ''), rest: failMsg ?? '', build: '', badge: true };
 			case 'wait': return checkingNow
 				? { ink: 'text-progress', lead: '', rest: waitRow?.state === 'awaiting-approval' ? `Then waits for ${rowAction(waitRow)?.kind === 'approve' ? 'your ' : ''}approval` : '', build: wait?.build ?? '', badge: true }
 				: waitRow?.state === 'awaiting-approval'
 				? { ink: 'text-held', lead: approvalIn(rowAction(waitRow)?.kind === 'approve', placeName), rest: '', build: wait?.build ?? '', badge: true }
-				: { ink: 'text-held', lead: holdLead(prodWord(parts[0] ?? '')), rest: '', build: wait?.build ?? '', badge: true };
+				: ((leadC) => ({ ink: 'text-held', lead: causeText(leadC), leadC, rest: '', build: wait?.build ?? '', badge: true }))(holdLeadCause(prodWordC(partsC[0] ?? [''])));
 			case 'deploying': return { ink: 'text-active', lead: '', rest: '', build: build, badge: true };
 			case 'checking': return { ink: 'text-progress', lead: '', rest: '', build: build, badge: true };
 			case 'ready': return { ink: 'text-fg', lead: 'Ready to promote to prod', rest: '', build: '', badge: false };
 			case 'quiet': if (item.noReleases) return { ink: 'text-fg', lead: 'All healthy', rest: item.noReleases.label.charAt(0).toLowerCase() + item.noReleases.label.slice(1), build: '', badge: false }; return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: prodWord(item.fact), rest: '', build: '', badge: false };
-			default: return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: line2.replace(/^./, (c) => c.toUpperCase()), rest: '', build: '', badge: false };
+			default: return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: (typeof line2 === 'string' ? line2 : causeText(line2)).replace(/^./, (c) => c.toUpperCase()), rest: '', build: '', badge: false };
 		}
 	});
 	const lineMark = $derived<'failed' | 'held' | 'approval' | 'deploying' | 'checking' | 'behind' | null>(!stateRow ? 'behind' : kind === 'quiet' || kind === 'ready' || kind === 'run' ? 'behind' : (checkingNow ? 'checking' : markOf(stateRow)) as never);
@@ -352,7 +360,7 @@
 	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} fill={lead ? 'L' : 'M'} {calm} /></div>
 {/snippet}
 
-{#snippet facts(t: string)}{#each chunks(t) as c}{#if c.nw}<span class="whitespace-nowrap">{c.x}</span>{:else}{c.x}{/if}{/each}{/snippet}
+{#snippet facts(t: string | Cause)}{#each typeof t === 'string' ? [t] : t as run}{#if typeof run !== 'string'}<GateLabel label={run} />{:else}{#each chunks(run) as c}{#if c.nw}<span class="whitespace-nowrap">{c.x}</span>{:else}{c.x}{/if}{/each}{/if}{/each}{/snippet}
 
 {#snippet commitLine()}
 	{#if commit}
@@ -395,7 +403,7 @@
 				<div class="contents">
 					<dd class="m-0 flex min-w-0 items-baseline gap-2 max-sm:items-start">
 						{#if sl.build}<span class="t-code-sm shrink-0 text-fg">{sl.build}</span>{/if}
-						{#if sl.text}<span class="t-ui-sm min-w-0 text-fg-muted sm:truncate max-sm:break-words" title={(sl.pre ?? '') + sl.text}>{#if sl.pre}<span class="max-[379px]:hidden">{sl.pre}</span>{/if}{sl.text}</span>{/if}
+						{#if sl.text}<span class="t-ui-sm min-w-0 text-fg-muted sm:truncate max-sm:break-words" title={(sl.pre ?? '') + sl.text}>{#if sl.pre}<span class="max-[379px]:hidden">{sl.pre}</span>{/if}{#if sl.textC}<CauseText parts={sl.textC} />{:else}{sl.text}{/if}</span>{/if}
 						{#if sl.right}<span class="t-meta ml-auto shrink-0 whitespace-nowrap tabular-nums text-fg-subtle ">{sl.right}</span>{/if}
 						</dd>
 				</div>
@@ -441,7 +449,7 @@
 				secondary={[...(place ? [{ label: 'Open rollout', href: place, key: 'open-rollout' }] : []), ...(act && act.kind !== 'approve' ? [actAsAct()!] : [])]} primary={act?.kind === 'approve' ? actAsAct() : undefined} />
 		{:else if waitRow}
 			<!-- apps-7 Q2: the tab's own held banner (the shared StatementBanner: tint, 40px pause disc, the tab's sentence) -->
-			<StatementBanner severity={checkingNow ? 'checking' : 'held'} title={checkingNow ? 'Checking' : waitRow.state === 'awaiting-approval' ? approvalIn(rowAction(waitRow)?.kind === 'approve', placeName) : `${placeName} is held: waiting on ${gate}`} message={checkingNow ? `${checkLeft ? checkLeft.replace(/\.$/, '') + '. ' : 'The health checks are running. '}${waitRow.state === 'awaiting-approval' ? `Then it waits for ${act?.kind === 'approve' ? 'your ' : ''}approval${placeName ? ' in ' + placeName : ''}.` : ''}`.trim() : waitRow.state === 'awaiting-approval' && wait?.build ? `${act?.kind === 'approve' ? 'Your approval' : 'An approval'} releases ${wait.build} ${waitScope ? 'in ' + waitScope : placeName ? 'to ' + placeName : ''}.`.replace(/ \.$/, '.') : nb ? (waitRow.state === 'awaiting-approval' ? `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting.` : `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting. Nothing promotes itself until someone clears the hold.`) : undefined}
+			<StatementBanner severity={checkingNow ? 'checking' : 'held'} title={checkingNow ? 'Checking' : waitRow.state === 'awaiting-approval' ? approvalIn(rowAction(waitRow)?.kind === 'approve', placeName) : joinCause(`${placeName} is held: waiting on `, gateC)} message={checkingNow ? `${checkLeft ? checkLeft.replace(/\.$/, '') + '. ' : 'The health checks are running. '}${waitRow.state === 'awaiting-approval' ? `Then it waits for ${act?.kind === 'approve' ? 'your ' : ''}approval${placeName ? ' in ' + placeName : ''}.` : ''}`.trim() : waitRow.state === 'awaiting-approval' && wait?.build ? `${act?.kind === 'approve' ? 'Your approval' : 'An approval'} releases ${wait.build} ${waitScope ? 'in ' + waitScope : placeName ? 'to ' + placeName : ''}.`.replace(/ \.$/, '.') : nb ? (waitRow.state === 'awaiting-approval' ? `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting.` : `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting. Nothing promotes itself until someone clears the hold.`) : undefined}
 				primary={act?.kind === 'approve' ? actAsAct() : undefined}
 				secondary={[...(act && act.kind !== 'approve' ? [actAsAct()!] : []), ...(place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : [])]} />
 		{:else if act}
@@ -460,7 +468,7 @@
 			<!-- two tracks: the env badge, then the message; a wrapped message hangs on the MESSAGE's own x, never under the badge -->
 				<div class="t-ui-sm m-0 flex min-w-0 flex-1 items-start gap-x-2 leading-5 text-fg-muted max-sm:basis-[calc(100%-1.5rem)] max-sm:flex-wrap max-sm:gap-y-1" title={[stateLine.lead, stateLine.rest, stateLine.build].filter(Boolean).join(' · ')}>
 					{#if stateLine.badge && envOf && noTier}{#if noTier}{#if noTierPlace}<span class="t-meta inline-flex h-5 shrink-0 items-center text-fg-subtle" data-place>{noTierPlace}</span>{/if}{:else}<span class="inline-flex h-5 shrink-0 items-center"><Chip role="env" theme={envOf.theme} label={envOf.label} /></span>{/if}{/if}
-					<p class="m-0 min-w-0 flex-1 max-sm:basis-full">{#if stateLine.lead}<span class="mr-1 font-medium {stateLine.ink}">{stateLine.lead}</span>{' '}{/if}{#if stateLine.rest}<span class="mr-2 font-normal ">{stateLine.rest}</span>{/if}{#if stateLine.build}<span class="t-code-sm whitespace-nowrap text-fg-subtle">{stateLine.build}</span>{/if}</p>
+					<p class="m-0 min-w-0 flex-1 max-sm:basis-full">{#if stateLine.lead}<span class="mr-1 font-medium {stateLine.ink}">{#if stateLine.leadC}<CauseText parts={stateLine.leadC} />{:else}{stateLine.lead}{/if}</span>{' '}{/if}{#if stateLine.rest}<span class="mr-2 font-normal ">{stateLine.rest}</span>{/if}{#if stateLine.build}<span class="t-code-sm whitespace-nowrap text-fg-subtle">{stateLine.build}</span>{/if}</p>
 				</div>
 				{#if attention && act && !checkingNow}<span class="-my-1 shrink-0 max-sm:my-0 max-sm:basis-full max-sm:pl-6" data-fp-action>{@render actionBtn(false, true)}</span>{/if}
 			</div>

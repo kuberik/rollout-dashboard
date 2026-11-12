@@ -485,3 +485,27 @@ describe('RolloutNeighbourhood: "Gated by · N" counts gates only and names the 
 		expect(container.querySelectorAll('.hood-up .hood-list > *').length).toBe(2);
 	});
 });
+
+/** batch4 #128: the upstream promotion tile's status line ("Nothing held · Promotion") names the edge's KIND; it is drawn (» Promotion), never typed as text. */
+describe('RolloutNeighbourhood: a promotion tile draws its kind', () => {
+	test('the chain-predecessor status line carries the drawn promotion label', () => {
+		const pred = { ...link({ key: 'link:staging', state: 'clear', name: 'app-staging', writer: 'promotion' }), chainPredecessor: true };
+		const hood: Hood = { focus, upstream: [pred], downstream: [], gates: [], heldLinks: 0, total: 1, holding: 0, heldBuilds: [] };
+		const { container } = render(RolloutNeighbourhood, { props: { hood } });
+		const tile = container.querySelector('[data-hood-link="upstream"]')!;
+		expect(tile.querySelector('[data-gate-label="promotion"]')).not.toBeNull();
+		expect(tile.textContent).toContain('Nothing held');
+	});
+	test('QA71 Q5: a gate box that is a promotion draws its label, not the published sentence (GateBox.title is only the plain form)', () => {
+		const SENTENCE = 'Previous environment not ready yet';
+		const box = { key: 'gate:ghd', kind: 'gate', state: 'blocked', title: 'Promotion from staging', kindWord: null, phrase: 'waiting', held: [], mark: { kind: 'check', clears: 'check' }, gates: ['ghd'], label: { kind: 'promotion', source: 'staging' } };
+		const hood = { focus, upstream: [], downstream: [], gates: [box], heldLinks: 0, total: 0, holding: 0, heldBuilds: [] } as unknown as Hood;
+		const { container } = render(RolloutNeighbourhood, { props: { hood } });
+		const drawn = container.querySelector('[data-gate-label="promotion"][data-gate-source="staging"]');
+		expect(drawn, 'the box draws the label').not.toBeNull();
+		const c = container.cloneNode(true) as Element;
+		c.querySelectorAll('.sr-only,[aria-hidden="true"]').forEach((n) => n.remove());
+		expect(c.textContent).not.toContain('Promotion from');
+		expect(container.textContent).not.toContain(SENTENCE);
+	});
+});

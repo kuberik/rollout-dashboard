@@ -117,6 +117,8 @@
 	import { formatTimeUntil } from '$lib/api/schedules';
 	import { now } from '$lib/stores/time';
 	import FactList, { type Fact } from './FactList.svelte';
+	import GateLabel from './GateLabel.svelte';
+	import { classifiedGateLabel } from '$lib/view-models/gate-label';
 
 	let {
 		gates,
@@ -220,8 +222,8 @@
 						the line's lead — `Icon` and colour (full ink vs the record's
 						subtle ink) carry the hierarchy this line needs.
 					-->
-					<span class="t-meta min-w-0 break-words {tone === 'card' ? 'text-fg' : ''}"
-						>{g.displayName ?? g.label}</span
+					<span class="t-meta min-w-0 {tone === 'card' ? 'text-fg' : ''}"
+						><GateLabel label={classifiedGateLabel(g)} glyph={false} /></span
 					>
 				</p>
 				<FactList facts={factsFor(g)} {tone} />

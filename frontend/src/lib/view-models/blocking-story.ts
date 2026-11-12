@@ -381,6 +381,8 @@ export type ClassifiedGate = {
 	subject: string | null;
 	/** How to draw `subject`. Null exactly when `subject` is null. */
 	subjectKind: 'service' | 'environment' | 'schedule' | null;
+	/** The environment a PROMOTION gate waits on, when it is exactly one (the source chip); null for a wave, an unknown upstream, and every other kind. Structured so no surface parses `subject`'s wording. */
+	promotionSource?: string | null;
 	/**
 	 * The verb phrase about `subject`, lowercase — `deploys it first`. Null
 	 * where the state is DRAWN instead (a clock's countdown, a version pair).
@@ -797,6 +799,7 @@ function blockerGate(id: string, b: WaveBlocker, ownTier: string | null): Classi
 					...none,
 					subject: who,
 					subjectKind: 'environment',
+					promotionSource: who,
 					predicate: 'picks a build'
 				};
 			}
@@ -814,6 +817,7 @@ function blockerGate(id: string, b: WaveBlocker, ownTier: string | null): Classi
 					...none,
 					subject: who,
 					subjectKind: 'environment',
+					promotionSource: who,
 					predicate: 'check ' + ended
 				};
 			}
@@ -828,6 +832,7 @@ function blockerGate(id: string, b: WaveBlocker, ownTier: string | null): Classi
 				...none,
 				subject: who,
 				subjectKind: 'environment',
+				promotionSource: who,
 				predicate: 'to ' + finishing
 			};
 		}
@@ -892,6 +897,7 @@ function blockerGate(id: string, b: WaveBlocker, ownTier: string | null): Classi
 				...none,
 				subject: who,
 				subjectKind: 'environment',
+				promotionSource: who,
 				predicate: 'to finish ' + rev
 			};
 		}
@@ -1012,6 +1018,7 @@ function classifyPromotion(id: string, promo: PromotionJoin): ClassifiedGate {
 			...NOTHING_TO_DRAW,
 			subject: leader,
 			subjectKind: 'environment',
+			promotionSource: leader,
 			predicate: promo.selected ? "pick (" + promo.selected + ') reaches it' : 'picks a build'
 		};
 	}
@@ -1037,6 +1044,7 @@ function classifyPromotion(id: string, promo: PromotionJoin): ClassifiedGate {
 		...NOTHING_TO_DRAW,
 		subject: named,
 		subjectKind: 'environment',
+		promotionSource: promo.via === 'tier' ? subject : null,
 		predicate
 	};
 }
@@ -1230,6 +1238,7 @@ function classifyGateInner(
 				...NOTHING_TO_DRAW,
 				subject: 'its upstream environment',
 				subjectKind: 'environment',
+				promotionSource: null,
 				predicate: 'deploys this build'
 			};
 		}

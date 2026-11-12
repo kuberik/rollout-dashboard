@@ -122,7 +122,34 @@ export function correctedHomeFixture(f: HomeFixture): HomeFixture {
 		return t && e.metadata.name === 'hello-frontend-app' ? { ...e, status: { ...e.status, lastStatusChangeTime: t } } : e;
 	});
 	const changes = f.changes.map((c) => (c.repo === 'hello-frontend-app' && c.number === 13 ? { ...c, mergedAt: MERGED_13 } : c));
-	return { ...f, rollouts, environments, changes };
+	return withPromotionHolds({ ...f, rollouts, environments, changes });
+}
+
+/**
+ * THE PROMOTION-HELD PLACES (batch4 #75). In the pinned capture every promotion gate sits beside a build the source environment has not
+ * finished, which the product reads as "Waits for <env>" (chain sequencing, `held.ts`), never as a hold the gate itself causes. The owner rule
+ * (a promotion gate is drawn as the » glyph + its source environment, never by its name) had no state to be seen in. Two places are served with a
+ * promotion gate that refuses the candidate:
+ *  - checkout-edge staging: a PURE promotion hold (no approval gate, so the place reads Held). Its Environment publishes no gate relationship, so the gate
+ *    names no upstream (the "relationship not ready yet" state: cause `unknown`, a real hold). /rollouts, Home, the app page and the Holding card name the
+ *    source from the topology (dev): "» [DEV]". The Gates tab, which reads the rollout's own story, has none and draws "» Promotion".
+ *    telemetry-indexer prod is NOT used for this: it carries an approval, and an approval beside a promotion hold reads "Needs your approval" while
+ *    held-by-rule (truth: 7 mismatches), and truth's PR-20 hold-clock check reads its "Waiting for approval" row.
+ *  - payments-svc staging: no Environment object at all (a service the dependency join knows): "» Promotion" everywhere, no source.
+ * Served-only, like `correctedHomeFixture`'s other edits; nothing else in the fixture changes.
+ */
+const PROMOTION_HELD: { ns: string; name: string; gate: string }[] = [
+	{ ns: 'platform-staging', name: 'payments-svc', gate: 'promotion-staging' },
+	{ ns: 'checkout-edge-staging', name: 'checkout-edge', gate: 'promotion-staging' }
+];
+export function withPromotionHolds(f: HomeFixture): HomeFixture {
+	const rollouts = f.rollouts.map((r) => {
+		const h = PROMOTION_HELD.find((x) => x.ns === r.metadata.namespace && x.name === r.metadata.name);
+		if (!h) return r;
+		const gates = [...((r.status?.gates ?? []) as unknown[]), { name: h.gate, kind: 'promotion', allowedVersions: [], message: 'Gate does not allow any release candidate' }];
+		return { ...r, status: { ...r.status, gates } };
+	});
+	return { ...f, rollouts };
 }
 
 /**

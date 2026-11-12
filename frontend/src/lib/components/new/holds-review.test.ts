@@ -39,7 +39,7 @@ describe('a held, named deploy window says when it opens, in the banner', () => 
 		try {
 			
 			expect(heldCauses('incident').some((c) => c.window?.opens === 'opens Mon 09:00 UTC'), 'the held cause carries the clause').toBe(true);
-			const h = appHolds({ app: 'payments-core', holds: [] }, 'incident').find((x) => x.text.startsWith('Held by Business Hours Only in '));
+			const h = appHolds({ app: 'payments-core', holdCauses: [] }, 'incident').find((x) => x.text.startsWith('Held by Business Hours Only in '));
 			expect(h?.text).toMatch(/^Held by Business Hours Only in .+ · opens Mon 09:00 UTC$/);
 		} finally { rs.forEach((r) => { r.status.gates = r.status.gates!.filter((g) => (g as { name: string }).name !== gate.name); }); }
 	});

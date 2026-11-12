@@ -15,10 +15,11 @@ import {
 } from './data';
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
 import { nodesOfSteps, type MiniNode } from './mini-pipeline';
-import { holdWord } from './rollout-view';
+import { holdWordParts } from './rollout-view';
 import { approvalWord } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
+import { causeText, joinCause, gateLabelText, labelPart, type Cause } from '$lib/view-models/gate-label';
 import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import { regionsPhrase, siteCount } from '$lib/view-models/regions';
 
@@ -49,7 +50,7 @@ export function changeLineOf(r: TRow): ChangeLine | null {
 
 export type BannerModel = { row: TRow; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null };
 export type AttentionItem = { key: string; row: TRow; model: AttentionModel; app: string; href: string; rollbackHref: string | null; openHref: string; yours: boolean };
-export type StrandRow = { key: string; row: TRow; app: string; href: string; tier: string; place: string | null; mark: MarkState; nodes: MiniNode[]; lead: string; rest: string; age: string; yours: boolean; };
+export type StrandRow = { key: string; row: TRow; app: string; href: string; tier: string; place: string | null; mark: MarkState; nodes: MiniNode[]; /** the state word / cause, typed (`CauseText` draws a promotion label by kind); `causeText(lead)` is its plain form */ lead: Cause; rest: string; age: string; yours: boolean; };
 export type RestRow = { key: string; app: string; href: string; place: string; rep: boolean; sentence: string; code: string; age: string; tier: string; /** the quiet row prints the build code before the sentence (Changes' At rest) */ codeFirst?: boolean; /** r42 atoms (opt-in, /design/atoms): the landed change's lead bar */ lead?: { hops: import('$lib/components/atoms/LeadBar.svelte').Hop[]; origin?: number; scale: number; total: string } | null };
 export type GroupKey = 'moving' | 'waiting' | 'held';
 export const GROUP_WORD: Record<GroupKey, string> = { moving: 'In flight', waiting: 'Waiting', held: 'Held' };
@@ -69,7 +70,7 @@ export function strandOf(r: TRow, hs: HomeState): MiniNode[] {
 	const nodes = nodesOfSteps(r.steps, r.state);
 	if (r.state === 'held-by-rule' || r.state === 'awaiting-approval') {
 		const g = gateName(r, hs);
-		nodes.push({ state: r.stillChecking ? 'pending' : r.state === 'awaiting-approval' ? 'approval' : 'held', step: g?.name ?? (r.state === 'awaiting-approval' ? 'Approval' : 'Gate') });
+		nodes.push({ state: r.stillChecking ? 'pending' : r.state === 'awaiting-approval' ? 'approval' : 'held', step: g ? gateLabelText(g.label) : (r.state === 'awaiting-approval' ? 'Approval' : 'Gate') });
 	}
 	return nodes;
 }
@@ -78,30 +79,36 @@ const sinceDesc = (a: { since?: string | null }, b: { since?: string | null }) =
 
 /** [state word, what the strand cannot draw]. Never "step N of M". */
 /** `clockInSentence: false` — the row has an age slot (the aligned column) that already prints the wait's clock, so the sentence does not say "for 5h" a second time (QA2 #8). */
+/** the plain-text form of `sentenceParts`: what tests, titles and any sink that cannot draw read */
 export function sentenceOf(r: TRow, hs: HomeState, o: { clockInSentence?: boolean } = {}): [string, string] {
+	const [lead, rest] = sentenceParts(r, hs, o);
+	return [causeText(lead), rest];
+}
+/** the row's sentence with its lead typed: a promotion hold keeps its `GateLabel`, so the row draws » [STAGING] instead of printing "Held by Promotion from staging" */
+export function sentenceParts(r: TRow, hs: HomeState, o: { clockInSentence?: boolean } = {}): [Cause, string] {
 	/* no releases: the row keeps its own state word and detail; the label only takes the currency slot, appended after the detail */
 	if (r.noReleases && r.group !== 'failed') {
-		const [lead, rest] = sentenceOf({ ...r, noReleases: null }, hs, o);
+		const [lead, rest] = sentenceParts({ ...r, noReleases: null }, hs, o);
 		return [lead, [rest, r.noReleases.label].filter(Boolean).join(' · ')];
 	}
 	if (r.group === 'approval') {
-		return [approvalWord(!!r.needsYou && !r.stillChecking), r.stillChecking ? 'check still running' : o.clockInSentence === false ? '' : `for ${ago(waitClock(r, hs))}`];
+		return [[approvalWord(!!r.needsYou && !r.stillChecking)], r.stillChecking ? 'check still running' : o.clockInSentence === false ? '' : `for ${ago(waitClock(r, hs))}`];
 	}
 	if (r.group === 'held') {
 		const g = gateName(r, hs);
-		return [(placeCause(r.href, r.app, r.key, hs) ?? holdWord(r, hs) ?? (g ? `Held by ${g.name}` : r.word)) + (r.alsoApproval ? ` · also needs ${r.alsoApproval.yours ? 'your ' : ''}approval` : ''), g?.sentence ?? ''];
+		return [joinCause(placeCause(r.href, r.app, r.key, hs) ?? holdWordParts(r, hs) ?? (g ? ['Held by ', labelPart(g.label)] : r.word), r.alsoApproval ? ` · also needs ${r.alsoApproval.yours ? 'your ' : ''}approval` : ''), g?.sentence ?? ''];
 	}
 	const title = buildIdentity(buildOf(r), r.href)?.title ?? deployedBuild(r).title ?? '';
 	if (r.state === 'deploying') {
 		const cur = r.steps.find((s) => s.state === 'active');
 		const stage = cur && /^Stage/.test(cur.name) ? cur.name : '';
-		return ['Deploying', [stage, title].filter(Boolean).join(' · ')];
+		return [['Deploying'], [stage, title].filter(Boolean).join(' · ')];
 	}
-	return ['Checking', title];
+	return [['Checking'], title];
 }
 
 export function strandRow(r: TRow, hs: HomeState): StrandRow {
-	const [lead, rest] = sentenceOf(r, hs, { clockInSentence: false });
+	const [lead, rest] = sentenceParts(r, hs, { clockInSentence: false });
 	const gated = r.group === 'approval' || r.group === 'held';
 	return { key: r.key, row: r, app: r.app, href: r.href, tier: r.tier, place: chipPlace(r), mark: markOf(r), nodes: strandOf(r, hs), lead, rest, age: ago(gated && !r.stillChecking ? waitClock(r, hs) : r.since), yours: r.group === 'approval' && !!r.needsYou && !r.stillChecking };
 }
@@ -184,7 +191,7 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 	const held = [...rows.filter((r) => !inAttention.has(r.key) && r.group === 'held'), ...pinPlaces.map((p) => pinRow(p, hs))].sort(sinceDesc).map((r) => {
 		const sr = strandRow(r, hs);
 		/* the pin outranks the rules (held-chip.ts): a pin-only place's whole cause is the pin */
-		return pinHrefs.has(r.href) ? { ...sr, lead: HELD_BY_PIN, rest: '', age: ago(pinSinceOfHref(r.href)) } : sr;
+		return pinHrefs.has(r.href) ? { ...sr, lead: [HELD_BY_PIN], rest: '', age: ago(pinSinceOfHref(r.href)) } : sr;
 	});
 	const rest = restRows(rows, R.restAll ?? R.rest, hs, o.settled ?? true).filter((p) => !pinHrefs.has(p.href));
 	const groups = ([['moving', moving], ['waiting', waiting], ['held', held]] as [GroupKey, StrandRow[]][]).filter(([, g]) => g.length).map(([key, g]) => ({ key, word: GROUP_WORD[key], rows: g }));
