@@ -281,7 +281,7 @@
 				<AppGlyph name={item.app} size={24} />
 				<h1 class="t-title min-w-0 break-words text-fg">{item.app}</h1>
 				<StarToggle app={item.app} class="max-sm:!h-11 max-sm:!w-11 max-sm:-mx-2 max-sm:-my-3.5" />
-				<span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 max-lg:basis-full">
+				<span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 max-lg:basis-full max-lg:content-start {build && runsBadges.length ? 'max-lg:min-h-[52px]' : ''}" data-ad-build-row>
 					{#if build}<span class="t-meta text-fg-disabled max-lg:hidden" aria-hidden="true">/</span><span class="t-code-lg shrink-0 text-fg" data-ad-build>{build}</span>{/if}
 					{#if pill}<Chip role={pill.role as never} label={pill.word.toLowerCase()} class="shrink-0" />{/if}
 					{#if build && runsBadges.length}<span class="t-meta text-fg-subtle">in</span><span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-ad-runs title={runsPhrase}>{#each runsBadges as b (b.label)}<Chip role="env" theme={b.theme} label={b.label} wide />{/each}</span>{/if}
