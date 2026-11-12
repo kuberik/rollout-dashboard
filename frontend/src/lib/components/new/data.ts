@@ -853,7 +853,7 @@ export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>)
 	return { build: buildTitle(row), meta: buildMeta(row), title: titleOfBuild(row.href, sha, null) ?? buildIdentity(sha, row.href)?.title ?? changeBySha(row.app, sha)?.title ?? (r?.title && !/^Release commit for build /.test(r.title) ? r.title : null), author: r?.author ?? null, at: rawOf(row.href)?.status.history?.[0]?.timestamp ?? null };
 }
 /** "7 newer builds · held: waiting for health checks": the newest-build line of the tab header. null when the place is on the newest. */
-export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'word'>): { count: number; sentence: string; newest: string | null } | null {
+export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'word'>): { count: number; sentence: string; newest: string | null; /** the tab's own "Newer builds" count (what the place is offered to deploy): the compact Slipway prints this, the catalogue distance `count` is the app page's */ toDeploy: number; /** the hold clause after the count ("held: waiting for approval"), '' when nothing holds */ hold: string } | null {
 	const rel = relsOf(rawOf(row.href)) ?? [];
 	/* the distance in the app's catalogue order (releases/order.ts); a place whose build is not in the order, or an app with no catalogue, keeps the place's own tab count */
 	const order = appOrder(row.app);
@@ -866,7 +866,7 @@ export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'wo
 	/* round 3: the held phrase counts what the hold refuses HERE (held.ts), and names the rest ("2 waiting for staging"), so "Newer builds" and the banner never disagree */
 	const hh = why ? heldHere(row.href) : null;
 	const split = hh && hh.waiting > 0 ? `${hh.count} held: ${why}, ${hh.waiting} waiting for ${hh.stage ?? 'an earlier stage'}` : why ? `held: ${why}` : '';
-	return { count, sentence: `${count} newer build${count === 1 ? '' : 's'}${split ? ` · ${split}` : ''}`, newest: newestName };
+	return { count, sentence: `${count} newer build${count === 1 ? '' : 's'}${split ? ` · ${split}` : ''}`, newest: newestName, toDeploy: candidateBuilds(row).length, hold: split };
 }
 /** The pill word for a place in the ROW's vocabulary (never "DEPLOYED" on a build held in prod). `tabPill` keeps the rollout tab's own pill. */
 export const stateWord = (row: Pick<RolloutRow, 'state'>): string =>
