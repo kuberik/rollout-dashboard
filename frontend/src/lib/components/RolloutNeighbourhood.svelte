@@ -78,7 +78,8 @@
 		elsewhereCountOverride,
 		peerHeldByEnv,
 		chainWait = null,
-		focusWaitsFor = null
+		focusWaitsFor = null,
+		approvedFacts = []
 	}: {
 		hood: RolloutNeighbourhood;
 		themeOf?: (env: string) => EnvironmentTheme | null;
@@ -106,6 +107,8 @@
 		onClearPin?: (() => void) | null;
 		/** The approval the viewer can give at this rollout (data.ts `approvalAskAt`, the one Home offers): the held approval gate says "Needs your approval" and carries Approve instead of "How to approve". Null: today's words. */
 		approveAsk?: ApprovalTarget | typeof ASK_LOADING | null;
+		/** The builds this place's approval gate has been given an approval for, as the place's own RolloutApprovals say it (`approvedFactOf`): "c0d3e88 · approved by wyatt" under the approval gate, held or not, so an approved build never reads as merely not held. */
+		approvedFacts?: { build: string; text: string; title: string }[];
 		/** Another manager owns `spec.wantedVersion`: the same disabled state the Overview's Clear pin shows (`dashboardManagesWantedVersion`). */
 		clearPinDisabled?: boolean;
 		/**
@@ -692,6 +695,11 @@
 			<span class="mt-0.5 shrink-0"><StatusMark state={markState(b.state)} /></span>
 			<span class="min-w-0 break-words">{gateBoxStatusLine(b)}</span>
 		</p>
+		{#if b.kind === 'approval'}
+			{#each approvedFacts as f (f.build)}
+				<p class="t-meta min-w-0 break-words text-fg-muted" title={f.title} data-approved-build><span class="t-code text-fg">{f.build}</span> · {f.text}</p>
+			{/each}
+		{/if}
 		{#if held}
 			<p class="t-meta min-w-0 break-words text-fg-muted">{ask ? approvalWord(true) : loading ? approvalWord(false) : gateBoxReleaseSentence(b)}</p>
 			{#if b.kind === 'pin' && onClearPin}

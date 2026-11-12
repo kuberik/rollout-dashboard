@@ -138,9 +138,7 @@
 		     regions" ended in an ellipsis at 390). On a phone it wraps to a
 		     second line; the toast is allowed to be taller than the app bar. -->
 		<div class="t-body min-w-0 flex-1 text-fg">
-			{#if children}{@render children()}{:else}{message}{#if description}<span class="text-fg-muted"
-						> · {description}</span
-					>{/if}{/if}
+			{#if children}{@render children()}{:else}{message}{#if description}{' '}<span class="text-fg-muted">· {description}</span>{/if}{/if}
 		</div>
 		{#if action}
 			<div class="shrink-0">{@render action()}</div>

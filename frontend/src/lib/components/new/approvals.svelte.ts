@@ -19,7 +19,7 @@ export const UNDO_MS = 8000;
 export const approvalUi = $state<{
 	ask: { target: ApprovalTarget; anchor: { top: number; left: number; right: number; bottom: number } | null; trigger: HTMLElement | null } | null;
 	/** `still`: an Undo that the server answered `stillApproved`: the build stays approved (by whom: `who`), nothing was reverted */
-	done: { target: ApprovalTarget; error: string | null; still?: { who: string; title: string } } | null;
+	done: { target: ApprovalTarget; error: string | null; still?: { who: string; title: string; headline: string } } | null;
 }>({ ask: null, done: null });
 
 /**
@@ -142,12 +142,18 @@ export function confirmApprove(f?: typeof fetch): void {
 	});
 	timer = setTimeout(dismissDone, UNDO_MS);
 }
-/** The words of an Undo the server declined to complete: another approval (git, a colleague) still stands for the build. */
-export function stillApprovedWords(t: ApprovalTarget, replies: readonly ApprovalReply[]): { title: string; who: string; full: string } {
+/**
+ * The words of an Undo the server declined to complete: another approval (git, a colleague) still stands for the build at `kept` places.
+ * Names the PLACE and the REASON: "ap-south stays approved" + "also approved by wyatt" (a verified `by`) or "also approved by
+ * payments-core-c0d3e88-git" (an approval with no `by`: named by its RolloutApproval, never claimed to come from git). `where` is every kept place.
+ */
+export function stillApprovedWords(t: ApprovalTarget, replies: readonly ApprovalReply[], keptLabels: readonly string[] = []): { title: string; who: string; full: string } {
 	const all = replies.flatMap((r) => r.approvals ?? []);
 	const who = approversWords(all);
-	return { title: `${t.build} stays approved`, who, full: [...new Set(all.map((a) => a.by ?? a.name))].join(', ') };
+	const partial = keptLabels.length > 0 && keptLabels.length < t.places.length;
+	return { title: partial ? `${joinPlaces(keptLabels)} ${keptLabels.length > 1 ? 'stay' : 'stays'} approved` : `${t.build} stays approved`, who, full: [...new Set(all.map((a) => a.by ?? a.name))].join(', ') };
 }
+const joinPlaces = (xs: readonly string[]): string => (xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 /**
  * Undo is optimistic (the places read held again at once, `revokeApproval`) and then listens to the server: a place whose revoke answered
  * `stillApproved` is approved by someone else too (git, a colleague), so its optimistic approval is put back (never left reverted) and the
@@ -183,8 +189,8 @@ export function undoApprove(f?: typeof fetch): void {
 				approvalUi.done = { target: t, error: e?.message || 'Undo failed, the approval stands' };
 			} else {
 				const replies = results.flatMap((r) => (r.status === 'fulfilled' && r.value?.stillApproved ? [r.value] : []));
-				const w = stillApprovedWords(t, replies);
-				approvalUi.done = { target: t, error: null, still: { who: w.who, title: w.full } };
+				const w = stillApprovedWords(t, replies, kept.map((p) => p.label));
+				approvalUi.done = { target: t, error: null, still: { who: w.who, title: w.full, headline: w.title } };
 			}
 			timer = setTimeout(dismissDone, UNDO_MS);
 		});

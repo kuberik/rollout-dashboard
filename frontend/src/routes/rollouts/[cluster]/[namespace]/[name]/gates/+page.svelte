@@ -159,6 +159,8 @@
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import RolloutNeighbourhood from '$lib/components/RolloutNeighbourhood.svelte';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
+	import { approvalsQueryOptions } from '$lib/api/approvals';
+	import { approvedFactOf } from '$lib/view-models/history-approval';
 	import { askView } from '$lib/components/new/state-words';
 	import ClearPinModal from '$lib/components/ClearPinModal.svelte';
 	import { autoDeployState } from '$lib/view-models/auto-deploy';
@@ -183,6 +185,14 @@
 			options: { refetchInterval: pollWhenHealthy(5000, 60000, cluster) }
 		})
 	);
+	/** who approved which build HERE (this place's RolloutApprovals): the approval gate's tile names the two newest approvals of builds this place knows, in History's own words. */
+	const approvalsQuery = createQuery(() => ({ ...approvalsQueryOptions({ cluster, namespace, name }), enabled: !rolloutQuery.isError }));
+	const approvedFacts = $derived.by(() => {
+		const known = new Set([...(availableReleases(rollout) ?? []).map((r) => (r as { tag?: string }).tag ?? ''), ...(rollout?.status?.history ?? []).map((h) => h.version?.tag ?? '')]);
+		const list = approvalsQuery.data?.approvals ?? [];
+		return [...list].filter((a) => known.has(a.version)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).filter((a, i, all) => all.findIndex((x) => x.version === a.version) === i).slice(0, 2)
+			.flatMap((a) => { const f = approvedFactOf(a.version, list, approvalsQuery.data?.byVerified === true); return f ? [{ build: a.version, ...f }] : []; });
+	});
 	// PALROW r8 (AD palette r7 item 3): a full outage escalates to ErrorState
 	// after two failed answers instead of retrying on the skeleton forever
 	// (`view-models/outage-escalation.svelte.ts`).
@@ -1951,6 +1961,7 @@
 							</div>
 							<RolloutNeighbourhood
 								approveAsk={ask}
+								{approvedFacts}
 								{hood}
 								themeOf={themeFor}
 								hrefOf={(n) => rolloutPath(n.cluster || cluster, n.namespace, n.name, 'gates')}

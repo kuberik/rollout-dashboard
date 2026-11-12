@@ -17,8 +17,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import { approvePlace, ownCard } from './approve-place';
 	import Toast from '$lib/components/Toast.svelte';
-	import { useQueryClient } from '@tanstack/svelte-query';
-	import { installApprovalCache, approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
+	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
 
 	const ask = $derived(approvalUi.ask);
 	const done = $derived(approvalUi.done);
@@ -56,16 +55,13 @@
 		if (!done) return;
 		let tries = 0;
 		const grab = () => {
-			const el = document.querySelector<HTMLButtonElement>('[data-action="approve-undo"], [data-action="approve-dismiss"]');
+			const el = document.querySelector<HTMLButtonElement>('[data-action="approve-undo"], [data-approve-toast] button[aria-label="Dismiss"]');
 			if (el) el.focus();
 			else if (tries++ < 10) raf = requestAnimationFrame(grab);
 		};
 		let raf = requestAnimationFrame(grab);
 		return () => cancelAnimationFrame(raf);
 	});
-	/* the places' own cached rollouts are written by the same click as the fleet fixture (approvals.svelte.ts) */
-	const queryClient = useQueryClient();
-	onMount(() => { installApprovalCache(queryClient); return () => installApprovalCache(null); });
 	onMount(() => {
 		const away = (e: PointerEvent) => { if (approvalUi.ask && panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[data-approve-open]')) closeApprove(); };
 		document.addEventListener('pointerdown', away, true);
@@ -109,15 +105,12 @@
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
 		tone={done.error ? 'danger' : done.still ? 'info' : 'success'}
-		message={done.error ? `Could not approve ${done.target.build}` : done.still ? `${done.target.build} stays approved` : `${w.title} · ${w.detail}`}
-		description={done.error ?? (done.still ? (done.still.who ? `${done.still.who} also approved it` : 'Another approval stands') : '')}
+		message={done.error ? `Could not approve ${done.target.build}` : done.still ? done.still.headline : `${w.title} · ${w.detail}`}
+		description={done.error ?? (done.still ? (done.still.who ? `also approved by ${done.still.who}` : 'another approval stands') : '')}
 	>
 		{#snippet action()}
-			{#if done.error}
-				<button type="button" class="nav-link" data-action="approve-dismiss" onclick={dismissDone}>Dismiss</button>
-			{:else if done.still}
-				<button type="button" class="nav-link" data-action="approve-dismiss" onclick={dismissDone}>Dismiss</button>
-			{:else}
+			<!-- Dismiss is the toast's own ×; an error or an Undo that did not revert has no second verb to offer beside it -->
+			{#if !done.error && !done.still}
 				<button type="button" class="nav-link" data-action="approve-undo" onclick={() => undoApprove()}>Undo</button>
 			{/if}
 		{/snippet}

@@ -3,6 +3,8 @@
 <script lang="ts">
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
 	import { heldChipLead, heldChipPhrase } from '$lib/view-models/held-chip';
+	import { approvalsQueryOptions } from '$lib/api/approvals';
+	import { approvedFactOf } from '$lib/view-models/history-approval';
 	import { kruiseStatusIsPreviousDeploy, freshestKruise } from '$lib/pipeline';
 	import { sourceDashboardURL } from '$lib/source-dashboard';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
@@ -218,6 +220,9 @@
 			}
 		})
 	);
+	/** who approved which build HERE (the place's RolloutApprovals): a build the gate now allows reads "approved by wyatt" / "approved" on its row, the same words as History. Not gated on the rollout: it never blocks the page. */
+	const approvalsQuery = createQuery(() => ({ ...approvalsQueryOptions({ cluster, namespace, name }), enabled: !rolloutQuery.isError }));
+	const approvedFact = (version: string) => approvedFactOf(version, approvalsQuery.data?.approvals, approvalsQuery.data?.byVerified === true);
 
 	/**
 	 * ⭐ THE LIST PAYLOAD, FOR ITS `rolloutDependencies` AND NOTHING ELSE.
@@ -4461,6 +4466,14 @@
 																     16px `checking` mark carries "pending"; a reserved bar that
 																     never fills read as a broken slot. -->
 																<span class="sr-only">Checking whether this build is held</span>
+															{:else if approvedFact(version)}
+																{@const ap = approvedFact(version)!}
+																<div class="dot-list">
+																	<div class="dot-list-row flex flex-wrap">
+																		<span class="t-meta text-fg-muted" title={ap.title} data-approved-build>{ap.text}</span>
+																		{#if candidateIndex === 0}<span class="t-meta text-fg">Ready to deploy</span>{/if}
+																	</div>
+																</div>
 															{:else if candidateIndex === 0}
 																<span class="t-meta text-fg">Ready to deploy</span>
 															{/if}
