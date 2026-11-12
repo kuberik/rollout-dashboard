@@ -49,3 +49,37 @@ export function classifiedGateLabel(g: { kind?: string | null; subject?: string 
 	if (g.kind === 'promotion') return { kind: 'promotion', source: promotionSourceOf(g) };
 	return { kind: 'named', text: g.displayName ?? g.label };
 }
+
+/*
+ * A gate label INSIDE A STRING. Hold causes travel the product as strings ("Held by Promotion from staging", "Waits on ...") through
+ * keys, regex rewrites and sentences, so a surface that draws cannot be handed a structured value without re-plumbing every
+ * layer. A promotion label is therefore wrapped in two invisible marks (U+2063 / U+2064). A string that is never split still
+ * reads "Promotion from staging" (the marks are zero-width), and `GateText.svelte` is the one place that turns the marked span
+ * back into the drawn `» [STAGING]` label. Plain-text sinks (aria-label, title, clipboard, data-* attributes) call `plainGateText`.
+ */
+export const GATE_MARK_OPEN = '\u2063';
+export const GATE_MARK_CLOSE = '\u2064';
+const MARKED = /\u2063([^\u2063\u2064]*)\u2064/g;
+
+/** the label as a string a drawing surface will split into the glyph and chip (`GateText`); every other kind stays plain text */
+export function gateLabelMarked(l: GateLabel): string {
+	return l.kind === 'promotion' ? `${GATE_MARK_OPEN}${gateLabelText(l)}${GATE_MARK_CLOSE}` : gateLabelText(l);
+}
+/** the string without its marks: what an aria-label, a title, a data attribute or the clipboard gets */
+export function plainGateText(s: string): string {
+	return s.replace(MARKED, '$1').replace(/[\u2063\u2064]/g, '');
+}
+export type GateTextPart = { text: string } | { label: GateLabel };
+/** split a string into plain runs and the promotion labels it carries */
+export function splitGateText(s: string): GateTextPart[] {
+	const out: GateTextPart[] = [];
+	let at = 0;
+	for (const m of s.matchAll(MARKED)) {
+		if (m.index! > at) out.push({ text: s.slice(at, m.index) });
+		const from = /^Promotion from (.+)$/.exec(m[1]);
+		out.push({ label: { kind: 'promotion', source: from ? from[1] : null } });
+		at = m.index! + m[0].length;
+	}
+	if (at < s.length) out.push({ text: s.slice(at) });
+	return out;
+}

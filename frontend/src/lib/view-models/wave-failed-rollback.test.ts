@@ -28,7 +28,7 @@ const twoPhase = (phase: 'catch' | 'rolledBack') => {
 	const older = firstRaw.status.currentVersion;
 	const wave2 = new Set(P.filter((p) => p.wave?.wave === 2).map((p) => `${part(p.href).ns}/${part(p.href).name}`));
 	const rollouts = rolloutsRaw.map((r) => {
-		if (wave2.has(`${r.metadata.namespace}/${r.metadata.name}`)) return { ...r, status: { ...r.status, releaseCandidates: [failedV], gates: [{ name: 'promotion-staging', passing: true, allowedVersions: ['b-44'] }] } };
+		if (wave2.has(`${r.metadata.namespace}/${r.metadata.name}`)) return { ...r, status: { ...r.status, releaseCandidates: [failedV], gates: [{ name: 'promotion-staging', kind: 'promotion', passing: true, allowedVersions: ['b-44'] }] } };
 		if (r === leadRaw) return { ...r, status: { ...r.status, releaseCandidates: [failedV] } };
 		if (r === firstRaw) return { ...r, status: { ...r.status, currentVersion: phase === 'catch' ? (failedV.tag ?? failedV.version) : older, releaseCandidates: [failedV], history: [...(phase === 'rolledBack' ? [{ bakeStatus: 'Succeeded', version: (r.status.history ?? [])[0]?.version ?? failedV, timestamp: new Date().toISOString() }] : []), { bakeStatus: 'Failed', version: failedV, timestamp: new Date(Date.now() - 60000).toISOString() }, ...(r.status.history ?? [])] } };
 		return r;
@@ -66,7 +66,7 @@ describe('the wave hold ends when the failed build is rolled back from', () => {
 		expect([...(r2.waiting?.labels ?? [])]).not.toContain('ap-southeast-2');
 	});
 	it('a plain wave-order wait (no failure anywhere) is neutral: waiting, never held', () => {
-		const P = (l: string, w: number, leader: boolean) => ({ wave: { site: l, wave: w, leader, follows: leader ? null : 'a', multi: true }, env: l, label: l, place: l, tier: 'prod', state: 'healthy', href: `/r/${l}`, deployedBuild: 'b-45', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '' }, upstreamFailed: null, heldBuilds: [{ build: 'b-46' }], runs: 'b-45' }) as never;
+		const P = (l: string, w: number, leader: boolean) => ({ wave: { site: l, wave: w, leader, follows: leader ? null : 'a', multi: true }, env: l, label: l, place: l, tier: 'prod', state: 'healthy', href: `/r/${l}`, deployedBuild: 'b-45', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '', promotion: true }, upstreamFailed: null, heldBuilds: [{ build: 'b-46' }], runs: 'b-45' }) as never;
 		const ps = [P('us-east-1', 1, true), P('eu-west-1', 2, true)];
 		const r = waveHeldRegions('incident', new Set(['eu-west-1']), () => ps, ['app'], () => false);
 		expect(r.held).toBeNull();

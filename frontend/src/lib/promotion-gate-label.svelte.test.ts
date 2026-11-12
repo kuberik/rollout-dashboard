@@ -9,7 +9,7 @@ import * as D from '$lib/components/new/data';
 import { buildRolloutGraph } from './view-models/dependency-graph';
 import { buildGateContext, withSchedules, type ClassifiedGate } from './view-models/blocking-story';
 import { rolloutGateBoxes } from './view-models/rollout-gates';
-import { gateLabel, gateLabelText, classifiedGateLabel, promotionSourceOf, PROMOTION_WORD } from './view-models/gate-label';
+import { plainGateText, gateLabel, gateLabelText, classifiedGateLabel, promotionSourceOf, PROMOTION_WORD } from './view-models/gate-label';
 
 /**
  * batch4 lane 70 (owner decision 2026-11-11): a promotion gate NEVER prints its displayName sentence. Every surface draws it by kind:
@@ -117,7 +117,7 @@ describe('the Home model: held chips, Holding card, banners, row causes', () => 
 	});
 	it('a held place whose gate is a promotion is named by kind', () => {
 		withPromotionDisplayName();
-		const names = D.apps('incident').items.flatMap((a) => D.placeHolds(a.app, 'incident')).map((p) => p.gate?.name).filter((n): n is string => !!n);
+		const names = D.apps('incident').items.flatMap((a) => D.placeHolds(a.app, 'incident')).map((p) => p.gate?.name && plainGateText(p.gate.name)).filter((n): n is string => !!n);
 		const promo = names.filter((n) => /^Promotion\b/.test(n));
 		expect(promo.length).toBeGreaterThan(0);
 		expect(names).toContain('Promotion from dev');

@@ -46,7 +46,7 @@ import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey, placeLabel } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
 import { scheduleLabelOfGate } from '$lib/view-models/gate-name';
-import { gateLabel, gateLabelText } from '$lib/view-models/gate-label';
+import { gateLabel, gateLabelMarked } from '$lib/view-models/gate-label';
 import { approvalWrite, approvalGateOf, refusingGates, deployableTags, type PlaceVerdict } from '$lib/view-models/place-verdict';
 export { deployableTags, approvalWrite };
 import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
@@ -951,7 +951,7 @@ export function fleetCounts(state: HomeState) {
 
 /* ═══ gates, held builds, cleared (Needs you) ═══ */
 /** The gate that holds the row's candidate, named as the Gates tab prints it, with its release sentence. null for a row nothing holds. */
-export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'>, state: HomeState = 'incident'): { name: string; sentence: string; /** the gate is a promotion (by the backend's kind): `name` is then the label by kind, never the gate's display name */ promotion?: true } | null {
+export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'>, state: HomeState = 'incident'): { name: string; sentence: string; /** the gate is a promotion (by the backend's kind): `name` is then the label by kind (marked for `GateText`), never the gate's display name */ promotion?: true } | null {
 	if (row.state !== 'awaiting-approval' && row.state !== 'held-by-rule') return null;
 	const st = rawOf(row.href)?.status;
 	/* a place whose only candidates failed upstream still has the gate that refuses them: name it from the published list when no live candidate is left (batch4 #3c M2) */
@@ -1399,7 +1399,7 @@ const dependencyProviderOf = (href: string, gateName: string): string | null => 
  *  by `gateDisplayName`, the one gate name: the published pretty name, else the readable resource name, else the plain word "Gate" until a name is published. Same source as `causeLabelForGates`' `dependency` subject and `clock` label. */
 export function holdTitleOf(href: string, g: GateLite, state: HomeState, app: string, key: string | null): string {
 	/* a promotion gate is named by kind and its source environment, never by the sentence the environment controller published (gate-label.ts) */
-	if (gateKindOf(g) === 'promotion') return gateLabelText(gateLabel(g, null, promotionSourceOfHref(href)));
+	if (gateKindOf(g) === 'promotion') return gateLabelMarked(gateLabel(g, null, promotionSourceOfHref(href)));
 	const joined = dependencyProviderOf(href, g.name);
 	if (joined) return joined;
 	if (gateKindOf(g) === 'dependency') {

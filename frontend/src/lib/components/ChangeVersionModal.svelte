@@ -79,7 +79,8 @@
 	import StatusSpinner from './StatusSpinner.svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
-	import { gateLabel, gateLabelText } from '$lib/view-models/gate-label';
+	import { gateLabel, gateLabelMarked, plainGateText } from '$lib/view-models/gate-label';
+	import GateText from './GateText.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { modEnterHint } from '$lib/shortcut-hint';
 	import { apiPath } from '$lib/api/urls';
@@ -1067,7 +1068,7 @@
 	): string | null {
 		if (isGateHeld) {
 			const gate = (rollout?.status?.gates ?? []).find((g) => !gateAllows(g, versionTag));
-			return gate?.name ? `Held by ${gateLabelText(gateLabel(gate, nameOfGate(gate.name)))}` : null; /* a promotion gate is named by kind, never by its published sentence */
+			return gate?.name ? `Held by ${gateLabelMarked(gateLabel(gate, nameOfGate(gate.name)))}` : null; /* a promotion gate is named by kind, never by its published sentence */
 		}
 		const edge = selfHeldGraph.edges.find(
 			(e) => e.writer === 'contract' && e.state === 'blocked' && e.held.includes(displayVersion)
@@ -2903,7 +2904,7 @@
 									{:else if isHeld}
 										<HeldGlyph
 											class="text-held h-4 w-4"
-											title={heldReason ??
+											title={heldReason ? plainGateText(heldReason) :
 												'Held — a rule currently blocks this build from deploying automatically'}
 										/>
 									{:else if isCurrent}
@@ -2976,7 +2977,7 @@
 										     already does). The REASON when one is known
 										     (`heldReasonFor`, round 3), "held" bare only when it
 										     is not. -->
-										<span class="t-meta text-held min-w-0 truncate">{heldReason ?? 'held'}</span>
+										<span class="t-meta text-held min-w-0 truncate">{#if heldReason}<GateText text={heldReason} />{:else}held{/if}</span>
 									{/if}
 								</div>
 								<!-- ⭐ SUPERSEDED, 2026-10-10 (squad-rollout, Lane D, round 4

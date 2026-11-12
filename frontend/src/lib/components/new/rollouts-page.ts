@@ -19,6 +19,7 @@ import { holdWord } from './rollout-view';
 import { approvalWord } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
+import { plainGateText } from '$lib/view-models/gate-label';
 import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import { regionsPhrase, siteCount } from '$lib/view-models/regions';
 
@@ -69,7 +70,7 @@ export function strandOf(r: TRow, hs: HomeState): MiniNode[] {
 	const nodes = nodesOfSteps(r.steps, r.state);
 	if (r.state === 'held-by-rule' || r.state === 'awaiting-approval') {
 		const g = gateName(r, hs);
-		nodes.push({ state: r.stillChecking ? 'pending' : r.state === 'awaiting-approval' ? 'approval' : 'held', step: g?.name ?? (r.state === 'awaiting-approval' ? 'Approval' : 'Gate') });
+		nodes.push({ state: r.stillChecking ? 'pending' : r.state === 'awaiting-approval' ? 'approval' : 'held', step: g ? plainGateText(g.name) : (r.state === 'awaiting-approval' ? 'Approval' : 'Gate') });
 	}
 	return nodes;
 }

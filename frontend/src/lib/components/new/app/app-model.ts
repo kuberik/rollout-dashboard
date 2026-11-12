@@ -34,8 +34,8 @@ import { newerBuildsAre } from '$lib/view-models/blocking-story';
 
 const ORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
 export const tierRank = (t: string) => ORDER.indexOf(t as TierKey);
-/* a promotion place hold: the backend's kind (data.ts gateName sets `promotion`), or the label `gateLabelText` gives one ("Promotion", "Promotion from staging") for a hold built without the flag */
-export const isPromotion = (p: PlaceHold) => !!p.gate && (p.gate.promotion === true || /^Promotion( |$)/.test(p.gate.name));
+/* a promotion place hold: the backend's kind, carried as `gate.promotion` (data.ts gateName sets it); never a guess from the gate's name */
+export const isPromotion = (p: PlaceHold) => p.gate?.promotion === true;
 
 /** the tier upstream of `tier` among the app's own places (dev has none) */
 export function upstreamTier(places: PlaceHold[], tier: string): TierKey | null {

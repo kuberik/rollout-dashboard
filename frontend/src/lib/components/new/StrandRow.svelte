@@ -19,6 +19,7 @@
 	import { envTheme } from './rollout-view';
 	import type { StrandRow, RestRow } from './rollouts-page';
 	import { atoms } from '$lib/components/atoms/atoms-context';
+	import GateText from '$lib/components/GateText.svelte';
 	import LeadBar from '$lib/components/atoms/LeadBar.svelte';
 
 	let { row = null, rest = null, dense = false }: { row?: StrandRow | null; rest?: RestRow | null; /** the quiet flow (Changes' At rest): no mark / drawing tracks, the age auto-wide */ dense?: boolean } = $props();
@@ -41,7 +42,7 @@
 		</div>
 		<span class="lr-dr">{#if row}<MiniPipeline nodes={row.nodes} neutral label="{name} steps" />{/if}</span>
 		<p class="lr-sn" class:wrap={!!row?.row.alsoApproval}>
-			{#if row}<span class="lr-ld" data-state-word>{row.lead}</span>{#if pg?.words && !row.row.stillChecking}{" "}<span class="lr-left t-meta tabular-nums">{pg.words}</span>{" "}{/if}{row.rest}{:else if rest}{#if rest.codeFirst && rest.code}<span class="lr-code first t-code-sm">{rest.code}</span>{/if}{rest.sentence}{#if !rest.codeFirst && rest.code}<span class="lr-code t-code-sm">{rest.code}</span>{/if}{/if}
+			{#if row}<span class="lr-ld" data-state-word><GateText text={row.lead} /></span>{#if pg?.words && !row.row.stillChecking}{" "}<span class="lr-left t-meta tabular-nums">{pg.words}</span>{" "}{/if}{row.rest}{:else if rest}{#if rest.codeFirst && rest.code}<span class="lr-code first t-code-sm">{rest.code}</span>{/if}{rest.sentence}{#if !rest.codeFirst && rest.code}<span class="lr-code t-code-sm">{rest.code}</span>{/if}{/if}
 		</p>
 		{#if rest && rest.lead !== undefined}<span class="lr-ldw t-meta" title={rest.lead ? `${rest.lead.total} to prod` : undefined}>{#if rest.lead}<LeadBar hops={rest.lead.hops} origin={rest.lead.origin} scaleMs={rest.lead.scale} width={72} /><span class="lr-lead-t tabular-nums">{rest.lead.total}<span class="lr-tp">to prod</span></span>{/if}</span>{/if}
 		<span class="lr-age t-meta">{row?.age ?? rest?.age ?? ''}</span>

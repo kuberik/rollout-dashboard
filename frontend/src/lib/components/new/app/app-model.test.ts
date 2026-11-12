@@ -175,7 +175,7 @@ describe('ledger: the place that needs reading leads its stop', () => {
 		expect(stop.places.map((p) => p.place)).toEqual(['f-failed', 'e-approval', 'g-approval', 'd-held', 'c-checking', 'b-deploying', 'a-rest']);
 	});
 	it('a healthy place a promotion gate holds a newer build from ranks with the held places, above one at rest', () => {
-		const places = [mk('a-rest', 'healthy', { heldBuilds: [] }), mk('b-waits', 'healthy', { holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '' } }), mk('c-deploying', 'deploying')];
+		const places = [mk('a-rest', 'healthy', { heldBuilds: [] }), mk('b-waits', 'healthy', { holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '', promotion: true } }), mk('c-deploying', 'deploying')];
 		const stop = ledgerOf(places).find((s) => s.build === 'b0')!;
 		expect(stop.places.map((p) => p.place)).toEqual(['b-waits', 'c-deploying', 'a-rest']);
 	});
@@ -184,7 +184,7 @@ describe('ledger: the place that needs reading leads its stop', () => {
 /* landing v5 (2026-11-10): "Healthy · follows ap-southeast-2" on a place holding a newer build. It waits: say on whom and for which build. */
 describe('placeWait: a healthy place its rollout order has not reached', () => {
 	const hb = (build: string) => ({ build, title: null, author: null, created: '2026-01-02T00:00:00Z', here: true });
-	const mk = (site: string, wave: number, leader: boolean, over: Record<string, unknown> = {}, tier = 'prod') => ({ wave: { site, wave, leader, follows: leader ? null : 'ap-southeast-2', multi: true }, env: site, label: site, place: site, tier, state: 'healthy', href: `/x/${site}`, deployedBuild: 'b0', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '' }, heldBuilds: [hb('4.46.0-46')], runs: null, ...over }) as never;
+	const mk = (site: string, wave: number, leader: boolean, over: Record<string, unknown> = {}, tier = 'prod') => ({ wave: { site, wave, leader, follows: leader ? null : 'ap-southeast-2', multi: true }, env: site, label: site, place: site, tier, state: 'healthy', href: `/x/${site}`, deployedBuild: 'b0', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '', promotion: true }, heldBuilds: [hb('4.46.0-46')], runs: null, ...over }) as never;
 	const us1 = () => mk('us-east-1', 1, true, { holdReason: 'approval', state: 'awaiting-approval' });
 	const places = () => [us1(), mk('ap-southeast-2', 2, true), mk('eu-central-1', 2, false), mk('us-east-2', 2, false)];
 	it('a follower waits for its leader to deploy the newer build', () => {
@@ -220,7 +220,7 @@ describe('placeWait: a healthy place its rollout order has not reached', () => {
 import { waveHold } from './app-model';
 describe('waveHold: why a healthy place its wave has not reached is held', () => {
 	const hb = (build: string) => ({ build, title: null, author: null, created: '2026-01-02T00:00:00Z', here: true });
-	const mk = (site: string, wave: number, leader: boolean, over: Record<string, unknown> = {}) => ({ wave: { site, wave, leader, follows: leader ? null : 'ap-southeast-2', multi: true }, env: site, label: site, place: site, tier: 'prod', state: 'healthy', href: `/rollouts/prod/${site}/checkout-api`, deployedBuild: '4.45.0-45', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '' }, heldBuilds: [hb('4.46.0-46')], runs: '4.45.0-45', ...over }) as never;
+	const mk = (site: string, wave: number, leader: boolean, over: Record<string, unknown> = {}) => ({ wave: { site, wave, leader, follows: leader ? null : 'ap-southeast-2', multi: true }, env: site, label: site, place: site, tier: 'prod', state: 'healthy', href: `/rollouts/prod/${site}/checkout-api`, deployedBuild: '4.45.0-45', holdReason: 'rule', gate: { name: 'Promotion gate', sentence: '', promotion: true }, heldBuilds: [hb('4.46.0-46')], runs: '4.45.0-45', ...over }) as never;
 	const places = () => [mk('us-east-1', 1, true, { state: 'rolled-back', holdReason: null, heldBuilds: [] }), mk('ap-southeast-2', 2, true), mk('eu-central-1', 2, false)];
 	it('names the wave-1 site that failed the held build', () => {
 		const ps = places();
