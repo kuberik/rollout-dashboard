@@ -71,6 +71,8 @@ export type GateBox = {
 	mark: { kind: 'schedule' | 'approval' | 'check' | 'unknown'; clears: 'clock' | 'person' | 'check' | 'unknown' | 'pin' };
 	/** The Kubernetes names behind the box, for a tooltip. Never a headline. */
 	gates: string[];
+	/** Set for a promotion gate (`gateLabel`): the box DRAWS it by kind (the promotion glyph and the source chip, or the word "Promotion"); `title` is then only the plain-text form. Absent for every other box. */
+	label?: GateLabel;
 };
 
 export type ScheduleLike = {
@@ -95,6 +97,7 @@ const KIND_ORDER: Record<GateBoxKind, number> = {
 
 export { humanizeGateName, isGeneratedGateName, gateDisplayName, resolveGateName, prettyNameOf } from './gate-name';
 import { gateDisplayName, prettyNameOf } from './gate-name';
+import { gateLabel, gateLabelText, type GateLabel } from './gate-label';
 import { isApprovalLike } from './place-verdict';
 import { pinnedByWho } from './pin-hold';
 
@@ -321,18 +324,21 @@ export function rolloutGateBoxes(args: {
 			phrase = passing === false ? 'not passing' : 'passing';
 		}
 		const pretty = prettyNameOf(obj?.metadata) ?? sum?.displayName;
-		const title = gateDisplayName(g, pretty);
+		/* a promotion gate is named by kind, never by the sentence the environment controller published (gate-label.ts) */
+		const label = gateLabel({ kind: sum?.kind ?? null, name: g }, pretty);
+		const title = label.kind === 'promotion' ? gateLabelText(label) : gateDisplayName(g, pretty);
 		const kindWord = approval ? 'Approval' : 'Gate';
 		out.push({
 			key: `gate:${g}`,
 			kind: approval ? 'approval' : 'gate',
 			state,
 			title,
-			kindWord: title.toLowerCase() === kindWord.toLowerCase() ? null : kindWord,
+			kindWord: label.kind === 'promotion' ? null : title.toLowerCase() === kindWord.toLowerCase() ? null : kindWord,
 			phrase,
 			held: state === 'blocked' ? heldBy([g]) : [],
 			mark: approval ? { kind: 'approval', clears: 'person' } : listed ? { kind: 'unknown', clears: 'unknown' } : { kind: 'check', clears: 'check' },
-			gates: [g]
+			gates: [g],
+			...(label.kind === 'promotion' ? { label } : {})
 		});
 	}
 
@@ -351,11 +357,12 @@ export function rolloutGateBoxes(args: {
 		// even though the gate's OWN owner reference already says otherwise.
 		const owner = scheduleOwnerOf(objects.get(h.gate));
 		const clock = h.clears === 'clock' || owner !== null;
+		const holdLabel = clock ? null : gateLabel({ kind: summaries.get(h.gate)?.kind ?? null, name: h.gate }, prettyNameOf(objects.get(h.gate)?.metadata) ?? summaries.get(h.gate)?.displayName);
 		out.push({
 			key: owner ? scheduleKey(owner.namespace, owner.name) : `gate:${h.gate}`,
 			kind: clock ? 'schedule' : 'gate',
 			state: 'blocked',
-			title: clock ? 'Deploy window' : gateDisplayName(h.gate, prettyNameOf(objects.get(h.gate)?.metadata) ?? summaries.get(h.gate)?.displayName),
+			title: clock ? 'Deploy window' : gateLabelText(holdLabel!),
 			kindWord: null,
 			phrase: h.short.charAt(0).toLowerCase() + h.short.slice(1),
 			held: heldBy([h.gate]),
@@ -366,7 +373,8 @@ export function rolloutGateBoxes(args: {
 					: h.clears === 'check'
 						? { kind: 'check', clears: 'check' }
 						: { kind: 'unknown', clears: 'unknown' },
-			gates: [h.gate]
+			gates: [h.gate],
+			...(holdLabel?.kind === 'promotion' ? { label: holdLabel } : {})
 		});
 	}
 

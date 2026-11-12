@@ -22,6 +22,7 @@ import {
 	detectStuckPromotion
 } from './view-models/promotion';
 import { promotionCandidates, type PromotionStuckReason } from './view-models/promotion';
+import { classifiedGateLabel, gateLabelText } from './view-models/gate-label';
 import { rankVerdictsByRollout, rankBehindBy } from './view-models/env-rank';
 import type { RankVerdict } from './view-models/env-rank';
 import { checkFailure } from './view-models/health-witness';
@@ -300,7 +301,7 @@ function placeVerdictOf(
 	const cg = story.gates.find((g) => g.id === v.first.name) ?? null;
 	const kind = alsoKindOf(v.first);
 	const cause: HeldCause = kind === 'window' ? 'clock' : kind === 'order' ? 'order' : cg?.kind === 'dependency' || cg?.clears === 'upstream' ? 'dependency' : cg?.clears === 'check' ? 'check' : 'unknown';
-	const name = cg ? (cg.kind === 'dependency' && cg.subject ? cg.subject : (cg.displayName ?? cg.label)) : v.first.name;
+	const name = cg ? (cg.kind === 'dependency' && cg.subject ? cg.subject : gateLabelText(classifiedGateLabel(cg))) : v.first.name; /* a promotion gate is named by kind (gate-label.ts) */
 	const also: AlsoHold | null = v.also ? { kind: v.also.kind, other: v.also.kind === 'order' ? 'promotion order' : name } : null;
 	return { verdict: v, held: true, cause, causeLabel: cg ? causeLabelForGates([cg], cause) : null, also };
 }

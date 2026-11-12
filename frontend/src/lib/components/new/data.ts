@@ -46,6 +46,7 @@ import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey, placeLabel } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
 import { scheduleLabelOfGate } from '$lib/view-models/gate-name';
+import { gateLabel, gateLabelText } from '$lib/view-models/gate-label';
 import { approvalWrite, approvalGateOf, refusingGates, deployableTags, type PlaceVerdict } from '$lib/view-models/place-verdict';
 export { deployableTags, approvalWrite };
 import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
@@ -950,7 +951,7 @@ export function fleetCounts(state: HomeState) {
 
 /* ═══ gates, held builds, cleared (Needs you) ═══ */
 /** The gate that holds the row's candidate, named as the Gates tab prints it, with its release sentence. null for a row nothing holds. */
-export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'>, state: HomeState = 'incident'): { name: string; sentence: string } | null {
+export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'>, state: HomeState = 'incident'): { name: string; sentence: string; /** the gate is a promotion (by the backend's kind): `name` is then the label by kind, never the gate's display name */ promotion?: true } | null {
 	if (row.state !== 'awaiting-approval' && row.state !== 'held-by-rule') return null;
 	const st = rawOf(row.href)?.status;
 	/* a place whose only candidates failed upstream still has the gate that refuses them: name it from the published list when no live candidate is left (batch4 #3c M2) */
@@ -963,6 +964,7 @@ export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'
 	if (!g) return null;
 	const title = holdTitleOf(row.href, g, state, row.key.split('@')[0], row.key);
 	const kind = gateKindOf(g);
+	if (kind === 'promotion') return { name: title, sentence: 'Releases when the rule allows this build', promotion: true };
 	/* a dependency gate is titled by its provider ("payments-svc"), not by the gate's slug */
 	if (kind !== 'schedule' && title !== gateDisplayName(g.name, prettyOfGate(row.href, g.name))) return { name: title, sentence: `Releases when ${title} ships a newer version` };
 	const sentence = row.state === 'awaiting-approval' ? 'Releases when someone approves'
@@ -1257,6 +1259,20 @@ export function waveInfoOfHref(href: string): WaveInfo | null {
 	const follows = node.isLeader ? null : (upstreamOf(topo, node)[0]?.site ?? null);
 	return { site: node.site, wave: node.wave, leader: node.isLeader, follows, multi: tier.waves.length > 1 };
 }
+/** The environment a place's promotion gate waits on, as a chip would name it: the tier of its upstream sites when that is another tier ("staging"), else the one site it follows ("eu-central"); null when there is none or several. The source of `gateLabel`'s chip. */
+export function promotionSourceOfHref(href: string): string | null {
+	const h = hrefParts(href);
+	if (!h) return null;
+	const src = source(), envs = src.environments as unknown as Environment[];
+	const env = envs.find((e) => e.metadata?.namespace === h.ns && e.spec?.rolloutRef?.name === h.name);
+	if (!env) return null;
+	const topo = (TOPOLOGY.get(src) ?? (TOPOLOGY.set(src, buildTopology(envs)), TOPOLOGY.get(src)!)).get(deployNameOf(env));
+	const node = siteNodeOf(topo, env);
+	if (!topo || !node) return null;
+	const ups = upstreamOf(topo, node);
+	const names = [...new Set(ups.map((u) => (u.tier !== node.tier ? u.tier : u.site)))];
+	return names.length === 1 ? String(names[0]) : null;
+}
 /** true when `build` (as the tab names it) failed its bake in the place a rollout href names AND the place still RUNS it (failedHereVerdict, the ONE rule:
    latest attempt failed, nothing replaced it: rolledBackAt == null). A site that rolled back to an older healthy build holds nobody, whatever its retained
    Failed entry says. The guard is load-bearing: a same-wave leader that failed a build and rolled back would otherwise be blamed again by its followers
@@ -1267,7 +1283,7 @@ export function bakeFailedOn(q: { href: string }, build: string): boolean {
 	const v = entry ? failedHereVerdict({ status: st } as never, entry.version) : null;
 	return !!entry && v?.kind === 'failed' && v.rolledBackAt == null;
 }
-export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; /** the catalogue builds newer than this place's own that failed in this place (history, or the wave's own failure): what the row's note names when the tab offers fewer builds than the catalogue has */ failedHere?: string[]; heldBuilds: ReturnType<typeof candidateBuilds>; /** the builds a pin holds AT THIS PLACE: `newerBuildsShown`, the list the rollout's Overview and Gates tab count (a pin is per place, never the app baseline) */ newerShown: string[]; runs: string | null };
+export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string; promotion?: true } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; /** the catalogue builds newer than this place's own that failed in this place (history, or the wave's own failure): what the row's note names when the tab offers fewer builds than the catalogue has */ failedHere?: string[]; heldBuilds: ReturnType<typeof candidateBuilds>; /** the builds a pin holds AT THIS PLACE: `newerBuildsShown`, the list the rollout's Overview and Gates tab count (a pin is per place, never the app baseline) */ newerShown: string[]; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.
  *  invoice-api: eu-west failed (health), us-east and us-west held by the manual-approval gate (allowed a11c404 only). */
 export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHold[] {
@@ -1382,6 +1398,8 @@ const dependencyProviderOf = (href: string, gateName: string): string | null => 
  *  A dependency is titled by its provider (the RolloutDependency join, else the app's own dependency hold when the backend says `dependency`); every other gate (a window, a check, a kind this dashboard has no word for)
  *  by `gateDisplayName`, the one gate name: the published pretty name, else the readable resource name, else the plain word "Gate" until a name is published. Same source as `causeLabelForGates`' `dependency` subject and `clock` label. */
 export function holdTitleOf(href: string, g: GateLite, state: HomeState, app: string, key: string | null): string {
+	/* a promotion gate is named by kind and its source environment, never by the sentence the environment controller published (gate-label.ts) */
+	if (gateKindOf(g) === 'promotion') return gateLabelText(gateLabel(g, null, promotionSourceOfHref(href)));
 	const joined = dependencyProviderOf(href, g.name);
 	if (joined) return joined;
 	if (gateKindOf(g) === 'dependency') {

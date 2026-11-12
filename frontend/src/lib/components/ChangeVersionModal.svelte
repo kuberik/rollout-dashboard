@@ -79,6 +79,7 @@
 	import StatusSpinner from './StatusSpinner.svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
+	import { gateLabel, gateLabelText } from '$lib/view-models/gate-label';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { modEnterHint } from '$lib/shortcut-hint';
 	import { apiPath } from '$lib/api/urls';
@@ -1066,7 +1067,7 @@
 	): string | null {
 		if (isGateHeld) {
 			const gate = (rollout?.status?.gates ?? []).find((g) => !gateAllows(g, versionTag));
-			return gate?.name ? `Held by ${nameOfGate(gate.name)}` : null;
+			return gate?.name ? `Held by ${gateLabelText(gateLabel(gate, nameOfGate(gate.name)))}` : null; /* a promotion gate is named by kind, never by its published sentence */
 		}
 		const edge = selfHeldGraph.edges.find(
 			(e) => e.writer === 'contract' && e.state === 'blocked' && e.held.includes(displayVersion)

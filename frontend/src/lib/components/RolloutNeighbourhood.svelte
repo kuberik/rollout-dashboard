@@ -51,6 +51,7 @@
 	import type { GraphNode } from '$lib/view-models/dependency-graph';
 	import type { NeighbourLink, RolloutNeighbourhood } from '$lib/view-models/rollout-neighbourhood';
 	import { withoutSupersededBoxes, type GateBox } from '$lib/view-models/rollout-gates';
+	import GateLabel from './GateLabel.svelte';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
 	import { approvalWord, ASK_LOADING } from '$lib/components/new/state-words';
 	import { fade } from 'svelte/transition';
@@ -686,7 +687,7 @@
 			{docsHref ? 'hover:border-line-strong' : ''}"
 	>
 		<span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-			<span class="t-card-title min-w-0 break-words text-fg">{b.title}</span>
+			<span class="t-card-title min-w-0 break-words text-fg">{#if b.label}<GateLabel label={b.label} />{:else}{b.title}{/if}</span>
 		</span>
 		<p class="flex min-w-0 items-start gap-1.5 t-meta {held ? 'text-held' : 'text-fg-subtle'}">
 			<span class="mt-0.5 shrink-0"><StatusMark state={markState(b.state)} /></span>
