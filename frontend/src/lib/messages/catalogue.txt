@@ -790,7 +790,6 @@ lib/components/new/data.ts	code	prod regions
 lib/components/new/data.ts	code	Ready to promote to ……
 lib/components/new/data.ts	code	Recovered after … failed
 lib/components/new/data.ts	code	Releases when …
-lib/components/new/data.ts	code	Releases when … is satisfied
 lib/components/new/data.ts	code	Releases when … ships a newer version
 lib/components/new/data.ts	code	Releases when its dependency ships a newer version
 lib/components/new/data.ts	code	Releases when someone approves
