@@ -8,7 +8,7 @@
 //           ?calm / ?quiet scenario cookie of one state never leaks into the next.
 // env: FROZEN=1   compare ages against the fixture's capturedAt instead of the clock. Only for a capture that really is frozen; the mock dates every response
 //                 relative to the request, so the default is the live clock.
-//      NO_FLEET=1, NO_ENVD=1, NO_CHGD=1, NO_MULTI=1, NO_WAITCLOCK=1, NO_V2=1   skip a check group; FLEET_ONLY=1 isolates the fleet checks; V2_ONLY=1 runs only the v2 group (pins, behind, words)
+//      NO_FLEET=1, NO_ENVD=1, NO_CHGD=1, NO_MULTI=1, NO_WAITCLOCK=1, NO_V2=1   skip a check group; FLEET_ONLY=1 isolates the fleet checks; V2_ONLY=1 runs only the v2 group (pins, Builds-row behind, words)
 // exit code: 1 on any mismatch, with one line per mismatch.
 // contract: see the header of src/lib/components/new/data.ts.
 import { chromium } from '@playwright/test';
@@ -1528,7 +1528,8 @@ async function v2Checks() {
 				bad(`behind /apps/${app} ${r.build}`, `Builds row says ${m ? `"${m[0]}"` : 'nothing'} (data-truth-lag ${r.lag || 'none'}), the catalogue order puts it ${want} behind the newest (${rels.length} releases, position ${i + 1})`);
 		}
 	}
-	console.log(`behind: ${nb} "N behind" on app place rows compared with the catalogue order`);
+	if (!nb) bad('behind', 'no Builds row was compared with the catalogue order');
+	console.log(`behind: ${nb} "N behind" on app Builds rows compared with the catalogue order`);
 	await p.close();
 }
 if (process.env.NO_V2 !== '1') {
