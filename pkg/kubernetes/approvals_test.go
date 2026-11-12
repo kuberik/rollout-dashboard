@@ -142,3 +142,24 @@ func TestApprovalByVerifier_NoClientIsFalse(t *testing.T) {
 		t.Fatal("verified without a client")
 	}
 }
+
+func TestApprovalByVerifier_CancelledRequestContextDoesNotPoisonCache(t *testing.T) {
+	var sawErr error
+	var sawDeadline bool
+	v := &ApprovalByVerifier{checkFn: func(ctx context.Context) (bool, time.Duration) {
+		sawErr = ctx.Err()
+		_, sawDeadline = ctx.Deadline()
+		return true, approvalByTTL
+	}}
+	req, cancel := context.WithCancel(context.Background())
+	cancel()
+	if !v.Verified(req) {
+		t.Fatal("a cancelled request context made the verifier answer false")
+	}
+	if sawErr != nil || !sawDeadline {
+		t.Fatalf("check ctx err=%v hasDeadline=%v, want a live bounded context", sawErr, sawDeadline)
+	}
+	if !v.Verified(context.Background()) {
+		t.Fatal("cached value was poisoned")
+	}
+}

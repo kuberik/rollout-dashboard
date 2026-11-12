@@ -20,6 +20,8 @@ const ApprovalByBindingName = "kuberik-rolloutapproval-by"
 const (
 	approvalByTTL      = 5 * time.Minute // refresh at most this often
 	approvalByErrorTTL = 30 * time.Second
+
+	approvalByCheckTimeout = 5 * time.Second
 )
 
 // ApprovalByVerifier answers "can the by annotation be trusted on this
@@ -36,10 +38,15 @@ type ApprovalByVerifier struct {
 	value   bool
 	expires time.Time
 	now     func() time.Time
+	// checkFn replaces check in tests.
+	checkFn func(context.Context) (bool, time.Duration)
 }
 
 // Verified returns the cached answer, refreshing it when stale.
-func (v *ApprovalByVerifier) Verified(ctx context.Context) bool {
+//
+// The check runs on its own bounded context, not the request's: a client that
+// disconnects mid-check must not cache false for everyone else.
+func (v *ApprovalByVerifier) Verified(_ context.Context) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	now := time.Now
@@ -49,7 +56,13 @@ func (v *ApprovalByVerifier) Verified(ctx context.Context) bool {
 	if now().Before(v.expires) {
 		return v.value
 	}
-	ok, ttl := v.check(ctx)
+	ctx, cancel := context.WithTimeout(context.Background(), approvalByCheckTimeout)
+	defer cancel()
+	check := v.check
+	if v.checkFn != nil {
+		check = v.checkFn
+	}
+	ok, ttl := check(ctx)
 	v.value, v.expires = ok, now().Add(ttl)
 	return ok
 }
