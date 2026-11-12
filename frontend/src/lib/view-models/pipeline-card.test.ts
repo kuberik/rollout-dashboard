@@ -81,6 +81,10 @@ describe('pipelineSlots — rows keep their slot while a deploy is in flight', (
 	it('reserves nothing once the deploy has settled', () => {
 		expect(pipelineSlots({ ...all, deployInFlight: false })).toEqual({ advance: false, checkLine: false, timerLine: false });
 	});
+	it('reserves nothing on a stage that is past, and no action on the last step', () => {
+		expect(pipelineSlots({ ...all, deployInFlight: true, stageOpen: false })).toEqual({ advance: false, checkLine: false, timerLine: true });
+		expect(pipelineSlots({ ...all, deployInFlight: true, lastStep: true })).toEqual({ advance: false, checkLine: true, timerLine: true });
+	});
 	it('reserves only what can actually appear', () => {
 		expect(pipelineSlots({ deployInFlight: true, canUpdate: false, stageCheckConfigured: false, timerConfigured: false })).toEqual({
 			advance: false,

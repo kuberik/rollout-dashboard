@@ -965,7 +965,7 @@
 			{@const live = sd.bakingNow && !!stepReadyAt && bakeTimeMs > 0}
 			{@const elapsed = live ? $now.getTime() - new Date(stepReadyAt).getTime() : 0}
 			{@const remainingBake = live ? Math.max(0, bakeTimeMs - elapsed) : 0}
-			{#if live || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: bakeTimeMs > 0, timerConfigured: false }).checkLine}
+			{#if live || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: bakeTimeMs > 0, timerConfigured: false, stageOpen: !sd.isPastStep }).checkLine}
 				{@render progressLine(
 					live,
 					live ? Math.min(100, (elapsed / bakeTimeMs) * 100) : 0,
@@ -1140,7 +1140,7 @@
 			</div>
 
 			{@const advLive = sd.isCurrentStep && !sd.isPastStep && sd.isStepPaused && canUpdate}
-			{#if advLive || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: false, timerConfigured: false }).advance}
+			{#if advLive || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: false, timerConfigured: false, stageOpen: !sd.isPastStep, lastStep: sd.isLastStep }).advance}
 				{@const adv = stageAdvance(
 					{
 						stepNum: sd.stepNum,
