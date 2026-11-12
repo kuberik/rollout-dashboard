@@ -114,7 +114,7 @@
 			<section id="behind" data-section="behind">
 				<SectionHeader title="Behind" icon={ClockOutline} rollup={[`${plural(G.behind.length, 'app')} on an older build`]} />
 				<div class="instep" data-instep-behind>
-					{#each G.behind as a (a.app)}<a href={a.href} class="instep-a instep-behind"><AppGlyph name={a.app} size={20} /><span class="whitespace-nowrap">{a.app}</span><span class="instep-why t-body text-fg-subtle tabular-nums">{a.place ? `${a.place} · ` : ''}{a.n} behind · nothing inbound</span></a>{/each}
+					{#each G.behind as a (a.app)}<a href={a.href} class="instep-a instep-behind"><AppGlyph name={a.app} size={20} /><span class="whitespace-nowrap">{a.app}</span><span class="instep-why t-body text-fg-subtle tabular-nums">{a.place ? `${a.place} · ` : ''}{a.n} behind · {a.why}</span></a>{/each}
 				</div>
 			</section>
 		{/if}
