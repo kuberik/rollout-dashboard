@@ -102,7 +102,7 @@
 	import { createQuery, createQueries } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsInNamespaceQueryOptions, rolloutsListQueryOptions } from '$lib/api/rollouts';
 	import { approvalsQueryOptions } from '$lib/api/approvals';
-	import { historyApprovalFact } from '$lib/view-models/history-approval';
+	import { historyApprovalFact, approvalReplacesActor } from '$lib/view-models/history-approval';
 	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
 	import { commitQueryOptions } from '$lib/api/commit';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
@@ -2194,7 +2194,7 @@
 																				{act.sentence.replace(/\.$/, '')}
 																			</span>
 																		{/if}
-																		{#if who && actor}
+																		{#if who && actor && !approvalReplacesActor(approved, actor.kind)}
 																			<!-- ⭐ AVATAR ONLY WHENEVER THE ROW'S DETAILS WRAP (History
 												     round 15 item 5, widened in round 16, AD round 12
 												     item 2): round 15 keyed this on `note` alone, which

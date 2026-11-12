@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { displayIdentity, approversWords } from './approval-identity';
 import { approvalWrite, approvalUnwrite } from './approval-write';
-import { historyApprovalFact } from './history-approval';
+import { historyApprovalFact, approvalReplacesActor } from './history-approval';
 
 describe('displayIdentity (CONTRACT D6)', () => {
 	it('drops everything up to and including the first colon', () => {
@@ -23,16 +23,26 @@ describe('approvalUnwrite is the inverse of approvalWrite', () => {
 });
 
 describe('the history row\'s approved-by fact', () => {
-	it('shows who approved when `by` is present and the cluster verifies it; the full name is the title', () => {
-		expect(historyApprovalFact({ name: 'app-v1', by: 'oidc:wyatt' }, true)).toEqual({ text: 'approved by wyatt', title: 'Approved by oidc:wyatt' });
+	it('verified: "approved by wyatt", the tooltip leads with the display name and keeps the identity', () => {
+		expect(historyApprovalFact({ name: 'app-v1', by: 'oidc:wyatt' }, true)).toEqual({ text: 'approved by wyatt', title: 'Approved by wyatt (oidc:wyatt)' });
+		expect(historyApprovalFact({ name: 'app-v1', by: 'wyatt' }, true)?.title).toBe('Approved by wyatt');
 	});
-	it('falls back to the approval name when `by` is absent (a git approval)', () => {
-		expect(historyApprovalFact({ name: 'app-v1' }, true)?.text).toBe('approval app-v1');
+	it('no verified `by` (git, kubectl, unverified): a bare "Approved", the object name only in the tooltip', () => {
+		const f = historyApprovalFact({ name: 'hello-world-e4f5a6b' }, true)!;
+		expect(f.text).toBe('Approved');
+		expect(f.title).toBe('Approved by RolloutApproval hello-world-e4f5a6b (no verified approver)');
+		expect(f.text).not.toMatch(/git|hello-world/);
 	});
 	it('hides `by` when the cluster does not verify it', () => {
 		const f = historyApprovalFact({ name: 'app-v1', by: 'oidc:wyatt' }, false)!;
-		expect(f.text).toBe('approval app-v1');
+		expect(f.text).toBe('Approved');
 		expect(f.text + f.title).not.toMatch(/wyatt/);
+	});
+	it('an approval replaces the Automatic actor, never a person', () => {
+		const f = historyApprovalFact({ name: 'a' }, true);
+		expect(approvalReplacesActor(f, 'controller')).toBe(true);
+		expect(approvalReplacesActor(f, 'person')).toBe(false);
+		expect(approvalReplacesActor(null, 'controller')).toBe(false);
 	});
 	it('no approval, no fact', () => expect(historyApprovalFact(undefined, true)).toBeNull());
 });
