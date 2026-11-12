@@ -17,6 +17,7 @@ describe('stageWeight', () => {
 	it('clamps and keeps a fractional label', () => {
 		expect(stageWeight({ traffic: '250%' })?.pct).toBe(100);
 		expect(stageWeight({ traffic: '2.5%' })).toEqual({ pct: 2.5, label: '2.5%' });
+		expect(stageWeight({ traffic: '12.25%' })?.label).toBe('12.25%');
 	});
 });
 

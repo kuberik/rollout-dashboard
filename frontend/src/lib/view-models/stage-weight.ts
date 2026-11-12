@@ -8,7 +8,7 @@
  * Only a `traffic` percentage is a weight. A `replicas` count or percentage (`3`, `'100%'`) is how many pods,
  * not how much traffic, so a step that declares only replicas has no weight and keeps today's label ("Stage 2").
  *
- * Pure so the row suffix, the pane heading and the meter cannot disagree.
+ * Pure so the row suffix and the meter cannot disagree.
  */
 import type { CanaryStep } from './stage-advance';
 
@@ -27,7 +27,7 @@ export function stageWeight(step: CanaryStep | undefined | null): StageWeight | 
 	const n = parseFloat(m[1]);
 	if (!Number.isFinite(n)) return null;
 	const pct = Math.min(100, Math.max(0, n));
-	return { pct, label: `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%` };
+	return { pct, label: `${pct}%` };
 }
 
 export type StageSplitState = 'past' | 'current' | 'pending';

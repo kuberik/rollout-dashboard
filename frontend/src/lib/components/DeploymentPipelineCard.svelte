@@ -1126,7 +1126,7 @@
 			{@const bakeSub = stageBakeSubStatus(sd)}
 
 			<!-- Split meter: how much traffic this stage sends to the new build. New by design: no reference
-			     region draws a share of one thing; it borrows the progress bars' 4px track and the
+			     region draws a share of one thing; it borrows the Check progress bar's 6px track and the
 			     subtle/line tokens, and is present for every weighted stage so selecting another stage
 			     changes words, never height. -->
 			{#if sd.kr.canarySteps && stageWeight(sd.kr.canarySteps[sd.stepNum - 1])}
@@ -1145,7 +1145,7 @@
 						aria-label="{w.label} of traffic on the new version"
 					>
 						<div
-							class="h-full rounded-full {sd.isCurrentStep && !sd.isPastStep ? 'bg-progress-solid' : 'bg-fg-subtle'}"
+							class="h-full rounded-full {sd.isCurrentStep && !sd.isPastStep && node.status !== 'failed' ? 'bg-progress-solid' : 'bg-fg-subtle'}"
 							style="width: {w.pct}%"
 						></div>
 					</div>
