@@ -88,6 +88,8 @@
 	/** nothing moves as state changes: every strip box reserves the width of the widest word IT can say (EnvRow `wordSlot`). The strip's approval
 	 *  word is always the short one ("Waiting"); "Needs your approval" stays in the title, the picker and the ask banner. */
 	const WORD_SLOT = [...new Set([...Object.values(WORD), 'Waiting'].filter(Boolean))];
+	/** the title says the full approval word the box shortens */
+	const longWord = (n: LaneNode) => (wordOf(n) === stripWord(n) ? '' : ' · ' + wordOf(n));
 	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : WORD[n.state]);
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
 	const markOf = (n: LaneNode): EnvCell['mark'] => (MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined);
@@ -126,7 +128,7 @@
 			label: n.env,
 			href: linked ? hrefFor(n) : undefined,
 			current: youAreHere && isCurrent(n),
-			title: `${n.card.envDisplay || n.env}: ${n.card.version ?? 'no build'}${n.behind > 0 ? ` · ${lagLabel({ builds: n.behind })} the newest` : ''}${noRel(n) ? ' · no releases' : ''}${wordOf(n) && wordOf(n) !== stripWord(n) ? ` · ${wordOf(n)}` : ''}`,
+			title: `${n.card.envDisplay || n.env}: ${n.card.version ?? 'no build'}${n.behind > 0 ? ` · ${lagLabel({ builds: n.behind })} the newest` : ''}${noRel(n) ? ' · no releases' : ''}${longWord(n)}`,
 			style: n.card.theme ? getEnvironmentThemeStyle(n.card.theme) : undefined,
 			mark: withProgress(markOf(n), n),
 			word: stripWord(n) || undefined,
