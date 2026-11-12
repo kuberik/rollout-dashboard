@@ -48,26 +48,28 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(prod.frac).toBe('3/3');
 		expect(prod.squares).toEqual(['healthy', 'healthy', 'healthy']);
 	});
-	it('#37 (CD3): calm and quiet carry no failed or rolled-back event; eu-west is first live', () => {
+	it('#37 (CD3, cs3): calm and quiet carry no failed or rolled-back event; production is reached ONCE, with no per-place deploy rows', () => {
 		for (const sc of ['calm', 'quiet'] as const) {
 			const { c, places } = at(P37, sc);
 			const ev = spineOf(c, sc, places);
 			expect(ev.some((e) => e.kind === 'failed' || e.kind === 'rollback')).toBe(false);
-			expect(ev.some((e) => e.place === 'eu-west' && e.words === 'First deployed')).toBe(true);
+			expect(ev.filter((e) => e.words === 'Reached prod')).toHaveLength(1);
+			expect(ev.some((e) => e.kind === 'deployed' && e.words !== 'Reached prod')).toBe(false);
+			expect(ev.every((e) => e.places.length === 0)).toBe(true);
 			expect(howFacts(c, places, classified(c, sc).all).failed).toBe(0);
 		}
 	});
-	it('#37 (CD6, r13 CE4): us-east\'s spine is the first deploy, the rollback and a11c404; the undone a11c303 is the rollback\'s "from", not an event', () => {
+	it('#37 (CD6, r13 CE4, cs3): us-east\'s only event is the rollback (the deploys are the Stages card\'s); the undone a11c303 is the rollback\'s "from", not an event', () => {
 		const { c, places } = at(P37, 'incident');
 		const us = spineOf(c, 'incident', places)
 			.filter((e) => e.place === 'us-east')
 			.map((e) => `${e.words} ${e.build}`);
-		expect(us).toEqual(['First deployed a11c202', 'Rolled back to a11c202', 'Deployed a11c404']);
+		expect(us).toEqual(['Rolled back in prod-us-east a11c202']);
 	});
 	it("#37 (changedetail-12 CD1): the rollback carries the tab's cause", () => {
 		const { c, places } = at(P37, 'incident');
 		const rb = spineOf(c, 'incident', places).find((e) => e.kind === 'rollback')!;
-		expect(rb.words).toBe('Rolled back to');
+		expect(rb.words).toBe('Rolled back in prod-us-east');
 		expect(rb.build).toBe('a11c202');
 		expect(rb.cause).toBe('duplicate invoice numbers');
 		expect(rb.from).toBe('a11c303'); // the tab: "Rolled back from a11c303"
@@ -82,17 +84,17 @@ describe('change detail model (one model with the Changes list)', () => {
 			const ats = ev.map((e) => e.order ?? e.at ?? '');
 			expect(ats).toEqual([...ats].sort());
 			const w = ev.findIndex((e) => e.kind === 'waiting' || e.kind === 'held');
-			if (w >= 0)
-				expect(ev.slice(0, w).some((e) => e.kind === 'deployed' && e.build === ev[w].build)).toBe(
-					true
-				);
+			/* cs3: the deploys are no events; a wait still never precedes the merge */
+			expect(ev[0].kind).toBe('merged');
+			if (w >= 0) expect(w).toBeGreaterThan(0);
 		}
 	});
-	it('#90 (CD7): five identical waiting events are ONE event with five places', () => {
+	it('#90 (CD7, cs3): five identical waiting events are ONE event that says where in words (no chips)', () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'incident');
 		const w = spineOf(c, 'incident', places).filter((e) => e.kind === 'waiting');
 		expect(w).toHaveLength(1);
-		expect(w[0].places).toHaveLength(5);
+		expect(w[0].words).toBe('Waiting for approval in 5 prod regions');
+		expect(w[0].places).toHaveLength(0);
 	});
 	it("#90 (r13 CE2): the wait is THIS change's build c0d3e88, aged by the wait clock (batch4 P1: the hold clock, not the build age); f4a2c19 is only the labelled newer build", () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'incident');
@@ -160,7 +162,7 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(euw.find((b) => b.build === 'a11c202')).toMatchObject({ newer: true });
 		const ev = spineOf(c, 'incident', places);
 		const f = ev.find((e) => e.kind === 'failed' && e.place === 'eu-west')!;
-		expect(f.words).toBe('Newer build failed');
+		expect(f.words).toBe('Newer build failed in prod-eu-west');
 		expect(f.build).toBe('a11c202');
 		expect(howFacts(c, places, all, ev).failed).toBe(0);
 	});
@@ -223,11 +225,10 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(age('test')).toBe('11m');
 		expect(age('dev')).toBe('15m');
 	});
-	it('CE4 #90: the spine carries f4a2c19 in dev and test', () => {
+	it('CE4 #90 (cs3): the spine no longer lists the dev / test deploys of f4a2c19 (the Stages card does)', () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'calm');
-		const ev = spineOf(c, 'calm', places).map((e) => `${e.words} ${e.build} ${e.place}`);
-		expect(ev).toContain('Deployed f4a2c19 dev');
-		expect(ev.some((x) => /^(Checking|Deployed) f4a2c19 test$/.test(x))).toBe(true);
+		const ev = spineOf(c, 'calm', places);
+		expect(ev.some((e) => ['Deployed', 'First deployed', 'Deploying', 'Checking', 'Redeployed'].includes(e.words))).toBe(false);
 	});
 	it("AD r5: changeProd carries the tab's region states and the count sentence", () => {
 		const { c } = at(P37, 'incident');
@@ -265,7 +266,7 @@ describe('change detail model (one model with the Changes list)', () => {
 		const ev = (kind: string, words = 'Deployed') => ({ kind, words }) as never;
 		const list = [
 			ev('merged', 'Merged'),
-			ev('deployed', 'First deployed'),
+			ev('deployed', 'Reached prod'),
 			ev('deployed'),
 			ev('deployed'),
 			ev('deployed'),
@@ -289,7 +290,9 @@ describe('change detail model (one model with the Changes list)', () => {
 	it('CF4 #36: the incident fold hides rows that follow the failure only as ONE window', () => {
 		const { c, places } = at('github.com/exampleco/invoice-api/pull/36', 'incident');
 		const ev = spineOf(c, 'incident', places);
-		const w = foldWindow(ev, 10)!;
+		const w = foldWindow(ev, 10);
+		/* cs3: History is short now (no per-place rows); a list of ten or fewer needs no fold at all */
+		if (!w) { expect(ev.length).toBeLessThanOrEqual(10); return; }
 		const shown = ev.map((_, i) => i).filter((i) => i < w[0] || i >= w[1]);
 		expect(shown.length + (w[1] - w[0])).toBe(ev.length);
 		ev.forEach((e, i) => {

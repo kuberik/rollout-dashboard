@@ -362,6 +362,7 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 	const out: Ev[] = [{ key: 'merged', kind: 'merged', build: null, place: null, places: [], tier: null, at: c.mergedAt, who: c.author, words: c.prNumber != null ? 'Merged' : 'Committed', href: c.prHref }];
 	const incident = scenario === 'incident';
 	const seen = new Set<string>();
+	let prodFirst: { at: string; href: string } | null = null;
 	const hist = historyOfChange(c, scenario);
 	/* a place that was ever rolled back tells its whole story (every deploy of a build carrying the change, as its tab lists them);
 	   every other place tells only how it first got the change, not each routine release that followed */
@@ -388,12 +389,18 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		const tier = pl?.tier ?? null;
 		const failed = incident && h.outcome === 'Failed';
 		const kind: EvKind = failed ? 'failed' : moving ? 'moving' : h.kind === 'rollback' ? 'rollback' : h.kind === 'redeploy' ? 'redeploy' : 'deployed';
+		/* cs3: History does not redraw the progression (the Stages card owns it): a deploy / redeploy / in-flight row is not an event; only the FIRST arrival in production is, once */
+		if (kind === 'deployed' || kind === 'redeploy' || kind === 'moving') {
+			if (kind !== 'moving' && tier === 'prod' && (!prodFirst || oldestFirst(h.at, prodFirst.at) < 0)) prodFirst = { at: h.at, href: h.href };
+			continue;
+		}
 		const newerFail = failed && !!pl?.newerFails;
-		const words = newerFail ? 'Newer build failed' : failed ? 'Failed' : moving ? (pl?.row?.state === 'checking' ? 'Checking' : 'Deploying') : kind === 'rollback' ? 'Rolled back to' : kind === 'redeploy' ? 'Redeployed' : first ? 'First deployed' : 'Deployed';
+		const words = newerFail ? 'Newer build failed' : failed ? 'Failed' : kind === 'rollback' ? 'Rolled back to' : 'Deployed';
 		/* changedetail-9 CE4: the change's own failure is ONE instant on the page: the place row's (the tab banner's), not the deploy's start */
 		const at = failed && !newerFail && pl?.kind === 'failed' && cur && pl.at ? pl.at : h.at;
 		out.push({ key: `${h.href}|${h.at}`, kind, app: h.app, build: h.build, place: h.place, places: tier ? [{ label: h.place, tier, href: h.href }] : [], tier, at, who: h.who, words, href: `${h.href}/history`, ...(newerFail ? { newer: true } : {}), ...(kind === 'rollback' && fromOf.get(`${h.href}|${h.at}`) ? { from: fromOf.get(`${h.href}|${h.at}`)!.build } : {}), ...(kind === 'rollback' && causeOf(h.href, h.at) ? { cause: causeOf(h.href, h.at)! } : {}) });
 	}
+	if (prodFirst) out.push({ key: 'prod-first', kind: 'deployed', build: null, place: null, places: [], tier: 'prod', at: prodFirst.at, who: null, words: 'Reached prod', href: `${prodFirst.href}/history` });
 	/* RELEASED: the build that first carried the change in each app was released (created in the catalogue) after the merge; only when the data has that instant */
 	/* apps that shipped the SAME release (a monorepo build: four services, one build, one instant) are ONE event; a lone app is named */
 	const rels = new Map<string, { build: string; at: string; apps: string[] }>();
@@ -417,6 +424,18 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		waits.set(k, { key: k, kind, app: p.app, build: p.build, place: p.label, places: [{ label: p.label, tier: p.tier, href: p.href }], tier: p.tier, at: p.since, order: (p.since && isLater(lastDeploy, p.since) ? lastDeploy : p.since) ?? undefined, who: null, words: kind === 'held' ? 'Held' : 'Waiting for approval', href: `${p.href}/gates` });
 	}
 	/* changedetail-12 CD2: ONE clock. A wait is dated by the instant the tab prints for it (the candidate's age = when the wait began), so the list is sorted by event time, oldest first, ages never rising down the list (the waits used to be appended and broke it) */
+	/* cs3: failures and rollbacks name the place in words, never in an env chip */
+	for (const e of out) if ((e.kind === 'failed' || e.kind === 'rollback') && e.places[0]) { e.words = `${e.words.replace(/ to$/, '')} in ${envFull(e.places[0].tier, e.places[0].label)}`; e.places = []; }
+	/* cs3: a hold says WHERE and WHY in words (no env chip): "Held in staging" + the cause "Waits on payments-svc"; five regions of one tier fold into "in 5 production regions" */
+	for (const e of waits.values()) {
+		const n = e.places.length, t = e.places[0]?.tier;
+		const where = n === 1 ? envFull(e.places[0].tier, e.places[0].label) : t === 'prod' ? `${n} prod regions` : `${n} places`;
+		const p0 = places.find((x) => x.href === e.places[0]?.href);
+		const cause = e.kind === 'held' && p0?.row ? holdText(p0.row, scenario) : null;
+		e.words = `${e.kind === 'held' ? 'Held' : 'Waiting for approval'} in ${where}`;
+		if (cause) e.cause = cause;
+		e.places = [];
+	}
 	return [...out, ...waits.values()].sort((a, b) => oldestFirst(a.order ?? a.at, b.order ?? b.at));
 }
 
@@ -430,7 +449,7 @@ export function foldWindow(events: Pick<Ev, 'kind' | 'words'>[], keep = 10): [nu
 	if (n <= keep) return null;
 	const pinned = new Set<number>([0, n - 1]);
 	events.forEach((e, i) => { if (e.kind === 'failed') pinned.add(i); });
-	const fl = events.findIndex((e) => e.words === 'First deployed');
+	const fl = events.findIndex((e) => e.words === 'Reached prod');
 	if (fl > 0) pinned.add(fl);
 	for (let len = n - keep; len >= 2; len--) {
 		for (let start = 1; start + len <= n - 1; start++) {
@@ -448,6 +467,8 @@ export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] 
 	const prod = run.filter((p) => p.tier === 'prod').sort((a, b) => oldestFirst(a.since, b.since))[0];
 	/* AD r1 (1): production means production. A change whose only deploy to a prod place FAILED has reached production; the fact says so, with the outcome */
 	const prodFailed = !prod ? places.filter((p) => p.tier === 'prod' && p.kind === 'failed' && p.since).sort((a, b) => oldestFirst(a.since, b.since))[0] : null;
+	/* r2 gate: ONE rule for "reached production": History's "Reached prod" event (a finished deploy in prod; an in-flight one has not reached it yet) */
+	const prodReached = events?.find((e) => e.words === 'Reached prod')?.at ?? null;
 	const first = [...places].filter((p) => p.kind !== 'waiting').sort((a, b) => oldestFirst(a.since, b.since))[0];
 	/* the page's ONE age form is `ago` ("2d", "9h", "10m"): a duration is the age of the instant that far before now */
 	const gap = (iso: string | null | undefined) => {
@@ -456,7 +477,7 @@ export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] 
 		/* one clock read: whole minutes between the two instants (History prints the same instants), days past a day */
 		return ms >= 86_400_000 ? `${Math.floor(ms / 86_400_000)}d` : span(Math.round(ms / 60_000) * 60_000);
 	};
-	return { running: run.length, of: all.length, /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: prod ? gap(prod.since) : prodFailed ? `${gap(prodFailed.since)} · failed` : null };
+	return { running: run.length, of: all.length, /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? `${gap(prodFailed.since)} · failed` : null };
 }
 export { candidateBuilds, isViewer };
 

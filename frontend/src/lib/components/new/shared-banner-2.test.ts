@@ -7,11 +7,10 @@ const src = (f: string) => readFileSync(new URL(f, import.meta.url), 'utf8');
 describe('shared banner + pipeline card (S1b)', () => {
 	it('the action rows of the four hosts are ActRow (primary flex-1 on a phone, never stacked)', () => {
 		expect(src('./Slipway.svelte')).toMatch(/<ActRow/);
-		expect(src('./change/ChangeSlipway.svelte')).toMatch(/<ActRow/);
 		expect(src('./Slipway.svelte')).not.toMatch(/\.sw-btn|sw-more/);
 	});
 	it('the four Deployment-pipeline shells are PipelineCard: none draws its own 47px header', () => {
-		for (const f of ['./Slipway.svelte', './change/ChangeSlipway.svelte']) {
+		for (const f of ['./Slipway.svelte']) {
 			const s = src(f);
 			expect(s, f).toMatch(/<PipelineCard/);
 			expect(s, f).not.toMatch(/min-h-\[47px\]/);

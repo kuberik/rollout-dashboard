@@ -34,8 +34,8 @@
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { ChartLineUpOutline, UndoOutline, GithubSolid, PlaySolid, CheckOutline } from 'flowbite-svelte-icons';
 	import HoldingCard from '../HoldingCard.svelte';
-	import ChangeStages from './ChangeStages.svelte';
-	import { stagesOf } from './stages-model';
+	import Stages from '../stages/Stages.svelte';
+	import { stagesOf } from '../stages/stages-model';
 	import ChangeCard from './ChangeCard.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ChangeHistory from './ChangeHistory.svelte';
@@ -51,7 +51,7 @@
 	const causes = $derived(heldCauses(scenario));
 	const cl = $derived(classified(c, scenario));
 	const places = $derived(cl.places);
-	const stages = $derived(stagesOf(c, scenario));
+	const stages = $derived(stagesOf({ kind: 'change', change: c }, scenario));
 	const st = $derived(statementOf(c, places, cl.all));
 	const lead = $derived(st.lead ?? places[0] ?? null);
 	const cm = $derived(commitsOf(c, scenario, lead));
@@ -127,7 +127,7 @@
 		{/snippet}
 	</PageHeader>
 
-	<ChangeStages {stages} class="mt-6 max-sm:mt-4" />
+	<Stages {stages} class="mt-6 max-sm:mt-4" />
 
 	<div class="mt-4 empty:hidden" data-statement>
 		{#if st.kind === 'failed' && check}
@@ -152,20 +152,20 @@
 	</div>
 
 	<!-- the tab's main/rail split (BUILD-R4): 3fr / minmax(22rem, 2fr), 16px gap; past 2300 the four cards are composed by height: Where it runs | History | Summary over Change (AD r2 6); past 3400 the first column caps at the 1150px row width -->
-	<div class="cd-split mt-4 flex flex-col gap-4 lg:grid lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
+	<div class="cd-split mt-4 flex flex-col gap-4 lg:grid lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start" style="--sr: {holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href) ? 2 : 1}">
 		<div class="cd-main flex min-w-0 flex-col gap-4">
-			<ChangeHistory {events} {multiApp} class="cd-history" />
-			<ChangeCard commits={cm.commits} stat={head.stat} checkText={checkText} class="cd-change" />
+			<ChangeHistory {events} {multiApp} headBuild={head.build} class="cd-history" />
 		</div>
-		<aside class="cd-rail grid min-w-0 gap-4 lg:sticky lg:top-6 lg:flex lg:flex-col" aria-label="What holds this change and what happened to it">
+		<aside class="cd-rail grid min-w-0 gap-4 lg:flex lg:flex-col" aria-label="What holds this change and what happened to it">
 			{#if holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href)}<HoldingCard {holds} class="cd-hold" />{/if}
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
-					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], ...(how.toProd || prod.of <= 1 ? [[`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')]] : []), ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
+					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], [`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')], ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
 						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{v}</dd></div>
 					{/each}
 				</dl>
 			</Card>
+			<ChangeCard commits={cm.commits} stat={head.stat} checkText={checkText} class="cd-change" />
 		</aside>
 	</div>
 </div>
@@ -174,11 +174,12 @@
 	.cd-main { container: cdm / inline-size; }
 	/* the 4K rule: the row is the cap, not the page. >= 2300 the four cards are items of ONE grid, History | Change | (Holding over Summary): three columns, no lone column */
 	@media (min-width: 2300px) {
-		.cd-main { display: contents !important; }
-		.cd-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(22rem, 0.8fr); grid-template-areas: 'history change rail'; align-items: start; }
-		.cd-split :global(.cd-history) { grid-area: history; }
-		.cd-split :global(.cd-change) { grid-area: change; }
-		.cd-rail { grid-area: rail; }
+		.cd-main, .cd-rail { display: contents !important; }
+		.cd-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(22rem, 0.8fr); grid-template-rows: auto 1fr; align-items: start; }
+		.cd-split :global(.cd-history) { grid-column: 1; grid-row: 1 / span 2; }
+		.cd-split :global(.cd-change) { grid-column: 2; grid-row: 1 / span 2; }
+		.cd-split :global(.cd-hold) { grid-column: 3; grid-row: 1; }
+		.cd-split :global(.cd-summary) { grid-column: 3; grid-row: var(--sr); }
 	}
 	@media (min-width: 3400px) { .cd-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(22rem, 760px); } }
 </style>
