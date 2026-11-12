@@ -40,6 +40,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Card from '$lib/components/Card.svelte';
+	import { causeText, splitCause, type Cause } from '$lib/view-models/gate-label';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
 	import StarToggle from '$lib/components/StarToggle.svelte';
 	import PromotionLane from '$lib/components/PromotionLane.svelte';
@@ -61,7 +62,7 @@
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
 	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
-	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLine, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
+	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLineOf, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
 	let { state: scenario, name }: { state: HomeState; name: string } = $props();
 
@@ -197,15 +198,17 @@
 
 	/* the wait line (a waiting or held app): the Facia lead's words, from the same helpers */
 	const holds = $derived(item ? appHolds(item, scenario) : []);
-	const factLine = $derived(item && item.approval && holds.some((h) => h.approval) ? [] : item ? [item.fact] : []);
-	const outcomeText = $derived([...factLine, ...holds.map((h) => h.text).filter((h) => !item?.fact.includes(h))].join(' · '));
+	/* the app's outcome as TYPED causes (a promotion hold keeps its label): `parts` is their plain text, for every test and sink; the banner draws `partsC` */
+	const factLineC = $derived<Cause[]>(item && item.approval && holds.some((h) => h.approval) ? [] : item ? [item.factCause] : []);
+	const outcomeC = $derived<Cause[]>([...factLineC, ...holds.filter((h) => !item?.fact.includes(h.text)).map((h) => h.parts)].flatMap((c) => splitCause(c, ' · ')));
 	const apprText = $derived(appr?.text ?? holds.find((h) => h.approval)?.text ?? '');
-	const parts = $derived(appr ? [apprText, ...(item?.approval ? [] : item ? [item.fact] : [])] : item?.group === 'quiet' ? [item.fact] : outcomeText.split(' · '));
+	const partsC = $derived<Cause[]>(appr ? [[apprText], ...(item?.approval ? [] : item ? [item.factCause] : [])] : item?.group === 'quiet' ? [item.factCause] : outcomeC);
+	const parts = $derived(partsC.map(causeText));
 	/* the held cause and the app's own fact can both carry the hold's sentence ("Held by X in prod"): the banner says it once, in the title; the message keeps what is new (the clause) */
 	/* more than one cause holds the app: the headline counts the places held by ANY of them (the chip's own set), the message lists each cause once */
 	const heldBannerOf = $derived(!appr && item && item.group !== 'quiet' ? heldBanner(item, holds) : null);
 	const heldHeadline = $derived(heldBannerOf?.title ?? null);
-	const cause = $derived(heldBannerOf ? heldBannerOf.message : causeLine(parts));
+	const cause = $derived<string | Cause | null>(heldBannerOf ? heldBannerOf.message : causeLineOf(partsC));
 	const waitsOnApproval = $derived(!!stateRow && stateRow.group === 'approval');
 	const waitAct = $derived(waitsOnApproval && stateRow ? rowAction(stateRow) : null);
 	/* AP13: the statement says what waits and who can release it, once; "Nothing promotes itself until someone approves it" is the tab banner's sentence and is not repeated here */
@@ -315,7 +318,7 @@
 			{#if !failRow && item.group !== 'quiet' && parts[0] && (waitsOnApproval || /^(Waits|Pinned|Held)/.test(parts[0]))}
 				<!-- AA4: the wait is a statement in the tab's own box: the gate sentence, the one Approve the viewer can give (the tab's destination), Open rollout -->
 				<div data-ad-statement data-ad-wait>
-					<StatementBanner severity={checkingNow ? 'checking' : waitsOnApproval ? 'approval' : 'info'} title={checkingNow ? 'Checking' : waitsOnApproval ? approvalIn(!!stateRow?.needsYou, stateRow ? rowPlaceName(stateRow) : null) : (heldHeadline ?? parts[0])} message={waitMessage ?? undefined}
+					<StatementBanner severity={checkingNow ? 'checking' : waitsOnApproval ? 'approval' : 'info'} title={checkingNow ? 'Checking' : waitsOnApproval ? approvalIn(!!stateRow?.needsYou, stateRow ? rowPlaceName(stateRow) : null) : (heldHeadline ?? partsC[0])} message={waitMessage ?? undefined}
 						primary={waitAct ? (approveAct(stateRow ? approvalTarget(stateRow, scenario) : null, { icon: CheckOutline }) ?? { label: 'Approve', href: actionHref(waitAct), icon: CheckOutline, key: 'approve' }) : undefined}
 						secondary={stateRow ? [{ label: 'Open rollout', href: stateRow.href, key: 'open-rollout' }] : []} />
 				</div>

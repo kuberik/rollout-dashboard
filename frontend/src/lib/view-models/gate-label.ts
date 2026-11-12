@@ -71,3 +71,14 @@ export function joinCause(...xs: (CausePart | readonly CausePart[])[]): Cause {
 	}
 	return out;
 }
+/** a text edit applied to the plain runs only: a label is never touched, and a run that edits to "" is dropped */
+export const mapPlain = (c: readonly CausePart[], f: (s: string, i: number, n: number) => string): Cause => joinCause(c.map((x, i) => (typeof x === 'string' ? f(x, i, c.length) : x)));
+/** split a cause at a separator that sits in its PLAIN runs ("a · b" -> [a], [b]); a label is never split, and never carries a separator */
+export function splitCause(c: readonly CausePart[], sep: string): Cause[] {
+	const out: Cause[] = [[]];
+	for (const x of c) {
+		if (typeof x !== 'string') { out[out.length - 1].push(x); continue; }
+		x.split(sep).forEach((run, i) => { if (i > 0) out.push([]); if (run) out[out.length - 1].push(run); });
+	}
+	return out;
+}

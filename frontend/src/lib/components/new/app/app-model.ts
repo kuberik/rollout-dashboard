@@ -31,6 +31,7 @@ import { lastFailureMs } from '$lib/view-models/event-age';
 import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
+import { causeText, joinCause, type Cause } from '$lib/view-models/gate-label';
 
 const ORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
 export const tierRank = (t: string) => ORDER.indexOf(t as TierKey);
@@ -815,6 +816,11 @@ export const placeAge = (row: TRow, hs: HomeState = 'incident'): string =>
 	ago((row.group === 'approval' || row.group === 'held') && !row.stillChecking ? waitClock(row, hs) : (deployedBuild(row)?.at ?? row.since));
 
 /** The banner message of a single-cause app: the parts after the lead, minus any that repeats the lead (the held cause and the app's own fact can both carry the hold's sentence). Null when nothing is left. */
+/** `causeLine` over typed causes: what the banner's message adds beyond its lead, a promotion label kept as a label */
+export function causeLineOf(parts: Cause[]): Cause | null {
+	const rest = parts.slice(1).filter((p) => causeText(p) !== causeText(parts[0] ?? []));
+	return rest.length ? joinCause(...rest.flatMap((c, i) => (i ? [' · ', c] : [c]))) : null;
+}
 export function causeLine(parts: string[]): string | null {
 	return (
 		parts

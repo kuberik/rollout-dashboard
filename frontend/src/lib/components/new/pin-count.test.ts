@@ -1,3 +1,4 @@
+import { causeText } from '$lib/view-models/gate-label';
 import { describe, it, expect, afterEach } from 'vitest';
 import { apps, regionStates, heldUnion, heldBanner, appHolds, placeHolds, gatesOf, inbound, heldCauses } from './data';
 import { holdRows, pinnedPlaces } from './app/app-model';
@@ -46,7 +47,7 @@ describe('the app banner and the Holding card', () => {
 	it('the banner lists each cause once under that headline, never the same cause twice', () => {
 		const b = heldBanner(item(), appHolds(item(), 'incident'))!;
 		expect(b.title).toBe('Held in staging and 3 prod regions');
-		expect(b.message).toBe('Waits on payments-svc in staging and 2 prod regions · Pinned to 4.40.0-40 in af-south-1');
+		expect(causeText(b.message)).toBe('Waits on payments-svc in staging and 2 prod regions · Pinned to 4.40.0-40 in af-south-1');
 	});
 	it('each Holding row counts only staging and prod places (the banner\'s tiers), the pin row included', () => {
 		const places = placeHolds('checkout-api', 'incident');

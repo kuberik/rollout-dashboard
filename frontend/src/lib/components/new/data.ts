@@ -46,7 +46,7 @@ import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey, placeLabel } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
 import { scheduleLabelOfGate } from '$lib/view-models/gate-name';
-import { gateLabel, gateLabelText, labelPart, causeText, joinCause, type GateLabel, type Cause } from '$lib/view-models/gate-label';
+import { gateLabel, gateLabelText, labelPart, causeText, joinCause, mapPlain, type GateLabel, type Cause } from '$lib/view-models/gate-label';
 import { approvalWrite, approvalGateOf, refusingGates, deployableTags, type PlaceVerdict } from '$lib/view-models/place-verdict';
 export { deployableTags, approvalWrite };
 import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
@@ -651,6 +651,10 @@ export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {
 	approval: boolean;
 	/** every hold the app has, each as a sentence ("Waits on payments-svc in 2 prod regions", "Pinned to 4.40.0-40 in af-south-1"); `outcome` = fact + holds */
 	holds: string[];
+	/** the same holds, typed (a promotion hold carries its label): `holds[i] === causeText(holdCauses[i])`; a surface that draws reads this, a sink reads `holds` */
+	holdCauses: Cause[];
+	/** `fact` typed: `fact === causeText(factCause)` */
+	factCause: Cause;
 	outcome: string;
 	placeList: AppPlace[];
 	/** production regions of the app and how many run the newest build (the tab's "prod 0/5") */
@@ -720,7 +724,7 @@ export function apps(state: HomeState) {
 		const onNewest = placeList.filter((p) => p.onNewest).length;
 		const prodPl = placeList.filter((p) => p.tier === 'prod');
 		/* the outcome is recomputed from OUR pick (production first among equals) so the text and its link name the same place */
-		let fact = w ? outcomeOf(w) : a.fact, blocker: string | null = null;
+		let fact = w ? outcomeOf(w) : a.fact, blocker: string | null = null, factCause: Cause | null = null;
 		let promoteHref: string | null = null;
 		const noRel = (() => { const ns = placeList.map((p) => noReleasesAt(p.href)); return ns.length > 0 && ns.every(Boolean) ? ns[0]! : undefined; })();
 		const behindOf = (p: AppPlace) => behindIn(order, p.version);
@@ -742,24 +746,25 @@ export function apps(state: HomeState) {
 		}
 		if (w && (w.state === 'held-by-rule' || w.state === 'awaiting-approval') && w.group !== 'failed') {
 			const hc = causes.find((c) => c.rows.some((r) => r.href === w.href));
-			blocker = hc ? (w.state === 'awaiting-approval' ? sharedWord('approval')! : hc.cause.replace(/^Waiting/, 'Waits')) : w.state === 'awaiting-approval' ? sharedWord('approval')! : null;
-			if (blocker) fact = `${blocker} in ${w.place}`;
+			blocker = hc ? (w.state === 'awaiting-approval' ? sharedWord('approval')! : causeText(waitsCause(hc.parts))) : w.state === 'awaiting-approval' ? sharedWord('approval')! : null;
+			if (blocker) { factCause = joinCause(hc && w.state !== 'awaiting-approval' ? waitsCause(hc.parts) : blocker, ` in ${w.place}`); fact = causeText(factCause); }
 		}
 		const fr = rows.find((r) => r.group === 'failed');
 		const failing: AppFailing | null = fr ? { build: shortBuild(fr.version) ?? buildOf(fr), place: fr.place, href: fr.href, line: fr.failure?.line ?? 'Failing' } : null;
-		const holds: string[] = [];
+		const holdCauses: Cause[] = [];
 		for (const hc of causes) {
 			const mine = hc.rows.filter((r) => r.app === a.app);
 			if (!mine.length) continue;
 			const where = mine.length > 1 ? `${mine.length} places` : mine[0].place;
-			holds.push(`${hc.cause === sharedWord('approval') ? hc.cause : hc.cause.replace(/^Waiting/, 'Waits')} in ${where}`);
+			holdCauses.push(joinCause(hc.cause === sharedWord('approval') ? hc.cause : waitsCause(hc.parts), ` in ${where}`));
 		}
 		for (const e of m.apps.find((x) => x.app === a.app)?.envs ?? []) {
 			const pin = rawOf(e.href)?.spec?.wantedVersion;
-			if (pin && e.state !== 'not-deployed') holds.push(`Pinned to ${shortBuild(e.version) ?? pin} in ${placeLabel({ tier: tierOfEnv(e), regions: [e.label] })}`);
+			if (pin && e.state !== 'not-deployed') holdCauses.push([`Pinned to ${shortBuild(e.version) ?? pin} in ${placeLabel({ tier: tierOfEnv(e), regions: [e.label] })}`]);
 		}
+		const holds = holdCauses.map(causeText);
 		const outcome = [fact, ...holds.filter((h) => !fact.includes(h))].join(' · ');
-		return Object.assign(a, { approval: !!w && w.state === 'awaiting-approval' && w.group !== 'failed', behind: (() => { let best: { n: number; place: string } | null = null; for (const p of placeList) { /* a no-release place has an empty catalogue, so behindCount is null (0) here */ const n = behindIn(order, p.version) ?? 0; if (n > (best?.n ?? 0)) best = { n, place: placeLabel({ tier: p.tier, regions: [p.label] }) }; } return best; })(), row: w, outcomeHref: w?.href ?? promoteHref ?? placeList[0]?.href ?? a.href, failedCount: placeList.filter((p) => p.state === 'failed').length, holds, outcome, noReleases: noRel ?? null, newest, onNewest, fact, blocker, failing, placeList, prod: { regions: prodPl.length, onNewest: prodPl.filter((p) => p.onNewest).length } }) as unknown as TApp;
+		return Object.assign(a, { approval: !!w && w.state === 'awaiting-approval' && w.group !== 'failed', behind: (() => { let best: { n: number; place: string } | null = null; for (const p of placeList) { /* a no-release place has an empty catalogue, so behindCount is null (0) here */ const n = behindIn(order, p.version) ?? 0; if (n > (best?.n ?? 0)) best = { n, place: placeLabel({ tier: p.tier, regions: [p.label] }) }; } return best; })(), row: w, outcomeHref: w?.href ?? promoteHref ?? placeList[0]?.href ?? a.href, failedCount: placeList.filter((p) => p.state === 'failed').length, holds, holdCauses, factCause: factCause ?? [fact], outcome, noReleases: noRel ?? null, newest, onNewest, fact, blocker, failing, placeList, prod: { regions: prodPl.length, onNewest: prodPl.filter((p) => p.onNewest).length } }) as unknown as TApp;
 	});
 	const L = lead(state);
 	for (const it of items) it.lead = !!L && it.row?.href === L.href;
@@ -1643,29 +1648,34 @@ export function heldRegionsPhrase(app: string, state: HomeState = 'incident'): s
 	return prod.length > 1 && k > 1 ? (k === prod.length ? `${k} regions` : `${k} of ${prod.length} regions`) : null;
 }
 /** The held banner of an app held by more than one cause: the headline counts every held place (`heldUnion`), the message lists each cause once. Null when one cause (or none) holds it: that cause's own sentence is the headline. */
-export function heldBanner(item: Pick<TApp, 'placeList'>, holds: { text: string }[]): { title: string; message: string } | null {
-	const causes = [...new Set(holds.map((h) => h.text))];
+export function heldBanner(item: Pick<TApp, 'placeList'>, holds: { text: string; parts: Cause }[]): { title: string; message: Cause } | null {
+	const causes = [...new Map(holds.map((h) => [h.text, h.parts] as const)).values()]; /* one per cause, keyed on its plain text */
 	const u = causes.length > 1 ? heldUnion(item) : null;
-	return u ? { title: u.sentence, message: causes.join(' · ') } : null;
+	return u ? { title: u.sentence, message: joinCause(...causes.flatMap((c, i) => (i ? [' · ', c] : [c]))) } : null;
 }
 /** One hold of an app, as a sentence plus what kind it is: pages branch on `approval`, never on the sentence's words. The approval hold says "your" when the viewer can give it. */
-export type Hold = { text: string; approval: boolean };
-export function appHolds(item: Pick<TApp, 'app' | 'holds'>, state: HomeState): Hold[] {
+/** "Waiting on X" -> "Waits on X" in a cause's leading plain run (the app grammar), the label untouched */
+export const waitsCause = (c: Cause): Cause => mapPlain(c, (t, i) => (i === 0 ? t.replace(/^Waiting/, 'Waits') : t));
+export type Hold = { text: string; /** `text` typed: a promotion hold carries its label */ parts: Cause; approval: boolean };
+export function appHolds(item: Pick<TApp, 'app' | 'holdCauses'>, state: HomeState): Hold[] {
 	const out: Hold[] = [];
 	for (const hc of heldCauses(state)) {
 		const mine = hc.rows.filter((r) => r.app === item.app);
 		if (!mine.length) continue;
 		const approval = hc.cause === sharedWord('approval');
-		const word = approval ? sharedWord('approval', { yours: mine.some((r) => actionFor(r)?.kind === 'approve') })! : hc.cause.replace(/^Waiting/, 'Waits');
-		out.push({ text: `${word} in ${mine.map((r) => r.place).join(' and ')}${hc.window?.opens ? ` · ${hc.window.opens}` : ''}`, approval });
+		const word: Cause = approval ? [sharedWord('approval', { yours: mine.some((r) => actionFor(r)?.kind === 'approve') })!] : waitsCause(hc.parts);
+		const parts = joinCause(word, ` in ${mine.map((r) => r.place).join(' and ')}${hc.window?.opens ? ` · ${hc.window.opens}` : ''}`);
+		out.push({ text: causeText(parts), parts, approval });
 	}
-	return [...out, ...item.holds.filter((h) => /^Pinned/.test(h)).map((text) => ({ text, approval: false }))];
+	return [...out, ...item.holdCauses.filter((c) => /^Pinned/.test(causeText(c))).map((parts) => ({ text: causeText(parts), parts, approval: false }))];
 }
 /** The lead of a waiting app's state line (Apps list tile): the hold's own words without its place or clock. "Waits on payments-svc in prod" -> "Waiting on payments-svc"; a window or a rule keeps its own wording ("Held by Business Hours Only", "Waits for the deploy window"), it is never wrapped again in "Waiting on". */
-export function holdLead(text: string): string {
-	const t = text.replace(/ · opens .*$/, '').replace(/ in [\w.-]+(?: and [\w.-]+)*$/, '').replace(/ in \d+ (?:prod regions|places)$/, '');
-	if (/^Waits on /.test(t)) return t.replace(/^Waits on /, 'Waiting on ');
-	return /^(Held by|Waits for|Pinned)\b/.test(t) ? t : `Waiting on ${t}`;
+export function holdLead(text: string): string { return causeText(holdLeadCause([text])); }
+/** `holdLead` on a typed cause: the same edits on the plain runs (the suffix on the last, the verb on the first), a label untouched */
+export function holdLeadCause(c: Cause): Cause {
+	const t = mapPlain(c, (r, i, n) => { let x = r; if (i === n - 1) x = x.replace(/ · opens .*$/, '').replace(/ in [\w.-]+(?: and [\w.-]+)*$/, '').replace(/ in \d+ (?:prod regions|places)$/, ''); if (i === 0) x = x.replace(/^Waits on /, 'Waiting on '); return x; });
+	const head = typeof t[0] === 'string' ? t[0] : '';
+	return /^(Held by|Waits for|Pinned)\b/.test(head) || (head.startsWith('Waiting on ') && /^Waits on /.test(typeof c[0] === 'string' ? c[0] : '')) ? t : joinCause('Waiting on ', t);
 }
 /* ═══ inbox, arrivals, held causes ═══ */
 export type InboxItem = { row: TRow; action: RolloutRow['action']; reason: string; steps: Step[] };
