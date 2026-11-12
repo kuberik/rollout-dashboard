@@ -28,6 +28,8 @@ func TestApprovalName_ContractExamples(t *testing.T) {
 		{"checkout", "v1.42.0", "checkout-v1-42-0"},
 		{"checkout", "V1.42.0+Build_7", "checkout-v1-42-0-build-7"},
 		{"checkout", "1.0.0-", "checkout-1-0-0"},
+		{"checkout", "v1-\u00e9", "checkout-v1"},
+		{"checkout", "v1\u00e9x", "checkout-v1--x"},
 		{"checkout", long, "checkout-v" + strings.Repeat("a", 44) + "-" + hex.EncodeToString(sum[:])[:8]},
 	}
 	for _, tc := range cases {

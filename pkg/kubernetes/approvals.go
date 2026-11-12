@@ -41,17 +41,24 @@ var ErrApprovalCollision = errors.New("a RolloutApproval with this name already 
 // byte for byte identical with hack/migrate-approval-gates.sh in
 // rollout-controller (see .work/approvals/CONTRACT.md "naming rule"):
 //
-//  1. s = lowercase(version), every character outside [a-z0-9-] becomes "-".
+//  1. s = version sanitised byte by byte, ASCII only: A-Z lowercased, [a-z0-9-]
+//     kept, every other byte (each byte of a multi-byte character) becomes "-".
 //  2. n = rollout + "-" + s, trailing "-" stripped.
 //  3. len(n) <= 63: n.
 //  4. otherwise: first 54 chars of n with trailing "-" and "." stripped, then
 //     "-" + first 8 hex chars of sha256(version) (raw bytes).
 func ApprovalName(rollout, version string) string {
+	// Byte by byte, ASCII only (not Unicode-aware): A-Z -> a-z, [a-z0-9-] kept,
+	// every other byte (each byte of a multi-byte character too) -> "-".
 	var b strings.Builder
-	for _, r := range strings.ToLower(version) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			b.WriteRune(r)
-		} else {
+	for i := 0; i < len(version); i++ {
+		ch := version[i]
+		switch {
+		case ch >= 'A' && ch <= 'Z':
+			b.WriteByte(ch + ('a' - 'A'))
+		case (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-':
+			b.WriteByte(ch)
+		default:
 			b.WriteByte('-')
 		}
 	}

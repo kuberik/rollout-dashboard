@@ -1,0 +1,11 @@
+# Manual approval for this site: builds are held until someone approves them
+# (dashboard Approve, or a RolloutApproval committed to git). Replaces the old
+# hand-made RolloutGate with allowedVersions: [].
+apiVersion: kuberik.com/v1alpha1
+kind: ApprovalPolicy
+metadata:
+  name: hello-world-manual-approval
+spec:
+  rolloutSelector:
+    matchLabels:
+      approval.kuberik.com/required: "true"

@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - ../common
-  - manual-approval.yaml
+  - approval-policy.yaml
 namespace: hello-world-prod-eu-west
 
 patches:
@@ -34,3 +34,14 @@ patches:
       - op: replace
         path: /metadata/annotations/dashboard.rollout.kuberik.com~1description
         value: "Hello World app / prod eu-west"
+  # Opt this Rollout into the ApprovalPolicy above.
+  - target:
+      kind: Rollout
+      name: hello-world-app
+    patch: |-
+      apiVersion: kuberik.com/v1alpha1
+      kind: Rollout
+      metadata:
+        name: hello-world-app
+        labels:
+          approval.kuberik.com/required: "true"

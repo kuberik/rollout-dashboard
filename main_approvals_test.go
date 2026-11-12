@@ -53,7 +53,9 @@ func newApprovalEnv(t *testing.T, fc *kubernetes.Client, identity string) *appro
 	}
 	approvalsListClientFn = func() (*kubernetes.Client, error) { return fc, nil }
 	approvalByVerified = func(context.Context) bool { return env.verified }
-	t.Cleanup(func() { writeClientFn, approverIdentityFn, approvalsListClientFn, approvalByVerified = prevW, prevI, prevL, prevV })
+	t.Cleanup(func() {
+		writeClientFn, approverIdentityFn, approvalsListClientFn, approvalByVerified = prevW, prevI, prevL, prevV
+	})
 	env.router = setupRouter()
 	return env
 }
