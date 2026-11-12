@@ -48,14 +48,16 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(prod.frac).toBe('3/3');
 		expect(prod.squares).toEqual(['healthy', 'healthy', 'healthy']);
 	});
-	it('#37 (CD3, cs3): calm and quiet carry no failed or rolled-back event; production is reached ONCE, with no per-place deploy rows', () => {
+	it('#37 (CD3, change-strip r2): calm and quiet carry no failed or rolled-back event; production is reached ONCE; deploys are told per tier / wave, never per site row', () => {
 		for (const sc of ['calm', 'quiet'] as const) {
 			const { c, places } = at(P37, sc);
 			const ev = spineOf(c, sc, places);
 			expect(ev.some((e) => e.kind === 'failed' || e.kind === 'rollback')).toBe(false);
-			expect(ev.filter((e) => e.words === 'Reached prod')).toHaveLength(1);
-			expect(ev.some((e) => e.kind === 'deployed' && e.words !== 'Reached prod')).toBe(false);
-			expect(ev.every((e) => e.places.length === 0)).toBe(true);
+			expect(ev.filter((e) => e.reachedProd)).toHaveLength(1);
+			const deploys = ev.filter((e) => e.kind === 'deployed' || e.kind === 'moving');
+			/* one event per (app, tier, wave): never two events for one tier or wave */
+			expect(new Set(deploys.map((e) => `${e.app}|${e.tier}|${e.wave ?? 0}`)).size).toBe(deploys.length);
+			expect(deploys.every((e) => /^(Deployed to \w+|Wave \d+ deployed|Checking|Deploying)$/.test(e.words))).toBe(true);
 			expect(howFacts(c, places, classified(c, sc).all).failed).toBe(0);
 		}
 	});
@@ -225,10 +227,12 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(age('test')).toBe('11m');
 		expect(age('dev')).toBe('15m');
 	});
-	it('CE4 #90 (cs3): the spine no longer lists the dev / test deploys of f4a2c19 (the Stages card does)', () => {
+	it('CE4 #90 (change-strip r2): the spine tells each tier f4a2c19 reached once, per tier, never per redeploy', () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'calm');
 		const ev = spineOf(c, 'calm', places);
-		expect(ev.some((e) => ['Deployed', 'First deployed', 'Deploying', 'Checking', 'Redeployed'].includes(e.words))).toBe(false);
+		expect(ev.some((e) => ['Deployed', 'First deployed', 'Redeployed'].includes(e.words))).toBe(false);
+		const tiers = ev.filter((e) => e.kind === 'deployed').map((e) => e.tier);
+		expect(new Set(tiers).size).toBe(tiers.length);
 	});
 	it("AD r5: changeProd carries the tab's region states and the count sentence", () => {
 		const { c } = at(P37, 'incident');
@@ -266,7 +270,7 @@ describe('change detail model (one model with the Changes list)', () => {
 		const ev = (kind: string, words = 'Deployed') => ({ kind, words }) as never;
 		const list = [
 			ev('merged', 'Merged'),
-			ev('deployed', 'Reached prod'),
+			({ kind: 'deployed', words: 'Wave 1 deployed', reachedProd: '2026-01-01T00:00:00Z' }) as never,
 			ev('deployed'),
 			ev('deployed'),
 			ev('deployed'),

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { findChange, classified, countsOf, spineOf } from '../change/detail-model';
-import { ago, placesOf } from '../data';
+import { ago } from '../data';
 import { respond } from '../../../demo/respond';
 import { resetDemoState } from '../../../demo/state';
 import { WAVES_STEPS } from '../../../demo/waves-story';
@@ -77,7 +77,7 @@ describe('change-stages r2: one truth for ages and the hold clock', () => {
 	});
 });
 
-describe('cs3: app and rollout scope (hello-waves beats)', () => {
+describe('change-strip: hello-waves beats', () => {
 	const shapeOf = (st: ReturnType<typeof stagesOf>) => ({ cols: st.columns.map((x) => x.key), cells: st.lanes.map((l) => l.cells.map((x) => x?.places.map((p) => p.href) ?? null)) });
 	const flat = (st: ReturnType<typeof stagesOf>) => st.lanes.flatMap((l) => l.cells.flatMap((c) => c?.places ?? []));
 	/* the waves-story helper: fire the beat, then install the demo API's rollouts as the live source (what waves-story.test.ts does) */
@@ -89,36 +89,18 @@ describe('cs3: app and rollout scope (hello-waves beats)', () => {
 		installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
 	};
 	afterEach(() => installLiveSource(null));
-	it('app and rollout scope: the shape is identical across every beat, the states move', () => {
-		beat('arm');
-		const here = placesOf('incident', 'hello-waves-app')[1].href;
+	it('the hello-waves change: the shape is identical across every beat, only the states move', () => {
 		const shapes: unknown[] = [], states = new Set<string>();
 		for (const b of WAVES_STEPS) {
 			beat(b);
-			const a = stagesOf({ kind: 'app', app: 'hello-waves-app' }, 'incident');
-			const r = stagesOf({ kind: 'rollout', app: 'hello-waves-app', href: here }, 'incident');
-			expect(shapeOf(r)).toEqual(shapeOf(a));
-			shapes.push(shapeOf(a));
-			flat(a).forEach((p) => states.add(p.state));
-			expect(a.lanes.length).toBe(1);
-			expect(flat(a).some((p) => p.here)).toBe(false);
+			const c = findChange('github.com/exampleco/hello-waves/pull/21', 'incident');
+			expect(c, b).toBeTruthy();
+			const st = stagesOf({ kind: 'change', change: c! }, 'incident');
+			shapes.push(shapeOf(st));
+			flat(st).forEach((p) => states.add(p.state));
 		}
 		expect(shapes.length).toBeGreaterThan(2);
 		for (const x of shapes) expect(x).toEqual(shapes[0]);
 		expect(states.size).toBeGreaterThan(1);
-	});
-	it('rollout scope marks exactly one place, the viewed rollout', () => {
-		for (const b of WAVES_STEPS) {
-			beat(b);
-			for (const h of flat(stagesOf({ kind: 'app', app: 'hello-waves-app' }, 'incident')).map((p) => p.href)) {
-				expect(flat(stagesOf({ kind: 'rollout', app: 'hello-waves-app', href: h }, 'incident')).filter((p) => p.here).map((p) => p.href)).toEqual([h]);
-			}
-		}
-	});
-	it('names the build on a place only when the places differ', () => {
-		beat('wave1');
-		expect(flat(stagesOf({ kind: 'app', app: 'hello-waves-app' }, 'incident')).every((p) => p.build)).toBe(true);
-		beat('done');
-		expect(flat(stagesOf({ kind: 'app', app: 'hello-waves-app' }, 'incident')).every((p) => p.build === null)).toBe(true);
 	});
 });

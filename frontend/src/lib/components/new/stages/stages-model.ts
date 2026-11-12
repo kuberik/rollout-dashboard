@@ -1,19 +1,16 @@
 /**
- * THE STAGES MODEL (change-stages r1, shared in cs3): the ONE progression drawing of the product, three SCOPES of the same shape:
- *   change  = one change's pipeline (a lane per app, the change's places, the states of THIS change);
- *   app     = the app's current release across tiers and waves (one lane, each place in its own current state);
- *   rollout = the app scope with one place marked "you are here" (`here`).
+ * THE STAGES MODEL (change-stages r1; change-strip r1: the Change page's strip reads it, the App view and Rollout overview read
+ * PromotionLane's lane): one change's places by (tier, wave) x app, the states of THIS change.
  * The change's pipeline as COLUMNS (tier, wave) x LANES (app) x CELLS (places).
  * One truth: every state comes from detail-model `classified` / `notReached` (the Changes list reads the same), the counts agree with
  * `countsOf`. The SHAPE (columns, lanes, the order of places inside a cell) comes from the TOPOLOGY (`waveInfoOfHref`), never from
  * state, so a state change can never add, drop, reorder or move a tile (owner: "environments jumping").
  */
 import { ago, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
-import { placesOf, rowsOf } from '../data';
 import { approvalWord } from '../state-words';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
-import { classified, countsOf, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
+import { classified, countsOf, notReached, restSteps, type Place } from '../change/detail-model';
 
 export type StageState = 'deployed' | 'checking' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
 export type StagePlace = { href: string; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: Cause | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
@@ -21,7 +18,7 @@ export type StageColumn = { key: string; tier: TierKey; wave: number | null; /**
 export type StageCell = { places: StagePlace[] };
 export type StageLane = { app: string; cells: (StageCell | null)[] };
 export type StageRollup = { text: string; parts: { text: string; /** the short spelling a narrow card prints ("4 of 5"): chosen by width, never by state */ short?: string; ink: 'danger' | 'held' | 'progress' | 'active' | 'muted' | 'fg' }[] };
-export type StagesScope = { kind: 'change'; change: TChange } | { kind: 'app'; app: string } | { kind: 'rollout'; app: string; href: string };
+export type StagesScope = { kind: 'change'; change: TChange };
 export type Stages = { columns: StageColumn[]; lanes: StageLane[]; rollup: StageRollup };
 
 const TIER_RANK: Record<string, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
@@ -88,7 +85,7 @@ function assemble(apps: string[], items: Item[], columns: StageColumn[], scenari
 
 export function stagesOf(scope: StagesScope, scenario: HomeState): Stages {
 	const cols = new Map<string, StageColumn>();
-	if (scope.kind === 'change') {
+	{
 		const c = scope.change;
 		const cl = classified(c, scenario);
 		const byHref = new Map<string, Place>();
@@ -102,34 +99,6 @@ export function stagesOf(scope: StagesScope, scenario: HomeState): Stages {
 		}
 		return assemble(c.apps, items, columnsOf(cols), scenario, rollupOf(c, scenario), null);
 	}
-	/* app / rollout: the app's places as they are NOW. Each place's state is its own (row group: approval / held; env state: failed / checking / deploying) */
-	const app = scope.app;
-	const here = scope.kind === 'rollout' ? scope.href : null;
-	const places = placesOf(scenario, app);
-	const items: Item[] = [];
-	const builds = new Set(places.map((x) => x.version));
-	for (const x of places) {
-		const row = rowsOf(scenario, x.tier, x.label).find((r) => r.app === app && r.href === x.href) ?? null;
-		const kind: Place['kind'] = x.state === 'failed' ? 'failed' : row && (row.group === 'approval' || row.group === 'held') ? 'waiting' : 'running';
-		const p: Place = { href: x.href, app, tier: x.tier, label: x.label, row, group: row?.group ?? 'rest', state: x.state, current: x.version, containsChange: true, kind, since: row?.since ?? currentAt(x.href), build: x.version, at: currentAt(x.href) };
-		const { col, wi } = columnFor(cols, x.href, x.tier);
-		items.push({ p, col, site: siteOf(wi, x.label, x.tier), leader: wi?.leader ?? false, build: builds.size > 1 ? x.version : null });
-	}
-	const columns = columnsOf(cols);
-	const out = assemble([app], items, columns, scenario, { text: '', parts: [] }, here);
-	out.rollup = appRollup(out.lanes[0].cells.flatMap((c) => c?.places ?? []));
-	return out;
-}
-
-function appRollup(ps: StagePlace[]): StageRollup {
-	const k = (s: StageState) => ps.filter((p) => p.state === s).length;
-	const parts: StageRollup['parts'] = [{ text: `${ps.length} place${ps.length === 1 ? '' : 's'}`, ink: 'muted' }];
-	if (k('failed')) parts.push({ text: `${k('failed')} failing`, ink: 'danger' });
-	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
-	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
-	if (k('checking')) parts.push({ text: `${k('checking')} checking`, ink: 'progress' });
-	if (k('deploying')) parts.push({ text: `${k('deploying')} deploying`, ink: 'active' });
-	return { text: parts.map((p) => p.text).join(' · '), parts };
 }
 
 function rollupOf(c: TChange, scenario: HomeState): StageRollup {

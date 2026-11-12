@@ -12,7 +12,7 @@ import { availableReleases, releaseCandidates } from '$lib/releases/registry.sve
 import {
 	changes, candidateBuilds, shortBuild, placesOfChange, historyOfChange, changeCommits, runsIn, rowsOf, rollouts, heldBehind, lastHealthy, ago,
 	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathPosition, buildCommitOf,
-	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock
+	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock, waveInfoOfHref
 } from '../data';
 import { stateWord, approvalWord } from '../state-words';
 import { holdWord as holdText } from '../rollout-view';
@@ -332,7 +332,7 @@ const causeOf = (href: string, at: string): string | null => {
 /* ═══ History (S7): the PR's life on a spine, oldest first ═══ */
 export type EvKind = 'merged' | 'released' | 'deployed' | 'moving' | 'failed' | 'rollback' | 'redeploy' | 'waiting' | 'held';
 export type EvPlace = { label: string; tier: TierKey; href: string };
-export type Ev = { /** CE4: a rollback's source, as the tab prints it ("Rolled back from a11c303") */ from?: string; /** AD r4 (1): the instant the event sorts by when it differs from `at` (a wait sits after the deploys of its build) */ order?: string; /** AD r5 N2: the app the event belongs to (a change in two apps names it on every row) */ app?: string; key: string; kind: EvKind; build: string | null; /** the first place (kept for text dumps and single-place rows) */ place: string | null; /** every place the event happened in (a waiting build waits in five regions = ONE event, five chips) */ places: EvPlace[]; tier: TierKey | null; at: string | null; who: string | null; words: string; href: string | null; /** changedetail-12 CD1: why the tab says it was rolled back ("duplicate invoice numbers"), the rollback row's muted second-line cause */ cause?: string; /** changedetail-9 CE3: a failure of a NEWER build in a place that already ran this change healthily: not this change's own failed deploy */ newer?: boolean };
+export type Ev = { /** CE4: a rollback's source, as the tab prints it ("Rolled back from a11c303") */ from?: string; /** AD r4 (1): the instant the event sorts by when it differs from `at` (a wait sits after the deploys of its build) */ order?: string; /** AD r5 N2: the app the event belongs to (a change in two apps names it on every row) */ app?: string; key: string; kind: EvKind; build: string | null; /** the first place (kept for text dumps and single-place rows) */ place: string | null; /** every place the event happened in (a waiting build waits in five regions = ONE event, five chips) */ places: EvPlace[]; tier: TierKey | null; at: string | null; who: string | null; words: string; href: string | null; /** changedetail-12 CD1: why the tab says it was rolled back ("duplicate invoice numbers"), the rollback row's muted second-line cause */ cause?: string; /** changedetail-9 CE3: a failure of a NEWER build in a place that already ran this change healthily: not this change's own failed deploy */ newer?: boolean; /** change-strip r2: the event in which the change first finished deploying to a production place (the ONE "reached production" rule) */ reachedProd?: string; /** change-strip r2: the prod wave a deploy event is about (null: the whole tier) */ wave?: number | null };
 /**
  * THE RELEASE INSTANT of the build that first carried the change in an app: the `created` of that build's release in the catalogue of any
  * place's rollout (availableReleases + releaseCandidates), the oldest wins. null when no catalogue lists the build (then History says nothing:
@@ -363,6 +363,7 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 	const incident = scenario === 'incident';
 	const seen = new Set<string>();
 	let prodFirst: { at: string; href: string } | null = null;
+	const groups = new Map<string, { app: string; tier: TierKey; wave: number | null; items: { href: string; label: string; at: string; moving: boolean; checking: boolean; who: string | null; build: string }[] }>();
 	const hist = historyOfChange(c, scenario);
 	/* a place that was ever rolled back tells its whole story (every deploy of a build carrying the change, as its tab lists them);
 	   every other place tells only how it first got the change, not each routine release that followed */
@@ -389,9 +390,17 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		const tier = pl?.tier ?? null;
 		const failed = incident && h.outcome === 'Failed';
 		const kind: EvKind = failed ? 'failed' : moving ? 'moving' : h.kind === 'rollback' ? 'rollback' : h.kind === 'redeploy' ? 'redeploy' : 'deployed';
-		/* cs3: History does not redraw the progression (the Stages card owns it): a deploy / redeploy / in-flight row is not an event; only the FIRST arrival in production is, once */
+		/* change-strip r2 (owner: "history cards is pretty bland"): a deploy is told per TIER, and in a tier that rolls out in waves per WAVE
+		   ("Deployed to staging", "Wave 1 deployed · eu-central, us-east-1"), never per site row; the strip keeps the at-a-glance progression */
 		if (kind === 'deployed' || kind === 'redeploy' || kind === 'moving') {
 			if (kind !== 'moving' && tier === 'prod' && (!prodFirst || oldestFirst(h.at, prodFirst.at) < 0)) prodFirst = { at: h.at, href: h.href };
+			if (!tier || (!first && !moving)) continue;
+			const wi = waveInfoOfHref(h.href);
+			const wave = wi?.multi ? wi.wave : null;
+			const gk = `${h.app}|${tier}|${wave ?? 0}`;
+			const g = groups.get(gk) ?? { app: h.app, tier, wave, items: [] };
+			g.items.push({ href: h.href, label: wi?.site && wi.site !== 'default' ? wi.site : h.place, at: h.at, moving, checking: moving && pl?.row?.state === 'checking', who: h.who, build: h.build });
+			groups.set(gk, g);
 			continue;
 		}
 		const newerFail = failed && !!pl?.newerFails;
@@ -400,7 +409,19 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		const at = failed && !newerFail && pl?.kind === 'failed' && cur && pl.at ? pl.at : h.at;
 		out.push({ key: `${h.href}|${h.at}`, kind, app: h.app, build: h.build, place: h.place, places: tier ? [{ label: h.place, tier, href: h.href }] : [], tier, at, who: h.who, words, href: `${h.href}/history`, ...(newerFail ? { newer: true } : {}), ...(kind === 'rollback' && fromOf.get(`${h.href}|${h.at}`) ? { from: fromOf.get(`${h.href}|${h.at}`)!.build } : {}), ...(kind === 'rollback' && causeOf(h.href, h.at) ? { cause: causeOf(h.href, h.at)! } : {}) });
 	}
-	if (prodFirst) out.push({ key: 'prod-first', kind: 'deployed', build: null, place: null, places: [], tier: 'prod', at: prodFirst.at, who: null, words: 'Reached prod', href: `${prodFirst.href}/history` });
+	for (const [gk, g] of groups) {
+		const mv = g.items.find((x) => x.moving);
+		const done = g.items.filter((x) => !x.moving);
+		const where = g.wave != null ? `wave ${g.wave}` : g.tier;
+		const evPlaces = g.items.map((x) => ({ label: x.label, tier: g.tier, href: x.href }));
+		if (mv) {
+			out.push({ key: `moving|${gk}`, kind: 'moving', app: g.app, build: mv.build, place: mv.label, places: evPlaces, tier: g.tier, wave: g.wave, at: mv.at, who: mv.who, words: mv.checking ? 'Checking' : 'Deploying', href: mv.href });
+		} else {
+			const last = done.reduce((a, b) => (oldestFirst(a.at, b.at) < 0 ? b : a));
+			const reached = !!prodFirst && g.tier === 'prod' && done.some((x) => x.href === prodFirst!.href);
+			out.push({ key: `deployed|${gk}`, kind: 'deployed', app: g.app, build: last.build, place: last.label, places: evPlaces, tier: g.tier, wave: g.wave, at: last.at, who: done.every((x) => x.who === last.who) ? last.who : null, words: g.wave != null ? `Wave ${g.wave} deployed` : `Deployed to ${where}`, href: last.href, ...(reached && prodFirst ? { reachedProd: prodFirst.at } : {}) });
+		}
+	}
 	/* RELEASED: the build that first carried the change in each app was released (created in the catalogue) after the merge; only when the data has that instant */
 	/* apps that shipped the SAME release (a monorepo build: four services, one build, one instant) are ONE event; a lone app is named */
 	const rels = new Map<string, { build: string; at: string; apps: string[] }>();
@@ -436,7 +457,9 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		if (cause) e.cause = cause;
 		e.places = [];
 	}
-	return [...out, ...waits.values()].sort((a, b) => oldestFirst(a.order ?? a.at, b.order ?? b.at));
+	/* change-strip r2: events at one instant keep the pipeline's order (tier, then wave), never the order the history was read in */
+	const rank = (e: Ev) => ({ dev: 0, test: 1, staging: 2, prod: 3 } as Record<string, number>)[e.tier ?? ''] ?? -1;
+	return [...out, ...waits.values()].sort((a, b) => oldestFirst(a.order ?? a.at, b.order ?? b.at) || rank(a) - rank(b) || (a.wave ?? 0) - (b.wave ?? 0));
 }
 
 /**
@@ -444,12 +467,12 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
  * first live row stay OUTSIDE it, so "Show N more" sits between two visible runs and a visible row never precedes a hidden event that belongs below it.
  * Returns [start, end) of the hidden rows, or null when the list is short enough (or no window fits).
  */
-export function foldWindow(events: Pick<Ev, 'kind' | 'words'>[], keep = 10): [number, number] | null {
+export function foldWindow(events: Pick<Ev, 'kind' | 'words' | 'reachedProd'>[], keep = 10): [number, number] | null {
 	const n = events.length;
 	if (n <= keep) return null;
 	const pinned = new Set<number>([0, n - 1]);
 	events.forEach((e, i) => { if (e.kind === 'failed') pinned.add(i); });
-	const fl = events.findIndex((e) => e.words === 'Reached prod');
+	const fl = events.findIndex((e) => !!e.reachedProd);
 	if (fl > 0) pinned.add(fl);
 	for (let len = n - keep; len >= 2; len--) {
 		for (let start = 1; start + len <= n - 1; start++) {
@@ -467,8 +490,8 @@ export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] 
 	const prod = run.filter((p) => p.tier === 'prod').sort((a, b) => oldestFirst(a.since, b.since))[0];
 	/* AD r1 (1): production means production. A change whose only deploy to a prod place FAILED has reached production; the fact says so, with the outcome */
 	const prodFailed = !prod ? places.filter((p) => p.tier === 'prod' && p.kind === 'failed' && p.since).sort((a, b) => oldestFirst(a.since, b.since))[0] : null;
-	/* r2 gate: ONE rule for "reached production": History's "Reached prod" event (a finished deploy in prod; an in-flight one has not reached it yet) */
-	const prodReached = events?.find((e) => e.words === 'Reached prod')?.at ?? null;
+	/* r2 gate: ONE rule for "reached production": History's reachedProd event (a finished deploy in prod; an in-flight one has not reached it yet) */
+	const prodReached = events?.find((e) => e.reachedProd)?.reachedProd ?? null;
 	const first = [...places].filter((p) => p.kind !== 'waiting').sort((a, b) => oldestFirst(a.since, b.since))[0];
 	/* the page's ONE age form is `ago` ("2d", "9h", "10m"): a duration is the age of the instant that far before now */
 	const gap = (iso: string | null | undefined) => {

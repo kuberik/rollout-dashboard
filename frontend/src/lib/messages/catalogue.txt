@@ -644,7 +644,6 @@ lib/components/new/change-view.ts	code	not reached
 lib/components/new/change-view.ts	code	Roll back
 lib/components/new/change-view.ts	code	Waits for
 lib/components/new/change-view.ts	code	Waits on
-lib/components/new/change/ChangeCard.svelte	code	${stat.add != null ?
 lib/components/new/change/ChangeDetail.svelte	text	… … ago
 lib/components/new/change/ChangeDetail.svelte	text	… (merged by … )
 lib/components/new/change/ChangeDetail.svelte	verdict	… since …
@@ -654,9 +653,12 @@ lib/components/new/change/ChangeDetail.svelte	code	Deployment failed in … · �
 lib/components/new/change/ChangeDetail.svelte	code	Waiting for approval
 lib/components/new/change/ChangeDetail.svelte	aria-label	What holds this change and what happened to it
 lib/components/new/change/ChangeHistory.svelte	verdict	… events
+lib/components/new/change/ChangeHistory.svelte	code	CI run
+lib/components/new/change/ChangeHistory.svelte	code	Pull request
 lib/components/new/change/ChangeHistory.svelte	label	Rolled back
 lib/components/new/change/ChangeHistory.svelte	text	Show … more
 lib/components/new/change/ChangeHistory.svelte	text	Show fewer
+lib/components/new/change/ChangeHistory.svelte	text	wave …
 lib/components/new/change/ChangeStrip.svelte	code	· step
 lib/components/new/change/detail-model.ts	code	: ''} wait… behind this failure
 lib/components/new/change/detail-model.ts	code	… · failed
@@ -684,6 +686,7 @@ lib/components/new/change/detail-model.ts	code	and $1
 lib/components/new/change/detail-model.ts	code	Checking in …
 lib/components/new/change/detail-model.ts	code	Deployed in …
 lib/components/new/change/detail-model.ts	code	Deployed in ${prod.length === 1 ? prod[0].label :
+lib/components/new/change/detail-model.ts	code	Deployed to …
 lib/components/new/change/detail-model.ts	code	Deploying to …
 lib/components/new/change/detail-model.ts	code	Failing in ……
 lib/components/new/change/detail-model.ts	code	Final check
@@ -697,9 +700,10 @@ lib/components/new/change/detail-model.ts	code	Not reached
 lib/components/new/change/detail-model.ts	code	Not running anywhere yet
 lib/components/new/change/detail-model.ts	code	on the newest
 lib/components/new/change/detail-model.ts	code	prod · …
-lib/components/new/change/detail-model.ts	code	Reached prod
 lib/components/new/change/detail-model.ts	code	Rolled back to
 lib/components/new/change/detail-model.ts	code	Waiting for approval
+lib/components/new/change/detail-model.ts	code	wave …
+lib/components/new/change/detail-model.ts	code	Wave … deployed
 lib/components/new/changes-page.ts	code	… failed in …${placeOf(lead.c) ?
 lib/components/new/changes-page.ts	code	… failing
 lib/components/new/changes-page.ts	code	… to approve
@@ -998,7 +1002,6 @@ lib/components/new/stages/stages-model.ts	code	… failing
 lib/components/new/stages/stages-model.ts	code	… held
 lib/components/new/stages/stages-model.ts	code	… of …
 lib/components/new/stages/stages-model.ts	code	… of … place…
-lib/components/new/stages/stages-model.ts	code	… place…
 lib/components/new/stages/stages-model.ts	code	… waiting
 lib/components/new/stages/stages-model.ts	code	Not affected
 lib/components/new/stages/stages-model.ts	code	Not reached

@@ -153,7 +153,8 @@
 	<!-- the tab's main/rail split (BUILD-R4): 3fr / minmax(22rem, 2fr), 16px gap; past 2300 the four cards are composed by height: Where it runs | History | Summary over Change (AD r2 6); past 3400 the first column caps at the 1150px row width -->
 	<div class="cd-split mt-4 flex flex-col gap-4 lg:grid lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start" style="--sr: {holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href) ? 2 : 1}">
 		<div class="cd-main flex min-w-0 flex-col gap-4">
-			<ChangeHistory {events} {multiApp} headBuild={head.build} class="cd-history" />
+			<ChangeCard commits={cm.commits} stat={head.stat} checkText={checkText} class="cd-change" />
+			<ChangeHistory {events} {multiApp} headBuild={head.build} ciHref={checks?.href ?? null} class="cd-history" />
 		</div>
 		<aside class="cd-rail grid min-w-0 gap-4 lg:flex lg:flex-col" aria-label="What holds this change and what happened to it">
 			{#if holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href)}<HoldingCard {holds} class="cd-hold" />{/if}
@@ -164,7 +165,6 @@
 					{/each}
 				</dl>
 			</Card>
-			<ChangeCard commits={cm.commits} stat={head.stat} checkText={checkText} class="cd-change" />
 		</aside>
 	</div>
 </div>
