@@ -61,7 +61,7 @@ export function scheduleLabelOf(meta?: ScheduleMeta | null): string | null {
  * never a display string. A gate whose own object carries no pretty name still reads as its window ("After Hours"), on every surface.
  */
 export function scheduleLabelOfGate(
-	schedules: { rolloutSchedules?: { items?: ScheduleOf[] }; clusterRolloutSchedules?: { items?: ScheduleOf[] } } | null | undefined,
+	schedules: { rolloutSchedules?: { items?: ScheduleOf[] } | null; clusterRolloutSchedules?: { items?: ScheduleOf[] } | null } | null | undefined,
 	ns: string,
 	gate: string
 ): string | null {
