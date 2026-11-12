@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { leadOpenKey } from '$lib/view-models/pipeline-card';
 	import { newestFirst } from '$lib/instant';
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 		import { releaseCandidates } from '$lib/releases/registry.svelte';
@@ -111,7 +112,9 @@
 	/* AA4: the statement (a waiting app) owns Approve, once; a row of an approval place carries no second one */
 	const calm = $derived(scenario !== 'incident' && !failing.length);
 	/* the open thing is the first row in every state (a fully healthy app opens nothing) */
-	const leadKey = $derived(rows[0]?.key ?? null);
+	/* owner 2026-11-12 (waves): when several places are in flight at once (a wave of sites taking a build), the ledger's rows ARE the picture, one state word
+	   per site; opening the lead's step pane pushed the rest of the wave off the card. Open nothing then; a single place in flight still opens. */
+	const leadKey = $derived(leadOpenKey(rows));
 	/* owner §5: on the phone the lead place shows its short version (state line + next build) and the step pane waits behind its chevron; from sm up the lead's pane is open. One open at a time. */
 	let phone = $state(typeof matchMedia !== 'undefined' && matchMedia('(max-width: 639px)').matches);
 	$effect(() => { const mq = matchMedia('(max-width: 639px)'); phone = mq.matches; const f = () => (phone = mq.matches); mq.addEventListener('change', f); return () => mq.removeEventListener('change', f); });
