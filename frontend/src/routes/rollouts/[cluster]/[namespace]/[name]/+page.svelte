@@ -3098,7 +3098,7 @@
 							<EditOutline class="h-4 w-4" aria-hidden="true" />
 							Change version
 						</button>
-						{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" id="change-version-reason-1" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
+						{#if noReleases}<span class="sr-only" id="change-version-reason-1" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
 						<!-- ⛔ `Rollback` PRE-SELECTED `history[1]`, WHICH IS NOT
 										     NECESSARILY OLDER. A live critic pressed it on a rollout
 										     that had itself been rolled back and got a modal headed
@@ -3270,6 +3270,7 @@
 											rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name)}
 										current={{ ns: namespace, name }}
 										youAreHere
+										quietNoReleases
 									/>
 								</div>
 								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0"
@@ -3912,7 +3913,7 @@
 											{#if releasesLoading}
 												<span class="t-ui-sm text-fg-subtle" data-releases-loading>Loading releases…</span>
 											{:else if noReleases}
-												<span class="t-ui-sm text-fg-subtle" data-no-releases>{noReleases.label}</span>
+												<!-- "no releases" is said ONCE, by the card's body below (or the notice, with no source): the header says nothing -->
 											{:else if newerBuilds.length > 0}
 												<!-- r34 tabs-nb r2 (#5): the baseline's rollup, back. Same count as the page
 												     header's "↑ N newer" (both read `newerBuildsShown`). -->
@@ -4877,7 +4878,7 @@
 								<EditOutline />
 								Change version
 							</button>
-							{#if noReleases}<span class="t-meta text-fg-subtle max-lg:basis-full" id="change-version-reason-2" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
+							{#if noReleases}<span class="sr-only" id="change-version-reason-2" data-change-version-reason>{noReleases.label}: no versions to choose from</span>{/if}
 						{/if}
 					{/snippet}
 				</PageHeader>

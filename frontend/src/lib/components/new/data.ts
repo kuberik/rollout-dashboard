@@ -1289,10 +1289,12 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const upstreamFailed = failedC ? (shortBuild(failedC.version ?? failedC.tag) ?? null) : null;
 		const cands = candTags(p.href).length ? candTags(p.href) : failedC ? [failedC.tag ?? failedC.version ?? ''] : [];
 		/* the one hold rule (gatesOf, the toast's waitsOn): held only when NO candidate is deployable, and some gate refuses the build in question */
-		const rule = pv ? pv.state === 'held-by-rule' : cands.length > 0 && refusingGates(gs, buildInQuestion({ href: p.href, app })).length > 0;
+		const rule = pv ? pv.state === 'held-by-rule' : p.state === 'held-by-rule' || (cands.length > 0 && refusingGates(gs, buildInQuestion({ href: p.href, app })).length > 0); /* no verdict: the place's own state (the model's, the one heldCauses and the banner read) still says it is held by a rule, never "health" */
 		/* the row's own verdict: a place that runs its build (`running`) holds nothing here, whatever it still refuses for another build */
 		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : pv?.state === 'running' ? null : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
-		const g = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
+		const g0 = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
+		/* a rule hold no gate object names (the dependency is a RolloutDependency join): the cause the banner and the Holding card both read is `heldCauses`' own; the sentence is the Gates tab's wording per kind */
+		const g = g0 ?? (rule && !approval ? (() => { const h = heldCauses(state).find((x) => x.rows.some((r) => r.href === p.href || r.hrefs?.includes(p.href))); const c = h?.cause.replace(/^Waiting on /, ''); return c && c !== 'Held by a rule' ? { name: c, sentence: h?.reason === 'check' ? 'Releases when the check starts passing' : `Releases when ${c} ships a newer version` } : null; })() : null);
 		const cat = appOrder(app, state);
 		const failedBuilds = (p.version ? cat.slice(cat.lastIndexOf(buildName(app, p.version) ?? p.version) + 1) : []).filter((b) => failedHere(rawOf(p.href)?.status as never, { tag: b, version: b, revision: b }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())));
 		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, failedHere: failedBuilds, heldBuilds: held, newerShown: newerBuildsShown(rawOf(p.href) as never, envsOfSource(), true).map((c) => { const b = (c as { version?: string; tag?: string }).version ?? (c as { tag?: string }).tag ?? ''; return shortBuild(b) ?? b; }), runs: p.version };
@@ -1674,7 +1676,7 @@ export function windowCause(w: { label: string; opensAt: string | null } | undef
 export function windowOpens(w: { label: string; opensAt: string | null } | undefined, now: Date = new Date()): string | null {
 	return windowOpensClause(w?.opensAt ? formatTransitionAt(w.opensAt, now) : null);
 }
-export type HeldCause = { key: string; cause: string; places: string[]; rows: TRow[]; /** set when a deploy window holds these places: the clause that says when it opens ("opens Mon 09:00 UTC"), null with no published transition */ window?: { opens: string | null } };
+export type HeldCause = { key: string; cause: string; /** the needs-you reason behind the cause (dependency, check, clock, pinned), when the model gave one */ reason?: string; places: string[]; rows: TRow[]; /** set when a deploy window holds these places: the clause that says when it opens ("opens Mon 09:00 UTC"), null with no published transition */ window?: { opens: string | null } };
 /** One entry per hold cause, from the model's needsYou facts: "Waiting for approval", "Waiting on payments-svc", "Waiting on Integration tests" (a check is named as the Gates tab prints its gate). */
 export function heldCauses(state: HomeState, tier?: TierKey): HeldCause[] {
 	const R = rollouts(state);
@@ -1697,7 +1699,7 @@ export function heldCauses(state: HomeState, tier?: TierKey): HeldCause[] {
 			: f?.reason === 'check' ? (f.checks?.length ? `Waiting on ${f.checks.map((c) => gateDisplayName(c, prettyOfGate(r.href, c))).join(', ')}` : 'Waiting on a check')
 			: f?.reason === 'pinned' ? 'Pinned'
 			: r.word.startsWith('Waits on') ? r.word.replace('Waits on', 'Waiting on') : 'Held by a rule';
-		const e = out.get(cause) ?? { key: cause, cause, places: [], rows: [], ...(win ? { window: { opens: windowOpens(win) } } : {}) };
+		const e = out.get(cause) ?? { key: cause, cause, ...(f?.reason ? { reason: f.reason as string } : {}), places: [], rows: [], ...(win ? { window: { opens: windowOpens(win) } } : {}) };
 		e.places.push(`${r.app} · ${r.place}`);
 		e.rows.push(r);
 		out.set(cause, e);

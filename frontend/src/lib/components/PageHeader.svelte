@@ -24,6 +24,8 @@
 	 * `mono` and gets `t-code-lg` instead. The count is the title's figure in the
 	 * subtle ink at the same size, so "51" never out-shouts "Rollouts".
 	 * Summary/meta are `t-body` in the muted ink. 24px below the header.
+	 * A slot wrapper whose snippet rendered nothing is `empty:hidden`: an empty flex item still costs a row gap
+	 * (4px in the title row, 12px between the header's own rows) when it wraps onto a line of its own at 390.
 	 */
 	import type { Snippet } from 'svelte';
 
@@ -98,10 +100,10 @@
 			{/if}
 			{#if titleAfter}{@render titleAfter()}{/if}
 			{#if identity}
-				<div class="flex shrink-0 items-center gap-2 self-center">{@render identity()}</div>
+				<div class="flex shrink-0 items-center gap-2 self-center empty:hidden" data-ph-identity>{@render identity()}</div>
 			{/if}
 			{#if summary}
-				<div class="t-body min-w-0 basis-full text-fg-muted {summaryBelow ? '' : 'sm:basis-auto sm:flex-1'}">
+				<div data-ph-summary class="t-body min-w-0 basis-full text-fg-muted empty:hidden {summaryBelow ? '' : 'sm:basis-auto sm:flex-1'}">
 					{@render summary()}
 				</div>
 			{/if}
@@ -123,11 +125,11 @@
 	{#if actions}
 		<!-- On a phone the actions wrap within the page width (AD round 3: three
 		     buttons ran 164px off a 390 screen); side by side from `sm`. -->
-		<div class="flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:shrink-0 {eyebrow || titleAfter ? 'self-start' : ''}">{@render actions()}</div>
+		<div data-ph-actions class="flex min-w-0 max-w-full flex-wrap items-center gap-2 empty:hidden sm:shrink-0 {eyebrow || titleAfter ? 'self-start' : ''}">{@render actions()}</div>
 	{/if}
 	{#if below}
 		<!-- Full width under the title row and its actions. -->
-		<div class="min-w-0 basis-full">{@render below()}</div>
+		<div class="min-w-0 basis-full empty:hidden" data-ph-below>{@render below()}</div>
 	{/if}
 </header>
 
