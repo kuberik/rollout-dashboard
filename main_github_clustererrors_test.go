@@ -127,3 +127,88 @@ func TestGitHubPullsMine_404CarriesClusterErrors(t *testing.T) {
 		t.Fatalf("404 clusterErrors = %+v, want the dead spoke %s", errs, spoke)
 	}
 }
+
+// /changes and /commit fan out the same way and must report the same thing.
+func TestGitHubChanges_ReportsAndNotFoundCarryClusterErrors(t *testing.T) {
+	swapFanoutState(t, 2*time.Second)
+	resetLoginCacheForTest(t)
+	localURL := "https://kuberik.hub.example"
+	t.Setenv("DASHBOARD_URL", localURL)
+	spoke := deadSpokeURL(t)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if req.URL.Path == "/user" {
+			fmt.Fprint(w, `{"login":"alice"}`)
+			return
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+		envObj("team-a", localURL, spoke),
+	})
+	for i := 0; i < 2; i++ { // second read is served from the computed-answer cache
+		w := doGitHubPullsRequest(r, "/api/github/changes?days=30", "ghu_changes_tok")
+		if w.Code != http.StatusOK {
+			t.Fatalf("read %d: status %d: %s", i, w.Code, w.Body.String())
+		}
+		errs := clusterErrorsOf(t, w.Body.Bytes())
+		if len(errs) != 1 || errs[0].URL != spoke {
+			t.Fatalf("read %d: clusterErrors = %+v, want the dead spoke %s", i, errs, spoke)
+		}
+	}
+
+	w := doGitHubPullsRequest(r, "/api/github/changes?repo=octo/only-on-spoke", "ghu_changes_tok")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	if errs := clusterErrorsOf(t, w.Body.Bytes()); len(errs) != 1 || errs[0].URL != spoke {
+		t.Fatalf("404 clusterErrors = %+v, want the dead spoke %s", errs, spoke)
+	}
+}
+
+func TestGitHubCommit_ReportsAndNotFoundCarryClusterErrors(t *testing.T) {
+	swapFanoutState(t, 2*time.Second)
+	localURL := "https://kuberik.hub.example"
+	t.Setenv("DASHBOARD_URL", localURL)
+	spoke := deadSpokeURL(t)
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if req.URL.Path == "/repos/octo/repo/commits/"+sha {
+			fmt.Fprintf(w, `{"sha":%q,"commit":{"message":"m","author":{"name":"a"}}}`, sha)
+			return
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer ts.Close()
+	defer githubapp.SetBaseURLForTest(ts.URL + "/")()
+
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutWithSource("team-a", "app-1", "https://github.com/octo/repo"),
+		envObj("team-a", localURL, spoke),
+	})
+	for _, path := range []string{
+		"/api/github/repos/octo/only-on-spoke/commits/" + sha,
+		"/api/github/repos/octo/only-on-spoke/commits/" + sha + "/pulls",
+	} {
+		w := doGitHubPullsRequest(r, path, "ghu_commit_tok")
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("%s: status %d: %s", path, w.Code, w.Body.String())
+		}
+		if errs := clusterErrorsOf(t, w.Body.Bytes()); len(errs) != 1 || errs[0].URL != spoke {
+			t.Fatalf("%s: 404 clusterErrors = %+v, want the dead spoke %s", path, errs, spoke)
+		}
+	}
+
+	w := doGitHubPullsRequest(r, "/api/github/repos/octo/repo/commits/"+sha, "ghu_commit_tok")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	if errs := clusterErrorsOf(t, w.Body.Bytes()); len(errs) != 1 || errs[0].URL != spoke {
+		t.Fatalf("clusterErrors = %+v, want the dead spoke %s", errs, spoke)
+	}
+}

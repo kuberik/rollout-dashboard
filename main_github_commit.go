@@ -35,6 +35,9 @@ type ghCommit struct {
 	HTMLURL        string   `json:"htmlUrl"`
 	ContainedIn    []string `json:"containedIn"`
 	ContainedInAll bool     `json:"containedInAll"`
+	// ClusterErrors: spokes that could not be read while checking the repo is
+	// visible. Same shape as GET /api/rollouts; absent when none.
+	ClusterErrors []ClusterError `json:"clusterErrors,omitempty"`
 }
 
 // handleGitHubCommit serves GET /api/github/repos/:owner/:repo/commits/:sha
@@ -76,14 +79,14 @@ func handleGitHubCommit(c *gin.Context) {
 	if !ok {
 		return
 	}
-	visible, err := visibleGitHubSources(c, k8sClient)
+	visible, clusterErrors, err := visibleGitHubSourcesWithErrors(c, k8sClient)
 	if err != nil {
 		log.Printf("Error checking repository visibility for %s/%s commits/%s: %v", owner, repo, sha, err)
 		writeUpstreamError(c, "Failed to check repository visibility", err)
 		return
 	}
 	if !visible[githubapp.NormalizedRepoKey(owner, repo)] {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": "repo"})
+		c.JSON(http.StatusNotFound, notFoundRepoBody(clusterErrors))
 		return
 	}
 
@@ -110,6 +113,7 @@ func handleGitHubCommit(c *gin.Context) {
 	}
 
 	result := commitFromRepositoryCommit(commit)
+	result.ClusterErrors = clusterErrors
 
 	resolvedSha := commit.GetSHA()
 	if len(resolvedSha) != 40 {
