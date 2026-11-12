@@ -97,3 +97,22 @@ func TestClusterErrorDetail(t *testing.T) {
 		t.Errorf("status error carries detail %q", d)
 	}
 }
+
+// Only a bad answer carries a detail: a read that times out while decoding the
+// body is a timeout, with no detail.
+func TestClusterErrorDetailOnlyForBadAnswer(t *testing.T) {
+	for name, err := range map[string]error{
+		"deadline mid-body":    &spokeDecodeError{err: context.DeadlineExceeded},
+		"net timeout mid-body": &spokeDecodeError{err: fakeTimeout{}},
+		"stale wait":           errSpokeStaleTimeout,
+		"rejected":             &spokeStatusError{status: 403},
+		"unreachable":          &spokeTransportError{err: errors.New("refused")},
+	} {
+		if d := clusterErrorDetail(err); d != "" {
+			t.Errorf("%s: detail %q, want none", name, d)
+		}
+	}
+	if kind, _ := clusterErrorKind(&spokeDecodeError{err: fakeTimeout{}}); kind != clusterKindTimeout {
+		t.Errorf("net timeout mid-body kind %q, want timeout", kind)
+	}
+}

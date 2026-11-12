@@ -85,7 +85,7 @@ const (
 // clusterErrorDetail is the typed detail of a bad_answer, else "".
 func clusterErrorDetail(err error) string {
 	var de *spokeDecodeError
-	if !errors.As(err, &de) {
+	if kind, _ := clusterErrorKind(err); kind != clusterKindBadAnswer || !errors.As(err, &de) {
 		return ""
 	}
 	var ute *json.UnmarshalTypeError
@@ -127,10 +127,10 @@ func clusterErrorKind(err error) (string, int) {
 		return clusterKindTimeout, 0
 	case errors.As(err, &se):
 		return clusterKindRejected, se.status
-	case errors.As(err, &de):
-		return clusterKindBadAnswer, 0
 	case errors.As(err, &ne) && ne.Timeout():
 		return clusterKindTimeout, 0
+	case errors.As(err, &de):
+		return clusterKindBadAnswer, 0
 	}
 	return clusterKindUnreachable, 0
 }
