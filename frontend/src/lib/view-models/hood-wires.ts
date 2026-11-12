@@ -1,176 +1,199 @@
 /**
- * THE NEIGHBOURHOOD'S WIRES, AS PURE GEOMETRY. (2026-10-09, design audit
- * `/tmp/claude/arrows-review/`.) `RolloutNeighbourhood` measures the boxes the
- * CSS grid placed and hands their rects here; everything that decides where a
- * line runs and where its head lands is in this file, so it is unit-tested.
+ * THE NEIGHBOURHOOD'S WIRES, AS PURE GEOMETRY. `RolloutNeighbourhood`
+ * measures the boxes the CSS grid placed and hands their rects (and each
+ * box's PORT, the y of its title row) here; everything that decides where a
+ * line runs and where its tip lands is in this file, so it is unit-tested.
+ * The drawing spec (stroke, ink, corner, chevron) is `$lib/graph-wire`.
  *
- * The rules (each one a finding of the audit):
+ * The rules (2026-11-12, owner: "gates arrows and their lines could be more
+ * elegant to fit the style of the rest"):
  *
- * 1. THE HEAD COMES AFTER THE PATH. The path ends `ARROW.length` px short of
- *    the edge, ending in a straight run in the head's direction; the marker
- *    (`refX = 0`) puts its base there and its tip on the edge. A head laid
- *    over the last few px of a curve sat 4–6 px off-axis, up to 33° sideways.
- * 2. THE TIP LANDS ON THE OUTER EDGE OF WHAT IS PAINTED: a link box's border
- *    (`left`), the focus box's 2 px ring (`left − 2`, `top − 2` narrow); a
- *    downstream wire STARTS outside the ring (`right + 2`, `bottom + 2`).
- * 3. Fan-in at the focus: slots ≥ head width + 4 px apart, rounded ONCE.
- * 4. Two ends < 4 px apart vertically are one line, not a 1.5 px wobble.
- * 5. Crisp: held 2 px on integer centres, quiet 1 px on .5 centres, on the
- *    coordinate a line runs along.
+ * 1. PORTS, NOT CENTRES. A wire leaves and enters a box at its title row, so
+ *    a box that grows a second line keeps its port, and a wire into the
+ *    focus meets it at the focus's own title row. Every wire on the canvas
+ *    meets its boxes at the same height relative to their tops.
+ * 2. ONE PORT PER SIDE OF THE FOCUS. Wires into the focus converge on one
+ *    trunk and one terminal (GitHub Actions' and Railway's fan-in), instead
+ *    of a fan of separate heads spread down its edge: no wire crosses
+ *    another, and a held wire, painted last, is the one you see on the
+ *    shared run, all the way from its source to the focus.
+ * 3. ORTHOGONAL WITH 8 PX CORNERS. Horizontal out, one vertical trunk run at
+ *    the gutter's middle, horizontal in: wires meet edges at right angles,
+ *    and turn with the tiles' own radius (true quarter circles). A rise
+ *    shorter than two corners is one soft S instead of a squeezed kink.
+ * 4. THE TIP LANDS ON THE OUTER EDGE OF WHAT IS PAINTED: a link box's
+ *    border (`left`), the focus box's 2 px ring (`left − 2`, `top − 2`
+ *    narrow); a downstream wire STARTS outside the ring (`right + 2`,
+ *    `bottom + 2`). The chevron's apex is the tip.
+ * 5. NOTHING MOVES WITH STATE. One stroke width for every state, so every
+ *    coordinate is the same whatever the state; state picks the ink and the
+ *    paint order only.
  */
-import { ARROW, crisp, wireKind, type WireKind } from '$lib/graph-arrow';
+import {
+	CORNER,
+	arc,
+	crisp1,
+	elbow,
+	svgPath,
+	chevron,
+	wireTone,
+	type WireTone
+} from '$lib/graph-wire';
 
-export type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+export type Rect = {
+	left: number;
+	top: number;
+	right: number;
+	bottom: number;
+	width: number;
+	height: number;
+};
 export type WireState = 'blocked' | 'clear' | 'unknown';
-export type WireIn = { key: string; state: WireState; rect: Rect };
-export type Wire = { key: string; state: WireState; d: string; tip: [number, number] };
+/** `port`: the absolute y of the box's title row (defaults to its centre). */
+export type WireIn = { key: string; state: WireState; rect: Rect; port?: number };
+export type Focus = Rect & { port?: number };
+export type Wire = {
+	key: string;
+	state: WireState;
+	d: string;
+	/** The chevron at the tip, its apex on `tip`. */
+	head: string;
+	tip: [number, number];
+};
 
 /** The focus box's ring, outside its border (`ring-2`). */
 export const FOCUS_RING = 2;
-/** Spine x in the narrow layout, and the radius of its corner. */
-export const SPINE_X = 4;
-export const CORNER = 6;
-/** Minimum gap between heads, on top of the head's own width. */
-export const SLOT_GAP = 4;
-/** Vertical ends closer than this are drawn as one straight line. */
-export const SNAP = 4;
+/** Spine x in the narrow layout: 12 px in, so it meets the focus on the flat of its top edge, past the 8 px corner (AD r1 #2). */
+export const SPINE_X = 12;
+export { CORNER };
 
-const fmt = (v: number) => String(Math.round(v * 1000) / 1000);
-const path = (...parts: (string | number)[]) =>
-	parts.map((p) => (typeof p === 'number' ? fmt(p) : p)).join(' ');
+const portOf = (r: Rect & { port?: number }) => r.port ?? r.top + r.height / 2;
 
-/** The pitch two adjacent heads need at the focus, for the widest head present. */
-export function slotPitch(kinds: WireKind[]): number {
-	const w = Math.max(...kinds.map((k) => ARROW[k].width), ARROW.quiet.width);
-	return w + SLOT_GAP;
+function wire(
+	key: string,
+	state: WireState,
+	d: string,
+	tip: [number, number],
+	dir: 'right' | 'down'
+): Wire {
+	return { key, state, d, head: chevron(tip[0], tip[1], dir), tip };
 }
 
-/**
- * Slot y positions down a side of the focus box: evenly spread over the box
- * (inset by `pad`) when that leaves at least `pitch` between them, else
- * `pitch` apart centred on the box. Rounded once here; callers then only
- * apply `crisp`, never a second rounding.
- */
-export function slots(n: number, top: number, height: number, pitch: number, pad = 14): number[] {
-	if (n <= 0) return [];
-	const inner = Math.max(0, height - 2 * Math.min(pad, height / 4));
-	const even = inner / (n + 1);
-	const step = Math.max(even, pitch);
-	const mid = top + height / 2;
-	return Array.from({ length: n }, (_, i) => Math.round(mid + (i - (n - 1) / 2) * step));
-}
-
-/** Min focus-box height that fits `n` slots at `pitch` with `pad` inset. */
-export function focusMinHeight(n: number, pitch: number, pad = 14): number {
-	return n <= 1 ? 0 : Math.ceil((n + 1) * pitch + 2 * pad);
-}
-
-/** A horizontal wire from (x1,y1) to a head whose TIP is at (tipX, y2). */
-function horizontal(x1: number, y1: number, tipX: number, y2: number, kind: WireKind, dir: 1 | -1): string {
-	const len = ARROW[kind].length;
-	const end = tipX - dir * len;
-	const a = crisp(y1, kind);
-	let b = crisp(y2, kind);
-	if (Math.abs(b - a) < SNAP) b = a;
-	if (b === a) return path('M', x1, a, 'H', end);
-	// The curve starts and ends horizontal (control points on the two y's), and
-	// its last stretch is a short straight run so the head continues a line.
-	const run = Math.min(6, Math.abs(end - x1) / 4);
-	const cEnd = end - dir * run;
-	const dx = Math.max(8, Math.abs(cEnd - x1) / 2) * dir;
-	return path('M', x1, a, 'C', x1 + dx, a, cEnd - dx, b, cEnd, b, 'H', end);
+/** Upstream wires into the focus's left port, along one trunk in the gutter. */
+function upstreamInto(focus: Focus, up: WireIn[]): Wire[] {
+	if (!up.length) return [];
+	const tipX = focus.left - FOCUS_RING;
+	const ty = crisp1(portOf(focus));
+	const srcRight = Math.max(...up.map((w) => w.rect.right));
+	const tx = crisp1((srcRight + tipX) / 2);
+	return up.map((w) => {
+		const y1 = crisp1(portOf({ ...w.rect, port: w.port }));
+		return wire(w.key, w.state, elbow(w.rect.right, y1, tipX, ty, tx), [tipX, ty], 'right');
+	});
 }
 
 /** Wide layout: three columns, wires left → right through the two gutters. */
-export function wideWires(focus: Rect, up: WireIn[], down: WireIn[]): Wire[] {
-	const out: Wire[] = [];
-	const upSlots = slots(up.length, focus.top, focus.height, slotPitch(up.map((w) => wireKind(w.state))));
-	up.forEach((w, i) => {
-		const kind = wireKind(w.state);
-		const y1 = w.rect.top + w.rect.height / 2;
-		const tipX = focus.left - FOCUS_RING;
-		const d = horizontal(w.rect.right, y1, tipX, upSlots[i], kind, 1);
-		out.push({ key: w.key, state: w.state, d, tip: [tipX, crispEnd(y1, upSlots[i], kind)] });
-	});
-	const downSlots = slots(down.length, focus.top, focus.height, slotPitch(down.map((w) => wireKind(w.state))));
-	down.forEach((w, i) => {
-		const kind = wireKind(w.state);
-		const y2 = w.rect.top + w.rect.height / 2;
-		const tipX = w.rect.left;
-		const d = horizontal(focus.right + FOCUS_RING, downSlots[i], tipX, y2, kind, 1);
-		out.push({ key: w.key, state: w.state, d, tip: [tipX, crispEnd(downSlots[i], y2, kind)] });
-	});
+export function wideWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[] {
+	const out = upstreamInto(focus, up);
+	if (down.length) {
+		const x1 = focus.right + FOCUS_RING;
+		const y1 = crisp1(portOf(focus));
+		const dstLeft = Math.min(...down.map((w) => w.rect.left));
+		const tx = crisp1((x1 + dstLeft) / 2);
+		for (const w of down) {
+			const tipX = w.rect.left;
+			const y2 = crisp1(portOf({ ...w.rect, port: w.port }));
+			out.push(wire(w.key, w.state, elbow(x1, y1, tipX, y2, tx), [tipX, y2], 'right'));
+		}
+	}
 	return paintOrder(out);
 }
 
 /** The compact layout's spine: x offset inside the focus box's left edge, and the downstream column's indent that clears it. */
-export const COMPACT_SPINE_INSET = 8;
+export const COMPACT_SPINE_INSET = 12;
+
+/** A wire down a spine at `sx` from `startY`, turning right into a box at `y`, tip at `tipX`. */
+function spineRight(sx: number, startY: number, y: number, tipX: number): string {
+	const r = Math.max(0, Math.min(CORNER, tipX - sx, y - startY));
+	return svgPath('M', sx, startY, 'V', y - r, ...arc(r, sx + r, y, false), 'H', tipX);
+}
 
 /**
  * Compact layout (a two-column graph between the stacked list and the full three columns): upstream wires run left → right into the
  * focus exactly as wide; the downstream column sits UNDER the focus in the right column, so its wires drop from below the focus's ring
- * down a spine `COMPACT_SPINE_INSET` px inside the focus's left edge and turn right into each box (the narrow layout's downstream shape).
+ * down a spine `COMPACT_SPINE_INSET` px inside the focus's left edge and turn right into each box's port (the narrow layout's shape).
  */
-export function compactWires(focus: Rect, up: WireIn[], down: WireIn[]): Wire[] {
-	const out = wideWires(focus, up, []);
+export function compactWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[] {
+	const out = upstreamInto(focus, up);
+	const sx = crisp1(focus.left + COMPACT_SPINE_INSET);
+	const start = focus.bottom + FOCUS_RING;
 	for (const w of down) {
-		const kind = wireKind(w.state);
-		const sx = crisp(focus.left + COMPACT_SPINE_INSET, kind);
-		const cy = crisp(w.rect.top + w.rect.height / 2, kind);
-		const start = focus.bottom + FOCUS_RING;
-		const tipX = w.rect.left;
-		const end = tipX - ARROW[kind].length;
-		const d = path('M', sx, start, 'V', cy - CORNER, 'Q', sx, cy, sx + CORNER, cy, 'H', end);
-		out.push({ key: w.key, state: w.state, d, tip: [tipX, cy] });
+		const y = crisp1(portOf({ ...w.rect, port: w.port }));
+		out.push(
+			wire(w.key, w.state, spineRight(sx, start, y, w.rect.left), [w.rect.left, y], 'right')
+		);
 	}
 	return paintOrder(out);
-}
-
-function crispEnd(y1: number, y2: number, kind: WireKind): number {
-	const a = crisp(y1, kind);
-	const b = crisp(y2, kind);
-	return Math.abs(b - a) < SNAP ? a : b;
 }
 
 /**
  * Narrow layout: the layers stack, and a spine at `SPINE_X` carries every
- * wire. Upstream: box's left edge → spine → down to the focus's ring (head
- * pointing down). Downstream: from below the ring → spine → right into the
- * box (head pointing right).
+ * wire. Upstream: box's left edge at its port → spine → down to the focus's
+ * ring (chevron pointing down). Downstream: from below the ring → spine →
+ * right into the box's port.
  */
-export function narrowWires(focus: Rect, up: WireIn[], down: WireIn[]): Wire[] {
+export function narrowWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[] {
 	const out: Wire[] = [];
+	const sx = crisp1(SPINE_X);
+	const tipY = focus.top - FOCUS_RING;
 	for (const w of up) {
-		const kind = wireKind(w.state);
-		const sx = crisp(SPINE_X, kind);
-		const cy = crisp(w.rect.top + w.rect.height / 2, kind);
-		const tipY = focus.top - FOCUS_RING;
-		const end = tipY - ARROW[kind].length;
-		const d = path('M', w.rect.left, cy, 'H', sx + CORNER, 'Q', sx, cy, sx, cy + CORNER, 'V', end);
-		out.push({ key: w.key, state: w.state, d, tip: [sx, tipY] });
+		const y = crisp1(portOf({ ...w.rect, port: w.port }));
+		const r = Math.max(0, Math.min(CORNER, w.rect.left - sx, tipY - y));
+		const d = svgPath('M', w.rect.left, y, 'H', sx + r, ...arc(r, sx, y + r, false), 'V', tipY);
+		out.push(wire(w.key, w.state, d, [sx, tipY], 'down'));
 	}
+	const start = focus.bottom + FOCUS_RING;
 	for (const w of down) {
-		const kind = wireKind(w.state);
-		const sx = crisp(SPINE_X, kind);
-		const cy = crisp(w.rect.top + w.rect.height / 2, kind);
-		const start = focus.bottom + FOCUS_RING;
-		const tipX = w.rect.left;
-		const end = tipX - ARROW[kind].length;
-		const d = path('M', sx, start, 'V', cy - CORNER, 'Q', sx, cy, sx + CORNER, cy, 'H', end);
-		out.push({ key: w.key, state: w.state, d, tip: [tipX, cy] });
+		const y = crisp1(portOf({ ...w.rect, port: w.port }));
+		out.push(
+			wire(w.key, w.state, spineRight(sx, start, y, w.rect.left), [w.rect.left, y], 'right')
+		);
 	}
 	return paintOrder(out);
 }
 
-/** Held wires paint last, so on a shared spine the held one is the one you see. */
+/** Held wires paint last, so on a shared run the held one is the one you see. */
 function paintOrder(ws: Wire[]): Wire[] {
 	const order = { clear: 0, unknown: 1, blocked: 2 } as const;
 	return [...ws].sort((a, b) => order[a.state] - order[b.state]);
 }
 
+/**
+ * ONE chevron per tip: wires that meet at one port share its head, drawn
+ * once (a stack of identical heads darkens its anti-aliased fringe), in the
+ * held ink when any wire arriving there holds.
+ */
+export function headsOf(ws: Wire[]): { key: string; d: string; tone: WireTone }[] {
+	const byTip = new Map<string, { key: string; d: string; tone: WireTone }>();
+	for (const w of ws) {
+		const k = `${w.tip[0]},${w.tip[1]}`;
+		const tone = wireTone(w.state);
+		const cur = byTip.get(k);
+		if (!cur) byTip.set(k, { key: k, d: w.head, tone });
+		else if (tone === 'held') cur.tone = 'held';
+	}
+	return [...byTip.values()].sort((a, b) => (a.tone === b.tone ? 0 : a.tone === 'held' ? 1 : -1));
+}
+
+/** The tone each wire is drawn in (re-exported for the renderer). */
+export { wireTone };
+
 /** ONE order for the Gated by column at every width: a holding link first, then the rest in their own order. The card that holds the rollout is the one the reader must see, so it is never the one a fold slices. */
 export function holdingFirst<T extends { state: WireState }>(links: readonly T[]): T[] {
-	return [...links.filter((l) => l.state === 'blocked'), ...links.filter((l) => l.state !== 'blocked')];
+	return [
+		...links.filter((l) => l.state === 'blocked'),
+		...links.filter((l) => l.state !== 'blocked')
+	];
 }
 
 /** Steep fan: the largest vertical rise a wide wire has to make, against the
