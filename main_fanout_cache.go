@@ -160,6 +160,13 @@ type skipRegistry struct {
 
 var spokeSkips = &skipRegistry{m: map[string]time.Time{}}
 
+// skipsSharedWindow reports whether a failed refresh may mark the spoke slow
+// for everyone: only timeout and unreachable kinds.
+func skipsSharedWindow(err error) bool {
+	kind, _ := clusterErrorKind(err)
+	return kind == clusterKindTimeout || kind == clusterKindUnreachable
+}
+
 // skipScope maps a cache key to its spoke: the part after the first "|".
 func skipScope(key string) string {
 	if i := strings.Index(key, "|"); i >= 0 {
@@ -304,7 +311,10 @@ func (c *swrCache[T]) loadMeta(ctx context.Context, key string, fetch func(conte
 			c.mu.Lock()
 			val, meta := e.val, e.metaLocked()
 			c.mu.Unlock()
-			if meta.StaleErr != nil {
+			// Only a failure that says something about the SPOKE (no answer, no
+			// connection) is shared. A rejection or a bad answer is about this
+			// caller's identity or request: other identities must still be asked.
+			if meta.StaleErr != nil && skipsSharedWindow(meta.StaleErr) {
 				spokeSkips.set(key, c.now().Add(c.skipWait))
 			}
 			return val, meta, nil
