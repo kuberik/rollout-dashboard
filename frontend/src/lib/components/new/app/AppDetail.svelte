@@ -177,6 +177,30 @@
 		}
 		return out;
 	});
+	/* the "in" chips that did not fit the build row's one line (wrapped under the clipped first line, or cut by its right edge; hidden whole, never half-drawn) */
+	let runsEl = $state<HTMLElement | undefined>();
+	let hiddenRuns = $state(0);
+	$effect(() => {
+		const el = runsEl;
+		void runsBadges.length;
+		if (!el) {
+			hiddenRuns = 0;
+			return;
+		}
+		const measure = () => {
+			let n = 0;
+			for (const c of el.children as HTMLCollectionOf<HTMLElement>) {
+				const out = c.offsetTop > 2 || c.offsetLeft + c.offsetWidth > el.clientWidth + 1;
+				c.style.visibility = out ? 'hidden' : '';
+				if (out) n++;
+			}
+			hiddenRuns = n;
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 	const runsPhrase = $derived(placesPhrase(runsAt.map((x) => { const n = tabEnv({ tier: x.tier, label: x.label }); return n === 'production' ? 'prod' : n; }), runsAt.map((x) => x.tier)));
 	/* AP3: ONE baseline for every count: the builds the focus place still lacks (the tab's "N newer builds") */
 	const only = $derived(newerThan(focusPlace, places));
@@ -281,10 +305,13 @@
 				<AppGlyph name={item.app} size={24} />
 				<h1 class="t-title min-w-0 break-words text-fg">{item.app}</h1>
 				<StarToggle app={item.app} class="max-sm:!h-11 max-sm:!w-11 max-sm:-mx-2 max-sm:-my-3.5" />
-				<span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 max-lg:basis-full max-lg:content-start {build && runsBadges.length ? 'max-lg:min-h-[52px]' : ''}" data-ad-build-row>
+				<!-- NOTHING MOVES AS STATE CHANGES: the build row is ONE line at every width. Build and pill never shrink; the "in" env chips fill the rest
+				     and the whole chips that do not fit are hidden (a wrap line the fixed height clips) and counted in "+N" (the full list is its title, and
+				     "All environments"). A line count that follows the state would drop the strip under it (the `done` beat: PROD · DEV · STAGING). -->
+				<span class="flex min-w-0 flex-nowrap items-center gap-x-3 max-lg:basis-full lg:flex-1 lg:basis-64" data-ad-build-row>
 					{#if build}<span class="t-meta text-fg-disabled max-lg:hidden" aria-hidden="true">/</span><span class="t-code-lg shrink-0 text-fg" data-ad-build>{build}</span>{/if}
 					{#if pill}<Chip role={pill.role as never} label={pill.word.toLowerCase()} class="shrink-0" />{/if}
-					{#if build && runsBadges.length}<span class="t-meta text-fg-subtle">in</span><span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-ad-runs title={runsPhrase}>{#each runsBadges as b (b.label)}<Chip role="env" theme={b.theme} label={b.label} wide />{/each}</span>{/if}
+					{#if build && runsBadges.length}<span class="t-meta shrink-0 text-fg-subtle">in</span><span bind:this={runsEl} class="relative flex h-5 min-w-0 flex-wrap items-center gap-x-2 overflow-hidden" data-ad-runs title={runsPhrase}>{#each runsBadges as b (b.label)}<Chip role="env" theme={b.theme} label={b.label} wide />{/each}</span>{#if hiddenRuns > 0}<span class="t-meta shrink-0 tabular-nums text-fg-subtle" data-ad-runs-more title={runsPhrase}>+{hiddenRuns}</span>{/if}{/if}
 				</span>
 				<a href={href('/environments')} class="nav-link t-ui-sm ml-auto shrink-0 !py-0 max-sm:hidden xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 			</div>
