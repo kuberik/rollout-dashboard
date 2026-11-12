@@ -37,7 +37,7 @@ describe('no app appears in two sections of one /envs page (a failing app: Atten
 				for (const [app, ss] of sectionsOf(P)) if (failingDup(ss)) dup.push(`${n}: ${app} in ${ss.join(' + ')}`);
 			}
 			expect(dup).toEqual([]);
-		});
+		}, 60_000); /* builds the page model of every environment and region: slow under a loaded worker */
 	}
 });
 

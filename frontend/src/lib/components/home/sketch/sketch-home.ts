@@ -9,6 +9,7 @@ import type { AppEnv, AppModel, EnvState, HomeModel } from '$lib/view-models/hom
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
 import { liveSource } from './fleet-source.svelte';
 import { formatTransitionAt } from '$lib/api/schedules';
+import { placeLabel } from '$lib/view-models/regions';
 
 export type Tone = 'danger' | 'held' | 'active' | 'progress' | 'success' | 'neutral';
 export type Stop = { label: string; tier: string; state: EnvState; prod: boolean; here: boolean; since: string | null; prev: string | null };
@@ -277,8 +278,8 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 	}
 
 	// ── elsewhere: not-yours apps needing someone
-	/* a place is said by its display name (`eu-west`), never its raw environment (`prod-eu-west`) */
-	const placeName = (e: { env: string; label: string; isProdRegion?: boolean }): string => (e.isProdRegion ? e.label : e.env);
+	/* a place is said by its display name (`eu-west`), never its raw environment (`prod-eu-west`), and a lone default prod place the way every other surface says it (`production`, the shared `placeLabel`) */
+	const placeName = (e: { env: string; label: string; isProdRegion?: boolean }): string => (e.isProdRegion ? placeLabel({ tier: 'prod', regions: [e.label] }) : e.env);
 	const elsewhere: Elsewhere[] = [];
 	const myApps = new Set(yours.map((y) => y.app));
 	for (const a of m.apps) {
@@ -326,7 +327,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 			href: s.href,
 			whose: ownerOf(s.app, me),
 			kind: 'flapping',
-			status: `Check flapping in ${s.env}: ${s.phrase}`,
+			status: `Check flapping in ${/^prod/i.test(s.env) ? placeLabel({ tier: 'prod', regions: [s.env.replace(/^prod-?/i, '')] }) : s.env}: ${s.phrase}`,
 			since: s.since,
 			tone: 'neutral',
 			canAct: false,
