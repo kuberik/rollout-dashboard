@@ -4,6 +4,7 @@
  * attention elsewhere (with whose it is), what was rolled back, environment health, in motion.
  * `calm` drops failures (and their rolled-back echoes) so the calm state can be shot too.
  */
+import { oldestFirst, newestFirst } from '$lib/instant';
 import type { AppEnv, AppModel, EnvState, HomeModel } from '$lib/view-models/home-model';
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
 import { liveSource } from './fleet-source.svelte';
@@ -252,7 +253,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 			});
 		}
 	}
-	yours.sort((x, y) => RANK[x.state] - RANK[y.state] || (y.since ?? '').localeCompare(x.since ?? ''));
+	yours.sort((x, y) => RANK[x.state] - RANK[y.state] || newestFirst(x.since, y.since));
 
 	// ── lead: your failing change in prod > approval you can give that blocks > your stuck change > most active
 	const prodFail = yours.filter((y) => y.state === 'failed' && y.stops.some((s) => s.here && s.prod));
@@ -260,7 +261,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 	let lead: YourChange | null = null;
 	let leadReason = '';
 	if (prodFail.length) {
-		lead = prodFail.sort((x, y) => (y.since ?? '').localeCompare(x.since ?? ''))[0];
+		lead = prodFail.sort((x, y) => newestFirst(x.since, y.since))[0];
 		leadReason = 'Your change is failing in production';
 	} else if (anyFail.length) {
 		lead = anyFail[0];
@@ -334,7 +335,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 		});
 	}
 	const ER = { failing: 0, approval: 1, held: 2, dependency: 2, flapping: 3 };
-	elsewhere.sort((x, y) => ER[x.kind] - ER[y.kind] || (x.since ?? '').localeCompare(y.since ?? ''));
+	elsewhere.sort((x, y) => ER[x.kind] - ER[y.kind] || oldestFirst(x.since, y.since));
 
 	// ── rolled back
 	const rolledBack: RolledBack[] = [];

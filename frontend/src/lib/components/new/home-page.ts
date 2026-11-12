@@ -10,6 +10,7 @@
  * figure; an approval ask leads with "N of M prod regions" only when `regionStates` says several prod regions wait (the count the change's own
  * line prints), else it is title-led. The viewer is 'you', never their own avatar; the lane drawing is built by the component (Footprint `laneOf`).
  */
+import { oldestFirst, newestFirst, earliest, latest as latestInstant } from '$lib/instant';
 import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { approvalIdentity,
 	inbox, rollouts, pinOnlyPlaces, heldRegionsPhrase, type PinOnlyPlace, fleet24hEvents, ago, isViewer, personOf, waitClock, gateName, regionStates, pretty, buildIdentity, NOW, type HomeState, type TRow
@@ -140,7 +141,7 @@ export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage
 			: r.state === 'checking' ? { mark: 'checking' as const, word: 'Checking' as const } : { mark: 'deploying' as const, word: 'Deploying' as const };
 		const x = by.get(k) ?? { key: k, app: r.app, failing: failedRow, ...kind, href: r.href, places: [] as FleetTrouble['places'], since: r.since ?? '' };
 		x.places.push({ tier: r.tier, place });
-		if ((r.since ?? '') < x.since) x.since = r.since ?? '';
+		x.since = earliest([x.since, r.since]) ?? '';
 		by.set(k, x);
 		if (r.group === 'held') (heldRegions.get(r.app) ?? heldRegions.set(r.app, new Map()).get(r.app)!).set(r.tier, [...(heldRegions.get(r.app)?.get(r.tier) ?? []), ...r.regions]);
 	}
@@ -148,25 +149,25 @@ export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage
 	foldPinIntoFleet(by, heldRegions, pinOnlyPlaces(R.c.m.apps as never, R.rows, new Set([...askKeys, ...mineKeys])));
 	/* a held app's prod chip says the same count the Apps tile, the app page and the rollout page say: "3 of 5 regions" (every cause and the pin once), not the rows' own region count */
 	for (const x of by.values()) if (x.mark === 'held') { const ph = heldRegionsPhrase(x.app, hs); const pr = x.places.find((q) => q.tier === 'prod'); if (ph && pr) pr.place = ph; }
-	const trouble = [...by.values()].sort((a, b) => TROUBLE_ORDER(a.mark) - TROUBLE_ORDER(b.mark) || a.since.localeCompare(b.since)).map(({ since: _s, ...t }) => t);
+	const trouble = [...by.values()].sort((a, b) => TROUBLE_ORDER(a.mark) - TROUBLE_ORDER(b.mark) || oldestFirst(a.since, b.since)).map(({ since: _s, ...t }) => t);
 
 	const failingApps = new Set(R.rows.filter((r) => r.group === 'failed').map((r) => r.app));
 	/* QA round 2 B1: ONE row per app, never a batch named after its first app. The row is the app's latest deploy: its build, the FURTHEST environment that build reached (a build the dev tier took and staging has not is "dev"), when it last moved. No fact lives only in a tooltip. */
 	const byApp = new Map<string, ReturnType<typeof fleet24hEvents>>();
 	for (const e of fleet24hEvents(hs)) byApp.set(e.app, [...(byApp.get(e.app) ?? []), e]);
 	const deploys: FleetDeploy[] = [...byApp.entries()].map(([app, evs]) => {
-		const latest = [...evs].sort((p, q) => q.at.localeCompare(p.at))[0];
+		const latest = [...evs].sort((p, q) => newestFirst(p.at, q.at))[0];
 		const same = evs.filter((x) => x.kind === latest.kind && x.build === latest.build);
 		const top = Math.max(...same.map((x) => TIERS.indexOf(x.tier)));
 		const there = same.filter((x) => TIERS.indexOf(x.tier) === top);
-		const e = there.sort((p, q) => q.at.localeCompare(p.at))[0];
+		const e = there.sort((p, q) => newestFirst(p.at, q.at))[0];
 		const raw = e.place.replace(/^prod-/, '');
 		/* QA #10: count SITES (distinct places), never events: three redeploys of one build in one place are one place, and a lone default site has no region wording at all */
 		const nSites = siteCount(there.map((i) => i.place));
 		const place = regionsPhrase(nSites) ?? (siteKey(raw) === 'default' ? '' : raw);
-		const at = same.reduce((m, x) => (x.at > m ? x.at : m), e.at);
+		const at = latestInstant([e.at, ...same.map((x) => x.at)]) ?? e.at;
 		return { key: `${latest.kind}|${latest.build}|${app}`, app, tier: e.tier, place, at, age: ago(at), failing: latest.kind === 'failed' && failingApps.has(app), href: nSites === 1 ? e.href : `/apps/${encodeURIComponent(app)}` };
-	}).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
+	}).sort((a, b) => newestFirst(a.at, b.at)).slice(0, 5);
 
 	return {
 		asks,

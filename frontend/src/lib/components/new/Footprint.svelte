@@ -1,5 +1,6 @@
 <!-- r34 v2: the Footprint tile became Facia.svelte; this module keeps the two data helpers the Apps page and the Facia share (laneOf, approvalOf). -->
 <script module lang="ts">
+	import { oldestFirst } from '$lib/instant';
 	import type { EnvState } from '$lib/view-models/home-model';
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { STATE_ORDER, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
@@ -22,7 +23,7 @@
 	 * such group) has no approval line, and the sentence, place words and age are the Rollouts row's.
 	 */
 	export function approvalOf(item: TApp, rows: TRow[]): { text: string; href: string; n: number; row: TRow } | null {
-		const mine = rows.filter((r) => r.app === item.app).sort((p, q) => (p.since ?? '').localeCompare(q.since ?? ''));
+		const mine = rows.filter((r) => r.app === item.app).sort((p, q) => oldestFirst(p.since, q.since));
 		if (!mine.length) return null;
 		const yours = mine.some((r) => rowAction(r)?.kind === 'approve'); /* Rollouts' own word: "your" when the viewer can give it */
 		return { text: `${stateWord('approval', { yours })} in ${mine.map((r) => r.place).join(' and ')}`, href: mine[0].href, n: mine.length, row: mine[0] };

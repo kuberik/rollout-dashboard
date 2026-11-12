@@ -10,6 +10,7 @@
  * Honest fallbacks: no `observations[]` on the list payload, so a failing card leads with the check NAME + message (attention.ts), never a figure;
  * a prod approval card counts its regions (the region meter, as on Home); other approvals stay title-led.
  */
+import { oldestFirst } from '$lib/instant';
 import {
 	changes, rollouts, ago, isViewer, personOf, personName, waitClock, avatarSrc, regionStates, type HomeState, type TChange, type TRow, type TierKey, noReleasesApp
 } from './data';
@@ -146,7 +147,7 @@ export function changesPage(hs: HomeState): ChangesPage {
 		return p.ride.since ?? p.c.since;
 	};
 	const attP = mineP.filter((p) => (p.state === 'failed' || p.state === 'approval-yours') && p !== lead)
-		.sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed') || (askSince(a) ?? '').localeCompare(askSince(b) ?? ''));
+		.sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed') || oldestFirst(askSince(a), askSince(b)));
 	const attention: AttentionItem[] = attP.map((p) => {
 		const failed = p.state === 'failed';
 		const you = isViewer(p.c.who);

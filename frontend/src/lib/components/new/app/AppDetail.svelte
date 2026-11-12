@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { newestFirst } from '$lib/instant';
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 		import { releaseCandidates } from '$lib/releases/registry.svelte';
 	/**
@@ -100,7 +101,7 @@
 		return all
 			.sort((a, b) => quiet
 				? tierRank(a.p.tier) - tierRank(b.p.tier) || a.p.label.localeCompare(b.p.label)
-				: Number(b.p.tier === 'prod') - Number(a.p.tier === 'prod') || urgencyClass(a.r) - urgencyClass(b.r) || (urgencyClass(a.r) < 5 ? (b.r.since ?? '').localeCompare(a.r.since ?? '') : 0) || tierRank(a.p.tier) - tierRank(b.p.tier) || a.p.label.localeCompare(b.p.label))
+				: Number(b.p.tier === 'prod') - Number(a.p.tier === 'prod') || urgencyClass(a.r) - urgencyClass(b.r) || (urgencyClass(a.r) < 5 ? newestFirst(a.r.since, b.r.since) : 0) || tierRank(a.p.tier) - tierRank(b.p.tier) || a.p.label.localeCompare(b.p.label))
 			.map((x) => x.r);
 	});
 	/* AA4 + builds-lag: the statement owns Roll back (a failing app) once; Approve is the statement's at every width (owner 2026-11-08: one Approve, like the change page); a place row carries none unless a failure owns the banner */

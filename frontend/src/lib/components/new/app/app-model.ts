@@ -7,6 +7,7 @@
  * allowance (allowedVersions stays inside rawOf). `deployTargets` derives it: the newest build a place still lacks that
  * runs HEALTHY in the tier upstream of it, for a place no approval or rule holds.
  */
+import { newestFirst } from '$lib/instant';
 import { approvalWord, severity } from '../state-words';
 import {
 	tabPill,
@@ -129,7 +130,7 @@ export function buildsOf(places: PlaceHold[], only: Set<string> | null = null): 
 				deployTo: targets.get(h.build) ?? []
 			});
 		}
-	return [...m.values()].sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''));
+	return [...m.values()].sort((a, b) => newestFirst(a.created, b.created));
 }
 /** "live in us-east, us-west" / "deploying in dev" — where a build already is */
 export const whereIs = (b: Pick<AppBuild, 'runsIn' | 'moving'>): string | null =>
@@ -368,7 +369,7 @@ export function recentBuilds(places: PlaceHold[], limit = 8): AppBuild[] {
 			});
 		}
 	return [...m.values()]
-		.sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))
+		.sort((a, b) => newestFirst(a.created, b.created))
 		.slice(0, limit);
 }
 
@@ -462,9 +463,7 @@ export function ledgerOf(places: PlaceHold[]): Stop[] {
 		const top = [...places]
 			.filter((p) => p.deployedBuild)
 			.sort((a, b) =>
-				(deployedHistory(b.href, 1)[0]?.at ?? '').localeCompare(
-					deployedHistory(a.href, 1)[0]?.at ?? ''
-				)
+				newestFirst(deployedHistory(a.href, 1)[0]?.at, deployedHistory(b.href, 1)[0]?.at)
 			)[0]?.deployedBuild;
 		seq = top ? [top] : [];
 	}

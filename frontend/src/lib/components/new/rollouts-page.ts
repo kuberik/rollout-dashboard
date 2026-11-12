@@ -8,6 +8,7 @@
  * Honest fallbacks: no `observations[]` API on the list payload yet, so a failing card leads with the check's NAME and message
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
+import { newestFirst } from '$lib/instant';
 import {
 	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
@@ -73,7 +74,7 @@ export function strandOf(r: TRow, hs: HomeState): MiniNode[] {
 	return nodes;
 }
 
-const sinceDesc = (a: { since?: string | null }, b: { since?: string | null }) => (b.since ?? '').localeCompare(a.since ?? '');
+const sinceDesc = (a: { since?: string | null }, b: { since?: string | null }) => newestFirst(a.since, b.since);
 
 /** [state word, what the strand cannot draw]. Never "step N of M". */
 /** `clockInSentence: false` — the row has an age slot (the aligned column) that already prints the wait's clock, so the sentence does not say "for 5h" a second time (QA2 #8). */

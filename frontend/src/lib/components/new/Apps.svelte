@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { oldestFirst, newestFirst } from '$lib/instant';
 	/**
 	 * APPS (r39 build, 2026-11-08; mock .work/home-r34/direction/r39/apps.html, FINAL.md "Apps", LANGUAGE.md "Exceptions": Apps' attention items are
 	 * APP TILES in their attention state, not the shared Attention card). The operator's question: "which app needs attention first, what runs where".
@@ -35,7 +36,7 @@
 	const changesOf = $derived.by(() => {
 		const m = new Map<string, ReturnType<typeof changes>['items']>();
 		for (const c of changes(scenario).items) for (const a of c.apps) m.set(a, [...(m.get(a) ?? []), c]);
-		for (const [a, l] of m) m.set(a, [...l].sort((x, y) => y.mergedAt.localeCompare(x.mergedAt)));
+		for (const [a, l] of m) m.set(a, [...l].sort((x, y) => newestFirst(x.mergedAt, y.mergedAt)));
 		return m;
 	});
 	const built = $derived(new Map(A.items.map((a) => [a.app, laneOf(a, A.R.c.m as never, A.R.c.events as never)])));
@@ -50,7 +51,7 @@
 	const needs = $derived.by(() => {
 		const base = (A.groups.find((g) => g.key === 'needs')?.rows ?? []) as TApp[];
 		const have = new Set(base.map((a) => a.app));
-		const extra = A.items.filter((a) => !have.has(a.app) && approvalOf(a, approvals)).sort((p, q) => (p.since ?? '').localeCompare(q.since ?? '') || p.app.localeCompare(q.app));
+		const extra = A.items.filter((a) => !have.has(a.app) && approvalOf(a, approvals)).sort((p, q) => oldestFirst(p.since, q.since) || p.app.localeCompare(q.app));
 		const all = [...base, ...extra];
 		/* C4 — one urgency rule: Rollouts' lead (its Runway's subject) leads the band when its app is in it … */
 		const lead = runwayRow(A.R.rows)?.app;

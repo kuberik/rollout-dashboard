@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script module lang="ts">
+	import { newestFirst, isLater } from '$lib/instant';
 	import { displayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
 	import { formatTimestamp } from '$lib/display-time';
 	import type { PodInfo } from '$lib/api/logs';
@@ -1009,7 +1010,7 @@
 			const conditions = item.status?.conditions ?? [];
 			let finishedAt: string | null = null;
 			for (const c of conditions) {
-				if (!finishedAt || c.lastTransitionTime > finishedAt) finishedAt = c.lastTransitionTime;
+				if (!finishedAt || isLater(c.lastTransitionTime, finishedAt)) finishedAt = c.lastTransitionTime;
 			}
 			if (!finishedAt) continue;
 			if (!best || finishedAt > best.finishedAt) {
@@ -1035,7 +1036,7 @@
 					const conditions = item.status?.conditions ?? [];
 					let finishedAt: string | null = null;
 					for (const c of conditions) {
-						if (!finishedAt || c.lastTransitionTime > finishedAt) finishedAt = c.lastTransitionTime;
+						if (!finishedAt || isLater(c.lastTransitionTime, finishedAt)) finishedAt = c.lastTransitionTime;
 					}
 					return {
 						key: item.metadata?.name || item.status?.jobName || 'test',
@@ -1045,7 +1046,7 @@
 						sortKey: finishedAt ?? ''
 					};
 				})
-				.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+				.sort((a, b) => newestFirst(a.sortKey, b.sortKey));
 		}
 	);
 

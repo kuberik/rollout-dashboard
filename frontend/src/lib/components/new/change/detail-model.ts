@@ -6,6 +6,7 @@
  * v2 r4: ONE count per page (`countsOf`), every place's state/build/age is the TAB's current deploy (`currentAt`), a place the change does
  * not reach is listed as "not affected", the History spine keeps every place's current deploy and waiting events read in the tab's own age.
  */
+import { oldestFirst, newestFirst, earliest, latest, isLater } from '$lib/instant';
 import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import {
@@ -85,7 +86,7 @@ export function classified(c: TChange, scenario: HomeState): { all: Unit[]; plac
 		if (u.containsChange) { const first = mine.find((h) => h.outcome === 'Succeeded') ?? mine[0]; places.push({ ...u, kind: 'running', since: first?.at ?? null, build: u.current, at: currentAt(u.href) ?? first?.at ?? null }); continue; }
 		if (u.row && (u.group === 'approval' || u.group === 'held')) {
 			/* CE2: the wait is THIS change's build: the OLDEST candidate that carries it (c0d3e88, "Held by a rule · 4h" on the tab), never the newest build behind it (f4a2c19 is the labelled "Newer build") */
-			const cand = ((releaseCandidates(rawOf(u.href) as unknown as Rollout) as RawC[] | undefined) ?? []).filter((x) => carriesBuild(c, x)).sort((a, b) => (a.created ?? '').localeCompare(b.created ?? ''))[0];
+			const cand = ((releaseCandidates(rawOf(u.href) as unknown as Rollout) as RawC[] | undefined) ?? []).filter((x) => carriesBuild(c, x)).sort((a, b) => oldestFirst(a.created, b.created))[0];
 			if (cand) { const wait = waitClock(u.row, scenario) ?? cand.created ?? u.row.since; places.push({ ...u, kind: 'waiting', since: wait, build: shortBuild(cand.version ?? cand.tag ?? cand.revision), at: wait }); }
 		}
 	}
@@ -93,7 +94,7 @@ export function classified(c: TChange, scenario: HomeState): { all: Unit[]; plac
 	/* CE2: a place the change neither runs nor waits for is NOT AFFECTED: it stays on the page (named, with its build) so the count adds up */
 	const unaffected: Place[] = all.filter((u) => !places.some((p) => p.href === u.href)).map((u) => ({ ...u, kind: 'unaffected' as const, since: null, build: u.current, at: currentAt(u.href), replacedFrom: hist.find((h) => h.href === u.href && h.outcome === 'Succeeded')?.build ?? null }));
 	const rank = (p: Place) => (p.newerFails ? 0.5 : KIND_RANK[p.kind]);
-	places.sort((a, b) => rank(a) - rank(b) || TIER_RANK[b.tier] - TIER_RANK[a.tier] || ownRank(a) - ownRank(b) || (b.since ?? '').localeCompare(a.since ?? ''));
+	places.sort((a, b) => rank(a) - rank(b) || TIER_RANK[b.tier] - TIER_RANK[a.tier] || ownRank(a) - ownRank(b) || newestFirst(a.since, b.since));
 	return { all, places, unaffected };
 }
 /** a build is looked up by the CHANGE's repo (platform-telemetry), never by the place's app name (telemetry-indexer), so a multi-service change finds its build on every service */
@@ -274,8 +275,8 @@ export function commitsOf(c: TChange, scenario: HomeState, lead: Place | null = 
 	/* changedetail-9 CE2: a build other than the one that first carried the change is the NEWER build (f4a2c19 on #90, a11c202 on #36) */
 	for (const b of by.values()) { const fb = firstBuildOf(c, scenario, b.app); if (fb && fb !== b.build) b.newer = true; }
 	/* oldest first: the build that first carried the change leads, as History's "First deployed" does */
-	const firstAt = (b: Build) => hist.filter((h) => h.build === b.build && h.app === b.app).map((h) => h.at ?? '').sort()[0] ?? '\uffff';
-	const builds = [...by.values()].sort((a, b) => firstAt(a).localeCompare(firstAt(b)));
+	const firstAt = (b: Build) => earliest(hist.filter((h) => h.build === b.build && h.app === b.app).map((h) => h.at));
+	const builds = [...by.values()].sort((a, b) => oldestFirst(firstAt(a), firstAt(b)));
 	return { commits, builds, stat: cr && cr.files ? { add: cr.additions, del: cr.deletions, files: cr.files } : statOf(c, scenario) };
 }
 /**
@@ -375,13 +376,13 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		const k = `${kind}|${p.app}|${p.build}`;
 		const e = waits.get(k);
 		/* one event per waiting build; each place carries its own hold clock (waitClock), the event prints the oldest */
-		if (e) { e.places.push({ label: p.label, tier: p.tier, href: p.href }); if (p.since && (!e.at || p.since < e.at)) { e.at = p.since; const ld = hist.filter((h) => h.build === p.build && h.app === p.app && h.kind !== 'rollback').map((h) => h.at).sort().pop() ?? ''; e.order = ld > p.since ? ld : p.since; } continue; }
+		if (e) { e.places.push({ label: p.label, tier: p.tier, href: p.href }); if (p.since && (!e.at || isLater(e.at, p.since))) { e.at = p.since; const ld = latest(hist.filter((h) => h.build === p.build && h.app === p.app && h.kind !== 'rollback').map((h) => h.at)) ?? ''; e.order = isLater(ld, p.since) ? ld : p.since; } continue; }
 		/* AD r4 (1): a wait cannot precede the deploys of the build it waits for (the candidate is created at build time, before dev ever ran it): its `at` (the printed age) stays the tab's candidate age, its `order` (where it sits on the spine) is the later of that and the last deploy of the build in an earlier place, so the spine stays causal */
-		const lastDeploy = hist.filter((h) => h.build === p.build && h.app === p.app && h.kind !== 'rollback').map((h) => h.at).sort().pop() ?? '';
-		waits.set(k, { key: k, kind, app: p.app, build: p.build, place: p.label, places: [{ label: p.label, tier: p.tier, href: p.href }], tier: p.tier, at: p.since, order: (p.since && lastDeploy > p.since ? lastDeploy : p.since) ?? undefined, who: null, words: kind === 'held' ? 'Held' : 'Waiting for approval', href: `${p.href}/gates` });
+		const lastDeploy = latest(hist.filter((h) => h.build === p.build && h.app === p.app && h.kind !== 'rollback').map((h) => h.at)) ?? '';
+		waits.set(k, { key: k, kind, app: p.app, build: p.build, place: p.label, places: [{ label: p.label, tier: p.tier, href: p.href }], tier: p.tier, at: p.since, order: (p.since && isLater(lastDeploy, p.since) ? lastDeploy : p.since) ?? undefined, who: null, words: kind === 'held' ? 'Held' : 'Waiting for approval', href: `${p.href}/gates` });
 	}
 	/* changedetail-12 CD2: ONE clock. A wait is dated by the instant the tab prints for it (the candidate's age = when the wait began), so the list is sorted by event time, oldest first, ages never rising down the list (the waits used to be appended and broke it) */
-	return [...out, ...waits.values()].sort((a, b) => (a.order ?? a.at ?? '').localeCompare(b.order ?? b.at ?? ''));
+	return [...out, ...waits.values()].sort((a, b) => oldestFirst(a.order ?? a.at, b.order ?? b.at));
 }
 
 /**
@@ -409,10 +410,10 @@ export function foldWindow(events: Pick<Ev, 'kind' | 'words'>[], keep = 10): [nu
 /* ═══ How it's going ═══ */
 export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] | null = null) {
 	const run = places.filter((p) => p.kind === 'running');
-	const prod = run.filter((p) => p.tier === 'prod').sort((a, b) => (a.since ?? '').localeCompare(b.since ?? ''))[0];
+	const prod = run.filter((p) => p.tier === 'prod').sort((a, b) => oldestFirst(a.since, b.since))[0];
 	/* AD r1 (1): production means production. A change whose only deploy to a prod place FAILED has reached production; the fact says so, with the outcome */
-	const prodFailed = !prod ? places.filter((p) => p.tier === 'prod' && p.kind === 'failed' && p.since).sort((a, b) => (a.since ?? '').localeCompare(b.since ?? ''))[0] : null;
-	const first = [...places].filter((p) => p.kind !== 'waiting').sort((a, b) => (a.since ?? '').localeCompare(b.since ?? ''))[0];
+	const prodFailed = !prod ? places.filter((p) => p.tier === 'prod' && p.kind === 'failed' && p.since).sort((a, b) => oldestFirst(a.since, b.since))[0] : null;
+	const first = [...places].filter((p) => p.kind !== 'waiting').sort((a, b) => oldestFirst(a.since, b.since))[0];
 	/* the page's ONE age form is `ago` ("2d", "9h", "10m"): a duration is the age of the instant that far before now */
 	const gap = (iso: string | null | undefined) => {
 		if (!iso || !c.mergedAt) return null;
@@ -497,7 +498,7 @@ export function openedOf(p: Place, scenario: HomeState, landed = false): Opened 
 		const hb = candidateBuilds(row).find((h) => h.build === p.build);
 		const w = hb ? { build: hb.build, title: hb.title, author: hb.author, at: hb.created } : (() => { const x = buildInQuestionFacts(row); return x ? { build: x.build, title: x.title, author: x.author, at: x.since } : null; })();
 		const dep = deployedBuild(row);
-		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(waitClock(row, scenario) ?? w?.at ?? p.since), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (h.created ?? '') > (w?.at ?? '')).sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
+		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(waitClock(row, scenario) ?? w?.at ?? p.since), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (h.created ?? '') > (w?.at ?? '')).sort((a, b) => newestFirst(a.created, b.created))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
 	}
 	const bc = buildCommitOf(p.href, p.current);
 	const moving = !!row && (row.state === 'deploying' || row.state === 'checking');
@@ -570,8 +571,8 @@ export function buildGroups(c: TChange, scenario: HomeState, rows: { p: Place; a
 	};
 	for (const r of rows) add(r, true);
 	for (const u of unaffected) add({ p: u, also: [] }, false);
-	const firstAt = (g: BuildGroup) => hist.filter((h) => h.build === g.build && h.app === g.app).map((h) => h.at ?? '').sort()[0] ?? (g.rows[0]?.p.at ?? '￿');
+	const firstAt = (g: BuildGroup) => earliest(hist.filter((h) => h.build === g.build && h.app === g.app).map((h) => h.at)) ?? g.rows[0]?.p.at ?? null;
 	/* AD r2 (7): an app's builds stay together (the change's app order), then the own build, then by first carry; builds that do not carry it last within the app */
 	const appRank = (g: BuildGroup) => { const i = c.apps.indexOf(g.app); return i < 0 ? c.apps.length : i; };
-	return [...by.values()].sort((a, b) => appRank(a) - appRank(b) || Number(b.carries) - Number(a.carries) || Number(b.own) - Number(a.own) || firstAt(a).localeCompare(firstAt(b)));
+	return [...by.values()].sort((a, b) => appRank(a) - appRank(b) || Number(b.carries) - Number(a.carries) || Number(b.own) - Number(a.own) || oldestFirst(firstAt(a), firstAt(b)));
 }

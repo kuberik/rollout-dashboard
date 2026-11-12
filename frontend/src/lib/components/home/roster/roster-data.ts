@@ -7,6 +7,7 @@
  * No new truth: everything derives from pocket's `compass` (the real HomeModel over the pinned
  * home-incident fixture) and depot's helpers. Only the grouping is new. Older lab versions still import from here; keep exports additive so they render unchanged.
  */
+import { newestFirst, isLater, isNotEarlier } from '$lib/instant';
 import { stars } from '$lib/stores/stars.svelte';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, type HomeState } from '../sketch/home-data';
@@ -169,7 +170,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 		});
 	}
 	const TR: Record<TierKey, number> = { prod: 0, staging: 1, test: 2, dev: 3 };
-	rows.sort((a, b) => Number(b.lead) - Number(a.lead) || Number(b.needsYou) - Number(a.needsYou) || TR[a.tier] - TR[b.tier] || (b.since ?? '').localeCompare(a.since ?? ''));
+	rows.sort((a, b) => Number(b.lead) - Number(a.lead) || Number(b.needsYou) - Number(a.needsYou) || TR[a.tier] - TR[b.tier] || newestFirst(a.since, b.since));
 	const order: GroupKey[] = ['failed', 'approval', 'held', 'moving'];
 	const groups: RolloutGroup[] = order
 		.map((k) => ({ key: k, rows: rows.filter((r) => r.group === k), places: rows.filter((r) => r.group === k).reduce((n, r) => n + r.regions.length, 0) }))
@@ -211,7 +212,7 @@ export function arrivalRows(activity: { app: string; env: string; where: string;
 		if (!m) return null;
 		return m.envs.filter((e) => tierOf(e) === 'prod' && isLiveHealthy(e.state) && !!e.version && (changeBySha(a.app, shortVersion(e.version))?.ref ?? a.ref) === a.ref && Math.abs(Date.parse(e.arrivedAt ?? a.at) - Date.parse(a.at)) < 30 * 60000).map((e) => e.label);
 	};
-	for (const a of [...activity].filter((x) => x.kind !== 'failed').sort((p, q) => q.at.localeCompare(p.at))) {
+	for (const a of [...activity].filter((x) => x.kind !== 'failed').sort((p, q) => newestFirst(p.at, q.at))) {
 		if (seen.has(a.app)) continue;
 		const live = liveRegions(a);
 		if (live && !live.length) continue;
@@ -295,7 +296,7 @@ export function liveLabels(m: { apps: { app: string; envs: EnvLike[] }[] }, name
 	for (const a of m.apps)
 		if (names.includes(a.app))
 			for (const e of a.envs)
-				if (tierOf(e) === tier && isLiveHealthy(e.state) && (e.heldSince ? mergedAt < e.heldSince : !!e.arrivedAt && mergedAt <= e.arrivedAt) && !out.includes(e.label)) out.push(e.label);
+				if (tierOf(e) === tier && isLiveHealthy(e.state) && (e.heldSince ? isLater(e.heldSince, mergedAt) : isNotEarlier(e.arrivedAt, mergedAt)) && !out.includes(e.label)) out.push(e.label);
 	return out;
 }
 
@@ -390,7 +391,7 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 		});
 	}
 	const order: ChangeGroupKey[] = ['failed', 'waiting', 'moving', 'landed'];
-	const sortIt = (a: ChangeItem, b: ChangeItem) => (b.since ?? '').localeCompare(a.since ?? '');
+	const sortIt = (a: ChangeItem, b: ChangeItem) => newestFirst(a.since, b.since);
 	const group = (mine: boolean) => order.map((k) => ({ key: k, rows: items.filter((i) => i.mine === mine && i.group === k).sort(sortIt) })).filter((g) => g.rows.length);
 	return {
 		items, mine: group(true), team: group(false), door,
@@ -473,6 +474,6 @@ export function apps(state: HomeState) {
 	const lastDeploy = (app: string) => Math.max(0, ...c.events.filter((e) => e.app === app).map((e) => e.t));
 	const order = ['needs', 'moving', 'waiting', 'quiet'] as const;
 	const rank = (i: AppItem) => (i.lead ? 0 : i.glyph === 'failed' ? 1 : 2);
-	const groups = order.map((k) => ({ key: k, rows: items.filter((i) => i.group === k).sort((a, b) => rank(a) - rank(b) || (k === 'quiet' ? lastDeploy(b.app) - lastDeploy(a.app) : (b.since ?? '').localeCompare(a.since ?? ''))) })).filter((g) => g.rows.length);
+	const groups = order.map((k) => ({ key: k, rows: items.filter((i) => i.group === k).sort((a, b) => rank(a) - rank(b) || (k === 'quiet' ? lastDeploy(b.app) - lastDeploy(a.app) : newestFirst(a.since, b.since))) })).filter((g) => g.rows.length);
 	return { R, items, groups };
 }
