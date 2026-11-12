@@ -90,7 +90,12 @@ export function isHealthy(c: RolloutCard): boolean {
  * why `diverged` is named explicitly here and `unknown` is not.
  */
 export function isTrailing(c: RolloutCard): boolean {
-	return isHealthy(c) && (rankBehindBy(c.rank) > 0 || c.rank.kind === 'diverged');
+	return isHealthy(c) && hasNewerBuilds(c);
+}
+
+/** Runs older code than its own release list offers (or none that list knows), whatever its health: newer builds exist for it. The part of `isTrailing` that is not about health; `pinHoldsBuilds` reads it so a pin holds builds at a failing place too. */
+export function hasNewerBuilds(c: RolloutCard): boolean {
+	return rankBehindBy(c.rank) > 0 || c.rank.kind === 'diverged';
 }
 
 /**

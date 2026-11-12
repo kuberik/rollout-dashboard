@@ -7,7 +7,7 @@
 import type { Rollout } from '../../types';
 import type { RolloutCard } from '$lib/rollout-cards';
 import type { EnvState } from './home-model';
-import { isTrailing } from './fleet-groups';
+import { hasNewerBuilds } from './fleet-groups';
 import { isFieldManagedByManager, isFieldManagedByOtherManager } from '$lib/utils';
 import { liveForPlace, type Fleet } from './failed-builds';
 import { promotionCandidates, type ReleaseRef } from './promotion';
@@ -32,8 +32,8 @@ export function pinLeadSentence(
 /** The one phrase for a build a pin holds, on every row that states a hold's cause. */
 export const HELD_BY_PIN = 'Held by the pin';
 
-/** A place a pin holds builds at: pinned, and newer builds exist that the pin refuses. The one predicate every count of held places reads (a pin with nothing newer holds nothing). */
-export const pinHoldsBuilds = (c: Pick<RolloutCard, 'pinnedVersion'> & Partial<RolloutCard>): boolean => c.pinnedVersion != null && isTrailing(c as RolloutCard);
+/** A place a pin holds builds at: pinned, and newer builds exist that the pin refuses, whatever the place's health (a failing place's pin still refuses them). The one predicate every count of held places reads (a pin with nothing newer holds nothing). */
+export const pinHoldsBuilds = (c: Pick<RolloutCard, 'pinnedVersion'> & Partial<RolloutCard>): boolean => c.pinnedVersion != null && hasNewerBuilds(c as RolloutCard);
 
 /**
  * A place's state as every COUNT of held places reads it: a place a pin holds is held, even though its own state word is quiet

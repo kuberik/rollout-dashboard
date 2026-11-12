@@ -30,6 +30,7 @@ import { runwayRow, rowAction } from '../rollout-view';
 import { plural } from '../envs-model';
 import { classifyChanges, rc, type Rollup } from '../changes-page';
 import { beadsFor } from '$lib/view-models/bead';
+import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import type { EnvCell } from '$lib/components/EnvRow.svelte';
 
 export type EnvTarget = { kind: 'tier'; tier: TierKey } | { kind: 'region'; label: string };
@@ -91,7 +92,7 @@ export type EnvPage = {
 export type Newer = { build: string; from: TierKey | null; hold: string | null };
 /** the one sentence a Failing card prints for its `Newer` build */
 export const newerNote = (n: Newer): string =>
-	n.hold ? `Newer build ${n.build}${n.from ? ` from ${n.from}` : ''} is held: ${n.hold}` : `Newer build ${n.build} ready${n.from ? ` in ${n.from}` : ''}`;
+	n.hold ? `Newer build ${n.build}${n.from ? ` from ${n.from}` : ''} · ${n.hold}` : `Newer build ${n.build} ready${n.from ? ` in ${n.from}` : ''}`;
 
 /** One app with something waiting to enter this environment. `cells` is the EnvRow: the environments before this one that hold its unlanded changes (beads), then this environment's box. */
 export type GangTile = {
@@ -308,7 +309,9 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 	const newerOf = (app: string): Newer | null => {
 		const t = failedApps.has(app) ? inb.find((x) => x.app === app) : null;
 		const x = t ? inbound(hs, tierKey).find((i) => i.app === app) : null;
-		return t && x ? { build: x.build, from: x.from, hold: t.hold ? (x.reason ?? 'Held').replace(/^Waiting on /, 'Waits on ') : null } : null;
+		/* a pin on the failing place refuses the newer build too (pinHoldsBuilds, whatever the place's health) */
+		const pinned = (A.items.find((i) => i.app === app)?.placeList ?? []).some((p) => p.tier === tierKey && (!region || p.label === region) && p.pinned);
+		return t && x ? { build: x.build, from: x.from, hold: t.hold ? (x.reason ?? 'Held').replace(/^Waiting on /, 'Waits on ') : pinned ? HELD_BY_PIN : null } : null;
 	};
 	const held = inb.filter((t) => t.hold && !failedApps.has(t.app)), ready = inb.filter((t) => !t.hold && !failedApps.has(t.app));
 	const nAp = held.filter((t) => t.hold === 'approval').length;

@@ -12,7 +12,7 @@ describe('the rendered page', () => {
 		const P = envPage('incident', 'prod')!;
 		const c = render(WithQueryClient, { props: { component: EnvPage_ as never, props: { state: 'incident', P } } }).container;
 		const card = [...c.querySelectorAll('[data-truth-kind="attention"]')].find((e) => e.getAttribute('data-truth-app') === 'deploy-pin-fail')!;
-		expect(card.querySelector('[data-note]')?.textContent).toBe('Newer build dp-3 ready in dev');
+		expect(card.querySelector('[data-note]')?.textContent).toBe('Newer build dp-3 from dev · Held by the pin');
 		expect(c.querySelectorAll('#ready a[href*="deploy-pin-fail"]').length).toBe(0);
 		expect([...c.querySelectorAll('a[href*="deploy-pin-fail"]')].filter((a) => a.closest('#ready, #held, #behind, #in-step')).length).toBe(0);
 	});

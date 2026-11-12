@@ -47,7 +47,7 @@ describe('deploy-pin-fail on /envs/prod', () => {
 		const P = envPage('incident', 'prod')!;
 		expect(sectionsOf(P).get('deploy-pin-fail')).toEqual(['attention']);
 		const a = P.attention.find((x) => x.app === 'deploy-pin-fail')!;
-		expect(a.newer).toEqual({ build: 'dp-3', from: 'dev', hold: null });
-		expect(newerNote(a.newer!)).toBe('Newer build dp-3 ready in dev');
+		expect(a.newer).toEqual({ build: 'dp-3', from: 'dev', hold: 'Held by the pin' });
+		expect(newerNote(a.newer!)).toBe('Newer build dp-3 from dev · Held by the pin');
 	});
 });
