@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { findChange, classified, countsOf, spineOf } from '../change/detail-model';
+import { findChange, classified, countsOf, spineOf, howFacts, envFull } from '../change/detail-model';
 import { ago } from '../data';
 import { respond } from '../../../demo/respond';
 import { resetDemoState } from '../../../demo/state';
@@ -102,5 +102,26 @@ describe('change-strip: hello-waves beats', () => {
 		expect(shapes.length).toBeGreaterThan(2);
 		for (const x of shapes) expect(x).toEqual(shapes[0]);
 		expect(states.size).toBeGreaterThan(1);
+	});
+	it('QA strip r1 (2, 3): a mixed wave still reached production, and Summary agrees with History', () => {
+		for (const b of WAVES_STEPS) {
+			beat(b);
+			const c = findChange('github.com/exampleco/hello-waves/pull/21', 'incident')!;
+			const cl = classified(c, 'incident');
+			const ev = spineOf(c, 'incident', cl.places);
+			const how = howFacts(c, cl.places, cl.all, ev);
+			const doneProd = flat(stagesOf({ kind: 'change', change: c }, 'incident')).filter((p) => p.tier === 'prod' && p.state === 'deployed').length;
+			/* production is reached exactly when a prod site FINISHED deploying the change */
+			expect(!!how.toProd, b).toBe(doneProd > 0);
+			expect(ev.filter((e) => e.reachedProd).length, b).toBe(doneProd > 0 ? 1 : 0);
+		}
+		beat('wave1-half');
+		const c = findChange('github.com/exampleco/hello-waves/pull/21', 'incident')!;
+		const ev = spineOf(c, 'incident', classified(c, 'incident').places);
+		expect(ev.find((e) => e.kind === 'moving' && e.tier === 'prod')?.words).toBe('Wave 1 deploying');
+	});
+	it('QA strip r1 (5): a prod site called "production" is the tier, never "prod-production"', () => {
+		expect(envFull('prod', 'production')).toBe('prod');
+		expect(envFull('prod', 'eu-west-1')).toBe('prod-eu-west-1');
 	});
 });

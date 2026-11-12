@@ -48,6 +48,7 @@ describe('waves story', () => {
 		arm: { dev: [NEW, OK], staging: [NEW, 'InProgress'], 'eu-west-1': [OLD, OK], 'us-east-1': [OLD, OK], 'ap-south-1': [OLD, OK] },
 		staging: { dev: [NEW, OK], staging: [NEW, OK], 'eu-west-1': [OLD, OK], 'us-east-1': [OLD, OK], 'ap-south-1': [OLD, OK] },
 		wave1: { dev: [NEW, OK], staging: [NEW, OK], 'eu-west-1': [NEW, 'InProgress'], 'us-east-1': [NEW, 'Deploying'], 'ap-south-1': [OLD, OK] },
+		'wave1-half': { dev: [NEW, OK], staging: [NEW, OK], 'eu-west-1': [NEW, OK], 'us-east-1': [NEW, 'Deploying'], 'ap-south-1': [OLD, OK] },
 		'wave1-done': { dev: [NEW, OK], staging: [NEW, OK], 'eu-west-1': [NEW, OK], 'us-east-1': [NEW, OK], 'ap-south-1': [OLD, OK] },
 		wave2: { dev: [NEW, OK], staging: [NEW, OK], 'eu-west-1': [NEW, OK], 'us-east-1': [NEW, OK], 'ap-south-1': [NEW, 'InProgress'] },
 		done: { dev: [NEW, OK], staging: [NEW, OK], 'eu-west-1': [NEW, OK], 'us-east-1': [NEW, OK], 'ap-south-1': [NEW, OK] }

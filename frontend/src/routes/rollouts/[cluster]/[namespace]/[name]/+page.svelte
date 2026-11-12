@@ -3282,7 +3282,7 @@
 										sites
 									/>
 								</div>
-								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0"
+								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0 max-sm:mt-1"
 									>All environments<ChevronRightOutline class="h-3 w-3" /></a
 								>
 							</div>

@@ -410,12 +410,16 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		out.push({ key: `${h.href}|${h.at}`, kind, app: h.app, build: h.build, place: h.place, places: tier ? [{ label: h.place, tier, href: h.href }] : [], tier, at, who: h.who, words, href: `${h.href}/history`, ...(newerFail ? { newer: true } : {}), ...(kind === 'rollback' && fromOf.get(`${h.href}|${h.at}`) ? { from: fromOf.get(`${h.href}|${h.at}`)!.build } : {}), ...(kind === 'rollback' && causeOf(h.href, h.at) ? { cause: causeOf(h.href, h.at)! } : {}) });
 	}
 	for (const [gk, g] of groups) {
-		const mv = g.items.find((x) => x.moving);
+		const mv = g.items.find((x) => x.moving && !x.checking) ?? g.items.find((x) => x.moving);
 		const done = g.items.filter((x) => !x.moving);
 		const where = g.wave != null ? `wave ${g.wave}` : g.tier;
 		const evPlaces = g.items.map((x) => ({ label: x.label, tier: g.tier, href: x.href }));
+		/* QA strip r1 (3): a wave with a finished site still says production was reached, whatever its other sites are doing */
+		const reachedHere = !!prodFirst && g.tier === 'prod' && done.some((x) => x.href === prodFirst!.href);
 		if (mv) {
-			out.push({ key: `moving|${gk}`, kind: 'moving', app: g.app, build: mv.build, place: mv.label, places: evPlaces, tier: g.tier, wave: g.wave, at: mv.at, who: mv.who, words: g.wave != null ? `Wave ${g.wave} ${mv.checking ? 'checking' : 'deploying'}` : mv.checking ? 'Checking' : 'Deploying', href: mv.href });
+			/* QA strip r1 (6): a wave with a deploying site says deploying (the earlier act), never the first site's verb */
+			const deploying = g.items.some((x) => x.moving && !x.checking);
+			out.push({ key: `moving|${gk}`, kind: 'moving', app: g.app, build: mv.build, place: mv.label, places: evPlaces, tier: g.tier, wave: g.wave, at: mv.at, who: mv.who, words: g.wave != null ? `Wave ${g.wave} ${deploying ? 'deploying' : 'checking'}` : deploying ? 'Deploying' : 'Checking', href: mv.href, ...(reachedHere && prodFirst ? { reachedProd: prodFirst.at } : {}) });
 		} else {
 			const last = done.reduce((a, b) => (oldestFirst(a.at, b.at) < 0 ? b : a));
 			const reached = !!prodFirst && g.tier === 'prod' && done.some((x) => x.href === prodFirst!.href);
@@ -618,7 +622,8 @@ export function headFacts(c: TChange, lead: Place | null, scenario: HomeState = 
  */
 export function envFull(tier: string, label: string): string {
 	const l = (label ?? '').trim();
-	if (!l || l === tier || l.startsWith(`${tier}-`)) return l || tier;
+	/* QA strip r1 (5): a site literally called "production" in prod is the tier itself, never "prod-production" */
+	if (!l || l === tier || l === 'production' || l.startsWith(`${tier}-`)) return l === 'production' ? tier : l || tier;
 	return `${tier}-${l}`;
 }
 

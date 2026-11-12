@@ -10,6 +10,7 @@
  *               does not have c6f19d2 yet) -- computed from the topology, no extra fixture.
  *   staging     staging Succeeded on c6f19d2; prod untouched.
  *   wave1       prod eu-west-1 (leader) baking c6f19d2, us-east-1 (follower) Deploying it, ap-south-1 on 0f1f88a.
+ *   wave1-half  eu-west-1 Succeeded, us-east-1 still Deploying (a mixed wave).
  *   wave1-done  eu-west-1 + us-east-1 Succeeded; ap-south-1 (wave 2) still on 0f1f88a.
  *   wave2       ap-south-1 baking c6f19d2.
  *   done        every site Succeeded on c6f19d2.

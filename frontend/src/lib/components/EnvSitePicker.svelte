@@ -43,17 +43,24 @@
 		const raf = requestAnimationFrame(place);
 		const onDoc = (e: MouseEvent) => {
 			const path = e.composedPath();
-			if (panel && !path.includes(panel) && !(anchor && path.includes(anchor))) close();
+			if (panel && !path.includes(panel) && !(anchor && path.includes(anchor))) close(document.activeElement === document.body || !document.activeElement);
 		};
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') close(true);
 		};
+		/* QA strip r1 (8): focus leaving the panel (Tab past the last row) closes it */
+		const onFocus = (e: FocusEvent) => {
+			const t = e.target as Node | null;
+			if (panel && t && !panel.contains(t) && !(anchor && anchor.contains(t))) close();
+		};
+		document.addEventListener('focusin', onFocus);
 		document.addEventListener('click', onDoc, true);
 		document.addEventListener('keydown', onKey);
 		window.addEventListener('scroll', place, true);
 		window.addEventListener('resize', place);
 		return () => {
 			cancelAnimationFrame(raf);
+			document.removeEventListener('focusin', onFocus);
 			document.removeEventListener('click', onDoc, true);
 			document.removeEventListener('keydown', onKey);
 			window.removeEventListener('scroll', place, true);
@@ -117,10 +124,13 @@
 		border-radius: 6px;
 		white-space: nowrap;
 	}
-	.sp-row:hover,
+	.sp-row:hover {
+		background-color: var(--k-hover);
+	}
 	.sp-row:focus-visible {
 		background-color: var(--k-hover);
-		outline: none;
+		outline: 2px solid var(--k-line-strong);
+		outline-offset: -2px;
 	}
 	.sp-row--here {
 		background-color: var(--k-subtle);

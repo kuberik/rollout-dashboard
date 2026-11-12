@@ -305,7 +305,7 @@
 			{#if built && lane}
 				<div class="ad-strip flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1" data-ad-strip>
 					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} {calm} words yours={!!stateRow?.needsYou} mutedRest {hrefFor} {current} sites /></div>
-					<a href={href('/environments')} class="nav-link t-ui-sm shrink-0 !py-0 max-sm:min-h-11 max-sm:items-center sm:max-xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
+					<a href={href('/environments')} class="nav-link t-ui-sm shrink-0 !py-0 max-sm:mt-1 max-sm:min-h-11 max-sm:items-center sm:max-xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 				</div>
 			{/if}
 		</header>

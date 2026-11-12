@@ -154,6 +154,7 @@
 			aria-label={many ? `${c.label}: ${ss.length} sites, pick one` : undefined}
 			aria-haspopup={many ? 'dialog' : undefined}
 			aria-expanded={many ? openKey === pk : undefined}
+			aria-controls={many ? `sp-${pk}` : undefined}
 			aria-current={c.current && !many ? 'page' : undefined}
 			onclick={many ? () => (openKey = openKey === pk ? null : pk) : undefined}
 			data-env-box
@@ -464,7 +465,7 @@
 		.env-box--sites .env-word { display: none; }
 	}
 	@media (max-width: 639.98px) {
-		.env-box--link::after {
+		.env-box--sites.env-box--link::after {
 			content: '';
 			position: absolute;
 			/* measured from the padding box: -9 = 8px past the 1px border, a 44px reach */

@@ -2950,7 +2950,7 @@ export const HWV_PLACES: HwvPlace[] = [
 	{ ns: 'hello-waves-prod-ap-south-1', tier: 'prod', site: 'ap-south-1', wave: 2, cluster: 'prod' }
 ];
 
-export const HWV_BEATS = ['arm', 'staging', 'wave1', 'wave1-done', 'wave2', 'done'] as const;
+export const HWV_BEATS = ['arm', 'staging', 'wave1', 'wave1-half', 'wave1-done', 'wave2', 'done'] as const;
 export type HwvBeat = (typeof HWV_BEATS)[number];
 /** The stepped waves story's current beat (waves-story.ts). `null` until a beat is fired: the scenario rules. */
 let hwvBeat: HwvBeat | null = null;
@@ -2973,6 +2973,9 @@ function hwvBeatLive(beat: HwvBeat, key: string): Live {
 			return key === 'dev' || key === 'staging' ? ok(NEW) : ok(OLD);
 		case 'wave1':
 			return key === 'dev' || key === 'staging' ? ok(NEW) : key === 'eu-west-1' ? checking : key === 'us-east-1' ? deploying : ok(OLD);
+		case 'wave1-half':
+			/* QA strip r1 (3): a mixed wave: the leader finished, its follower still deploying */
+			return key === 'dev' || key === 'staging' || key === 'eu-west-1' ? ok(NEW) : key === 'us-east-1' ? deploying : ok(OLD);
 		case 'wave1-done':
 			return key === 'ap-south-1' ? ok(OLD) : ok(NEW);
 		case 'wave2':
