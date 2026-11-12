@@ -1434,7 +1434,6 @@ lib/view-models/cluster-errors.ts	code	… stopped answering${lastSeenText ?
 lib/view-models/cluster-errors.ts	code	Everything on … covers only the clusters that replied — a rollout on … is missing from these counts, not healthy in them.
 lib/view-models/dependencies.ts	code	… version… ahead
 lib/view-models/dependencies.ts	code	… version… waiting to move
-lib/view-models/dependencies.ts	code	its leader
 lib/view-models/dependency-graph.ts	code	, … serves …
 lib/view-models/dependency-graph.ts	code	… … the versions they need
 lib/view-models/dependency-graph.ts	code	… …, and it has
@@ -2082,7 +2081,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	All depende
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	verdictTitle	Builds of this app that are currently held — THIS rollout's own count first, then the rest of the app
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Depends on this
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Each environment waits on its own copy of … .
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Environments of this app that are on its newest version
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Held builds
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Held here
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	holding … …
@@ -2102,10 +2100,8 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Open … a
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Open the … rollout
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Other environments
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	sentence	Rules couldn't be loaded, so the dashboard can't tell what holds this rollout or what waits on it.
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Runs in
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	verdictTitle	Services, in any environment of this app, that wait on a contract it provides
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Skipped by …
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	this rollout
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	headline	This rollout does not exist
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	Waiting for …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Waiting on

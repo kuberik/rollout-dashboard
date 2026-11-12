@@ -215,7 +215,7 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		expect(seen.includes(true)).toBe(false);
 	}, 40000);
 
-	test('with no main column the rail stays in the right track (lg:col-start-2)', async () => {
+	test('with no main column the lone rail card takes the full row (lg:col-span-full)', async () => {
 		const ro2 = { ...ro, metadata: { name: 'app2', namespace: 'app-dev' }, status: { ...ro.status } };
 		const env2 = { metadata: { name: 'app-dev', namespace: 'app-dev' }, spec: { name: 'app', environment: 'dev', wave: 0, rolloutRef: { name: 'app2' } }, status: { conditions: [] } };
 		const fleet = { rollouts: { items: [ro, ro2] }, environments: { items: [env, env2] }, rolloutDependencies: [], clusters: [{ name: 'prod', url: 'https://x' }] };
@@ -235,6 +235,6 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		await waitFor(() => expect(container.textContent).toMatch(/No gates on this rollout/), { timeout: 20000 });
 		await waitFor(() => expect(container.textContent).toMatch(/Depends on this/), { timeout: 5000 });
 		const rail = [...container.querySelectorAll('section')].find((x) => /Depends on this/.test(x.textContent ?? ''))!.parentElement!;
-		expect(rail.className).toMatch(/lg:col-start-2/);
+		expect(rail.className).toMatch(/lg:col-span-full/);
 	}, 40000);
 });

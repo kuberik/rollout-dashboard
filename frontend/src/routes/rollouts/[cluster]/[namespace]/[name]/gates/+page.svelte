@@ -1287,7 +1287,7 @@
 	/** Does the main track hold cards (Waiting on / Held builds)? Decides whether the grid's main column renders at all. */
 	const hasMainContent = $derived(hasContracts || holdBreakdown.held.length > 0);
 	/** Is there anything below the top slot: a main column (Waiting on / Held builds) or a rail (Depends on this)? An early rollout has neither, so it is the top card alone. */
-	const showGrid = $derived(hasMainContent || hasDependents || hood.total > 0);
+	const showGrid = $derived(hasMainContent || chainRows.length > 0 || hasDependents || hood.total > 0);
 	/**
 	 * The settled fleet list does not contain this rollout (`hood.focus` is null). The first time that is seen, remember the list's
 	 * `dataUpdatedAt`; once a LATER refetch has landed and the focus is still missing, give up waiting (the top slot stays empty).
