@@ -103,7 +103,6 @@
 	/** apps-7 Q7: "prod" everywhere on a tile, never "production" */
 	const prodWord = (t: string) => t.replace(/\bproduction\b/g, 'prod');
 	/** A8: a quiet app that is simply at rest says so in its name row on a phone (one line), so its fact line folds away there */
-	const atRest = $derived(isQuiet && /at rest/.test(item.fact));
 	const place = $derived(appr ? appr.href : isQuiet ? null : item.outcomeHref);
 	const tileHref = $derived(isQuiet || !item.row ? appHref : item.row.href);
 	const summary = $derived(`${item.app}: ${item.fact}`);
@@ -255,6 +254,8 @@
 	const restTitle = $derived(restNames.length ? `${restNames.join(', ')}: healthy` : '');
 	/** the tile is an app with nothing to say but "healthy": its own line replaces the slot row and the strip */
 	const restLine = $derived(allRest && (kind === 'run' || kind === 'quiet'));
+	/** A8: a quiet app is at rest when its lane is (every place healthy), never by the words of its fact line; on a phone its fact line folds away */
+	const atRest = $derived(isQuiet && allRest);
 	const restText = $derived(`All healthy${headCurrency ? ` · ${headCurrency.charAt(0).toLowerCase()}${headCurrency.slice(1)}` : ''}`);
 	const hrefFor = (n: { card: unknown }) => { const c = n.card as { href?: string; sourceCluster?: string; ns: string; name: string }; return c.href ?? rolloutPath(c.sourceCluster || '', c.ns, c.name); };
 
@@ -427,7 +428,7 @@
 				<div class="min-w-0 flex-1">{@render slotLines()}</div>
 			</div>
 		{:else}
-			{#if kind !== 'failed'}
+			{#if kind !== 'failed' && !atRest}
 				<!-- apps collapsed r1: the lead's commit title is one tap away (Open rollout); only the phone keeps its one short line -->
 				<div class="flex min-w-0 items-center gap-2 sm:hidden" data-fp-line2>
 					<p class="t-body min-w-0 flex-1 text-fg-muted max-sm:truncate">{#if kind === 'quiet'}{prodWord(item.fact)}{:else}{@render facts(line2)}{/if}</p>
