@@ -50,7 +50,7 @@
 	import { shortEnvLabel, type EnvironmentTheme } from '$lib/environment-theme';
 	import type { GraphNode } from '$lib/view-models/dependency-graph';
 	import type { NeighbourLink, RolloutNeighbourhood } from '$lib/view-models/rollout-neighbourhood';
-	import type { GateBox } from '$lib/view-models/rollout-gates';
+	import { withoutSupersededBoxes, type GateBox } from '$lib/view-models/rollout-gates';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
 	import { approvalWord, ASK_LOADING } from '$lib/components/new/state-words';
 	import { fade } from 'svelte/transition';
@@ -193,7 +193,7 @@
 	 */
 	const gateRetainer = new RetainedRows<GateBox>();
 	const displayedGates = $derived.by<GateBox[]>(() => {
-		const retained = gateRetainer.apply(focus?.id ?? '', hood.gates, (g) => g.key);
+		const retained = withoutSupersededBoxes(gateRetainer.apply(focus?.id ?? '', hood.gates, (g) => g.key), hood.gates);
 		return retained.map(({ row, resolved }) =>
 			resolved ? { ...row, state: 'clear' as const, phrase: 'passing now', held: [] } : row
 		);

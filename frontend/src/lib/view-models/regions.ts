@@ -216,3 +216,13 @@ export function prodCountPhrase(envs: readonly (string | null | undefined)[], of
 	const noun = siteCount(envs) > 1 ? 'regions' : 'prod';
 	return off ? `${off.length} of ${envs.length} ${noun}` : `${envs.length} ${noun}`;
 }
+
+/** Honest place word: a prod environment with no region is "production" (a place word, not a region); several folded regions are "N prod regions". */
+export function placeLabel(x: { tier: string; regions?: string[]; label?: string }): string {
+	const rs = x.regions ?? (x.label ? [x.label] : []);
+	/* QA #10/#11: regions are SITES (distinct labels, a blank one is the default site); a blank label is never printed, the tier names the place */
+	const n = siteCount(rs);
+	const named = rs.map((l) => (l ?? '').trim()).find((l) => siteKey(l) !== 'default');
+	if (x.tier === 'prod') return n > 1 ? `${n} prod regions` : named ?? 'production';
+	return rs.find((l) => l && l.trim()) ?? x.tier;
+}

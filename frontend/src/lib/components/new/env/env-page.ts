@@ -30,6 +30,7 @@ import { runwayRow, rowAction } from '../rollout-view';
 import { plural } from '../envs-model';
 import { classifyChanges, rc, type Rollup } from '../changes-page';
 import { beadsFor } from '$lib/view-models/bead';
+import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import type { EnvCell } from '$lib/components/EnvRow.svelte';
 
 export type EnvTarget = { kind: 'tier'; tier: TierKey } | { kind: 'region'; label: string };
@@ -73,8 +74,8 @@ export type EnvPage = {
 	name: string; title: string; tierKey: TierKey; region: string | null;
 	meta: string;
 	tile: Pick<EnvTile, 'mark' | 'lead' | 'parts' | 'calm' | 'label' | 'failing' | 'waiting' | 'moving' | 'rest'>;
-	banner: BannerModel | null;
-	attention: AskItem[]; attentionRollup: Rollup;
+	banner: (BannerModel & { newer: Newer | null }) | null;
+	attention: (AskItem & { newer: Newer | null })[]; attentionRollup: Rollup;
 	active: EnvApp[]; appsRollup: string[];
 	atRest: RestRow[];
 	arriving: RestRow[];
@@ -82,6 +83,16 @@ export type EnvPage = {
 	gangway: Gangway;
 	empty: boolean;
 };
+
+/**
+ * A newer build of an app whose place HERE is failing, waiting to enter this environment. One card per app per environment: the failing app is drawn
+ * only under Attention (or as the banner), and this fact on that card keeps the promote action from being lost (batch 4 a). `hold` is the gate's word
+ * when the build is held on the way in, null when it is ready to promote.
+ */
+export type Newer = { build: string; from: TierKey | null; hold: string | null };
+/** the one sentence a Failing card prints for its `Newer` build */
+export const newerNote = (n: Newer): string =>
+	n.hold ? `Newer build ${n.build}${n.from ? ` from ${n.from}` : ''} · ${n.hold}` : `Newer build ${n.build} ready${n.from ? ` in ${n.from}` : ''}`;
 
 /** One app with something waiting to enter this environment. `cells` is the EnvRow: the environments before this one that hold its unlanded changes (beads), then this environment's box. */
 export type GangTile = {
@@ -293,10 +304,20 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 		return { app: x.app, href: x.href ?? `/apps/${x.app}`, rolloutHref: row?.href ?? null, count: mine.length ? plural(mine.length, 'change') : row && hold && hereN == null ? null : plural(hereN ?? 1, 'build'), hold, yours, cells, foot };
 	};
 	const inb = inbound(hs, tierKey).filter((x) => here.has(x.app)).map(mkTile).sort((a, b) => Number(!a.hold) - Number(!b.hold) || (a.hold === b.hold ? 0 : a.hold === 'approval' ? -1 : 1) || Number(b.yours) - Number(a.yours) || (parseInt(b.count ?? "") || 0) - (parseInt(a.count ?? "") || 0) || a.app.localeCompare(b.app));
-	const held = inb.filter((t) => t.hold), ready = inb.filter((t) => !t.hold);
+	/* one card per app per environment: a failing app is not also a Held / Ready tile; its newer build rides on its Failing card */
+	const failedApps = new Set(rows.filter((r) => r.group === 'failed').map((r) => r.app));
+	const newerOf = (app: string): Newer | null => {
+		const t = failedApps.has(app) ? inb.find((x) => x.app === app) : null;
+		const x = t ? inbound(hs, tierKey).find((i) => i.app === app) : null;
+		/* a pin on the failing place refuses the newer build too (pinHoldsBuilds, whatever the place's health) */
+		const pinned = (A.items.find((i) => i.app === app)?.placeList ?? []).some((p) => p.tier === tierKey && (!region || p.label === region) && p.pinned);
+		return t && x ? { build: x.build, from: x.from, hold: t.hold ? (x.reason ?? 'Held').replace(/^Waiting on /, 'Waits on ') : pinned ? HELD_BY_PIN : null } : null;
+	};
+	/* the same rule for an approval the viewer can give: its Attention card is the app's one card here */
+	const carded = new Set([...failedApps, ...attRows.map((r) => r.app)]);
+	const held = inb.filter((t) => t.hold && !carded.has(t.app)), ready = inb.filter((t) => !t.hold && !carded.has(t.app));
 	const nAp = held.filter((t) => t.hold === 'approval').length;
 	const heldRollup: Rollup = [...(nAp ? [{ text: needApprovalCount(nAp), ink: 'held' as const }] : []), ...(held.length - nAp ? [`${held.length - nAp} held`] : [])];
-	const failedApps = new Set(rows.filter((r) => r.group === 'failed').map((r) => r.app));
 	const inSet = new Set(inb.map((t) => t.app));
 	const split = stepSplit(apps.filter((a) => !inSet.has(a.app) && !failedApps.has(a.app)), behindHere);
 	const { inStep } = split;
@@ -322,5 +343,5 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 	const nSites = siteCount(allPlaces.map((p) => p.label));
 	const regionsN = !region && tierKey === 'prod' && nSites > 1 ? nSites : 0;
 	const meta = [plural(allPlaces.length, 'place'), plural(new Set(allPlaces.map((p) => p.app)).size, 'app'), ...(regionsN ? [plural(regionsN, 'region')] : [])].join(' · ');
-	return { name, title, tierKey, region, meta, tile, banner: lead ? bannerOf(lead) : null, attention, attentionRollup, active, appsRollup, atRest, arriving, gangway, empty: !allPlaces.length };
+	return { name, title, tierKey, region, meta, tile, banner: lead ? { ...bannerOf(lead), newer: newerOf(lead.app) } : null, attention: attention.map((a) => ({ ...a, newer: newerOf(a.app) })), attentionRollup, active, appsRollup, atRest, arriving, gangway, empty: !allPlaces.length };
 }

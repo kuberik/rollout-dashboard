@@ -44,6 +44,7 @@
 		rollbackHref,
 		openHref,
 		openLabel = 'Open rollout',
+		note,
 		class: className = ''
 	}: {
 		model: AttentionModel;
@@ -65,6 +66,8 @@
 		/** the outlined secondary "Open rollout ›" */
 		openHref?: string;
 		openLabel?: string;
+		/** one quiet line under the fact: what else is true of this app here (a Failing card's newer build waiting upstream) */
+		note?: string;
 		class?: string;
 	} = $props();
 
@@ -95,6 +98,10 @@
 			<span class="min-w-0 {compact ? 'line-clamp-2' : fig ? 'truncate' : ''}" title="{model.fact.name ? model.fact.name + ': ' : ''}{model.fact.message}">{#if model.fact.name}<b class="font-medium text-fg">{model.fact.name}{model.fact.message ? ':' : ''}</b>{/if}{#if model.fact.message}{model.fact.name ? ' ' : ''}{model.fact.message}{/if}</span>
 		</p>
 	{/if}
+{/snippet}
+
+{#snippet noteLine()}
+	{#if note}<p class="t-meta min-w-0 text-fg-subtle" data-note>{note}</p>{/if}
 {/snippet}
 
 {#snippet actions()}
@@ -156,6 +163,7 @@
 			{@render status()}
 			{@render figure()}
 			{@render factLine('t-meta flex items-center gap-2 text-fg-subtle')}
+			{@render noteLine()}
 			{#if compact}{@render actions()}{/if}
 		</div>
 		{#if !compact}
@@ -177,6 +185,7 @@
 				</div>
 			{/if}
 			{@render factLine('t-body flex items-baseline gap-2 text-fg-muted')}
+			{@render noteLine()}
 			{#if drawing && !compact}<div class="min-w-0">{@render drawing()}</div>{/if}
 			{@render actions()}
 		</div>

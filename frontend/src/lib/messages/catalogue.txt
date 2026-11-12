@@ -828,6 +828,8 @@ lib/components/new/env/env-page.ts	code	… to deploy
 lib/components/new/env/env-page.ts	code	… waiting on a check
 lib/components/new/env/env-page.ts	code	from …
 lib/components/new/env/env-page.ts	code	leads · ${w.followers.length === 1 ?
+lib/components/new/env/env-page.ts	code	Newer build … ready${n.from ?
+lib/components/new/env/env-page.ts	code	Newer build …${n.from ?
 lib/components/new/env/env-page.ts	code	No releases yet
 lib/components/new/env/env-page.ts	code	nothing inbound
 lib/components/new/env/env-page.ts	code	On the newest
@@ -1652,6 +1654,7 @@ lib/view-models/regions.ts	code	… … with no deploy yet
 lib/view-models/regions.ts	code	… …regions
 lib/view-models/regions.ts	code	… of … …
 lib/view-models/regions.ts	code	… of … … on …
+lib/view-models/regions.ts	code	… prod regions
 lib/view-models/regions.ts	code	All … … on …
 lib/view-models/regions.ts	code	no deploy yet
 lib/view-models/regions.ts	code	repeat(auto-fit, minmax(…px, 1fr))

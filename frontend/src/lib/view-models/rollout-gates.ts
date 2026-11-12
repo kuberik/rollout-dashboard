@@ -182,6 +182,19 @@ export function schedulePhrase(s: ScheduleLike, now: Date = new Date()): string 
 	return when ? `opens ${when}` : 'closed';
 }
 
+/**
+ * ONE GATE, ONE BOX. A retained box (one that dropped off the live list, see `RetainedRows`) is superseded when a LIVE box now claims every gate it
+ * drew: the first frame draws a hold no box claims under the gate's own name (the schedules have not loaded), and when the schedule arrives its box
+ * claims the same gate under its window's name. Joined on `GateBox.gates` (the typed gate identities), never on a title or a key.
+ */
+export function withoutSupersededBoxes<B extends { gates: string[] }>(
+	retained: readonly { row: B; resolved: boolean }[],
+	live: readonly B[]
+): { row: B; resolved: boolean }[] {
+	const claimed = new Set(live.flatMap((b) => b.gates));
+	return retained.filter(({ row, resolved }) => !(resolved && row.gates.length > 0 && row.gates.every((g) => claimed.has(g))));
+}
+
 export function rolloutGateBoxes(args: {
 	/** The focus node of `buildRolloutGraph` — its `holds` are the authority. */
 	focus: GraphNode | null;
