@@ -185,9 +185,9 @@ export const mockManagedResources = {
 					strategy: {
 						canary: {
 							steps: [
-								{ replicas: 1, pause: { duration: 5 } },
-								{ replicas: '100%' },
-								{ replicas: '100%' }
+								{ replicas: 1, traffic: '10%', pause: { duration: 5 } },
+								{ replicas: '100%', traffic: '50%' },
+								{ replicas: '100%', traffic: '100%' }
 							]
 						}
 					}

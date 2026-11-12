@@ -334,6 +334,7 @@ lib/components/DeploymentChildren.svelte	text	No active ReplicaSets
 lib/components/DeploymentChildren.svelte	text	No pods
 lib/components/DeploymentChildren.svelte	code	Not Ready
 lib/components/DeploymentPipelineCard.svelte	text	… / … steps
+lib/components/DeploymentPipelineCard.svelte	aria-label	… of traffic on the new version
 lib/components/DeploymentPipelineCard.svelte	title	… retr…
 lib/components/DeploymentPipelineCard.svelte	text	After it is deployed, the new version runs live for a configured period while its health checks are watched. If every check holds for the whole window, the deploy is marked successful.
 lib/components/DeploymentPipelineCard.svelte	text	Deployment initiated … … at … … .
@@ -1764,6 +1765,10 @@ lib/view-models/stage-advance.ts	code	Moves … to ….
 lib/view-models/stage-advance.ts	code	Moves … to stage … of ….
 lib/view-models/stage-advance.ts	code	Sends all traffic to the new version of … and completes it.
 lib/view-models/stage-advance.ts	code	this rollout
+lib/view-models/stage-weight.ts	code	… of traffic…
+lib/view-models/stage-weight.ts	code	on the new version
+lib/view-models/stage-weight.ts	code	Ran at … of traffic…
+lib/view-models/stage-weight.ts	code	Will move to … of traffic…
 lib/view-models/up-to-date.ts	code	… … waiting
 lib/view-models/up-to-date.ts	code	… builds live
 lib/view-models/up-to-date.ts	code	… never deployed
