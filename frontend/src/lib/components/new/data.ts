@@ -1468,9 +1468,9 @@ export function grantApproval(t: ApprovalTarget): void {
 	SNAPS.set(t.key, snaps);
 	resetHomeModel(); bumpApprovals();
 }
-/** Undo: restore each place exactly as it was before the approval, except the places in `keep` (their revoke answered `stillApproved`: another approval stands, the build stays approved there). */
-export function revokeApproval(t: ApprovalTarget, keep: ReadonlySet<string> = new Set()): void {
-	for (const s of SNAPS.get(t.key) ?? []) if (!keep.has(s.href)) s.r.status = s.status;
+/** Undo: restore each place exactly as it was before the approval. */
+export function revokeApproval(t: ApprovalTarget): void {
+	for (const s of SNAPS.get(t.key) ?? []) s.r.status = s.status;
 	SNAPS.delete(t.key);
 	resetHomeModel(); bumpApprovals();
 }

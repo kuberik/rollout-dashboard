@@ -35,6 +35,7 @@
  * snapshot", it is "get the same answer again".
  */
 
+import { approvalWrite, approvalUnwrite } from '../view-models/approval-write';
 import {
 	NAMESPACE,
 	ROLLOUT_NAME,
@@ -549,6 +550,14 @@ interface LiveFixture {
 
 const fixtureKey = (namespace: string, name: string): string => `${namespace}/${name}`;
 
+export type MockApproval = { name: string; version: string; by?: string; createdAt: string };
+/** declared before `resetDemoState()` runs at module load (see the mock of the approvals API below) */
+
+/** the viewer, as the API server names them (`oidc:` + login) */
+export const MOCK_APPROVER = 'oidc:danielreed';
+/** the fixtures' second and third approvers: western names, as every demo person has */
+export const MOCK_APPROVERS = { dashboard: 'oidc:wyatt', git: 'github-actions' } as const;
+const approvalsByRollout = new Map<string, MockApproval[]>();
 const live = new Map<string, LiveFixture>();
 const managedResourcesByKey = new Map<string, Record<string, unknown>[]>();
 
@@ -1128,6 +1137,7 @@ export function resetDemoState(requestedScenario?: Scenario): void {
 			events
 		});
 	}
+	seedApprovals();
 	scenarioFleetRollouts = mockFleetRollouts.map(scenarioRollout);
 	// hello-waves is the one app whose state follows the scenario (mock-data.ts FIXTURE E).
 	scenarioDepRollouts = [...mockDepRollouts, ...mkHwvRollouts(scenario)].map(scenarioRollout);
@@ -1238,7 +1248,7 @@ export function getHwEnvRollouts(): unknown[] {
  */
 export function getPermissionsAll(namespace: string, name: string) {
 	return {
-		permissions: { update: true, patch: true },
+		permissions: { update: true, patch: true, approve: true },
 		resource: { apiGroup: 'kuberik.com', kind: 'Rollout', name, namespace }
 	};
 }
@@ -1882,7 +1892,7 @@ type PromoteOptions = {
 	 *  sequence's own note on why they stay passing. */
 	restartPipeline?: boolean;
 	/** a person's approval released the build: the history row says so (r34 r3-approve) */
-	approved?: boolean;
+	approved?: { name: string; by?: string };
 };
 
 export function changeVersion(
@@ -1944,6 +1954,7 @@ export function changeVersion(
 		// the commits belong. These fixtures' tags ARE their shas.
 		version: { tag: target, version: target, revision: target },
 		timestamp: startedIso,
+		...(opts?.approved ? { approval: opts.approved } : {}),
 		message: opts?.approved
 			? `Approved ${target}`
 			: opts?.automatic
@@ -2040,10 +2051,69 @@ export function changeVersion(
 }
 
 /**
- * `POST /api/rollouts/:ns/:name/approve` (src/lib/api/approvals.ts is the contract). The mock flips the rollout's approval
- * gate: every `*approval*` gate with an allow-list gains the build and the builds held with it, then the build deploys the way
- * any promote does (history row, broadcast, settle). `revoke` restores exactly what the approval changed, so Undo inside its
- * window leaves no trace; every open tab hears the rollout change either way.
+ * THE MOCK OF THE APPROVALS API (CONTRACT "Dashboard HTTP contract"; lib/api/approvals.ts is the wire doc). Each rollout keeps its
+ * RolloutApprovals (`approvalsOf`): approve creates the dashboard's own deterministic-name one (`by: oidc:<viewer>`), revoke deletes it and
+ * answers `{ stillApproved, approvals }` while ANOTHER one (a git-written approval) still names the version. The policy-owned gate's allow-list
+ * is derived from them, as the controller does (design/APPROVALS-API.md §5.1). `byVerified` is true here: both renderings of a history row exist
+ * in the fixtures (a git approval carries no `by`, a dashboard one carries `oidc:<name>`).
+ */
+export function approvalsOf(namespace: string, name: string): MockApproval[] {
+	const k = fixtureKey(namespace, name);
+	if (!approvalsByRollout.has(k)) approvalsByRollout.set(k, []);
+	return approvalsByRollout.get(k)!;
+}
+/** the RolloutApproval name for (rollout, version): CONTRACT naming rule, steps 1-3 (a longer name only collides in the mock, which never mints one) */
+export function approvalNameOf(rollout: string, version: string): string {
+	return `${rollout}-${version.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`.replace(/-+$/, '').slice(0, 63);
+}
+
+/** Seed the two renderings a History row has: an approval a person gave in the dashboard (`by: oidc:wyatt`) and one written from git (no `by`). hello-world's two older deploys carry them. */
+function seedApprovals(): void {
+	approvalsByRollout.clear();
+	const f = live.get(fixtureKey('default', 'hello-world'));
+	if (!f) return;
+	const h = rolloutOf(f).status.history as (HistoryEntry & { approval?: { name: string; by?: string }; version?: { tag?: string } })[];
+	const at = (i: number, by?: string) => {
+		const e = h[i];
+		const tag = e?.version?.tag;
+		if (!e || !tag) return;
+		const name = approvalNameOf('hello-world', tag);
+		e.approval = by ? { name, by } : { name };
+		approvalsOf('default', 'hello-world').push({ name, version: tag, ...(by ? { by } : {}), createdAt: e.timestamp ?? demoNow().toISOString() });
+	};
+	at(1, MOCK_APPROVERS.dashboard);
+	at(2);
+}
+
+/** `POST /api/demo/approvals` (respond.ts): a git-style approval (another RolloutApproval, no `by`) appears for a version, so an Undo of the dashboard's own approval answers `stillApproved`. */
+export function seedGitApproval(namespace: string, name: string, version: string, approvalName?: string): boolean {
+	approvalsOf(namespace, name).push({ name: approvalName ?? `${approvalNameOf(name, version)}-git`, version, createdAt: demoNow().toISOString() });
+	return true;
+}
+
+/** Test/demo seam: give a live rollout a policy-owned approval gate (kind `approval`, an empty allow-list: nothing approved yet). */
+export function armApprovalGate(namespace: string, name: string, allowed: string[] = []): boolean {
+	const f = live.get(fixtureKey(namespace, name));
+	if (!f) return false;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const st = rolloutOf(f).status as any;
+	st.gates = [...(st.gates ?? []).filter((g: ApprovalGate) => g.kind !== 'approval'), { name: 'approval-gate-x7k2q', kind: 'approval', passing: true, allowedVersions: [...allowed] }];
+	return true;
+}
+
+type ApprovalGate = { name?: string; kind?: string; allowedVersions?: string[] | null };
+/** the rollout's approval gates: policy-owned (kind `approval`, an allow-list). The legacy name regex only applies to a gate with no `kind`. */
+const approvalGatesOf = (gates: ApprovalGate[]): ApprovalGate[] => gates.filter((g) => g.allowedVersions != null && (g.kind != null ? g.kind === 'approval' : /approval/.test(g.name ?? '')));
+
+export type ApproveResult =
+	| { ok: true; status: 200; body: Record<string, unknown> }
+	| { ok: false; status: number; error: string };
+
+/**
+ * `POST /api/rollouts/:ns/:name/approve`. approve: the RolloutApproval for (rollout, version) exists (idempotent), the approval gates allow the
+ * version, and the build deploys the way any promote does (history row carrying `approval`, broadcast, settle). revoke: the dashboard's own approval
+ * is deleted; another approval for the version keeps it approved (`stillApproved`); otherwise `approvalUnwrite` takes the version out of the gates
+ * and the snapshot taken at approve restores the rest, so Undo inside its window leaves no trace. Every open tab hears the rollout change.
  */
 const approvalUndo = new Map<string, { gates: unknown; history: unknown; previousVersion: unknown; currentVersion: unknown; wantedVersion: unknown }>();
 export function approveRollout(
@@ -2051,32 +2121,51 @@ export function approveRollout(
 	name: string,
 	body: { version?: string; revoke?: boolean },
 	clusterHint?: string
-): { ok: boolean; status: number; error?: string } {
+): ApproveResult {
+	const version = body?.version;
+	if (!version) return { ok: false, status: 400, error: 'version is required' };
+	const mine = approvalNameOf(name, version);
+	const list = approvalsOf(namespace, name);
 	const f = live.get(fixtureKey(namespace, name));
-	if (!f) return { ok: false, status: 404, error: `no such rollout: ${namespace}/${name}` };
+	if (!f) {
+		/* the pinned fleet's list pages have no per-rollout mock state (the page's own overlay is the state): the approvals are still kept and answered, so Undo meets the same `stillApproved` */
+		if (body?.revoke) {
+			const i = list.findIndex((a) => a.name === mine);
+			if (i >= 0) list.splice(i, 1);
+			const others = list.filter((a) => a.version === version);
+			return { ok: true, status: 200, body: others.length ? { stillApproved: true, approvals: others.map((a) => ({ name: a.name, ...(a.by ? { by: a.by } : {}) })) } : {} };
+		}
+		if (!list.some((a) => a.name === mine)) list.push({ name: mine, version, by: MOCK_APPROVER, createdAt: demoNow().toISOString() });
+		return { ok: true, status: 200, body: { approval: { name: mine, version, by: MOCK_APPROVER } } };
+	}
 	const cluster = clusterHint ?? f.def.cluster;
 	const rollout = rolloutOf(f);
 	const key = fixtureKey(namespace, name);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const gates = ((rollout.status as any).gates ?? []) as ApprovalGate[];
 	if (body?.revoke) {
+		const i = list.findIndex((a) => a.name === mine);
+		if (i >= 0) list.splice(i, 1);
+		const others = list.filter((a) => a.version === version);
+		if (others.length) return { ok: true, status: 200, body: { stillApproved: true, approvals: others.map((a) => ({ name: a.name, ...(a.by ? { by: a.by } : {}) })) } };
 		const snap = approvalUndo.get(key);
-		if (!snap) return { ok: false, status: 409, error: 'nothing to undo' };
 		approvalUndo.delete(key);
-		rollout.status.gates = snap.gates as typeof rollout.status.gates;
-		rollout.status.history = snap.history as typeof rollout.status.history;
-		rollout.status.previousVersion = snap.previousVersion as typeof rollout.status.previousVersion;
-		rollout.status.currentVersion = snap.currentVersion as typeof rollout.status.currentVersion;
-		rollout.status.wantedVersion = snap.wantedVersion as typeof rollout.status.wantedVersion;
+		for (const g of approvalGatesOf(gates)) g.allowedVersions = approvalUnwrite(g.allowedVersions ?? [], version);
+		if (snap) {
+			rollout.status.gates = snap.gates as typeof rollout.status.gates;
+			rollout.status.history = snap.history as typeof rollout.status.history;
+			rollout.status.previousVersion = snap.previousVersion as typeof rollout.status.previousVersion;
+			rollout.status.currentVersion = snap.currentVersion as typeof rollout.status.currentVersion;
+			rollout.status.wantedVersion = snap.wantedVersion as typeof rollout.status.wantedVersion;
+		}
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		recomputeReleaseCandidates(rollout as any);
 		broadcastRollout(namespace, name, cluster, demoNow());
-		return { ok: true, status: 200 };
+		return { ok: true, status: 200, body: {} };
 	}
-	const version = body?.version;
-	if (!version) return { ok: false, status: 400, error: 'version is required' };
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const gates = ((rollout.status as any).gates ?? []) as { name?: string; allowedVersions?: string[] | null }[];
-	const approval = gates.filter((g) => /approval/.test(g.name ?? '') && g.allowedVersions != null);
+	const approval = approvalGatesOf(gates);
 	if (!approval.length) return { ok: false, status: 409, error: 'nothing waits for approval here' };
+	if (!list.some((a) => a.name === mine)) list.push({ name: mine, version, by: MOCK_APPROVER, createdAt: demoNow().toISOString() });
 	approvalUndo.set(key, {
 		gates: structuredClone(gates),
 		history: structuredClone(rollout.status.history),
@@ -2084,11 +2173,10 @@ export function approveRollout(
 		currentVersion: rollout.status.currentVersion,
 		wantedVersion: rollout.status.wantedVersion
 	});
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const held = ((rollout.status as any).releaseCandidates ?? []).map((c: any) => c.tag ?? c.version);
-	for (const g of approval) g.allowedVersions = [...new Set([...(g.allowedVersions ?? []), version, ...held])];
-	changeVersion(namespace, name, { version }, clusterHint, { approved: true });
-	return { ok: true, status: 200 };
+	for (const g of approval) g.allowedVersions = approvalWrite(g.allowedVersions ?? [], version);
+	changeVersion(namespace, name, { version }, clusterHint, { approved: { name: mine, by: MOCK_APPROVER } });
+	const a = list.find((x) => x.name === mine)!;
+	return { ok: true, status: 200, body: { approval: { name: a.name, version: a.version, ...(a.by ? { by: a.by } : {}) } } };
 }
 
 /**

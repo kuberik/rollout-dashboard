@@ -105,7 +105,7 @@
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
 		tone={done.error ? 'danger' : done.still ? 'info' : 'success'}
-		message={done.error ? `Could not ${done.undo ? 'undo' : 'approve'} ${done.target.build}` : done.still ? `${done.target.build} stays approved` : `${w.title} · ${w.detail}`}
+		message={done.error ? `Could not approve ${done.target.build}` : done.still ? `${done.target.build} stays approved` : `${w.title} · ${w.detail}`}
 		description={done.error ?? (done.still ? `Another approval stands${done.still.who ? `, by ${done.still.who}` : ''}` : '')}
 	>
 		{#snippet action()}

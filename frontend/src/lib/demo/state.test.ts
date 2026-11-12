@@ -42,8 +42,8 @@ describe('state.ts — the mock actually does something when you press it', () =
 	it('getPermissionsAll answers the actionable shape for ANY namespace/name, not just hello-world', () => {
 		const forHelloWorld = getPermissionsAll(NAMESPACE, ROLLOUT_NAME);
 		const forSomeoneElse = getPermissionsAll('checkout-api-prod-us-east-2', 'checkout-api');
-		expect(forHelloWorld.permissions).toEqual({ update: true, patch: true });
-		expect(forSomeoneElse.permissions).toEqual({ update: true, patch: true });
+		expect(forHelloWorld.permissions).toEqual({ update: true, patch: true, approve: true });
+		expect(forSomeoneElse.permissions).toEqual({ update: true, patch: true, approve: true });
 		expect(forSomeoneElse.resource).toMatchObject({
 			namespace: 'checkout-api-prod-us-east-2',
 			name: 'checkout-api'
