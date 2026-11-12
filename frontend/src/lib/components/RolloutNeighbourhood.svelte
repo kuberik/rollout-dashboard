@@ -60,15 +60,7 @@
 	import { fade } from 'svelte/transition';
 	import type { ApprovalTarget } from '$lib/components/new/data';
 	import { theme as themeStore } from '$lib/stores/theme';
-	import {
-		ARROW,
-		ARROW_PATH,
-		ARROW_VIEWBOX,
-		WIRE_INK,
-		DASH,
-		dashOffsetForLength,
-		wireKind
-	} from '$lib/graph-arrow';
+	import { ARROW, ARROW_PATH, ARROW_VIEWBOX, WIRE_INK, DASH, dashOffsetForLength, wireKind } from '$lib/graph-arrow';
 	import {
 		wideWires,
 		narrowWires,
@@ -158,10 +150,7 @@
 		 * the canvas. `undefined`/absent: a chain link still reads "Waits
 		 * for `<env>`" with no second clause, never a guess.
 		 */
-		peerHeldByEnv?: ReadonlyMap<
-			string,
-			{ state?: string; held: boolean; causeLabel: string | null }
-		>;
+		peerHeldByEnv?: ReadonlyMap<string, { state?: string; held: boolean; causeLabel: string | null }>;
 		/**
 		 * ⭐ "WAITS FOR `<stage>`", ON THE FOCUS BOX TOO (qa11 finding,
 		 * squad-rollout gates-2 follow-up, 2026-10-11). When
@@ -211,10 +200,7 @@
 	 */
 	const gateRetainer = new RetainedRows<GateBox>();
 	const displayedGates = $derived.by<GateBox[]>(() => {
-		const retained = withoutSupersededBoxes(
-			gateRetainer.apply(focus?.id ?? '', hood.gates, (g) => g.key),
-			hood.gates
-		);
+		const retained = withoutSupersededBoxes(gateRetainer.apply(focus?.id ?? '', hood.gates, (g) => g.key), hood.gates);
 		return retained.map(({ row, resolved }) =>
 			resolved ? { ...row, state: 'clear' as const, phrase: 'passing now', held: [] } : row
 		);
@@ -231,9 +217,9 @@
 	const gatedByCount = $derived(
 		upstreamLinks.filter((l) => !l.chainPredecessor).length + displayedGates.length
 	);
-	const chainEnvNames = $derived([
-		...new Set(upstreamLinks.filter((l) => l.chainPredecessor).map((l) => l.node.env))
-	]);
+	const chainEnvNames = $derived(
+		[...new Set(upstreamLinks.filter((l) => l.chainPredecessor).map((l) => l.node.env))]
+	);
 
 	/**
 	 * ⭐ GATE BOXES RIDE IN THE UPSTREAM ("Gated by") COLUMN, MERGED WITH THE
@@ -248,7 +234,8 @@
 
 	const STATE_ORDER = { blocked: 0, unknown: 1, clear: 2 } as const;
 	/** Links before gate boxes, promotion links before contract links. */
-	const typeRank = (i: UpItem) => (i.kind === 'gate' ? 2 : i.link.writer === 'promotion' ? 0 : 1);
+	const typeRank = (i: UpItem) =>
+		i.kind === 'gate' ? 2 : i.link.writer === 'promotion' ? 0 : 1;
 	const nameOf = (i: UpItem) => (i.kind === 'link' ? i.link.node.name : i.box.title);
 
 	function mergedUpstream(links: readonly NeighbourLink[], boxes: readonly GateBox[]): UpItem[] {
@@ -289,7 +276,11 @@
 	 * orange trunk short; the reader's first need outranks the wire's economy.)
 	 */
 	const upstream = $derived(
-		upOrder.apply(`${focus?.id ?? ''}|${upMerged.length}`, holdingFirst(upMerged), (i) => i.key)
+		upOrder.apply(
+			`${focus?.id ?? ''}|${upMerged.length}`,
+			holdingFirst(upMerged),
+			(i) => i.key
+		)
 	);
 	const downstream = $derived(downOrder.apply(focus?.id ?? '', hood.downstream, (l) => l.key));
 	const envLabel = (env: string) => shortEnvLabel(themeOf(env)) || env;
@@ -322,9 +313,7 @@
 		const peer = peerHeldByEnv?.get(l.node.env);
 		if (peer?.held && peer.causeLabel) return 'held';
 		const st = peer?.state;
-		return peerWord(l) && (st === 'checking' || st === 'deploying' || st === 'failed')
-			? st
-			: 'newest';
+		return peerWord(l) && (st === 'checking' || st === 'deploying' || st === 'failed') ? st : 'newest';
 	}
 	/**
 	 * ⭐ "WAITS FOR `<stage>`", NEUTRAL — THE CHAIN LINK'S OWN SENTENCE
@@ -347,17 +336,13 @@
 		// The raw env name, same convention `waitsFor`/the "Newer builds"
 		// rows already print ("Waits for staging"), never the Chip's own
 		// abbreviated label.
-		if (peer?.held && peer.causeLabel)
-			return [`Waits for ${l.node.env} · ${l.node.env} held on ${peer.causeLabel}`];
+		if (peer?.held && peer.causeLabel) return [`Waits for ${l.node.env} · ${l.node.env} held on ${peer.causeLabel}`];
 		// A peer still checking / deploying / failing its own build has NOT passed: it reads the place verdict word the app page and /rollouts print.
 		const word = peerWord(l);
 		if (word) return [`${word} · `, PROMOTION_EDGE];
 		// Reaching here means the predecessor holds nothing (no chain wait, no held peer): the build already passed it. "Waits for staging"
 		// beside a green dot read as staging itself waiting (QA, TL follow-up).
-		return [
-			'Nothing held · ',
-			PROMOTION_EDGE
-		]; /* the edge's kind, drawn (» Promotion), never the text */
+		return ['Nothing held · ', PROMOTION_EDGE]; /* the edge's kind, drawn (» Promotion), never the text */
 	}
 
 	/** batch4 #76: the Gates tab of a promotion label's source environment, when the upstream column has that environment's rollout; else no link. */
@@ -440,20 +425,10 @@
 	function releaseParts(l: NeighbourLink): { t: string; nb: boolean }[] | null {
 		const s = releaseSentence(l);
 		if (!s) return null;
-		const names = [
-			l.node.name,
-			l.node.env ? envLabel(l.node.env) : '',
-			focus?.name ?? '',
-			focus?.env ? envLabel(focus.env) : ''
-		].filter((n): n is string => !!n && n.includes('-'));
+		const names = [l.node.name, l.node.env ? envLabel(l.node.env) : '', focus?.name ?? '', focus?.env ? envLabel(focus.env) : ''].filter((n): n is string => !!n && n.includes('-'));
 		if (!names.length) return [{ t: s, nb: false }];
-		const re = new RegExp(
-			`(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`
-		);
-		return s
-			.split(re)
-			.filter(Boolean)
-			.map((t) => ({ t, nb: names.includes(t) }));
+		const re = new RegExp(`(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`);
+		return s.split(re).filter(Boolean).map((t) => ({ t, nb: names.includes(t) }));
 	}
 	function releaseSentence(l: NeighbourLink): string | null {
 		if (l.state !== 'blocked') return null;
@@ -463,10 +438,7 @@
 		if (l.side === 'downstream' && focus) {
 			if (l.writer === 'contract') {
 				return l.requiredVersion
-					? `Releases to ${l.node.name} when ${focus.name} ships ${l.requiredVersion}`.replace(
-							/ (?=\S+$)/,
-							'\u00a0'
-						)
+					? `Releases to ${l.node.name} when ${focus.name} ships ${l.requiredVersion}`.replace(/ (?=\S+$)/, '\u00a0')
 					: `Releases to ${l.node.name} when ${focus.name} ships a newer version`;
 			}
 			// An empty `held` names no build: "its first build" keeps the subject (the focus) and never dangles an "it".
@@ -626,7 +598,7 @@
 			{held
 			? 'border-held-line bg-surface'
 			: l.node.unresolved
-				? 'border-line-strong bg-subtle border-dashed'
+				? 'border-dashed border-line-strong bg-subtle'
 				: 'border-line bg-surface'}
 			{href ? 'hover:border-line-strong' : ''}"
 	>
@@ -635,28 +607,21 @@
 		     with a 16px glyph — Railway's own object (identity on top, one
 		     status line with an icon at the bottom), no leading 32px disc. -->
 		<span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-			<span class="t-card-title text-fg min-w-0 break-words">{l.node.name}</span>
+			<span class="t-card-title min-w-0 break-words text-fg">{l.node.name}</span>
 			<!-- ⛔ AN ENV CHIP ONLY WHEN THERE IS AN ENVIRONMENT — main's #40 rule for
 			     `DependencyNode`, applied to this view of the same graph. `node.env`
 			     falls back to the NAMESPACE when no Environment maps it, and a chip
 			     with no theme renders as a bare bordered box. -->
 			{#if theme}
-				<Chip
-					role="env"
-					{theme}
-					label={envLabel(l.node.env)}
-					title={l.node.env}
-					wide
-					class="shrink-0"
-				/>
+				<Chip role="env" {theme} label={envLabel(l.node.env)} title={l.node.env} wide class="shrink-0" />
 			{:else if l.node.env}
 				<!-- A namespace or an env name — both are NAMES (sans), never mono;
 				     only the build figure below is a machine id. -->
-				<span class="t-meta text-fg-subtle shrink-0">{l.node.env}</span>
+				<span class="t-meta shrink-0 text-fg-subtle">{l.node.env}</span>
 			{/if}
 		</span>
 		{#if l.node.build}
-			<p class="t-code-sm text-fg-subtle min-w-0 truncate">{l.node.build}</p>
+			<p class="t-code-sm min-w-0 truncate text-fg-subtle">{l.node.build}</p>
 		{:else if l.node.unresolved}
 			<p class="t-meta text-fg-subtle">not in this dashboard</p>
 		{/if}
@@ -666,24 +631,17 @@
 		     off. `items-start` (was `items-center`) so a two-line wrap keeps
 		     the glyph pinned to the FIRST line instead of centring against
 		     the wrapped box's full height. -->
-		<p class="t-meta flex min-w-0 items-start gap-1.5 {held ? 'text-held' : 'text-fg-subtle'}">
+		<p class="flex min-w-0 items-start gap-1.5 t-meta {held ? 'text-held' : 'text-fg-subtle'}">
 			<span class="mt-0.5 shrink-0"
 				><StatusMark state={l.chainPredecessor ? chainMark(l) : markState(l.state)} /></span
 			>
-			<span class="min-w-0 break-words"
-				>{#if l.chainPredecessor}<CauseText parts={chainWaitsForText(l)} />{:else}{statusLine(
-						l
-					)}{/if}</span
-			>
+			<span class="min-w-0 break-words">{#if l.chainPredecessor}<CauseText parts={chainWaitsForText(l)} />{:else}{statusLine(l)}{/if}</span>
 		</p>
 		{#if held}
 			<!-- ⭐ SPEC §7 (owner-driven, 2026-10-10): "every holding tile
 			     states its release in words" — `releaseSentence` above, the
 			     CONDITION half the status line no longer restates. -->
-			<p class="t-meta text-fg-muted min-w-0 break-words">
-				{#each releaseParts(l) ?? [] as p}{#if p.nb}<span class="whitespace-nowrap">{p.t}</span
-						>{:else}{p.t}{/if}{/each}
-			</p>
+			<p class="t-meta min-w-0 break-words text-fg-muted">{#each releaseParts(l) ?? [] as p}{#if p.nb}<span class="whitespace-nowrap">{p.t}</span>{:else}{p.t}{/if}{/each}</p>
 			{#if actionLabel(l)}
 				<!-- ⭐ THE ACTION, drawn but not a second interactive element
 				     (`pointer-events-none`, `aria-hidden` — see `actionLabel`'s
@@ -715,10 +673,7 @@
 	{@const askRaw = held && b.mark.clears === 'person' ? approveAsk : null}
 	{@const loading = askRaw === ASK_LOADING}
 	{@const ask = askRaw && askRaw !== ASK_LOADING ? askRaw : null}
-	{@const docsHref =
-		held && b.mark.clears === 'person' && !ask && !loading
-			? 'https://docs.kuberik.com/concepts/gates#approvals'
-			: null}
+	{@const docsHref = held && b.mark.clears === 'person' && !ask && !loading ? 'https://docs.kuberik.com/concepts/gates#approvals' : null}
 	<!--
 		⭐ NEW BY DESIGN. (2026-10-08, the Gates tab.) ROLE: a gate holding this
 		rollout that has NO rollout on the far end — a deploy window, a freeze,
@@ -741,57 +696,33 @@
 		use:holdHeight={focus?.id}
 		data-state={b.state}
 		data-key={`gate:${b.key}`}
-		title={docsHref
-			? 'How to approve a held build'
-			: b.gates.length > 0
-				? b.gates.join(', ')
-				: undefined}
+		title={docsHref ? 'How to approve a held build' : b.gates.length > 0 ? b.gates.join(', ') : undefined}
 		class="hood-tile flex min-w-0 flex-col justify-center gap-1.5 rounded-md border p-3 transition-[border-color]
 			{held ? 'border-held-line bg-surface' : 'border-line bg-surface'}
 			{docsHref ? 'hover:border-line-strong' : ''}"
 	>
 		<span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-			<span class="t-card-title text-fg min-w-0 break-words"
-				>{#if b.label}<GateLabel
-						label={b.label}
-						href={docsHref ? null : sourceGatesHref(b.label)}
-					/>{:else}{b.title}{/if}</span
-			>
+			<span class="t-card-title min-w-0 break-words text-fg">{#if b.label}<GateLabel label={b.label} href={docsHref ? null : sourceGatesHref(b.label)} />{:else}{b.title}{/if}</span>
 		</span>
-		<p class="t-meta flex min-w-0 items-start gap-1.5 {held ? 'text-held' : 'text-fg-subtle'}">
+		<p class="flex min-w-0 items-start gap-1.5 t-meta {held ? 'text-held' : 'text-fg-subtle'}">
 			<span class="mt-0.5 shrink-0"><StatusMark state={markState(b.state)} /></span>
 			<span class="min-w-0 break-words">{gateBoxStatusLine(b)}</span>
 		</p>
 		{#if b.kind === 'approval'}
 			{#each approvedFacts as f (f.build)}
-				<p class="t-meta text-fg-muted min-w-0 break-words" title={f.title} data-approved-build>
-					<span class="t-code text-fg">{f.build}</span> · {f.text}
-				</p>
+				<p class="t-meta min-w-0 break-words text-fg-muted" title={f.title} data-approved-build><span class="t-code text-fg">{f.build}</span> · {f.text}</p>
 			{/each}
 		{/if}
 		{#if held}
-			<p class="t-meta text-fg-muted min-w-0 break-words">
-				{ask ? approvalWord(true) : loading ? approvalWord(false) : gateBoxReleaseSentence(b)}
-			</p>
+			<p class="t-meta min-w-0 break-words text-fg-muted">{ask ? approvalWord(true) : loading ? approvalWord(false) : gateBoxReleaseSentence(b)}</p>
 			{#if b.kind === 'pin' && onClearPin}
-				<button
-					type="button"
-					class="btn btn-xs btn-secondary mt-0.5 self-start"
-					disabled={clearPinDisabled}
-					onclick={onClearPin}>{CLEAR_PIN_LABEL}</button
-				>
+				<button type="button" class="btn btn-xs btn-secondary mt-0.5 self-start" disabled={clearPinDisabled} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
 			{/if}
 			{#if ask}
-				<span class="mt-0.5 self-start" in:fade={{ duration: 150 }}
-					><ApproveButton target={ask} class="btn btn-primary btn-xs" scope /></span
-				>
+				<span class="mt-0.5 self-start" in:fade={{ duration: 150 }}><ApproveButton target={ask} class="btn btn-primary btn-xs" scope /></span>
 			{:else if loading}
 				<!-- the button's own box, reserved while the fleet answers: Approve or "How to approve" lands in it, nothing moves -->
-				<span
-					class="mt-0.5 inline-block h-7 w-[72px] self-start"
-					aria-hidden="true"
-					data-approve-slot
-				></span>
+				<span class="mt-0.5 inline-block h-7 w-[72px] self-start" aria-hidden="true" data-approve-slot></span>
 			{/if}
 			{#if docsHref}
 				<!-- ⭐ THE ↗ EXTERNAL GLYPH (final polish round, D2, AD ruling):
@@ -802,10 +733,7 @@
 				     (`ArrowUpRightFromSquareOutline`), sized by `.btn-xs`'s own
 				     rule (12px, `app.css`'s one icon-size ladder), not a second
 				     one-off size. -->
-				<span
-					class="btn btn-xs btn-secondary pointer-events-none mt-0.5 self-start"
-					aria-hidden="true"
-				>
+				<span class="btn btn-xs btn-secondary pointer-events-none mt-0.5 self-start" aria-hidden="true">
 					How to approve
 					<ArrowUpRightFromSquareOutline />
 				</span>
@@ -822,7 +750,7 @@
      `data-hood-link` — U-32(c)'s own finding still holds: nothing attaches a
      wire to an empty column, so this costs no wire geometry at any width. -->
 {#snippet emptyTile(text: string)}
-	<div class="hood-tile hood-tile--empty border-line-strong rounded-md border border-dashed p-3">
+	<div class="hood-tile hood-tile--empty rounded-md border border-dashed border-line-strong p-3">
 		<p class="t-meta text-fg-subtle">{text}</p>
 	</div>
 {/snippet}
@@ -881,37 +809,28 @@
 	     dots above and below it. `min-h-[160px]` + `p-6` (24px) is "content
 	     + 24px padding, min 160" — the canvas now fits what it draws instead
 	     of a fixed floor taller than most of what it holds. -->
-	<div
-		class="canvas-dots border-line min-w-0 rounded-md border p-3 sm:p-6 lg:flex lg:min-h-[160px] lg:items-center lg:p-6"
-	>
+	<div class="canvas-dots min-w-0 rounded-md border border-line p-3 sm:p-6 lg:flex lg:min-h-[160px] lg:items-center lg:p-6">
+	<div bind:this={root} class="hood relative w-full" class:hood--steep={steep} role="group" aria-label="Gates of {focus.name} in {focus.env}">
 		<div
-			bind:this={root}
-			class="hood relative w-full"
-			class:hood--steep={steep}
-			role="group"
-			aria-label="Gates of {focus.name} in {focus.env}"
+			class="hood-grid"
+			class:hood-grid--no-up={upstream.length === 0}
+			class:hood-grid--no-down={downstream.length === 0}
 		>
-			<div
-				class="hood-grid"
-				class:hood-grid--no-up={upstream.length === 0}
-				class:hood-grid--no-down={downstream.length === 0}
-			>
-				<div class="hood-up min-w-0" class:hood-col--empty={upstream.length === 0}>
-					<!-- ⭐ COLUMN HEADS AS `t-label` (squad-rollout Lane G round 2, item
+			<div class="hood-up min-w-0" class:hood-col--empty={upstream.length === 0}>
+				<!-- ⭐ COLUMN HEADS AS `t-label` (squad-rollout Lane G round 2, item
 				     3): "Gated by · N" / "This rollout" / "Downstream · N" — the label
 				     role every other section head on this product uses (28px dot
 				     headers, the palette's group heads), not a `t-ui-sm` line that
 				     read at body-text weight. -->
-					<p class="hood-label t-label text-fg-subtle">
-						Gated by · <span class="tabular-nums">{gatedByCount}</span
-						>{#if chainEnvNames.length}{' '}<span>+ {chainEnvNames.join(', ')}</span>{/if}
-					</p>
-					{@render upstreamColumn(upstream)}
-				</div>
+				<p class="hood-label t-label text-fg-subtle">
+					Gated by · <span class="tabular-nums">{gatedByCount}</span>{#if chainEnvNames.length}{' '}<span>+ {chainEnvNames.join(', ')}</span>{/if}
+				</p>
+				{@render upstreamColumn(upstream)}
+			</div>
 
-				<div class="hood-focus min-w-0">
-					<p class="hood-label hood-label-focus t-label text-fg-subtle">This rollout</p>
-					<!--
+			<div class="hood-focus min-w-0">
+				<p class="hood-label hood-label-focus t-label text-fg-subtle">This rollout</p>
+				<!--
 					⭐ INTEGRATOR HAND-OFF (a): THE BOX SIZES TO ITS OWN CONTENT NOW.
 					It used to carry an inline `min-height` built from
 					`focusMinHeight(slot count, pitch)` plus `justify-center`, so a
@@ -925,7 +844,7 @@
 					fan needs — which is "anchor the wire slots to it" with zero
 					change to the wire geometry itself.
 				-->
-					<!-- ⭐ THE ONE RAISED OBJECT ON SCREEN, AND THE LARGEST (squad-rollout
+				<!-- ⭐ THE ONE RAISED OBJECT ON SCREEN, AND THE LARGEST (squad-rollout
 				     Lane G round 2 item 3; round 4 item 3, AD ruling). Every other
 				     tile on this canvas sits flat on `bg-surface`; the focus is the
 				     one thing the reader's eye should land on first: `.surface-raised`
@@ -937,46 +856,39 @@
 				     One sans state line ("N builds wait here", not the mono "Held:
 				     a, b +1 wait here" that used to wrap an orphan line) with the
 				     actual build ids listed below it in `t-code-sm`. -->
-					<div
-						data-hood-focus
-						use:holdHeight={focus?.id}
-						class="surface-raised flex min-h-0 flex-col gap-1.5 rounded-md border p-4
+				<div
+					data-hood-focus
+					use:holdHeight={focus?.id}
+					class="surface-raised flex min-h-0 flex-col gap-1.5 rounded-md border p-4
 						{focusHeldBuilds.length > 0 ? 'border-held-line' : 'border-line'}"
-					>
-						<span class="flex min-w-0 items-start gap-2.5">
-							<!-- ⭐ 20px ON THE FOCUS, 16px ON EVERY GATE TILE (squad-rollout
+				>
+					<span class="flex min-w-0 items-start gap-2.5">
+						<!-- ⭐ 20px ON THE FOCUS, 16px ON EVERY GATE TILE (squad-rollout
 						     Lane G round 5, item D, AD ruling): `StatusMark` itself is
 						     frozen at 16px (shared, off-limits to edit) — a 1.25×
 						     `scale()` wrapper on the ONE raised object keeps the focus
 						     the largest mark on the canvas without a second glyph
 						     component. -->
-							<span class="mt-[1px] inline-flex h-5 w-5 shrink-0 items-center justify-center">
-								<span style="transform: scale(1.25)"
-									><StatusMark state={focusHeldBuilds.length > 0 ? 'held' : 'newest'} /></span
-								>
-							</span>
-							<span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1">
-								<span class="t-card-title text-fg min-w-0 break-words">{focus.name}</span>
-								{#if themeOf(focus.env)}
-									<Chip
-										role="env"
-										theme={themeOf(focus.env)}
-										label={envLabel(focus.env)}
-										title={focus.env}
-										wide
-										class="shrink-0"
-									/>
-								{:else if focus.env}
-									<span class="t-meta text-fg-subtle shrink-0">{focus.env}</span>
-								{/if}
-							</span>
+						<span class="mt-[1px] inline-flex h-5 w-5 shrink-0 items-center justify-center">
+							<span style="transform: scale(1.25)"
+								><StatusMark state={focusHeldBuilds.length > 0 ? 'held' : 'newest'} /></span
+							>
 						</span>
-						<p class="t-meta text-fg-subtle">
-							{#if focus.build}runs <span class="t-code-lg text-fg">{focus.build}</span>{:else}never
-								deployed{/if}
-						</p>
-						{#if focusHeldBuilds.length > 0}
-							<!-- ⭐ DESIGN LANGUAGE §2.7 / SPEC §3 (2026-10-09), ONE SANS STATE
+						<span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1">
+							<span class="t-card-title min-w-0 break-words text-fg">{focus.name}</span>
+							{#if themeOf(focus.env)}
+								<Chip role="env" theme={themeOf(focus.env)} label={envLabel(focus.env)} title={focus.env} wide class="shrink-0" />
+							{:else if focus.env}
+								<span class="t-meta shrink-0 text-fg-subtle">{focus.env}</span>
+							{/if}
+						</span>
+					</span>
+					<p class="t-meta text-fg-subtle">
+						{#if focus.build}runs <span class="t-code-lg text-fg">{focus.build}</span
+							>{:else}never deployed{/if}
+					</p>
+					{#if focusHeldBuilds.length > 0}
+						<!-- ⭐ DESIGN LANGUAGE §2.7 / SPEC §3 (2026-10-09), ONE SANS STATE
 						     LINE (round 4, item 3): "Held" in held ink carries the fact
 						     — never the uppercase filled "HELD HERE" chip (filled chips
 						     are `STUCK`'s alone, §2.7, Chip.svelte §3.7) — as a plain
@@ -985,80 +897,80 @@
 						     below, where they can wrap freely. Reads `focusHeldBuilds`
 						     (see the prop's own doc comment) so it cannot contradict the
 						     page's lead row. -->
-							<!-- ⭐ qa11b, item 2 correction (squad-rollout gates-2 follow-up,
+						<!-- ⭐ qa11b, item 2 correction (squad-rollout gates-2 follow-up,
 						     2026-10-11): "here", never "waits here" — `wait`/`waits` is
 						     the verb reserved for a CHAIN-queued build
 						     (`chainWaitsForText`'s own "Waits for `<stage>`"); a build
 						     named in `focusHeldBuilds` is already refused HERE, which is
 						     the opposite of waiting. -->
-							<p class="t-meta text-held">
-								<span class="text-held">Held:</span>
-								{focusHeldBuilds.length}
-								{focusHeldBuilds.length === 1 ? 'build' : 'builds'} here
-							</p>
-							<p class="t-code-sm text-held min-w-0 break-words">{focusHeldBuilds.join(', ')}</p>
-						{:else if focusWaitsFor}
-							<p class="t-meta text-fg-subtle">{focusWaitsFor}</p>
-						{:else}
-							<p class="t-meta text-fg-subtle">No build held here</p>
-						{/if}
-					</div>
+						<p class="t-meta text-held">
+							<span class="text-held">Held:</span>
+							{focusHeldBuilds.length}
+							{focusHeldBuilds.length === 1 ? 'build' : 'builds'} here
+						</p>
+						<p class="t-code-sm min-w-0 break-words text-held">{focusHeldBuilds.join(', ')}</p>
+					{:else if focusWaitsFor}
+						<p class="t-meta text-fg-subtle">{focusWaitsFor}</p>
+					{:else}
+						<p class="t-meta text-fg-subtle">No build held here</p>
+					{/if}
 				</div>
+			</div>
 
-				<div class="hood-down min-w-0" class:hood-col--empty={downstream.length === 0}>
-					<!-- batch4 #2 follow-up: "Downstream · N", not "Gates · N". These boxes
+			<div class="hood-down min-w-0" class:hood-col--empty={downstream.length === 0}>
+				<!-- batch4 #2 follow-up: "Downstream · N", not "Gates · N". These boxes
 				     are other rollouts that wait on THIS one; they are not gates of
 				     this rollout and are excluded from the "N of M gates holding"
 				     count (`gatesOnThisRollout`), so the head must not call them
 				     gates. Their held line reads "<build> held downstream": the
 				     downstream place's own hold, never this rollout's gate. -->
-					<p class="hood-label t-label text-fg-subtle">
-						Downstream · <span class="tabular-nums">{hood.downstream.length}</span>
-					</p>
-					{@render downstreamColumn(downstream)}
-				</div>
+				<p class="hood-label t-label text-fg-subtle">
+					Downstream · <span class="tabular-nums">{hood.downstream.length}</span>
+				</p>
+				{@render downstreamColumn(downstream)}
 			</div>
-
-			<svg
-				class="pointer-events-none absolute inset-0 overflow-visible"
-				width={box.w}
-				height={box.h}
-				aria-hidden="true"
-			>
-				<defs>
-					{#each WIRE_KINDS as k (k)}
-						<!-- One head spec for every dependency graph (`$lib/graph-arrow`):
-					     fixed px, base on the path's end, tip on the edge. -->
-						<marker
-							id="{uid}-{k}"
-							viewBox={ARROW_VIEWBOX}
-							refX="0"
-							refY="8"
-							markerUnits="userSpaceOnUse"
-							markerWidth={ARROW[k].length}
-							markerHeight={ARROW[k].width}
-							orient="auto"
-						>
-							<path d={ARROW_PATH} fill={ink(k)} />
-						</marker>
-					{/each}
-				</defs>
-				{#each wires as w (w.key)}
-					{@const k = wireKind(w.state)}
-					<path
-						d={w.d}
-						stroke={ink(k)}
-						fill="none"
-						stroke-width={ARROW[k].stroke}
-						stroke-dasharray={w.state === 'unknown' ? `${DASH.on} ${DASH.off}` : undefined}
-						use:endOnDash={w.state === 'unknown'}
-						marker-end="url(#{uid}-{k})"
-						data-wire={w.key}
-						data-tip="{w.tip[0]},{w.tip[1]}"
-					/>
-				{/each}
-			</svg>
 		</div>
+
+		<svg
+			class="pointer-events-none absolute inset-0 overflow-visible"
+			width={box.w}
+			height={box.h}
+			aria-hidden="true"
+		>
+			<defs>
+				{#each WIRE_KINDS as k (k)}
+					<!-- One head spec for every dependency graph (`$lib/graph-arrow`):
+					     fixed px, base on the path's end, tip on the edge. -->
+					<marker
+						id="{uid}-{k}"
+						viewBox={ARROW_VIEWBOX}
+						refX="0"
+						refY="8"
+						markerUnits="userSpaceOnUse"
+						markerWidth={ARROW[k].length}
+						markerHeight={ARROW[k].width}
+						orient="auto"
+					>
+						<path d={ARROW_PATH} fill={ink(k)} />
+					</marker>
+				{/each}
+			</defs>
+			{#each wires as w (w.key)}
+				{@const k = wireKind(w.state)}
+				<path
+					d={w.d}
+					stroke={ink(k)}
+					fill="none"
+					stroke-width={ARROW[k].stroke}
+					stroke-dasharray={w.state === 'unknown' ? `${DASH.on} ${DASH.off}` : undefined}
+					use:endOnDash={w.state === 'unknown'}
+					marker-end="url(#{uid}-{k})"
+					data-wire={w.key}
+					data-tip="{w.tip[0]},{w.tip[1]}"
+				/>
+			{/each}
+		</svg>
+	</div>
 	</div>
 {/if}
 
@@ -1138,13 +1050,12 @@
 	 * (inherits `start` from the row); left in place since it still
 	 * documents that specific case's own reasoning. */
 	@container (min-width: 672px) {
-		/* ⭐ THE GUTTERS SHRINK WITH THE CONTAINER (2026-11-12). Fixed 8/9rem
+		/* THE GUTTERS SHRINK WITH THE CONTAINER (2026-11-12). Fixed 8/9rem
 		   gutters plus a 240px tile floor summed to 878px inside an 812px
-		   container (the ~1000px viewport), and the section's `overflow-hidden`
-		   sliced the downstream card. Gutters are now `clamp(5rem, 12cqi, 8rem)`
-		   (steep: 9rem max), so they give back space first; the tile floor only
-		   applies once the container is wide enough to afford it (see the
-		   `.hood-tile` block below). */
+		   container, and the section's `overflow-hidden` sliced the downstream
+		   card. Gutters are now fluid, so they give back space first; the tile
+		   floor only applies once the container can afford it (`.hood-tile`
+		   block below). */
 		.hood-grid {
 			--hood-gutter: clamp(5rem, 12cqi, 8rem);
 			--hood-gutter-steep: clamp(5.5rem, 13cqi, 9rem);
@@ -1175,9 +1086,7 @@
 			   centre: three content-sized tracks summing to LESS than the
 			   canvas width is "one compact group", with the dots filling
 			   what is left on both sides. */
-			grid-template-columns: minmax(0, 400px) var(--hood-gutter) minmax(0, 480px) var(
-					--hood-gutter
-				) minmax(0, 400px);
+			grid-template-columns: minmax(0, 400px) var(--hood-gutter) minmax(0, 480px) var(--hood-gutter) minmax(0, 400px);
 			align-items: start;
 			justify-content: center;
 		}
@@ -1192,9 +1101,7 @@
 		   the S-curves stay shallow enough to read — still inside round 6's
 		   120–160px fixed-gutter band (8rem base, 9rem steep). */
 		.hood--steep .hood-grid {
-			grid-template-columns: minmax(0, 400px) var(--hood-gutter-steep) minmax(0, 480px) var(
-					--hood-gutter-steep
-				) minmax(0, 400px);
+			grid-template-columns: minmax(0, 400px) var(--hood-gutter-steep) minmax(0, 480px) var(--hood-gutter-steep) minmax(0, 400px);
 		}
 		.hood-up {
 			grid-column: 1;
@@ -1266,10 +1173,8 @@
 			max-width: 400px;
 		}
 	}
-	/* The 240px floor needs 3 columns + 2 gutters to fit: 240 + 480-ish focus
-	   + 240 + 2 x 5rem = 1.2k at worst, so it only applies from 1100px of
-	   container; below that the tracks shrink and tiles truncate instead of
-	   overflowing. */
+	/* The 240px floor only applies from 1100px of container; below that the
+	   tracks shrink and tiles truncate instead of overflowing. */
 	@container (min-width: 1100px) {
 		.hood-tile {
 			min-width: 240px;
