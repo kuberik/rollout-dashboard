@@ -21,6 +21,7 @@
 	<span class="inline-flex min-w-0 items-center gap-1.5" data-gate-label="promotion" data-gate-source={label.source ?? ''}>
 		{#if glyph}<ChevronDoubleRightOutline class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />{/if}
 		{#if label.source}
+			<span class="sr-only">{PROMOTION_WORD} from </span>
 			<Chip role="env" label={label.source} theme={getRolloutEnvironmentTheme(null, label.source)} wide />
 		{:else}
 			<span class="min-w-0">{PROMOTION_WORD}</span>

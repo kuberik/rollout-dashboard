@@ -51,35 +51,27 @@ export function classifiedGateLabel(g: { kind?: string | null; subject?: string 
 }
 
 /*
- * A gate label INSIDE A STRING. Hold causes travel the product as strings ("Held by Promotion from staging", "Waits on ...") through
- * keys, regex rewrites and sentences, so a surface that draws cannot be handed a structured value without re-plumbing every
- * layer. A promotion label is therefore wrapped in two invisible marks (U+2063 / U+2064). A string that is never split still
- * reads "Promotion from staging" (the marks are zero-width), and `GateText.svelte` is the one place that turns the marked span
- * back into the drawn `» [STAGING]` label. Plain-text sinks (aria-label, title, clipboard, data-* attributes) call `plainGateText`.
+ * A CAUSE IS TYPED, NOT A STRING WITH MARKS IN IT. Hold causes ("Held by <gate>", "Waits on <provider>", "<name> held on <gate>") are
+ * `Cause` = an array of plain-text runs and `GateLabel`s. A surface that draws maps the array (`CauseText.svelte`: a promotion label
+ * becomes the glyph and the chip); every plain-text sink (aria-label, title, clipboard, data-*, a toast's message, a dedupe key)
+ * calls `causeText(parts)`, the ONE flattener. Parts, not a `gate` field beside the sentence, because the sentences compose (a
+ * suffix "· also needs your approval", "Waits for staging · staging held on <gate>", the toast's "app: <cause> · where") and the
+ * label sits in the middle of them; a side field would need every composer to re-splice it.
  */
-export const GATE_MARK_OPEN = '\u2063';
-export const GATE_MARK_CLOSE = '\u2064';
-const MARKED = /\u2063([^\u2063\u2064]*)\u2064/g;
-
-/** the label as a string a drawing surface will split into the glyph and chip (`GateText`); every other kind stays plain text */
-export function gateLabelMarked(l: GateLabel): string {
-	return l.kind === 'promotion' ? `${GATE_MARK_OPEN}${gateLabelText(l)}${GATE_MARK_CLOSE}` : gateLabelText(l);
-}
-/** the string without its marks: what an aria-label, a title, a data attribute or the clipboard gets */
-export function plainGateText(s: string): string {
-	return s.replace(MARKED, '$1').replace(/[\u2063\u2064]/g, '');
-}
-export type GateTextPart = { text: string } | { label: GateLabel };
-/** split a string into plain runs and the promotion labels it carries */
-export function splitGateText(s: string): GateTextPart[] {
-	const out: GateTextPart[] = [];
-	let at = 0;
-	for (const m of s.matchAll(MARKED)) {
-		if (m.index! > at) out.push({ text: s.slice(at, m.index) });
-		const from = /^Promotion from (.+)$/.exec(m[1]);
-		out.push({ label: { kind: 'promotion', source: from ? from[1] : null } });
-		at = m.index! + m[0].length;
+export type CausePart = string | GateLabel;
+export type Cause = CausePart[];
+/** a label as a cause part: only a promotion label is drawn; every other kind stays the plain run it always was */
+export const labelPart = (l: GateLabel): CausePart => (l.kind === 'promotion' ? l : gateLabelText(l));
+/** the cause as plain text: the one flattener for every sink that cannot draw */
+export const causeText = (parts: readonly CausePart[]): string => parts.map((p) => (typeof p === 'string' ? p : gateLabelText(p))).join('');
+/** `Held by <label>` (or any `lead` + label) as a cause */
+export const causeWith = (lead: string, l: GateLabel): Cause => [lead, labelPart(l)];
+/** merge adjacent plain runs, so a cause built by concatenation compares and prints like the string it replaces */
+export function joinCause(...xs: (CausePart | readonly CausePart[])[]): Cause {
+	const out: Cause = [];
+	for (const x of xs.flat() as CausePart[]) {
+		if (typeof x === 'string' && typeof out[out.length - 1] === 'string') out[out.length - 1] = (out[out.length - 1] as string) + x;
+		else if (x !== '') out.push(x);
 	}
-	if (at < s.length) out.push({ text: s.slice(at) });
 	return out;
 }
