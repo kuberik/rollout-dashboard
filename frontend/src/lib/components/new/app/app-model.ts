@@ -32,7 +32,7 @@ import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
 import { waitFact } from '$lib/view-models/wait-fact';
-import { causeText, joinCause, type Cause } from '$lib/view-models/gate-label';
+import { causeText, joinCause, labelPart, type Cause, type GateLabel } from '$lib/view-models/gate-label';
 
 const ORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
 export const tierRank = (t: string) => ORDER.indexOf(t as TierKey);
@@ -210,6 +210,8 @@ export function buildRollup(builds: AppBuild[], places: PlaceHold[]): string {
 
 export type HoldRow = {
 	key: string;
+	/** a promotion hold's typed label: the card draws `Held by » [SOURCE]` (GateLabel), `name` is only its plain-text form */
+	label?: GateLabel;
 	kind: 'approval' | 'pin' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
 	name: string;
 	holding: boolean;
@@ -238,7 +240,8 @@ export function holdRows(
 	const rows: HoldRow[] = gates.map((g) => ({
 		key: `gate:${g.id}`,
 		kind: g.kind === 'promotion' ? 'other' : g.kind,
-		name: shortGate(g.name, app),
+		name: g.label ? causeText(['Held by ', labelPart(g.label)]) : shortGate(g.name, app),
+		...(g.label ? { label: g.label } : {}),
 		holding: g.holding,
 		pending: g.heldPending,
 		places: g.holding ? g.holdsAt : g.places,

@@ -1319,24 +1319,27 @@ export function buildPlaces(app: string, build: string, state: HomeState = 'inci
 	const want = buildName(app, build) ?? build;
 	return placesOf(state, app).filter((p) => buildName(app, p.version) === want).map((p) => ({ place: placeLabel({ tier: p.tier, regions: [p.label] }), href: p.href, state: p.state }));
 }
-export type GateInfo = { /** identity, unique per gate: the gate's resource name (dependency gates folded). `name` is only a display name and repeats (every generated `ghd-xxxxx` reads "Gate"). */ id: string; name: string; kind: 'approval' | 'dependency' | 'schedule' | 'promotion' | 'other'; sentence: string; holding: boolean; places: string[]; /** the places this gate holds a build at RIGHT NOW (a subset of `places`, the ones it guards): the Holding card lists and counts only these */ holdsAt: string[]; held: string[]; releasedBy: string; /** the held-HERE count is not known yet (the place's detail has not answered): print a pending state, never `held.length` */ heldPending: boolean };
+export type GateInfo = { /** identity, unique per gate: the gate's resource name (dependency gates folded). `name` is only a display name and repeats (every generated `ghd-xxxxx` reads "Gate"). */ id: string; name: string; kind: 'approval' | 'dependency' | 'schedule' | 'promotion' | 'other'; sentence: string; holding: boolean; places: string[]; /** the places this gate holds a build at RIGHT NOW (a subset of `places`, the ones it guards): the Holding card lists and counts only these */ holdsAt: string[]; held: string[]; releasedBy: string; /** the held-HERE count is not known yet (the place's detail has not answered): print a pending state, never `held.length` */ heldPending: boolean; /** a promotion gate's typed label (» + source chip): drawn by kind, never by `name` */ label?: GateLabel };
 /** A detail page's OWN gates, approvals included (the list pages exclude approvals by rule): each gate once, the places it guards, the builds it holds, who/what releases it. */
 export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] {
 	const out = new Map<string, GateInfo>();
+	const phs = placeHolds(app, state);
 	for (const p of placesOf(state, app)) {
+		const ph = phs.find((x) => x.href === p.href); /* the place's own verdict names the promotion gate as the CAUSE: a place held by a dependency also carries passing promotion gates */
 		const st = rawOf(p.href)?.status;
 		const cands = (liveCands(st) ?? []).map((c) => c.tag ?? c.version ?? '');
 		for (const g of st?.gates ?? []) {
 			const gk = gateKindOf(g);
 			const kind: GateInfo['kind'] = gk === 'approval' || gk === 'dependency' || gk === 'promotion' || gk === 'schedule' ? gk : 'other'; /* the backend's kind only: no name is read here */
-			if (kind === 'promotion') continue; /* sequencing, not a hold anyone releases */
+			if (kind === 'promotion' && !(p.state === 'held-by-rule' && ph?.gate?.label.kind === 'promotion')) continue; /* a promotion gate that merely sequences (the place is healthy or rolled back) is no hold; only the place the model says a promotion gate HOLDS is a card (batch4 #76 D) */
+			const promoLabel = kind === 'promotion' ? holdLabelOf(p.href, g, state, app, null) : null;
 			const h0bake = st?.history?.[0]?.bakeStatus;
 			const runs = h0bake === 'Deploying' || h0bake === 'InProgress'; /* a place that is deploying or checking its own build holds nothing: a rule that refuses a newer build is not this place's hold */
 			const holding = cands.length > 0 && !runs && refusingGates([g], buildInQuestion({ href: p.href, app })).length > 0; /* the one rule, for the build in question: the approval target's where there is one (what the toast names), else the newest */
 			const win = kind === 'schedule' ? windowNameOf(gateDisplayName(g.name, prettyOfGate(p.href, g.name))) : null;
 			/* one card per provider (the RolloutDependency join: no name is parsed) and one per window by its published name: each place's schedule gate is its own object, but "Business Hours Only" is one card, not one per place */
-			const k = kind === 'dependency' ? `dependency-${dependencyProviderOf(p.href, g.name) ?? g.name}` : kind === 'schedule' ? `schedule-${win ?? 'unnamed'}` : g.name;
-			const e = out.get(k) ?? { id: k, name: kind === 'schedule' ? (win ?? 'Deploy window') : gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], holdsAt: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : 'the rule allows it' };
+			const k = kind === 'promotion' ? `promotion-${promoLabel?.kind === 'promotion' ? (promoLabel.source ?? '') : ''}` : kind === 'dependency' ? `dependency-${dependencyProviderOf(p.href, g.name) ?? g.name}` : kind === 'schedule' ? `schedule-${win ?? 'unnamed'}` : g.name;
+			const e = out.get(k) ?? { id: k, name: kind === 'schedule' ? (win ?? 'Deploy window') : gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], holdsAt: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : kind === 'promotion' ? 'the previous environment is ready' : 'the rule allows it', ...(promoLabel ? { label: promoLabel } : {}) };
 			e.places.push(placeLabel({ tier: p.tier, regions: [p.label] }));
 			const hh = holding ? heldHere(p.href) : null;
 			/* the place's own verdict decides whether it is held NOW: a healthy place whose gate would refuse a newer build, or one still checking its own build, is not held by this cause */
