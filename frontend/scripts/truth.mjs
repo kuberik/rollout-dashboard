@@ -77,12 +77,6 @@ await useState('incident');
 	}
 	await pp.close();
 }
-/* KNOWN open product findings, found by this script and reported in the lane that added it (batch4 truth-v2). They print as "KNOWN FINDING" and do not fail the run until the product decides;
-   STRICT=1 makes them fail. A finding leaves this list when the product is fixed (the entry then matches nothing and the run says so). */
-const KNOWN = [
-	{ id: 'pin-state-attr', re: /^pin checkout-api checkout-api-prod-af-south-1: \/apps\/checkout-api place row carries state "rolled-back"/, note: 'the app page words the pinned place "Held by the pin" but its data-truth-state is rolled-back; /rollouts says held-by-rule' },
-	{ id: 'ledger-lag-skips-failed', re: /^behind \/apps\/checkout-api 4\.40\.0-40: /, note: 'the Builds ledger counts 4 builds ahead of 4.40.0-40, the catalogue order has 5 (4.41.0-41 failed at this place and is left out of the ledger count)' }
-];
 const problems = [];
 const bad = (where, msg) => problems.push(`${where}: ${msg}`);
 
@@ -1542,10 +1536,7 @@ if (process.env.NO_V2 !== '1') {
 	await v2Checks();
 }
 await browser.close();
-const all = [...new Set(problems)];
-const knownOf = (m) => KNOWN.find((k) => k.re.test(m));
-const uniq = process.env.STRICT ? all : all.filter((m) => !knownOf(m));
-for (const m of all.filter((m) => knownOf(m) && !process.env.STRICT)) console.log(`KNOWN FINDING [${knownOf(m).id}] ${m}\n    -> ${knownOf(m).note}`);
+const uniq = [...new Set(problems)];
 if (uniq.length) {
 	console.log(`\n${uniq.length} MISMATCH(ES):`);
 	for (const m of uniq) console.log(' - ' + m);
