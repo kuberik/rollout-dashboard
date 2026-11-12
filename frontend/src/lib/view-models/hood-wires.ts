@@ -114,7 +114,7 @@ export const COMPACT_SPINE_INSET = 12;
 
 /** A wire down a spine at `sx` from `startY`, turning right into a box at `y`, tip at `tipX`. */
 function spineRight(sx: number, startY: number, y: number, tipX: number): string {
-	const r = Math.min(CORNER, tipX - sx, Math.max(0, y - startY));
+	const r = Math.max(0, Math.min(CORNER, tipX - sx, y - startY));
 	return svgPath('M', sx, startY, 'V', y - r, ...arc(r, sx + r, y, false), 'H', tipX);
 }
 
@@ -148,7 +148,7 @@ export function narrowWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[] 
 	const tipY = focus.top - FOCUS_RING;
 	for (const w of up) {
 		const y = crisp1(portOf({ ...w.rect, port: w.port }));
-		const r = Math.min(CORNER, w.rect.left - sx, Math.max(0, tipY - y));
+		const r = Math.max(0, Math.min(CORNER, w.rect.left - sx, tipY - y));
 		const d = svgPath('M', w.rect.left, y, 'H', sx + r, ...arc(r, sx, y + r, false), 'V', tipY);
 		out.push(wire(w.key, w.state, d, [sx, tipY], 'down'));
 	}

@@ -891,13 +891,15 @@
 			height={box.h}
 			aria-hidden="true"
 		>
-			<!-- ⭐ THE CONNECTOR (`$lib/graph-wire`): 1 px hairlines in `line-strong`, `held-solid` only for a wire that carries a hold;
+			<!-- ⭐ THE CONNECTOR (`$lib/graph-wire`): 1 px hairlines in the `wire` token, `held-solid` only for a wire that carries a hold;
 			     orthogonal runs with the tiles' 8 px corners from title-row port to title-row port; an open 1 px chevron at the tip.
 			     Wires into the focus share one trunk and one tip, so they never cross; held paints last, so on a shared run it is the
 			     one you see. One width for every state: a state change recolours a wire, it never moves one. -->
 			{#each wires as w (w.key)}
 				{@const tone = wireTone(w.state)}
-				<g class={WIRE_TONE_CLASS[tone]} fill="none" stroke-width={WIRE_STROKE} stroke-linecap="round" stroke-linejoin="round"
+				<!-- Butt caps on a dashed wire: round caps grow each 3 px dash to 4 and push the last one past the tip. -->
+				<g class={WIRE_TONE_CLASS[tone]} fill="none" stroke-width={WIRE_STROKE}
+					stroke-linecap={w.state === 'unknown' ? 'butt' : 'round'} stroke-linejoin="round"
 					data-wire={w.key} data-wire-tone={tone}>
 					<path
 						d={w.d}
