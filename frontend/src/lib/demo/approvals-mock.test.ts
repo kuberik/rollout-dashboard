@@ -53,8 +53,10 @@ describe('the mock approvals API', () => {
 		expect(gate().allowedVersions).toEqual(['old1']);
 	});
 
-	it('home-incident: payments-core c0d3e88 in ap-south already has a git approval, so Undo answers stillApproved', () => {
+	it('home-incident: a git approval for payments-core c0d3e88 in ap-south appears AT approve time (not before), so Undo answers stillApproved', () => {
 		const path = '/api/rollouts/payments-core-prod-ap-south/payments-core/approve';
+		const before = json(respond('GET', '/api/rollouts/payments-core-prod-ap-south/payments-core/approvals')).approvals.map((a: { name: string }) => a.name);
+		expect(before).not.toContain('payments-core-c0d3e88-git');
 		expect(post(path, { version: 'c0d3e88' }).status).toBe(200);
 		const r = json(post(path, { version: 'c0d3e88', revoke: true }));
 		expect(r).toEqual({ stillApproved: true, approvals: [{ name: 'payments-core-c0d3e88-git' }] });

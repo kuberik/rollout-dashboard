@@ -2083,8 +2083,20 @@ function seedApprovals(): void {
 	};
 	at(1, MOCK_APPROVERS.dashboard);
 	at(2);
-	/* home-incident / home-edge: payments-core's held c0d3e88 (the folded multi-region row) already has a git-style approval (no `by`) in ap-south, so approving it in the dashboard and pressing Undo meets `stillApproved` for that region (and a plain revert for the others) */
-	approvalsOf('payments-core-prod-ap-south', 'payments-core').push({ name: 'payments-core-c0d3e88-git', version: 'c0d3e88', createdAt: demoNow().toISOString() });
+}
+
+/**
+ * home-incident / home-edge staging of the `stillApproved` story: payments-core's folded multi-region row needs approval in all five regions
+ * until someone presses Approve; at THAT moment a git-style approval (no `by`) for the same build appears in ap-south, as if a colleague had
+ * committed it concurrently, so Undo then answers `stillApproved` for ap-south (and a plain revert for the others). Mock only.
+ */
+const CONCURRENT_GIT_APPROVAL = { namespace: 'payments-core-prod-ap-south', name: 'payments-core', version: 'c0d3e88' };
+function concurrentGitApproval(namespace: string, name: string, version: string): void {
+	const c = CONCURRENT_GIT_APPROVAL;
+	if (namespace !== c.namespace || name !== c.name || version !== c.version) return;
+	const list = approvalsOf(namespace, name);
+	const gitName = `${name}-${version}-git`;
+	if (!list.some((a) => a.name === gitName)) list.push({ name: gitName, version, createdAt: demoNow().toISOString() });
 }
 
 /** `POST /api/demo/approvals` (respond.ts): a git-style approval (another RolloutApproval, no `by`) appears for a version, so an Undo of the dashboard's own approval answers `stillApproved`. */
@@ -2149,6 +2161,7 @@ export function approveRollout(
 			return { ok: true, status: 200, body: others.length ? { stillApproved: true, approvals: others.map((a) => ({ name: a.name, ...(a.by ? { by: a.by } : {}) })) } : {} };
 		}
 		if (!list.some((a) => a.name === mine)) list.push({ name: mine, version, by: MOCK_APPROVER, createdAt: demoNow().toISOString() });
+		concurrentGitApproval(namespace, name, version);
 		return { ok: true, status: 200, body: { approval: { name: mine, version, by: MOCK_APPROVER } } };
 	}
 	const cluster = clusterHint ?? f.def.cluster;
@@ -2180,6 +2193,7 @@ export function approveRollout(
 	const approval = approvalGatesOf(gates);
 	if (!approval.length) return { ok: false, status: 409, error: 'nothing waits for approval here' };
 	if (!list.some((a) => a.name === mine)) list.push({ name: mine, version, by: MOCK_APPROVER, createdAt: demoNow().toISOString() });
+	concurrentGitApproval(namespace, name, version);
 	approvalUndo.set(key, {
 		gates: structuredClone(gates),
 		history: structuredClone(rollout.status.history),
