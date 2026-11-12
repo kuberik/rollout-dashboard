@@ -19,7 +19,8 @@
  *    shared run, all the way from its source to the focus.
  * 3. ORTHOGONAL WITH 8 PX CORNERS. Horizontal out, one vertical trunk run at
  *    the gutter's middle, horizontal in: wires meet edges at right angles,
- *    and turn with the tiles' own radius.
+ *    and turn with the tiles' own radius (true quarter circles). A rise
+ *    shorter than two corners is one soft S instead of a squeezed kink.
  * 4. THE TIP LANDS ON THE OUTER EDGE OF WHAT IS PAINTED: a link box's
  *    border (`left`), the focus box's 2 px ring (`left − 2`, `top − 2`
  *    narrow); a downstream wire STARTS outside the ring (`right + 2`,
@@ -28,7 +29,7 @@
  *    coordinate is the same whatever the state; state picks the ink and the
  *    paint order only.
  */
-import { CORNER, crisp1, elbow, svgPath, chevron, wireTone } from '$lib/graph-wire';
+import { CORNER, arc, crisp1, elbow, svgPath, chevron, wireTone, type WireTone } from '$lib/graph-wire';
 
 export type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 export type WireState = 'blocked' | 'clear' | 'unknown';
@@ -46,8 +47,8 @@ export type Wire = {
 
 /** The focus box's ring, outside its border (`ring-2`). */
 export const FOCUS_RING = 2;
-/** Spine x in the narrow layout. */
-export const SPINE_X = 4;
+/** Spine x in the narrow layout: 12 px in, so it meets the focus on the flat of its top edge, past the 8 px corner (AD r1 #2). */
+export const SPINE_X = 12;
 export { CORNER };
 
 const portOf = (r: Rect & { port?: number }) => r.port ?? r.top + r.height / 2;
@@ -87,12 +88,12 @@ export function wideWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[] {
 }
 
 /** The compact layout's spine: x offset inside the focus box's left edge, and the downstream column's indent that clears it. */
-export const COMPACT_SPINE_INSET = 8;
+export const COMPACT_SPINE_INSET = 12;
 
 /** A wire down a spine at `sx` from `startY`, turning right into a box at `y`, tip at `tipX`. */
 function spineRight(sx: number, startY: number, y: number, tipX: number): string {
-	const r = Math.min(CORNER, (tipX - sx) / 2, Math.max(0, y - startY));
-	return svgPath('M', sx, startY, 'V', y - r, 'Q', sx, y, sx + r, y, 'H', tipX);
+	const r = Math.min(CORNER, tipX - sx, Math.max(0, y - startY));
+	return svgPath('M', sx, startY, 'V', y - r, ...arc(r, sx + r, y, false), 'H', tipX);
 }
 
 /**
@@ -123,8 +124,8 @@ export function narrowWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[] 
 	const tipY = focus.top - FOCUS_RING;
 	for (const w of up) {
 		const y = crisp1(portOf({ ...w.rect, port: w.port }));
-		const r = Math.min(CORNER, (w.rect.left - sx) / 2, Math.max(0, tipY - y));
-		const d = svgPath('M', w.rect.left, y, 'H', sx + r, 'Q', sx, y, sx, y + r, 'V', tipY);
+		const r = Math.min(CORNER, w.rect.left - sx, Math.max(0, tipY - y));
+		const d = svgPath('M', w.rect.left, y, 'H', sx + r, ...arc(r, sx, y + r, false), 'V', tipY);
 		out.push(wire(w.key, w.state, d, [sx, tipY], 'down'));
 	}
 	const start = focus.bottom + FOCUS_RING;
@@ -139,6 +140,23 @@ export function narrowWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[] 
 function paintOrder(ws: Wire[]): Wire[] {
 	const order = { clear: 0, unknown: 1, blocked: 2 } as const;
 	return [...ws].sort((a, b) => order[a.state] - order[b.state]);
+}
+
+/**
+ * ONE chevron per tip: wires that meet at one port share its head, drawn
+ * once (a stack of identical heads darkens its anti-aliased fringe), in the
+ * held ink when any wire arriving there holds.
+ */
+export function headsOf(ws: Wire[]): { key: string; d: string; tone: WireTone }[] {
+	const byTip = new Map<string, { key: string; d: string; tone: WireTone }>();
+	for (const w of ws) {
+		const k = `${w.tip[0]},${w.tip[1]}`;
+		const tone = wireTone(w.state);
+		const cur = byTip.get(k);
+		if (!cur) byTip.set(k, { key: k, d: w.head, tone });
+		else if (tone === 'held') cur.tone = 'held';
+	}
+	return [...byTip.values()].sort((a, b) => (a.tone === b.tone ? 0 : a.tone === 'held' ? 1 : -1));
 }
 
 /** The tone each wire is drawn in (re-exported for the renderer). */

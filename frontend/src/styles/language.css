@@ -108,6 +108,7 @@
 
 	--color-line: var(--k-line);
 	--color-line-strong: var(--k-line-strong);
+	--color-wire: var(--k-wire);
 	--color-line-subtle: var(--k-line-subtle);
 
 	--color-fg: var(--k-fg);
@@ -166,6 +167,8 @@
 
 	--k-line: oklch(0.918 0.009 222);
 	--k-line-strong: oklch(0.862 0.012 222);
+	/* A graph connector (`$lib/graph-wire`): a 1 px line on the dotted canvas needs one step more than a tile's border to read (line-strong measured ~1.4:1 on ground at 390, lost in the dot grid). */
+	--k-wire: oklch(0.8 0.014 222);
 	--k-line-subtle: oklch(0.945 0.007 222);
 	/* Isometric material (Promotion Map plates and cubes, StepGlyph): one
 	   neutral family on the ramp's hue, lit from above. */
@@ -265,6 +268,7 @@ html.dark,
 	   `line-strong` keeps inputs and buttons legible. */
 	--k-line: oklch(0.285 0.018 222);
 	--k-line-strong: oklch(0.38 0.019 222);
+	--k-wire: oklch(0.38 0.019 222);
 	--k-line-subtle: oklch(0.262 0.017 222);
 	--k-iso-top: oklch(0.29 0.017 222);
 	--k-iso-top-lo: oklch(0.25 0.016 222);

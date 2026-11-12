@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CHEVRON, CORNER, SNAP, WIRE_DASH, chevron, elbow, wireDashOffset, wireTone } from '$lib/graph-wire';
+import { CHEVRON, CORNER, SNAP, SOFT, WIRE_DASH, chevron, elbow, wireDashOffset, wireTone } from '$lib/graph-wire';
 import {
 	FOCUS_RING,
 	maxRise,
+	headsOf,
 	holdingFirst,
 	narrowWires,
 	compactWires,
@@ -38,6 +39,9 @@ function points(d: string): [number, number][] {
 			[x, y] = [+tok[++i], +tok[++i]];
 		} else if (t === 'Q') {
 			i += 2;
+			[x, y] = [+tok[++i], +tok[++i]];
+		} else if (t === 'A') {
+			i += 5;
 			[x, y] = [+tok[++i], +tok[++i]];
 		} else continue;
 		out.push([x, y]);
@@ -112,14 +116,29 @@ describe('ports: wires leave and enter at a box’s title row, the tip on the pa
 
 describe('one fan-in: wires into the focus share a trunk, so none crosses another', () => {
 	it('every upstream wire turns at the same trunk x, half way across the gutter', () => {
-		const ws = wideWires(focus, up(4), []).filter((w) => points(w.d).length > 2);
+		// u1 rises 10px (< two corners) and takes the soft S; the rest turn on the trunk.
+		const ws = wideWires(focus, up(4), []).filter((w) => w.key !== 'u1');
 		const trunks = new Set(ws.map((w) => points(w.d)[2][0]));
 		expect(trunks.size).toBe(1);
 		expect([...trunks][0]).toBe(Math.floor((320 + focus.left - FOCUS_RING) / 2) + 0.5);
 	});
 
+	it('a rise shorter than two corners is one soft S across the trunk, not a squeezed kink', () => {
+		const w = wideWires(focus, up(2), []).find((x) => x.key === 'u1')!;
+		const tx = Math.floor((320 + focus.left - FOCUS_RING) / 2) + 0.5;
+		expect(w.d).toBe(`M 320 136.5 H ${tx - SOFT} C ${tx} 136.5 ${tx} 126.5 ${tx + SOFT} 126.5 H ${focus.left - FOCUS_RING}`);
+	});
+
+	it('one head per tip, held when any wire arriving there holds', () => {
+		const hs = headsOf(wideWires(focus, up(4, 1), down(2)));
+		expect(hs).toHaveLength(3);
+		expect(hs.filter((h) => h.tone === 'held')).toHaveLength(1);
+		expect(hs.at(-1)!.tone).toBe('held');
+	});
+
 	it('corners are the tiles’ own 8 px radius when the rise allows', () => {
 		const w = wideWires(focus, up(4), []).find((x) => x.key === 'u3')!;
+		expect(w.d).toContain(`A ${CORNER} ${CORNER} 0 0`);
 		const [, a, b] = points(w.d);
 		expect(b[0] - a[0]).toBe(CORNER);
 		expect(Math.abs(a[1] - b[1])).toBe(CORNER);
@@ -153,7 +172,8 @@ describe('crisp, and state never moves a wire', () => {
 describe('one straight line when the ends nearly agree', () => {
 	it(`|dy| < ${SNAP} is one H run at the end’s height (no jog)`, () => {
 		expect(elbow(320, 130.5, 398, 127.5, 359.5)).toBe('M 320 127.5 H 398');
-		expect(elbow(320, 130.5, 398, 126.5, 359.5)).toMatch(/Q/);
+		expect(elbow(320, 130.5, 398, 126.5, 359.5)).toMatch(/ C /);
+		expect(elbow(320, 150.5, 398, 126.5, 359.5)).toMatch(/ A /);
 	});
 });
 

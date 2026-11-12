@@ -76,6 +76,7 @@
 	import {
 		wideWires,
 		compactWires,
+		headsOf,
 		narrowWires,
 		holdingFirst,
 		maxRise,
@@ -905,8 +906,11 @@
 						use:endOnDash={w.state === 'unknown'}
 						data-tip="{w.tip[0]},{w.tip[1]}"
 					/>
-					<path d={w.head} data-wire-head />
 				</g>
+			{/each}
+			{#each headsOf(wires) as h (h.key)}
+				<path d={h.d} class={WIRE_TONE_CLASS[h.tone]} fill="none" stroke-width={WIRE_STROKE} stroke-linecap="round"
+					stroke-linejoin="round" data-wire-head data-wire-tone={h.tone} />
 			{/each}
 		</svg>
 	</div>
