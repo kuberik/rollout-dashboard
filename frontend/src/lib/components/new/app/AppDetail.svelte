@@ -54,6 +54,9 @@
 	import { lagFit } from './lag-fit';
 	import AppBuilds, { type PlaceView } from './AppBuilds.svelte';
 	import AppGates from './AppGates.svelte';
+	import Stages from '../stages/Stages.svelte';
+	import ReleaseCommits from '../stages/ReleaseCommits.svelte';
+	import { stagesOf, releaseLine, releaseCommits } from '../stages/stages-model';
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
@@ -63,7 +66,11 @@
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLineOf, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
-	let { state: scenario, name }: { state: HomeState; name: string } = $props();
+	let { state: scenario, name, tab = 'overview' }: { state: HomeState; name: string; /** 'overview' (default, the page as ever) or 'pipeline' (app-pipeline r0: the same header and statements, then the Pipeline card at full width, no strip row, no rail) */ tab?: 'overview' | 'pipeline' } = $props();
+	const pipeline = $derived(tab === 'pipeline');
+	const pipe = $derived(pipeline ? stagesOf({ kind: 'app', app: name }, scenario) : null);
+	const release = $derived(pipeline ? releaseLine(name, scenario) : null);
+	const inRelease = $derived(pipeline ? releaseCommits(name, scenario) : null);
 
 	const A = $derived(apps(scenario));
 	const item = $derived(A.items.find((a) => a.app === name) ?? null);
@@ -314,7 +321,7 @@
 					{#if pill}<Chip role={pill.role as never} label={pill.word.toLowerCase()} class="shrink-0" />{/if}
 					{#if build && runsBadges.length}<span class="t-meta shrink-0 text-fg-subtle">in</span><span bind:this={runsEl} class="relative flex h-5 min-w-0 flex-wrap items-center gap-x-2 overflow-hidden" data-ad-runs title={runsPhrase}>{#each runsBadges as b (b.label)}<Chip role="env" theme={b.theme} label={b.label} wide class="shrink-0" />{/each}</span>{#if hiddenRuns > 0}<span class="t-meta shrink-0 tabular-nums text-fg-subtle" data-ad-runs-more title={runsPhrase}>+{hiddenRuns}</span>{/if}{/if}
 				</span>
-				<a href={href('/environments')} class="nav-link t-ui-sm ml-auto shrink-0 !py-0 max-sm:hidden xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
+				<a href={href('/environments')} class="nav-link t-ui-sm ml-auto shrink-0 !py-0 max-sm:hidden {pipeline ? '' : 'xl:hidden'}">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 			</div>
 			{#if commit || newer || age}
 				<!-- r2 apps fix 8: at most THREE facts, all on the left, in one reading order: the commit (who, title; the title gives way), when it deployed, how many builds are newer -->
@@ -330,7 +337,7 @@
 					{#if newer}<span class="shrink-0 whitespace-nowrap text-fg-subtle" data-ad-newer>{plural(newer, 'newer build')}</span>{/if}
 				</div>
 			{/if}
-			{#if built && lane}
+			{#if built && lane && !pipeline}
 				<div class="ad-strip flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1" data-ad-strip>
 					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} {calm} words yours={!!stateRow?.needsYou} mutedRest {hrefFor} {current} sites reserve /></div>
 					<a href={href('/environments')} class="nav-link t-ui-sm shrink-0 !py-0 max-sm:mt-1 max-sm:min-h-11 max-sm:items-center sm:max-xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
@@ -359,6 +366,12 @@
 				</div>
 			{/if}
 
+			{#if pipe}
+				<!-- Pipeline tab: the canvas, full width, no rail (like the Gates tab) -->
+				<Stages stages={pipe} {release} class="min-w-0" />
+				<!-- "In this release": the second card, at every width -->
+				{#if inRelease}<ReleaseCommits release={inRelease} class="min-w-0" />{/if}
+			{:else}
 			<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:grid-cols-[minmax(0,1fr)_452px]">
 				<div class="flex min-w-0 flex-col gap-4">
 					<div id="regions" class="ad-places scroll-mt-16" class:ad-owned={!!failRow}>
@@ -374,6 +387,7 @@
 					<AppActivity rollouts={live} {environments} limit={builds.length ? 6 : 4} />
 				</aside>
 			</div>
+			{/if}
 		</div>
 	</div>
 
