@@ -79,7 +79,7 @@ func handleGitHubPullsMine(c *gin.Context) {
 	if !ok {
 		return
 	}
-	visible, err := visibleGitHubSources(c, k8sClient)
+	visible, clusterErrors, err := visibleGitHubSourcesWithErrors(c, k8sClient)
 	if err != nil {
 		log.Printf("Error checking repository visibility for pulls/mine: %v", err)
 		writeUpstreamError(c, "Failed to check repository visibility", err)
@@ -165,7 +165,7 @@ func handleGitHubPullsMine(c *gin.Context) {
 	// silently defeating that poll cadence — the response still can't be
 	// served stale (Cache-Control is "private, no-cache": always
 	// revalidated), it's just allowed to be STORED for revalidation.
-	writeJSONWithETag(c, http.StatusOK, ghPullsMineResponse{User: login, Repos: repos, Pulls: pulls})
+	writeJSONWithETag(c, http.StatusOK, ghPullsMineResponse{User: login, Repos: repos, Pulls: pulls, ClusterErrors: clusterErrors})
 }
 
 // ghMinePull is one entry of GET /api/github/pulls/mine's `pulls` array.
@@ -191,6 +191,8 @@ type ghPullsMineResponse struct {
 	User  string        `json:"user"`
 	Repos []string      `json:"repos"`
 	Pulls []*ghMinePull `json:"pulls"`
+	// ClusterErrors: spokes that did not answer, same shape as /api/rollouts.
+	ClusterErrors []ClusterError `json:"clusterErrors,omitempty"`
 }
 
 // loginCache maps sha256(token) -> the GitHub login it belongs to, for

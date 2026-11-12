@@ -68,7 +68,7 @@ func handleGitHubPullRequest(c *gin.Context) {
 		return
 	}
 
-	visibleSources, err := visibleGitHubSources(c, k8sClient)
+	visibleSources, clusterErrors, err := visibleGitHubSourcesWithErrors(c, k8sClient)
 	if err != nil {
 		log.Printf("Error checking repository visibility for %s/%s: %v", owner, repo, err)
 		writeUpstreamError(c, "Failed to check repository visibility", err)
@@ -274,7 +274,7 @@ func handleGitHubPullRequest(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"number":             pr.GetNumber(),
 		"title":              pr.GetTitle(),
 		"htmlUrl":            pr.GetHTMLURL(),
@@ -294,7 +294,13 @@ func handleGitHubPullRequest(c *gin.Context) {
 		"openedAt":     openedAt,
 		"headSha":      headSha,
 		"changedFiles": changedFiles,
-	})
+	}
+	// Same field and shape as GET /api/rollouts: spokes whose repos may be
+	// missing from the visibility check above.
+	if len(clusterErrors) > 0 {
+		resp["clusterErrors"] = clusterErrors
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // commitsSinceMerge lists the shas on repo's base branch since the PR merged,
@@ -351,11 +357,20 @@ func commitsSinceMerge(ctx context.Context, ghClient *github.Client, owner, repo
 // duplicated: a repo the user cannot themselves `list rollouts` for in any
 // namespace, on any cluster, can never be probed through the PR endpoint.
 func visibleGitHubSources(c *gin.Context, k8sClient *kubernetes.Client) (map[string]bool, error) {
+	sources, _, err := visibleGitHubSourcesWithErrors(c, k8sClient)
+	return sources, err
+}
+
+// visibleGitHubSourcesWithErrors is visibleGitHubSources plus the fan-in's
+// clusterErrors: spokes that did not answer (or answered from a stale cache),
+// so their repos may be missing from the set. Handlers whose success body can
+// carry the field pass it on in the same shape /api/rollouts uses.
+func visibleGitHubSourcesWithErrors(c *gin.Context, k8sClient *kubernetes.Client) (map[string]bool, []ClusterError, error) {
 	ctx := c.Request.Context()
 
 	rollouts, err := k8sClient.GetRolloutsAllNamespaces(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	nsSet := map[string]struct{}{}
@@ -368,7 +383,7 @@ func visibleGitHubSources(c *gin.Context, k8sClient *kubernetes.Client) (map[str
 	}
 	allowedNS, err := kubernetes.AllowedNamespaces(c, namespaces)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	rollouts.Items = kubernetes.FilterByNamespace(rollouts.Items, func(r rolloutv1alpha1.Rollout) string { return r.Namespace }, allowedNS)
 
@@ -390,7 +405,7 @@ func visibleGitHubSources(c *gin.Context, k8sClient *kubernetes.Client) (map[str
 	// Already serving as a fan-out leg (a hub calling a spoke) — don't fan
 	// out again, matching /api/rollouts' own cycle guard (fanoutHeader).
 	if c.GetHeader(fanoutHeader) != "" {
-		return sources, nil
+		return sources, nil, nil
 	}
 
 	envs, err := k8sClient.GetEnvironmentsAllNamespaces(ctx)
@@ -398,7 +413,7 @@ func visibleGitHubSources(c *gin.Context, k8sClient *kubernetes.Client) (map[str
 		// Spoke discovery is best-effort — a cluster that can't list
 		// Environments still answers for its own local rollouts.
 		log.Printf("Error fetching environments for PR-endpoint spoke discovery: %v", err)
-		return sources, nil
+		return sources, nil, nil
 	}
 	envs.Items = kubernetes.FilterByNamespace(envs.Items, func(e envv1alpha1.Environment) string { return e.Namespace }, allowedNS)
 
@@ -408,7 +423,7 @@ func visibleGitHubSources(c *gin.Context, k8sClient *kubernetes.Client) (map[str
 		"rollouts":     marshalToRaw(rollouts),
 		"environments": marshalToRaw(envs),
 	}
-	merged, _, _ := fanOutRollouts(ctx, localData, localURL, token)
+	merged, _, clusterErrors := fanOutRollouts(ctx, localData, localURL, token)
 
 	if raw, ok := merged["rollouts"]; ok && len(raw) > 0 {
 		var mergedRollouts rolloutv1alpha1.RolloutList
@@ -416,7 +431,7 @@ func visibleGitHubSources(c *gin.Context, k8sClient *kubernetes.Client) (map[str
 			addSources(mergedRollouts.Items)
 		}
 	}
-	return sources, nil
+	return sources, clusterErrors, nil
 }
 
 // summarizeCheckRuns reduces a commit's check-runs to the one-state answer
