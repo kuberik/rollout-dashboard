@@ -1444,7 +1444,7 @@ export function approvalAskAt(href: string, state: HomeState = 'incident'): Appr
 	}
 	return null;
 }
-type Snap = { r: RawRollout; status: RawRollout['status'] };
+type Snap = { r: RawRollout; status: RawRollout['status']; href: string };
 const SNAPS = new Map<string, Snap[]>();
 /** Apply an approval to the fixture in place (the optimistic step): each place's approval gate allows its held builds and the named build starts deploying, unless another hold (`t.waitsOn`) still refuses it: then it stays a held candidate. */
 export function grantApproval(t: ApprovalTarget): void {
@@ -1452,7 +1452,7 @@ export function grantApproval(t: ApprovalTarget): void {
 	for (const p of t.places) {
 		const r = hrefParts(p.href) ? raws().find((x) => x.metadata.namespace === hrefParts(p.href)!.ns && x.metadata.name === hrefParts(p.href)!.name) : null;
 		if (!r) continue;
-		snaps.push({ r, status: structuredClone(r.status) });
+		snaps.push({ r, status: structuredClone(r.status), href: p.href });
 		const st = r.status;
 		const held = (candsOf(r) ?? []).map((c) => c.tag ?? c.version ?? '');
 		const own = approvalGateOf(st.gates ?? [], held);
@@ -1468,9 +1468,9 @@ export function grantApproval(t: ApprovalTarget): void {
 	SNAPS.set(t.key, snaps);
 	resetHomeModel(); bumpApprovals();
 }
-/** Undo: restore each place exactly as it was before the approval. */
-export function revokeApproval(t: ApprovalTarget): void {
-	for (const s of SNAPS.get(t.key) ?? []) s.r.status = s.status;
+/** Undo: restore each place exactly as it was before the approval, except the places in `keep` (their revoke answered `stillApproved`: another approval stands, the build stays approved there). */
+export function revokeApproval(t: ApprovalTarget, keep: ReadonlySet<string> = new Set()): void {
+	for (const s of SNAPS.get(t.key) ?? []) if (!keep.has(s.href)) s.r.status = s.status;
 	SNAPS.delete(t.key);
 	resetHomeModel(); bumpApprovals();
 }

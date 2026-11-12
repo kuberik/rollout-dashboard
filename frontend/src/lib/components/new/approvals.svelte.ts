@@ -7,14 +7,16 @@
  * A failed request rolls the optimistic grant back and says so.
  */
 import { approvalTarget, grantApproval, revokeApproval, type ApprovalTarget, type HomeState, type TRow } from './data';
-import { postApproval } from '$lib/api/approvals';
+import { postApproval, type ApprovalReply } from '$lib/api/approvals';
+import { approversWords } from '$lib/view-models/approval-identity';
 import type { Act } from '$lib/components/ActRow.svelte';
 
 export const UNDO_MS = 8000;
 
 export const approvalUi = $state<{
 	ask: { target: ApprovalTarget; anchor: { top: number; left: number; right: number; bottom: number } | null; trigger: HTMLElement | null } | null;
-	done: { target: ApprovalTarget; error: string | null } | null;
+	/** `still`: an Undo that the server answered `stillApproved`: the build stays approved (by whom: `who`), nothing was reverted */
+	done: { target: ApprovalTarget; error: string | null; undo?: boolean; still?: { who: string; title: string } } | null;
 }>({ ask: null, done: null });
 
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -94,16 +96,39 @@ export function confirmApprove(f?: typeof fetch): void {
 	});
 	timer = setTimeout(dismissDone, UNDO_MS);
 }
+/** The words of an Undo the server declined to complete: another approval (git, a colleague) still stands for the build. */
+export function stillApprovedWords(t: ApprovalTarget, replies: readonly ApprovalReply[]): { title: string; who: string; full: string } {
+	const all = replies.flatMap((r) => r.approvals ?? []);
+	const who = approversWords(all);
+	return { title: `${t.build} stays approved`, who, full: [...new Set(all.map((a) => a.by ?? a.name))].join(', ') };
+}
+/**
+ * Undo waits for the server's reply before it reverts anything: a place whose revoke answered `stillApproved` keeps its optimistic
+ * approval (the build IS still approved there) and the toast says so and by whom; every other place is restored.
+ */
 export function undoApprove(f?: typeof fetch): void {
 	const d = approvalUi.done;
 	if (!d || d.error) return;
 	const t = d.target;
 	holds.hover = holds.focus = false;
 	clearTimer();
-	revokeApproval(t);
 	approvalUi.done = null;
 	handOffFocus();
-	void inflight.then(() => Promise.all(t.places.map((p) => postApproval(p.href, p.tag, true, f)))).catch(() => {});
+	void inflight
+		.then(() => Promise.all(t.places.map((p) => postApproval(p.href, p.tag, true, f))))
+		.then((replies) => {
+			const keep = new Set(t.places.filter((_, i) => replies[i]?.stillApproved).map((p) => p.href));
+			revokeApproval(t, keep);
+			if (keep.size) {
+				const w = stillApprovedWords(t, replies.filter((r) => r.stillApproved));
+				approvalUi.done = { target: t, error: null, still: { who: w.who, title: w.full } };
+				timer = setTimeout(dismissDone, UNDO_MS);
+			}
+		})
+		.catch((e: Error) => {
+			/* the withdrawal did not reach the server: nothing was undone, and the toast says so */
+			approvalUi.done = { target: t, error: e.message || 'Undo failed', undo: true };
+		});
 }
 /** the toast is going (auto-dismiss, Dismiss, Undo): if focus was on it or nowhere, hand it to a stable target, never BODY */
 function handOffFocus(): void {

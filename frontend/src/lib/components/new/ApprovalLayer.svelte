@@ -101,15 +101,17 @@
 
 {#if done}
 	{@const w = doneWords(done.target)}
-	<div role="presentation" data-approve-toast onpointerover={() => pauseDone('hover')} onpointerout={() => resumeDone('hover')} onfocusin={() => pauseDone('focus')} onfocusout={() => resumeDone('focus')} style="display: contents">
+	<div role="presentation" data-approve-toast title={done.still?.title} onpointerover={() => pauseDone('hover')} onpointerout={() => resumeDone('hover')} onfocusin={() => pauseDone('focus')} onfocusout={() => resumeDone('focus')} style="display: contents">
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
-		tone={done.error ? 'danger' : 'success'}
-		message={done.error ? `Could not approve ${done.target.build}` : `${w.title} · ${w.detail}`}
-		description={done.error ?? ''}
+		tone={done.error ? 'danger' : done.still ? 'info' : 'success'}
+		message={done.error ? `Could not ${done.undo ? 'undo' : 'approve'} ${done.target.build}` : done.still ? `${done.target.build} stays approved` : `${w.title} · ${w.detail}`}
+		description={done.error ?? (done.still ? `Another approval stands${done.still.who ? `, by ${done.still.who}` : ''}` : '')}
 	>
 		{#snippet action()}
 			{#if done.error}
+				<button type="button" class="nav-link" data-action="approve-dismiss" onclick={dismissDone}>Dismiss</button>
+			{:else if done.still}
 				<button type="button" class="nav-link" data-action="approve-dismiss" onclick={dismissDone}>Dismiss</button>
 			{:else}
 				<button type="button" class="nav-link" data-action="approve-undo" onclick={() => undoApprove()}>Undo</button>
