@@ -64,6 +64,8 @@ export type HomeFixture = {
 	 * rollouts whose selector picks them.
 	 */
 	healthChecks?: K8sObject[];
+	/** RolloutSchedules (the home-edge scenario's closed named windows); served on /api/schedules */
+	schedules?: K8sObject[];
 };
 
 export const HOME_INCIDENT_SCENARIO = 'home-incident';
@@ -577,6 +579,14 @@ export function respondHomeIncident(
 					object: kr
 				}))
 			});
+	}
+
+	/* the deploy windows a scenario carries (home-edge); every other scenario leaves /api/schedules to respond() */
+	if (fixture.schedules) {
+		const sm = path.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/schedules$/);
+		const items = live().schedules ?? [];
+		if (sm) return json({ rolloutSchedules: { items: items.filter((x) => x.metadata.namespace === sm[1]) }, clusterRolloutSchedules: { items: [] } });
+		if (path === '/api/schedules') return json({ rolloutSchedules: { items }, clusterRolloutSchedules: { items: [] } });
 	}
 
 	if (path === '/api/health-checks') return json(homeIncidentFleetHealthChecks(live(), staleMode));

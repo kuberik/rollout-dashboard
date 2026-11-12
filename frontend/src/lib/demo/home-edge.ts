@@ -11,6 +11,10 @@
  *   media-resizer   prod has two sites, a leader on m2 and a follower that did not follow it and still runs m1 (item 2, failed follower).
  *   auth-proxy      prod has two waves; the wave-2 leader waits on wave 1's bake of m2 (WaveReady False): Behind with a paused wave (item 2, paused wave).
  *   deploy-pin-fail a prod place that is pinned AND whose newest deploy failed its bake (item 7, QA68): which state wins.
+ *   tide-gauge      prod is held by a CLOSED named deploy window ("Release Freeze") and by a dependency on the same place (item 4, M20: which cause is named).
+ *   door-lock       prod is held by a closed named deploy window only (item 6).
+ *   signal-box      prod has a gate of unknown kind that publishes an allow-list (item 6).
+ *   ledger-export   one prod region ("eu-central") waits for approval: Home's ask names the place by a display name that is not its id (item 6).
  *
  * Nothing here is generated at request time except the instants, which `rebasedHomeFixture` moves like every other instant of the fixture.
  */
@@ -38,6 +42,7 @@ type PlaceSpec = {
 	pin?: string;
 	pinBy?: string;
 	blocker?: { reason: string; message: string };
+	gates?: Record<string, unknown>[];
 	members?: { environment: string; site: string; wave: number; revision: string; bakeStatus: string }[];
 };
 
@@ -70,6 +75,7 @@ function rolloutOf(f: HomeFixture, p: PlaceSpec): K8sObject {
 			...(p.history[1] ? { previousVersion: p.history[1].rel.tag } : {}),
 			availableReleases: p.releases,
 			releaseCandidates: p.candidates ?? [],
+			...(p.gates ? { gates: p.gates } : {}),
 			history: hist
 		}
 	};
@@ -150,11 +156,78 @@ export function edgePlaces(f: HomeFixture): PlaceSpec[] {
 		out.push({ ns: 'deploy-pin-fail-dev', app: 'deploy-pin-fail', env: 'dev', releases: [m1, m2, m3], history: [{ rel: m3, hoursAgo: 2 }, { rel: m2, hoursAgo: 11 }] });
 		out.push({ ns: 'deploy-pin-fail-prod', app: 'deploy-pin-fail', env: 'prod', releases: [m1, m2, m3], history: [{ rel: m2, hoursAgo: 9, bake: 'Failed', user: 'sarahmiller' }, { rel: m1, hoursAgo: 58 }], candidates: [m3], pin: m2.tag, pinBy: 'sarahmiller' });
 	}
+	/* tide-gauge: a closed named window AND an unmet dependency hold tg-2 at prod, and an approval is pending too, so the place has a verdict: its refusers are sorted by blame (dependency 0, window 2) and the first is the dependency (item 4, M20) */
+	{
+		const m1 = rel(f, 'tg-1', 30), m2 = rel(f, 'tg-2', 4);
+		out.push({ ns: 'tide-gauge-dev', app: 'tide-gauge', env: 'dev', releases: [m1, m2], history: [{ rel: m2, hoursAgo: 3 }, { rel: m1, hoursAgo: 28 }] });
+		out.push({
+			ns: 'tide-gauge-prod', app: 'tide-gauge', env: 'prod', releases: [m1, m2], history: [{ rel: m1, hoursAgo: 26 }], candidates: [m2],
+			gates: [
+				{ name: 'release-approval', kind: 'approval', passing: true, allowedVersions: [m1.tag], message: 'Gate does not allow any release candidate' },
+				{ name: 'schedule-gate-tg1xx', kind: 'schedule', passing: false, allowedVersions: null, message: 'Gate is not passing' },
+				{ name: 'dependency-tide-gauge-needs-ledger', kind: 'dependency', passing: true, allowedVersions: [m1.tag], message: 'Gate does not allow any release candidate' }
+			]
+		});
+	}
+	/* door-lock: only a closed named window holds dl-2 */
+	{
+		const m1 = rel(f, 'dl-1', 30), m2 = rel(f, 'dl-2', 4);
+		out.push({ ns: 'door-lock-dev', app: 'door-lock', env: 'dev', releases: [m1, m2], history: [{ rel: m2, hoursAgo: 3 }, { rel: m1, hoursAgo: 28 }] });
+		out.push({ ns: 'door-lock-prod', app: 'door-lock', env: 'prod', releases: [m1, m2], history: [{ rel: m1, hoursAgo: 26 }], candidates: [m2], gates: [{ name: 'schedule-gate-dl1xx', kind: 'schedule', passing: false, allowedVersions: null, message: 'Gate is not passing' }] });
+	}
+	/* signal-box: a gate of unknown kind with an allow-list (it allows only sb-1, so sb-2 is refused) */
+	{
+		const m1 = rel(f, 'sb-1', 30), m2 = rel(f, 'sb-2', 4);
+		out.push({ ns: 'signal-box-dev', app: 'signal-box', env: 'dev', releases: [m1, m2], history: [{ rel: m2, hoursAgo: 3 }, { rel: m1, hoursAgo: 28 }] });
+		out.push({ ns: 'signal-box-prod', app: 'signal-box', env: 'prod', releases: [m1, m2], history: [{ rel: m1, hoursAgo: 26 }], candidates: [m2], gates: [{ name: 'manual-vet', kind: 'unknown', passing: false, allowedVersions: [m1.tag], message: 'Gate does not allow any release candidate' }] });
+	}
+	/* ledger-export: one prod region waits for approval; the region's id is `prod-eu-central`, its place name on Home is the region */
+	{
+		const m1 = rel(f, 'le-1', 30), m2 = rel(f, 'le-2', 4);
+		const members = [{ environment: 'prod', site: 'eu-central', wave: 1, revision: m1.revision, bakeStatus: 'Succeeded' }];
+		out.push({ ns: 'ledger-export-dev', app: 'ledger-export', env: 'dev', releases: [m1, m2], history: [{ rel: m2, hoursAgo: 3 }, { rel: m1, hoursAgo: 28 }] });
+		out.push({
+			ns: 'ledger-export-prod-eu-central', app: 'ledger-export', env: 'prod', site: 'eu-central', wave: 1, role: 'Leader', leader: 'eu-central', releases: [m1, m2], history: [{ rel: m1, hoursAgo: 26 }], candidates: [m2], members,
+			gates: [{ name: 'release-approval', kind: 'approval', passing: true, allowedVersions: [m1.tag], message: 'Gate does not allow any release candidate' }]
+		});
+	}
 	return out;
+}
+
+/** The dependency joins and the deploy windows of the edge apps. */
+export function edgeDependencies(f: HomeFixture): K8sObject[] {
+	return [
+		{
+			apiVersion: 'kuberik.com/v1alpha1', kind: 'RolloutDependency',
+			metadata: { name: 'tide-gauge-needs-ledger', namespace: 'tide-gauge-prod', annotations: { 'rollout-dashboard.kuberik.com/source-cluster': 'prod' } },
+			spec: { contract: 'ledger', providerRef: { name: 'ledger-core', namespace: 'platform-prod' }, rolloutRef: { name: 'tide-gauge' } },
+			status: {
+				providedVersion: '5.1.0', providedTag: 'led-510', admittedVersions: ['tg-1'], blockedReleases: [{ tag: 'tg-2', requiredVersion: '>=5.4.0', reason: 'ConstraintNotSatisfied' }], gateName: 'dependency-tide-gauge-needs-ledger',
+				conditions: [{ type: 'Satisfied', status: 'False', lastTransitionTime: at(f, 4), reason: 'WaitingForProvider', message: 'Waiting for platform-prod/ledger-core to serve contract "ledger" at a version satisfying release(s) [tg-2] (deployed: 5.1.0)' }]
+			}
+		}
+	];
+}
+/** RolloutSchedules: both windows are CLOSED, named, and reopen at a fixed weekday time of the fixture's own week */
+export function edgeSchedules(f: HomeFixture): K8sObject[] {
+	const sched = (ns: string, name: string, pretty: string, gate: string, hoursAhead: number): K8sObject => ({
+		apiVersion: 'kuberik.com/v1alpha1', kind: 'RolloutSchedule',
+		metadata: { name, namespace: ns, annotations: { 'gate.kuberik.com/pretty-name': pretty } },
+		spec: { action: 'Allow', timezone: 'UTC', rolloutSelector: { matchLabels: { environment: 'prod' } }, rules: [{ name: 'weekdays', timeRange: { start: '09:00', end: '17:00' }, daysOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] }] },
+		status: { active: false, nextTransition: at(f, -hoursAhead), managedGates: [gate], matchingRollouts: 1 }
+	});
+	return [sched('tide-gauge-prod', 'release-freeze', 'Release Freeze', 'schedule-gate-tg1xx', 20), sched('door-lock-prod', 'after-hours', 'After Hours', 'schedule-gate-dl1xx', 20)];
+}
+
+/** Changes of the edge apps: the viewer's own change on mail-relay's pinned build chain (item 5), merged after the build the pin holds */
+export function edgeChanges(f: HomeFixture): HomeFixture['changes'] {
+	const sha = (t: string) => hex(t).slice(0, 7);
+	const mk = (repo: string, n: number, title: string, tag: string, hoursAgo: number) => ({ owner: 'exampleco', repo, kind: 'pr', number: n, title, htmlUrl: `https://github.com/exampleco/${repo}/pull/${n}`, author: f.me, mergedAt: at(f, hoursAgo), mergeCommitSha: sha(tag), headSha: sha(tag), base: 'main', changedFiles: 2, containedIn: [sha(tag)], containedInAll: false });
+	return [mk('mail-relay', 7, 'Retry bounced messages with backoff', 'mr-2', 6)];
 }
 
 /** the incident fixture with the edge apps added; the fixture's own objects are untouched */
 export function withEdgeCases(f: HomeFixture): HomeFixture {
 	const places = edgePlaces(f);
-	return { ...f, rollouts: [...f.rollouts, ...places.map((p) => rolloutOf(f, p))], environments: [...f.environments, ...places.map((p) => environmentOf(f, p))] };
+	return { ...f, rollouts: [...f.rollouts, ...places.map((p) => rolloutOf(f, p))], environments: [...f.environments, ...places.map((p) => environmentOf(f, p))], rolloutDependencies: [...f.rolloutDependencies, ...edgeDependencies(f)], schedules: edgeSchedules(f), changes: [...f.changes, ...edgeChanges(f)] };
 }

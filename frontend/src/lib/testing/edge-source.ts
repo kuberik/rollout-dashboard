@@ -7,6 +7,7 @@ import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svel
 import { fixtureSource, resetHomeModel } from '$lib/components/home/sketch/home-data';
 import raw from '$lib/view-models/home/fixtures/incident-input.json';
 import { withEdgeCases } from '$lib/demo/home-edge';
+import type { NetworkSchedules } from '$lib/api/schedules';
 import type { HomeFixture } from '$lib/demo/home-incident';
 import type { FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
 
@@ -14,7 +15,10 @@ export function edgeSource(): FleetSource {
 	const base = fixtureSource();
 	const f = withEdgeCases(raw as unknown as HomeFixture);
 	const added = { rollouts: f.rollouts.slice(raw.rollouts.length), environments: f.environments.slice(raw.environments.length) };
-	return { ...base, rollouts: [...base.rollouts, ...(added.rollouts as unknown as FleetSource['rollouts'])], environments: [...base.environments, ...(added.environments as unknown as FleetSource['environments'])] };
+	const deps = f.rolloutDependencies.slice(raw.rolloutDependencies.length);
+	const schedules = new Map<string, NetworkSchedules>([['prod', { rolloutSchedules: { items: f.schedules ?? [] }, clusterRolloutSchedules: { items: [] } } as unknown as NetworkSchedules]]);
+	const changes = f.changes.slice(raw.changes.length);
+	return { ...base, changes: [...base.changes, ...(changes as unknown as FleetSource['changes'])], schedules, rolloutDependencies: { items: [...(base.rolloutDependencies?.items ?? []), ...(deps as unknown as NonNullable<FleetSource['rolloutDependencies']>['items'])] }, rollouts: [...base.rollouts, ...(added.rollouts as unknown as FleetSource['rollouts'])], environments: [...base.environments, ...(added.environments as unknown as FleetSource['environments'])] };
 }
 export function installEdge(): void { installLiveSource(edgeSource()); resetHomeModel(); }
 export function uninstallEdge(): void { installLiveSource(null); resetHomeModel(); }
