@@ -190,7 +190,8 @@
 		const measure = () => {
 			let n = 0;
 			for (const c of el.children as HTMLCollectionOf<HTMLElement>) {
-				const out = c.offsetTop > 2 || c.offsetLeft + c.offsetWidth > el.clientWidth + 1;
+				/* a chip caps itself at its container (max-width 100%), so a chip that does not fit shows as content wider than its own box */
+				const out = c.offsetTop > 2 || c.offsetLeft + c.offsetWidth > el.clientWidth + 1 || c.scrollWidth > c.clientWidth + 1;
 				c.style.visibility = out ? 'hidden' : '';
 				if (out) n++;
 			}
@@ -308,10 +309,10 @@
 				<!-- NOTHING MOVES AS STATE CHANGES: the build row is ONE line at every width. Build and pill never shrink; the "in" env chips fill the rest
 				     and the whole chips that do not fit are hidden (a wrap line the fixed height clips) and counted in "+N" (the full list is its title, and
 				     "All environments"). A line count that follows the state would drop the strip under it (the `done` beat: PROD · DEV · STAGING). -->
-				<span class="flex min-w-0 flex-nowrap items-center gap-x-3 max-lg:basis-full lg:flex-1 lg:basis-64" data-ad-build-row>
+				<span class="flex min-w-0 flex-nowrap items-center gap-x-3 max-lg:basis-full lg:flex-1 lg:basis-[32rem]" data-ad-build-row>
 					{#if build}<span class="t-meta text-fg-disabled max-lg:hidden" aria-hidden="true">/</span><span class="t-code-lg shrink-0 text-fg" data-ad-build>{build}</span>{/if}
 					{#if pill}<Chip role={pill.role as never} label={pill.word.toLowerCase()} class="shrink-0" />{/if}
-					{#if build && runsBadges.length}<span class="t-meta shrink-0 text-fg-subtle">in</span><span bind:this={runsEl} class="relative flex h-5 min-w-0 flex-wrap items-center gap-x-2 overflow-hidden" data-ad-runs title={runsPhrase}>{#each runsBadges as b (b.label)}<Chip role="env" theme={b.theme} label={b.label} wide />{/each}</span>{#if hiddenRuns > 0}<span class="t-meta shrink-0 tabular-nums text-fg-subtle" data-ad-runs-more title={runsPhrase}>+{hiddenRuns}</span>{/if}{/if}
+					{#if build && runsBadges.length}<span class="t-meta shrink-0 text-fg-subtle">in</span><span bind:this={runsEl} class="relative flex h-5 min-w-0 flex-wrap items-center gap-x-2 overflow-hidden" data-ad-runs title={runsPhrase}>{#each runsBadges as b (b.label)}<Chip role="env" theme={b.theme} label={b.label} wide class="shrink-0" />{/each}</span>{#if hiddenRuns > 0}<span class="t-meta shrink-0 tabular-nums text-fg-subtle" data-ad-runs-more title={runsPhrase}>+{hiddenRuns}</span>{/if}{/if}
 				</span>
 				<a href={href('/environments')} class="nav-link t-ui-sm ml-auto shrink-0 !py-0 max-sm:hidden xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 			</div>
