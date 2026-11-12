@@ -24,10 +24,12 @@
 	function place() {
 		if (!anchor || !panel) return;
 		const r = anchor.getBoundingClientRect();
-		const vw = document.documentElement.clientWidth;
+		/* AD strip r2 (A8): the content box, not the root (scrollbar-gutter: stable paints a gutter inside documentElement), and the page's own gutter */
+		const vw = document.body.clientWidth || document.documentElement.clientWidth;
+		const m = vw < 640 ? 16 : 8;
 		const vh = document.documentElement.clientHeight;
 		const w = panel.offsetWidth, h = panel.offsetHeight;
-		const left = Math.min(Math.max(8, r.left), Math.max(8, vw - w - 8));
+		const left = Math.min(Math.max(m, r.left), Math.max(m, vw - w - m));
 		const below = r.bottom + 6;
 		const top = below + h > vh - 8 && r.top - h - 6 > 8 ? r.top - h - 6 : below;
 		panel.style.left = `${left}px`;
@@ -95,7 +97,7 @@
 		position: fixed;
 		z-index: 60;
 		width: 300px;
-		max-width: calc(100vw - 16px);
+		max-width: calc(100vw - 32px);
 		padding: 4px;
 		border: 1px solid var(--k-line);
 		border-radius: 8px;

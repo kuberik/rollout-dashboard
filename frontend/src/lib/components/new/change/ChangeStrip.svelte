@@ -30,7 +30,8 @@
 		wave,
 		state: SITE[p.state],
 		word: p.word,
-		detail: p.progress ? p.progress + ' steps' : p.lag || undefined,
+		/* AD strip r2 N1: line 2 says the same fact in every scope (the App / Rollout lanes carry no step count): the state, then the currency; steps are one tap away on the rollout */
+		detail: p.lag || undefined,
 		build: p.current ?? undefined,
 		wordInk: INK[p.state],
 		aside: p.age ?? undefined,
