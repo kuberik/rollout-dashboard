@@ -534,22 +534,6 @@ export type ChainEnv = {
 	role: 'Leader' | 'Follower' | null;
 };
 
-/**
- * "wave 2" / "follows eu-west-1": the row's place in its tier's order, only when it
- * tells the reader something (the tier has several waves, or the site is a follower).
- * Same rule as the app page's PlaceRow suffix.
- */
-export function chainWaveFact(row: ChainEnv, topo: AppTopology | undefined): string | null {
-	if (!topo || row.wave === null || !row.site) return null;
-	const tier = topo.tiers.find((t) => t.tier === row.tier);
-	if (!tier) return null;
-	if (row.role === 'Follower') {
-		const lead = row.upstream[0] ? tier.sites.find((s) => placeKeyOfSite(topo, s) === row.upstream[0]) : undefined;
-		return 'follows ' + (lead?.site || 'its leader');
-	}
-	return tier.waves.length > 1 ? 'wave ' + row.wave : null;
-}
-
 const siteOfInfo = (i: EnvInfo): string | undefined => i.site;
 
 /** The SiteNode a row stands for, from the topology when it knows it, else from the row's own fields. */

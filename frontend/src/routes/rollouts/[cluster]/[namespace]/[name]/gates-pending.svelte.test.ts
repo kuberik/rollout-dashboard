@@ -58,12 +58,12 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		await new Promise((r) => setTimeout(r, 500));
 		expect(text()).not.toMatch(/No gates on this rollout/);
 		expect(container.querySelector('.skel-block, [aria-hidden="true"].animate-pulse, [data-skeleton]')).not.toBeNull();
-		// the rail's two cards ("Runs in", "Depends on this") are placeholders too, so nothing pops in once the list answers (batch4 followup 5)
+		// the rail's card ("Depends on this") is a placeholder too, so nothing pops in once the list answers (batch4 followup 5)
 		const pending = container.querySelector('[data-testid="gates-pending"]');
 		expect(pending).not.toBeNull();
 		const rail = pending!.querySelector('.content-start');
-		expect(rail?.children.length).toBe(2);
-		expect(rail!.querySelectorAll('.skel-block').length).toBeGreaterThan(4);
+		expect(rail?.children.length).toBe(1);
+		expect(rail!.querySelectorAll('.skel-block').length).toBeGreaterThan(2);
 		release();
 		await waitFor(() => expect(text()).toMatch(/No gates on this rollout/), { timeout: 8000 });
 		obs.disconnect();
@@ -215,7 +215,7 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		expect(seen.includes(true)).toBe(false);
 	}, 40000);
 
-	test('with no main column the rail stays in the right track (lg:col-start-2)', async () => {
+	test('with no main column the lone rail card takes the full row (lg:col-span-full)', async () => {
 		const ro2 = { ...ro, metadata: { name: 'app2', namespace: 'app-dev' }, status: { ...ro.status } };
 		const env2 = { metadata: { name: 'app-dev', namespace: 'app-dev' }, spec: { name: 'app', environment: 'dev', wave: 0, rolloutRef: { name: 'app2' } }, status: { conditions: [] } };
 		const fleet = { rollouts: { items: [ro, ro2] }, environments: { items: [env, env2] }, rolloutDependencies: [], clusters: [{ name: 'prod', url: 'https://x' }] };
@@ -235,6 +235,6 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		await waitFor(() => expect(container.textContent).toMatch(/No gates on this rollout/), { timeout: 20000 });
 		await waitFor(() => expect(container.textContent).toMatch(/Depends on this/), { timeout: 5000 });
 		const rail = [...container.querySelectorAll('section')].find((x) => /Depends on this/.test(x.textContent ?? ''))!.parentElement!;
-		expect(rail.className).toMatch(/lg:col-start-2/);
+		expect(rail.className).toMatch(/lg:col-span-full/);
 	}, 40000);
 });

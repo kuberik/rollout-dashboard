@@ -170,10 +170,12 @@
 	const runsAt = $derived(build ? placesInPillState(places, build, pill?.word ?? '') : []);
 	/** r2 apps fix 8: where the pill's build runs, as JOINED env badges ([PROD | eu-west]; several prod regions fold to [PROD | 3 regions]) */
 	const runsBadges = $derived.by(() => {
-		const out: { label: string; theme: ReturnType<typeof envTheme> }[] = [];
+		/* `short`: a compact form of the chip for a phone, "PROD ·3" for "[PROD | 3 prod regions]"; shown in place of the whole chip when the whole chip does not fit the row, before "+N" */
+		const out: { label: string; theme: ReturnType<typeof envTheme>; short?: { label: string; count: number } }[] = [];
 		const prod = runsAt.filter((x) => x.tier === 'prod');
-		const prodRegions = regionsPhrase(siteCount(prod.map((x) => x.label)), 'prod');
-		if (prodRegions) out.push({ label: prodRegions, theme: envTheme('prod') });
+		const prodSites = siteCount(prod.map((x) => x.label));
+		const prodRegions = regionsPhrase(prodSites, 'prod');
+		if (prodRegions) out.push({ label: prodRegions, theme: envTheme('prod'), short: { label: 'prod', count: prodSites } });
 		const seen = new Set<string>();
 		for (const x of runsAt) {
 			if (x.tier === 'prod' && prodRegions) continue;
@@ -195,10 +197,22 @@
 			return;
 		}
 		const measure = () => {
+			/* a chip caps itself at its container (max-width 100%), so a chip that does not fit shows as content wider than its own box */
+			const outside = (c: HTMLElement) => c.offsetTop > 2 || c.offsetLeft + c.offsetWidth > el.clientWidth + 1 || c.scrollWidth > c.clientWidth + 1;
+			const short = el.querySelector<HTMLElement>('[data-run-short]');
+			const chips = [...el.children].filter((c) => !c.hasAttribute('data-run-short')) as HTMLElement[];
+			for (const c of chips) { c.style.display = ''; c.style.visibility = ''; }
+			if (short) short.style.display = 'none';
+			/* the first chip does not fit whole: try its compact form in its place; only when even that does not fit does it join the "+N" */
+			let compact = false;
+			if (short && chips[0] && outside(chips[0])) {
+				chips[0].style.display = 'none';
+				short.style.display = 'inline-flex';
+				if (outside(short)) { short.style.display = 'none'; chips[0].style.display = ''; } else compact = true;
+			}
 			let n = 0;
-			for (const c of el.children as HTMLCollectionOf<HTMLElement>) {
-				/* a chip caps itself at its container (max-width 100%), so a chip that does not fit shows as content wider than its own box */
-				const out = c.offsetTop > 2 || c.offsetLeft + c.offsetWidth > el.clientWidth + 1 || c.scrollWidth > c.clientWidth + 1;
+			for (const c of compact ? chips.slice(1) : chips) {
+				const out = outside(c);
 				c.style.visibility = out ? 'hidden' : '';
 				if (out) n++;
 			}
@@ -319,7 +333,7 @@
 				<span class="flex min-w-0 flex-nowrap items-center gap-x-3 max-lg:basis-full lg:flex-1 lg:basis-[32rem]" data-ad-build-row>
 					{#if build}<span class="t-meta text-fg-disabled max-lg:hidden" aria-hidden="true">/</span><span class="t-code-lg shrink-0 text-fg" data-ad-build>{build}</span>{/if}
 					{#if pill}<Chip role={pill.role as never} label={pill.word.toLowerCase()} class="shrink-0" />{/if}
-					{#if build && runsBadges.length}<span class="t-meta shrink-0 text-fg-subtle">in</span><span bind:this={runsEl} class="relative flex h-5 min-w-0 flex-wrap items-center gap-x-2 overflow-hidden" data-ad-runs title={runsPhrase}>{#each runsBadges as b (b.label)}<Chip role="env" theme={b.theme} label={b.label} wide class="shrink-0" />{/each}</span>{#if hiddenRuns > 0}<span class="t-meta shrink-0 tabular-nums text-fg-subtle" data-ad-runs-more title={runsPhrase}>+{hiddenRuns}</span>{/if}{/if}
+					{#if build && runsBadges.length}<span class="t-meta shrink-0 text-fg-subtle">in</span><span bind:this={runsEl} class="relative flex h-5 min-w-0 flex-wrap items-center gap-x-2 overflow-hidden" data-ad-runs title={runsPhrase}>{#each runsBadges as b, i (b.label)}<Chip role="env" theme={b.theme} label={b.label} wide class="shrink-0" />{#if i === 0 && b.short}<span class="shrink-0 items-center gap-1" style="display:none" data-run-short><Chip role="env" theme={b.theme} label={b.short.label} wide class="shrink-0" /><span class="t-meta tabular-nums text-fg-subtle">·{b.short.count}</span></span>{/if}{/each}</span>{#if hiddenRuns > 0}<span class="t-meta shrink-0 tabular-nums text-fg-subtle" data-ad-runs-more title={runsPhrase}>+{hiddenRuns}</span>{/if}{/if}
 				</span>
 				<a href={href('/environments')} class="nav-link t-ui-sm ml-auto shrink-0 !py-0 max-sm:hidden {pipeline ? '' : 'xl:hidden'}">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 			</div>
