@@ -485,3 +485,15 @@ describe('RolloutNeighbourhood: "Gated by · N" counts gates only and names the 
 		expect(container.querySelectorAll('.hood-up .hood-list > *').length).toBe(2);
 	});
 });
+
+/** batch4 #128: the upstream promotion tile's status line ("Nothing held · Promotion") names the edge's KIND; it is drawn (» Promotion), never typed as text. */
+describe('RolloutNeighbourhood: a promotion tile draws its kind', () => {
+	test('the chain-predecessor status line carries the drawn promotion label', () => {
+		const pred = { ...link({ key: 'link:staging', state: 'clear', name: 'app-staging', writer: 'promotion' }), chainPredecessor: true };
+		const hood: Hood = { focus, upstream: [pred], downstream: [], gates: [], heldLinks: 0, total: 1, holding: 0, heldBuilds: [] };
+		const { container } = render(RolloutNeighbourhood, { props: { hood } });
+		const tile = container.querySelector('[data-hood-link="upstream"]')!;
+		expect(tile.querySelector('[data-gate-label="promotion"]')).not.toBeNull();
+		expect(tile.textContent).toContain('Nothing held');
+	});
+});

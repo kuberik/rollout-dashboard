@@ -52,6 +52,8 @@
 	import type { NeighbourLink, RolloutNeighbourhood } from '$lib/view-models/rollout-neighbourhood';
 	import { withoutSupersededBoxes, type GateBox } from '$lib/view-models/rollout-gates';
 	import GateLabel from './GateLabel.svelte';
+	import GateText from './GateText.svelte';
+	import { gateLabelMarked } from '$lib/view-models/gate-label';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
 	import { approvalWord, ASK_LOADING } from '$lib/components/new/state-words';
 	import { fade } from 'svelte/transition';
@@ -318,6 +320,7 @@
 	 * print: the stage name alone, plus "`<stage>` held on `<cause>`"
 	 * exactly when `peerHeldByEnv` says that peer is itself really held.
 	 */
+	const PROMOTION_MARKED = gateLabelMarked({ kind: 'promotion', source: null });
 	function chainWaitsForText(l: NeighbourLink): string {
 		if (chainWait) {
 			const first = upstreamLinks.find((x) => x.chainPredecessor);
@@ -331,10 +334,10 @@
 		if (peer?.held && peer.causeLabel) return `Waits for ${l.node.env} · ${l.node.env} held on ${peer.causeLabel}`;
 		// A peer still checking / deploying / failing its own build has NOT passed: it reads the place verdict word the app page and /rollouts print.
 		const word = peerWord(l);
-		if (word) return `${word} · Promotion`;
+		if (word) return `${word} · ${PROMOTION_MARKED}`;
 		// Reaching here means the predecessor holds nothing (no chain wait, no held peer): the build already passed it. "Waits for staging"
 		// beside a green dot read as staging itself waiting (QA, TL follow-up).
-		return 'Nothing held · Promotion';
+		return `Nothing held · ${PROMOTION_MARKED}`; /* the edge's kind, drawn (» Promotion), never the text */
 	}
 
 	/** The headline half of a tile's one status line: the edge's state, held first and loud. */
@@ -620,7 +623,7 @@
 			<span class="mt-0.5 shrink-0"
 				><StatusMark state={l.chainPredecessor ? chainMark(l) : markState(l.state)} /></span
 			>
-			<span class="min-w-0 break-words">{l.chainPredecessor ? chainWaitsForText(l) : statusLine(l)}</span>
+			<span class="min-w-0 break-words"><GateText text={l.chainPredecessor ? chainWaitsForText(l) : statusLine(l)} /></span>
 		</p>
 		{#if held}
 			<!-- ⭐ SPEC §7 (owner-driven, 2026-10-10): "every holding tile
