@@ -29,7 +29,9 @@
 		name: p.name,
 		wave,
 		state: SITE[p.state],
-		word: p.progress ? p.word + ' · step ' + p.progress : p.word,
+		word: p.word,
+		detail: p.progress ? p.progress + ' steps' : p.lag || undefined,
+		build: p.current ?? undefined,
 		wordInk: INK[p.state],
 		aside: p.age ?? undefined,
 		href: p.href

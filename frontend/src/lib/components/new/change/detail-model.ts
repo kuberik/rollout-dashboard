@@ -457,9 +457,11 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		if (cause) e.cause = cause;
 		e.places = [];
 	}
-	/* change-strip r2: events at one instant keep the pipeline's order (tier, then wave), never the order the history was read in */
+	/* change-strip r2 (owner 2026-11-12): NEWEST FIRST, as the rollout History tab reads; events at one instant keep the pipeline's order
+	   (tier, then wave) reversed with the rest, never the order the history was read in */
 	const rank = (e: Ev) => ({ dev: 0, test: 1, staging: 2, prod: 3 } as Record<string, number>)[e.tier ?? ''] ?? -1;
-	return [...out, ...waits.values()].sort((a, b) => oldestFirst(a.order ?? a.at, b.order ?? b.at) || rank(a) - rank(b) || (a.wave ?? 0) - (b.wave ?? 0));
+	const kindRank = (e: Ev) => (e.kind === 'merged' ? -2 : e.kind === 'released' ? -1 : 0);
+	return [...out, ...waits.values()].sort((a, b) => oldestFirst(b.order ?? b.at, a.order ?? a.at) || kindRank(b) - kindRank(a) || rank(b) - rank(a) || (b.wave ?? 0) - (a.wave ?? 0));
 }
 
 /**

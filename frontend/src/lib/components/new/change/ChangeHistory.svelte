@@ -1,6 +1,7 @@
 <script lang="ts">
 	/**
-	 * THE CHANGE'S STORY (change-strip r2; owner 2026-11-12: "main thing 'history' cards is pretty bland"). An activity feed, oldest first:
+	 * THE CHANGE'S STORY (change-strip r2; owner 2026-11-12: "main thing 'history' cards is pretty bland"). An activity feed, NEWEST FIRST
+	 * (owner, as the rollout History tab reads), the life read upwards:
 	 * merged -> released -> deployed to each tier (prod: one event per WAVE, its sites named) -> checking / held / waiting / failed /
 	 * rolled back. The environment strip in the header owns the at-a-glance progression; History tells the story with detail.
 	 * ROW: [coloured mark] verb in its state ink · env chip (tier identity) · the sites of a wave / the app | age
@@ -49,9 +50,9 @@
 	const hidden = $derived(gap ? gap[1] - gap[0] : 0);
 	const INK: Partial<Record<Ev['kind'], string>> = { waiting: 'text-held', held: 'text-held', failed: 'text-danger' };
 	const verbInk = (e: Ev) => INK[e.kind] ?? (e.kind === 'moving' ? (e.words === 'Checking' ? 'text-progress' : 'text-active') : 'text-fg');
-	/** the time since the event before it, on the same clock the ages read ("+2h 10m"); none on the first row */
+	/** newest first: the time since the event BELOW it (the one before it in time), on the clock the ages read ("+2h 10m"); none on the oldest */
 	const delta = (i: number) => {
-		const a = events[i - 1]?.at, b = events[i]?.at;
+		const a = events[i + 1]?.at, b = events[i]?.at;
 		if (!a || !b) return '';
 		const ms = Date.parse(b) - Date.parse(a);
 		return ms >= 60_000 ? '+' + (ms >= 86_400_000 ? Math.floor(ms / 86_400_000) + 'd' : span(ms)) : '';

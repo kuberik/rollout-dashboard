@@ -6,14 +6,14 @@
  * `countsOf`. The SHAPE (columns, lanes, the order of places inside a cell) comes from the TOPOLOGY (`waveInfoOfHref`), never from
  * state, so a state change can never add, drop, reorder or move a tile (owner: "environments jumping").
  */
-import { ago, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
+import { ago, noReleasesAt, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
 import { approvalWord } from '../state-words';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
-import { classified, countsOf, notReached, restSteps, type Place } from '../change/detail-model';
+import { behindWords, classified, countsOf, notReached, restSteps, type Place } from '../change/detail-model';
 
 export type StageState = 'deployed' | 'checking' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
-export type StagePlace = { href: string; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: Cause | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
+export type StagePlace = { href: string; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: Cause | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** change-strip r2: the build the place runs now and its lag in the words origin/main's "Where it runs" used ("3 builds behind" / "Up to date"); empty while moving, for a newer failure or without releases */ current: string | null; lag: string; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
 export type StageColumn = { key: string; tier: TierKey; wave: number | null; /** the env chip's label */ label: string; /** the tier has more than one wave: "Wave N" is worth printing */ multi: boolean };
 export type StageCell = { places: StagePlace[] };
 export type StageLane = { app: string; cells: (StageCell | null)[] };
@@ -41,6 +41,12 @@ export function stateOf(p: Place, scenario: HomeState): StageState {
 
 const WORD: Record<StageState, string> = { deployed: 'Deployed', checking: 'Checking', deploying: 'Deploying', held: 'Held', approval: 'Waiting for approval', failed: 'Failed', notreached: 'Not reached', notaffected: 'Not affected', replaced: 'Replaced' };
 
+function lagOf(p: Place, st: StageState, scenario: HomeState): string {
+	if (st === 'checking' || st === 'deploying' || p.newerFails || noReleasesAt(p.href)) return '';
+	const w = behindWords(p.app, p.href, scenario);
+	return w === 'on the newest' ? 'Up to date' : w;
+}
+
 type Item = { p: Place; col: StageColumn; site: string; leader: boolean; build: string | null };
 
 /** columns (tier, wave) sorted tier then wave; a tier is "multi" for every one of its columns when any of them says so */
@@ -64,7 +70,7 @@ function assemble(apps: string[], items: Item[], columns: StageColumn[], scenari
 		const st = stateOf(i.p, scenario);
 		const steps = i.p.row?.steps ?? restSteps(i.p.app, scenario, i.p.href);
 		const done = steps.filter((s) => s.state === 'done').length;
-		return { href: i.p.href, app: i.p.app, tier: i.p.tier, name: i.site, leader: i.leader, state: st, word: st === 'held' || st === 'approval' ? causeText(stageCause(i.p, scenario) ?? [WORD[st]]) : WORD[st], cause: st === 'held' || st === 'approval' ? stageCause(i.p, scenario) : null, progress: st === 'checking' || st === 'deploying' ? `${done} of ${steps.length}` : null, age: st === 'deployed' ? ago(i.p.since ?? i.p.at) : st === 'failed' || st === 'checking' || st === 'deploying' ? ago(i.p.at ?? i.p.since) : null, build: i.build, here: here === i.p.href, live: false };
+		return { href: i.p.href, app: i.p.app, tier: i.p.tier, name: i.site, leader: i.leader, state: st, word: st === 'held' || st === 'approval' ? causeText(stageCause(i.p, scenario) ?? [WORD[st]]) : WORD[st], cause: st === 'held' || st === 'approval' ? stageCause(i.p, scenario) : null, progress: st === 'checking' || st === 'deploying' ? `${done} of ${steps.length}` : null, age: st === 'deployed' ? ago(i.p.since ?? i.p.at) : st === 'failed' || st === 'checking' || st === 'deploying' ? ago(i.p.at ?? i.p.since) : null, build: i.build, here: here === i.p.href, live: false, current: i.p.current ?? null, lag: lagOf(i.p, st, scenario) };
 	};
 	const lanes: StageLane[] = apps.map((app) => ({
 		app,

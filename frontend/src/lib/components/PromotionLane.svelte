@@ -154,7 +154,7 @@
 	/* change-strip r1: the tier's sites for EnvRow, in topology order (wave, leader, name), never by state */
 	const SITE_STATE: Record<NodeState, SiteState> = { failed: 'failed', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: 'done', newest: 'done', none: 'notaffected' };
 	const siteName = (n: LaneNode) => (n.tier === 'prod' ? (splitEnvName(n.env).place ?? n.env) : n.env);
-	const siteWord = (n: LaneNode) => wordOf(n) || (noRel(n) ? 'No releases' : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'On the newest build');
+	const siteWord = (n: LaneNode) => wordOf(n) || (noRel(n) ? 'No releases' : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
 	function sitesOf(ns: LaneNode[]): EnvSite[] {
 		const multiWave = new Set(ns.map((n) => n.card.wave ?? 1)).size > 1;
 		return [...ns]
@@ -166,7 +166,7 @@
 				state: n.state === 'held' && n.card.heldCause === 'person' ? 'approval' : SITE_STATE[n.state],
 				word: siteWord(n),
 				wordInk: INK[n.state],
-				aside: n.card.version ? shortenVersion(n.card.version) : undefined,
+				build: n.card.version ? shortenVersion(n.card.version) : undefined,
 				href: hrefFor(n),
 				here: youAreHere && isCurrent(n)
 			}));

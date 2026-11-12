@@ -35,6 +35,7 @@
 	import { ChartLineUpOutline, UndoOutline, GithubSolid, PlaySolid, CheckOutline } from 'flowbite-svelte-icons';
 	import HoldingCard from '../HoldingCard.svelte';
 	import ChangeStrip from './ChangeStrip.svelte';
+	import { stagesOf } from '../stages/stages-model';
 	import ChangeCard from './ChangeCard.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ChangeHistory from './ChangeHistory.svelte';
@@ -91,6 +92,10 @@
 	/* a check line that says "passing" while the change fails in production would be a lie: only the link survives a failure */
 	const checkText = $derived(checks && !checks.href && !failed.length ? checks.text : null);
 	const prod = $derived(changeProd(c, scenario));
+	/* change-strip r2 (coordinator: restore the facts "Where it runs" carried): the strip's own count (stages-model rollup, so the two agree) and the builds that carry the change */
+	const reach = $derived(stagesOf({ kind: 'change', change: c }, scenario).rollup);
+	const carrying = $derived(new Set(places.filter((p) => p.kind === 'running' || p.kind === 'failed').map((p) => p.current).filter(Boolean)).size);
+	const RUP: Record<string, string> = { danger: 'text-danger', held: 'text-held', progress: 'text-progress', active: 'text-active', muted: 'text-fg', fg: 'text-fg' };
 </script>
 
 {#snippet links()}
@@ -160,6 +165,9 @@
 			{#if holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href)}<HoldingCard {holds} class="cd-hold" />{/if}
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
+					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-places><dt class="t-meta text-fg-subtle">Places running it</dt><dd class="t-ui tabular-nums">{#each reach.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={RUP[part.ink]}>{i === 0 ? (part.short ?? part.text) : part.text}</span>{/each}</dd></div>
+					{#if prod.of > 1}<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-prod><dt class="t-meta text-fg-subtle">{multiApp ? 'Production places running it' : 'Production regions running it'}</dt><dd class="t-ui tabular-nums text-fg">{prod.healthy} of {prod.of}</dd></div>{/if}
+					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-builds><dt class="t-meta text-fg-subtle">Builds carrying it</dt><dd class="t-ui tabular-nums text-fg">{#if carrying}{carrying}{:else}<span class="t-meta text-fg-subtle" data-pending>none running yet</span>{/if}</dd></div>
 					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], [`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')], ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
 						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{#if /^(not |won't )/.test(v)}<span class="t-meta text-fg-subtle" data-pending>{v}</span>{:else}{v}{/if}</dd></div>
 					{/each}

@@ -83,12 +83,12 @@ describe('change detail model (one model with the Changes list)', () => {
 		] as const) {
 			const { c, places } = at(p, sc);
 			const ev = spineOf(c, sc, places);
-			const ats = ev.map((e) => e.order ?? e.at ?? '');
-			expect(ats).toEqual([...ats].sort());
+			/* change-strip r2: newest first; a wait still never sits below (before) the merge */
+			const ats = ev.map((e) => Date.parse(e.order ?? e.at ?? ''));
+			expect(ats).toEqual([...ats].sort((x, y) => y - x));
 			const w = ev.findIndex((e) => e.kind === 'waiting' || e.kind === 'held');
-			/* cs3: the deploys are no events; a wait still never precedes the merge */
-			expect(ev[0].kind).toBe('merged');
-			if (w >= 0) expect(w).toBeGreaterThan(0);
+			expect(ev[ev.length - 1].kind).toBe('merged');
+			if (w >= 0) expect(w).toBeLessThan(ev.length - 1);
 		}
 	});
 	it('#90 (CD7, cs3): five identical waiting events are ONE event that says where in words (no chips)', () => {
@@ -210,9 +210,9 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(
 			ev.some((e) => e.kind === 'rollback' && e.place === 'us-east' && e.who === 'sarahmiller')
 		).toBe(true);
-		const ats = ev.map((e) => e.at ?? '');
-		expect([...ats].sort()).toEqual(ats);
-		expect(ev[0].kind).toBe('merged');
+		const ats = ev.map((e) => Date.parse(e.at ?? ''));
+		expect([...ats].sort((x, y) => y - x)).toEqual(ats);
+		expect(ev[ev.length - 1].kind).toBe('merged');
 	});
 	it('CE2 #90: ONE count with a unit; the 9th place is named not affected', () => {
 		const { all, places, unaffected } = at('github.com/exampleco/payments-core/pull/90', 'calm');

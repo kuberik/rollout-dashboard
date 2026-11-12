@@ -43,7 +43,11 @@
 		/** the state word (picker row, title) */
 		word: string;
 		wordInk?: string;
-		/** age / build, t-meta subtle */
+		/** the second clause of the state ("3 builds behind", "1 of 2 steps"), t-meta muted after the word */
+		detail?: string;
+		/** the build the site runs now, mono */
+		build?: string;
+		/** the age, t-meta subtle */
 		aside?: string;
 		href?: string;
 		/** the rollout this page is about (rollout overview): a ring round its mark, "This rollout" in the picker */
@@ -110,7 +114,7 @@
 		}
 		return out;
 	};
-	const siteLine = (x: EnvSite, multi: boolean) => [multi && x.wave ? 'wave ' + x.wave : '', x.name + ': ' + x.word, x.aside ?? ''].filter(Boolean).join(' · ');
+	const siteLine = (x: EnvSite, multi: boolean) => [multi && x.wave ? 'wave ' + x.wave : '', x.name + ': ' + x.word, x.detail ?? '', x.build ?? '', x.aside ?? ''].filter(Boolean).join(' · ');
 	const siteTitle = (c: EnvCell) => c.title ?? [c.label, ...(c.sites ?? []).map((x) => siteLine(x, wavesOf(c.sites ?? []).length > 1))].join('\n');
 	const pickerSub = (ss: EnvSite[]) => {
 		const w = wavesOf(ss).length;

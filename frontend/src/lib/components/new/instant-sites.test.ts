@@ -224,7 +224,7 @@ describe('changes page Attention order', () => {
 });
 
 describe('change detail spine order', () => {
-	it('events run oldest first by instant, whatever offset each is written in', () => {
+	it('events run newest first by instant, whatever offset each is written in (change-strip r2)', () => {
 		const stamp = (i: number) => { const t = Date.UTC(2026, 9, 24, 8 + i); return i % 2 ? new Date(t + 2 * 3600e3).toISOString().replace(/\.\d+Z$/, '+02:00').replace('Z', '+02:00') : new Date(t).toISOString().replace(/\.\d+Z$/, 'Z'); };
 		traps.hist = (h) => h.map((x, i) => ({ ...x, at: stamp(i) }));
 		try {
@@ -232,7 +232,7 @@ describe('change detail spine order', () => {
 			const ev = spineOf(c, 'incident', classified(c, 'incident').places);
 			const ms = ev.map((e) => Date.parse((e as any).order ?? e.at));
 			expect(ms.length).toBeGreaterThanOrEqual(3);
-			expect([...ms].sort((x, y) => x - y)).toEqual(ms);
+			expect([...ms].sort((x, y) => y - x)).toEqual(ms);
 		} finally { traps.hist = null; }
 	});
 });

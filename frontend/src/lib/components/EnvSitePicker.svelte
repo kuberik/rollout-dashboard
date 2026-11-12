@@ -10,8 +10,7 @@
 	 * this panel always floats (position fixed, clamped to the viewport), so opening it moves nothing.
 	 *
 	 * CHROME: RulePopover's / the overlay menus' (radius 8, surface, 1px line, `--k-shadow-overlay`). ROWS: the 16px status column
-	 * (the strip's own marks), site name t-ui-sm, state word t-meta in the state's ink, aside t-meta subtle tabular. 32px rows, 44px
-	 * below sm. Reference: GitHub's deployment-environment list, Vercel's environment switcher (one row per target, a dot + a word).
+	 * (the strip's own marks), site name t-ui-sm, state word t-meta in the state's ink, aside t-meta subtle tabular. two-line rows >= 44px. Reference: GitHub's deployment-environment list, Vercel's environment switcher (one row per target, a dot + a word).
 	 */
 	import type { EnvSite } from './EnvRow.svelte';
 	import SiteMark from './SiteMark.svelte';
@@ -74,10 +73,10 @@
 			{#each sites.filter((s) => (s.wave ?? 0) === w) as s (s.key)}
 				<a href={s.href} class="sp-row" class:sp-row--here={s.here} aria-current={s.here ? 'location' : undefined} onclick={() => close()} data-site-row={s.key}>
 					<span class="sp-mk"><SiteMark state={s.state} /></span>
-					<span class="sp-name t-ui-sm text-fg">{s.name}</span>
-					{#if s.here}<span class="t-meta shrink-0 text-fg-muted">This rollout</span>{/if}
-					<span class="sp-word t-meta {s.wordInk ?? 'text-fg-muted'}">{s.word}</span>
-					{#if s.aside}<span class="t-meta shrink-0 tabular-nums text-fg-subtle">{s.aside}</span>{/if}
+					<span class="sp-name t-ui-sm text-fg">{s.name}{#if s.here}<span class="t-meta ml-2 text-fg-muted">This rollout</span>{/if}</span>
+					{#if s.build}<span class="sp-build t-code-sm text-fg-subtle">{s.build}</span>{/if}
+					<span class="sp-state t-meta"><span class={s.wordInk ?? 'text-fg-muted'}>{s.word}</span>{#if s.detail}<span class="text-fg-muted">{" · " + s.detail}</span>{/if}</span>
+					{#if s.aside}<span class="sp-age t-meta tabular-nums text-fg-subtle">{s.aside}</span>{/if}
 				</a>
 			{/each}
 		{/each}
@@ -106,12 +105,15 @@
 	.sp-wave {
 		padding: 8px 8px 2px;
 	}
+	/* two lines: site + build, then the state in the tab's words + age (origin/main's "Where it runs" row, folded in here) */
 	.sp-row {
-		display: flex;
+		display: grid;
+		grid-template-columns: 16px minmax(0, 1fr) auto;
+		column-gap: 8px;
+		row-gap: 2px;
 		align-items: center;
-		gap: 8px;
-		height: 32px;
-		padding: 0 8px;
+		min-height: 44px;
+		padding: 6px 8px;
 		border-radius: 6px;
 		white-space: nowrap;
 	}
@@ -123,7 +125,13 @@
 	.sp-row--here {
 		background-color: var(--k-subtle);
 	}
+	.sp-name { grid-row: 1; grid-column: 2; }
+	.sp-build { grid-row: 1; grid-column: 3; justify-self: end; }
+	.sp-state { grid-row: 2; grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+	.sp-age { grid-row: 2; grid-column: 3; justify-self: end; }
 	.sp-mk {
+		grid-row: 1;
+		grid-column: 1;
 		display: inline-flex;
 		width: 16px;
 		height: 16px;
@@ -133,16 +141,7 @@
 	}
 	.sp-name {
 		min-width: 0;
-		flex: 1 1 auto;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.sp-word {
-		flex: none;
-	}
-	@media (max-width: 639.98px) {
-		.sp-row {
-			height: 44px;
-		}
 	}
 </style>
