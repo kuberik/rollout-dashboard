@@ -33,7 +33,7 @@
 				<path class="wm-halo" d={slicePath(s.from, s.to, R + 1.5)} fill="var(--k-progress-solid)" />
 				<path class="wm-solid" d={slicePath(s.from, s.to, R)} fill="var(--k-progress-solid)" />
 			{:else if s.kind === 'deploying'}
-				<path d={slicePath(s.from, s.to, R)} fill="var(--k-active-solid)" fill-opacity="0.35" />
+				<path d={slicePath(s.from, s.to, R)} fill="var(--k-active-solid)" fill-opacity="0.5" />
 				<g clip-path="url(#{id}-c{i})"><path class="wm-sweep" d={wedge} fill="var(--k-active-solid)" /></g>
 			{:else}
 				<path d={slicePath(s.from, s.to, R)} fill="var(--k-{s.kind === 'done' ? 'success' : s.kind === 'held' ? 'held' : s.kind === 'stuck' ? 'warning' : 'danger'}-solid)" />
