@@ -107,12 +107,17 @@ export function elbow(x1: number, y1: number, x2: number, y2: number, tx: number
 	const s = down ? 1 : -1;
 	const r = Math.min(CORNER, room);
 	return svgPath(
-		'M', x1, y1,
-		'H', tx - r,
+		'M',
+		x1,
+		y1,
+		'H',
+		tx - r,
 		...arc(r, tx, y1 + s * r, down),
-		'V', y2 - s * r,
+		'V',
+		y2 - s * r,
 		...arc(r, tx + r, y2, !down),
-		'H', x2
+		'H',
+		x2
 	);
 }
 

@@ -29,9 +29,25 @@
  *    coordinate is the same whatever the state; state picks the ink and the
  *    paint order only.
  */
-import { CORNER, arc, crisp1, elbow, svgPath, chevron, wireTone, type WireTone } from '$lib/graph-wire';
+import {
+	CORNER,
+	arc,
+	crisp1,
+	elbow,
+	svgPath,
+	chevron,
+	wireTone,
+	type WireTone
+} from '$lib/graph-wire';
 
-export type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+export type Rect = {
+	left: number;
+	top: number;
+	right: number;
+	bottom: number;
+	width: number;
+	height: number;
+};
 export type WireState = 'blocked' | 'clear' | 'unknown';
 /** `port`: the absolute y of the box's title row (defaults to its centre). */
 export type WireIn = { key: string; state: WireState; rect: Rect; port?: number };
@@ -53,7 +69,13 @@ export { CORNER };
 
 const portOf = (r: Rect & { port?: number }) => r.port ?? r.top + r.height / 2;
 
-function wire(key: string, state: WireState, d: string, tip: [number, number], dir: 'right' | 'down'): Wire {
+function wire(
+	key: string,
+	state: WireState,
+	d: string,
+	tip: [number, number],
+	dir: 'right' | 'down'
+): Wire {
 	return { key, state, d, head: chevron(tip[0], tip[1], dir), tip };
 }
 
@@ -107,7 +129,9 @@ export function compactWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[]
 	const start = focus.bottom + FOCUS_RING;
 	for (const w of down) {
 		const y = crisp1(portOf({ ...w.rect, port: w.port }));
-		out.push(wire(w.key, w.state, spineRight(sx, start, y, w.rect.left), [w.rect.left, y], 'right'));
+		out.push(
+			wire(w.key, w.state, spineRight(sx, start, y, w.rect.left), [w.rect.left, y], 'right')
+		);
 	}
 	return paintOrder(out);
 }
@@ -131,7 +155,9 @@ export function narrowWires(focus: Focus, up: WireIn[], down: WireIn[]): Wire[] 
 	const start = focus.bottom + FOCUS_RING;
 	for (const w of down) {
 		const y = crisp1(portOf({ ...w.rect, port: w.port }));
-		out.push(wire(w.key, w.state, spineRight(sx, start, y, w.rect.left), [w.rect.left, y], 'right'));
+		out.push(
+			wire(w.key, w.state, spineRight(sx, start, y, w.rect.left), [w.rect.left, y], 'right')
+		);
 	}
 	return paintOrder(out);
 }
@@ -164,7 +190,10 @@ export { wireTone };
 
 /** ONE order for the Gated by column at every width: a holding link first, then the rest in their own order. The card that holds the rollout is the one the reader must see, so it is never the one a fold slices. */
 export function holdingFirst<T extends { state: WireState }>(links: readonly T[]): T[] {
-	return [...links.filter((l) => l.state === 'blocked'), ...links.filter((l) => l.state !== 'blocked')];
+	return [
+		...links.filter((l) => l.state === 'blocked'),
+		...links.filter((l) => l.state !== 'blocked')
+	];
 }
 
 /** Steep fan: the largest vertical rise a wide wire has to make, against the

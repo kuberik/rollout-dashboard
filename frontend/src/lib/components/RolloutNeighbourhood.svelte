@@ -193,7 +193,6 @@
 	const WIDE_AT = 960;
 	/** The compact graph (two columns, downstream under the focus) from 560px of container up to WIDE_AT; the stacked list below it. */
 	const COMPACT_AT = 560;
-	const uid = `nh-${Math.random().toString(36).slice(2, 8)}`;
 
 	let root = $state<HTMLDivElement | null>(null);
 	let width = $state(0);
