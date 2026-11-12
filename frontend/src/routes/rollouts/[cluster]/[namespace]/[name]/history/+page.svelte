@@ -2224,13 +2224,21 @@
 																					<span class="trigger-name">Automatic</span>
 																				{:else}
 																					<span class="trigger-name max-w-40 truncate"
-																						>{actor.name}</span
+																						>{approved ? 'deployed by ' : ''}{actor.name}</span
 																					>
 																				{/if}
 																			</span>
 																		{/if}
 																		{#if approved}
-																			<span class="text-fg-muted min-w-0 truncate" title={approved.title} data-history-approval>{approved.text}</span>
+																			<!-- ONE approval fact, one style on both rows: lower-case words; a person-triggered deploy keeps its actor ("deployed by alice") and the approval stands apart after it; an automatic deploy an approval released has the approval IN the actor slot, with the approver's avatar when the cluster verifies who. -->
+																			{#if approved.who && approvalReplacesActor(approved, actor?.kind)}
+																				<span class="inline-flex min-w-0 items-center gap-1" title={approved.title} data-history-approval>
+																					<Avatar name={approved.who} kind="person" size={16} />
+																					<span class="min-w-0 truncate">{approved.text}</span>
+																				</span>
+																			{:else}
+																				<span class="text-fg-muted min-w-0 truncate" title={approved.title} data-history-approval>{approved.text}</span>
+																			{/if}
 																		{/if}
 																		{#if note}
 																			<!-- `basis-40` WITH `flex-1`: at 390 the note wraps onto its

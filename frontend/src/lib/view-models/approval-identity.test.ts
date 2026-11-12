@@ -24,18 +24,18 @@ describe('approvalUnwrite is the inverse of approvalWrite', () => {
 
 describe('the history row\'s approved-by fact', () => {
 	it('verified: "approved by wyatt", the tooltip leads with the display name and keeps the identity', () => {
-		expect(historyApprovalFact({ name: 'app-v1', by: 'oidc:wyatt' }, true)).toEqual({ text: 'approved by wyatt', title: 'Approved by wyatt (oidc:wyatt)' });
+		expect(historyApprovalFact({ name: 'app-v1', by: 'oidc:wyatt' }, true)).toEqual({ text: 'approved by wyatt', who: 'wyatt', title: 'Approved by wyatt (oidc:wyatt)' });
 		expect(historyApprovalFact({ name: 'app-v1', by: 'wyatt' }, true)?.title).toBe('Approved by wyatt');
 	});
 	it('no verified `by` (git, kubectl, unverified): a bare "Approved", the object name only in the tooltip', () => {
 		const f = historyApprovalFact({ name: 'hello-world-e4f5a6b' }, true)!;
-		expect(f.text).toBe('Approved');
+		expect(f.text).toBe('approved');
 		expect(f.title).toBe('Approved by RolloutApproval hello-world-e4f5a6b (no verified approver)');
 		expect(f.text).not.toMatch(/git|hello-world/);
 	});
 	it('hides `by` when the cluster does not verify it', () => {
 		const f = historyApprovalFact({ name: 'app-v1', by: 'oidc:wyatt' }, false)!;
-		expect(f.text).toBe('Approved');
+		expect(f.text).toBe('approved');
 		expect(f.text + f.title).not.toMatch(/wyatt/);
 	});
 	it('an approval replaces the Automatic actor, never a person', () => {

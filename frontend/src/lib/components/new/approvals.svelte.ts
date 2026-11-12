@@ -7,7 +7,10 @@
  * A failed request rolls the optimistic grant back and says so.
  */
 import { approvalTarget, grantApproval, revokeApproval, type ApprovalTarget, type HomeState, type TRow } from './data';
-import { postApproval, type ApprovalReply } from '$lib/api/approvals';
+import { postApproval, rolloutOfHref, approvalsQueryKey, type ApprovalReply } from '$lib/api/approvals';
+import { rolloutQueryKey } from '$lib/api/rollouts';
+import { grantInRollout } from '$lib/view-models/approval-write';
+import type { QueryClient } from '@tanstack/svelte-query';
 import { approversWords } from '$lib/view-models/approval-identity';
 import type { Act } from '$lib/components/ActRow.svelte';
 
@@ -18,6 +21,47 @@ export const approvalUi = $state<{
 	/** `still`: an Undo that the server answered `stillApproved`: the build stays approved (by whom: `who`), nothing was reverted */
 	done: { target: ApprovalTarget; error: string | null; still?: { who: string; title: string } } | null;
 }>({ ask: null, done: null });
+
+/**
+ * THE PLACE'S OWN COPY OF THE GATE. Home reads the fleet fixture (`grantApproval`), a place's page reads `['rollout', ns, name, cluster]`:
+ * one click must write both, or the place says "held, releases when someone approves" under a toast that says it was approved.
+ * `ApprovalLayer` installs the app's QueryClient; the grant patches each place's cached rollout (remembering what it replaced), Undo puts the
+ * snapshot back, and once the requests settle the rollout and approvals queries are refetched (the real gate, and who approved).
+ */
+let qc: QueryClient | null = null;
+export const installApprovalCache = (c: QueryClient | null): void => { qc = c; };
+const cacheSnaps = new Map<string, { key: readonly unknown[]; data: unknown }[]>();
+const keyOfPlace = (href: string): { rollout: readonly unknown[]; approvals: readonly unknown[] } | null => {
+	const r = rolloutOfHref(href);
+	return r ? { rollout: rolloutQueryKey(r.namespace, r.name, r.cluster), approvals: approvalsQueryKey(r.namespace, r.name, r.cluster) } : null;
+};
+export function patchPlaceCaches(t: ApprovalTarget): void {
+	if (!qc) return;
+	const snaps: { key: readonly unknown[]; data: unknown }[] = [];
+	for (const p of t.places) {
+		const k = keyOfPlace(p.href);
+		const old = k && qc.getQueryData(k.rollout);
+		if (!k || !old) continue;
+		snaps.push({ key: k.rollout, data: old });
+		qc.setQueryData(k.rollout, grantInRollout(old as never, p.tag));
+	}
+	cacheSnaps.set(t.key, snaps);
+}
+export function restorePlaceCaches(t: ApprovalTarget): void {
+	if (!qc) return;
+	for (const s of cacheSnaps.get(t.key) ?? []) qc.setQueryData(s.key, s.data);
+	cacheSnaps.delete(t.key);
+}
+/** the server has answered: read the real gate and the real approvers (who approved) back */
+export function refreshPlaceCaches(t: ApprovalTarget): void {
+	if (!qc) return;
+	for (const p of t.places) {
+		const k = keyOfPlace(p.href);
+		if (!k) continue;
+		void qc.invalidateQueries({ queryKey: k.approvals });
+		void qc.invalidateQueries({ queryKey: k.rollout });
+	}
+}
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 let inflight: Promise<unknown> = Promise.resolve();
@@ -89,9 +133,11 @@ export function confirmApprove(f?: typeof fetch): void {
 	approvalUi.ask = null;
 	clearTimer();
 	grantApproval(t);
+	patchPlaceCaches(t);
 	approvalUi.done = { target: t, error: null };
-	inflight = Promise.all(t.places.map((p) => postApproval(p.href, p.tag, false, f))).catch((e: Error) => {
+	inflight = Promise.all(t.places.map((p) => postApproval(p.href, p.tag, false, f))).then(() => refreshPlaceCaches(t)).catch((e: Error) => {
 		revokeApproval(t);
+		restorePlaceCaches(t);
 		approvalUi.done = { target: t, error: e.message || 'Approval failed' };
 	});
 	timer = setTimeout(dismissDone, UNDO_MS);
@@ -114,6 +160,7 @@ export function undoApprove(f?: typeof fetch): void {
 	holds.hover = holds.focus = false;
 	clearTimer();
 	revokeApproval(t);
+	restorePlaceCaches(t);
 	approvalUi.done = null;
 	handOffFocus();
 	void inflight
@@ -121,11 +168,14 @@ export function undoApprove(f?: typeof fetch): void {
 		.then((results) => {
 			// a place whose revoke was rejected (the server may still approve it) or answered stillApproved is put back: never left reverted
 			const kept = t.places.filter((_, i) => { const r = results[i]; return r.status === 'rejected' || r.value?.stillApproved; });
-			if (!kept.length) return;
+			if (!kept.length) { refreshPlaceCaches(t); return; }
 			const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
 			// another toast took over meanwhile: its own timer and words stay; the places are still re-granted
 			const other = approvalUi.done && approvalUi.done.target.key !== t.key;
-			grantApproval({ ...t, key: `${t.key}#still`, places: kept });
+			const again = { ...t, key: `${t.key}#still`, places: kept };
+			grantApproval(again);
+			patchPlaceCaches(again);
+			refreshPlaceCaches(t);
 			if (other) return;
 			clearTimer();
 			if (rejected) {

@@ -17,7 +17,8 @@
 	import { fade, fly } from 'svelte/transition';
 	import { approvePlace, ownCard } from './approve-place';
 	import Toast from '$lib/components/Toast.svelte';
-	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
+	import { useQueryClient } from '@tanstack/svelte-query';
+	import { installApprovalCache, approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
 
 	const ask = $derived(approvalUi.ask);
 	const done = $derived(approvalUi.done);
@@ -62,6 +63,9 @@
 		let raf = requestAnimationFrame(grab);
 		return () => cancelAnimationFrame(raf);
 	});
+	/* the places' own cached rollouts are written by the same click as the fleet fixture (approvals.svelte.ts) */
+	const queryClient = useQueryClient();
+	onMount(() => { installApprovalCache(queryClient); return () => installApprovalCache(null); });
 	onMount(() => {
 		const away = (e: PointerEvent) => { if (approvalUi.ask && panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[data-approve-open]')) closeApprove(); };
 		document.addEventListener('pointerdown', away, true);

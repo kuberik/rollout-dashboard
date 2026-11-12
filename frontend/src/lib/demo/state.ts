@@ -2115,6 +2115,29 @@ export function armApprovalGate(namespace: string, name: string, allowed: string
 	return true;
 }
 
+/**
+ * THE PINNED FLEET'S CONTROLLER. A pinned scenario's rollouts (home-incident, home-edge) are served from an immutable fixture, so an approval
+ * there never reached a gate and a page that refetched read "held" again under a toast that said "approved". The real controller derives each
+ * policy-owned gate's allow-list from the rollout's RolloutApprovals (design/APPROVALS-API.md §5.1); this does the same to a served body:
+ * every `kind: approval` gate allows the versions `approvalsOf` holds. Detail (`{ rollout }`) and list (`{ rollouts: { items } }`) bodies.
+ */
+export function overlayApprovals(body: string | undefined): string | undefined {
+	if (!body || !body.includes('allowedVersions')) return body;
+	try {
+		const j = JSON.parse(body) as { rollout?: { metadata?: { namespace?: string; name?: string }; status?: { gates?: ApprovalGate[] } }; rollouts?: { items?: { metadata?: { namespace?: string; name?: string }; status?: { gates?: ApprovalGate[] } }[] } };
+		let changed = false;
+		const one = (r: { metadata?: { namespace?: string; name?: string }; status?: { gates?: ApprovalGate[] } } | null | undefined) => {
+			if (!r?.metadata?.namespace || !r.metadata.name) return;
+			const versions = approvalsOf(r.metadata.namespace, r.metadata.name).map((a) => a.version);
+			if (!versions.length) return;
+			for (const g of approvalGatesOf(r.status?.gates ?? [])) { for (const v of versions) g.allowedVersions = approvalWrite(g.allowedVersions ?? [], v); changed = true; }
+		};
+		one(j.rollout);
+		for (const r of j.rollouts?.items ?? []) one(r);
+		return changed ? JSON.stringify(j) : body;
+	} catch { return body; }
+}
+
 type ApprovalGate = { name?: string; kind?: string; allowedVersions?: string[] | null };
 /** the rollout's approval gates: policy-owned (kind `approval`, an allow-list). The legacy name regex only applies to a gate with no `kind`. */
 const approvalGatesOf = (gates: ApprovalGate[]): ApprovalGate[] => gates.filter((g) => g.allowedVersions != null && (g.kind != null ? g.kind === 'approval' : /approval/.test(g.name ?? '')));

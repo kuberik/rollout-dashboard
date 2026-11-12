@@ -721,7 +721,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 	// GET /api/rollouts/:namespace/:name/approvals — the approvals list; `byVerified` is true in the mock (both history renderings exist).
 	{
 		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/approvals$/);
-		if (m && method === 'GET') return json({ byVerified: true, approvals: hasFixture(m[1], m[2]) ? approvalsOf(m[1], m[2]) : [] });
+		if (m && method === 'GET') return json({ byVerified: true, approvals: approvalsOf(m[1], m[2]) });
 	}
 
 	// POST /api/demo/approvals { namespace, name, version, approvalName? } — a git-style approval appears for a version (the stillApproved story).

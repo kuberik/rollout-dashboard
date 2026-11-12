@@ -14,6 +14,7 @@
  */
 
 import { stampGateKinds } from './src/lib/demo/gate-kind';
+import { overlayApprovals } from './src/lib/demo/state';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
@@ -158,7 +159,7 @@ export function mockApiPlugin(): Plugin {
 					req.on('close', stop);
 					return;
 				}
-				return res.end(stampGateKinds(result.body) ?? '{}');
+				return res.end((fx ? overlayApprovals(stampGateKinds(result.body)) : stampGateKinds(result.body)) ?? '{}');
 			}
 		}
 	};
