@@ -320,6 +320,11 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 			}
 		});
 	}
+	/* the signal names its environment; the place is said from that environment's typed row (the same `placeName` as every ask), never by parsing the env id */
+	const flapPlace = (s: { app: string; env: string }): string => {
+		const e = m.apps.find((a) => a.app === s.app)?.envs.find((x) => x.env === s.env);
+		return e ? placeName(e) : s.env;
+	};
 	for (const s of m.signals.filter((s) => s.kind === 'check-flapping')) {
 		elsewhere.push({
 			key: s.key,
@@ -327,7 +332,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 			href: s.href,
 			whose: ownerOf(s.app, me),
 			kind: 'flapping',
-			status: `Check flapping in ${/^prod/i.test(s.env) ? placeLabel({ tier: 'prod', regions: [s.env.replace(/^prod-?/i, '')] }) : s.env}: ${s.phrase}`,
+			status: `Check flapping in ${flapPlace(s)}: ${s.phrase}`,
 			since: s.since,
 			tone: 'neutral',
 			canAct: false,
