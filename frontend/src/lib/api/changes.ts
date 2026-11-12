@@ -97,7 +97,7 @@ export async function fetchChanges(days = 30, cluster?: string): Promise<Changes
 		if (res.status === 401 || body.error === 'github_not_connected') {
 			throw new FetchChangesError(
 				'not_connected',
-				'Connect GitHub to see what merged across the repos this cluster deploys',
+				'Connect GitHub to see changes across the repos this cluster deploys',
 				res.status,
 				'GitHub account not connected',
 				url

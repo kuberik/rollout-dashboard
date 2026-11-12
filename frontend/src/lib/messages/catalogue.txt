@@ -1,7 +1,7 @@
 lib/activity-deeplink.ts	code	… … on ……, ….
 lib/api/approvals.ts	code	… failed (…)
 lib/api/approvals.ts	code	not a rollout: …
-lib/api/changes.ts	code	Connect GitHub to see what merged across the repos this cluster deploys
+lib/api/changes.ts	code	Connect GitHub to see changes across the repos this cluster deploys
 lib/api/changes.ts	code	Failed to load changes
 lib/api/changes.ts	code	GitHub account not connected
 lib/api/changes.ts	code	No repository on this cluster is linked to GitHub
@@ -88,6 +88,7 @@ lib/CommandPalette.svelte	code	approval approve waits for approval waiting
 lib/CommandPalette.svelte	code	Apps across environments
 lib/CommandPalette.svelte	code	build …
 lib/CommandPalette.svelte	code	Change version…
+lib/CommandPalette.svelte	code	Changes and where they landed
 lib/CommandPalette.svelte	aria-label	Clear scope
 lib/CommandPalette.svelte	aria-label	Command palette
 lib/CommandPalette.svelte	code	Copied …
@@ -100,7 +101,6 @@ lib/CommandPalette.svelte	code	failed failing failure
 lib/CommandPalette.svelte	text	Fleet overview
 lib/CommandPalette.svelte	code	Fleet overview — everything at a glance
 lib/CommandPalette.svelte	code	Full inventory list
-lib/CommandPalette.svelte	code	Merged changes and where they landed
 lib/CommandPalette.svelte	code	My pull requests across the repos this cluster deploys
 lib/CommandPalette.svelte	code	Open logs
 lib/CommandPalette.svelte	code	Open overview
@@ -124,7 +124,7 @@ lib/components/ActivitySentence.svelte	code	deploy succeeded
 lib/components/ActivitySentence.svelte	aria-label	Open …
 lib/components/ActRow.svelte	aria-label	More actions
 lib/components/atoms/LeadBar.svelte	code	…h${m % 60 ?
-lib/components/atoms/LeadBar.svelte	code	merged; first deploy … later
+lib/components/atoms/LeadBar.svelte	code	Merge to first deploy …
 lib/components/atoms/LeadBar.svelte	aria-label	reached prod in …
 lib/components/atoms/LeadBar.svelte	code	waited … before …
 lib/components/AttentionCard.svelte	label	… of … …
@@ -729,12 +729,12 @@ lib/components/new/changes-plumb.ts	code	Failing in …
 lib/components/new/changes-plumb.ts	code	Held before …
 lib/components/new/changes-plumb.ts	code	Needs your approval for …
 lib/components/new/changes-plumb.ts	code	Waiting for approval for …
-lib/components/new/Changes.svelte	text	A change you merge shows up here while it moves toward prod.
 lib/components/new/Changes.svelte	text	By repo
 lib/components/new/Changes.svelte	text	No changes of yours yet
 lib/components/new/Changes.svelte	text	Open rollout ›
 lib/components/new/Changes.svelte	text	Roll back
 lib/components/new/Changes.svelte	title	Your changes
+lib/components/new/Changes.svelte	text	Your changes show up here once released, until they reach prod.
 lib/components/new/ChangesPlumb.svelte	text	… services
 lib/components/new/ChangesPlumb.svelte	text	· none
 lib/components/new/ChangesPlumb.svelte	title	at this stop
@@ -832,11 +832,14 @@ lib/components/new/env/env-page.ts	code	No releases yet
 lib/components/new/env/env-page.ts	code	nothing inbound
 lib/components/new/env/env-page.ts	code	On the newest
 lib/components/new/env/env-page.ts	code	Rolled back
+lib/components/new/env/env-page.ts	code	since commit
+lib/components/new/env/env-page.ts	code	since merge
 lib/components/new/env/env-page.ts	code	Since the build began waiting
+lib/components/new/env/env-page.ts	code	Since the oldest waiting change merged
+lib/components/new/env/env-page.ts	code	Since the oldest waiting change was committed
 lib/components/new/env/env-page.ts	code	Waits on
 lib/components/new/env/env-page.ts	code	Wave …
 lib/components/new/env/env-page.ts	code	Wave …${w.build ?
-lib/components/new/env/env-page.ts	code	When the oldest waiting change was merged
 lib/components/new/env/EnvPage.svelte	text	… … behind · …
 lib/components/new/env/EnvPage.svelte	text	A rollout deployed to this environment shows up here.
 lib/components/new/env/EnvPage.svelte	title	In step
@@ -937,9 +940,9 @@ lib/components/new/home-page.ts	code	… to approve
 lib/components/new/home-page.ts	code	Needs your approval
 lib/components/new/home-page.ts	code	Waiting for approval
 lib/components/new/Home.svelte	text	… landed today ›
-lib/components/new/Home.svelte	text	A change you merge shows up here while it moves toward prod.
 lib/components/new/Home.svelte	text	Nothing of yours in flight
 lib/components/new/Home.svelte	title	Your changes
+lib/components/new/Home.svelte	text	Your changes show up here once released, until they reach prod.
 lib/components/new/MiniPipeline.svelte	title	… more: …
 lib/components/new/MiniPipeline.svelte	code	not started
 lib/components/new/MiniPipeline.svelte	code	waiting for approval

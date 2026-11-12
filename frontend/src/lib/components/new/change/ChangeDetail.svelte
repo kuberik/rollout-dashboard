@@ -191,7 +191,7 @@
 			<ChangeHistory {events} {multiApp} class="cd-history" />
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
-					{#each [[`${c.prNumber != null ? 'Merged' : 'Committed'} to first deploy`, how.toFirst ?? 'not deployed yet'], ...(how.toProd || prod.of <= 1 ? [[`${c.prNumber != null ? 'Merged' : 'Committed'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')]] : []), ...(prod.of > 1 ? [[multiApp ? 'Production places running it' : 'Production regions running it', `${prod.healthy} of ${prod.of}`]] : []), ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
+					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], ...(how.toProd || prod.of <= 1 ? [[`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')]] : []), ...(prod.of > 1 ? [[multiApp ? 'Production places running it' : 'Production regions running it', `${prod.healthy} of ${prod.of}`]] : []), ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
 						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{v}</dd></div>
 					{/each}
 				</dl>

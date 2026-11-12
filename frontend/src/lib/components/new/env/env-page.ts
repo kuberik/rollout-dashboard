@@ -286,7 +286,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 		const since = row ? holdSince(row, hs) : null;
 		const foot: GangTile['foot'] = oldest
 			? since ? { title: oldest.c.title, ref: oldest.ref, age: ago(since), ageLabel: 'waiting', ageTitle: 'Since the build began waiting', from: null }
-				: { title: oldest.c.title, ref: oldest.ref, age: ago(oldest.c.mergedAt), ageLabel: 'merged', ageTitle: 'When the oldest waiting change was merged', from: null }
+				: { title: oldest.c.title, ref: oldest.ref, age: ago(oldest.c.mergedAt), ageLabel: oldest.c.prNumber != null ? 'since merge' : 'since commit', ageTitle: oldest.c.prNumber != null ? 'Since the oldest waiting change merged' : 'Since the oldest waiting change was committed', from: null }
 			: { title: null, ref: x.build, age: '', ageLabel: '', ageTitle: '', from: x.from };
 		/* round 2 B5: with no tracked change the count is the builds this place's hold refuses HERE (heldHere), one build only while that is not known yet */
 		const hereN = row && hold ? heldHere(row.href)?.count : null;

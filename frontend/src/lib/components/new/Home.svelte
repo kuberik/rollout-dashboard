@@ -72,7 +72,7 @@
 							{#if ab.connect}<ConnectGithubAction class="mt-3" />{/if}
 						{:else}
 							<p class="t-ui text-fg">Nothing of yours in flight</p>
-							<p class="t-meta text-fg-subtle">A change you merge shows up here while it moves toward prod.</p>
+							<p class="t-meta text-fg-subtle">Your changes show up here once released, until they reach prod.</p>
 						{/if}
 					</div>
 				{/if}

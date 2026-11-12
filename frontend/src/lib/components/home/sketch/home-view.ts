@@ -140,7 +140,7 @@ function failingLead(m: HomeModel, y: YourChange): Lead {
 		check: check ? { name: check, message: hist[0]?.bake === 'Failed' ? 'reported an error during the bake' : 'failing' } : null,
 		action: { label: `Roll back ${placeLabel}${y.rollbackTo ? ` to ${y.rollbackTo}` : ''}`, href: here.href },
 		steps: [
-			{ label: 'Merged', at: y.mergedAt, state: 'done' },
+			{ label: 'Released', at: y.mergedAt, state: 'done' },
 			...passed.map((s) => ({ label: `Passed ${s.label}`, at: s.since, state: 'done' as const })),
 			{ label: `Deployed to ${placeLabel}`, at: here.arrivedAt, state: 'done', note: how },
 			{ label: 'Bake failed', at: failedAt, state: 'fail', note: check },
@@ -165,7 +165,7 @@ function approvalLead(m: HomeModel, ap: Approval): Lead {
 	const ch = changeBySha(ap.app, ap.build);
 	const pre = a.envs.filter((x) => !x.isProdRegion && x.tier !== 'prod');
 	const steps: Step[] = [];
-	if (ch) steps.push({ label: 'Merged', at: ch.mergedAt, state: 'done' });
+	if (ch) steps.push({ label: 'Released', at: ch.mergedAt, state: 'done' });
 	let last: string | null = ch?.mergedAt ?? null;
 	for (const e of pre) {
 		const h = historyAt(ap.app, e.env).find((x) => ap.build && x.sha === ap.build);
@@ -236,7 +236,7 @@ function movingLead(m: HomeModel, y: YourChange): Lead {
 		fact: prevFact,
 		action: null,
 		steps: [
-			{ label: 'Merged', at: y.mergedAt, state: 'done' },
+			{ label: 'Released', at: y.mergedAt, state: 'done' },
 			{ label: `${verb} ${here.env}`, at: y.since, state: 'active', note: here.pipeline.activeStep ? `canary step ${here.pipeline.activeStep.index} of ${here.pipeline.activeStep.total}` : null },
 			...aheadPre.map((e) => ({ label: e.env, at: null, state: 'pending' as const })),
 			...(aheadProd.length ? [{ label: aheadProd.length === 1 ? aheadProd[0].env : `${aheadProd.length} prod regions`, at: null, state: 'pending' as const, note: needApprover.length ? `${needApprover.join(' and ')} need${needApprover.length === 1 ? 's' : ''} an approver` : 'promotes on its own' }] : [])

@@ -31,7 +31,7 @@ export function repoCardModel(i: { repo: string; changes: RepoChange[]; tiers?: 
 	const fly = i.changes.filter((c) => c.state !== 'landed');
 	const tiers = (i.tiers ?? REPO_TIERS.filter((t) => fly.some((c) => c.col === t)));
 	const cols = [...(fly.some((c) => c.col === 'merged') ? ['merged'] : []), ...tiers];
-	const cells = cols.map((t) => ({ tier: t, label: t, beads: beadsFor(fly.filter((c) => c.col === t), { team: i.team, compact: i.compact }) }));
+	const cells = cols.map((t) => ({ tier: t, label: t === 'merged' ? 'released' : t, beads: beadsFor(fly.filter((c) => c.col === t), { team: i.team, compact: i.compact }) }));
 	const landed = i.landed ?? [];
 	return {
 		repo: i.repo,
