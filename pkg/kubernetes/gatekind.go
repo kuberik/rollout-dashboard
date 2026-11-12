@@ -28,26 +28,34 @@ const (
 	gateLabelScheduleKind = "gate.kuberik.com/schedule-kind"
 	// rollout-controller internal/controller/rolloutdependency_helpers.go:30.
 	gateLabelDependencyName = "gate.kuberik.com/dependency-name"
+	// rollout-controller ApprovalPolicy / ClusterApprovalPolicy gates
+	// (docs: APPROVALS-API.md section 8.2).
+	gateLabelApprovalPolicyName = "gate.kuberik.com/approval-policy-name"
 )
 
 // GateKind classifies a RolloutGate. Signals, strongest first:
 //
 //  1. ownerReferences kind: RolloutSchedule / ClusterRolloutSchedule ->
 //     schedule (rollout-controller); RolloutDependency -> dependency
+//     (rollout-controller); ApprovalPolicy / ClusterApprovalPolicy -> approval
 //     (rollout-controller); Environment (environments.kuberik.com) ->
 //     promotion (environment-controller's "ghd-" gate, "previous environment
 //     tier / previous wave"). Any other owner -> unknown.
 //  2. labels: gate.kuberik.com/schedule-name|schedule-kind -> schedule,
-//     gate.kuberik.com/dependency-name -> dependency.
-//  3. No owner, no schedule/dependency label, and spec.allowedVersions set
+//     gate.kuberik.com/dependency-name -> dependency,
+//     gate.kuberik.com/approval-policy-name -> approval.
+//  3. LEGACY shape rule: no owner, no schedule/dependency label, and spec.allowedVersions set
 //     (non-nil, possibly empty: the field the Approve action edits) ->
 //     approval. Anything else ownerless (kill-switch gates, custom-controller
 //     gates with no allowedVersions) -> unknown.
 //
-// There is NO explicit approval marker anywhere in the controllers (grepped
-// rollout-, environment-, deploy-, datadog-, prometheus-controller), so
-// "approval" is inferred from shape: ownerless, unlabelled, and carrying the
-// allowedVersions list that the dashboard's Approve button edits.
+// Approval gates are now marked explicitly: owned by an ApprovalPolicy /
+// ClusterApprovalPolicy, or labelled gate.kuberik.com/approval-policy-name.
+// The shape rule (ownerless, unlabelled, allowedVersions set) is kept only so
+// ungraduated gates, created by hand before policies existed, keep working
+// during migration. It is removed in the cleanup PR one minor release after
+// the approvals API ships (APPROVALS-API.md section 9, step 5 / PR 10), after
+// which such a gate reads as "unknown".
 //
 // The contract has no "check" or "github-deployment": no controller creates a
 // gate recognisable as either (the "ghd-" gates are Environment-owned
@@ -62,6 +70,8 @@ func GateKind(gate *rolloutv1alpha1.RolloutGate) string {
 			return GateKindSchedule
 		case "RolloutDependency":
 			return GateKindDependency
+		case "ApprovalPolicy", "ClusterApprovalPolicy":
+			return GateKindApproval
 		case "Environment":
 			return GateKindPromotion
 		}
@@ -72,6 +82,10 @@ func GateKind(gate *rolloutv1alpha1.RolloutGate) string {
 	if gate.Labels[gateLabelDependencyName] != "" {
 		return GateKindDependency
 	}
+	if gate.Labels[gateLabelApprovalPolicyName] != "" {
+		return GateKindApproval
+	}
+	// Legacy shape rule; remove in the cleanup PR (see GateKind doc).
 	if len(gate.OwnerReferences) == 0 && gate.Spec.AllowedVersions != nil {
 		return GateKindApproval
 	}

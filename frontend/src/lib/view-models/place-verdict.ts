@@ -1,5 +1,6 @@
 import { gateAllows } from './promotion';
 import { gateKindOf, type GateKind } from './gate-kind';
+import { approvalWrite } from './approval-write';
 
 /**
  * THE ONE PER-PLACE VERDICT. A place that has an approval pending is judged against ONE build, the build a person is deciding on
@@ -18,8 +19,7 @@ import { gateKindOf, type GateKind } from './gate-kind';
  */
 export type VGate = { name: string; kind?: string | null; passing?: boolean | null; allowedVersions?: string[] | null };
 
-/** THE APPROVAL WRITE, ONE FUNCTION: what a person's Approve does to the approval gate's allow-list. Conservative, per-build: it allows ONLY the approved build. There is no real approve endpoint yet (lib/api/approvals.ts); this MUST match the real write once the approval API lands. */
-export const approvalWrite = (allowed: readonly string[], approvedTag: string): string[] => [...new Set([...allowed, approvedTag])];
+export { approvalWrite, approvalUnwrite } from './approval-write';
 
 /** The approval gate that refuses every candidate: `kind` says it; only a payload without `kind` falls back to the gate's name (THE ONLY place a name is read). */
 export const approvalGateOf = <G extends VGate>(gates: readonly G[], cands?: readonly string[]): G | undefined =>

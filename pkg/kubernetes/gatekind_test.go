@@ -41,6 +41,14 @@ func TestGateKind(t *testing.T) {
 		{"dependency label without owner", gateWith(map[string]string{"gate.kuberik.com/dependency-name": "d"}), GateKindDependency},
 		{"Environment owner is promotion", gateWith(nil, "Environment"), GateKindPromotion},
 		{"owner beats label", gateWith(map[string]string{"gate.kuberik.com/schedule-name": "s"}, "Environment"), GateKindPromotion},
+		{"ApprovalPolicy owner is approval", gateWith(nil, "ApprovalPolicy"), GateKindApproval},
+		{"ClusterApprovalPolicy owner is approval", gateWith(nil, "ClusterApprovalPolicy"), GateKindApproval},
+		{"approval-policy label only is approval", func() *rolloutv1alpha1.RolloutGate {
+			g := gateWith(map[string]string{"gate.kuberik.com/approval-policy-name": "p"})
+			g.Spec.AllowedVersions = nil
+			return g
+		}(), GateKindApproval},
+		{"schedule-owned gate with allowedVersions is schedule", gateWith(nil, "RolloutSchedule"), GateKindSchedule},
 		{"unrecognised owner is unknown", gateWith(nil, "Deployment"), GateKindUnknown},
 	}
 	for _, tc := range cases {

@@ -101,6 +101,8 @@
 	import { get } from 'svelte/store';
 	import { createQuery, createQueries } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsInNamespaceQueryOptions, rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { approvalsQueryOptions } from '$lib/api/approvals';
+	import { historyApprovalFact, approvalReplacesActor } from '$lib/view-models/history-approval';
 	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
 	import { commitQueryOptions } from '$lib/api/commit';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
@@ -127,6 +129,9 @@
 	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	/** whether this cluster's approvals carry a trustworthy `by` (the history row's "approved by" shows it only then) */
+	const approvalsQuery = createQuery(() => ({ ...approvalsQueryOptions({ cluster, namespace, name }), enabled: !rolloutQuery.isError }));
+	const byVerified = $derived(approvalsQuery.data?.byVerified === true);
 	/** QA2 #9: the current row's position chip says CURRENCY when healthy, else its state (`currentRowChip`), never the retired state word "Live". */
 	/** the fleet's Environments and rollouts: a build that failed upstream in this place's wave chain is not "behind" (batch4 #3b) */
 	const fleetQuery = createQuery(() => rolloutsListQueryOptions({ options: { staleTime: 30000 } }));
@@ -1840,6 +1845,7 @@
 												{@const note = deployNote(entry.message, entry.triggeredBy)}
 												{@const who = entry.triggeredBy}
 												{@const actor = who ? actorFrom(who) : null}
+												{@const approved = historyApprovalFact(entry.approval, byVerified)}
 												{@const commitTitle = commitTitleOf(i)}
 												{@const commitAuthor = commitAuthorOf(i)}
 												<!-- ⛔ THE AT-REST ROW BUTTON THAT USED TO LIVE HERE IS GONE
@@ -2103,7 +2109,7 @@
 										     is still one click away in the expanded panel's own
 										     "Triggered by" line, so nothing is lost, only an
 										     empty-looking line. -->
-															{#if liveWait || wait || actPrints || note}
+															{#if liveWait || wait || actPrints || note || approved}
 																<div class="dot-list mt-1 min-w-0">
 																	<div
 																		class="dot-list-row t-meta text-fg-subtle flex min-w-0 flex-wrap items-center gap-y-0.5"
@@ -2188,7 +2194,7 @@
 																				{act.sentence.replace(/\.$/, '')}
 																			</span>
 																		{/if}
-																		{#if who && actor}
+																		{#if who && actor && !approvalReplacesActor(approved, actor.kind)}
 																			<!-- ⭐ AVATAR ONLY WHENEVER THE ROW'S DETAILS WRAP (History
 												     round 15 item 5, widened in round 16, AD round 12
 												     item 2): round 15 keyed this on `note` alone, which
@@ -2200,6 +2206,7 @@
 												     as `title` and `aria-label`, so nothing accessible is
 												     lost. -->
 																			<span class="inline-flex min-w-0 items-center gap-1">
+																				{#if approved && actor.kind !== 'controller'}<span class="shrink-0 text-fg-muted">deployed by</span>{/if}
 																				<!-- ⭐ `actorFrom` (shared adapter, `lib/actor.ts`) + `Avatar`:
 													     identity before reading — a person's monogram or
 													     photo, the kuberik mark for the controller, never the
@@ -2222,6 +2229,17 @@
 																					>
 																				{/if}
 																			</span>
+																		{/if}
+																		{#if approved}
+																			<!-- ONE approval fact, one style on both rows: lower-case words; a person-triggered deploy keeps its actor ("deployed by alice") and the approval stands apart after it; an automatic deploy an approval released has the approval IN the actor slot, with the approver's avatar when the cluster verifies who. -->
+																			{#if approved.who && approvalReplacesActor(approved, actor?.kind)}
+																				<span class="inline-flex min-w-0 items-center gap-1" title={approved.title} data-history-approval>
+																					<Avatar name={approved.who} kind="person" size={16} />
+																					<span class="min-w-0 truncate">{approved.text}</span>
+																				</span>
+																			{:else}
+																				<span class="text-fg-muted min-w-0 truncate" title={approved.title} data-history-approval>{approved.text}</span>
+																			{/if}
 																		{/if}
 																		{#if note}
 																			<!-- `basis-40` WITH `flex-1`: at 390 the note wraps onto its

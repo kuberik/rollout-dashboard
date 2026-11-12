@@ -55,7 +55,7 @@
 		if (!done) return;
 		let tries = 0;
 		const grab = () => {
-			const el = document.querySelector<HTMLButtonElement>('[data-action="approve-undo"], [data-action="approve-dismiss"]');
+			const el = document.querySelector<HTMLButtonElement>('[data-action="approve-undo"], [data-approve-toast] button[aria-label="Dismiss"]');
 			if (el) el.focus();
 			else if (tries++ < 10) raf = requestAnimationFrame(grab);
 		};
@@ -101,18 +101,17 @@
 
 {#if done}
 	{@const w = doneWords(done.target)}
-	<div role="presentation" data-approve-toast onpointerover={() => pauseDone('hover')} onpointerout={() => resumeDone('hover')} onfocusin={() => pauseDone('focus')} onfocusout={() => resumeDone('focus')} style="display: contents">
+	<div role="presentation" data-approve-toast title={done.still?.title} onpointerover={() => pauseDone('hover')} onpointerout={() => resumeDone('hover')} onfocusin={() => pauseDone('focus')} onfocusout={() => resumeDone('focus')} style="display: contents">
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
-		tone={done.error ? 'danger' : 'success'}
-		message={done.error ? `Could not approve ${done.target.build}` : `${w.title} · ${w.detail}`}
-		description={done.error ?? ''}
+		tone={done.error ? 'danger' : done.still ? 'info' : 'success'}
+		message={done.error ? `Could not approve ${done.target.build}` : done.still ? done.still.headline : `${w.title} · ${w.detail}`}
+		description={done.error ?? (done.still ? (done.still.who ? `also approved by ${done.still.who}` : 'another approval stands') : '')}
 	>
 		{#snippet action()}
-			{#if done.error}
-				<button type="button" class="nav-link" data-action="approve-dismiss" onclick={dismissDone}>Dismiss</button>
-			{:else}
-				<button type="button" class="nav-link" data-action="approve-undo" onclick={() => undoApprove()}>Undo</button>
+			<!-- Dismiss is the toast's own ×; an error or an Undo that did not revert has no second verb to offer beside it -->
+			{#if !done.error && !done.still}
+				<button type="button" class="nav-link -mx-1 rounded-md px-2 py-1" data-action="approve-undo" onclick={() => undoApprove()}>Undo</button>
 			{/if}
 		{/snippet}
 	</Toast>

@@ -1,7 +1,8 @@
 /**
  * The mock backend's `kind` on every gate summary, the way #91's backend derives it (pkg/kubernetes/gatekind.go): promotion / schedule /
  * dependency come from the gate's owner (the mock has no owners, so its names carry it: `promotion-*` / `ghd-*`, `dependency-*`, schedule-ish names),
- * an ownerless gate with an allowedVersions list is an approval (the list the Approve button edits), anything else is `unknown`.
+ * an approval gate is one an ApprovalPolicy owns (design/APPROVALS-API.md §5.1: `approval-gate-*`, ownerReferences kind ApprovalPolicy + label `gate.kuberik.com/approval-policy-name`; see `approvalPolicyMeta`),
+ * or, still for one minor release, an ownerless gate with an allowedVersions list (the legacy shape); anything else is `unknown`.
  * Applied to dev-mock-api's responses only; unit-test fixtures that hand-write `status.gates` keep `kind` ABSENT on purpose: they model a backend
  * that predates #91 (the name-prefix fallback in view-models/wait-cause.ts reads them).
  */
@@ -9,11 +10,21 @@ export type MockGateKind = 'approval' | 'schedule' | 'dependency' | 'promotion' 
 
 export function mockGateKind(g: { name?: string; allowedVersions?: string[] | null }): MockGateKind {
 	const n = g.name ?? '';
+	if (/^approval-gate-/.test(n)) return 'approval';
 	if (/^(promotion-|ghd-)/.test(n)) return 'promotion';
 	if (/^dependency-/.test(n)) return 'dependency';
 	if (/(^|-)(schedule|window|freeze)(-|$)/.test(n)) return 'schedule';
 	if (g.allowedVersions != null) return 'approval';
 	return 'unknown';
+}
+
+/** The metadata the approval controller writes on a policy-owned gate (design §5.1): the owner reference and the labels the backend's gate-kind classifier reads (`approval` by owner, label fallback). The mock gate OBJECTS of every approval gate carry it. */
+export function approvalPolicyMeta(namespace: string, rolloutName: string, policy = 'prod-needs-approval', pretty = 'Manual approval'): { labels: Record<string, string>; annotations: Record<string, string>; ownerReferences: object[] } {
+	return {
+		labels: { 'gate.kuberik.com/approval-policy-name': policy, 'gate.kuberik.com/approval-policy-namespace': namespace, 'gate.kuberik.com/approval-policy-kind': 'ApprovalPolicy', 'gate.kuberik.com/rollout-name': rolloutName },
+		annotations: { 'gate.kuberik.com/pretty-name': pretty },
+		ownerReferences: [{ apiVersion: 'kuberik.com/v1alpha1', kind: 'ApprovalPolicy', name: policy, controller: true, blockOwnerDeletion: true }]
+	};
 }
 
 type Gate = { name?: string; kind?: string; allowedVersions?: string[] | null };

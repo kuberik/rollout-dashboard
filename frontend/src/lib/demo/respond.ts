@@ -42,6 +42,8 @@ import {
 	getPermissionsAll,
 	retryRollout,
 	approveRollout,
+	approvalsOf,
+	seedGitApproval,
 	changeVersion,
 	runGateSequence,
 	stepPromoteGate,
@@ -711,10 +713,21 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/approve$/);
 		if (m && method !== 'GET') {
 			/* the pinned fleet's list pages (payments-core's regions, telemetry-indexer ...) have no per-rollout mock state: the page's own overlay is the state, the request is accepted */
-			if (!hasFixture(m[1], m[2])) return json({});
 			const r = approveRollout(m[1], m[2], parseBody(opts.body) as { version?: string; revoke?: boolean }, clusterHint);
-			return r.ok ? json({}) : json({ error: r.error }, r.status);
+			return r.ok ? json(r.body) : json({ error: r.error }, r.status);
 		}
+	}
+
+	// GET /api/rollouts/:namespace/:name/approvals — the approvals list; `byVerified` is true in the mock (both history renderings exist).
+	{
+		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/approvals$/);
+		if (m && method === 'GET') return json({ byVerified: true, approvals: approvalsOf(m[1], m[2]) });
+	}
+
+	// POST /api/demo/approvals { namespace, name, version, approvalName? } — a git-style approval appears for a version (the stillApproved story).
+	if (reqPath === '/api/demo/approvals' && method !== 'GET') {
+		const b = parseBody(opts.body) as { namespace?: string; name?: string; version?: string; approvalName?: string };
+		return b?.namespace && b?.name && b?.version && seedGitApproval(b.namespace, b.name, b.version, b.approvalName) ? json({}) : json({ error: 'unknown rollout' }, 404);
 	}
 
 	// POST /api/rollouts/:namespace/:name/retry — task A.4/A.1.

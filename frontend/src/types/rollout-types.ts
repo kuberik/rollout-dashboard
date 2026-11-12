@@ -398,6 +398,16 @@ export interface components {
                  */
                 history?: {
                     /**
+                     * @description Approval names the RolloutApproval that let this build through an
+                     *     approval gate. Nil when no approval gate applied, or when gates were bypassed.
+                     */
+                    approval?: {
+                        /** @description By is the approval.kuberik.com/by annotation at deploy time, if set. */
+                        by?: string;
+                        /** @description Name of the RolloutApproval, in the Rollout's namespace. */
+                        name: string;
+                    };
+                    /**
                      * Format: date-time
                      * @description BakeEndTime is the time when the bake period ended for this deployment
                      *     This is when the bake process completed (either successfully or with failure).

@@ -1719,3 +1719,18 @@ describe('ruleCountLabel / contractRuleCountLabel — one producer for every cou
 		expect(contractRuleCountLabel(s)).not.toContain('contract');
 	});
 });
+
+describe('a gate owned by an ApprovalPolicy is an approval, never a rule this dashboard cannot attribute', () => {
+	const gate = { name: 'release-approval', kind: 'approval', passing: false, allowedVersions: ['9b7e410'] };
+	for (const owner of ['ApprovalPolicy', 'ClusterApprovalPolicy']) {
+		it(`${owner} owner reference -> person, "waiting on an approval"`, () => {
+			const ctx = { ...EMPTY_GATE_CONTEXT, owners: new Map([['prod/release-approval', { kind: owner, name: 'prod-needs-approval' }]]) };
+			const c = classifyGate(gate as never, 'prod', ctx as never);
+			expect(c.kind).toBe('approval');
+			expect(c.clears).toBe('person');
+		});
+	}
+	it('the backend kind alone is enough (no owner join)', () => {
+		expect(classifyGate(gate as never, 'prod').clears).toBe('person');
+	});
+});

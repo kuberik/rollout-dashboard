@@ -217,6 +217,8 @@ export type PermissionsResponse = {
     permissions: {
         update: boolean;
         patch: boolean;
+        /** may create rolloutapprovals in the rollout's namespace; absent from an older backend (then: allowed, the server still decides) */
+        approve?: boolean;
     };
     resource: {
         apiGroup: string;

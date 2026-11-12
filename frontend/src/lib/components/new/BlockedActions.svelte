@@ -20,7 +20,7 @@
 	<ChevronRightOutline class="h-3 w-3" />
 </a>
 {#if slotState === 'approve' && typeof ask === 'object' && ask}
-	<span class="@[700px]:order-first" in:fade={{ duration: 150 }}><ApproveButton target={ask as ApprovalTarget} class="btn btn-primary btn-sm" icon /></span>
+	<span class="@[700px]:order-first" in:fade={{ duration: 150 }}><ApproveButton target={ask as ApprovalTarget} class="btn btn-primary btn-sm" icon scope /></span>
 {:else if slotState === 'reserved'}
 	<span class="inline-block h-8 w-[104px] @[700px]:order-first" aria-hidden="true" data-approve-slot></span>
 {/if}

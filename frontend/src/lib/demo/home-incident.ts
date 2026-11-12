@@ -35,6 +35,7 @@ import { staleClusterErrors, type StaleMockMode } from './cluster-errors-mock';
 import type { MockResult } from './respond';
 import { applySlicesMode, sliceDetailRollout } from './mock-slices';
 import { withEdgeCases } from './home-edge';
+import { approvalPolicyMeta, mockGateKind } from './gate-kind';
 import { respondGithub as respondGithubRange, avatarFor as avatarForLogin } from './github-data';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -259,6 +260,7 @@ export function homeIncidentDetail(f: HomeFixture, rollout: K8sObject): Record<s
 		name: string;
 		passing?: boolean;
 		allowedVersions?: string[] | null;
+		kind?: string;
 	}[];
 	return {
 		rollout: withHealthCheckSelector(rollout),
@@ -270,7 +272,7 @@ export function homeIncidentDetail(f: HomeFixture, rollout: K8sObject): Record<s
 			items: gates.map((g) => ({
 				apiVersion: 'kuberik.com/v1alpha1',
 				kind: 'RolloutGate',
-				metadata: { name: g.name, namespace, ...dependencyGateMeta(f, namespace, g.name) },
+				metadata: { name: g.name, namespace, ...((g.kind ?? mockGateKind(g)) === 'approval' && Array.isArray(g.allowedVersions) ? approvalPolicyMeta(namespace, name) : dependencyGateMeta(f, namespace, g.name)) },
 				// the spec as its writer keeps it: an allow-list writer (environment-controller,
 				// an approval) never sets `passing`, a check or schedule writer sets only `passing`
 				spec: {

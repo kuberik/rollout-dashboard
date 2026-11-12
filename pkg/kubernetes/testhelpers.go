@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"context"
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -92,4 +93,41 @@ func SetListRolloutsPermissionCheckForTest(fn func(c *gin.Context, ns string) (b
 		checkListRolloutsPermission = prev
 		clear()
 	}
+}
+
+// NewReadMirrorForTest returns a *Client that serves Get and List from
+// source's live state and calls onWrite for any Create, Update, Delete or
+// Patch. It stands in for the dashboard's own read client (informer cache), so
+// a test fails if a write is ever routed through it instead of the user's
+// client.
+func NewReadMirrorForTest(source *Client, onWrite func(op string)) (*Client, error) {
+	scheme, err := buildScheme()
+	if err != nil {
+		return nil, err
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+		Get: func(ctx context.Context, _ client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			return source.client.Get(ctx, key, obj, opts...)
+		},
+		List: func(ctx context.Context, _ client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			return source.client.List(ctx, list, opts...)
+		},
+		Create: func(context.Context, client.WithWatch, client.Object, ...client.CreateOption) error {
+			onWrite("create")
+			return nil
+		},
+		Update: func(context.Context, client.WithWatch, client.Object, ...client.UpdateOption) error {
+			onWrite("update")
+			return nil
+		},
+		Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error {
+			onWrite("delete")
+			return nil
+		},
+		Patch: func(context.Context, client.WithWatch, client.Object, client.Patch, ...client.PatchOption) error {
+			onWrite("patch")
+			return nil
+		},
+	}).Build()
+	return &Client{client: cl}, nil
 }

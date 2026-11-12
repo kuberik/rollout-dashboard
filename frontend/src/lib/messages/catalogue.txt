@@ -600,15 +600,20 @@ lib/components/new/app/PlaceRow.svelte	aria-label	… the deployment pipeline of
 lib/components/new/app/PlaceRow.svelte	text	… Waiting for
 lib/components/new/app/PlaceRow.svelte	title	Held by the pin
 lib/components/new/ApprovalLayer.svelte	code	left:…px;width:…px;${below ?
+lib/components/new/approvals.svelte.ts	code	… … approved
+lib/components/new/approvals.svelte.ts	code	… and …
 lib/components/new/approvals.svelte.ts	code	… is deploying … to …
 lib/components/new/approvals.svelte.ts	code	… is deploying to …
+lib/components/new/approvals.svelte.ts	code	… stays approved
 lib/components/new/approvals.svelte.ts	code	Approval failed
 lib/components/new/approvals.svelte.ts	code	Approve … … …?
 lib/components/new/approvals.svelte.ts	code	Approved …
 lib/components/new/approvals.svelte.ts	code	Held by …
 lib/components/new/approvals.svelte.ts	code	main h1
+lib/components/new/approvals.svelte.ts	code	Undo failed, the approval stands
 lib/components/new/ApproveButton.svelte	text	… Approve
 lib/components/new/ApproveButton.svelte	aria-label	Approve … in …
+lib/components/new/ApproveButton.svelte	code	Approve all … regions
 lib/components/new/apps-page.ts	code	… failing
 lib/components/new/apps-page.ts	code	… yours
 lib/components/new/Apps.svelte	title	At rest
@@ -1561,6 +1566,11 @@ lib/view-models/held.ts	code	its upstream environment
 lib/view-models/held.ts	code	Nothing promotes itself here yet; a deploy you start by hand still applies immediately.
 lib/view-models/held.ts	code	promotion order
 lib/view-models/held.ts	code	running …
+lib/view-models/history-approval.ts	code	Approved (no verified approver)
+lib/view-models/history-approval.ts	code	approved by …
+lib/view-models/history-approval.ts	code	Approved by …
+lib/view-models/history-approval.ts	code	Approved by … (…)
+lib/view-models/history-approval.ts	code	Approved by RolloutApproval … (no verified approver)
 lib/view-models/home-model.ts	code	deploy window
 lib/view-models/home-model.ts	code	health check failing
 lib/view-models/home-status.ts	code	… and …
@@ -2105,6 +2115,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Checking 
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Choose "All" on the cadence strip above to see every deploy.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Commit …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	deploy …
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	deployed by
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Deploying for
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Deployment timeline
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	First deploy

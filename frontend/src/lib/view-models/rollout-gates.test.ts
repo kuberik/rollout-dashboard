@@ -147,6 +147,12 @@ describe('rolloutGateBoxes', () => {
 		expect(b[0]).toMatchObject({ kind: 'approval', state: 'blocked', title: 'Approval', kindWord: null, held: ['r2'], phrase: 'not given for r2' });
 	});
 
+	it('an approval given for one build still holds the newer one it does not list (never "Nothing held" beside a held build)', () => {
+		const r = rollout({ candidates: ['r2', 'r3'], gates: [{ name: 'approval', passing: true, allowedVersions: ['r2'], kind: 'approval' } as never] });
+		const b = boxes(r, [gateObj('approval', { allowed: ['r2'] })], []);
+		expect(b[0]).toMatchObject({ kind: 'approval', state: 'blocked', held: ['r3'] });
+	});
+
 	it('never boxes an edge gate or a schedule-owned gate as external', () => {
 		const r = rollout({ gates: [{ name: 'promo', passing: true }, { name: 'dep', passing: true }, { name: 'sg', passing: true }] });
 		const b = rolloutGateBoxes({

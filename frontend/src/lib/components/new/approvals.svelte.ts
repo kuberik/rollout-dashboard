@@ -7,15 +7,61 @@
  * A failed request rolls the optimistic grant back and says so.
  */
 import { approvalTarget, grantApproval, revokeApproval, type ApprovalTarget, type HomeState, type TRow } from './data';
-import { postApproval } from '$lib/api/approvals';
+import { postApproval, rolloutOfHref, approvalsQueryKey, type ApprovalReply } from '$lib/api/approvals';
+import { rolloutQueryKey } from '$lib/api/rollouts';
+import { grantInRollout } from '$lib/view-models/approval-write';
+import type { QueryClient } from '@tanstack/svelte-query';
+import { approversWords } from '$lib/view-models/approval-identity';
 import type { Act } from '$lib/components/ActRow.svelte';
 
 export const UNDO_MS = 8000;
 
 export const approvalUi = $state<{
 	ask: { target: ApprovalTarget; anchor: { top: number; left: number; right: number; bottom: number } | null; trigger: HTMLElement | null } | null;
-	done: { target: ApprovalTarget; error: string | null } | null;
+	/** `still`: an Undo that the server answered `stillApproved`: the build stays approved (by whom: `who`), nothing was reverted */
+	done: { target: ApprovalTarget; error: string | null; still?: { who: string; title: string; headline: string } } | null;
 }>({ ask: null, done: null });
+
+/**
+ * THE PLACE'S OWN COPY OF THE GATE. Home reads the fleet fixture (`grantApproval`), a place's page reads `['rollout', ns, name, cluster]`:
+ * one click must write both, or the place says "held, releases when someone approves" under a toast that says it was approved.
+ * `ApprovalLayer` installs the app's QueryClient; the grant patches each place's cached rollout (remembering what it replaced), Undo puts the
+ * snapshot back, and once the requests settle the rollout and approvals queries are refetched (the real gate, and who approved).
+ */
+let qc: QueryClient | null = null;
+export const installApprovalCache = (c: QueryClient | null): void => { qc = c; };
+const cacheSnaps = new Map<string, { key: readonly unknown[]; data: unknown }[]>();
+const keyOfPlace = (href: string): { rollout: readonly unknown[]; approvals: readonly unknown[] } | null => {
+	const r = rolloutOfHref(href);
+	return r ? { rollout: rolloutQueryKey(r.namespace, r.name, r.cluster), approvals: approvalsQueryKey(r.namespace, r.name, r.cluster) } : null;
+};
+export function patchPlaceCaches(t: ApprovalTarget): void {
+	if (!qc) return;
+	const snaps: { key: readonly unknown[]; data: unknown }[] = [];
+	for (const p of t.places) {
+		const k = keyOfPlace(p.href);
+		const old = k && qc.getQueryData(k.rollout);
+		if (!k || !old) continue;
+		snaps.push({ key: k.rollout, data: old });
+		qc.setQueryData(k.rollout, grantInRollout(old as never, p.tag));
+	}
+	cacheSnaps.set(t.key, snaps);
+}
+export function restorePlaceCaches(t: ApprovalTarget): void {
+	if (!qc) return;
+	for (const s of cacheSnaps.get(t.key) ?? []) qc.setQueryData(s.key, s.data);
+	cacheSnaps.delete(t.key);
+}
+/** the server has answered: read the real gate and the real approvers (who approved) back */
+export function refreshPlaceCaches(t: ApprovalTarget): void {
+	if (!qc) return;
+	for (const p of t.places) {
+		const k = keyOfPlace(p.href);
+		if (!k) continue;
+		void qc.invalidateQueries({ queryKey: k.approvals });
+		void qc.invalidateQueries({ queryKey: k.rollout });
+	}
+}
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 let inflight: Promise<unknown> = Promise.resolve();
@@ -87,13 +133,32 @@ export function confirmApprove(f?: typeof fetch): void {
 	approvalUi.ask = null;
 	clearTimer();
 	grantApproval(t);
+	patchPlaceCaches(t);
 	approvalUi.done = { target: t, error: null };
-	inflight = Promise.all(t.places.map((p) => postApproval(p.href, p.tag, false, f))).catch((e: Error) => {
+	inflight = Promise.all(t.places.map((p) => postApproval(p.href, p.tag, false, f))).then(() => refreshPlaceCaches(t)).catch((e: Error) => {
 		revokeApproval(t);
+		restorePlaceCaches(t);
 		approvalUi.done = { target: t, error: e.message || 'Approval failed' };
 	});
 	timer = setTimeout(dismissDone, UNDO_MS);
 }
+/**
+ * The words of an Undo the server declined to complete: another approval (git, a colleague) still stands for the build at `kept` places.
+ * Names the PLACE and the REASON: "ap-south stays approved" + "also approved by wyatt" (a verified `by`) or "also approved by
+ * payments-core-c0d3e88-git" (an approval with no `by`: named by its RolloutApproval, never claimed to come from git). `where` is every kept place.
+ */
+export function stillApprovedWords(t: ApprovalTarget, replies: readonly ApprovalReply[], keptLabels: readonly string[] = []): { title: string; who: string; full: string } {
+	const all = replies.flatMap((r) => r.approvals ?? []);
+	const who = approversWords(all);
+	const partial = keptLabels.length > 0 && keptLabels.length < t.places.length;
+	return { title: partial ? `${joinPlaces(keptLabels)} ${keptLabels.length > 1 ? 'stay' : 'stays'} approved` : `${t.build} stays approved`, who, full: [...new Set(all.map((a) => a.by ?? a.name))].join(', ') };
+}
+const joinPlaces = (xs: readonly string[]): string => (xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+/**
+ * Undo is optimistic (the places read held again at once, `revokeApproval`) and then listens to the server: a place whose revoke answered
+ * `stillApproved` is approved by someone else too (git, a colleague), so its optimistic approval is put back (never left reverted) and the
+ * toast says the build stays approved and by whom.
+ */
 export function undoApprove(f?: typeof fetch): void {
 	const d = approvalUi.done;
 	if (!d || d.error) return;
@@ -101,9 +166,34 @@ export function undoApprove(f?: typeof fetch): void {
 	holds.hover = holds.focus = false;
 	clearTimer();
 	revokeApproval(t);
+	restorePlaceCaches(t);
 	approvalUi.done = null;
 	handOffFocus();
-	void inflight.then(() => Promise.all(t.places.map((p) => postApproval(p.href, p.tag, true, f)))).catch(() => {});
+	void inflight
+		.then(() => Promise.allSettled(t.places.map((p) => postApproval(p.href, p.tag, true, f))))
+		.then((results) => {
+			// a place whose revoke was rejected (the server may still approve it) or answered stillApproved is put back: never left reverted
+			const kept = t.places.filter((_, i) => { const r = results[i]; return r.status === 'rejected' || r.value?.stillApproved; });
+			if (!kept.length) { refreshPlaceCaches(t); return; }
+			const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+			// another toast took over meanwhile: its own timer and words stay; the places are still re-granted
+			const other = approvalUi.done && approvalUi.done.target.key !== t.key;
+			const again = { ...t, key: `${t.key}#still`, places: kept };
+			grantApproval(again);
+			patchPlaceCaches(again);
+			refreshPlaceCaches(t);
+			if (other) return;
+			clearTimer();
+			if (rejected) {
+				const e = rejected.reason as Error | undefined;
+				approvalUi.done = { target: t, error: e?.message || 'Undo failed, the approval stands' };
+			} else {
+				const replies = results.flatMap((r) => (r.status === 'fulfilled' && r.value?.stillApproved ? [r.value] : []));
+				const w = stillApprovedWords(t, replies, kept.map((p) => p.label));
+				approvalUi.done = { target: t, error: null, still: { who: w.who, title: w.full, headline: w.title } };
+			}
+			timer = setTimeout(dismissDone, UNDO_MS);
+		});
 }
 /** the toast is going (auto-dismiss, Dismiss, Undo): if focus was on it or nowhere, hand it to a stable target, never BODY */
 function handOffFocus(): void {

@@ -6,6 +6,7 @@
 	import LiveRegion from '$lib/components/LiveRegion.svelte';
 	import FleetAppNames from '$lib/components/FleetAppNames.svelte';
 	import ApprovalLayer from '$lib/components/new/ApprovalLayer.svelte';
+	import { installApprovalCache } from '$lib/components/new/approvals.svelte';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { queryRetry, queryRetryDelay, pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { startEventStream } from '$lib/api/events';
@@ -342,6 +343,8 @@
 	// invalidate the query keys above — see $lib/api/events' own doc comment
 	// for the reconnect/hidden-tab/backpressure story. No-ops under SSR.
 	startEventStream(queryClient);
+	// The approve action writes each place's own cached rollout as well as the fleet fixture (components/new/approvals.svelte.ts).
+	installApprovalCache(queryClient);
 	// Feeds the release-catalogue registry from every rollouts-list response
 	// (ReleaseSlices ride in the same payload as the rollouts). See $lib/releases/feed.
 	if (typeof window !== 'undefined') {

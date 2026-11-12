@@ -1209,7 +1209,9 @@ function classifyGateInner(
 	const owner0 = ctx.owners.get(k);
 	// The backend's `kind` is the classification when present: promotion / dependency stand for their controllers' owner even where the joins missed.
 	const said = gate?.kind;
-	const owner = said === 'promotion' ? { kind: 'Environment', name: null } : said === 'dependency' ? { kind: 'RolloutDependency', name: null } : owner0;
+	/* An ApprovalPolicy / ClusterApprovalPolicy owns the approval gate (design/APPROVALS-API.md §5.1, §8.2): that owner reference IS the approval, a person clears it. It must not reach the "a controller we have no story for" branch below, which called it a rule this dashboard cannot attribute. */
+	const policyOwned = said === 'approval' || owner0?.kind === 'ApprovalPolicy' || owner0?.kind === 'ClusterApprovalPolicy';
+	const owner = policyOwned ? null : said === 'promotion' ? { kind: 'Environment', name: null } : said === 'dependency' ? { kind: 'RolloutDependency', name: null } : owner0;
 
 	// (1) POSITIVE MACHINE EVIDENCE — a controller owns the object. Whatever
 	// the joins missed, no human can approve this, so `person` is off the table.
@@ -1270,7 +1272,7 @@ function classifyGateInner(
 	const provenanceComplete = ctx.sources.environments && ctx.sources.dependencies;
 	// ⭐ THE BACKEND'S `kind` IS THE CLASSIFICATION WHEN PRESENT. `approval` is a person whatever the joins saw; `unknown` is never a person
 	// (the backend looked and could not say). Approval-by-elimination below is only the fallback for a payload WITHOUT `kind` (an older backend).
-	if (said === 'approval' || (said == null && ((owner && owner.kind === null) || provenanceComplete))) {
+	if (policyOwned || (said == null && ((owner && owner.kind === null) || provenanceComplete))) {
 		return {
 			id,
 			kind: 'approval',
