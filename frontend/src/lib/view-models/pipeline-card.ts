@@ -61,3 +61,33 @@ export function leadOpenKey(rows: readonly { key: string; group: string }[]): st
 	if (rows.filter((r) => r.group === 'moving').length > 1) return null;
 	return rows[0]?.key ?? null;
 }
+
+/**
+ * Rows keep their slot (owner 2026-11-12; landing film AD P1-2). Inside the stage detail pane three things
+ * come and go as a canary steps: the "Continue to stage N" action, the Check row's progress line, and the
+ * final check timer's progress line. While a deploy is in flight each of them has its place from the first
+ * frame, drawn invisible until it has something to say, so a state change alters marks and words and no
+ * row below it moves. Once the deploy settles nothing is reserved and the pane is as short as its content.
+ * A slot is only reserved when the thing can actually appear: the action for a reader who may press it,
+ * the Check line for a stage with a check window configured, the timer line for a rollout with a bake time.
+ * A stage that is already past can no longer change, and the last stage completes without pausing, so
+ * neither reserves the action; a past stage reserves no Check line either (QA review of #136).
+ */
+export type PipelineSlots = { advance: boolean; checkLine: boolean; timerLine: boolean };
+export function pipelineSlots(s: {
+	deployInFlight: boolean;
+	canUpdate: boolean;
+	stageCheckConfigured: boolean;
+	timerConfigured: boolean;
+	/** The stage is current or still ahead (not past). Default true. */
+	stageOpen?: boolean;
+	/** The stage is the last step of its track. Default false. */
+	lastStep?: boolean;
+}): PipelineSlots {
+	const open = s.stageOpen ?? true;
+	return {
+		advance: s.deployInFlight && s.canUpdate && open && !s.lastStep,
+		checkLine: s.deployInFlight && s.stageCheckConfigured && open,
+		timerLine: s.deployInFlight && s.timerConfigured
+	};
+}

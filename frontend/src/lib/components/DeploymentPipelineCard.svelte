@@ -4,7 +4,7 @@
 	import Leaving from './Leaving.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import { steadyHeight } from '$lib/steady-height';
-	import { deployKey } from '$lib/view-models/pipeline-card';
+	import { deployKey, isDeployInFlight, pipelineSlots } from '$lib/view-models/pipeline-card';
 	import { canHover } from '$lib/can-hover.svelte';
 	import { formatTimestamp } from '$lib/display-time';
 	import { Modal, Spinner, Tooltip } from 'flowbite-svelte';
@@ -178,6 +178,8 @@
 	let bakeIsDeploying = $derived(allStagesDone && latestEntry.bakeStatus === 'Deploying');
 	// The tone of whatever is in flight: steps still rolling or a deploy going
 	// out is `active` (blue); a finished rollout being checked is `progress`.
+	// The same notion `steadyHeight` holds the card for: rows below only keep their slots while it is true.
+	let deployInFlight = $derived(!allStagesDone || isDeployInFlight([latestEntry]));
 	let inflightIsDeploy = $derived(!allStagesDone || latestEntry.bakeStatus === 'Deploying');
 	let bakeIsInProgress = $derived(allStagesDone && latestEntry.bakeStatus === 'InProgress');
 	let bakeIsSucceeded = $derived(allStagesDone && latestEntry.bakeStatus === 'Succeeded');
@@ -807,6 +809,22 @@
 	</li>
 {/snippet}
 
+{#snippet progressLine(live: boolean, pct: number, text: string)}
+	<!-- ⭐ A SLOT, NOT AN ARRIVAL. While a deploy is in flight this line is laid out from the first frame and
+	     simply drawn invisible until its bar has something to measure (`pipelineSlots`), so the rows below it
+	     do not drop a line when the check window opens. `bar-progress-active`: see app.css — the width is a
+	     true, $now-derived percentage; the stripe is the mark that this is still a live process. -->
+	<div class="mt-2 pl-5" class:invisible={!live} aria-hidden={!live}>
+		<div class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line">
+			<div
+				class="h-full rounded-full bg-progress-solid transition-[width] duration-500 bar-progress-active"
+				style="width: {pct}%"
+			></div>
+		</div>
+		<p class="t-meta mt-1 text-fg-subtle">{text}</p>
+	</div>
+{/snippet}
+
 {#snippet subRow(
 	title: string,
 	status: NodeStatus,
@@ -939,40 +957,24 @@
 			{/if}
 		{/if}
 
-		{#if extra === 'bake' && sd?.bakingNow}
+		{#if extra === 'bake' && sd}
 			{@const ann = sd.kr.kruiseRollout?.metadata?.annotations || {}}
-			{@const bakeTimeKey = `rollout.kuberik.io/step-${sd.stepNum}-bake-time`}
-			{@const readyAtKey = `internal.rollout.kuberik.io/step-${sd.stepNum}-ready-at`}
-			{@const stepBakeTime = ann[bakeTimeKey]}
-			{@const stepReadyAt = ann[readyAtKey]}
-			{#if stepReadyAt}
-				{@const readyAtMs = new Date(stepReadyAt).getTime()}
-				{@const elapsed = $now.getTime() - readyAtMs}
-				{@const bakeTimeMs = stepBakeTime ? parseDuration(stepBakeTime) : 0}
-				{@const remainingBake = bakeTimeMs > 0 ? Math.max(0, bakeTimeMs - elapsed) : 0}
-				{#if bakeTimeMs > 0}
-					{@const progress = Math.min(100, (elapsed / bakeTimeMs) * 100)}
-					<div class="mt-2 pl-5">
-						<div
-							class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line"
-						>
-							<!-- `bar-progress-active`: see its own doc comment in app.css —
-							     the width is a true, $now-derived percentage; the stripe is
-							     the mark that this is still a live process even on a frame
-							     where $now itself has not visibly advanced (a fixed-clock
-							     capture, or simply the gap between two 100ms ticks). -->
-							<div
-								class="h-full rounded-full bg-progress-solid transition-[width] duration-500 bar-progress-active"
-								style="width: {progress}%"
-							></div>
-						</div>
-						<p class="t-meta mt-1 text-fg-subtle">
-							{remainingBake > 0
-								? formatDurationFromMs(remainingBake) + ' remaining'
-								: 'Ready to continue'}
-						</p>
-					</div>
-				{/if}
+			{@const stepBakeTime = ann[`rollout.kuberik.io/step-${sd.stepNum}-bake-time`]}
+			{@const stepReadyAt = ann[`internal.rollout.kuberik.io/step-${sd.stepNum}-ready-at`]}
+			{@const bakeTimeMs = stepBakeTime ? parseDuration(stepBakeTime) : 0}
+			{@const live = sd.bakingNow && !!stepReadyAt && bakeTimeMs > 0}
+			{@const elapsed = live ? $now.getTime() - new Date(stepReadyAt).getTime() : 0}
+			{@const remainingBake = live ? Math.max(0, bakeTimeMs - elapsed) : 0}
+			{#if live || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: bakeTimeMs > 0, timerConfigured: false, stageOpen: !sd.isPastStep }).checkLine}
+				{@render progressLine(
+					live,
+					live ? Math.min(100, (elapsed / bakeTimeMs) * 100) : 0,
+					live
+						? remainingBake > 0
+							? formatDurationFromMs(remainingBake) + ' remaining'
+							: 'Ready to continue'
+						: '0s remaining'
+				)}
 			{/if}
 		{/if}
 
@@ -982,25 +984,18 @@
 		     rail card is the authority on checks; this sub-row keeps its own
 		     status line and stops there. -->
 
-		{#if extra === 'timer' && bakeIsInProgress && latestEntry.bakeStartTime && rollout.spec?.bakeTime}
-			{@const bakeStartMs = new Date(latestEntry.bakeStartTime).getTime()}
-			{@const elapsedMs = $now.getTime() - bakeStartMs}
+		{#if extra === 'timer' && rollout.spec?.bakeTime}
+			{@const live = bakeIsInProgress && !!latestEntry.bakeStartTime}
 			{@const totalMs = parseDuration(rollout.spec.bakeTime)}
-			{@const progress = totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0}
+			{@const elapsedMs = live ? $now.getTime() - new Date(latestEntry.bakeStartTime).getTime() : 0}
 			{@const remainingMs = Math.max(0, totalMs - elapsedMs)}
-			<div class="mt-2 pl-5">
-				<div class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line">
-					<!-- `bar-progress-active`: see app.css — same reasoning as the
-					     bake-time bar above, for the deploy-timeout countdown. -->
-					<div
-						class="h-full rounded-full bg-progress-solid transition-[width] duration-500 bar-progress-active"
-						style="width: {progress}%"
-					></div>
-				</div>
-				<p class="t-meta mt-1 text-fg-subtle">
-					{remainingMs > 0 ? formatDurationFromMs(remainingMs) + ' remaining' : 'Finishing…'}
-				</p>
-			</div>
+			{#if live || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: false, timerConfigured: totalMs > 0 }).timerLine}
+				{@render progressLine(
+					live,
+					live && totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0,
+					live ? (remainingMs > 0 ? formatDurationFromMs(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining'
+				)}
+			{/if}
 		{/if}
 	</div>
 {/snippet}
@@ -1144,7 +1139,8 @@
 				{/if}
 			</div>
 
-			{#if sd.isCurrentStep && !sd.isPastStep && sd.isStepPaused && canUpdate}
+			{@const advLive = sd.isCurrentStep && !sd.isPastStep && sd.isStepPaused && canUpdate}
+			{#if advLive || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: false, timerConfigured: false, stageOpen: !sd.isPastStep, lastStep: sd.isLastStep }).advance}
 				{@const adv = stageAdvance(
 					{
 						stepNum: sd.stepNum,
@@ -1175,11 +1171,17 @@
 					   is a decision a reader can verify from the sentence in front of
 					   them, so it does not earn a transcription exercise.
 				-->
-				<div class="flex flex-col gap-1.5">
+				<!-- ⭐ A SLOT, NOT AN ARRIVAL (owner 2026-11-12; landing film AD P1-2). While a deploy is in flight the
+				     action's place is laid out from the first frame and drawn invisible and inert until the stage
+				     pauses, and the caption is sized for its longest form (`consequenceReserve`: one line grows to
+				     two when the check window opens), so nothing below it drops. The button is `primary` only when
+				     nothing else advances the stage; with a check window running the controller continues by itself
+				     and this is an override, so it is offered, not pushed (AD P3-3). -->
+				<div class="flex flex-col gap-1.5" class:invisible={!advLive} inert={!advLive} aria-hidden={!advLive}>
 					<div>
 						<button
 							type="button"
-							class="btn btn-primary btn-sm"
+							class="btn {adv.emphasis === 'primary' ? 'btn-primary' : 'btn-secondary'} btn-sm"
 							title={adv.consequence}
 							onclick={() => askAdvance(adv, sd)}
 						>
@@ -1187,7 +1189,10 @@
 							{adv.label}
 						</button>
 					</div>
-					<p class="t-meta max-w-md text-fg-subtle">{adv.consequence}</p>
+					<div class="grid max-w-md">
+						<p class="t-meta invisible col-start-1 row-start-1 text-fg-subtle" aria-hidden="true">{adv.consequenceReserve}</p>
+						<p class="t-meta col-start-1 row-start-1 text-fg-subtle">{adv.consequence}</p>
+					</div>
 				</div>
 			{/if}
 		{/if}

@@ -143,3 +143,25 @@ describe('formatShortDuration', () => {
 		expect(formatShortDuration(-1)).toBe('0s');
 	});
 });
+
+describe('stageAdvance — a caption sized for its longest form, and who the button is for', () => {
+	const base = { stepNum: 1, isLastStep: false, canarySteps: [{ replicas: 1 }, { traffic: '50%' }, { replicas: '100%' }] };
+	it('reserves the check-window sentence even before one exists, so the caption never grows', () => {
+		const idle = stageAdvance(base);
+		const baking = stageAdvance({
+			...base,
+			annotations: {
+				'internal.rollout.kuberik.io/step-1-ready-at': new Date(Date.now() - 1000).toISOString(),
+				'rollout.kuberik.io/step-1-bake-time': '30s'
+			}
+		});
+		expect(idle.consequenceReserve).toBe(baking.consequenceReserve);
+		expect(idle.consequenceReserve.length).toBeGreaterThanOrEqual(baking.consequence.length);
+		expect(idle.consequenceReserve).toContain('check time');
+	});
+	it('is the primary action only when nothing else advances the stage', () => {
+		expect(stageAdvance(base).emphasis).toBe('primary');
+		// A check window is configured: the controller continues by itself, even before its clock has started.
+		expect(stageAdvance({ ...base, annotations: { 'rollout.kuberik.io/step-1-bake-time': '30s' } }).emphasis).toBe('secondary');
+	});
+});
