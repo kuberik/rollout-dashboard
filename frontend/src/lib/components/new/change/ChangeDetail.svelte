@@ -34,8 +34,7 @@
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { ChartLineUpOutline, UndoOutline, GithubSolid, PlaySolid, CheckOutline } from 'flowbite-svelte-icons';
 	import HoldingCard from '../HoldingCard.svelte';
-	import Stages from '../stages/Stages.svelte';
-	import { stagesOf } from '../stages/stages-model';
+	import ChangeStrip from './ChangeStrip.svelte';
 	import ChangeCard from './ChangeCard.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ChangeHistory from './ChangeHistory.svelte';
@@ -51,7 +50,6 @@
 	const causes = $derived(heldCauses(scenario));
 	const cl = $derived(classified(c, scenario));
 	const places = $derived(cl.places);
-	const stages = $derived(stagesOf({ kind: 'change', change: c }, scenario));
 	const st = $derived(statementOf(c, places, cl.all));
 	const lead = $derived(st.lead ?? places[0] ?? null);
 	const cm = $derived(commitsOf(c, scenario, lead));
@@ -125,11 +123,12 @@
 		{#snippet actions()}
 			<span data-desktop-only class="contents">{@render links()}</span>
 		{/snippet}
+		{#snippet below()}
+			<ChangeStrip change={c} {scenario} class="mt-4" />
+		{/snippet}
 	</PageHeader>
 
-	<Stages {stages} class="mt-6 max-sm:mt-4" />
-
-	<div class="mt-4 empty:hidden" data-statement>
+	<div class="mt-6 max-sm:mt-4 empty:hidden" data-statement>
 		{#if st.kind === 'failed' && check}
 			<!-- changedetail-9 CE8: the tab's set and order for a failed deploy: [Retry] [Roll back] + the quiet "Open rollout ›"; r34 S1a: the shared StatementBanner owns the shell and the phone action row -->
 			<StatementBanner severity="failed" title={failTitle} {check}

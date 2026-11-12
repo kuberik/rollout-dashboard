@@ -3279,6 +3279,7 @@
 										current={{ ns: namespace, name }}
 										youAreHere
 										quietNoReleases
+										sites
 									/>
 								</div>
 								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0"
