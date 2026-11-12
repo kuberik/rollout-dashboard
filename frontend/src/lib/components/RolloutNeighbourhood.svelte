@@ -698,7 +698,7 @@
 				<button type="button" class="btn btn-xs btn-secondary mt-0.5 self-start" disabled={clearPinDisabled} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
 			{/if}
 			{#if ask}
-				<span class="mt-0.5 self-start" in:fade={{ duration: 150 }}><ApproveButton target={ask} class="btn btn-primary btn-xs" /></span>
+				<span class="mt-0.5 self-start" in:fade={{ duration: 150 }}><ApproveButton target={ask} class="btn btn-primary btn-xs" scope /></span>
 			{:else if loading}
 				<!-- the button's own box, reserved while the fleet answers: Approve or "How to approve" lands in it, nothing moves -->
 				<span class="mt-0.5 inline-block h-7 w-[72px] self-start" aria-hidden="true" data-approve-slot></span>
