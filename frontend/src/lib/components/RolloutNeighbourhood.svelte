@@ -76,6 +76,7 @@
 	import { ARROW, ARROW_PATH, ARROW_VIEWBOX, WIRE_INK, DASH, dashOffsetForLength, wireKind } from '$lib/graph-arrow';
 	import {
 		wideWires,
+		compactWires,
 		narrowWires,
 		holdingFirst,
 		maxRise,
@@ -188,8 +189,10 @@
 	const focusHeldBuilds = $derived(heldBuildsOverride ?? hood.heldBuilds);
 	const upstreamLinks = $derived(reconciledUpstream ?? hood.upstream);
 
-	/** Same threshold the grid's container query uses (800px, #140): below it the layers stack and the wires take the narrow spine. */
-	const WIDE_AT = 800;
+	/** Same threshold the grid's container query uses (960px; #140 set 800, the compact graph now takes 560-959): below it the layers stack and the wires take the narrow spine. */
+	const WIDE_AT = 960;
+	/** The compact graph (two columns, downstream under the focus) from 560px of container up to WIDE_AT; the stacked list below it. */
+	const COMPACT_AT = 560;
 	const uid = `nh-${Math.random().toString(36).slice(2, 8)}`;
 
 	let root = $state<HTMLDivElement | null>(null);
@@ -509,6 +512,8 @@
 			}
 			if (!steep && maxRise(f, up, down) > 2 * gutter) steep = true;
 			wires = wideWires(f, up, down);
+		} else if (width >= COMPACT_AT) {
+			wires = compactWires(f, up, down);
 		} else {
 			wires = narrowWires(f, up, down);
 		}
@@ -969,6 +974,43 @@
 		display: none;
 	}
 
+	/* ⭐ COMPACT GRAPH, 560-959px OF CONTAINER (owner 2026-11-12, on the landing film's 1000px frame: "the nodes can be scaled down a
+	   bit to fit … on mobile we show it basically as a list (that i would keep)"). Between the stacked list and the full three columns the
+	   graph keeps its form at a smaller footprint: two columns — "Gated by" on the left, the focus on the right with the downstream column
+	   UNDER it — one fluid 48-64px gutter, tiles about 250-370px wide, so nothing is cut and no name breaks mid-word. The right column is
+	   centred against the left by two 1fr rows (the left column spans all four). Wires: `compactWires`. */
+	@container (min-width: 560px) and (max-width: 959.98px) {
+		.hood-grid {
+			--hood-gutter-compact: clamp(3rem, 8cqi, 4rem);
+			grid-template-columns: minmax(0, 400px) var(--hood-gutter-compact) minmax(0, 400px);
+			grid-template-rows: 1fr auto auto 1fr;
+			row-gap: 0;
+			justify-content: center;
+		}
+		.hood-up {
+			grid-column: 1;
+			grid-row: 1 / -1;
+			padding-left: 0;
+		}
+		.hood-focus {
+			grid-column: 3;
+			grid-row: 2;
+		}
+		.hood-down {
+			grid-column: 3;
+			grid-row: 3;
+			margin-top: 16px;
+			padding-left: 28px;
+		}
+		.hood-grid--no-up {
+			grid-template-columns: minmax(0, 400px);
+		}
+		.hood-grid--no-up .hood-focus,
+		.hood-grid--no-up .hood-down {
+			grid-column: 1;
+		}
+	}
+
 	/*
 	 * WIDE: three layers left → right, a 72px wire gutter between each.
 	 *
@@ -990,7 +1032,7 @@
 	 * empty-column override right below is harmless but now redundant
 	 * (inherits `start` from the row); left in place since it still
 	 * documents that specific case's own reasoning. */
-	@container (min-width: 800px) {
+	@container (min-width: 960px) {
 		/* THE GUTTERS SHRINK WITH THE CONTAINER (2026-11-12). Fixed 8/9rem
 		   gutters plus a 240px tile floor summed to 878px inside an 812px
 		   container, and the section's `overflow-hidden` sliced the downstream
@@ -1108,7 +1150,7 @@
 	.hood-tile {
 		min-width: 0;
 	}
-	@container (min-width: 800px) {
+	@container (min-width: 960px) {
 		.hood-tile {
 			max-width: 400px;
 		}
@@ -1120,7 +1162,7 @@
 			min-width: 240px;
 		}
 	}
-	@container (min-width: 800px) {
+	@container (min-width: 960px) {
 		/* The focus tile is not `.hood-tile` (it is the canvas's one raised
 		   object, not a service tile) — capped at 480px (≈1.2× the 400px gate
 		   tiles), same reasoning. */

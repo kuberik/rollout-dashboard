@@ -103,6 +103,29 @@ export function wideWires(focus: Rect, up: WireIn[], down: WireIn[]): Wire[] {
 	return paintOrder(out);
 }
 
+/** The compact layout's spine: x offset inside the focus box's left edge, and the downstream column's indent that clears it. */
+export const COMPACT_SPINE_INSET = 8;
+
+/**
+ * Compact layout (a two-column graph between the stacked list and the full three columns): upstream wires run left → right into the
+ * focus exactly as wide; the downstream column sits UNDER the focus in the right column, so its wires drop from below the focus's ring
+ * down a spine `COMPACT_SPINE_INSET` px inside the focus's left edge and turn right into each box (the narrow layout's downstream shape).
+ */
+export function compactWires(focus: Rect, up: WireIn[], down: WireIn[]): Wire[] {
+	const out = wideWires(focus, up, []);
+	for (const w of down) {
+		const kind = wireKind(w.state);
+		const sx = crisp(focus.left + COMPACT_SPINE_INSET, kind);
+		const cy = crisp(w.rect.top + w.rect.height / 2, kind);
+		const start = focus.bottom + FOCUS_RING;
+		const tipX = w.rect.left;
+		const end = tipX - ARROW[kind].length;
+		const d = path('M', sx, start, 'V', cy - CORNER, 'Q', sx, cy, sx + CORNER, cy, 'H', end);
+		out.push({ key: w.key, state: w.state, d, tip: [tipX, cy] });
+	}
+	return paintOrder(out);
+}
+
 function crispEnd(y1: number, y2: number, kind: WireKind): number {
 	const a = crisp(y1, kind);
 	const b = crisp(y2, kind);
