@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -61,6 +62,54 @@ type ClusterError struct {
 	Stale    bool       `json:"stale,omitempty"`
 	LastSeen *time.Time `json:"lastSeen,omitempty"`
 	Reason   string     `json:"reason,omitempty"`
+	// Kind says what kind of read failure this was, typed so no screen prints
+	// the raw Error text: "timeout" (no answer in time), "unreachable" (could
+	// not connect), "rejected" (the cluster answered with an HTTP error;
+	// Status carries the code) or "bad_answer" (it answered with something
+	// that is not a dashboard response, e.g. a login page). Absent on older
+	// hubs. Error stays for compatibility.
+	Kind   string `json:"kind,omitempty"`
+	Status int    `json:"status,omitempty"`
+}
+
+// ClusterError.Kind values.
+const (
+	clusterKindTimeout     = "timeout"
+	clusterKindUnreachable = "unreachable"
+	clusterKindRejected    = "rejected"
+	clusterKindBadAnswer   = "bad_answer"
+)
+
+// spokeStatusError is a spoke's non-200 answer. Message text is unchanged
+// ("HTTP 403") so the legacy error field reads as before.
+type spokeStatusError struct{ status int }
+
+func (e *spokeStatusError) Error() string { return fmt.Sprintf("HTTP %d", e.status) }
+
+// spokeDecodeError is a 200 whose body is not the expected JSON.
+type spokeDecodeError struct{ err error }
+
+func (e *spokeDecodeError) Error() string { return "decode: " + e.err.Error() }
+func (e *spokeDecodeError) Unwrap() error { return e.err }
+
+// clusterErrorKind classifies a spoke failure into ClusterError.Kind and, for
+// rejected, the HTTP status. Looks through the breaker's wrapper to the real
+// last error. Unknown errors read as unreachable.
+func clusterErrorKind(err error) (string, int) {
+	var se *spokeStatusError
+	var de *spokeDecodeError
+	var ne net.Error
+	switch {
+	case errors.Is(err, errSpokeStaleTimeout), errors.Is(err, context.DeadlineExceeded):
+		return clusterKindTimeout, 0
+	case errors.As(err, &se):
+		return clusterKindRejected, se.status
+	case errors.As(err, &de):
+		return clusterKindBadAnswer, 0
+	case errors.As(err, &ne) && ne.Timeout():
+		return clusterKindTimeout, 0
+	}
+	return clusterKindUnreachable, 0
 }
 
 // ClusterError.Reason values.
@@ -353,11 +402,11 @@ func doFetchSpoke(ctx context.Context, spokeURL, path, token string) (map[string
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return nil, &spokeStatusError{status: resp.StatusCode}
 	}
 	var result map[string]json.RawMessage
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode: %w", err)
+		return nil, &spokeDecodeError{err: err}
 	}
 	return result, nil
 }
@@ -429,11 +478,11 @@ func doFetchSpokeClusterName(ctx context.Context, spokeURL, token string) (strin
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+		return "", &spokeStatusError{status: resp.StatusCode}
 	}
 	var info ClusterInfo
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return "", fmt.Errorf("decode: %w", err)
+		return "", &spokeDecodeError{err: err}
 	}
 	return info.Name, nil
 }
@@ -607,11 +656,14 @@ func fanOut(
 			continue
 		}
 		if r.spoke.err != nil {
+			kind, status := clusterErrorKind(r.spoke.err)
 			clusterErrors = append(clusterErrors, ClusterError{
 				URL:    r.spoke.url,
 				Name:   r.name,
 				Error:  r.spoke.err.Error(),
 				Reason: clusterErrorReason(r.spoke.err),
+				Kind:   kind,
+				Status: status,
 			})
 			continue
 		}
@@ -623,6 +675,7 @@ func fanOut(
 		if r.meta.StaleErr != nil {
 			// Serve the last-known data (better than a hole) but say so.
 			seen := r.meta.LastOK
+			kind, status := clusterErrorKind(r.meta.StaleErr)
 			clusterErrors = append(clusterErrors, ClusterError{
 				URL:      r.spoke.url,
 				Name:     r.name,
@@ -630,6 +683,8 @@ func fanOut(
 				Stale:    true,
 				LastSeen: &seen,
 				Reason:   clusterErrorReason(r.meta.StaleErr),
+				Kind:     kind,
+				Status:   status,
 			})
 		}
 		// Annotate and merge each key.
