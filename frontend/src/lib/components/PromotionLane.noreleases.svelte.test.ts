@@ -50,4 +50,12 @@ describe('PromotionLane: a no-release place is not drawn as current', () => {
 			}
 		});
 	}
+
+	it('quietNoReleases (the rollout page, which says it once in its Newer builds card): no fact, title still names it', () => {
+		const { container } = render(PromotionLane, {
+			props: { lane: lane(), hrefFor: () => '/x', quietNoReleases: true } as never
+		});
+		expect(container.querySelector('.env-fact')).toBeNull();
+		expect(container.querySelector('[data-tier="dev"] [data-env-box]')?.getAttribute('title')).toMatch(/no releases$/);
+	});
 });

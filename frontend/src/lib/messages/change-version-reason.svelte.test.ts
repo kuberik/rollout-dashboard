@@ -90,8 +90,10 @@ describe('the Change version reason', () => {
 			await waitFor(() => expect(c.querySelector('[data-change-version-reason]')).not.toBeNull(), {
 				timeout: 25000
 			});
-			for (const el of c.querySelectorAll('[data-change-version-reason]'))
+			for (const el of c.querySelectorAll('[data-change-version-reason]')) {
+				expect(el.classList.contains('sr-only'), 'said once elsewhere: the button\'s reason is for assistive tech').toBe(true);
 				expect(el.textContent).toBe('No release source: no versions to choose from');
+			}
 			const btn = [...c.querySelectorAll('button')].find((b) =>
 				/^Change version$/i.test((b.textContent ?? '').trim())
 			);

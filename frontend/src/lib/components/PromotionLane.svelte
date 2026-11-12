@@ -31,7 +31,8 @@
 		fill = undefined,
 		beads = undefined,
 		words = false,
-		yours = false
+		yours = false,
+		quietNoReleases = false
 	}: {
 		lane: Lane;
 		/** Restrict / order the boxes; defaults to this lane's own tiers. */
@@ -51,6 +52,8 @@
 		/** the viewer can give the approval this lane waits on: its box says "Needs your approval" (approvalWord) instead of "Waiting for approval"; only with `words` */
 		yours?: boolean;
 		mutedRest?: boolean;
+		/** the rollout page says "no releases" once, in its Newer builds card: the boxes keep their names and stay silent */
+		quietNoReleases?: boolean;
 	} = $props();
 	const size = $derived<'L' | 'M'>(fill ?? 'L');
 	/* r42 atoms (opt-in, /design/atoms): the progress pie in a checking / deploying box */
@@ -121,7 +124,7 @@
 			wordShort: n.state === 'held' && n.card.heldCause === 'person' && words ? stateWord('approval', { compact: true }) ?? undefined : undefined,
 			wordInk: INK[n.state],
 			hot: MARKED.has(n.state),
-			fact: n.behind > 0 ? (size === 'M' ? `${n.behind} behind` : lagLabel({ builds: n.behind })) : noRel(n) ? 'no releases' : undefined,
+			fact: n.behind > 0 ? (size === 'M' ? `${n.behind} behind` : lagLabel({ builds: n.behind })) : noRel(n) && !quietNoReleases ? 'no releases' : undefined,
 			factKind: 'lag',
 			beads: beads?.(n)
 		};
