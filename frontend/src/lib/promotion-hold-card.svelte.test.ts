@@ -20,13 +20,13 @@ function install() {
 const rowsOf = (app: string) => holdRows(D.gatesOf(app, 'incident'), D.placeHolds(app, 'incident'), null, app).filter((r) => r.holding);
 
 describe('gatesOf and the Holding card (home-incident withPromotionHolds)', () => {
-	it('telemetry-indexer prod: the promotion hold is a gate card with the typed label, beside the approval', () => {
+	it('checkout-edge staging: the promotion hold is a gate card with the typed label', () => {
 		install();
-		const g = D.gatesOf('telemetry-indexer', 'incident').filter((x) => x.kind === 'promotion');
+		const g = D.gatesOf('checkout-edge', 'incident').filter((x) => x.kind === 'promotion');
 		expect(g).toHaveLength(1);
 		expect(g[0].holding).toBe(true);
 		expect(g[0].label).toEqual({ kind: 'promotion', source: 'dev' });
-		const r = rowsOf('telemetry-indexer').find((x) => x.label);
+		const r = rowsOf('checkout-edge').find((x) => x.label);
 		expect(r?.label).toEqual({ kind: 'promotion', source: 'dev' });
 	});
 	it('passing / sequencing promotion gates stay out (invoice-api test and staging, checkout-api)', () => {
@@ -35,7 +35,7 @@ describe('gatesOf and the Holding card (home-incident withPromotionHolds)', () =
 	});
 	it('the card draws "Held by" + the glyph + the source chip, never the gate name', () => {
 		install();
-		const { container } = render(AppGates, { props: { rows: rowsOf('telemetry-indexer') } });
+		const { container } = render(AppGates, { props: { rows: rowsOf('checkout-edge') } });
 		const li = [...container.querySelectorAll('li')].find((x) => x.querySelector('[data-gate-label="promotion"]'))!;
 		expect(li).toBeTruthy();
 		expect(li.querySelector('[data-gate-source="dev"]')).not.toBeNull();

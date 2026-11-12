@@ -18,15 +18,15 @@ function install() {
 describe('app rail: the promotion-held place', () => {
 	it('newestBuild types the hold; a plain rule hold stays untyped', () => {
 		install();
-		const p = D.placeHolds('telemetry-indexer', 'incident').find((x) => x.env === 'prod')!;
-		const nb = D.newestBuild({ app: 'telemetry-indexer', href: p.href, state: 'held-by-rule', word: 'Held by a rule' } as never)!;
+		const p = D.placeHolds('checkout-edge', 'incident').find((x) => x.env === 'staging')!;
+		const nb = D.newestBuild({ app: 'checkout-edge', href: p.href, state: 'held-by-rule', word: 'Held by a rule' } as never)!;
 		expect(nb.holdC).toEqual(['Held by ', { kind: 'promotion', source: 'dev' }]);
 		const c = D.placeHolds('checkout-api', 'incident').find((x) => x.state === 'held-by-rule')!;
 		expect(D.newestBuild({ app: 'checkout-api', href: c.href, state: 'held-by-rule', word: 'Waits on payments-svc' } as never)!.holdC).toBeNull();
 	});
 	it('the compact Slipway draws the » glyph and the DEV chip, never "held: Held by a rule"', () => {
 		install();
-		const p = D.placeHolds('telemetry-indexer', 'incident').find((x) => x.env === 'prod')!;
+		const p = D.placeHolds('checkout-edge', 'incident').find((x) => x.env === 'staging')!;
 		const base = D.rollouts('incident').rows.find((r) => r.href === p.href)!;
 		const row = { ...base, state: 'held-by-rule', word: 'Held by a rule', group: 'held' } as never;
 		const { container } = render(Slipway, { row, hs: 'incident', compact: true });

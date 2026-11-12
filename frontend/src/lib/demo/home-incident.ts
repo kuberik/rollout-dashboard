@@ -127,18 +127,17 @@ export function correctedHomeFixture(f: HomeFixture): HomeFixture {
 /**
  * THE PROMOTION-HELD PLACES (batch4 #75). In the pinned capture every promotion gate sits beside a build the source environment has not
  * finished, which the product reads as "Waits for <env>" (chain sequencing, `held.ts`), never as a hold the gate itself causes. The owner rule
- * (a promotion gate is drawn as the » glyph + its source environment, never by its name) had no state to be seen in. Three places are served with a
- * promotion gate that refuses the candidate, beside the approval they already carry (`placeVerdict`: held by the promotion gate, `also` needs the approval):
- *  - telemetry-indexer prod: its Environment publishes no gate relationship, so the gate names no upstream (the "relationship not ready yet" state:
- *    cause `unknown`, a real hold). /rollouts, Home, the app page and the Holding card name the source from the topology (dev); the Gates tab, which
- *    reads the rollout's own story, has none and draws "» Promotion".
+ * (a promotion gate is drawn as the » glyph + its source environment, never by its name) had no state to be seen in. Two places are served with a
+ * promotion gate that refuses the candidate:
+ *  - checkout-edge staging: a PURE promotion hold (no approval gate, so the place reads Held). Its Environment publishes no gate relationship, so the gate
+ *    names no upstream (the "relationship not ready yet" state: cause `unknown`, a real hold). /rollouts, Home, the app page and the Holding card name the
+ *    source from the topology (dev): "» [DEV]". The Gates tab, which reads the rollout's own story, has none and draws "» Promotion".
+ *    telemetry-indexer prod is NOT used for this: it carries an approval, and an approval beside a promotion hold reads "Needs your approval" while
+ *    held-by-rule (truth: 7 mismatches), and truth's PR-20 hold-clock check reads its "Waiting for approval" row.
  *  - payments-svc staging: no Environment object at all (a service the dependency join knows): "» Promotion" everywhere, no source.
- *  - checkout-edge staging: a PURE promotion hold (it carries no approval gate, so the place reads Held, not Needs your approval; telemetry-indexer prod keeps
- *    its approval and so cannot show one). Its Environment publishes no gate relationship either, so the source comes from the topology (dev): "» [DEV]".
  * Served-only, like `correctedHomeFixture`'s other edits; nothing else in the fixture changes.
  */
 const PROMOTION_HELD: { ns: string; name: string; gate: string }[] = [
-	{ ns: 'telemetry-indexer-prod', name: 'telemetry-indexer', gate: 'promotion-prod' },
 	{ ns: 'platform-staging', name: 'payments-svc', gate: 'promotion-staging' },
 	{ ns: 'checkout-edge-staging', name: 'checkout-edge', gate: 'promotion-staging' }
 ];

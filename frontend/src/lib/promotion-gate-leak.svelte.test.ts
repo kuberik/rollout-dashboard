@@ -22,7 +22,7 @@ vi.mock('$app/navigation', () => ({ goto: vi.fn(), invalidateAll: vi.fn(), pushS
 
 /**
  * batch4 #75 (owner rule): "Promotion from <env>" is screen-reader text, never visible text. Every surface that carries a promotion
- * label is rendered over the served fixture (`withPromotionHolds`: telemetry-indexer prod is held by a promotion gate) and asserted
+ * label is rendered over the served fixture (`withPromotionHolds`: checkout-edge staging is held by a promotion gate) and asserted
  * to hold NO visible text node containing "Promotion from"; its sr-only run is the one place the words may live.
  */
 afterEach(() => installLiveSource(null));
@@ -42,7 +42,7 @@ export function visibleTextNodes(root: Element): string[] {
 }
 const expectNoVisibleSentence = (root: Element, where: string) => expect(visibleTextNodes(root).filter((t) => /Promotion from/.test(t)), `${where}: visible "Promotion from"`).toEqual([]);
 
-const APP = 'telemetry-indexer';
+const APP = 'checkout-edge';
 
 describe('the app tile (Facia) and the app page banner draw the promotion hold', () => {
 	it('Facia: the held tile draws » [DEV], no "Promotion from" in visible text', () => {

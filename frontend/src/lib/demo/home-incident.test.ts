@@ -180,14 +180,14 @@ describe('home-incident rollout detail: the gates the controllers write', () => 
 });
 
 describe('withPromotionHolds (batch4 #75): the served fixture has places a promotion gate itself holds', () => {
-	it('adds one refusing promotion gate to exactly three places (checkout-edge staging a pure hold, the other two beside their approval), and changes nothing else', () => {
+	it('adds one refusing promotion gate to exactly two places (checkout-edge staging a pure hold with a known source, payments-svc staging with none), and changes nothing else', () => {
 		const out = withPromotionHolds(fixture);
 		const diff = out.rollouts.filter((r, i) => r !== fixture.rollouts[i]).map((r) => `${r.metadata.namespace}/${r.metadata.name}`);
-		expect(diff).toEqual(['checkout-edge-staging/checkout-edge', 'telemetry-indexer-prod/telemetry-indexer', 'platform-staging/payments-svc']);
+		expect(diff).toEqual(['checkout-edge-staging/checkout-edge', 'platform-staging/payments-svc']);
 		for (const r of out.rollouts.filter((r, i) => r !== fixture.rollouts[i])) {
 			const gates = (r.status as { gates: { kind: string; allowedVersions: string[] }[] }).gates;
 			expect(gates.filter((g) => g.kind === 'promotion')).toEqual([expect.objectContaining({ allowedVersions: [] })]);
-			expect(gates.some((g) => g.kind === 'approval'), r.metadata.name).toBe(r.metadata.name !== 'checkout-edge');
+			expect(gates.some((g) => g.kind === 'approval'), r.metadata.name).toBe(r.metadata.name === 'payments-svc');
 		}
 		expect(out.environments).toEqual(fixture.environments);
 	});

@@ -12,7 +12,7 @@ afterEach(() => installLiveSource(null));
 
 /**
  * batch4 #76 F: Home, /rollouts and the Holding card agree on WHICH places a promotion gate holds, and heldCauses' internal key
- * ("Held by Promotion from <env>", the cause text) neither splits one source nor merges two. The shipped fixture holds two places (telemetry-indexer prod and checkout-edge staging,
+ * ("Held by Promotion from <env>", the cause text) neither splits one source nor merges two. The shipped fixture holds one place (checkout-edge staging,
  * source dev); the test serves two more: one more from dev (telemetry-worker prod) and one from test (payments-core staging).
  */
 const EXTRA = ['telemetry-worker-prod', 'payments-core-staging'];
@@ -25,11 +25,11 @@ function install() {
 const promoCauses = () => D.heldCauses('incident').filter((h) => h.parts.some((p) => typeof p !== 'string' && p.kind === 'promotion'));
 
 describe('heldCauses keys for promotion holds', () => {
-	it('one source is one cause (3 places from dev), two sources are two causes', () => {
+	it('one source is one cause (2 places from dev), two sources are two causes', () => {
 		install();
 		const c = promoCauses();
 		expect(c.map((h) => h.key).sort()).toEqual(['Held by Promotion from dev', 'Held by Promotion from test']);
-		expect(c.find((h) => h.key.endsWith('dev'))!.rows.map((r) => r.app).sort()).toEqual(['checkout-edge', 'telemetry-indexer', 'telemetry-worker']);
+		expect(c.find((h) => h.key.endsWith('dev'))!.rows.map((r) => r.app).sort()).toEqual(['checkout-edge', 'telemetry-worker']);
 		expect(c.find((h) => h.key.endsWith('test'))!.rows.map((r) => r.app)).toEqual(['payments-core']);
 		expect(new Set(D.heldCauses('incident').map((h) => h.key)).size).toBe(D.heldCauses('incident').length);
 	});
@@ -46,19 +46,19 @@ const surfaces = () => {
 	return { rollouts: (group?.rows ?? []).map((r) => r.href), card, count: page.counts.held, /* Home: a held place is fleet trouble, or (telemetry-indexer prod, which also awaits an approval) the viewer's ask */ trouble: new Set([...homePage('incident').fleet.trouble.filter((t) => t.mark === 'held').map((t) => t.app), ...homePage('incident').asks.map((x) => x.id?.name as string)]) };
 };
 describe('Home, /rollouts and the Holding card agree on the held places', () => {
-	it('the four promotion holds add the same four places to /rollouts Held, the Holding card and Home trouble', () => {
+	it('the three promotion holds add the same three places to /rollouts Held, the Holding card and Home trouble', () => {
 		installLiveSource({ ...fixtureSource() } as never);
 		const before = surfaces();
 		installLiveSource(null);
 		install();
 		const after = surfaces();
 		const promoHrefs = promoCauses().flatMap((h) => h.rows.map((r) => r.href)).sort();
-		expect(promoHrefs).toHaveLength(4);
+		expect(promoHrefs).toHaveLength(3);
 		const added = (a: string[], b: string[]) => b.filter((h) => !a.includes(h)).sort();
 		expect(added(before.rollouts, after.rollouts)).toEqual(promoHrefs);
 		expect(added(before.card, after.card)).toEqual(promoHrefs);
-		expect(after.count - before.count).toBe(4);
+		expect(after.count - before.count).toBe(3);
 		const newApps = [...after.trouble].filter((a) => !before.trouble.has(a)).sort();
-		expect(newApps).toEqual(['checkout-edge', 'payments-core', 'telemetry-indexer', 'telemetry-worker'].filter((a) => !before.trouble.has(a)));
+		expect(newApps).toEqual(['checkout-edge', 'payments-core', 'telemetry-worker'].filter((a) => !before.trouble.has(a)));
 	});
 });
