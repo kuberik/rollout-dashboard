@@ -34,6 +34,7 @@
 import { staleClusterErrors, type StaleMockMode } from './cluster-errors-mock';
 import type { MockResult } from './respond';
 import { applySlicesMode, sliceDetailRollout } from './mock-slices';
+import { withEdgeCases } from './home-edge';
 import { respondGithub as respondGithubRange, avatarFor as avatarForLogin } from './github-data';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,16 +64,18 @@ export type HomeFixture = {
 	 * rollouts whose selector picks them.
 	 */
 	healthChecks?: K8sObject[];
+	/** RolloutSchedules (the home-edge scenario's closed named windows); served on /api/schedules */
+	schedules?: K8sObject[];
 };
 
 export const HOME_INCIDENT_SCENARIO = 'home-incident';
 /** the review scenarios one dev server can serve over the same fixture (`?scenario=<name>` sets a cookie the mock reads; MOCK_SCENARIO is the default) */
-export const HOME_SCENARIOS = ['home-incident', 'home-calm', 'home-quiet'] as const;
+export const HOME_SCENARIOS = ['home-incident', 'home-calm', 'home-quiet', 'home-edge'] as const;
 export type HomeScenario = (typeof HOME_SCENARIOS)[number];
 /** `incident` / `calm` / `quiet` (and the lens spellings) -> the scenario name; null for anything else */
 export function homeScenarioOf(v: string | null | undefined): HomeScenario | null {
 	const k = (v ?? '').replace(/^home-/, '');
-	return k === 'incident' || k === 'calm' || k === 'quiet' ? (`home-${k}` as HomeScenario) : null;
+	return k === 'incident' || k === 'calm' || k === 'quiet' || k === 'edge' ? (`home-${k}` as HomeScenario) : null;
 }
 
 /** The clusters the fixture's `source-cluster` annotations name. */
@@ -128,6 +131,8 @@ export function correctedHomeFixture(f: HomeFixture): HomeFixture {
  */
 export function homeScenarioFixture(f: HomeFixture, scenario: HomeScenario): HomeFixture {
 	if (scenario === 'home-incident') return f;
+	/* home-edge: the incident fixture untouched plus the edge apps (home-edge.ts) */
+	if (scenario === 'home-edge') return withEdgeCases(f);
 	const rollouts = f.rollouts.map((r) => {
 		const st = (r.status ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 		const hist = (st.history ?? []) as Record<string, any>[]; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -574,6 +579,14 @@ export function respondHomeIncident(
 					object: kr
 				}))
 			});
+	}
+
+	/* the deploy windows a scenario carries (home-edge); every other scenario leaves /api/schedules to respond() */
+	if (fixture.schedules) {
+		const sm = path.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/schedules$/);
+		const items = live().schedules ?? [];
+		if (sm) return json({ rolloutSchedules: { items: items.filter((x) => x.metadata.namespace === sm[1]) }, clusterRolloutSchedules: { items: [] } });
+		if (path === '/api/schedules') return json({ rolloutSchedules: { items }, clusterRolloutSchedules: { items: [] } });
 	}
 
 	if (path === '/api/health-checks') return json(homeIncidentFleetHealthChecks(live(), staleMode));
