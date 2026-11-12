@@ -1,5 +1,9 @@
 <svelte:options runes={true} />
 
+<script lang="ts" module>
+	let uid = 0;
+</script>
+
 <script lang="ts">
 	/**
 	 * ONE WAVE'S MARK in the environment strip (strip-dots). ROLE: the strip's only mark: a dot per tier (or per wave when the tier has
@@ -11,9 +15,10 @@
 	 * real progress is exposed per site, so it is indeterminate). transform + opacity only, inside the slot. Off under
 	 * prefers-reduced-motion; CSS animations also pause in hidden tabs and off-screen.
 	 */
-	import { ANIMATED, slicePath, type WaveMark } from '$lib/view-models/wave-mark';
+	import { slicePath, type WaveMark } from '$lib/view-models/wave-mark';
 
-	let { mark, id }: { mark: WaveMark; id: string } = $props();
+	let { mark }: { mark: WaveMark } = $props();
+	const id = `wm${uid++}`;
 	const R = 5;
 	const hollow = $derived(mark.slices.length === 1 && (mark.slices[0].kind === 'notreached' || mark.slices[0].kind === 'notaffected'));
 	const wedge = `M8 8L8 ${8 - R}A${R} ${R} 0 0 1 ${(8 + R * Math.sin(Math.PI / 2)).toFixed(3)} 8Z`;
@@ -33,7 +38,7 @@
 				<path class="wm-halo" d={slicePath(s.from, s.to, R + 1.5)} fill="var(--k-progress-solid)" />
 				<path class="wm-solid" d={slicePath(s.from, s.to, R)} fill="var(--k-progress-solid)" />
 			{:else if s.kind === 'deploying'}
-				<path d={slicePath(s.from, s.to, R)} fill="var(--k-active-solid)" fill-opacity="0.5" />
+				<path class="wm-track" d={slicePath(s.from, s.to, R)} fill="var(--k-active-solid)" fill-opacity="0.5" />
 				<g clip-path="url(#{id}-c{i})"><path class="wm-sweep" d={wedge} fill="var(--k-active-solid)" /></g>
 			{:else}
 				<path d={slicePath(s.from, s.to, R)} fill="var(--k-{s.kind === 'done' ? 'success' : s.kind === 'held' ? 'held' : s.kind === 'stuck' ? 'warning' : 'danger'}-solid)" />
@@ -64,8 +69,13 @@
 	}
 	/* static halo for reduced motion: none (the amber slice itself is the state) */
 	@media (prefers-reduced-motion: reduce) {
-		.wm-halo {
+		.wm-halo,
+		.wm-sweep {
 			opacity: 0;
+		}
+		/* static deploying: the whole slice in the active solid (no wedge, so it never reads as a partial pie) */
+		.wm-track {
+			fill-opacity: 1;
 		}
 	}
 	@keyframes wm-breathe {

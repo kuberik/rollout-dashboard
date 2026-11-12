@@ -128,7 +128,7 @@
 	<span class="env-sites" data-env-sites>
 		{#each wavesOf(c.sites ?? []) as g, gi (gi)}
 			{@const w = g[0].wave}
-			<span class="env-site" class:env-site--here={g.some((x) => x.here)} data-stage-row="{lk}|{c.key}|{w ? 'wave' + w : 'tier'}" data-stage-state={waveMark(g).slices.map((x) => x.kind).join('+')}><WaveMark mark={waveMark(g, w ? 'Wave ' + w : c.label)} id={('wm-' + lk + '-' + c.key + '-' + gi).replace(/[^A-Za-z0-9_-]/g, '_')} /></span>
+			<span class="env-site" class:env-site--here={g.some((x) => x.here)} data-stage-row="{lk}|{c.key}|{w ? 'wave' + w : 'tier'}" data-stage-state={waveMark(g).slices.map((x) => x.kind).join('+')}><WaveMark mark={waveMark(g, w ? 'Wave ' + w : c.label)} /></span>
 		{/each}
 	</span>
 {/snippet}

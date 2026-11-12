@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import WaveMark from './WaveMark.svelte';
 import { waveMark, type MarkSiteState } from '$lib/view-models/wave-mark';
 
-const draw = (states: MarkSiteState[]) => render(WaveMark, { mark: waveMark(states.map((state) => ({ state })), 'Wave 1'), id: 'wm-t' }).container.querySelector('svg')!;
+const draw = (states: MarkSiteState[]) => render(WaveMark, { mark: waveMark(states.map((state) => ({ state })), 'Wave 1') }).container.querySelector('svg')!;
 
 describe('WaveMark', () => {
 	it('is the same 16px box in every state (0px rule)', () => {
@@ -35,6 +35,7 @@ describe('WaveMark', () => {
 		const css = src.slice(src.indexOf('<style>'));
 		const outside = css.replace(/@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\n\t\}\n/, '');
 		expect(outside).not.toMatch(/animation\s*:/);
+		expect(css).toMatch(/prefers-reduced-motion: reduce\) \{[\s\S]*\.wm-sweep[\s\S]*opacity: 0[\s\S]*\.wm-track[\s\S]*fill-opacity: 1/);
 		expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*animation: wm-breathe[\s\S]*animation: wm-sweep/);
 		const keyframes = css.slice(css.indexOf('@keyframes'));
 		expect(keyframes.match(/[a-z-]+(?=\s*:)/g)!.filter((p) => !['opacity', 'transform'].includes(p))).toEqual([]);
