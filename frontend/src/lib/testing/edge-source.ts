@@ -8,12 +8,11 @@ import { fixtureSource, resetHomeModel } from '$lib/components/home/sketch/home-
 import raw from '$lib/view-models/home/fixtures/incident-input.json';
 import { withEdgeCases } from '$lib/demo/home-edge';
 import type { NetworkSchedules } from '$lib/api/schedules';
-import type { HomeFixture } from '$lib/demo/home-incident';
 import type { FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
 
 export function edgeSource(): FleetSource {
 	const base = fixtureSource();
-	const f = withEdgeCases(raw as unknown as HomeFixture);
+	const f = withEdgeCases(raw as unknown as Parameters<typeof withEdgeCases>[0]);
 	const added = {
 		rollouts: f.rollouts.slice(raw.rollouts.length),
 		environments: f.environments.slice(raw.environments.length)
