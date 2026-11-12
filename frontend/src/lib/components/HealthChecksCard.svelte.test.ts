@@ -237,3 +237,39 @@ describe('HealthChecksCard — row order holds through a status change', () => {
 		expect(rowNames()).toEqual(['probe', 'flux', 'new-check']);
 	});
 });
+
+describe('HealthChecksCard — row height does not depend on state', () => {
+	const states: Array<[string, HealthCheck]> = [
+		['pending', hc('a', 'Pending')],
+		['passing', hc('a', 'Healthy')],
+		['failing', hc('a', 'Failed', { message: 'x'.repeat(400) })],
+		[
+			'recovered',
+			hc('a', 'Healthy', {
+				lastErrorTime: '2026-09-13T09:30:00Z',
+				message: 'back in SLO '.repeat(30)
+			})
+		]
+	];
+
+	test.each(states)('%s row is name + exactly one single-line fact', (_n, check) => {
+		render(HealthChecksCard, { props: { healthChecks: [check], windowStart: WINDOW_START } });
+		const row = document.querySelector<HTMLElement>('[data-testid="hc-row"]')!;
+		const subs = row.querySelectorAll<HTMLElement>('[data-testid="hc-sub"]');
+		expect(subs).toHaveLength(1);
+		expect(subs[0].className).toContain('truncate');
+		// no extra block under the name: no message paragraph, no show-more button
+		expect(row.querySelectorAll('p')).toHaveLength(subs[0].tagName === 'P' ? 1 : 0);
+		expect(row.textContent).not.toContain('Show more');
+	});
+
+	test('a passing row states a fact, so it is as tall as a pending one', () => {
+		render(HealthChecksCard, {
+			props: {
+				healthChecks: [hc('a', 'Healthy', { lastChangeTime: '2026-09-13T09:30:00Z' })],
+				windowStart: null
+			}
+		});
+		expect(screen.getByTestId('hc-sub').textContent).toMatch(/^\s*Passing/);
+	});
+});
