@@ -49,8 +49,15 @@ jobs:
         working-directory: frontend
         run: pnpm exec vitest run
 
-      # TODO(follow-up): add `pnpm exec svelte-check --tsconfig ./tsconfig.json`
-      # once the 3-error baseline on main is cleared. Not gated yet.
+      # svelte-check needs the compiled paraglide module, otherwise every
+      # `$lib/paraglide` import reports as a phantom error.
+      - name: Compile paraglide
+        working-directory: frontend
+        run: pnpm exec paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide
+
+      - name: Svelte-check
+        working-directory: frontend
+        run: pnpm exec svelte-check --tsconfig ./tsconfig.json --threshold error
 
   test:
     runs-on: ubuntu-latest
