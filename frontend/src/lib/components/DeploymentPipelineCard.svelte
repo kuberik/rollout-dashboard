@@ -37,6 +37,7 @@
 	import { now } from '$lib/stores/time';
 	import { HEALTH_CHECKS_UNAVAILABLE } from '$lib/view-models/health-witness';
 	import { stageAdvance, type StageAdvance } from '$lib/view-models/stage-advance';
+	import { stageWeight, stageSplitText, type StageWeight } from '$lib/view-models/stage-weight';
 	import { href } from '$lib/paths';
 	import type { Rollout, RolloutTest, HealthCheck, KruiseRollout } from '../../types';
 
@@ -138,6 +139,8 @@
 		kind: 'started' | 'stage' | 'bake';
 		shortLabel: string;
 		longLabel: string;
+		/** Canary traffic share of a stage (`stageWeight`); undefined for non-canary steps and replica-only steps. */
+		weight?: StageWeight;
 		status: NodeStatus;
 		statusLabel: string;
 		krName?: string;
@@ -297,6 +300,7 @@
 						statusLabel = 'Pending';
 					}
 
+					const weight = stageWeight(kr.canarySteps[stepIdx]);
 					const isFirstInKr = stepIdx === 0;
 					const isLastInKr = stepIdx === kr.canarySteps.length - 1;
 
@@ -304,7 +308,8 @@
 						id: `stage-${krIdx}-${stepIdx}`,
 						kind: 'stage',
 						shortLabel: `Stage ${stepNum}`,
-						longLabel: `Stage ${stepNum}`,
+						longLabel: weight ? `Stage ${stepNum} · ${weight.label} traffic` : `Stage ${stepNum}`,
+						weight: weight ?? undefined,
 						status,
 						statusLabel,
 						krName,
@@ -785,7 +790,7 @@
 									? 't-card-title text-fg'
 									: 't-body text-fg-muted'}"
 						>
-							{node.shortLabel}
+							{node.shortLabel}{#if node.weight}<span class="t-meta text-fg-subtle"> · {node.weight.label}</span>{/if}
 						</span>
 					</div>
 					<!-- ⭐ THE CHIP BUDGET, ROUND 2 (2026-10-08, coordinator
@@ -1119,6 +1124,33 @@
 			{@const rolloutSub = rolloutSubStatus(sd)}
 			{@const testsSub = testsSubStatus(sd)}
 			{@const bakeSub = stageBakeSubStatus(sd)}
+
+			<!-- Split meter: how much traffic this stage sends to the new build. New by design: no reference
+			     region draws a share of one thing; it borrows the progress bars' 4px track and the
+			     subtle/line tokens, and is present for every weighted stage so selecting another stage
+			     changes words, never height. -->
+			{#if sd.kr.canarySteps && stageWeight(sd.kr.canarySteps[sd.stepNum - 1])}
+				{@const w = stageWeight(sd.kr.canarySteps[sd.stepNum - 1])!}
+				<div class="space-y-1.5" data-testid="stage-split">
+					<div class="t-meta text-fg-muted">
+						{stageSplitText(
+							w,
+							sd.isPastStep || sd.stageAllDone ? 'past' : sd.isCurrentStep ? 'current' : 'pending',
+							getDisplayVersion(latestEntry.version)
+						)}
+					</div>
+					<div
+						class="h-1.5 w-full overflow-hidden rounded-full bg-line"
+						role="img"
+						aria-label="{w.label} of traffic on the new version"
+					>
+						<div
+							class="h-full rounded-full {sd.isCurrentStep && !sd.isPastStep ? 'bg-progress-solid' : 'bg-fg-subtle'}"
+							style="width: {w.pct}%"
+						></div>
+					</div>
+				</div>
+			{/if}
 
 			<div
 				class="overflow-hidden rounded-md border border-line bg-subtle"
@@ -1569,7 +1601,7 @@
 											? 't-card-title text-fg'
 											: 't-body text-fg-muted'}"
 								>
-									{node.shortLabel}
+									{node.shortLabel}{#if node.weight}<span class="t-meta text-fg-subtle"> · {node.weight.label}</span>{/if}
 								</span>
 							</div>
 							<!-- Chip budget, round 2 — see `navRow`'s identical note above. -->
