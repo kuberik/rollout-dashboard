@@ -16,6 +16,7 @@
 	import { ChevronDownOutline, CheckOutline } from 'flowbite-svelte-icons';
 	import Slipway from '../Slipway.svelte';
 	import { ago, approvalTarget, deployedBuild, truthAttrs, type TRow, type HomeState, type PlaceHold } from '../data';
+	import { placeStateWithPin } from '$lib/view-models/pin-hold';
 	import { markOf, envTheme, tabEnv, actionHref } from '../rollout-view';
 	import { placeAge, placeWord, waveFactOf, waveClause, type PlaceWait } from './app-model';
 
@@ -29,7 +30,7 @@
 	const adverse = $derived(row.group === 'failed' || row.group === 'approval');
 </script>
 
-<li class="min-w-0" {...truthAttrs(row)} data-truth-kind="rollout" data-truth-group={row.group} data-truth-app={row.app} data-truth-href={row.href} data-open={open ? '' : undefined}>
+<li class="min-w-0" {...truthAttrs(row)} data-truth-state={placeStateWithPin(row.state, pinned)} data-truth-kind="rollout" data-truth-group={row.group} data-truth-app={row.app} data-truth-href={row.href} data-open={open ? '' : undefined}>
 	<div class="pl tap-zone px-4 transition-colors hover:bg-hover" data-place-row>
 		<span class="pl-mark flex h-5 items-center">{#if pinned}<HeldGlyph size={16} class="text-fg-muted" title="Held by the pin" />{:else if row.group === 'rest'}<span class="flex h-5 w-4 items-center justify-center"><span class="h-1.5 w-1.5 rounded-full bg-fg-disabled"></span></span>{:else if markOf(row) === 'held'}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{:else}<StatusMark state={markOf(row)} />{/if}</span>
 		<span class="pl-mid" class:pl-mid--long={label.length > 8}>
