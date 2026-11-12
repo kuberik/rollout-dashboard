@@ -23,15 +23,17 @@
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import ChangeDot from '$lib/components/ChangeDot.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
-	import SiteMark, { type SiteState } from '$lib/components/SiteMark.svelte';
+	import { type SiteState } from '$lib/components/SiteMark.svelte';
+	import WaveMark from '$lib/components/WaveMark.svelte';
+	import { waveMark } from '$lib/view-models/wave-mark';
 	import EnvSitePicker from '$lib/components/EnvSitePicker.svelte';
 	import type { Bead } from '$lib/view-models/bead';
 
 	/**
 	 * change-strip r1 (owner 2026-11-12: "using the environment progression mini boxes strip we already had. it just didn't have
 	 * waves. it also had a shortcoming that on prod box we couldn't select exact site"). A PROGRESSION box (opt-in: `sites`) draws
-	 * its sites inside itself after the name: one 16px mark per site in topology order (wave, leader, name), a 1px divider between
-	 * waves. Never ordered by state, so a state change repaints a mark and moves nothing. One site: the box links to it. Several:
+	 * its sites inside itself after the name: one 16px mark per WAVE (per tier when it has none; strip-dots, owner 2026-11-12: plain dots, a pie when a wave's sites differ,
+	 * see WaveMark / wave-mark.ts), sites in topology order (wave, leader, name). Never ordered by state, so a state change repaints a mark and moves nothing. One site: the box links to it. Several:
 	 * the box is a button that opens the SITE PICKER (EnvSitePicker), every site a link to its own rollout.
 	 */
 	export type EnvSite = {
@@ -125,12 +127,8 @@
 {#snippet sitesOf(c: EnvCell, lk: string)}
 	<span class="env-sites" data-env-sites>
 		{#each wavesOf(c.sites ?? []) as g, gi (gi)}
-			{#if gi > 0}<span class="env-wave-div" aria-hidden="true"></span>{/if}
-			<span class="env-wave">
-				{#each g as x (x.key)}
-					<span class="env-site" class:env-site--here={x.here} data-stage-row="{lk}|{x.key}" data-stage-state={x.state}><SiteMark state={x.state} /></span>
-				{/each}
-			</span>
+			{@const w = g[0].wave}
+			<span class="env-site" class:env-site--here={g.some((x) => x.here)} data-stage-row="{lk}|{c.key}|{w ? 'wave' + w : 'tier'}" data-stage-state={waveMark(g).slices.map((x) => x.kind).join('+')}><WaveMark mark={waveMark(g, w ? 'Wave ' + w : c.label)} /></span>
 		{/each}
 	</span>
 {/snippet}
@@ -361,18 +359,8 @@
 		display: inline-flex;
 		flex: none;
 		align-items: center;
-		margin-left: 2px;
-	}
-	.env-wave {
-		display: inline-flex;
-		align-items: center;
 		gap: 2px;
-	}
-	.env-wave-div {
-		width: 1px;
-		height: 12px;
-		margin: 0 4px;
-		background-color: var(--k-fg-disabled);
+		margin-left: 2px;
 	}
 	.env-site {
 		display: inline-flex;
