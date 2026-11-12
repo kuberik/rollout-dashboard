@@ -72,13 +72,14 @@ export type ClusterNoticeCopy = { stale: boolean; slow: boolean; title: string; 
 /**
  * The notice's title and sentence. `lastSeenText` is the already-formatted clock time of the stale payload ('' when unknown).
  * Stale clusters keep their rollouts on the page; every other error means the cluster's items are absent.
- * Slow only when EVERY stale cluster is slow: one unreachable cluster makes the group unreachable.
+ * Slow only when EVERY stale cluster is slow (reason 'slow', or a read that timed out: the hub reports a hang as reason 'unreachable', kind 'timeout'):
+ * one unreachable cluster makes the group unreachable.
  */
 export function clusterNoticeCopy(errors: readonly ClusterError[], subject: string, lastSeenText: string): ClusterNoticeCopy {
 	const names = errors.map((e) => e.name).filter(Boolean);
 	const one = names.length === 1;
 	const stale = errors.length > 0 && errors.every((e) => e.stale);
-	const slow = stale && errors.every((e) => clusterReason(e) === 'slow');
+	const slow = stale && errors.every((e) => clusterReason(e) === 'slow' || clusterKind(e) === 'timeout');
 	if (slow) {
 		return {
 			stale,

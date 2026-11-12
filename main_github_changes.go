@@ -101,7 +101,7 @@ func handleGitHubChanges(c *gin.Context) {
 	if !ok {
 		return
 	}
-	visible, err := visibleGitHubSources(c, k8sClient)
+	visible, clusterErrors, err := visibleGitHubSourcesWithErrors(c, k8sClient)
 	if err != nil {
 		log.Printf("Error checking repository visibility for changes: %v", err)
 		writeUpstreamError(c, "Failed to check repository visibility", err)
@@ -120,7 +120,7 @@ func handleGitHubChanges(c *gin.Context) {
 			// Same cluster-scope 404 as the other GitHub endpoints: a repo
 			// no visible rollout deploys is not this cluster's to answer
 			// for, distinguished from a normal empty result.
-			c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": "repo"})
+			c.JSON(http.StatusNotFound, notFoundRepoBody(clusterErrors))
 			return
 		}
 		repos = []string{key}
@@ -131,7 +131,7 @@ func handleGitHubChanges(c *gin.Context) {
 		sort.Strings(repos)
 	}
 	if len(repos) == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": "repo"})
+		c.JSON(http.StatusNotFound, notFoundRepoBody(clusterErrors))
 		return
 	}
 
@@ -178,6 +178,9 @@ func handleGitHubChanges(c *gin.Context) {
 	// as a credential is ever a map key.
 	cacheKey := changesCacheKey(token, days, mineOnly, repos)
 	if cached, ok := cachedChangesGet(cacheKey); ok {
+		// The cache holds the answer, not the spokes' state at the time: what
+		// could not be read right now is attached per request.
+		cached.ClusterErrors = clusterErrors
 		writeJSONWithETag(c, http.StatusOK, cached)
 		return
 	}
@@ -277,6 +280,7 @@ func handleGitHubChanges(c *gin.Context) {
 	// error or an auth bounce and none of them reach here, so a failure is
 	// never cached — the next request retries it.
 	cachedChangesPut(cacheKey, resp)
+	resp.ClusterErrors = clusterErrors
 	writeJSONWithETag(c, http.StatusOK, resp)
 }
 
@@ -360,6 +364,10 @@ type ghChangesResponse struct {
 	Repos   []string    `json:"repos"`
 	Since   string      `json:"since"`
 	Changes []*ghChange `json:"changes"`
+	// ClusterErrors: spokes that could not be read, so repos deployed only
+	// there may be missing. Same shape as GET /api/rollouts; absent when none.
+	// Never cached with the answer (set per request).
+	ClusterErrors []ClusterError `json:"clusterErrors,omitempty"`
 }
 
 // changesForRepo fetches and classifies every change for one repo: the

@@ -61,14 +61,14 @@ func handleGitHubCommitPulls(c *gin.Context) {
 	if !ok {
 		return
 	}
-	visible, err := visibleGitHubSources(c, k8sClient)
+	visible, clusterErrors, err := visibleGitHubSourcesWithErrors(c, k8sClient)
 	if err != nil {
 		log.Printf("Error checking repository visibility for %s/%s commits/%s/pulls: %v", owner, repo, sha, err)
 		writeUpstreamError(c, "Failed to check repository visibility", err)
 		return
 	}
 	if !visible[githubapp.NormalizedRepoKey(owner, repo)] {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not_found", "scope": "repo"})
+		c.JSON(http.StatusNotFound, notFoundRepoBody(clusterErrors))
 		return
 	}
 

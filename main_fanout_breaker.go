@@ -46,7 +46,11 @@ const (
 	breakerThreshold = 2
 
 	breakerBaseCooldown = 15 * time.Second
-	breakerMaxCooldown  = 5 * time.Minute
+	// breakerMaxCooldown caps the backoff. The breaker guards dashboard reads
+	// that re-ask every spokeDataTTL, and a recovered spoke is only noticed
+	// at the next probe: a longer cap leaves a healthy spoke flagged down for
+	// that long after it answers again (live: ~46s after a 56s outage).
+	breakerMaxCooldown = 30 * time.Second
 
 	// breakerProbeTimeout is how long a half-open probe may stay reserved
 	// before allow() treats it as leaked and admits another. Must be a
@@ -144,9 +148,17 @@ func (b *spokeBreakers) failure(spokeURL string, err error) {
 		e = &breakerEntry{}
 		b.m[spokeURL] = e
 	}
+	e.lastErr = err
+	// One failure per probe round. Once open, only the admitted probe's
+	// failure counts: the rollouts, health-checks and name caches share this
+	// breaker, and calls admitted before it opened (or duplicates of the
+	// probe) landing now say nothing new about the spoke. Counting them
+	// doubled the cooldown per caller, not per round.
+	if !e.openUntil.IsZero() && !e.probing {
+		return
+	}
 	e.probing = false
 	e.failures++
-	e.lastErr = err
 	if e.failures < breakerThreshold {
 		return
 	}

@@ -101,3 +101,18 @@ it('an entry whose typed copy has no cause keeps the raw message as the note', (
 	}
 	expect(clusterRawNote({ ...e('prod'), error: '', kind: 'rejected' } as never)).toBeUndefined();
 });
+
+// Live (2026-11-12): a spoke that hangs is reported with reason "unreachable" and kind "timeout". The notice words it from the kind.
+it('a stale cluster whose read timed out is slow to answer, never unreachable, whatever its reason says', () => {
+	const hung = { ...stale('dev', 'unreachable'), kind: 'timeout' } as never;
+	const c = clusterNoticeCopy([hung], 'Home', '09:41');
+	expect(c.slow).toBe(true);
+	expect(c.title).toBe('dev is slow to answer — showing its data from 09:41');
+	expect(`${c.title} ${c.message}`).not.toMatch(/unreachable|stopped answering/i);
+	expect(clusterDetail(hung)).toBe('dev did not answer in time.');
+});
+it('a refused or unreachable kind stays unreachable', () => {
+	const gone = { ...stale('dev', 'unreachable'), kind: 'unreachable' } as never;
+	expect(clusterNoticeCopy([gone], 'Home', '09:41').title).toMatch(/unreachable/);
+	expect(clusterNoticeCopy([gone, { ...stale('qa', 'unreachable'), kind: 'timeout' } as never], 'Home', '').slow).toBe(false);
+});

@@ -367,15 +367,10 @@ func notFoundRepoBody(clusterErrors []ClusterError) gin.H {
 // (main_fanout.go) that GET /api/rollouts applies, reused rather than
 // duplicated: a repo the user cannot themselves `list rollouts` for in any
 // namespace, on any cluster, can never be probed through the PR endpoint.
-func visibleGitHubSources(c *gin.Context, k8sClient *kubernetes.Client) (map[string]bool, error) {
-	sources, _, err := visibleGitHubSourcesWithErrors(c, k8sClient)
-	return sources, err
-}
-
-// visibleGitHubSourcesWithErrors is visibleGitHubSources plus the fan-in's
-// clusterErrors: spokes that did not answer (or answered from a stale cache),
-// so their repos may be missing from the set. Handlers whose success body can
-// carry the field pass it on in the same shape /api/rollouts uses.
+//
+// Also returns the fan-in's clusterErrors: spokes that did not answer (or
+// answered from a stale cache), so their repos may be missing from the set.
+// Handlers pass them on in the same shape /api/rollouts uses.
 func visibleGitHubSourcesWithErrors(c *gin.Context, k8sClient *kubernetes.Client) (map[string]bool, []ClusterError, error) {
 	ctx := c.Request.Context()
 
