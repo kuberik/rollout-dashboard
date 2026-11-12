@@ -38,15 +38,7 @@ import { withEdgeCases } from './home-edge';
 import { respondGithub as respondGithubRange, avatarFor as avatarForLogin } from './github-data';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type K8sObject = {
-	metadata: {
-		name: string;
-		namespace: string;
-		labels?: Record<string, string>;
-		annotations?: Record<string, string>;
-	};
-	[k: string]: any;
-};
+export type K8sObject = { metadata: { name: string; namespace: string; labels?: Record<string, string>; annotations?: Record<string, string> }; [k: string]: any };
 
 export type HomeFixtureChange = {
 	owner: string;
@@ -83,9 +75,7 @@ export type HomeScenario = (typeof HOME_SCENARIOS)[number];
 /** `incident` / `calm` / `quiet` (and the lens spellings) -> the scenario name; null for anything else */
 export function homeScenarioOf(v: string | null | undefined): HomeScenario | null {
 	const k = (v ?? '').replace(/^home-/, '');
-	return k === 'incident' || k === 'calm' || k === 'quiet' || k === 'edge'
-		? (`home-${k}` as HomeScenario)
-		: null;
+	return k === 'incident' || k === 'calm' || k === 'quiet' || k === 'edge' ? (`home-${k}` as HomeScenario) : null;
 }
 
 /** The clusters the fixture's `source-cluster` annotations name. */
@@ -100,9 +90,7 @@ const ISO_INSTANT = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/;
 /** Deep copy of `value` with every ISO instant string moved by `shiftMs`. */
 export function rebaseInstants<T>(value: T, shiftMs: number): T {
 	if (typeof value === 'string') {
-		return (
-			ISO_INSTANT.test(value) ? new Date(Date.parse(value) + shiftMs).toISOString() : value
-		) as T;
+		return (ISO_INSTANT.test(value) ? new Date(Date.parse(value) + shiftMs).toISOString() : value) as T;
 	}
 	if (Array.isArray(value)) return value.map((v) => rebaseInstants(v, shiftMs)) as T;
 	if (value && typeof value === 'object') {
@@ -118,10 +106,7 @@ export function rebaseInstants<T>(value: T, shiftMs: number): T {
  * hello-frontend-app's rel-66 arriving in dev, staging and prod in the SAME second and #13 merged 16h before its own build was cut. No real pipeline
  * does that. #13 merges at 18:33, rel-66 reaches dev 18:46, staging 18:58, prod 19:11 (unchanged). Applied BEFORE the rebase, in the fixture's own time.
  */
-const ARRIVE: Record<string, string> = {
-	'hello-dep-dev': '2026-10-24T18:46:26.893Z',
-	'hello-dep-staging': '2026-10-24T18:58:26.893Z'
-};
+const ARRIVE: Record<string, string> = { 'hello-dep-dev': '2026-10-24T18:46:26.893Z', 'hello-dep-staging': '2026-10-24T18:58:26.893Z' };
 const MERGED_13 = '2026-10-24T18:33:49.255Z';
 export function correctedHomeFixture(f: HomeFixture): HomeFixture {
 	const rollouts = f.rollouts.map((r) => {
@@ -133,13 +118,9 @@ export function correctedHomeFixture(f: HomeFixture): HomeFixture {
 	});
 	const environments = f.environments.map((e) => {
 		const t = ARRIVE[e.metadata.namespace];
-		return t && e.metadata.name === 'hello-frontend-app'
-			? { ...e, status: { ...e.status, lastStatusChangeTime: t } }
-			: e;
+		return t && e.metadata.name === 'hello-frontend-app' ? { ...e, status: { ...e.status, lastStatusChangeTime: t } } : e;
 	});
-	const changes = f.changes.map((c) =>
-		c.repo === 'hello-frontend-app' && c.number === 13 ? { ...c, mergedAt: MERGED_13 } : c
-	);
+	const changes = f.changes.map((c) => (c.repo === 'hello-frontend-app' && c.number === 13 ? { ...c, mergedAt: MERGED_13 } : c));
 	return { ...f, rollouts, environments, changes };
 }
 
@@ -158,14 +139,10 @@ export function homeScenarioFixture(f: HomeFixture, scenario: HomeScenario): Hom
 		let next = st;
 		if (hist[0]?.bakeStatus === 'Failed') {
 			const { failedHealthChecks: _drop, bakeStatusMessage: _msg, ...ok } = hist[0];
-			void _drop;
-			void _msg;
+			void _drop; void _msg;
 			next = { ...next, history: [{ ...ok, bakeStatus: 'Succeeded' }, ...hist.slice(1)] };
 		}
-		if (
-			scenario === 'home-quiet' &&
-			((st.gates ?? []) as { name: string }[]).some((g) => /approval/.test(g.name))
-		)
+		if (scenario === 'home-quiet' && ((st.gates ?? []) as { name: string }[]).some((g) => /approval/.test(g.name)))
 			next = { ...next, releaseCandidates: [] };
 		return next === st ? r : { ...r, status: next };
 	});
@@ -178,52 +155,19 @@ export function homeScenarioFixture(f: HomeFixture, scenario: HomeScenario): Hom
  * Served on the HealthCheck (`/health-checks`, fleet and per rollout) and as the snapshot on the head history entry's `failedHealthChecks`.
  */
 const OBSERVATIONS: Record<string, Record<string, unknown>[]> = {
-	'invoice-api-error-rate': [
-		{
-			name: 'error rate',
-			kind: 'Threshold',
-			value: '8.2',
-			limit: '1',
-			direction: 'Above',
-			unit: '%',
-			healthy: false
-		}
-	],
+	'invoice-api-error-rate': [{ name: 'error rate', kind: 'Threshold', value: '8.2', limit: '1', direction: 'Above', unit: '%', healthy: false }],
 	'checkout-worker-prometheus-high-error-rate': [
-		{
-			name: 'error rate',
-			kind: 'Threshold',
-			value: '8.9',
-			limit: '1',
-			direction: 'Above',
-			unit: '%',
-			healthy: false
-		},
+		{ name: 'error rate', kind: 'Threshold', value: '8.9', limit: '1', direction: 'Above', unit: '%', healthy: false },
 		{ name: 'queue depth', kind: 'Count', value: '412', healthy: false }
 	],
-	'hello-frontend-app-error-rate': [
-		{
-			name: 'error rate',
-			kind: 'Threshold',
-			value: '2.4',
-			limit: '1',
-			direction: 'Above',
-			unit: '%',
-			healthy: false
-		}
-	]
+	'hello-frontend-app-error-rate': [{ name: 'error rate', kind: 'Threshold', value: '2.4', limit: '1', direction: 'Above', unit: '%', healthy: false }]
 };
 export function withObservationSnapshots(f: HomeFixture): HomeFixture {
 	const rollouts = f.rollouts.map((r) => {
 		const hist = r.status?.history as { failedHealthChecks?: { name: string }[] }[] | undefined;
 		const fc = hist?.[0]?.failedHealthChecks;
 		if (!fc?.some((c) => OBSERVATIONS[c.name])) return r;
-		const head = {
-			...hist![0],
-			failedHealthChecks: fc.map((c) =>
-				OBSERVATIONS[c.name] ? { ...c, observations: OBSERVATIONS[c.name] } : c
-			)
-		};
+		const head = { ...hist![0], failedHealthChecks: fc.map((c) => (OBSERVATIONS[c.name] ? { ...c, observations: OBSERVATIONS[c.name] } : c)) };
 		return { ...r, status: { ...r.status, history: [head, ...hist!.slice(1)] } };
 	});
 	return { ...f, rollouts };
@@ -275,14 +219,8 @@ export function withHealthCheckSelector(rollout: K8sObject): K8sObject {
  * controller owner reference that tells a page the gate is the dependency's,
  * not a hand-authored rule. `{}` for any other gate (nothing is invented).
  */
-function dependencyGateMeta(
-	f: HomeFixture,
-	namespace: string,
-	gateName: string
-): Record<string, unknown> {
-	const dep = f.rolloutDependencies.find(
-		(d) => inNs(namespace)(d) && d.status?.gateName === gateName
-	);
+function dependencyGateMeta(f: HomeFixture, namespace: string, gateName: string): Record<string, unknown> {
+	const dep = f.rolloutDependencies.find((d) => inNs(namespace)(d) && d.status?.gateName === gateName);
 	if (!dep) return {};
 	const provider = dep.spec?.providerRef?.name ?? '';
 	const contract = dep.spec?.contract ?? '';
@@ -371,12 +309,7 @@ export function homeIncidentHealthChecks(
 	const failedChecks = h?.failedHealthChecks ?? [];
 	const headFailed = h?.bakeStatus === 'Failed';
 	const pending = h?.bakeStatus === 'InProgress' || h?.bakeStatus === 'Deploying';
-	const check = (
-		checkName: string,
-		cls: string,
-		displayName: string,
-		status: Record<string, unknown>
-	) => ({
+	const check = (checkName: string, cls: string, displayName: string, status: Record<string, unknown>) => ({
 		apiVersion: 'kuberik.com/v1alpha1',
 		kind: 'HealthCheck',
 		metadata: {
@@ -401,15 +334,10 @@ export function homeIncidentHealthChecks(
 				}
 			: pending
 				? { status: 'Pending', message: 'reconciling', lastChangeTime: h?.timestamp }
-				: {
-						status: 'Healthy',
-						message: 'Kustomization is reconciled',
-						lastChangeTime: h?.timestamp
-					}
+				: { status: 'Healthy', message: 'Kustomization is reconciled', lastChangeTime: h?.timestamp }
 	);
 	// the fixture's own checks this rollout's selector picks (same namespace, every matchLabel)
-	const want = (withHealthCheckSelector(rollout).spec?.healthCheckSelector?.matchLabels ??
-		{}) as Record<string, string>;
+	const want = (withHealthCheckSelector(rollout).spec?.healthCheckSelector?.matchLabels ?? {}) as Record<string, string>;
 	const selected = fixtureChecks.filter(
 		(hc) =>
 			hc.metadata.namespace === namespace &&
@@ -425,9 +353,7 @@ export function homeIncidentHealthChecks(
 					message: c.message ?? 'failing',
 					lastChangeTime: at,
 					lastErrorTime: at,
-					...(OBSERVATIONS[c.name]
-						? { observations: OBSERVATIONS[c.name].map((o) => ({ ...o, observedTime: at })) }
-						: {})
+					...(OBSERVATIONS[c.name] ? { observations: OBSERVATIONS[c.name].map((o) => ({ ...o, observedTime: at })) } : {})
 				})
 			)
 		]
@@ -440,10 +366,7 @@ export function homeIncidentHealthChecks(
  * answer), so Home and the rollout detail page read one truth. Shape as the
  * real endpoint (design: .work/home-build/hc-v2/QUESTIONS.md).
  */
-export function homeIncidentFleetHealthChecks(
-	f: HomeFixture,
-	staleMode: StaleMockMode | null = null
-): Record<string, unknown> {
+export function homeIncidentFleetHealthChecks(f: HomeFixture, staleMode: StaleMockMode | null = null): Record<string, unknown> {
 	return {
 		rolloutHealthChecks: {
 			items: f.rollouts.map((r) => ({
@@ -483,8 +406,7 @@ export function homeIncidentEvents(rollout: K8sObject): Record<string, unknown> 
 			involvedObject: { kind: 'Pod', name: pod },
 			// the pod-level symptom is the failing check's own message; the
 			// bake message is the controller's verdict, not a probe result
-			message:
-				h.failedHealthChecks?.[0]?.message ?? h.bakeStatusMessage ?? 'Readiness probe failed',
+			message: h.failedHealthChecks?.[0]?.message ?? h.bakeStatusMessage ?? 'Readiness probe failed',
 			lastTimestamp: h.bakeEndTime ?? h.timestamp
 		});
 	}
@@ -501,15 +423,9 @@ function resolveTag(f: HomeFixture, repo: string, ref: string): string {
 	for (const r of f.rollouts) {
 		if (r.metadata.name !== repo) continue;
 		const status = r.status as
-			| {
-					history?: { version?: { tag?: string; revision?: string } }[];
-					availableReleases?: { tag?: string; revision?: string }[];
-			  }
+			| { history?: { version?: { tag?: string; revision?: string } }[]; availableReleases?: { tag?: string; revision?: string }[] }
 			| undefined;
-		const versions = [
-			...(status?.history ?? []).map((h) => h.version),
-			...(status?.availableReleases ?? [])
-		];
+		const versions = [...(status?.history ?? []).map((h) => h.version), ...(status?.availableReleases ?? [])];
 		const hit = versions.find((v) => v?.tag === ref && v.revision);
 		if (hit?.revision) return hit.revision;
 	}
@@ -568,29 +484,18 @@ function spreadWeek(f: HomeFixture, name: RegExp, perDay: number[], pinned?: str
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	for (const r of f.rollouts as any[]) {
 		if (!name.test(r.metadata?.name ?? '')) continue;
-		(r.status?.history ?? []).forEach((h: unknown, i: number) => {
-			if (i >= 2) {
-				const tag = (h as { version?: { tag?: string } }).version?.tag ?? '';
-				if (tag !== PINNED_SHA && (pinned === undefined || tag < pinned)) entries.push({ h });
-			}
-		});
+		(r.status?.history ?? []).forEach((h: unknown, i: number) => { if (i >= 2) { const tag = (h as { version?: { tag?: string } }).version?.tag ?? ''; if (tag !== PINNED_SHA && (pinned === undefined || tag < pinned)) entries.push({ h }); } });
 	}
 	entries.sort((a, b) => Date.parse(b.h.timestamp) - Date.parse(a.h.timestamp));
 	/* truth-4: with `pinned`, only builds OLDER than the pinned change's build (tags below it) move back. A build above it was made after #37 merged
 	   (its `containedIn` lists #37), so it cannot have been deployed on a past day; it keeps today's time, which also keeps every rollout's history in
 	   build order (dev never "rolled back from a11c707"). Too few eligible entries for the quota: one per day, newest first, instead of empty days. */
-	if (pinned !== undefined && entries.length < perDay.reduce((a, b) => a + b, 0))
-		perDay = perDay.map(
-			(_, d) =>
-				entries.filter((_e, k) => Math.floor((k * perDay.length) / entries.length) === d).length
-		);
+	if (pinned !== undefined && entries.length < perDay.reduce((a, b) => a + b, 0)) perDay = perDay.map((_, d) => entries.filter((_e, k) => Math.floor((k * perDay.length) / entries.length) === d).length);
 	let i = 0;
 	perDay.forEach((n, d) => {
 		for (let k = 0; k < n && i < entries.length; k++, i++) {
 			const h = entries[i].h;
-			for (const key of Object.keys(h))
-				if (typeof h[key] === 'string' && ISO_INSTANT.test(h[key]))
-					h[key] = new Date(Date.parse(h[key]) - (d + 1) * 86_400_000).toISOString();
+			for (const key of Object.keys(h)) if (typeof h[key] === 'string' && ISO_INSTANT.test(h[key])) h[key] = new Date(Date.parse(h[key]) - (d + 1) * 86_400_000).toISOString();
 		}
 	});
 	// truth-3: a build is never deployed before the change that made it merged. The spread moved deploys back by whole days, so the
@@ -598,19 +503,10 @@ function spreadWeek(f: HomeFixture, name: RegExp, perDay: number[], pinned?: str
 	// older. A change merged after that deploy's original time (#37, the incident change, 9h ago) is the pinned story: its own build's
 	// entries are never spread (see `pinned` above), so it stays put.
 	const first = new Map<string, number>();
-	for (const r of f.rollouts as any[]) {
-		// eslint-disable-line @typescript-eslint/no-explicit-any
+	for (const r of f.rollouts as any[]) { // eslint-disable-line @typescript-eslint/no-explicit-any
 		if (!name.test(r.metadata?.name ?? '')) continue;
-		if (r.status?.history)
-			r.status.history.sort(
-				(a: { timestamp: string }, b: { timestamp: string }) =>
-					Date.parse(b.timestamp) - Date.parse(a.timestamp)
-			);
-		for (const h of r.status?.history ?? []) {
-			const t = Date.parse(h.timestamp);
-			const k = h.version?.tag ?? '';
-			if (!(first.get(k)! <= t)) first.set(k, t);
-		}
+		if (r.status?.history) r.status.history.sort((a: { timestamp: string }, b: { timestamp: string }) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+		for (const h of r.status?.history ?? []) { const t = Date.parse(h.timestamp); const k = h.version?.tag ?? ''; if (!(first.get(k)! <= t)) first.set(k, t); }
 	}
 	for (const c of f.changes as { mergeCommitSha?: string; mergedAt: string; openedAt?: string }[]) {
 		const t = first.get(c.mergeCommitSha ?? '');
@@ -619,15 +515,13 @@ function spreadWeek(f: HomeFixture, name: RegExp, perDay: number[], pinned?: str
 	}
 	return f;
 }
-const spreadInvoiceWeek = (f: HomeFixture): HomeFixture =>
-	spreadWeek(f, /^invoice-api/, INVOICE_DAYS, PINNED_SHA);
+const spreadInvoiceWeek = (f: HomeFixture): HomeFixture => spreadWeek(f, /^invoice-api/, INVOICE_DAYS, PINNED_SHA);
 /**
  * apps-11 AS8 — hello-frontend-app's 12 deploys all landed today too ("How it's going" = one bar + six empty days). Same served-only
  * treatment: the two newest entries of each of its three rollouts stay, the other six spread over the previous six days (1/1/0/2/1/1).
  */
 const HELLO_DAYS = [1, 1, 0, 2, 1, 1];
-const spreadHelloWeek = (f: HomeFixture): HomeFixture =>
-	spreadWeek(f, /^hello-frontend-app/, HELLO_DAYS);
+const spreadHelloWeek = (f: HomeFixture): HomeFixture => spreadWeek(f, /^hello-frontend-app/, HELLO_DAYS);
 
 /**
  * Answers one request from the fixture as it reads at `now`, or `null` to
@@ -644,12 +538,7 @@ export function respondHomeIncident(
 	if (method !== 'GET') return null;
 	const [rawPath, query = ''] = rawUrl.split('?');
 	const path = rawPath.replace(/^\/api\/clusters\/[^/]+(?=\/)/, '/api');
-	const live = () =>
-		spreadHelloWeek(
-			spreadInvoiceWeek(
-				rebasedHomeFixture(withObservationSnapshots(correctedHomeFixture(fixture)), now)
-			)
-		);
+	const live = () => spreadHelloWeek(spreadInvoiceWeek(rebasedHomeFixture(withObservationSnapshots(correctedHomeFixture(fixture)), now)));
 
 	if (path === '/api/rollouts') {
 		const f = live();
@@ -675,15 +564,9 @@ export function respondHomeIncident(
 	const mr = path.match(/^\/api\/kustomizations\/([^/]+)\/([^/]+)\/managed-resources$/);
 	if (mr) {
 		const f = live();
-		const k = f.kustomizations.find(
-			(x) => x.metadata.namespace === mr[1] && x.metadata.name === mr[2]
-		);
-		const ids: string[] = ((k?.status?.inventory?.entries ?? []) as { id: string }[])
-			.map((e) => e.id)
-			.filter((id) => id.endsWith('_rollouts.kruise.io_Rollout'));
-		const krs = f.kruiseRollouts.filter((kr) =>
-			ids.includes(`${kr.metadata.namespace}_${kr.metadata.name}_rollouts.kruise.io_Rollout`)
-		);
+		const k = f.kustomizations.find((x) => x.metadata.namespace === mr[1] && x.metadata.name === mr[2]);
+		const ids: string[] = ((k?.status?.inventory?.entries ?? []) as { id: string }[]).map((e) => e.id).filter((id) => id.endsWith('_rollouts.kruise.io_Rollout'));
+		const krs = f.kruiseRollouts.filter((kr) => ids.includes(`${kr.metadata.namespace}_${kr.metadata.name}_rollouts.kruise.io_Rollout`));
 		if (krs.length)
 			return json({
 				managedResources: krs.map((kr) => ({
@@ -702,13 +585,8 @@ export function respondHomeIncident(
 	if (fixture.schedules) {
 		const sm = path.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/schedules$/);
 		const items = live().schedules ?? [];
-		if (sm)
-			return json({
-				rolloutSchedules: { items: items.filter((x) => x.metadata.namespace === sm[1]) },
-				clusterRolloutSchedules: { items: [] }
-			});
-		if (path === '/api/schedules')
-			return json({ rolloutSchedules: { items }, clusterRolloutSchedules: { items: [] } });
+		if (sm) return json({ rolloutSchedules: { items: items.filter((x) => x.metadata.namespace === sm[1]) }, clusterRolloutSchedules: { items: [] } });
+		if (path === '/api/schedules') return json({ rolloutSchedules: { items }, clusterRolloutSchedules: { items: [] } });
 	}
 
 	if (path === '/api/health-checks') return json(homeIncidentFleetHealthChecks(live(), staleMode));
@@ -718,20 +596,14 @@ export function respondHomeIncident(
 		const [, ns, name, sub] = m;
 		const f = live();
 		const rollout = f.rollouts.find((r) => r.metadata.namespace === ns && r.metadata.name === name);
-		if (!rollout)
-			return json({ error: 'not_found', message: `rollout ${ns}/${name} not found` }, 404);
+		if (!rollout) return json({ error: 'not_found', message: `rollout ${ns}/${name} not found` }, 404);
 		if (sub === '/health-checks') return json(homeIncidentHealthChecks(rollout, f.healthChecks));
 		if (sub === '/events') return json(homeIncidentEvents(rollout));
 		return json(sliceDetailRollout(homeIncidentDetail(f, rollout)));
 	}
 
 	if (path === '/api/auth/github/status') {
-		return json({
-			configured: true,
-			connected: true,
-			login: fixture.me,
-			avatarUrl: avatarForLogin(fixture.me)
-		});
+		return json({ configured: true, connected: true, login: fixture.me, avatarUrl: avatarForLogin(fixture.me) });
 	}
 
 	if (path === '/api/github/changes') {
@@ -755,35 +627,16 @@ export function respondHomeIncident(
 		const res = respondGithubRange('GET', path, new URLSearchParams(query));
 		if (!res) return null;
 		try {
-			const j = JSON.parse(res.body ?? '{}') as {
-				commits?: {
-					sha: string;
-					message: string;
-					author?: string;
-					authorUrl?: string;
-					avatarUrl?: string;
-					url?: string;
-				}[];
-			};
+			const j = JSON.parse(res.body ?? '{}') as { commits?: { sha: string; message: string; author?: string; authorUrl?: string; avatarUrl?: string; url?: string }[] };
 			let changed = false;
 			for (const c of j.commits ?? []) {
 				if (!/^Release commit for build /.test(c.message)) continue;
-				const hit = live().changes.find(
-					(x) => refMatches(x.mergeCommitSha, c.sha) || refMatches(x.headSha, c.sha)
-				);
+				const hit = live().changes.find((x) => refMatches(x.mergeCommitSha, c.sha) || refMatches(x.headSha, c.sha));
 				if (!hit) continue;
-				c.message = String(hit.title);
-				c.author = String(hit.author);
-				c.authorUrl = `https://github.com/${hit.author}`;
-				c.avatarUrl = avatarForLogin(String(hit.author));
-				c.url = `https://github.com/${hit.owner}/${hit.repo}/commit/${c.sha}`;
-				changed = true;
+				c.message = String(hit.title); c.author = String(hit.author); c.authorUrl = `https://github.com/${hit.author}`; c.avatarUrl = avatarForLogin(String(hit.author)); c.url = `https://github.com/${hit.owner}/${hit.repo}/commit/${c.sha}`; changed = true;
 			}
-			if (changed)
-				return { status: res.status, headers: res.headers, body: JSON.stringify(j) } as MockResult;
-		} catch {
-			/* github-data's answer stands */
-		}
+			if (changed) return { status: res.status, headers: res.headers, body: JSON.stringify(j) } as MockResult;
+		} catch { /* github-data's answer stands */ }
 		return null;
 	}
 
@@ -805,10 +658,7 @@ export function respondHomeIncident(
 		const f = live();
 		const sha = resolveTag(f, repo, ref);
 		const hits = f.changes.filter(
-			(x) =>
-				x.owner === owner &&
-				x.repo === repo &&
-				(refMatches(x.mergeCommitSha, sha) || refMatches(x.headSha, sha))
+			(x) => x.owner === owner && x.repo === repo && (refMatches(x.mergeCommitSha, sha) || refMatches(x.headSha, sha))
 		);
 		if (pulls) {
 			if (!f.changes.some((x) => x.owner === owner && x.repo === repo)) return null;
