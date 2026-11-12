@@ -329,14 +329,24 @@ export function reconcileNeighbourhoodHolds(
  * disagree with the per-gate "Nothing held" lines. Pass the RECONCILED
  * upstream (`reconcileNeighbourhoodHolds`) when the breakdown is known.
  */
-export function gatesOnThisRollout(h: {
-	upstream: readonly NeighbourLink[];
-	downstream: readonly NeighbourLink[];
-	gates: readonly GateBox[];
-}): { total: number; holding: number } {
+export function gatesOnThisRollout(
+	h: {
+		upstream: readonly NeighbourLink[];
+		downstream: readonly NeighbourLink[];
+		gates: readonly GateBox[];
+	},
+	/**
+	 * batch4 #76 (UX71 2): the stage this rollout's build is waiting on (the typed `waitsFor` stage, set only
+	 * while the build is not yet held here). A promotion wait IS holding: the headline says "Waits for test" and
+	 * the Held builds list names the build, so the count must too. That one chain predecessor joins numerator and
+	 * denominator; every other chain link stays plain sequencing.
+	 */
+	waitingOnStage: string | null = null
+): { total: number; holding: number } {
 	const up = h.upstream.filter((l) => !l.chainPredecessor);
+	const waiting = waitingOnStage && h.upstream.some((l) => l.chainPredecessor && l.node.env === waitingOnStage) ? 1 : 0;
 	return {
-		total: up.length + h.gates.length,
-		holding: up.filter((l) => l.state === 'blocked').length + h.gates.filter((g) => g.state === 'blocked').length
+		total: up.length + h.gates.length + waiting,
+		holding: up.filter((l) => l.state === 'blocked').length + h.gates.filter((g) => g.state === 'blocked').length + waiting
 	};
 }

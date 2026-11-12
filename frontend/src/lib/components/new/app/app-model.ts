@@ -31,6 +31,7 @@ import { lastFailureMs } from '$lib/view-models/event-age';
 import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
+import { waitFact } from '$lib/view-models/wait-fact';
 import { causeText, joinCause, type Cause } from '$lib/view-models/gate-label';
 
 const ORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
@@ -644,12 +645,7 @@ export function placeWait(p: PlaceHold, places: PlaceHold[]): PlaceWait | null {
 	const o = waitingOn(p, places);
 	if (!o || !p.heldBuilds.length)
 		return null; /* a place held only by a build that failed upstream has no build waiting: the sentence is waveHold's */
-	const started = o.on.some((q) => q.state === 'checking')
-		? 'finish checking'
-		: o.on.some((q) => q.state === 'deploying')
-			? 'finish deploying'
-			: 'deploy';
-	return { on: o.name, fact: `to ${started} ${p.heldBuilds[0]?.build ?? p.upstreamFailed}` };
+	return { on: o.name, fact: waitFact(o.on.map((q) => q.state), (p.heldBuilds[0]?.build ?? p.upstreamFailed)!) };
 }
 /**
  * batch4 #3 (landing v5 R5): the same wait, with its CAUSE. After a wave-1 catch (us-east-1 failed the bake) the wave-2 places the environment
