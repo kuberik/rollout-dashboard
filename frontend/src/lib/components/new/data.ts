@@ -735,7 +735,9 @@ export function apps(state: HomeState) {
 				const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 0));
 				/* ONE predicate with /envs/<env>: "Ready to promote" exactly when a newer catalogue build can be promoted there (inbound names the app, nothing holds it); otherwise the app is Behind */
 				const target = inboundOf(lag.t).some((x) => x.app === a.app && isArriving(x));
-				fact = target ? `Ready to promote to ${lag.t} · ${n} behind` : `Behind in ${lag.t} · ${n} behind`;
+				/* a custom build is not in the catalogue: its lag is unknown, so no count is printed (never "0 behind") */
+				const count = n > 0 ? ` · ${n} behind` : '';
+				fact = target ? `Ready to promote to ${lag.t}${count}` : `Behind in ${lag.t}${count}`;
 				promoteHref = lag.ps[0].href;
 			}
 			/* no ReleaseSource: there are no builds to promote; say why, in the controller's words */

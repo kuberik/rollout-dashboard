@@ -42,4 +42,8 @@ describe('the /apps tile when no place can take a newer build', () => {
 			expect(G.ready.map((x) => x.app)).not.toContain('hello-world-app');
 		} finally { installLiveSource(null); }
 	});
+	it('a custom build (not in the catalogue) prints no count, never "0 behind" or a guessed 1', () => {
+		load(everyPlaceOn('hotfix-x'));
+		try { expect(tile().fact).toBe('Behind in dev'); } finally { installLiveSource(null); }
+	});
 });
