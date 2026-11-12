@@ -5,6 +5,7 @@
  *   "where are my changes right now"         -> On the way
  *   "when did they land"                     -> Landed
  */
+import { newestFirst, latest } from '$lib/instant';
 import type { TChange, TierKey, HeldCause, TRow, HomeState, ApprovalTarget } from './data';
 import { approvalTarget, urgency, lastHealthy, buildOf, candidateBuilds, deployedBuild, buildInQuestionFacts, avatarSrc, NOW } from './data';
 import { rangeJson } from './github-read.svelte';
@@ -116,7 +117,7 @@ export function rides(items: TChange[], rows: TRow[], leadKey: string | null, tr
 		const k = s === 'landed' ? `landed|${c.key}` : `${s}|${href}|${c.where}`;
 		const r = m.get(k) ?? { key: k, state: s, bucket: bucketOf(s), app: appOf(c), href, items: [], since, row: rows.find((x) => x.href === href) ?? null, reach: t?.reach ?? null };
 		r.items.push(c);
-		if ((since ?? '') > (r.since ?? '')) r.since = since;
+		r.since = latest([since, r.since]);
 		m.set(k, r);
 	}
 	const out = [...m.values()];
@@ -124,7 +125,7 @@ export function rides(items: TChange[], rows: TRow[], leadKey: string | null, tr
 	for (const r of out) if ((r.state === 'approval' || r.state === 'held') && r.row) { const w = buildInQuestionFacts(r.row)?.since; if (w) r.since = notBeforeMerge(w, r.items[0].mergedAt) ?? w; }
 	/* changes-7 (X14): a failing place's age is the TAB's own ("failed 20m" = the failing check's end), whichever change the row carries: Mine and Others never disagree about one build */
 	for (const r of out) if (r.state === 'failed' && r.row?.since) r.since = notBeforeMerge(r.row.since, r.items[0].mergedAt) ?? r.row.since;
-	for (const r of out) r.items.sort((a, b) => (b.mergedAt ?? '').localeCompare(a.mergedAt ?? ''));
+	for (const r of out) r.items.sort((a, b) => newestFirst(a.mergedAt, b.mergedAt));
 	const asRow = (r: Ride) => ({
 		group: r.state === 'failed' ? 'failed' : r.state === 'approval' ? 'approval' : r.state === 'held' ? 'held' : r.state === 'landed' ? 'rest' : 'moving',
 		state: r.state === 'approval' ? 'awaiting-approval' : r.state === 'held' ? 'held-by-rule' : r.state === 'deploying' ? 'deploying' : r.state === 'checking' ? 'checking' : 'healthy',
@@ -136,9 +137,9 @@ export function rides(items: TChange[], rows: TRow[], leadKey: string | null, tr
 	const B: Record<Bucket, number> = { stopped: 0, moving: 1, landed: 2 };
 	out.sort((a, b) =>
 		a.bucket !== b.bucket ? B[a.bucket] - B[b.bucket]
-		: a.bucket === 'stopped' ? lead(b) - lead(a) || urgency(asRow(a), asRow(b)) || (b.since ?? '').localeCompare(a.since ?? '')
-		: a.bucket === 'moving' ? rank(ownTier(b.items[0]) ?? 'dev') - rank(ownTier(a.items[0]) ?? 'dev') || (b.since ?? '').localeCompare(a.since ?? '')
-		: (b.since ?? '').localeCompare(a.since ?? ''));
+		: a.bucket === 'stopped' ? lead(b) - lead(a) || urgency(asRow(a), asRow(b))
+		: a.bucket === 'moving' ? rank(ownTier(b.items[0]) ?? 'dev') - rank(ownTier(a.items[0]) ?? 'dev') || newestFirst(a.since, b.since)
+		: newestFirst(a.since, b.since));
 	return out;
 }
 
@@ -292,7 +293,7 @@ export function actionWords(a: NonNullable<TRow['action']>, row: Pick<TRow, 'sta
 }
 
 /** calm/quiet open the newest change of a bucket (most recent `since`) */
-export const newest = (rs: Ride[]): Ride | null => [...rs].sort((a, b) => (b.since ?? '').localeCompare(a.since ?? ''))[0] ?? null;
+export const newest = (rs: Ride[]): Ride | null => [...rs].sort((a, b) => newestFirst(a.since, b.since))[0] ?? null;
 
 /** the approval a ride's Approve button acts on (data.ts approvalTarget over the ride's own place); null when the ride has none */
 export const rideApproval = (r: Pick<Ride, 'row'>, state: HomeState): ApprovalTarget | null => (r.row ? approvalTarget(r.row, state) : null);

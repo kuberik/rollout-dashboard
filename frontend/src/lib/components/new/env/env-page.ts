@@ -15,6 +15,7 @@
  *
  * Headline rule (coordinator a): an app's headline state here is the MOST SEVERE state among its places (state-words `mostSevere`).
  */
+import { newestFirst, latest } from '$lib/instant';
 import { heldHere } from '../data';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import {
@@ -212,10 +213,10 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 	const apps: EnvApp[] = [...byApp.keys()].map((app) => {
 		const places = placeHolds(app, hs).filter((p) => p.tier === tierKey && (!region || p.label === region));
 		const mine = rows.filter((r) => r.app === app);
-		const row = [...mine].sort((a, b) => severity(a.state) - severity(b.state) || Number(!!b.needsYou) - Number(!!a.needsYou) || (b.since ?? '').localeCompare(a.since ?? ''))[0] ?? null;
+		const row = [...mine].sort((a, b) => severity(a.state) - severity(b.state) || Number(!!b.needsYou) - Number(!!a.needsYou) || newestFirst(a.since, b.since))[0] ?? null;
 		const worst = mostSevere(places, (p) => p.state)?.state ?? 'healthy';
 		const waves = wavesOf(places, tierKey);
-		const since = (byApp.get(app) ?? []).map((p) => p.since).filter(Boolean).sort().pop() ?? null;
+		const since = latest((byApp.get(app) ?? []).map((p) => p.since));
 		const base = A.items.find((x) => x.app === app) ?? null;
 		const tileRow = row && row.group === 'failed' && shownAbove.has(row.key) ? ({ ...row, failure: { check: null, message: null, phrase: null, line: 'Failing' } } as TRow) : row;
 		const item: TApp | null = base ? { ...base, row: tileRow, placeList: base.placeList.filter((p) => p.tier === tierKey && (!region || p.label === region)), group: row ? (row.group === 'failed' ? 'needs' : row.group === 'moving' ? 'moving' : 'waiting') : 'quiet', glyph: row ? (row.group === 'failed' ? 'failed' : row.group === 'approval' ? 'approval' : row.group === 'held' ? 'waiting' : 'deploying') : 'rest' } as TApp : null;
@@ -239,7 +240,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 		return { key: `rest-${a.app}`, app: a.app, href: ph?.href ?? a.href, place: label, rep: false, sentence: ph?.state === 'rolled-back' ? 'Rolled back' : behind ? `${behind} behind` : ph && base?.placeList.some((x) => x.href === ph.href && x.currency === 'none') ? 'No releases yet' : REST_FILL, code: ph?.deployedBuild ?? p?.version ?? '', age: ago(p?.since ?? a.since), tier: tierKey };
 	}).sort((x, y) => 0 * (x.age.length - y.age.length));
 	const sinceOf = new Map(apps.map((a) => [a.app, a.since ?? '']));
-	atRest.sort((x, y) => (sinceOf.get(y.app) ?? '').localeCompare(sinceOf.get(x.app) ?? '') || x.app.localeCompare(y.app));
+	atRest.sort((x, y) => newestFirst(sinceOf.get(x.app), sinceOf.get(y.app)) || x.app.localeCompare(y.app));
 
 	/* Arriving next: builds NOT yet here and not already named by a tile (a tile for a waiting / held place names the waiting build; a moving one its own) */
 	const named = new Set<string>();

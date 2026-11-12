@@ -4,6 +4,7 @@
  * TODO(truth) and is replaced by the truth lane's `heldCauses` / `arrivals` / regionless-prod exports
  * when they land. Pure, so it is unit-testable.
  */
+import { oldestFirst, newestFirst } from '$lib/instant';
 import { environments, rollouts, inbound as inboundOf, lastDeploy as lastDeployOf, lead as leadOf, fleetCounts, arrivals as arrivalsOf, heldCauses, failureReason, checkClock, buildInQuestionFacts, ago, ARRIVALS_WINDOW, TIERS, TIER_NAME, type HomeState, type TierKey, type HeldCause, type TRow } from './data';
 
 import type { EnvState } from '$lib/view-models/home-model';
@@ -173,7 +174,7 @@ export function envsModel(state: HomeState) {
 	const factOf = (t: TierRow) => {
 		for (const [g, word] of [['failed', 'failing'], ['held', 'held'], ['approval', 'to approve']] as const) {
 			/* ED1: the NEWEST failure leads everywhere (the page's banner primary, focus tile, first row); held and approval waits name the longest-waiting first */
-			const rs = t.rows.filter((r) => r.group === g).sort((p, q) => g === 'failed' ? String(q.since ?? '').localeCompare(String(p.since ?? '')) : String(p.since ?? '~').localeCompare(String(q.since ?? '~')));
+			const rs = t.rows.filter((r) => r.group === g).sort((p, q) => g === 'failed' ? newestFirst(p.since, q.since) : oldestFirst(p.since, q.since));
 			const apps = [...new Map(rs.map((r) => [r.app, r])).values()];
 			if (apps.length) return { app: apps[0].app, href: apps[0].href, word, since: apps[0].since ?? null, more: apps.length - 1, apps: apps.map((r) => r.app), count: null as string | null };
 		}

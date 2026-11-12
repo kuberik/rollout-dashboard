@@ -1,4 +1,5 @@
 /** r34 rollouts lane: view-model of the Rollouts and Needs-you pages. Facts come ONLY from ./data. */
+import { oldestFirst, newestFirst } from '$lib/instant';
 import { placeLabel, heldCauses, checkClock, approvalScope, actionFor } from './data';
 import type { TRow, GroupKey, HomeState, Step } from './data';
 import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
@@ -22,7 +23,7 @@ export function markOf(row: TRow): MarkState {
 export function runwayRow(rows: TRow[]): TRow | null {
 	const failing = rows.find((r) => r.group === 'failed' && r.lead) ?? rows.find((r) => r.group === 'failed');
 	if (failing) return failing;
-	return [...rows].filter((r) => r.group === 'moving').sort((a, b) => (b.since ?? '').localeCompare(a.since ?? ''))[0] ?? null;
+	return [...rows].filter((r) => r.group === 'moving').sort((a, b) => newestFirst(a.since, b.since))[0] ?? null;
 }
 
 /** r5 R17: the OPENED row of /rollouts = the first row of the first non-empty group in priority order: failing -> waiting for approval (the viewer's own first) -> held -> in progress
@@ -67,8 +68,8 @@ export const groupAdverse = (rows: TRow[]) => {
 
 /** the next thing that will need a person, for the empty Needs-you card: the earliest approval, else the oldest hold */
 export function nextThing(rows: TRow[]): string | null {
-	const pick = rows.filter((r) => r.group === 'approval').sort((a, b) => (a.since ?? '').localeCompare(b.since ?? ''))[0]
-		?? rows.filter((r) => r.group === 'held').sort((a, b) => (a.since ?? '').localeCompare(b.since ?? ''))[0];
+	const pick = rows.filter((r) => r.group === 'approval').sort((a, b) => oldestFirst(a.since, b.since))[0]
+		?? rows.filter((r) => r.group === 'held').sort((a, b) => oldestFirst(a.since, b.since))[0];
 	if (!pick) return null;
 	const place = placeLabel(pick);
 	return pick.group === 'approval' ? `Next: ${pick.app} waits for approval in ${place}.` : `Next: ${pick.app} is held in ${place} · ${pick.word.toLowerCase()}.`;

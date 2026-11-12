@@ -33,6 +33,7 @@
  *  8 step names                              -> stepsOf(): 'Started', 'Stage N', 'Check' exactly as the tab (DeploymentPipelineCard.shortLabel)
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
+import { oldestFirst, newestFirst, earliest, isNotEarlier } from '$lib/instant';
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import { catalogueOrder, newestOf, behindIn } from '$lib/releases/order';
 import type { NoReleases } from '$lib/releases/catalogue';
@@ -281,7 +282,7 @@ export function truthAttrs(r: TRow | RolloutRow): Record<string, string> {
 export const urgencyClass = (r: Pick<RolloutRow, 'state' | 'group' | 'tier'> | null | undefined): number =>
 	!r ? 9 : r.group === 'failed' ? (r.tier === 'prod' ? 0 : 1) : r.state === 'awaiting-approval' ? 2 : r.state === 'held-by-rule' ? 3 : r.state === 'deploying' || r.state === 'checking' ? 4 : 5;
 export const urgency = (a: Pick<RolloutRow, 'state' | 'group' | 'tier' | 'since'> | null, b: Pick<RolloutRow, 'state' | 'group' | 'tier' | 'since'> | null): number =>
-	urgencyClass(a) - urgencyClass(b) || Number(!!(b as { needsYou?: boolean } | null)?.needsYou) - Number(!!(a as { needsYou?: boolean } | null)?.needsYou) /* r34 build-fairway: within a class the viewer's OWN action (a rollback or approval only they can press) leads, so Needs you, /rollouts and /environments name one lead */ || (b?.since ?? '').localeCompare(a?.since ?? '');
+	urgencyClass(a) - urgencyClass(b) || Number(!!(b as { needsYou?: boolean } | null)?.needsYou) - Number(!!(a as { needsYou?: boolean } | null)?.needsYou) /* r34 build-fairway: within a class the viewer's OWN action (a rollback or approval only they can press) leads, so Needs you, /rollouts and /environments name one lead */ || newestFirst(a?.since, b?.since);
 /** The fleet's single most urgent place: failure, approval or rule hold, else the newest moving place (calm/quiet); null when nothing is in motion. Pages exclude it from their lists. */
 export function lead(state: HomeState): TRow | null {
 	const r = rollouts(state).rows[0];
@@ -350,7 +351,7 @@ function reachByAncestry(state: HomeState, apps: string[], sha: string | null, m
 				const v = (h.version.revision ?? h.version.tag ?? '').slice(0, 7);
 				if (sha && v === sha) return true;
 				const c = changeBySha(a.app, v);
-				return !!c && c.mergedAt >= mergedAt;
+				return !!c && isNotEarlier(c.mergedAt, mergedAt);
 			});
 			if (ok) { const t = tierOfEnv(e); if (!best || RANK_T[t] > RANK_T[best]) best = t; }
 		}
@@ -374,13 +375,13 @@ function livePlaces(state: HomeState, apps: string[], sha: string | null, merged
 				const v = (h.version.revision ?? h.version.tag ?? '').slice(0, 7);
 				if (sha && v === sha) return true;
 				const c = changeBySha(a.app, v);
-				return !!c && c.mergedAt >= mergedAt;
+				return !!c && isNotEarlier(c.mergedAt, mergedAt);
 			});
 			if (first) found.push({ href: e.href, at: first.timestamp, label: e.label });
 		}
 	}
 	if (!found.length) return null;
-	found.sort((p, q) => q.at.localeCompare(p.at));
+	found.sort((p, q) => newestFirst(p.at, q.at));
 	return { href: found[0].href, at: found[0].at, n: new Set(found.map((f) => f.label)).size, label: found[0].label };
 }
 
@@ -489,7 +490,7 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 		i.changeHref = chg?.htmlUrl ? '/changes/github.com' + new URL(chg.htmlUrl).pathname.replace(/\/commit\//, '/') : null;
 	}
 	const order: ChangeGroupKey[] = ['failed', 'waiting', 'moving', 'landed'];
-	const sortIt = (a: ChangeItem, b: ChangeItem) => (b.since ?? '').localeCompare(a.since ?? '');
+	const sortIt = (a: ChangeItem, b: ChangeItem) => newestFirst(a.since, b.since);
 	/* AD c: ONE derivation of every figure; header, chips and groups all read `totals`. rolled-back changes are their own count, never in a group total. */
 	const tally = (xs: ChangeItem[]) => {
 		const t = { failed: 0, waiting: 0, moving: 0, landed: 0, rolledBack: 0, total: xs.length };
@@ -614,8 +615,8 @@ export function placesOf(state: HomeState, app: string): (AppPlace & { newest: s
 		const pv = shortBuild(p.version)!, qv = shortBuild(q.version)!;
 		if (SEMVER.test(pv) && SEMVER.test(qv)) return semverCmp(qv, pv);
 		const pc = changeBySha(app, pv)?.mergedAt, qc = changeBySha(app, qv)?.mergedAt;
-		if (pc && qc && pc !== qc) return qc.localeCompare(pc);
-		return (q.arrivedAt ?? '').localeCompare(p.arrivedAt ?? '');
+		if (pc && qc && pc !== qc) return newestFirst(pc, qc);
+		return newestFirst(p.arrivedAt, q.arrivedAt);
 	})[0];
 	const order = orderOfEnvs(envs);
 	const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : null);
@@ -664,7 +665,7 @@ export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {
 function pickPlace(rows: TRow[]): TRow | null {
 	/* r39 coordinator (a): the headline is the MOST SEVERE state (state-words `severity`: failing, waiting for approval, held, checking, deploying); within one state the viewer's own action first */
 	const c = (r: TRow) => severity(r.state) * 2 + (r.needsYou ? 0 : 1);
-	return [...rows].sort((p, q) => c(p) - c(q) || Number(q.tier === 'prod') - Number(p.tier === 'prod') || (q.since ?? '').localeCompare(p.since ?? ''))[0] ?? null;
+	return [...rows].sort((p, q) => c(p) - c(q) || Number(q.tier === 'prod') - Number(p.tier === 'prod') || newestFirst(p.since, q.since))[0] ?? null;
 }
 /** one outcome grammar for a change and an app (roster-data's, kept verbatim) */
 const outcomeOf = (w: TRow): string =>
@@ -714,8 +715,8 @@ export function apps(state: HomeState) {
 			const pv = shortBuild(p.version)!, qv = shortBuild(q.version)!;
 			if (SEMVER.test(pv) && SEMVER.test(qv)) return semverCmp(qv, pv);
 			const pc = changeBySha(a.app, pv)?.mergedAt, qc = changeBySha(a.app, qv)?.mergedAt;
-			if (pc && qc && pc !== qc) return qc.localeCompare(pc);
-			return (q.arrivedAt ?? '').localeCompare(p.arrivedAt ?? '');
+			if (pc && qc && pc !== qc) return newestFirst(pc, qc);
+			return newestFirst(p.arrivedAt, q.arrivedAt);
 		})[0];
 		const order = orderOfEnvs(envs);
 		const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : a.newest);
@@ -791,7 +792,7 @@ const fleetEvents = (state: HomeState, tier?: TierKey): { ev: Fleet24hEvent; ms:
 			out.push({ ev: { kind, app: a.app, place: placeLabel({ tier: tierOfEnv(e), regions: [e.label] }), tier: tierOfEnv(e), build: shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) ?? '', at: h.timestamp, href: e.href, who: h.triggeredBy?.kind === 'User' && h.triggeredBy.name ? RD.pretty(h.triggeredBy.name) ?? 'Automatic' : 'Automatic', trigger: h.triggeredBy?.kind === 'User' && h.triggeredBy.name ? h.triggeredBy.name : 'Automatic', viewerTriggered: h.triggeredBy?.kind === 'User' && isViewer(h.triggeredBy.name), reason: deployReason(h.message), mark: deployMark({ actorKind: h.triggeredBy?.kind === 'User' && h.triggeredBy.name ? 'person' : 'controller' }) }, ms: kind === 'deploy' && h.bakeEndTime ? Date.parse(h.bakeEndTime) - t : null });
 		});
 	}
-	return out.sort((x, y) => y.ev.at.localeCompare(x.ev.at));
+	return out.sort((x, y) => newestFirst(x.ev.at, y.ev.at));
 };
 /** Every deploy of the last 24 h, classed once: a rollback, a failure, or a plain deploy. `fleet24h` counts exactly these, so a page that lists them accounts for its figures. */
 export const fleet24hEvents = (state: HomeState, tier?: TierKey): Fleet24hEvent[] => fleetEvents(state, tier).map((x) => x.ev);
@@ -842,12 +843,8 @@ export function waitClock(row: Pick<RolloutRow, 'app' | 'href' | 'tier'> & { sin
 	const clocks = (row.hrefs?.length ? row.hrefs : [row.href]).map(own).filter((x): x is string => !!x);
 	return oldestClock(clocks) ?? row.since ?? null;
 }
-/** The earliest of several ISO timestamps, compared as INSTANTS: a string sort puts "…:00.5Z" before "…:00Z" and "…T11:00+02:00" after "…T10:00Z". Unparseable entries lose to parseable ones. */
-export function oldestClock(clocks: string[]): string | null {
-	let best: string | null = null, bestMs = Infinity;
-	for (const c of clocks) { const ms = Date.parse(c); if (!Number.isNaN(ms) && ms < bestMs) { best = c; bestMs = ms; } }
-	return best ?? clocks[0] ?? null;
-}
+/** The earliest of several ISO timestamps, compared as INSTANTS (lib/instant.ts is the one rule; kept under this name for the wait-clock callers). */
+export const oldestClock = (clocks: string[]): string | null => earliest(clocks);
 /** The DEPLOYED build of a place with its own commit: the change title the History headline prints (fixture change by sha, else the range head) and the range head's author. */
 export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>): { build: string; meta: string | null; title: string | null; author: string | null; at: string | null } {
 	const r = buildRange(row);
@@ -1229,7 +1226,7 @@ export function cleared(state: HomeState): Cleared[] {
 				out.push({ kind: 'approved', app: a.app, place, what: `Approved ${act.to}`, who: who(h), at: h.timestamp, href: e.href });
 		});
 	}
-	return out.sort((x, y) => y.at.localeCompare(x.at));
+	return out.sort((x, y) => newestFirst(x.at, y.at));
 }
 
 /** A build as the tabs name it (the version the rollout lists: "4.42.0-42"), from a SHA or tag of the app. */
@@ -1596,7 +1593,7 @@ export function historyOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 
 			out.push({ app, place: placeLabel({ tier: tierOfEnv(e), regions: [e.label] }), build: shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) ?? '', at: h.timestamp, kind: k === 'rollback' ? 'rollback' : k === 'redeploy' ? 'redeploy' : 'deploy', who: h.triggeredBy?.kind === 'User' && h.triggeredBy.name ? RD.pretty(h.triggeredBy.name) ?? 'Automatic' : 'Automatic', outcome: h.bakeStatus ?? 'Succeeded', href: e.href });
 		});
 	}
-	return out.sort((x, y) => x.at.localeCompare(y.at));
+	return out.sort((x, y) => oldestFirst(x.at, y.at));
 }
 /** (jj) The cost of a failure: the newer builds a place holds behind it, with the PR each one carries and whether it is the viewer's. */
 export function heldBehind(row: Pick<RolloutRow, 'app' | 'href'>): { count: number; builds: { build: string; pr: number | null; title: string | null; author: string | null; mine: boolean }[]; includesViewer: boolean } {

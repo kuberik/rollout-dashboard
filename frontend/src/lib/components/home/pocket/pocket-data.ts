@@ -10,6 +10,7 @@
  *   yours     "where are my changes?"                                            → journey ticks
  *   activity  "what just happened?"                                              → a spined timeline
  */
+import { newestFirst, earliest } from '$lib/instant';
 import type { EnvState, HomeModel } from '$lib/view-models/home-model';
 import { changeBySha, homeModel, source, NOW, type HomeState } from '../sketch/home-data';
 import { buildView, type HomeView } from '../sketch/home-view';
@@ -140,7 +141,7 @@ export function compass(state: HomeState): Compass {
 	const peak = Math.max(1, ...bins.map((b) => b.ok + b.failed + b.live));
 
 	/* recent activity: newest first, prod arrivals of one build across regions folded into one entry */
-	acts.sort((a, b) => b.at.localeCompare(a.at));
+	acts.sort((a, b) => newestFirst(a.at, b.at));
 	const activity: Act[] = [];
 	for (const a of acts) {
 		const same = activity.find((x) => x.kind === a.kind && x.app === a.app && x.ref === a.ref && Math.abs(Date.parse(x.at) - Date.parse(a.at)) < 30 * 60000);
@@ -156,7 +157,7 @@ export function compass(state: HomeState): Compass {
 	const apps: AppRow[] = m.apps
 		.map((a) => {
 			const envs = a.envs.filter((e) => e.state !== 'not-deployed' && e.version);
-			const newestEnv = [...envs].sort((x, y) => (y.arrivedAt ?? '').localeCompare(x.arrivedAt ?? ''))[0];
+			const newestEnv = [...envs].sort((x, y) => newestFirst(x.arrivedAt, y.arrivedAt))[0];
 			const newest = newestEnv?.version ?? null;
 			const st: AppRow['state'] = envs.some((e) => isFailed(e.state)) ? 'failed' : envs.some((e) => isMoving(e.state)) ? 'moving' : envs.some((e) => isHeld(e.state)) ? 'held' : 'healthy';
 			const w = envs.find((e) => (st === 'failed' ? isFailed(e.state) : st === 'moving' ? isMoving(e.state) : st === 'held' ? isHeld(e.state) : false));
@@ -216,7 +217,7 @@ export function riser(c: Compass): Station[] {
 				ref: (isLead ? L!.ref : f?.ref) ?? null,
 				title: (isLead ? L!.title : f?.title) ?? null,
 				where: ps.length > 1 ? `${ps.length} regions` : ps[0].label,
-				since: ps.map((p) => p.since).filter(Boolean).sort()[0] ?? null,
+				since: earliest(ps.map((p) => p.since)),
 				href: ps[0].href,
 				mine: ps.some((p) => p.mine) || !!f,
 				lead: isLead,
@@ -298,7 +299,7 @@ export function changesDoor(state: HomeState): ChangesDoor {
 		const last = ch.htmlUrl.split('/').pop() ?? '';
 		rows.push({ key: ch.htmlUrl, ref: /^\d+$/.test(last) ? `#${last}` : sha, title: ch.title, app: ch.repo, who: pretty(ch.author), mine: ch.author === 'danielreed', at: ch.mergedAt, reached: best, href: ch.htmlUrl });
 	}
-	rows.sort((a, b) => b.at.localeCompare(a.at));
+	rows.sort((a, b) => newestFirst(a.at, b.at));
 	const reach = { dev: 0, test: 0, staging: 0, prod: 0, none: 0 } as Record<TierKey | 'none', number>;
 	for (const r of rows) reach[r.reached ?? 'none']++;
 	return { merged24: rows.length, mine24: rows.filter((r) => r.mine).length, reach, rows };

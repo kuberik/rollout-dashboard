@@ -8,6 +8,7 @@
  *   2  failures | approvals only you can give      (the rest of what needs you)
  *   3  yours on the way | not yours, stuck | production
  */
+import { newestFirst, latest, isLater } from '$lib/instant';
 import type { AppModel, HomeModel } from '$lib/view-models/home-model';
 import { buildSketch, ownerOf, type Elsewhere, type YourChange } from './sketch-home';
 import { changeBySha, historyAt, homeModel, source, viewerLogin, NOW, type HomeState } from './home-data';
@@ -98,9 +99,9 @@ function approvalOf(m: HomeModel, e: Elsewhere): Approval {
 	let passed: string | null = null;
 	for (const x of pre) {
 		const hh = historyAt(e.app, x.env).find((q) => build && q.sha === build.slice(0, 7));
-		if (hh && (!passed || hh.at > passed)) passed = hh.at;
+		if (hh && (!passed || isLater(hh.at, passed))) passed = hh.at;
 	}
-	const since = [e.since, passed].filter(Boolean).sort().pop() ?? null;
+	const since = latest([e.since, passed]);
 	return {
 		key: e.key,
 		app: e.app,
@@ -264,7 +265,7 @@ export function buildView(m: HomeModel, state: HomeState): HomeView {
 	const failed = h.yours.filter((y) => y.state === 'failed');
 	const prodFail = failed
 		.filter((y) => y.stops.some((s) => s.here && s.prod))
-		.sort((x, y) => (y.since ?? '').localeCompare(x.since ?? ''));
+		.sort((x, y) => newestFirst(x.since, y.since));
 	let lead: Lead | null = null;
 	let leadChange: YourChange | null = null;
 	let leadApproval: Approval | null = null;
@@ -275,7 +276,7 @@ export function buildView(m: HomeModel, state: HomeState): HomeView {
 		leadApproval = approvalsAll[0];
 		lead = approvalLead(m, leadApproval);
 	} else {
-		const mv = h.yours.filter((y) => y.state === 'deploying' || y.state === 'checking').sort((x, y) => (y.since ?? '').localeCompare(x.since ?? ''));
+		const mv = h.yours.filter((y) => y.state === 'deploying' || y.state === 'checking').sort((x, y) => newestFirst(x.since, y.since));
 		if (mv.length) {
 			leadChange = mv[0];
 			lead = movingLead(m, leadChange);
