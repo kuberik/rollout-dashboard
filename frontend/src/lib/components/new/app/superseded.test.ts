@@ -11,7 +11,7 @@ describe('superseded vs custom', () => {
 		expect(stops.map((s) => [s.build, s.custom, s.index])).toEqual([['c3', false, 0], ['c2', false, 1], ['c1', false, 2], ['zzz', true, null]]);
 	});
 	it('nextOf: a build the upstream tier has already passed is "skipped", not "after staging"', () => {
-		const prod = { ...(place('prod', 'c0', [hb('c1')]) as object), tier: 'prod', holdReason: 'rule', gate: { name: 'Promotion staging', sentence: '', promotion: true } };
+		const prod = { ...(place('prod', 'c0', [hb('c1')]) as object), tier: 'prod', holdReason: 'rule', gate: { name: 'Promotion from staging', sentence: '', label: { kind: 'promotion', source: 'staging' } } };
 		const stg = { ...(place('stg', 'c3', []) as object), tier: 'staging' };
 		expect(nextOf([stg, prod] as never, '/x/prod')).toBe('c1 was skipped · staging runs c3');
 		const stg2 = { ...stg, deployedBuild: 'c0' };

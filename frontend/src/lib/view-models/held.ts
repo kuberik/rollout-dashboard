@@ -391,7 +391,7 @@ export type GateVerdict = {
 };
 
 /** `window`/`order` clear on their own; `hold` does not, and `other` names it (its display name, or a dependency's provider). */
-export type AlsoHold = { kind: 'window' | 'order' | 'hold'; other: string };
+export type AlsoHold = { kind: 'window' | 'order' | 'hold'; /** the other hold as plain text (a sink) */ other: string; /** the same, as a typed label (a surface that draws takes this: a promotion gate is drawn by kind) */ otherLabel?: import('./gate-label').GateLabel };
 
 const GATE_NOT_HELD: GateVerdict = { held: false, cause: null, waitsForEnv: null };
 

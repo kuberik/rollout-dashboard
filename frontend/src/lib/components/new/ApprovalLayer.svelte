@@ -17,9 +17,8 @@
 	import { fade, fly } from 'svelte/transition';
 	import { approvePlace, ownCard } from './approve-place';
 	import Toast from '$lib/components/Toast.svelte';
-	import GateText from '$lib/components/GateText.svelte';
-	import { plainGateText } from '$lib/view-models/gate-label';
-	import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
+	import CauseText from '$lib/components/CauseText.svelte';
+		import { approvalUi, cancelApprove, closeApprove, refreshAnchor, confirmApprove, undoApprove, dismissDone, askSentence, doneWords, pauseDone, resumeDone } from './approvals.svelte';
 
 	const ask = $derived(approvalUi.ask);
 	const done = $derived(approvalUi.done);
@@ -107,10 +106,10 @@
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
 		tone={done.error ? 'danger' : 'success'}
-		message={done.error ? `Could not approve ${done.target.build}` : plainGateText(`${w.title} · ${w.detail}`)}
+		message={done.error ? `Could not approve ${done.target.build}` : `${w.title} · ${w.detail}`}
 		description={done.error ?? ''}
 	>
-		{#snippet children()}{#if done.error}{`Could not approve ${done.target.build}`}<span class="text-fg-muted"> · {done.error}</span>{:else}{w.title} · <GateText text={w.detail} />{/if}{/snippet}
+		{#snippet children()}{#if done.error}{`Could not approve ${done.target.build}`}<span class="text-fg-muted"> · {done.error}</span>{:else}{w.title} · <CauseText parts={w.parts} />{/if}{/snippet}
 		{#snippet action()}
 			{#if done.error}
 				<button type="button" class="nav-link" data-action="approve-dismiss" onclick={dismissDone}>Dismiss</button>

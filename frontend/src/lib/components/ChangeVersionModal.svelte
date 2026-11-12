@@ -79,8 +79,8 @@
 	import StatusSpinner from './StatusSpinner.svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
-	import { gateLabel, gateLabelMarked, plainGateText } from '$lib/view-models/gate-label';
-	import GateText from './GateText.svelte';
+	import { gateLabel, gateLabelText, labelPart, causeText, type Cause } from '$lib/view-models/gate-label';
+	import CauseText from './CauseText.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { modEnterHint } from '$lib/shortcut-hint';
 	import { apiPath } from '$lib/api/urls';
@@ -1065,10 +1065,10 @@
 		versionTag: string,
 		displayVersion: string,
 		isGateHeld: boolean
-	): string | null {
+	): Cause | null {
 		if (isGateHeld) {
 			const gate = (rollout?.status?.gates ?? []).find((g) => !gateAllows(g, versionTag));
-			return gate?.name ? `Held by ${gateLabelMarked(gateLabel(gate, nameOfGate(gate.name)))}` : null; /* a promotion gate is named by kind, never by its published sentence */
+			return gate?.name ? ['Held by ', labelPart(gateLabel(gate, nameOfGate(gate.name)))] : null; /* a promotion gate is named by kind, never by its published sentence */
 		}
 		const edge = selfHeldGraph.edges.find(
 			(e) => e.writer === 'contract' && e.state === 'blocked' && e.held.includes(displayVersion)
@@ -1077,9 +1077,11 @@
 		const needClause = edge.requiredVersion
 			? `needs ${edge.contract ?? 'a contract'} ${edge.requiredVersion}`
 			: `needs a newer ${edge.contract ?? 'contract'}`;
-		return edge.providedVersion
-			? `Held — ${needClause}, has ${edge.providedVersion}`
-			: `Held — ${needClause}`;
+		return [
+			edge.providedVersion
+				? `Held — ${needClause}, has ${edge.providedVersion}`
+				: `Held — ${needClause}`
+		];
 	}
 
 	async function getAnnotations(version: string) {
@@ -2230,7 +2232,10 @@
 		// are mono, never shouted). `handle: true` on the value gives it
 		// `t-code-sm`, unchanged case, same as every other k8s object name
 		// in a `FactList` row.
-		return { label: 'Rule', value: resolveGateName(gateName, gateObjects) };
+		/* a promotion gate is named by its KIND (gate-label.ts): when the join above missed it (the namespace fetch failed, no rolloutGateRef) the gate's own published sentence must not leak here */
+		const kind = rollout?.status?.gates?.find((g) => g.name === gateName)?.kind ?? null;
+		const label = gateLabel({ kind, name: gateName }, nameOfGate(gateName));
+		return { label: 'Rule', value: label.kind === 'promotion' ? gateLabelText(label) : resolveGateName(gateName, gateObjects) };
 	}
 
 	/**
@@ -2904,7 +2909,7 @@
 									{:else if isHeld}
 										<HeldGlyph
 											class="text-held h-4 w-4"
-											title={heldReason ? plainGateText(heldReason) :
+											title={heldReason ? causeText(heldReason) :
 												'Held — a rule currently blocks this build from deploying automatically'}
 										/>
 									{:else if isCurrent}
@@ -2977,7 +2982,7 @@
 										     already does). The REASON when one is known
 										     (`heldReasonFor`, round 3), "held" bare only when it
 										     is not. -->
-										<span class="t-meta text-held min-w-0 truncate">{#if heldReason}<GateText text={heldReason} />{:else}held{/if}</span>
+										<span class="t-meta text-held min-w-0 truncate">{#if heldReason}<CauseText parts={heldReason} />{:else}held{/if}</span>
 									{/if}
 								</div>
 								<!-- ⭐ SUPERSEDED, 2026-10-10 (squad-rollout, Lane D, round 4

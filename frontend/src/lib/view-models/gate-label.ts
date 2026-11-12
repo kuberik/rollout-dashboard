@@ -16,8 +16,6 @@ import { gateKindOf } from './gate-kind';
 import { gateDisplayName } from './gate-name';
 
 export const PROMOTION_WORD = 'Promotion';
-/** the placeholder `classifyGate` uses when it does not know the upstream environment: not a name, never a chip */
-const UNKNOWN_UPSTREAM = 'its upstream environment';
 
 export type GateLabel =
 	| { kind: 'promotion'; /** the source environment ("staging"), null when unknown: the label is then the word "Promotion" */ source: string | null }
@@ -37,15 +35,13 @@ export function gateLabelText(l: GateLabel): string {
 	return l.kind === 'named' ? l.text : l.source ? `${PROMOTION_WORD} from ${l.source}` : PROMOTION_WORD;
 }
 
-/** The source environment of a classified promotion gate: its `subject` when that names one environment. A wave ("wave 1 (a, b)") or the unknown placeholder is no single environment: null. */
-export function promotionSourceOf(g: { kind?: string | null; subject?: string | null; subjectKind?: string | null }): string | null {
-	if (g.kind !== 'promotion' || g.subjectKind !== 'environment' || !g.subject) return null;
-	if (g.subject === UNKNOWN_UPSTREAM || /^wave \d/.test(g.subject)) return null;
-	return g.subject;
+/** The source environment of a classified promotion gate: the classifier's own `promotionSource` (one environment), null for a wave or an unknown upstream. */
+export function promotionSourceOf(g: { kind?: string | null; promotionSource?: string | null }): string | null {
+	return g.kind === 'promotion' ? g.promotionSource ?? null : null;
 }
 
 /** The label of a CLASSIFIED gate (`classifyGate`'s record): a promotion gate by kind and its source environment, any other by the display name the Gates tab prints. */
-export function classifiedGateLabel(g: { kind?: string | null; subject?: string | null; subjectKind?: string | null; displayName?: string; label: string }): GateLabel {
+export function classifiedGateLabel(g: { kind?: string | null; promotionSource?: string | null; displayName?: string; label: string }): GateLabel {
 	if (g.kind === 'promotion') return { kind: 'promotion', source: promotionSourceOf(g) };
 	return { kind: 'named', text: g.displayName ?? g.label };
 }

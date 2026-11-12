@@ -9,7 +9,7 @@ import * as D from '$lib/components/new/data';
 import { buildRolloutGraph } from './view-models/dependency-graph';
 import { buildGateContext, withSchedules, type ClassifiedGate } from './view-models/blocking-story';
 import { rolloutGateBoxes } from './view-models/rollout-gates';
-import { plainGateText, gateLabel, gateLabelText, classifiedGateLabel, promotionSourceOf, PROMOTION_WORD } from './view-models/gate-label';
+import { gateLabel, gateLabelText, classifiedGateLabel, promotionSourceOf, PROMOTION_WORD } from './view-models/gate-label';
 
 /**
  * batch4 lane 70 (owner decision 2026-11-11): a promotion gate NEVER prints its displayName sentence. Every surface draws it by kind:
@@ -23,7 +23,7 @@ afterEach(() => installLiveSource(null));
 function classified(o: Partial<ClassifiedGate> = {}): ClassifiedGate {
 	return {
 		id: 'ghd-6p5hd', kind: 'promotion', clears: 'upstream', label: 'after staging', displayName: SENTENCE, clause: 'staging deploys it first',
-		short: 'Waiting for staging to deploy it first', clearsAt: null, timezone: null, subject: 'staging', subjectKind: 'environment',
+		short: 'Waiting for staging to deploy it first', clearsAt: null, timezone: null, subject: 'staging', subjectKind: 'environment', promotionSource: 'staging',
 		predicate: 'deploys it first', contract: null, have: null, need: null, ...o
 	} as ClassifiedGate;
 }
@@ -43,10 +43,12 @@ describe('gateLabel: the one decision', () => {
 		expect(gateLabelText(gateLabel({ kind: 'schedule', name: 'bh' }, 'Business Hours Only'))).toBe('Business Hours Only');
 		expect(gateLabelText(gateLabel({ kind: 'approval', name: 'x-approval' }, null))).toBe('X approval');
 	});
-	it('a wave or the unknown placeholder is no single source', () => {
-		expect(promotionSourceOf({ kind: 'promotion', subjectKind: 'environment', subject: 'wave 1 (eu, us)' })).toBeNull();
-		expect(promotionSourceOf({ kind: 'promotion', subjectKind: 'environment', subject: 'its upstream environment' })).toBeNull();
-		expect(promotionSourceOf({ kind: 'promotion', subjectKind: 'environment', subject: 'staging' })).toBe('staging');
+	it('the source is the classifier\'s structured promotionSource, never parsed from the subject wording', () => {
+		expect(promotionSourceOf({ kind: 'promotion', promotionSource: null })).toBeNull();
+		expect(promotionSourceOf({ kind: 'promotion', promotionSource: 'staging' })).toBe('staging');
+		/* a subject that LOOKS like a wave or a name is not read */
+		expect(promotionSourceOf({ kind: 'promotion', subject: 'staging', subjectKind: 'environment' } as never)).toBeNull();
+		expect(promotionSourceOf({ kind: 'schedule', promotionSource: 'staging' })).toBeNull();
 	});
 });
 
@@ -59,7 +61,7 @@ describe('GateRecord (Gates tab record, Holding popover, banner record)', () => 
 		expect(l?.textContent?.toLowerCase()).toContain('staging');
 	});
 	it('with no known source it prints Promotion', () => {
-		const { container } = render(GateRecord, { gates: [classified({ subject: 'its upstream environment', label: 'after its upstream environment' })] });
+		const { container } = render(GateRecord, { gates: [classified({ subject: 'its upstream environment', promotionSource: null, label: 'after its upstream environment' })] });
 		expect(container.textContent).not.toContain(SENTENCE);
 		expect(container.querySelector('[data-gate-label="promotion"]')?.textContent).toContain(PROMOTION_WORD);
 	});
@@ -117,7 +119,7 @@ describe('the Home model: held chips, Holding card, banners, row causes', () => 
 	});
 	it('a held place whose gate is a promotion is named by kind', () => {
 		withPromotionDisplayName();
-		const names = D.apps('incident').items.flatMap((a) => D.placeHolds(a.app, 'incident')).map((p) => p.gate?.name && plainGateText(p.gate.name)).filter((n): n is string => !!n);
+		const names = D.apps('incident').items.flatMap((a) => D.placeHolds(a.app, 'incident')).map((p) => p.gate?.name).filter((n): n is string => !!n);
 		const promo = names.filter((n) => /^Promotion\b/.test(n));
 		expect(promo.length).toBeGreaterThan(0);
 		expect(names).toContain('Promotion from dev');

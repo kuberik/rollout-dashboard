@@ -22,7 +22,7 @@ import {
 	detectStuckPromotion
 } from './view-models/promotion';
 import { promotionCandidates, type PromotionStuckReason } from './view-models/promotion';
-import { classifiedGateLabel, gateLabelMarked } from './view-models/gate-label';
+import { classifiedGateLabel, gateLabelText, type GateLabel } from './view-models/gate-label';
 import { rankVerdictsByRollout, rankBehindBy } from './view-models/env-rank';
 import type { RankVerdict } from './view-models/env-rank';
 import { checkFailure } from './view-models/health-witness';
@@ -301,8 +301,9 @@ function placeVerdictOf(
 	const cg = story.gates.find((g) => g.id === v.first.name) ?? null;
 	const kind = alsoKindOf(v.first);
 	const cause: HeldCause = kind === 'window' ? 'clock' : kind === 'order' ? 'order' : cg?.kind === 'dependency' || cg?.clears === 'upstream' ? 'dependency' : cg?.clears === 'check' ? 'check' : 'unknown';
-	const name = cg ? (cg.kind === 'dependency' && cg.subject ? cg.subject : gateLabelMarked(classifiedGateLabel(cg))) : v.first.name; /* a promotion gate is named by kind (gate-label.ts) */
-	const also: AlsoHold | null = v.also ? { kind: v.also.kind, other: v.also.kind === 'order' ? 'promotion order' : name } : null;
+	/* the other hold, named by kind: a promotion gate is never its published sentence (gate-label.ts); `other` is the plain text, `otherLabel` what a surface that draws takes */
+	const otherLabel: GateLabel = cg ? (cg.kind === 'dependency' && cg.subject ? { kind: 'named', text: cg.subject } : classifiedGateLabel(cg)) : { kind: 'named', text: v.first.name };
+	const also: AlsoHold | null = v.also ? { kind: v.also.kind, other: v.also.kind === 'order' ? 'promotion order' : gateLabelText(otherLabel), otherLabel } : null;
 	return { verdict: v, held: true, cause, causeLabel: cg ? causeLabelForGates([cg], cause) : null, also };
 }
 
@@ -463,7 +464,7 @@ export type RolloutCard = {
 	/** THE per-place verdict (`place-verdict.ts`): set exactly when an approval is pending here; it replaces the frontier read for such a place (`held`, `heldCause`, `heldAlso` below follow it). */
 	placeVerdict?: PlaceVerdict | null;
 	/** the other hold the approval ask names (`AlsoHold`); set only with `placeVerdict`, so an ask always has its Approve button */
-	heldAlso?: { kind: 'window' | 'order' | 'hold'; other: string } | null;
+	heldAlso?: AlsoHold | null;
 	/**
 	 * Set exactly when NOT held because an earlier-tier promotion gate (this
 	 * app's own chain) has not deployed the candidate here yet — the
