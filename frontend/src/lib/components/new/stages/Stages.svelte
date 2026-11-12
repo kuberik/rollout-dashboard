@@ -54,7 +54,7 @@
 		const a = e.getBoundingClientRect(), b = row.getBoundingClientRect();
 		const top = b.top - a.top + e.scrollTop, left = b.left - a.left + e.scrollLeft;
 		if (top < e.scrollTop) e.scrollTop = top; else if (top + b.height + FADE > e.scrollTop + e.clientHeight) e.scrollTop = top + b.height + FADE - e.clientHeight;
-		if (left < e.scrollLeft) e.scrollLeft = left; else if (left + b.width + FADE > e.scrollLeft + e.clientWidth) e.scrollLeft = left + b.width + FADE - e.clientWidth;
+		if (left < e.scrollLeft) e.scrollLeft = left; else if (left + b.width + FADE > e.scrollLeft + e.clientWidth) e.scrollLeft = left; /* a snap point (snap-align start; the browser clamps it to the end), so snapping cannot pull the row back out of view */
 		measure();
 	});
 	const showRail = $derived(!!rail && rail.length >= 2);
@@ -62,7 +62,7 @@
 	const railHref = (build: string) => { const sp = new URLSearchParams(page.url.search); sp.set('release', build); return page.url.pathname + '?' + sp.toString(); };
 
 	const multiApp = $derived(stages.lanes.length > 1);
-	const RAIL = 272, COMFY = 176, MIN = 148, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
+	const RAIL = 272, COMFY = 195, MIN = 148, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
 	let w = $state(0);
 	/* the card body's width (not the canvas's: the canvas depends on the form this decides) */
 	let bw = $state(0);
@@ -82,9 +82,11 @@
 	const px = (n: number) => n + 'px';
 	const base = $derived(multiApp ? 3 : 1);
 	const track = (i: number) => base + 2 * i;
-	const gridCols = $derived((multiApp ? [LABEL, GAP_TIER].map(px).join(' ') + ' ' : '') + stages.columns.map((_, i) => (i ? px(gapBefore(i)) + ' ' : '') + 'minmax(' + [MIN, CAP].map(px).join(', ') + ')').join(' '));
-	const needW = $derived(stages.columns.length * MIN + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
-	/* THE RAIL FORM, decided by width and column count only (never by state or selection): the side rail only when the canvas beside it keeps COMFORTABLE columns (176px, so a held cause never wraps); otherwise the stacked scroller above a full-width canvas. Before the first measure (bw 0) the stacked form: it can never widen the page. */
+	/* a tile that carries a build tail (app scope, decided by scope alone, never by state) needs 176px to show the whole build, else the graph yields to the list; change scope keeps 148 */
+	const minCol = $derived(stages.release ? 176 : MIN);
+	const gridCols = $derived((multiApp ? [LABEL, GAP_TIER].map(px).join(' ') + ' ' : '') + stages.columns.map((_, i) => (i ? px(gapBefore(i)) + ' ' : '') + 'minmax(' + [minCol, CAP].map(px).join(', ') + ')').join(' '));
+	const needW = $derived(stages.columns.length * minCol + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
+	/* THE RAIL FORM, decided by width and column count only (never by state or selection): the side rail only when the canvas beside it keeps COMFORTABLE columns (195px, so a held cause never wraps); otherwise the stacked scroller above a full-width canvas. Before the first measure (bw 0) the stacked form: it can never widen the page. */
 	const sideNeed = $derived(RAIL + stages.columns.length * COMFY + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
 	const side = $derived(bw > 0 && bw >= sideNeed);
 	/* a roomier rail (336px) only when the canvas beside it still keeps columns of 220px or more; decided by width alone */
