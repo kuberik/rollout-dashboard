@@ -891,6 +891,13 @@ function holdOracle(raw, at) {
 		groupOf: (href) => [...groups.values()].find((g) => g.keys.includes(placeKey(href))) ?? null,
 		behindOf: (app, tier) => places.filter((p) => p.app === app && p.tier === tier).map(behind).filter((n) => n != null),
 		behind,
+		/* the candidates newer than the place's running build in the catalogue order (a pin refuses these) */
+		newerCandidates: (p) => {
+			const rels = cat.get(`${p.ns}/${p.spec.releaseSourceRef?.name}`) ?? [];
+			const run = tagOf(p.st.history?.[0]?.version) || p.st.currentVersion;
+			const at = rels.findIndex((x) => x.tag === run || x.version === run);
+			return (p.st.candidates ?? p.st.releaseCandidates ?? []).filter((c) => at >= 0 && rels.findIndex((x) => x.tag === c.tag) > at);
+		},
 		catalogue: (p) => cat.get(`${p.ns}/${p.spec.releaseSourceRef?.name}`)
 	};
 }
@@ -1497,8 +1504,11 @@ async function v2Checks() {
 		if (!cell) bad(tag, `/apps/${pin.app} ${pin.tier} environment cell prints no "Held N of M regions" (cells: ${ap.cells.join(' | ') || 'none'})`);
 		else {
 			if (+cell[2] !== tierPlaces.length) bad(tag, `${pin.tier} cell says "${cell[0]}" but the fixture has ${tierPlaces.length} ${pin.tier} places`);
-			if (+cell[1] !== heldRows.length) bad(tag, `${pin.tier} cell says "${cell[0]}" but ${heldRows.length} of its place rows read held (the pin is one of them: ${heldRows.some((r) => placeKey(r.href) === pin.key)})`);
-			if (+cell[1] < O.pins.filter((q) => q.app === pin.app && q.tier === pin.tier).length) bad(tag, `${pin.tier} cell "${cell[0]}" counts fewer holds than there are pins`);
+			/* the pins come from the RAW fixture (spec.wantedVersion set while newer candidates exist), never from the page's rows; the other held places are the page's own place rows that are not a pin */
+			const pinsHolding = O.pins.filter((q) => q.app === pin.app && q.tier === pin.tier && O.newerCandidates(q).length);
+			const otherHeld = heldRows.filter((r) => !pinsHolding.some((q) => q.key === placeKey(r.href))).length;
+			if (+cell[1] !== otherHeld + pinsHolding.length)
+				bad(tag, `${pin.tier} cell says "${cell[0]}" but ${pinsHolding.length} pinned place(s) (raw spec.wantedVersion with newer builds) + ${otherHeld} other held place rows make ${otherHeld + pinsHolding.length}: the pin must count as held`);
 		}
 		console.log(`pin ${pin.app} ${pin.key.split('/')[0]}: /rollouts "${row?.word}" in ${row?.section}, Gates "Clear pin"${appr.length ? ' + APPROVAL' : ' only'}, Overview ${got}/${want} "Held by the pin", app cell "${cell?.[0] ?? '?'}"`);
 	}
