@@ -36,7 +36,7 @@
 	import { plural } from '../envs-model';
 	import { envTheme } from '../rollout-view';
 	import type { HomeState } from '../data';
-	import type { EnvPage as Model } from './env-page';
+	import { newerNote, type EnvPage as Model } from './env-page';
 
 	import { createQueries } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
@@ -73,7 +73,7 @@
 		{#if b}
 			<div class="contents" data-truth-kind="banner" data-truth-app={b.row.app} data-truth-href={b.row.href} data-truth-group={b.row.group} {...truthAttrs(b.row)}>
 				<AlertPanel severity="error" title={b.title} class="" change={b.change ?? undefined}>
-					{#snippet messageBody()}{#if b.check}<FailedCheckLine check={b.check} danger ink />{:else if b.line}<span class="t-body">{b.line}</span>{/if}{/snippet}
+					{#snippet messageBody()}{#if b.check}<FailedCheckLine check={b.check} danger ink />{:else if b.line}<span class="t-body">{b.line}</span>{/if}{#if b.newer}<span class="t-meta mt-1 block text-fg-subtle" data-note>{newerNote(b.newer)}</span>{/if}{/snippet}
 					{#snippet actions()}
 						<a href={b.openHref} class="btn btn-secondary" data-action="open">Open rollout ›</a>
 						{#if b.rollbackHref}<a href={b.rollbackHref} class="btn btn-primary" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>{/if}
@@ -89,7 +89,7 @@
 					{#each P.attention as a (a.key)}
 						{@const act = a.failed ? null : a.href}
 						<div class="contents" data-truth-kind="attention" data-truth-app={a.app} data-truth-href={a.href} data-truth-group={a.failed ? 'failed' : 'approval'} {...truthAttrs(a.row)}>
-							<AttentionCard model={a.model} href={a.href} id={a.id} rollbackHref={a.rollbackHref ?? undefined} approve={a.failed ? null : approvalTarget(a.row, hs)} approveFallbackHref={act ?? undefined} />
+							<AttentionCard model={a.model} href={a.href} id={a.id} rollbackHref={a.rollbackHref ?? undefined} approve={a.failed ? null : approvalTarget(a.row, hs)} approveFallbackHref={act ?? undefined} note={a.newer ? newerNote(a.newer) : undefined} />
 						</div>
 					{/each}
 				</AttentionBand>
