@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
+	import { isDeployInFlight, showNewerBuildsCard } from '$lib/view-models/pipeline-card';
 	import { heldChipLead, heldChipPhrase } from '$lib/view-models/held-chip';
 	import { kruiseStatusIsPreviousDeploy, freshestKruise } from '$lib/pipeline';
 	import { sourceDashboardURL } from '$lib/source-dashboard';
@@ -1162,6 +1163,8 @@
 	// both of which the API contract (`rollout-types.ts`) declares with a
 	// REQUIRED `tag`. Same cast `apps/[name]/+page.svelte`'s `waitingBuildsFor`
 	// already uses for the identical reason.
+	/** a deploy of this rollout is still being rolled out or checked (its newest history entry has no outcome yet) */
+	const deployInFlight = $derived(isDeployInFlight(rollout?.status?.history));
 	const newerBuilds = $derived(
 		promotionCandidates(rollout) as {
 			version?: string;
@@ -3862,6 +3865,9 @@
 						     the stack. This card has a header bar and sits in the
 						     stack, so it takes the stack's radius. -->
 							<!-- Glides when a candidate row leaves (a promote) — `$lib/smooth-height`. -->
+							<!-- film l33 (owner 2026-11-12): while a deploy is in flight and nothing newer waits, this card only said "No newer build" and rode the pipeline card's
+							     height changes down the page step after step. It stays out of the way until the deploy settles or a newer build arrives. -->
+							{#if showNewerBuildsCard({ deployInFlight, newerCount: newerBuilds.length, pinned: !!rollout?.spec?.wantedVersion && !isPinnedVersionCustom, held: !!heldByThis, releasesLoading })}
 							<div
 								class="border-line bg-surface overflow-hidden rounded-md border {noSource ? 'hidden' : ''}"
 								use:smoothHeight
@@ -4724,6 +4730,7 @@
 							-->
 								</div>
 							</div>
+							{/if}
 						</div>
 						<!--
 						⭐ THE RAIL'S FOUR CARDS RENDER IN THEIR FINAL ORDER FROM FIRST

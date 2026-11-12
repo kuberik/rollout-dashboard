@@ -3,6 +3,8 @@
 <script lang="ts">
 	import Leaving from './Leaving.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
+	import { steadyHeight } from '$lib/steady-height';
+	import { deployKey } from '$lib/view-models/pipeline-card';
 	import { canHover } from '$lib/can-hover.svelte';
 	import { formatTimestamp } from '$lib/display-time';
 	import { Modal, Spinner, Tooltip } from 'flowbite-svelte';
@@ -1320,7 +1322,7 @@
 	class="dpc-cq overflow-hidden rounded-md border border-line bg-surface"
 	use:smoothHeight
 >
-	<div>
+	<div use:steadyHeight={deployKey(latestEntry)}>
 	<!--
 		⭐ `min-h-[47px]`, MATCHING `Card`'S OWN FLOOR EXACTLY. (defect #4,
 		design re-check) This header hand-rolls its own bar rather than using
