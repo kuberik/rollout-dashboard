@@ -12,10 +12,10 @@ afterEach(() => installLiveSource(null));
 
 /**
  * batch4 #76 F: Home, /rollouts and the Holding card agree on WHICH places a promotion gate holds, and heldCauses' internal key
- * ("Held by Promotion from <env>", the cause text) neither splits one source nor merges two. The shipped fixture holds one place (telemetry-indexer prod,
- * source dev); the test serves four more: two more from dev (telemetry-worker prod, checkout-edge staging) and one from test (payments-core staging).
+ * ("Held by Promotion from <env>", the cause text) neither splits one source nor merges two. The shipped fixture holds two places (telemetry-indexer prod and checkout-edge staging,
+ * source dev); the test serves two more: one more from dev (telemetry-worker prod) and one from test (payments-core staging).
  */
-const EXTRA = ['telemetry-worker-prod', 'checkout-edge-staging', 'payments-core-staging'];
+const EXTRA = ['telemetry-worker-prod', 'payments-core-staging'];
 function install() {
 	const src = fixtureSource();
 	const base = withPromotionHolds({ rollouts: src.rollouts } as never).rollouts as any[];
