@@ -212,3 +212,25 @@ func TestGitHubCommit_ReportsAndNotFoundCarryClusterErrors(t *testing.T) {
 		t.Fatalf("clusterErrors = %+v, want the dead spoke %s", errs, spoke)
 	}
 }
+
+// With no repo visible at all (every candidate sits on the dead spoke), the
+// unscoped /changes read is a 404 that still names the spoke it could not read.
+func TestGitHubChanges_NoVisibleRepos404CarriesClusterErrors(t *testing.T) {
+	swapFanoutState(t, 2*time.Second)
+	resetLoginCacheForTest(t)
+	localURL := "https://kuberik.hub.example"
+	t.Setenv("DASHBOARD_URL", localURL)
+	spoke := deadSpokeURL(t)
+	r := setupGitHubPullsTest(t, []client.Object{
+		rolloutObj("team-a", "app-1"), // no source: nothing local deploys a repo
+		envObj("team-a", localURL, spoke),
+	})
+	w := doGitHubPullsRequest(r, "/api/github/changes?days=30", "ghu_changes_tok")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	errs := clusterErrorsOf(t, w.Body.Bytes())
+	if len(errs) != 1 || errs[0].URL != spoke {
+		t.Fatalf("404 clusterErrors = %+v, want the dead spoke %s", errs, spoke)
+	}
+}

@@ -82,7 +82,10 @@ func TestRecoveredSpokeClearsWithinCooldownPlusOneRefresh(t *testing.T) {
 		}
 	}
 	t.Logf("cleared %s after the spoke resumed", cleared)
-	if limit := breakerMaxCooldown + spokeDataTTL; cleared < 0 || cleared > limit {
-		t.Fatalf("recovered spoke still reported %s after it resumed; want within %s (breakerMaxCooldown + spokeDataTTL)", cleared, limit)
+	// A literal, not breakerMaxCooldown: the promise is "within 30s plus one
+	// refresh", and the bound must not move if the cap does.
+	const recoveryBound = 30*time.Second + spokeDataTTL
+	if cleared < 0 || cleared > recoveryBound {
+		t.Fatalf("recovered spoke still reported %s after it resumed; want within %s (30s + spokeDataTTL)", cleared, recoveryBound)
 	}
 }
