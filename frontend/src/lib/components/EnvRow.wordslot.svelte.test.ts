@@ -8,7 +8,7 @@ import { laneOf } from './new/Footprint.svelte';
 // NOTHING MOVES AS STATE CHANGES (owner 2026-11-12): a strip box keeps its width when its state word appears or goes.
 // jsdom has no layout, so this pins the mechanism (the same invisible words under the real one, in every state) and the
 // rules it hangs on; the measured result (0px across every beat, App view + Rollout overview, 390 and 1440) is in the PR.
-const SLOT = ['Failing', 'Stuck', 'Deploying', 'Checking', 'Held', 'Waiting'];
+const SLOT = ['Failing', 'Stuck', 'Deploying', 'Checking', 'Held', 'Waiting', 'Deployed'];
 
 describe('EnvRow word slot', () => {
 	for (const sites of [false, true]) {
@@ -52,12 +52,24 @@ const laneIn = (state: string) =>
 		[{ t: 1, app: 'a', sha: 'bbb' }] as never
 	).lane;
 
+describe('PromotionLane: the slot is opt-in (reserve)', () => {
+	it('without reserve no box has a slot (Home / Apps tiles measure as they did)', () => {
+		const { container } = render(PromotionLane, { props: { lane: laneIn('deploying'), hrefFor: () => '/x' } as never });
+		expect(container.querySelector('[data-env-word-slot]')).toBeNull();
+	});
+	it('with reserve a healthy box says Deployed quietly, an adverse one its word', () => {
+		const { container } = render(PromotionLane, { props: { lane: laneIn('deploying'), hrefFor: () => '/x', reserve: true } as never });
+		expect(container.querySelector('[data-tier="dev"] .env-word')?.textContent).toBe('Deployed');
+		expect(container.querySelector('[data-tier="staging"] .env-word')?.textContent).toBe('Deploying');
+	});
+});
+
 describe('PromotionLane: every box has the slot in every state', () => {
 	for (const fill of ['L', 'M'] as const) {
 		it(`same slot words for healthy / checking / deploying / failed (fill ${fill}), word only when adverse`, () => {
 			const seen = new Set<string>();
 			for (const state of ['healthy', 'checking', 'deploying', 'failed']) {
-				const { container } = render(PromotionLane, { props: { lane: laneIn(state), hrefFor: () => '/x', fill } as never });
+				const { container } = render(PromotionLane, { props: { lane: laneIn(state), hrefFor: () => '/x', fill, reserve: true } as never });
 				for (const t of ['dev', 'staging', 'prod']) {
 					const slot = container.querySelector(`[data-tier="${t}"] [data-env-word-slot]`);
 					expect(slot, `${t} in ${state}`).not.toBeNull();
