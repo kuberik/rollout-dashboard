@@ -46,3 +46,30 @@ export function resolveGateName(
 	const obj = objects.find((o) => o?.metadata?.name === name);
 	return gateDisplayName(name, prettyNameOf(obj?.metadata));
 }
+
+type ScheduleMeta = { name?: string; namespace?: string; annotations?: Record<string, string> };
+type ScheduleOf = { metadata?: ScheduleMeta; status?: { managedGates?: string[] } };
+
+/** THE ONE NAME OF A SCHEDULE (a deploy window / freeze): its published pretty name, else its resource name. null when it has neither. */
+export function scheduleLabelOf(meta?: ScheduleMeta | null): string | null {
+	return prettyNameOf(meta) || meta?.name || null;
+}
+
+/**
+ * THE ONE JOIN FROM A GATE TO ITS WINDOW: the name of the schedule that owns the gate `gate` in namespace `ns`, or null. The join is the schedule's
+ * published `status.managedGates` (a RolloutSchedule lists `name` and only counts in its own namespace; a ClusterRolloutSchedule lists `namespace/name`),
+ * never a display string. A gate whose own object carries no pretty name still reads as its window ("After Hours"), on every surface.
+ */
+export function scheduleLabelOfGate(
+	schedules: { rolloutSchedules?: { items?: ScheduleOf[] }; clusterRolloutSchedules?: { items?: ScheduleOf[] } } | null | undefined,
+	ns: string,
+	gate: string
+): string | null {
+	for (const s of schedules?.rolloutSchedules?.items ?? []) {
+		if (s.metadata?.namespace === ns && s.status?.managedGates?.includes(gate)) return scheduleLabelOf(s.metadata);
+	}
+	for (const s of schedules?.clusterRolloutSchedules?.items ?? []) {
+		if (s.status?.managedGates?.includes(`${ns}/${gate}`)) return scheduleLabelOf(s.metadata);
+	}
+	return null;
+}

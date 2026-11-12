@@ -579,7 +579,7 @@ const key = (namespace: string | undefined, gate: string) => `${namespace ?? ''}
 
 /** `main-1787999329-991829b…` is not a name. Neither is `ghd-p2fld`. */
 import { prettyNameOf as sharedPrettyNameOf } from './gate-name';
-import { gateDisplayName } from './gate-name';
+import { gateDisplayName, scheduleLabelOf } from './gate-name';
 export function prettyNameOf(meta?: { annotations?: Record<string, string> }): string | null {
 	return sharedPrettyNameOf(meta);
 }
@@ -755,7 +755,7 @@ export function withSchedules(
 		const action = s?.spec?.action;
 		const blocking = (action === 'Allow' && !active) || (action === 'Deny' && active);
 		if (!blocking) continue;
-		const label = prettyNameOf(s?.metadata) || s?.metadata?.name || 'a deploy window';
+		const label = scheduleLabelOf(s?.metadata) || 'a deploy window';
 		for (const g of s?.status?.managedGates ?? []) {
 			next.schedule.set(key(namespace, g), {
 				label,

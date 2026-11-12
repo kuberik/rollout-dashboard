@@ -7,7 +7,7 @@ import { installEdge, uninstallEdge } from '$lib/testing/edge-source';
 /**
  * What the home-edge apps (src/lib/demo/home-edge.ts) render on the hold surfaces TODAY: heldCauses (the banner), placeHolds (the gates tab / app page),
  * appHolds (the app row) and Home's asks. Each expectation pins current behaviour, including two wordings the lane reports but does not fix:
- * door-lock's gate name reads "Schedule gate dl1xx" where the window's name is "After Hours", and ledger-export's place reads "production" for prod-eu-central.
+ * ledger-export's place reads "production" for prod-eu-central.
  */
 beforeEach(installEdge);
 afterEach(uninstallEdge);
@@ -50,7 +50,7 @@ describe('item 4 (M20): a closed window and a dependency hold tide-gauge at prod
 });
 
 describe('item 6: door-lock, signal-box, ledger-export', () => {
-	it('door-lock (closed named window "After Hours"): the banner and the app row name the window and when it opens; the gates tab names the gate, not the window', () => {
+	it('door-lock (closed named window "After Hours"): the banner, the app row and the place gate all name the window (batch4 b: joined by the schedule managedGates, the gate object has no pretty name)', () => {
 		const hc = held('door-lock');
 		expect(hc.map((h) => h.cause)).toEqual(['Held by After Hours']);
 		expect(hc[0].reason).toBe('clock');
@@ -61,7 +61,7 @@ describe('item 6: door-lock, signal-box, ledger-export', () => {
 		const p = place('door-lock');
 		expect(p.state).toBe('held-by-rule');
 		expect(p.gate).toEqual({
-			name: 'Schedule gate dl1xx',
+			name: 'After Hours',
 			sentence: 'Releases when the deploy window opens'
 		});
 		expect(asks('door-lock')[0].status).toBe('Waits for a deploy window in prod');

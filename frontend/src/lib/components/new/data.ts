@@ -45,6 +45,7 @@ import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } 
 import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { gateDisplayName } from '$lib/view-models/rollout-gates';
+import { scheduleLabelOfGate } from '$lib/view-models/gate-name';
 import { approvalWrite, approvalGateOf, refusingGates, deployableTags, type PlaceVerdict } from '$lib/view-models/place-verdict';
 export { deployableTags, approvalWrite };
 import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
@@ -682,7 +683,8 @@ const prettyOfGate = (href: string, gate: string): string | null => {
 	const h = hrefParts(href);
 	if (!h) return null;
 	/* the loaded gate object's name wins; until then the API's summary `displayName` (same annotation, served on the list) */
-	return gatePrettyOf(h.cluster, h.ns, gate) ?? rawOf(href)?.status?.gates?.find((g) => g.name === gate)?.displayName ?? null;
+	/* a gate its schedule owns reads as its window even when its own object carries no pretty name yet (the schedule's managedGates is the join) */
+	return gatePrettyOf(h.cluster, h.ns, gate) ?? rawOf(href)?.status?.gates?.find((g) => g.name === gate)?.displayName ?? scheduleLabelOfGate(source().schedules?.get(h.cluster), h.ns, gate);
 };
 /** QA #12 — THE ONE "how many builds behind" of a place, for every surface (Apps tile, app strip + ledger, Environments, Runs-in, the tab's header):
  *  the length of the tab's "Newer builds" list (`status.releaseCandidates`); only a rollout that carries no such list falls back to its position in `availableReleases`. */
