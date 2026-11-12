@@ -15,7 +15,7 @@
  *
  * Headline rule (coordinator a): an app's headline state here is the MOST SEVERE state among its places (state-words `mostSevere`).
  */
-import { heldHere, placeHolds } from '../data';
+import { heldHere } from '../data';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import {
 	rollouts, environments, placeHolds, inbound, rowsOf, ago, buildInQuestionFacts, deployedBuild, holdSince, commitHeadline, buildIdentity, isViewer, TIER_NAME, TIERS, apps as appsOf, fleet24hEvents,
