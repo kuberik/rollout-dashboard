@@ -144,9 +144,17 @@ func (b *spokeBreakers) failure(spokeURL string, err error) {
 		e = &breakerEntry{}
 		b.m[spokeURL] = e
 	}
+	e.lastErr = err
+	// One failure per probe round. Once open, only the admitted probe's
+	// failure counts: the rollouts, health-checks and name caches share this
+	// breaker, and calls admitted before it opened (or duplicates of the
+	// probe) landing now say nothing new about the spoke. Counting them
+	// doubled the cooldown per caller, not per round.
+	if !e.openUntil.IsZero() && !e.probing {
+		return
+	}
 	e.probing = false
 	e.failures++
-	e.lastErr = err
 	if e.failures < breakerThreshold {
 		return
 	}
