@@ -71,9 +71,8 @@
 	import { approvalWord, ASK_LOADING } from '$lib/components/new/state-words';
 	import { fade } from 'svelte/transition';
 	import type { ApprovalTarget } from '$lib/components/new/data';
-	import { theme as themeStore } from '$lib/stores/theme';
 	import { now } from '$lib/stores/time';
-	import { ARROW, ARROW_PATH, ARROW_VIEWBOX, WIRE_INK, DASH, dashOffsetForLength, wireKind } from '$lib/graph-arrow';
+	import { WIRE_DASH, WIRE_STROKE, WIRE_TONE_CLASS, wireDashOffset, wireTone } from '$lib/graph-wire';
 	import {
 		wideWires,
 		compactWires,
@@ -494,12 +493,20 @@
 			wires = [];
 			return;
 		}
-		const f = local(focusEl);
+		/** A box's PORT: the centre of its title row (`data-hood-port`), so a box that grows a second line keeps it. */
+		const portOf = (el: Element) => {
+			const p = el.querySelector('[data-hood-port]');
+			if (!p) return undefined;
+			const pr = local(p);
+			return pr.top + pr.height / 2;
+		};
+		const f = { ...local(focusEl), port: portOf(focusEl) };
 		const read = (side: 'upstream' | 'downstream'): WireIn[] =>
 			[...root!.querySelectorAll<HTMLElement>(`[data-hood-link="${side}"]`)].map((el, i) => ({
 				key: el.dataset.key ?? `${side}-${i}`,
 				state: (el.dataset.wireState ?? el.dataset.state ?? 'clear') as WireIn['state'],
-				rect: local(el)
+				rect: local(el),
+				port: portOf(el)
 			}));
 		const up = read('upstream');
 		const down = read('downstream');
@@ -524,7 +531,7 @@
 		const apply = (on: boolean) => {
 			if (!on) return node.removeAttribute('stroke-dashoffset');
 			const len = typeof node.getTotalLength === 'function' ? node.getTotalLength() : 0;
-			node.setAttribute('stroke-dashoffset', String(dashOffsetForLength(len)));
+			node.setAttribute('stroke-dashoffset', String(wireDashOffset(len)));
 		};
 		apply(dashed);
 		return { update: apply };
@@ -543,9 +550,6 @@
 	/** The window bar's clock: whole minutes, so the now tick moves on its own once a minute (QA #141) without re-rendering every 100ms. */
 	const minute = $derived(Math.floor($now.getTime() / 60_000));
 
-	const WIRE_KINDS = ['held', 'quiet'] as const;
-	const dark = $derived($themeStore === 'dark');
-	const ink = (k: 'held' | 'quiet') => (dark ? WIRE_INK[k].dark : WIRE_INK[k].light);
 </script>
 
 <!--
@@ -599,7 +603,7 @@
 				: 'border-line bg-surface'}
 			{href ? 'hover:border-line-strong' : ''}"
 	>
-		<span class="gh-row flex min-w-0 items-center gap-2">
+		<span class="gh-row flex min-w-0 items-center gap-2" data-hood-port>
 			{@render glyph(type)}
 			<!-- identity in the type's own shape: a promotion IS an environment (the env chip alone: the app is the focus's own name and the
 			     build that env runs is one click away); a dependency is the other app and the version it runs (its environment in the tooltip:
@@ -653,7 +657,7 @@
 			{held ? 'border-held-line bg-surface' : 'border-line bg-surface'}
 			{docsHref ? 'hover:border-line-strong' : ''}"
 	>
-		<span class="gh-row flex min-w-0 items-center gap-2" data-approval-row={isApproval ? '' : undefined}>
+		<span class="gh-row flex min-w-0 items-center gap-2" data-hood-port data-approval-row={isApproval ? '' : undefined}>
 			{@render glyph(type)}
 			<span class="gh-name t-card-title flex-1 text-fg"
 				>{#if b.label}<GateLabel label={b.label} glyph={false} href={docsHref ? null : sourceGatesHref(b.label)} />{:else}{b.title}{/if}</span
@@ -835,7 +839,7 @@
 						     `scale()` wrapper on the ONE raised object keeps the focus
 						     the largest mark on the canvas without a second glyph
 						     component. -->
-						<span class="inline-flex h-5 w-5 shrink-0 items-center justify-center">
+						<span class="inline-flex h-5 w-5 shrink-0 items-center justify-center" data-hood-port>
 							<span style="transform: scale(1.25)"
 								><StatusMark state={focusHeldBuilds.length > 0 ? 'held' : 'newest'} /></span
 							>
@@ -887,37 +891,22 @@
 			height={box.h}
 			aria-hidden="true"
 		>
-			<defs>
-				{#each WIRE_KINDS as k (k)}
-					<!-- One head spec for every dependency graph (`$lib/graph-arrow`):
-					     fixed px, base on the path's end, tip on the edge. -->
-					<marker
-						id="{uid}-{k}"
-						viewBox={ARROW_VIEWBOX}
-						refX="0"
-						refY="8"
-						markerUnits="userSpaceOnUse"
-						markerWidth={ARROW[k].length}
-						markerHeight={ARROW[k].width}
-						orient="auto"
-					>
-						<path d={ARROW_PATH} fill={ink(k)} />
-					</marker>
-				{/each}
-			</defs>
+			<!-- ⭐ THE CONNECTOR (`$lib/graph-wire`): 1 px hairlines in `line-strong`, `held-solid` only for a wire that carries a hold;
+			     orthogonal runs with the tiles' 8 px corners from title-row port to title-row port; an open 1 px chevron at the tip.
+			     Wires into the focus share one trunk and one tip, so they never cross; held paints last, so on a shared run it is the
+			     one you see. One width for every state: a state change recolours a wire, it never moves one. -->
 			{#each wires as w (w.key)}
-				{@const k = wireKind(w.state)}
-				<path
-					d={w.d}
-					stroke={ink(k)}
-					fill="none"
-					stroke-width={ARROW[k].stroke}
-					stroke-dasharray={w.state === 'unknown' ? `${DASH.on} ${DASH.off}` : undefined}
-					use:endOnDash={w.state === 'unknown'}
-					marker-end="url(#{uid}-{k})"
-					data-wire={w.key}
-					data-tip="{w.tip[0]},{w.tip[1]}"
-				/>
+				{@const tone = wireTone(w.state)}
+				<g class={WIRE_TONE_CLASS[tone]} fill="none" stroke-width={WIRE_STROKE} stroke-linecap="round" stroke-linejoin="round"
+					data-wire={w.key} data-wire-tone={tone}>
+					<path
+						d={w.d}
+						stroke-dasharray={w.state === 'unknown' ? `${WIRE_DASH.on} ${WIRE_DASH.off}` : undefined}
+						use:endOnDash={w.state === 'unknown'}
+						data-tip="{w.tip[0]},{w.tip[1]}"
+					/>
+					<path d={w.head} data-wire-head />
+				</g>
 			{/each}
 		</svg>
 	</div>

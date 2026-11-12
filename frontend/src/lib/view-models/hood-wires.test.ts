@@ -1,17 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ARROW, crisp, dashOffsetForLength, DASH } from '$lib/graph-arrow';
+import { CHEVRON, CORNER, SNAP, WIRE_DASH, chevron, elbow, wireDashOffset, wireTone } from '$lib/graph-wire';
 import {
 	FOCUS_RING,
-	SLOT_GAP,
-	focusMinHeight,
 	maxRise,
 	holdingFirst,
 	narrowWires,
 	compactWires,
 	COMPACT_SPINE_INSET,
 	SPINE_X,
-	slotPitch,
-	slots,
 	wideWires,
 	type Rect,
 	type WireIn
@@ -26,14 +22,15 @@ const rect = (left: number, top: number, width: number, height: number): Rect =>
 	bottom: top + height
 });
 
-/** The last point of an SVG path (`… H x` or `… V y` or `… C … x y`). */
-function endOf(d: string): [number, number] {
+/** Every point an SVG path visits (`M`, `H`, `V`, `L`, and the END of each `Q`/`C`). */
+function points(d: string): [number, number][] {
 	const tok = d.split(' ');
+	const out: [number, number][] = [];
 	let x = 0;
 	let y = 0;
 	for (let i = 0; i < tok.length; i++) {
 		const t = tok[i];
-		if (t === 'M') [x, y] = [+tok[++i], +tok[++i]];
+		if (t === 'M' || t === 'L') [x, y] = [+tok[++i], +tok[++i]];
 		else if (t === 'H') x = +tok[++i];
 		else if (t === 'V') y = +tok[++i];
 		else if (t === 'C') {
@@ -42,97 +39,130 @@ function endOf(d: string): [number, number] {
 		} else if (t === 'Q') {
 			i += 2;
 			[x, y] = [+tok[++i], +tok[++i]];
-		}
+		} else continue;
+		out.push([x, y]);
 	}
-	return [x, y];
+	return out;
 }
+const startOf = (d: string) => points(d)[0];
+const endOf = (d: string) => points(d).at(-1)!;
 
-const focus = rect(400, 100, 300, 90);
+const focus = { ...rect(400, 100, 300, 90), port: 126 };
+/** Upstream boxes 60px tall with their title row 26px below their top; box `i` holds when `i < held`. */
 const up = (n: number, held = 0): WireIn[] =>
 	Array.from({ length: n }, (_, i) => ({
 		key: `u${i}`,
 		state: i < held ? 'blocked' : 'clear',
-		rect: rect(0, 40 + i * 70, 320, 60)
+		rect: rect(0, 40 + i * 70, 320, 60),
+		port: 40 + i * 70 + 26
 	}));
 const down = (n: number): WireIn[] =>
-	Array.from({ length: n }, (_, i) => ({ key: `d${i}`, state: 'clear', rect: rect(780, 40 + i * 70, 320, 60) }));
+	Array.from({ length: n }, (_, i) => ({
+		key: `d${i}`,
+		state: 'clear',
+		rect: rect(780, 40 + i * 70, 320, 60),
+		port: 40 + i * 70 + 26
+	}));
 
-describe('the head comes after the path, and its tip lands on the painted edge', () => {
-	it('upstream: path ends one head-length short of the focus ring; tip on the ring', () => {
-		for (const w of wideWires(focus, up(3, 1), [])) {
-			const kind = w.state === 'blocked' ? 'held' : 'quiet';
-			const [ex] = endOf(w.d);
-			expect(w.tip[0]).toBe(focus.left - FOCUS_RING);
-			expect(ex).toBeCloseTo(w.tip[0] - ARROW[kind].length, 5);
-			// The final command is a horizontal run: the head continues a line.
-			expect(w.d).toMatch(/ H [\d.]+$/);
+describe('ports: wires leave and enter at a box’s title row, the tip on the painted edge', () => {
+	it('upstream: leaves each box’s right edge at its port; every wire ends on the focus ring at the focus port', () => {
+		const ws = wideWires(focus, up(3), []);
+		for (const w of ws) {
+			const i = +w.key.slice(1);
+			const y = 40 + i * 70 + 26.5;
+			// u1's port is 3.5px from the focus port: it snaps to one straight line at the focus port's height.
+			expect(startOf(w.d)).toEqual([320, Math.abs(y - 126.5) < SNAP ? 126.5 : y]);
+			expect(endOf(w.d)).toEqual([focus.left - FOCUS_RING, 126.5]);
+			expect(w.tip).toEqual([focus.left - FOCUS_RING, 126.5]);
 		}
 	});
 
-	it('downstream: starts outside the ring, tip on the box border', () => {
-		for (const w of wideWires(focus, [], down(2))) {
-			expect(w.d.startsWith(`M ${focus.right + FOCUS_RING} `)).toBe(true);
-			const [ex] = endOf(w.d);
-			expect(w.tip[0]).toBe(780);
-			expect(ex).toBeCloseTo(780 - ARROW.quiet.length, 5);
-		}
+	it('a box that grows a second line keeps its port (the port, not the centre, is read)', () => {
+		const tall: WireIn = { key: 't', state: 'clear', rect: rect(0, 40, 320, 120), port: 66 };
+		const short: WireIn = { key: 's', state: 'clear', rect: rect(0, 40, 320, 60), port: 66 };
+		expect(wideWires(focus, [tall], [])[0].d).toBe(wideWires(focus, [short], [])[0].d);
 	});
 
-	it('narrow: the upstream head points down onto the ring; downstream right onto the box', () => {
-		const f = rect(32, 300, 330, 90);
-		const ws = narrowWires(
-			f,
-			[{ key: 'u', state: 'blocked', rect: rect(32, 100, 330, 60) }],
-			[{ key: 'd', state: 'clear', rect: rect(32, 450, 330, 60) }]
-		);
-		const u = ws.find((w) => w.key === 'u')!;
-		const d = ws.find((w) => w.key === 'd')!;
-		expect(endOf(u.d)[1]).toBe(f.top - FOCUS_RING - ARROW.held.length);
-		expect(u.tip[1]).toBe(f.top - FOCUS_RING);
-		expect(d.d.startsWith(`M ${crisp(SPINE_X, 'quiet')} ${f.bottom + FOCUS_RING}`)).toBe(true);
-		expect(endOf(d.d)[0]).toBeCloseTo(32 - ARROW.quiet.length, 5);
+	it('no port measured: falls back to the box centre', () => {
+		const w = wideWires(focus, [{ key: 'c', state: 'clear', rect: rect(0, 40, 320, 60) }], [])[0];
+		expect(startOf(w.d)[1]).toBe(70.5);
+	});
+
+	it('downstream: starts outside the ring at the focus port, tip on the box border at its port', () => {
+		const [w] = wideWires(focus, [], down(1));
+		expect(startOf(w.d)).toEqual([focus.right + FOCUS_RING, 126.5]);
+		expect(w.tip).toEqual([780, 66.5]);
+		expect(endOf(w.d)).toEqual(w.tip);
+	});
+
+	it('narrow: upstream runs down the spine onto the focus ring; downstream turns right into each box at its port', () => {
+		const f = { ...rect(16, 300, 300, 90), port: 326 };
+		const u: WireIn = { key: 'u', state: 'clear', rect: rect(16, 40, 300, 60), port: 66 };
+		const d: WireIn = { key: 'd', state: 'clear', rect: rect(16, 420, 300, 60), port: 446 };
+		const ws = narrowWires(f, [u], [d]);
+		const wu = ws.find((w) => w.key === 'u')!;
+		const wd = ws.find((w) => w.key === 'd')!;
+		expect(startOf(wu.d)).toEqual([16, 66.5]);
+		expect(wu.tip).toEqual([SPINE_X + 0.5, 300 - FOCUS_RING]);
+		expect(endOf(wu.d)).toEqual(wu.tip);
+		expect(startOf(wd.d)).toEqual([SPINE_X + 0.5, 390 + FOCUS_RING]);
+		expect(wd.tip).toEqual([16, 446.5]);
 	});
 });
 
-describe('crisp lines', () => {
-	it('held 2 px on integer centres, quiet 1 px on .5 centres', () => {
-		expect(crisp(100.3, 'held')).toBe(100);
-		expect(crisp(100.3, 'quiet')).toBe(100.5);
-		const ws = wideWires(focus, up(2, 1), []);
-		const held = ws.find((w) => w.state === 'blocked')!;
-		const quiet = ws.find((w) => w.state === 'clear')!;
-		expect(Number.isInteger(endOf(held.d)[1])).toBe(true);
-		expect(endOf(quiet.d)[1] % 1).toBe(0.5);
+describe('one fan-in: wires into the focus share a trunk, so none crosses another', () => {
+	it('every upstream wire turns at the same trunk x, half way across the gutter', () => {
+		const ws = wideWires(focus, up(4), []).filter((w) => points(w.d).length > 2);
+		const trunks = new Set(ws.map((w) => points(w.d)[2][0]));
+		expect(trunks.size).toBe(1);
+		expect([...trunks][0]).toBe(Math.floor((320 + focus.left - FOCUS_RING) / 2) + 0.5);
+	});
+
+	it('corners are the tiles’ own 8 px radius when the rise allows', () => {
+		const w = wideWires(focus, up(4), []).find((x) => x.key === 'u3')!;
+		const [, a, b] = points(w.d);
+		expect(b[0] - a[0]).toBe(CORNER);
+		expect(Math.abs(a[1] - b[1])).toBe(CORNER);
+	});
+
+	it('held paints last, so on the shared run it is the one you see', () => {
+		const ws = wideWires(focus, [...up(3, 0), { ...up(1, 1)[0], key: 'h' }], []);
+		expect(ws.at(-1)!.key).toBe('h');
+	});
+});
+
+describe('crisp, and state never moves a wire', () => {
+	it('every horizontal run lies on a .5 centre (a 1 px hairline)', () => {
+		for (const w of [...wideWires(focus, up(3, 1), down(2)), ...narrowWires(focus, up(2, 1), down(1))]) {
+			const pts = points(w.d);
+			for (let i = 1; i < pts.length; i++) if (pts[i - 1][1] === pts[i][1]) expect(pts[i][1] % 1).toBe(0.5);
+		}
+	});
+
+	it('the same boxes held or clear draw the identical geometry', () => {
+		const clear = wideWires(focus, up(3, 0), down(1));
+		const held = wideWires(focus, up(3, 3), down(1));
+		const byKey = (ws: typeof clear) => Object.fromEntries(ws.map((w) => [w.key, w.d]));
+		expect(byKey(held)).toEqual(byKey(clear));
+		expect(wireTone('blocked')).toBe('held');
+		expect(wireTone('unknown')).toBe('quiet');
+		expect(wireTone('clear')).toBe('quiet');
 	});
 });
 
 describe('one straight line when the ends nearly agree', () => {
-	it('snaps |dy| < 4 to a single y (no 1.5 px wobble)', () => {
-		const f = rect(400, 100, 300, 60);
-		const w = wideWires(f, [{ key: 'a', state: 'blocked', rect: rect(0, 101, 320, 60) }], [])[0];
-		expect(w.d).toMatch(/^M [\d.]+ [\d.]+ H [\d.]+$/);
+	it(`|dy| < ${SNAP} is one H run at the end’s height (no jog)`, () => {
+		expect(elbow(320, 130.5, 398, 127.5, 359.5)).toBe('M 320 127.5 H 398');
+		expect(elbow(320, 130.5, 398, 126.5, 359.5)).toMatch(/Q/);
 	});
 });
 
-describe('fan-in spacing at the focus', () => {
-	it('slots are at least head width + gap apart, and integers', () => {
-		const pitch = slotPitch(['held', 'quiet']);
-		expect(pitch).toBe(ARROW.held.width + SLOT_GAP);
-		const ys = slots(5, 100, 90, pitch);
-		for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(pitch - 1);
-		for (const y of ys) expect(Number.isInteger(y)).toBe(true);
-	});
-
-	it('5 upstreams: the focus grows to fit their heads', () => {
-		const pitch = slotPitch(['held', 'quiet', 'quiet', 'quiet', 'quiet']);
-		const min = focusMinHeight(5, pitch);
-		const ys = slots(5, 0, min, pitch);
-		expect(ys[0]).toBeGreaterThanOrEqual(0);
-		expect(ys[4]).toBeLessThanOrEqual(min);
-		// …and with 4+ upstream wires every tip is its own slot.
-		const ws = wideWires(rect(400, 0, 300, min), up(5, 1), []);
-		const tipsY = ws.map((w) => w.tip[1]).sort((a, b) => a - b);
-		for (let i = 1; i < tipsY.length; i++) expect(tipsY[i] - tipsY[i - 1]).toBeGreaterThanOrEqual(pitch - 1);
+describe('the chevron', () => {
+	it('apex on the tip, open, depth and half-height from the spec', () => {
+		const { depth: d, half: h } = CHEVRON;
+		expect(chevron(100, 50, 'right')).toBe(`M ${100 - d} ${50 - h} L 100 50 L ${100 - d} ${50 + h}`);
+		expect(chevron(100, 50, 'down')).toBe(`M ${100 - h} ${50 - d} L 100 50 L ${100 + h} ${50 - d}`);
+		for (const w of wideWires(focus, up(2), down(1))) expect(points(w.head)[1]).toEqual(w.tip);
 	});
 });
 
@@ -144,7 +174,13 @@ describe('upstream order and steepness', () => {
 			{ key: 'c', state: 'unknown' as const }
 		]);
 		expect(order.map((l) => l.key)).toEqual(['a', 'b', 'c']);
-		expect(holdingFirst([{ key: 'x', state: 'clear' as const }, { key: 'y', state: 'blocked' as const }, { key: 'z', state: 'blocked' as const }]).map((l) => l.key)).toEqual(['y', 'z', 'x']);
+		expect(
+			holdingFirst([
+				{ key: 'x', state: 'clear' as const },
+				{ key: 'y', state: 'blocked' as const },
+				{ key: 'z', state: 'blocked' as const }
+			]).map((l) => l.key)
+		).toEqual(['y', 'z', 'x']);
 	});
 
 	it('maxRise is the largest box-centre distance from the focus middle', () => {
@@ -154,26 +190,22 @@ describe('upstream order and steepness', () => {
 
 describe('dashed wires end on a dash', () => {
 	it('offset puts the path end at the end of a dash', () => {
-		for (const L of [10, 13.3, 70, 101.25]) {
-			const off = dashOffsetForLength(L);
-			const pos = (((L + off) % (DASH.on + DASH.off)) + DASH.on + DASH.off) % (DASH.on + DASH.off);
-			expect(pos).toBeCloseTo(DASH.on, 6);
+		const period = WIRE_DASH.on + WIRE_DASH.off;
+		for (const L of [0, 1, 7, 50, 123.4]) {
+			const pos = (((L + wireDashOffset(L)) % period) + period) % period;
+			expect(pos).toBeCloseTo(WIRE_DASH.on, 6);
 		}
 	});
 });
 
 describe('compact layout (two columns, downstream under the focus)', () => {
-	it('upstream wires are the wide ones; a downstream wire drops from under the focus and turns right into its box', () => {
-		const focus = rect(400, 100, 300, 120);
-		const up: WireIn[] = [{ key: 'u', state: 'blocked', rect: rect(0, 120, 300, 54) }];
-		const down: WireIn[] = [{ key: 'd', state: 'clear', rect: rect(428, 300, 272, 54) }];
-		const ws = compactWires(focus, up, down);
-		const u = ws.find((w) => w.key === 'u')!;
-		expect(u).toEqual(wideWires(focus, up, []).find((w) => w.key === 'u'));
-		const d = ws.find((w) => w.key === 'd')!;
-		const sx = crisp(focus.left + COMPACT_SPINE_INSET, 'quiet');
-		expect(d.d.startsWith(`M ${sx} ${focus.bottom + FOCUS_RING}`)).toBe(true);
-		expect(d.tip).toEqual([428, crisp(327, 'quiet')]);
-		expect(d.d.endsWith(`H ${428 - ARROW.quiet.length}`)).toBe(true);
+	it('upstream wires are the wide ones; a downstream wire drops from under the focus and turns right into its box at its port', () => {
+		const d: WireIn = { key: 'd', state: 'clear', rect: rect(420, 260, 280, 60), port: 286 };
+		const ws = compactWires(focus, up(2), [d]);
+		for (const w of wideWires(focus, up(2), [])) expect(ws.find((x) => x.key === w.key)!.d).toBe(w.d);
+		const wd = ws.find((x) => x.key === 'd')!;
+		expect(startOf(wd.d)).toEqual([focus.left + COMPACT_SPINE_INSET + 0.5, focus.bottom + FOCUS_RING]);
+		expect(wd.tip).toEqual([420, 286.5]);
+		expect(endOf(wd.d)).toEqual(wd.tip);
 	});
 });
