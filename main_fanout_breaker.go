@@ -46,7 +46,11 @@ const (
 	breakerThreshold = 2
 
 	breakerBaseCooldown = 15 * time.Second
-	breakerMaxCooldown  = 5 * time.Minute
+	// breakerMaxCooldown caps the backoff. The breaker guards dashboard reads
+	// that re-ask every spokeDataTTL, and a recovered spoke is only noticed
+	// at the next probe: a longer cap leaves a healthy spoke flagged down for
+	// that long after it answers again (live: ~46s after a 56s outage).
+	breakerMaxCooldown = 30 * time.Second
 
 	// breakerProbeTimeout is how long a half-open probe may stay reserved
 	// before allow() treats it as leaked and admits another. Must be a
