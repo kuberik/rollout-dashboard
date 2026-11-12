@@ -598,8 +598,9 @@ export function edgeSchedules(f: HomeFixture): K8sObject[] {
 			matchingRollouts: 1
 		}
 	});
-	/* tide-gauge's "Release Freeze" is what its name says (Gates graph AD r1 #5): a Deny schedule over a date range that started a day before
-	   capture and lifts when the weekday window would next open, in effect now (instants rebase with the fixture, so it is in effect at any clock). */
+	/* tide-gauge's "Release Freeze" is what its name says (Gates graph AD r1 #5): a Deny schedule in effect now, from a day before capture
+	   until the instant `nextWeekdayNine` names. Mock only: the bounds are full instants (the real CRD takes YYYY-MM-DD dates) so they rebase
+	   with the fixture and the freeze is in effect at any clock; the tile prints only their dates. */
 	const freeze = (ns: string, name: string, pretty: string, gate: string): K8sObject => {
 		const until = nextWeekdayNine(f.capturedAt);
 		const from = new Date(Date.parse(f.capturedAt) - 86_400_000).toISOString();

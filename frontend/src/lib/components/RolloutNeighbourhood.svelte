@@ -72,6 +72,7 @@
 	import { fade } from 'svelte/transition';
 	import type { ApprovalTarget } from '$lib/components/new/data';
 	import { theme as themeStore } from '$lib/stores/theme';
+	import { now } from '$lib/stores/time';
 	import { ARROW, ARROW_PATH, ARROW_VIEWBOX, WIRE_INK, DASH, dashOffsetForLength, wireKind } from '$lib/graph-arrow';
 	import {
 		wideWires,
@@ -187,8 +188,8 @@
 	const focusHeldBuilds = $derived(heldBuildsOverride ?? hood.heldBuilds);
 	const upstreamLinks = $derived(reconciledUpstream ?? hood.upstream);
 
-	/** Same threshold the grid's container query uses (1000px; #140 set 800, the Gatehouse tiles need 1000 to keep names whole): below it the layers stack and the wires take the narrow spine. */
-	const WIDE_AT = 1000;
+	/** Same threshold the grid's container query uses (800px, #140): below it the layers stack and the wires take the narrow spine. */
+	const WIDE_AT = 800;
 	const uid = `nh-${Math.random().toString(36).slice(2, 8)}`;
 
 	let root = $state<HTMLDivElement | null>(null);
@@ -446,7 +447,7 @@
 		const rules = w.rules.map((r) => {
 			const days = r.daysOfWeek?.length ? r.daysOfWeek.map((d) => d.slice(0, 3)).join(', ') : 'every day';
 			const time = r.timeRange ? `${r.timeRange.start ?? '00:00'}–${r.timeRange.end ?? '24:00'}` : 'all day';
-			const dates = r.dateRange ? ` (${r.dateRange.start ?? ''} to ${r.dateRange.end ?? ''})` : '';
+			const dates = r.dateRange ? ` (${(r.dateRange.start ?? '').slice(0, 10)} to ${(r.dateRange.end ?? '').slice(0, 10)})` : '';
 			return `${days} ${time}${dates}`;
 		});
 		return `${verb} ${rules.join('; ')} ${w.timezone || 'UTC'}`;
@@ -534,6 +535,9 @@
 		return () => ro.disconnect();
 	});
 
+	/** The window bar's clock: whole minutes, so the now tick moves on its own once a minute (QA #141) without re-rendering every 100ms. */
+	const minute = $derived(Math.floor($now.getTime() / 60_000));
+
 	const WIRE_KINDS = ['held', 'quiet'] as const;
 	const dark = $derived($themeStore === 'dark');
 	const ink = (k: 'held' | 'quiet') => (dark ? WIRE_INK[k].dark : WIRE_INK[k].light);
@@ -596,7 +600,7 @@
 			     build that env runs is one click away); a dependency is the other app and the version it runs (its environment in the tooltip:
 			     one chip form on the canvas, the env badge belongs to a promotion). -->
 			<span class="flex min-w-0 flex-1 items-center gap-2">
-				{#if !sameApp}<span class="t-card-title min-w-0 break-words text-fg">{l.node.name}</span>{/if}
+				{#if !sameApp}<span class="gh-name t-card-title text-fg">{l.node.name}</span>{/if}
 				{#if sameApp && theme}
 					<Chip role="env" {theme} label={envLabel(l.node.env)} title={l.node.env} class="min-w-0" />
 				{:else if sameApp}
@@ -627,7 +631,7 @@
 	{@const loading = askRaw === ASK_LOADING}
 	{@const ask = askRaw && askRaw !== ASK_LOADING ? askRaw : null}
 	{@const docsHref = held && isApproval && !ask && !loading ? 'https://docs.kuberik.com/concepts/gates#approvals' : null}
-	{@const bar = type === 'window' || type === 'freeze' ? windowBar(b.window) : null}
+	{@const bar = type === 'window' || type === 'freeze' ? windowBar(b.window, new Date(minute * 60_000)) : null}
 	{@const fact = isApproval && !held ? approvedFacts.find((f) => f.who) ?? approvedFacts[0] : undefined}
 	<svelte:element
 		this={docsHref ? 'a' : 'div'}
@@ -646,7 +650,7 @@
 	>
 		<span class="gh-row flex min-w-0 items-center gap-2" data-approval-row={isApproval ? '' : undefined}>
 			{@render glyph(type)}
-			<span class="t-card-title min-w-0 flex-1 break-words text-fg"
+			<span class="gh-name t-card-title flex-1 text-fg"
 				>{#if b.label}<GateLabel label={b.label} glyph={false} href={docsHref ? null : sourceGatesHref(b.label)} />{:else}{b.title}{/if}</span
 			>
 			{#if bar}
@@ -850,7 +854,7 @@
 					     builds here" sentence above a second list of the same ids. Calm says nothing ("No build held here" was a sentence about nothing). -->
 					{#if focusHeldBuilds.length > 0}
 						<p class="t-meta min-w-0 break-words text-held" data-focus-held title={focusHeldBuilds.join(', ')}>
-							<span class="t-code-sm">{shortList(focusHeldBuilds)}</span> <span class="whitespace-nowrap">held here</span>
+							{#each shortList(focusHeldBuilds).split(', ') as id, i (i)}{#if i > 0},{' '}{/if}<span class="t-code-sm whitespace-nowrap">{id}</span>{/each} <span class="whitespace-nowrap">held here</span>
 						</p>
 					{:else if focusWaitsFor}
 						<p class="t-meta text-fg-subtle">{focusWaitsFor}</p>
@@ -918,7 +922,7 @@
 <style>
 	/*
 	 * NARROW FIRST: one column — each layer's label sits directly above its
-	 * own boxes, the lists are indented 24px so the spine (x = 12) runs beside
+	 * own boxes, the lists are indented 20px so the spine (x = 4) runs beside
 	 * them, and the focus box spans the full width between them.
 	 */
 	.hood {
@@ -986,7 +990,7 @@
 	 * empty-column override right below is harmless but now redundant
 	 * (inherits `start` from the row); left in place since it still
 	 * documents that specific case's own reasoning. */
-	@container (min-width: 1000px) {
+	@container (min-width: 800px) {
 		/* THE GUTTERS SHRINK WITH THE CONTAINER (2026-11-12). Fixed 8/9rem
 		   gutters plus a 240px tile floor summed to 878px inside an 812px
 		   container, and the section's `overflow-hidden` sliced the downstream
@@ -1104,7 +1108,7 @@
 	.hood-tile {
 		min-width: 0;
 	}
-	@container (min-width: 1000px) {
+	@container (min-width: 800px) {
 		.hood-tile {
 			max-width: 400px;
 		}
@@ -1116,7 +1120,7 @@
 			min-width: 240px;
 		}
 	}
-	@container (min-width: 1000px) {
+	@container (min-width: 800px) {
 		/* The focus tile is not `.hood-tile` (it is the canvas's one raised
 		   object, not a service tile) — capped at 480px (≈1.2× the 400px gate
 		   tiles), same reasoning. */
@@ -1129,6 +1133,12 @@
 	   12 + 28 + 12 = 52px whatever its type; a held line sits under the identity, aligned past the 16px glyph and its 8px gap. */
 	.gh-row {
 		min-height: 28px;
+	}
+	/* A gate's name never shrinks below its longest word (no mid-word breaks at the narrow three-column widths, 800-1100px of
+	   container): the window bar gives way first (64 -> 40px); the name wraps between words when it must. */
+	.gh-name {
+		min-width: auto;
+		overflow-wrap: normal;
 	}
 	.gh-line {
 		padding-left: 24px;
