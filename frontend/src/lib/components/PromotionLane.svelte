@@ -34,7 +34,8 @@
 		words = false,
 		yours = false,
 		quietNoReleases = false,
-		sites = false
+		sites = false,
+		reserve = false
 	}: {
 		lane: Lane;
 		/** Restrict / order the boxes; defaults to this lane's own tiers. */
@@ -51,7 +52,7 @@
 		/** Accepted for call-site compatibility; boxes are neutral, so nothing reads it. */
 		calm?: boolean;
 		words?: boolean;
-		/** the viewer can give the approval this lane waits on: its box says "Needs your approval" (approvalWord) instead of "Waiting for approval"; only with `words` */
+		/** the viewer can give the approval this lane waits on: its box says "Needs your approval" (approvalWord) instead of "Waiting for approval"; only with `words` (with `reserve` the box says "Waiting" and the title, picker row and banner say the long form) */
 		yours?: boolean;
 		mutedRest?: boolean;
 		/** the rollout page says "no releases" once, in its Newer builds card: the boxes keep their names and stay silent */
@@ -59,6 +60,8 @@
 		/** change-strip r1 (App view, Rollout overview): every box draws its SITES as marks in wave order and lets you pick one (EnvRow `sites`);
 		 *  a multi-site box drops its region and "k of N regions" (the marks say it) and keeps its state word */
 		sites?: boolean;
+		/** NOTHING MOVES AS STATE CHANGES (App view, Rollout overview): every box reserves the width of the widest state word and says "Deployed" quietly when healthy, so a word appearing moves no box */
+		reserve?: boolean;
 	} = $props();
 	const size = $derived<'L' | 'M'>(fill ?? 'L');
 	/* r42 atoms (opt-in, /design/atoms): the progress pie in a checking / deploying box */
@@ -85,6 +88,14 @@
 	const WORD: Record<NodeState, string> = { failed: 'Failing', stuck: 'Stuck', deploying: 'Deploying', checking: 'Checking', held: 'Held', behind: '', newest: '', none: '' };
 	/** a healthy box (behind / newest) says no word: its name and its lag are the whole statement */
 	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(yours) : 'Waiting') : WORD[n.state]);
+	/** nothing moves as state changes: every strip box reserves the width of the widest word IT can say (EnvRow `wordSlot`). The strip's approval
+	 *  word is always the short one ("Waiting"); "Needs your approval" stays in the title, the picker and the ask banner. */
+	const WORD_SLOT = [...new Set([...Object.values(WORD), 'Waiting', 'Deployed'].filter(Boolean))];
+	/** the title says the full approval word the box shortens */
+	const longWord = (n: LaneNode) => (wordOf(n) === stripWord(n) ? '' : ' · ' + wordOf(n));
+	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : WORD[n.state] || (n.state === 'none' ? '' : 'Deployed'));
+	/** a healthy box says "Deployed" quietly (the picker's word) so the reserved slot is not an empty tail */
+	const stripInk = (n: LaneNode) => (WORD[n.state] ? INK[n.state] : 'text-fg-subtle');
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
 	const markOf = (n: LaneNode): EnvCell['mark'] => (MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined);
 	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), null));
@@ -122,12 +133,16 @@
 			label: n.env,
 			href: linked ? hrefFor(n) : undefined,
 			current: youAreHere && isCurrent(n),
-			title: `${n.card.envDisplay || n.env}: ${n.card.version ?? 'no build'}${n.behind > 0 ? ` · ${lagLabel({ builds: n.behind })} the newest` : ''}${noRel(n) ? ' · no releases' : ''}`,
+			title: `${n.card.envDisplay || n.env}: ${n.card.version ?? 'no build'}${n.behind > 0 ? ` · ${lagLabel({ builds: n.behind })} the newest` : ''}${noRel(n) ? ' · no releases' : ''}${reserve ? longWord(n) : ''}`,
 			style: n.card.theme ? getEnvironmentThemeStyle(n.card.theme) : undefined,
 			mark: withProgress(markOf(n), n),
-			word: wordOf(n) || undefined,
-			wordShort: n.state === 'held' && n.card.heldCause === 'person' && words ? stateWord('approval', { compact: true }) ?? undefined : undefined,
-			wordInk: INK[n.state],
+			...(reserve
+				? { word: stripWord(n) || undefined, wordSlot: WORD_SLOT, wordInk: stripInk(n) }
+				: {
+						word: wordOf(n) || undefined,
+						wordShort: n.state === 'held' && n.card.heldCause === 'person' && words ? (stateWord('approval', { compact: true }) ?? undefined) : undefined,
+						wordInk: INK[n.state]
+					}),
 			hot: MARKED.has(n.state),
 			fact: n.behind > 0 ? (size === 'M' ? `${n.behind} behind` : lagLabel({ builds: n.behind })) : noRel(n) && !quietNoReleases ? 'no releases' : undefined,
 			factKind: 'lag',

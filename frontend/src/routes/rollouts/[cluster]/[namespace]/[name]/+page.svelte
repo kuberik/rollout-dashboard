@@ -3280,6 +3280,7 @@
 										youAreHere
 										quietNoReleases
 										sites
+										reserve
 									/>
 								</div>
 								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0 max-sm:mt-1"

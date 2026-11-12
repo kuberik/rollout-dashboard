@@ -28,8 +28,9 @@ describe('EnvRow on a phone', () => {
 		expect(phone).toContain('--env-min: 0px');
 		expect(phone).toContain('.env-fact { display: none; }');
 		expect(src).toContain('.env-word-short { display: inline; }');
-		expect(src).toContain('.env-row:has(.env-cell:nth-child(4)) .env-word { display: none; }');
-		expect(src).toMatch(/@container \(max-width: 300px\) \{\s*\.env-word \{ display: none; \}/);
+		expect(src).toContain('.env-row:has(.env-cell:nth-child(4)) .env-word,');
+		expect(src).toContain('.env-row:has(.env-cell:nth-child(4)) .env-word-slot { display: none; }');
+		expect(src).toMatch(/@container \(max-width: 300px\) \{\s*\.env-word,\s*\.env-word-slot \{ display: none; \}/);
 	});
 });
 

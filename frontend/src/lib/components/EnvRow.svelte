@@ -70,6 +70,12 @@
 		/** r42 `progress` (opt-in, /design/atoms): the act's 0..1, drawn as StatusMark's progress pie */
 		mark?: { state: 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'approval'; tone?: 'held' | 'neutral'; progress?: number | null };
 		word?: string;
+		/**
+		 * NOTHING MOVES AS STATE CHANGES (owner 2026-11-12, "the boxes change width when 'Deploying' appears"): every word this box can ever
+		 * say. They are drawn invisibly under the real word in one grid cell, so the slot is always as wide as the widest of them and the
+		 * state word (and the mark that goes with it) appearing or going changes no box's width. A box without it is its content, as before.
+		 */
+		wordSlot?: string[];
 		/** the state-words `compact` form ("Waiting" for "Needs your approval"), printed instead of `word` below 380px */
 		wordShort?: string;
 		/** ink class for the word (state ink) */
@@ -124,6 +130,21 @@
 	};
 </script>
 
+{#snippet wordOf(c: EnvCell)}
+	{#if c.wordSlot?.length}
+		<span class="env-word-slot" data-env-word-slot>
+			{#each c.wordSlot as g (g)}<span class="env-word-ghost t-ui-sm" aria-hidden="true">{g}</span>{/each}
+			{#if c.word}{@render wordText(c)}{/if}
+		</span>
+	{:else if c.word}
+		{@render wordText(c)}
+	{/if}
+{/snippet}
+
+{#snippet wordText(c: EnvCell)}
+	<span class="env-word t-ui-sm {c.wordInk ?? 'text-fg-muted'}" data-word-short={c.wordShort ?? undefined}>{#if c.wordShort}<span class="env-word-full">{c.word}</span><span class="env-word-short">{c.wordShort}</span>{:else}{c.word}{/if}</span>
+{/snippet}
+
 {#snippet sitesOf(c: EnvCell, lk: string)}
 	<span class="env-sites" data-env-sites>
 		{#each wavesOf(c.sites ?? []) as g, gi (gi)}
@@ -161,7 +182,7 @@
 		>
 			<span class="env-name t-ui-sm {c.hot || c.current ? 'text-fg' : 'text-fg-muted'}">{c.label}</span>
 			{@render sitesOf(c, lk)}
-			{#if c.word}<span class="env-word t-ui-sm {c.wordInk ?? 'text-fg-muted'}" data-word-short={c.wordShort ?? undefined}>{#if c.wordShort}<span class="env-word-full">{c.word}</span><span class="env-word-short">{c.wordShort}</span>{:else}{c.word}{/if}</span>{/if}
+			{@render wordOf(c)}
 			{#if c.fact}<span class="env-fact {c.factKind === 'detail' ? 'env-detail' : 'env-lag'} t-meta tabular-nums text-fg-subtle">{c.fact}</span>{/if}
 		</svelte:element>
 		{#if many}<EnvSitePicker sites={ss} title={c.label} sub={pickerSub(ss)} anchor={anchors[pk]} id="sp-{pk}" bind:open={() => openKey === pk, (v) => (openKey = v ? pk : openKey === pk ? null : openKey)} />{/if}
@@ -177,9 +198,9 @@
 			data-env-box
 			data-current={c.current ? '' : undefined}
 		>
-			{#if c.mark}<span class="env-mk"><StatusMark state={c.mark.state} tone={c.mark.tone} progress={c.mark.progress ?? null} /></span>{/if}
+			{#if c.mark}<span class="env-mk"><StatusMark state={c.mark.state} tone={c.mark.tone} progress={c.mark.progress ?? null} /></span>{:else if c.wordSlot?.length}<span class="env-mk" aria-hidden="true"></span>{/if}
 			<span class="env-name t-ui-sm {c.hot ? 'text-fg' : 'text-fg-muted'}">{c.label}</span>
-			{#if c.word}<span class="env-word t-ui-sm {c.wordInk ?? 'text-fg-muted'}" data-word-short={c.wordShort ?? undefined}>{#if c.wordShort}<span class="env-word-full">{c.word}</span><span class="env-word-short">{c.wordShort}</span>{:else}{c.word}{/if}</span>{/if}
+			{@render wordOf(c)}
 			{#if c.region}<span class="env-region t-meta text-fg-subtle">{c.region}</span>{/if}
 			{#if c.beads?.length}
 				<span class="pointer-events-auto flex min-w-0 items-center gap-1 pl-1">{#each c.beads as b (b.state + b.refs.join() + b.count)}<ChangeDot bead={b} />{/each}</span>
@@ -295,10 +316,12 @@
 	/* a 269px tile (a 350px phone) cannot hold three boxes AND a word: the mark carries the state, the tile's own sentence names it */
 	/* four boxes with words do not fit 330px either (a 309px tile at 390, a 303px lane at 350) */
 	@container (max-width: 330px) {
-		.env-row:has(.env-cell:nth-child(4)) .env-word { display: none; }
+		.env-row:has(.env-cell:nth-child(4)) .env-word,
+		.env-row:has(.env-cell:nth-child(4)) .env-word-slot { display: none; }
 	}
 	@container (max-width: 300px) {
-		.env-word { display: none; }
+		.env-word,
+		.env-word-slot { display: none; }
 	}
 	.env-box {
 		position: relative;
@@ -334,9 +357,28 @@
 		text-overflow: ellipsis;
 	}
 	.env-word,
+	.env-word-slot,
 	.env-region,
 	.env-fact {
 		flex: none;
+	}
+	/* the reserved word slot: the real word and every word it could be, stacked in ONE grid cell, so the cell is the widest of them */
+	.env-word-slot {
+		display: inline-grid;
+		align-items: center;
+		justify-items: start;
+	}
+	.env-word-slot > * {
+		grid-area: 1 / 1;
+	}
+	.env-word-ghost {
+		visibility: hidden;
+		height: 0;
+		overflow: hidden;
+		pointer-events: none;
+	}
+	.env-mk:empty {
+		width: 16px;
 	}
 	/* "you are here" (the rollout tab only): the tier fill, its border, a bold name in full ink */
 	.env-box--current {
@@ -450,7 +492,8 @@
 	}
 	/* a phone: a sites box drops its word (its marks carry the state, the picker says it), so the order stays on one line */
 	@container (max-width: 379.98px) {
-		.env-box--sites .env-word { display: none; }
+		.env-box--sites .env-word,
+		.env-box--sites .env-word-slot { display: none; }
 	}
 	@media (max-width: 639.98px) {
 		.env-box--sites.env-box--link::after {
