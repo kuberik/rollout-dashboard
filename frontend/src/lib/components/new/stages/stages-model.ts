@@ -6,10 +6,12 @@
  * `countsOf`. The SHAPE (columns, lanes, the order of places inside a cell) comes from the TOPOLOGY (`waveInfoOfHref`), never from
  * state, so a state change can never add, drop, reorder or move a tile (owner: "environments jumping").
  */
-import { ago, noReleasesAt, placesOf, rowsOf, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
+import { ago, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, rangeOfBuild, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
 import { approvalWord } from '../state-words';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
+import { ledgerOf } from '../app/app-model';
+import { changeBySha } from '$lib/components/home/sketch/home-data';
 import { behindWords, classified, countsOf, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
 
 export type StageState = 'deployed' | 'checking' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
@@ -17,10 +19,10 @@ export type StagePlace = { href: string; app: string; tier: TierKey; /** the pla
 export type StageColumn = { key: string; tier: TierKey; wave: number | null; /** the env chip's label */ label: string; /** the tier has more than one wave: "Wave N" is worth printing */ multi: boolean };
 export type StageCell = { places: StagePlace[] };
 export type StageLane = { app: string; cells: (StageCell | null)[] };
-export type StageRollup = { text: string; parts: { text: string; /** a build id the text ends with, drawn in the code role */ code?: string; /** the short spelling a narrow card prints ("4 of 5"): chosen by width, never by state */ short?: string; ink: 'danger' | 'held' | 'progress' | 'active' | 'muted' | 'fg' }[] };
+export type StageRollup = { text: string; parts: { text: string; /** the short spelling a narrow card prints ("4 of 5"): chosen by width, never by state */ short?: string; ink: 'danger' | 'held' | 'progress' | 'active' | 'muted' | 'fg' }[] };
 export type StagesScope = { kind: 'change'; change: TChange } | { kind: 'app'; app: string };
 /** `release`: app scope only, the build the drawing is about (the app's newest, `placesOf(...).newest`), null without releases */
-export type Stages = { columns: StageColumn[]; lanes: StageLane[]; rollup: StageRollup; release?: string | null };
+export type Stages = { columns: StageColumn[]; lanes: StageLane[]; rollup: StageRollup; /** the narrow card's rollup (app scope): with more than one adverse count the in-flight ones (checking + deploying) read as one "N in progress"; "N of M places" never shortens */ narrow?: StageRollup; release?: string | null };
 
 const TIER_RANK: Record<string, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
 
@@ -143,13 +145,14 @@ function appStages(app: string, cols: Map<string, StageColumn>, scenario: HomeSt
 	const counted = ps.filter((p) => p.state !== 'notaffected');
 	const k = (s: StageState) => ps.filter((p) => p.state === s).length;
 	const ran = counted.filter((p) => items.find((i) => i.p.href === p.href)?.p.current === release).length;
-	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${counted.length} place${counted.length === 1 ? '' : 's'} on ${release}`, code: release, short: `${ran} of ${counted.length}`, ink: 'muted' }] : [{ text: 'No releases', ink: 'muted' }];
+	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${counted.length} place${counted.length === 1 ? '' : 's'}`, ink: 'muted' }] : [{ text: 'No releases', ink: 'muted' }];
 	if (k('failed')) parts.push({ text: `${k('failed')} failing`, ink: 'danger' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
 	if (k('checking')) parts.push({ text: `${k('checking')} checking`, ink: 'progress' });
 	if (k('deploying')) parts.push({ text: `${k('deploying')} deploying`, ink: 'active' });
 	out.rollup = { text: parts.map((p) => p.text).join(' · '), parts };
+	out.narrow = narrowRollup(out.rollup, k('checking') + k('deploying'));
 	out.release = release;
 	return out;
 }
@@ -166,5 +169,57 @@ function rollupOf(c: TChange, scenario: HomeState): StageRollup {
 	if (n.held) parts.push({ text: `${n.held} held`, ink: 'held' });
 	if (n.checking) parts.push({ text: `${n.checking} checking`, ink: 'progress' });
 	if (n.deploying) parts.push({ text: `${n.deploying} deploying`, ink: 'active' });
+	return { text: parts.map((p) => p.text).join(' · '), parts };
+}
+
+const changeHrefOf = (html: string | null | undefined): string | null => (html && /^https?:/.test(html) ? '/changes/github.com' + new URL(html).pathname.replace(/\/commit\//, '/') : null);
+
+/**
+ * THE RELEASE LINE of the Pipeline card: the app's newest build (the Builds card's lead stop, one truth) with its commit title, author, how
+ * long ago it was built, and the change page that carries it when the fleet knows one. null without releases.
+ */
+export type ReleaseLine = { build: string; title: string | null; author: string | null; built: string; /** the dashboard's change page, when one exists */ href: string | null };
+export function releaseLine(app: string, scenario: HomeState): ReleaseLine | null {
+	const places = placeHolds(app, scenario);
+	const lead = ledgerOf(places)[0];
+	if (!lead || lead.custom) return null;
+	const id = buildIdentity(lead.build, places[0]?.href);
+	return { build: lead.build, title: lead.title ?? id?.title ?? null, author: lead.author ?? id?.author ?? null, built: lead.ageLabel, href: changeHrefOf(changeBySha(app, lead.build)?.href ?? id?.href) };
+}
+
+/**
+ * "IN THIS RELEASE" (app-pipeline r2): the builds between what production runs and the release, newest first, one row per build with its
+ * commit title, author, sha, diffstat (+/-, where the tab's range knows it) and the change page that carries it.
+ * `base` is the OLDEST build a production place runs (any place when the app has no production place); a place already on the release
+ * asks nothing. status: 'none' (no releases: the card is not drawn) | 'empty' (every counted place runs the release) | 'ready'.
+ */
+export type ReleaseCommit = { sha: string; title: string; author: string | null; add: number | null; del: number | null; href: string | null };
+export type ReleaseCommits = { status: 'none' | 'empty' | 'ready'; release: string | null; base: string | null; commits: ReleaseCommit[]; /** the lead build's change page (the "N more" link) */ href: string | null };
+export function releaseCommits(app: string, scenario: HomeState): ReleaseCommits {
+	const places = placeHolds(app, scenario).filter((p) => !noReleasesAt(p.href));
+	const stops = ledgerOf(places);
+	const lead = stops[0];
+	if (!lead || lead.custom) return { status: 'none', release: null, base: null, commits: [], href: null };
+	const prod = places.filter((p) => p.tier === 'prod');
+	const pool = (prod.length ? prod : places).filter((p) => p.deployedBuild && p.deployedBuild !== lead.build);
+	const idx = (p: (typeof pool)[number]) => stops.find((s) => s.build === p.deployedBuild)?.index ?? null;
+	const known = pool.filter((p) => idx(p) != null);
+	const oldest = known.sort((a, b) => (idx(b) as number) - (idx(a) as number))[0];
+	const leadHref = changeHrefOf(changeBySha(app, lead.build)?.href ?? buildIdentity(lead.build, places[0]?.href)?.href);
+	if (!oldest) return { status: 'empty', release: lead.build, base: null, commits: [], href: leadHref };
+	const ask = oldest.href;
+	const rows = stops.filter((s) => s.index != null && s.index < (idx(oldest) as number)).map((s): ReleaseCommit => {
+		const r = rangeOfBuild(ask, s.build);
+		const id = buildIdentity(s.build, ask);
+		return { sha: s.build, title: s.title ?? r?.title ?? id?.title ?? s.build, author: s.author ?? r?.author ?? id?.author ?? null, add: r ? r.additions : null, del: r ? r.deletions : null, href: changeHrefOf(changeBySha(app, s.build)?.href ?? id?.href) };
+	});
+	return { status: rows.length ? 'ready' : 'empty', release: lead.build, base: oldest.deployedBuild, commits: rows, href: leadHref };
+}
+
+/** the narrow form of an app rollup: more than one adverse count collapses checking + deploying into one "N in progress" (active ink); held and failed keep their own */
+export function narrowRollup(r: StageRollup, inFlight: number): StageRollup {
+	const live = r.parts.filter((p) => p.ink === 'progress' || p.ink === 'active');
+	if (r.parts.length - 1 < 2 || live.length < 2) return r;
+	const parts: StageRollup['parts'] = [...r.parts.filter((p) => p.ink !== 'progress' && p.ink !== 'active'), { text: `${inFlight} in progress`, ink: 'active' }];
 	return { text: parts.map((p) => p.text).join(' · '), parts };
 }

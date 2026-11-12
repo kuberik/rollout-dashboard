@@ -1166,6 +1166,8 @@ export function deployedCommit(row: Pick<RolloutRow, 'href'>): { title: string; 
 	const r = buildRange(row);
 	return r ? { title: r.title, author: r.author } : null;
 }
+/** the commit range of one build of a place's rollout (the build vs the release listed just before it): title, author, diffstat, commits. The tabs' own range (app-pipeline: "In this release"). */
+export const rangeOfBuild = (href: string, tag: string) => tabRange(href, tag);
 /** r5 R1: the LIVE phase of the place's deployed entry as the tab reads it (its bakeStatus), falling back to the row's state: 'deploying' (Deploying) · 'checking' (InProgress bake)
  *  · 'failed' · 'done' (Succeeded). A held/approval row whose own deploy is still baking is 'checking' (checkout-edge production: the tab pill says CHECKING). */
 function livePhase(row: Pick<RolloutRow, 'state' | 'href' | 'group'>): 'deploying' | 'checking' | 'failed' | 'done' {

@@ -15,25 +15,30 @@
 	import { avatarSrc } from '../data';
 	import { isViewer, plural } from '../change-view';
 	import type { Commit } from './detail-model';
+	import { href as toHref } from '$lib/paths';
 
-	let { commits, stat = null, checkText = null, class: className = '' }: { commits: Commit[]; /** the range's size: additions / deletions when known, always the file count */ stat?: { add: number | null; del: number | null; files: number } | null; checkText?: string | null; class?: string } = $props();
+	/** a commit row may also carry its own diffstat and the change page it links to (the App page's "In this release" reuses this card) */
+	export type CardCommit = Commit & { add?: number | null; del?: number | null; href?: string | null };
+
+	let { commits, stat = null, checkText = null, title = 'Change', max = null, more = null, class: className = '' }: { commits: CardCommit[]; /** the card's title (default "Change") */ title?: string; /** cap the rows; the rest is `more` */ max?: number | null; /** the link that stands for the rows past `max` */ more?: { text: string; href: string } | null; /** the range's size: additions / deletions when known, always the file count */ stat?: { add: number | null; del: number | null; files: number } | null; checkText?: string | null; class?: string } = $props();
 	const lead = $derived(commits.length ? plural(commits.length, 'commit') : '');
 	const tail = $derived([stat ? plural(stat.files, 'file') : '', checkText ?? ''].filter(Boolean).join(' · '));
 </script>
 
 <!-- Group's chrome (Card, padded false, divided rows), with the diffstat in GitHub's colours (owner 2026-11-12: "the diff +- lines is not colored") -->
-<Card icon={CodeBranchOutline} title="Change" padded={false} class={className}>
+<Card icon={CodeBranchOutline} {title} padded={false} class={className}>
 	{#snippet rollup()}<span class="t-ui-sm tabular-nums text-fg-subtle" data-change-rollup>{lead}{#if lead && stat?.add != null}{' · '}{/if}{#if stat?.add != null}<span class="text-success" data-diff-add>+{stat.add}</span>{' '}<span class="text-danger" data-diff-del>−{stat.del}</span>{/if}{#if tail}{' · '}{tail}{/if}</span>{/snippet}
 	<ul class="divide-y divide-line-subtle">
-	{#each commits as k (k.sha + k.title)}
+	{#each max ? commits.slice(0, max) : commits as k (k.sha + k.title)}
 		<li class="cc-row px-4 py-3" data-commit={k.sha}>
 			<span class="cc-mark flex h-5 items-center justify-center"><ChangeKindMark kind="commit" label="Commit" /></span>
-			<p class="cc-main t-body min-w-0 text-fg [overflow-wrap:anywhere]">{k.title}</p>
+			<p class="cc-main t-body min-w-0 text-fg [overflow-wrap:anywhere]">{#if k.href}<a href={toHref(k.href)} class="hover:underline" data-commit-link>{k.title}</a>{:else}{k.title}{/if}</p>
 			{#if k.sha}<span class="cc-id t-code-sm flex h-5 items-center whitespace-nowrap text-fg-subtle">{k.sha}</span>{/if}
-			{#if k.author}<p class="cc-sub t-meta flex min-w-0 items-center gap-1.5 text-fg-subtle" data-commit-author><Avatar name={k.author} src={avatarSrc(k.author)} size={20} /><span class="min-w-0 break-words text-fg-muted">{k.author}</span>{#if isViewer(k.author)}<span>(you)</span>{/if}</p>{/if}
+			{#if k.author}<p class="cc-sub t-meta flex min-w-0 items-center gap-1.5 text-fg-subtle" data-commit-author><Avatar name={k.author} src={avatarSrc(k.author)} size={20} /><span class="min-w-0 break-words text-fg-muted">{k.author}</span>{#if isViewer(k.author)}<span>(you)</span>{/if}{#if k.add != null}<span class="ml-2 tabular-nums" data-commit-stat><span class="text-success">+{k.add}</span>{' '}<span class="text-danger">−{k.del}</span></span>{/if}</p>{/if}
 		</li>
 	{/each}
 	</ul>
+	{#if more && max && commits.length > max}<a href={toHref(more.href)} class="nav-link t-ui-sm flex min-h-11 items-center border-t border-line-subtle px-4" data-commit-more>{more.text}</a>{/if}
 </Card>
 
 <style>

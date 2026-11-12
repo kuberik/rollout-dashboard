@@ -55,7 +55,8 @@
 	import AppBuilds, { type PlaceView } from './AppBuilds.svelte';
 	import AppGates from './AppGates.svelte';
 	import Stages from '../stages/Stages.svelte';
-	import { stagesOf } from '../stages/stages-model';
+	import ReleaseCommits from '../stages/ReleaseCommits.svelte';
+	import { stagesOf, releaseLine, releaseCommits } from '../stages/stages-model';
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
@@ -68,6 +69,8 @@
 	let { state: scenario, name, tab = 'overview' }: { state: HomeState; name: string; /** 'overview' (default, the page as ever) or 'pipeline' (app-pipeline r0: the same header and statements, then the Pipeline card at full width, no strip row, no rail) */ tab?: 'overview' | 'pipeline' } = $props();
 	const pipeline = $derived(tab === 'pipeline');
 	const pipe = $derived(pipeline ? stagesOf({ kind: 'app', app: name }, scenario) : null);
+	const release = $derived(pipeline ? releaseLine(name, scenario) : null);
+	const inRelease = $derived(pipeline ? releaseCommits(name, scenario) : null);
 
 	const A = $derived(apps(scenario));
 	const item = $derived(A.items.find((a) => a.app === name) ?? null);
@@ -365,7 +368,9 @@
 
 			{#if pipe}
 				<!-- Pipeline tab: the canvas, full width, no rail (like the Gates tab) -->
-				<Stages stages={pipe} class="min-w-0" />
+				<Stages stages={pipe} {release} class="min-w-0" />
+				<!-- "In this release": a second card from 1024 up; below it the list-form graph already fills the phone's fold -->
+				{#if inRelease}<ReleaseCommits release={inRelease} class="min-w-0 max-lg:hidden" />{/if}
 			{:else}
 			<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:grid-cols-[minmax(0,1fr)_452px]">
 				<div class="flex min-w-0 flex-col gap-4">

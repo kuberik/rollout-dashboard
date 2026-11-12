@@ -5,7 +5,7 @@ import { respond } from '../../../demo/respond';
 import { resetDemoState } from '../../../demo/state';
 import { WAVES_STEPS } from '../../../demo/waves-story';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
-import { stagesOf } from './stages-model';
+import { stagesOf, releaseCommits, releaseLine, narrowRollup } from './stages-model';
 import { placeHolds, noReleasesAt, placesOf, rowsOf, apps } from '../data';
 import { ledgerOf } from '../app/app-model';
 
@@ -172,7 +172,7 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 				const total = places.filter((p) => !noReleasesAt(p.href)).length;
 				const onNewest = stops[0] && !stops[0].custom ? stops[0].places.filter((p) => !noReleasesAt(p.href)).length : 0;
 				if (!st.release) { expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe('No releases'); continue; }
-				expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${onNewest} of ${total} place${total === 1 ? '' : 's'} on ${st.release}`);
+				expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${onNewest} of ${total} place${total === 1 ? '' : 's'}`);
 			}
 		};
 		for (const b of WAVES_STEPS) { beat(b); check(b, 'incident'); }
@@ -209,5 +209,33 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 			}
 		}
 		expect(seen).toBeGreaterThan(0);
+	});
+	it('In this release: rows are the builds between prod and the release; empty once every place runs it; the line names the release', () => {
+		beat('arm');
+		const r = releaseCommits(APP, 'incident');
+		expect(r.status).toBe('ready');
+		expect(r.release).toBe('c6f19d2');
+		expect(r.base).toBe('0f1f88a');
+		expect(r.commits.map((c) => c.sha)).toEqual(['c6f19d2']);
+		expect(releaseLine(APP, 'incident')?.build).toBe('c6f19d2');
+		beat('done');
+		expect(releaseCommits(APP, 'incident')).toMatchObject({ status: 'empty', release: 'c6f19d2', commits: [] });
+		installLiveSource(null);
+		const ck = releaseCommits('checkout-api', 'incident');
+		expect(ck.status).toBe('ready');
+		expect(ck.commits.length).toBeGreaterThan(1);
+		expect(ck.commits[0].sha).toBe(releaseLine('checkout-api', 'incident')?.build);
+	});
+	it('narrow rollup: more than one adverse count folds checking + deploying into one "N in progress"; the unit never shortens', () => {
+		beat('wave1');
+		const st = stagesOf({ kind: 'app', app: APP }, 'incident');
+		expect(st.rollup.text).toBe('4 of 5 places · 1 checking · 1 deploying');
+		expect(st.narrow?.text).toBe('4 of 5 places · 2 in progress');
+		expect(st.narrow?.parts.at(-1)?.ink).toBe('active');
+		/* one adverse count: unchanged; held and failed stay separate */
+		beat('wave1-half');
+		expect(stagesOf({ kind: 'app', app: APP }, 'incident').narrow?.text).toBe('4 of 5 places · 1 deploying');
+		const r = { text: '', parts: [{ text: '1 of 7 places', ink: 'muted' as const }, { text: '1 failing', ink: 'danger' as const }, { text: '1 checking', ink: 'progress' as const }, { text: '1 deploying', ink: 'active' as const }] };
+		expect(narrowRollup(r, 2).parts.map((p) => p.text)).toEqual(['1 of 7 places', '1 failing', '2 in progress']);
 	});
 });

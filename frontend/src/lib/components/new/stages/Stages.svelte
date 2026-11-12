@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * PIPELINE (app-pipeline r0; lineage: the Stages graph of change-stages r1-r2, 51c97714) — "how far has our newest release got: which sites run it, which one is moving now, what has it not reached yet?", drawn as one PIPELINE on the App page's Pipeline tab. The scope (change | app) lives in the model; this component only renders a `Stages`.
-	 * r0 changes vs the Change page's drawing: a row's mark and each "Wave N" label's pie are the strip's own `WaveMark` (one vocabulary for a site, a wave and a tier), the rollup leads with the release ("4 of 5 places on c6f19d2"), and every row links to its rollout.
+	 * r0 changes vs the Change page's drawing: a row's mark and each "Wave N" label's pie are the strip's own `WaveMark` (one vocabulary for a site, a wave and a tier), a RELEASE LINE (build · commit · author · built ago, a link to the change) opens the canvas, a tier's header is its chip and a hairline across all its waves, and every row links to its rollout.
 	 * ROLE: the page's centrepiece, replacing the header tier strip and "Where it runs". REFERENCE: the Gates tab's dotted canvas
 	 * (`.canvas-dots`), GitHub Actions' run graph (tiles in dependency columns, one connector between columns, a tile per matrix group),
 	 * Vercel's deployment steps (one mark + word per step). Card grammar (47px header, 16px icon, right rollup) is `Card`.
@@ -17,14 +17,16 @@
 		import WaveMark from '$lib/components/WaveMark.svelte';
 	import { waveMark, type MarkSiteState } from '$lib/view-models/wave-mark';
 	import { href as toHref } from '$lib/paths';
+	import Avatar from '$lib/components/Avatar.svelte';
+	import { avatarSrc } from '../data';
 	import { ChevronDoubleRightOutline } from 'flowbite-svelte-icons';
 	import { envTheme } from '../rollout-view';
-	import type { Stages, StageState, StagePlace, StageColumn } from './stages-model';
+	import type { Stages, StageState, StagePlace, StageColumn, ReleaseLine } from './stages-model';
 
-	let { stages, class: className = '' }: { stages: Stages; class?: string } = $props();
+	let { stages, release = null, class: className = '' }: { stages: Stages; /** the release line that opens the canvas (app scope) */ release?: ReleaseLine | null; class?: string } = $props();
 
 	const multiApp = $derived(stages.lanes.length > 1);
-	const MIN = 160, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
+	const MIN = 148, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
 	let w = $state(0);
 	/* tier groups: one env chip spans all of a tier's wave columns; "Wave N" sub-labels sit over each wave column of a multi-wave tier */
 	const groups = $derived.by(() => {
@@ -57,13 +59,12 @@
 	/* a lane's connector runs from its first tile to its last; an empty cell between two tiles lets it pass through */
 	const passes = (cells: unknown[], i: number) => !cells[i] && cells.slice(0, i).some(Boolean) && cells.slice(i + 1).some(Boolean);
 	const hasPrev = (cells: unknown[], i: number) => cells.slice(0, i).some(Boolean);
-	/* the tile's place name only when it says something the column does not (the tier, "production": the state word takes line 1) */
-	const echoes = (p: StagePlace) => p.name === p.tier || p.name === 'production';
 </script>
 
 {#snippet tierHead(g: { tier: StageColumn['tier']; label: string; first: number; last: number })}
 	<div class="stg-ch flex min-w-0 items-center" data-stage-col={g.tier}>
 		<Chip role="env" theme={envTheme(g.tier)} label={g.label} />
+		<span class="ml-3 h-px min-w-0 flex-1 bg-line" aria-hidden="true"></span>
 	</div>
 {/snippet}
 
@@ -72,20 +73,13 @@
 {/snippet}
 
 {#snippet row(p: StagePlace, sep: boolean, withApp: boolean)}
-	{@const echo = !withApp && echoes(p)}
 	{@const tail = [p.build, p.progress && !p.build ? `step ${p.progress}` : p.age].filter(Boolean)}
 				<a href={toHref(p.href)} aria-current={p.here ? 'location' : undefined} class="stg-row {p.here ? 'stg-here' : ''} {sep ? 'border-t border-line-subtle' : ''} flex h-11 min-w-0 items-center gap-2 px-3 hover:bg-hover" data-stage-row="{p.app}|{p.href}" data-stage-state={ATTR[p.state]}>
 					<span class="flex h-4 w-4 shrink-0 items-center justify-center"><WaveMark mark={waveMark([{ state: SITE[p.state] }])} /></span>
 					<span class="flex min-w-0 flex-col">
-						{#if echo}
-							<!-- the place is the tier itself: line 1 is the state word, line 2 the build / step / age -->
-							<span class="t-body flex min-w-0 items-center truncate {INK[p.state]}" title={p.word}>{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>
-							<span class="t-meta flex min-w-0 gap-1 whitespace-nowrap text-fg-subtle">{#each tail as t, ti (ti)}{#if ti > 0}<span aria-hidden="true">·</span>{/if}<span class="{ti === 0 && p.build ? 't-code-sm ' : ''}truncate">{t}</span>{/each}{#if !tail.length}{'\u00a0'}{/if}</span>
-						{:else}
-							<span class="t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
-							<span class="t-meta flex min-w-0 gap-1 overflow-hidden whitespace-nowrap {INK[p.state]}" title={p.word}><span class="flex max-w-full flex-none items-center truncate">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build}<span class="shrink-0 text-fg-subtle" aria-hidden="true">·</span><span class="t-code-sm min-w-0 truncate text-fg-subtle">{p.build}</span>{/if}{#if p.progress && !p.build}<span class="min-w-0 shrink-[3] truncate text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 shrink-[3] truncate text-fg-subtle">· {p.age}</span>{/if}</span>
-						{/if}
-					</span>
+											<span class="t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
+							<span class="t-meta flex min-w-0 gap-1 overflow-hidden whitespace-nowrap {INK[p.state]}" title={p.word}><span class="flex max-w-full flex-none items-center truncate {p.state === 'notreached' && p.word === 'Not reached' ? 'stg-nrw' : ''}">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build}<span class="shrink-0 text-fg-subtle {p.state === 'notreached' && p.word === 'Not reached' ? 'stg-nrw' : ''}" aria-hidden="true">·</span><span class="t-code-sm min-w-0 truncate text-fg-subtle">{p.build}</span>{/if}{#if p.progress && !p.build}<span class="min-w-0 shrink-[3] truncate text-fg-subtle">· <span class="stg-stepw">step&nbsp;</span>{p.progress}</span>{:else if p.age}<span class="min-w-0 shrink-[3] truncate text-fg-subtle">· {p.age}</span>{/if}</span>
+									</span>
 				</a>
 {/snippet}
 
@@ -106,9 +100,25 @@
 	<div class="flex min-w-0 items-start gap-2 pt-[14px]" style:grid-column="1" style:grid-row={laneRow(li)}><AppGlyph name={stages.lanes[li].app} size={16} class="shrink-0" /><span class="t-card-title truncate text-fg" title={stages.lanes[li].app}>{stages.lanes[li].app}</span></div>
 {/snippet}
 
+{#snippet parts(ps: Stages['rollup']['parts'])}{#each ps as part, i (part.text)}{#if i > 0}<span class="shrink-0 text-fg-disabled" aria-hidden="true">·</span>{/if}<span class="{RUP[part.ink]} {i === 0 ? 'stg-first min-w-0 truncate' : 'shrink-0'}" title={part.text}>{part.text}</span>{/each}{/snippet}
+
 <Card icon={ChevronDoubleRightOutline} title="Pipeline" padded={false} class={className}>
-	{#snippet rollup()}<span class="stg-rollup t-card-rollup flex min-w-0 flex-nowrap items-baseline justify-end gap-x-1 whitespace-nowrap tabular-nums" data-stages-rollup>{#each stages.rollup.parts as part, i (part.text)}{#if i > 0}<span class="shrink-0 text-fg-disabled" aria-hidden="true">·</span>{/if}<span class="{RUP[part.ink]} {i === 0 ? 'stg-first min-w-0 truncate' : 'shrink-0'}" title={part.text}>{#if part.short}<span class="stg-long">{#if part.code}{part.text.slice(0, -part.code.length)}<span class="t-code-sm">{part.code}</span>{:else}{part.text}{/if}</span><span class="stg-short">{part.short}</span>{:else}{part.text}{/if}</span>{/each}</span>{/snippet}
+	{#snippet rollup()}<span class="stg-rollup t-card-rollup flex min-w-0 flex-nowrap items-baseline justify-end gap-x-1 whitespace-nowrap tabular-nums" data-stages-rollup><span class="stg-long flex min-w-0 items-baseline gap-x-1">{@render parts(stages.rollup.parts)}</span><span class="stg-short min-w-0 items-baseline gap-x-1" data-stages-rollup-narrow>{@render parts((stages.narrow ?? stages.rollup).parts)}</span></span>{/snippet}
 	<div class="canvas-dots stg-canvas px-4 py-4" bind:clientWidth={w} data-stages data-stages-form={horizontal ? 'graph' : 'list'}>
+		{#if release}
+			{#snippet releaseBody()}
+				<span class="t-code shrink-0 text-fg" data-release-build>{release.build}</span>
+				{#if release.title}<span class="t-body min-w-0 truncate text-fg-muted" title={release.title}>{release.title}</span>{/if}
+				{#if release.author}<span class="t-meta flex shrink-0 items-center gap-2 text-fg-muted max-sm:hidden"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" />{release.author}</span>{/if}
+				{#if release.built}<span class="t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
+			{/snippet}
+			<!-- THE RELEASE: the build the drawing is about; a link to its change page when the fleet knows one -->
+			{#if release.href}
+				<a href={toHref(release.href)} class="mb-4 flex min-h-5 min-w-0 items-center gap-3 hover:text-fg" data-stages-release>{@render releaseBody()}</a>
+			{:else}
+				<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3" data-stages-release>{@render releaseBody()}</div>
+			{/if}
+		{/if}
 		{#if horizontal}
 			<!-- tiles top-aligned, never stretched to the lane (coordinator ruling: a one-place tile keeps its own height); the header rows and the tiles are placed on explicit tracks, with 12px between a tier's waves and 24px between tiers -->
 			<div class="stg-graph grid w-full items-start gap-y-3" style="grid-template-columns: {gridCols};">
@@ -150,11 +160,14 @@
 	/* the rollup never wraps (the header stays 47px in every state): never wider than the card minus icon, title and padding; the muted count truncates first, the adverse parts never */
 	.stg-rollup { max-width: calc(100cqw - 140px); overflow: hidden; }
 	.stg-short { display: none; }
-	@container (max-width: 559.98px) { .stg-long { display: none; } .stg-short { display: inline; } }
+	.stg-short { gap: 4px; }
+	@container (max-width: 559.98px) { .stg-long { display: none; } .stg-short { display: flex; } }
 	/* graph group: start-aligned at the card padding; centred only past 2300 where the 280px column cap leaves space (the Gates canvas rule for very wide) */
 	.stg-graph { justify-content: start; }
 	@media (min-width: 2300px) { .stg-graph { justify-content: center; } }
-	.stg-tile { position: relative; border-radius: 8px; }
+	.stg-tile { position: relative; border-radius: 8px; container-type: inline-size; }
+	/* a narrow tile (the 148px floor): the build is the fact that matters on a not-reached row, so its word steps aside (the hollow mark and the muted ink say it); "step" gives way to "1 of 2" */
+	@container (max-width: 189.98px) { .stg-nrw { display: none; } .stg-stepw { display: none; } }
 	/* a place the pipeline has not reached: quieter, no surface fill, dashed hairline (style only: same box, same rows) */
 	.stg-tile.is-live { border-color: var(--k-active-line); box-shadow: var(--k-glow-active); }
 	.stg-tile.stg-quiet { background: var(--k-ground); border-style: dashed; border-color: var(--k-line); }
