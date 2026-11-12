@@ -13,9 +13,15 @@ import { installEdge, uninstallEdge } from '$lib/testing/edge-source';
  */
 const mount = () => {
 	const P = envPage('incident', 'prod')!;
-	return render(WithQueryClient, { props: { component: EnvPage as never, props: { state: 'incident', P } } }).container;
+	return render(WithQueryClient, {
+		props: { component: EnvPage as never, props: { state: 'incident', P } }
+	}).container;
 };
-const rows = (c: HTMLElement) => [...c.querySelectorAll('[data-instep-behind] a')].map((a) => ({ href: a.getAttribute('href'), text: (a.textContent ?? '').replace(/\s+/g, ' ').trim() }));
+const rows = (c: HTMLElement) =>
+	[...c.querySelectorAll('[data-instep-behind] a')].map((a) => ({
+		href: a.getAttribute('href'),
+		text: (a.textContent ?? '').replace(/\s+/g, ' ').trim()
+	}));
 const rowOf = (c: HTMLElement, app: string) => rows(c).find((r) => r.href?.endsWith(`/${app}`));
 
 beforeEach(installEdge);
@@ -34,7 +40,9 @@ describe('/envs/prod Behind section (home-edge)', () => {
 		]);
 	});
 	it('search-indexer (one prod place; dev has not taken the newer build yet): "1 behind · nothing inbound", no place prefix', () => {
-		expect(rowOf(mount(), 'search-indexer')!.text).toMatch(/search-indexer\s*1 behind · nothing inbound$/);
+		expect(rowOf(mount(), 'search-indexer')!.text).toMatch(
+			/search-indexer\s*1 behind · nothing inbound$/
+		);
 	});
 	it('media-resizer, failed follower: the lagging site is named, the row says "nothing inbound" and not that the follower did not follow', () => {
 		const t = rowOf(mount(), 'media-resizer')!.text;
@@ -55,7 +63,13 @@ describe('/envs/prod Behind section (home-edge)', () => {
 	});
 	it('the Behind model agrees with the markup (same rows, same reasons)', () => {
 		const P = envPage('incident', 'prod')!;
-		const edge = P.gangway.behind.filter((b) => /search-indexer|media-resizer|auth-proxy/.test(b.app)).map((b) => `${b.app}|${b.place}|${b.n}|${b.why}`);
-		expect(edge).toEqual(['auth-proxy|ap-south|1|1 to deploy', 'media-resizer|eu-west|1|nothing inbound', 'search-indexer||1|nothing inbound']);
+		const edge = P.gangway.behind
+			.filter((b) => /search-indexer|media-resizer|auth-proxy/.test(b.app))
+			.map((b) => `${b.app}|${b.place}|${b.n}|${b.why}`);
+		expect(edge).toEqual([
+			'auth-proxy|ap-south|1|1 to deploy',
+			'media-resizer|eu-west|1|nothing inbound',
+			'search-indexer||1|nothing inbound'
+		]);
 	});
 });

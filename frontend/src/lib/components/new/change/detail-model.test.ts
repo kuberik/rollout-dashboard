@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
-import { findChange, classified, runningN, stripOf, statementOf, spineOf, blockLine, rollbackTo, countsOf, countLine, changeProd, commitsOf, openedOf, howFacts } from './detail-model';
+import {
+	findChange,
+	classified,
+	runningN,
+	stripOf,
+	statementOf,
+	spineOf,
+	blockLine,
+	rollbackTo,
+	countsOf,
+	countLine,
+	changeProd,
+	commitsOf,
+	openedOf,
+	howFacts
+} from './detail-model';
 import { placesOfChange, ago, waitClock } from '../data';
 import { firstBuildOf, headFacts, foldWindow, carrierRange } from './detail-model';
 
@@ -44,10 +59,12 @@ describe('change detail model (one model with the Changes list)', () => {
 	});
 	it('#37 (CD6, r13 CE4): us-east\'s spine is the first deploy, the rollback and a11c404; the undone a11c303 is the rollback\'s "from", not an event', () => {
 		const { c, places } = at(P37, 'incident');
-		const us = spineOf(c, 'incident', places).filter((e) => e.place === 'us-east').map((e) => `${e.words} ${e.build}`);
+		const us = spineOf(c, 'incident', places)
+			.filter((e) => e.place === 'us-east')
+			.map((e) => `${e.words} ${e.build}`);
 		expect(us).toEqual(['First deployed a11c202', 'Rolled back to a11c202', 'Deployed a11c404']);
 	});
-	it('#37 (changedetail-12 CD1): the rollback carries the tab\'s cause', () => {
+	it("#37 (changedetail-12 CD1): the rollback carries the tab's cause", () => {
 		const { c, places } = at(P37, 'incident');
 		const rb = spineOf(c, 'incident', places).find((e) => e.kind === 'rollback')!;
 		expect(rb.words).toBe('Rolled back to');
@@ -56,13 +73,19 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(rb.from).toBe('a11c303'); // the tab: "Rolled back from a11c303"
 	});
 	it('#90 (changedetail-12 CD2, AD r4): History is in causal order (a wait sits after the deploys of its build), ages never rise down the list', () => {
-		for (const [p, sc] of [['github.com/exampleco/payments-core/pull/90', 'incident'], [P37, 'incident']] as const) {
+		for (const [p, sc] of [
+			['github.com/exampleco/payments-core/pull/90', 'incident'],
+			[P37, 'incident']
+		] as const) {
 			const { c, places } = at(p, sc);
 			const ev = spineOf(c, sc, places);
 			const ats = ev.map((e) => e.order ?? e.at ?? '');
 			expect(ats).toEqual([...ats].sort());
 			const w = ev.findIndex((e) => e.kind === 'waiting' || e.kind === 'held');
-			if (w >= 0) expect(ev.slice(0, w).some((e) => e.kind === 'deployed' && e.build === ev[w].build)).toBe(true);
+			if (w >= 0)
+				expect(ev.slice(0, w).some((e) => e.kind === 'deployed' && e.build === ev[w].build)).toBe(
+					true
+				);
 		}
 	});
 	it('#90 (CD7): five identical waiting events are ONE event with five places', () => {
@@ -71,7 +94,7 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(w).toHaveLength(1);
 		expect(w[0].places).toHaveLength(5);
 	});
-	it('#90 (r13 CE2): the wait is THIS change\'s build c0d3e88, aged by the wait clock (batch4 P1: the hold clock, not the build age); f4a2c19 is only the labelled newer build', () => {
+	it("#90 (r13 CE2): the wait is THIS change's build c0d3e88, aged by the wait clock (batch4 P1: the hold clock, not the build age); f4a2c19 is only the labelled newer build", () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'incident');
 		const lead = places[0];
 		const o = openedOf(lead, 'incident');
@@ -86,26 +109,45 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(waitClock(lead.row!, 'incident')).toBe('2026-10-24T14:56:26.893Z');
 		expect(o.since).toBe('4h');
 		/* the wait event names the tab's candidate c0d3e88 (never f4a2c19) and is dated by the wait clock */
-		const raw = (fixture as unknown as { rollouts: { metadata: { namespace: string; name: string }; status: { releaseCandidates?: { tag?: string; version?: string; created?: string }[] } }[] }).rollouts.find((r) => lead.href.endsWith(`${r.metadata.namespace}/${r.metadata.name}`))!;
-		const cand = raw.status.releaseCandidates!.find((x) => (x.version ?? x.tag ?? '').startsWith('c0d3e88'))!;
+		const raw = (
+			fixture as unknown as {
+				rollouts: {
+					metadata: { namespace: string; name: string };
+					status: { releaseCandidates?: { tag?: string; version?: string; created?: string }[] };
+				}[];
+			}
+		).rollouts.find((r) => lead.href.endsWith(`${r.metadata.namespace}/${r.metadata.name}`))!;
+		const cand = raw.status.releaseCandidates!.find((x) =>
+			(x.version ?? x.tag ?? '').startsWith('c0d3e88')
+		)!;
 		const w = spineOf(c, 'incident', places).find((e) => e.kind === 'waiting')!;
 		expect(cand.created).toBeTruthy();
-		const oldest = places.filter((x) => x.kind === 'waiting').map((x) => waitClock(x.row!, 'incident')!).sort()[0];
+		const oldest = places
+			.filter((x) => x.kind === 'waiting')
+			.map((x) => waitClock(x.row!, 'incident')!)
+			.sort()[0];
 		expect([w.build, w.at]).toEqual(['c0d3e88', oldest]);
 		expect(oldest).toBe('2026-10-23T18:51:26.893Z'); // the oldest of the five waiting places, not the lead's
 	});
-	it('#37 (CD5, re-pinned r6 CG6): build subject = the tab\'s commit (danielreed, the PR title); the change subject stays the PR\'s', () => {
+	it("#37 (CD5, re-pinned r6 CG6): build subject = the tab's commit (danielreed, the PR title); the change subject stays the PR's", () => {
 		const { c, places } = at(P37, 'incident');
 		const o = openedOf(places[0], 'incident');
-		expect(o.commit).toEqual({ title: 'Retry webhook delivery with exponential backoff', author: 'danielreed' });
-		expect(commitsOf(c, 'incident', places[0]).commits.map((k) => k.author)).toEqual(['danielreed']);
+		expect(o.commit).toEqual({
+			title: 'Retry webhook delivery with exponential backoff',
+			author: 'danielreed'
+		});
+		expect(commitsOf(c, 'incident', places[0]).commits.map((k) => k.author)).toEqual([
+			'danielreed'
+		]);
 	});
-	it('#37: the statement names the Places\' regions, and the failure costs 7 builds incl. the viewer\'s #44', () => {
+	it("#37: the statement names the Places' regions, and the failure costs 7 builds incl. the viewer's #44", () => {
 		const { c, all, places } = at(P37, 'incident');
 		const s = statementOf(c, places, all);
 		expect(s.title).toBe('Failing in eu-west');
 		expect(places.filter((p) => p.kind === 'failed').map((p) => p.label)).toEqual(['eu-west']);
-		expect(blockLine(s.lead)).toBe('eu-west is failing: 7 newer builds (incl. your #44) wait behind this failure; a11c101 is the build before this change, last healthy 9h ago.');
+		expect(blockLine(s.lead)).toBe(
+			'eu-west is failing: 7 newer builds (incl. your #44) wait behind this failure; a11c101 is the build before this change, last healthy 9h ago.'
+		);
 		expect(rollbackTo(s.lead)).toBe('a11c101');
 	});
 	it('#36 (changedetail-9 CE3): a11c101 carries the change and leads Commits; a11c202 is the NEWER build that failed, History says so, and the rail counts 0 own failed deploys', () => {
@@ -126,7 +168,10 @@ describe('change detail model (one model with the Changes list)', () => {
 		const cm = commitsOf(c, 'incident', places[0]);
 		expect(cm.builds).toHaveLength(1);
 		expect(cm.builds[0]).toMatchObject({ build: 'a02f1c4' });
-		expect(cm.builds[0].chips.map((x) => `${x.label}${x.failed ? '!' : ''}`).sort()).toEqual(['dev', 'staging!']);
+		expect(cm.builds[0].chips.map((x) => `${x.label}${x.failed ? '!' : ''}`).sort()).toEqual([
+			'dev',
+			'staging!'
+		]);
 		expect(cm.builds[0].newer).toBeFalsy();
 	});
 	it('#14 (changedetail-9 CE4): the failure is ONE instant: the place row, the pane and the History event share it', () => {
@@ -157,17 +202,21 @@ describe('change detail model (one model with the Changes list)', () => {
 	it('#37: the spine keeps the us-east rollback and orders by time', () => {
 		const { c, places } = at(P37, 'incident');
 		const ev = spineOf(c, 'incident', places);
-		expect(ev.some((e) => e.kind === 'rollback' && e.place === 'us-east' && e.who === 'sarahmiller')).toBe(true);
+		expect(
+			ev.some((e) => e.kind === 'rollback' && e.place === 'us-east' && e.who === 'sarahmiller')
+		).toBe(true);
 		const ats = ev.map((e) => e.at ?? '');
 		expect([...ats].sort()).toEqual(ats);
 		expect(ev[0].kind).toBe('merged');
 	});
 	it('CE2 #90: ONE count with a unit; the 9th place is named not affected', () => {
 		const { all, places, unaffected } = at('github.com/exampleco/payments-core/pull/90', 'calm');
-		expect(countLine(countsOf(all, places))).toBe('8 places · 2 deployed · 1 checking · 5 waiting · 1 not affected');
+		expect(countLine(countsOf(all, places))).toBe(
+			'8 places · 2 deployed · 1 checking · 5 waiting · 1 not affected'
+		);
 		expect(unaffected.map((u) => u.label)).toEqual(['eu-central']);
 	});
-	it('CE1 #90: place ages are the tab\'s current deploy (test checking 11m, dev 15m)', () => {
+	it("CE1 #90: place ages are the tab's current deploy (test checking 11m, dev 15m)", () => {
 		const { places } = at('github.com/exampleco/payments-core/pull/90', 'calm');
 		const age = (l: string) => ago(places.find((p) => p.label === l)!.at);
 		expect(age('test')).toBe('11m');
@@ -179,7 +228,7 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(ev).toContain('Deployed f4a2c19 dev');
 		expect(ev.some((x) => /^(Checking|Deployed) f4a2c19 test$/.test(x))).toBe(true);
 	});
-	it('AD r5: changeProd carries the tab\'s region states and the count sentence', () => {
+	it("AD r5: changeProd carries the tab's region states and the count sentence", () => {
 		const { c } = at(P37, 'incident');
 		const pr = changeProd(c, 'incident');
 		expect(pr.sentence).toBe('prod · 2 of 3 run it · 1 failing');
@@ -213,10 +262,25 @@ describe('change detail model (one model with the Changes list)', () => {
 	});
 	it('CF4: the fold is one contiguous window; merge, failure, first live and the newest row stay visible', () => {
 		const ev = (kind: string, words = 'Deployed') => ({ kind, words }) as never;
-		const list = [ev('merged', 'Merged'), ev('deployed', 'First deployed'), ev('deployed'), ev('deployed'), ev('deployed'), ev('deployed'), ev('deployed'), ev('failed', 'Newer build failed'), ev('deployed'), ev('deployed'), ev('deployed'), ev('deployed'), ev('moving', 'Deploying')];
+		const list = [
+			ev('merged', 'Merged'),
+			ev('deployed', 'First deployed'),
+			ev('deployed'),
+			ev('deployed'),
+			ev('deployed'),
+			ev('deployed'),
+			ev('deployed'),
+			ev('failed', 'Newer build failed'),
+			ev('deployed'),
+			ev('deployed'),
+			ev('deployed'),
+			ev('deployed'),
+			ev('moving', 'Deploying')
+		];
 		const w = foldWindow(list, 10)!;
 		expect(w[1] - w[0]).toBeGreaterThanOrEqual(2);
-		for (let i = w[0]; i < w[1]; i++) expect(['merged', 'failed']).not.toContain((list[i] as { kind: string }).kind);
+		for (let i = w[0]; i < w[1]; i++)
+			expect(['merged', 'failed']).not.toContain((list[i] as { kind: string }).kind);
 		expect(w[0]).toBeGreaterThan(1);
 		expect(w[1]).toBeLessThan(list.length);
 		expect(foldWindow(list.slice(0, 10), 10)).toBeNull();
@@ -227,6 +291,8 @@ describe('change detail model (one model with the Changes list)', () => {
 		const w = foldWindow(ev, 10)!;
 		const shown = ev.map((_, i) => i).filter((i) => i < w[0] || i >= w[1]);
 		expect(shown.length + (w[1] - w[0])).toBe(ev.length);
-		ev.forEach((e, i) => { if (e.kind === 'failed') expect(i < w[0] || i >= w[1]).toBe(true); });
+		ev.forEach((e, i) => {
+			if (e.kind === 'failed') expect(i < w[0] || i >= w[1]).toBe(true);
+		});
 	});
 });

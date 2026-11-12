@@ -14,11 +14,43 @@ import type { FleetSource } from '$lib/components/home/sketch/fleet-source.svelt
 export function edgeSource(): FleetSource {
 	const base = fixtureSource();
 	const f = withEdgeCases(raw as unknown as HomeFixture);
-	const added = { rollouts: f.rollouts.slice(raw.rollouts.length), environments: f.environments.slice(raw.environments.length) };
+	const added = {
+		rollouts: f.rollouts.slice(raw.rollouts.length),
+		environments: f.environments.slice(raw.environments.length)
+	};
 	const deps = f.rolloutDependencies.slice(raw.rolloutDependencies.length);
-	const schedules = new Map<string, NetworkSchedules>([['prod', { rolloutSchedules: { items: f.schedules ?? [] }, clusterRolloutSchedules: { items: [] } } as unknown as NetworkSchedules]]);
+	const schedules = new Map<string, NetworkSchedules>([
+		[
+			'prod',
+			{
+				rolloutSchedules: { items: f.schedules ?? [] },
+				clusterRolloutSchedules: { items: [] }
+			} as unknown as NetworkSchedules
+		]
+	]);
 	const changes = f.changes.slice(raw.changes.length);
-	return { ...base, changes: [...base.changes, ...(changes as unknown as FleetSource['changes'])], schedules, rolloutDependencies: { items: [...(base.rolloutDependencies?.items ?? []), ...(deps as unknown as NonNullable<FleetSource['rolloutDependencies']>['items'])] }, rollouts: [...base.rollouts, ...(added.rollouts as unknown as FleetSource['rollouts'])], environments: [...base.environments, ...(added.environments as unknown as FleetSource['environments'])] };
+	return {
+		...base,
+		changes: [...base.changes, ...(changes as unknown as FleetSource['changes'])],
+		schedules,
+		rolloutDependencies: {
+			items: [
+				...(base.rolloutDependencies?.items ?? []),
+				...(deps as unknown as NonNullable<FleetSource['rolloutDependencies']>['items'])
+			]
+		},
+		rollouts: [...base.rollouts, ...(added.rollouts as unknown as FleetSource['rollouts'])],
+		environments: [
+			...base.environments,
+			...(added.environments as unknown as FleetSource['environments'])
+		]
+	};
 }
-export function installEdge(): void { installLiveSource(edgeSource()); resetHomeModel(); }
-export function uninstallEdge(): void { installLiveSource(null); resetHomeModel(); }
+export function installEdge(): void {
+	installLiveSource(edgeSource());
+	resetHomeModel();
+}
+export function uninstallEdge(): void {
+	installLiveSource(null);
+	resetHomeModel();
+}
