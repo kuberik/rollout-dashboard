@@ -31,7 +31,7 @@ describe('the ledger: Newest is the catalogue\'s newest, N behind its distance',
 		CAT['/x/stg'] = CAT['/x/prod'] = ['c0', 'c1', 'c2', 'c3'];
 		const L = print(ledgerOf([place('stg', 'c3', 'failed'), place('prod', 'c1')] as never));
 		expect(L[0]).toBe('c3: Newest [stg]');
-		expect(L.find((l) => l.startsWith('c1:'))).toMatch(/^c1: 2 builds behind \[prod( note="Nothing inbound")?\]$/);
+		expect(L.find((l) => l.startsWith('c1:'))).toMatch(/^c1: 2 builds behind \[prod( note="Nothing to deploy[^"]*")?\]$/);
 		expect(L.join('\n')).not.toMatch(/Up to date/);
 	});
 	it('S2: the newest c4 failed in staging while prod runs c1 and holds [c3,c2]: c4 is Newest, c3 1 behind, c1 3 behind', () => {

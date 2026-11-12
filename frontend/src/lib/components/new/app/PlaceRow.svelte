@@ -54,7 +54,9 @@
 	.pl-word { white-space: normal; overflow: visible; text-overflow: clip; }
 	/* a chip that names a region (PROD | ap-southeast-2, ~160px) does not fit the 88px track: on a phone it takes the row's width and the state word sits under it, so neither is clipped */
 	.pl-mid--long { grid-template-columns: minmax(0, 1fr); }
-	.pl-note, .pl-since { display: none; }
+	.pl-since { display: none; }
+	/* the note exists only where the place's tab disagrees with its build row ("4 to deploy · 4.41.0-41 failed here"): that is information, so a phone reads it on its own line under the state word (hover does not exist there) */
+	.pl-note { grid-column: 1 / -1; white-space: normal; }
 	.pl-note:empty { display: none; }
 	.pl-mark { grid-column: 1; } .pl-mid { grid-column: 2; } .pl-act { grid-column: 3; display: flex; justify-content: flex-end; } .pl-tog { grid-column: 4; justify-self: end; margin-block: -8px; margin-right: -6px; }
 	@container (min-width: 560px) {
@@ -62,7 +64,7 @@
 		.pl-word { white-space: normal; overflow: visible; text-overflow: clip; }
 		.pl { grid-template-columns: 16px minmax(0, 1fr) auto 28px; padding-block: 2px; min-height: 32px; }
 		.pl-mid { display: grid; grid-template-columns: 168px minmax(200px, max-content) minmax(0, 1fr); column-gap: 8px; }
-		.pl-note { display: block; }
+		.pl-note { display: block; grid-column: auto; white-space: nowrap; }
 		.pl-note:empty { display: block; }
 		.pl-tog { margin-block: 0; margin-right: -6px; }
 	}

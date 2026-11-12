@@ -80,7 +80,7 @@ describe('r34 builds-lag: the Sounding ledger (lag = distance in the release cat
 		for (const { sc, app, P } of ALL) for (const s of ledgerOf(P)) for (const p of s.places) {
 			if (s.custom) { expect(stopWord(s)).toBe('Custom build'); continue; }
 			const note = placeNote(s, p);
-			if (note) { flagged.push(`${sc} ${app} ${p.place}`); expect(note).toBe(tabLag(p) ? `${tabLag(p)} newer on its tab` : 'Nothing inbound'); expect(note).not.toMatch(/up to date/i); }
+			if (note) { flagged.push(`${sc} ${app} ${p.place}`); expect(note).toMatch(/to deploy|Nothing to deploy/); expect(note).not.toMatch(/up to date/i); }
 			else expect(s.index, `${sc} ${app} ${p.place}`).toBe(tabLag(p));
 		}
 		expect([...new Set(flagged.map((f) => f.replace(/^\w+ /, "")))].sort()).toEqual(["checkout-api af-south-1", "orders-api production"]);
@@ -247,5 +247,29 @@ describe('restCurrency: the rest line of an app tile', () => {
 	});
 	it('is empty when no place has releases', () => {
 		expect(restCurrency([{ href: 'b', currency: 'none' }], 'b', 'x')).toBe('');
+	});
+});
+
+describe('batch4: placeNote names the gap in the place\'s own words', () => {
+	const stop = { index: 5, custom: false };
+	const place = (n: number, failed?: string[]) => ({ heldBuilds: new Array(n).fill({}), failedHere: failed }) as never;
+	it('the missing builds failed here: "4 to deploy · 4.41.0-41 failed here"', () => {
+		expect(placeNote(stop, place(4, ['4.41.0-41']))).toBe('4 to deploy · 4.41.0-41 failed here');
+		expect(placeNote(stop, place(3, ['a', 'b']))).toBe('3 to deploy · 2 builds failed here');
+		expect(placeNote(stop, place(0, ['a']))).toBe('Nothing to deploy · a failed here');
+	});
+	it('otherwise "N to deploy here"; never the old "newer on its tab"', () => {
+		expect(placeNote(stop, place(4))).toBe('4 to deploy here');
+		expect(placeNote(stop, place(4, []))).toBe('4 to deploy here');
+	});
+	it('agreeing counts and custom builds say nothing', () => {
+		expect(placeNote(stop, place(5))).toBeNull();
+		expect(placeNote({ index: null, custom: true }, place(2))).toBeNull();
+	});
+	it('checkout-api af-south-1 (incident) names the build that failed there', () => {
+		const P = placeHolds('checkout-api', 'incident');
+		const af = P.find((p) => p.label === 'af-south-1')!;
+		const note = placeNote(ledgerOf(P).find((s) => s.places.includes(af))!, af);
+		expect(note).toBe('4 to deploy · 4.41.0-41 failed here');
 	});
 });

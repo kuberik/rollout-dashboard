@@ -537,9 +537,15 @@ export function foldLedger(
 /** the tab's own count for a place: how many entries its "Newer builds" list has */
 export const tabLag = (p: PlaceHold): number => p.heldBuilds.length;
 
-/** what a place says when its tab's own list (what it is OFFERED: builds that failed upstream or are gated are not) differs from the stop it stands on, which counts every build of the catalogue: null when they agree. It never restates a lag in other words. */
-export const placeNote = (stop: Pick<Stop, 'index' | 'custom'>, p: PlaceHold): string | null =>
-	stop.custom || stop.index === tabLag(p) ? null : tabLag(p) ? `${tabLag(p)} newer on its tab` : 'Nothing inbound'; /* never "Up to date" on a row under a build that is behind */
+/** what a place says when its tab's own list (what it is OFFERED: builds that failed here or upstream, or that are gated, are not) has fewer builds than the stop it stands on counts: it names the gap in the place's own words, "4 to deploy · 4.41.0-41 failed here" when the missing builds failed in this place, "4 to deploy here" otherwise. Null when they agree. Never "Up to date" on a row under a build that is behind. */
+export const placeNote = (stop: Pick<Stop, 'index' | 'custom'>, p: PlaceHold): string | null => {
+	if (stop.custom || stop.index === tabLag(p)) return null;
+	const n = tabLag(p);
+	const lead = n ? `${n} to deploy` : 'Nothing to deploy';
+	const failed = p.failedHere ?? [];
+	if (!failed.length) return `${lead} here`;
+	return `${lead} · ${failed.length === 1 ? failed[0] : `${failed.length} builds`} failed here`;
+};
 /** the stop's own word: "Newest", "N builds behind" (the tab's count), "Custom build" (never counted) */
 export const stopWord = (s: Pick<Stop, 'index' | 'custom'>): string =>
 	s.custom ? 'Custom build' : s.index === 0 ? 'Newest' : lagWord(s.index ?? 0);
