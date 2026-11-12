@@ -2243,8 +2243,8 @@
 					     the `minmax(22rem,2fr)` track unconditionally (see that
 					     grid's own comment above), so a 2-up inner split would
 					     cram two cards into one already-narrow rail. -->
-						<!-- With no main column (nothing held, no contracts) the lone rail card takes the full row, like the Gates card above it; beside a main column it stays the 22rem rail. -->
-						<div class="grid min-w-0 content-start gap-4 {hasMainContent ? 'lg:col-start-2' : 'lg:col-span-full'}">
+						<!-- The rail card ALWAYS sits in the rail track, with or without a main column: the loading placeholder cannot know which case it is, and a card that jumps from the rail to the full row on load is the relayout views must not have (owner rule, 2026-11-12). -->
+						<div class="grid min-w-0 content-start gap-4 lg:col-start-2">
 							<!-- CARD 3 — "Depends on this" (the rail's only card now: "Runs in" was removed 2026-11-12, it restated the environment strip's site picker and the App page's progress tab). Always present — its own
 						     quiet line is what says the page looked and found
 						     nothing, the same idiom `EventsCard`'s "No recent

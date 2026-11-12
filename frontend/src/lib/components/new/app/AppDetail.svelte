@@ -201,6 +201,7 @@
 			const outside = (c: HTMLElement) => c.offsetTop > 2 || c.offsetLeft + c.offsetWidth > el.clientWidth + 1 || c.scrollWidth > c.clientWidth + 1;
 			const short = el.querySelector<HTMLElement>('[data-run-short]');
 			const chips = [...el.children].filter((c) => !c.hasAttribute('data-run-short')) as HTMLElement[];
+			el.style.width = '';
 			for (const c of chips) { c.style.display = ''; c.style.visibility = ''; }
 			if (short) short.style.display = 'none';
 			/* the first chip does not fit whole: try its compact form in its place; only when even that does not fit does it join the "+N" */
@@ -217,10 +218,16 @@
 				if (out) n++;
 			}
 			hiddenRuns = n;
+			/* hidden chips keep their box, so the box would still reach the row's right edge and "+N" would sit a gap away from the last chip drawn: shrink the box to the chips that show (the row, not this box, is what the observer watches, so this cannot loop) */
+			if (n > 0) {
+				const shown = [...(compact ? [short] : []), ...chips].filter((c): c is HTMLElement => !!c && c.style.display !== 'none' && c.style.visibility !== 'hidden');
+				const right = Math.max(0, ...shown.map((c) => c.offsetLeft + c.offsetWidth));
+				el.style.width = `${right}px`;
+			}
 		};
 		measure();
 		const ro = new ResizeObserver(measure);
-		ro.observe(el);
+		ro.observe(el.parentElement ?? el);
 		return () => ro.disconnect();
 	});
 	const runsPhrase = $derived(placesPhrase(runsAt.map((x) => { const n = tabEnv({ tier: x.tier, label: x.label }); return n === 'production' ? 'prod' : n; }), runsAt.map((x) => x.tier)));
