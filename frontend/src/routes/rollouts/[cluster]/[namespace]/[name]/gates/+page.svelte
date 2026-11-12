@@ -34,7 +34,7 @@
 	 *   · "Held builds" / "Waiting on" rows are the Overview tab's "Newer
 	 *     builds" row — mono version, a status chip, a plain-words subline,
 	 *     a right-aligned answer.
-	 *   · "Runs in" / "Depends on this" rows are the rail's plain-row grammar
+	 *   · "Depends on this" rows are the rail's plain-row grammar
 	 *     (`ResourcesCard`/`EventsCard`'s `divide-y` list) — one fact, one
 	 *     line, no disclosure.
 	 *   · Layout is the Overview tab's own main+rail split
@@ -59,7 +59,6 @@
 	import { page } from '$app/state';
 	import { createQuery } from '@tanstack/svelte-query';
 	import {
-		ServerOutline,
 		ShareNodesOutline,
 		CodeForkOutline,
 		ClockOutline,
@@ -69,7 +68,6 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import { shortenVersion, formatTimeAgoCompact } from '$lib/utils';
-	import UpToDate from '$lib/components/UpToDate.svelte';
 	import {
 		rolloutQueryOptions,
 		rolloutsListQueryOptions,
@@ -107,7 +105,6 @@
 		type ConsumerState,
 		type ContractBlock,
 		type Dependent,
-		chainWaveFact,
 		type EnvHistoryEntry,
 		type EnvInfo,
 		type ProvidedContract,
@@ -359,15 +356,6 @@
 		return siblings.get(env)?.theme ?? getRolloutEnvironmentTheme(null, env);
 	}
 
-	function hrefFor(env: string): string | undefined {
-		// The environment this page IS gets no link. "You are here" is already
-		// marked by the breadcrumb and the header chip.
-		if (env === currentEnv) return undefined;
-		const s = siblings.get(env);
-		if (!s || !s.namespace) return undefined;
-		return rolloutPath(s.cluster, s.namespace, name, 'gates');
-	}
-
 	/**
 	 * THE KEY A CONTRACT GATE IS FILED UNDER, WHICH IS NOT ALWAYS AN
 	 * ENVIRONMENT. A rollout bound to NO `Environment` has no tier, so the key
@@ -461,19 +449,6 @@
 	});
 	const chainRows = $derived(chain(chainInfos, order, (env) => ownRanks.get(env) ?? null, topology));
 	const envOrder = $derived(chainRows.map((r) => r.env));
-
-	/** The card's rolled-up answer — `UpToDate`'s wording, shared with `/apps`. */
-	const chainRollup = $derived.by(() => {
-		const deployed = chainRows.filter((r) => r.tag);
-		return {
-			onHead: deployed.filter((r) => r.rank === 0).length,
-			deployed: deployed.length,
-			total: chainRows.length,
-			spread: new Set(deployed.map((r) => r.tag)).size || 1,
-			pending: chainRows.length - deployed.length,
-			unknown: deployed.filter((r) => r.rank < 0).length
-		};
-	});
 
 	// ── AXIS 2 · THE CONTRACT GATES ─────────────────────────────────────
 
@@ -1303,7 +1278,6 @@
 		)
 	);
 
-	const hasChain = $derived(chainRows.length > 0);
 	const hasContracts = $derived(blocks.length > 0);
 	const hasDependents = $derived(provided.length > 0);
 
@@ -1312,8 +1286,8 @@
 	// see the grid's own comment where it renders, below.
 	/** Does the main track hold cards (Waiting on / Held builds)? Decides whether the grid's main column renders at all. */
 	const hasMainContent = $derived(hasContracts || holdBreakdown.held.length > 0);
-	/** Is there anything below the top slot: a main column (Waiting on / Held builds) or a rail (Runs in / Depends on this)? An early rollout has neither, so it is the top card alone. */
-	const showGrid = $derived(hasMainContent || hasChain || hasDependents || hood.total > 0);
+	/** Is there anything below the top slot: a main column (Waiting on / Held builds) or a rail (Depends on this)? An early rollout has neither, so it is the top card alone. */
+	const showGrid = $derived(hasMainContent || hasDependents || hood.total > 0);
 	/**
 	 * The settled fleet list does not contain this rollout (`hood.focus` is null). The first time that is seen, remember the list's
 	 * `dataUpdatedAt`; once a LATER refetch has landed and the focus is still missing, give up waiting (the top slot stays empty).
@@ -1605,15 +1579,8 @@
 {/snippet}
 
 {#snippet railSkeleton()}
-	<!-- The rail's two cards ("Runs in", "Depends on this") as placeholders, shared by the load-outage skeleton and the pending-fleet skeleton so nothing pops in once the list answers. -->
+	<!-- The rail's one card ("Depends on this") as a placeholder, shared by the load-outage skeleton and the pending-fleet skeleton so nothing pops in once the list answers. -->
 	<div class="grid min-w-0 content-start gap-4">
-		<CardSkeleton
-			titleWidth="w-20"
-			rollupWidth="w-24"
-			rows={4}
-			rowHeight={40}
-			padded={false}
-		/>
 		<CardSkeleton
 			titleWidth="w-28"
 			rollupWidth="w-16"
@@ -1642,7 +1609,7 @@
 			     own width; the Gates card is a canvas-HEIGHT block (not a row
 			     list — the real body is a graph, not a list, same rule
 			     `CardSkeleton`'s own `bodyHeight` prop exists for); the rail
-			     keeps its two cards (`Runs in` / `Depends on this`) in the
+			     keeps its one card (`Depends on this`) in the
 			     SAME unconditional 3fr/2fr split the loaded page always uses
 			     (see that grid's own comment below) — main stays empty here,
 			     exactly as it validly does on a rollout with no contracts. -->
@@ -1799,7 +1766,7 @@
 			</RolloutTabHeader>
 
 			{#if fleetFailed}
-				<!-- The fleet list failed and there is nothing cached: hasChain / hasContracts / the graph are all read off it, so "No gates on this rollout" would be a false answer, and a newer-builds count has no fleet to be right about. Same unavailable treatment as the health rows (they say it could not be loaded instead of guessing), in the empty-state anatomy; ErrorState would repeat the tab header here. -->
+				<!-- The fleet list failed and there is nothing cached: hasContracts / the graph are all read off it, so "No gates on this rollout" would be a false answer, and a newer-builds count has no fleet to be right about. Same unavailable treatment as the health rows (they say it could not be loaded instead of guessing), in the empty-state anatomy; ErrorState would repeat the tab header here. -->
 				<UnavailableCard
 					icon={ShareNodesOutline}
 					title="Gates"
@@ -1809,7 +1776,7 @@
 					class="min-w-0"
 				/>
 			{:else if !fleetSettled(listQuery)}
-				<!-- The fleet list has not answered: hasChain / hasContracts / hood are all read off it, so "No gates on this rollout" would be a finished, false sentence. The same skeleton the loaded page's graph card uses (below). -->
+				<!-- The fleet list has not answered: hasContracts / hood are all read off it, so "No gates on this rollout" would be a finished, false sentence. The same skeleton the loaded page's graph card uses (below). -->
 				{@render pendingSkeleton('gates-pending')}
 			{:else}
 				<div class="grid gap-4">
@@ -2003,8 +1970,8 @@
 				     unconditional; the main column is sometimes empty inside it,
 				     never a different grid. ══ -->
 					<div class="grid gap-4 lg:grid-cols-[3fr_minmax(22rem,2fr)] lg:items-start">
-						<!-- ⭐ ROUND 6, ITEM 1 (AD ruling): "the rail ALWAYS holds Runs in
-					     + Depends on, and main ALWAYS holds Held builds [when
+						<!-- ⭐ ROUND 6, ITEM 1 (AD ruling): "the rail ALWAYS holds Depends on
+					     (Runs in was removed 2026-11-12), and main ALWAYS holds Held builds [when
 					     anything is held]." Main used to be gated on `hasContracts`
 					     alone — a rollout held purely by an APPROVAL or deploy-window
 					     gate (no `RolloutDependency` at all, e.g. telemetry-indexer)
@@ -2133,9 +2100,8 @@
 							     — "waiting" is this card's own idea, not the graph's
 							     `ShareNodesOutline` the "Gates" card already owns) and a
 							     leading status column (item 8's "status column on
-							     Waiting on, not Runs in" — this card HAS real per-row
-							     states; `Runs in` below does not, see that card's own
-							     note). -->
+							     Waiting on" — this card HAS real per-row
+							     states). -->
 								{#if hasContracts}
 									<Card
 										icon={ClockOutline}
@@ -2278,122 +2244,7 @@
 					     grid's own comment above), so a 2-up inner split would
 					     cram two cards into one already-narrow rail. -->
 						<div class="grid min-w-0 content-start gap-4 lg:col-start-2">
-							{#if hasChain}
-								<!-- CARD 3 — "Runs in". The vertical chain of nodes the old
-							     network graph drew is this: one row per environment, a
-							     chip and the version it runs. -->
-								<Card icon={ServerOutline} title="Runs in" padded={false} class="min-w-0">
-									{#snippet rollup()}
-										<UpToDate
-											rollup
-											onHead={chainRollup.onHead}
-											deployed={chainRollup.deployed}
-											total={chainRollup.total}
-											spread={chainRollup.spread}
-											pending={chainRollup.pending}
-											unknown={chainRollup.unknown}
-											caption=""
-											title="Environments of this app that are on its newest version"
-										/>
-									{/snippet}
-									<ul class="divide-line-subtle divide-y">
-										{#each chainRows as r (r.env)}
-											{@const theme = themeFor(r.env)}
-											{@const rowHref = hrefFor(r.env)}
-											{@const waveFact = chainWaveFact(r, topology)}
-											<!-- ⭐ THE LEADING 16px STATUS COLUMN (squad-rollout Lane G
-										     round 2, item 5; round 4, item 8, AD ruling). Round 2 put
-										     a `StatusMark` here on every row, which read as 7 identical
-										     green dots with no row standing out as THIS one. Round 4:
-										     "Runs in marks the current env (2px fg square marker, the
-										     selected-row grammar), with a rest dot only for 'on the
-										     newest'." Round 6 nit: that marker is now the PRODUCT'S
-										     established selected-row grammar verbatim
-										     (`LogsViewer.svelte`'s own "All pods" marker, coordinator
-										     review 2026-10-09 — "the 2px square marker at the row's
-										     left edge, flush, not an inset bar"): a `border-l-2`,
-										     transparent at rest so every row's text starts at the
-										     same x, `border-l-fg` on the one row that IS this
-										     environment. `rowHref` is `undefined` for exactly that row
-										     (`hrefFor`'s own rule — "the environment this page IS gets
-										     no link"), so the two branches below already split on the
-										     same fact this marker needs. -->
-											<li>
-												{#if rowHref}
-													<a
-														href={rowHref}
-														class="hover:bg-hover flex items-center gap-3 border-l-2 border-l-transparent py-2.5 pr-4 pl-3.5 max-sm:flex-wrap max-sm:gap-y-0.5"
-													>
-														<span
-															class="inline-flex h-4 w-4 shrink-0 items-center justify-center"
-															aria-hidden="true"
-														>
-															{#if r.rank === 0}<span
-																	class="bg-success-solid h-1.5 w-1.5 rounded-full"
-																></span>{/if}
-														</span>
-														<Chip
-															role="env"
-															{theme}
-															label={shortEnvLabel(theme) || r.env}
-															title={r.env}
-															wide
-															class="shrink-0"
-														/>
-														{#if waveFact}<span class="t-meta text-fg-subtle min-w-0 truncate max-sm:order-last max-sm:basis-full max-sm:pl-7" data-place-wave><span class="max-sm:hidden">· </span>{waveFact}</span>{/if}
-														<span class="ml-auto flex min-w-0 shrink-0 items-baseline gap-2">
-															<span class="t-code-sm text-fg-muted min-w-0 truncate"
-																>{r.display ?? '—'}</span
-															>
-															{#if r.tag && r.rank >= 0}
-																<span class="t-meta text-fg-subtle whitespace-nowrap"
-																	>{r.rank === 0 ? 'on the newest' : `${r.rank} behind`}</span
-																>
-															{/if}
-														</span>
-													</a>
-												{:else}
-													<!-- ⭐ THE "this rollout" MARKER, LABELLED (squad-rollout
-												     Lane G round 5, AD ruling, round 6 nit fix): a `border-
-												     l-2 border-l-fg` flush with the row's OWN left edge —
-												     the product's established selected-row grammar (see
-												     this block's own comment above) — not a centred 6px
-												     dot in a 16px slot. `sr-only` text carries the
-												     accessible name the border alone cannot; the visible
-												     `t-meta` "this rollout" on the row's own right side, in
-												     place of the rank/version note (rank is meaningless for
-												     the row that IS the subject — it cannot be "N behind"
-												     itself). -->
-													<div
-														class="border-l-fg flex items-center gap-3 border-l-2 py-2.5 pr-4 pl-3.5 max-sm:flex-wrap max-sm:gap-y-0.5"
-													>
-														<span class="sr-only">this rollout</span>
-														<Chip
-															role="env"
-															{theme}
-															label={shortEnvLabel(theme) || r.env}
-															title={r.env}
-															wide
-															class="shrink-0"
-														/>
-														{#if waveFact}<span class="t-meta text-fg-subtle min-w-0 truncate max-sm:order-last max-sm:basis-full max-sm:pl-7" data-place-wave><span class="max-sm:hidden">· </span>{waveFact}</span>{/if}
-														<span class="ml-auto flex min-w-0 shrink-0 items-baseline gap-2">
-															<span class="t-code-sm text-fg-muted min-w-0 truncate"
-																>{r.display ?? '—'}</span
-															>
-															<span class="t-meta text-fg-subtle whitespace-nowrap"
-																>this rollout</span
-															>
-														</span>
-													</div>
-												{/if}
-											</li>
-										{/each}
-									</ul>
-								</Card>
-							{/if}
-
-							<!-- CARD 4 — "Depends on this". Always present — its own
+							<!-- CARD 3 — "Depends on this" (the rail's only card now: "Runs in" was removed 2026-11-12, it restated the environment strip's site picker and the App page's progress tab). Always present — its own
 						     quiet line is what says the page looked and found
 						     nothing, the same idiom `EventsCard`'s "No recent
 						     events" already uses. The full graph moved entirely to
@@ -2413,8 +2264,7 @@
 								{:else}
 									<ul class="divide-line-subtle divide-y">
 										{#each downstreamRows as d (d.name)}
-											<!-- Same leading status column as "Runs in" above — item 5's
-										     anatomy applies to both rail cards; `held` ink only on the
+											<!-- Leading status column — `held` ink only on the
 										     mark itself when this row is adverse, since colour is the
 										     one thing that may vary with state here. -->
 											<li class="flex items-center gap-3 px-4 py-2.5">

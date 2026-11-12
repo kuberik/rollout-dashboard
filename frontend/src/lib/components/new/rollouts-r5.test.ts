@@ -33,7 +33,7 @@ it('R17: the lead is the first row of the first non-empty group', () => {
 	}
 	expect(headerFacts(D.rollouts('calm').rows).map((f) => f.text)).toContain('8 places waiting for approval');
 });
-it('r6 T1: pathPosition = the Gates tab Runs in (newest of the ladder)', () => {
+it('r6 T1: pathPosition = (newest of the ladder)', () => {
 	expect(D.pathPosition({ app: 'hello-world' }, 'incident')).toBe('0 of 3 places on the newest build');
 	expect(D.pathPosition({ app: 'standalone-api' }, 'incident')).toBe('0 of 1 place on the newest build');
 });

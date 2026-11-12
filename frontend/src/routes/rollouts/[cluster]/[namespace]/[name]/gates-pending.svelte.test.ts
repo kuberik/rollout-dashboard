@@ -58,12 +58,12 @@ describe('Gates tab: no empty sentence while the fleet list is pending', () => {
 		await new Promise((r) => setTimeout(r, 500));
 		expect(text()).not.toMatch(/No gates on this rollout/);
 		expect(container.querySelector('.skel-block, [aria-hidden="true"].animate-pulse, [data-skeleton]')).not.toBeNull();
-		// the rail's two cards ("Runs in", "Depends on this") are placeholders too, so nothing pops in once the list answers (batch4 followup 5)
+		// the rail's card ("Depends on this") is a placeholder too, so nothing pops in once the list answers (batch4 followup 5)
 		const pending = container.querySelector('[data-testid="gates-pending"]');
 		expect(pending).not.toBeNull();
 		const rail = pending!.querySelector('.content-start');
-		expect(rail?.children.length).toBe(2);
-		expect(rail!.querySelectorAll('.skel-block').length).toBeGreaterThan(4);
+		expect(rail?.children.length).toBe(1);
+		expect(rail!.querySelectorAll('.skel-block').length).toBeGreaterThan(2);
 		release();
 		await waitFor(() => expect(text()).toMatch(/No gates on this rollout/), { timeout: 8000 });
 		obs.disconnect();
