@@ -102,14 +102,15 @@
 
 {#if done}
 	{@const w = doneWords(done.target)}
+	{@const desc = done.error ?? (done.still ? (done.still.who ? `also approved by ${done.still.who}` : 'another approval stands') : '')}
 	<div role="presentation" data-approve-toast title={done.still?.title} onpointerover={() => pauseDone('hover')} onpointerout={() => resumeDone('hover')} onfocusin={() => pauseDone('focus')} onfocusout={() => resumeDone('focus')} style="display: contents">
 	<Toast
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
 		tone={done.error ? 'danger' : done.still ? 'info' : 'success'}
 		message={done.error ? `Could not approve ${done.target.build}` : done.still ? done.still.headline : `${w.title} · ${w.detail}`}
-		description={done.error ?? (done.still ? (done.still.who ? `also approved by ${done.still.who}` : 'another approval stands') : '')}
+		description={desc}
 	>
-		{#snippet children()}{#if done.error}{`Could not approve ${done.target.build}`}<span class="text-fg-muted"> · {done.error}</span>{:else}{w.title} · <CauseText parts={w.parts} />{/if}{/snippet}
+		{#snippet children()}{#if done.error}{`Could not approve ${done.target.build}`}<span class="text-fg-muted"> · {done.error}</span>{:else if done.still}{done.still.headline}{' '}<span class="text-fg-muted">· {desc}</span>{:else}{w.title} · <CauseText parts={w.parts} />{/if}{/snippet}
 		{#snippet action()}
 			<!-- Dismiss is the toast's own ×; an error or an Undo that did not revert has no second verb to offer beside it -->
 			{#if !done.error && !done.still}
