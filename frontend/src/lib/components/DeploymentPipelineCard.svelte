@@ -308,7 +308,7 @@
 						id: `stage-${krIdx}-${stepIdx}`,
 						kind: 'stage',
 						shortLabel: `Stage ${stepNum}`,
-						longLabel: weight ? `Stage ${stepNum} · ${weight.label} traffic` : `Stage ${stepNum}`,
+						longLabel: `Stage ${stepNum}`,
 						weight: weight ?? undefined,
 						status,
 						statusLabel,
@@ -790,7 +790,7 @@
 									? 't-card-title text-fg'
 									: 't-body text-fg-muted'}"
 						>
-							{node.shortLabel}{#if node.weight}<span class="t-meta text-fg-subtle"> · {node.weight.label}</span>{/if}
+							{node.shortLabel}{#if node.weight}{" "}<span class="t-meta text-fg-subtle">· {node.weight.label}</span>{/if}
 						</span>
 					</div>
 					<!-- ⭐ THE CHIP BUDGET, ROUND 2 (2026-10-08, coordinator
@@ -1601,7 +1601,7 @@
 											? 't-card-title text-fg'
 											: 't-body text-fg-muted'}"
 								>
-									{node.shortLabel}{#if node.weight}<span class="t-meta text-fg-subtle"> · {node.weight.label}</span>{/if}
+									{node.shortLabel}{#if node.weight}{" "}<span class="t-meta text-fg-subtle">· {node.weight.label}</span>{/if}
 								</span>
 							</div>
 							<!-- Chip budget, round 2 — see `navRow`'s identical note above. -->

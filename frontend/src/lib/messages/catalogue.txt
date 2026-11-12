@@ -350,7 +350,6 @@ lib/components/DeploymentPipelineCard.svelte	title	Parallel rollouts progress in
 lib/components/DeploymentPipelineCard.svelte	aria-label	Pipeline stages
 lib/components/DeploymentPipelineCard.svelte	code	Reset view
 lib/components/DeploymentPipelineCard.svelte	code	Stage …
-lib/components/DeploymentPipelineCard.svelte	code	Stage … · … traffic
 lib/components/DeploymentPipelineCard.svelte	text	Tests on last step won't run — rollout completes without pausing.
 lib/components/DeploymentPipelineCard.svelte	text	track … / …
 lib/components/DeploymentPipelineCard.svelte	text	Triggered by
