@@ -18,12 +18,35 @@ export function clusterReason(e: ClusterError): 'slow' | 'unreachable' {
 	return e.reason === 'slow' ? 'slow' : 'unreachable';
 }
 
+export type ClusterKind = 'timeout' | 'unreachable' | 'rejected' | 'bad_answer';
+const KINDS: readonly string[] = ['timeout', 'unreachable', 'rejected', 'bad_answer'];
+
 /**
- * The Details line for one cluster, chosen by the typed `reason` and nothing else. The server's raw error ("HTTP 403", "dial tcp …: i/o timeout") is shown
- * beneath it as secondary text by the notice, never branched on.
+ * The typed way a cluster read failed. The hub's `kind` wins; an older hub only sent `reason`, where 'slow' meant a timeout and anything else
+ * (or nothing) meant unreachable. Never derived from the `error` text.
+ */
+export function clusterKind(e: ClusterError): ClusterKind {
+	if (e.kind && KINDS.includes(e.kind)) return e.kind;
+	return clusterReason(e) === 'slow' ? 'timeout' : 'unreachable';
+}
+
+/**
+ * The Details line for one cluster, plain words chosen by the typed kind and nothing else, always naming the cluster. The server's raw error
+ * ("dial tcp …: i/o timeout") is never printed; only the HTTP status number, when the cluster refused, is. A stale-and-slow cluster keeps the
+ * sentence that says it is up.
  */
 export function clusterDetail(e: ClusterError): string {
-	return clusterReason(e) === 'slow' ? `${e.name} is up, but did not answer in time.` : 'Could not be reached.';
+	if (clusterReason(e) === 'slow') return `${e.name} is up, but did not answer in time.`;
+	switch (clusterKind(e)) {
+		case 'timeout':
+			return `${e.name} did not answer in time.`;
+		case 'rejected':
+			return e.status ? `${e.name} refused the request (HTTP ${e.status}).` : `${e.name} refused the request.`;
+		case 'bad_answer':
+			return `${e.name} answered with something the dashboard could not read.`;
+		default:
+			return `${e.name} could not be reached.`;
+	}
 }
 
 export type ClusterNoticeCopy = { stale: boolean; slow: boolean; title: string; message: string };
@@ -43,8 +66,8 @@ export function clusterNoticeCopy(errors: readonly ClusterError[], subject: stri
 			stale,
 			slow,
 			title: one
-				? `${names[0]} is slow to answer${lastSeenText ? ` — showing its data from ${lastSeenText}` : ''}`
-				: `${names.length} clusters are slow to answer${lastSeenText ? ` — showing their data from ${lastSeenText}` : ''}`,
+				? `${names[0]} is slow to answer${lastSeenText ? ` · showing its data from ${lastSeenText}` : ''}`
+				: `${names.length} clusters are slow to answer${lastSeenText ? ` · showing their data from ${lastSeenText}` : ''}`,
 			message: `${one ? 'Its' : 'Their'} rollouts show the last known state the hub holds. They refresh as soon as ${one ? `${names[0]} answers` : 'the clusters answer'}.`
 		};
 	}
@@ -53,15 +76,15 @@ export function clusterNoticeCopy(errors: readonly ClusterError[], subject: stri
 			stale,
 			slow,
 			title: one
-				? `${names[0]} is unreachable — its rollouts show their last known state`
-				: `${names.length} clusters are unreachable — their rollouts show their last known state`,
+				? `${names[0]} is unreachable · its rollouts show their last known state`
+				: `${names.length} clusters are unreachable · their rollouts show their last known state`,
 			message: `${one ? names[0] : 'These clusters'} stopped answering${lastSeenText ? ` after ${lastSeenText}` : ''}. What you see for ${one ? 'it' : 'them'} is the last known state the hub holds.`
 		};
 	}
 	return {
 		stale,
 		slow,
-		title: one ? `${names[0]} did not answer — this page is incomplete` : `${names.length} clusters did not answer — this page is incomplete`,
+		title: one ? `${names[0]} did not answer · this page is incomplete` : `${names.length} clusters did not answer · this page is incomplete`,
 		message: `Everything on ${subject} covers only the clusters that replied — a rollout on ${one ? names[0] : 'one of these'} is missing from these counts, not healthy in them.`
 	};
 }

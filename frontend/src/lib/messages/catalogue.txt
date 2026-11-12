@@ -1389,16 +1389,20 @@ lib/view-models/changes.ts	code	waits for you · …
 lib/view-models/changes.ts	code	waits for you in …
 lib/view-models/cluster-errors.ts	code	: ''}. What you see for … is the last known state the hub holds.
 lib/view-models/cluster-errors.ts	code	: 'the clusters answer'}.
+lib/view-models/cluster-errors.ts	code	… answered with something the dashboard could not read.
 lib/view-models/cluster-errors.ts	code	… clusters are slow to answer${lastSeenText ?
-lib/view-models/cluster-errors.ts	code	… clusters are unreachable — their rollouts show their last known state
-lib/view-models/cluster-errors.ts	code	… clusters did not answer — this page is incomplete
-lib/view-models/cluster-errors.ts	code	… did not answer — this page is incomplete
+lib/view-models/cluster-errors.ts	code	… clusters are unreachable · their rollouts show their last known state
+lib/view-models/cluster-errors.ts	code	… clusters did not answer · this page is incomplete
+lib/view-models/cluster-errors.ts	code	… could not be reached.
+lib/view-models/cluster-errors.ts	code	… did not answer · this page is incomplete
+lib/view-models/cluster-errors.ts	code	… did not answer in time.
 lib/view-models/cluster-errors.ts	code	… is slow to answer${lastSeenText ?
-lib/view-models/cluster-errors.ts	code	… is unreachable — its rollouts show their last known state
+lib/view-models/cluster-errors.ts	code	… is unreachable · its rollouts show their last known state
 lib/view-models/cluster-errors.ts	code	… is up, but did not answer in time.
+lib/view-models/cluster-errors.ts	code	… refused the request (HTTP …).
+lib/view-models/cluster-errors.ts	code	… refused the request.
 lib/view-models/cluster-errors.ts	code	… rollouts show the last known state the hub holds. They refresh as soon as ${one ?
 lib/view-models/cluster-errors.ts	code	… stopped answering${lastSeenText ?
-lib/view-models/cluster-errors.ts	code	Could not be reached.
 lib/view-models/cluster-errors.ts	code	Everything on … covers only the clusters that replied — a rollout on … is missing from these counts, not healthy in them.
 lib/view-models/dependencies.ts	code	… version… ahead
 lib/view-models/dependencies.ts	code	… version… waiting to move

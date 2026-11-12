@@ -182,16 +182,16 @@ describe('a partial answer is declared, on every page that renders one', () => {
 			render(WithQueryClient, { props: { component: Comp as any } });
 			await waitFor(() =>
 				expect(
-					screen.getByText(/spoke-b did not answer — this page is incomplete/i)
+					screen.getByText(/spoke-b did not answer · this page is incomplete/i)
 				).toBeInTheDocument()
 			);
 			// Absent is not healthy — said in words, not left to inference.
 			expect(
 				screen.getByText(/missing from these counts, not healthy in them/i)
 			).toBeInTheDocument();
-			// Plain words from the typed reason, and the raw error beneath them.
-			expect(screen.getByText(/Could not be reached\./)).toBeInTheDocument();
-			expect(screen.getByText('dial tcp: i/o timeout')).toBeInTheDocument();
+			// Plain words from the typed kind; the raw error is never printed.
+			expect(screen.getByText(/spoke-b could not be reached\./)).toBeInTheDocument();
+			expect(screen.queryByText('dial tcp: i/o timeout')).toBeNull();
 		});
 	}
 });
