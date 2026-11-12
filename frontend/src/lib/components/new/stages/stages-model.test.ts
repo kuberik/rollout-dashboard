@@ -5,7 +5,7 @@ import { respond } from '../../../demo/respond';
 import { resetDemoState } from '../../../demo/state';
 import { WAVES_STEPS } from '../../../demo/waves-story';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
-import { stagesOf, releaseCommits, releaseLine, narrowRollup } from './stages-model';
+import { stagesOf, releaseLine, narrowRollup, releasesInFlight, resolveRelease } from './stages-model';
 import { placeHolds, noReleasesAt, placesOf, rowsOf, apps } from '../data';
 import { ledgerOf } from '../app/app-model';
 
@@ -171,8 +171,12 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 				const stops = ledgerOf(places);
 				const total = places.filter((p) => !noReleasesAt(p.href)).length;
 				const onNewest = stops[0] && !stops[0].custom ? stops[0].places.filter((p) => !noReleasesAt(p.href)).length : 0;
+				const sel = stagesOf({ kind: 'app', app, release: stops[0]?.build }, s);
 				if (!st.release) { expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe('No releases yet'); expect(releaseLine(app, s), `${b} ${s} ${app}`).toBeNull(); continue; }
-				expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${onNewest} of ${total} place${total === 1 ? '' : 's'}`);
+				/* the newest selected: N = places on it at rest (the Builds card's count minus the ones still moving or failed there) */
+				const n = Number(sel.rollup.parts[0].text.split(' ')[0]);
+				expect(sel.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${n} of ${total} place${total === 1 ? '' : 's'}`);
+				expect(n, `${b} ${s} ${app}`).toBeLessThanOrEqual(onNewest);
 			}
 		};
 		for (const b of WAVES_STEPS) { beat(b); check(b, 'incident'); }
@@ -181,7 +185,7 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 	});
 	it('a place moving a build that is NOT the release is quiet: no glow, not counted, its state as plain words', () => {
 		installLiveSource(null);
-		const st = stagesOf({ kind: 'app', app: 'checkout-api' }, 'incident');
+		const st = stagesOf({ kind: 'app', app: 'checkout-api', release: ledgerOf(placeHolds('checkout-api', 'incident'))[0].build }, 'incident');
 		const off = flat(st).filter((p) => p.word === 'Checking' || p.word === 'Deploying');
 		expect(off.length).toBeGreaterThan(0);
 		for (const p of off) {
@@ -197,7 +201,8 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 		installLiveSource(null);
 		let seen = 0;
 		for (const sc of ['incident', 'calm'] as const) for (const a of apps(sc).items) {
-			const st = stagesOf({ kind: 'app', app: a.app }, sc);
+			/* the newest selected: no place is "ahead" of it (an ahead place is Deployed by rule) */
+			const st = stagesOf({ kind: 'app', app: a.app, release: ledgerOf(placeHolds(a.app, sc).filter((p) => !noReleasesAt(p.href)))[0]?.build }, sc);
 			for (const x of placesOf(sc, a.app)) {
 				if (noReleasesAt(x.href)) continue;
 				const mine = flat(st).find((p) => p.href === x.href)!;
@@ -210,32 +215,111 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 		}
 		expect(seen).toBeGreaterThan(0);
 	});
-	it('In this release: rows are the builds between prod and the release; empty once every place runs it; the line names the release', () => {
+	it('the release line names the selected stop (default: the lead)', () => {
 		beat('arm');
-		const r = releaseCommits(APP, 'incident');
-		expect(r.status).toBe('ready');
-		expect(r.release).toBe('c6f19d2');
-		expect(r.base).toBe('0f1f88a');
-		expect(r.commits.map((c) => c.sha)).toEqual(['c6f19d2']);
 		expect(releaseLine(APP, 'incident')?.build).toBe('c6f19d2');
-		beat('done');
-		expect(releaseCommits(APP, 'incident')).toMatchObject({ status: 'empty', release: 'c6f19d2', commits: [] });
-		installLiveSource(null);
-		const ck = releaseCommits('checkout-api', 'incident');
-		expect(ck.status).toBe('ready');
-		expect(ck.commits.length).toBeGreaterThan(1);
-		expect(ck.commits[0].sha).toBe(releaseLine('checkout-api', 'incident')?.build);
+		expect(releaseLine(APP, 'incident', 'c6f19d2')?.build).toBe('c6f19d2');
+		expect(releaseLine(APP, 'incident', 'nope')?.build).toBe('c6f19d2');
 	});
 	it('narrow rollup: more than one adverse count folds checking + deploying into one "N in progress"; the unit never shortens', () => {
 		beat('wave1');
 		const st = stagesOf({ kind: 'app', app: APP }, 'incident');
-		expect(st.rollup.text).toBe('4 of 5 places · 1 checking · 1 deploying');
-		expect(st.narrow?.text).toBe('4 of 5 places · 2 in progress');
+		expect(st.rollup.text).toBe('2 of 5 places · 1 checking · 1 deploying');
+		expect(st.narrow?.text).toBe('2 of 5 places · 2 in progress');
 		expect(st.narrow?.parts.at(-1)?.ink).toBe('active');
 		/* one adverse count: unchanged; held and failed stay separate */
 		beat('wave1-half');
-		expect(stagesOf({ kind: 'app', app: APP }, 'incident').narrow?.text).toBe('4 of 5 places · 1 deploying');
+		expect(stagesOf({ kind: 'app', app: APP }, 'incident').narrow?.text).toBe('3 of 5 places · 1 deploying');
 		const r = { text: '', parts: [{ text: '1 of 7 places', ink: 'muted' as const }, { text: '1 failing', ink: 'danger' as const }, { text: '1 checking', ink: 'progress' as const }, { text: '1 deploying', ink: 'active' as const }] };
 		expect(narrowRollup(r, 2).parts.map((p) => p.text)).toEqual(['1 of 7 places', '1 failing', '2 in progress']);
+	});
+});
+
+describe('pipeline release switcher', () => {
+	afterEach(() => installLiveSource(null));
+	const flat = (st: ReturnType<typeof stagesOf>) => st.lanes.flatMap((l) => l.cells.flatMap((c) => c?.places ?? []));
+	const A = 'checkout-api';
+	it('default = the oldest release not everywhere; rows run oldest first with the default tagged', () => {
+		installLiveSource(null);
+		const r = releasesInFlight(A, 'incident');
+		expect(r.items.length).toBeGreaterThanOrEqual(2);
+		expect(r.selectedDefault).toBe(r.items[0].build);
+		expect(r.items.map((i) => i.oldest)).toEqual(r.items.map((_, i) => i === 0));
+		const stops = ledgerOf(placeHolds(A, 'incident').filter((p) => !noReleasesAt(p.href)));
+		const idx = r.items.map((i) => stops.find((s) => s.build === i.build)!.index as number);
+		expect(idx).toEqual([...idx].sort((a, b) => b - a));
+		expect(stagesOf({ kind: 'app', app: A }, 'incident').release).toBe(r.selectedDefault);
+	});
+	it('URL param: a valid stop selects it, unknown or none falls back to the default', () => {
+		installLiveSource(null);
+		const r = releasesInFlight(A, 'incident');
+		const other = r.items[r.items.length - 1].build;
+		expect(other).not.toBe(r.selectedDefault);
+		expect(resolveRelease(A, 'incident', other)).toBe(other);
+		expect(resolveRelease(A, 'incident', 'nope')).toBe(r.selectedDefault);
+		expect(resolveRelease(A, 'incident', null)).toBe(r.selectedDefault);
+		expect(resolveRelease(A, 'incident')).toBe(r.selectedDefault);
+		expect(stagesOf({ kind: 'app', app: A, release: other }, 'incident').release).toBe(other);
+		expect(stagesOf({ kind: 'app', app: A, release: 'nope' }, 'incident').release).toBe(r.selectedDefault);
+	});
+	it('reached by a newer build: Deployed "on <build>", counted in N, never live or not reached; live only for a place moving the selected build', () => {
+		installLiveSource(null);
+		const r = releasesInFlight(A, 'incident');
+		const stops = ledgerOf(placeHolds(A, 'incident').filter((p) => !noReleasesAt(p.href)));
+		let sawAhead = false;
+		for (const it of r.items) {
+			const st = stagesOf({ kind: 'app', app: A, release: it.build }, 'incident');
+			const rel = stops.find((s) => s.build === it.build)!.index as number;
+			const ps = flat(st);
+			const hold = placeHolds(A, 'incident');
+			for (const p of ps) {
+				const h = hold.find((x) => x.href === p.href)!;
+				const v = placesOf('incident', A).find((x) => x.href === p.href)!.version;
+				const vi = stops.find((s) => s.build === v)?.index ?? null;
+				void h;
+				if (noReleasesAt(p.href)) continue;
+				if (vi != null && vi < rel && p.state !== 'failed') {
+					sawAhead = true;
+					expect(p.ahead).toBe(true);
+					expect(p.live).toBe(false);
+					expect(p.build).toBe(v);
+					expect(p.word).toBe('On');
+					expect(['deployed', 'checking', 'deploying']).toContain(p.state);
+				}
+				if (p.live) expect(vi).toBe(rel);
+			}
+			const n = Number(st.rollup.parts[0].text.split(' ')[0]);
+			const want = ps.filter((p) => { const v = placesOf('incident', A).find((x) => x.href === p.href)!.version; const vi = stops.find((s) => s.build === v)?.index ?? null; return vi != null && (vi < rel || (vi === rel && (p.state === 'deployed' || p.state === 'held' || p.state === 'approval'))); }).length;
+			expect(n).toBe(want);
+		}
+		expect(sawAhead).toBe(true);
+	});
+	it('ahead in flight: a place checking a newer build draws its own mark, no glow, not in the in-flight counts, still reached', () => {
+		installLiveSource(null);
+		const st = stagesOf({ kind: 'app', app: A, release: '4.41.0-41' }, 'incident');
+		const ah = flat(st).filter((p) => p.ahead && (p.state === 'checking' || p.state === 'deploying'));
+		expect(ah.length).toBeGreaterThan(0);
+		for (const p of ah) { expect(p.live).toBe(false); expect(p.build).toMatch(/^4\.\d/); expect(p.progress).toBeNull(); }
+		expect(st.rollup.text).not.toMatch(/checking|deploying/);
+		expect(flat(st).some((p) => p.live)).toBe(false);
+	});
+	it('0px shape: columns, lanes and places are identical across every release of an app', () => {
+		installLiveSource(null);
+		for (const app of [A, 'orders-api', 'payments-core', 'hello-waves-app']) {
+			const r = releasesInFlight(app, 'incident');
+			const shapes = [null, ...r.items.map((i) => i.build)].map((b) => { const st = stagesOf({ kind: 'app', app, release: b }, 'incident'); return { cols: st.columns.map((c) => c.key), lanes: st.lanes.map((l) => l.cells.map((c) => c?.places.map((p) => p.href) ?? null)) }; });
+			for (const s of shapes) expect(s, app).toEqual(shapes[0]);
+			if (r.items.length) { const t = r.items.map((i) => i.tiers.map((x) => `${x.tier}:${x.sites.length}`).join(',')); for (const x of t) expect(x).toBe(t[0]); }
+		}
+	});
+	it('the rail is for 2+ releases in flight: hello-waves-app has at most one at every beat', () => {
+		for (const b of WAVES_STEPS) {
+			resetDemoState('incident');
+			respond('GET', `/api/demo/waves?step=${b}`);
+			const l = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}');
+			const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!);
+			installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
+			expect(releasesInFlight('hello-waves-app', 'incident').items.length, b).toBeLessThanOrEqual(1);
+		}
 	});
 });

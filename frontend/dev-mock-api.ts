@@ -14,7 +14,7 @@
  */
 
 import { stampGateKinds } from './src/lib/demo/gate-kind';
-import { overlayApprovals } from './src/lib/demo/state';
+import { overlayApprovals, resetDemoState } from './src/lib/demo/state';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
@@ -27,6 +27,7 @@ import {
 	type HomeFixture,
 	type HomeScenario
 } from './src/lib/demo/home-incident';
+import { setReleaseSwitchFixtures } from './src/lib/demo/release-switch-fixtures';
 
 /**
  * `MOCK_SCENARIO=home-incident` — opt-in: serves the pinned Home fixture in
@@ -67,6 +68,11 @@ function readRequestBody(req: NodeJS.ReadableStream & { method?: string }): Prom
 }
 
 export function mockApiPlugin(): Plugin {
+	/** `MOCK_FIXTURES=release-switch` adds ledger-api and search-web (release-switch-fixtures.ts); read once at plugin start. */
+	if ((process.env.MOCK_FIXTURES ?? '').split(',').includes('release-switch')) {
+		setReleaseSwitchFixtures(true);
+		resetDemoState(); // state.ts built the fleet when it loaded, before this flag: rebuild it with the fixtures in
+	}
 	const homeFixture = loadHomeFixture();
 	/**
 	 * ⭐ SCENARIO PER REQUEST (r39). `MOCK_SCENARIO=home-incident|home-calm|home-quiet` is the default; the `kuberik_scenario` cookie (set by
