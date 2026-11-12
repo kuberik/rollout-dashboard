@@ -44,7 +44,7 @@
 		return { ...h, a, w: b - a, last: i === hops.length - 1, title: `${h.tier}: ${fmt(h.end - h.start)}` };
 	}));
 	const waits = $derived([
-		...(origin != null && runs[0] ? [{ a: 0, b: runs[0].a, title: `merged; first deploy ${fmt(hops[0].start - origin)} later` }] : []),
+		...(origin != null && runs[0] ? [{ a: 0, b: runs[0].a, title: `Merge to first deploy ${fmt(hops[0].start - origin)}` }] : []),
 		...hops.slice(1).map((h, i) => ({ a: runs[i].a + runs[i].w, b: runs[i + 1].a, title: `waited ${fmt(h.start - hops[i].end)} before ${h.tier}` }))
 	].filter((w) => w.b - w.a > 1));
 	const end = $derived(runs.length ? runs[runs.length - 1].a + runs[runs.length - 1].w : 0);

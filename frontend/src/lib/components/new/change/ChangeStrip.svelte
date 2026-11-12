@@ -17,7 +17,7 @@
 	const p = $derived.by(() => { const { mineP, teamP } = classifyChanges(scenario); return [...mineP, ...teamP].find((x) => x.c.key === c.key) ?? null; });
 	const col = $derived(!p ? null : p.col === 'landed' ? (tiles[tiles.length - 1]?.tier ?? null) : p.col);
 	const cells = $derived<EnvCell[]>([
-		...(col === 'merged' ? [{ key: 'merged', label: 'merged' }] : []),
+		...(col === 'merged' ? [{ key: 'merged', label: 'released' }] : []),
 		...tiles.map((t) => ({ key: t.tier, label: t.tier, title: [t.tier, t.state, t.label, t.aside, t.word].filter(Boolean).join(' · ') }))
 	].map((cell) => ({ ...cell, beads: p && cell.key === col ? beadsFor([{ ref: refOf(c), title: c.title, state: p.state, key: c.key }]) : undefined })));
 	const label = $derived(tiles.map((t) => [t.tier, t.state, t.label, t.aside].filter(Boolean).join(' ')).join(', '));

@@ -78,9 +78,9 @@ describe('Gangway body (r39 concept B)', () => {
 		expect(d.length).toBeGreaterThan(8);
 		expect(d.filter((x) => x.kind === 'failed').length).toBeGreaterThan(0);
 	});
-	it('a footer never invents a wait: ageLabel is waiting (gate arrival) or merged (oldest change)', () => {
+	it('a footer never invents a wait: ageLabel is waiting (gate arrival) or since merge (oldest change)', () => {
 		for (const t of ['staging', 'prod'] as const) for (const x of [...envPage('incident', t)!.gangway.held, ...envPage('incident', t)!.gangway.ready]) {
-			if (x.foot.title) expect(['waiting', 'merged']).toContain(x.foot.ageLabel);
+			if (x.foot.title) expect(['waiting', 'since merge']).toContain(x.foot.ageLabel);
 		}
 	});
 });

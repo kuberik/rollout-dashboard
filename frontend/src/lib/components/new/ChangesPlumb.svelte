@@ -78,10 +78,10 @@
 								<div class="plb-head">
 									<span class="plb-node" aria-hidden="true"></span>
 									{#if s.rows.length}
-										<span class="t-card-title text-fg">{s.col}</span>
+										<span class="t-card-title text-fg">{s.col === 'merged' ? 'released' : s.col}</span>
 										<span class="t-meta tabular-nums text-fg-subtle">{s.rows.length}</span>
 									{:else}
-										<span class="t-ui-sm text-fg-subtle">{s.col}</span>
+										<span class="t-ui-sm text-fg-subtle">{s.col === 'merged' ? 'released' : s.col}</span>
 										<span class="t-meta text-fg-disabled">· none</span>
 									{/if}
 								</div>
