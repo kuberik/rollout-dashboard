@@ -6,12 +6,11 @@ import { fixtureSource } from '$lib/components/home/sketch/home-data';
 import * as D from '$lib/components/new/data';
 import HoldingCard from '$lib/components/new/HoldingCard.svelte';
 import StrandRow from '$lib/components/new/StrandRow.svelte';
-import AppGates from '$lib/components/new/app/AppGates.svelte';
+import ApprovalLayer from '$lib/components/new/ApprovalLayer.svelte';
+import { approvalUi } from '$lib/components/new/approvals.svelte';
 import GateText from '$lib/components/GateText.svelte';
-import { holdRows } from '$lib/components/new/app/app-model';
 import { strandRow } from '$lib/components/new/rollouts-page';
-import { doneWords } from '$lib/components/new/approvals.svelte';
-import { gateLabel, gateLabelMarked, plainGateText } from '$lib/view-models/gate-label';
+import { gateLabel, gateLabelMarked, plainGateText, splitGateText } from '$lib/view-models/gate-label';
 
 /**
  * batch4 #128 (owner ruling 2026-11-12): EVERY visible surface draws a promotion gate as the » glyph and the source chip
@@ -65,15 +64,29 @@ describe('surfaces', () => {
 		const { container } = render(StrandRow, { row: { ...strandRow(row, 'incident'), lead: `Held by ${marked('staging')}` } });
 		drawn(container);
 	});
-	it('the app Holding card (AppGates) names a promotion gate by kind', () => {
-		const gi = { id: 'g', name: marked('staging'), kind: 'promotion', sentence: '', holding: true, heldPending: false, places: ['prod'], holdsAt: ['prod'], held: ['b1'], releasedBy: '' } as never;
-		const rows = holdRows([gi], [], null, 'orders-api');
-		const { container } = render(AppGates, { rows });
-		drawn(container);
+	it('the Approved toast (ApprovalLayer) draws the label', () => {
+		if (!Element.prototype.animate) Element.prototype.animate = function () { return { cancel() {}, finish() {}, onfinish: null, finished: Promise.resolve() } as unknown as Animation; };
+		approvalUi.ask = null;
+		approvalUi.done = { target: { app: 'orders-api', build: 'abc', where: 'staging', count: 1, places: [], cause: `Held by ${marked('dev')}`, waitsOn: null, deploys: null } as never, error: null };
+		const { container } = render(ApprovalLayer);
+		const toast = document.querySelector('[data-approve-toast]') ?? container;
+		drawn(toast);
+		approvalUi.done = null;
 	});
-	it('the Approved toast detail (ApprovalLayer renders it through GateText)', () => {
-		const t = { app: 'orders-api', build: 'abc', where: 'staging', cause: `Held by ${marked('dev')}`, waitsOn: null, deploys: null } as never;
-		const { container } = render(GateText, { text: doneWords(t).detail });
-		drawn(container);
+});
+
+describe('the data layer hands surfaces a drawable label, never plain text', () => {
+	it('a place held by a promotion gate carries it as a marked label (PlaceHold.gate.name, flag set)', () => {
+		installLiveSource(fixtureSource() as never);
+		const ps = D.apps('incident').items.flatMap((a) => D.placeHolds(a.app, 'incident')).filter((p) => p.gate?.promotion);
+		expect(ps.length).toBeGreaterThan(0);
+		for (const p of ps) expect(splitGateText(p.gate!.name).some((x) => 'label' in x)).toBe(true);
+	});
+	it('holdTitleOf and holdCause (the one cause formatter) mark a promotion gate', () => {
+		installLiveSource(fixtureSource() as never);
+		const p = D.apps('incident').items.flatMap((a) => D.placeHolds(a.app, 'incident').map((x) => ({ a: a.app, x }))).find((e) => e.x.gate?.promotion)!;
+		const g = { name: 'ghd-x', kind: 'promotion' } as never;
+		expect(splitGateText(D.holdTitleOf(p.x.href, g, 'incident', p.a, null)).some((x) => 'label' in x)).toBe(true);
+		expect(splitGateText(D.holdCause(p.x.href, g, 'incident', p.a, null)).some((x) => 'label' in x)).toBe(true);
 	});
 });

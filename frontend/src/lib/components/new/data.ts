@@ -1330,7 +1330,7 @@ export function gatesOf(app: string, state: HomeState = 'incident'): GateInfo[] 
 			const win = kind === 'schedule' ? windowNameOf(gateDisplayName(g.name, prettyOfGate(p.href, g.name))) : null;
 			/* one card per provider (the RolloutDependency join: no name is parsed) and one per window by its published name: each place's schedule gate is its own object, but "Business Hours Only" is one card, not one per place */
 			const k = kind === 'dependency' ? `dependency-${dependencyProviderOf(p.href, g.name) ?? g.name}` : kind === 'schedule' ? `schedule-${win ?? 'unnamed'}` : g.name;
-			const e = out.get(k) ?? { id: k, name: kind === 'schedule' ? (win ?? 'Deploy window') : kind === 'promotion' ? gateLabelMarked(gateLabel(g, null, promotionSourceOfHref(p.href))) : gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], holdsAt: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : 'the rule allows it' };
+			const e = out.get(k) ?? { id: k, name: kind === 'schedule' ? (win ?? 'Deploy window') : gateDisplayName(g.name, prettyOfGate(p.href, g.name)), kind, sentence: '', holding: false, heldPending: false, places: [], holdsAt: [], held: [], releasedBy: kind === 'approval' ? 'someone approves' : kind === 'dependency' ? 'its provider ships a newer version' : kind === 'schedule' ? 'the window opens' : 'the rule allows it' };
 			e.places.push(placeLabel({ tier: p.tier, regions: [p.label] }));
 			const hh = holding ? heldHere(p.href) : null;
 			/* the place's own verdict decides whether it is held NOW: a healthy place whose gate would refuse a newer build, or one still checking its own build, is not held by this cause */
@@ -1708,7 +1708,6 @@ export function heldCauses(state: HomeState, tier?: TierKey): HeldCause[] {
 			: f?.reason === 'dependency' ? (f.provider ? `Waiting on ${f.provider}` : 'Waiting on a dependency')
 			: f?.reason === 'check' ? (f.checks?.length ? `Waiting on ${f.checks.map((c) => gateDisplayName(c, prettyOfGate(r.href, c))).join(', ')}` : 'Waiting on a check')
 			: f?.reason === 'pinned' ? 'Pinned'
-			: vf?.state === 'held-by-rule' && gateKindOf(vf.first) === 'promotion' ? holdCause(r.href, vf.first, state, r.app, r.key) /* the same cause the row's own sentence prints: a promotion hold is drawn by kind, never "a rule" */
 			: r.word.startsWith('Waits on') ? r.word.replace('Waits on', 'Waiting on') : 'Held by a rule';
 		const e = out.get(cause) ?? { key: cause, cause, ...(f?.reason ? { reason: f.reason as string } : {}), places: [], rows: [], ...(win ? { window: { opens: windowOpens(win) } } : {}) };
 		e.places.push(`${r.app} · ${r.place}`);
