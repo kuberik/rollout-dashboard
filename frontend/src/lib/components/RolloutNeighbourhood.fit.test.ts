@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /**
- * jsdom has no layout, so "the graph fits at every container width from 672px"
+ * jsdom has no layout, so "the graph fits at every container width from 800px"
  * is asserted on the arithmetic of the stylesheet: at the narrowest three-column
  * container (672px) the gutters are at their floor and the tile floor is off, and
  * at 812px (the width the landing film lane measured, 878px of grid) the fixed
@@ -35,18 +35,18 @@ function blocks(query: string): string {
 }
 
 describe('RolloutNeighbourhood fits its container', () => {
-	test('the 240px tile floor is not applied at the 672px three-column breakpoint', () => {
-		expect(blocks('672px')).not.toMatch(/min-width:\s*240px/);
+	test('the 240px tile floor is not applied at the 800px three-column breakpoint', () => {
+		expect(blocks('800px')).not.toMatch(/min-width:\s*240px/);
 		expect(blocks('1100px')).toMatch(/\.hood-tile\s*\{\s*min-width:\s*240px/);
 	});
 
 	test('gutters are fluid, never a fixed 8rem/9rem', () => {
-		const wide = blocks('672px');
+		const wide = blocks('800px');
 		expect(wide).not.toMatch(/minmax\(0,\s*\d+px\)\s+\d+rem/);
 		expect(wide).toMatch(/--hood-gutter:\s*clamp\(5rem,/);
 	});
 
-	test('812px of container fits the worst case', () => {
+	test('812px of container (above the 800px breakpoint) fits', () => {
 		// Floors at 812: gutters clamp(5rem, 12cqi, 8rem) -> max(80, min(97, 128)) = 97.
 		const gutter = Math.min(128, Math.max(80, 0.12 * 812));
 		const steep = Math.min(144, Math.max(88, 0.13 * 812));

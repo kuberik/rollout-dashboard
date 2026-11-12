@@ -1049,7 +1049,7 @@
 	 * empty-column override right below is harmless but now redundant
 	 * (inherits `start` from the row); left in place since it still
 	 * documents that specific case's own reasoning. */
-	@container (min-width: 672px) {
+	@container (min-width: 800px) {
 		/* THE GUTTERS SHRINK WITH THE CONTAINER (2026-11-12). Fixed 8/9rem
 		   gutters plus a 240px tile floor summed to 878px inside an 812px
 		   container, and the section's `overflow-hidden` sliced the downstream
@@ -1168,7 +1168,7 @@
 	.hood-tile {
 		min-width: 0;
 	}
-	@container (min-width: 672px) {
+	@container (min-width: 800px) {
 		.hood-tile {
 			max-width: 400px;
 		}
@@ -1180,7 +1180,7 @@
 			min-width: 240px;
 		}
 	}
-	@container (min-width: 672px) {
+	@container (min-width: 800px) {
 		/* The focus tile is not `.hood-tile` (it is the canvas's one raised
 		   object, not a service tile) — capped at 480px (≈1.2× the 400px gate
 		   tiles), same reasoning. */

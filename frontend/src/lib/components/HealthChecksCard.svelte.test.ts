@@ -270,6 +270,6 @@ describe('HealthChecksCard — row height does not depend on state', () => {
 				windowStart: null
 			}
 		});
-		expect(screen.getByTestId('hc-sub').textContent).toMatch(/^\s*Passing/);
+		expect(screen.getByTestId('hc-sub').textContent).toMatch(/^\s*passing/);
 	});
 });

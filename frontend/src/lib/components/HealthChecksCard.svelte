@@ -339,7 +339,7 @@
 						<CheckCircleSolid class="text-success mt-0.5 h-4 w-4 flex-shrink-0" />
 					{/if}
 					<div class="min-w-0 flex-1">
-						<span class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
+						<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
 							{displayName(hc)}
 						</span>
 						<!--
@@ -400,7 +400,7 @@
 							</p>
 						{:else}
 							<p data-testid="hc-sub" class="t-meta text-fg-subtle block truncate">
-								Passing{#if hc.status?.lastChangeTime}{' · '}<span class="tabular-nums"
+								passing{#if hc.status?.lastChangeTime}{' · '}<span class="tabular-nums"
 										>{formatAgoCompact(hc.status.lastChangeTime, $now)}</span
 									>{/if}
 							</p>
