@@ -253,6 +253,13 @@ export type StatusKey = 'succeeded' | 'failed' | 'active' | 'pending';
 /** The tags one candidate / history entry goes by */
 const refTags = (x: { tag?: string; version?: string; revision?: string } | null | undefined): string[] => [x?.tag, x?.version, x?.revision].filter((t): t is string => !!t);
 
+/** The label of the hold that sits beside an approval ask (`AlsoHold.otherLabel`): a dependency by its provider, a promotion gate by its KIND (gate-label.ts), any other by the display name the Gates tab prints. */
+export function otherHoldLabel(cg: Parameters<typeof classifiedGateLabel>[0] & { subject?: string | null } | null, rawName: string): GateLabel {
+	if (!cg) return { kind: 'named', text: rawName };
+	if (cg.kind === 'dependency' && cg.subject) return { kind: 'named', text: cg.subject };
+	return classifiedGateLabel(cg);
+}
+
 /**
  * THE PER-PLACE VERDICT, read for one rollout (`place-verdict.ts` holds the rule; this only gathers its inputs). The build in question is
  * the newest live candidate every non-approval gate lets through that got furthest through the lower tiers (`pickBuildInQuestion`; a
@@ -302,7 +309,7 @@ function placeVerdictOf(
 	const kind = alsoKindOf(v.first);
 	const cause: HeldCause = kind === 'window' ? 'clock' : kind === 'order' ? 'order' : cg?.kind === 'dependency' || cg?.clears === 'upstream' ? 'dependency' : cg?.clears === 'check' ? 'check' : 'unknown';
 	/* the other hold, named by kind: a promotion gate is never its published sentence (gate-label.ts); `other` is the plain text, `otherLabel` what a surface that draws takes */
-	const otherLabel: GateLabel = cg ? (cg.kind === 'dependency' && cg.subject ? { kind: 'named', text: cg.subject } : classifiedGateLabel(cg)) : { kind: 'named', text: v.first.name };
+	const otherLabel = otherHoldLabel(cg, v.first.name);
 	const also: AlsoHold | null = v.also ? { kind: v.also.kind, other: v.also.kind === 'order' ? 'promotion order' : gateLabelText(otherLabel), otherLabel } : null;
 	return { verdict: v, held: true, cause, causeLabel: cg ? causeLabelForGates([cg], cause) : null, also };
 }

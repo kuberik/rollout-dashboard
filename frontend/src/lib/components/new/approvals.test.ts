@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { deployableTags, placeHolds, inbox, gatesOf, gateName, candidateBuilds, rollouts, approvalTarget, grantApproval, revokeApproval, appHolds, apps, heldCauses, stateVerb, type TRow } from './data';
-import { sentenceOf } from './rollouts-page';
+import { sentenceOf, sentenceParts } from './rollouts-page';
 import { publishGatePretty } from '$lib/view-models/gate-pretty.svelte';
 import { source, resetHomeModel, homeModel, ME } from '$lib/components/home/sketch/home-data';
 import { buildSketch, alsoApprovalAsk } from '../home/sketch/sketch-home';
 import { compass } from '$lib/components/home/pocket/pocket-data';
 import { askSentence, doneWords } from './approvals.svelte';
-import { causeText } from '$lib/view-models/gate-label';
+import { causeText, gateLabelText } from '$lib/view-models/gate-label';
 
 /* r34 r3-approve: Approve acts in place. The target names the build and every region whose own gate refuses it; granting moves
    those places out of the approval group on EVERY derivation (rows, changes, apps), and revoking restores them exactly. */
@@ -307,6 +307,21 @@ describe('one classification for the toast, the row, the Holding card and the bu
 			for (const env of envs) env.myChanges = [{ ref: '#9', title: 'mine', href: env.href, mergedAt: '2026-11-10T00:00:00Z', since: '2026-11-10T01:00:00Z', state: 'held-by-rule', checkingMinutesLeft: null, repo: 'x', apps: ['payments-core'] } as never];
 			expect(buildSketch(m, ME).elsewhere.find((x) => x.app === 'payments-core' && x.kind === 'approval')?.ask, 'own change: Home still asks').toMatch(ask_);
 		}));
+	});
+	/* batch4 #128 (QA71 F3/Q2): a promotion gate that refuses beside the approval is named by KIND everywhere: the toast target carries a typed label, the row keeps it in its lead, no surface gets the controller's sentence */
+	it('a promotion gate that also refuses: the toast target, the row lead and the card keep a typed promotion label, never the published sentence', () => {
+		const SENTENCE = 'Previous environment not ready yet';
+		patched([{ name: 'ghd-promo', kind: 'promotion', displayName: SENTENCE, passing: false, allowedVersions: ['0.0.0'] }], () => {
+			const t = approvalTarget(row('payments-core')!, 'incident')!;
+			expect(t.waitsOnLabel?.kind, 'the toast waits on a typed promotion label').toBe('promotion');
+			expect(t.cause?.some((x) => typeof x !== 'string'), 'the cause keeps the label part').toBe(true);
+			expect(causeText(t.cause!)).not.toContain(SENTENCE);
+			const [lead] = sentenceParts(prodRow(), 'incident');
+			expect(lead.some((x) => typeof x !== 'string'), 'the row lead keeps the label part').toBe(true);
+			expect(causeText(lead)).not.toContain(SENTENCE);
+			/* the other hold behind "also needs approval" is a promotion ORDER, named as such, never the gate's sentence */
+			expect(prodRow().alsoApproval?.other ?? 'promotion order').toBe('promotion order');
+		});
 	});
 	it('one wording per kind of other hold', () => {
 		const base = { other: 'Business hours gate', persistent: false };

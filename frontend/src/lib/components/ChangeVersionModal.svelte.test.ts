@@ -1375,3 +1375,41 @@ describe('a promotion-held build row draws the label, never the text "Promotion 
 		expect(held.textContent).not.toContain('Promotion from');
 	});
 });
+
+/**
+ * batch4 #128 / QA71 F1: the override list's FALLBACK row (the join found no Environment: the namespace fetch failed, or the Environment has
+ * no rolloutGateRef) must still name a promotion gate by its KIND, never by the controller's published sentence.
+ */
+describe('F1: the override fallback never prints the promotion sentence', () => {
+	test('namespace fetch 500 + a promotion gate with a published pretty name', async () => {
+		const SENTENCE = 'Previous environment not ready yet';
+		const rollout = rolloutFixture({
+			status: {
+				availableReleases: [
+					{ tag: 'rel-66', version: '1.66.0-66', created: daysAgo(35) },
+					{ tag: 'rel-67', version: '2.67.0-67', created: daysAgo(1) }
+				],
+				gates: [{ name: 'ghd-promo', kind: 'promotion', passing: true, allowedVersions: ['rel-66'] }],
+				conditions: [{ type: 'GatesPassing', status: 'False', reason: 'NoAllowedVersions' }],
+				history: [{ version: { tag: 'rel-66', version: '1.66.0-66' }, bakeStatus: 'Succeeded', timestamp: daysAgo(4) }]
+			}
+		});
+		const base = fetchMock.getMockImplementation()!;
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) return new Response(JSON.stringify({ error: 'boom' }), { status: 500 });
+			if (url.startsWith('/api/rollouts/hello-dep-prod/hello-frontend-app')) {
+				return new Response(
+					JSON.stringify({ rollout, rolloutGates: { items: [{ metadata: { name: 'ghd-promo', annotations: { 'gate.kuberik.com/pretty-name': SENTENCE } } }] } }),
+					{ status: 200 }
+				);
+			}
+			return base(input);
+		});
+		const { container } = renderModal({ rollout });
+		await selectRow('2.67.0-67');
+		await waitFor(() => expect(screen.getByText(/This deploys to prod a build that .*still holding back/i)).toBeInTheDocument());
+		await waitFor(() => expect(container.textContent).toMatch(/Rule/));
+		expect(container.textContent).not.toContain(SENTENCE);
+	});
+});

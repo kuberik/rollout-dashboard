@@ -131,3 +131,15 @@ describe('no invisible marker characters (the rejected approach)', () => {
 		expect(bad).toEqual([]);
 	});
 });
+
+describe('rollout-cards: the other hold beside an approval ask (QA71 F2 / Q2)', () => {
+	it('a promotion gate is its kind, never displayName or label; a dependency is its provider; any other its display name', async () => {
+		const { otherHoldLabel } = await import('$lib/rollout-cards');
+		const SENTENCE = 'Previous environment not ready yet';
+		expect(otherHoldLabel({ kind: 'promotion', promotionSource: 'staging', displayName: SENTENCE, label: 'after staging' }, 'ghd-x')).toEqual({ kind: 'promotion', source: 'staging' });
+		expect(otherHoldLabel({ kind: 'promotion', displayName: SENTENCE, label: 'after its upstream environment' }, 'ghd-x')).toEqual({ kind: 'promotion', source: null });
+		expect(otherHoldLabel({ kind: 'dependency', subject: 'payments-svc', displayName: 'Dep gate', label: 'x' } as never, 'g')).toEqual({ kind: 'named', text: 'payments-svc' });
+		expect(otherHoldLabel({ kind: 'check', displayName: 'Smoke check', label: 'x' }, 'g')).toEqual({ kind: 'named', text: 'Smoke check' });
+		expect(otherHoldLabel(null, 'raw-gate')).toEqual({ kind: 'named', text: 'raw-gate' });
+	});
+});
