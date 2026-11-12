@@ -20,6 +20,7 @@ import { apiPath } from './urls';
 import { githubAskHeld, githubKnownDisconnected, githubStatusSettled } from './github-gate.svelte';
 import { ApiError } from './errors';
 import { fetchGithubStatus } from './github';
+import type { ClusterError } from './rollouts';
 
 export type Commit = {
 	sha: string;
@@ -42,6 +43,8 @@ export type Commit = {
 	/** Same meaning as `PullRequestInfo.containedInAll` — `false` means
 	 *  `containedIn` above is a complete, authoritative account. */
 	containedInAll: boolean;
+	/** Spokes the hub could not read while checking the repo is visible. Absent when none. Same type as /api/rollouts. */
+	clusterErrors?: ClusterError[];
 };
 
 export type FetchCommitErrorReason = 'not_connected' | 'not_found' | 'error';

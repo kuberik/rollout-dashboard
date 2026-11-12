@@ -25,6 +25,7 @@
 import { apiPath } from './urls';
 import { ApiError } from './errors';
 import { pollWhenHealthy } from './errors';
+import type { ClusterError } from './rollouts';
 
 export type ChangeKind = 'pr' | 'commit';
 
@@ -61,6 +62,8 @@ export type ChangesResponse = {
 	/** ISO instant — the start of the window this response covers. */
 	since: string;
 	changes: Change[];
+	/** Spokes the hub could not read; repos deployed only there may be missing. Absent when none. Same type as /api/rollouts. */
+	clusterErrors?: ClusterError[];
 };
 
 export type ChangesFetchErrorReason = 'not_connected' | 'not_found' | 'error';
