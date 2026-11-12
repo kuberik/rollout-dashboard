@@ -18,3 +18,12 @@ describe('PlaceRow never clips', () => {
 		expect(src).toContain('.pl-note:empty { display: none; }');
 	});
 });
+
+describe('PlaceRow states a pinned place as held (batch4)', () => {
+	// The pin is a hold on every surface: /rollouts lists the pinned place as held-by-rule. The app page's row used to carry the raw state
+	// (rolled-back) in data-truth-state, so the truth checker and anything reading the attribute saw a rolled-back place while the row said "Held by the pin".
+	it('data-truth-state is the pin-aware state (placeStateWithPin), the helper every count of held places reads', () => {
+		expect(src).toMatch(/placeStateWithPin/);
+		expect(src).toMatch(/data-truth-state=\{placeStateWithPin\(row\.state, pinned\)\}/);
+	});
+});
