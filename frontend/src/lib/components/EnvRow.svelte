@@ -417,6 +417,10 @@
 		.env-lane-name { display: none; }
 		.env-grid { row-gap: 16px; }
 	}
+	/* a phone: a sites box drops its word (its marks carry the state, the picker says it), so the order stays on one line */
+	@container (max-width: 379.98px) {
+		.env-box--sites .env-word { display: none; }
+	}
 	@media (max-width: 639.98px) {
 		.env-box--link::after {
 			content: '';

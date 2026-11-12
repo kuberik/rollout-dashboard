@@ -153,8 +153,10 @@
 
 	/* change-strip r1: the tier's sites for EnvRow, in topology order (wave, leader, name), never by state */
 	const SITE_STATE: Record<NodeState, SiteState> = { failed: 'failed', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: 'done', newest: 'done', none: 'notaffected' };
-	const siteName = (n: LaneNode) => (n.tier === 'prod' ? (splitEnvName(n.env).place ?? n.env) : n.env);
-	const siteWord = (n: LaneNode) => wordOf(n) || (noRel(n) ? 'No releases' : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
+	const siteName = (n: LaneNode) => (n.card.site && n.card.site !== 'default' ? n.card.site : n.tier === 'prod' ? (splitEnvName(n.env).place ?? n.env) : n.env);
+	/* the picker row speaks as the Change page's does: the state word, then the currency ("Deployed · 2 builds behind") */
+	const siteWord = (n: LaneNode) => wordOf(n) || (noRel(n) ? 'No releases' : 'Deployed');
+	const siteDetail = (n: LaneNode) => (noRel(n) || n.state === 'deploying' || n.state === 'checking' ? undefined : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
 	function sitesOf(ns: LaneNode[]): EnvSite[] {
 		const multiWave = new Set(ns.map((n) => n.card.wave ?? 1)).size > 1;
 		return [...ns]
@@ -165,6 +167,7 @@
 				wave: multiWave ? (n.card.wave ?? 1) : null,
 				state: n.state === 'held' && n.card.heldCause === 'person' ? 'approval' : SITE_STATE[n.state],
 				word: siteWord(n),
+				detail: siteDetail(n),
 				wordInk: INK[n.state],
 				build: n.card.version ? shortenVersion(n.card.version) : undefined,
 				href: hrefFor(n),
