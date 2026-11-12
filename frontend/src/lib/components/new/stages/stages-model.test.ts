@@ -164,14 +164,14 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 	});
 	it('the rollup "N of M places" is the Builds card\'s count, at every beat and in every scenario', () => {
 		const check = (b: string, s: 'incident' | 'calm' | 'quiet') => {
-			for (const app of ['hello-waves-app', 'checkout-api', 'orders-api', 'payments-core']) {
+			for (const app of ['hello-waves-app', 'checkout-api', 'orders-api', 'payments-core', 'recommender-svc']) {
 				const places = placeHolds(app, s);
 				if (!places.length) continue;
 				const st = stagesOf({ kind: 'app', app }, s);
 				const stops = ledgerOf(places);
 				const total = places.filter((p) => !noReleasesAt(p.href)).length;
 				const onNewest = stops[0] && !stops[0].custom ? stops[0].places.filter((p) => !noReleasesAt(p.href)).length : 0;
-				if (!st.release) { expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe('No releases'); continue; }
+				if (!st.release) { expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe('No releases yet'); expect(releaseLine(app, s), `${b} ${s} ${app}`).toBeNull(); continue; }
 				expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${onNewest} of ${total} place${total === 1 ? '' : 's'}`);
 			}
 		};

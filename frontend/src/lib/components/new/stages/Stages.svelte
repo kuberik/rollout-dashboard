@@ -114,7 +114,7 @@
 			{/snippet}
 			<!-- THE RELEASE: the build the drawing is about; a link to its change page when the fleet knows one -->
 			{#if release.href}
-				<a href={toHref(release.href)} class="mb-4 flex min-h-5 min-w-0 items-center gap-3 hover:text-fg max-sm:gap-2" data-stages-release>{@render releaseBody()}</a>
+				<a href={toHref(release.href)} class="mb-4 flex min-h-5 min-w-0 items-center gap-3 hover:text-fg max-sm:-mt-3 max-sm:mb-1 max-sm:min-h-11 max-sm:gap-2" data-stages-release>{@render releaseBody()}</a>
 			{:else}
 				<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3 max-sm:gap-2" data-stages-release>{@render releaseBody()}</div>
 			{/if}

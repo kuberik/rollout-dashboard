@@ -6,7 +6,7 @@
  * `countsOf`. The SHAPE (columns, lanes, the order of places inside a cell) comes from the TOPOLOGY (`waveInfoOfHref`), never from
  * state, so a state change can never add, drop, reorder or move a tile (owner: "environments jumping").
  */
-import { ago, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, rangeOfBuild, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
+import { ago, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, rangeOfBuild, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
 import { approvalWord } from '../state-words';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
@@ -121,7 +121,7 @@ export function stagesOf(scope: StagesScope, scenario: HomeState): Stages {
  */
 function appStages(app: string, cols: Map<string, StageColumn>, scenario: HomeState): Stages {
 	const places = placesOf(scenario, app);
-	const release = places.find((x) => x.newest)?.newest ?? null;
+	const release = places.filter((x) => !noReleasesAt(x.href)).find((x) => x.newest)?.newest ?? null;
 	const items: Item[] = [];
 	for (const x of places) {
 		const row = rowsOf(scenario, x.tier, x.label).find((r) => r.app === app && r.href === x.href) ?? null;
@@ -145,7 +145,7 @@ function appStages(app: string, cols: Map<string, StageColumn>, scenario: HomeSt
 	const counted = ps.filter((p) => p.state !== 'notaffected');
 	const k = (s: StageState) => ps.filter((p) => p.state === s).length;
 	const ran = counted.filter((p) => items.find((i) => i.p.href === p.href)?.p.current === release).length;
-	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${counted.length} place${counted.length === 1 ? '' : 's'}`, ink: 'muted' }] : [{ text: 'No releases', ink: 'muted' }];
+	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${counted.length} place${counted.length === 1 ? '' : 's'}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
 	if (k('failed')) parts.push({ text: `${k('failed')} failing`, ink: 'danger' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
@@ -172,7 +172,12 @@ function rollupOf(c: TChange, scenario: HomeState): StageRollup {
 	return { text: parts.map((p) => p.text).join(' · '), parts };
 }
 
-const changeHrefOf = (html: string | null | undefined): string | null => (html && /^https?:/.test(html) ? '/changes/github.com' + new URL(html).pathname.replace(/\/commit\//, '/') : null);
+/** the dashboard's change page for a GitHub url, only when the Changes list HAS that change (a link must never land on "does not exist") */
+const changeHrefOf = (html: string | null | undefined, scenario: HomeState): string | null => {
+	if (!html || !/^https?:/.test(html)) return null;
+	const href = '/changes/github.com' + new URL(html).pathname.replace(/\/commit\//, '/');
+	return changes(scenario, { rolledBackLands: true }).items.some((i) => i.changeHref === href) ? href : null;
+};
 
 /**
  * THE RELEASE LINE of the Pipeline card: the app's newest build (the Builds card's lead stop, one truth) with its commit title, author, how
@@ -180,11 +185,11 @@ const changeHrefOf = (html: string | null | undefined): string | null => (html &
  */
 export type ReleaseLine = { build: string; title: string | null; author: string | null; built: string; /** the dashboard's change page, when one exists */ href: string | null };
 export function releaseLine(app: string, scenario: HomeState): ReleaseLine | null {
-	const places = placeHolds(app, scenario);
+	const places = placeHolds(app, scenario).filter((p) => !noReleasesAt(p.href));
 	const lead = ledgerOf(places)[0];
 	if (!lead || lead.custom) return null;
 	const id = buildIdentity(lead.build, places[0]?.href);
-	return { build: lead.build, title: lead.title ?? id?.title ?? null, author: lead.author ?? id?.author ?? null, built: lead.ageLabel, href: changeHrefOf(changeBySha(app, lead.build)?.href ?? id?.href) };
+	return { build: lead.build, title: lead.title ?? id?.title ?? null, author: lead.author ?? id?.author ?? null, built: lead.ageLabel, href: changeHrefOf(changeBySha(app, lead.build)?.href, scenario) };
 }
 
 /**
@@ -205,13 +210,13 @@ export function releaseCommits(app: string, scenario: HomeState): ReleaseCommits
 	const idx = (p: (typeof pool)[number]) => stops.find((s) => s.build === p.deployedBuild)?.index ?? null;
 	const known = pool.filter((p) => idx(p) != null);
 	const oldest = known.sort((a, b) => (idx(b) as number) - (idx(a) as number))[0];
-	const leadHref = changeHrefOf(changeBySha(app, lead.build)?.href ?? buildIdentity(lead.build, places[0]?.href)?.href);
+	const leadHref = changeHrefOf(changeBySha(app, lead.build)?.href, scenario);
 	if (!oldest) return { status: 'empty', release: lead.build, base: null, commits: [], href: leadHref };
 	const ask = oldest.href;
 	const rows = stops.filter((s) => s.index != null && s.index < (idx(oldest) as number)).map((s): ReleaseCommit => {
 		const r = rangeOfBuild(ask, s.build);
 		const id = buildIdentity(s.build, ask);
-		return { sha: s.build, title: s.title ?? r?.title ?? id?.title ?? s.build, author: s.author ?? r?.author ?? id?.author ?? null, add: r ? r.additions : null, del: r ? r.deletions : null, href: changeHrefOf(changeBySha(app, s.build)?.href ?? id?.href) };
+		return { sha: s.build, title: s.title ?? r?.title ?? id?.title ?? s.build, author: s.author ?? r?.author ?? id?.author ?? null, add: r ? r.additions : null, del: r ? r.deletions : null, href: changeHrefOf(changeBySha(app, s.build)?.href, scenario) };
 	});
 	return { status: rows.length ? 'ready' : 'empty', release: lead.build, base: oldest.deployedBuild, commits: rows, href: leadHref };
 }
