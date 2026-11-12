@@ -19,7 +19,7 @@
 	import { lagLabel } from '$lib/view-models/env-rank';
 	import EnvRow, { type EnvCell, type EnvSite } from '$lib/components/EnvRow.svelte';
 	import type { SiteState } from '$lib/components/SiteMark.svelte';
-	import { approvalWord, stateWord } from '$lib/components/new/state-words';
+	import { approvalWord } from '$lib/components/new/state-words';
 	import { atoms } from '$lib/components/atoms/atoms-context';
 	import type { Bead } from '$lib/view-models/bead';
 
@@ -51,7 +51,7 @@
 		/** Accepted for call-site compatibility; boxes are neutral, so nothing reads it. */
 		calm?: boolean;
 		words?: boolean;
-		/** the viewer can give the approval this lane waits on: its box says "Needs your approval" (approvalWord) instead of "Waiting for approval"; only with `words` */
+		/** the viewer can give the approval this lane waits on: its title, picker row and banner say "Needs your approval" (approvalWord) instead of "Waiting for approval"; only with `words`. The box itself says "Waiting". */
 		yours?: boolean;
 		mutedRest?: boolean;
 		/** the rollout page says "no releases" once, in its Newer builds card: the boxes keep their names and stay silent */
@@ -85,6 +85,10 @@
 	const WORD: Record<NodeState, string> = { failed: 'Failing', stuck: 'Stuck', deploying: 'Deploying', checking: 'Checking', held: 'Held', behind: '', newest: '', none: '' };
 	/** a healthy box (behind / newest) says no word: its name and its lag are the whole statement */
 	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(yours) : 'Waiting') : WORD[n.state]);
+	/** nothing moves as state changes: every strip box reserves the width of the widest word IT can say (EnvRow `wordSlot`). The strip's approval
+	 *  word is always the short one ("Waiting"); "Needs your approval" stays in the title, the picker and the ask banner. */
+	const WORD_SLOT = [...new Set([...Object.values(WORD), 'Waiting'].filter(Boolean))];
+	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : WORD[n.state]);
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
 	const markOf = (n: LaneNode): EnvCell['mark'] => (MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined);
 	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), null));
@@ -122,11 +126,11 @@
 			label: n.env,
 			href: linked ? hrefFor(n) : undefined,
 			current: youAreHere && isCurrent(n),
-			title: `${n.card.envDisplay || n.env}: ${n.card.version ?? 'no build'}${n.behind > 0 ? ` · ${lagLabel({ builds: n.behind })} the newest` : ''}${noRel(n) ? ' · no releases' : ''}`,
+			title: `${n.card.envDisplay || n.env}: ${n.card.version ?? 'no build'}${n.behind > 0 ? ` · ${lagLabel({ builds: n.behind })} the newest` : ''}${noRel(n) ? ' · no releases' : ''}${wordOf(n) && wordOf(n) !== stripWord(n) ? ` · ${wordOf(n)}` : ''}`,
 			style: n.card.theme ? getEnvironmentThemeStyle(n.card.theme) : undefined,
 			mark: withProgress(markOf(n), n),
-			word: wordOf(n) || undefined,
-			wordShort: n.state === 'held' && n.card.heldCause === 'person' && words ? stateWord('approval', { compact: true }) ?? undefined : undefined,
+			word: stripWord(n) || undefined,
+			wordSlot: WORD_SLOT,
 			wordInk: INK[n.state],
 			hot: MARKED.has(n.state),
 			fact: n.behind > 0 ? (size === 'M' ? `${n.behind} behind` : lagLabel({ builds: n.behind })) : noRel(n) && !quietNoReleases ? 'no releases' : undefined,
