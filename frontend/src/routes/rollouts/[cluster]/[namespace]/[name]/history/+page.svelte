@@ -1845,7 +1845,7 @@
 												{@const note = deployNote(entry.message, entry.triggeredBy)}
 												{@const who = entry.triggeredBy}
 												{@const actor = who ? actorFrom(who) : null}
-												{@const approved = historyApprovalFact((entry as { approval?: { name?: string; by?: string } }).approval, byVerified)}
+												{@const approved = historyApprovalFact(entry.approval, byVerified)}
 												{@const commitTitle = commitTitleOf(i)}
 												{@const commitAuthor = commitAuthorOf(i)}
 												<!-- ⛔ THE AT-REST ROW BUTTON THAT USED TO LIVE HERE IS GONE

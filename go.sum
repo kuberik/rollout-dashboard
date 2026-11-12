@@ -169,10 +169,8 @@ github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd2
 github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd24bd/go.mod h1:zspF0vX+/dYnu5u5DaF0rxd95ABRwboYptk5590POTs=
 github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd h1:KI5Drf1YnZ2uNMDVLF3GY8CdMZ4WARPOS1lXOicojh0=
 github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd/go.mod h1:03WmZ9qq4oNkSD8A5zGKlG29kVsJ3ofhHuNyKjNoVfw=
-github.com/kuberik/rollout-controller v0.11.1-0.20261111095404-d4e4d4abe390 h1:FWpAK9lLflsFnUJazCV6oTkuxQXSOFWCBZJrdnhRsgg=
-github.com/kuberik/rollout-controller v0.11.1-0.20261111095404-d4e4d4abe390/go.mod h1:7d2d2p/qlhCqnLmUXXajG6KwFZbDkYbfL5Ju2zdosH8=
-github.com/kuberik/rollout-controller v0.11.1-0.20261112071915-f749fe13d694 h1:FJIINIDiwPCTd3sG870I5nPjxq1PYxhINz7G0QUGIms=
-github.com/kuberik/rollout-controller v0.11.1-0.20261112071915-f749fe13d694/go.mod h1:7d2d2p/qlhCqnLmUXXajG6KwFZbDkYbfL5Ju2zdosH8=
+github.com/kuberik/rollout-controller v0.11.1-0.20261112074420-04f3e0bd2cb0 h1:RWWnH3p9r0QGqbbFAQb4+J92A32VzsTj6Y3CCgyd6YA=
+github.com/kuberik/rollout-controller v0.11.1-0.20261112074420-04f3e0bd2cb0/go.mod h1:7d2d2p/qlhCqnLmUXXajG6KwFZbDkYbfL5Ju2zdosH8=
 github.com/leodido/go-urn v1.2.0/go.mod h1:+8+nEpDfqqsY+g338gtMEUOtuK+4dEMhiQEgxpxOKII=
 github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=
 github.com/leodido/go-urn v1.4.0/go.mod h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI=
