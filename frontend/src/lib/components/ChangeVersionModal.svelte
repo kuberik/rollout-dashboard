@@ -2185,6 +2185,11 @@
 		void loadOverrideContext(namespace);
 	});
 
+	/** One classification of an overridden gate against the join data (the Environment the gate belongs to, this rollout). */
+	function classifyOverride(gateName: string, namespace: string | undefined) {
+		return classifyGate({ name: gateName }, namespace, buildGateContext({ environments: { items: overrideEnvironments }, rollouts: rollout ? [rollout] : null }));
+	}
+
 	function overrideFact(
 		gateName: string | undefined,
 		tag: string,
@@ -2215,11 +2220,7 @@
 			// The promotion rule in the product's one wording (sites & waves):
 			// "after staging", "after wave 1 (eu-west-1, us-east-1)", "follows
 			// eu-west-1's pick", "Lockstep: waiting for ap-south-1 …".
-			const said = classifyGate(
-				{ name: gateName },
-				namespace,
-				buildGateContext({ environments: { items: overrideEnvironments }, rollouts: rollout ? [rollout] : null })
-			);
+			const said = classifyOverride(gateName, namespace);
 			return { label: said.label, value: said.short };
 		}
 		// ⭐ SUPERSEDED, 2026-10-09 (squad-rollout, Lane D, round 3 — AD item 5:
@@ -2234,7 +2235,7 @@
 		// in a `FactList` row.
 		/* a promotion gate is named by its KIND (gate-label.ts): when the join above missed it (the namespace fetch failed, no rolloutGateRef) the gate's own published sentence must not leak here */
 		const kind = rollout?.status?.gates?.find((g) => g.name === gateName)?.kind ?? null;
-		const said = kind === 'promotion' ? classifyGate({ name: gateName }, namespace, buildGateContext({ environments: { items: overrideEnvironments }, rollouts: rollout ? [rollout] : null })) : null;
+		const said = kind === 'promotion' ? classifyOverride(gateName, namespace) : null;
 		const label = gateLabel({ kind, name: gateName }, nameOfGate(gateName), said ? promotionSourceOf(said) : null);
 		return label.kind === 'promotion'
 			? { label: 'Rule', value: gateLabelText(label), gate: label }
