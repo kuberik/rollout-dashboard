@@ -3,11 +3,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /**
- * jsdom has no layout, so "the graph fits at every container width from 800px"
- * is asserted on the arithmetic of the stylesheet: at the narrowest three-column
- * container (672px) the gutters are at their floor and the tile floor is off, and
- * at 812px (the width the landing film lane measured, 878px of grid) the fixed
- * minimums fit. The real-browser measurement lives in the PR description.
+ * jsdom has no layout, so "the graph fits at every container width" is asserted
+ * on the arithmetic of the stylesheet: below 560px the layers stack (a list),
+ * 560-959px is the compact two-column graph (fluid tracks, no floor), and from
+ * the 960px three-column breakpoint the gutters are fluid, the tile floor is off
+ * until 1100px, and the tracks keep >= 220px. (#140 measured 812px, the landing
+ * film's width, which is now the compact graph.) The real-browser measurement lives in the PR description.
  */
 const src = readFileSync(
 	fileURLToPath(new URL('./RolloutNeighbourhood.svelte', import.meta.url)),
@@ -35,24 +36,26 @@ function blocks(query: string): string {
 }
 
 describe('RolloutNeighbourhood fits its container', () => {
-	test('the 240px tile floor is not applied at the 800px three-column breakpoint', () => {
-		expect(blocks('800px')).not.toMatch(/min-width:\s*240px/);
+	test('the 240px tile floor is not applied at the 960px three-column breakpoint', () => {
+		expect(blocks('960px')).not.toMatch(/min-width:\s*240px/);
 		expect(blocks('1100px')).toMatch(/\.hood-tile\s*\{\s*min-width:\s*240px/);
 	});
 
 	test('gutters are fluid, never a fixed 8rem/9rem', () => {
-		const wide = blocks('800px');
+		const wide = blocks('960px');
 		expect(wide).not.toMatch(/minmax\(0,\s*\d+px\)\s+\d+rem/);
 		expect(wide).toMatch(/--hood-gutter:\s*clamp\(5rem,/);
 	});
 
-	test('812px of container (above the 800px breakpoint) fits', () => {
-		// Floors at 812: gutters clamp(5rem, 12cqi, 8rem) -> max(80, min(97, 128)) = 97.
-		const gutter = Math.min(128, Math.max(80, 0.12 * 812));
-		const steep = Math.min(144, Math.max(88, 0.13 * 812));
+	test('972px of container (above the 960px breakpoint) fits, with tile tracks >= 220px', () => {
+		// Floors at 972: gutters clamp(5rem, 12cqi, 8rem) -> max(80, min(117, 128)) = 117; steep max(88, min(126, 144)) = 126.
+		// Below 960 the compact two-column graph takes over (560-959) and below 560 the list (Gatehouse tiles, owner 2026-11-12).
+		const gutter = Math.min(128, Math.max(80, 0.12 * 972));
+		const steep = Math.min(144, Math.max(88, 0.13 * 972));
+		expect((972 - 2 * steep) / 3).toBeGreaterThanOrEqual(220);
 		// Tracks are minmax(0, ...): their floor is 0 once the tile floor is off.
-		expect(2 * steep).toBeLessThan(812);
-		expect(2 * gutter).toBeLessThan(812);
+		expect(2 * steep).toBeLessThan(972);
+		expect(2 * gutter).toBeLessThan(972);
 		// And the old numbers did not fit: 240 + 240 + 240 + 2 * 9rem = 1008 at 812.
 		expect(240 * 3 + 2 * 144).toBeGreaterThan(812);
 	});

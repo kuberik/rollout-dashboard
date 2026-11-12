@@ -2135,11 +2135,19 @@ export function ckGateObjects(env: string) {
 	];
 }
 
-/** The next 16:00 UTC (18:00 in Zagreb in summer) after the demo's anchor. */
+/** The next 18:00 in Zagreb (16:00 UTC in summer, 17:00 UTC in winter: the rule's own zone, never a fixed UTC hour) after the demo's anchor. */
 function nextCloseOfBusiness(): string {
+	const zagrebHour = (d: Date) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Zagreb', hour: '2-digit', hourCycle: 'h23' }).format(d));
+	for (let day = 0; day < 3; day++) {
+		for (const utcHour of [16, 17]) {
+			const t = new Date(hcNow);
+			t.setUTCDate(t.getUTCDate() + day);
+			t.setUTCHours(utcHour, 0, 0, 0);
+			if (t.getTime() > hcNow.getTime() && zagrebHour(t) === 18) return t.toISOString();
+		}
+	}
 	const t = new Date(hcNow);
 	t.setUTCHours(16, 0, 0, 0);
-	if (t.getTime() <= hcNow.getTime()) t.setUTCDate(t.getUTCDate() + 1);
 	return t.toISOString();
 }
 

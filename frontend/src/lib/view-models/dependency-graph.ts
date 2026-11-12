@@ -195,6 +195,9 @@ export type GraphEdge = {
 	contract: string | null;
 	/** `contract` only — what the held candidates ask of it, when they agree. */
 	requiredVersion: string | null;
+	/** `contract` only, blocked edges — the held builds' own requirements in `held` order (newest first), distinct, so a surface can name
+	 *  the newest build's one when they disagree (Gates graph tile, AD r2: "Needs ^3.0.0", never a vaguer sentence). */
+	requiredVersions?: string[];
 	/** `contract` only — the version the provider has deployed here. */
 	providedVersion: string | null;
 	/**
@@ -696,6 +699,9 @@ export function buildRolloutGraph(args: {
 			if (req) m.set(getDisplayVersion(c as { version?: string; revision?: string; tag: string }), req);
 		}
 		if (m.size) requiredByHeld.set(e, m);
+		// the held builds' own requirements in the edge's held order (newest first), for a surface that names one
+		const reqs = e.held.map((v) => m.get(v)).filter((r): r is string => !!r);
+		if (reqs.length) e.requiredVersions = [...new Set(reqs)];
 	};
 	for (const e of edges) {
 		const block = blockPerNode.get(e.to);

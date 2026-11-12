@@ -36,23 +36,37 @@ const hood = { focus, upstream: [], downstream: [], gates: [gate], heldLinks: 0,
 const tile = (approveAsk: ApprovalTarget | typeof ASK_LOADING | null) => render(RolloutNeighbourhood, { props: { hood, approveAsk } }).container;
 
 describe('the held approval tile', () => {
-	test('a target says "Needs your approval" and carries Approve', () => {
+	test('a target says "Needs you" and carries Approve', () => {
 		const c = tile(target());
-		expect(c.textContent).toContain('Needs your approval');
+		expect(c.textContent).toContain('Needs you');
 		expect(c.querySelectorAll('[data-approve-open]')).toHaveLength(1);
-		expect(c.textContent).not.toContain('How to approve');
+		expect(c.querySelector('[data-hood-link]')?.tagName).toBe('DIV');
+		// always two lines: row 1 (glyph, name, mark) + the h-7 line holding the release text and, on its right, Approve
+		expect(c.querySelector('[data-approval-row] [data-approve-open]')).toBeNull();
+		const line = c.querySelector('[data-approve-open]')?.closest('.gh-line');
+		expect(line).toHaveClass('h-7');
+		expect(line?.querySelector('[data-gate-release]')).not.toBeNull();
+		expect(c.querySelector('[data-gate-release]')?.textContent?.trim()).toBe('Needs you');
 	});
 	test('loading says the neutral words, no Approve, and reserves the button box (h-7)', () => {
 		const c = tile(ASK_LOADING);
-		expect(c.textContent).toContain('Waiting for approval');
-		expect(c.textContent).not.toContain('Needs your approval');
+		expect(c.querySelector('[data-gate-release]')?.textContent?.trim()).toBe('Needs approval');
+		expect(c.textContent).not.toContain('Needs you');
 		expect(c.querySelector('[data-approve-open]')).toBeNull();
 		expect(c.querySelectorAll('[data-approve-slot]')).toHaveLength(1);
 		expect(c.querySelector('[data-approve-slot]')).toHaveClass('h-7');
 	});
-	test("null keeps today's words: \"How to approve\", no Approve, no reserve", () => {
+	test("null: no Approve, no reserve; a dashed \"can't approve\" slot, and the tile itself is the docs link (no glyph, no drawn fake button)", () => {
 		const c = tile(null);
-		expect(c.textContent).toContain('How to approve');
+		const el = c.querySelector('[data-hood-link]');
+		expect(el?.tagName).toBe('A');
+		expect(el?.getAttribute('href')).toBe('https://docs.kuberik.com/concepts/gates#approvals');
+		expect(el?.getAttribute('title')).toBe('How to approve a held build');
+		expect(el?.querySelector('[data-approve-none]')?.getAttribute('title')).toBe("You can't approve this build here");
+		expect(el?.querySelector('[data-gate-release]')?.textContent?.trim()).toBe('Needs approval');
+		expect(el?.textContent).not.toContain('How to approve');
+		expect(el?.querySelector('button')).toBeNull();
+		expect(el?.querySelector('[class*="pointer-events-none"]')).toBeNull();
 		expect(c.querySelector('[data-approve-open]')).toBeNull();
 		expect(c.querySelector('[data-approve-slot]')).toBeNull();
 	});

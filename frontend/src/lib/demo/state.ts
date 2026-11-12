@@ -2086,6 +2086,15 @@ function seedApprovals(): void {
 	};
 	at(1, MOCK_APPROVERS.dashboard);
 	at(2);
+	/* checkout-api staging's approval gate passes b-44 and b-45 (4.44.0-44, 4.45.0-45) because a person approved them: its Gates tile shows the approver
+	   (Gates graph AD r1 #1), the same RolloutApprovals the gate's allow-list is derived from. */
+	for (const [version, ago] of [['b-44', 3], ['b-45', 1]] as const)
+		approvalsOf('checkout-api-staging', 'checkout-api').push({
+			name: approvalNameOf('checkout-api', version),
+			version,
+			by: MOCK_APPROVERS.dashboard,
+			createdAt: new Date(demoNow().getTime() - ago * 3_600_000).toISOString()
+		});
 }
 
 /**

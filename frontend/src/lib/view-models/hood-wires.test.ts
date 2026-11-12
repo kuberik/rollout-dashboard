@@ -7,6 +7,9 @@ import {
 	maxRise,
 	holdingFirst,
 	narrowWires,
+	compactWires,
+	COMPACT_SPINE_INSET,
+	SPINE_X,
 	slotPitch,
 	slots,
 	wideWires,
@@ -86,7 +89,7 @@ describe('the head comes after the path, and its tip lands on the painted edge',
 		const d = ws.find((w) => w.key === 'd')!;
 		expect(endOf(u.d)[1]).toBe(f.top - FOCUS_RING - ARROW.held.length);
 		expect(u.tip[1]).toBe(f.top - FOCUS_RING);
-		expect(d.d.startsWith(`M ${crisp(12, 'quiet')} ${f.bottom + FOCUS_RING}`)).toBe(true);
+		expect(d.d.startsWith(`M ${crisp(SPINE_X, 'quiet')} ${f.bottom + FOCUS_RING}`)).toBe(true);
 		expect(endOf(d.d)[0]).toBeCloseTo(32 - ARROW.quiet.length, 5);
 	});
 });
@@ -156,5 +159,21 @@ describe('dashed wires end on a dash', () => {
 			const pos = (((L + off) % (DASH.on + DASH.off)) + DASH.on + DASH.off) % (DASH.on + DASH.off);
 			expect(pos).toBeCloseTo(DASH.on, 6);
 		}
+	});
+});
+
+describe('compact layout (two columns, downstream under the focus)', () => {
+	it('upstream wires are the wide ones; a downstream wire drops from under the focus and turns right into its box', () => {
+		const focus = rect(400, 100, 300, 120);
+		const up: WireIn[] = [{ key: 'u', state: 'blocked', rect: rect(0, 120, 300, 54) }];
+		const down: WireIn[] = [{ key: 'd', state: 'clear', rect: rect(428, 300, 272, 54) }];
+		const ws = compactWires(focus, up, down);
+		const u = ws.find((w) => w.key === 'u')!;
+		expect(u).toEqual(wideWires(focus, up, []).find((w) => w.key === 'u'));
+		const d = ws.find((w) => w.key === 'd')!;
+		const sx = crisp(focus.left + COMPACT_SPINE_INSET, 'quiet');
+		expect(d.d.startsWith(`M ${sx} ${focus.bottom + FOCUS_RING}`)).toBe(true);
+		expect(d.tip).toEqual([428, crisp(327, 'quiet')]);
+		expect(d.d.endsWith(`H ${428 - ARROW.quiet.length}`)).toBe(true);
 	});
 });

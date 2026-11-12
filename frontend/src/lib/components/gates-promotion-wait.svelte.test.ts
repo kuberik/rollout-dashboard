@@ -20,7 +20,7 @@ function tile(chainWait: { stage: string; text: string } | null): { text: string
 	const hood = { focus, upstream: [l], downstream: [], gates: [], heldLinks: 0, total: 1, holding: 0, heldBuilds: [] } as unknown as Hood;
 	const { container } = render(RolloutNeighbourhood, { props: { hood, chainWait, peerHeldByEnv: new Map([['test', { state: 'healthy', held: false, causeLabel: null }]]) } });
 	const t = container.querySelector('[data-key="link:test"]')!;
-	return { text: (t.textContent ?? '').replace(/\s+/g, ' '), edges: t.querySelectorAll('[data-gate-label="promotion"]').length };
+	return { text: (t.textContent ?? '').replace(/\s+/g, ' '), edges: (t.getAttribute('data-gate-type') === 'promotion' ? 1 : 0) };
 }
 
 describe('wait grammar (one for the app page and the Gates card)', () => {
@@ -39,15 +39,17 @@ describe('wait grammar (one for the app page and the Gates card)', () => {
 });
 
 describe('Gates upstream card (invoice-api staging waits for test)', () => {
-	test('while the stage is the cause it says what it is doing, never "Nothing held" or the » glyph', () => {
+	test('while the stage is the cause it says what it is doing, never "Nothing held"', () => {
 		const t = tile(chainWaitOf({ stage: 'test' }, 'healthy', 'a11c909'));
 		expect(t.text).toContain('Waiting for test to deploy a11c909');
 		expect(t.text).not.toContain('Nothing held');
-		expect(t.edges).toBe(0);
+		expect(t.edges).toBe(1);
 	});
-	test('when the upstream genuinely holds nothing it reads Nothing held beside the » glyph', () => {
+	test('when the upstream genuinely holds nothing it is a passed promotion tile: type on the tile root, no wait sentence, no "Nothing held"', () => {
 		const t = tile(null);
-		expect(t.text).toContain('Nothing held');
+		expect(t.text).toContain('Promotion');
+		expect(t.text).not.toContain('Nothing held');
+		expect(t.text).not.toContain('Waiting for');
 		expect(t.edges).toBe(1);
 	});
 });

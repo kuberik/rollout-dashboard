@@ -573,7 +573,7 @@ export function nextWeekdayNine(from: string): string {
 		t.setUTCDate(t.getUTCDate() + 1);
 	return t.toISOString();
 }
-/** RolloutSchedules: both windows are CLOSED, named, and reopen when their weekday 09:00-17:00 UTC rule next opens */
+/** RolloutSchedules: door-lock's window is CLOSED and reopens when its weekday 09:00-17:00 UTC rule next opens; tide-gauge's freeze is in effect until then */
 export function edgeSchedules(f: HomeFixture): K8sObject[] {
 	const sched = (ns: string, name: string, pretty: string, gate: string): K8sObject => ({
 		apiVersion: 'kuberik.com/v1alpha1',
@@ -598,8 +598,27 @@ export function edgeSchedules(f: HomeFixture): K8sObject[] {
 			matchingRollouts: 1
 		}
 	});
+	/* tide-gauge's "Release Freeze" is what its name says (Gates graph AD r1 #5): a Deny schedule in effect now, from a day before capture
+	   until the instant `nextWeekdayNine` names. Mock only: the bounds are full instants (the real CRD takes YYYY-MM-DD dates) so they rebase
+	   with the fixture and the freeze is in effect at any clock; the tile prints only their dates. */
+	const freeze = (ns: string, name: string, pretty: string, gate: string): K8sObject => {
+		const until = nextWeekdayNine(f.capturedAt);
+		const from = new Date(Date.parse(f.capturedAt) - 86_400_000).toISOString();
+		return {
+			apiVersion: 'kuberik.com/v1alpha1',
+			kind: 'RolloutSchedule',
+			metadata: { name, namespace: ns, annotations: { 'gate.kuberik.com/pretty-name': pretty } },
+			spec: {
+				action: 'Deny',
+				timezone: 'UTC',
+				rolloutSelector: { matchLabels: { environment: 'prod' } },
+				rules: [{ name: 'release-freeze', dateRange: { start: from, end: until } }]
+			},
+			status: { active: true, nextTransition: until, managedGates: [gate], matchingRollouts: 1 }
+		};
+	};
 	return [
-		sched('tide-gauge-prod', 'release-freeze', 'Release Freeze', 'schedule-gate-tg1xx'),
+		freeze('tide-gauge-prod', 'release-freeze', 'Release Freeze', 'schedule-gate-tg1xx'),
 		sched('door-lock-prod', 'after-hours', 'After Hours', 'schedule-gate-dl1xx')
 	];
 }

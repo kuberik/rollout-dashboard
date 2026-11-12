@@ -47,6 +47,7 @@ import {
 import { getDisplayVersion } from '$lib/utils';
 import { displayVersionForTag } from '../version-utils';
 import { formatTransitionAt } from '$lib/api/schedules';
+import type { WindowSpec } from './window-bar';
 
 export type GateBoxKind = 'schedule' | 'freeze' | 'approval' | 'gate' | 'health' | 'pin';
 export type GateBoxState = 'blocked' | 'clear' | 'unknown';
@@ -73,11 +74,13 @@ export type GateBox = {
 	gates: string[];
 	/** Set for a promotion gate (`gateLabel`): the box DRAWS it by kind (the promotion glyph and the source chip, or the word "Promotion"); `title` is then only the plain-text form. Absent for every other box. */
 	label?: GateLabel;
+	/** A deploy window's or freeze's own rules (the `RolloutSchedule` spec), for the tile's 24h bar (`window-bar.ts`). Absent for every other box. */
+	window?: WindowSpec & { active: boolean; when: string | null };
 };
 
 export type ScheduleLike = {
 	metadata?: { name?: string; namespace?: string; annotations?: Record<string, string> };
-	spec?: { action?: 'Allow' | 'Deny'; timezone?: string };
+	spec?: { action?: 'Allow' | 'Deny'; timezone?: string; rules?: WindowSpec['rules'] };
 	status?: { active?: boolean; nextTransition?: string; managedGates?: string[] };
 };
 
@@ -287,7 +290,14 @@ export function rolloutGateBoxes(args: {
 			phrase: schedulePhrase(s, now),
 			held: state === 'blocked' ? heldBy(mine) : [],
 			mark: { kind: 'schedule', clears: 'clock' },
-			gates: mine
+			gates: mine,
+			window: {
+				action: s.spec?.action,
+				timezone: s.spec?.timezone,
+				rules: s.spec?.rules ?? [],
+				active: s.status?.active === true,
+				when: s.status?.nextTransition ? formatTransitionAt(s.status.nextTransition, now) : null
+			}
 		});
 	}
 

@@ -42,6 +42,8 @@ export type NeighbourLink = {
 	held: string[];
 	contract: string | null;
 	requiredVersion: string | null;
+	/** Every distinct requirement of the held candidates, newest first (the edge's own `requiredVersions`). */
+	requiredVersions?: string[];
 	providedVersion: string | null;
 	cyclic: boolean;
 	/**
@@ -179,6 +181,7 @@ export function rolloutNeighbourhood(args: {
 			held: e.held,
 			contract: e.contract,
 			requiredVersion: e.requiredVersion,
+			requiredVersions: e.requiredVersions,
 			providedVersion: e.providedVersion,
 			cyclic: e.cyclic,
 			gate: e.gate,
