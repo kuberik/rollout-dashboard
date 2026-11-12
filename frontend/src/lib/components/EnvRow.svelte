@@ -425,7 +425,8 @@
 		.env-box--link::after {
 			content: '';
 			position: absolute;
-			inset: -8px 0;
+			/* measured from the padding box: -9 = 8px past the 1px border, a 44px reach */
+			inset: -9px -1px;
 		}
 	}
 </style>
