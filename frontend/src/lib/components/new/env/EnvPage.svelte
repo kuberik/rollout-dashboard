@@ -18,7 +18,7 @@
 	 *   Today in <env>    the deploys that reached this environment today (DayRow in a ListCard), folding at 8 rows
 	 * New by design: GangwayTile and DayRow (see their comments). The sites-and-waves drawing and At rest / Arriving next are retired from this page. Composition lives in env-page.ts (unit-tested); this file draws.
 	 */
-	import { InboxOutline, GridOutline, ClockOutline, CheckOutline, PauseOutline, ArrowRightOutline } from 'flowbite-svelte-icons';
+	import { InboxOutline, GridOutline, ClockOutline, ArrowDownOutline, CheckOutline, PauseOutline, ArrowRightOutline } from 'flowbite-svelte-icons';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
@@ -112,7 +112,7 @@
 
 		{#if G.behind.length}
 			<section id="behind" data-section="behind">
-				<SectionHeader title="Behind" icon={ClockOutline} rollup={[`${plural(G.behind.length, 'app')} on an older build`]} />
+				<SectionHeader title="Behind" icon={ArrowDownOutline} rollup={[`${plural(G.behind.length, 'app')} on an older build`]} />
 				<div class="instep" data-instep-behind>
 					{#each G.behind as a (a.app)}<a href={a.href} class="instep-a instep-behind"><AppGlyph name={a.app} size={20} /><span class="whitespace-nowrap">{a.app}</span><span class="instep-why t-body text-fg-subtle tabular-nums">{a.place ? `${a.place} · ` : ''}{a.n} behind · {a.why}</span></a>{/each}
 				</div>
