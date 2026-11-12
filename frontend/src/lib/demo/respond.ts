@@ -48,6 +48,7 @@ import {
 	runGateSequence,
 	stepPromoteGate,
 	stepDepsStory,
+	stepWavesStory,
 	resetDemoState,
 	demoClockSnapshot,
 	getScenarioFleetRollouts,
@@ -75,6 +76,7 @@ import {
 	type DepsStep
 } from './deps-story';
 import { mkHwEnvironment } from './mock-promote';
+import { WAVES_STEPS, wavesStoryStep, type WavesStep } from './waves-story';
 
 /** the detail response, in the served shape and stamped with its source cluster like the list items */
 const sliceDetailRollout2 = <B>(body: B): B => sliceDetailRollout(body, stampSourceCluster as never);
@@ -831,6 +833,18 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 		}
 		const result = stepDepsStory(step as DepsStep);
 		return json(result, result.ok ? 200 : 409);
+	}
+
+	// GET/POST /api/demo/waves?step=arm|staging|wave1|wave1-done|wave2|done — the stepped
+	// sites-and-waves story for hello-waves (waves-story.ts has the beats). Any order; `?step`
+	// omitted reports the beat (null before one is fired); `/api/demo/reset` clears it.
+	if (reqPath === '/api/demo/waves') {
+		const step = new URLSearchParams(url.split('?')[1] ?? '').get('step');
+		if (step === null) return json({ ok: true, step: wavesStoryStep(), steps: WAVES_STEPS });
+		if (!(WAVES_STEPS as readonly string[]).includes(step)) {
+			return json({ ok: false, error: `unknown step: ${step}`, steps: WAVES_STEPS }, 400);
+		}
+		return json(stepWavesStory(step as WavesStep));
 	}
 
 	// GET /api/demo/now — the demo's own clock, anchored to the pinned

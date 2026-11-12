@@ -48,26 +48,30 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(prod.frac).toBe('3/3');
 		expect(prod.squares).toEqual(['healthy', 'healthy', 'healthy']);
 	});
-	it('#37 (CD3): calm and quiet carry no failed or rolled-back event; eu-west is first live', () => {
+	it('#37 (CD3, change-strip r2): calm and quiet carry no failed or rolled-back event; production is reached ONCE; deploys are told per tier / wave, never per site row', () => {
 		for (const sc of ['calm', 'quiet'] as const) {
 			const { c, places } = at(P37, sc);
 			const ev = spineOf(c, sc, places);
 			expect(ev.some((e) => e.kind === 'failed' || e.kind === 'rollback')).toBe(false);
-			expect(ev.some((e) => e.place === 'eu-west' && e.words === 'First deployed')).toBe(true);
+			expect(ev.filter((e) => e.reachedProd)).toHaveLength(1);
+			const deploys = ev.filter((e) => e.kind === 'deployed' || e.kind === 'moving');
+			/* one event per (app, tier, wave): never two events for one tier or wave */
+			expect(new Set(deploys.map((e) => `${e.app}|${e.tier}|${e.wave ?? 0}`)).size).toBe(deploys.length);
+			expect(deploys.every((e) => /^(Deployed to \w+|Wave \d+ (deployed|checking|deploying)|Checking|Deploying)$/.test(e.words))).toBe(true);
 			expect(howFacts(c, places, classified(c, sc).all).failed).toBe(0);
 		}
 	});
-	it('#37 (CD6, r13 CE4): us-east\'s spine is the first deploy, the rollback and a11c404; the undone a11c303 is the rollback\'s "from", not an event', () => {
+	it('#37 (CD6, r13 CE4, cs3): us-east\'s only event is the rollback (the deploys are the Stages card\'s); the undone a11c303 is the rollback\'s "from", not an event', () => {
 		const { c, places } = at(P37, 'incident');
 		const us = spineOf(c, 'incident', places)
 			.filter((e) => e.place === 'us-east')
 			.map((e) => `${e.words} ${e.build}`);
-		expect(us).toEqual(['First deployed a11c202', 'Rolled back to a11c202', 'Deployed a11c404']);
+		expect(us).toEqual(['Rolled back in prod-us-east a11c202']);
 	});
 	it("#37 (changedetail-12 CD1): the rollback carries the tab's cause", () => {
 		const { c, places } = at(P37, 'incident');
 		const rb = spineOf(c, 'incident', places).find((e) => e.kind === 'rollback')!;
-		expect(rb.words).toBe('Rolled back to');
+		expect(rb.words).toBe('Rolled back in prod-us-east');
 		expect(rb.build).toBe('a11c202');
 		expect(rb.cause).toBe('duplicate invoice numbers');
 		expect(rb.from).toBe('a11c303'); // the tab: "Rolled back from a11c303"
@@ -79,20 +83,20 @@ describe('change detail model (one model with the Changes list)', () => {
 		] as const) {
 			const { c, places } = at(p, sc);
 			const ev = spineOf(c, sc, places);
-			const ats = ev.map((e) => e.order ?? e.at ?? '');
-			expect(ats).toEqual([...ats].sort());
+			/* change-strip r2: newest first; a wait still never sits below (before) the merge */
+			const ats = ev.map((e) => Date.parse(e.order ?? e.at ?? ''));
+			expect(ats).toEqual([...ats].sort((x, y) => y - x));
 			const w = ev.findIndex((e) => e.kind === 'waiting' || e.kind === 'held');
-			if (w >= 0)
-				expect(ev.slice(0, w).some((e) => e.kind === 'deployed' && e.build === ev[w].build)).toBe(
-					true
-				);
+			expect(ev[ev.length - 1].kind).toBe('merged');
+			if (w >= 0) expect(w).toBeLessThan(ev.length - 1);
 		}
 	});
-	it('#90 (CD7): five identical waiting events are ONE event with five places', () => {
+	it('#90 (CD7, cs3): five identical waiting events are ONE event that says where in words (no chips)', () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'incident');
 		const w = spineOf(c, 'incident', places).filter((e) => e.kind === 'waiting');
 		expect(w).toHaveLength(1);
-		expect(w[0].places).toHaveLength(5);
+		expect(w[0].words).toBe('Waiting for approval in 5 prod regions');
+		expect(w[0].places).toHaveLength(0);
 	});
 	it("#90 (r13 CE2): the wait is THIS change's build c0d3e88, aged by the wait clock (batch4 P1: the hold clock, not the build age); f4a2c19 is only the labelled newer build", () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'incident');
@@ -124,10 +128,11 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(cand.created).toBeTruthy();
 		const oldest = places
 			.filter((x) => x.kind === 'waiting')
-			.map((x) => waitClock(x.row!, 'incident')!)
+			.map((x) => waitClock(x.row!, 'incident', x.build)!)
 			.sort()[0];
+		/* change-stages r2: ONE clock, asked for the change's build (never before it reached the gate) */
 		expect([w.build, w.at]).toEqual(['c0d3e88', oldest]);
-		expect(oldest).toBe('2026-10-23T18:51:26.893Z'); // the oldest of the five waiting places, not the lead's
+		expect(oldest).toBe('2026-10-24T14:56:26.893Z'); // the oldest of the five waiting places, clamped to c0d3e88's arrival upstream (r2), not the lead's
 	});
 	it("#37 (CD5, re-pinned r6 CG6): build subject = the tab's commit (danielreed, the PR title); the change subject stays the PR's", () => {
 		const { c, places } = at(P37, 'incident');
@@ -159,7 +164,7 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(euw.find((b) => b.build === 'a11c202')).toMatchObject({ newer: true });
 		const ev = spineOf(c, 'incident', places);
 		const f = ev.find((e) => e.kind === 'failed' && e.place === 'eu-west')!;
-		expect(f.words).toBe('Newer build failed');
+		expect(f.words).toBe('Newer build failed in prod-eu-west');
 		expect(f.build).toBe('a11c202');
 		expect(howFacts(c, places, all, ev).failed).toBe(0);
 	});
@@ -205,9 +210,9 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(
 			ev.some((e) => e.kind === 'rollback' && e.place === 'us-east' && e.who === 'sarahmiller')
 		).toBe(true);
-		const ats = ev.map((e) => e.at ?? '');
-		expect([...ats].sort()).toEqual(ats);
-		expect(ev[0].kind).toBe('merged');
+		const ats = ev.map((e) => Date.parse(e.at ?? ''));
+		expect([...ats].sort((x, y) => y - x)).toEqual(ats);
+		expect(ev[ev.length - 1].kind).toBe('merged');
 	});
 	it('CE2 #90: ONE count with a unit; the 9th place is named not affected', () => {
 		const { all, places, unaffected } = at('github.com/exampleco/payments-core/pull/90', 'calm');
@@ -222,11 +227,12 @@ describe('change detail model (one model with the Changes list)', () => {
 		expect(age('test')).toBe('11m');
 		expect(age('dev')).toBe('15m');
 	});
-	it('CE4 #90: the spine carries f4a2c19 in dev and test', () => {
+	it('CE4 #90 (change-strip r2): the spine tells each tier f4a2c19 reached once, per tier, never per redeploy', () => {
 		const { c, places } = at('github.com/exampleco/payments-core/pull/90', 'calm');
-		const ev = spineOf(c, 'calm', places).map((e) => `${e.words} ${e.build} ${e.place}`);
-		expect(ev).toContain('Deployed f4a2c19 dev');
-		expect(ev.some((x) => /^(Checking|Deployed) f4a2c19 test$/.test(x))).toBe(true);
+		const ev = spineOf(c, 'calm', places);
+		expect(ev.some((e) => ['Deployed', 'First deployed', 'Redeployed'].includes(e.words))).toBe(false);
+		const tiers = ev.filter((e) => e.kind === 'deployed').map((e) => e.tier);
+		expect(new Set(tiers).size).toBe(tiers.length);
 	});
 	it("AD r5: changeProd carries the tab's region states and the count sentence", () => {
 		const { c } = at(P37, 'incident');
@@ -264,7 +270,7 @@ describe('change detail model (one model with the Changes list)', () => {
 		const ev = (kind: string, words = 'Deployed') => ({ kind, words }) as never;
 		const list = [
 			ev('merged', 'Merged'),
-			ev('deployed', 'First deployed'),
+			({ kind: 'deployed', words: 'Wave 1 deployed', reachedProd: '2026-01-01T00:00:00Z' }) as never,
 			ev('deployed'),
 			ev('deployed'),
 			ev('deployed'),
@@ -288,7 +294,9 @@ describe('change detail model (one model with the Changes list)', () => {
 	it('CF4 #36: the incident fold hides rows that follow the failure only as ONE window', () => {
 		const { c, places } = at('github.com/exampleco/invoice-api/pull/36', 'incident');
 		const ev = spineOf(c, 'incident', places);
-		const w = foldWindow(ev, 10)!;
+		const w = foldWindow(ev, 10);
+		/* cs3: History is short now (no per-place rows); a list of ten or fewer needs no fold at all */
+		if (!w) { expect(ev.length).toBeLessThanOrEqual(10); return; }
 		const shown = ev.map((_, i) => i).filter((i) => i < w[0] || i >= w[1]);
 		expect(shown.length + (w[1] - w[0])).toBe(ev.length);
 		ev.forEach((e, i) => {

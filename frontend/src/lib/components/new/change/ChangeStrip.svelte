@@ -1,26 +1,64 @@
+<svelte:options runes={true} />
+
 <script lang="ts">
 	/**
-	 * THE CHANGE'S ENVIRONMENT ROW (detail pass 2026-11-08; was a StagePath dot strand). "Where has my change got to?" drawn by the ONE
-	 * environment row every page uses (EnvRow, size L, neutral: no box is highlighted off the rollout tab), exactly as the change's repo card
-	 * on /changes draws it: one box per tier the change's app has, the change itself as ONE bead (state mark · #ref) inside the box it reached
-	 * (`classifyChanges` — the same column and state the list computes, so list and detail never disagree). A landed change sits in its last
-	 * tier without a mark. Dots stay for the steps inside one rollout only (owner 2026-11-03).
-	 * Truth: `stripOf` (detail-model) still decides which tiers exist; each box's title keeps what the old station said in words.
+	 * THE CHANGE'S ENVIRONMENT STRIP (change-strip r1, owner 2026-11-12: "using the environment progression mini boxes strip we
+	 * already had. it just didn't have waves. it also had a shortcoming that on prod box we couldn't select exact site").
+	 * "Where is my change right now, and what's next?" drawn by the ONE environment row every page uses (EnvRow, size L, neutral),
+	 * each tier box holding its sites as marks in wave order, every site one tap from its rollout (the site picker).
+	 * Truth: `stagesOf({ kind: 'change' })` (stages-model) — the same classified / notReached / countsOf the Changes list reads. The
+	 * SHAPE (tiers, waves, the order of sites) comes from topology, never from state: a state change repaints a mark, nothing moves.
+	 * No words in the strip: a word appearing would widen its box and push the next one (0px rule, tools/stability.mjs).
+	 * Several apps: one row per app on a shared grid (EnvRow `lanes`).
 	 */
-	import EnvRow, { type EnvCell } from '$lib/components/EnvRow.svelte';
-	import { beadsFor } from '$lib/view-models/bead';
-	import { classifyChanges, refOf } from '../changes-page';
+	import EnvRow, { type EnvCell, type EnvLane, type EnvSite } from '$lib/components/EnvRow.svelte';
+	import type { SiteState } from '$lib/components/SiteMark.svelte';
 	import type { TChange, HomeState } from '../data';
-	import type { Tile } from './detail-model';
+	import { stagesOf, type StageState, type StagePlace } from '../stages/stages-model';
 
-	let { tiles, change: c, scenario = 'incident', class: className = '' }: { tiles: Tile[]; change: TChange; scenario?: HomeState; class?: string } = $props();
-	const p = $derived.by(() => { const { mineP, teamP } = classifyChanges(scenario); return [...mineP, ...teamP].find((x) => x.c.key === c.key) ?? null; });
-	const col = $derived(!p ? null : p.col === 'landed' ? (tiles[tiles.length - 1]?.tier ?? null) : p.col);
-	const cells = $derived<EnvCell[]>([
-		...(col === 'merged' ? [{ key: 'merged', label: 'released' }] : []),
-		...tiles.map((t) => ({ key: t.tier, label: t.tier, title: [t.tier, t.state, t.label, t.aside, t.word].filter(Boolean).join(' · ') }))
-	].map((cell) => ({ ...cell, beads: p && cell.key === col ? beadsFor([{ ref: refOf(c), title: c.title, state: p.state, key: c.key }]) : undefined })));
-	const label = $derived(tiles.map((t) => [t.tier, t.state, t.label, t.aside].filter(Boolean).join(' ')).join(', '));
+	let { change: c, scenario = 'incident', class: className = '' }: { change: TChange; scenario?: HomeState; class?: string } = $props();
+
+	const SITE: Record<StageState, SiteState> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'approval', failed: 'failed', notreached: 'notreached', notaffected: 'notaffected', replaced: 'notaffected' };
+	const INK: Partial<Record<StageState, string>> = { checking: 'text-progress', deploying: 'text-active', held: 'text-held', approval: 'text-held', failed: 'text-danger', notreached: 'text-fg-subtle' };
+	const QUIET = new Set<StageState>(['deployed', 'notreached', 'notaffected', 'replaced']);
+
+	const stages = $derived(stagesOf({ kind: 'change', change: c }, scenario));
+	const tiers = $derived([...new Set(stages.columns.map((col) => col.tier))]);
+	const site = (p: StagePlace, wave: number | null): EnvSite => ({
+		key: p.href,
+		name: p.name,
+		wave,
+		state: SITE[p.state],
+		word: p.word,
+		/* AD strip r2 N1: line 2 says the same fact in every scope (the App / Rollout lanes carry no step count): the state, then the currency; steps are one tap away on the rollout */
+		detail: p.lag || undefined,
+		build: p.current ?? undefined,
+		wordInk: INK[p.state],
+		aside: p.age ?? undefined,
+		href: p.href
+	});
+	const lanes = $derived<EnvLane[]>(
+		stages.lanes.map((l) => ({
+			key: l.app,
+			label: l.app,
+			app: l.app,
+			cells: tiers.map((t) => {
+				const ps = stages.columns.flatMap((col, i) => (col.tier === t ? (l.cells[i]?.places ?? []).map((p) => ({ p, wave: col.multi ? col.wave : null })) : []));
+				if (!ps.length) return null;
+				const cell: EnvCell = { key: t, label: t, sites: ps.map((x) => site(x.p, x.wave)), hot: ps.some((x) => !QUIET.has(x.p.state)) };
+				return cell;
+			})
+		}))
+	);
+	const label = $derived(
+		lanes.map((l) => (lanes.length > 1 ? l.label + ': ' : '') + l.cells.filter(Boolean).map((cell) => cell!.label + ' ' + cell!.sites!.map((x) => x.name + ' ' + x.word).join(', ')).join('; ')).join('. ')
+	);
 </script>
 
-<div class="w-full min-w-0 {className}" data-change-strip data-tiers={tiles.map((t) => t.tier).join(',')} role="img" aria-label={label}><EnvRow {cells} size="L" /></div>
+<div class="w-full min-w-0 {className}" data-change-strip data-stages role="group" aria-label={label}>
+	{#if lanes.length > 1}
+		<EnvRow {lanes} size="L" />
+	{:else if lanes.length === 1}
+		<EnvRow cells={lanes[0].cells.filter((x): x is EnvCell => !!x)} lane={lanes[0].key} size="L" />
+	{/if}
+</div>

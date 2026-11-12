@@ -248,9 +248,12 @@ const DENY: Array<{
 			'routes/environments/+page.svelte\ttext\tShow … up-to-date app …',
 			// truth-4, owner ruling 2026-11-02 ("Live" retired): an at-rest environment says two facts in two slots -- health ("Healthy") and
 			// currency, "Up to date" or "N builds behind" -- computed against the APP's own newest build. "Up to date" is that slot's ruled word
-			// on /apps/<name> (app-model.ts currency) and the change page's Places (ChangePlaceRow), not the retired per-subject convergence claim.
+			// on /apps/<name> (app-model.ts currency) (the change page's Places card, ChangePlaceRow, is retired), not the retired per-subject convergence claim.
 			'lib/components/new/app/app-model.ts\tcode\tUp to date',
-			'lib/components/new/change/ChangePlaceRow.svelte\tcode\tUp to date'
+			// change-strip r2 (coordinator ruling): the site picker's rows carry the same currency slot origin/main's "Where it runs" printed
+			// ("Deployed · Up to date" / "· 3 builds behind"), on the Change page (stages-model) and on the App / Rollout strip (PromotionLane).
+			'lib/components/new/stages/stages-model.ts\tcode\tUp to date',
+			'lib/components/PromotionLane.svelte\tcode\tUp to date'
 		]
 	},
 	{

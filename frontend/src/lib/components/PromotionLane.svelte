@@ -13,11 +13,12 @@
 	 * of several regions is ONE box: the worst region's mark and word, the region when exactly one, and "k of N regions".
 	 */
 	import { STATE_ORDER, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
-	import { shortenVersion } from '$lib/utils';
+	import { shortenVersion, formatTimeAgoCompact } from '$lib/utils';
 	import { splitEnvName } from '$lib/env-badge';
 	import { getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { lagLabel } from '$lib/view-models/env-rank';
-	import EnvRow, { type EnvCell } from '$lib/components/EnvRow.svelte';
+	import EnvRow, { type EnvCell, type EnvSite } from '$lib/components/EnvRow.svelte';
+	import type { SiteState } from '$lib/components/SiteMark.svelte';
 	import { approvalWord, stateWord } from '$lib/components/new/state-words';
 	import { atoms } from '$lib/components/atoms/atoms-context';
 	import type { Bead } from '$lib/view-models/bead';
@@ -32,7 +33,8 @@
 		beads = undefined,
 		words = false,
 		yours = false,
-		quietNoReleases = false
+		quietNoReleases = false,
+		sites = false
 	}: {
 		lane: Lane;
 		/** Restrict / order the boxes; defaults to this lane's own tiers. */
@@ -54,6 +56,9 @@
 		mutedRest?: boolean;
 		/** the rollout page says "no releases" once, in its Newer builds card: the boxes keep their names and stay silent */
 		quietNoReleases?: boolean;
+		/** change-strip r1 (App view, Rollout overview): every box draws its SITES as marks in wave order and lets you pick one (EnvRow `sites`);
+		 *  a multi-site box drops its region and "k of N regions" (the marks say it) and keeps its state word */
+		sites?: boolean;
 	} = $props();
 	const size = $derived<'L' | 'M'>(fill ?? 'L');
 	/* r42 atoms (opt-in, /design/atoms): the progress pie in a checking / deploying box */
@@ -145,9 +150,53 @@
 			factKind: 'detail'
 		};
 	}
+
+	/* change-strip r1: the tier's sites for EnvRow, in topology order (wave, leader, name), never by state */
+	const SITE_STATE: Record<NodeState, SiteState> = { failed: 'failed', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: 'done', newest: 'done', none: 'notaffected' };
+	const siteName = (n: LaneNode) => (n.card.site && n.card.site !== 'default' ? n.card.site : n.tier === 'prod' ? (splitEnvName(n.env).place ?? n.env) : n.env);
+	/* the picker row speaks as the Change page's does: the state word, then the currency ("Deployed · 2 builds behind") */
+	const siteWord = (n: LaneNode) => wordOf(n) || (noRel(n) ? 'No releases' : 'Deployed');
+	const siteDetail = (n: LaneNode) => (noRel(n) || n.state === 'deploying' || n.state === 'checking' ? undefined : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
+	function sitesOf(ns: LaneNode[]): EnvSite[] {
+		const multiWave = new Set(ns.map((n) => n.card.wave ?? 1)).size > 1;
+		return [...ns]
+			.sort((a, b) => (a.card.wave ?? 1) - (b.card.wave ?? 1) || Number(b.card.role === 'Leader') - Number(a.card.role === 'Leader') || siteName(a).localeCompare(siteName(b)))
+			.map((n) => ({
+				key: `${n.card.ns}/${n.card.name}`,
+				name: siteName(n),
+				wave: multiWave ? (n.card.wave ?? 1) : null,
+				state: n.state === 'held' && n.card.heldCause === 'person' ? 'approval' : SITE_STATE[n.state],
+				word: siteWord(n),
+				detail: siteDetail(n),
+				wordInk: INK[n.state],
+				build: n.card.version ? shortenVersion(n.card.version) : undefined,
+				aside: n.card.timestamp ? formatTimeAgoCompact(n.card.timestamp) : undefined,
+				href: hrefFor(n),
+				here: youAreHere && isCurrent(n)
+			}));
+	}
+	function siteCellOf(ns: LaneNode[]): EnvCell {
+		const worst = ns.reduce((b, n) => (STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), ns[0]);
+		const base = cellOf(worst);
+		const many = ns.length > 1;
+		return {
+			...base,
+			key: worst.tier === 'prod' ? 'prod' : worst.env,
+			label: worst.tier === 'prod' ? 'prod' : worst.env,
+			href: undefined,
+			title: undefined,
+			mark: undefined,
+			current: youAreHere && ns.some(isCurrent),
+			style: ns[0].card.theme ? getEnvironmentThemeStyle(ns[0].card.theme) : undefined,
+			region: undefined,
+			fact: many ? undefined : base.fact,
+			sites: sitesOf(ns)
+		};
+	}
 	const cells = $derived<EnvCell[]>(
 		cols.map((t) => {
 			const ns = lane.byTier[t] ?? [];
+			if (sites && linked && ns.length) return siteCellOf(ns);
 			/* QA #10: a prod CELL folds several SITES; places of one site (or none) are one box with the most urgent place's state */
 			if (t === 'prod' && ns.length > 1 && prodWorst && siteCount(ns.map((n) => n.env)) > 1) return prodCellOf(ns, prodWorst);
 			return cellOf(t === 'prod' ? ns.reduce((b, n) => (STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), ns[0]) : ns[0]);

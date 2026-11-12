@@ -82,6 +82,11 @@ export function resetDepsStory(scenario: HwvScenario = 'calm'): void {
 export function getStoryDependencies(): Obj[] {
 	return deps;
 }
+/** Replace hello-waves' Environments with `fresh` (waves-story.ts); the other apps' are untouched. */
+export function replaceHwvEnvironments(fresh: Obj[]): void {
+	const isHwv = (e: Obj) => (e.metadata?.namespace ?? '').startsWith('hello-waves-');
+	envs = [...envs.filter((e) => !isHwv(e)), ...structuredClone(fresh)];
+}
 export function getStoryDepEnvironments(): Obj[] {
 	return envs;
 }

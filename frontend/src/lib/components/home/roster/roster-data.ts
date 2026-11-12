@@ -385,7 +385,7 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 		const heldWordT = hdT && hdT.state === 'held-by-rule' ? R.rows.find((x) => x.state === 'held-by-rule' && namesT.includes(x.app) && x.tier === hdT.tier && x.word.startsWith('Waits on') && x.regions.some((l) => hdT.labels.includes(l)))?.word ?? null : null;
 		const fact = hdT ? (hdT.state === 'awaiting-approval' ? `Waits for approval in ${whereT}` : `${heldWordT ?? 'Held'} in ${whereT}`) : !worst ? `In ${r.reached === 'prod' ? 'production' : r.reached}` : g === 'failed' ? `Failing in ${worst.where}` : worst.state === 'awaiting-approval' ? `Waits for approval in ${worst.where}` : worst.state === 'held-by-rule' ? `${worst.word.startsWith('Waits on') ? worst.word : 'Held'} in ${worst.where}` : `${worst.word} ${worst.state === 'deploying' ? 'to' : 'in'} ${worst.where}`;
 		items.push({
-			key: r.key, ref: r.ref, title: r.title, repo: r.app, tiers: appTiers(m, rr.length ? [...new Set(rr.map((x) => x.app))] : [r.app]), apps: [...new Set(rr.map((x) => x.app))].length ? [...new Set(rr.map((x) => x.app))] : [r.app], who: r.who, mine: false, group: g,
+			key: r.key, ref: r.ref, title: r.title, repo: r.app, tiers: appTiers(m, namesT.length ? namesT : [r.app]), apps: namesT.length ? namesT : [r.app], who: r.who, mine: false, group: g,
 			glyph: hdT ? (hdT.state === 'awaiting-approval' ? 'approval' : heldWordT ? 'waiting' : 'held') : !worst ? 'arrived' : worst.glyph === 'held' ? 'held' : worst.glyph, fact, where: hdT ? whereT : worst ? worst.where : (r.reached === 'prod' ? 'production' : (r.reached ?? '')), reach: r.reached, at: hdT ? hdT.tier : worst ? worst.tier : r.reached,
 			since: worst?.since ?? r.at, mergedAt: r.at, href: worst?.href ?? r.href, action: null
 		});

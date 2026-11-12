@@ -431,6 +431,8 @@ type AppFixture = {
 	 *  scopes itself to the apps this is true for, the ones the AD's own
 	 *  "every curated rollout" actually named). */
 	curated: boolean;
+	/** Every ladder step lands via a PR (hello-waves: the stepped story's change needs a stable PR number). */
+	allPr?: boolean;
 	/**
 	 * (squad-rollout diff, AD round 7, 2026-10-11) Caps how old any ladder
 	 * step AFTER the root may be. `ladderCommitDateMs` spreads a long ladder
@@ -710,6 +712,20 @@ const APPS: Record<string, AppFixture> = {
 			'Add per-region traffic shaping'
 		]
 	),
+	/**
+	 * `hello-waves-app` (FIXTURE E, the sites-and-waves demo) — the repo its Rollouts' `status.source`
+	 * already names. c6f19d2 is the change the stepped story `/api/demo/waves?step=` walks
+	 * (waves-story.ts); 0f1f88a and 4ff7a58 are the older builds the prod sites still run.
+	 */
+	'hello-waves-app': {
+		...curated(
+			OWNER,
+			'hello-waves',
+			['4ff7a58', '0f1f88a', 'c6f19d2'],
+			['Add region config to the health endpoint', 'Cache region config at startup']
+		),
+		allPr: true
+	},
 	/**
 	 * ⭐ DESIGN REVIEW 4, ITEM A (2026-10-09, TL "GO" decision, changes-slug
 	 * lane) — THE ONE REPO FOUR SERVICES SHARE. Every other entry in this
@@ -1282,7 +1298,7 @@ function landmarkChanges(app: AppFixture): ChangeRecord[] {
 	for (let i = 1; i <= lastIdx; i++) {
 		const sha = app.ladder[i];
 		const seed = `${app.repo}-${sha}`;
-		const isPr = hashStr(seed + 'kind') % 10 < 7; // ~70% land via a PR
+		const isPr = app.allPr || hashStr(seed + 'kind') % 10 < 7; // ~70% land via a PR (allPr: every step)
 		const author = authorForSha(sha, seed + 'a2');
 		const mergedAtMs = ladderCommitDateMs(app, i);
 		const stat = transitionStat(seed);

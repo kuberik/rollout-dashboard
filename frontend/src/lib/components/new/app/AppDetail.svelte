@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { leadOpenKey } from '$lib/view-models/pipeline-card';
 	import { newestFirst } from '$lib/instant';
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 		import { releaseCandidates } from '$lib/releases/registry.svelte';
@@ -112,10 +111,8 @@
 	const failing = $derived(placeRows.filter((r) => r.group === 'failed'));
 	/* AA4: the statement (a waiting app) owns Approve, once; a row of an approval place carries no second one */
 	const calm = $derived(scenario !== 'incident' && !failing.length);
-	/* the open thing is the first row in every state (a fully healthy app opens nothing) */
-	/* owner 2026-11-12 (waves): when several places are in flight at once (a wave of sites taking a build), the ledger's rows ARE the picture, one state word
-	   per site; opening the lead's step pane pushed the rest of the wave off the card. Open nothing then; a single place in flight still opens. */
-	const leadKey = $derived(leadOpenKey(rows));
+	/* owner 2026-11-12 (waves, "environments jumping"): no step pane opens or closes by itself as state changes, in a wave or for a single place; a pane opens only on the reader's click (a place's chevron). */
+	const leadKey: string | null = null;
 	/* owner §5: on the phone the lead place shows its short version (state line + next build) and the step pane waits behind its chevron; from sm up the lead's pane is open. One open at a time. */
 	let phone = $state(typeof matchMedia !== 'undefined' && matchMedia('(max-width: 639px)').matches);
 	$effect(() => { const mq = matchMedia('(max-width: 639px)'); phone = mq.matches; const f = () => (phone = mq.matches); mq.addEventListener('change', f); return () => mq.removeEventListener('change', f); });
@@ -307,8 +304,8 @@
 			{/if}
 			{#if built && lane}
 				<div class="ad-strip flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1" data-ad-strip>
-					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} {calm} words yours={!!stateRow?.needsYou} mutedRest {hrefFor} {current} /></div>
-					<a href={href('/environments')} class="nav-link t-ui-sm shrink-0 !py-0 max-sm:min-h-11 max-sm:items-center sm:max-xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
+					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} {calm} words yours={!!stateRow?.needsYou} mutedRest {hrefFor} {current} sites /></div>
+					<a href={href('/environments')} class="nav-link t-ui-sm shrink-0 !py-0 max-sm:mt-1 max-sm:min-h-11 max-sm:items-center sm:max-xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 				</div>
 			{/if}
 		</header>

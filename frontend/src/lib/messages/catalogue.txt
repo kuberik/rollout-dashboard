@@ -377,6 +377,8 @@ lib/components/DeployVolumeSparkline.svelte	code	…h ago
 lib/components/DeployVolumeSparkline.svelte	code	1h ago
 lib/components/DeployVolumeSparkline.svelte	code	this hour
 lib/components/DiffLink.svelte	text	View diff
+lib/components/EnvSitePicker.svelte	text	This rollout
+lib/components/EnvSitePicker.svelte	text	Wave …
 lib/components/ErrorState.svelte	code	Back to all rollouts
 lib/components/ErrorState.svelte	title	Not found
 lib/components/ErrorState.svelte	text	Sign in again
@@ -642,50 +644,24 @@ lib/components/new/change-view.ts	code	not reached
 lib/components/new/change-view.ts	code	Roll back
 lib/components/new/change-view.ts	code	Waits for
 lib/components/new/change-view.ts	code	Waits on
-lib/components/new/change/ChangeCard.svelte	code	${stat.add != null ?
 lib/components/new/change/ChangeDetail.svelte	text	… … ago
 lib/components/new/change/ChangeDetail.svelte	text	… (merged by … )
-lib/components/new/change/ChangeDetail.svelte	code	… build… carr… it
-lib/components/new/change/ChangeDetail.svelte	code	… failing
-lib/components/new/change/ChangeDetail.svelte	code	… held
+lib/components/new/change/ChangeDetail.svelte	text	… of …
 lib/components/new/change/ChangeDetail.svelte	verdict	… since …
-lib/components/new/change/ChangeDetail.svelte	code	… waiting
-lib/components/new/change/ChangeDetail.svelte	code	+… newer
-lib/components/new/change/ChangeDetail.svelte	text	A place shows here once a build that carries this change reaches it.
+lib/components/new/change/ChangeDetail.svelte	text	Builds carrying it
 lib/components/new/change/ChangeDetail.svelte	code	by … · merged by …
-lib/components/new/change/ChangeDetail.svelte	code	carries it
-lib/components/new/change/ChangeDetail.svelte	code	carries it · +… newer change…
 lib/components/new/change/ChangeDetail.svelte	text	CI checks
 lib/components/new/change/ChangeDetail.svelte	code	Deployment failed in … · …
-lib/components/new/change/ChangeDetail.svelte	code	does not carry it
-lib/components/new/change/ChangeDetail.svelte	code	does not carry it yet
-lib/components/new/change/ChangeDetail.svelte	text	Not running anywhere yet
-lib/components/new/change/ChangeDetail.svelte	code	own build
-lib/components/new/change/ChangeDetail.svelte	code	this change’s own build
+lib/components/new/change/ChangeDetail.svelte	text	none running yet
+lib/components/new/change/ChangeDetail.svelte	text	Places running it
 lib/components/new/change/ChangeDetail.svelte	code	Waiting for approval
 lib/components/new/change/ChangeDetail.svelte	aria-label	What holds this change and what happened to it
-lib/components/new/change/ChangeDetail.svelte	title	Where it runs
 lib/components/new/change/ChangeHistory.svelte	verdict	… events
+lib/components/new/change/ChangeHistory.svelte	code	CI run
+lib/components/new/change/ChangeHistory.svelte	code	Pull request
 lib/components/new/change/ChangeHistory.svelte	label	Rolled back
 lib/components/new/change/ChangeHistory.svelte	text	Show … more
 lib/components/new/change/ChangeHistory.svelte	text	Show fewer
-lib/components/new/change/ChangePlaceRow.svelte	code	… of … steps
-lib/components/new/change/ChangePlaceRow.svelte	code	at … · newer than this change's …
-lib/components/new/change/ChangePlaceRow.svelte	code	Not affected
-lib/components/new/change/ChangePlaceRow.svelte	code	Not reached
-lib/components/new/change/ChangePlaceRow.svelte	code	on the newest
-lib/components/new/change/ChangePlaceRow.svelte	aria-label	Show all … regions
-lib/components/new/change/ChangePlaceRow.svelte	title	the age of this place's current deploy, as its tab prints it
-lib/components/new/change/ChangePlaceRow.svelte	code	Up to date
-lib/components/new/change/ChangeSlipway.svelte	text	… … &nbsp;· … …
-lib/components/new/change/ChangeSlipway.svelte	text	&nbsp;·&nbsp; …
-lib/components/new/change/ChangeSlipway.svelte	label	Deployment pipeline of … in …
-lib/components/new/change/ChangeSlipway.svelte	text	in … &nbsp;·&nbsp;
-lib/components/new/change/ChangeSlipway.svelte	text	incl. …
-lib/components/new/change/ChangeSlipway.svelte	text	Newer build
-lib/components/new/change/ChangeSlipway.svelte	text	Newer builds
-lib/components/new/change/ChangeSlipway.svelte	code	Open rollout
-lib/components/new/change/ChangeSlipway.svelte	text	wait behind this
 lib/components/new/change/detail-model.ts	code	: ''} wait… behind this failure
 lib/components/new/change/detail-model.ts	code	… · failed
 lib/components/new/change/detail-model.ts	code	… checking
@@ -694,6 +670,7 @@ lib/components/new/change/detail-model.ts	code	… deploying
 lib/components/new/change/detail-model.ts	code	… failing
 lib/components/new/change/detail-model.ts	code	… has waited …
 lib/components/new/change/detail-model.ts	code	… held
+lib/components/new/change/detail-model.ts	code	… in …
 lib/components/new/change/detail-model.ts	code	… in ……
 lib/components/new/change/detail-model.ts	code	… is failing: … newer build…${mine ?
 lib/components/new/change/detail-model.ts	code	… is the build before this change, last healthy … ago
@@ -703,6 +680,7 @@ lib/components/new/change/detail-model.ts	code	… of … prod regions
 lib/components/new/change/detail-model.ts	code	… of … run it
 lib/components/new/change/detail-model.ts	code	… place…
 lib/components/new/change/detail-model.ts	code	… places
+lib/components/new/change/detail-model.ts	code	… prod regions
 lib/components/new/change/detail-model.ts	code	… runs
 lib/components/new/change/detail-model.ts	code	… waiting
 lib/components/new/change/detail-model.ts	code	All … places run the newest build
@@ -710,10 +688,10 @@ lib/components/new/change/detail-model.ts	code	and $1
 lib/components/new/change/detail-model.ts	code	Checking in …
 lib/components/new/change/detail-model.ts	code	Deployed in …
 lib/components/new/change/detail-model.ts	code	Deployed in ${prod.length === 1 ? prod[0].label :
+lib/components/new/change/detail-model.ts	code	Deployed to …
 lib/components/new/change/detail-model.ts	code	Deploying to …
 lib/components/new/change/detail-model.ts	code	Failing in ……
 lib/components/new/change/detail-model.ts	code	Final check
-lib/components/new/change/detail-model.ts	code	First deployed
 lib/components/new/change/detail-model.ts	code	Held by a rule
 lib/components/new/change/detail-model.ts	code	last healthy
 lib/components/new/change/detail-model.ts	code	Newer build failed
@@ -726,6 +704,9 @@ lib/components/new/change/detail-model.ts	code	on the newest
 lib/components/new/change/detail-model.ts	code	prod · …
 lib/components/new/change/detail-model.ts	code	Rolled back to
 lib/components/new/change/detail-model.ts	code	Waiting for approval
+lib/components/new/change/detail-model.ts	code	wave …
+lib/components/new/change/detail-model.ts	code	Wave … …
+lib/components/new/change/detail-model.ts	code	Wave … deployed
 lib/components/new/changes-page.ts	code	… failed in …${placeOf(lead.c) ?
 lib/components/new/changes-page.ts	code	… failing
 lib/components/new/changes-page.ts	code	… to approve
@@ -1018,6 +999,18 @@ lib/components/new/Slipway.svelte	code	Rolled back from
 lib/components/new/Slipway.svelte	code	To deploy
 lib/components/new/Slipway.svelte	code	Your approval
 lib/components/new/Slipway.svelte	text	Your change
+lib/components/new/stages/stages-model.ts	code	… checking
+lib/components/new/stages/stages-model.ts	code	… deploying
+lib/components/new/stages/stages-model.ts	code	… failing
+lib/components/new/stages/stages-model.ts	code	… held
+lib/components/new/stages/stages-model.ts	code	… of …
+lib/components/new/stages/stages-model.ts	code	… of … place…
+lib/components/new/stages/stages-model.ts	code	… waiting
+lib/components/new/stages/stages-model.ts	code	Not affected
+lib/components/new/stages/stages-model.ts	code	Not reached
+lib/components/new/stages/stages-model.ts	code	on the newest
+lib/components/new/stages/stages-model.ts	code	Up to date
+lib/components/new/stages/stages-model.ts	code	Waiting for approval
 lib/components/new/state-words.ts	code	… … approval
 lib/components/new/state-words.ts	code	Needs your approval
 lib/components/new/state-words.ts	code	Waiting for approval
@@ -1042,6 +1035,8 @@ lib/components/PromotionLane.svelte	code	… behind
 lib/components/PromotionLane.svelte	code	……: …${r.card.version ?
 lib/components/PromotionLane.svelte	code	· wave …
 lib/components/PromotionLane.svelte	code	no releases
+lib/components/PromotionLane.svelte	code	No releases
+lib/components/PromotionLane.svelte	code	Up to date
 lib/components/PromotionLane.svelte	code	wave …
 lib/components/RecoveryModeWarningModal.svelte	code	… failed
 lib/components/RecoveryModeWarningModal.svelte	code	… hasn't finished (it is still deploying or baking)

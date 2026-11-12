@@ -6,10 +6,10 @@
 	 * CHANGE's: the commit rows (kind mark · title · author on line 2 · the mono sha right) and the rollup `1 commit · +39 −24 · 3 files`.
 	 * REFERENCE: the Overview's commit rows (sha mono · title · Avatar + login); the mock's Change card for the rollup and row heights.
 	 * The fixture carries a diffstat and a file COUNT but no file names, so there is no file list (nothing is invented); the count is in the rollup.
-	 * The viewer never sees their own face on their own change (the header already says "yours"): their commit has no author line.
+	 * change-strip r2 (owner 2026-11-12: "it doesn't show commit message or author"): every commit names its author with the face, the viewer's too ("(you)").
 	 */
 	import { CodeBranchOutline } from 'flowbite-svelte-icons';
-	import Group from '../Group.svelte';
+	import Card from '$lib/components/Card.svelte';
 	import ChangeKindMark from './ChangeKindMark.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { avatarSrc } from '../data';
@@ -17,20 +17,24 @@
 	import type { Commit } from './detail-model';
 
 	let { commits, stat = null, checkText = null, class: className = '' }: { commits: Commit[]; /** the range's size: additions / deletions when known, always the file count */ stat?: { add: number | null; del: number | null; files: number } | null; checkText?: string | null; class?: string } = $props();
-	const sizeText = $derived(stat ? `${stat.add != null ? `+${stat.add} −${stat.del} · ` : ''}${plural(stat.files, 'file')}` : '');
-	const rollup = $derived([commits.length ? plural(commits.length, 'commit') : '', sizeText, checkText ?? ''].filter(Boolean).join(' · '));
+	const lead = $derived(commits.length ? plural(commits.length, 'commit') : '');
+	const tail = $derived([stat ? plural(stat.files, 'file') : '', checkText ?? ''].filter(Boolean).join(' · '));
 </script>
 
-<Group icon={CodeBranchOutline} title="Change" {rollup} class={className}>
+<!-- Group's chrome (Card, padded false, divided rows), with the diffstat in GitHub's colours (owner 2026-11-12: "the diff +- lines is not colored") -->
+<Card icon={CodeBranchOutline} title="Change" padded={false} class={className}>
+	{#snippet rollup()}<span class="t-ui-sm tabular-nums text-fg-subtle" data-change-rollup>{lead}{#if lead && stat?.add != null}{' · '}{/if}{#if stat?.add != null}<span class="text-success" data-diff-add>+{stat.add}</span>{' '}<span class="text-danger" data-diff-del>−{stat.del}</span>{/if}{#if tail}{' · '}{tail}{/if}</span>{/snippet}
+	<ul class="divide-y divide-line-subtle">
 	{#each commits as k (k.sha + k.title)}
 		<li class="cc-row px-4 py-3" data-commit={k.sha}>
 			<span class="cc-mark flex h-5 items-center justify-center"><ChangeKindMark kind="commit" label="Commit" /></span>
 			<p class="cc-main t-body min-w-0 text-fg [overflow-wrap:anywhere]">{k.title}</p>
 			{#if k.sha}<span class="cc-id t-code-sm flex h-5 items-center whitespace-nowrap text-fg-subtle">{k.sha}</span>{/if}
-			{#if k.author && !isViewer(k.author)}<p class="cc-sub t-meta flex min-w-0 items-center gap-1.5 text-fg-subtle"><Avatar name={k.author} src={avatarSrc(k.author)} size={20} /><span class="min-w-0 break-words text-fg-muted">{k.author}</span></p>{/if}
+			{#if k.author}<p class="cc-sub t-meta flex min-w-0 items-center gap-1.5 text-fg-subtle" data-commit-author><Avatar name={k.author} src={avatarSrc(k.author)} size={20} /><span class="min-w-0 break-words text-fg-muted">{k.author}</span>{#if isViewer(k.author)}<span>(you)</span>{/if}</p>{/if}
 		</li>
 	{/each}
-</Group>
+	</ul>
+</Card>
 
 <style>
 	.cc-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: start; }

@@ -47,6 +47,7 @@ import {
 	mockFleetRollouts,
 	mockDepRollouts,
 	mkHwvRollouts,
+	mkHwvEnvironments,
 	hcAgo,
 	hcNow,
 	reanchorClock
@@ -80,7 +81,8 @@ import {
 	mkHwManagedResourcesFor,
 	mkHwEnvironment
 } from './mock-promote';
-import { resetDepsStory, runDepsStep, type DepsStep } from './deps-story';
+import { resetDepsStory, runDepsStep, replaceHwvEnvironments, type DepsStep } from './deps-story';
+import { resetWavesStory, setWavesStep, wavesPlaces, type WavesStep } from './waves-story';
 import type { MockSend } from './respond';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1139,6 +1141,7 @@ export function resetDemoState(requestedScenario?: Scenario): void {
 	}
 	seedApprovals();
 	scenarioFleetRollouts = mockFleetRollouts.map(scenarioRollout);
+	resetWavesStory(); // before mkHwvRollouts: the stepped waves story overrides hwvLive only once a beat is fired
 	// hello-waves is the one app whose state follows the scenario (mock-data.ts FIXTURE E).
 	scenarioDepRollouts = [...mockDepRollouts, ...mkHwvRollouts(scenario)].map(scenarioRollout);
 	// The stepped dependencies story (`deps-story.ts`) mutates these clones
@@ -2245,4 +2248,34 @@ export function stepDepsStory(
 		result.changes.map((c) => ({ type: 'update' as const, ...c, resourceVersion: nextRv(), ts }))
 	);
 	return { ok: true, step: result.step, changed: result.changes.length };
+}
+
+/**
+ * `GET|POST /api/demo/waves?step=…` (respond.ts) — one beat of the stepped waves story; see
+ * `waves-story.ts`. Rebuilds hello-waves' Rollouts and Environments for the beat and tells every tab.
+ */
+export function stepWavesStory(step: WavesStep): { ok: true; step: WavesStep; changed: number } {
+	setWavesStep(step);
+	const fresh = mkHwvRollouts(scenario).map(scenarioRollout) as { metadata: { namespace: string; name: string } }[];
+	const key = (r: { metadata?: { namespace?: string; name?: string } }) => `${r.metadata?.namespace}/${r.metadata?.name}`;
+	const byKey = new Map(fresh.map((r) => [key(r), r]));
+	scenarioDepRollouts = [
+		...(scenarioDepRollouts as { metadata?: { namespace?: string; name?: string } }[]).map((r) => byKey.get(key(r)) ?? r),
+		...fresh.filter((r) => !(scenarioDepRollouts as { metadata?: { namespace?: string; name?: string } }[]).some((x) => key(x) === key(r)))
+	];
+	replaceHwvEnvironments(mkHwvEnvironments(scenario) as Record<string, unknown>[]);
+	const ts = peekDemoClock().getTime();
+	const changes = wavesPlaces().flatMap((p) =>
+		(['Rollout', 'Environment'] as const).map((kind) => ({
+			type: 'update' as const,
+			kind,
+			namespace: p.namespace,
+			name: 'hello-waves-app',
+			cluster: p.cluster,
+			resourceVersion: nextRv(),
+			ts
+		}))
+	);
+	broadcastChanges(changes);
+	return { ok: true, step, changed: changes.length };
 }
