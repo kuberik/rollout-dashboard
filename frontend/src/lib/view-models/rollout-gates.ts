@@ -292,8 +292,12 @@ export function rolloutGateBoxes(args: {
 		/* an allow-list says what the gate lets through, not what it IS: it is an approval only by the one predicate every surface reads (`isApprovalLike`: `kind`, a name only when the payload carries no kind). A hand-written allow-list of unknown kind is a gate with a list. */
 		const listed = Array.isArray(allowed);
 		const approval = isApprovalLike({ name: g, kind: sum?.kind ?? null, allowedVersions: listed ? allowed : null });
-		const state = stateOf([g]);
 		const candidates = promotionCandidates(rollout);
+		/* an allow-list holds EVERY candidate it does not list, not only the focus build: after approving the focus build, a newer unapproved
+		   build is still held, and the tile must not read "Nothing held" beside the held-builds list that names it (UX re-check, #132). */
+		const refusedByList = listed ? display(candidates.filter((c) => !allowed!.includes(c.tag ?? ''))) : [];
+		const focusState = stateOf([g]);
+		const state: GateBoxState = focusState !== 'blocked' && refusedByList.length > 0 ? 'blocked' : focusState;
 		let phrase: string;
 		if (listed) {
 			const ok = display(candidates.filter((c) => allowed!.includes(c.tag ?? '')));
@@ -317,7 +321,7 @@ export function rolloutGateBoxes(args: {
 			title,
 			kindWord: title.toLowerCase() === kindWord.toLowerCase() ? null : kindWord,
 			phrase,
-			held: state === 'blocked' ? heldBy([g]) : [],
+			held: state !== 'blocked' ? [] : focusState === 'blocked' ? heldBy([g]) : refusedByList,
 			mark: approval ? { kind: 'approval', clears: 'person' } : listed ? { kind: 'unknown', clears: 'unknown' } : { kind: 'check', clears: 'check' },
 			gates: [g]
 		});
