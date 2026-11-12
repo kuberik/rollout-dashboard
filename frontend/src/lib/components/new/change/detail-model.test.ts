@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
 import { findChange, classified, runningN, stripOf, statementOf, spineOf, blockLine, rollbackTo, countsOf, countLine, changeProd, commitsOf, openedOf, howFacts } from './detail-model';
-import { placesOfChange, waitClock } from '../data';
+import { placesOfChange, ago, waitClock } from '../data';
 import { firstBuildOf, headFacts, foldWindow, carrierRange } from './detail-model';
 
 const at = (slug: string, s: 'incident' | 'calm' | 'quiet') => {
