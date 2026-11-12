@@ -13,6 +13,10 @@ import (
 // 16 minutes ago (the shape of the live report: a quiet identity coming back).
 func seedOld(t *testing.T) (*swrCache[string], *time.Time) {
 	t.Helper()
+	waitForFanoutBackground() // a leaked refresh must not touch the fresh registry
+	spokeSkips.mu.Lock()
+	spokeSkips.m = map[string]time.Time{}
+	spokeSkips.mu.Unlock()
 	now := time.Now()
 	c := newSWRCache[string](10*time.Second, time.Second, time.Second)
 	c.now = func() time.Time { return now }

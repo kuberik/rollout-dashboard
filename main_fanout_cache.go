@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -144,7 +145,43 @@ type swrEntry[T any] struct {
 	okAt       time.Time // last SUCCESSFUL refresh (when val was actually true)
 	lastAccess time.Time
 	done       chan struct{} // non-nil while a refresh is in flight
-	skipUntil  time.Time     // until then an over-age read does not wait
+}
+
+// spokeSkips is the slow-spoke skip window, shared by every identity and every
+// endpoint cache. Whether a spoke is slow is a fact about the spoke, not about
+// who asked or what they asked for, so one request paying the stale wait is
+// enough for the whole hub for spokeSkipWait. Only the cached DATA stays
+// per identity (RBAC); this carries no data. Keyed by spoke scope (the URL
+// part of an "identity|url" key, or the whole key when it has no identity).
+type skipRegistry struct {
+	mu sync.Mutex
+	m  map[string]time.Time
+}
+
+var spokeSkips = &skipRegistry{m: map[string]time.Time{}}
+
+// skipScope maps a cache key to its spoke: the part after the first "|".
+func skipScope(key string) string {
+	if i := strings.Index(key, "|"); i >= 0 {
+		return key[i+1:]
+	}
+	return key
+}
+
+func (r *skipRegistry) until(key string) time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.m[skipScope(key)]
+}
+
+func (r *skipRegistry) set(key string, t time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if t.IsZero() {
+		delete(r.m, skipScope(key))
+		return
+	}
+	r.m[skipScope(key)] = t
 }
 
 // swrCache is a small stale-while-revalidate cache with per-key
@@ -252,9 +289,7 @@ func (c *swrCache[T]) loadMeta(ctx context.Context, key string, fetch func(conte
 	// failed refresh keeps the existing behaviour: the old value is served
 	// with StaleErr set. A slow one is served flagged the same way.
 	if tooOld {
-		c.mu.Lock()
-		skipping := now.Before(e.skipUntil)
-		c.mu.Unlock()
+		skipping := now.Before(spokeSkips.until(key))
 		if skipping {
 			m := staleMeta
 			if m.StaleErr == nil {
@@ -268,15 +303,13 @@ func (c *swrCache[T]) loadMeta(ctx context.Context, key string, fetch func(conte
 		case <-done:
 			c.mu.Lock()
 			val, meta := e.val, e.metaLocked()
-			if meta.StaleErr != nil {
-				e.skipUntil = c.now().Add(c.skipWait)
-			}
 			c.mu.Unlock()
+			if meta.StaleErr != nil {
+				spokeSkips.set(key, c.now().Add(c.skipWait))
+			}
 			return val, meta, nil
 		case <-t.C:
-			c.mu.Lock()
-			e.skipUntil = c.now().Add(c.skipWait)
-			c.mu.Unlock()
+			spokeSkips.set(key, c.now().Add(c.skipWait))
 			log.Printf("fanout cache: serving %s-old spoke data, refresh still running after %s", now.Sub(okAt).Round(time.Second), c.staleWait)
 			// A spoke whose last refresh failed stays failed: only a
 			// cluster that last answered is "slow" (same rule as the
@@ -352,6 +385,7 @@ func (c *swrCache[T]) refresh(key string, fetch func(context.Context) (T, error)
 
 	val, err := fetch(ctx)
 
+	clearSkip := false
 	c.mu.Lock()
 	e := c.m[key]
 	if e == nil {
@@ -363,7 +397,7 @@ func (c *swrCache[T]) refresh(key string, fetch func(context.Context) (T, error)
 		e.ok = true
 		e.err = nil
 		e.okAt = c.now()
-		e.skipUntil = time.Time{}
+		clearSkip = true
 	} else {
 		e.err = err
 		// A failed refresh deliberately leaves any previous value in place
@@ -374,6 +408,9 @@ func (c *swrCache[T]) refresh(key string, fetch func(context.Context) (T, error)
 	done := e.done
 	e.done = nil
 	c.mu.Unlock()
+	if clearSkip {
+		spokeSkips.set(key, time.Time{})
+	}
 
 	if done != nil {
 		close(done)
