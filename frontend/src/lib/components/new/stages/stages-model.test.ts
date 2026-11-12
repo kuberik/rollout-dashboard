@@ -6,6 +6,8 @@ import { resetDemoState } from '../../../demo/state';
 import { WAVES_STEPS } from '../../../demo/waves-story';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { stagesOf } from './stages-model';
+import { placeHolds, noReleasesAt, placesOf, rowsOf, apps } from '../data';
+import { ledgerOf } from '../app/app-model';
 
 const SLUGS = ['github.com/exampleco/checkout-api/pull/80', 'github.com/exampleco/platform-telemetry/pull/20'];
 const SCEN = ['incident', 'calm', 'quiet'] as const;
@@ -123,5 +125,89 @@ describe('change-strip: hello-waves beats', () => {
 	it('QA strip r1 (5): a prod site called "production" is the tier, never "prod-production"', () => {
 		expect(envFull('prod', 'production')).toBe('prod');
 		expect(envFull('prod', 'eu-west-1')).toBe('prod-eu-west-1');
+	});
+});
+
+describe('app-pipeline: app scope (hello-waves-app)', () => {
+	const APP = 'hello-waves-app';
+	const flat = (st: ReturnType<typeof stagesOf>) => st.lanes.flatMap((l) => l.cells.flatMap((c) => c?.places ?? []));
+	const beat = (b: string) => {
+		resetDemoState('incident');
+		respond('GET', `/api/demo/waves?step=${b}`);
+		const l = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}');
+		const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!);
+		installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
+	};
+	afterEach(() => installLiveSource(null));
+	const EXPECT: Record<string, string[]> = {
+		arm: ['deployed', 'checking', 'notreached', 'notreached', 'notreached'],
+		staging: ['deployed', 'deployed', 'notreached', 'notreached', 'notreached'],
+		wave1: ['deployed', 'deployed', 'checking', 'deploying', 'notreached'],
+		'wave1-half': ['deployed', 'deployed', 'deployed', 'deploying', 'notreached'],
+		'wave1-done': ['deployed', 'deployed', 'deployed', 'deployed', 'notreached'],
+		wave2: ['deployed', 'deployed', 'deployed', 'deployed', 'checking'],
+		done: ['deployed', 'deployed', 'deployed', 'deployed', 'deployed']
+	};
+	it('tile and row keys are identical at every beat; the states per beat are the expected ones', () => {
+		let keys: string[] | null = null;
+		for (const b of WAVES_STEPS) {
+			beat(b);
+			const st = stagesOf({ kind: 'app', app: APP }, 'incident');
+			const k = [...st.columns.map((c) => c.key), ...flat(st).map((p) => p.href)];
+			keys ??= k;
+			expect(k, b).toEqual(keys);
+			expect(flat(st).map((p) => p.state), b).toEqual(EXPECT[b]);
+			expect(flat(st).filter((p) => p.live).length, b).toBe(flat(st).some((p) => p.state === 'deploying' || p.state === 'checking') ? 1 : 0);
+			/* a not-reached site prints the build it still runs; a site on the release prints none */
+			for (const p of flat(st)) expect(!!p.build, `${b} ${p.href}`).toBe(p.state === 'notreached');
+		}
+	});
+	it('the rollup "N of M places" is the Builds card\'s count, at every beat and in every scenario', () => {
+		const check = (b: string, s: 'incident' | 'calm' | 'quiet') => {
+			for (const app of ['hello-waves-app', 'checkout-api', 'orders-api', 'payments-core']) {
+				const places = placeHolds(app, s);
+				if (!places.length) continue;
+				const st = stagesOf({ kind: 'app', app }, s);
+				const stops = ledgerOf(places);
+				const total = places.filter((p) => !noReleasesAt(p.href)).length;
+				const onNewest = stops[0] && !stops[0].custom ? stops[0].places.filter((p) => !noReleasesAt(p.href)).length : 0;
+				if (!st.release) { expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe('No releases'); continue; }
+				expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${onNewest} of ${total} place${total === 1 ? '' : 's'} on ${st.release}`);
+			}
+		};
+		for (const b of WAVES_STEPS) { beat(b); check(b, 'incident'); }
+		installLiveSource(null);
+		for (const s of SCEN) check('mock', s);
+	});
+	it('a place moving a build that is NOT the release is quiet: no glow, not counted, its state as plain words', () => {
+		installLiveSource(null);
+		const st = stagesOf({ kind: 'app', app: 'checkout-api' }, 'incident');
+		const off = flat(st).filter((p) => p.word === 'Checking' || p.word === 'Deploying');
+		expect(off.length).toBeGreaterThan(0);
+		for (const p of off) {
+			expect(p.state).toBe('notreached');
+			expect(p.live).toBe(false);
+			expect(p.build).toBeTruthy();
+			expect(p.build).not.toBe(st.release);
+		}
+		expect(st.rollup.text).not.toMatch(/checking|deploying/);
+		expect(flat(st).some((p) => p.live)).toBe(false);
+	});
+	it('truth: a place the rows mark held / approval, or whose env failed, is held / approval / failed in the Pipeline model (every app, incident and calm)', () => {
+		installLiveSource(null);
+		let seen = 0;
+		for (const sc of ['incident', 'calm'] as const) for (const a of apps(sc).items) {
+			const st = stagesOf({ kind: 'app', app: a.app }, sc);
+			for (const x of placesOf(sc, a.app)) {
+				if (noReleasesAt(x.href)) continue;
+				const mine = flat(st).find((p) => p.href === x.href)!;
+				const row = rowsOf(sc, x.tier, x.label).find((r) => r.app === a.app && r.href === x.href);
+				const want = x.state === 'failed' ? 'failed' : row?.group === 'approval' ? 'approval' : row?.group === 'held' ? 'held' : null;
+				if (!want) continue;
+				seen++;
+				expect(mine.state, `${sc} ${a.app} ${x.href}`).toBe(want);
+			}
+		}
+		expect(seen).toBeGreaterThan(0);
 	});
 });

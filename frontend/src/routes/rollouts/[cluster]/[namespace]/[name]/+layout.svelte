@@ -17,8 +17,9 @@
 	} from '$lib/api/rollouts';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { getShellChrome } from '$lib/shell-chrome.svelte';
-	import { href as toHref, appPath } from '$lib/paths';
+	import { appPath } from '$lib/paths';
 	import { rolloutTabs } from '$lib/view-models/rollout-tabs';
+	import SectionTabs from '$lib/components/SectionTabs.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -331,9 +332,11 @@
 	and the sidebar's top edge is always exactly the navbar's bottom
 	edge. See the root layout's own comments at both render sites.
 -->
-{#snippet tabStripSnippet()}
-	<nav class="border-line bg-ground shrink-0 border-b" aria-label="Rollout sections">
-		<!--
+<!--
+	THE STRIP'S MARKUP LIVES IN `SectionTabs.svelte` (shared with the app page's strip); the comments below are the reasoning for what it draws,
+	kept here with the `tabs` array and the states they describe.
+-->
+<!--
 			⛔ FOUR ANONYMOUS 16px GLYPHS IN 97px CELLS, ABOVE A BOTTOM NAV THAT
 			LABELS ALL SIX OF ITS OWN ITEMS. (defect #6, 2026-09-02) `hidden
 			sm:inline` dropped this strip's labels below `sm` while
@@ -349,7 +352,7 @@
 			single-row icon+label at `text-sm` — this only ever fires below
 			`sm`, the one width the defect was measured at.
 		-->
-		<!-- `overflow-x-auto no-scrollbar`, NOT a bare `flex`. (2026-09-03, design
+<!-- `overflow-x-auto no-scrollbar`, NOT a bare `flex`. (2026-09-03, design
 		     pass 6, operator-walk finding: `main.scrollWidth` 464 vs `clientWidth`
 		     449 at 640.) Right at the `sm` boundary the tabs switch from the
 		     stacked icon+10px-label cell to the horizontal icon+`text-sm`-label
@@ -363,11 +366,7 @@
 		     detail tabs") but had never been wired to this strip. Containing the
 		     overflow here — a strip that scrolls internally instead of stretching
 		     its parent — keeps every tab reachable without widening the page. -->
-		<div
-			bind:this={tabStripEl}
-			class="no-scrollbar mx-auto flex w-full items-stretch overflow-x-auto px-4 sm:justify-start sm:gap-1 sm:px-3"
-		>
-			<!--
+<!--
 				⭐ NO `.filter()` HERE ANY MORE — SEE `tabs`' OWN COMMENT. All four
 				entries render on every paint; `state` decides the TREATMENT, not
 				presence:
@@ -384,7 +383,7 @@
 				              this resolves, `aria-hidden` + `tabindex="-1"` keeps
 				              it out of the a11y tree and the tab order.
 			-->
-			<!--
+<!--
 				⛔ `hidden` IS REMOVED, NOT `invisible`. (2026-09-04, regression sweep:
 				"a 148 px hole between History and Logs at 1440, a blank quarter of
 				the strip at 390, on every rollout that has no dependencies, forever".)
@@ -393,28 +392,6 @@
 				the answer resolves to "no such tab" — a one-time 148 px move on
 				those rollouts is the honest cost; a permanent dead slot is not.
 			-->
-			{#each tabs.filter((t) => t.state !== 'hidden') as t (t.href)}
-				{@const active = t.state === 'active' && isActive(t.href)}
-				{@const pending = t.state === 'pending'}
-				{@const hidden = false}
-				<a
-					href={t.state === 'active' ? toHref(t.href) : undefined}
-					aria-current={active ? 'page' : undefined}
-					aria-disabled={pending ? 'true' : undefined}
-					aria-hidden={hidden ? 'true' : undefined}
-					tabindex={t.state === 'active' ? undefined : -1}
-					title={t.label}
-					class="group t-ui flex flex-1 flex-col items-center justify-center gap-0.5 border-b-2 px-1 py-2 transition-colors sm:h-11 sm:flex-initial sm:shrink-0 sm:flex-row sm:gap-2 sm:px-3 sm:py-0
-						{hidden ? 'invisible' : ''}
-						{pending ? 'cursor-default opacity-40' : ''}
-						{active
-						? 'border-accent text-fg'
-						: 'text-fg-muted hover:border-line-strong hover:text-fg border-transparent'}"
-				>
-					<t.icon class="h-4 w-4 shrink-0" />
-					<span class="max-w-full truncate leading-tight">{t.label}</span>
-				</a>
-			{/each}
-		</div>
-	</nav>
+{#snippet tabStripSnippet()}
+	<SectionTabs {tabs} label="Rollout sections" {isActive} bind:el={tabStripEl} />
 {/snippet}
