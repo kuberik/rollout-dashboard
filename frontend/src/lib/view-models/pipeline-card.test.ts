@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deployKey, isDeployInFlight, leadOpenKey, showNewerBuildsCard, steadyStep } from './pipeline-card';
+import { deployKey, isDeployInFlight, leadOpenKey, pipelineSlots, showNewerBuildsCard, steadyStep } from './pipeline-card';
 
 describe('isDeployInFlight', () => {
 	it('is true while the newest entry is Deploying or InProgress', () => {
@@ -70,5 +70,22 @@ describe('leadOpenKey (rule 3)', () => {
 	it('opens the first row when nothing moves, and nothing when there are no rows', () => {
 		expect(leadOpenKey([row('a', 'needs')])).toBe('a');
 		expect(leadOpenKey([])).toBeNull();
+	});
+});
+
+describe('pipelineSlots — rows keep their slot while a deploy is in flight', () => {
+	const all = { canUpdate: true, stageCheckConfigured: true, timerConfigured: true };
+	it('reserves the action, the Check line and the timer line from the first frame of a deploy', () => {
+		expect(pipelineSlots({ ...all, deployInFlight: true })).toEqual({ advance: true, checkLine: true, timerLine: true });
+	});
+	it('reserves nothing once the deploy has settled', () => {
+		expect(pipelineSlots({ ...all, deployInFlight: false })).toEqual({ advance: false, checkLine: false, timerLine: false });
+	});
+	it('reserves only what can actually appear', () => {
+		expect(pipelineSlots({ deployInFlight: true, canUpdate: false, stageCheckConfigured: false, timerConfigured: false })).toEqual({
+			advance: false,
+			checkLine: false,
+			timerLine: false
+		});
 	});
 });

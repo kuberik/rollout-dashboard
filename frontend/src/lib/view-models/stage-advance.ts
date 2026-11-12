@@ -61,6 +61,18 @@ export type StageAdvance = {
 	consequence: string;
 	/** The dialog's headline. */
 	confirmTitle: string;
+	/**
+	 * The longest this caption can ever get on this stage (the moves sentence plus a check-window sentence
+	 * with the widest duration). The pipeline card sizes the caption's slot from it, so the caption growing
+	 * from one line to two when the check window opens does not move the rows below it.
+	 */
+	consequenceReserve: string;
+	/**
+	 * `primary` only when pressing this IS the way forward: no check window is configured on the stage, so
+	 * nothing advances it by itself. With a check window (running or finished) the controller continues on
+	 * its own and the button is an override that skips it, so it is offered, not pushed: `secondary`.
+	 */
+	emphasis: 'primary' | 'secondary';
 };
 
 function parseGoish(duration: string | undefined): number {
@@ -129,6 +141,8 @@ export function stageAdvance(input: StageAdvanceInput, now: Date = new Date()): 
 	 */
 	const subject = input.multipleTracks && input.trackName ? input.trackName : 'this rollout';
 
+	const checkLeft = (left: string) =>
+		`${left} of check time is left on stage ${fromStage} and will be skipped.`;
 	const sentences: string[] = [];
 	if (input.isLastStep) {
 		sentences.push(`Sends all traffic to the new version of ${subject} and completes it.`);
@@ -143,9 +157,12 @@ export function stageAdvance(input: StageAdvanceInput, now: Date = new Date()): 
 	// `DeploymentPipelineCard.svelte`. The annotation it is read from is still
 	// `step-N-bake-time`; that is the mechanism and no reader sees it.
 	if (remainingBakeMs !== null && remainingBakeMs > 0) {
-		sentences.push(
-			`${formatShortDuration(remainingBakeMs)} of check time is left on stage ${fromStage} and will be skipped.`
-		);
+		sentences.push(checkLeft(formatShortDuration(remainingBakeMs)));
+	}
+
+	const reserve = [...sentences.slice(0, 1)];
+	if (!input.isLastStep) {
+		reserve.push(checkLeft(formatShortDuration(3599000)));
 	}
 
 	return {
@@ -157,6 +174,8 @@ export function stageAdvance(input: StageAdvanceInput, now: Date = new Date()): 
 		remainingBakeMs,
 		label,
 		consequence: sentences.join(' '),
+		consequenceReserve: reserve.join(' '),
+		emphasis: remainingBakeMs === null ? 'primary' : 'secondary',
 		confirmTitle: input.isLastStep
 			? 'Finish this rollout?'
 			: `Continue to stage ${toStage} of ${totalStages}?`
