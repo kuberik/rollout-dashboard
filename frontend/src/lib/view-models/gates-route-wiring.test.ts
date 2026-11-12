@@ -14,7 +14,10 @@ describe('the Gates route wires the shared helpers into the canvas', () => {
 		expect(src).toMatch(/import \{[^}]*\bpeerHeldMap\b[^}]*\} from '\$lib\/view-models\/home-model'/);
 		expect(src).toMatch(/const peerHeldByEnv = \$derived\(peerHeldMap\(peersByEnv\)\);/);
 		expect(hood).toMatch(/\{peerHeldByEnv\}/);
-  expect(src.match(/peerHeldByEnv/g)!.length).toBe(3); // declaration, the canvas prop, and the peer's state for the chain-wait text (batch4 #76)
+		expect(src.match(/peerHeldByEnv/g)!.length).toBe(3); // declaration, the canvas prop, and the peer's state for the chain-wait text (batch4 #76)
+	});
+	it("a neighbour (and the promotion chip's source link) opens that rollout's own Gates tab", () => {
+		expect(hood).toContain("hrefOf={(n) => rolloutPath(n.cluster || cluster, n.namespace, n.name, 'gates')}");
 	});
 	it('the Held-here node reads gatesPin.heldBuildsOverride', () => {
 		expect(hood).toContain('heldBuildsOverride={gatesPin.heldBuildsOverride}');
