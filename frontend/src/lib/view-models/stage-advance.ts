@@ -175,7 +175,7 @@ export function stageAdvance(input: StageAdvanceInput, now: Date = new Date()): 
 		label,
 		consequence: sentences.join(' '),
 		consequenceReserve: reserve.join(' '),
-		emphasis: remainingBakeMs === null ? 'primary' : 'secondary',
+		emphasis: totalBake > 0 ? 'secondary' : 'primary',
 		confirmTitle: input.isLastStep
 			? 'Finish this rollout?'
 			: `Continue to stage ${toStage} of ${totalStages}?`

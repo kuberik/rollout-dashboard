@@ -161,8 +161,7 @@ describe('stageAdvance — a caption sized for its longest form, and who the but
 	});
 	it('is the primary action only when nothing else advances the stage', () => {
 		expect(stageAdvance(base).emphasis).toBe('primary');
-		expect(
-			stageAdvance({ ...base, annotations: { 'rollout.kuberik.io/step-1-bake-time': '30s', 'internal.rollout.kuberik.io/step-1-ready-at': new Date().toISOString() } }).emphasis
-		).toBe('secondary');
+		// A check window is configured: the controller continues by itself, even before its clock has started.
+		expect(stageAdvance({ ...base, annotations: { 'rollout.kuberik.io/step-1-bake-time': '30s' } }).emphasis).toBe('secondary');
 	});
 });
