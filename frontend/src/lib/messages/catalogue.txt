@@ -684,7 +684,6 @@ lib/components/new/change/detail-model.ts	code	Deployed in ${prod.length === 1 ?
 lib/components/new/change/detail-model.ts	code	Deploying to …
 lib/components/new/change/detail-model.ts	code	Failing in ……
 lib/components/new/change/detail-model.ts	code	Final check
-lib/components/new/change/detail-model.ts	code	First deployed
 lib/components/new/change/detail-model.ts	code	Held by a rule
 lib/components/new/change/detail-model.ts	code	last healthy
 lib/components/new/change/detail-model.ts	code	Newer build failed

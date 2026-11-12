@@ -10,6 +10,7 @@
 	 * Horizontal while every column fits at >= 160px; otherwise the SAME stages as a vertical list. Decided by width and column count only.
 	 */
 	import Card from '$lib/components/Card.svelte';
+	import CauseText from '$lib/components/CauseText.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
@@ -79,11 +80,11 @@
 					<span class="flex min-w-0 flex-col">
 						{#if echo}
 							<!-- the place is the tier itself: line 1 is the state word, line 2 the build / step / age -->
-							<span class="t-body truncate {INK[p.state]}" title={p.word}>{p.word}</span>
+							<span class="t-body flex min-w-0 items-center truncate {INK[p.state]}" title={p.word}>{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>
 							<span class="t-meta flex min-w-0 gap-1 whitespace-nowrap text-fg-subtle">{#each tail as t, ti (ti)}{#if ti > 0}<span aria-hidden="true">·</span>{/if}<span class="{ti === 0 && p.build ? 't-code ' : ''}truncate">{t}</span>{/each}{#if !tail.length}{'\u00a0'}{/if}</span>
 						{:else}
 							<span class="t-body flex min-w-0 items-center gap-2 text-fg">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
-							<span class="t-meta flex min-w-0 gap-1 whitespace-nowrap {INK[p.state]}" title={p.word}><span class="truncate">{p.word}</span>{#if p.build}<span class="t-code shrink-0 text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="shrink-0 text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="shrink-0 text-fg-subtle">· {p.age}</span>{/if}</span>
+							<span class="t-meta flex min-w-0 gap-1 whitespace-nowrap {INK[p.state]}" title={p.word}><span class="flex min-w-0 items-center truncate">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build}<span class="t-code shrink-0 text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="shrink-0 text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="shrink-0 text-fg-subtle">· {p.age}</span>{/if}</span>
 						{/if}
 					</span>
 				</a>

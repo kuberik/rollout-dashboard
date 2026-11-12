@@ -11,11 +11,12 @@
 import { ago, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
 import { placesOf, rowsOf } from '../data';
 import { approvalWord } from '../state-words';
-import { holdWord } from '../rollout-view';
+import { holdWord, holdWordParts } from '../rollout-view';
+import { causeText, type Cause } from '$lib/view-models/gate-label';
 import { classified, countsOf, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
 
 export type StageState = 'deployed' | 'checking' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
-export type StagePlace = { href: string; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: string | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
+export type StagePlace = { href: string; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: Cause | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
 export type StageColumn = { key: string; tier: TierKey; wave: number | null; /** the env chip's label */ label: string; /** the tier has more than one wave: "Wave N" is worth printing */ multi: boolean };
 export type StageCell = { places: StagePlace[] };
 export type StageLane = { app: string; cells: (StageCell | null)[] };
@@ -25,11 +26,12 @@ export type Stages = { columns: StageColumn[]; lanes: StageLane[]; rollup: Stage
 
 const TIER_RANK: Record<string, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
 
-/** THE one place a hold's cause is decided. TODO(GateLabel, PR #128): return the GateLabel `» [ENV]` form here; every tile reads this alone. */
-export function stageCause(p: Place, scenario: HomeState): string | null {
+/** THE one place a hold's cause is decided, TYPED (PR #128): a promotion hold keeps its `GateLabel`, so the tile draws » [STAGING]
+ *  through `CauseText`/`GateLabel`, never "Promotion from staging" as text. Every tile reads this alone; `causeText` flattens it for titles. */
+export function stageCause(p: Place, scenario: HomeState): Cause | null {
 	if (p.kind !== 'waiting' || !p.row) return null;
-	if (p.row.group === 'approval') return approvalWord(!!p.row.needsYou);
-	return holdWord(p.row, scenario) ?? 'Held';
+	if (p.row.group === 'approval') return [approvalWord(!!p.row.needsYou)];
+	return holdWordParts(p.row, scenario) ?? [holdWord(p.row, scenario) ?? 'Held'];
 }
 
 export function stateOf(p: Place, scenario: HomeState): StageState {
@@ -65,7 +67,7 @@ function assemble(apps: string[], items: Item[], columns: StageColumn[], scenari
 		const st = stateOf(i.p, scenario);
 		const steps = i.p.row?.steps ?? restSteps(i.p.app, scenario, i.p.href);
 		const done = steps.filter((s) => s.state === 'done').length;
-		return { href: i.p.href, app: i.p.app, tier: i.p.tier, name: i.site, leader: i.leader, state: st, word: st === 'held' || st === 'approval' ? (stageCause(i.p, scenario) ?? WORD[st]) : WORD[st], cause: stageCause(i.p, scenario), progress: st === 'checking' || st === 'deploying' ? `${done} of ${steps.length}` : null, age: st === 'deployed' ? ago(i.p.since ?? i.p.at) : st === 'failed' || st === 'checking' || st === 'deploying' ? ago(i.p.at ?? i.p.since) : null, build: i.build, here: here === i.p.href, live: false };
+		return { href: i.p.href, app: i.p.app, tier: i.p.tier, name: i.site, leader: i.leader, state: st, word: st === 'held' || st === 'approval' ? causeText(stageCause(i.p, scenario) ?? [WORD[st]]) : WORD[st], cause: st === 'held' || st === 'approval' ? stageCause(i.p, scenario) : null, progress: st === 'checking' || st === 'deploying' ? `${done} of ${steps.length}` : null, age: st === 'deployed' ? ago(i.p.since ?? i.p.at) : st === 'failed' || st === 'checking' || st === 'deploying' ? ago(i.p.at ?? i.p.since) : null, build: i.build, here: here === i.p.href, live: false };
 	};
 	const lanes: StageLane[] = apps.map((app) => ({
 		app,
