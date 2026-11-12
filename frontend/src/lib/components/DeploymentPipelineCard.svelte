@@ -1322,7 +1322,7 @@
 	class="dpc-cq overflow-hidden rounded-md border border-line bg-surface"
 	use:smoothHeight
 >
-	<div use:steadyHeight={deployKey(latestEntry)}>
+	<div use:steadyHeight={deployKey(latestEntry, `${cluster ?? ""}/${namespace}/${name}`)}>
 	<!--
 		⭐ `min-h-[47px]`, MATCHING `Card`'S OWN FLOOR EXACTLY. (defect #4,
 		design re-check) This header hand-rolls its own bar rather than using

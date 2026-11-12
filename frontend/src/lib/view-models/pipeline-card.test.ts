@@ -50,7 +50,12 @@ describe('steadyStep (rule 1)', () => {
 	it('deployKey changes with the entry id or the build', () => {
 		expect(deployKey({ id: 1, version: { tag: 'x' } })).not.toBe(deployKey({ id: 2, version: { tag: 'x' } }));
 		expect(deployKey({ id: 1, version: { tag: 'x' } })).not.toBe(deployKey({ id: 1, version: { tag: 'y' } }));
-		expect(deployKey(null)).toBe(':');
+		expect(deployKey(null)).toBe(':::done');
+	});
+	it('deployKey changes when the deploy settles and per rollout, so the card lets go', () => {
+		const live = { id: 1, version: { tag: 'x' }, bakeStatus: 'InProgress' };
+		expect(deployKey(live)).not.toBe(deployKey({ ...live, bakeStatus: 'Succeeded' }));
+		expect(deployKey(live, 'a/b')).not.toBe(deployKey(live, 'a/c'));
 	});
 });
 

@@ -38,11 +38,19 @@ export function steadyStep(prev: SteadyState, key: string, measured: number): St
 	return measured > prev.max ? { key, max: measured } : prev;
 }
 
-/** Key of one deploy: the newest history entry's id and build. */
+/**
+ * Key of one deploy of one rollout: rollout identity, the newest history entry's id and build, and whether
+ * it is still in flight. The card holds its height only while the key is unchanged, so it lets go when the
+ * deploy settles (its in-flight flag flips) and never carries a height to another rollout.
+ */
 export function deployKey(
-	entry: { id?: string | number | null; version?: { tag?: string | null } | null } | null | undefined
+	entry:
+		| { id?: string | number | null; version?: { tag?: string | null } | null; bakeStatus?: string | null }
+		| null
+		| undefined,
+	rolloutId = ''
 ): string {
-	return `${entry?.id ?? ''}:${entry?.version?.tag ?? ''}`;
+	return `${rolloutId}:${entry?.id ?? ''}:${entry?.version?.tag ?? ''}:${isDeployInFlight(entry ? [entry] : []) ? 'live' : 'done'}`;
 }
 
 /**

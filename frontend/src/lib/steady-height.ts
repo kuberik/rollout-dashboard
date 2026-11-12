@@ -7,12 +7,20 @@ import { steadyStep, type SteadyState } from '$lib/view-models/pipeline-card';
  */
 export function steadyHeight(node: HTMLElement, key: string) {
 	let state: SteadyState = { key, max: 0 };
-	const apply = (measured: number) => {
+	let width = node.offsetWidth;
+	const apply = () => {
+		/* a width change (rotate, resize) re-flows the content: start over instead of holding a height the old width needed */
+		if (node.offsetWidth !== width) {
+			width = node.offsetWidth;
+			state = { key: state.key, max: 0 };
+			node.style.minHeight = '';
+		}
+		const measured = node.offsetHeight;
 		const next = steadyStep(state, state.key, measured);
 		if (next.max !== state.max || node.style.minHeight === '') node.style.minHeight = `${next.max}px`;
 		state = next;
 	};
-	const ro = new ResizeObserver(() => apply(node.offsetHeight));
+	const ro = new ResizeObserver(apply);
 	ro.observe(node);
 	return {
 		update(nextKey: string) {
