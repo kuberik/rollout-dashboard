@@ -106,7 +106,7 @@
 		bind:open={() => true, (v) => { if (!v) dismissDone(); }}
 		tone={done.error ? 'danger' : done.still ? 'info' : 'success'}
 		message={done.error ? `Could not approve ${done.target.build}` : done.still ? `${done.target.build} stays approved` : `${w.title} · ${w.detail}`}
-		description={done.error ?? (done.still ? `Another approval stands${done.still.who ? `, by ${done.still.who}` : ''}` : '')}
+		description={done.error ?? (done.still ? (done.still.who ? `${done.still.who} also approved it` : 'Another approval stands') : '')}
 	>
 		{#snippet action()}
 			{#if done.error}
