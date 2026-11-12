@@ -415,7 +415,7 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		const where = g.wave != null ? `wave ${g.wave}` : g.tier;
 		const evPlaces = g.items.map((x) => ({ label: x.label, tier: g.tier, href: x.href }));
 		if (mv) {
-			out.push({ key: `moving|${gk}`, kind: 'moving', app: g.app, build: mv.build, place: mv.label, places: evPlaces, tier: g.tier, wave: g.wave, at: mv.at, who: mv.who, words: mv.checking ? 'Checking' : 'Deploying', href: mv.href });
+			out.push({ key: `moving|${gk}`, kind: 'moving', app: g.app, build: mv.build, place: mv.label, places: evPlaces, tier: g.tier, wave: g.wave, at: mv.at, who: mv.who, words: g.wave != null ? `Wave ${g.wave} ${mv.checking ? 'checking' : 'deploying'}` : mv.checking ? 'Checking' : 'Deploying', href: mv.href });
 		} else {
 			const last = done.reduce((a, b) => (oldestFirst(a.at, b.at) < 0 ? b : a));
 			const reached = !!prodFirst && g.tier === 'prod' && done.some((x) => x.href === prodFirst!.href);

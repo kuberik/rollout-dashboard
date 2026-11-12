@@ -193,17 +193,21 @@
 
 <div class="env-cq min-w-0 {className}" data-env-row data-size={size}>
 	{#if lanes}
-		<div class="env-row env-row--{size.toLowerCase()} env-grid" style="--env-cols: {cols}">
-			{#each lanes as l (l.key)}
-				<div class="env-lane-label" title={l.label} data-env-lane={l.key}>
+		<!-- AD strip r1 (4): two lanes per row once two lane widths fit (container query), columns still aligned; each item carries its
+		     two-up grid position as custom properties, one-up is plain auto-placement -->
+		<div class="env-row env-row--{size.toLowerCase()} env-grid" class:env-grid--pairs={lanes.length > 1} style="--env-cols: {cols}">
+			{#each lanes as l, li (l.key)}
+				{@const base = (li % 2) * (cols + 2)}
+				{@const row = Math.floor(li / 2) + 1}
+				<div class="env-lane-label" title={l.label} data-env-lane={l.key} style="--c2: {base + 1}; --r2: {row}">
 					{#if l.app}<AppGlyph name={l.app} size={16} />{/if}
 					<span class="env-lane-name t-ui-sm text-fg-muted">{l.label}</span>
 				</div>
 				{#each l.cells as c, i (i)}
 					{#if c}
-						<div class="env-cell" data-tier={c.key} data-stage-col="{l.key}|{c.key}">{@render boxOf(c, l.key)}</div>
+						<div class="env-cell env-cell--lane" class:env-cell--join={i > 0 && !!l.cells[i - 1]} data-tier={c.key} data-stage-col="{l.key}|{c.key}" style="--c2: {base + 2 + i}; --r2: {row}">{@render boxOf(c, l.key)}</div>
 					{:else}
-						<div class="env-cell env-cell--empty" aria-hidden="true"></div>
+						<div class="env-cell env-cell--empty" aria-hidden="true" style="--c2: {base + 2 + i}; --r2: {row}"></div>
 					{/if}
 				{/each}
 			{/each}
@@ -367,7 +371,7 @@
 		width: 1px;
 		height: 12px;
 		margin: 0 4px;
-		background-color: var(--k-line-strong);
+		background-color: var(--k-fg-disabled);
 	}
 	.env-site {
 		display: inline-flex;
@@ -388,6 +392,18 @@
 	button.env-box[aria-expanded='true']:not(.env-box--current) {
 		background-color: var(--k-hover);
 	}
+	/* AD strip r1 (2): "here" is the fill and the ring, never a weight: a bold name widened the box 3px and moved the next one across tabs */
+	.env-box--sites.env-box--current .env-name {
+		font-weight: 500;
+	}
+	/* AD strip r1 (6): a sites box is its content (marks are the content), no floor that leaves a lopsided right inset */
+	.env-box--sites {
+		--env-min: 0px;
+	}
+	/* AD strip r1 (3): in light the fill is 1.04:1 on the page; the box takes an edge (GitHub's / Vercel's environment chips carry one) */
+	:global(html:not(.dark)) .env-box--sites:not(.env-box--current) {
+		border-color: var(--k-line);
+	}
 	.env-box--sites:focus-visible {
 		outline: 2px solid var(--k-focus, var(--k-line-strong));
 		outline-offset: 1px;
@@ -399,9 +415,35 @@
 		row-gap: 8px;
 		align-items: center;
 	}
+	/* a lane's boxes fill their column (the column is the tier: one width down the lanes), so EnvRow's connector spans the gap unchanged */
+	.env-cell--lane {
+		align-items: stretch;
+	}
+	.env-cell--lane > :global(.env-box) {
+		width: 100%;
+	}
+	.env-cell--join::before {
+		content: '';
+		position: absolute;
+		top: calc(var(--env-h) / 2);
+		right: 100%;
+		width: var(--env-gap);
+		height: 1px;
+		background-color: var(--k-line);
+	}
+	@container (min-width: 900px) {
+		.env-grid--pairs {
+			grid-template-columns: auto repeat(var(--env-cols), max-content) 24px auto repeat(var(--env-cols), max-content);
+		}
+		.env-grid--pairs > * {
+			grid-column: var(--c2);
+			grid-row: var(--r2);
+		}
+	}
 	.env-lane-label {
 		display: flex;
 		min-width: 0;
+		max-width: 11rem;
 		height: var(--env-h);
 		align-items: center;
 		gap: 8px;
@@ -414,8 +456,8 @@
 		text-overflow: ellipsis;
 	}
 	@container (max-width: 559.98px) {
-		.env-lane-name { display: none; }
 		.env-grid { row-gap: 16px; }
+		.env-cell--join::before { display: none; }
 	}
 	/* a phone: a sites box drops its word (its marks carry the state, the picker says it), so the order stays on one line */
 	@container (max-width: 379.98px) {

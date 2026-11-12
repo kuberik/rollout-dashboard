@@ -13,7 +13,7 @@
 	 * of several regions is ONE box: the worst region's mark and word, the region when exactly one, and "k of N regions".
 	 */
 	import { STATE_ORDER, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
-	import { shortenVersion } from '$lib/utils';
+	import { shortenVersion, formatTimeAgoCompact } from '$lib/utils';
 	import { splitEnvName } from '$lib/env-badge';
 	import { getEnvironmentThemeStyle } from '$lib/environment-theme';
 	import { lagLabel } from '$lib/view-models/env-rank';
@@ -170,6 +170,7 @@
 				detail: siteDetail(n),
 				wordInk: INK[n.state],
 				build: n.card.version ? shortenVersion(n.card.version) : undefined,
+				aside: n.card.timestamp ? formatTimeAgoCompact(n.card.timestamp) : undefined,
 				href: hrefFor(n),
 				here: youAreHere && isCurrent(n)
 			}));

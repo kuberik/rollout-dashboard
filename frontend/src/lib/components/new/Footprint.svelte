@@ -6,6 +6,7 @@
 	import { STATE_ORDER, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import { waveInfoOfHref, type TApp, type TRow } from './data';
+	import { currentAt } from './change/detail-model';
 	import { rowAction, actionLabel, actionHref } from './rollout-view';
 	import { stateWord } from './state-words';
 	import { placeStateWithPin } from '$lib/view-models/pin-hold';
@@ -49,7 +50,7 @@
 			const theme = getRolloutEnvironmentTheme(null, tier);
 			/* change-strip r1: the place's site and wave from the topology, so the strip can draw prod's waves and name each site */
 			const wi = e.href ? waveInfoOfHref(e.href) : null;
-			const card = { ns: e.label, name: app, version: e.version, theme, envDisplay: e.label || tier, href: e.href, heldCause: e.state === 'awaiting-approval' ? 'person' : undefined, site: wi?.site ?? null, wave: wi?.wave ?? null, role: wi ? (wi.leader ? 'Leader' : 'Follower') : null } as unknown as RolloutCard;
+			const card = { ns: e.label, name: app, version: e.version, theme, envDisplay: e.label || tier, href: e.href, heldCause: e.state === 'awaiting-approval' ? 'person' : undefined, site: wi?.site ?? null, wave: wi?.wave ?? null, timestamp: e.href ? currentAt(e.href) : null, role: wi ? (wi.leader ? 'Leader' : 'Follower') : null } as unknown as RolloutCard;
 			return { card, tier, env: (tier === 'prod' ? e.label : shortEnvLabel(theme) || e.label) || tier, /* QA #11: an env-less place has a blank label; the tier names it, a box is never empty */ state, behind: state === 'behind' ? behindOf(e.version) : 0, ...(e.currency === 'none' ? { noReleases: true } : {}) };
 		});
 		const byTier: Partial<Record<Tier, LaneNode[]>> = {};

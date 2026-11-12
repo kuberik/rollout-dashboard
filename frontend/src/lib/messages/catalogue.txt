@@ -662,7 +662,6 @@ lib/components/new/change/ChangeHistory.svelte	code	Pull request
 lib/components/new/change/ChangeHistory.svelte	label	Rolled back
 lib/components/new/change/ChangeHistory.svelte	text	Show … more
 lib/components/new/change/ChangeHistory.svelte	text	Show fewer
-lib/components/new/change/ChangeHistory.svelte	text	wave …
 lib/components/new/change/detail-model.ts	code	: ''} wait… behind this failure
 lib/components/new/change/detail-model.ts	code	… · failed
 lib/components/new/change/detail-model.ts	code	… checking
@@ -706,6 +705,7 @@ lib/components/new/change/detail-model.ts	code	prod · …
 lib/components/new/change/detail-model.ts	code	Rolled back to
 lib/components/new/change/detail-model.ts	code	Waiting for approval
 lib/components/new/change/detail-model.ts	code	wave …
+lib/components/new/change/detail-model.ts	code	Wave … …
 lib/components/new/change/detail-model.ts	code	Wave … deployed
 lib/components/new/changes-page.ts	code	… failed in …${placeOf(lead.c) ?
 lib/components/new/changes-page.ts	code	… failing

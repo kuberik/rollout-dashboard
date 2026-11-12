@@ -57,7 +57,7 @@ describe('change detail model (one model with the Changes list)', () => {
 			const deploys = ev.filter((e) => e.kind === 'deployed' || e.kind === 'moving');
 			/* one event per (app, tier, wave): never two events for one tier or wave */
 			expect(new Set(deploys.map((e) => `${e.app}|${e.tier}|${e.wave ?? 0}`)).size).toBe(deploys.length);
-			expect(deploys.every((e) => /^(Deployed to \w+|Wave \d+ deployed|Checking|Deploying)$/.test(e.words))).toBe(true);
+			expect(deploys.every((e) => /^(Deployed to \w+|Wave \d+ (deployed|checking|deploying)|Checking|Deploying)$/.test(e.words))).toBe(true);
 			expect(howFacts(c, places, classified(c, sc).all).failed).toBe(0);
 		}
 	});

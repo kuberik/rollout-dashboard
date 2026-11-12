@@ -49,7 +49,7 @@
 	const shown = $derived(events.map((e, i) => ({ e, i })).filter((x) => !gap || x.i < gap[0] || x.i >= gap[1]));
 	const hidden = $derived(gap ? gap[1] - gap[0] : 0);
 	const INK: Partial<Record<Ev['kind'], string>> = { waiting: 'text-held', held: 'text-held', failed: 'text-danger' };
-	const verbInk = (e: Ev) => INK[e.kind] ?? (e.kind === 'moving' ? (e.words === 'Checking' ? 'text-progress' : 'text-active') : 'text-fg');
+	const verbInk = (e: Ev) => INK[e.kind] ?? (e.kind === 'moving' ? (/checking/i.test(e.words) ? 'text-progress' : 'text-active') : 'text-fg');
 	/** newest first: the time since the event BELOW it (the one before it in time), on the clock the ages read ("+2h 10m"); none on the oldest */
 	const delta = (i: number) => {
 		const a = events[i + 1]?.at, b = events[i]?.at;
@@ -81,7 +81,7 @@
 						{:else if e.kind === 'merged'}<ChangeKindMark kind={e.words === 'Committed' ? 'commit' : 'merge'} label={e.words} />
 						{:else if e.kind === 'rollback'}<ChangeKindMark kind="rollback" label="Rolled back" />
 						{:else if e.kind === 'deployed' || e.kind === 'redeploy'}<BakeStatusIcon bakeStatus="Succeeded" size="small" />
-						{:else if e.kind === 'moving'}<StatusMark state={e.words === 'Checking' ? 'checking' : 'deploying'} />
+						{:else if e.kind === 'moving'}<StatusMark state={/checking/i.test(e.words) ? 'checking' : 'deploying'} />
 						{:else if e.kind === 'waiting'}<StatusMark state="approval" tone="held" />
 						{:else if e.kind === 'held'}<StatusMark state="held" />
 						{:else}<StatusMark state="failed" />{/if}
@@ -89,7 +89,6 @@
 					<span class="cdh-l1 flex min-h-5 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 						<span class="t-ui whitespace-nowrap {verbInk(e)}" data-ev-verb>{e.words}</span>
 						{#if e.tier && (e.kind === 'deployed' || e.kind === 'moving' || e.kind === 'redeploy')}<Chip role="env" theme={envTheme(e.tier)} label={e.tier} />{/if}
-						{#if e.kind === 'moving' && e.wave != null}<span class="t-meta whitespace-nowrap text-fg-muted">wave {e.wave}</span>{/if}
 						{#if sites}<span class="t-meta min-w-0 truncate text-fg-muted" data-ev-sites title={sites}>{sites}</span>{/if}
 						{#if multiApp && e.app}<span class="t-meta inline-flex shrink-0 items-center gap-1 text-fg-muted" data-ev-app><AppGlyph name={e.app} size={16} class="shrink-0" />{e.app}</span>{/if}
 					</span>
