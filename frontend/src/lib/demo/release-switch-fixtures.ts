@@ -55,7 +55,7 @@ const LEDGER = build('ledger-api', 'ad', (n) => `4.${n}.0-${n}`, 40, 46, [
 	{ tier: 'dev', site: 'default', wave: 1, cluster: 'dev', at: 46, bake: 'InProgress', msg: CHECKING },
 	{ tier: 'staging', site: 'default', wave: 1, cluster: 'dev', at: 45, bake: 'Succeeded' },
 	{ tier: 'prod', site: 'eu-west-1', wave: 1, cluster: 'prod', at: 44, bake: 'Succeeded' },
-	{ tier: 'prod', site: 'us-east-1', wave: 1, cluster: 'dev', at: 44, bake: 'Deploying', msg: DEPLOYING },
+	{ tier: 'prod', site: 'us-east-1', wave: 1, cluster: 'prod', at: 44, bake: 'Deploying', msg: DEPLOYING },
 	{ tier: 'prod', site: 'ap-south-1', wave: 2, cluster: 'prod', at: 43, bake: 'Succeeded' }
 ]);
 
@@ -63,7 +63,7 @@ const SEARCH = build('search-web', 'ce', (n) => `2.${n}.0-${n}`, 1, 20, [
 	{ tier: 'dev', site: 'default', wave: 1, cluster: 'dev', at: 20, bake: 'Succeeded' },
 	{ tier: 'staging', site: 'default', wave: 1, cluster: 'dev', at: 12, bake: 'Succeeded' },
 	{ tier: 'prod', site: 'eu-central-1', wave: 1, cluster: 'prod', at: 4, bake: 'Deploying', msg: DEPLOYING },
-	{ tier: 'prod', site: 'us-west-2', wave: 2, cluster: 'dev', at: 3, bake: 'Succeeded' }
+	{ tier: 'prod', site: 'us-west-2', wave: 2, cluster: 'prod', at: 3, bake: 'Succeeded' }
 ]);
 
 export const RELEASE_SWITCH_APPS = [LEDGER.app, SEARCH.app] as const;

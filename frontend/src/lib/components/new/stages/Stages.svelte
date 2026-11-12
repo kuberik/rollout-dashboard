@@ -20,7 +20,7 @@
 	import { href as toHref } from '$lib/paths';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { avatarSrc } from '../data';
-	import { ChevronDoubleRightOutline } from 'flowbite-svelte-icons';
+	import { ChevronDoubleRightOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import { envTheme } from '../rollout-view';
 	import { SITE_MARK as SITE, type Stages, type StageState, type StagePlace, type StageColumn, type ReleaseLine, type RailItem } from './stages-model';
 
@@ -42,6 +42,20 @@
 		const ro = new ResizeObserver(measure);
 		ro.observe(e);
 		return () => { e.removeEventListener('scroll', measure); ro.disconnect(); };
+	});
+	/* THE SELECTED ROW IS ALWAYS IN VIEW: on load, on every selection change and when the form flips, the rail's OWN scroller is moved (scrollTop beside the canvas, scrollLeft above it) so the row is fully visible. Never the page, never animated. Runs after the DOM update and before paint. */
+	const FADE = 24; /* the end-edge fade is 24px: keep the row clear of it (the browser clamps at the true end) */
+	$effect(() => {
+		const e = listEl, sel = stages.release;
+		void side;
+		if (!e || !sel) return;
+		const row = e.querySelector<HTMLElement>(`[data-release-row="${CSS.escape(sel)}"]`);
+		if (!row) return;
+		const a = e.getBoundingClientRect(), b = row.getBoundingClientRect();
+		const top = b.top - a.top + e.scrollTop, left = b.left - a.left + e.scrollLeft;
+		if (top < e.scrollTop) e.scrollTop = top; else if (top + b.height + FADE > e.scrollTop + e.clientHeight) e.scrollTop = top + b.height + FADE - e.clientHeight;
+		if (left < e.scrollLeft) e.scrollLeft = left; else if (left + b.width + FADE > e.scrollLeft + e.clientWidth) e.scrollLeft = left + b.width + FADE - e.clientWidth;
+		measure();
 	});
 	const showRail = $derived(!!rail && rail.length >= 2);
 	/* a row's link keeps every other query param (calm=1 ...) and sets release */
@@ -73,6 +87,8 @@
 	/* THE RAIL FORM, decided by width and column count only (never by state or selection): the side rail only when the canvas beside it keeps COMFORTABLE columns (176px, so a held cause never wraps); otherwise the stacked scroller above a full-width canvas. Before the first measure (bw 0) the stacked form: it can never widen the page. */
 	const sideNeed = $derived(RAIL + stages.columns.length * COMFY + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
 	const side = $derived(bw > 0 && bw >= sideNeed);
+	/* a roomier rail (336px) only when the canvas beside it still keeps columns of 220px or more; decided by width alone */
+	const railW = $derived(side && bw >= sideNeed + (336 - RAIL) + stages.columns.length * (220 - COMFY) ? 336 : RAIL);
 	const horizontal = $derived(w === 0 || w >= needW);
 	const laneRow = (li: number) => 2 + (anyMulti ? 1 : 0) + li;
 	const INK: Record<StageState, string> = { deployed: 'text-fg-muted', checking: 'text-progress', deploying: 'text-active', held: 'text-held', approval: 'text-held', failed: 'text-danger', notreached: 'text-fg-subtle', notaffected: 'text-fg-muted', replaced: 'text-fg-muted' };
@@ -130,7 +146,7 @@
 <Card icon={ChevronDoubleRightOutline} title="Progress" padded={false} class={className}>
 	{#snippet rollup()}<span class="stg-rollup t-card-rollup flex min-w-0 flex-nowrap items-baseline justify-end gap-x-1 whitespace-nowrap tabular-nums" data-stages-rollup><span class="stg-long flex min-w-0 items-baseline gap-x-1">{@render parts(stages.rollup.parts)}</span><span class="stg-short min-w-0 items-baseline gap-x-1" data-stages-rollup-narrow>{@render parts((stages.narrow ?? stages.rollup).parts)}</span></span>{/snippet}
 	<div class="stg-body" bind:clientWidth={bw} style="--n: {Math.min(rail?.length ?? 0, 4)}" data-stages-body>
-	<div class="stg-split" class:has-rail={showRail} class:side={showRail && side}>
+	<div class="stg-split" class:has-rail={showRail} class:side={showRail && side} style:--rail="{railW}px">
 		{#if showRail && rail}
 			<!-- THE RELEASE RAIL: the releases on their way out, oldest first (the default); a row is one link, `?release=<build>` -->
 			<div class="stg-rail">
@@ -146,19 +162,13 @@
 			</div>
 		{/if}
 	<div class="canvas-dots stg-canvas min-w-0 px-4 py-4" bind:clientWidth={w} data-stages data-stages-form={horizontal ? 'graph' : 'list'}>
-		{#if release}
-			{#snippet releaseBody()}
-				<span class="t-code shrink-0 text-fg" data-release-build>{release.build}</span>
-				{#if release.title}<span class="t-body min-w-0 truncate text-fg-muted" title={release.title}>{release.title}</span>{/if}
-				{#if release.author}<span class="t-meta flex shrink-0 items-center gap-2 text-fg-muted"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="max-sm:hidden">{release.author}</span></span>{/if}
-				{#if release.built}<span class="t-meta shrink-0 max-sm:hidden whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
-			{/snippet}
-			<!-- THE RELEASE: the build the drawing is about; a link to its change page when the fleet knows one -->
-			{#if release.href}
-				<a href={toHref(release.href)} class="mb-4 flex min-h-5 min-w-0 items-center gap-3 hover:text-fg max-sm:-mt-3 max-sm:mb-1 max-sm:min-h-11 max-sm:gap-2" data-stages-release>{@render releaseBody()}</a>
-			{:else}
-				<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3 max-sm:gap-2" data-stages-release>{@render releaseBody()}</div>
-			{/if}
+		{#if release && (release.author || release.built || release.href)}
+			<!-- THE RELEASE LINE carries only what the selected rail row does not: who made it, how long ago, and the way to its change page (build and title live in the row) -->
+			<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3" data-stages-release>
+				{#if release.author}<span class="t-meta flex min-w-0 items-center gap-2 text-fg-muted"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate">{release.author}</span></span>{/if}
+				{#if release.built}<span class="t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
+				{#if release.href}<a href={toHref(release.href)} class="nav-link -my-2 ml-auto shrink-0" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
+			</div>
 		{/if}
 		{#if horizontal}
 			<!-- tiles top-aligned, never stretched to the lane (coordinator ruling: a one-place tile keeps its own height); the header rows and the tiles are placed on explicit tracks, with 12px between a tier's waves and 24px between tiers -->
@@ -208,7 +218,7 @@
 	.stg-list[data-more-h] { mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
 	.stg-rrow { flex: 0 0 264px; scroll-snap-align: start; border-right: 1px solid var(--k-line-subtle); box-shadow: none; }
 	.stg-rrow[aria-current='true'] { box-shadow: inset 2px 0 0 var(--k-fg); }
-	.stg-split.side { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: calc(var(--n) * 56px); }
+	.stg-split.side { display: grid; grid-template-columns: var(--rail, 272px) minmax(0, 1fr); min-height: calc(var(--n) * 56px); }
 	.stg-split.side .stg-rail { position: relative; border-bottom: 0; border-right: 1px solid var(--k-line); }
 	/* never expands the card: the list is out of flow, the row height is the canvas's */
 	.stg-split.side .stg-list { position: absolute; inset: 0; display: block; overflow-x: hidden; overflow-y: auto; scroll-snap-type: none; mask-image: none; }

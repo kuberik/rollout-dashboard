@@ -845,7 +845,15 @@ const VIEWER_AUTHORED: ReadonlySet<string> = new Set([
 	'7c14e2a',
 	'b-42',
 	'rel-64',
-	'4b9c2e1'
+	'4b9c2e1',
+	/* release-switch fixtures (opt-in apps): the viewer's own builds. The Changes list carries the viewer's changes plus only the newest team ones, so these are what make the Progress tab's "View change" resolve for the older in-flight releases (ledger-api: the default and the next; search-web: the default and four more) */
+	'ad-44',
+	'ad-45',
+	'ce-04',
+	'ce-05',
+	'ce-08',
+	'ce-12',
+	'ce-17'
 ]);
 
 /** The one place "is this sha the viewer's" is decided — see
@@ -965,6 +973,11 @@ const EXPLICIT_MERGE_MINUTES_AGO: Readonly<Record<string, number>> = {
  * it predates `DENSITY_LANES`' deepest backfill of that same sha, but is
  * never younger-looking than the generic curve says.
  */
+/** the release-switch fixtures' builds are made every 150 minutes (release-switch-fixtures.ts `created`); each change merges 20 minutes before its build, so every one stays inside the live Changes window (30 days) and its change page exists */
+const RELEASE_SWITCH_MERGE_MIN_AGO: Readonly<Record<string, number>> = Object.fromEntries([
+	...Array.from({ length: 7 }, (_, k) => [`ad-${40 + k}`, (46 - (40 + k) + 1) * 150 + 20] as const),
+	...Array.from({ length: 20 }, (_, k) => [`ce-${String(k + 1).padStart(2, '0')}`, (20 - (k + 1) + 1) * 150 + 20] as const)
+]);
 const ladderDatesCache = new WeakMap<AppFixture, number[]>();
 function ladderDatesFor(app: AppFixture): number[] {
 	const hit = ladderDatesCache.get(app);
@@ -981,8 +994,9 @@ function ladderDatesFor(app: AppFixture): number[] {
 		} else {
 			const seed = `${app.repo}-${sha}`;
 			const realCreatedMinAgo = REAL_BUILD_CREATED_MIN_AGO.get(sha);
-			ms = EXPLICIT_MERGE_MINUTES_AGO[sha]
-				? hcNow.getTime() - EXPLICIT_MERGE_MINUTES_AGO[sha] * 60_000
+			const pin = EXPLICIT_MERGE_MINUTES_AGO[sha] ?? RELEASE_SWITCH_MERGE_MIN_AGO[sha];
+			ms = pin
+				? hcNow.getTime() - pin * 60_000
 				: realCreatedMinAgo != null
 					? hcNow.getTime() - (realCreatedMinAgo + 5 + (hashStr(seed + 'buildlag') % 40)) * 60_000
 					: genericLadderDateMs(app, i);

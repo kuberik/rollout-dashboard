@@ -195,7 +195,7 @@ function drawRelease(app: string, c: AppCtx, scenario: HomeState, release: strin
 	const counted = ps.filter((p) => p.state !== 'notaffected');
 	const k = (s: StageState) => ps.filter((p) => p.state === s && !((s === 'checking' || s === 'deploying') && p.ahead)).length;
 	const ran = r == null ? 0 : c.entries.filter((e) => reached(e, r)).length;
-	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${counted.length} place${counted.length === 1 ? '' : 's'}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
+	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${counted.length} place${counted.length === 1 ? '' : 's'} on ${release}`, short: `${ran} of ${counted.length} on ${release}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
 	if (k('failed')) parts.push({ text: `${k('failed')} failing`, ink: 'danger' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
@@ -272,12 +272,15 @@ export function releaseLine(app: string, scenario: HomeState, build?: string | n
 	const lead = (build ? stops.find((s) => s.build === build) : null) ?? stops[0];
 	if (!lead || lead.custom) return null;
 	const id = buildIdentity(lead.build, places[0]?.href);
-	return { build: lead.build, title: lead.title ?? id?.title ?? null, author: lead.author ?? id?.author ?? null, built: lead.ageLabel, href: changeHrefOf(changeBySha(app, lead.build)?.href, scenario) };
+	return { build: lead.build, title: lead.title ?? id?.title ?? null, author: lead.author ?? id?.author ?? null, built: lead.ageLabel, href: changeHrefOf(changeBySha(app, lead.build)?.href ?? id?.href, scenario) };
 }
 
 
 /** the narrow form of an app rollup: more than one adverse count collapses checking + deploying into one "N in progress" (active ink); held and failed keep their own */
 export function narrowRollup(r: StageRollup, inFlight: number): StageRollup {
+	/* the narrow card prints the short spelling ("3 of 5 on 4.44.0-44"): chosen by width (this form is the container's narrow branch), never by state */
+	r = { text: '', parts: r.parts.map((p) => (p.short ? { ...p, text: p.short } : p)) };
+	r.text = r.parts.map((p) => p.text).join(' · ');
 	const live = r.parts.filter((p) => p.ink === 'progress' || p.ink === 'active');
 	if (r.parts.length - 1 < 2 || live.length < 2) return r;
 	const parts: StageRollup['parts'] = [...r.parts.filter((p) => p.ink !== 'progress' && p.ink !== 'active'), { text: `${inFlight} in progress`, ink: 'active' }];

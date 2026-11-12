@@ -175,7 +175,7 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 				if (!st.release) { expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe('No releases yet'); expect(releaseLine(app, s), `${b} ${s} ${app}`).toBeNull(); continue; }
 				/* the newest selected: N = places on it at rest (the Builds card's count minus the ones still moving or failed there) */
 				const n = Number(sel.rollup.parts[0].text.split(' ')[0]);
-				expect(sel.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${n} of ${total} place${total === 1 ? '' : 's'}`);
+				expect(sel.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${n} of ${total} place${total === 1 ? '' : 's'} on ${stops[0].build}`);
 				expect(n, `${b} ${s} ${app}`).toBeLessThanOrEqual(onNewest);
 			}
 		};
@@ -224,12 +224,12 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 	it('narrow rollup: more than one adverse count folds checking + deploying into one "N in progress"; the unit never shortens', () => {
 		beat('wave1');
 		const st = stagesOf({ kind: 'app', app: APP }, 'incident');
-		expect(st.rollup.text).toBe('2 of 5 places · 1 checking · 1 deploying');
-		expect(st.narrow?.text).toBe('2 of 5 places · 2 in progress');
+		expect(st.rollup.text).toBe('2 of 5 places on c6f19d2 · 1 checking · 1 deploying');
+		expect(st.narrow?.text).toBe('2 of 5 on c6f19d2 · 2 in progress');
 		expect(st.narrow?.parts.at(-1)?.ink).toBe('active');
 		/* one adverse count: unchanged; held and failed stay separate */
 		beat('wave1-half');
-		expect(stagesOf({ kind: 'app', app: APP }, 'incident').narrow?.text).toBe('3 of 5 places · 1 deploying');
+		expect(stagesOf({ kind: 'app', app: APP }, 'incident').narrow?.text).toBe('3 of 5 on c6f19d2 · 1 deploying');
 		const r = { text: '', parts: [{ text: '1 of 7 places', ink: 'muted' as const }, { text: '1 failing', ink: 'danger' as const }, { text: '1 checking', ink: 'progress' as const }, { text: '1 deploying', ink: 'active' as const }] };
 		expect(narrowRollup(r, 2).parts.map((p) => p.text)).toEqual(['1 of 7 places', '1 failing', '2 in progress']);
 	});
