@@ -37,7 +37,7 @@ export default defineConfig({
 		})
 	],
 	server: {
-		https: true,
+		// https is supplied by vite-plugin-mkcert (it sets server.https unless it is false).
 		host: "0.0.0.0",
 		...(!useMockApi && {
 			proxy: {

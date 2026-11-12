@@ -6,7 +6,7 @@
 		ExclamationCircleSolid,
 		CloseOutline
 	} from 'flowbite-svelte-icons';
-	import type { Rollout } from '$lib/types';
+	import type { Rollout } from '../../types';
 	import AlertPanel from './AlertPanel.svelte';
 	import { newerBuildsAre, type BlockingStory } from '$lib/view-models/blocking-story';
 	import { iconForStory } from './BlockingStoryPanel.svelte';
