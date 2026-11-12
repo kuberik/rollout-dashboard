@@ -16,6 +16,8 @@
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { plural } from '../rollout-view';
 	import type { HoldRow } from './app-model';
+	import GateText from '$lib/components/GateText.svelte';
+	import { plainGateText } from '$lib/view-models/gate-label';
 
 	let { rows }: { rows: HoldRow[] } = $props();
 	/* AA7: the card lists what HOLDS (a passing gate is the Gates tab's row, not this card's), so "N holding" is its row count; the held builds are counted ("holds 2 builds"), never listed: the Builds card lists them (AP13) */
@@ -31,14 +33,14 @@
 		<ul class="divide-y divide-line-subtle">
 			{#each holding as r (r.key)}
 				{@const isOpen = shown.has(r.key)}
-				<li class="tap-zone px-4 py-3 hover:bg-hover" data-truth-kind="hold" data-truth-gate={r.name} data-truth-holding={r.holding} data-truth-places={r.places.join(',')} data-truth-held={r.held.join(',')}>
+				<li class="tap-zone px-4 py-3 hover:bg-hover" data-truth-kind="hold" data-truth-gate={plainGateText(r.name)} data-truth-holding={r.holding} data-truth-places={r.places.join(',')} data-truth-held={r.held.join(',')}>
 					<!-- owner §5: ONE entry = cause · where · what it holds (2 lines); the sentence and the way to approve are behind the chevron -->
 					<div class="flex items-start gap-3">
 						<span class="flex h-5 w-4 shrink-0 items-center justify-center">
 							{#if r.kind === 'approval'}<StatusMark state="approval" />{:else if r.kind === 'health'}<StatusMark state="failed" />{:else}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{/if}
 						</span>
 						<div class="min-w-0 flex-1">
-							<a href={r.href} class="tap-link t-ui break-words text-fg hover:underline">{r.name}</a>
+							<a href={r.href} class="tap-link t-ui break-words text-fg hover:underline"><GateText text={r.name} /></a>
 							<!-- apps-9 AQ9: places are a dot strip (one dot per place, state-tinted: P8 anchor), the builds it holds the figure at the right; names wait behind the chevron -->
 							<p class="t-meta flex items-center gap-2 text-fg-subtle">
 								<span class="h-1.5 w-1.5 shrink-0 rounded-full {r.kind === 'approval' ? 'bg-held-solid' : r.kind === 'health' ? 'bg-danger-solid' : 'bg-fg-subtle'}" aria-hidden="true"></span>

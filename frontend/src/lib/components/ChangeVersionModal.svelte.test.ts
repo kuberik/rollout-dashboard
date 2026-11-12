@@ -1347,3 +1347,31 @@ describe('round 6 — the confirm carries recovery mode and one tile anatomy', (
 		expect(screen.queryByText(/waits for health checks instead of failing/)).toBeNull();
 	});
 });
+
+/**
+ * batch4 #128 (owner 2026-11-12): every VISIBLE surface draws a promotion gate through GateLabel (the » glyph and the source chip,
+ * or the word "Promotion"); the "Held by" line of this dialog is one of them. It never reads "Promotion from <env>" as text.
+ */
+describe('a promotion-held build row draws the label, never the text "Promotion from"', () => {
+	test('the picker row says Held by » Promotion (drawn), not a sentence', async () => {
+		const rollout = rolloutFixture({
+			status: {
+				availableReleases: [
+					{ tag: 'rel-66', version: '1.66.0-66', created: daysAgo(35) },
+					{ tag: 'rel-67', version: '2.67.0-67', created: daysAgo(1) }
+				],
+				gates: [{ name: 'ghd-promo', kind: 'promotion', passing: true, allowedVersions: ['rel-66'] }],
+				conditions: [{ type: 'GatesPassing', status: 'False', reason: 'NoAllowedVersions' }],
+				history: [{ version: { tag: 'rel-66', version: '1.66.0-66' }, bakeStatus: 'Succeeded', timestamp: daysAgo(4) }]
+			}
+		});
+		const { container } = renderModal({ rollout });
+		const held = await waitFor(() => {
+			const el = [...container.querySelectorAll('span.text-held')].find((e) => /Held by/.test(e.textContent ?? ''));
+			expect(el).toBeTruthy();
+			return el as HTMLElement;
+		});
+		expect(held.querySelector('[data-gate-label="promotion"]')).not.toBeNull();
+		expect(held.textContent).not.toContain('Promotion from');
+	});
+});
