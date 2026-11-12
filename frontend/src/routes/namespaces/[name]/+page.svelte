@@ -730,9 +730,9 @@
 						     line at every viewport ≥640 regardless of fit. `Card`'s
 						     header now wraps the rollup to its own line when the two
 						     do not both fit (see `Card.svelte`), which is the exact
-						     fix `/apps`' own `Recent activity` rail card used to bring
-						     this same count back on 2026-09-03. Same unbounded count
-						     `/apps` and `/apps/[name]` lead with — every
+						     fix the rail card brought the count back on 2026-09-03 (that
+						     card no longer exists on `/apps`; `/apps/[name]` still
+						     has its Recent activity). The count is unbounded — every
 						     `status.history` entry with a timestamp across this
 						     namespace's own rollouts, not the 7-day `deploys7d`
 						     `How it's going` already spends a row on above. -->
