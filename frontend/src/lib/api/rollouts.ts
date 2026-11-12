@@ -46,6 +46,12 @@ export type ClusterError = {
     lastSeen?: string;
     /** why the cluster's data is stale or missing: 'slow' = it is up but did not answer in time (cached data shown); 'unreachable' = fetch error / breaker open. Absent on older hubs: read as unreachable. */
     reason?: 'slow' | 'unreachable';
+    /** how the read failed, typed: timeout (no answer in time), unreachable (could not connect), rejected (HTTP error, see `status`), bad_answer (not a dashboard response). Absent on older hubs. `error` stays for compatibility and is never printed. */
+    kind?: 'timeout' | 'unreachable' | 'rejected' | 'bad_answer';
+    /** the HTTP status when kind is 'rejected' */
+    status?: number;
+    /** what was wrong with a 'bad_answer': 'not_json' | 'wrong_shape' */
+    detail?: string;
 };
 
 export type RolloutsListResponse = {

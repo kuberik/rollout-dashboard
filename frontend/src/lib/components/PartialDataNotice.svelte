@@ -26,7 +26,7 @@
 	 * svelte`'s 404 and `ErrorState`'s missing-object case already settled on.
 	 *
 	 * ⭐ ONE SENTENCE, THE LIST UNDER `Details`. The per-cluster list (each
-	 * carrying a plain sentence chosen by the typed `reason`, with the raw error beneath it as muted secondary text so "HTTP 403" stays visible) used to sit inside `message` itself — `AlertPanel`'s message
+	 * carrying a plain sentence chosen by the typed `reason`, the raw server text only where those words name no cause (`clusterRawNote`), as muted secondary text) used to sit inside `message` itself — `AlertPanel`'s message
 	 * slot is for the one concrete consequence, always printed; a growing list
 	 * of cluster names belongs behind the same `Details` disclosure
 	 * `ErrorState`'s own evidence list already uses (`footnoteBody`), not
@@ -36,7 +36,7 @@
 	import FactList, { type Fact } from './FactList.svelte';
 	import type { ClusterError } from '$lib/api/rollouts';
 	import { formatClockTime } from '$lib/display-time';
-	import { clusterNoticeCopy, clusterDetail } from '$lib/view-models/cluster-errors';
+	import { clusterNoticeCopy, clusterDetail, clusterRawNote } from '$lib/view-models/cluster-errors';
 	import { RefreshOutline } from 'flowbite-svelte-icons';
 
 	let {
@@ -60,7 +60,7 @@
 	const title = $derived(copy.title);
 	const message = $derived(copy.message);
 	const facts = $derived<Fact[]>(
-		errors.map((ce) => ({ label: ce.name, value: clusterDetail(ce), note: ce.error || undefined }))
+		errors.map((ce) => ({ label: ce.name, value: clusterDetail(ce), note: clusterRawNote(ce) }))
 	);
 </script>
 

@@ -18,12 +18,53 @@ export function clusterReason(e: ClusterError): 'slow' | 'unreachable' {
 	return e.reason === 'slow' ? 'slow' : 'unreachable';
 }
 
+export type ClusterKind = 'timeout' | 'unreachable' | 'rejected' | 'bad_answer';
+const KINDS: readonly string[] = ['timeout', 'unreachable', 'rejected', 'bad_answer'];
+const isKind = (k: string | undefined): k is ClusterKind => !!k && KINDS.includes(k);
+
 /**
- * The Details line for one cluster, chosen by the typed `reason` and nothing else. The server's raw error ("HTTP 403", "dial tcp …: i/o timeout") is shown
- * beneath it as secondary text by the notice, never branched on.
+ * The typed way a cluster read failed. The hub's `kind` wins; an older hub only sent `reason`, where 'slow' meant a timeout and anything else
+ * (or nothing) meant unreachable. Never derived from the `error` text.
+ */
+export function clusterKind(e: ClusterError): ClusterKind {
+	if (isKind(e.kind)) return e.kind;
+	return clusterReason(e) === 'slow' ? 'timeout' : 'unreachable';
+}
+
+const DETAILS: readonly string[] = ['not_json', 'wrong_shape'];
+
+/**
+ * The Details line for one cluster, plain words chosen by the typed kind (and status / detail) and nothing else, always naming the cluster. A stale-and-slow
+ * cluster keeps the sentence that says it is up. Where the typed fields carry no cause (see clusterRawNote) the sentence stays generic.
  */
 export function clusterDetail(e: ClusterError): string {
-	return clusterReason(e) === 'slow' ? `${e.name} is up, but did not answer in time.` : 'Could not be reached.';
+	if (clusterReason(e) === 'slow') return `${e.name} is up, but did not answer in time.`;
+	switch (clusterKind(e)) {
+		case 'timeout':
+			return `${e.name} did not answer in time.`;
+		case 'rejected':
+			return e.status ? `${e.name} refused the hub (HTTP ${e.status}).` : `${e.name} refused the hub.`;
+		case 'bad_answer':
+			if (e.detail === 'not_json') return `${e.name} answered with something that is not JSON.`;
+			if (e.detail === 'wrong_shape') return `${e.name} answered with JSON that is not a dashboard response.`;
+			return `${e.name} answered with something the dashboard could not read.`;
+		default:
+			return `${e.name} could not be reached.`;
+	}
+}
+
+/**
+ * The raw server message, but ONLY for an entry whose typed copy names no cause: a rejection without a status, a bad answer without a known detail, or
+ * a kind this build does not know. A fully typed entry returns undefined, so the raw text is never printed beside words that already say it.
+ */
+export function clusterRawNote(e: ClusterError): string | undefined {
+	if (!e.error) return undefined;
+	const unknownKind = !!e.kind && !isKind(e.kind);
+	const noCause =
+		unknownKind ||
+		(e.kind === 'rejected' && !e.status) ||
+		(e.kind === 'bad_answer' && !(e.detail && DETAILS.includes(e.detail)));
+	return noCause ? e.error : undefined;
 }
 
 export type ClusterNoticeCopy = { stale: boolean; slow: boolean; title: string; message: string };

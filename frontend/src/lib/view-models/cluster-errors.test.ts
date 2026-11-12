@@ -54,21 +54,50 @@ it('the slow message agrees in number, and no stale copy uses "live" as a state 
 	}
 });
 
-import { clusterDetail } from './cluster-errors';
+import { clusterDetail, clusterKind, clusterRawNote } from './cluster-errors';
 it('the Details sentence is plain words chosen by the typed reason, and names its cluster', () => {
 	const raw = 'Get "https://10.0.0.5:6443/api": dial tcp 10.0.0.5:6443: i/o timeout';
 	const slow = clusterDetail({ ...stale('prod', 'slow'), error: raw });
 	const unr = clusterDetail({ ...stale('prod', 'unreachable'), error: raw });
 	const none = clusterDetail({ ...e('prod'), error: raw });
 	expect(slow).toBe('prod is up, but did not answer in time.');
-	expect(unr).toBe('Could not be reached.');
+	expect(unr).toBe('prod could not be reached.');
 	expect(none).toBe(unr);
 	for (const t of [slow, unr, none]) expect(t).not.toMatch(/dial|tcp|10\.0|timeout|https/);
 });
-it('the slow and the unreachable headings use one grammar: cause — consequence, never a middle dot', () => {
+it('the slow and the unreachable headings keep the settled grammar: cause — consequence, never a middle dot', () => {
 	for (const r of ['slow', 'unreachable'] as const) expect(clusterNoticeCopy([stale('prod', r)], 'Home', '09:41').title).not.toContain(' · ');
 });
-it('the notice lists the plain detail and keeps ce.error beneath it as the note', () => {
+it('the notice lists the plain detail and takes any raw text only through clusterRawNote', () => {
 	const src = readFileSync('src/lib/components/PartialDataNotice.svelte', 'utf8');
-	expect(src).toMatch(/value: clusterDetail\(ce\), note: ce\.error/);
+	expect(src).toMatch(/value: clusterDetail\(ce\)/);
+	expect(src).toMatch(/note: clusterRawNote\(ce\)/);
+	expect(src).not.toMatch(/ce\.error/);
+});
+
+const typed = (extra: Record<string, unknown>) => ({ ...e('prod'), error: 'raw dial tcp 10.0.0.5: i/o timeout', ...extra }) as never;
+it('typed kinds map to plain words naming the cluster and carrying the cause', () => {
+	expect(clusterDetail(typed({ kind: 'timeout' }))).toBe('prod did not answer in time.');
+	expect(clusterDetail(typed({ kind: 'unreachable' }))).toBe('prod could not be reached.');
+	expect(clusterDetail(typed({ kind: 'bad_answer', detail: 'not_json' }))).toBe('prod answered with something that is not JSON.');
+	expect(clusterDetail(typed({ kind: 'bad_answer', detail: 'wrong_shape' }))).toBe('prod answered with JSON that is not a dashboard response.');
+	// no kind (older hub) reads as unreachable
+	expect(clusterDetail(e('prod'))).toBe('prod could not be reached.');
+	expect(clusterKind(typed({ kind: 'rejected' }))).toBe('rejected');
+	expect(clusterKind({ ...stale('prod', 'slow') })).toBe('timeout');
+	expect(clusterKind(e('prod'))).toBe('unreachable');
+});
+it('rejected always prints the HTTP status (401, 403, 5xx)', () => {
+	for (const status of [401, 403, 503]) expect(clusterDetail(typed({ kind: 'rejected', status }))).toBe(`prod refused the hub (HTTP ${status}).`);
+});
+it('a fully typed entry carries no raw note', () => {
+	for (const x of [{ kind: 'timeout' }, { kind: 'unreachable' }, { kind: 'rejected', status: 403 }, { kind: 'bad_answer', detail: 'not_json' }, { kind: 'bad_answer', detail: 'wrong_shape' }, {}]) {
+		expect(clusterRawNote(typed(x))).toBeUndefined();
+	}
+});
+it('an entry whose typed copy has no cause keeps the raw message as the note', () => {
+	for (const x of [{ kind: 'rejected' }, { kind: 'bad_answer' }, { kind: 'bad_answer', detail: 'new_thing' }, { kind: 'mystery' }]) {
+		expect(clusterRawNote(typed(x))).toBe('raw dial tcp 10.0.0.5: i/o timeout');
+	}
+	expect(clusterRawNote({ ...e('prod'), error: '', kind: 'rejected' } as never)).toBeUndefined();
 });
