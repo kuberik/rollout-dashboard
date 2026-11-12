@@ -313,7 +313,9 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 		const pinned = (A.items.find((i) => i.app === app)?.placeList ?? []).some((p) => p.tier === tierKey && (!region || p.label === region) && p.pinned);
 		return t && x ? { build: x.build, from: x.from, hold: t.hold ? (x.reason ?? 'Held').replace(/^Waiting on /, 'Waits on ') : pinned ? HELD_BY_PIN : null } : null;
 	};
-	const held = inb.filter((t) => t.hold && !failedApps.has(t.app)), ready = inb.filter((t) => !t.hold && !failedApps.has(t.app));
+	/* the same rule for an approval the viewer can give: its Attention card is the app's one card here */
+	const carded = new Set([...failedApps, ...attRows.map((r) => r.app)]);
+	const held = inb.filter((t) => t.hold && !carded.has(t.app)), ready = inb.filter((t) => !t.hold && !carded.has(t.app));
 	const nAp = held.filter((t) => t.hold === 'approval').length;
 	const heldRollup: Rollup = [...(nAp ? [{ text: needApprovalCount(nAp), ink: 'held' as const }] : []), ...(held.length - nAp ? [`${held.length - nAp} held`] : [])];
 	const inSet = new Set(inb.map((t) => t.app));

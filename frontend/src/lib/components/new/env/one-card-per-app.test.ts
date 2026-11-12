@@ -24,9 +24,7 @@ const names = (): string[] => [
 ];
 afterEach(uninstallEdge);
 
-/* An approval the viewer can give is an Attention card AND its Held tile today (the tile carries the gangway); that is not named by the ruling and is reported, not changed. */
-const failingDup = (ss: string[]): boolean => ss.filter((x) => x !== 'approval').length > 1 || (ss.includes('approval') && ss.includes('banner'));
-describe('no app appears in two sections of one /envs page (a failing app: Attention or banner only)', () => {
+describe('no app appears in two sections of one /envs page (a failing app or an approval: its Attention card or the banner only)', () => {
 	for (const edge of [false, true]) {
 		it(`over the ${edge ? 'incident + edge' : 'incident'} fixture, every environment and region`, () => {
 			if (edge) installEdge();
@@ -34,7 +32,7 @@ describe('no app appears in two sections of one /envs page (a failing app: Atten
 			for (const n of names()) {
 				const P = envPage('incident', n);
 				if (!P) continue;
-				for (const [app, ss] of sectionsOf(P)) if (failingDup(ss)) dup.push(`${n}: ${app} in ${ss.join(' + ')}`);
+				for (const [app, ss] of sectionsOf(P)) if (ss.length > 1) dup.push(`${n}: ${app} in ${ss.join(' + ')}`);
 			}
 			expect(dup).toEqual([]);
 		}, 60_000); /* builds the page model of every environment and region: slow under a loaded worker */
