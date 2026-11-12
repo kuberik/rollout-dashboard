@@ -8,16 +8,19 @@ const OFFSET_LATE = '2026-10-24T19:00:00Z';
 const OLD = '2026-10-01T00:00:00Z';
 
 /* rolloutsPage and homePage read `rollouts(hs)` from ./data: wrap it so chosen rows carry the trap instants (the fixture keeps its own state otherwise) */
-const traps = vi.hoisted(() => ({ set: null as null | ((rows: any[]) => void), ev: null as null | ((evs: any[]) => any[]) }));
+const traps = vi.hoisted(() => ({ set: null as null | ((rows: any[]) => void), ev: null as null | ((evs: any[]) => any[]), hist: null as null | ((h: any[]) => any[]) }));
 vi.mock('./data', async (orig) => {
 	const real = await orig<typeof import('./data')>();
-	return { ...real, fleet24hEvents: (...a: Parameters<typeof real.fleet24hEvents>) => { const e = real.fleet24hEvents(...a).map((x) => ({ ...x })); return traps.ev ? traps.ev(e) : e; }, rollouts: (...a: Parameters<typeof real.rollouts>) => { const R = real.rollouts(...a); traps.set?.(R.rows); return R; } };
+	return { ...real, historyOfChange: (...a: Parameters<typeof real.historyOfChange>) => { const h = real.historyOfChange(...a).map((x) => ({ ...x })); return traps.hist ? traps.hist(h) : h; }, fleet24hEvents: (...a: Parameters<typeof real.fleet24hEvents>) => { const e = real.fleet24hEvents(...a).map((x) => ({ ...x })); return traps.ev ? traps.ev(e) : e; }, rollouts: (...a: Parameters<typeof real.rollouts>) => { const R = real.rollouts(...a); traps.set?.(R.rows); return R; } };
 });
 import * as D from './data';
 import { runwayRow, nextThing } from './rollout-view';
 import { rolloutsPage } from './rollouts-page';
 import { homePage } from './home-page';
 import { rides, newest } from './change-view';
+import { approvalOf } from './Footprint.svelte';
+import { attentionOrder } from './changes-page';
+import { findChange, classified, spineOf } from './change/detail-model';
 
 const rowOf = (over: Partial<TRow>): TRow => ({ ...(D.rollouts('incident').rows[0] as TRow), ...over });
 
@@ -154,5 +157,82 @@ describe('change-view', () => {
 		const { R, a, b } = pair('moving', true);
 		const out = rides([{ ...a, mergedAt: OFFSET_EARLY, since: OLD }, { ...b, mergedAt: OFFSET_LATE, since: OLD }] as never, R.rows, null).filter((r) => r.bucket === 'moving');
 		expect(out[0].items.map((c) => c.key)).toEqual(['k-late', 'k-early']);
+	});
+});
+
+
+describe('home page deploys: the app row follows the latest event by instant', () => {
+	it(':158 the app row is the build of the LATEST event by instant (not by string)', () => {
+		traps.ev = (evs) => {
+			const X = evs.filter((e) => e.app === 'checkout-api');
+			for (const e of evs) e.at = OLD;
+			const [a, b] = X;
+			a.kind = 'deploy'; a.build = 'build-A'; a.at = OFFSET_EARLY; a.tier = 'prod';
+			b.kind = 'deploy'; b.build = 'build-B'; b.at = OFFSET_LATE; b.tier = 'prod';
+			for (const e of X.slice(2)) e.build = 'other';
+			return evs;
+		};
+		try {
+			const d = homePage('incident').fleet.deploys.find((x) => x.app === 'checkout-api')!;
+			expect(d.key).toBe('deploy|build-B|checkout-api');
+		} finally { traps.ev = null; }
+	});
+	it(':162 one default site, two places: the link is the place of the LATEST event by instant', () => {
+		traps.ev = (evs) => {
+			const X = evs.filter((e) => e.app === 'checkout-api');
+			for (const e of evs) e.at = OLD;
+			X.forEach((e) => { e.kind = 'deploy'; e.build = 'build-A'; e.tier = 'prod'; e.place = 'prod'; e.href = '/rollouts/c0/ns/other'; });
+			X[0].href = '/rollouts/c1/ns/early'; X[0].at = OFFSET_EARLY;
+			X[1].href = '/rollouts/c2/ns/late'; X[1].at = OFFSET_LATE;
+			return evs;
+		};
+		try {
+			const d = homePage('incident').fleet.deploys.find((x) => x.app === 'checkout-api')!;
+			expect(d.href).toBe('/rollouts/c2/ns/late');
+		} finally { traps.ev = null; }
+	});
+});
+describe('change-view stopped rides: equal instants keep input order', () => {
+	it('two stopped rides at the SAME instant (different offsets) keep input order', () => {
+		const C = D.changes('incident'), R = D.rollouts('incident');
+		const base = C.items.find((c) => rides([c], R.rows, null)[0]?.bucket === 'stopped')!;
+		const mk = (k: string, since: string) => ({ ...base, key: k, href: `/nowhere/${k}`, where: `${base.where}-${k}`, since, mergedAt: OLD });
+		const out = rides([mk('k-z', '2026-10-24T19:00:00Z'), mk('k-off', '2026-10-24T21:00:00+02:00')] as never, R.rows, null).filter((r) => r.bucket === 'stopped');
+		expect(out.map((r) => r.items[0].key)).toEqual(['k-z', 'k-off']);
+	});
+});
+
+/* QA70: the three sites whose ORDER changed. Each input mixes offsets so string order and time order disagree. */
+describe('Footprint approvalOf', () => {
+	it('names the place with the EARLIEST instant first (href and order)', () => {
+		const base = D.rollouts('incident').rows.find((r) => r.group === 'approval')!;
+		const a = { ...base, place: 'p-offset', href: '/h/offset', since: OFFSET_EARLY }, b = { ...base, place: 'p-z', href: '/h/z', since: OFFSET_LATE };
+		const r = approvalOf({ app: base.app } as never, [b, a])!;
+		expect(r.href).toBe('/h/offset');
+		expect(r.text).toContain('p-offset and p-z');
+	});
+});
+
+describe('changes page Attention order', () => {
+	it('failing first, then the earliest ask first, by instant', () => {
+		const ps = [
+			{ state: 'approval-yours', k: 'z', t: OFFSET_LATE }, { state: 'approval-yours', k: 'offset', t: OFFSET_EARLY },
+			{ state: 'approval-yours', k: 'none', t: null }, { state: 'failed', k: 'fail', t: OFFSET_LATE }
+		];
+		expect(attentionOrder(ps, (p) => p.t).map((p) => p.k)).toEqual(['fail', 'offset', 'z', 'none']);
+	});
+});
+
+describe('change detail spine order', () => {
+	it('events run oldest first by instant, whatever offset each is written in', () => {
+		const stamp = (i: number) => { const t = Date.UTC(2026, 9, 24, 8 + i); return i % 2 ? new Date(t + 2 * 3600e3).toISOString().replace(/\.\d+Z$/, '+02:00').replace('Z', '+02:00') : new Date(t).toISOString().replace(/\.\d+Z$/, 'Z'); };
+		traps.hist = (h) => h.map((x, i) => ({ ...x, at: stamp(i) }));
+		try {
+			const c = findChange('github.com/exampleco/invoice-api/pull/37', 'incident')!;
+			const ev = spineOf(c, 'incident', classified(c, 'incident').places);
+			const ms = ev.map((e) => Date.parse((e as any).order ?? e.at));
+			expect(ms.length).toBeGreaterThanOrEqual(3);
+			expect([...ms].sort((x, y) => x - y)).toEqual(ms);
+		} finally { traps.hist = null; }
 	});
 });

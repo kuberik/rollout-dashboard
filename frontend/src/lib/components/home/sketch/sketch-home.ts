@@ -4,7 +4,7 @@
  * attention elsewhere (with whose it is), what was rolled back, environment health, in motion.
  * `calm` drops failures (and their rolled-back echoes) so the calm state can be shot too.
  */
-import { oldestFirst, newestFirst } from '$lib/instant';
+import { oldestFirst, newestFirst, earliest } from '$lib/instant';
 import type { AppEnv, AppModel, EnvState, HomeModel } from '$lib/view-models/home-model';
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
 import { liveSource } from './fleet-source.svelte';
@@ -240,7 +240,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 				where: at.map((h) => h.e.env),
 				status: `${VERB[s] ?? ''} ${placeList(at.map((h) => h.e))}`.trim(),
 				next: nextFor(a, at[0].i, s),
-				since: at.map((h) => h.since).filter(Boolean).sort()[0] ?? null,
+				since: earliest(at.map((h) => h.since)),
 				tone: toneOf(s),
 				stops,
 				mergedAt: lead.myChanges.find((c) => c.ref === ref)?.mergedAt ?? null,

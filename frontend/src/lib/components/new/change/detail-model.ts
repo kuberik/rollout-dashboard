@@ -6,7 +6,7 @@
  * v2 r4: ONE count per page (`countsOf`), every place's state/build/age is the TAB's current deploy (`currentAt`), a place the change does
  * not reach is listed as "not affected", the History spine keeps every place's current deploy and waiting events read in the tab's own age.
  */
-import { oldestFirst, newestFirst, earliest, latest, isLater } from '$lib/instant';
+import { oldestFirst, newestFirst, earliest, latest, isLater, isNotEarlier } from '$lib/instant';
 import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import {
@@ -98,7 +98,7 @@ export function classified(c: TChange, scenario: HomeState): { all: Unit[]; plac
 	return { all, places, unaffected };
 }
 /** a build is looked up by the CHANGE's repo (platform-telemetry), never by the place's app name (telemetry-indexer), so a multi-service change finds its build on every service */
-const carriesBuild = (c: Pick<TChange, 'mergedAt' | 'repo'>, v: RawV) => { const k = changeBySha(c.repo, (v.revision ?? v.tag ?? '').slice(0, 7)); return !!k && k.mergedAt >= c.mergedAt; };
+const carriesBuild = (c: Pick<TChange, 'mergedAt' | 'repo'>, v: RawV) => { const k = changeBySha(c.repo, (v.revision ?? v.tag ?? '').slice(0, 7)); return !!k && isNotEarlier(k.mergedAt, c.mergedAt); };
 export const runningN = (ps: Place[]) => ps.filter((p) => p.kind === 'running').length;
 /** CE2: THE count of the page, with its unit, read from here by the header, the Places rollup and the tests: "9 places · 3 live · 5 waiting · 1 not affected" */
 export function countsOf(all: Unit[], places: Place[]) {
@@ -498,7 +498,7 @@ export function openedOf(p: Place, scenario: HomeState, landed = false): Opened 
 		const hb = candidateBuilds(row).find((h) => h.build === p.build);
 		const w = hb ? { build: hb.build, title: hb.title, author: hb.author, at: hb.created } : (() => { const x = buildInQuestionFacts(row); return x ? { build: x.build, title: x.title, author: x.author, at: x.since } : null; })();
 		const dep = deployedBuild(row);
-		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(waitClock(row, scenario) ?? w?.at ?? p.since), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (h.created ?? '') > (w?.at ?? '')).sort((a, b) => newestFirst(a.created, b.created))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
+		return { state: 'waiting', title: row.group === 'approval' ? stateWord('approval')! : row.word, since: ago(waitClock(row, scenario) ?? w?.at ?? p.since), took: null, build: w?.build ?? p.build, relation: dep.build ? { word: `${p.label} runs`, build: dep.build, age: ago(dep.at) } : null, commit: w ? { title: w.title ?? '', author: w.author } : null, steps, selected: pick(steps), facts, rule: { text: row.group === 'approval' ? 'Waiting for approval' : (holdText(row, scenario) ?? 'Held by a rule'), href: `${p.href}/gates` }, newerBuild: (() => { const n = candidateBuilds(row).filter((h) => h.build !== (w?.build ?? p.build) && (w?.at ? isLater(h.created, w.at) : !!h.created)).sort((a, b) => newestFirst(a.created, b.created))[0]; return n ? { build: n.build, age: ago(n.created) } : null; })(), newer: null };
 	}
 	const bc = buildCommitOf(p.href, p.current);
 	const moving = !!row && (row.state === 'deploying' || row.state === 'checking');
@@ -562,7 +562,7 @@ export function buildGroups(c: TChange, scenario: HomeState, rows: { p: Place; a
 		if (!g) {
 			const own = firstBuildOf(c, scenario, p.app) === build;
 			const kc = carries ? changeBySha(c.repo, build) : null;
-			const newer = carries && !own ? (kc ? items.filter((i) => i.apps.includes(p.app) && i.changeHref !== c.changeHref && i.mergedAt > c.mergedAt && i.mergedAt <= kc.mergedAt).length : null) : 0;
+			const newer = carries && !own ? (kc ? items.filter((i) => i.apps.includes(p.app) && i.changeHref !== c.changeHref && isLater(i.mergedAt, c.mergedAt) && isNotEarlier(kc.mergedAt, i.mergedAt)).length : null) : 0;
 			const newest = runsIn(p.app, scenario).some((x) => x.word === 'on the newest' && x.build === build);
 			g = { key: k, app: p.app, build, own, carries, newest, newer, rows: [] };
 			by.set(k, g);

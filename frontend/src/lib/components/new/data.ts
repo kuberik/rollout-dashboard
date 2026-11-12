@@ -615,7 +615,7 @@ export function placesOf(state: HomeState, app: string): (AppPlace & { newest: s
 		const pv = shortBuild(p.version)!, qv = shortBuild(q.version)!;
 		if (SEMVER.test(pv) && SEMVER.test(qv)) return semverCmp(qv, pv);
 		const pc = changeBySha(app, pv)?.mergedAt, qc = changeBySha(app, qv)?.mergedAt;
-		if (pc && qc && pc !== qc) return qc.localeCompare(pc);
+		if (pc && qc && pc !== qc) return newestFirst(pc, qc);
 		return newestFirst(p.arrivedAt, q.arrivedAt);
 	})[0];
 	const order = orderOfEnvs(envs);
@@ -715,7 +715,7 @@ export function apps(state: HomeState) {
 			const pv = shortBuild(p.version)!, qv = shortBuild(q.version)!;
 			if (SEMVER.test(pv) && SEMVER.test(qv)) return semverCmp(qv, pv);
 			const pc = changeBySha(a.app, pv)?.mergedAt, qc = changeBySha(a.app, qv)?.mergedAt;
-			if (pc && qc && pc !== qc) return qc.localeCompare(pc);
+			if (pc && qc && pc !== qc) return newestFirst(pc, qc);
 			return newestFirst(p.arrivedAt, q.arrivedAt);
 		})[0];
 		const order = orderOfEnvs(envs);

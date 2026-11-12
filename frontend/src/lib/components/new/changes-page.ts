@@ -122,6 +122,10 @@ export function classifyChanges(hs: HomeState): { mineP: PChange[]; teamP: PChan
 	return { mineP: classify(mineAll, leadKey, true), teamP: classify(teamAll, null, false), leadKey };
 }
 
+/** Attention order: failing first, then the OLDEST ask first (compared as instants; a change with no clock goes last). */
+export function attentionOrder<T extends { state: string }>(ps: T[], askSince: (p: T) => string | null): T[] {
+	return [...ps].sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed') || oldestFirst(askSince(a), askSince(b)));
+}
 export function changesPage(hs: HomeState): ChangesPage {
 	const { mineP, teamP, leadKey } = classifyChanges(hs);
 
@@ -146,8 +150,7 @@ export function changesPage(hs: HomeState): ChangesPage {
 		if (p.state === 'approval-yours') return (r ? waitClock(r, hs) : null) ?? p.ride.since ?? p.c.since;
 		return p.ride.since ?? p.c.since;
 	};
-	const attP = mineP.filter((p) => (p.state === 'failed' || p.state === 'approval-yours') && p !== lead)
-		.sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed') || oldestFirst(askSince(a), askSince(b)));
+	const attP = attentionOrder(mineP.filter((p) => (p.state === 'failed' || p.state === 'approval-yours') && p !== lead), askSince);
 	const attention: AttentionItem[] = attP.map((p) => {
 		const failed = p.state === 'failed';
 		const you = isViewer(p.c.who);

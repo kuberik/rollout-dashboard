@@ -280,7 +280,7 @@ export function heldDownstream(m: { apps: { app: string; envs: EnvLike[] }[] }, 
 	for (const a of m.apps)
 		if (names.includes(a.app))
 			for (const e of a.envs)
-				if ((e.state === 'awaiting-approval' || e.state === 'held-by-rule') && e.heldSince && mergedAt >= e.heldSince && !e.myChanges.some((c) => c.ref === ref)) hits.push(e);
+				if ((e.state === 'awaiting-approval' || e.state === 'held-by-rule') && e.heldSince && isNotEarlier(mergedAt, e.heldSince) && !e.myChanges.some((c) => c.ref === ref)) hits.push(e);
 	if (!hits.length) return null;
 	const top = hits.reduce<TierKey>((b, e) => (RANK_T[tierOf(e)] > RANK_T[b] ? tierOf(e) : b), tierOf(hits[0]));
 	const here = hits.filter((e) => tierOf(e) === top);

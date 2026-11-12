@@ -1013,7 +1013,7 @@
 				if (!finishedAt || isLater(c.lastTransitionTime, finishedAt)) finishedAt = c.lastTransitionTime;
 			}
 			if (!finishedAt) continue;
-			if (!best || finishedAt > best.finishedAt) {
+			if (!best || isLater(finishedAt, best.finishedAt)) {
 				best = { name: item.status?.jobName || item.metadata?.name || 'test', finishedAt };
 			}
 		}

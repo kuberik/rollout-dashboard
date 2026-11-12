@@ -137,7 +137,7 @@ export function rides(items: TChange[], rows: TRow[], leadKey: string | null, tr
 	const B: Record<Bucket, number> = { stopped: 0, moving: 1, landed: 2 };
 	out.sort((a, b) =>
 		a.bucket !== b.bucket ? B[a.bucket] - B[b.bucket]
-		: a.bucket === 'stopped' ? lead(b) - lead(a) || urgency(asRow(a), asRow(b)) || newestFirst(a.since, b.since)
+		: a.bucket === 'stopped' ? lead(b) - lead(a) || urgency(asRow(a), asRow(b))
 		: a.bucket === 'moving' ? rank(ownTier(b.items[0]) ?? 'dev') - rank(ownTier(a.items[0]) ?? 'dev') || newestFirst(a.since, b.since)
 		: newestFirst(a.since, b.since));
 	return out;

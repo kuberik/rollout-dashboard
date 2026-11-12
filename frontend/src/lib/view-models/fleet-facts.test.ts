@@ -321,3 +321,17 @@ describe('appsTotalLabel — the header and the fold agree', () => {
 		expect(appsTotalLabel({ apps: 0, mappedApps: 0 })).toBe('0 apps');
 	});
 });
+
+/* QA70: one unparseable `created` used to NaN-poison Math.min(getTime()) and hide the oldest newer release */
+describe('qa70 waitingSince NaN', () => {
+	it('one unparseable created never hides the oldest newer release', () => {
+		const r = { metadata: { name: 'w', namespace: 'ns' }, spec: {}, status: {
+			history: [{ version: { tag: 'old', version: '1.0.0' }, bakeStatus: 'Succeeded', timestamp: '2026-10-01T00:00:00Z' }],
+			availableReleases: [
+				{ tag: 'old', version: '1.0.0', created: '2026-10-01T00:00:00Z' },
+				{ tag: 'bad', version: '1.5.0', created: 'not-a-date' },
+				{ tag: 'new1', version: '2.0.0', created: '2026-10-11T10:00:00Z' }
+			] } } as unknown as Rollout;
+		expect(waitingSince(buildRolloutCards([r], [], new Date('2026-10-12T12:00:00Z'))[0])).toBe(Date.parse('2026-10-11T10:00:00Z'));
+	});
+});

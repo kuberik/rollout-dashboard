@@ -10,7 +10,7 @@
  *   yours     "where are my changes?"                                            → journey ticks
  *   activity  "what just happened?"                                              → a spined timeline
  */
-import { newestFirst } from '$lib/instant';
+import { newestFirst, earliest } from '$lib/instant';
 import type { EnvState, HomeModel } from '$lib/view-models/home-model';
 import { changeBySha, homeModel, source, NOW, type HomeState } from '../sketch/home-data';
 import { buildView, type HomeView } from '../sketch/home-view';
@@ -217,7 +217,7 @@ export function riser(c: Compass): Station[] {
 				ref: (isLead ? L!.ref : f?.ref) ?? null,
 				title: (isLead ? L!.title : f?.title) ?? null,
 				where: ps.length > 1 ? `${ps.length} regions` : ps[0].label,
-				since: ps.map((p) => p.since).filter(Boolean).sort()[0] ?? null,
+				since: earliest(ps.map((p) => p.since)),
 				href: ps[0].href,
 				mine: ps.some((p) => p.mine) || !!f,
 				lead: isLead,
