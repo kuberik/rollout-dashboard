@@ -20,6 +20,8 @@
 	import { UndoOutline, ExclamationCircleSolid, ChevronDownOutline } from 'flowbite-svelte-icons';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
+	import CauseText from '$lib/components/CauseText.svelte';
+	import type { Cause } from '$lib/view-models/gate-label';
 	import Chip from '$lib/components/Chip.svelte';
 	import TraySteps from './TraySteps.svelte';
 	import PipelineCard from './PipelineCard.svelte';
@@ -78,12 +80,12 @@
 	/* U9: the dl's rows. prev = the build this one replaces / the last healthy one; reach = the tab's Runs-in rollup (compact: "To deploy", the tab's own Newer builds count and its hold clause; never the catalogue distance the app page prints) split into label + value */
 	const prev = $derived(wb ? { label: 'Replaces', build: buildTitle(row), age: `${ago(row.deployedAt)} ago` } : replaced ? { label: failing ? 'Last healthy' : 'rolledBack' in replaced ? 'Rolled back from' : 'Replaces', build: replaced.build, age: `${failing ? 'deployed ' : ''}${ago(replaced.at)} ago` } : null);
 	const reach = $derived.by(() => {
-		if (compact) { const n = newestBuild(row); if (!n || failing || !n.toDeploy) return null; /* the TAB's own count (what this place is offered to deploy), never the catalogue distance the app page's ledger prints */ return { label: 'To deploy', build: null as string | null, value: `${n.toDeploy}${n.hold ? ` · ${n.hold}` : ''}` }; /* lead r9: the tab's own sentence, count first ('2 · held: waiting for approval'), never 'N, held:' */ }
+		if (compact) { const n = newestBuild(row); if (!n || failing || !n.toDeploy) return null; /* the TAB's own count (what this place is offered to deploy), never the catalogue distance the app page's ledger prints */ return { label: 'To deploy', build: null as string | null, value: `${n.toDeploy}${n.hold && !n.holdC ? ` · ${n.hold}` : ''}`, holdC: n.holdC }; /* lead r9: the tab's own sentence, count first ('2 · held: waiting for approval'), never 'N, held:' */ }
 		if (!facts) return null;
 		const m = /^(\d+) of (\d+) places? on the newest build$/.exec(facts), all = /^All (\d+) places? on the newest build$/.exec(facts);
 		/* rollouts-8 V10: the newest build is NAMED (mono) and the fraction carries its unit */
 		const nb = newestBuild(row)?.newest ?? null;
-		return { label: 'Newest build', build: nb, value: m ? `reached ${m[1]} of ${m[2]} place${m[2] === '1' ? '' : 's'}` : all ? `reached all ${all[1]} places` : facts };
+		return { label: 'Newest build', holdC: null as Cause | null, build: nb, value: m ? `reached ${m[1]} of ${m[2]} place${m[2] === '1' ? '' : 's'}` : all ? `reached all ${all[1]} places` : facts };
 	});
 	/* r7 U3: ONE state per item. An approval whose own deploy is still baking is "Checking" on its row and on the tab's pill; the pane says the same word with the clock ("Checking 5 min left"),
 	   and the waiting build the Approve acts on is named as such in the list */
@@ -181,7 +183,7 @@
 								</dd>
 							</div>
 						{/if}
-						{#if reach && !(ap && sameBuild)}<div class="sw-r" data-slipway-facts><dt class="t-meta text-fg-muted">{reach.label}</dt><dd class="t-ui text-fg">{#if reach.build}<span class="t-code tabular-nums">{reach.build}</span>{' '}{/if}{reach.value}</dd></div>{/if}
+						{#if reach && !(ap && sameBuild)}<div class="sw-r" data-slipway-facts><dt class="t-meta text-fg-muted">{reach.label}</dt><dd class="t-ui text-fg">{#if reach.build}<span class="t-code tabular-nums">{reach.build}</span>{' '}{/if}{reach.value}{#if reach.holdC} · <CauseText parts={reach.holdC} />{/if}</dd></div>{/if}
 					</dl>
 					</div>
 			<div class="sw-actions" data-slipway-actions><ActRow align="end" primary={split.primary} secondary={[...(!compact ? [detailsAct, openAct] : []), ...split.leadSecondary]} /></div>
