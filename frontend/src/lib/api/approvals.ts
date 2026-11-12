@@ -50,3 +50,10 @@ export async function fetchApprovals(cluster: string, namespace: string, name: s
 		return { byVerified: false, approvals: [] };
 	}
 }
+
+export const approvalsQueryKey = (namespace: string, name: string, cluster?: string) => ['rollout-approvals', namespace, name, cluster] as const;
+export const approvalsQueryOptions = ({ cluster, namespace, name }: { cluster: string; namespace: string; name: string }) => ({
+	queryKey: approvalsQueryKey(namespace, name, cluster),
+	queryFn: () => fetchApprovals(cluster, namespace, name),
+	staleTime: 60000
+});

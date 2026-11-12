@@ -101,6 +101,8 @@
 	import { get } from 'svelte/store';
 	import { createQuery, createQueries } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions, rolloutsInNamespaceQueryOptions, rolloutsListQueryOptions } from '$lib/api/rollouts';
+	import { approvalsQueryOptions } from '$lib/api/approvals';
+	import { historyApprovalFact } from '$lib/view-models/history-approval';
 	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
 	import { commitQueryOptions } from '$lib/api/commit';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
@@ -127,6 +129,9 @@
 	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	/** whether this cluster's approvals carry a trustworthy `by` (the history row's "approved by" shows it only then) */
+	const approvalsQuery = createQuery(() => ({ ...approvalsQueryOptions({ cluster, namespace, name }), enabled: !rolloutQuery.isError }));
+	const byVerified = $derived(approvalsQuery.data?.byVerified === true);
 	/** QA2 #9: the current row's position chip says CURRENCY when healthy, else its state (`currentRowChip`), never the retired state word "Live". */
 	/** the fleet's Environments and rollouts: a build that failed upstream in this place's wave chain is not "behind" (batch4 #3b) */
 	const fleetQuery = createQuery(() => rolloutsListQueryOptions({ options: { staleTime: 30000 } }));
@@ -1840,6 +1845,7 @@
 												{@const note = deployNote(entry.message, entry.triggeredBy)}
 												{@const who = entry.triggeredBy}
 												{@const actor = who ? actorFrom(who) : null}
+												{@const approved = historyApprovalFact((entry as { approval?: { name?: string; by?: string } }).approval, byVerified)}
 												{@const commitTitle = commitTitleOf(i)}
 												{@const commitAuthor = commitAuthorOf(i)}
 												<!-- ⛔ THE AT-REST ROW BUTTON THAT USED TO LIVE HERE IS GONE
@@ -2103,7 +2109,7 @@
 										     is still one click away in the expanded panel's own
 										     "Triggered by" line, so nothing is lost, only an
 										     empty-looking line. -->
-															{#if liveWait || wait || actPrints || note}
+															{#if liveWait || wait || actPrints || note || approved}
 																<div class="dot-list mt-1 min-w-0">
 																	<div
 																		class="dot-list-row t-meta text-fg-subtle flex min-w-0 flex-wrap items-center gap-y-0.5"
@@ -2222,6 +2228,9 @@
 																					>
 																				{/if}
 																			</span>
+																		{/if}
+																		{#if approved}
+																			<span class="text-fg-muted min-w-0 truncate" title={approved.title} data-history-approval>{approved.text}</span>
 																		{/if}
 																		{#if note}
 																			<!-- `basis-40` WITH `flex-1`: at 390 the note wraps onto its
