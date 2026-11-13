@@ -41,6 +41,7 @@ import { formatTimeAgoCompact, buildAge } from '$lib/utils';
 import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus } from '$lib/view-models/behind';
+import { newerReleaseCountLive } from '$lib/view-models/failed-builds';
 import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } from '$lib/view-models/failed-builds';
 import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey, placeLabel } from '$lib/view-models/regions';
@@ -703,7 +704,15 @@ export function behindOfPlace(href: string, app = ''): number {
 	return newestBuild({ app, href, state: 'healthy', word: '' } as never)?.count ?? 0;
 }
 /** `behindOfPlace` for a surface that prints it beside "on the newest" (the Rollouts rest row): null until the fleet has answered, so no count is later corrected */
-export const placeBehind = (href: string, app: string, settled: boolean): number | null => (settled ? behindOfPlace(href, app) : null);
+export const placeBehind = (href: string, app: string, settled: boolean): number | null => {
+	if (!settled) return null;
+	/* an UNKNOWN lag (the running build is in no catalogue and the place's own list cannot say either) is no count, never 0 / "On the newest" (batch4 #3d, QA17) */
+	if (!noReleasesAt(href)) {
+		const here = placesOf('incident', app).find((p) => p.href === href)?.version ?? null;
+		if (behindIn(appOrder(app), here) === null && newerReleaseCountLive(rawOf(href) as never, envsOfSource()) === null) return null;
+	}
+	return behindOfPlace(href, app);
+};
 export type RunsIn = { /** the catalogue distance (behindIn): null when the build is not in the catalogue (unknown lag) or the place is not behind */ behind: number | null; label: string; tier: TierKey; build: string | null; word: string; href: string; state: EnvState };
 /** The Gates tab's Runs-in rows for an app: one per deployed place in the tab's order, with the build as the tab prints it and its word ("on the newest" / "N behind" / "failing"). */
 export function runsIn(app: string, state: HomeState = 'incident'): RunsIn[] {
