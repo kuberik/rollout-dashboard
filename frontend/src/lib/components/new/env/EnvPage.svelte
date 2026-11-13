@@ -50,9 +50,6 @@
 	let open = $state(false);
 	const shown = $derived(open ? G.today : G.today.slice(0, FOLD));
 	const hidden = $derived(G.today.length - shown.length);
-	/** the page's own width (the sidebar eats 232px from 640 up, so viewport breakpoints lie): the grid steps with the page, as Apps */
-	let W = $state(0);
-	const cols = $derived(W < 640 ? 1 : W < 1100 ? 2 : W < 1700 ? 3 : 4);
 	/* round 2 B5: the held tiles' rollout details (the Gates tab's query key) give the builds each hold refuses HERE */
 	const heldQueries = createQueries(() => ({
 		queries: P.gangway.held.filter((t) => t.rolloutHref).map((t) => { const [, , cluster, ns, nm] = (t.rolloutHref as string).split('/'); return rolloutQueryOptions({ namespace: ns, name: nm, cluster, options: { staleTime: 15000, retry: false } }); })
@@ -60,7 +57,7 @@
 	$effect(() => { heldQueries.forEach((q, i) => { const h = P.gangway.held.filter((t) => t.rolloutHref)[i]?.rolloutHref ?? null; const key = h ? heldKeyOfHref(h) : null; if (!q.data || !key) return; const [, , cluster, ns] = (h as string).split('/'); publishGatePretty(cluster, ns, prettyMapOf(q.data.rolloutGates)); publishHeldHere(key, heldHereOfDetail(q.data as never)); }); });
 </script>
 
-<div class="w-full px-4 py-6 sm:px-6" style="container-type:inline-size" bind:clientWidth={W} data-page="env" data-truth-page="env" data-truth-env={P.name}>
+<div class="w-full px-4 py-6 sm:px-6" style="container-type:inline-size" data-page="env" data-truth-page="env" data-truth-env={P.name}>
 	<div class="flex min-w-0 flex-col gap-8" data-env-page>
 		<PageHeader title={P.title} class="-mb-3">
 			{#snippet leading()}<Chip role="env" theme={envTheme(P.tierKey)} label={P.tierKey} wide />{/snippet}
@@ -79,7 +76,7 @@
 		{#if P.attention.length}
 			<section id="attention" data-section="attention">
 				<SectionHeader title="Attention" icon={InboxOutline} rollup={P.attentionRollup} />
-				<AttentionBand count={P.attention.length} cols={3}>
+				<AttentionBand count={P.attention.length}>
 					{#each P.attention as a (a.key)}
 						{@const act = a.failed ? null : a.href}
 						<div class="contents" data-truth-kind="attention" data-truth-app={a.app} data-truth-href={a.href} data-truth-group={a.failed ? 'failed' : 'approval'} {...truthAttrs(a.row)}>
@@ -93,14 +90,14 @@
 		{#if G.held.length}
 			<section id="held" data-section="held">
 				<SectionHeader title="Held" icon={PauseOutline} rollup={G.heldRollup} />
-				<ul class="ap-grid" style="--cols:{cols}">{#each G.held as t (t.app)}<GangwayTile tile={t} />{/each}</ul>
+				<ul class="ap-grid tracks">{#each G.held as t (t.app)}<GangwayTile tile={t} />{/each}</ul>
 			</section>
 		{/if}
 
 		{#if G.ready.length}
 			<section id="ready" data-section="ready">
 				<SectionHeader title="Ready to promote" icon={ArrowRightOutline} rollup={[plural(G.ready.length, 'app')]} />
-				<ul class="ap-grid" style="--cols:{cols}">{#each G.ready as t (t.app)}<GangwayTile tile={t} />{/each}</ul>
+				<ul class="ap-grid tracks">{#each G.ready as t (t.app)}<GangwayTile tile={t} />{/each}</ul>
 			</section>
 		{/if}
 
@@ -144,7 +141,8 @@
 
 <style>
 	section { scroll-margin-top: 16px; }
-	.ap-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-auto-rows: auto; align-items: start; min-width: 0; }
+	/* the page's CARD TRACKS (`.tracks`, styles/language.css): the Attention band above steps the same way, so the two share right edges */
+	.ap-grid { list-style: none; margin: 0; padding: 0; align-items: start; }
 	@media (max-width: 639.98px) { .ap-grid { gap: 12px; } }
 	.instep { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 16px; border: 1px solid var(--k-line); border-radius: 8px; background: var(--k-surface); }
 	.instep-a { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--k-fg-muted); }

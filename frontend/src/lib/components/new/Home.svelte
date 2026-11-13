@@ -40,7 +40,7 @@
 			{#if P.asks.length}
 				<section id="attention" data-section="attention">
 					<SectionHeader title="Attention" icon={InboxOutline} rollup={P.asksRollup} />
-					<AttentionBand count={P.asks.length} cols={2}>
+					<AttentionBand count={P.asks.length}>
 						{#each P.asks as a, i (a.key)}
 							{@const act = a.failed ? null : a.href}
 							<div class="contents" data-truth-kind="attention" data-truth-app={a.app} data-truth-href={a.href} data-truth-group={a.failed ? 'failed' : 'approval'} {...truthAttrs(a.row)}>
