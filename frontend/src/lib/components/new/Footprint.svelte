@@ -48,7 +48,7 @@
 		const behindOf = (e: { href?: string | null }) => (e.href ? behindOfPlace(e.href, app) : 0);
 		const nodes: LaneNode[] = item.placeList.map((e) => {
 			const tier: Tier = e.tier === 'prod' ? 'prod' : e.tier === 'dev' ? 'dev' : e.tier === 'test' ? 'test' : 'staging';
-			const state: NodeState = nodeStateOfPlace(e) ?? (e.currency === 'none' ? 'none' : e.onNewest ? 'newest' : behindOf(e) > 0 ? 'behind' : 'newest');
+			const state: NodeState = nodeStateOfPlace(e) ?? (e.currency === 'none' ? 'none' : e.onNewest ? 'newest' : 'behind');
 			const theme = getRolloutEnvironmentTheme(null, tier);
 			/* change-strip r1: the place's site and wave from the topology, so the strip can draw prod's waves and name each site */
 			const wi = e.href ? waveInfoOfHref(e.href) : null;
