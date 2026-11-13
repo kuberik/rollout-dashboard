@@ -5,12 +5,12 @@
  * clusters (`staging`, `prod`), each through its own generated RolloutGate (`business-hours-<app>`). The six are chosen so every state of the
  * feature is reachable without a cluster:
  *
- *   ledger-api     staging  business-hours AND a hand-written `ledger-signoff` gate hold m-62. The sign-off is the only rule holding THIS
+ *   payout-api     staging  business-hours AND a hand-written `payout-signoff` gate hold m-62. The sign-off is the only rule holding THIS
  *                           rollout alone, so its dialog is the single-rollout one (non-production, notice). Skipping business-hours here
- *                           leaves the build held: the tile reads `Skipped once for 5.8.0-62 · waits for Ledger sign-off`.
- *   ledger-api     prod     business-hours is the ONLY blocker: skip, and the mock deploys it on its next tick (history entry written).
+ *                           leaves the build held: the tile reads `Skipped once for 5.8.0-62 · waits for Payout sign-off`.
+ *   payout-api     prod     business-hours is the ONLY blocker: skip, and the mock deploys it on its next tick (history entry written).
  *   billing-edge   staging  business-hours only, and the viewer may not patch it: its row is disabled in the list.
- *   billing-edge   prod     business-hours AND `Release approval` hold the SAME build as ledger-api prod (typed confirm by BUILD).
+ *   billing-edge   prod     business-hours AND `Release approval` hold the SAME build as payout-api prod (typed confirm by BUILD).
  *   invoice-worker staging  a skip is ALREADY pending (annotations set), so the pending state is there on first load.
  *   invoice-worker prod     a different build (typed confirm by RULE) and the one rollout whose POST answers 409, so partial failure shows.
  *
@@ -53,15 +53,15 @@ export const bhGateName = (app: string) => `business-hours-${app}`;
 
 const SPECS: Spec[] = [
 	{
-		app: 'ledger-api',
+		app: 'payout-api',
 		env: 'staging',
 		live: M61,
 		next: M62,
 		extra: [
-			{ name: 'ledger-signoff', kind: 'unknown', displayName: 'Ledger sign-off', passing: false, message: 'Waiting for the ledger owners', rule: { kind: 'RolloutGate', name: 'ledger-signoff' } }
+			{ name: 'payout-signoff', kind: 'unknown', displayName: 'Payout sign-off', passing: false, message: 'Waiting for the payout owners', rule: { kind: 'RolloutGate', name: 'payout-signoff' } }
 		]
 	},
-	{ app: 'ledger-api', env: 'prod', live: M61, next: M62, history: [[3, 'Automatic deployment, with gate bypass of business-hours-ledger-api']] },
+	{ app: 'payout-api', env: 'prod', live: M61, next: M62, history: [[3, 'Automatic deployment, with gate bypass of business-hours-payout-api']] },
 	{ app: 'billing-edge', env: 'staging', live: M61, next: M62 },
 	{
 		app: 'billing-edge',
