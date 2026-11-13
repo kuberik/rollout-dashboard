@@ -1929,19 +1929,16 @@ routes/activity/+page.svelte	text	Widen to all time
 routes/apps/[name]/+layout.svelte	label	App sections
 routes/changes/[...slug]/+page.svelte	text	Change …
 routes/changes/[...slug]/+page.svelte	headline	This change does not exist
-routes/dependencies/+page.svelte	text	… … across … rollout … , none depends on another. … rule … across … rollout … … ·
+routes/dependencies/+page.svelte	text	… … rollout … depend … on nothing and are not drawn … …
 routes/dependencies/+page.svelte	code	… cannot take their next release until ….
 routes/dependencies/+page.svelte	code	… has not deployed a version of it here.
-routes/dependencies/+page.svelte	text	… holding
 routes/dependencies/+page.svelte	code	… is held in …
 routes/dependencies/+page.svelte	text	… rollout … across … cluster … , and no rule on any of them is keyed to another rollout. This is the normal state — most fleets deploy every service independently.
 routes/dependencies/+page.svelte	code	… rollout… held by another deploy
 routes/dependencies/+page.svelte	code	… serves … here.
 routes/dependencies/+page.svelte	code	… takes nothing newer until … has deployed the next build ….
-routes/dependencies/+page.svelte	text	· nothing is waiting on another deploy … … · … not in the graph … … ·
 routes/dependencies/+page.svelte	text	A link appears here when an
 routes/dependencies/+page.svelte	code	and picked it
-routes/dependencies/+page.svelte	text	contains a cycle
 routes/dependencies/+page.svelte	title	Dependency graph
 routes/dependencies/+page.svelte	title	Held links
 routes/dependencies/+page.svelte	text	holds one environment until the one before it has deployed a build, or a
@@ -1954,6 +1951,7 @@ routes/dependencies/+page.svelte	text	Nothing waits on anything
 routes/dependencies/+page.svelte	code	One rollout is held
 routes/dependencies/+page.svelte	text	Open ›
 routes/dependencies/+page.svelte	text	Show held links
+routes/dependencies/+page.svelte	text	the graph contains a cycle
 routes/dependencies/+page.svelte	code	Waiting until ….
 routes/envs/[name]/+page.svelte	headline	This environment does not exist
 routes/namespaces/[name]/+page.svelte	text	… … · … deploying now … … · last deploy … … …
