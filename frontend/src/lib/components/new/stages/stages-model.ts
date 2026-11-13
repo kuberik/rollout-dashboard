@@ -287,3 +287,13 @@ export function narrowRollup(r: StageRollup, inFlight: number): StageRollup {
 	const parts: StageRollup['parts'] = [...r.parts.filter((p) => p.ink !== 'progress' && p.ink !== 'active'), { text: `${inFlight} in progress`, ink: 'active' }];
 	return { text: parts.map((p) => p.text).join(' · '), parts };
 }
+
+/** The width a graph column is drawn at: the canvas minus its 32px padding, the gaps and the lane-label track, shared equally, capped at `cap` (the grid's minmax). Decided by width and column count only. */
+export function columnWidth(canvas: number, columns: number, gaps: number, label: number, cap = 280): number {
+	return Math.min(cap, (canvas - 32 - gaps - label) / Math.max(1, columns));
+}
+
+/** App scope: below this column width every row stacks its build on its own line (line 3); at or above it the build sits beside the state word. */
+export const TAIL_BESIDE = 192;
+/** The narrowest column that still shows every word and build in full once the tail is stacked (the build is the widest unit, ~70px, plus the longest cause ~137px under the tile's 6px padding). */
+export const MIN_TAIL = 150;
