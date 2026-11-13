@@ -626,8 +626,7 @@ lib/components/new/approvals.svelte.ts	code	Held by
 lib/components/new/approvals.svelte.ts	code	main h1
 lib/components/new/approvals.svelte.ts	code	Undo failed, the approval stands
 lib/components/new/ApproveButton.svelte	text	… Approve
-lib/components/new/ApproveButton.svelte	aria-label	Approve … in …
-lib/components/new/ApproveButton.svelte	code	Approve all … regions
+lib/components/new/ApproveButton.svelte	code	Approve all
 lib/components/new/apps-page.ts	code	… failing
 lib/components/new/apps-page.ts	code	… yours
 lib/components/new/Apps.svelte	title	At rest

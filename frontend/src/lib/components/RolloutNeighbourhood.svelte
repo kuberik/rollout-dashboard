@@ -738,7 +738,7 @@
 		{#if isApproval}
 			<!-- ⭐ THE APPROVAL'S SECOND ROW, IN EVERY STATE (AD r2 #1 + coordinator, binding: one height pending and approved). Held: what
 			     releases it, held ink, and Approve when the viewer can. Passing: who released it, quiet. The tile is 84px whatever happens. -->
-			<!-- The action row is 28px in every state, so Approve (its label can be long: "Approve all 5 regions") never squeezes the gate's
+			<!-- The action row is 28px in every state, so Approve (its label can be long: "Approve all") never squeezes the gate's
 			     name on the row above, and swapping it for "Approved by …" moves nothing. -->
 			<span class="gh-line flex h-7 min-w-0 items-center gap-2">
 				{#if sk?.kind === 'pending'}
