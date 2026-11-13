@@ -204,6 +204,16 @@ func handleGitHubPullRequest(c *gin.Context) {
 			shas = []string{}
 			truncated = true
 			containedInUnknown = true
+		} else if !onBranch && base != deployBranch {
+			// ⚠️ STACKED, NOT REACHABLE: if the stack's base lands by squash or
+			// rebase, this merge commit never becomes an ancestor of the deploy
+			// branch even though the change is deployed. Not provable either
+			// way, so say "unknown", never "not built".
+			log.Printf("Change %s for %s/%s#%d (stacked on %s) not an ancestor of %s: containment unknown",
+				pr.GetMergeCommitSHA(), owner, repo, number, base, deployBranch)
+			shas = []string{}
+			truncated = true
+			containedInUnknown = true
 		} else if !onBranch {
 			// ⭐ A REAL ANSWER, NOT AN ABSENCE OF ONE. The merge commit is not
 			// reachable from the deploy branch, so the stack it is part of has
@@ -230,11 +240,9 @@ func handleGitHubPullRequest(c *gin.Context) {
 				}
 			}
 			if !found {
+				// Oldest-first list: the merge commit leads. Never trim here —
+				// trimming would drop the newest, the builds the fleet runs.
 				shas = append([]string{sha}, shas...)
-				if len(shas) > maxContainedInCommits {
-					shas = shas[:maxContainedInCommits]
-					truncated = true
-				}
 			}
 		}
 		containedIn = shas
@@ -352,16 +360,38 @@ func commitsCarryingMerge(
 		// change — and must not be dressed up as "unknown".
 		return []string{}, false, false, nil
 	}
-	for _, c := range cmp.Commits {
+	// ⛔ THE COMPARE API LISTS OLDEST FIRST. Past the 250 cap the missing
+	// commits are the NEWEST — the ones the fleet runs — so keeping the first
+	// page would turn a busy repo into false "does not carry" cells. Fetch the
+	// last two pages and keep the newest maxContainedInCommits.
+	commits := cmp.Commits
+	total := cmp.GetTotalCommits()
+	if total > len(commits) {
+		truncated = true
+		const per = 250
+		last := (total + per - 1) / per
+		var tail []*github.RepositoryCommit
+		for pg := last - 1; pg <= last; pg++ {
+			if pg < 1 {
+				continue
+			}
+			pc, _, perr := ghClient.Repositories.CompareCommits(
+				ctx, owner, repo, mergeSha, branch, &github.ListOptions{Page: pg, PerPage: per},
+			)
+			if perr != nil {
+				return nil, false, false, perr
+			}
+			tail = append(tail, pc.Commits...)
+		}
+		commits = tail
+	}
+	for _, c := range commits {
 		if sha := c.GetSHA(); sha != "" {
 			shas = append(shas, sha)
 		}
 	}
-	if cmp.GetTotalCommits() > len(shas) {
-		truncated = true
-	}
 	if len(shas) > maxContainedInCommits {
-		shas = shas[:maxContainedInCommits]
+		shas = shas[len(shas)-maxContainedInCommits:]
 		truncated = true
 	}
 	if shas == nil {

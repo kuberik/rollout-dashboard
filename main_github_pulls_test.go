@@ -342,8 +342,13 @@ func TestGitHubPullRequest_CompareCapReportedByTotalCommits(t *testing.T) {
 			// reports the true size of the range, so "this list is short" is a
 			// fact GitHub states rather than one the handler infers by walking
 			// until the pages run out.
+			// Oldest first, like the real API: page 2 holds the newest 150.
+			lo, hi := 0, 250
+			if req.URL.Query().Get("page") == "2" {
+				lo, hi = 250, 400
+			}
 			commits := make([]map[string]string, 0, 250)
-			for i := 0; i < 250; i++ {
+			for i := lo; i < hi; i++ {
 				commits = append(commits, map[string]string{"sha": fmt.Sprintf("sha-c-%03d", i)})
 			}
 			b, _ := json.Marshal(map[string]interface{}{
@@ -369,8 +374,16 @@ func TestGitHubPullRequest_CompareCapReportedByTotalCommits(t *testing.T) {
 	}
 	// 250 from the compare plus the merge commit union'd in front of them.
 	ci, ok := body["containedIn"].([]interface{})
-	if !ok || len(ci) != 251 {
-		t.Fatalf("containedIn length = %v, want 251 (250 + the merge sha)", len(ci))
+	if !ok || len(ci) != 301 {
+		t.Fatalf("containedIn length = %v, want 301 (newest 300 + the merge sha)", len(ci))
+	}
+	// The NEWEST commits must survive the cap, the oldest must not.
+	has := map[interface{}]bool{}
+	for _, c := range ci {
+		has[c] = true
+	}
+	if !has["sha-c-399"] || has["sha-c-000"] {
+		t.Fatalf("cap kept the wrong end: newest present=%v oldest present=%v", has["sha-c-399"], has["sha-c-000"])
 	}
 	if body["containedInAll"] != true {
 		t.Fatalf("containedInAll = %v, want true — total_commits (400) exceeded the returned page", body["containedInAll"])
@@ -379,8 +392,8 @@ func TestGitHubPullRequest_CompareCapReportedByTotalCommits(t *testing.T) {
 	// through `commits?since=` until the pages ran out — four requests for this
 	// range. A compare answers the whole thing once, and says how much it left
 	// out.
-	if pages != 1 {
-		t.Fatalf("compare calls = %d, want exactly 1", pages)
+	if pages != 3 { // first page + the last two (newest) pages
+		t.Fatalf("compare calls = %d, want 3", pages)
 	}
 }
 

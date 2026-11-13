@@ -85,23 +85,16 @@ func TestGitHubPullRequest_StackedButLandedOnDefaultIsKnown(t *testing.T) {
 	}
 }
 
-// ⛔ NOT LANDED IS A REAL ANSWER, NOT AN UNKNOWN ONE. When the stack has not
-// merged to the deploy branch, nothing built from it carries the change, and an
-// AUTHORITATIVE empty set says exactly that.
-func TestGitHubPullRequest_StackedNotYetOnDefaultIsAuthoritativelyEmpty(t *testing.T) {
+// ⛔ STACKED + NOT AN ANCESTOR IS UNKNOWN, NOT "NOT BUILT". If the stack's base
+// lands by squash or rebase, the merge commit never becomes an ancestor of the
+// deploy branch although the change is deployed, so absence proves nothing.
+func TestGitHubPullRequest_StackedNotAncestorIsUnknown(t *testing.T) {
 	body := pullBody(t, 9000, "giorgio/stack", "main", "aaa1111",
 		"diverged", nil, 0)
 
-	if body["containedInUnknown"] != false {
-		t.Fatalf("containedInUnknown = %v, want false — we KNOW it is not there", body["containedInUnknown"])
+	if body["containedInUnknown"] != true {
+		t.Fatalf("containedInUnknown = %v, want true", body["containedInUnknown"])
 	}
-	if body["containedInAll"] != false {
-		t.Fatalf("containedInAll = %v, want false — an authoritative empty set", body["containedInAll"])
-	}
-	// ⚠️ NOT literally empty: the merge commit itself is the one revision we
-	// are certain carries the change, so it stays. What matters is that nothing
-	// ON THE DEPLOY BRANCH is claimed — every build cut from `main` is
-	// authoritatively "not built", which is exactly true until the stack lands.
 	ci, _ := body["containedIn"].([]interface{})
 	if len(ci) != 1 || ci[0] != "aaa1111" {
 		t.Fatalf("containedIn = %v, want just the merge sha", body["containedIn"])
