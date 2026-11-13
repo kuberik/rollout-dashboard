@@ -58,7 +58,7 @@
 	const Icon = $derived(icon);
 </script>
 
-<div class="section-header {className}">
+<div class="section-header max-sm:flex-wrap max-sm:gap-y-0 {className}">
 	{#if Icon}
 		<Icon class="h-4 w-4 shrink-0 text-fg-muted" aria-hidden="true" />
 	{:else}
@@ -74,22 +74,34 @@
 		<span class="t-meta hidden min-w-0 truncate text-fg-subtle sm:inline">{description}</span>
 	{/if}
 	{#if rollup && rollup.length}
-		<span class="t-meta ml-auto flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap tabular-nums text-fg-subtle" data-rollup>
+		<!-- visual audit #11: below sm the rollup never ellipsizes a count ("3 yours" was 15/43px, "38 at rest" 33/55 at
+		     390). It stays hard-right; when it does not fit beside the title the header wraps and the rollup takes the next
+		     line whole (and, wider than the row, wraps between parts, never inside one). With a VISIBLE action it always
+		     takes that line, so the action keeps the title row (`.section-header:has(...)` in language.css). From sm up it is
+		     unchanged: one line, the last part truncates. -->
+		<span
+			class="rp-row t-meta ml-auto flex min-w-0 items-center overflow-hidden tabular-nums text-fg-subtle max-sm:flex-wrap max-sm:justify-end sm:whitespace-nowrap"
+			data-rollup
+		>
 			{#each rollup as part, i (i)}
-				<!-- phone: a ZERO count before the last is hidden (`rollup-fold.ts`, QA2 #7); every non-zero count and every INKED part stays. A dot trails every part but the last. -->
+				<!-- phone: a ZERO count before the last is hidden (`rollup-fold.ts`, QA2 #7); every non-zero count and every INKED part stays. A dot LEADS every part but the first, hung in the gap (see `.rp-sep`). -->
 				{@const last = i === rollup.length - 1}
 				{@const text = typeof part === 'string' ? part : part.text}
 				{@const ink = typeof part === 'string' ? undefined : part.ink}
-				<span class="{last ? 'truncate' : foldsOnPhone(part) ? 'hidden sm:inline rp-dot' : 'rp-dot'} {ink ? `font-medium ${hueInk(ink)}` : ''}">{text}</span>
+				<!-- the last part truncates on an INNER span, so the clip never takes its own leading dot --><span class="whitespace-nowrap {last ? 'flex min-w-0' : foldsOnPhone(part) ? 'hidden sm:inline' : ''} {i > 0 ? 'rp-sep' : ''} {ink ? `font-medium ${hueInk(ink)}` : ''}">{#if last}<span class="sm:truncate">{text}</span>{:else}{text}{/if}</span>
 			{/each}
 		</span>
 	{/if}
 	{#if action}
-		<div class="flex shrink-0 items-center gap-2 {rollup && rollup.length ? '' : 'ml-auto'}">{@render action()}</div>
+		<div class="sh-action flex shrink-0 items-center gap-2 {rollup && rollup.length ? 'max-sm:ml-auto' : 'ml-auto'}">{@render action()}</div>
 	{/if}
 </div>
 
 <style>
-	/* the rollup's separator: a 3px dot after every part but the last (hidden together with its part on a phone) */
-	.rp-dot::after { content: ''; display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.45; margin-left: 8px; vertical-align: middle; }
+	/* the rollup's separator: a 3px dot BEFORE every part but the first, hung in the 19px gap (8 · 3 · 8, the old spacing)
+	   instead of in the flow, in the neutral ink whatever the part's own ink. A part that wraps to a line start, or follows a part folded away on a phone, puts its dot
+	   left of the rollup's edge, where `overflow-hidden` clips it: a line never starts or ends on a dangling dot. */
+	.rp-row { column-gap: 19px; }
+	.rp-sep { position: relative; }
+	.rp-sep::before { content: ''; position: absolute; left: -11px; top: 50%; width: 3px; height: 3px; margin-top: -1.5px; border-radius: 50%; background: var(--k-fg-subtle); opacity: 0.45; }
 </style>
