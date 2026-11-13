@@ -1,3 +1,4 @@
+import { isBypassRollout } from './bypass-demo';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { respond } from './respond';
 import { resetDemoState } from './state';
@@ -26,7 +27,12 @@ type List = {
 };
 
 function fixtureList(): List {
-	return JSON.parse(respond('GET', '/api/rollouts').body ?? '{}') as List;
+	const list = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}') as List;
+	// the skip-once demo fleet (bypass-demo.ts) is held by a schedule and an approval ON PURPOSE; these invariants are about the story fleet
+	const demo = (o: { metadata?: { namespace?: string; name?: string } }) => isBypassRollout(o.metadata?.namespace ?? '', o.metadata?.name ?? '');
+	list.rollouts.items = list.rollouts.items.filter((r) => !demo(r));
+	list.environments.items = list.environments.items.filter((e) => !demo(e));
+	return list;
 }
 
 function graphFor(list: List) {

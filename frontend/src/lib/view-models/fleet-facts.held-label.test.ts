@@ -1,3 +1,4 @@
+import { isBypassRollout } from '$lib/demo/bypass-demo';
 import { describe, it, expect, afterEach } from 'vitest';
 import type { Environment, Rollout, RolloutDependency } from '../../types';
 import { buildRolloutCards } from '$lib/rollout-cards';
@@ -249,6 +250,10 @@ describe('Home\'s held text on the demo fleet — calm, incident, wide', () => {
 		it(`${scenario}: heldLabel counts checkout-api + the three unmapped contract-held apps as held by a rule, and no label says "place" or "the map"`, () => {
 			resetDemoState(scenario);
 			const list = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}') as List;
+			// the skip-once demo fleet (bypass-demo.ts) is held by a schedule and an approval ON PURPOSE; this is about the story fleet
+			const demo = (o: { metadata?: { namespace?: string; name?: string } }) => isBypassRollout(o.metadata?.namespace ?? '', o.metadata?.name ?? '');
+			list.rollouts.items = list.rollouts.items.filter((r) => !demo(r));
+			list.environments.items = list.environments.items.filter((e) => !demo(e));
 			const rollouts = list.rollouts.items;
 			const environments = list.environments.items;
 			const gateContext = buildGateContext({

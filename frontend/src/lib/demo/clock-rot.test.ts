@@ -1,3 +1,4 @@
+import { isBypassRollout } from './bypass-demo';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { respond } from './respond';
 import { resetDemoState } from './state';
@@ -70,8 +71,8 @@ describe.each([
 		vi.setSystemTime(Date.now() + advanceMs);
 		const body = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}');
 		return {
-			rollouts: body.rollouts.items as Rollout[],
-			environments: body.environments.items as Environment[]
+			rollouts: (body.rollouts.items as Rollout[]).filter((r) => !isBypassRollout(r.metadata?.namespace ?? '', r.metadata?.name ?? '')),
+			environments: (body.environments.items as Environment[]).filter((e) => !isBypassRollout(e.metadata?.namespace ?? '', e.metadata?.name ?? ''))
 		};
 	}
 

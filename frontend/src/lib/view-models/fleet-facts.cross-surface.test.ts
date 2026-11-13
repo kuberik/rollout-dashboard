@@ -1,3 +1,4 @@
+import { isBypassRollout } from '$lib/demo/bypass-demo';
 import { describe, it, expect } from 'vitest';
 import { resetDemoState, type Scenario } from '$lib/demo/state';
 import { respond } from '$lib/demo/respond';
@@ -30,7 +31,12 @@ type List = {
 };
 
 function fixtureList(): List {
-	return JSON.parse(respond('GET', '/api/rollouts').body ?? '{}') as List;
+	const list = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}') as List;
+	// the skip-once demo fleet (bypass-demo.ts) is held by a schedule and an approval ON PURPOSE; these invariants are about the story fleet
+	const demo = (o: { metadata?: { namespace?: string; name?: string } }) => isBypassRollout(o.metadata?.namespace ?? '', o.metadata?.name ?? '');
+	list.rollouts.items = list.rollouts.items.filter((r) => !demo(r));
+	list.environments.items = list.environments.items.filter((e) => !demo(e));
+	return list;
 }
 
 const NOW = new Date('2026-10-10T12:00:00Z');

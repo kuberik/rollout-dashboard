@@ -479,8 +479,8 @@ export function skipConfirm(selection: readonly SkipSelection[], rule: { name: s
 			level: 'typed',
 			by: 'build',
 			expected: builds[0],
-			why: 'Production is selected, so type the build to confirm.',
-			prompt: 'Production is selected. Type',
+			why: 'Prod is selected, so type the build to confirm.',
+			prompt: 'Prod is selected. Type',
 			production: [...production]
 		};
 	}
@@ -489,7 +489,7 @@ export function skipConfirm(selection: readonly SkipSelection[], rule: { name: s
 		by: 'rule',
 		expected: rule.name,
 		why: "Several builds are selected, so type the rule's name.",
-		prompt: 'Production is selected. Type',
+		prompt: 'Prod is selected. Type',
 		production: [...production]
 	};
 }

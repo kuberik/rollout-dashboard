@@ -1,6 +1,12 @@
 lib/activity-deeplink.ts	code	… … on ……, ….
 lib/api/approvals.ts	code	… failed (…)
 lib/api/approvals.ts	code	not a rollout: …
+lib/api/bypass.ts	code	… no longer holds this rollout.
+lib/api/bypass.ts	code	Couldn't reach …. Try again.
+lib/api/bypass.ts	code	Couldn't reach the cluster. Try again.
+lib/api/bypass.ts	code	isn't waiting to deploy here any more.
+lib/api/bypass.ts	code	This rollout no longer exists.
+lib/api/bypass.ts	code	You can't change this rollout.
 lib/api/changes.ts	code	Connect GitHub to see changes across the repos this cluster deploys
 lib/api/changes.ts	code	Failed to load changes
 lib/api/changes.ts	code	GitHub account not connected
@@ -1088,6 +1094,7 @@ lib/components/RetryTestsModal.svelte	code	Unknown test
 lib/components/RolloutNeighbourhood.svelte	text	… … … … … Approved …
 lib/components/RolloutNeighbourhood.svelte	text	… never deployed …
 lib/components/RolloutNeighbourhood.svelte	text	… runs
+lib/components/RolloutNeighbourhood.svelte	text	· waits for …
 lib/components/RolloutNeighbourhood.svelte	code	(… to …)
 lib/components/RolloutNeighbourhood.svelte	code	After … deploys …
 lib/components/RolloutNeighbourhood.svelte	code	After … deploys first
@@ -1109,6 +1116,8 @@ lib/components/RolloutNeighbourhood.svelte	code	Not passing
 lib/components/RolloutNeighbourhood.svelte	text	not visible
 lib/components/RolloutNeighbourhood.svelte	code	Open · closes …
 lib/components/RolloutNeighbourhood.svelte	code	passing now
+lib/components/RolloutNeighbourhood.svelte	text	Skip once
+lib/components/RolloutNeighbourhood.svelte	text	Skipped once for
 lib/components/RolloutNeighbourhood.svelte	code	Starts …
 lib/components/RolloutNeighbourhood.svelte	text	This rollout
 lib/components/RolloutNeighbourhood.svelte	code	Until the pin is cleared
@@ -1125,6 +1134,17 @@ lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	code	Failed to load schedules
 lib/components/ScheduleStatus.svelte	text	Held by … rule … …
+lib/components/SkipRuleModal.svelte	text	… failed.
+lib/components/SkipRuleModal.svelte	text	… of … selected
+lib/components/SkipRuleModal.svelte	text	… of … skipped.
+lib/components/SkipRuleModal.svelte	text	Every other rule still applies, and … keeps holding every other build.
+lib/components/SkipRuleModal.svelte	text	Held by …
+lib/components/SkipRuleModal.svelte	text	None skipped.
+lib/components/SkipRuleModal.svelte	text	Show … more
+lib/components/SkipRuleModal.svelte	text	Skip … once
+lib/components/SkipRuleModal.svelte	code	Skip for ${toSend.length === 1 ? '1 rollout' :
+lib/components/SkipRuleModal.svelte	text	this rollout
+lib/components/SkipRuleModal.svelte	text	to confirm
 lib/components/SourceViewer.svelte	code	Failed to fetch files
 lib/components/SourceViewer.svelte	code	Failed to fetch files: …
 lib/components/SourceViewer.svelte	text	Source files for
@@ -1478,6 +1498,8 @@ lib/view-models/deploy-risk.ts	code	Every rule here allows this build, so this i
 lib/view-models/deploy-risk.ts	code	Goes back… to a version … has already run. It applies immediately; older code will run against data the newer version has already written.…
 lib/view-models/deploy-risk.ts	code	It also pins … to this version, so nothing newer promotes until the pin is cleared.
 lib/view-models/deploy-risk.ts	code	Nothing has vouched for this build in …. Type
+lib/view-models/deploy-risk.ts	code	Prod is selected, so type the build to confirm.
+lib/view-models/deploy-risk.ts	code	Prod is selected. Type
 lib/view-models/deploy-risk.ts	code	Redeploy to …
 lib/view-models/deploy-risk.ts	code	Redeploys … to … — the same build whose last deploy here failed.
 lib/view-models/deploy-risk.ts	code	Redeploys the current build to … — the same build whose last deploy here failed.
@@ -1485,6 +1507,7 @@ lib/view-models/deploy-risk.ts	code	Retrying resets that check to “Pending —
 lib/view-models/deploy-risk.ts	code	Retrying resets this rollout’s health checks to “Pending — reset due to new deployment”, which erases the record that anything failed here.
 lib/view-models/deploy-risk.ts	code	Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.
 lib/view-models/deploy-risk.ts	code	Roll back
+lib/view-models/deploy-risk.ts	code	Several builds are selected, so type the rule's name.
 lib/view-models/deploy-risk.ts	code	This build already failed here. Type
 lib/view-models/deploy-risk.ts	code	This changes …. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.…
 lib/view-models/deploy-risk.ts	code	This changes …. Type
@@ -1756,6 +1779,15 @@ lib/view-models/rollout-gates.ts	code	Pinned to … by …
 lib/view-models/rollout-gates.ts	code	starts …
 lib/view-models/rollout-gates.ts	code	to … until the pin is cleared
 lib/view-models/rollout-gates.ts	code	until …
+lib/view-models/skip-rule.ts	code	… lets
+lib/view-models/skip-rule.ts	code	… lets each rollout's held build through once.
+lib/view-models/skip-rule.ts	code	… skipped once for …
+lib/view-models/skip-rule.ts	code	… skipped once for … rollouts
+lib/view-models/skip-rule.ts	code	Choose a rollout to skip it for.
+lib/view-models/skip-rule.ts	code	Skipped …
+lib/view-models/skip-rule.ts	code	Skipped every rule
+lib/view-models/skip-rule.ts	code	through once, in the … rollouts below.
+lib/view-models/skip-rule.ts	code	through to … in … once.
 lib/view-models/stage-advance.ts	code	… of check time is left on stage … and will be skipped.
 lib/view-models/stage-advance.ts	code	… of replicas
 lib/view-models/stage-advance.ts	code	… of traffic
@@ -2146,6 +2178,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Same buil
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Show … earlier deploy …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show all other rollouts in this namespace
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show sibling environments on the timeline
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … … , … …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … release …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Started …, checks finished ….
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	headline	This rollout does not exist
