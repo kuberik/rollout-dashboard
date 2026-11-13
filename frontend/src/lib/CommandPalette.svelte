@@ -115,6 +115,7 @@
 		ChevronRightOutline
 	} from 'flowbite-svelte-icons';
 	import { announce } from '$lib/stores/announce.svelte';
+	import { NAV_ICON } from '$lib/nav-icons';
 	import { theme } from '$lib/stores/theme';
 	import {
 		getEnvironmentThemeStyle,
@@ -400,6 +401,13 @@
 	type Result = {
 		kind: ResultKind;
 		key: string;
+		/**
+		 * The row's own glyph, when it is not its kind's. Page rows take the
+		 * sidebar's (`NAV_ICON`), command rows the one their own button
+		 * draws; before, every `action` row drew Activity's clock, so
+		 * "Rollouts" wore two icons (visual audit #19).
+		 */
+		icon?: typeof GridOutline;
 		// Canonical, searchable identifier — the resource name for rollouts.
 		title: string;
 		// Optional human-friendly OCI title, shown muted alongside the name.
@@ -692,13 +700,13 @@
 		// deliberately stays out: `Navbar.svelte`'s own comment records that it
 		// is reached from a rollout's Dependencies tab, not from the sidebar, and
 		// `Sidebar.svelte` has no entry for it either.
-		const actions: { title: string; href: string; subtitle?: string }[] = [
-			{ title: 'Home', subtitle: 'Fleet overview — everything at a glance', href: href('/') },
-			{ title: 'Rollouts', subtitle: 'Full inventory list', href: href('/rollouts') },
-			{ title: 'Apps', subtitle: 'Apps across environments', href: href('/apps') },
-			{ title: 'Environments', subtitle: 'Cross-env matrix', href: href('/environments') },
-			{ title: 'Changes', subtitle: 'Changes and where they landed', href: href('/changes') },
-			{ title: 'Activity', subtitle: 'Recent deployments', href: href('/activity') },
+		const actions: { title: string; href: string; subtitle?: string; icon: typeof GridOutline }[] = [
+			{ title: 'Home', subtitle: 'Fleet overview — everything at a glance', href: href('/'), icon: NAV_ICON['/'] },
+			{ title: 'Rollouts', subtitle: 'Full inventory list', href: href('/rollouts'), icon: NAV_ICON['/rollouts'] },
+			{ title: 'Apps', subtitle: 'Apps across environments', href: href('/apps'), icon: NAV_ICON['/apps'] },
+			{ title: 'Environments', subtitle: 'Cross-env matrix', href: href('/environments'), icon: NAV_ICON['/environments'] },
+			{ title: 'Changes', subtitle: 'Changes and where they landed', href: href('/changes'), icon: NAV_ICON['/changes'] },
+			{ title: 'Activity', subtitle: 'Recent deployments', href: href('/activity'), icon: NAV_ICON['/activity'] },
 			// ⭐ APPROACH B, ITEM C — `/me` IS DELIBERATELY NOT IN THE SIDEBAR
 			// (design doc: "reach it from Home and the palette"), so this
 			// static row is the ONLY way a typed search ever finds it. The
@@ -709,7 +717,8 @@
 			{
 				title: 'Your pull requests',
 				subtitle: 'My pull requests across the repos this cluster deploys',
-				href: href('/me')
+				href: href('/me'),
+				icon: NAV_ICON['/me']
 			}
 		];
 		for (const a of actions) {
@@ -719,6 +728,7 @@
 				title: a.title,
 				subtitle: a.subtitle,
 				href: a.href,
+				icon: a.icon,
 				commandLabel: 'Go to'
 			});
 		}
@@ -741,6 +751,7 @@
 				kind: 'action',
 				key: `cmd:${a.id}`,
 				title: a.label,
+				icon: a.icon,
 				href: '',
 				onSelect: a.onSelect,
 				commandLabel: a.commandLabel
@@ -750,6 +761,8 @@
 			kind: 'action',
 			key: 'cmd:toggle-theme',
 			title: 'Toggle theme',
+			// the sidebar's own toggle glyph: the theme it switches TO
+			icon: $theme === 'dark' ? SunOutline : MoonOutline,
 			subtitle: $theme === 'dark' ? 'Switch to light' : 'Switch to dark',
 			href: '',
 			onSelect: () => {
@@ -1858,12 +1871,15 @@
 			<span class="t-ui min-w-0 text-fg @lg:shrink @lg:truncate" data-slot="name">{r.title}</span>
 			{#if (changeMeta && changeSteps) || changeRef}
 				<span
-					class="t-meta flex flex-wrap items-center gap-x-2 text-fg-subtle @lg:ms-auto @lg:shrink-0 @lg:flex-nowrap @lg:whitespace-nowrap"
+					class="t-meta flex flex-wrap items-center gap-x-4 overflow-hidden text-fg-subtle @lg:ms-auto @lg:shrink-0 @lg:flex-nowrap @lg:whitespace-nowrap"
 					data-meta="change"
 				>
 					{#if changeMeta && changeSteps}
 						<!-- The staircase and the verdict words: ChangeLine's own
-						     view-model, so this row cannot disagree with /changes. -->
+						     view-model, so this row cannot disagree with /changes.
+						     One unit (8px apart inside); the 16px gap between units
+						     is the "·" slot below. -->
+						<span class="flex items-center gap-x-2">
 						<span
 							class="flex items-center gap-1"
 							role="img"
@@ -1887,11 +1903,22 @@
 											? 'text-fg-disabled'
 											: 'text-fg-muted'}">{standingWords(changeMeta)}</span
 						>
-						{#if changeRef}<span aria-hidden="true">·</span>{/if}
+						</span>
 					{/if}
 					{#if changeRef}
-						<!-- "#N · repo": ONE unit, always whole, always last. -->
-						<span class="whitespace-nowrap" data-meta="ref">{changeRef}</span>
+						<!-- "#N · repo": ONE unit, always whole, always last. The "·"
+						     before it hangs in the 16px gap (`right-full w-4`), not in
+						     the flow: when the ref wraps to the start of a line the
+						     meta group's `overflow-hidden` clips it, so a wrap never
+						     leaves a "·" dangling at the end of the line above
+						     (visual audit #19: "4 of 7 live · queued for 2 ·" at
+						     390). On one line it reads exactly as before. -->
+						<span class="relative whitespace-nowrap"
+							>{#if changeMeta && changeSteps}<span
+									class="absolute right-full w-4 text-center"
+									aria-hidden="true">·</span
+								>{/if}<span data-meta="ref">{changeRef}</span></span
+						>
 					{/if}
 				</span>
 			{/if}
@@ -1947,7 +1974,7 @@
 -->
 {#snippet resultRow(r: Result, idx: number)}
 	{@const isActive = idx === selectedIndex}
-	{@const Icon = KIND_ICON[r.kind]}
+	{@const Icon = r.icon ?? KIND_ICON[r.kind]}
 	<!-- ⭐ ROUND 2, ITEM 2: the namespace is `<app>-<env>` by this product's
 	     naming convention, and the row already prints both halves (name +
 	     env chip). It is shown only when it is NOT that concatenation (a
