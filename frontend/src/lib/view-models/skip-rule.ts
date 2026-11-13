@@ -242,3 +242,37 @@ export function skippedFact(skipped: SkippedRules | null, labels: ReadonlyMap<st
 	}
 	return { text: `Skipped ${parts.map((p) => p.text).join(', ')}`, parts };
 }
+
+// ── The dialog's one sentence ───────────────────────────────────────────
+
+export type SentencePart = { text: string; code?: boolean };
+
+/**
+ * The ONE sentence the dialog opens with. It states the rule, the build and the place once, and follows the selection. Nothing else in
+ * the dialog restates it.
+ */
+export function skipSentence(ruleLabel: string, selected: readonly { name: string; env: string; build: string }[]): SentencePart[] {
+	if (selected.length === 0) return [{ text: 'Choose a rollout to skip it for.' }];
+	if (selected.length === 1) {
+		const s = selected[0];
+		return [
+			{ text: `${ruleLabel} lets ` },
+			{ text: s.build, code: true },
+			{ text: ` through to ${s.name} in ${s.env} once.` }
+		];
+	}
+	const builds = [...new Set(selected.map((s) => s.build))];
+	if (builds.length === 1) {
+		return [
+			{ text: `${ruleLabel} lets ` },
+			{ text: builds[0], code: true },
+			{ text: ` through once, in the ${selected.length} rollouts below.` }
+		];
+	}
+	return [{ text: `${ruleLabel} lets each rollout's held build through once.` }];
+}
+
+/** The success toast, `Business hours skipped once for 4.45.0-45` / `… for 3 rollouts`. */
+export function skippedToast(ruleLabel: string, done: readonly { build: string }[]): string {
+	return done.length === 1 ? `${ruleLabel} skipped once for ${done[0].build}` : `${ruleLabel} skipped once for ${done.length} rollouts`;
+}

@@ -58,6 +58,7 @@
 	 * it was a byte-identical local copy of `getBakeStatusColor`.
 	 */
 	import { bakeWord, bakeTitle, getBakeStatusColor } from '$lib/bake-status';
+	import { gateRuleLabels, skippedFact, skippedRulesOf, withoutSkipClause } from '$lib/view-models/skip-rule';
 	import {
 		deployActs,
 		historyAtLimit,
@@ -130,6 +131,8 @@
 	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	/** gate name -> the rule's name, so History can say "Skipped Business hours" for the generated gate the controller names. */
+	const skipLabels = $derived(gateRuleLabels(rollout));
 	/** whether this cluster's approvals carry a trustworthy `by` (the history row's "approved by" shows it only then) */
 	const approvalsQuery = createQuery(() => ({ ...approvalsQueryOptions({ cluster, namespace, name }), enabled: !rolloutQuery.isError }));
 	const byVerified = $derived(approvalsQuery.data?.byVerified === true);
@@ -983,8 +986,10 @@
 		message: string | undefined | null,
 		by: { kind?: string } | undefined | null
 	): string | null {
-		if (!message || by?.kind !== 'User' || isSystemDefaultNote(message)) return null;
-		return message;
+		// ⭐ the controller's own "with gate bypass of <gate>" clause is system text (it is the Skipped fact on line 2, never a note): strip it first
+		const text = withoutSkipClause(message);
+		if (!text || by?.kind !== 'User' || isSystemDefaultNote(text)) return null;
+		return text;
 	}
 
 	function spanLabel(ms: number): string {
@@ -1844,6 +1849,8 @@
 												{@const wait = deployWait(entry)}
 												{@const liveWait = isCurrent ? liveStatusWait(entry, $now.getTime()) : null}
 												{@const note = deployNote(entry.message, entry.triggeredBy)}
+												<!-- ⭐ SKIPPED RULES (bypass-only): parsed from the controller's own message. Who set the skip is NOT recorded, so this fact names no one. -->
+												{@const skipped = skippedFact(skippedRulesOf(entry.message), skipLabels)}
 												{@const who = entry.triggeredBy}
 												{@const actor = who ? actorFrom(who) : null}
 												{@const approved = historyApprovalFact(entry.approval, byVerified)}
@@ -2104,7 +2111,7 @@
 										     is still one click away in the expanded panel's own
 										     "Triggered by" line, so nothing is lost, only an
 										     empty-looking line. -->
-															{#if liveWait || wait || actPrints || note || approved}
+															{#if liveWait || wait || actPrints || note || approved || skipped}
 																<div class="dot-list mt-1 min-w-0">
 																	<div
 																		class="dot-list-row t-meta text-fg-subtle flex min-w-0 flex-wrap items-center gap-y-0.5"
@@ -2188,6 +2195,11 @@
 																			<span class="text-fg-muted" title={act.sentence}>
 																				{act.sentence.replace(/\.$/, '')}
 																			</span>
+																		{/if}
+																		{#if skipped}
+																			<span class="text-fg-muted min-w-0" data-history-skipped
+																				>Skipped {#each skipped.parts as p, i}{#if i > 0}, {/if}{#if p.code}<span class="t-code-sm">{p.text}</span>{:else}{p.text}{/if}{/each}</span
+																			>
 																		{/if}
 																		{#if who && actor && !approvalReplacesActor(approved, actor.kind)}
 																			<!-- ⭐ AVATAR ONLY WHENEVER THE ROW'S DETAILS WRAP (History
@@ -2633,7 +2645,7 @@
 												     changed in the manifest — it belongs beside Started/
 												     Triggered by/Promoted, not in the Change column it
 												     used to share with the commit range. -->
-																	{#if who?.kind === 'User' && entry.message}
+																	{#if who?.kind === 'User' && withoutSkipClause(entry.message)}
 																		<!--
 														`Reason` CLAIMED MORE THAN THE FIELD HOLDS, AND RENAMING
 														IT TO `Recorded note` WAS ONLY HALF THE FIX. (2026-09-03,
@@ -2666,7 +2678,7 @@
 														saying nothing here instead of repeating the controller's
 														own boilerplate as if it were a reason.
 													-->
-																		{#if isSystemDefaultNote(entry.message)}
+																		{#if isSystemDefaultNote(withoutSkipClause(entry.message))}
 																			<div class="t-meta flex items-baseline gap-1.5">
 																				<span class="text-fg-subtle shrink-0">Recorded note</span>
 																				<span class="text-fg-disabled italic">no note recorded</span
@@ -2675,14 +2687,14 @@
 																			<div class="t-meta flex items-baseline gap-1.5">
 																				<span class="text-fg-subtle shrink-0">System</span>
 																				<span class="text-fg-muted"
-																					>{systemNoteDescription(entry.message)}</span
+																					>{systemNoteDescription(withoutSkipClause(entry.message))}</span
 																				>
 																			</div>
 																		{:else}
 																			<div class="t-meta flex items-baseline gap-1.5">
 																				<span class="text-fg-subtle shrink-0">Recorded note</span>
 																				<span class="text-fg-muted"
-																					>{stripEmphasisMarkers(entry.message)}</span
+																					>{stripEmphasisMarkers(withoutSkipClause(entry.message))}</span
 																				>
 																			</div>
 																		{/if}
