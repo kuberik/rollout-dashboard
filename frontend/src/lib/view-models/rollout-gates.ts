@@ -76,6 +76,9 @@ export type GateBox = {
 	label?: GateLabel;
 	/** A deploy window's or freeze's own rules (the `RolloutSchedule` spec), for the tile's 24h bar (`window-bar.ts`). Absent for every other box. */
 	window?: WindowSpec & { active: boolean; when: string | null };
+	/** `health` only: how many checks are FAILING (not merely pending). The tile prints "N failing" in the failed ink, the word the
+	 *  Overview's Health checks card prints it in; the gate itself still holds (held border and mark). Visual audit #4. */
+	failing?: number;
 };
 
 export type ScheduleLike = {
@@ -453,6 +456,7 @@ export function healthHold(
 		title: 'Health checks',
 		kindWord: null,
 		phrase: healthGateCountsLabel(counts),
+		failing: counts.failing,
 		held: display(candidates),
 		mark: { kind: 'check', clears: 'check' },
 		gates: visible

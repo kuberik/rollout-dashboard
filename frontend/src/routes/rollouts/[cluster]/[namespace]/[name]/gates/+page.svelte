@@ -148,6 +148,7 @@
 	} from '$lib/view-models/blocking-story';
 	import { fleetSettled } from '$lib/view-models/behind';
 	import { gateFact } from '$lib/view-models/gate-fact';
+	import { rolloutMarkState } from '$lib/view-models/rollout-state-chip';
 	import { now } from '$lib/stores/time';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import { fetchRolloutSchedules, scheduleWindowQueryKey } from '$lib/api/schedules';
@@ -1330,6 +1331,9 @@
 		)
 	);
 
+	/** visual audit #4: the card rollup reads the header's own count (a failing health gate is a gate holding), so they print one fact */
+	const holdingNow = $derived(gateFactNow?.holding ?? 0);
+
 	const hasContracts = $derived(blocks.length > 0);
 	const hasDependents = $derived(provided.length > 0);
 
@@ -1801,11 +1805,7 @@
 					     in fg-subtle). No gates: no fact (the card says "0 gates"). -->
 					{#if gateFactNow}
 						<span
-							class="tabular-nums {gateFactNow.tone === 'danger'
-								? 'text-danger'
-								: gateFactNow.tone === 'held'
-									? 'text-held'
-									: 'text-fg'}"
+							class="tabular-nums {gateFactNow.tone === 'held' ? 'text-held' : 'text-fg'}"
 							data-gate-fact>{gateFactNow.text}</span
 						>
 					{:else if focusWaitsFor}
@@ -1885,25 +1885,23 @@
 							     "drop zero parts" rule would never allow either; it
 							     collapses to the plain count. -->
 								<span
-									class="t-ui-sm whitespace-nowrap {reconciledHolding > 0
+									class="t-ui-sm whitespace-nowrap {holdingNow > 0
 										? 'text-held'
 										: 'text-fg-subtle'}"
-									title={reconciledHolding > 0
+									title={holdingNow > 0
 										? 'Gates on this rollout, or into/out of it, that are holding a build right now'
 										: 'No gate on this rollout is holding a build'}
 								>
 									<span class="gates-rollup-compact"
-										>{reconciledHolding > 0
-											? reconciledHolding === realGateTotal
-												? `${reconciledHolding} holding`
-												: `${reconciledHolding} of ${realGateTotal} holding`
+										>{holdingNow > 0
+											? holdingNow === realGateTotal
+												? `${holdingNow} holding`
+												: `${holdingNow} of ${realGateTotal} holding`
 											: countLabel(realGateTotal, 'gate')}</span
 									>
 									<span class="gates-rollup-full"
-										>{reconciledHolding > 0
-											? reconciledHolding === realGateTotal
-												? `${reconciledHolding} gate${reconciledHolding === 1 ? '' : 's'} holding`
-												: `${reconciledHolding} of ${realGateTotal} gate${realGateTotal === 1 ? '' : 's'} holding`
+										>{holdingNow > 0
+											? (gateFactNow?.text ?? '')
 											: `${realGateTotal} gate${realGateTotal === 1 ? '' : 's'}, none holding`}</span
 									>
 								</span>
@@ -1949,6 +1947,9 @@
 							<!-- ONE RolloutAsk for the whole card: the lead sentence and the gate tile read the same ask (two gates would overwrite each other's installed source) -->
 							<RolloutAsk href={rolloutPath(cluster, namespace, name)}>
 							{#snippet children(ask)}
+							<!-- visual audit #4: no lead row when it could only repeat the rollup directly above it ("1 gate holding." under "1 gate holding");
+							     it renders for the held-build sentence and for the calm "Nothing is holding" read, which say something the rollup does not. -->
+							{#if ((holdBreakdown.anyHeld || blockStory.pinnedTo) && leadSentence) || holdingNow === 0}
 							<div class="border-line-subtle -mx-4 -mt-4 mb-2 border-b px-4 py-2.5 sm:mb-3 sm:py-3">
 								{#if (holdBreakdown.anyHeld || blockStory.pinnedTo) && leadSentence}
 									{#if blockStory.kindPending}
@@ -1977,10 +1978,6 @@
 										</p>
 										<p class="t-body text-fg-muted mt-0.5">{leadSentence.consequence}</p>
 									{/if}
-								{:else if (reconciledHolding > 0 || gateFactNow?.tone === 'danger') && gateFactNow}
-									<!-- A health or downstream hold `holdBreakdown` does not see:
-									     state the header's own fact, never "Nothing is holding". -->
-									<p class="t-body text-fg-muted">{gateFactNow.text}.</p>
 								{:else}
 									<p class="t-body text-fg-muted">
 										Nothing is holding this rollout. {realGateTotal}
@@ -1988,6 +1985,7 @@
 									</p>
 								{/if}
 							</div>
+							{/if}
 							<RolloutNeighbourhood
 								approveAsk={ask}
 								{approvedFacts}
@@ -2003,6 +2001,7 @@
 								elsewhereCountOverride={elsewhereCounts}
 								{peerHeldByEnv}
 								{focusWaitsFor}
+								focusState={rolloutMarkState(rollout?.status?.history?.[0]?.bakeStatus)}
 								chainWait={chainWaitOf(waitsForFact, peerHeldByEnv.get(waitsForFact?.stage ?? '')?.state, holdBreakdown.held[0]?.build)}
 							/>
 							{/snippet}

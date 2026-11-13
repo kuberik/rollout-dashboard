@@ -77,6 +77,8 @@
 	import { fade } from 'svelte/transition';
 	import type { ApprovalTarget } from '$lib/components/new/data';
 	import { now } from '$lib/stores/time';
+	import { mostSevere } from '$lib/view-models/severity';
+	import { toneInk } from '$lib/view-models/state-tone';
 	import { WIRE_DASH, WIRE_STROKE, WIRE_TONE_CLASS, wireDashOffset, wireTone } from '$lib/graph-wire';
 	import {
 		wideWires,
@@ -103,6 +105,7 @@
 		elsewhereCountOverride,
 		peerHeldByEnv,
 		chainWait = null,
+		focusState = null,
 		focusWaitsFor = null,
 		approvedFacts = []
 	}: {
@@ -199,9 +202,18 @@
 		 * <env>".
 		 */
 		chainWait?: { stage: string; text: string } | null;
+		/**
+		 * The focus rollout's OWN state (its latest deploy): failed / checking / deploying, null at rest. Visual audit #4 (2026-11-13): the
+		 * focus tile drew the healthy green dot on a rollout whose header said FAILED. The focus mark now ranks by `severity.ts`: failed
+		 * outranks held, held outranks the moving states, and only a rollout at rest gets the calm dot.
+		 */
+		focusState?: 'failed' | 'checking' | 'deploying' | null;
 	} = $props();
 
 	const focusHeldBuilds = $derived(heldBuildsOverride ?? hood.heldBuilds);
+	const focusMark = $derived(
+		mostSevere<'failed' | 'checking' | 'deploying' | 'held'>([focusState, focusHeldBuilds.length > 0 ? ('held' as const) : null].filter((x) => x !== null), (x) => x) ?? 'newest'
+	);
 	const upstreamLinks = $derived(reconciledUpstream ?? hood.upstream);
 
 	/** Same threshold the grid's container query uses (960px; #140 set 800, the compact graph now takes 560-959): below it the layers stack and the wires take the narrow spine. */
@@ -759,7 +771,7 @@
 			{#if sk?.kind === 'pending'}
 				<p class="gh-line t-meta min-w-0 text-fg-muted" data-gate-release>{@render skipPending(sk)}</p>
 			{:else}
-				<p class="gh-line t-meta min-w-0 break-words text-held" data-gate-release>{type === 'window' || type === 'freeze' ? windowLine(b) : boxReleaseLine(b)}</p>
+				<p class="gh-line t-meta min-w-0 break-words {b.kind === 'health' && (b.failing ?? 0) > 0 ? toneInk('failed') : 'text-held'}" data-gate-release>{type === 'window' || type === 'freeze' ? windowLine(b) : boxReleaseLine(b)}</p>
 			{/if}
 			{#if b.kind === 'pin' && onClearPin}
 				<button type="button" class="gh-line btn btn-xs btn-secondary mt-1 self-start" disabled={clearPinDisabled} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
@@ -901,7 +913,7 @@
 						     component. -->
 						<span class="inline-flex h-5 w-5 shrink-0 items-center justify-center" data-hood-port>
 							<span style="transform: scale(1.25)"
-								><StatusMark state={focusHeldBuilds.length > 0 ? 'held' : 'newest'} /></span
+								><StatusMark state={focusMark} /></span
 							>
 						</span>
 						<!-- ONE SHAPE AT EVERY WIDTH (AD r3 #2): the name, then the env chip on its own line under it, always, so the centrepiece
