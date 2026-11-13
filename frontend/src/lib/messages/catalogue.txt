@@ -190,6 +190,7 @@ lib/components/CadenceStrip.svelte	code	Running for …
 lib/components/CadenceStrip.svelte	code	Running now
 lib/components/CadenceStrip.svelte	code	same build
 lib/components/CadenceStrip.svelte	text	same build
+lib/components/CadenceStrip.svelte	label	Time range
 lib/components/CadenceStrip.svelte	aria-label	View diff
 lib/components/CadenceStrip.svelte	text	View diff
 lib/components/CadenceStrip.svelte	title	View diff
@@ -1919,7 +1920,7 @@ routes/activity/+page.svelte	code	the last 7 days
 routes/activity/+page.svelte	code	the last day
 routes/activity/+page.svelte	code	the last hour
 routes/activity/+page.svelte	title	This window
-routes/activity/+page.svelte	aria-label	Time range
+routes/activity/+page.svelte	label	Time range
 routes/activity/+page.svelte	text	Try widening the window, or clearing one filter at a time.
 routes/activity/+page.svelte	code	vs … …
 routes/activity/+page.svelte	text	Widen to 30 days
