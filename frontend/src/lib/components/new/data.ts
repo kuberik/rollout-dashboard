@@ -449,8 +449,9 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 				i.fact = `In ${TWORD[reach]} · not in ${next ? TWORD[next] : 'the next environment'} yet`;
 				i.where = TWORD[reach];
 				/* AD v2 (a): the next tier's place is gated by an approval (even while it checks its own deploy): the change waits for approval there */
-				const gated = next ? R.rows.find((r) => i.apps.includes(r.app) && r.tier === next && r.state === 'awaiting-approval') : null;
-				if (gated) { i.group = 'waiting'; i.glyph = 'approval'; i.where = gated.regionsOf || gated.regions.length > 1 ? `${gated.regions.length} prod regions` : gated.place; i.fact = `${sharedWord('approval')} in ${i.where}`; i.tabHref = gated.href; i.href = gated.href; i.since = gated.since ?? i.since; }
+				/* a pure promotion hold (held-by-rule) is the same wait: the change page says "Held in staging", so the list does too (2026-11-13: checkout-edge #89) */
+				const gated = next ? R.rows.find((r) => i.apps.includes(r.app) && r.tier === next && (r.state === 'awaiting-approval' || r.state === 'held-by-rule')) : null;
+				if (gated) { const appr = gated.state === 'awaiting-approval'; i.group = 'waiting'; i.glyph = appr ? 'approval' : 'held'; i.where = gated.regionsOf || gated.regions.length > 1 ? `${gated.regions.length} prod regions` : gated.place; i.fact = appr ? `${sharedWord('approval')} in ${i.where}` : `Held in ${i.where}`; i.tabHref = gated.href; i.href = gated.href; i.since = gated.since ?? i.since; }
 			} else if (reach) {
 				/* one rule for every landed change: regions that RUN a build carrying it (a held place still runs its deployed build), named when one, counted when several */
 				const runs = reach === 'prod' ? livePlaces(state, i.apps, sha, i.mergedAt, 'prod', true) : null;

@@ -1275,7 +1275,7 @@ async function changeDetailChecks() {
 		await p.waitForSelector('[data-change-detail], h1', { timeout: 60000 }).catch(() => {});
 		await p.waitForTimeout(1200);
 		/* the change page's strip draws WaveMarks, not beads (#135/#148): each tier box holds `[data-stage-state]` sites whose value is the wave's slice kinds ("held", "done+held"). The list's bead state maps to one kind; the page agrees when the bead's tier box on the page carries it. */
-		const KIND = { failed: ['failed'], held: ['held'], approval: ['held'], 'approval-yours': ['held'], deploying: ['deploying', 'checking'], checking: ['checking', 'deploying', 'done'], landed: ['done'] };
+		const KIND = { failed: ['failed'], held: ['held'], approval: ['held'], 'approval-yours': ['held'], deploying: ['deploying'], checking: ['checking'], landed: ['done'], healthy: ['done'] };
 		/* the list's "checking" bead is the rollout's bake; the strip draws that place as deployed (or still deploying), so those kinds satisfy it. KNOWN GAP: recommender-svc #28 and checkout-edge #89 are the two fixtures where list and page word the same place differently */
 		const want = KIND[b.state] ?? [];
 		const d = await p.evaluate(() => {

@@ -13,7 +13,7 @@
 	import { waveMark, type MarkSiteState } from '$lib/view-models/wave-mark';
 
 	let { bead }: { bead: Bead } = $props();
-	const SITE: Record<Exclude<Bead['state'], 'landed'>, MarkSiteState> = { failed: 'failed', held: 'held', deploying: 'deploying', checking: 'checking', 'approval-yours': 'approval', approval: 'approval' };
+	const SITE: Record<Exclude<Bead['state'], 'landed'>, MarkSiteState> = { failed: 'failed', held: 'held', deploying: 'deploying', checking: 'checking', healthy: 'done', 'approval-yours': 'approval', approval: 'approval' };
 </script>
 
 <svelte:element
