@@ -1556,8 +1556,6 @@ lib/view-models/fleet-signals.ts	code	health check
 lib/view-models/gate-fact.ts	code	… gate…
 lib/view-models/gate-fact.ts	code	… gate… holding
 lib/view-models/gate-fact.ts	code	… of … gates holding
-lib/view-models/gate-fact.ts	code	1 gate failing
-lib/view-models/gate-fact.ts	code	1 of … gates failing
 lib/view-models/gate-label.ts	code	… from …
 lib/view-models/health-witness.ts	code	… failing
 lib/view-models/health-witness.ts	code	… is failing…. Automatic deploys here are held until it passes; a deploy you start by hand still applies.

@@ -29,3 +29,12 @@ export function rolloutStateChip(bakeStatus: string | null | undefined): {
 	const label = s === 'Succeeded' ? 'deployed' : s === 'Failed' ? 'failed' : bakeWord(s);
 	return { role, label, title: bakeTitle(s) };
 }
+
+/**
+ * The same state as a MARK (StatusMark / severity.ts spelling), for a tile that draws the rollout object beside the header that names
+ * it (the Gates tab's focus tile, visual audit #4). Null at rest: the tile's own calm mark applies.
+ */
+export function rolloutMarkState(bakeStatus: string | null | undefined): 'failed' | 'checking' | 'deploying' | null {
+	const role = rolloutStateChip(bakeStatus).role;
+	return role === 'failing' ? 'failed' : role === 'checking' ? 'checking' : role === 'deploying' ? 'deploying' : null;
+}
