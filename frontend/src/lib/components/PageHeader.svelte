@@ -24,7 +24,8 @@
 	 * (Sidebar starred, Environments rows), so
 	 * the parent reads as the same object it opens. Owner 2026-11-13: a grey
 	 * meta link and the navbar crumb were "way too subtle". Hover underlines
-	 * the name; the link's title says where it goes. `leading` is ignored.
+	 * the name; the link's title says where it goes. `leading` and
+	 * `srOnlyTitle` are ignored (no caller needs either with an app).
 	 *
 	 * ROLE: the first thing in `<main>` on every route. Replaces the four
 	 * compositions the audit found (Montserrat 24/300 count + sentence, mono
