@@ -20,6 +20,7 @@
 	 * Submit: one POST per selected rollout through its own cluster path, at most 4 at a time, each row settling on its own. Never `gates`,
 	 * never an empty body. Success is read back from the server (the queries are invalidated), not drawn optimistically.
 	 */
+	import { untrack } from 'svelte';
 	import { Modal } from 'flowbite-svelte';
 	import { ExclamationCircleSolid, ForwardStepOutline } from 'flowbite-svelte-icons';
 	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
@@ -106,15 +107,23 @@
 	});
 
 	// Per-row permission: unknown = enabled (the server's 403 is the backstop).
+	// ⛔ The query list only ever GROWS. `createQueries` cannot shrink its array: when the rows went from 5 to 1 (the page reopened the
+	// dialog for another rule) its effect threw `deleteProperty on proxy`, and the throw killed this component's reactivity, so `open`
+	// never reached it again and the dialog would not reopen. Rows that have left are disabled, not removed.
+	let permRows = $state<SkipRow[]>(untrack(() => [...allRows]));
+	$effect.pre(() => {
+		const fresh = allRows.filter((r) => !untrack(() => permRows).some((p) => p.key === r.key));
+		if (fresh.length > 0) permRows = [...untrack(() => permRows), ...fresh];
+	});
 	const permQueries = createQueries(() => ({
-		queries: allRows.map((r) => ({
+		queries: permRows.map((r) => ({
 			...rolloutPermissionsQueryOptions({ namespace: r.namespace, name: r.name, cluster: r.cluster }),
-			enabled: open && listed && r.key !== hereKey
+			enabled: open && listed && r.key !== hereKey && allRows.some((a) => a.key === r.key)
 		}))
 	}));
 	const cannot = $derived(
 		new Set(
-			allRows.filter((r, i) => {
+			permRows.filter((r, i) => {
 				const p = permQueries[i]?.data?.permissions;
 				return r.key !== hereKey && !!p && !p.update && !p.patch;
 			}).map((r) => r.key)

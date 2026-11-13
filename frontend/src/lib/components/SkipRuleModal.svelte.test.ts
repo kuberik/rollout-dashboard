@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import SkipRuleModal from './SkipRuleModal.svelte';
+import SkipRuleModalHost from '$lib/testing/SkipRuleModalHost.svelte';
 import type { SkipRow, SkipTarget } from '$lib/view-models/skip-rule';
 
 // jsdom has neither the Web Animations API nor a working <dialog> (see ClearPinModal.svelte.test.ts).
@@ -111,5 +112,27 @@ describe('SkipRuleModal', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /Skip for 1 rollout/ }));
 		await waitFor(() => expect(posts).toHaveLength(3));
 		expect(posts[2].url).toContain('invoice-worker-staging');
+	});
+
+	test('reopens for another rule with fewer rows after the dialog was closed', async () => {
+		// Regression: the page reopens the dialog with a NEW, shorter rows list. createQueries threw (`deleteProperty on proxy`) when its
+		// array shrank, which killed the component's reactivity: `open` never reached it again and no <dialog> appeared.
+		const five = [
+			row('staging', 'ledger-api-staging', 'ledger-api', 'staging'),
+			row('staging', 'a-staging', 'a', 'staging'),
+			row('staging', 'b-staging', 'b', 'staging'),
+			row('prod', 'c-prod', 'c', 'prod'),
+			row('prod', 'd-prod', 'd', 'prod')
+		];
+		const target2: SkipTarget = { rule: { kind: 'RolloutGate', name: 'ledger-signoff' }, ruleLabel: 'Ledger sign-off', tag: 'm-63', build: '5.8.0-63', gateNames: ['ledger-signoff'] };
+		const one = [row('staging', 'ledger-api-staging', 'ledger-api', 'staging', 'm-63', '5.8.0-63')];
+		render(SkipRuleModalHost, { props: { first: { target, rows: five }, second: { target: target2, rows: one }, here } });
+		await fireEvent.click(document.querySelector('[data-open-first]')!);
+		await waitFor(() => expect(document.querySelectorAll('[data-skip-row]')).toHaveLength(5));
+		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		await new Promise((r) => setTimeout(r, 300));
+		await fireEvent.click(document.querySelector('[data-open-second]')!);
+		await waitFor(() => expect(screen.getByText('Skip Ledger sign-off once')).toBeInTheDocument());
+		expect(document.querySelector('dialog')?.open).toBe(true);
 	});
 });
