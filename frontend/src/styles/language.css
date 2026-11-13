@@ -1114,12 +1114,12 @@ dialog[role='dialog'][aria-modal='true'] {
 /* ── r34 steps (Rollouts AD round 4): THE STRAND's node vocabulary at row scale, shared by the rollout rows' step indicator
    (new/Pipeline.svelte sm) and the Changes cards' Trail so one ring means one thing on both pages. A node sits on one
    continuous line-strong strand; the strand says "one sequence", the node says the state:
-   done = a FILLED neutral disc (fg-subtle: reached, healthy spends no hue); to do = a hollow 1.5px line-strong ring;
+   done = a FILLED success disc; to do = a hollow 1.5px fg-subtle ring (2026-11-13: colours are the ONE state-tone table's, view-models/state-tone.ts; state-tone.test.ts pins every .st-* rule to it);
    active = active ring + active centre dot (+ the live halo, deploying only); checking = progress ring + dot;
    held = held ring; failed = THE solid danger disc. Tokens only. */
 .st-node { display: block; border-radius: 9999px; background-color: var(--k-surface); box-sizing: border-box; }
-.st-done { background-color: var(--k-fg-subtle); }
-.st-todo { box-shadow: inset 0 0 0 1.5px var(--k-line-strong); }
+.st-done { background-color: var(--k-success-solid); }
+.st-todo { box-shadow: inset 0 0 0 1.5px var(--k-fg-subtle); }
 .st-active { box-shadow: inset 0 0 0 1.5px var(--k-active-solid); background: radial-gradient(circle, var(--k-active-solid) 0 1.5px, transparent 2px); }
 .st-check { box-shadow: inset 0 0 0 1.5px var(--k-progress-solid); background: radial-gradient(circle, var(--k-progress-solid) 0 1.5px, transparent 2px); }
 .st-hold { box-shadow: inset 0 0 0 1.5px var(--k-held-solid); }

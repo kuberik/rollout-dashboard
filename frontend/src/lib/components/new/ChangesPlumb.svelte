@@ -18,6 +18,7 @@
 	import { goto } from '$app/navigation';
 	import Card from '$lib/components/Card.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
+	import { toneInk } from '$lib/view-models/state-tone';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FilterChip from '$lib/components/FilterChip.svelte';
 	import { stateWord } from './state-words';
@@ -50,12 +51,11 @@
 	const word = (r: PlumbRow): [string, string] => {
 		if (r.col === 'merged' && r.state !== 'failed') return ['Not deployed yet', 'text-fg-muted'];
 		const w = stateWord(r.state === 'approval-yours' ? 'approval' : r.state, { yours: r.state === 'approval-yours' });
-		return [w ?? 'In ' + r.col, r.state === 'failed' ? 'text-danger' : r.state === 'approval-yours' || r.state === 'held' ? 'text-held' : 'text-fg-muted'];
+		return [w ?? 'In ' + r.col, toneInk(r.state)];
 	};
 	const mark = (state: string, col?: string): { state: 'failed' | 'held' | 'deploying' | 'checking' | 'approval' | 'none'; tone?: 'held' | 'neutral' } =>
 		col === 'merged' && state !== 'failed' ? { state: 'none' } : state === 'approval-yours' ? { state: 'approval', tone: 'held' } : state === 'approval' ? { state: 'approval', tone: 'neutral' } : { state: (['failed', 'held', 'deploying', 'checking'].includes(state) ? state : 'checking') as 'failed' };
 	const svcMark = (s: Svc) => (s.done ? { state: 'newest' as const } : mark(s.state, s.tier));
-	const INK: Record<string, string> = { failed: 'text-danger', 'approval-yours': 'text-held', held: 'text-held' };
 	const sage = (t: number | null) => (t ? ago(new Date(t).toISOString()) : '');
 </script>
 
@@ -116,7 +116,7 @@
 													<span class="plb-mark"><StatusMark {...svcMark(x)} /></span>
 													<AppGlyph name={x.app} size={16} />
 													{#if x.href}<a href={x.href} class="tap-link t-ui-sm truncate text-fg">{x.app}</a>{:else}<span class="t-ui-sm truncate text-fg">{x.app}</span>{/if}
-													<span class="plb-svc-word t-meta {INK[x.state] ?? 'text-fg-muted'}">{serviceWord(x)}</span>
+													<span class="plb-svc-word t-meta {toneInk(x.state)}">{serviceWord(x)}</span>
 													<span class="plb-age t-meta tabular-nums text-fg-subtle">{sage(x.since)}</span>
 												</li>
 											{/each}

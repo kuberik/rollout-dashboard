@@ -45,6 +45,7 @@
 	 * WHY NOT `DeploymentTimeline`: that is the multi-lane compare tool with
 	 * zoom and fanning; it is still what "Compare namespace" opens.
 	 */
+	import { toneInk } from '$lib/view-models/state-tone';
 	import { ArrowsRepeatOutline, UndoOutline, CodePullRequestSolid } from 'flowbite-svelte-icons';
 	import { startOfDayMs, formatRelativeShort } from '$lib/display-time';
 	import { displayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
@@ -575,10 +576,9 @@
 		return 'Healthy';
 	}
 	function outcomeInk(s: Seg): string {
-		if (s.failed) return 'text-danger';
+		if (s.failed) return toneInk('failed');
 		const live = liveState(s);
-		if (live === 'checking') return 'text-progress';
-		if (live === 'deploying') return 'text-active';
+		if (live === 'checking' || live === 'deploying') return toneInk(live);
 		return 'text-fg-muted';
 	}
 	function whenLabel(t: number): string {

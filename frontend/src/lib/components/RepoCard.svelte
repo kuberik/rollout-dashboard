@@ -14,6 +14,7 @@
 	 * It borrows the lane's cell geometry (28px, 6px radius, --k-subtle fill, no border) and ChangeDot's bead. The model is
 	 * view-models/repo-card.ts (unit-tested); nothing is decided here.
 	 */
+	import { hueInk } from '$lib/view-models/state-tone';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
 	import RepoCells from '$lib/components/RepoCells.svelte';
 	import type { RepoCardModel } from '$lib/view-models/repo-card';
@@ -21,7 +22,6 @@
 	let { model, href, shell = 'card', team = false, class: className = '' }: { model: RepoCardModel; href: string; shell?: 'card' | 'item'; team?: boolean; class?: string } = $props();
 	/** a repo that deploys several apps says which, once, quietly under the title: "deploys a, b +2" (two names, the full list in the title attribute); single-app repos print nothing */
 	const deploys = $derived((model.apps?.length ?? 0) > 1 && shell === 'card' ? { text: `deploys ${model.apps!.slice(0, 2).join(', ')}${model.apps!.length > 2 ? ` +${model.apps!.length - 2}` : ''}`, full: model.apps!.join(', ') } : null);
-	const ink = { danger: 'text-danger', held: 'text-held', subtle: 'text-fg-subtle' } as const;
 </script>
 
 <svelte:element this={shell === 'item' ? 'li' : 'article'} class="rc relative flex min-w-0 flex-col {shell === 'card' ? 'gap-2.5 rounded-lg border border-line bg-surface p-4' : 'gap-2 px-4 py-3 max-sm:px-3 hover:bg-hover'} {className}" data-repo={model.repo}>
@@ -30,7 +30,7 @@
 		{#if !team}<AppGlyph name={model.repo} size={20} class="shrink-0" />{/if}
 		<h3 class="min-w-0 truncate {team ? 't-ui font-medium' : 't-card-title'} text-fg">{model.repo}</h3>
 		<span class="t-meta ml-auto flex shrink-0 items-center gap-1.5 tabular-nums">
-			{#each model.rollup as p, i (p.text)}{#if i}<span class="text-fg-disabled" aria-hidden="true">·</span>{/if}<span class={ink[p.ink]}>{p.text}</span>{/each}
+			{#each model.rollup as p, i (p.text)}{#if i}<span class="text-fg-disabled" aria-hidden="true">·</span>{/if}<span class={hueInk(p.ink)}>{p.text}</span>{/each}
 		</span>
 	</header>
 	{#if deploys}<p class="t-meta pointer-events-none relative z-[1] -mt-1 min-w-0 truncate text-fg-subtle {team ? '' : 'pl-7'}" title="deploys {deploys.full}" data-repo-apps>{deploys.text}</p>{/if}

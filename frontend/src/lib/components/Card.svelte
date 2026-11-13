@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { HUE_INK } from '$lib/view-models/state-tone';
 	import { smoothHeight } from '$lib/smooth-height';
 	/**
 	 * THE CARD. The product's one titled panel.
@@ -194,11 +195,11 @@
 
 	const VERDICT_TONE: Record<VerdictTone, string> = {
 		neutral: 'text-fg-subtle !font-normal',
-		good: 'text-success',
-		adverse: 'text-danger',
-		active: 'text-active',
+		good: HUE_INK.success,
+		adverse: HUE_INK.danger,
+		active: HUE_INK.active,
 		// held — needs a person or another deploy; the product's orange, not red.
-		held: 'text-held'
+		held: HUE_INK.held
 	};
 
 	const Icon = $derived(icon);

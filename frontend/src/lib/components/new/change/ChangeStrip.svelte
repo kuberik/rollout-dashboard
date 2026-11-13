@@ -11,6 +11,7 @@
 	 * No words in the strip: a word appearing would widen its box and push the next one (0px rule, tools/stability.mjs).
 	 * Several apps: one row per app on a shared grid (EnvRow `lanes`).
 	 */
+	import { toneInk } from '$lib/view-models/state-tone';
 	import EnvRow, { type EnvCell, type EnvLane, type EnvSite } from '$lib/components/EnvRow.svelte';
 	import type { SiteState } from '$lib/components/SiteMark.svelte';
 	import type { TChange, HomeState } from '../data';
@@ -19,7 +20,6 @@
 	let { change: c, scenario = 'incident', class: className = '' }: { change: TChange; scenario?: HomeState; class?: string } = $props();
 
 	const SITE: Record<StageState, SiteState> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'approval', failed: 'failed', notreached: 'notreached', notaffected: 'notaffected', replaced: 'notaffected' };
-	const INK: Partial<Record<StageState, string>> = { checking: 'text-progress', deploying: 'text-active', held: 'text-held', approval: 'text-held', failed: 'text-danger', notreached: 'text-fg-subtle' };
 	const QUIET = new Set<StageState>(['deployed', 'notreached', 'notaffected', 'replaced']);
 
 	const stages = $derived(stagesOf({ kind: 'change', change: c }, scenario));
@@ -33,7 +33,7 @@
 		/* AD strip r2 N1: line 2 says the same fact in every scope (the App / Rollout lanes carry no step count): the state, then the currency; steps are one tap away on the rollout */
 		detail: p.lag || undefined,
 		build: p.current ?? undefined,
-		wordInk: INK[p.state],
+		wordInk: QUIET.has(p.state) && p.state !== 'notreached' ? undefined : toneInk(p.state),
 		aside: p.age ?? undefined,
 		href: p.href
 	});

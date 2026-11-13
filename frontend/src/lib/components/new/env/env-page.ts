@@ -131,28 +131,6 @@ export function wavesOf(places: PlaceHold[], tier: string): EnvWave[] {
 	});
 }
 
-/** the app's environment row for this page: one box per wave (mark + word, natural width), the leading site under it; a one-site app gets its site. EnvRow draws it. */
-export function cellsOf(a: Pick<EnvApp, 'waves' | 'places' | 'row'>, tier: string, region: string | null): EnvCell[] {
-	const yours = !!a.row && a.row.state === 'awaiting-approval' && !!rowAction(a.row);
-	const mark = (s: string): EnvCell['mark'] => (MARK_STATE[s] ? { state: MARK_STATE[s], tone: s === 'awaiting-approval' ? (yours ? 'held' : 'neutral') : undefined } : undefined);
-	const word = (s: string) => (s === 'awaiting-approval' ? approvalWord(yours) : WORD[s]);
-	const ink = (s: string) => (s === 'failed' ? 'text-danger' : s === 'checking' ? 'text-progress' : s === 'deploying' ? 'text-active' : 'text-held');
-	if (a.waves.length) {
-		return a.waves.map((w): EnvCell => ({
-			key: `wave-${w.n}`, label: `Wave ${w.n}`,
-			title: `Wave ${w.n}${w.build ? ` · ${w.build}` : ''}\n${w.leader} leads${w.followers.length ? `; follow: ${w.followers.join(', ')}` : ''}`,
-			...(w.adverse ? { mark: mark(w.worst), word: word(w.worst), wordInk: ink(w.worst) } : { word: 'Healthy' }),
-			...(w.others ? { fact: w.others, factKind: 'detail' as const } : {}),
-			hang: { lead: w.leader, text: w.followers.length ? ` leads · ${w.followers.length === 1 ? `${w.followers[0]} follows` : `${w.followers.length} follow`}` : ' leads' }
-		}));
-	}
-	const p = a.places[0];
-	const st = a.row?.state ?? p?.state ?? 'healthy';
-	const label = !p || p.label === tier || p.label === 'production' ? (region ? `prod-${region}`.replace(/^prod-/, '') : tier) : p.label;
-	/* the state line above already says the word: the one box carries its site and the mark */
-	return [{ key: 'site', label, ...(ADVERSE.has(st) ? { mark: mark(st) } : {}) }];
-}
-
 const REST_FILL = 'On the newest';
 
 /**
@@ -291,7 +269,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 		const word = approval ? approvalWord(yours) : (x.reason ?? 'Held').replace(/^Waiting on /, 'Waits on ');
 		cells.push({
 			key: tierKey, label: tierKey, title: `${tierKey}: ${versions.length > 1 ? `${versions.length} builds across ${places.length} places` : versions[0] ?? ''}`,
-			...(hold ? { mark: { state: approval ? 'approval' : 'held', tone: approval ? (yours ? 'held' : 'neutral') : undefined }, word, wordInk: approval && !yours ? 'text-fg-muted' : 'text-held' } : (versions.length === 1 ? { fact: versions[0], factKind: 'detail' as const } : versions.length ? { fact: `${versions.length} builds`, factKind: 'detail' as const } : {}))
+			...(hold ? { mark: { state: approval ? 'approval' : 'held' }, word, wordInk: approval && !yours ? 'text-fg-muted' : 'text-held' } : (versions.length === 1 ? { fact: versions[0], factKind: 'detail' as const } : versions.length ? { fact: `${versions.length} builds`, factKind: 'detail' as const } : {}))
 		});
 		const oldest = [...mine].sort((a, b) => Date.parse(a.c.mergedAt) - Date.parse(b.c.mergedAt))[0];
 		const since = row ? holdSince(row, hs) : null;
