@@ -107,7 +107,7 @@
 	{#if checks?.href}<a href={checks.href} target="_blank" rel="noopener noreferrer" class="btn btn-secondary" data-link="checks">CI checks<span aria-hidden="true">↗</span></a>{/if}
 {/snippet}
 
-<div class="w-full px-4 py-6 tabular-nums sm:px-6" data-change-detail data-truth-kind="change-detail" data-truth-state={st.kind} data-truth-ref={c.refLabel} data-truth-author={c.author ?? ''} {...changeTruth(c, scenario)}>
+<div class="w-full px-4 py-6 sm:px-6" data-change-detail data-truth-kind="change-detail" data-truth-state={st.kind} data-truth-ref={c.refLabel} data-truth-author={c.author ?? ''} {...changeTruth(c, scenario)}>
 	<PageHeader title={c.title}>
 		{#snippet titleAfter()}
 			<!-- r4: the state beside the title, only when adverse (the strip and the banner say the rest); one coloured chip -->
