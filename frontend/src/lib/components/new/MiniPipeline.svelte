@@ -151,15 +151,15 @@
 	.mp-sm .mp-seg { background: var(--k-line-strong); }
 	/* family: a reached or not-yet station is a hollow ring (never a grey disc); the line says which */
 	/* r39 (owner 2026-11-03/11-08, kit parts/strand): DONE is the calm green fill, a filled disc; no ring, no icon */
-	.mp-done { background-color: var(--k-done); }
+	.mp-done { background-color: var(--k-success-solid); }
 	.mp-nu .st-active, .mp-nu .st-check { box-shadow: inset 0 0 0 1.5px var(--k-fg-muted); background: radial-gradient(circle, var(--k-fg-muted) 0 1.5px, transparent 2px); }
 	.mp-nu .st-hold { box-shadow: inset 0 0 0 1.5px var(--k-fg-subtle); }
 	.mp-nu .st-live { box-shadow: inset 0 0 0 1.5px var(--k-fg-muted); }
 	.mp-ring { box-shadow: inset 0 0 0 1.5px var(--k-fg-subtle); }
-	.mp-ring-off { box-shadow: inset 0 0 0 1.5px var(--k-line-strong); }
+	.mp-ring-off { box-shadow: inset 0 0 0 1.5px var(--k-fg-subtle); }
 	.mp-dot { width: var(--d); height: var(--d); }
 	.mp-rest { background: radial-gradient(circle, var(--k-success-solid) 0 2px, transparent 2.5px); }
-	.mp-ask { box-shadow: inset 0 0 0 1.5px var(--k-fg); }
+	.mp-ask { box-shadow: inset 0 0 0 1.5px var(--k-held-solid); }
 	.mp-disc { display: flex; align-items: center; justify-content: center; width: var(--d); height: var(--d); border-radius: 9999px; }
 	/* a fold node: three-character "+N" centred in its own slot; the slot is wider than d only in text, it never changes the pitch */
 	.mp-fold { display: flex; align-items: center; justify-content: center; width: var(--d); height: var(--d); color: var(--k-fg-subtle); font-size: 11px; }

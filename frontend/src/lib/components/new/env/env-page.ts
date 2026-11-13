@@ -15,6 +15,7 @@
  *
  * Headline rule (coordinator a): an app's headline state here is the MOST SEVERE state among its places (state-words `mostSevere`).
  */
+import { toneInk } from '$lib/view-models/state-tone';
 import { newestFirst, latest } from '$lib/instant';
 import { heldHere } from '../data';
 import { siteCount, siteKey } from '$lib/view-models/regions';
@@ -269,7 +270,7 @@ export function envPage(hs: HomeState, name: string): EnvPage | null {
 		const word = approval ? approvalWord(yours) : (x.reason ?? 'Held').replace(/^Waiting on /, 'Waits on ');
 		cells.push({
 			key: tierKey, label: tierKey, title: `${tierKey}: ${versions.length > 1 ? `${versions.length} builds across ${places.length} places` : versions[0] ?? ''}`,
-			...(hold ? { mark: { state: approval ? 'approval' : 'held' }, word, wordInk: approval && !yours ? 'text-fg-muted' : 'text-held' } : (versions.length === 1 ? { fact: versions[0], factKind: 'detail' as const } : versions.length ? { fact: `${versions.length} builds`, factKind: 'detail' as const } : {}))
+			...(hold ? { mark: { state: approval ? 'approval' : 'held' }, word, wordInk: toneInk(approval ? 'approval' : 'held') } : (versions.length === 1 ? { fact: versions[0], factKind: 'detail' as const } : versions.length ? { fact: `${versions.length} builds`, factKind: 'detail' as const } : {}))
 		});
 		const oldest = [...mine].sort((a, b) => Date.parse(a.c.mergedAt) - Date.parse(b.c.mergedAt))[0];
 		const since = row ? holdSince(row, hs) : null;

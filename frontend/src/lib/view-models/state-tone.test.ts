@@ -5,9 +5,10 @@ import { TONE, toneOf, toneInk, hueInk, type ToneState } from './state-tone';
 
 const ROOT = join(__dirname, '..');
 const walk = (d: string): string[] => readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? walk(join(d, f)) : [join(d, f)]));
-const SOURCES = walk(ROOT).filter((f) => /\.(svelte|ts)$/.test(f) && !/\.test\.|\.svelte\.test\./.test(f) && !f.includes('/paraglide/'));
+const SOURCES = [...walk(ROOT), ...walk(join(ROOT, '../routes'))].filter((f) => /\.(svelte|ts)$/.test(f) && !/\.test\.|\.svelte\.test\./.test(f) && !f.includes('/paraglide/'));
 const src = (f: string) => readFileSync(f, 'utf8');
 const rel = (f: string) => relative(ROOT, f);
+const SKIP = (f: string) => f.includes('/paraglide/');
 
 const STATES = Object.keys(TONE) as ToneState[];
 
@@ -41,7 +42,7 @@ describe('the state-tone table', () => {
 });
 
 describe('the strand dots (.st-*) read the table', () => {
-	const css = readFileSync(join(ROOT, '../styles/language.css'), 'utf8');
+	const css = readFileSync(join(ROOT, '../styles/language.css'), 'utf8') + readFileSync(join(ROOT, 'components/new/MiniPipeline.svelte'), 'utf8');
 	const rule = (name: string) => new RegExp(`\\.${name}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
 	it.each([
 		['st-done', TONE.done.solid],
@@ -49,7 +50,11 @@ describe('the strand dots (.st-*) read the table', () => {
 		['st-active', TONE.deploying.solid],
 		['st-check', TONE.checking.solid],
 		['st-hold', TONE.held.solid],
-		['st-fail', TONE.failed.solid]
+		['st-fail', TONE.failed.solid],
+		// the rollouts-list strand (MiniPipeline) draws done / not-started / approval with its own classes
+		['mp-done', TONE.done.solid],
+		['mp-ring-off', TONE.notreached.solid],
+		['mp-ask', TONE.approval.solid]
 	])('.%s paints with the table colour', (name, solid) => {
 		expect(rule(name)).toContain(solid);
 	});
