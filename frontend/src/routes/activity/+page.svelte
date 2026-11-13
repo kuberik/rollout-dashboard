@@ -1694,15 +1694,15 @@
 				{#if rolloutsQuery.isLoading}
 					<section aria-hidden="true">
 						<div class="flex h-8 items-center gap-2"><SkeletonBar width="w-4" height="h-4" /><SkeletonBar width="w-20" height="h-4" /></div>
-						<div class="skel-card mt-3 hidden h-[330px] rounded-lg border border-line bg-surface sm:block"></div>
-						<div class="skel-card mt-3 h-[470px] rounded-lg border border-line bg-surface sm:hidden"></div>
+						<div class="skel-card mt-3 hidden h-[330px] rounded-md border border-line bg-surface sm:block"></div>
+						<div class="skel-card mt-3 h-[470px] rounded-md border border-line bg-surface sm:hidden"></div>
 					</section>
 				{:else if allEntries.length > 0}
 					<section id="deploys" data-section="deploys" data-tour="activity-chart">
 						<SectionHeader title="Deploys" icon={ChartOutline} rollup={deploysRollup}>
 							{#snippet action()}{@render rangeControl('hidden sm:flex')}{/snippet}
 						</SectionHeader>
-						<div class="act-chart rounded-lg border border-line bg-surface p-4 lg:px-3.5">
+						<div class="act-chart rounded-md border border-line bg-surface p-4 lg:px-3.5">
 							<!-- KPI head: Home's KpiTile, flat inside the card. Phone: a 2×2 grid (every figure at full size, none clipped);
 							     ≥640: one row of four with hairline dividers. -->
 							<!-- phone: the window control leaves the header (it would squeeze the rollup out) and sits as six equal buttons at the top of the card -->
@@ -1825,7 +1825,7 @@
 							{#each skelDayGroups as g (g.key)}
 								<section>
 									<div class="flex h-8 items-center gap-2"><SkeletonBar width="w-4" height="h-4" /><SkeletonBar width="w-24" height="h-4" /></div>
-									<div class="skel-card mt-3 rounded-lg border border-line bg-surface" style="height: {g.rows * skelRowHeight}px"></div>
+									<div class="skel-card mt-3 rounded-md border border-line bg-surface" style="height: {g.rows * skelRowHeight}px"></div>
 								</section>
 							{/each}
 						</div>

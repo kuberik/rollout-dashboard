@@ -156,8 +156,8 @@
 	{/if}
 {/snippet}
 
-<article class="ac relative flex min-w-0 flex-col rounded-lg border border-line bg-surface {className}" class:ac-lead={lead} data-item data-state={model.state} data-variant={fig ? (compact ? 'figure-compact' : 'figure') : compact ? 'compact' : 'title'}>
-	<a {href} class="absolute inset-0 z-0 rounded-lg" aria-label={label}></a>
+<article class="ac relative flex min-w-0 flex-col rounded-md border border-line bg-surface {className}" class:ac-lead={lead} data-item data-state={model.state} data-variant={fig ? (compact ? 'figure-compact' : 'figure') : compact ? 'compact' : 'title'}>
+	<a {href} class="absolute inset-0 z-0 rounded-md" aria-label={label}></a>
 	{#if fig}
 		<div class="flex flex-1 flex-col gap-3 px-4 pb-4 pt-3.5 sm:px-5 sm:pb-5">
 			{@render status()}
