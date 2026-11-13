@@ -1999,7 +1999,7 @@ describe('deploy-risk: skipping one rule, what production asks for and why', () 
 	test('one shared production build: type the build; several builds: type the rule', () => {
 		const same = skipConfirm([{ env: 'prod', build: '5.8.0-62', name: 'ledger-api' }], { name: 'business-hours' });
 		if (same.level !== 'typed') throw new Error('production is typed');
-		says(same.why, 'Prod is selected, so type the build to confirm.');
+		expect(same.why).toBeNull();
 		says(same.prompt, 'Prod is selected. Type');
 		const many = skipConfirm(
 			[

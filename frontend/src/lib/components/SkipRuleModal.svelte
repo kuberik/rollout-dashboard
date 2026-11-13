@@ -280,8 +280,8 @@
 
 			{#if listed}
 				<div>
-					<div class="mb-1.5 flex items-center gap-2">
-						<span class="t-label text-fg-subtle min-w-0 truncate">Held by {target.ruleLabel}</span>
+					<div class="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+						<span class="t-label text-fg-subtle min-w-0">Held by {target.ruleLabel}</span>
 						<span class="t-meta text-fg-subtle ml-auto shrink-0 tabular-nums" data-skip-count
 							>{selectedRows.length} of {allRows.length} selected</span
 						>
@@ -305,13 +305,19 @@
 										{disabled}
 										onchange={() => toggle(r.key)}
 									/>
-									<span class="flex min-w-0 flex-1 items-center gap-2">
-										<span class="t-ui min-w-0 truncate text-fg">{r.name}</span>
-										{#if r.key === hereKey}<span class="t-meta shrink-0 text-fg-subtle">this rollout</span>{/if}
+									<!-- one line from sm: name, env chip, cluster, build on a fixed right track. On a phone the name keeps line one to itself
+									     (it truncates last, never to nothing) and the chip, cluster and build take line two. -->
+									<span class="flex min-w-0 flex-1 flex-col gap-0.5 py-1.5 sm:flex-row sm:items-center sm:gap-2 sm:py-0">
+										<span class="flex min-w-0 flex-1 items-center gap-2">
+											<span class="t-ui min-w-0 truncate text-fg">{r.name}</span>
+											{#if r.key === hereKey}<span class="t-meta shrink-0 text-fg-subtle">this rollout</span>{/if}
+										</span>
+										<span class="flex min-w-0 items-center gap-2">
+											<span class="inline-flex shrink-0 sm:w-[76px]"><Chip role="env" {theme} label={shortEnvLabel(theme) || r.env} title={r.env} wide class="shrink-0" /></span>
+											{#if multiCluster}<span class="inline-flex min-w-0 sm:w-28"><ClusterMark name={r.cluster} class="min-w-0 truncate" /></span>{/if}
+											<span class="t-code-sm ml-auto shrink-0 truncate text-right tabular-nums text-fg-muted sm:w-24" title={r.tag}>{r.build}</span>
+										</span>
 									</span>
-									<Chip role="env" {theme} label={shortEnvLabel(theme) || r.env} title={r.env} wide class="shrink-0" />
-									{#if multiCluster}<ClusterMark name={r.cluster} class="hidden shrink-0 sm:inline-flex" />{/if}
-									<span class="t-code-sm w-24 shrink-0 truncate text-right tabular-nums text-fg-muted" title={r.tag}>{r.build}</span>
 									<span class="inline-flex h-4 w-4 shrink-0 items-center justify-center" data-skip-result={status[r.key] ?? 'idle'}>
 										{#if status[r.key] === 'pending'}
 											<StatusSpinner size="4" />
@@ -350,7 +356,7 @@
 							{/each}
 						</ul>
 					{/if}
-					<p class="t-meta mb-1 text-fg-muted" data-skip-why>{confirm.why}</p>
+					{#if confirm.why}<p class="t-meta mb-1 text-fg-muted" data-skip-why>{confirm.why}</p>{/if}
 					<label for="srm-confirm" class="mb-1 block t-meta text-fg-subtle">
 						{confirm.prompt}
 						<span class="t-code-sm text-danger">{confirm.expected}</span> to confirm

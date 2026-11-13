@@ -595,7 +595,7 @@
 		<ForwardStepOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
 		<span class="min-w-0 break-words"
 			>Skipped once for <span class="t-code-sm">{sk.build}</span
-			>{#if sk.waitsFor.length > 0}<span class="text-fg-subtle"> · waits for {sk.waitsFor.join(', ')}</span>{/if}</span
+			>{#if sk.waitsFor.length > 0}<span class="text-fg-subtle ml-1">· waits for {sk.waitsFor.join(', ')}</span>{/if}</span
 		>
 	</span>
 {/snippet}

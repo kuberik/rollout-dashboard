@@ -457,8 +457,8 @@ export type SkipConfirm =
 			by: 'build' | 'rule';
 			/** The exact text that unlocks the confirm. */
 			expected: string;
-			/** One plain line: why it asks for that. */
-			why: string;
+			/** One plain line: why it asks for that. Null when the prompt already says it (one shared build: "Prod is selected. Type <build>"). */
+			why: string | null;
 			/** The label above the box, ending where the value goes. */
 			prompt: string;
 			/** The production rollouts, with their builds: listed when `by === 'rule'`. */
@@ -479,7 +479,7 @@ export function skipConfirm(selection: readonly SkipSelection[], rule: { name: s
 			level: 'typed',
 			by: 'build',
 			expected: builds[0],
-			why: 'Prod is selected, so type the build to confirm.',
+			why: null,
 			prompt: 'Prod is selected. Type',
 			production: [...production]
 		};
