@@ -7,6 +7,7 @@
 	 * 1100px of main (a 4-up card needs ~270px), the 3-up below 1001px, everything is one column below 640px. `lead` true, or
 	 * 'auto' with an odd count in a 2-col band, makes the first card span the row (Home's three asks). Renders nothing for no
 	 * cards: the band is never an empty hero. Children are the cards (pass `lead` to the first one yourself).
+	 * A row's cards stretch to one height (visual audit #1): each card pins its action row to its bottom edge, so the buttons line up.
 	 */
 	import type { Snippet } from 'svelte';
 	import { bandSpec } from '$lib/view-models/attention';
@@ -21,7 +22,7 @@
 
 <style>
 	.att-wrap { container-type: inline-size; min-width: 0; }
-	.att { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; min-width: 0; }
+	.att { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; min-width: 0; }
 	.att-c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 	.att-c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 	/* wide: three even columns whatever the count (a lone pair stays two thirds wide, never two 800px cards) */
