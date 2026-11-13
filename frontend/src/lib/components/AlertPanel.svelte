@@ -729,9 +729,9 @@
 					     `hello-frontend-app` spill out of the panel on a page where it
 					     used to wrap. The disc contributes 0 to the group's min-content
 					     (−56 + 40 + 16), so the floor is byte-identical to the old one. -->
-					<div class="flex items-center">
-						<div class="relative mr-6 -ml-16 h-0 w-10 shrink-0">
-							<div class="absolute top-0 left-0 h-10 w-10 -translate-y-1/2">
+					<div class="ap-title-line flex items-center">
+						<div class="ap-disc-slot relative mr-6 -ml-16 h-0 w-10 shrink-0">
+							<div class="ap-disc-pos absolute top-0 left-0 h-10 w-10 -translate-y-1/2">
 								{#if pulse}
 									<!-- ⭐ D-2 REOPENED TWICE (2026-10-08, design reviewer +
 									     coordinator, via fix-dash): the original `animate-alert-halo`
@@ -1263,5 +1263,46 @@
 	/* follow (r34 needs-you r2): a fixed text track and the actions right after it */
 	@container (min-width: 640px) {
 		.ap-follow .ap-grid { grid-template-columns: 2.5rem minmax(30ch, 44rem) auto; justify-content: start; }
+	}
+	/* ⭐ PHONE: THE DISC GOES INLINE, THE TEXT GETS THE WIDTH (visual audit #9, 2026-11-13).
+	   Below 640px of banner width the 48px icon column + 16px gap cost 84px of a 343px banner
+	   (24%), so the headline wrapped inside a region name ("prod · eu-" / "west") and the body
+	   ran in a 239px (/rollouts) to 119px (/activity) track. Here the icon column collapses to
+	   0, the disc shrinks to 24px and sits on the headline's first line (24px line box, so the
+	   centres match without the h-0 trick), and every row under it starts at the banner's own
+	   left padding. From 640 up nothing changes: 40px disc, halo, the 48px column.
+	   The title stays ONE text node (tests and find-in-page read it whole), so a hyphenated
+	   name can still break at its hyphen; the 303px track is what keeps "prod · eu-west" whole. */
+	@container (max-width: 639.98px) {
+		.ap-grid {
+			grid-template-columns: 0 minmax(0, 1fr) auto;
+			column-gap: 0;
+		}
+		.ap-headline-row {
+			min-height: 0;
+			align-items: flex-start;
+		}
+		.ap-title-line {
+			align-items: flex-start;
+		}
+		.ap-disc-slot {
+			margin: 0 0.625rem 0 0;
+			height: 1.5rem;
+			width: 1.5rem;
+		}
+		.ap-disc-pos {
+			height: 1.5rem;
+			width: 1.5rem;
+			translate: none;
+		}
+		.ap-cq .ap-disc {
+			height: 1.5rem;
+			width: 1.5rem;
+			margin: 0;
+		}
+		.ap-cq .ap-disc :global(svg) {
+			height: 0.875rem;
+			width: 0.875rem;
+		}
 	}
 </style>
