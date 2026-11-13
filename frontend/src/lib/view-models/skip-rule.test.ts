@@ -171,6 +171,32 @@ describe('the other rollouts the same rule holds', () => {
 	});
 });
 
+describe('a pending skip withdraws the offer whatever its tag', () => {
+	const pend = (tag: string) =>
+		rollout({
+			ns: 'p',
+			gates: [bh('invoice-worker')],
+			candidates: [
+				{ tag: 'm-63', blockedBy: ['business-hours-invoice-worker'] },
+				{ tag: 'm-62', blockedBy: ['business-hours-invoice-worker'] }
+			],
+			annotations: { [BYPASS_ANNOTATION]: tag }
+		});
+	it('targetBuild is null for a pending skip on the NEWER build and on an OLDER one', () => {
+		expect(targetBuild(pend('m-63'), BH)).toBeNull();
+		// the held build is m-63, the pending one m-62: offering m-63 would replace the annotation and cancel m-62's skip
+		expect(targetBuild(pend('m-62'), BH)).toBeNull();
+	});
+	it('a stale annotation (not a candidate) does not hide the offer', () => {
+		expect(targetBuild(pend('m-99'), BH)?.tag).toBe('m-63');
+	});
+	it('skipRows drops the rollout even when the dialog would have offered an older build', () => {
+		const here = { cluster: 'staging', namespace: 'p', name: 'x' };
+		const rows = skipRows({ fleet: [pend('m-62')], rule: BH, here, envOf: () => '', compareEnv: () => 0 });
+		expect(rows).toEqual([]);
+	});
+});
+
 describe('a skip that is asked for and not used yet (annotations, not status)', () => {
 	const mk = (ann: Record<string, string>, candidates = [{ tag: 'm-62', blockedBy: ['business-hours-ledger-api'] }]) =>
 		rollout({ ns: 'p', gates: [bh('ledger-api'), approval], candidates, annotations: ann });

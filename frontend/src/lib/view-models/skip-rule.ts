@@ -82,6 +82,9 @@ function heldBy(rollout: Rollout | null | undefined, candidate: CandidateLike, g
 /**
  * The build a rule is holding on this rollout: the NEWEST candidate one of the rule's gates refuses, with the gates that do. Null when
  * the rule holds nothing here (it passes, or only older work is held by something else, or there is no newer build at all).
+ *
+ * ALSO null when a skip is already pending that covers one of the rule's gates, whatever its tag: the write REPLACES the one pending
+ * annotation, so offering another build here (even an older one, e.g. in another rollout's dialog) would silently cancel the pending skip.
  */
 export function targetBuild(
 	rollout: Rollout | null | undefined,
@@ -89,6 +92,7 @@ export function targetBuild(
 ): { tag: string; build: string; gateNames: string[] } | null {
 	const gates = ruleGates(rollout, rule).map((g) => g.name as string);
 	if (gates.length === 0) return null;
+	if (pendingCovers(pendingSkip(rollout), gates)) return null;
 	for (const c of candidatesOf(rollout)) {
 		const held = heldBy(rollout, c, gates);
 		if (held.length > 0) return { tag: c.tag, build: displayVersionForTag(rollout, c.tag) || c.tag, gateNames: held };
@@ -163,7 +167,7 @@ export const skipRowKey = (cluster: string, namespace: string, name: string) => 
 
 /**
  * Every rollout in the fleet that `rule` is holding a build on, ordered this rollout first, then by environment, then by name. A pending
- * skip removes a rollout from the list: nothing is left to skip there.
+ * skip removes a rollout from the list (`targetBuild` is null there): offering it again would replace the annotation.
  */
 export function skipRows(args: {
 	fleet: readonly Rollout[];
@@ -182,7 +186,6 @@ export function skipRows(args: {
 		const cluster = r.metadata?.annotations?.[SOURCE_CLUSTER_ANNOTATION] ?? here.cluster;
 		const target = targetBuild(r, rule);
 		if (!target) continue;
-		if (pendingCovers(pendingSkip(r), target.gateNames) && pendingSkip(r)?.tag === target.tag) continue;
 		rows.push({
 			key: skipRowKey(cluster, ns, name),
 			cluster,
