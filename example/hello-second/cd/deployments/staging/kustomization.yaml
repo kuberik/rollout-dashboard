@@ -58,3 +58,12 @@ patches:
         relationship:
           environment: dev
           type: After
+  - patch: |-
+      apiVersion: environments.kuberik.com/v1alpha1
+      kind: Environment
+      metadata:
+        name: hello-second-manifests
+      spec:
+        relationship:
+          environment: dev
+          type: After

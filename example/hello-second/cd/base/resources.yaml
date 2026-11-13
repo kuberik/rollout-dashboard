@@ -118,6 +118,22 @@ spec:
 apiVersion: environments.kuberik.com/v1alpha1
 kind: Environment
 metadata:
+  name: hello-second-manifests
+spec:
+  # Gate the manifests Rollout like the app's: a new manifests build only
+  # deploys once the upstream tier/wave has it. spec.name is the GitHub
+  # deployment name, distinct from the app's so the two never share an owner.
+  rolloutRef:
+    name: hello-second-manifests
+  backend:
+    type: github
+    project: "LittleChimera/kuberik-testing-second"
+    secret: "github-token"
+  name: "hello-second-manifests"
+---
+apiVersion: environments.kuberik.com/v1alpha1
+kind: Environment
+metadata:
   name: hello-second-app
 spec:
   # Reference to the Rollout that this Deployment manages

@@ -8,6 +8,8 @@ apiVersion: kuberik.com/v1alpha1
 kind: Rollout
 metadata:
   name: hello-world-manifests
+  labels:
+    schedule: business-hours # same schedule gate as the app rollout
   annotations:
     dashboard.rollout.kuberik.com/description: "Hello World manifests / __ENVIRONMENT__"
     dashboard.rollout.kuberik.com/theme: "__ENVIRONMENT__"
@@ -144,6 +146,22 @@ metadata:
     kuberik.com/display-name: "App Down Alert"
 spec:
   class: "prometheus-alert"
+---
+apiVersion: environments.kuberik.com/v1alpha1
+kind: Environment
+metadata:
+  name: hello-world-manifests
+spec:
+  # Gate the manifests Rollout like the app's: a new manifests build only
+  # deploys once the upstream tier/wave has it. spec.name is the GitHub
+  # deployment name, distinct from the app's so the two never share an owner.
+  rolloutRef:
+    name: hello-world-manifests
+  backend:
+    type: github
+    project: "LittleChimera/kuberik-testing"
+    secret: "github-token"
+  name: "hello-world-manifests"
 ---
 apiVersion: environments.kuberik.com/v1alpha1
 kind: Environment
