@@ -232,7 +232,7 @@
 	     rollout page. The environment is named by the neutral env chip in the
 	     breadcrumb and the page header. -->
 	<div class="flex min-h-[52px] w-full flex-wrap items-center justify-between px-2 py-2 sm:px-6">
-		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 {isRolloutPage ? 'max-sm:min-w-fit' : ''}">
 			<a href={href('/')} class="flex shrink-0 items-center space-x-2 sm:hidden rtl:space-x-reverse">
 				<div class="flex h-7 w-7 items-center justify-center sm:h-8 sm:w-8">
 					<div
@@ -286,7 +286,7 @@
 					<button
 						type="button"
 						onclick={() => { paletteScope = 'rollout'; switcherOpen = true; }}
-						class="group flex min-w-0 items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-hover max-sm:ml-auto max-sm:overflow-hidden max-sm:px-0 sm:shrink-0"
+						class="group flex shrink-0 items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-hover max-sm:ml-auto max-sm:px-0"
 						aria-haspopup="dialog"
 						aria-expanded={switcherOpen}
 						aria-label={isMac ? 'Switch rollout (⌘K)' : 'Switch rollout (Ctrl K)'}
@@ -340,7 +340,7 @@
 			{/if}
 		</div>
 		<!-- From `sm` up these live in the sidebar's footer; the phone keeps them here. -->
-		<div class="flex shrink-0 items-center gap-1 sm:hidden sm:gap-2">
+		<div class="flex shrink-0 items-center gap-1 max-sm:ml-auto sm:hidden">
 
 			<!-- ⭐ THE ONLY WAY TO OPEN THE PALETTE, ON THE HOME PAGE, AT ANY
 			     WIDTH, WAS A PHYSICAL KEYBOARD SHORTCUT. (P8 follow-on,
