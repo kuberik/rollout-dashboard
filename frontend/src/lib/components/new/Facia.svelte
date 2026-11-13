@@ -31,6 +31,7 @@
 	import StarToggle from '$lib/components/StarToggle.svelte';
 	import PromotionLane from '$lib/components/PromotionLane.svelte';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
+	import AvatarStack from '$lib/components/AvatarStack.svelte';
 	import CauseText from '$lib/components/CauseText.svelte';
 	import GateLabel from '$lib/components/GateLabel.svelte';
 	import { causeText, joinCause, mapPlain, splitCause, type Cause } from '$lib/view-models/gate-label';
@@ -492,8 +493,7 @@
 			</span>
 			{#if shippers.length}
 				<span class="flex shrink-0 items-center" data-fp-shippers title={shippers.map((w) => (isViewer(w) ? 'you' : w)).join(', ')}>
-					{#each shippers.slice(0, 3) as w, i (w)}<span class="shrink-0 rounded-full ring-2 ring-surface {i ? '-ml-1' : ''}"><Avatar name={w} src={avatarSrc(w)} size={20} /></span>{/each}
-					{#if shippers.length > 3}<span class="t-meta ml-1.5 tabular-nums text-fg-subtle">+{shippers.length - 3}</span>{/if}
+					<AvatarStack people={shippers.map((w) => ({ name: w, src: avatarSrc(w) }))} />
 				</span>
 			{/if}
 			{/if}

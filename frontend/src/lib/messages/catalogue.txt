@@ -139,6 +139,8 @@ lib/components/AttentionCard.svelte	code	Open rollout
 lib/components/AttentionCard.svelte	text	Roll back
 lib/components/Avatar.svelte	code	… (CI)
 lib/components/Avatar.svelte	code	kuberik (automatic)
+lib/components/AvatarStack.svelte	aria-label	… more
+lib/components/AvatarStack.svelte	title	… more
 lib/components/BlockedRow.svelte	code	… failed
 lib/components/BlockedRow.svelte	code	… release… waiting
 lib/components/BlockedRow.svelte	code	Checking for over an hour
