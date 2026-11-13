@@ -8,7 +8,7 @@
 	 * Composition, top to bottom (every band is a shared component, the same one the reference page draws):
 	 *   object header     PageHeader's object form: the tier chip + the environment's name, its counts, then the Environments tile's own state
 	 *                     line and bar (EnvStateBar). An object page may have a title; the top bar says "Environments / prod".
-	 *   banner            the lead failure here (AlertPanel, as /rollouts)
+	 *   banner            the lead failure here (FailureBanner, as /rollouts)
 	 *   Attention         the other failures here + the approvals the viewer can give: FIGURE-led AttentionCards, as Home (no tier chip: the page is one tier)
 	 *   Held              body concept B "Gangway" (owner-approved 2026-11-08): one GangwayTile per app with something waiting to enter THIS
 	 *                     environment and held (its unlanded changes as beads in the environments before this one, then this box with the gate's word)
@@ -21,14 +21,12 @@
 	import { InboxOutline, GridOutline, ClockOutline, ArrowDownOutline, CheckOutline, PauseOutline, ArrowRightOutline } from 'flowbite-svelte-icons';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import Chip from '$lib/components/Chip.svelte';
-	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
+	import FailureBanner from '../FailureBanner.svelte';
 	import SectionHeader from '$lib/components/SectionHeader.svelte';
 	import AttentionBand from '$lib/components/AttentionBand.svelte';
 	import AttentionCard from '$lib/components/AttentionCard.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
-	import { UndoOutline } from 'flowbite-svelte-icons';
-	import EnvStateBar from '../EnvStateBar.svelte';
+		import EnvStateBar from '../EnvStateBar.svelte';
 	import GangwayTile from './GangwayTile.svelte';
 	import DayRow from './DayRow.svelte';
 	import ListCard from '../ListCard.svelte';
@@ -72,13 +70,9 @@
 
 		{#if b}
 			<div class="contents" data-truth-kind="banner" data-truth-app={b.row.app} data-truth-href={b.row.href} data-truth-group={b.row.group} {...truthAttrs(b.row)}>
-				<AlertPanel severity="error" title={b.title} class="" change={b.change ?? undefined}>
-					{#snippet messageBody()}{#if b.check}<FailedCheckLine check={b.check} danger ink />{:else if b.line}<span class="t-body">{b.line}</span>{/if}{#if b.newer}<span class="t-meta mt-1 block text-fg-subtle" data-note>{newerNote(b.newer)}</span>{/if}{/snippet}
-					{#snippet actions()}
-						<a href={b.openHref} class="btn btn-secondary" data-action="open">Open rollout ›</a>
-						{#if b.rollbackHref}<a href={b.rollbackHref} class="btn btn-primary" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>{/if}
-					{/snippet}
-				</AlertPanel>
+				<FailureBanner {b}>
+					{#snippet extra()}{#if b.newer}<span class="t-meta block text-fg-subtle" data-note>{newerNote(b.newer)}</span>{/if}{/snippet}
+				</FailureBanner>
 			</div>
 		{/if}
 

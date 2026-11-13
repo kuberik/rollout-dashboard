@@ -16,6 +16,8 @@
  */
 import { tierOf, type Tier, type NodeState, type Lane, type LaneNode } from './promotion-lanes';
 import { isEnvHeld } from '../rollout-cards';
+import { severityRank } from '$lib/view-models/severity';
+
 import { rolloutPath } from '../source-dashboard';
 import type { PrCell, PrService, PrState } from './pr-pipeline';
 import { shortenVersion } from '../utils';
@@ -114,24 +116,13 @@ export function isReached(state: NodeState): boolean {
 	return REACHED.has(state);
 }
 
-/** Worst-first precedence — the same family as `promotion-lanes.ts`'s
- *  `STATE_ORDER`, reused here so the two never disagree about "worse". */
-const PRIORITY: NodeState[] = [
-	'failed',
-	'stuck',
-	'held',
-	'deploying',
-	'checking',
-	'behind',
-	'newest',
-	'none'
-];
+/* worst-first is `severity.ts`'s ONE order */
 
 function worstOf(states: NodeState[]): NodeState {
 	let best: NodeState = 'none';
-	let bestI = PRIORITY.length;
+	let bestI = severityRank('none');
 	for (const s of states) {
-		const i = PRIORITY.indexOf(s);
+		const i = severityRank(s);
 		if (i < bestI) {
 			bestI = i;
 			best = s;
@@ -557,7 +548,7 @@ export function journeyFromCells(
 			const regions = cells.map((c) => ({ env: c.envName, state: nodeStateFromCell(c) }));
 			const state = worstOf(regions.map((r) => r.state));
 			const worst = cells.reduce((a, b) =>
-				PRIORITY.indexOf(nodeStateFromCell(b)) < PRIORITY.indexOf(nodeStateFromCell(a)) ? b : a
+				severityRank(nodeStateFromCell(b)) < severityRank(nodeStateFromCell(a)) ? b : a
 			);
 			const href = cellHref(worst);
 			stops.push({
@@ -709,7 +700,7 @@ export function journeyFromLane(
 
 	const regions = lane.prod.map((n) => ({ env: n.env, state: n.state }));
 	const state = worstOf(regions.map((r) => r.state));
-	const worst = lane.prod.reduce((a, b) => (PRIORITY.indexOf(b.state) < PRIORITY.indexOf(a.state) ? b : a));
+	const worst = lane.prod.reduce((a, b) => (severityRank(b.state) < severityRank(a.state) ? b : a));
 	const href = rolloutPath(worst.card.sourceCluster, worst.card.ns, worst.card.name);
 	const newestCount = regions.filter((r) => r.state === 'newest').length;
 	stageStops.push({

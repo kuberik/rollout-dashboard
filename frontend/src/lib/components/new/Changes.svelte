@@ -4,7 +4,7 @@
 	/**
 	 * CHANGES (r39 build, 2026-11-08; mock .work/home-r34/direction/r39/changes.html, FINAL.md "Changes", LANGUAGE.md §1/§3/§4/§7).
 	 * The operator's question: "which of my changes is failing or waiting on ME, where is each one on its way, and what landed".
-	 * ONE page template, the same as Rollouts: the failure banner (the page's one AlertPanel, with the change line) -> Attention (title-led
+	 * ONE page template, the same as Rollouts: the failure banner (the page's one StatementBanner, with the change line) -> Attention (title-led
 	 * cards: change title focal, the change's own env row with beads) -> "Your changes" (an EVEN grid of RepoCards, then the At rest card of
 	 * repos with nothing in flight) -> "Team" (the others' repos, the same cards one step quieter). No page title, no rail: the old Crossing,
 	 * Needs you / On its way / Waiting / Landed groups, Team rail and Last 24 h retired with the old page (their facts live in the beads,
@@ -12,10 +12,9 @@
 	 * References: AlertPanel(change), SectionHeader(icon, rollup), AttentionBand/Card, RepoGrid/RepoCard/RepoCells, StrandRow(dense) for At rest, Card.
 	 * All composition lives in changes-page.ts (unit-tested); this file draws. Anchor ids: #attention, #your-changes, #at-rest, #team.
 	 */
-	import { InboxOutline, CodeBranchOutline, UsersGroupOutline, UndoOutline } from 'flowbite-svelte-icons';
+	import { InboxOutline, CodeBranchOutline, UsersGroupOutline } from 'flowbite-svelte-icons';
 	import { pageTitle } from '$lib/page-title';
-	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
+	import FailureBanner from './FailureBanner.svelte';
 	import SectionHeader from '$lib/components/SectionHeader.svelte';
 	import AttentionBand from '$lib/components/AttentionBand.svelte';
 	import AttentionCard from '$lib/components/AttentionCard.svelte';
@@ -55,13 +54,7 @@
 	<div class="flex min-w-0 flex-col gap-8" data-changes-page>
 		{#if b}
 			<div class="contents" data-truth-kind="banner" data-truth-app={b.p.ride.app} data-truth-href={b.openHref} data-truth-group="failed" {...b.p.ride.row ? truthAttrs(b.p.ride.row) : {}}>
-				<AlertPanel severity="error" title={b.title} class="" change={b.change}>
-					{#snippet messageBody()}{#if b.check}<FailedCheckLine check={b.check} danger ink />{:else if b.line}<span class="t-body">{b.line}</span>{/if}{/snippet}
-					{#snippet actions()}
-						<a href={b.openHref} class="btn btn-secondary" data-action="open">Open rollout ›</a>
-						{#if b.rollbackHref}<a href={b.rollbackHref} class="btn btn-primary" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>{/if}
-					{/snippet}
-				</AlertPanel>
+				<FailureBanner {b} />
 			</div>
 		{/if}
 

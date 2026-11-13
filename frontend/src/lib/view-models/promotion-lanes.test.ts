@@ -74,12 +74,12 @@ describe('stair geometry (shared by every drawn chain)', () => {
 	});
 });
 
-import { STATE_ORDER } from './promotion-lanes';
+import { severityRank } from './severity';
 import { CHANGE_STATE_RANK } from '$lib/rollout-cards';
 
-describe('STATE_ORDER agrees with the product-wide CHANGE_STATE_RANK', () => {
+describe('the one severity order agrees with the product-wide CHANGE_STATE_RANK', () => {
 	it('failed > stuck > held > in progress', () => {
-		const i = (s: string) => STATE_ORDER.indexOf(s as never);
+		const i = severityRank;
 		expect(i('failed')).toBeLessThan(i('stuck'));
 		expect(i('stuck')).toBeLessThan(i('held'));
 		expect(i('held')).toBeLessThan(i('deploying'));

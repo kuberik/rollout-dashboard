@@ -48,15 +48,8 @@ export const rowPlaceName = (r: { regionsOf?: unknown; regions: readonly unknown
 /** THE ONE COUNT PHRASE for places waiting on an approval: "1 needs approval", "3 need approval" (QA2 #6; /apps and /envs/<name> print it). */
 export const needApprovalCount = (n: number): string => `${n} ${n === 1 ? 'needs' : 'need'} approval`;
 
-/**
- * THE ONE SEVERITY ORDER (r39 coordinator decision a, 2026-11-08): an app's headline state, on every page, is the MOST SEVERE state
- * among the places it speaks about. Failing, then waiting for approval, held by a rule, checking, deploying, then the settled states.
- * Within one state the caller breaks ties (a place the viewer can act on first; production before the rest; newest first).
- */
-export const SEVERITY = ['failed', 'awaiting-approval', 'held-by-rule', 'checking', 'deploying', 'rolled-back', 'healthy'] as const;
-export const severity = (state: string | null | undefined): number => { const i = (SEVERITY as readonly string[]).indexOf(state ?? ''); return i < 0 ? SEVERITY.length : i; };
-/** the most severe item (first among equals), by the item's state */
-export const mostSevere = <T>(xs: readonly T[], stateOf: (x: T) => string | null | undefined): T | null => xs.reduce<T | null>((b, x) => (!b || severity(stateOf(x)) < severity(stateOf(b)) ? x : b), null);
+/** THE ONE SEVERITY ORDER lives in `view-models/severity.ts` (its doc comment says why); re-exported here for the pages that already import it from the vocabulary. */
+export { SEVERITY_ORDER as SEVERITY, severityRank as severity, mostSevere } from '$lib/view-models/severity';
 
 /** `RolloutAsk` hands its page this until the fleet data `approvalAskAt` reads has answered. */
 export const ASK_LOADING = 'loading' as const;

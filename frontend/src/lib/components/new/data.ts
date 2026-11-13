@@ -178,22 +178,28 @@ export function replacedFrom(hist: HistV[], lh: { build: string; at: string } | 
 	return e ? { build: id(e), at: e.timestamp, rolledBack: true } : null;
 }
 export const replacedBuild = (row: Pick<RolloutRow, 'state' | 'href'>) => replacedFrom((rawOf(row.href)?.status.history ?? []) as HistV[], lastHealthy(row));
-/** The Gates tab's Runs-in rollup, word for word (up-to-date.ts): the tab counts by BUILD, so a failing place on the newest build counts.
- *  Apps' own `onNewest` is a different rule on purpose (the app page says "2 of 3 · 1 failed"). */
-export function pathPosition(row: Pick<RolloutRow, 'app'>, state: HomeState = 'incident'): string {
-	/* no release = not affected: a place whose Rollout has no releases is not counted (each place's own truth: it says "No releases yet"), unless NO place has any */
+/**
+ * "N of M places on the newest build", as DATA. `n` places of the `m` counted run `build`, the app's newest build in THE ONE catalogue order
+ * (releases/order.ts: the same newest the Builds card, `placesOf().newest` and the app page's ledger read; it can be a build no place runs yet).
+ * A place whose Rollout has no releases is not counted (no release = not affected), unless NO place has any; a failing place on the newest build
+ * counts (the tab counts by BUILD; Apps' own `onNewest` excludes failing on purpose, the app page says "2 of 3 · 1 failed").
+ * Every page that prints this fact phrases it from these numbers with `reachSentence`; nothing parses the sentence back (it used to be built, then regex-read in
+ * Slipway and the change page). `build` is null for an app with no catalogue.
+ */
+export type PathReach = { n: number; m: number; build: string | null };
+export function pathReach(row: Pick<RolloutRow, 'app'>, state: HomeState = 'incident'): PathReach {
 	const all = placesOf(state, row.app);
 	const p = all.some((x) => !noReleasesAt(x.href)) ? all.filter((x) => !noReleasesAt(x.href)) : all;
-	/* r6 T1: the Gates tab's "Runs in" counts a place as on the newest when it runs the NEWEST BUILD OF THE APP'S LADDER (the last of the rollout's availableReleases,
-	   which can be a build no place runs yet: hello-world staging "0 of 3"), not the newest build a place happens to run. Same rule as `runsIn`/`behindCount`. */
-	const ladder = p.map((x) => relsOf(rawOf(x.href))).find((s) => s?.length);
-	const top = ladder?.[ladder.length - 1];
-	const topIds = top ? [top.tag, top.version, top.revision?.slice(0, 7)].filter(Boolean).map((x) => shortBuild(x)) : null;
-	const onHead = topIds ? p.filter((x) => !!x.version && topIds.includes(x.version)).length : p.filter((x) => x.onBuild).length;
-	/* r5 R11 (owner 2026-11-02: no bare fractions): the tab's rollup, with its unit and object spelled out. The tab helper itself is untouched; this wrapper is the source every page reads. */
-	const t = upToDateHeadline({ onHead, deployed: p.length, total: p.length });
-	return t.replace(/^All on the newest$/, `All ${p.length} places on the newest build`).replace(/^(\d+) of (\d+) on the newest$/, '$1 of $2 places on the newest build').replace(/^(\d+) of 1 places/, '$1 of 1 place');
+	return { n: p.filter((x) => x.onBuild).length, m: p.length, build: p.find((x) => x.newest)?.newest ?? null };
 }
+/** the Gates tab's Runs-in rollup, with its unit and object spelled out (owner 2026-11-02: no bare fractions) */
+export function reachSentence({ n, m }: Pick<PathReach, 'n' | 'm'>): string {
+	if (m === 0) return 'Never deployed';
+	const places = `${m} place${m === 1 ? '' : 's'}`;
+	return n === m ? `All ${places} on the newest build` : `${n} of ${places} on the newest build`;
+}
+/** The Gates tab's Runs-in rollup, word for word: `reachSentence(pathReach(...))`. */
+export const pathPosition = (row: Pick<RolloutRow, 'app'>, state: HomeState = 'incident'): string => reachSentence(pathReach(row, state));
 
 /* ═══ failure reason (defect 9) ═══ */
 export type FailureReason = { check: string | null; message: string | null; phrase: string | null; line: string; /** what the failing check measures (the HealthCheck's `status.observations`, else the snapshot on the history entry): the Attention card's figure */ observations: HealthObservation[] };
@@ -554,7 +560,6 @@ export function changeTruth(c: TChange, state: HomeState = 'incident'): Record<s
 /* ═══ environments (defects 5, 6) ═══ */
 export type Region = RDRegion & { regionless: false; places: { app: string; href: string; state: EnvState }[] };
 export type RegionlessProd = { label: 'production'; regionless: true; apps: number; worst: RDRegion['worst']; failing: number; waiting: number; moving: number; rest: number; href: string; places: { app: string; href: string; state: EnvState }[] };
-const SEV: Partial<Record<EnvState, number>> = { failed: 0, 'awaiting-approval': 1, 'held-by-rule': 2, deploying: 3, checking: 4 };
 export function environments(state: HomeState) {
 	const E = RD.environments(state);
 	const R = rollouts(state);
@@ -565,7 +570,7 @@ export function environments(state: HomeState) {
 	const stateOf = (p: { href: string; state: EnvState }): EnvState => { const v = p.state === 'checking' || p.state === 'deploying' ? verdictAt(p.href, state) : null; return v && v.state !== 'running' ? v.state : p.state; };
 	for (const p of prod?.places ?? []) by.set(p.label, [...(by.get(p.label) ?? []), { app: p.app, href: p.href, state: stateOf(p) }]);
 	const build = (label: string, ps: { app: string; href: string; state: EnvState }[]) => {
-		const worst = [...ps].sort((a, b) => (SEV[a.state] ?? 9) - (SEV[b.state] ?? 9))[0];
+		const worst = [...ps].sort((a, b) => severity(a.state) - severity(b.state))[0];
 		const n = { failing: 0, waiting: 0, moving: 0, rest: 0 };
 		for (const p of ps) { if (p.state === 'failed') n.failing++; else if (p.state === 'awaiting-approval' || p.state === 'held-by-rule') n.waiting++; else if (p.state === 'deploying' || p.state === 'checking') n.moving++; else n.rest++; }
 		return { label, apps: ps.length, ...n, worst: (n.failing ? 'failed' : n.waiting ? 'waiting' : n.moving ? 'deploying' : 'rest') as RDRegion['worst'], href: worst.href, places: ps };

@@ -11,6 +11,7 @@
  * a prod approval card counts its regions (the region meter, as on Home); other approvals stay title-led.
  */
 import { oldestFirst } from '$lib/instant';
+import { beadRank } from '$lib/view-models/severity';
 import {
 	changes, rollouts, ago, isViewer, personOf, personName, waitClock, avatarSrc, regionStates, type HomeState, type TChange, type TRow, type TierKey, noReleasesApp
 } from './data';
@@ -21,7 +22,7 @@ import { rowAction, actionHref } from './rollout-view';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import { repoCardModel, rollupParts, type RepoCardModel, type RepoChange, type RollupPart } from '$lib/view-models/repo-card';
 import type { BeadState } from '$lib/view-models/bead';
-import type { ChangeLine } from './rollouts-page';
+import { bannerMeta, type BannerMeta, type ChangeLine } from './rollouts-page';
 import { servicesOf, spreadOf, type Svc } from './change/service-spread';
 
 const NONTIER = (w: string | null | undefined) => !!w && !/^(production|prod|staging|dev|test)$/.test(w);
@@ -49,7 +50,7 @@ export type PChange = {
 export type AttentionItem = { key: string; p: PChange; model: AttentionModel; href: string; openHref: string; rollbackHref: string | null; yours: boolean; id: { name: string; ref: string; person?: string; you: boolean }; card: RepoCardModel };
 export type RepoGroup = { repo: string; changes: PChange[]; landed: PChange[]; flying: number; worst: number; href: string };
 export type RestRepo = { key: string; repo: string; href: string; ref: string; title: string; age: string };
-export type Banner = { p: PChange; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine; openHref: string; rollbackHref: string | null };
+export type Banner = { p: PChange; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine; openHref: string; rollbackHref: string | null; meta: BannerMeta };
 export type Rollup = (string | { text: string; ink: 'danger' | 'held' })[];
 
 export type ChangesPage = {
@@ -65,7 +66,8 @@ export type ChangesPage = {
 	empty: boolean;
 };
 
-const SEV: Record<string, number> = { failed: 0, 'approval-yours': 1, held: 2, deploying: 3, checking: 3, approval: 4, landed: 9 };
+/** a bead state's rank: `severity.ts`'s one order */
+const SEV = (s: string): number => beadRank(s);
 
 /** a ride's own state as a bead state: an approval the viewer can give is `approval-yours` */
 function beadState(r: Ride): BeadState {
@@ -86,7 +88,7 @@ export function groupByRepo(ps: PChange[]): RepoGroup[] {
 	return [...m].map(([repo, xs]) => {
 		xs.sort((a, b) => Date.parse(a.c.mergedAt) - Date.parse(b.c.mergedAt));
 		const fly = xs.filter((x) => x.state !== 'landed');
-		return { repo, changes: fly, landed: xs.filter((x) => x.state === 'landed'), flying: fly.length, worst: Math.min(9, ...xs.map((x) => SEV[x.state] ?? 9)), href: xs[xs.length - 1].c.changeHref ?? xs[xs.length - 1].c.href };
+		return { repo, changes: fly, landed: xs.filter((x) => x.state === 'landed'), flying: fly.length, worst: Math.min(SEV('none'), ...xs.map((x) => SEV(x.state))), href: xs[xs.length - 1].c.changeHref ?? xs[xs.length - 1].c.href };
 	}).sort((a, b) => a.worst - b.worst || b.flying - a.flying || a.repo.localeCompare(b.repo));
 }
 export const rc = (p: PChange): RepoChange => ({ ref: p.ref, title: p.c.title, state: p.state, col: p.col, href: p.c.changeHref ?? p.c.href, key: p.c.key, noReleases: p.c.apps.length > 0 && p.c.apps.every((a) => !!noReleasesApp(a)) ? noReleasesApp(p.c.apps[0])!.label : undefined });
@@ -141,7 +143,7 @@ export function changesPage(hs: HomeState): ChangesPage {
 	};
 	const changeLine = (p: PChange): ChangeLine => { const you = isViewer(p.c.who); const person = personName(p.c.who); return { title: p.c.title, ref: p.ref, person: you ? 'you' : person ?? undefined, you, src: you || !person ? null : avatarSrc(person) ?? null }; };
 	const banner: Banner | null = lead
-		? { p: lead, title: `${lead.ride.app} failed in ${gateOf(lead.c) || lead.c.at}${placeOf(lead.c) ? ` · ${placeOf(lead.c)}` : ''}`, check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), openHref: lead.ride.href, rollbackHref: rollbackOf(lead) }
+		? { p: lead, title: `${lead.ride.app} failed in ${gateOf(lead.c) || lead.c.at}${placeOf(lead.c) ? ` · ${placeOf(lead.c)}` : ''}`, check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead) }
 		: null;
 
 	/* Attention: your changes that need you (failing, or an approval you can give), minus the banner's; failing first, then oldest ask first */

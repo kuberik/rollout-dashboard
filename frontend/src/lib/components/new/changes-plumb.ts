@@ -8,12 +8,14 @@
  *   landed   landed today, then the at-rest repos whose newest landing is older (one list, newest first)
  */
 import { ago, NOW, type HomeState } from './data';
+import { beadRank } from '$lib/view-models/severity';
 import { classifyChanges, changesPage, type PChange } from './changes-page';
 import type { Svc } from './change/service-spread';
 
 export const STOPS = ['merged', 'dev', 'test', 'staging', 'prod'] as const;
 const RANK: Record<string, number> = { merged: 0, dev: 1, test: 2, staging: 3, prod: 4 };
-const SEV: Record<string, number> = { failed: 0, 'approval-yours': 1, held: 2, deploying: 3, checking: 3, approval: 4, landed: 9 };
+/** a bead state's rank: `severity.ts`'s one order */
+const SEV = (s: string): number => beadRank(s);
 
 export type PlumbRow = {
 	key: string; repo: string; ref: string; title: string; href: string; state: string; col: string; age: string; since: number;
@@ -41,7 +43,7 @@ export function plumbOf(hs: HomeState, repos: readonly string[] = []): Plumb {
 		key: p.c.key, repo: p.c.repo, ref: p.ref, title: p.c.title, href: p.c.changeHref ?? p.c.href, state: p.state, col: p.col, age: ago(sinceOf(p)), since: Date.parse(sinceOf(p)),
 		worst: p.services && p.worst && p.services.some((s) => s.app !== p.worst) ? p.worst : null, services: p.services ?? null
 	}));
-	const stops = STOPS.map((col) => ({ col, rows: rows.filter((r) => r.col === col).sort((a, b) => (SEV[a.state] ?? 9) - (SEV[b.state] ?? 9) || a.since - b.since) }));
+	const stops = STOPS.map((col) => ({ col, rows: rows.filter((r) => r.col === col).sort((a, b) => SEV(a.state) - SEV(b.state) || a.since - b.since) }));
 
 	const day = NOW.toISOString().slice(0, 10);
 	const today: PlumbLanded[] = mineP.filter((p) => p.state === 'landed' && keep(p.c.repo) && sinceOf(p).slice(0, 10) === day)
@@ -65,7 +67,7 @@ export function serviceWord(s: Svc): string {
 	}
 }
 /** services in the product's severity order, then by how far along they are */
-export const servicesByUrgency = (s: Svc[]): Svc[] => [...s].sort((a, b) => (SEV[a.state] ?? 9) - (SEV[b.state] ?? 9) || (RANK[a.tier] ?? 0) - (RANK[b.tier] ?? 0) || a.app.localeCompare(b.app));
+export const servicesByUrgency = (s: Svc[]): Svc[] => [...s].sort((a, b) => SEV(a.state) - SEV(b.state) || (RANK[a.tier] ?? 0) - (RANK[b.tier] ?? 0) || a.app.localeCompare(b.app));
 /** the stages a change's services stand in, each with its services (the spread line) */
 export const spreadStages = (s: Svc[]) => STOPS.filter((c) => s.some((x) => x.tier === c)).map((c) => ({ tier: c, apps: s.filter((x) => x.tier === c) }));
 

@@ -5,6 +5,7 @@
  * cells, the beads (bead.ts) and the rollup words. Placement truth: a change sits in the column its own data says (`col`).
  */
 import { beadsFor, type Bead, type BeadChange } from './bead';
+import { beadRank } from './severity';
 
 export const REPO_TIERS = ['dev', 'test', 'staging', 'prod'] as const;
 export type RepoChange = BeadChange & { /** 'merged' or a tier */ col: string };
@@ -12,7 +13,8 @@ export type RepoCell = { tier: string; label: string; beads: Bead[] };
 export type RollupPart = { text: string; ink: 'danger' | 'held' | 'subtle' };
 export type RepoCardModel = { /** the apps this repo's changes deploy (empty or one = nothing to say); the card names them when there are several */ apps?: string[]; repo: string; cells: RepoCell[]; landed: number; landedTitle: string; rollup: RollupPart[]; worst: number };
 
-const SEV: Record<string, number> = { failed: 0, 'approval-yours': 1, held: 2, deploying: 3, checking: 3, approval: 4, landed: 9 };
+/** a bead state's rank: `severity.ts`'s one order */
+const SEV = (s: string): number => beadRank(s);
 
 /** adverse first; landed is excluded (the row's end says it). Only failing takes ink, and "waiting" takes held ink when one is yours. */
 export function rollupParts(changes: readonly { state: string; noReleases?: string }[]): RollupPart[] {
@@ -39,6 +41,6 @@ export function repoCardModel(i: { repo: string; changes: RepoChange[]; tiers?: 
 		landed: landed.length,
 		landedTitle: landed.map((l) => `${l.ref} ${l.title ?? ''}`.trim()).join('\n'),
 		rollup: rollupParts(fly),
-		worst: Math.min(9, ...fly.map((c) => SEV[c.state] ?? 9))
+		worst: Math.min(SEV('none'), ...fly.map((c) => SEV(c.state)))
 	};
 }

@@ -102,6 +102,7 @@
  * a cell — never folded silently into an apps count, and vice versa.
  */
 import { instantMs } from '$lib/instant';
+import { severityRank } from '$lib/view-models/severity';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import { siteCount, regionsPhrase } from './regions';
 import type { Rollout } from '../../types';
@@ -113,7 +114,6 @@ import {
 	buildLanes,
 	hasEnvironment,
 	nodeState,
-	STATE_ORDER,
 	tierOf,
 	TIER_ORDER,
 	type LaneNode,
@@ -150,7 +150,7 @@ export type FleetFactsOpts = {
 };
 
 /** THE UNIT RULE's seven states, worst to best — same product order as
- *  `STATE_ORDER` minus `'none'`. */
+ *  `severity.ts` minus `'none'`. */
 export type StageStateKey = 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'behind' | 'newest';
 
 export type StageFacts = {
@@ -399,7 +399,7 @@ function tally(acc: ReturnType<typeof emptyStage>, app: string, n: LaneNode, opt
 	const state = n.state;
 	acc.apps.add(app);
 	const was = acc.worst.get(app);
-	if (was == null || STATE_ORDER.indexOf(state) < STATE_ORDER.indexOf(was)) acc.worst.set(app, state);
+	if (was == null || severityRank(state) < severityRank(was)) acc.worst.set(app, state);
 	acc.places++;
 	if (n.tier === 'prod') {
 		acc.regionNames.add(n.env);
@@ -537,7 +537,7 @@ export function fleetFacts(
 		let best: { card: RolloutCard; state: NodeState } | null = null;
 		for (const c of cardsByApp.get(name)!) {
 			const state = placeState(c);
-			if (!best || STATE_ORDER.indexOf(state) < STATE_ORDER.indexOf(best.state)) best = { card: c, state };
+			if (!best || severityRank(state) < severityRank(best.state)) best = { card: c, state };
 		}
 		unmappedWorst.set(name, best!);
 	}
@@ -558,7 +558,7 @@ export function fleetFacts(
 		const worst = new Map<Tier, NodeState>();
 		for (const n of [...lane.stages, ...lane.prod]) {
 			const w = worst.get(n.tier);
-			if (w == null || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(w)) worst.set(n.tier, n.state);
+			if (w == null || severityRank(n.state) < severityRank(w)) worst.set(n.tier, n.state);
 		}
 		for (const st of worst.values()) if (st === 'held') plates++;
 	}

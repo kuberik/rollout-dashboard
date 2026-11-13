@@ -721,8 +721,6 @@ lib/components/new/changes-plumb.ts	code	Needs your approval for …
 lib/components/new/changes-plumb.ts	code	Waiting for approval for …
 lib/components/new/Changes.svelte	text	By repo
 lib/components/new/Changes.svelte	text	No changes of yours yet
-lib/components/new/Changes.svelte	text	Open rollout ›
-lib/components/new/Changes.svelte	text	Roll back
 lib/components/new/Changes.svelte	title	Your changes
 lib/components/new/Changes.svelte	text	Your changes show up here once released, until they reach prod.
 lib/components/new/ChangesPlumb.svelte	text	… services
@@ -837,9 +835,7 @@ lib/components/new/env/EnvPage.svelte	text	… … behind · …
 lib/components/new/env/EnvPage.svelte	text	A rollout deployed to this environment shows up here.
 lib/components/new/env/EnvPage.svelte	title	In step
 lib/components/new/env/EnvPage.svelte	text	Nothing runs here yet
-lib/components/new/env/EnvPage.svelte	text	Open rollout ›
 lib/components/new/env/EnvPage.svelte	title	Ready to promote
-lib/components/new/env/EnvPage.svelte	text	Roll back
 lib/components/new/env/EnvPage.svelte	text	Show … earlier
 lib/components/new/env/EnvPage.svelte	title	Today in …
 lib/components/new/env/GangwayTile.svelte	text	from …
@@ -978,8 +974,6 @@ lib/components/new/Rollouts.svelte	code	… waiting
 lib/components/new/Rollouts.svelte	title	All rollouts
 lib/components/new/Rollouts.svelte	text	At rest
 lib/components/new/Rollouts.svelte	text	No rollouts yet
-lib/components/new/Rollouts.svelte	text	Open rollout ›
-lib/components/new/Rollouts.svelte	text	Roll back
 lib/components/new/Rollouts.svelte	text	Rollouts appear here as soon as one is deployed.
 lib/components/new/Slipway.svelte	code	…… ago
 lib/components/new/Slipway.svelte	code	…${n.hold && !n.holdC ?

@@ -1,10 +1,10 @@
 import {
-	STATE_ORDER,
 	type Lane,
 	type LaneNode,
 	type NodeState,
 	type Tier
 } from '$lib/view-models/promotion-lanes';
+import { severityRank } from '$lib/view-models/severity';
 import { placeStateWithPin } from '$lib/view-models/pin-hold';
 import { rolloutPath } from '$lib/source-dashboard';
 import type { TApp } from './data';
@@ -56,7 +56,7 @@ export function maskLane(a: TApp, lane: Lane): Lane {
 	const stages = lane.stages.map((n) => byTier[n.tier]!.find((m) => m.card === n.card) ?? n);
 	const prod = lane.prod.map((n) => byTier.prod!.find((m) => m.card === n.card) ?? n);
 	const lead = [...stages, ...prod].reduce<LaneNode | null>(
-		(b, n) => (!b || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b),
+		(b, n) => (!b || severityRank(n.state) < severityRank(b.state) ? n : b),
 		null
 	);
 	return { ...lane, byTier, stages, prod, lead, state: lead?.state ?? 'none' };

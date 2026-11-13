@@ -26,7 +26,7 @@
 	import TraySteps from './TraySteps.svelte';
 	import PipelineCard from './PipelineCard.svelte';
 	import ActRow, { type Act } from '$lib/components/ActRow.svelte';
-	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, replacedBuild, newestBuild, pathPosition, stepDetail, healthChecks, healthTally, testsSub, checkClock, buildInQuestionFacts, approvalScope, approvalTarget, bakeDuration, waitClock, type TRow, type HomeState } from './data';
+	import { ago, avatarSrc, deployedCommit, deployedBuild, buildTitle, lastHealthy, replacedBuild, newestBuild, pathReach, reachSentence, stepDetail, healthChecks, healthTally, testsSub, checkClock, buildInQuestionFacts, approvalScope, approvalTarget, bakeDuration, waitClock, type TRow, type HomeState } from './data';
 	import { approveAct } from './approvals.svelte';
 	import { slipwayTitle, slipwayLeadSplit, actionHref, actionLabel, approvalFact, envTheme, VIEWER } from './rollout-view';
 
@@ -51,7 +51,9 @@
 	const replaced = $derived(failing || gatedRow ? healthy : replacedBuild(row));
 	const commit = $derived(wb ? { title: wb.title ?? '', author: wb.author } : deployedCommit(row));
 	const own = $derived(commit?.author === VIEWER);
-	const runsIn = $derived(pathPosition(row, hs));
+	/* the tab's Runs-in rollup as data ({n, m, build}), phrased once; nothing below parses the sentence */
+	const reachData = $derived(pathReach(row, hs));
+	const runsIn = $derived(reachSentence(reachData));
 	/* compact (embedded in /apps/<name>, /envs/<name>): the page's rows already say the position; the facts line is the tab header's newest-build sentence */
 	const compactFacts = $derived(compact && !failing ? (newestBuild(row)?.sentence ?? null) : null);
 	/* r5 R21: one facts line, the tab's Runs-in rollup (no step-by-step narration: the rail and the title already say it); a gated lead adds what its Approve acts on */
@@ -82,10 +84,9 @@
 	const reach = $derived.by(() => {
 		if (compact) { const n = newestBuild(row); if (!n || failing || !n.toDeploy) return null; /* the TAB's own count (what this place is offered to deploy), never the catalogue distance the app page's ledger prints */ return { label: 'To deploy', build: null as string | null, value: `${n.toDeploy}${n.hold && !n.holdC ? ` · ${n.hold}` : ''}`, holdC: n.holdC }; /* lead r9: the tab's own sentence, count first ('2 · held: waiting for approval'), never 'N, held:' */ }
 		if (!facts) return null;
-		const m = /^(\d+) of (\d+) places? on the newest build$/.exec(facts), all = /^All (\d+) places? on the newest build$/.exec(facts);
 		/* rollouts-8 V10: the newest build is NAMED (mono) and the fraction carries its unit */
 		const nb = newestBuild(row)?.newest ?? null;
-		return { label: 'Newest build', holdC: null as Cause | null, build: nb, value: m ? `reached ${m[1]} of ${m[2]} place${m[2] === '1' ? '' : 's'}` : all ? `reached all ${all[1]} places` : facts };
+		return { label: 'Newest build', holdC: null as Cause | null, build: nb, value: !reachData.m ? facts : reachData.n === reachData.m ? `reached all ${reachData.m} places` : `reached ${reachData.n} of ${reachData.m} place${reachData.m === 1 ? '' : 's'}` };
 	});
 	/* r7 U3: ONE state per item. An approval whose own deploy is still baking is "Checking" on its row and on the tab's pill; the pane says the same word with the clock ("Checking 5 min left"),
 	   and the waiting build the Approve acts on is named as such in the list */

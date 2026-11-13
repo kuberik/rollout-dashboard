@@ -1,3 +1,4 @@
+import { beadRank } from './severity';
 /**
  * BEADS (r39 kit parts/envrow.js `bead` / `beadsFor`): a bead is ONE small pill, inside the env-row box a change reached:
  * state mark · #ref (two refs when a group has <= 2, else "#43 +2"; compact: mark · count). Same-state changes merge into one
@@ -22,8 +23,8 @@ export type Bead = {
 	changes: BeadChange[];
 };
 
-/** worst first */
-const SEV: Record<BeadState, number> = { failed: 0, 'approval-yours': 1, held: 2, deploying: 3, checking: 3, approval: 4, landed: 9 };
+/** worst first: `severity.ts`'s one order, the approval the viewer can give first among approvals */
+const SEV = (s: BeadState): number => beadRank(s);
 
 export function beadOf(changes: BeadChange[], { team = false, compact = false } = {}): Bead {
 	const s = changes[0].state;
@@ -46,7 +47,7 @@ export function beadsFor(changes: BeadChange[], o: { team?: boolean; compact?: b
 	if (!changes.length) return [];
 	const groups = new Map<string, BeadChange[]>();
 	[...changes]
-		.sort((a, b) => SEV[a.state] - SEV[b.state])
+		.sort((a, b) => SEV(a.state) - SEV(b.state))
 		.forEach((c) => {
 			const k = !o.team && (c.state === 'failed' || c.state === 'approval-yours') ? 'k' + (c.key ?? c.ref) : c.state;
 			groups.set(k, [...(groups.get(k) ?? []), c]);

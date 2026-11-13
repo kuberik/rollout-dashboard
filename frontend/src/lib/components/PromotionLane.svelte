@@ -12,7 +12,8 @@
 	 * A healthy box says only its name and its lag; a box that needs reading adds the state mark and word in the state's ink. A prod set
 	 * of several regions is ONE box: the worst region's mark and word, the region when exactly one, and "k of N regions".
 	 */
-	import { STATE_ORDER, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
+	import { severityRank } from '$lib/view-models/severity';
+	import { type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
 	import { shortenVersion, formatTimeAgoCompact } from '$lib/utils';
 	import { splitEnvName } from '$lib/env-badge';
 	import { getEnvironmentThemeStyle } from '$lib/environment-theme';
@@ -98,7 +99,7 @@
 	const stripInk = (n: LaneNode) => (WORD[n.state] ? INK[n.state] : 'text-fg-subtle');
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
 	const markOf = (n: LaneNode): EnvCell['mark'] => (MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined);
-	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), null));
+	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || severityRank(n.state) < severityRank(b.state) ? n : b), null));
 
 	const STATE_NOUN: Record<NodeState, string> = { failed: 'failing', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: '', newest: '', none: '' };
 	/** The prod cell's tooltip: every site with its state word and build, under its wave (leader marked) once the tier has more than one wave. */
@@ -191,7 +192,7 @@
 			}));
 	}
 	function siteCellOf(ns: LaneNode[]): EnvCell {
-		const worst = ns.reduce((b, n) => (STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), ns[0]);
+		const worst = ns.reduce((b, n) => (severityRank(n.state) < severityRank(b.state) ? n : b), ns[0]);
 		const base = cellOf(worst);
 		const many = ns.length > 1;
 		return {
@@ -214,7 +215,7 @@
 			if (sites && linked && ns.length) return siteCellOf(ns);
 			/* QA #10: a prod CELL folds several SITES; places of one site (or none) are one box with the most urgent place's state */
 			if (t === 'prod' && ns.length > 1 && prodWorst && siteCount(ns.map((n) => n.env)) > 1) return prodCellOf(ns, prodWorst);
-			return cellOf(t === 'prod' ? ns.reduce((b, n) => (STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), ns[0]) : ns[0]);
+			return cellOf(t === 'prod' ? ns.reduce((b, n) => (severityRank(n.state) < severityRank(b.state) ? n : b), ns[0]) : ns[0]);
 		})
 	);
 </script>

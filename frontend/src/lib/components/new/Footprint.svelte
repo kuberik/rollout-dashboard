@@ -3,7 +3,8 @@
 	import { oldestFirst, latest } from '$lib/instant';
 	import type { EnvState } from '$lib/view-models/home-model';
 	import type { RolloutCard } from '$lib/rollout-cards';
-	import { STATE_ORDER, type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
+	import { severityRank } from '$lib/view-models/severity';
+	import { type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import { waveInfoOfHref, type TApp, type TRow } from './data';
 	import { currentAt } from './change/detail-model';
@@ -58,7 +59,7 @@
 		for (const t of ORDER) byTier[t]?.sort((p, q) => p.env.localeCompare(q.env));
 		const prod = byTier.prod ?? [];
 		const stages = ORDER.filter((t) => t !== 'prod').flatMap((t) => byTier[t] ?? []);
-		const lead = nodes.reduce<LaneNode | null>((b, n) => (!b || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), null);
+		const lead = nodes.reduce<LaneNode | null>((b, n) => (!b || severityRank(n.state) < severityRank(b.state) ? n : b), null);
 		const last = latest((m.apps.find((x) => x.app === app)?.envs ?? []).map((e) => e.arrivedAt));
 		return { lane: { app, byTier, stages, prod, state: lead?.state ?? 'none', lead }, last };
 	}
