@@ -56,3 +56,10 @@ patches:
         name: hello-world-app
       spec:
         relationship: null # No relationship for dev environment
+  - patch: |-
+      apiVersion: environments.kuberik.com/v1alpha1
+      kind: Environment
+      metadata:
+        name: hello-world-manifests
+      spec:
+        relationship: null # No relationship for dev environment

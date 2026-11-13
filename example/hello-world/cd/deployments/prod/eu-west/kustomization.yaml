@@ -45,3 +45,13 @@ patches:
         name: hello-world-app
         labels:
           approval.kuberik.com/required: "true"
+  - target:
+      kind: Rollout
+      name: hello-world-manifests
+    patch: |-
+      apiVersion: kuberik.com/v1alpha1
+      kind: Rollout
+      metadata:
+        name: hello-world-manifests
+        labels:
+          approval.kuberik.com/required: "true"
