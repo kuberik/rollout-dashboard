@@ -14,6 +14,20 @@ import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 const cache = new Map<string, unknown>();
 const asked = new Set<string>();
 let tick = $state(0);
+/**
+ * ONE tick per BURST of answers, not one per answer. `tick` is read by every derivation that asked (the Changes page's whole classification, the
+ * plumb line, Rollouts, Home ...), so bumping it per answer re-runs all of them per answer. A fleet with many places asks one range + one commit
+ * lookup per release in a single pass (home-incident: 49 asks), the answers land one by one, and each bump re-ran a ~1 s page derivation:
+ * O(answers x page cost), a minute of a frozen main thread (/changes, /revisions never painted). The answers are cached as they land; the tick that
+ * makes derivations re-read the cache is trailing-debounced, so a burst costs a couple of re-runs however many answers it carries. A real
+ * cluster answers slower than the mock, which only widens the gap between bumps: the same guard holds.
+ */
+export const TICK_COALESCE_MS = 120;
+let tickTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleTick(): void {
+	if (tickTimer !== null) return;
+	tickTimer = setTimeout(() => { tickTimer = null; tick++; }, TICK_COALESCE_MS);
+}
 
 export function githubJson<T = unknown>(path: string, params: Record<string, string> = {}): T | null {
 	const q = new URLSearchParams(params);
@@ -26,7 +40,7 @@ export function githubJson<T = unknown>(path: string, params: Record<string, str
 	if (githubAskHeld()) return null; /* the one gate stops NEW asks: not connected (or not yet known) */
 	if (!asked.has(key)) {
 		asked.add(key);
-		fetch(key).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => { cache.set(key, j); tick++; });
+		fetch(key).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => { cache.set(key, j); scheduleTick(); });
 	}
 	return null;
 }
