@@ -28,3 +28,18 @@ describe('repo card model', () => {
 		expect(repoCardModel({ repo: 'r', changes: [c('#1', 'deploying', 'dev'), c('#2', 'approval', 'prod')] }).cells.map((x) => x.tier)).toEqual(['dev', 'prod']);
 	});
 });
+
+describe('moving rollup (what "N moving" counts)', () => {
+	it('a change still going through its environments is moving: deploying, checking, or healthy at a tier short of its last', () => {
+		const rp = rollupParts([c('#1', 'deploying', 'dev'), c('#2', 'checking', 'test'), c('#3', 'healthy', 'staging')]);
+		expect(rp).toEqual([{ text: '3 moving', ink: 'subtle' }]);
+	});
+	it('a change waiting on a gate is held (waiting), never moving; landed is not counted at all', () => {
+		const rp = rollupParts([c('#1', 'approval', 'staging'), c('#2', 'held', 'test'), c('#3', 'approval-yours', 'staging'), c('#4', 'healthy', 'test'), c('#5', 'landed', 'prod')]);
+		expect(rp).toEqual([{ text: '3 waiting', ink: 'held' }, { text: '1 moving', ink: 'subtle' }]);
+	});
+	it('a change whose app has no releases is the state word, not moving', () => {
+		const rp = rollupParts([{ ...c('#1', 'healthy', 'dev'), noReleases: 'No releases yet' }]);
+		expect(rp).toEqual([{ text: 'no releases yet', ink: 'subtle' }]);
+	});
+});

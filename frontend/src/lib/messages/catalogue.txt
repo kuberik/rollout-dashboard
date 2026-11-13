@@ -980,6 +980,7 @@ lib/components/new/Rollouts.svelte	title	All rollouts
 lib/components/new/Rollouts.svelte	text	At rest
 lib/components/new/Rollouts.svelte	text	No rollouts yet
 lib/components/new/Rollouts.svelte	text	Rollouts appear here as soon as one is deployed.
+lib/components/new/Slipway.svelte	code	… animate-pulse
 lib/components/new/Slipway.svelte	code	…… ago
 lib/components/new/Slipway.svelte	code	…${n.hold && !n.holdC ?
 lib/components/new/Slipway.svelte	text	1 of … regions
@@ -2027,8 +2028,8 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Couldn't check de
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Custom build
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Deploy requested — starting
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	deployed … ago
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Deployment pipeline
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	External links
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Deployment pipeline
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	External links
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	failed here
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to check for new versions
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout
@@ -2039,7 +2040,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Held by rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Holding … rollout … — … … … .
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Loading releases…
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Lockstep is set on … only
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Newer builds
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Newer builds
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No builds yet
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No deploys yet
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	No new versions available

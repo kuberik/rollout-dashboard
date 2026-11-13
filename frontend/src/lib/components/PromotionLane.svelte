@@ -14,6 +14,7 @@
 	 */
 	import { severityRank } from '$lib/view-models/severity';
 	import { type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
+	import { TIERS_WITH_OTHER } from '$lib/view-models/sites-waves';
 	import { shortenVersion, formatTimeAgoCompact } from '$lib/utils';
 	import { splitEnvName } from '$lib/env-badge';
 	import { getEnvironmentThemeStyle } from '$lib/environment-theme';
@@ -71,7 +72,7 @@
 	const linked = $derived(!fill);
 
 	const cols = $derived<Tier[]>(
-		tiers?.filter((t) => lane.byTier[t]?.length) ?? (['dev', 'test', 'staging', 'other', 'prod'] as Tier[]).filter((t) => lane.byTier[t]?.length)
+		tiers?.filter((t) => lane.byTier[t]?.length) ?? ([...TIERS_WITH_OTHER] as Tier[]).filter((t) => lane.byTier[t]?.length)
 	);
 
 

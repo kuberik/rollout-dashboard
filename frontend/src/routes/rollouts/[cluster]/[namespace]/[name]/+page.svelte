@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
 	import { isDeployInFlight, showNewerBuildsCard } from '$lib/view-models/pipeline-card';
 	import { heldChipLead, heldChipPhrase } from '$lib/view-models/held-chip';
@@ -74,6 +75,8 @@
 	import { repoKeyFor, repoSlug } from '$lib/version-utils';
 	import { href } from '$lib/paths';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
+	import FleetGate from '$lib/components/new/FleetGate.svelte';
+	import { canApproveAt } from '$lib/components/new/data';
 	import BlockedActions from '$lib/components/new/BlockedActions.svelte';
 	import { askView } from '$lib/components/new/state-words';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
@@ -106,6 +109,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import DeploymentPipelineCard from '$lib/components/DeploymentPipelineCard.svelte';
+	import Card from '$lib/components/Card.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import ScheduleStatus from '$lib/components/ScheduleStatus.svelte';
@@ -175,7 +179,7 @@
 	import { rolloutPath, rolloutMatchesEnvironment, SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 	import { DEPLOY_PARAM, deployKey } from '$lib/history-deeplink';
 	import { formatTimeUntil } from '$lib/api/schedules';
-	import { createQuery } from '@tanstack/svelte-query';
+	import { createQuery, createQueries } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
 		rolloutsListQueryOptions,
@@ -399,6 +403,15 @@
 		);
 		return buildLanes(cards)[0] ?? null;
 	});
+	/* the viewer's ring on the strip is only drawn where the viewer may approve: the per-rollout permission the Approve button uses (`permissions.approve === false` = no ring); unknown while loading keeps the ring (the fleet predicate already says an approval waits) */
+	const laneNodes = $derived(appLane ? [...appLane.stages, ...appLane.prod] : []);
+	const laneNodePerms = createQueries(() => ({
+		queries: laneNodes.map((n) => rolloutPermissionsQueryOptions({ namespace: n.card.ns, name: n.card.name, cluster: n.card.sourceCluster || cluster }))
+	}));
+	const laneCannotApprove = (n: { card: { ns: string; name: string } }): boolean => {
+		const i = laneNodes.findIndex((x) => x.card.ns === n.card.ns && x.card.name === n.card.name && x.env === (n as { env?: string }).env);
+		return i >= 0 && laneNodePerms[i]?.data?.permissions?.approve === false;
+	};
 	/**
 	 * ⭐ THE "NOT REACHED YET" FACT FOR THIS BANNER. (shared/held-predicate,
 	 * 2026-10-11) `heldVerdict`/`waitsFor` — see `view-models/held.ts`'s own
@@ -2114,12 +2127,12 @@
 		if (!status) return { icon: ExclamationCircleSolid, color: 'text-fg-subtle' };
 		switch (status.toLowerCase()) {
 			case 'success':
-				return { icon: CheckCircleSolid, color: 'text-success' };
+				return { icon: CheckCircleSolid, color: HUE_INK.success };
 			case 'failure':
-				return { icon: ExclamationCircleSolid, color: 'text-danger' };
+				return { icon: ExclamationCircleSolid, color: HUE_INK.danger };
 			case 'in_progress':
 			case 'pending':
-				return { icon: ClockSolid, color: 'text-progress' };
+				return { icon: ClockSolid, color: HUE_INK.progress };
 			default:
 				return { icon: ExclamationCircleSolid, color: 'text-fg-subtle' };
 		}
@@ -2806,12 +2819,12 @@
 				{@const failedHCList = latestEntry?.failedHealthChecks || []}
 				{@const statusStripClass =
 					latestEntry.bakeStatus === 'Succeeded'
-						? 'bg-success-solid'
+						? HUE_SOLID.success
 						: latestEntry.bakeStatus === 'Failed'
-							? 'bg-danger-solid'
+							? HUE_SOLID.danger
 							: latestEntry.bakeStatus === 'InProgress'
-								? 'bg-progress-solid'
-								: 'bg-active-solid'}
+								? HUE_SOLID.progress
+								: HUE_SOLID.active}
 				{@const statusBadgeColor =
 					latestEntry.bakeStatus === 'Succeeded'
 						? 'green'
@@ -2937,7 +2950,7 @@
 														-->
 								<span
 									class="hdr-newer flex min-w-0 items-center gap-1 max-sm:max-w-[calc(100%-7rem)] {justOpenedHealthGate && !blockStory.pinnedTo
-										? 'text-active'
+										? HUE_INK.active
 										: 'text-fg-muted'}"
 								>
 									<ArrowUpOutline class="h-3 w-3" />
@@ -3255,16 +3268,22 @@
 							     nothing to say it scrolls. -->
 							<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 pb-1">
 								<div class="min-w-0 basis-full sm:flex-1 sm:basis-0">
-									<PromotionLane
-										lane={appLane}
-										hrefFor={(n) =>
-											rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name)}
-										current={{ ns: namespace, name }}
-										youAreHere
-										quietNoReleases
-										sites
-										reserve
-									/>
+									<!-- the viewer's ring on a place whose approval they can give: the ONE predicate (data.ts canApproveAt), the fleet source installed by the bare gate -->
+									<FleetGate bare>
+										{#snippet children(ready)}
+											<PromotionLane
+												lane={appLane}
+												hrefFor={(n) =>
+													rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name)}
+												youCan={(n) => ready && !laneCannotApprove(n) && canApproveAt(rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name))}
+												current={{ ns: namespace, name }}
+												youAreHere
+												quietNoReleases
+												sites
+												reserve
+											/>
+										{/snippet}
+									</FleetGate>
 								</div>
 								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0 max-sm:mt-1"
 									>All environments<ChevronRightOutline class="h-3 w-3" /></a
@@ -3858,42 +3877,9 @@
 							<!-- film l33 (owner 2026-11-12): while a deploy is in flight and nothing newer waits, this card only said "No newer build" and rode the pipeline card's
 							     height changes down the page step after step. It stays out of the way until the deploy settles or a newer build arrives. -->
 							{#if showNewerBuildsCard({ deployInFlight, newerCount: newerBuilds.length, pinned: !!rollout?.spec?.wantedVersion && !isPinnedVersionCustom, held: !!heldByThis, releasesLoading })}
-							<div
-								class="border-line bg-surface overflow-hidden rounded-md border {noSource ? 'hidden' : ''}"
-								use:smoothHeight
-								data-newer-builds-card
-							>
-								<div>
-									<!-- Header -->
-									<!--
-								⭐ THE HEADER SLOT TAKES THE ROLLUP, NEVER A BUTTON BESIDE IT.
-								(2026-09-03, F12) This was 57px — the chip/text answer PLUS a
-								32px icon button — against every other card header on this page
-								at the standard 47px. `COMPOSITION-GRAMMAR.md`'s slot is a
-								rolled-up ANSWER (`3/3 healthy`, a chip, a `.nav-link` at rollup
-								scale); a mutating control is not a rollup and does not belong
-								beside one. The refresh action moves to its own thin row in the
-								body, where `Chip`'s `Held`/pin banners already sit — a control
-								row, not a header.
-							-->
-									<!-- ⛔ ITEM 2 (integrator re-check, round 3): `min-h-[47px]` +
-							     `py-3` (every other card header's own combo, `Card.svelte`'s
-							     included) assumes its tallest child is ~20-24px of text/chip —
-							     true everywhere else, but THIS header also holds the Refresh
-							     button, which item 10 now puts at a fixed 36px. `py-3`
-							     (12+12=24px) on top of a 36px child is 60px of natural content
-							     height, so `min-height` stopped being the binding constraint and
-							     the row grew to 61px regardless of viewport width (measured at
-							     360 through 1440 — this was never a wrap, just a floor that
-							     could not hold its own tallest child). A fixed `h-[47px]` with no
-							     vertical padding makes 47px the ACTUAL height, not a floor, so
-							     the 36px button (and everything shorter) centres inside it via
-							     `items-center` with room to spare. -->
-									<div
-										class="border-line-subtle flex min-h-[47px] items-center gap-3 border-b px-4 py-3"
-									>
-										<CodeOutline class="text-fg-subtle h-4 w-4 shrink-0" />
-										<span class="t-card-title text-fg whitespace-nowrap">Newer builds</span>
+							<!-- the page's ONE card (Card.svelte): 47px header, icon, title, and the rollup on the card's own wrapping slot; `hidden` while the page has no release source -->
+							<Card icon={CodeOutline} title="Newer builds" padded={false} class={noSource ? 'hidden' : ''}>
+								{#snippet rollup()}
 										<!--
 									⭐ THE ROLLUP IS NOT CONDITIONAL ON HAVING SOMETHING TO SAY.
 									(2026-09-02, `COMPOSITION-GRAMMAR.md` §1) It used to render the
@@ -3940,7 +3926,7 @@
 											>
 											<!-- TB18 (r4): no Refresh — the build list streams; one rollup + the link. -->
 										</div>
-									</div>
+								{/snippet}
 
 									<!-- ⭐ THE REFRESH CONTROL, NOW A BODY ROW. It is a MUTATING
 							     control (re-runs the Flux reconcile), so it earns button
@@ -4726,8 +4712,7 @@
 								restatement does not. `heldByThis` and the pin banner above
 								are untouched — those are facts the header does not carry.
 							-->
-								</div>
-							</div>
+							</Card>
 							{/if}
 						</div>
 						<!--
@@ -4760,18 +4745,7 @@
 							{#if !managedResourcesKnown}
 								<CardSkeleton titleWidth="w-28" rows={1} rowHeight={36} />
 							{:else if datadogServiceInfo}
-								<div class="border-line bg-surface overflow-hidden rounded-md border">
-									<!-- ⭐ `min-h-[47px]`, LIKE EVERY OTHER CARD HEADER. (NIT,
-								     2026-09-03 re-check) This was a hand-rolled header with
-								     no height floor — 45px, against the 47px `Card.svelte`
-								     enforces everywhere else, because a header with no
-								     rollup measures a line box 2px shorter than one with a
-								     chip on it. Same fix `Card.svelte`'s own doc comment
-								     already made the rule for. -->
-									<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
-										<ArrowUpRightFromSquareOutline class="text-fg-subtle h-4 w-4" />
-										<h2 class="t-card-title text-fg">External links</h2>
-									</div>
+								<Card icon={ArrowUpRightFromSquareOutline} title="External links" padded={false}>
 									<div class="divide-line-subtle divide-y">
 										{#if datadogServiceInfo}
 											<a
@@ -4793,7 +4767,7 @@
 											</a>
 										{/if}
 									</div>
-								</div>
+								</Card>
 							{/if}
 							<!--
 							⭐ `windowStart` IS `errorCutoff`, THE SAME OBJECT THAT ALREADY
@@ -4889,11 +4863,7 @@
 				</PageHeader>
 				<div class="ov-split-cq">
 					<div class="ov-split flex flex-col gap-4">
-						<section class="border-line bg-surface overflow-hidden rounded-md border">
-							<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
-								<ClockOutline class="text-fg-subtle h-4 w-4" aria-hidden="true" />
-								<h2 class="t-card-title text-fg">Deployment pipeline</h2>
-							</div>
+						<Card icon={ClockOutline} title="Deployment pipeline" padded={false}>
 							<div class="flex flex-col items-start gap-1 px-4 py-6">
 								<ClockOutline class="text-fg-disabled mb-1 h-5 w-5" aria-hidden="true" />
 								<p class="t-ui text-fg">No deploys yet</p>
@@ -4903,18 +4873,13 @@
 									the deployment pipeline, health checks, and history.
 								</p>
 							</div>
-						</section>
-						<section class="border-line bg-surface overflow-hidden rounded-md border">
-							<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
-								<CodeOutline class="text-fg-subtle h-4 w-4" aria-hidden="true" />
-								<h2 class="t-card-title text-fg">Newer builds</h2>
-								{#if (releaseCandidates(rollout)?.length ?? 0) > 0}<span
-										class="t-ui-sm text-fg-subtle ml-auto tabular-nums"
-										>{releaseCandidates(rollout)?.length} build{releaseCandidates(rollout)?.length === 1
-											? ''
-											: 's'}</span
+						</Card>
+						<Card icon={CodeOutline} title="Newer builds" padded={false}>
+							{#snippet rollup()}
+								{#if (releaseCandidates(rollout)?.length ?? 0) > 0}<span class="t-ui-sm text-fg-subtle tabular-nums"
+										>{releaseCandidates(rollout)?.length} build{releaseCandidates(rollout)?.length === 1 ? '' : 's'}</span
 									>{/if}
-							</div>
+							{/snippet}
 							{#if (releaseCandidates(rollout)?.length ?? 0) > 0}
 								<ul class="divide-line-subtle divide-y">
 									{#each releaseCandidates(rollout)?.slice(0, 5) ?? [] as rc}
@@ -4937,7 +4902,7 @@
 									</p>
 								</div>
 							{/if}
-						</section>
+						</Card>
 					</div>
 				</div>
 			{/if}

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { HUE_INK } from '$lib/view-models/state-tone';
 	/**
 	 * THE ROLLOUT DIFF PAGE — "What did this deploy change in the cluster?"
 	 * (SPEC §7; squad-rollout, AD rounds 5–6, 2026-10-10).
@@ -328,10 +329,10 @@
 		})
 	);
 	const ROLLUP_TONE = {
-		good: 'text-success',
-		adverse: 'text-danger',
-		active: 'text-active',
-		neutral: 'text-fg-subtle'
+		good: HUE_INK.success,
+		adverse: HUE_INK.danger,
+		active: HUE_INK.active,
+		neutral: HUE_INK.subtle
 	};
 </script>
 

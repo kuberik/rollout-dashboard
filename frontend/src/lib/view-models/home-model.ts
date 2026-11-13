@@ -57,6 +57,7 @@
  *     `HOME_PULSE_WORTH_LOOK` (`fleet-signals.ts`, sharedfix 13749e4d) —
  *     `'stall'` (idle) is deliberately excluded from that set.
  */
+import { shortRevision } from '$lib/version-utils';
 import type {
 	Rollout,
 	Environment,
@@ -856,7 +857,7 @@ function buildSignals(
 	healthChecks: readonly RolloutHealthChecks[] | null | undefined
 ): Signal[] {
 	const prByShort = new Map<string, Change>();
-	for (const c of changes) prByShort.set(c.mergeCommitSha.slice(0, 7).toLowerCase(), c);
+	for (const c of changes) prByShort.set(shortRevision(c.mergeCommitSha).toLowerCase(), c);
 	const raw = fleetSignals({
 		cards,
 		lanes,

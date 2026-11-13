@@ -84,7 +84,7 @@ import { heldBuilds } from './held';
 import { promotionBlock, promotionCandidates, blockingGateNames, type PromotionBlock } from './promotion';
 import { liveForPlace, type Fleet } from './failed-builds';
 import { formatTimeUntil, formatAbsoluteReopen } from '$lib/api/schedules';
-import { displayVersionForTag, shortRevisionOrNull } from '$lib/version-utils';
+import { displayVersionForTag, shortRevisionOrNull, shortRevision } from '$lib/version-utils';
 import { countLabel } from '$lib/disclosure';
 import { stateWord } from '$lib/components/new/state-words';
 import {
@@ -613,7 +613,7 @@ function promotionJoinOf(env: Environment, topologies: Map<string, AppTopology>)
 		base.via = !node.isLeader ? 'follow' : up[0].tier === node.tier ? 'wave' : 'tier';
 	}
 	const wave = topo.tiers.find((t) => t.tier === node.tier)?.waves.find((w) => w.wave === node.wave);
-	base.selected = wave?.selectedRevision ? wave.selectedRevision.slice(0, 7) : null;
+	base.selected = wave?.selectedRevision ? shortRevision(wave.selectedRevision) : null;
 	return base;
 }
 

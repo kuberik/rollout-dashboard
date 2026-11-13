@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { shortRevision } from '$lib/version-utils';
 	import { isApplePlatform } from '$lib/shortcut-hint';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -56,7 +57,7 @@
 		if (!m) return null;
 		const parsed = parseChangeSlug(m[1].split('/').filter(Boolean).map((s) => { try { return decodeURIComponent(s); } catch { return s; } }));
 		if (!parsed) return null;
-		return parsed.ref.kind === 'pull' ? `#${parsed.ref.number}` : parsed.ref.sha.slice(0, 7);
+		return parsed.ref.kind === 'pull' ? `#${parsed.ref.number}` : shortRevision(parsed.ref.sha);
 	});
 
 	// Section breadcrumb: every page belongs to a section. Render as a

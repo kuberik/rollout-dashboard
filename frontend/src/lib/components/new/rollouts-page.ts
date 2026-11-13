@@ -153,9 +153,9 @@ export function attentionItem(r: TRow, hs: HomeState): AttentionItem {
 }
 
 /** a rest place's sentence: "Rolled back"; else its currency from the ONE behind count (a newer build held by a gate counts; one that failed or was rolled back does not): "N behind" (the Runs-in word) or "On the newest". Before the fleet answers, or while the lag is unknown, no currency is claimed: "Healthy". */
-function restSentence(p: { state: string; href: string }, settled: boolean): string {
+function restSentence(p: { state: string; href: string }, app: string, settled: boolean): string {
 	if (p.state === 'rolled-back') return 'Rolled back';
-	const n = placeBehind(p.href, settled);
+	const n = placeBehind(p.href, app, settled);
 	return n === null ? 'Healthy' : n > 0 ? `${n} behind` : 'On the newest';
 }
 /** the rows that have no section of their own on the page above: at rest = every place not covered by a row, healthy or rolled back */
@@ -172,7 +172,7 @@ function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState, sett
 			const place = !label || TIER_WORDS.has(label) || label === p.tier ? p.tier : `${p.tier} · ${label}`;
 			const none = noReleasesAt(p.href);
 			/* no releases: the health word and the running build stay; the label takes the currency slot ("2 behind" / "On the newest") */
-			const sentence = none ? `${p.state === 'rolled-back' ? 'Rolled back' : 'Healthy'} · ${none.label}` : restSentence(p, settled);
+			const sentence = none ? `${p.state === 'rolled-back' ? 'Rolled back' : 'Healthy'} · ${none.label}` : restSentence(p, app, settled);
 			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence, code: p.version ?? '', age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
 		}
 	}

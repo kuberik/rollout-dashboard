@@ -7,6 +7,7 @@
  * Derived from pocket's `compass` (the real HomeModel + raw histories): no new truth, only a new
  * grouping. Every card answers "which app, where, in what state, carrying whose change".
  */
+import { shortRevisionOrNull } from '$lib/version-utils';
 import { severityRank } from '$lib/view-models/severity';
 import type { AppEnv, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, liveViewer, type HomeState } from '../sketch/home-data';
@@ -80,7 +81,7 @@ export function depot(state: HomeState): Depot {
 		for (const [app, ps] of byApp) {
 			const worst = [...ps].sort((x, y) => severityRank(x.state) - severityRank(y.state))[0];
 			const same = ps.filter((p) => p.state === worst.state);
-			const ver = worst.version?.slice(0, 7) ?? null;
+			const ver = shortRevisionOrNull(worst.version) ?? null;
 			const mineCh = worst.myChanges.find((ch) => ch.state === worst.state) ?? worst.myChanges[0];
 			/* the change IN FLIGHT: on a held/approval place the running version is the OLD one, so the
 			   candidate comes from the view's own approval/held rows; on deploying/checking/failed places

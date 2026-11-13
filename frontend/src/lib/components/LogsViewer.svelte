@@ -374,6 +374,7 @@
 </script>
 
 <script lang="ts">
+	import { hueInk, hueSolid } from '$lib/view-models/state-tone';
 	import { onMount, onDestroy, tick, untrack } from 'svelte';
 	import {
 		CloseOutline,
@@ -2868,26 +2869,13 @@
 			<div class="dot-list">
 				<div class="dot-list-row flex flex-wrap items-center">
 			<span
-				class="t-ui-sm inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap {liveMark.tone ===
-				'success'
-					? 'text-success'
-					: liveMark.tone === 'danger'
-						? 'text-danger'
-						: liveMark.tone === 'active'
-							? 'text-active'
-							: 'text-fg-subtle'}"
+				class="t-ui-sm inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap {hueInk(liveMark.tone)}"
 			>
 				{#if liveMark.spinner}
 					<StatusSpinner size="3" color={liveMark.tone === 'active' ? 'blue' : 'gray'} />
 				{:else}
 					<span
-						class="inline-flex h-2 w-2 shrink-0 rounded-full {liveMark.tone === 'success'
-							? 'bg-success-solid'
-							: liveMark.tone === 'danger'
-								? 'bg-danger-solid'
-								: liveMark.tone === 'active'
-									? 'bg-active-solid'
-									: 'bg-fg-disabled'}"
+						class="inline-flex h-2 w-2 shrink-0 rounded-full {liveMark.tone === 'subtle' ? 'bg-fg-disabled' : hueSolid(liveMark.tone)}"
 						title={rollupDot.label}
 						aria-hidden="true"
 					></span>
@@ -3063,11 +3051,7 @@
 						onclick={() => onSelectView?.('test')}
 					>
 						<span
-							class="h-1.5 w-1.5 shrink-0 rounded-full {t.phase === 'Failed'
-								? 'bg-danger-solid'
-								: t.phase === 'Succeeded'
-									? 'bg-success-solid'
-									: 'bg-fg-subtle'}"
+							class="h-1.5 w-1.5 shrink-0 rounded-full {t.phase === 'Failed' ? hueSolid('danger') : t.phase === 'Succeeded' ? hueSolid('success') : hueSolid('subtle')}"
 							aria-hidden="true"
 						></span>
 						<span class="t-ui-sm min-w-0 flex-1 truncate text-fg-subtle"

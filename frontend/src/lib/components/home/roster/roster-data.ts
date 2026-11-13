@@ -462,7 +462,7 @@ export function apps(state: HomeState) {
 		const w = rows.find((r) => r.group === 'failed') ?? rows.find((r) => r.needsYou) ?? rows.find((r) => r.group === 'moving') ?? worst;
 		const group: AppItem['group'] = !w ? 'quiet' : w.group === 'failed' || w.needsYou ? 'needs' : w.group === 'moving' ? 'moving' : 'waiting';
 		const envs = model.envs.filter((e) => e.state !== 'not-deployed');
-		const onNew = envs.filter((e) => e.version?.slice(0, 7) === a.newest && !['awaiting-approval', 'held-by-rule'].includes(e.state));
+		const onNew = envs.filter((e) => shortRevisionOrNull(e.version) === a.newest && !['awaiting-approval', 'held-by-rule'].includes(e.state));
 		const reach = onNew.length ? onNew.map((e) => tierOf(e)).reduce((b, t) => (RT[t] > RT[b] ? t : b)) : null;
 		/* craft r4 (R3-4): one outcome grammar for a change and an app: Failing in X / Waits for approval in X / Held in X / Deploying to X */
 		const fact = !w ? `${a.places} ${a.places === 1 ? 'place' : 'places'} at rest` : w.group === 'failed' ? `Failing in ${w.where}` : w.state === 'awaiting-approval' ? `Waits for approval in ${w.where}` : w.group === 'moving' ? `${w.word} ${w.state === 'deploying' ? 'to' : 'in'} ${w.where}` : `${w.word.startsWith('Waits on') ? w.word : 'Held'} in ${w.where}`;

@@ -54,6 +54,18 @@ export const HUE_INK = {
 } as const;
 export const hueInk = (h: keyof typeof HUE_INK | null | undefined, quiet: string = HUE_INK.muted): string => (h ? (HUE_INK[h] ?? quiet) : quiet);
 
+/** the SOLID of a hue as a Tailwind background (a dot, a bar segment), written out in full so the scanner sees it; `subtle` is the quiet dot */
+export const HUE_SOLID = {
+	danger: 'bg-danger-solid',
+	held: 'bg-held-solid',
+	warning: 'bg-warning-solid',
+	active: 'bg-active-solid',
+	progress: 'bg-progress-solid',
+	success: 'bg-success-solid',
+	subtle: 'bg-fg-subtle'
+} as const;
+export const hueSolid = (h: keyof typeof HUE_SOLID | null | undefined, quiet: string = HUE_SOLID.subtle): string => (h ? (HUE_SOLID[h] ?? quiet) : quiet);
+
 const hue = (h: Exclude<ToneHue, 'subtle'>) => ({ solid: `var(--k-${h}-solid)`, tint: `var(--k-${h}-tint)`, line: `var(--k-${h}-line)` });
 const SUBTLE = { solid: 'var(--k-fg-subtle)', tint: 'var(--k-subtle)', line: 'var(--k-line-strong)' };
 

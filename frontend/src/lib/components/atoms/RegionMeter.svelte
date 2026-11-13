@@ -13,6 +13,7 @@
 	 * ratio card had no drawing at all; this is that same bar, counted. Proportions: the gauge's own h-1 / rounded-full /
 	 * bg-subtle track (Polar's credits bar, Mercury's share bar: 4px, round caps, track 2-4% off the surface).
 	 */
+	import { TONE } from '$lib/view-models/state-tone';
 	let {
 		k,
 		n,
@@ -31,19 +32,16 @@
 		label?: string;
 		class?: string;
 	} = $props();
+	/** ink -> the on-segment fill: the table's solids (neutral is the muted ink, not a state) */
+	const FILL = { held: TONE.held.solid, danger: TONE.failed.solid, active: TONE.deploying.solid, progress: TONE.checking.solid, neutral: 'var(--k-fg-muted)' } as const;
 	const segs = $derived(Array.from({ length: Math.max(1, n) }, (_, i) => i < k));
 </script>
 
-<span class="rm rm-{ink} {className}" style:width="{width}px" role="img" aria-label={label ?? `${k} of ${n}`} data-region-meter>
-	{#each segs as on, i (i)}<span class="rm-s" class:on></span>{/each}
+<span class="rm {className}" style:width="{width}px" role="img" aria-label={label ?? `${k} of ${n}`} data-region-meter>
+	{#each segs as on, i (i)}<span class="rm-s" class:on style:background={on ? FILL[ink] : undefined}></span>{/each}
 </span>
 
 <style>
 	.rm { display: inline-flex; gap: 1px; height: 4px; border-radius: 9999px; overflow: hidden; flex-shrink: 1; min-width: 0; max-width: 100%; vertical-align: middle; }
 	.rm-s { flex: 1 1 0; background: var(--k-subtle); }
-	.rm-held .on { background: var(--k-held-solid); }
-	.rm-danger .on { background: var(--k-danger-solid); }
-	.rm-active .on { background: var(--k-active-solid); }
-	.rm-progress .on { background: var(--k-progress-solid); }
-	.rm-neutral .on { background: var(--k-fg-muted); }
 </style>

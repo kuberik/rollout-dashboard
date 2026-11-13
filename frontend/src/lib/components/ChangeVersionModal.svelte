@@ -61,7 +61,7 @@
 	import { commitQueryOptions } from '$lib/api/commit';
 	import { revisionSha } from '$lib/git-ref';
 	import { githubKnownDisconnected } from '$lib/api/github-gate.svelte';
-	import { githubOwnerRepo, repoKeyFor } from '$lib/version-utils';
+	import { githubOwnerRepo, repoKeyFor, shortRevision } from '$lib/version-utils';
 	import {
 		commitsQueryOptions,
 		formatCommitMessage,
@@ -3350,7 +3350,7 @@
 									     only said GitHub was not connected.) -->
 									<p class="t-body text-fg-muted mb-2">
 										Same commit as the running build (<code class="t-code-sm"
-											>{compareHead.slice(0, 7)}</code
+											>{shortRevision(compareHead)}</code
 										>) — only the release changed. No code moves.
 									</p>
 								{/if}
@@ -3619,7 +3619,7 @@
 														>
 															<span class="whitespace-nowrap">{commit.author || 'unknown'}</span>
 															<code class="t-code-sm whitespace-nowrap"
-																>{commit.sha.slice(0, 7)}</code
+																>{shortRevision(commit.sha)}</code
 															>
 															{#if commit.commitDate}
 																<span

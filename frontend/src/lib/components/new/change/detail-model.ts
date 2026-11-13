@@ -6,6 +6,7 @@
  * v2 r4: ONE count per page (`countsOf`), every place's state/build/age is the TAB's current deploy (`currentAt`), a place the change does
  * not reach is listed as "not affected", the History spine keeps every place's current deploy and waiting events read in the tab's own age.
  */
+import { shortRevision } from '$lib/version-utils';
 import { oldestFirst, newestFirst, earliest, latest, isLater, isNotEarlier } from '$lib/instant';
 import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
@@ -104,7 +105,7 @@ export function classified(c: TChange, scenario: HomeState): { all: Unit[]; plac
 	return { all, places, unaffected };
 }
 /** a build is looked up by the CHANGE's repo (platform-telemetry), never by the place's app name (telemetry-indexer), so a multi-service change finds its build on every service */
-const carriesBuild = (c: Pick<TChange, 'mergedAt' | 'repo'>, v: RawV) => { const k = changeBySha(c.repo, (v.revision ?? v.tag ?? '').slice(0, 7)); return !!k && isNotEarlier(k.mergedAt, c.mergedAt); };
+const carriesBuild = (c: Pick<TChange, 'mergedAt' | 'repo'>, v: RawV) => { const k = changeBySha(c.repo, shortRevision(v.revision ?? v.tag ?? '')); return !!k && isNotEarlier(k.mergedAt, c.mergedAt); };
 export const runningN = (ps: Place[]) => ps.filter((p) => p.kind === 'running').length;
 /** CE2: THE count of the page, with its unit, read from here by the header, the Places rollup and the tests: "9 places · 3 live · 5 waiting · 1 not affected" */
 export function countsOf(all: Unit[], places: Place[]) {
@@ -179,7 +180,7 @@ export function stripOf(c: TChange, scenario: HomeState): Tile[] {
 	const MARKED = new Set(['failed', 'awaiting-approval', 'held-by-rule']);
 	return slots(c).filter((s: Slot) => s.kind !== 'absent').map((s) => {
 		const ps = runs.filter((p) => p.tier === s.tier);
-		const behind = Math.max(0, ...ps.map((p) => Number(/^(\d+) behind$/.exec(p.word)?.[1] ?? 0)));
+		const behind = Math.max(0, ...ps.map((p) => p.state === 'failed' ? 0 : (p.behind ?? 0)));
 		if (s.tier === 'prod') {
 			const pr = changeProd(c, scenario);
 			if (pr.of > 1) return { tier: s.tier, href: pr.href, word: null, squares: pr.states, frac: `${pr.healthy}/${pr.affected}`, label: squaresWords(pr.states), own: true, aside: pr.notAffected ? `${pr.notAffected} not affected` : null, flight: pr.states.includes('checking') ? 'checking' : pr.states.includes('moving') ? 'deploying' : null, ...tierState(placesAll.filter((p) => p.tier === 'prod')) };
@@ -304,7 +305,7 @@ export function carrierRange(c: TChange, scenario: HomeState): CarrierRange | nu
 	try {
 		const j = rangeJson(p[2], p[3], base, head, p[1]);
 		if (!j) return null;
-		const all = (j.commits ?? []).map((k) => ({ sha: k.sha.slice(0, 7), title: String(k.message ?? '').split('\n')[0], author: k.author ?? null }));
+		const all = (j.commits ?? []).map((k) => ({ sha: shortRevision(k.sha), title: String(k.message ?? '').split('\n')[0], author: k.author ?? null }));
 		/* the tab keeps only the commits that are themselves an available release (CommitSummary's releaseShas): "1 commit deployed", not the range's filler commits */
 		const rel = ((availableReleases(rawOf(u.href) as unknown as Rollout) as { tag?: string; version?: string; revision?: string }[] | undefined) ?? []).flatMap((r) => [r.revision, r.tag, r.version]).filter((x): x is string => !!x).map((x) => x.toLowerCase());
 		const own = all.filter((k) => rel.some((r) => r.startsWith(k.sha.toLowerCase()) || k.sha.toLowerCase().startsWith(r)));
@@ -522,9 +523,9 @@ export function restSteps(app: string, scenario: HomeState, href?: string): { na
 }
 /** the tab's words for a place that runs the change: "on the newest" / "5 builds behind" (runsIn's word, lagLabel's unit) */
 export function behindWords(app: string, href: string, scenario: HomeState): string {
-	const w = runsIn(app, scenario).find((r) => r.href === href)?.word ?? '';
-	const n = /^(\d+) behind$/.exec(w)?.[1];
-	return n ? lagLabel({ builds: Number(n) }) : w === 'on the newest' ? 'on the newest' : w || '';
+	const r = runsIn(app, scenario).find((x) => x.href === href);
+	if (!r) return '';
+	return r.behind ? lagLabel({ builds: r.behind }) : r.word;
 }
 
 /** CE15: the Gates tab's rollup with its unit, as its OWN line: "Newest build a11c909 runs in 1 of 6 places" (never the build this change is in). Phrased from `pathReach`'s numbers. */

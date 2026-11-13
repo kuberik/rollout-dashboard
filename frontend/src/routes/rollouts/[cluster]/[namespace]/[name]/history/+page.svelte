@@ -35,12 +35,7 @@
 		buildDatadogTestRunsUrl,
 		buildDatadogLogsUrl
 	} from '$lib/utils';
-	import {
-		changePathForRollout,
-		displayVersionForTag,
-		githubOwnerRepo,
-		repoKeyFor
-	} from '$lib/version-utils';
+	import { changePathForRollout, displayVersionForTag, githubOwnerRepo, repoKeyFor, shortRevision } from '$lib/version-utils';
 	import { rolloutEnvironmentName, rollbackTarget } from '$lib/view-models/deploy-risk';
 	import { stripEmphasisMarkers } from '$lib/view-models/plain-text-note';
 	import { isHistoryCurrentlyFailed } from '$lib/view-models/deploy-history';
@@ -2614,7 +2609,7 @@
 																						target="_blank"
 																						rel="noopener noreferrer"
 																						class="t-code-sm text-accent-text shrink-0 hover:underline"
-																						>{rowCommit.sha.slice(0, 7)}</a
+																						>{shortRevision(rowCommit.sha)}</a
 																					>
 																					<span class="text-fg-muted min-w-0 flex-1 truncate"
 																						>{commitTitle ?? rowCommit.subject}</span

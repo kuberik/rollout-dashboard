@@ -44,6 +44,7 @@
 	 * unasked, and reverted. It is reached from the rollout `Dependencies` tab.
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
+	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import { ShareNodesSolid, ServerOutline, ArrowRightOutline } from 'flowbite-svelte-icons';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
@@ -381,24 +382,19 @@ import { heldHereGates } from '$lib/view-models/held';
 
 	{#if query.isLoading}
 		<StillTryingNotice failureCount={query.failureCount} />
-		<div class="overflow-hidden rounded-md border border-line bg-surface">
-			<div class="flex min-h-[47px] items-center gap-3 border-b border-line px-4 py-3">
-				<div class="skel-block h-4 w-4"></div>
-				<div class="skel-block h-3.5 w-40"></div>
-				<div class="skel-block ml-auto h-3 w-20"></div>
-			</div>
+		<CardSkeleton titleWidth="w-40" rollupWidth="w-20" padded={false}>
 			<!-- The skeleton mirrors the MATRIX — the shape a reader is waiting
-			     for is the shape they are looking at. -->
-			<div class="flex gap-16 p-4">
-				{#each Array(3) as _, col (col)}
-					<div class="flex flex-col gap-6">
-						{#each Array(2) as __, row (row)}
-							<div class="skel-block h-16 w-44 rounded-md"></div>
-						{/each}
-					</div>
-				{/each}
-			</div>
-		</div>
+				     for is the shape they are looking at. -->
+				<div class="flex gap-16 p-4">
+					{#each Array(3) as _, col (col)}
+						<div class="flex flex-col gap-6">
+							{#each Array(2) as __, row (row)}
+								<div class="skel-block h-16 w-44 rounded-md"></div>
+							{/each}
+						</div>
+					{/each}
+				</div>
+		</CardSkeleton>
 	{:else if query.isError}
 		<ErrorState
 			error={query.error}
