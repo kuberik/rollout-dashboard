@@ -90,8 +90,16 @@ describe('SkipRuleModal', () => {
 		await fireEvent.click(document.querySelector('[data-skip-row="prod/invoice-worker-prod/invoice-worker"] input')!);
 		expect(document.querySelector('[data-skip-why]')?.textContent).toBe("Several builds are selected, so type the rule's name.");
 		expect(go()).toBeDisabled(); // what was typed was the build
+		expect(document.getElementById('srm-confirm')).toHaveValue(''); // and the question changed, so the answer is cleared
 		await fireEvent.input(document.getElementById('srm-confirm')!, { target: { value: 'business-hours' } });
 		expect(go()).not.toBeDisabled();
+	});
+
+	test('the list dialog opens with Cancel focused, not Select all', async () => {
+		renderModal([row('staging', 'ledger-api-staging', 'ledger-api', 'staging'), row('staging', 'a-staging', 'a', 'staging')]);
+		await waitFor(() => expect(document.querySelector('[data-skip-list]')).not.toBeNull());
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' })));
+		expect(screen.getByRole('button', { name: 'Select all' })).toHaveClass('hit-32');
 	});
 
 	test('partial failure: the failed row says why, the primary recounts to it, and only it is retried', async () => {

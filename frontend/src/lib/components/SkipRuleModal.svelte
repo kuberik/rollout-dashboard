@@ -90,6 +90,15 @@
 		platform = navigator.platform;
 	});
 
+	// Cancel takes focus on open, as the one-rollout dialog does by having it as the first control: the list's "Select all" must not open
+	// with the ring. flowbite focuses the first control AFTER mount, so this waits a task (the `autofocus` attribute loses that race).
+	let cancelBtn = $state<HTMLButtonElement | null>(null);
+	$effect(() => {
+		if (!open || !cancelBtn) return;
+		const t = setTimeout(() => cancelBtn?.focus(), 0);
+		return () => clearTimeout(t);
+	});
+
 	// Re-arm on every open, and decide the size once.
 	let wasOpen = false;
 	$effect(() => {
@@ -158,6 +167,14 @@
 	});
 
 	const expected = $derived(confirm.level === 'typed' ? confirm.expected : '');
+	// what is asked for changes (the rule's name, then a build after a partial failure): what was typed answered the old question
+	let lastExpected = '';
+	$effect(() => {
+		if (expected !== lastExpected) {
+			if (lastExpected !== '') typed = '';
+			lastExpected = expected;
+		}
+	});
 	const typedOk = $derived(confirm.level !== 'typed' || typed.trim() === expected);
 	const canSubmit = $derived(toSend.length > 0 && typedOk && !submitting);
 
@@ -294,7 +311,7 @@
 						<span class="ml-auto flex shrink-0 items-center gap-2">
 							<span class="t-meta text-fg-subtle tabular-nums" data-skip-count>{selectedRows.length} of {allRows.length} selected</span>
 							{#if attempted === 0}
-								<button type="button" class="btn btn-xs btn-ghost shrink-0" disabled={submitting} onclick={toggleAll}>{allPicked ? 'Select none' : 'Select all'}</button>
+								<button type="button" class="btn btn-xs btn-ghost hit-32 shrink-0" disabled={submitting} onclick={toggleAll}>{allPicked ? 'Select none' : 'Select all'}</button>
 							{/if}
 						</span>
 					</div>
@@ -395,7 +412,7 @@
 		{/if}
 
 		<div class="flex justify-end gap-2 border-t border-line px-5 py-3">
-			<button type="button" class="btn btn-secondary btn-sm" onclick={() => (open = false)}>{partial ? 'Close' : 'Cancel'}</button>
+			<button type="button" bind:this={cancelBtn} class="btn btn-secondary btn-sm" onclick={() => (open = false)}>{partial ? 'Close' : 'Cancel'}</button>
 			<button type="button" class="btn btn-sm {typedLevel ? 'btn-danger' : 'btn-primary'}" disabled={!canSubmit} onclick={submit}>
 				{#if submitting}
 					<StatusSpinner size="4" color="white" />
