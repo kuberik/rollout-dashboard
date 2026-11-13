@@ -282,12 +282,12 @@
 				<div>
 					<div class="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
 						<span class="t-label text-fg-subtle min-w-0">Held by {target.ruleLabel}</span>
-						<span class="t-meta text-fg-subtle ml-auto shrink-0 tabular-nums" data-skip-count
-							>{selectedRows.length} of {allRows.length} selected</span
-						>
-						<button type="button" class="btn btn-xs btn-ghost shrink-0" disabled={submitting} onclick={toggleAll}
-							>{allPicked ? 'Select none' : 'Select all'}</button
-						>
+						<span class="ml-auto flex shrink-0 items-center gap-2">
+							<span class="t-meta text-fg-subtle tabular-nums" data-skip-count>{selectedRows.length} of {allRows.length} selected</span>
+							{#if attempted === 0}
+								<button type="button" class="btn btn-xs btn-ghost shrink-0" disabled={submitting} onclick={toggleAll}>{allPicked ? 'Select none' : 'Select all'}</button>
+							{/if}
+						</span>
 					</div>
 					<ul class="divide-y divide-line-subtle rounded-md border border-line bg-surface" data-skip-list>
 						{#each visibleRows as r (r.key)}

@@ -41,8 +41,10 @@ type Spec = {
 	history?: [number, string][];
 };
 
+const M60 = { tag: 'm-60', version: '5.7.0-60' };
 const M61 = { tag: 'm-61', version: '5.7.1-61' };
 const M62 = { tag: 'm-62', version: '5.8.0-62' };
+const W29 = { tag: 'w-29', version: '2.1.0-29' };
 const W30 = { tag: 'w-30', version: '2.2.0-30' };
 const W31 = { tag: 'w-31', version: '2.3.0-31' };
 
@@ -122,7 +124,7 @@ function build(s: Spec): Obj {
 	];
 	const history = [
 		histEntry(s.live, 5 * 60),
-		...(s.history ?? []).map(([days, message], i) => histEntry(s.live, days * 24 * 60 + i, message))
+		...(s.history ?? []).map(([days, message], i) => histEntry(s.live.tag === 'm-61' ? M60 : W29, days * 24 * 60 + i, message))
 	];
 	const r: Obj = {
 		apiVersion: 'kuberik.com/v1alpha1',
@@ -138,7 +140,7 @@ function build(s: Spec): Obj {
 			source: `github.com/exampleco/${s.app}`,
 			wantedVersion: s.live.tag,
 			currentVersion: s.live.tag,
-			availableReleases: [release(s.live, 5 * 60), release(s.next, 60)],
+			availableReleases: [release(s.live.tag === 'm-61' ? M60 : W29, 4 * 24 * 60), release(s.live, 5 * 60), release(s.next, 60)],
 			releaseCandidates: [{ tag: s.next.tag, created: hcAgo(60) }],
 			gatedReleaseCandidates: [],
 			history,
