@@ -10,7 +10,7 @@
 	 * fold to one dashed count). Reference: the Card shell (1px line, r8, p16, tap-zone), AppGlyph, StatusMark, Chip, Avatar. Nothing is
 	 * decided here: the model is environments-page.ts (unit-tested).
 	 */
-	import { hueInk } from '$lib/view-models/state-tone';
+	import { hueInk, toneInk } from '$lib/view-models/state-tone';
 	import Chip from '$lib/components/Chip.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import EnvStateBar from './EnvStateBar.svelte';
@@ -42,7 +42,7 @@
 				<a class="et-region" href={r.href} data-truth-kind="region" data-truth-region={r.label}>
 					<span class="et-rtop"><StatusMark state={regionMark(r.mark)} /><span class="et-rnm t-meta font-medium truncate">{r.label}</span></span>
 					<span class="et-rst t-meta">
-						{#if r.failing}<span class={hueInk('danger')}>{r.failing} failing</span>{/if}{#if r.failing && (r.waiting || r.moving)}{' · '}{/if}{#if r.waiting}<span class={hueInk('held')}>{r.waiting} waiting</span>{/if}{#if r.waiting && r.moving}{' · '}{/if}{#if r.moving}<span class={hueInk('active')}>{r.movingWord}</span>{/if}
+						{#if r.failing}<span class={hueInk('danger')}>{r.failing} failing</span>{/if}{#if r.failing && (r.waiting || r.moving)}{' · '}{/if}{#if r.waiting}<span class={hueInk('held')}>{r.waiting} waiting</span>{/if}{#if r.waiting && r.moving}{' · '}{/if}{#if r.moving}<span class={toneInk(r.movingWord)}>{r.movingWord}</span>{/if}
 					</span>
 				</a>
 			{/each}

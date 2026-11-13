@@ -39,7 +39,7 @@ export function stateLine(t: { places: number; failing: number; waiting: number;
 	const mv: TileMark = movingWord === 'checking' ? 'checking' : 'deploying';
 	if (t.failing) return { lead: { text: `${t.failing} failing`, ink: TONE.failed.hue as Ink }, parts, mark: 'failed' };
 	if (t.waiting) return { lead: { ...parts.shift()!, ink: TONE.held.hue as Ink }, parts, mark: t.yours ? 'approval-yours' : 'approval' };
-	if (t.moving) return { lead: { ...parts.shift()!, ink: TONE[mv].hue as Ink }, parts, mark: mv }; /* the word's ink is the mark's tone: "2 checking" is progress yellow beside the yellow clock, "2 deploying" active blue */
+	if (t.moving) return { lead: { ...parts.shift()!, ink: 'muted' }, parts, mark: mv }; /* visual audit #15: a state that moves on its own prints a neutral word; the tile's mark (the yellow clock, the blue sweep) carries the hue, as on /rollouts */
 	return { lead: { text: `All ${t.places} healthy`, ink: 'muted' }, parts: [], mark: 'rest' };
 }
 

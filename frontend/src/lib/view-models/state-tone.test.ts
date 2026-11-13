@@ -38,8 +38,8 @@ describe('the state-tone table', () => {
 		expect(toneOf('baking')).toBe('checking');
 		expect(toneOf('mystery')).toBeNull();
 		expect(toneInk('mystery')).toBe('text-fg-muted');
-		expect(toneInk('deploying')).toBe('text-active');
-		expect(toneInk('checking')).toBe('text-progress');
+		expect(toneInk('deploying')).toBe('text-fg-muted');
+		expect(toneInk('checking')).toBe('text-fg-muted');
 		expect(hueInk('danger')).toBe('text-danger');
 	});
 });
@@ -125,5 +125,22 @@ describe('one table, no local maps', () => {
 		expect(src(join(ROOT, 'components/EnvRow.svelte'))).toMatch(/<WaveMark/);
 		expect(src(join(ROOT, 'components/ChangeDot.svelte'))).toMatch(/<WaveMark/);
 		expect(src(join(ROOT, 'components/SiteMark.svelte'))).toMatch(/<WaveMark/);
+	});
+});
+
+describe('a state word takes ink only when the state needs a person (visual audit #15)', () => {
+	it('the moving states print a neutral word; their mark keeps the hue', () => {
+		for (const k of ['checking', 'deploying', 'baking', 'promoting'] as const) {
+			expect(toneInk(k), k).toBe('text-fg-muted');
+		}
+		expect(TONE.checking.solid).toBe('var(--k-progress-solid)');
+		expect(TONE.deploying.solid).toBe('var(--k-active-solid)');
+	});
+	it('the states that wait on a person keep their ink', () => {
+		expect(toneInk('failed')).toBe('text-danger');
+		expect(toneInk('failing')).toBe('text-danger');
+		expect(toneInk('stuck')).toBe('text-warning');
+		expect(toneInk('held')).toBe('text-held');
+		expect(toneInk('awaiting-approval')).toBe('text-held');
 	});
 });
