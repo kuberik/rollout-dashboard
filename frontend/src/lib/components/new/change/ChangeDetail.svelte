@@ -26,6 +26,7 @@
 	 * states ("2 live · 1 checking"); one `reserve` for the card's rows from the VISIBLE actions (ages share one right track).
 	 * Words are the tab's only. The viewer's own face never sits on their own change ("yours").
 	 */
+	import { hueInk } from '$lib/view-models/state-tone';
 	import { approveAct } from '../approvals.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
@@ -99,7 +100,6 @@
 	const prodPl = $derived(stg.lanes.flatMap((l) => l.cells.flatMap((x) => x?.places ?? [])).filter((p) => p.tier === 'prod' && p.state !== 'notaffected' && p.state !== 'replaced'));
 	const prodDone = $derived(prodPl.filter((p) => p.state === 'deployed').length);
 	const carrying = $derived(new Set(places.filter((p) => p.kind === 'running' || p.kind === 'failed').map((p) => p.current).filter(Boolean)).size);
-	const RUP: Record<string, string> = { danger: 'text-danger', held: 'text-held', progress: 'text-progress', active: 'text-active', muted: 'text-fg', fg: 'text-fg' };
 </script>
 
 {#snippet links()}
@@ -170,7 +170,7 @@
 			{#if holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href)}<HoldingCard {holds} class="cd-hold" />{/if}
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
-					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-places><dt class="t-meta text-fg-subtle">Places running it</dt><dd class="t-ui tabular-nums">{#each reach.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={RUP[part.ink]}>{i === 0 ? (part.short ?? part.text) : part.text}</span>{/each}</dd></div>
+					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-places><dt class="t-meta text-fg-subtle">Places running it</dt><dd class="t-ui tabular-nums">{#each reach.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={hueInk(part.ink === 'muted' ? 'fg' : part.ink)}>{i === 0 ? (part.short ?? part.text) : part.text}</span>{/each}</dd></div>
 					{#if prodPl.length > 1}<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-prod><dt class="t-meta text-fg-subtle">{multiApp ? 'Production places deployed' : 'Production regions deployed'}</dt><dd class="t-ui tabular-nums text-fg">{prodDone} of {prodPl.length}</dd></div>{/if}
 					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-builds><dt class="t-meta text-fg-subtle">Builds carrying it</dt><dd class="t-ui tabular-nums text-fg">{#if carrying}{carrying}{:else}<span class="t-meta text-fg-subtle" data-pending>none running yet</span>{/if}</dd></div>
 					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], [`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')], ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}

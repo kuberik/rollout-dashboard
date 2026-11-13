@@ -2,6 +2,7 @@
 	// One vocabulary for the deploy states — see `bake-status.ts`. This dot
 	// label used to say `still baking`, the product's own field name, inside
 	// the accessible name of every in-flight dot on `/activity`.
+	import { toneInk } from '$lib/view-models/state-tone';
 	import type { Snippet } from 'svelte';
 	import { displayTimeZone } from '$lib/timezone.svelte';
 	import { formatTimestamp } from '$lib/display-time';
@@ -459,11 +460,11 @@
 	function statusText(s?: string): string {
 		switch (s) {
 			case 'Failed':
-				return 'text-danger';
+				return toneInk('failed');
 			case 'InProgress':
-				return 'text-progress';
+				return toneInk('checking');
 			case 'Deploying':
-				return 'text-active';
+				return toneInk('deploying');
 			default:
 				return 'text-fg-subtle';
 		}

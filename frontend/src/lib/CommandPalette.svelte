@@ -75,7 +75,8 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import { stepLabel } from '$lib/components/NextStep.svelte';
-	import ChangeDot from '$lib/components/ChangeDot.svelte';
+	import WaveMark from '$lib/components/WaveMark.svelte';
+	import { waveMark, familySites } from '$lib/view-models/wave-mark';
 	import { bakeWord } from '$lib/bake-status';
 	import { buildRolloutCards, cardVerdict, cardStateMark } from '$lib/rollout-cards';
 	import type { RolloutCard } from '$lib/rollout-cards';
@@ -1868,12 +1869,9 @@
 							aria-label={familyMeterAriaLabel(changeSteps)}
 						>
 							{#each changeSteps as step (step.family)}
-								<!-- ONE dot component: the same ChangeDot ChangeLine renders, so
-								     the palette cannot drift from the row (a hand-written copy
-								     here had drawn a partial rollback as solid green).
-								     inline-flex sizes the wrapper to the dot, not the line. -->
+								<!-- the strip's own mark (WaveMark, one shared state-tone table), so this row draws the same dot or pie as the page it opens -->
 								<span class="inline-flex" title="{step.family}: {step.sentence}" aria-hidden="true">
-									<ChangeDot {step} />
+									<WaveMark mark={waveMark(familySites(step), step.family)} />
 								</span>
 							{/each}
 						</span>

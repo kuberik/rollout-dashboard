@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { TONE } from '$lib/view-models/state-tone';
 	/**
 	 * THE EMPTY GLYPH — nothing deployed yet. (Design language, 2026-10-08.)
 	 *
@@ -9,7 +10,7 @@
 	 * "nothing here" and "a rule is holding a newer build" were the same
 	 * picture. Held is now `HeldGlyph` (a gate); empty is a hollow dashed
 	 * 8px ring centred in the glyph's own box: no hue, no fill, the
-	 * line-strong ink — absence, drawn as an outline.
+	 * not-reached ink of the state-tone table (fg-subtle, WaveMark's ring) — absence, drawn as an outline.
 	 *
 	 * WHY A COMPONENT: it stands in wherever an icon component is passed
 	 * (`BakeStatusIcon`'s `statusInfo.icon`, `UpToDate`'s `Icon`), so it takes
@@ -32,5 +33,5 @@
 	aria-hidden={title ? undefined : 'true'}
 	aria-label={title}
 >
-	<span class="block h-2 w-2 rounded-full border border-dashed border-line-strong"></span>
+	<span class="block h-2 w-2 rounded-full border border-dashed" style:border-color={TONE.notreached.solid}></span>
 </span>

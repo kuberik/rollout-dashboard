@@ -16,6 +16,7 @@
 	 * prefers-reduced-motion; CSS animations also pause in hidden tabs and off-screen.
 	 */
 	import { slicePath, type WaveMark } from '$lib/view-models/wave-mark';
+	import { TONE } from '$lib/view-models/state-tone';
 
 	let { mark }: { mark: WaveMark } = $props();
 	const id = `wm${uid++}`;
@@ -26,22 +27,22 @@
 
 <svg class="wm" width="16" height="16" viewBox="0 0 16 16" role="img" aria-label={mark.label} data-wave-mark data-kinds={mark.slices.map((s) => s.kind).join(' ')}>
 	{#if hollow}
-		<circle cx="8" cy="8" r={R - 0.5} fill="none" stroke="var(--k-fg-subtle)" stroke-width="1" stroke-dasharray={mark.slices[0].kind === 'notreached' ? '2 1.5' : undefined} />
+		<circle cx="8" cy="8" r={R - 0.5} fill="none" stroke={TONE[mark.slices[0].kind].solid} stroke-width="1" stroke-dasharray={mark.slices[0].kind === 'notreached' ? '2 1.5' : undefined} />
 	{:else}
 		<defs>
 			{#each mark.slices as s, i (s.kind)}<clipPath id="{id}-c{i}"><path d={slicePath(s.from, s.to, R)} /></clipPath>{/each}
 		</defs>
 		{#each mark.slices as s, i (s.kind)}
 			{#if s.kind === 'notreached' || s.kind === 'notaffected'}
-				<path d={slicePath(s.from, s.to, R)} fill="var(--k-fg-subtle)" fill-opacity="0.3" />
+				<path d={slicePath(s.from, s.to, R)} fill={TONE[s.kind].solid} fill-opacity="0.3" />
 			{:else if s.kind === 'checking'}
-				<path class="wm-halo" d={slicePath(s.from, s.to, R + 1.5)} fill="var(--k-progress-solid)" />
-				<path class="wm-solid" d={slicePath(s.from, s.to, R)} fill="var(--k-progress-solid)" />
+				<path class="wm-halo" d={slicePath(s.from, s.to, R + 1.5)} fill={TONE.checking.solid} />
+				<path class="wm-solid" d={slicePath(s.from, s.to, R)} fill={TONE.checking.solid} />
 			{:else if s.kind === 'deploying'}
-				<path class="wm-track" d={slicePath(s.from, s.to, R)} fill="var(--k-active-solid)" fill-opacity="0.5" />
-				<g clip-path="url(#{id}-c{i})"><path class="wm-sweep" d={wedge} fill="var(--k-active-solid)" /></g>
+				<path class="wm-track" d={slicePath(s.from, s.to, R)} fill={TONE.deploying.solid} fill-opacity="0.5" />
+				<g clip-path="url(#{id}-c{i})"><path class="wm-sweep" d={wedge} fill={TONE.deploying.solid} /></g>
 			{:else}
-				<path d={slicePath(s.from, s.to, R)} fill="var(--k-{s.kind === 'done' ? 'success' : s.kind === 'held' ? 'held' : s.kind === 'stuck' ? 'warning' : 'danger'}-solid)" />
+				<path d={slicePath(s.from, s.to, R)} fill={TONE[s.kind].solid} />
 			{/if}
 		{/each}
 	{/if}

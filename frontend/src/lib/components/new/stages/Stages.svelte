@@ -10,24 +10,65 @@
 	 * a state change repaints a mark and a word, it never moves, adds or drops anything. Fixed row height (44) for every state.
 	 * Horizontal while every column fits at >= 160px; otherwise the SAME stages as a vertical list. Decided by width and column count only.
 	 */
+	import { toneInk, hueInk } from '$lib/view-models/state-tone';
 	import Card from '$lib/components/Card.svelte';
 	import CauseText from '$lib/components/CauseText.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
 		import WaveMark from '$lib/components/WaveMark.svelte';
-	import { waveMark, type MarkSiteState } from '$lib/view-models/wave-mark';
+	import { waveMark } from '$lib/view-models/wave-mark';
+	import { page } from '$app/state';
 	import { href as toHref } from '$lib/paths';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { avatarSrc } from '../data';
-	import { ChevronDoubleRightOutline } from 'flowbite-svelte-icons';
+	import { ChevronDoubleRightOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import { envTheme } from '../rollout-view';
-	import type { Stages, StageState, StagePlace, StageColumn, ReleaseLine } from './stages-model';
+	import { SITE_MARK as SITE, type Stages, type StageState, type StagePlace, type StageColumn, type ReleaseLine, type RailItem } from './stages-model';
 
-	let { stages, release = null, class: className = '' }: { stages: Stages; /** the release line that opens the canvas (app scope) */ release?: ReleaseLine | null; class?: string } = $props();
+	let { stages, release = null, rail = null, class: className = '' }: { stages: Stages; /** the release line that opens the canvas (app scope) */ release?: ReleaseLine | null; /** the RELEASE RAIL's rows (app scope, oldest first); drawn only with 2+ in flight */ rail?: RailItem[] | null; class?: string } = $props();
+	/* overflow cue: a fade on the end edge of the rail scroller, only while it is not scrolled to the end (mask only: no geometry) */
+	let listEl = $state<HTMLElement | null>(null);
+	let moreV = $state(false), moreH = $state(false);
+	function measure() {
+		const e = listEl;
+		if (!e) return;
+		moreV = e.scrollHeight - e.clientHeight > 1 && e.scrollTop + e.clientHeight < e.scrollHeight - 1;
+		moreH = e.scrollWidth - e.clientWidth > 1 && e.scrollLeft + e.clientWidth < e.scrollWidth - 1;
+	}
+	$effect(() => {
+		const e = listEl;
+		if (!e) return;
+		measure();
+		e.addEventListener('scroll', measure, { passive: true });
+		const ro = new ResizeObserver(measure);
+		ro.observe(e);
+		return () => { e.removeEventListener('scroll', measure); ro.disconnect(); };
+	});
+	/* THE SELECTED ROW IS ALWAYS IN VIEW: on load, on every selection change and when the form flips, the rail's OWN scroller is moved (scrollTop beside the canvas, scrollLeft above it) so the row is fully visible. Never the page, never animated. Runs after the DOM update and before paint. */
+	const FADE = 24; /* the end-edge fade is 24px: keep the row clear of it (the browser clamps at the true end) */
+	$effect(() => {
+		const e = listEl, sel = stages.release;
+		void side;
+		if (!e || !sel) return;
+		const row = e.querySelector<HTMLElement>(`[data-release-row="${CSS.escape(sel)}"]`);
+		if (!row) return;
+		const a = e.getBoundingClientRect(), b = row.getBoundingClientRect();
+		const top = b.top - a.top + e.scrollTop, left = b.left - a.left + e.scrollLeft;
+		if (top < e.scrollTop) e.scrollTop = top; else if (top + b.height + FADE > e.scrollTop + e.clientHeight) e.scrollTop = top + b.height + FADE - e.clientHeight;
+		if (left < e.scrollLeft) e.scrollLeft = left; else if (left + b.width + FADE > e.scrollLeft + e.clientWidth) e.scrollLeft = left; /* a snap point (snap-align start; the browser clamps it to the end), so snapping cannot pull the row back out of view */
+		measure();
+	});
+	const showRail = $derived(!!rail && rail.length >= 2);
+	/* a visible rail row shows the selected release: decided by the rows, not by the layout */
+	const inRail = $derived(showRail && !!rail?.some((it) => it.build === release?.build));
+	/* a row's link keeps every other query param (calm=1 ...) and sets release */
+	const railHref = (build: string) => { const sp = new URLSearchParams(page.url.search); sp.set('release', build); return page.url.pathname + '?' + sp.toString(); };
 
 	const multiApp = $derived(stages.lanes.length > 1);
-	const MIN = 148, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
+	const RAIL = 264, COMFY = 195, MIN = 148, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
 	let w = $state(0);
+	/* the card body's width (not the canvas's: the canvas depends on the form this decides) */
+	let bw = $state(0);
 	/* tier groups: one env chip spans all of a tier's wave columns; "Wave N" sub-labels sit over each wave column of a multi-wave tier */
 	const groups = $derived.by(() => {
 		const out: { tier: StageColumn['tier']; label: string; first: number; last: number; multi: boolean }[] = [];
@@ -44,17 +85,20 @@
 	const px = (n: number) => n + 'px';
 	const base = $derived(multiApp ? 3 : 1);
 	const track = (i: number) => base + 2 * i;
-	const gridCols = $derived((multiApp ? [LABEL, GAP_TIER].map(px).join(' ') + ' ' : '') + stages.columns.map((_, i) => (i ? px(gapBefore(i)) + ' ' : '') + 'minmax(' + [MIN, CAP].map(px).join(', ') + ')').join(' '));
-	const needW = $derived(stages.columns.length * MIN + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
+	/* a tile that carries a build tail (app scope, decided by scope alone, never by state) needs 176px to show the whole build, else the graph yields to the list; change scope keeps 148 */
+	const minCol = $derived(stages.release ? 176 : MIN);
+	const gridCols = $derived((multiApp ? [LABEL, GAP_TIER].map(px).join(' ') + ' ' : '') + stages.columns.map((_, i) => (i ? px(gapBefore(i)) + ' ' : '') + 'minmax(' + [minCol, CAP].map(px).join(', ') + ')').join(' '));
+	const needW = $derived(stages.columns.length * minCol + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
+	/* THE RAIL FORM, decided by width and column count only (never by state or selection): the side rail only when the canvas beside it keeps COMFORTABLE columns (195px, so a held cause never wraps); otherwise the stacked scroller above a full-width canvas. Before the first measure (bw 0) the stacked form: it can never widen the page. */
+	const sideNeed = $derived(RAIL + stages.columns.length * COMFY + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
+	const side = $derived(bw > 0 && bw >= sideNeed);
+	/* a roomier rail (336px) only when the canvas beside it still keeps columns of 220px or more; decided by width alone */
+	const railW = $derived(side && bw >= sideNeed + (336 - RAIL) + stages.columns.length * (220 - COMFY) ? 336 : RAIL);
 	const horizontal = $derived(w === 0 || w >= needW);
 	const laneRow = (li: number) => 2 + (anyMulti ? 1 : 0) + li;
-	const INK: Record<StageState, string> = { deployed: 'text-fg-muted', checking: 'text-progress', deploying: 'text-active', held: 'text-held', approval: 'text-held', failed: 'text-danger', notreached: 'text-fg-subtle', notaffected: 'text-fg-muted', replaced: 'text-fg-muted' };
 	const ATTR: Record<StageState, string> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'waiting', failed: 'failed', notreached: 'not-reached', notaffected: 'not-affected', replaced: 'not-affected' };
-	/* the strip's vocabulary: a stage state is one site's MarkSiteState */
-	const SITE: Record<StageState, MarkSiteState> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'approval', failed: 'failed', notreached: 'notreached', notaffected: 'notaffected', replaced: 'notaffected' };
 	/* the pie of one wave column: every site of it, every lane */
 	const waveOf = (i: number) => waveMark(stages.lanes.flatMap((l) => l.cells[i]?.places ?? []).map((p) => ({ state: SITE[p.state] })), `Wave ${stages.columns[i].wave}`);
-	const RUP: Record<string, string> = { danger: 'text-danger', held: 'text-held', progress: 'text-progress', active: 'text-active', muted: 'text-fg-subtle', fg: 'text-fg' };
 	const colKey = (i: number) => `${stages.columns[i].tier}:${stages.columns[i].wave ?? 0}`;
 	/* a lane's connector runs from its first tile to its last; an empty cell between two tiles lets it pass through */
 	const passes = (cells: unknown[], i: number) => !cells[i] && cells.slice(0, i).some(Boolean) && cells.slice(i + 1).some(Boolean);
@@ -78,7 +122,7 @@
 					<span class="flex min-w-0 flex-col">
 											<span class="t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
 							<!-- line 2: the state word / cause never shrinks (it wraps before it is cut); the tail sheds the build first, then the age or step -->
-							<span class="t-meta flex min-w-0 gap-1 overflow-hidden {INK[p.state]}" title={p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build}<span class="t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
+							<span class="t-meta flex min-w-0 gap-1 overflow-hidden {toneInk(p.state)}" title={p.ahead ? (p.state === 'checking' ? 'Checking ' : p.state === 'deploying' ? 'Deploying ' : p.state === 'failed' ? 'Failed ' : 'On ') + p.build : p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build && p.ahead}<span class="t-code-sm flex-none whitespace-nowrap {p.state === 'deployed' ? 'text-fg-muted' : 'text-fg-subtle'}">{p.build}</span>{:else if p.build}<span class="t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
 									</span>
 				</a>
 {/snippet}
@@ -100,24 +144,35 @@
 	<div class="flex min-w-0 items-start gap-2 pt-[14px]" style:grid-column="1" style:grid-row={laneRow(li)}><AppGlyph name={stages.lanes[li].app} size={16} class="shrink-0" /><span class="t-card-title truncate text-fg" title={stages.lanes[li].app}>{stages.lanes[li].app}</span></div>
 {/snippet}
 
-{#snippet parts(ps: Stages['rollup']['parts'])}{#each ps as part, i (part.text)}{#if i > 0}<span class="shrink-0 text-fg-disabled" aria-hidden="true">·</span>{/if}<span class="{RUP[part.ink]} {i === 0 ? 'stg-first min-w-0 truncate' : 'shrink-0'}" title={part.text}>{part.text}</span>{/each}{/snippet}
+{#snippet parts(ps: Stages['rollup']['parts'])}{#each ps as part, i (part.text)}{#if i > 0}<span class="shrink-0 text-fg-disabled" aria-hidden="true">·</span>{/if}<span class="{hueInk(part.ink === 'muted' ? 'subtle' : part.ink)} {i === 0 ? 'stg-first min-w-0 truncate' : 'shrink-0'}" title={part.text}>{part.text}</span>{/each}{/snippet}
 
-<Card icon={ChevronDoubleRightOutline} title="Pipeline" padded={false} class={className}>
+<Card icon={ChevronDoubleRightOutline} title="Progress" padded={false} class={className}>
 	{#snippet rollup()}<span class="stg-rollup t-card-rollup flex min-w-0 flex-nowrap items-baseline justify-end gap-x-1 whitespace-nowrap tabular-nums" data-stages-rollup><span class="stg-long flex min-w-0 items-baseline gap-x-1">{@render parts(stages.rollup.parts)}</span><span class="stg-short min-w-0 items-baseline gap-x-1" data-stages-rollup-narrow>{@render parts((stages.narrow ?? stages.rollup).parts)}</span></span>{/snippet}
-	<div class="canvas-dots stg-canvas px-4 py-4" bind:clientWidth={w} data-stages data-stages-form={horizontal ? 'graph' : 'list'}>
-		{#if release}
-			{#snippet releaseBody()}
-				<span class="t-code shrink-0 text-fg" data-release-build>{release.build}</span>
-				{#if release.title}<span class="t-body min-w-0 truncate text-fg-muted" title={release.title}>{release.title}</span>{/if}
-				{#if release.author}<span class="t-meta flex shrink-0 items-center gap-2 text-fg-muted"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" />{release.author}</span>{/if}
+	<div class="stg-body" bind:clientWidth={bw} style="--n: {Math.min(rail?.length ?? 0, 4)}" data-stages-body>
+	<div class="stg-split" class:has-rail={showRail} class:side={showRail && side} style:--rail="{railW}px">
+		{#if showRail && rail}
+			<!-- THE RELEASE RAIL: the releases on their way out, oldest first (the default); a row is one link, `?release=<build>` -->
+			<div class="stg-rail">
+				<div class="stg-list" bind:this={listEl} data-more-v={moreV ? '' : undefined} data-more-h={moreH ? '' : undefined} data-release-rail aria-label="Releases in flight" role="list">
+					{#each rail as it (it.build)}
+						{@const sel = it.build === stages.release}
+						<a role="listitem" href={railHref(it.build)} data-sveltekit-noscroll data-sveltekit-replacestate data-sveltekit-keepfocus aria-current={sel ? 'true' : undefined} class="stg-rrow flex min-h-14 min-w-0 flex-col justify-center gap-1 px-4 py-2 {sel ? 'bg-selected' : 'hover:bg-hover'}" data-release-row={it.build} data-release-selected={sel ? '' : undefined}>
+							<span class="flex min-w-0 items-center gap-2"><span class="t-code-sm min-w-0 truncate text-fg">{it.build}</span>{#if it.oldest}<span class="t-meta shrink-0 rounded border border-line px-1.5 text-fg-muted">oldest</span>{/if}<span class="ml-auto flex shrink-0 items-center gap-1.5">{#each it.tiers as t (t.tier)}<WaveMark mark={waveMark(t.sites.map((state) => ({ state })), t.tier)} />{/each}</span></span>
+							<span class="flex min-w-0 items-center gap-2">{#if it.author}<Avatar name={it.author} src={avatarSrc(it.author)} size={16} class="shrink-0" />{/if}<span class="t-meta min-w-0 truncate text-fg-muted" title={it.title ?? ''}>{it.title ?? it.build}</span></span>
+						</a>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	<div class="canvas-dots stg-canvas min-w-0 px-4 py-4" bind:clientWidth={w} data-stages data-stages-form={horizontal ? 'graph' : 'list'}>
+		{#if release && (release.author || release.built || release.href || !inRail)}
+			<!-- THE RELEASE LINE. A visible rail row already names the selected release (build, title): then the line carries only what it does not (who, how long ago, the way to the change page). With no row showing it (no rail, or a selection outside it) the line names the release itself: build and title first. Decided by the data (rail rows), never by what was measured. -->
+			<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3" data-stages-release>
+				{#if !inRail}<span class="t-code-sm shrink-0 text-fg" data-release-build>{release.build}</span>{#if release.title}<span class="t-meta min-w-0 truncate text-fg-muted" title={release.title} data-release-title>{release.title}</span>{/if}{/if}
+				{#if release.author}<span class="t-meta flex items-center gap-2 text-fg-muted {inRail ? 'min-w-0' : 'shrink-0 max-sm:min-w-0'}"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate {inRail ? '' : 'max-sm:hidden'}">{release.author}</span></span>{/if}
 				{#if release.built}<span class="t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
-			{/snippet}
-			<!-- THE RELEASE: the build the drawing is about; a link to its change page when the fleet knows one -->
-			{#if release.href}
-				<a href={toHref(release.href)} class="mb-4 flex min-h-5 min-w-0 items-center gap-3 hover:text-fg max-sm:-mt-3 max-sm:mb-1 max-sm:min-h-11 max-sm:gap-2" data-stages-release>{@render releaseBody()}</a>
-			{:else}
-				<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3 max-sm:gap-2" data-stages-release>{@render releaseBody()}</div>
-			{/if}
+				{#if release.href}<a href={toHref(release.href)} class="nav-link -my-2 ml-auto shrink-0 max-sm:-my-3 max-sm:min-h-11" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
+			</div>
 		{/if}
 		{#if horizontal}
 			<!-- tiles top-aligned, never stretched to the lane (coordinator ruling: a one-place tile keeps its own height); the header rows and the tiles are placed on explicit tracks, with 12px between a tier's waves and 24px between tiers -->
@@ -154,9 +209,27 @@
 			</div>
 		{/if}
 	</div>
+	</div>
+	</div>
 </Card>
 
 <style>
+	/* the rail is a side column when `side` (the body fits it plus comfortable columns), else a horizontal scroller above the canvas */
+	.stg-body { min-width: 0; }
+	.stg-split { min-width: 0; }
+	.stg-rail { min-width: 0; border-bottom: 1px solid var(--k-line); background: var(--k-surface); }
+	.stg-list { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: thin; }
+	.stg-list[data-more-h] { mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
+	.stg-rrow { flex: 0 0 264px; scroll-snap-align: start; border-right: 1px solid var(--k-line-subtle); box-shadow: none; }
+	/* the scroller clips an outside ring: the focus ring is drawn INSIDE the row (both forms) */
+	.stg-rrow:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
+	.stg-rrow[aria-current='true'] { box-shadow: inset 2px 0 0 var(--k-fg); }
+	.stg-split.side { display: grid; grid-template-columns: var(--rail, 264px) minmax(0, 1fr); min-height: calc(var(--n) * 56px); }
+	.stg-split.side .stg-rail { position: relative; border-bottom: 0; border-right: 1px solid var(--k-line); }
+	/* never expands the card: the list is out of flow, the row height is the canvas's */
+	.stg-split.side .stg-list { position: absolute; inset: 0; display: block; overflow-x: hidden; overflow-y: auto; scroll-snap-type: none; mask-image: none; }
+	.stg-split.side .stg-list[data-more-v] { mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent); }
+	.stg-split.side .stg-rrow { border-right: 0; border-bottom: 1px solid var(--k-line-subtle); }
 	/* the rollup never wraps (the header stays 47px in every state): never wider than the card minus icon, title and padding; the muted count truncates first, the adverse parts never */
 	.stg-rollup { max-width: calc(100cqw - 140px); overflow: hidden; }
 	.stg-short { display: none; }

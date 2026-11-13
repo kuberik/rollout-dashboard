@@ -803,7 +803,6 @@ lib/components/new/data.ts	code	Waits on
 lib/components/new/data.ts	code	Waits on …
 lib/components/new/data.ts	code	waits on approval
 lib/components/new/env/DayRow.svelte	text	Rolled back
-lib/components/new/env/env-page.ts	code	: ''} … leads${w.followers.length ?
 lib/components/new/env/env-page.ts	code	: versions[0] ?? ''}
 lib/components/new/env/env-page.ts	code	… behind
 lib/components/new/env/env-page.ts	code	… builds
@@ -817,7 +816,6 @@ lib/components/new/env/env-page.ts	code	… to approve
 lib/components/new/env/env-page.ts	code	… to deploy
 lib/components/new/env/env-page.ts	code	… waiting on a check
 lib/components/new/env/env-page.ts	code	from …
-lib/components/new/env/env-page.ts	code	leads · ${w.followers.length === 1 ?
 lib/components/new/env/env-page.ts	code	Newer build … ready${n.from ?
 lib/components/new/env/env-page.ts	code	Newer build …${n.from ?
 lib/components/new/env/env-page.ts	code	No releases yet
@@ -830,8 +828,6 @@ lib/components/new/env/env-page.ts	code	Since the build began waiting
 lib/components/new/env/env-page.ts	code	Since the oldest waiting change merged
 lib/components/new/env/env-page.ts	code	Since the oldest waiting change was committed
 lib/components/new/env/env-page.ts	code	Waits on
-lib/components/new/env/env-page.ts	code	Wave …
-lib/components/new/env/env-page.ts	code	Wave …${w.build ?
 lib/components/new/env/EnvPage.svelte	text	… … behind · …
 lib/components/new/env/EnvPage.svelte	text	A rollout deployed to this environment shows up here.
 lib/components/new/env/EnvPage.svelte	title	In step
@@ -996,15 +992,15 @@ lib/components/new/Slipway.svelte	code	Rolled back from
 lib/components/new/Slipway.svelte	code	To deploy
 lib/components/new/Slipway.svelte	code	Your approval
 lib/components/new/Slipway.svelte	text	Your change
-lib/components/new/stages/ReleaseCommits.svelte	text	Every place runs
-lib/components/new/stages/ReleaseCommits.svelte	title	In this release
 lib/components/new/stages/stages-model.ts	code	… checking
 lib/components/new/stages/stages-model.ts	code	… deploying
 lib/components/new/stages/stages-model.ts	code	… failing
 lib/components/new/stages/stages-model.ts	code	… held
 lib/components/new/stages/stages-model.ts	code	… in progress
 lib/components/new/stages/stages-model.ts	code	… of …
+lib/components/new/stages/stages-model.ts	code	… of … on …
 lib/components/new/stages/stages-model.ts	code	… of … place…
+lib/components/new/stages/stages-model.ts	code	… of … place… on …
 lib/components/new/stages/stages-model.ts	code	… waiting
 lib/components/new/stages/stages-model.ts	code	No releases
 lib/components/new/stages/stages-model.ts	code	No releases yet
@@ -1014,6 +1010,8 @@ lib/components/new/stages/stages-model.ts	code	on the newest
 lib/components/new/stages/stages-model.ts	code	Up to date
 lib/components/new/stages/stages-model.ts	code	Waiting for approval
 lib/components/new/stages/Stages.svelte	text	· step …
+lib/components/new/stages/Stages.svelte	aria-label	Releases in flight
+lib/components/new/stages/Stages.svelte	text	View change
 lib/components/new/stages/Stages.svelte	code	Wave …
 lib/components/new/stages/Stages.svelte	text	Wave …
 lib/components/new/state-words.ts	code	… … approval

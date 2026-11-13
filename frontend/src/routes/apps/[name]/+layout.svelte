@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	/**
-	 * THE APP PAGE'S TAB STRIP (app-pipeline r0): Overview and Pipeline, drawn by the SAME `SectionTabs` as the rollout tabs and published
+	 * THE APP PAGE'S TAB STRIP (app-pipeline r0): Overview and Progress, drawn by the SAME `SectionTabs` as the rollout tabs and published
 	 * into the shell chrome the same way (see the rollout layout's `tabStripSnippet` for why it lives in the shell, not in <main>). Two tabs,
 	 * always both: nothing here is conditional, so the strip never changes width while the fleet loads.
 	 * No strip over the NotFound body: an app the fleet does not know draws "This app does not exist" without two links to pages that do not
@@ -27,7 +27,7 @@
 
 	const tabs = $derived([
 		{ label: 'Overview', href: base, icon: ObjectsColumnOutline, state: 'active' as const },
-		{ label: 'Pipeline', href: `${base}/pipeline`, icon: ChevronDoubleRightOutline, state: 'active' as const }
+		{ label: 'Progress', href: `${base}/progress`, icon: ChevronDoubleRightOutline, state: 'active' as const }
 	]);
 	const isActive = (href: string) => (href === base ? activeUrl === href || activeUrl === `${href}/` : activeUrl.startsWith(href));
 

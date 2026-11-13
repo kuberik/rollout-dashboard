@@ -20,6 +20,7 @@
 	 * the 16px glyph slot and 1px line of the Overview's health rows, the
 	 * tint/line pair of a status chip.
 	 */
+	import { TONE } from '$lib/view-models/state-tone';
 	import type { NodeState } from '$lib/view-models/promotion-lanes';
 
 	let {
@@ -55,17 +56,13 @@
 		resolved?: boolean;
 	} = $props();
 
+	// the chip colours come from the ONE state-tone table (view-models/state-tone.ts), never a local map
 	const RING: Partial<Record<NodeState, string>> = {
-		// Failed is the ONE solid disc (palette AD r3): the tint read as a pale
-		// pink 10px mark in light, the faintest red on screen for the loudest
-		// state. White "!" on danger-solid: 4.33:1 light, 3.40:1 dark (≥3:1 for
-		// a graphic); the disc against its ground 4.16 / 4.87.
-		failed: 'bg-danger-solid ring-danger-solid text-white',
-		stuck: 'bg-warning-tint ring-warning-line text-warning',
-		held: 'bg-held-tint ring-held-line text-held',
-		deploying: 'bg-active-tint ring-active-line text-active',
-		// Checking: the line in the solid so the mark doesn't read olive in dark.
-		checking: 'bg-progress-tint ring-progress-solid text-progress'
+		failed: TONE.failed.chip,
+		stuck: TONE.stuck.chip,
+		held: TONE.held.chip,
+		deploying: TONE.deploying.chip,
+		checking: TONE.checking.chip
 	};
 	const RESOLVED_RING = 'bg-subtle ring-line text-fg-subtle';
 	const pie = $derived(progress != null && (state === 'checking' || state === 'deploying') ? Math.max(0, Math.min(1, progress)) : null);
@@ -129,7 +126,7 @@
 		     (home-map r5: the two read as one state on a phone Fleet list). -->
 		<span class="h-2 w-2 rounded-full ring-[1.5px] ring-inset ring-fg-subtle"></span>
 	{:else}
-		<span class="h-1.5 w-1.5 rounded-full bg-success-solid"></span>
+		<span class="h-1.5 w-1.5 rounded-full {TONE.done.chip}"></span>
 	{/if}
 	{#if label}<span class="sr-only">{label}</span>{/if}
 </span>

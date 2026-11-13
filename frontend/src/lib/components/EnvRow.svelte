@@ -20,7 +20,6 @@
 	 * that sits in the gap. The row wraps when it must; it never grows a box to fill the row, so a wide display shows the same
 	 * boxes a narrow one does. Reference: the rollout tab's lane, which is where this anatomy was signed.
 	 */
-	import StatusMark from '$lib/components/StatusMark.svelte';
 	import ChangeDot from '$lib/components/ChangeDot.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
 	import { type SiteState } from '$lib/components/SiteMark.svelte';
@@ -67,8 +66,7 @@
 		title?: string;
 		/** `getEnvironmentThemeStyle(theme)` for the tab's current fill */
 		style?: string;
-		/** r42 `progress` (opt-in, /design/atoms): the act's 0..1, drawn as StatusMark's progress pie */
-		mark?: { state: 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'approval'; tone?: 'held' | 'neutral'; progress?: number | null };
+		mark?: { state: 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'approval' };
 		word?: string;
 		/**
 		 * NOTHING MOVES AS STATE CHANGES (owner 2026-11-12, "the boxes change width when 'Deploying' appears"): every word this box can ever
@@ -198,7 +196,7 @@
 			data-env-box
 			data-current={c.current ? '' : undefined}
 		>
-			{#if c.mark}<span class="env-mk"><StatusMark state={c.mark.state} tone={c.mark.tone} progress={c.mark.progress ?? null} /></span>{:else if c.wordSlot?.length}<span class="env-mk" aria-hidden="true"></span>{/if}
+			{#if c.mark}<span class="env-mk"><WaveMark mark={waveMark([{ state: c.mark.state }], c.label)} /></span>{:else if c.wordSlot?.length}<span class="env-mk" aria-hidden="true"></span>{/if}
 			<span class="env-name t-ui-sm {c.hot ? 'text-fg' : 'text-fg-muted'}">{c.label}</span>
 			{@render wordOf(c)}
 			{#if c.region}<span class="env-region t-meta text-fg-subtle">{c.region}</span>{/if}

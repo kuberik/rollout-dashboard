@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { HUE_INK } from '$lib/view-models/state-tone';
 	import EmptyGlyph from './EmptyGlyph.svelte';
 	import HeldGlyph from './HeldGlyph.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
@@ -152,11 +153,11 @@
 	// contrast fix — by the InProgress bake mark's `currentColor`, so the
 	// running bake and the settled bake print the same yellow.
 	const TONE: Record<string, string> = {
-		green: 'text-success',
-		red: 'text-danger',
-		yellow: 'text-progress',
-		blue: 'text-active',
-		gray: 'text-fg-subtle',
+		green: HUE_INK.success,
+		red: HUE_INK.danger,
+		yellow: HUE_INK.progress,
+		blue: HUE_INK.active,
+		gray: HUE_INK.subtle,
 		// ⭐ THE GLYPH'S INK MOVES WITH THE FILL NOW. (2026-09-02, disc
 		// histogram pass) `held` sits on `getStatusCircleClass`'s new
 		// `orange-100`/`orange-950/70` field, so a green-700 pause glyph

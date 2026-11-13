@@ -13,6 +13,7 @@
 	 * (state colour on the mark only), the rollout History tab's spine (`ledgerSpine`) and its row rhythm (16px mark column, py-3).
 	 * The row is a `.tap-zone`; its ONE `.tap-link` is the visible link on line 2 (no second control for the same destination).
 	 */
+	import { toneInk } from '$lib/view-models/state-tone';
 	import { ClockOutline, ArrowUpRightFromSquareOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import ChangeKindMark from './ChangeKindMark.svelte';
 	import Card from '$lib/components/Card.svelte';
@@ -48,8 +49,7 @@
 	const gap = $derived(open ? null : foldWindow(events, FOLD));
 	const shown = $derived(events.map((e, i) => ({ e, i })).filter((x) => !gap || x.i < gap[0] || x.i >= gap[1]));
 	const hidden = $derived(gap ? gap[1] - gap[0] : 0);
-	const INK: Partial<Record<Ev['kind'], string>> = { waiting: 'text-held', held: 'text-held', failed: 'text-danger' };
-	const verbInk = (e: Ev) => INK[e.kind] ?? (e.kind === 'moving' ? (/checking/i.test(e.words) ? 'text-progress' : 'text-active') : 'text-fg');
+	const verbInk = (e: Ev) => (e.kind === 'moving' ? toneInk(/checking/i.test(e.words) ? 'checking' : 'deploying') : toneInk(e.kind, 'text-fg'));
 	/** newest first: the time since the event BELOW it (the one before it in time), on the clock the ages read ("+2h 10m"); none on the oldest */
 	const delta = (i: number) => {
 		const a = events[i + 1]?.at, b = events[i]?.at;

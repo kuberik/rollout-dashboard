@@ -55,8 +55,7 @@
 	import AppBuilds, { type PlaceView } from './AppBuilds.svelte';
 	import AppGates from './AppGates.svelte';
 	import Stages from '../stages/Stages.svelte';
-	import ReleaseCommits from '../stages/ReleaseCommits.svelte';
-	import { stagesOf, releaseLine, releaseCommits } from '../stages/stages-model';
+	import { stagesOf, releaseLine, releasesInFlight } from '../stages/stages-model';
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
@@ -66,11 +65,11 @@
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLineOf, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
-	let { state: scenario, name, tab = 'overview' }: { state: HomeState; name: string; /** 'overview' (default, the page as ever) or 'pipeline' (app-pipeline r0: the same header and statements, then the Pipeline card at full width, no strip row, no rail) */ tab?: 'overview' | 'pipeline' } = $props();
-	const pipeline = $derived(tab === 'pipeline');
-	const pipe = $derived(pipeline ? stagesOf({ kind: 'app', app: name }, scenario) : null);
-	const release = $derived(pipeline ? releaseLine(name, scenario) : null);
-	const inRelease = $derived(pipeline ? releaseCommits(name, scenario) : null);
+	let { state: scenario, name, tab = 'overview', release: wanted = null }: { state: HomeState; name: string; /** Progress tab: the release the page draws (the `?release=` param); unknown or none = the default */ release?: string | null; /** 'overview' (default, the page as ever) or 'pipeline' (app-pipeline r0: the same header and statements, then the Pipeline card at full width, no strip row, no rail) */ tab?: 'overview' | 'progress' } = $props();
+	const pipeline = $derived(tab === 'progress');
+	const pipe = $derived(pipeline ? stagesOf({ kind: 'app', app: name, release: wanted }, scenario) : null);
+	const release = $derived(pipe?.release ? releaseLine(name, scenario, pipe.release) : null);
+	const rail = $derived(pipeline ? releasesInFlight(name, scenario).items : null);
 
 	const A = $derived(apps(scenario));
 	const item = $derived(A.items.find((a) => a.app === name) ?? null);
@@ -388,10 +387,8 @@
 			{/if}
 
 			{#if pipe}
-				<!-- Pipeline tab: the canvas, full width, no rail (like the Gates tab) -->
-				<Stages stages={pipe} {release} class="min-w-0" />
-				<!-- "In this release": the second card, at every width -->
-				{#if inRelease}<ReleaseCommits release={inRelease} class="min-w-0" />{/if}
+				<!-- Progress tab: ONE card, full width: the release rail (2+ in flight) beside the canvas of the selected release -->
+				<Stages stages={pipe} {release} {rail} class="min-w-0" />
 			{:else}
 			<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:grid-cols-[minmax(0,1fr)_452px]">
 				<div class="flex min-w-0 flex-col gap-4">

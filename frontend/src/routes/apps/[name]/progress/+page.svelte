@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * App page, Pipeline tab (app-pipeline r0): the same AppDetail as the Overview with `tab="pipeline"`: the same header and statement
+	 * App page, Progress tab (app-pipeline r0): the same AppDetail as the Overview with `tab="progress"`: the same header and statement
 	 * banners, then the Pipeline card at full width. The route owns only the param, the title and the scenario.
 	 */
 	import { page } from '$app/state';
@@ -12,5 +12,5 @@
 	const appName = $derived(page.params.name as string);
 </script>
 
-<svelte:head><title>{pageTitle(`${appName} · Pipeline`)}</title></svelte:head>
-<FleetGate><AppDetail {state} name={appName} tab="pipeline" /></FleetGate>
+<svelte:head><title>{pageTitle(`${appName} · Progress`)}</title></svelte:head>
+<FleetGate><AppDetail {state} name={appName} tab="progress" release={page.url.searchParams.get('release')} /></FleetGate>

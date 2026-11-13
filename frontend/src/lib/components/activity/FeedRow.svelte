@@ -18,6 +18,7 @@
 	import DeployMark from '$lib/components/DeployMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { ChevronDownOutline } from 'flowbite-svelte-icons';
+	import { toneInk } from '$lib/view-models/state-tone';
 	import type { NodeState } from '$lib/view-models/promotion-lanes';
 	import type { EnvironmentTheme } from '$lib/environment-theme';
 	import type { Actor } from '$lib/actor';
@@ -75,14 +76,7 @@
 
 	const ref = $derived(from && to ? `${from} → ${to}` : (to ?? ''));
 	const resolved = $derived(tone === 'failed' && !live);
-	const INK: Partial<Record<NodeState, string>> = {
-		failed: 'text-danger',
-		stuck: 'text-warning',
-		held: 'text-held',
-		deploying: 'text-active',
-		checking: 'text-progress'
-	};
-	const verbInk = $derived(resolved ? 'text-fg-subtle' : tone ? (INK[tone] ?? 'text-fg-muted') : bare ? 'text-fg' : 'text-fg-muted');
+	const verbInk = $derived(resolved ? 'text-fg-subtle' : tone ? toneInk(tone) : bare ? 'text-fg' : 'text-fg-muted');
 </script>
 
 <li class="fr tap-zone" class:fr-bare={bare} data-feed-row data-tone={tone ?? 'ok'} title={outcome ?? undefined}>
