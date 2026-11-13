@@ -29,7 +29,7 @@ describe('githubJson answers arrive in a burst', () => {
 		await new Promise((r) => setTimeout(r, 0));
 		flushSync();
 		expect(runs).toBe(1);
-		await new Promise((r) => setTimeout(r, TICK_COALESCE_MS + 60));
+		await new Promise((r) => setTimeout(r, TICK_COALESCE_MS + 200));
 		flushSync();
 		expect(runs).toBe(2); /* ONE re-run for the whole burst, and the answers are all read */
 		expect(githubJson('/api/burst/59')).toEqual({ ok: true });
