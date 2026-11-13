@@ -3245,7 +3245,7 @@
 						     of being the only content in `PageHeader`'s `meta` row
 						     (which read as a stray orphan line on its own). -->
 						{#if rollout.status?.title && rollout.status.title !== rollout.metadata?.name}
-							<span class="t-meta text-fg-subtle min-w-0 truncate">{rollout.status.title}</span>
+							<a href={href(`/apps/${encodeURIComponent(rollout.metadata?.name ?? '')}`)} class="t-meta min-w-0 truncate text-fg-subtle underline decoration-transparent underline-offset-[3px] transition-colors hover:text-fg hover:decoration-current" title="Open app {rollout.status.title}">{rollout.status.title}</a>
 						{/if}
 						<!-- The namespace is the row's anchor: the object's own address,
 						     sans (it is a name), so the cross-env link reads as a fact

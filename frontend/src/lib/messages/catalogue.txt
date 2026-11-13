@@ -1119,6 +1119,7 @@ lib/components/RolloutNeighbourhood.svelte	code	Until the pin is cleared
 lib/components/RolloutNeighbourhood.svelte	title	Waiting for your approval
 lib/components/RolloutNeighbourhood.svelte	code	Waits on …
 lib/components/RolloutNeighbourhood.svelte	title	You can't approve this build here
+lib/components/RolloutTabHeader.svelte	title	Open app …
 lib/components/RolloutTabHeader.svelte	text	Roll back
 lib/components/RolloutTabHeader.svelte	title	Roll back to …
 lib/components/ScheduleStatus.svelte	text	… Automatic deploys resume in
@@ -1174,7 +1175,7 @@ lib/history-marks.ts	code	Rolled back
 lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/history-marks.ts	code	What … replaced is unknown — it is the oldest deploy the retained history (last …) still holds.
 lib/MobileTabBar.svelte	aria-label	Main navigation
-lib/Navbar.svelte	code	(min-width: 1024px)
+lib/Navbar.svelte	title	Open app …
 lib/Navbar.svelte	code	Times shown in local time (…). Switch to UTC
 lib/Navbar.svelte	code	Times shown in UTC. Switch to local time
 lib/page-title.ts	code	… · Kuberik
@@ -2041,6 +2042,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	No newer build to
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Nothing promotes this build automatically until it reaches this environment.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Nothing promotes this build automatically while it is held. A deploy you start by hand still applies immediately.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	on the newest
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Open app …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	pinned to …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Pinned to …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Pinned to … — automatic deploys are paused until the pin is cleared.

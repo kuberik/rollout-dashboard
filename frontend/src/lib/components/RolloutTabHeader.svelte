@@ -231,7 +231,7 @@
 			><Chip role={chip.role} label={chip.label} title={chip.title} /></span
 		>
 	{/if}
-	{#if subtitle}<span class="text-fg-subtle min-w-0 truncate {subtitleOnPhone ? '' : 'max-sm:hidden'}">{subtitle}</span>{/if}
+	{#if subtitle}<a href={href(`/apps/${encodeURIComponent(name)}`)} class="min-w-0 truncate text-fg-subtle underline decoration-transparent underline-offset-[3px] transition-colors hover:text-fg hover:decoration-current {subtitleOnPhone ? '' : 'max-sm:hidden'}" title="Open app {subtitle}">{subtitle}</a>{/if}
 	{#if metaRender}{@render metaRender()}{/if}
 	{#if inlineRollback && isFailed && rollbackNow}
 		<a
