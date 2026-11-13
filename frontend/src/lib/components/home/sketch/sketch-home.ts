@@ -249,7 +249,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 				evidence: m.signals.find((g) => g.app === a.app && g.env === lead.env && g.kind === 'check-failing')?.phrase ?? null,
 				action:
 					s === 'failed'
-						? { label: `Roll back ${lead.env}`, href: lead.href }
+						? { label: 'Roll back', href: lead.href }
 						: null
 			});
 		}

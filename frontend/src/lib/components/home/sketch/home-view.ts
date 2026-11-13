@@ -138,7 +138,7 @@ function failingLead(m: HomeModel, y: YourChange): Lead {
 		meta: `${y.app} · merged by you ${clock(y.mergedAt)}`,
 		fact: null,
 		check: check ? { name: check, message: hist[0]?.bake === 'Failed' ? 'reported an error during the bake' : 'failing' } : null,
-		action: { label: `Roll back ${placeLabel}${y.rollbackTo ? ` to ${y.rollbackTo}` : ''}`, href: here.href },
+		action: { label: 'Roll back', href: here.href },
 		steps: [
 			{ label: 'Released', at: y.mergedAt, state: 'done' },
 			...passed.map((s) => ({ label: `Passed ${s.label}`, at: s.since, state: 'done' as const })),
@@ -283,7 +283,7 @@ export function buildView(m: HomeModel, state: HomeState): HomeView {
 		}
 	}
 
-	const failures: Fail[] = failed.filter((y) => y !== leadChange).map((y) => ({ ...y, place: y.where.length > 1 ? `${y.where.length} places` : y.where[0], action: { label: `Roll back ${y.where[0]}`, href: y.action?.href ?? y.href } }));
+	const failures: Fail[] = failed.filter((y) => y !== leadChange).map((y) => ({ ...y, place: y.where.length > 1 ? `${y.where.length} places` : y.where[0], action: { label: 'Roll back', href: y.action?.href ?? y.href } }));
 	const approvals = approvalsAll.filter((x) => x !== leadApproval);
 	const rest = h.yours.filter((y) => y.state !== 'failed' && y !== leadChange);
 	const moving: Moving[] = rest

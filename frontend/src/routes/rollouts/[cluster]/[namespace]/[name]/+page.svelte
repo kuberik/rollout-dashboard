@@ -3160,7 +3160,7 @@
 							>
 								<!-- One header Roll back (r10, D2): 16px icon, as every tab. -->
 								<UndoOutline class="h-4 w-4" aria-hidden="true" />
-								Roll back to {rollbackDisplay}
+								Roll back
 							</button>
 						{/if}
 						{#if !isDashboardManagingWantedVersion}
