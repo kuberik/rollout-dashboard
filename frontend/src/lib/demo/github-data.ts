@@ -395,7 +395,7 @@ const FILLER_MESSAGES = [
 // (idx ≥ 1 — there is no "commit that produced" the ladder's first entry,
 // only ones that produced every step after it).
 
-type AppFixture = {
+export type AppFixture = {
 	owner: string;
 	repo: string;
 	ladder: string[];
@@ -444,7 +444,7 @@ type AppFixture = {
 	stepWindowMs?: number;
 };
 
-function curated(
+export function curated(
 	owner: string,
 	repo: string,
 	ladder: string[],
@@ -485,7 +485,7 @@ function pooled(
 	};
 }
 
-const OWNER = 'exampleco';
+export const OWNER = 'exampleco';
 
 const APPS: Record<string, AppFixture> = {
 	'hello-world': curated(
@@ -756,6 +756,17 @@ const APPS: Record<string, AppFixture> = {
 };
 
 /**
+ * OPT-IN EXTRA APPS (the release-switch fixtures F and G, release-switch-fixtures.ts, loaded by a dynamic import behind `MOCK_FIXTURES`):
+ * not in `APPS`, so with the hook unset every route answers as it did without them and no build ships their names.
+ * `registerExtraApps` adds them to the changes feed and the commit ranges; `{}` takes them out again.
+ */
+let EXTRA_APPS: Record<string, AppFixture> = {};
+let EXTRA_MERGE_MIN_AGO: Readonly<Record<string, number>> = {};
+let releaseSwitchOn = false;
+const appOf = (name: string): AppFixture | undefined => APPS[name] ?? (releaseSwitchOn ? EXTRA_APPS[name] : undefined);
+const activeApps = (): AppFixture[] => (releaseSwitchOn ? [...Object.values(APPS), ...Object.values(EXTRA_APPS)] : Object.values(APPS));
+
+/**
  * Test-only: the rollout `name` (the same string a `/api/rollouts/:ns/:name/
  * commits` URL carries) for every app this file curates — i.e. every
  * `ladder` step has its OWN hand-written title, not one picked from a
@@ -817,7 +828,15 @@ const VIEWER_AUTHORED: ReadonlySet<string> = new Set([
 	'7c14e2a',
 	'b-42',
 	'rel-64',
-	'4b9c2e1'
+	'4b9c2e1',
+	/* release-switch fixtures (opt-in apps): the viewer's own builds. The Changes list carries the viewer's changes plus only the newest team ones, so these are what make the Progress tab's "View change" resolve for the older in-flight releases (ledger-api: the default and the next; search-web: the default and four more) */
+	'ad-44',
+	'ad-45',
+	'ce-04',
+	'ce-05',
+	'ce-08',
+	'ce-12',
+	'ce-17'
 ]);
 
 /** The one place "is this sha the viewer's" is decided — see
@@ -953,8 +972,9 @@ function ladderDatesFor(app: AppFixture): number[] {
 		} else {
 			const seed = `${app.repo}-${sha}`;
 			const realCreatedMinAgo = REAL_BUILD_CREATED_MIN_AGO.get(sha);
-			ms = EXPLICIT_MERGE_MINUTES_AGO[sha]
-				? hcNow.getTime() - EXPLICIT_MERGE_MINUTES_AGO[sha] * 60_000
+			const pin = EXPLICIT_MERGE_MINUTES_AGO[sha] ?? EXTRA_MERGE_MIN_AGO[sha];
+			ms = pin
+				? hcNow.getTime() - pin * 60_000
 				: realCreatedMinAgo != null
 					? hcNow.getTime() - (realCreatedMinAgo + 5 + (hashStr(seed + 'buildlag') % 40)) * 60_000
 					: genericLadderDateMs(app, i);
@@ -1193,7 +1213,7 @@ function buildRange(
 }
 
 function respondCommits(name: string, base: string, head: string): GithubMockResult {
-	const app = APPS[name];
+	const app = appOf(name);
 	if (!base || !head) return json(unknownRangeResponse(base, head, app));
 	if (base === head) return json(sameCommitsResponse());
 	if (!app) return json(unknownRangeResponse(base, head));
@@ -1405,9 +1425,18 @@ function orphanChanges(app: AppFixture): ChangeRecord[] {
 	});
 }
 
-const ALL_CHANGES: ChangeRecord[] = Object.values(APPS)
-	.flatMap((app) => [...landmarkChanges(app), ...fillerChanges(app, 3), ...orphanChanges(app)])
-	.sort((a, b) => b.mergedAtMs - a.mergedAtMs);
+const buildAllChanges = (): ChangeRecord[] =>
+	activeApps()
+		.flatMap((app) => [...landmarkChanges(app), ...fillerChanges(app, 3), ...orphanChanges(app)])
+		.sort((a, b) => b.mergedAtMs - a.mergedAtMs);
+let ALL_CHANGES: ChangeRecord[] = buildAllChanges();
+/** Register extra fixture apps (and the minutes-ago each of their changes merged) in the feed; `{}` removes them. No-op by default. */
+export function registerExtraApps(apps: Record<string, AppFixture>, mergeMinAgo: Readonly<Record<string, number>> = {}): void {
+	EXTRA_APPS = apps;
+	EXTRA_MERGE_MIN_AGO = mergeMinAgo;
+	releaseSwitchOn = Object.keys(apps).length > 0;
+	ALL_CHANGES = buildAllChanges();
+}
 
 /**
  * ⭐ (2026-10-11, AD round 6, item 2) `mergeCommitSha`/`headSha` ON

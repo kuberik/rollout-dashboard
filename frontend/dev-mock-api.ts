@@ -14,7 +14,7 @@
  */
 
 import { stampGateKinds } from './src/lib/demo/gate-kind';
-import { overlayApprovals } from './src/lib/demo/state';
+import { overlayApprovals, resetDemoState } from './src/lib/demo/state';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
@@ -66,7 +66,12 @@ function readRequestBody(req: NodeJS.ReadableStream & { method?: string }): Prom
 	});
 }
 
-export function mockApiPlugin(): Plugin {
+export async function mockApiPlugin(): Promise<Plugin> {
+	/** `MOCK_FIXTURES=release-switch` adds ledger-api and search-web (release-switch-fixtures.ts); read once at plugin start. */
+	if ((process.env.MOCK_FIXTURES ?? '').split(',').includes('release-switch')) {
+		(await import('./src/lib/demo/release-switch-fixtures')).install(); // dynamic: the demo build and the normal bundle never ship the fixtures
+		resetDemoState(); // state.ts built the fleet when it loaded, before this flag: rebuild it with the fixtures in
+	}
 	const homeFixture = loadHomeFixture();
 	/**
 	 * ⭐ SCENARIO PER REQUEST (r39). `MOCK_SCENARIO=home-incident|home-calm|home-quiet` is the default; the `kuberik_scenario` cookie (set by
