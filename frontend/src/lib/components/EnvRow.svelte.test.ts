@@ -61,3 +61,23 @@ describe('EnvRow site strip (strip-dots)', () => {
 		expect(getByRole('dialog')).toBeTruthy();
 	});
 });
+
+// truth.mjs (changedetail, pin checks) reads the strip through these hooks; renaming one silently turns the checker into "state null".
+describe('EnvRow truth hooks', () => {
+	const mk = (key: string, wave: number | null, state: 'done' | 'checking' | 'held', name = key) => ({ key, name, wave, state, word: state, href: '/' + key });
+	it('every tier box is [data-tier] and every wave carries its slice kinds in data-stage-state', () => {
+		const prod = { key: 'prod', label: 'prod', sites: [mk('a', 1, 'done'), mk('b', 2, 'checking'), mk('c', 2, 'held')] };
+		const { container } = render(EnvRow, { cells: [prod], lane: 'app' });
+		const box = container.querySelector('[data-tier="prod"]');
+		expect(box).not.toBeNull();
+		const states = [...box!.querySelectorAll('[data-stage-state]')].map((x) => x.getAttribute('data-stage-state'));
+		expect(states).toEqual(['done', 'checking+held']);
+	});
+	it('the tier box carries a title listing each site as "<place>: <State>" (the app page cell count reads it)', () => {
+		const prod = { key: 'prod', label: 'prod', sites: [mk('a', 1, 'held', 'eu'), mk('b', 1, 'done', 'us')] };
+		const { container } = render(EnvRow, { cells: [prod], lane: 'app' });
+		const title = container.querySelector('[data-env-box]')?.getAttribute('title') ?? '';
+		expect(title.split('\n')[0]).toBe('prod');
+		expect(title).toMatch(/eu: held/i);
+	});
+});
