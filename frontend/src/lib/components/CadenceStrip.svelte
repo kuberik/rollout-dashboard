@@ -51,6 +51,7 @@
 	import { displayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
 	import { actorFrom } from '$lib/actor';
 	import Avatar from '$lib/components/Avatar.svelte';
+	import SegmentedControl from '$lib/components/SegmentedControl.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import RestGlyph from '$lib/components/RestGlyph.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
@@ -940,16 +941,12 @@
 		{/if}
 	</div>
 	<div class="cadence-controls flex shrink-0 items-center gap-2">
-		{#each RANGES as r (r)}
-			<button
-				type="button"
-				class="pill"
-				aria-pressed={range === r}
-				onclick={() => onRangeChange?.(r)}
-			>
-				{RANGE_LABEL[r]}
-			</button>
-		{/each}
+		<SegmentedControl
+			options={RANGES.map((r) => ({ value: r, label: RANGE_LABEL[r] }))}
+			value={range}
+			onChange={(r) => onRangeChange?.(r)}
+			label="Time range"
+		/>
 		{#if onToggleCompare}
 			<button
 				type="button"
