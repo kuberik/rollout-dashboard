@@ -601,7 +601,7 @@
 {/snippet}
 
 {#snippet skipButton(t: SkipTarget, kind: 'secondary' | 'ghost' = 'secondary')}
-	<button type="button" class="btn btn-xs btn-{kind} hit-32 shrink-0 max-sm:min-h-11" data-skip-rule onclick={() => onSkipRule?.(t)}>
+	<button type="button" class="btn btn-xs btn-{kind} hit-32 shrink-0 max-sm:min-h-11 max-sm:px-3.5 max-sm:text-sm" data-skip-rule onclick={() => onSkipRule?.(t)}>
 		<ForwardStepOutline class="h-4 w-4" aria-hidden="true" />Skip once
 	</button>
 {/snippet}
