@@ -67,8 +67,11 @@ import { deployActs } from '$lib/history-marks';
 import { upToDateHeadline } from '$lib/view-models/up-to-date';
 import * as RD from '$lib/components/home/roster/roster-data';
 import { alsoApprovalAsk } from '../home/sketch/sketch-home';
-import { changeBySha, homeModel, resetHomeModel, source, isLive, viewerLogin, NOW, type HomeState } from '$lib/components/home/sketch/home-data';
+import { changeBySha, homeModel as homeModelRaw, resetHomeModel, source, isLive, viewerLogin, NOW, type HomeState } from '$lib/components/home/sketch/home-data';
 import { approvalRev, bumpApprovals } from './approval-rev.svelte';
+import { scoped } from './derivation-scope';
+/** `homeModel` once per derivation scope (the calm/quiet lenses rebuild the sketch on every call) */
+const homeModel = (state: HomeState): ReturnType<typeof homeModelRaw> => scoped(`hm|${state}`, () => homeModelRaw(state));
 import { stateWord as sharedWord, severity } from './state-words';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { buildTopology, deployNameOf, siteNodeOf, upstreamOf, type AppTopology } from '$lib/view-models/sites-waves';
@@ -309,7 +312,11 @@ export function actionFor(row: Pick<TRow, 'group' | 'action'>, _state?: HomeStat
 	if (row.group === 'approval') return a.kind === 'approve' ? a : null;
 	return null;
 }
-export function rollouts(state: HomeState, starred?: ReadonlySet<string>) {
+export function rollouts(state: HomeState, starred?: ReadonlySet<string>): ReturnType<typeof rolloutsOf> {
+	/* one table per derivation scope: `rowsOf` asks for it once per (change x place) */
+	return starred ? rolloutsOf(state, starred) : scoped(`rollouts|${state}`, () => rolloutsOf(state));
+}
+function rolloutsOf(state: HomeState, starred?: ReadonlySet<string>) {
 	const R = RD.rollouts(state, starred);
 	const rows = R.rows.map(enrich);
 	/* the place verdict (view-models/place-verdict.ts, read by the env model) already decided awaiting-approval / held-by-rule / deploying for every place, even one whose own build is still baking (`stillChecking`) */
@@ -613,6 +620,9 @@ const newestOfApp = (order: readonly string[], fallback: string | null): string 
 /** the app's deployed places with the app-wide newest build marked (newest = highest semver tag, else latest merge, else latest arrival) */
 /** additive (r4 /rollouts, At rest rows): an app's deployed places with the newest build; exported for the At rest fold's build and age columns */
 export function placesOf(state: HomeState, app: string): (AppPlace & { newest: string | null })[] {
+	return scoped(`placesOf|${state}|${app}`, () => placesOfRaw(state, app));
+}
+function placesOfRaw(state: HomeState, app: string): (AppPlace & { newest: string | null })[] {
 	const envs = (homeModel(state).apps.find((x) => x.app === app)?.envs ?? []).filter((e) => e.state !== 'not-deployed' && e.version);
 	const newestEnv = [...envs].sort((p, q) => {
 		const pv = shortBuild(p.version)!, qv = shortBuild(q.version)!;
@@ -1624,7 +1634,9 @@ export function rowsOf(state: HomeState, tier: TierKey, label: string): TRow[] {
 	}
 	return out;
 }
-const changeBuilds = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): { sha: string | null; contained: string[]; entry: FxChange | undefined } => {
+type ChangeBuilds = { sha: string | null; contained: string[]; entry: FxChange | undefined };
+const changeBuilds = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): ChangeBuilds => scoped(`cb|${c.repo}|${c.mergedAt}|${c.title}`, () => changeBuildsRaw(c));
+const changeBuildsRaw = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): ChangeBuilds => {
 	const entry = chgList().find((x) => x.repo === c.repo && x.mergedAt === c.mergedAt) ?? chgList().find((x) => x.title === c.title);
 	let contained = (entry as unknown as { containedIn?: string[] } | undefined)?.containedIn ?? [];
 	if (entry?.kind === 'pr' && entry.number != null) {
@@ -1634,7 +1646,11 @@ const changeBuilds = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): { sha
 	return { sha: shortRevisionOrNull(entry?.mergeCommitSha) ?? null, contained: contained.map((x) => shortRevision(x)), entry };
 };
 /** (gg) Every place of the change's apps with its deployed build and whether that build CONTAINS the change (the PR's own containedIn: a "Custom build" does not count). */
-export function placesOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): { app: string; place: string; tier: TierKey; build: string | null; state: EnvState; href: string; containsChange: boolean }[] {
+type PlaceOfChange = { app: string; place: string; tier: TierKey; build: string | null; state: EnvState; href: string; containsChange: boolean }[];
+export function placesOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): PlaceOfChange {
+	return scoped(`poc|${state}|${c.repo}|${c.mergedAt}|${c.title}|${c.apps.join(',')}`, () => placesOfChangeRaw(c, state));
+}
+function placesOfChangeRaw(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState): PlaceOfChange {
 	const { contained } = changeBuilds(c);
 	return c.apps.flatMap((app) => placesOf(state, app).map((p) => {
 		const sha = shortRevisionOrNull(rawOf(p.href)?.status.history?.[0]?.version.revision) ?? p.version ?? '';
@@ -1651,9 +1667,13 @@ export function changeCommits(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 't
 	return { commits, builds: [...by.values()] };
 }
 /** (ii) Every deploy that carried the change, one row per place and deploy, rollbacks and redeploys included, with the tab's own timestamps, oldest first. */
-export function historyOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): { app: string; place: string; build: string; at: string; kind: 'deploy' | 'rollback' | 'redeploy'; who: string; outcome: string; href: string }[] {
+type HistoryOfChange = { app: string; place: string; build: string; at: string; kind: 'deploy' | 'rollback' | 'redeploy'; who: string; outcome: string; href: string }[];
+export function historyOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): HistoryOfChange {
+	return scoped(`hoc|${state}|${c.repo}|${c.mergedAt}|${c.title}|${c.apps.join(',')}`, () => historyOfChangeRaw(c, state));
+}
+function historyOfChangeRaw(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState): HistoryOfChange {
 	const { contained } = changeBuilds(c);
-	const out: ReturnType<typeof historyOfChange> = [];
+	const out: HistoryOfChange = [];
 	for (const app of c.apps) for (const e of homeModel(state).apps.find((x) => x.app === app)?.envs ?? []) {
 		const raw = rawOf(e.href);
 		if (!raw || e.state === 'not-deployed') continue;

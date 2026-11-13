@@ -9,6 +9,7 @@
  */
 import { ago, NOW, type HomeState } from './data';
 import { beadRank } from '$lib/view-models/severity';
+import { inScope } from './derivation-scope';
 import { classifyChanges, changesPage, type PChange } from './changes-page';
 import type { Svc } from './change/service-spread';
 import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
@@ -32,6 +33,9 @@ const sinceOf = (p: PChange) => p.ride.since ?? p.c.since ?? p.c.mergedAt;
 
 /** the whole line, narrowed to `repos` (empty = every repo) */
 export function plumbOf(hs: HomeState, repos: readonly string[] = []): Plumb {
+	return inScope(() => plumbOfRaw(hs, repos));
+}
+function plumbOfRaw(hs: HomeState, repos: readonly string[]): Plumb {
 	const { mineP } = classifyChanges(hs);
 	const P = changesPage(hs);
 	const keep = (repo: string) => !repos.length || repos.includes(repo);

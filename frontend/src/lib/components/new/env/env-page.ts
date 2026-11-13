@@ -15,6 +15,7 @@
  *
  * Headline rule (coordinator a): an app's headline state here is the MOST SEVERE state among its places (state-words `mostSevere`).
  */
+import { inScope } from '../derivation-scope';
 import { toneInk } from '$lib/view-models/state-tone';
 import { newestFirst, latest } from '$lib/instant';
 import { heldHere } from '../data';
@@ -155,6 +156,9 @@ export function stepSplit<A extends { app: string; href: string }>(apps: readonl
 }
 
 export function envPage(hs: HomeState, name: string): EnvPage | null {
+	return inScope(() => envPageRaw(hs, name));
+}
+function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 	const target = resolveEnv(name, hs);
 	if (!target) return null;
 	const tierKey: TierKey = target.kind === 'tier' ? target.tier : 'prod';

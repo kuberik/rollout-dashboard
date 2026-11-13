@@ -6,6 +6,7 @@
  * `countsOf`. The SHAPE (columns, lanes, the order of places inside a cell) comes from the TOPOLOGY (`waveInfoOfHref`), never from
  * state, so a state change can never add, drop, reorder or move a tile (owner: "environments jumping").
  */
+import { inScope } from '../derivation-scope';
 import { ago, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
 import { approvalWord } from '../state-words';
 import { holdWord, holdWordParts } from '../rollout-view';
@@ -96,6 +97,9 @@ function assemble(apps: string[], items: Item[], columns: StageColumn[], scenari
 }
 
 export function stagesOf(scope: StagesScope, scenario: HomeState): Stages {
+	return inScope(() => stagesOfRaw(scope, scenario));
+}
+function stagesOfRaw(scope: StagesScope, scenario: HomeState): Stages {
 	if (scope.kind === 'app') return appStages(scope.app, scenario, scope.release);
 	const cols = new Map<string, StageColumn>();
 	{
