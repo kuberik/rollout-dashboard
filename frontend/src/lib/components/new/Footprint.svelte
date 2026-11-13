@@ -7,7 +7,7 @@
 	import { type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
 	import { TIERS_WITH_OTHER } from '$lib/view-models/sites-waves';
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
-	import { waveInfoOfHref, type TApp, type TRow } from './data';
+	import { waveInfoOfHref, type TApp, type TRow, behindOfPlace } from './data';
 	import { currentAt } from './change/detail-model';
 	import { rowAction, actionLabel, actionHref } from './rollout-view';
 	import { stateWord } from './state-words';
@@ -44,16 +44,16 @@
 		for (const e of events) if (e.app === app) first.set(e.sha, Math.min(first.get(e.sha) ?? Infinity, e.t));
 		const seq = [...first.entries()].sort((p, q) => p[1] - q[1]).map(([s]) => s);
 		if (newest && !seq.includes(newest)) seq.push(newest);
-		const newIdx = newest ? seq.indexOf(newest) : -1;
-		const behindOf = (v: string | null) => { const i = v ? seq.indexOf(v) : -1; return i < 0 || newIdx < 0 ? 0 : Math.max(0, newIdx - i); };
+		/* the ONE behind (dedup pass 4): the catalogue distance of the place, as the app page, the ledger and the rollout cards print it */
+		const behindOf = (e: { href?: string | null }) => (e.href ? behindOfPlace(e.href, app) : 0);
 		const nodes: LaneNode[] = item.placeList.map((e) => {
 			const tier: Tier = e.tier === 'prod' ? 'prod' : e.tier === 'dev' ? 'dev' : e.tier === 'test' ? 'test' : 'staging';
-			const state: NodeState = nodeStateOfPlace(e) ?? (e.currency === 'none' ? 'none' : e.onNewest ? 'newest' : behindOf(e.version) > 0 ? 'behind' : 'newest');
+			const state: NodeState = nodeStateOfPlace(e) ?? (e.currency === 'none' ? 'none' : e.onNewest ? 'newest' : behindOf(e) > 0 ? 'behind' : 'newest');
 			const theme = getRolloutEnvironmentTheme(null, tier);
 			/* change-strip r1: the place's site and wave from the topology, so the strip can draw prod's waves and name each site */
 			const wi = e.href ? waveInfoOfHref(e.href) : null;
 			const card = { ns: e.label, name: app, version: e.version, theme, envDisplay: e.label || tier, href: e.href, heldCause: e.state === 'awaiting-approval' ? 'person' : undefined, site: wi?.site ?? null, wave: wi?.wave ?? null, timestamp: e.href ? currentAt(e.href) : null, role: wi ? (wi.leader ? 'Leader' : 'Follower') : null } as unknown as RolloutCard;
-			return { card, tier, env: (tier === 'prod' ? e.label : shortEnvLabel(theme) || e.label) || tier, /* QA #11: an env-less place has a blank label; the tier names it, a box is never empty */ state, behind: state === 'behind' ? behindOf(e.version) : 0, ...(e.currency === 'none' ? { noReleases: true } : {}) };
+			return { card, tier, env: (tier === 'prod' ? e.label : shortEnvLabel(theme) || e.label) || tier, /* QA #11: an env-less place has a blank label; the tier names it, a box is never empty */ state, behind: state === 'behind' ? behindOf(e) : 0, ...(e.currency === 'none' ? { noReleases: true } : {}) };
 		});
 		const byTier: Partial<Record<Tier, LaneNode[]>> = {};
 		for (const n of nodes) (byTier[n.tier] ??= []).push(n);

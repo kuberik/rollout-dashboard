@@ -67,7 +67,7 @@ export function catalogueOrdersByRollout(rollouts: Rollout[], environments: Envi
 	const out = new Map<Rollout, string[]>();
 	for (const group of groupRolloutsByApp(rollouts, environments).values()) {
 		const lists = group.cells
-			.filter((c) => !noReleasesOf(c.rollout))
+			.filter((c) => !noReleasesOf(c.rollout) && !!((c.rollout.status as Status)?.currentVersion || (c.rollout.status as Status)?.history?.[0])) /* deployed places only, as data.ts placesOf: a place that runs nothing adds no builds to the order */
 			.map((c) => ((availableReleases(c.rollout) ?? []) as Rel[]).map(buildName).filter((b): b is string => !!b));
 		const order = catalogueOrder(lists);
 		for (const c of group.cells) out.set(c.rollout, order);
@@ -76,9 +76,13 @@ export function catalogueOrdersByRollout(rollouts: Rollout[], environments: Envi
 }
 /** the build a rollout runs, named as the catalogue names builds (its release entry's version/tag/revision, else the current version cut by the one 7-character rule) */
 export function runningBuild(rollout: Ro): string | null {
+	/* the build a place runs is its newest history entry (the tab's "Running here"); status.currentVersion can lag it */
+	const head = (rollout?.status as Status)?.history?.[0]?.version;
+	const headName = head ? buildName(head as Rel) : null;
+	if (headName) return headName;
 	const cur = (rollout?.status as Status)?.currentVersion;
 	if (!cur) return null;
-	const rel = ((availableReleases(rollout as unknown as Rollout) ?? []) as Rel[]).find((r) => r.tag === cur || r.version === cur);
+	const rel = ((availableReleases(rollout as unknown as Rollout) ?? []) as Rel[]).find((r) => r.tag === cur || r.version === cur || (!!r.revision && (r.revision === cur || shortRevisionOrNull(r.revision) === shortRevisionOrNull(cur))));
 	return (rel && buildName(rel)) ?? shortRevisionOrNull(cur);
 }
 /** the ONE count for a live rollout: catalogue distance, the place's own count only when its build is not in the catalogue */
