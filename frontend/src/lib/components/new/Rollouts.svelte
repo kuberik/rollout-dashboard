@@ -4,16 +4,15 @@
 	/**
 	 * ROLLOUTS (r39 build, 2026-11-08; mock .work/home-r34/direction/r39/rollouts.html, FINAL.md "Rollouts", LANGUAGE.md §1/§5/§7).
 	 * The operator's question: "what failed, what needs me, what is moving, what is waiting".
-	 * ONE page template, three bands: the failure banner (the page's one AlertPanel) -> Attention (kit compact cards) -> "All rollouts"
+	 * ONE page template, three bands: the failure banner (the page's one StatementBanner) -> Attention (kit compact cards) -> "All rollouts"
 	 * (one list card: In flight / Waiting / Held groups of strand rows, then the At rest group of quiet rows). No page title, no header facts,
 	 * no rail: the old Find box, In flight drawing, Last 24 h and Recent deploys retired with the old page (their facts live on Home / Changes /
-	 * Environments). References: AlertPanel (the tab's banner, `change` line), SectionHeader (icon · 16/600 · rollup), AttentionBand/Card, the
+	 * Environments). References: StatementBanner via FailureBanner (the tab's banner, `change` line), SectionHeader (icon · 16/600 · rollup), AttentionBand/Card, the
 	 * StrandRow list card (kit `.lc` / `.lr`). A rollout in the banner or in Attention is not repeated in the groups; the header counts say so.
 	 * All composition lives in rollouts-page.ts (unit-tested); this file draws.
 	 */
-	import { InboxOutline, GridOutline, UndoOutline, ListOutline } from 'flowbite-svelte-icons';
-	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
+	import { InboxOutline, GridOutline, ListOutline } from 'flowbite-svelte-icons';
+	import FailureBanner from './FailureBanner.svelte';
 	import SectionHeader from '$lib/components/SectionHeader.svelte';
 	import AttentionBand from '$lib/components/AttentionBand.svelte';
 	import AttentionCard from '$lib/components/AttentionCard.svelte';
@@ -60,13 +59,7 @@
 	<div class="flex min-w-0 flex-col gap-8" data-rollouts-page>
 		{#if b}
 			<div class="contents" data-truth-kind="banner" data-truth-app={b.row.app} data-truth-href={b.row.href} data-truth-group={b.row.group} {...truthAttrs(b.row)}>
-			<AlertPanel severity="error" title={b.title} class="" change={b.change ?? undefined}>
-				{#snippet messageBody()}{#if b.check}<FailedCheckLine check={b.check} danger ink />{:else if b.line}<span class="t-body">{b.line}</span>{/if}{/snippet}
-				{#snippet actions()}
-					<a href={b.openHref} class="btn btn-secondary" data-action="open">Open rollout ›</a>
-					{#if b.rollbackHref}<a href={b.rollbackHref} class="btn btn-primary" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>{/if}
-				{/snippet}
-			</AlertPanel>
+			<FailureBanner {b} />
 			</div>
 		{/if}
 

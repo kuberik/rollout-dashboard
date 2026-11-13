@@ -9,6 +9,7 @@
  */
 import { newestFirst, isLater, isNotEarlier } from '$lib/instant';
 import { stars } from '$lib/stores/stars.svelte';
+import { severityRank } from '$lib/view-models/severity';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, type HomeState } from '../sketch/home-data';
 import { changesDoor, compass, TIERS, type TierKey } from '../pocket/pocket-data';
@@ -327,9 +328,8 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 				mineBy.set(k, x);
 			}
 	const items: ChangeItem[] = [];
-	const W: Record<string, number> = { failed: 0, 'rolled-back': 1, 'awaiting-approval': 2, 'held-by-rule': 3, deploying: 4, checking: 5 };
 	for (const [k, x] of mineBy) {
-		const worst = [...x.places].sort((p, q) => (W[p.state] ?? 9) - (W[q.state] ?? 9) || RANK_T[q.tier] - RANK_T[p.tier])[0];
+		const worst = [...x.places].sort((p, q) => severityRank(p.state) - severityRank(q.state) || RANK_T[q.tier] - RANK_T[p.tier])[0];
 		const arrived = x.places.filter((p) => !['awaiting-approval', 'held-by-rule', 'not-deployed'].includes(p.state));
 		const reach = arrived.length ? arrived.reduce<TierKey>((b, p) => (RANK_T[p.tier] > RANK_T[b] ? p.tier : b), arrived[0].tier) : null;
 		const g0: ChangeGroupKey = worst.state === 'failed' || (worst.state === 'rolled-back' && !opts.rolledBackLands) ? 'failed' : worst.state === 'rolled-back' ? 'landed' : worst.state === 'awaiting-approval' || worst.state === 'held-by-rule' ? 'waiting' : worst.state === 'deploying' || worst.state === 'checking' ? 'moving' : 'landed';
@@ -377,7 +377,7 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 		if (r.mine) continue;
 		const rr = R.rows.filter((x) => x.change?.ref === r.ref && x.app.startsWith(r.app));
 		if (!rr.length && !r.reached) continue; /* no release anywhere: not affected */
-		const worst = rr.sort((p, q) => (W[p.state] ?? 9) - (W[q.state] ?? 9))[0];
+		const worst = rr.sort((p, q) => severityRank(p.state) - severityRank(q.state))[0];
 		const hdT = !worst ? heldDownstream(m, rr.length ? [...new Set(rr.map((x) => x.app))] : [r.app], r.ref, r.at) : null;
 		const namesT = rr.length ? [...new Set(rr.map((x) => x.app))] : m.apps.filter((a) => a.app.startsWith(r.app)).map((a) => a.app);
 		const g: ChangeGroupKey = hdT ? 'waiting' : !worst ? 'landed' : worst.group === 'failed' ? 'failed' : worst.group === 'approval' || worst.group === 'held' ? 'waiting' : 'moving';

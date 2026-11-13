@@ -9,6 +9,7 @@ import { environments, rollouts, inbound as inboundOf, lastDeploy as lastDeployO
 
 import type { EnvState } from '$lib/view-models/home-model';
 import { stateWord } from './state-words';
+import { mostSevere, severityOf, severityRank } from '$lib/view-models/severity';
 export type Env = ReturnType<typeof environments>;
 export type TierRow = Env['tiers'][number];
 export type RegionRow = Env['regions'][number];
@@ -85,16 +86,13 @@ export const plural = (n: number, one: string, many = one + 's') => `${n} ${n ==
 
 export type RegionTile = { label: string; regionless: boolean; places: number; failing: number; waiting: number; holds: number; approvals: number; moving: number; worst: string; mark: Mark; href: string; envHref: string };
 export type PlaceLike = { state: string };
-/** F1: a rule hold (held-by-rule) is the amber mark; an approval wait is the neutral ring. Severity: failing, hold, moving, approval, rest. */
+/** F1: a rule hold (held-by-rule) is the amber mark; an approval wait is the neutral ring. The tile's mark is its MOST SEVERE place in
+ *  `severity.ts`'s one order (failing, approval, hold, deploying, checking, rest), the same word every other surface headlines. */
 export function markOfPlaces(ps: PlaceLike[]): Mark {
-	if (ps.some((p) => p.state === 'failed')) return 'failed';
-	if (ps.some((p) => p.state === 'held-by-rule')) return 'held';
-	if (ps.some((p) => p.state === 'deploying')) return 'deploying';
-	if (ps.some((p) => p.state === 'checking')) return 'checking';
-	if (ps.some((p) => p.state === 'awaiting-approval')) return 'approval';
-	return 'newest';
+	const k = severityOf(mostSevere(ps, (p) => p.state)?.state);
+	return k === 'failed' || k === 'held' || k === 'deploying' || k === 'checking' || k === 'approval' ? k : 'newest';
 }
-const MSEV: Record<Mark, number> = { failed: 0, held: 1, deploying: 2, checking: 2, approval: 3, newest: 4 };
+const MSEV = (m: Mark): number => severityRank(m);
 
 /** r34 truth-5 (lead ruling 2026-11-01): the unflip changes only what these pages DRAW (marks, dots, the in-progress partition); every COUNT of approvals is fleetCounts().places.approval (the tab's gate word), so a place that is checking AND gated counts under both facts.
  *  EG1 (envdetail-7): data.ts's environments()/rollouts() class a place the tab shows as approval-gated WHILE its own deploy is still checked as an approval wait
@@ -159,14 +157,13 @@ export function envsModel(state: HomeState) {
 	/* U1: the un-regioned base place ("production", /envs/prod) is NOT a region: it is `base`, drawn apart; `busy`/`rest` are regions only */
 	const all = e.regions.map((r) => tile(r, false));
 	const base: RegionTile | null = e.regionless ? tile(e.regionless, true) : null;
-	/* F4: busy first (failing, hold, moving, approval), then the at-rest regions (folded in the canvas) */
-	const bySev = (a: RegionTile, b: RegionTile) => MSEV[a.mark] - MSEV[b.mark] || b.failing - a.failing || b.holds - a.holds || b.moving - a.moving || b.approvals - a.approvals || a.label.localeCompare(b.label);
+	/* F4: busy first (severity.ts's one order: failing, approval, hold, deploying, checking), then the at-rest regions (folded in the canvas) */
+	const bySev = (a: RegionTile, b: RegionTile) => MSEV(a.mark) - MSEV(b.mark) || b.failing - a.failing || b.holds - a.holds || b.moving - a.moving || b.approvals - a.approvals || a.label.localeCompare(b.label);
 	const busy = all.filter((r) => r.mark !== 'newest').sort(bySev);
 	const rest = all.filter((r) => r.mark === 'newest').sort(bySev);
 	const restRegions = rest.length;
 	/* the production tier tile opens its worst place's rollout (no Environment record is named `production`) */
-	const PSEV: Record<string, number> = { failed: 0, 'held-by-rule': 1, deploying: 2, checking: 2, 'awaiting-approval': 3 };
-	const worstProd = [...(prod?.placesList ?? [])].sort((a, b) => (PSEV[a.state] ?? 9) - (PSEV[b.state] ?? 9))[0] ?? null;
+	const worstProd = [...(prod?.placesList ?? [])].sort((a, b) => severityRank(a.state) - severityRank(b.state))[0] ?? null;
 	/* F3: the production tile's fact line names the worst place as a fact with its time in state */
 	const worstRow = worstProd ? (prod?.rows ?? []).find((r) => r.app === worstProd.app && r.href === worstProd.href) ?? null : null;
 	/* r34 v2-r6: EVERY tile with something adverse names its apps on a second line, worst kind first (failing, held, to approve), the oldest first:

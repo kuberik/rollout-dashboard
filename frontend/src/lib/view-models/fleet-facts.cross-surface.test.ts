@@ -5,7 +5,8 @@ import { buildRolloutCards } from '$lib/rollout-cards';
 import { buildGateContext } from '$lib/view-models/blocking-story';
 import { buildRolloutGraph, contractHoldsForRollout } from '$lib/view-models/dependency-graph';
 import { isNeedsYou } from '$lib/view-models/fleet-groups';
-import { buildLanes, nodeState, STATE_ORDER } from '$lib/view-models/promotion-lanes';
+import { severityRank } from '$lib/view-models/severity';
+import { buildLanes, nodeState } from '$lib/view-models/promotion-lanes';
 import { fleetFacts } from './fleet-facts';
 import type { Environment, Rollout, RolloutDependency } from '../../types';
 
@@ -84,7 +85,7 @@ describe.each(SCENARIOS)('cross-surface agreement — %s', (scenario) => {
 			let best = 'none';
 			for (const c of appCards) {
 				const state = nodeState(c);
-				if (STATE_ORDER.indexOf(state) < STATE_ORDER.indexOf(best as (typeof STATE_ORDER)[number])) best = state;
+				if (severityRank(state) < severityRank(best)) best = state;
 			}
 			return best;
 		}

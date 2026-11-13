@@ -6,7 +6,7 @@ import type { TRow, GroupKey, HomeState, Step } from './data';
 import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
 import { stateWord } from './state-words';
 
-export { stepsOf, failureReason, placeLabel, truthAttrs, inbox, arrivals, lastHealthy, pathPosition } from './data';
+export { stepsOf, failureReason, placeLabel, truthAttrs, inbox, arrivals, lastHealthy, pathPosition, pathReach, reachSentence } from './data';
 export { heldCauses };
 export type { Step, StepState, FailureReason, InboxItem, TRow } from './data';
 

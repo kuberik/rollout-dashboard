@@ -59,6 +59,7 @@
 		buildDesktopOnly = false,
 		cause,
 		causeDesktopOnly = false,
+		change,
 		slots = false,
 		plain = false,
 		follow = false,
@@ -105,6 +106,8 @@
 		/** the one line of consequence on the meta line (the check's message, the approval's scope) */
 		cause?: string;
 		causeDesktopOnly?: boolean;
+		/** a failure's CHANGE LINE (AlertPanel's third line): the change that failed; title · #ref · person */
+		change?: ComponentProps<typeof AlertPanel>['change'];
 		/** fixed tracks on the meta line from 640 (build | place | since | cause) */
 		slots?: boolean;
 		/** the statement at rest in a list: neutral surface */
@@ -193,6 +196,7 @@
 	severity={tone}
 	icon={severity === 'held' || severity === 'approval' ? HeldGlyph : undefined}
 	{title}
+	{change}
 	{pulse}
 	{plain}
 	{follow}

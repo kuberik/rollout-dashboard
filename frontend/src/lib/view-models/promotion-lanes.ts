@@ -13,6 +13,7 @@
  * never disagree with the rest of the page about a rollout's state.
  */
 import { behindOfRollout } from './behind';
+import { severityRank } from '$lib/view-models/severity';
 import { noReleasesOf } from '$lib/releases/registry.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 import { getEnvironmentRank } from '$lib/env-order';
@@ -67,25 +68,7 @@ export type Lane = {
 
 const PROD_RANK = 7;
 
-/**
- * Worst first, the PRODUCT-WIDE order (coordinator 2026-10-10): failed >
- * stuck > held > in progress (deploying, checking) > behind > newest > none.
- * It is `rollout-cards.ts`' `CHANGE_STATE_RANK` (failed 0, stuck 1, held 2,
- * deploying 3, ...) spelled for lane states, so an app held in one stage and
- * checking in another leads with HELD everywhere (Home's Fleet, /apps, the
- * map) — a person-needing state outranks one that will finish on its own.
- * `promotion-lanes.test.ts` pins the agreement.
- */
-export const STATE_ORDER: NodeState[] = [
-	'failed',
-	'stuck',
-	'held',
-	'deploying',
-	'checking',
-	'behind',
-	'newest',
-	'none'
-];
+/** Worst first is `severity.ts`'s ONE order (a lane state is one of its slots: held already includes an approval wait). */
 
 export function nodeState(c: RolloutCard): NodeState {
 	if (c.statusKey === 'failed' || c.checkFailure != null) return 'failed';
@@ -116,7 +99,7 @@ function toNode(c: RolloutCard): LaneNode {
 function mostUrgent(nodes: LaneNode[]): LaneNode | null {
 	let best: LaneNode | null = null;
 	for (const n of nodes) {
-		if (!best || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(best.state)) best = n;
+		if (!best || severityRank(n.state) < severityRank(best.state)) best = n;
 	}
 	return best;
 }
@@ -149,7 +132,7 @@ export function buildLanes(cards: RolloutCard[]): Lane[] {
 	}
 	// Who needs a person first; then alphabetical, so the order is stable.
 	return lanes.sort(
-		(a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state) || a.app.localeCompare(b.app)
+		(a, b) => severityRank(a.state) - severityRank(b.state) || a.app.localeCompare(b.app)
 	);
 }
 

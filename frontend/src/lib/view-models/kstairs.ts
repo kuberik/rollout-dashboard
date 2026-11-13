@@ -13,7 +13,8 @@
 import type { RolloutCard } from '$lib/rollout-cards';
 import { shortenVersion } from '$lib/utils';
 import { regionsPhrase, siteCount } from '$lib/view-models/regions';
-import { STATE_ORDER, type Lane, type LaneNode, type NodeState } from '$lib/view-models/promotion-lanes';
+import { severityRank } from '$lib/view-models/severity';
+import { type Lane, type LaneNode, type NodeState } from '$lib/view-models/promotion-lanes';
 import { promotionHoldBreakdown } from '$lib/view-models/blocking-story';
 
 export type KPlateModel = {
@@ -51,7 +52,7 @@ export type KApp = {
 	lane: Lane;
 };
 
-const rank = (s: NodeState) => STATE_ORDER.indexOf(s);
+const rank = (s: NodeState) => severityRank(s);
 const OFF: NodeState[] = ['failed', 'stuck', 'held', 'deploying', 'checking'];
 
 function word(s: NodeState, approval: boolean): string {

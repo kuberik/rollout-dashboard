@@ -4,6 +4,7 @@
 
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import { behindOfRollout } from './view-models/behind';
+import { severityRank } from './view-models/severity';
 import { liveForPlace, newerReleaseCountLive, type Fleet } from './view-models/failed-builds';
 import type { Rollout, Environment } from '../types';
 import { getRolloutEnvironmentTheme, shortEnvLabel } from './environment-theme';
@@ -161,12 +162,12 @@ export function detectRolloutStuck(
  * fixture that skips it) reads `false`.
  */
 export const CHANGE_STATE_RANK = {
-	failed: 0,
-	stuck: 1,
-	held: 2,
-	deploying: 3,
-	queued: 4,
-	live: 5
+	failed: severityRank('failed'),
+	stuck: severityRank('stuck'),
+	held: severityRank('held'),
+	deploying: severityRank('deploying'),
+	queued: severityRank('queued'),
+	live: severityRank('live')
 } as const;
 
 /**

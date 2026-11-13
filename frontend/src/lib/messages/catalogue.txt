@@ -677,15 +677,15 @@ lib/components/new/change/detail-model.ts	code	… in ……
 lib/components/new/change/detail-model.ts	code	… is failing: … newer build…${mine ?
 lib/components/new/change/detail-model.ts	code	… is the build before this change, last healthy … ago
 lib/components/new/change/detail-model.ts	code	… not affected
-lib/components/new/change/detail-model.ts	code	… of … places run the newest build
 lib/components/new/change/detail-model.ts	code	… of … prod regions
 lib/components/new/change/detail-model.ts	code	… of … run it
+lib/components/new/change/detail-model.ts	code	… of … run the newest build
 lib/components/new/change/detail-model.ts	code	… place…
 lib/components/new/change/detail-model.ts	code	… places
 lib/components/new/change/detail-model.ts	code	… prod regions
 lib/components/new/change/detail-model.ts	code	… runs
 lib/components/new/change/detail-model.ts	code	… waiting
-lib/components/new/change/detail-model.ts	code	All … places run the newest build
+lib/components/new/change/detail-model.ts	code	All … run the newest build
 lib/components/new/change/detail-model.ts	code	and $1
 lib/components/new/change/detail-model.ts	code	Checking in …
 lib/components/new/change/detail-model.ts	code	Deployed in …
@@ -697,8 +697,8 @@ lib/components/new/change/detail-model.ts	code	Final check
 lib/components/new/change/detail-model.ts	code	Held by a rule
 lib/components/new/change/detail-model.ts	code	last healthy
 lib/components/new/change/detail-model.ts	code	Newer build failed
-lib/components/new/change/detail-model.ts	code	Newest build … runs in … of … places
-lib/components/new/change/detail-model.ts	code	Newest build … runs in all … places
+lib/components/new/change/detail-model.ts	code	Newest build … runs in … of …
+lib/components/new/change/detail-model.ts	code	Newest build … runs in all …
 lib/components/new/change/detail-model.ts	code	not reached
 lib/components/new/change/detail-model.ts	code	Not reached
 lib/components/new/change/detail-model.ts	code	Not running anywhere yet
@@ -721,8 +721,6 @@ lib/components/new/changes-plumb.ts	code	Needs your approval for …
 lib/components/new/changes-plumb.ts	code	Waiting for approval for …
 lib/components/new/Changes.svelte	text	By repo
 lib/components/new/Changes.svelte	text	No changes of yours yet
-lib/components/new/Changes.svelte	text	Open rollout ›
-lib/components/new/Changes.svelte	text	Roll back
 lib/components/new/Changes.svelte	title	Your changes
 lib/components/new/Changes.svelte	text	Your changes show up here once released, until they reach prod.
 lib/components/new/ChangesPlumb.svelte	text	… services
@@ -743,20 +741,20 @@ lib/components/new/data.ts	code	… in …
 lib/components/new/data.ts	code	… min left
 lib/components/new/data.ts	code	… newer build…${split ?
 lib/components/new/data.ts	code	… of … gates holding
+lib/components/new/data.ts	code	… of … on the newest build
 lib/components/new/data.ts	code	… of … regions
 lib/components/new/data.ts	code	… other region… hold this build
 lib/components/new/data.ts	code	… other regions wait on their own approvals
 lib/components/new/data.ts	code	… passing
 lib/components/new/data.ts	code	… pending · … passing
+lib/components/new/data.ts	code	… place…
 lib/components/new/data.ts	code	… places
 lib/components/new/data.ts	code	… places held · … cause…
 lib/components/new/data.ts	code	… prod regions
 lib/components/new/data.ts	code	… regions
 lib/components/new/data.ts	code	· … behind
 lib/components/new/data.ts	code	${sharedWord('approval', { yours: row.needsYou })} · …
-lib/components/new/data.ts	code	$1 of $2 places on the newest build
-lib/components/new/data.ts	code	$1 of 1 place
-lib/components/new/data.ts	code	All … places on the newest build
+lib/components/new/data.ts	code	All … on the newest build
 lib/components/new/data.ts	code	Approved …
 lib/components/new/data.ts	code	Behind in ……
 lib/components/new/data.ts	code	Changes could not be read
@@ -774,6 +772,7 @@ lib/components/new/data.ts	code	held: …
 lib/components/new/data.ts	code	In … · not in … yet
 lib/components/new/data.ts	code	in …${hc.window?.opens ?
 lib/components/new/data.ts	code	its provider ships a newer version
+lib/components/new/data.ts	code	Never deployed
 lib/components/new/data.ts	code	on the newest
 lib/components/new/data.ts	code	Pinned to … in ${placeLabel({ tier: tierOfEnv(e), regions: [e.label] })}
 lib/components/new/data.ts	code	prod regions
@@ -833,9 +832,7 @@ lib/components/new/env/EnvPage.svelte	text	… … behind · …
 lib/components/new/env/EnvPage.svelte	text	A rollout deployed to this environment shows up here.
 lib/components/new/env/EnvPage.svelte	title	In step
 lib/components/new/env/EnvPage.svelte	text	Nothing runs here yet
-lib/components/new/env/EnvPage.svelte	text	Open rollout ›
 lib/components/new/env/EnvPage.svelte	title	Ready to promote
-lib/components/new/env/EnvPage.svelte	text	Roll back
 lib/components/new/env/EnvPage.svelte	text	Show … earlier
 lib/components/new/env/EnvPage.svelte	title	Today in …
 lib/components/new/env/GangwayTile.svelte	text	from …
@@ -974,8 +971,6 @@ lib/components/new/Rollouts.svelte	code	… waiting
 lib/components/new/Rollouts.svelte	title	All rollouts
 lib/components/new/Rollouts.svelte	text	At rest
 lib/components/new/Rollouts.svelte	text	No rollouts yet
-lib/components/new/Rollouts.svelte	text	Open rollout ›
-lib/components/new/Rollouts.svelte	text	Roll back
 lib/components/new/Rollouts.svelte	text	Rollouts appear here as soon as one is deployed.
 lib/components/new/Slipway.svelte	code	…… ago
 lib/components/new/Slipway.svelte	code	…${n.hold && !n.holdC ?
@@ -992,7 +987,7 @@ lib/components/new/Slipway.svelte	code	Newest build
 lib/components/new/Slipway.svelte	text	Next build
 lib/components/new/Slipway.svelte	code	Open rollout
 lib/components/new/Slipway.svelte	code	reached … of … place…
-lib/components/new/Slipway.svelte	code	reached all … places
+lib/components/new/Slipway.svelte	code	reached all … place…
 lib/components/new/Slipway.svelte	code	Rolled back from
 lib/components/new/Slipway.svelte	code	To deploy
 lib/components/new/Slipway.svelte	code	Your approval

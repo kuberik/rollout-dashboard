@@ -11,7 +11,7 @@ import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import {
 	changes, candidateBuilds, shortBuild, placesOfChange, historyOfChange, changeCommits, runsIn, rowsOf, rollouts, heldBehind, lastHealthy, ago,
-	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathPosition, buildCommitOf,
+	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathReach, reachSentence, buildCommitOf,
 	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock, waveInfoOfHref
 } from '../data';
 import { stateWord, approvalWord } from '../state-words';
@@ -526,15 +526,15 @@ export function behindWords(app: string, href: string, scenario: HomeState): str
 	return n ? lagLabel({ builds: Number(n) }) : w === 'on the newest' ? 'on the newest' : w || '';
 }
 
-/** CE15: the Gates tab's rollup with its unit, as its OWN line: "Newest build a11c909 runs in 1 of 6 places" (never the build this change is in) */
+/** CE15: the Gates tab's rollup with its unit, as its OWN line: "Newest build a11c909 runs in 1 of 6 places" (never the build this change is in). Phrased from `pathReach`'s numbers. */
 export function newestLine(app: string, scenario: HomeState): string {
-	const t = pathPosition({ app }, scenario);
-	const nb = runsIn(app, scenario).find((r) => r.word === 'on the newest')?.build ?? null;
-	const some = /^(\d+) of (\d+) places on the newest build$/.exec(t);
-	const all = /^All (\d+) places on the newest build$/.exec(t);
-	if (all) return nb ? `Newest build ${nb} runs in all ${all[1]} places` : `All ${all[1]} places run the newest build`;
-	if (some) return nb ? `Newest build ${nb} runs in ${some[1]} of ${some[2]} places` : `${some[1]} of ${some[2]} places run the newest build`;
-	return t;
+	const r = pathReach({ app }, scenario);
+	if (!r.m) return reachSentence(r);
+	/* named only when some place runs it (the same build the Runs-in rows call "on the newest") */
+	const nb = r.n > 0 ? r.build : null;
+	const places = `${r.m} place${r.m === 1 ? '' : 's'}`;
+	if (r.n === r.m) return nb ? `Newest build ${nb} runs in all ${places}` : `All ${places} run the newest build`;
+	return nb ? `Newest build ${nb} runs in ${r.n} of ${places}` : `${r.n} of ${places} run the newest build`;
 }
 
 /* ═══ the opened object (CD1/CD9): the CHANGE's own build in the place, as the tab's Deployment-pipeline card reads it ═══ */
