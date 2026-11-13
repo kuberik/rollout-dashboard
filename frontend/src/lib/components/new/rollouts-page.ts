@@ -48,8 +48,8 @@ export function changeLineOf(r: TRow): ChangeLine | null {
 	return { title, ref: idn?.pr ? `#${idn.pr}` : undefined, person: you ? 'you' : person ?? undefined, you, src: you || !person ? null : avatarSrc(person) ?? null };
 }
 
-/** the failure banner's meta line (place chip · Since · build), one fact each; null parts are not printed */
-export type BannerMeta = { place: string | null; tier: string | null; since: string | null; build: string | null };
+/** the failure banner's meta line (Since · build), one fact each; null parts are not printed. The place is the title's own ("failed in prod · eu-west"), never a second chip. */
+export type BannerMeta = { since: string | null; build: string | null };
 export type BannerModel = { row: TRow; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; meta: BannerMeta };
 export type AttentionItem = { key: string; row: TRow; model: AttentionModel; app: string; href: string; rollbackHref: string | null; openHref: string; yours: boolean };
 export type StrandRow = { key: string; row: TRow; app: string; href: string; tier: string; place: string | null; mark: MarkState; nodes: MiniNode[]; /** the state word / cause, typed (`CauseText` draws a promotion label by kind); `causeText(lead)` is its plain form */ lead: Cause; rest: string; age: string; yours: boolean; };
@@ -121,10 +121,10 @@ function waitScopeOf(app: string, hs: HomeState): string | null {
 	const k = sts.filter((x) => x.ink === 'waiting').length;
 	return sts.length > 1 && k ? (k === sts.length ? `${k} regions` : `${k} of ${sts.length} regions`) : null;
 }
-/** the meta line of a failure banner from its row: the place (a named region/site, else the tier), how long it has failed, the failing build */
+/** the meta line of a failure banner from its row: how long it has failed, the failing build */
 export function bannerMeta(r: TRow | null | undefined): BannerMeta {
-	if (!r) return { place: null, tier: null, since: null, build: null };
-	return { place: chipPlace(r) ?? r.tier ?? null, tier: r.tier ?? null, since: r.since ? ago(r.since) : null, build: r.version ?? null };
+	if (!r) return { since: null, build: null };
+	return { since: r.since ? ago(r.since) : null, build: r.version ?? null };
 }
 /** the failure banner of a lead failing row (AlertPanel shape; the change line = the build's own PR identity) */
 export function bannerOf(lead: TRow): BannerModel {
