@@ -21,6 +21,7 @@ import { rangeJson, pullJson } from '../github-read.svelte';
 import { slots, isViewer, span, folioFacts, type Slot } from '../change-view';
 import { lagLabel } from '$lib/view-models/env-rank';
 import { source } from '$lib/components/home/sketch/home-data';
+import { TIER_RANK as TIER_RANKS, tierRank } from '$lib/view-models/sites-waves';
 
 type RawV = { revision?: string; tag?: string; version?: string };
 type RawC = { tag?: string; version?: string; revision?: string; created?: string };
@@ -64,7 +65,7 @@ export type Unit = { href: string; app: string; tier: TierKey; label: string; ro
 /** `since` = when the change reached the place (sorting, History); `at` = the age the TAB prints for the place's current deploy (the row's age, CE1) */
 export type Place = Unit & { /** the place's CURRENT deploy fails but the change ran healthily earlier (rideTruth): it landed here, the failure is a newer build's */ newerFails?: boolean; /** with newerFails: the build that CARRIED the change here before the failing one (the page's note: "newer than this change's a11c101") */ carried?: string | null; /** with newerFails: the tab's own failing row (its steps), kept off `row` so no action is offered for another change's failure */ tabRow?: TRow | null; /** an unaffected place that once ran a build carrying the change: the build that replaced it is `current` */ replacedFrom?: string | null; kind: PlaceKind; since: string | null; build: string | null; at: string | null };
 const KIND_RANK: Record<PlaceKind, number> = { failed: 0, waiting: 1, running: 2, unaffected: 3 };
-const TIER_RANK: Record<TierKey, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+const TIER_RANK: Record<TierKey, number> = TIER_RANKS;
 
 /** every place of the change's app(s), each with how it relates to the change; worst first (failing, waiting, running), then furthest tier, then newest */
 export function classified(c: TChange, scenario: HomeState): { all: Unit[]; places: Place[]; unaffected: Place[] } {
@@ -463,7 +464,7 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 	}
 	/* change-strip r2 (owner 2026-11-12): NEWEST FIRST, as the rollout History tab reads; events at one instant keep the pipeline's order
 	   (tier, then wave) reversed with the rest, never the order the history was read in */
-	const rank = (e: Ev) => ({ dev: 0, test: 1, staging: 2, prod: 3 } as Record<string, number>)[e.tier ?? ''] ?? -1;
+	const rank = (e: Ev) => tierRank(e.tier, -1);
 	const kindRank = (e: Ev) => (e.kind === 'merged' ? -2 : e.kind === 'released' ? -1 : 0);
 	return [...out, ...waits.values()].sort((a, b) => oldestFirst(b.order ?? b.at, a.order ?? a.at) || kindRank(b) - kindRank(a) || rank(b) - rank(a) || (b.wave ?? 0) - (a.wave ?? 0));
 }

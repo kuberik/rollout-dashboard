@@ -14,6 +14,7 @@ import { ledgerOf, type Stop } from '../app/app-model';
 import type { MarkSiteState } from '$lib/view-models/wave-mark';
 import { changeBySha } from '$lib/components/home/sketch/home-data';
 import { behindWords, classified, countsOf, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
+import { TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 
 export type StageState = 'deployed' | 'checking' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
 export type StagePlace = { href: string; /** an approval the viewer can give (the strip draws it with the viewer's ring) */ yours?: boolean; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: Cause | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** change-strip r2: the build the place runs now and its lag in the words origin/main's "Where it runs" used ("3 builds behind" / "Up to date"); empty while moving, for a newer failure or without releases */ current: string | null; lag: string; /** app scope: the place runs a build NEWER than the selected release ("ahead"): drawn On <build>, or its own checking/deploying mark; never live, never counted as in flight */ ahead: boolean; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
@@ -25,7 +26,7 @@ export type StagesScope = { kind: 'change'; change: TChange } | { kind: 'app'; a
 /** `release`: app scope only, the build the drawing is about (the app's newest, `placesOf(...).newest`), null without releases */
 export type Stages = { columns: StageColumn[]; lanes: StageLane[]; rollup: StageRollup; /** the narrow card's rollup (app scope): with more than one adverse count the in-flight ones (checking + deploying) read as one "N in progress"; "N of M places" never shortens */ narrow?: StageRollup; release?: string | null };
 
-const TIER_RANK: Record<string, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+const TIER_RANK: Record<string, number> = TIER_RANKS;
 
 /** THE one place a hold's cause is decided, TYPED (PR #128): a promotion hold keeps its `GateLabel`, so the tile draws » [STAGING]
  *  through `CauseText`/`GateLabel`, never "Promotion from staging" as text. Every tile reads this alone; `causeText` flattens it for titles. */

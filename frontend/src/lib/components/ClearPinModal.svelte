@@ -39,7 +39,7 @@
 	import { rolloutEnvironmentName } from '$lib/view-models/deploy-risk';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { dashboardManagesWantedVersion, pinSince } from '$lib/view-models/pin-hold';
-	import { shortRevision } from '$lib/version-utils';
+	import { shortRevisionOrNull } from '$lib/version-utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
 	import { apiPath } from '$lib/api/urls';
@@ -186,10 +186,6 @@
 		const sentenceLead = envLabel.charAt(0).toUpperCase() + envLabel.slice(1);
 		return `${sentenceLead} moves ${current} → ${target}${count > 1 ? ` (${count} newer builds allowed)` : ''}.`;
 	});
-
-	function shortRevisionOrNull(rev: string | null | undefined): string | null {
-		return rev ? shortRevision(rev) : null;
-	}
 
 	/**
 	 * The same guard rollout detail applies: if another controller owns

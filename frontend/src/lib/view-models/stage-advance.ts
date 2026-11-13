@@ -83,11 +83,18 @@ function parseGoish(duration: string | undefined): number {
 	return { s: 1000, m: 60000, h: 3600000, d: 86400000 }[m[2] as 's' | 'm' | 'h' | 'd'] * v;
 }
 
+/**
+ * THE ONE COUNTDOWN / ELAPSED SPAN ("1m 35s", "3h 4m", "2d 6h"): two units, the two coarsest that are non-zero, never a fraction. The rollout tab's
+ * remaining-bake bars, the pipeline card, the stage-advance sentences and the Rollouts rows all print it (it replaces the two
+ * `formatDurationFromMs` copies, 2026-11-13). The one-unit idiom is `formatTimeAgoCompact` (an age); the spelled-out one is `formatDurationMs` (prose).
+ */
 export function formatShortDuration(ms: number): string {
 	if (ms <= 0) return '0s';
 	const s = Math.floor(ms / 1000);
 	const m = Math.floor(s / 60);
 	const h = Math.floor(m / 60);
+	const d = Math.floor(h / 24);
+	if (d > 0) return `${d}d ${h % 24}h`;
 	if (h > 0) return `${h}h ${m % 60}m`;
 	if (m > 0) return `${m}m ${s % 60}s`;
 	return `${s}s`;

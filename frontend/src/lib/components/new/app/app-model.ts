@@ -8,6 +8,7 @@
  * runs HEALTHY in the tier upstream of it, for a place no approval or rule holds.
  */
 import { newestFirst } from '$lib/instant';
+import { startOfDayMs } from '$lib/display-time';
 import { approvalWord, severity } from '../state-words';
 import {
 	tabPill,
@@ -33,8 +34,9 @@ import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
 import { waitFact } from '$lib/view-models/wait-fact';
 import { causeText, joinCause, labelPart, type Cause, type GateLabel } from '$lib/view-models/gate-label';
+import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
-const ORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
+const ORDER: TierKey[] = [...TIER_LIST];
 export const tierRank = (t: string) => ORDER.indexOf(t as TierKey);
 /* a promotion place hold: the backend's kind, carried as the gate's label (data.ts gateName sets it); never a guess from the gate's name */
 export const isPromotion = (p: PlaceHold) => p.gate?.label.kind === 'promotion';
@@ -743,13 +745,13 @@ export function weekSummary(
 		rolledBack = 0,
 		open = false;
 	const durations: number[] = [];
-	const day = new Set<string>();
+	const day = new Set<number>();
 	for (const r of rollouts) {
 		r.history.forEach((h, i) => {
 			const t = h.timestamp ? new Date(h.timestamp).getTime() : NaN;
 			if (!(t >= from && t <= nowMs)) return;
 			deploys++;
-			day.add(new Date(t).toDateString());
+			day.add(startOfDayMs(new Date(t)));
 			if (r.rolledBack[i]) rolledBack++;
 			if (h.bakeStatus === 'Failed') {
 				failed++;

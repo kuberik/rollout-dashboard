@@ -11,9 +11,10 @@ import { ago, NOW, type HomeState } from './data';
 import { beadRank } from '$lib/view-models/severity';
 import { classifyChanges, changesPage, type PChange } from './changes-page';
 import type { Svc } from './change/service-spread';
+import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
 export const STOPS = ['merged', 'dev', 'test', 'staging', 'prod'] as const;
-const RANK: Record<string, number> = { merged: 0, dev: 1, test: 2, staging: 3, prod: 4 };
+const RANK: Record<string, number> = { merged: 0, ...Object.fromEntries(TIER_LIST.map((t, i) => [t, i + 1])) };
 /** a bead state's rank: `severity.ts`'s one order */
 const SEV = (s: string): number => beadRank(s);
 

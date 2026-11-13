@@ -10,6 +10,7 @@ import fixture from '$lib/view-models/home/fixtures/incident-input.json';
 import { liveSource } from './fleet-source.svelte';
 import { formatTransitionAt } from '$lib/api/schedules';
 import { placeLabel } from '$lib/view-models/regions';
+import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
 export type Tone = 'danger' | 'held' | 'active' | 'progress' | 'success' | 'neutral';
 export type Stop = { label: string; tier: string; state: EnvState; prod: boolean; here: boolean; since: string | null; prev: string | null };
@@ -382,7 +383,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 					step: e.pipeline.activeStep ? `step ${e.pipeline.activeStep.index}/${e.pipeline.activeStep.total}` : null
 				});
 		}
-	const order = ['dev', 'test', 'staging', 'prod'];
+	const order: string[] = [...TIER_LIST];
 	const tiers = [...tierMap.values()].sort((x, y) => order.indexOf(x.tier) - order.indexOf(y.tier));
 	const prodT = tierMap.get('prod');
 

@@ -33,14 +33,14 @@ describe('the picker row agrees with the strip dot', () => {
 
 describe('the viewer\'s approval carries a ring and nothing else changes', () => {
 	const ringOf = (c: HTMLElement) => c.querySelector('[data-wave-mark] [data-yours]');
-	const disc = (c: HTMLElement) => [...c.querySelectorAll('[data-wave-mark] path')].map((e) => e.getAttribute('d') + e.getAttribute('fill'));
+	const disc = (c: HTMLElement) => [...c.querySelectorAll('[data-wave-mark] path')].map((e) => `${e.getAttribute('d')}|${e.getAttribute('fill')}`);
 	it('approval-yours is the approval orange plus a ring, the same slot, the same disc', () => {
 		const other = render(WaveMark, { props: { mark: waveMark([{ state: 'approval' }]) } }).container;
 		const yours = render(WaveMark, { props: { mark: waveMark([{ state: 'approval-yours' }]) } }).container;
 		expect(ringOf(other)).toBeNull();
 		expect(ringOf(yours)).not.toBeNull();
 		expect(disc(yours)).toEqual(disc(other));
-		expect(yours.querySelector('svg')?.getAttribute('width')).toBe(other.querySelector('svg')?.getAttribute('width'));
+		expect(yours.querySelector('svg')!.getAttribute('width')).toBe(other.querySelector('svg')!.getAttribute('width'));
 	});
 	it('only an approval of the viewer\'s gets the ring', () => {
 		for (const state of ['held', 'done', 'failed', 'checking'] as const) expect(ringOf(render(WaveMark, { props: { mark: waveMark([{ state }]) } }).container)).toBeNull();

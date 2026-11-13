@@ -14,9 +14,10 @@ import { rowAction, actionLabel } from './rollout-view';
 import { stateWord } from './state-words';
 import { displayTimeZone } from '$lib/timezone.svelte';
 import { source } from '$lib/components/home/sketch/home-data';
+import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
 /** the four tier slots of every Tidemark, in promotion order (an app without a tier leaves its slot blank) */
-export const TIERS: TierKey[] = ['dev', 'test', 'staging', 'prod'];
+export const TIERS: TierKey[] = [...TIER_LIST];
 export const TIER_TITLE: Record<TierKey, string> = { dev: 'dev', test: 'test', staging: 'staging', prod: 'production' };
 const rank = (k: TierKey) => TIERS.indexOf(k);
 

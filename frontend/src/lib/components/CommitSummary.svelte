@@ -435,14 +435,7 @@
 			{#if showAvatars && contributors.length > 0}
 				<span class="flex items-center -space-x-1.5">
 					{#each contributors.slice(0, 4) as c (c.author || c.sha)}
-						{#if c.avatarUrl}
-							<img
-								src={c.avatarUrl}
-								alt={c.author}
-								title={c.author}
-								class="h-5 w-5 rounded-full ring-2 ring-surface"
-							/>
-						{/if}
+						<span class="rounded-full ring-2 ring-surface" title={c.author}><Avatar name={c.author || 'unknown'} src={c.avatarUrl ?? null} size={20} /></span>
 					{/each}
 					{#if contributors.length > 4}
 						<span

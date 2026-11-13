@@ -2,6 +2,7 @@
 	// One vocabulary for the deploy states — see `bake-status.ts`. This dot
 	// label used to say `still baking`, the product's own field name, inside
 	// the accessible name of every in-flight dot on `/activity`.
+	import { shortRevisionOrNull } from '$lib/version-utils';
 	import { toneInk, TONE } from '$lib/view-models/state-tone';
 	import type { Snippet } from 'svelte';
 	import { displayTimeZone } from '$lib/timezone.svelte';
@@ -1596,7 +1597,7 @@
 			<div class="mb-1.5 flex items-center gap-2">
 				<span class="h-2.5 w-2.5 shrink-0 rounded-full {statusInk(entry.bakeStatus)}"></span>
 				<span class="t-code-sm text-fg">
-					{entry.version.version || entry.version.revision?.slice(0, 12) || entry.version.tag}
+					{entry.version.version || shortRevisionOrNull(entry.version.revision) || entry.version.tag}
 				</span>
 			</div>
 			{#if entry.subject}

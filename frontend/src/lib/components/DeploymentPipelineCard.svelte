@@ -3,6 +3,7 @@
 <script lang="ts">
 	import Leaving from './Leaving.svelte';
 	import StepDisc from './StepDisc.svelte';
+	import { formatShortDuration } from '$lib/view-models/stage-advance';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import { TONE } from '$lib/view-models/state-tone';
 	import { smoothHeight } from '$lib/smooth-height';
@@ -121,19 +122,6 @@
 			default: return 0;
 		}
 	}
-
-	function formatDurationFromMs(ms: number): string {
-		if (ms <= 0) return '0s';
-		const s = Math.floor(ms / 1000);
-		const m = Math.floor(s / 60);
-		const h = Math.floor(m / 60);
-		const d = Math.floor(h / 24);
-		if (d > 0) return `${d}d ${h % 24}h`;
-		if (h > 0) return `${h}h ${m % 60}m`;
-		if (m > 0) return `${m}m ${s % 60}s`;
-		return `${s}s`;
-	}
-
 
 	type NodeStatus = 'done' | 'running' | 'paused' | 'failed' | 'pending';
 
@@ -936,7 +924,7 @@
 					live ? Math.min(100, (elapsed / bakeTimeMs) * 100) : 0,
 					live
 						? remainingBake > 0
-							? formatDurationFromMs(remainingBake) + ' remaining'
+							? formatShortDuration(remainingBake) + ' remaining'
 							: 'Ready to continue'
 						: '0s remaining'
 				)}
@@ -958,7 +946,7 @@
 				{@render progressLine(
 					live,
 					live && totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0,
-					live ? (remainingMs > 0 ? formatDurationFromMs(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining'
+					live ? (remainingMs > 0 ? formatShortDuration(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining'
 				)}
 			{/if}
 		{/if}
@@ -1014,10 +1002,10 @@
 					     uses nowhere else) for two DIFFERENT spans — time since the
 					     check finished, and how long the check took. Both now use the
 					     same compact unit the rest of the card already prints
-					     (`formatDurationFromMs`, see the remaining-time bars above). -->
+					     (`formatShortDuration`, see the remaining-time bars above). -->
 					<span class="t-meta text-fg-subtle" title={formatDate(latestEntry.bakeEndTime)}>
 						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)} ·
-						{formatDurationFromMs(
+						{formatShortDuration(
 							new Date(latestEntry.bakeEndTime).getTime() -
 								new Date(latestEntry.bakeStartTime || latestEntry.timestamp).getTime()
 						)}
@@ -1033,7 +1021,7 @@
 							const timeoutMs = parseDuration(rollout.spec.deployTimeout);
 							const timeUntilTimeout = deploymentTime + timeoutMs - $now.getTime();
 							return timeUntilTimeout > 0
-								? `Timeout in ${formatDurationFromMs(timeUntilTimeout)}`
+								? `Timeout in ${formatShortDuration(timeUntilTimeout)}`
 								: 'Timed out';
 						})()}
 					</span>

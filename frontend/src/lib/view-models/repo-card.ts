@@ -6,8 +6,9 @@
  */
 import { beadsFor, type Bead, type BeadChange } from './bead';
 import { beadRank } from './severity';
+import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
-export const REPO_TIERS = ['dev', 'test', 'staging', 'prod'] as const;
+export const REPO_TIERS = TIER_LIST;
 export type RepoChange = BeadChange & { /** 'merged' or a tier */ col: string };
 export type RepoCell = { tier: string; label: string; beads: Bead[] };
 export type RollupPart = { text: string; ink: 'danger' | 'held' | 'subtle' };

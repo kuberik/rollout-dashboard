@@ -52,7 +52,8 @@ export { deployableTags, approvalWrite };
 import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
 import { windowHeld, windowNameOf, windowOpensClause } from '$lib/view-models/window-words';
 import { heldHereOf, heldKeyOfHref } from '$lib/view-models/held-here.svelte';
-import { displayVersionForTag } from '$lib/version-utils';
+import { displayVersionForTag, shortRevisionOrNull } from '$lib/version-utils';
+import { TIERS as TIER_LIST, TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 import { gatePrettyOf } from '$lib/view-models/gate-pretty.svelte';
 import { githubAbsenceSentence } from '$lib/api/github';
 import { formatTransitionAt } from '$lib/api/schedules';
@@ -331,7 +332,7 @@ export type TChange = ChangeItem & { /** the person to print: the author, but ne
 	heldBuild: { build: string; title: string | null; author: string | null; person: string | null } | null;
 	/** the viewer can give the approval this change waits for (then it also shows in Mine) */
 	youApprove: boolean };
-const RANK_T: Record<TierKey, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+const RANK_T: Record<TierKey, number> = TIER_RANKS;
 const TWORD: Record<TierKey, string> = { dev: 'dev', test: 'test', staging: 'staging', prod: 'production' };
 type FxChange = { repo: string; title: string; mergedAt: string; mergeCommitSha: string; kind?: string; number?: number; author?: string; htmlUrl?: string };
 const chgList = (): FxChange[] => source().changes as unknown as FxChange[];
@@ -598,7 +599,7 @@ export type Environments = ReturnType<typeof environments>;
 
 /* ═══ apps ═══ */
 /** AD h: a build id is cut to 7 only when it is a git SHA (8-40 hex); tags like "4.42.0-42" are never truncated. */
-export const shortBuild = (v: string | null | undefined): string | null => (!v ? null : /^[0-9a-f]{8,40}$/.test(v) ? v.slice(0, 7) : v);
+export const shortBuild = shortRevisionOrNull; /* the one 7-character rule (version-utils) */
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$/;
 const semverCmp = (a: string, b: string): number => { const x = SEMVER.exec(a)!, y = SEMVER.exec(b)!; for (let k = 1; k <= 4; k++) { const d = +(x[k] ?? 0) - +(y[k] ?? 0); if (d) return d; } return 0; };
 /** the failing build is reported separately from the newest build (AD j) */
@@ -736,7 +737,7 @@ export function apps(state: HomeState) {
 		const behindOf = (p: AppPlace) => behindIn(order, p.version);
 		if (!w) {
 			/* a quiet app with a place behind the newest: the app page's "Ready to promote · prod 1 behind" */
-			const order: TierKey[] = ['dev', 'test', 'staging', 'prod'];
+			const order: TierKey[] = [...TIER_LIST];
 			const lag = order.map((t) => ({ t, ps: placeList.filter((p) => p.tier === t && p.currency !== 'none' && !p.onNewest && p.state !== 'failed') })).find((x) => x.ps.length);
 			if (lag) {
 				const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 0));

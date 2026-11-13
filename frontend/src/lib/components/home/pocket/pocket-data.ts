@@ -14,9 +14,10 @@ import { newestFirst, earliest } from '$lib/instant';
 import type { EnvState, HomeModel } from '$lib/view-models/home-model';
 import { changeBySha, homeModel, source, NOW, type HomeState } from '../sketch/home-data';
 import { buildView, type HomeView } from '../sketch/home-view';
+import { TIERS as TIER_LIST, TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 
 export type TierKey = 'dev' | 'test' | 'staging' | 'prod';
-export const TIERS: TierKey[] = ['dev', 'test', 'staging', 'prod'];
+export const TIERS: TierKey[] = [...TIER_LIST];
 export type Place = { app: string; env: string; label: string; state: EnvState; href: string; version: string | null; since: string | null; mine: boolean };
 export type Tier = {
 	key: TierKey;
@@ -280,7 +281,7 @@ export type ChangesDoor = { merged24: number; mine24: number; reach: Record<Tier
 export function changesDoor(state: HomeState): ChangesDoor {
 	const now = NOW.getTime();
 	const m = homeModel(state);
-	const rank: Record<TierKey, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+	const rank: Record<TierKey, number> = TIER_RANKS;
 	const rows: ChangeRow[] = [];
 	for (const ch of chgList()) {
 		const t = Date.parse(ch.mergedAt);

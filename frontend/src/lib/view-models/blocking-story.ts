@@ -84,7 +84,7 @@ import { heldBuilds } from './held';
 import { promotionBlock, promotionCandidates, blockingGateNames, type PromotionBlock } from './promotion';
 import { liveForPlace, type Fleet } from './failed-builds';
 import { formatTimeUntil, formatAbsoluteReopen } from '$lib/api/schedules';
-import { displayVersionForTag } from '$lib/version-utils';
+import { displayVersionForTag, shortRevisionOrNull } from '$lib/version-utils';
 import { countLabel } from '$lib/disclosure';
 import { stateWord } from '$lib/components/new/state-words';
 import {
@@ -774,7 +774,7 @@ export function withSchedules(
 
 type GateSummary = { name?: string; kind?: string | null; passing?: boolean; allowedVersions?: string[] | null };
 
-const shortRev = (rev: string | undefined): string => (rev ? rev.slice(0, 7) : '');
+const shortRev = (rev: string | undefined): string => shortRevisionOrNull(rev) ?? '';
 
 /** `eu-west-1`, or the tier when the site is the unnamed `default` of ANOTHER tier. */
 function siteName(site: string, tier: string, ownTier: string | null): string {

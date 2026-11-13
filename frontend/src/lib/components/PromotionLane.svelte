@@ -34,6 +34,7 @@
 		beads = undefined,
 		words = false,
 		yours = false,
+		youCan = undefined,
 		quietNoReleases = false,
 		sites = false,
 		reserve = false
@@ -55,6 +56,8 @@
 		words?: boolean;
 		/** the viewer can give the approval this lane waits on: its box says "Needs your approval" (approvalWord) instead of "Waiting for approval"; only with `words` (with `reserve` the box says "Waiting" and the title, picker row and banner say the long form) */
 		yours?: boolean;
+		/** per box: can the viewer give THIS place's approval (a lane can hold several, one of them the viewer's); overrides `yours` for the mark and the word of that box */
+		youCan?: (n: LaneNode) => boolean;
 		mutedRest?: boolean;
 		/** the rollout page says "no releases" once, in its Newer builds card: the boxes keep their names and stay silent */
 		quietNoReleases?: boolean;
@@ -76,7 +79,8 @@
 
 	const WORD: Record<NodeState, string> = { failed: 'Failing', stuck: 'Stuck', deploying: 'Deploying', checking: 'Checking', held: 'Held', behind: '', newest: '', none: '' };
 	/** a healthy box (behind / newest) says no word: its name and its lag are the whole statement */
-	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(yours) : 'Waiting') : WORD[n.state]);
+	const mine = (n: LaneNode) => (youCan ? youCan(n) : yours);
+	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(mine(n)) : 'Waiting') : WORD[n.state]);
 	/** nothing moves as state changes: every strip box reserves the width of the widest word IT can say (EnvRow `wordSlot`). The strip's approval
 	 *  word is always the short one ("Waiting"); "Needs your approval" stays in the title, the picker and the ask banner. */
 	const WORD_SLOT = [...new Set([...Object.values(WORD), 'Waiting', 'Deployed'].filter(Boolean))];
@@ -87,7 +91,7 @@
 	const stripInk = (n: LaneNode) => (WORD[n.state] ? toneInk(n.state) : 'text-fg-subtle');
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
 	const markOf = (n: LaneNode): EnvCell['mark'] =>
-		n.state === 'held' && n.card.heldCause === 'person' && yours ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined;
+		n.state === 'held' && n.card.heldCause === 'person' && mine(n) ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined;
 	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || severityRank(n.state) < severityRank(b.state) ? n : b), null));
 
 	const STATE_NOUN: Record<NodeState, string> = { failed: 'failing', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: '', newest: '', none: '' };
@@ -166,7 +170,7 @@
 				key: `${n.card.ns}/${n.card.name}`,
 				name: siteName(n),
 				wave: multiWave ? (n.card.wave ?? 1) : null,
-				state: n.state === 'held' && n.card.heldCause === 'person' ? (yours ? 'approval-yours' : 'approval') : SITE_STATE[n.state],
+				state: n.state === 'held' && n.card.heldCause === 'person' ? (mine(n) ? 'approval-yours' : 'approval') : SITE_STATE[n.state],
 				word: siteWord(n),
 				detail: siteDetail(n),
 				wordInk: toneInk(n.state),

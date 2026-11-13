@@ -30,6 +30,10 @@ import { getEnvironmentRank } from '../env-order';
 /** Canonical tiers, earliest first. */
 export const TIERS = ['dev', 'test', 'staging', 'prod'] as const;
 export type Tier = (typeof TIERS)[number];
+/** THE ONE TIER ORDER AS NUMBERS (dev 0 .. prod 3): every hand-kept `{ dev: 0, test: 1, staging: 2, prod: 3 }` reads this (dedup pass 3, 2026-11-13). */
+export const TIER_RANK: Record<Tier, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+/** a tier's rank; `unknown` (default: after prod) for a name the table does not know */
+export const tierRank = (t: string | null | undefined, unknown: number = TIERS.length): number => TIER_RANK[t as Tier] ?? unknown;
 
 const ALIASES: Record<string, Tier> = {
 	dev: 'dev',

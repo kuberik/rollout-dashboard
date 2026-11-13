@@ -20,7 +20,8 @@
 	import { deployActs } from '$lib/history-marks';
 	import { historyEntrySince } from '$lib/view-models/event-age';
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
-	import { startOfDayMs, zonedYMD } from '$lib/display-time';
+	import { startOfDayMs } from '$lib/display-time';
+	import { displayTimeZone } from '$lib/timezone.svelte';
 	import { now } from '$lib/stores/time';
 	import { href } from '$lib/paths';
 	import { avatarSrc } from '../data';
@@ -29,7 +30,8 @@
 	let { rollouts, environments = [], limit = 6 }: { rollouts: Rollout[]; environments?: Environment[]; limit?: number } = $props();
 
 	type Entry = { key: string; ts: string; kind: ActivityKind; current: boolean; env: string; theme: ReturnType<typeof getRolloutEnvironmentTheme>; from: string | null; to: string; actor: Actor };
-	const dayKey = (ts: string) => { const { year, month, day } = zonedYMD(new Date(ts)); return `${year}-${month}-${day}`; };
+	/* a day is the display zone's day: `startOfDayMs` (display-time.ts) is the one bucket rule */
+	const dayKey = (ts: string) => String(startOfDayMs(new Date(ts)));
 	const all = $derived.by<Entry[]>(() => {
 		const out: Entry[] = [];
 		const ranks = new Map<string, number>();
@@ -58,7 +60,7 @@
 	});
 	const totals = $derived.by(() => { const m = new Map<string, number>(); for (const e of all) { const k = dayKey(e.ts); m.set(k, (m.get(k) ?? 0) + 1); } return m; });
 	const failed = $derived(all.filter((e) => (e.kind === 'failed' || e.kind === 'failedHealthCheck') && dayKey(e.ts) === dayKey(all[0]?.ts ?? '')).length);
-	const label = (ts: string) => { const d = Math.round((startOfDayMs($now) - startOfDayMs(new Date(ts))) / 86_400_000); return d === 0 ? 'Today' : d === 1 ? 'Yesterday' : new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+	const label = (ts: string) => { const d = Math.round((startOfDayMs($now) - startOfDayMs(new Date(ts))) / 86_400_000); return d === 0 ? 'Today' : d === 1 ? 'Yesterday' : new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: displayTimeZone() }); };
 	const groups = $derived.by(() => {
 		const m = new Map<string, { label: string; key: string; rows: Entry[] }>();
 		for (const e of all.slice(0, limit)) {
