@@ -449,7 +449,8 @@
 		{@render envRow('')}
 		{#if failCheck}
 			<StatementBanner severity="failed" title="Deployment failed" check={failCheck}
-				secondary={[...(place ? [{ label: 'Open rollout', href: place, key: 'open-rollout' }] : []), ...(act && act.kind !== 'approve' ? [actAsAct()!] : [])]} primary={act?.kind === 'approve' ? actAsAct() : undefined} />
+				primary={actAsAct()}
+				secondary={place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : []} />
 		{:else if waitRow}
 			<!-- apps-7 Q2: the tab's own held banner (the shared StatementBanner: tint, 40px pause disc, the tab's sentence) -->
 			<StatementBanner severity={checkingNow ? 'checking' : 'held'} title={checkingNow ? 'Checking' : waitRow.state === 'awaiting-approval' ? approvalIn(rowAction(waitRow)?.kind === 'approve', placeName) : joinCause(`${placeName} is held: waiting on `, gateC)} message={checkingNow ? `${checkLeft ? checkLeft.replace(/\.$/, '') + '. ' : 'The health checks are running. '}${waitRow.state === 'awaiting-approval' ? `Then it waits for ${act?.kind === 'approve' ? 'your ' : ''}approval${placeName ? ' in ' + placeName : ''}.` : ''}`.trim() : waitRow.state === 'awaiting-approval' && wait?.build ? `${act?.kind === 'approve' ? 'Your approval' : 'An approval'} releases ${wait.build} ${waitScope ? 'in ' + waitScope : placeName ? 'to ' + placeName : ''}.`.replace(/ \.$/, '.') : nb ? (waitRow.state === 'awaiting-approval' ? `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting.` : `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting. Nothing promotes itself until someone clears the hold.`) : undefined}
