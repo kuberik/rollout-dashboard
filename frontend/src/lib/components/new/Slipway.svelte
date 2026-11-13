@@ -86,7 +86,7 @@
 		if (!facts) return null;
 		/* rollouts-8 V10: the newest build is NAMED (mono) and the fraction carries its unit */
 		const nb = newestBuild(row)?.newest ?? null;
-		return { label: 'Newest build', holdC: null as Cause | null, build: nb, value: !reachData.m ? facts : reachData.n === reachData.m ? `reached all ${reachData.m} places` : `reached ${reachData.n} of ${reachData.m} place${reachData.m === 1 ? '' : 's'}` };
+		return { label: 'Newest build', holdC: null as Cause | null, build: nb, value: !reachData.m ? facts : reachData.n === reachData.m ? `reached all ${reachData.m} place${reachData.m === 1 ? '' : 's'}` : `reached ${reachData.n} of ${reachData.m} place${reachData.m === 1 ? '' : 's'}` };
 	});
 	/* r7 U3: ONE state per item. An approval whose own deploy is still baking is "Checking" on its row and on the tab's pill; the pane says the same word with the clock ("Checking 5 min left"),
 	   and the waiting build the Approve acts on is named as such in the list */

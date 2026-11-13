@@ -532,8 +532,9 @@ export function newestLine(app: string, scenario: HomeState): string {
 	if (!r.m) return reachSentence(r);
 	/* named only when some place runs it (the same build the Runs-in rows call "on the newest") */
 	const nb = r.n > 0 ? r.build : null;
-	if (r.n === r.m) return nb ? `Newest build ${nb} runs in all ${r.m} places` : `All ${r.m} places run the newest build`;
-	return nb ? `Newest build ${nb} runs in ${r.n} of ${r.m} places` : `${r.n} of ${r.m} places run the newest build`;
+	const places = `${r.m} place${r.m === 1 ? '' : 's'}`;
+	if (r.n === r.m) return nb ? `Newest build ${nb} runs in all ${places}` : `All ${places} run the newest build`;
+	return nb ? `Newest build ${nb} runs in ${r.n} of ${places}` : `${r.n} of ${places} run the newest build`;
 }
 
 /* ═══ the opened object (CD1/CD9): the CHANGE's own build in the place, as the tab's Deployment-pipeline card reads it ═══ */

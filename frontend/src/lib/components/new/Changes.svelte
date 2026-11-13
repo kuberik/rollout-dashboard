@@ -9,7 +9,7 @@
 	 * repos with nothing in flight) -> "Team" (the others' repos, the same cards one step quieter). No page title, no rail: the old Crossing,
 	 * Needs you / On its way / Waiting / Landed groups, Team rail and Last 24 h retired with the old page (their facts live in the beads,
 	 * the Attention cards and the repo cards; Last 24 h on Home / Environments).
-	 * References: AlertPanel(change), SectionHeader(icon, rollup), AttentionBand/Card, RepoGrid/RepoCard/RepoCells, StrandRow(dense) for At rest, Card.
+	 * References: StatementBanner via FailureBanner (change line), SectionHeader(icon, rollup), AttentionBand/Card, RepoGrid/RepoCard/RepoCells, StrandRow(dense) for At rest, Card.
 	 * All composition lives in changes-page.ts (unit-tested); this file draws. Anchor ids: #attention, #your-changes, #at-rest, #team.
 	 */
 	import { InboxOutline, CodeBranchOutline, UsersGroupOutline } from 'flowbite-svelte-icons';

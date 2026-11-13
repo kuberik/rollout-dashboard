@@ -7,6 +7,7 @@
  * Derived from pocket's `compass` (the real HomeModel + raw histories): no new truth, only a new
  * grouping. Every card answers "which app, where, in what state, carrying whose change".
  */
+import { severityRank } from '$lib/view-models/severity';
 import type { AppEnv, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, liveViewer, type HomeState } from '../sketch/home-data';
 import { dur } from '../sketch/home-view';
@@ -20,7 +21,8 @@ export const ago = (iso: string | null | undefined) => (iso ? dur(NOW.getTime() 
 
 const tierOf = (e: { isProdRegion: boolean; tier: string }): TierKey =>
 	e.isProdRegion || e.tier === 'prod' ? 'prod' : e.tier === 'dev' ? 'dev' : e.tier === 'test' ? 'test' : 'staging';
-const RANK: Partial<Record<EnvState, number>> = { failed: 0, 'awaiting-approval': 1, deploying: 2, checking: 3, 'held-by-rule': 4 };
+/** the states that make a place "busy" (drawn on the card); their order is severity.ts's */
+const BUSY = new Set<EnvState>(['failed', 'awaiting-approval', 'deploying', 'checking', 'held-by-rule']);
 const GLYPH: Partial<Record<EnvState, GlyphState>> = { failed: 'failed', 'awaiting-approval': 'approval', deploying: 'deploying', checking: 'checking', 'held-by-rule': 'held' };
 const WORD: Partial<Record<EnvState, string>> = { failed: 'Failing', 'awaiting-approval': 'Waits for approval', deploying: 'Deploying', checking: 'Checking', 'held-by-rule': 'Held by a rule' };
 
@@ -69,14 +71,14 @@ export function depot(state: HomeState): Depot {
 			const here = a.envs.filter((e) => e.state !== 'not-deployed' && tierOf(e) === key);
 			if (!here.length) continue;
 			places += here.length;
-			const busy = here.filter((e) => RANK[e.state] !== undefined);
+			const busy = here.filter((e) => BUSY.has(e.state));
 			rest += here.length - busy.length;
 			if (busy.length) byApp.set(a.app, busy);
 			else restApps.push(a.app);
 		}
 		const cards: YardCard[] = [];
 		for (const [app, ps] of byApp) {
-			const worst = [...ps].sort((x, y) => (RANK[x.state] ?? 9) - (RANK[y.state] ?? 9))[0];
+			const worst = [...ps].sort((x, y) => severityRank(x.state) - severityRank(y.state))[0];
 			const same = ps.filter((p) => p.state === worst.state);
 			const ver = worst.version?.slice(0, 7) ?? null;
 			const mineCh = worst.myChanges.find((ch) => ch.state === worst.state) ?? worst.myChanges[0];
@@ -112,7 +114,7 @@ export function depot(state: HomeState): Depot {
 				lead: isLead
 			});
 		}
-		cards.sort((a, b) => (a.lead ? -1 : 0) - (b.lead ? -1 : 0) || (RANK[a.state] ?? 9) - (RANK[b.state] ?? 9) || Number(b.needsYou) - Number(a.needsYou) || a.app.localeCompare(b.app));
+		cards.sort((a, b) => (a.lead ? -1 : 0) - (b.lead ? -1 : 0) || severityRank(a.state) - severityRank(b.state) || Number(b.needsYou) - Number(a.needsYou) || a.app.localeCompare(b.app));
 		return { key, name: NAME[key], places, rest, cards, restApps };
 	}).filter((b) => b.places);
 

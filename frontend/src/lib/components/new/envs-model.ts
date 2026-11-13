@@ -157,7 +157,7 @@ export function envsModel(state: HomeState) {
 	/* U1: the un-regioned base place ("production", /envs/prod) is NOT a region: it is `base`, drawn apart; `busy`/`rest` are regions only */
 	const all = e.regions.map((r) => tile(r, false));
 	const base: RegionTile | null = e.regionless ? tile(e.regionless, true) : null;
-	/* F4: busy first (failing, hold, moving, approval), then the at-rest regions (folded in the canvas) */
+	/* F4: busy first (severity.ts's one order: failing, approval, hold, deploying, checking), then the at-rest regions (folded in the canvas) */
 	const bySev = (a: RegionTile, b: RegionTile) => MSEV(a.mark) - MSEV(b.mark) || b.failing - a.failing || b.holds - a.holds || b.moving - a.moving || b.approvals - a.approvals || a.label.localeCompare(b.label);
 	const busy = all.filter((r) => r.mark !== 'newest').sort(bySev);
 	const rest = all.filter((r) => r.mark === 'newest').sort(bySev);

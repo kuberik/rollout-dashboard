@@ -26,7 +26,7 @@
 	import AttentionBand from '$lib/components/AttentionBand.svelte';
 	import AttentionCard from '$lib/components/AttentionCard.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
-		import EnvStateBar from '../EnvStateBar.svelte';
+	import EnvStateBar from '../EnvStateBar.svelte';
 	import GangwayTile from './GangwayTile.svelte';
 	import DayRow from './DayRow.svelte';
 	import ListCard from '../ListCard.svelte';

@@ -7,7 +7,7 @@
 	 * ONE page template, three bands: the failure banner (the page's one StatementBanner) -> Attention (kit compact cards) -> "All rollouts"
 	 * (one list card: In flight / Waiting / Held groups of strand rows, then the At rest group of quiet rows). No page title, no header facts,
 	 * no rail: the old Find box, In flight drawing, Last 24 h and Recent deploys retired with the old page (their facts live on Home / Changes /
-	 * Environments). References: AlertPanel (the tab's banner, `change` line), SectionHeader (icon · 16/600 · rollup), AttentionBand/Card, the
+	 * Environments). References: StatementBanner via FailureBanner (the tab's banner, `change` line), SectionHeader (icon · 16/600 · rollup), AttentionBand/Card, the
 	 * StrandRow list card (kit `.lc` / `.lr`). A rollout in the banner or in Attention is not repeated in the groups; the header counts say so.
 	 * All composition lives in rollouts-page.ts (unit-tested); this file draws.
 	 */

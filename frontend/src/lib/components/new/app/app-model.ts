@@ -441,7 +441,7 @@ export const lagWord = (n: number): string =>
 	n === 0 ? 'Up to date' : `${n} build${n === 1 ? '' : 's'} behind`;
 /**
  * (No longer the ledger's order, see byTopology.) Where a place sits among the places of ONE stop: THE ONE SEVERITY ORDER (state-words `severity`: failing, waiting for approval, held,
- * checking, deploying, rolled back, healthy), so the place that needs reading is the first row under its build, never the last of five
+ * deploying, checking, rolled back, healthy), so the place that needs reading is the first row under its build, never the last of five
  * regions alphabetised. A healthy place a promotion gate holds a newer build from (it waits on its wave) ranks with the held places, not at rest.
  * Array.sort is stable: places of one rank keep the order they came in.
  */

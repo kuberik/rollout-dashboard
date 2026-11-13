@@ -677,15 +677,15 @@ lib/components/new/change/detail-model.ts	code	… in ……
 lib/components/new/change/detail-model.ts	code	… is failing: … newer build…${mine ?
 lib/components/new/change/detail-model.ts	code	… is the build before this change, last healthy … ago
 lib/components/new/change/detail-model.ts	code	… not affected
-lib/components/new/change/detail-model.ts	code	… of … places run the newest build
 lib/components/new/change/detail-model.ts	code	… of … prod regions
 lib/components/new/change/detail-model.ts	code	… of … run it
+lib/components/new/change/detail-model.ts	code	… of … run the newest build
 lib/components/new/change/detail-model.ts	code	… place…
 lib/components/new/change/detail-model.ts	code	… places
 lib/components/new/change/detail-model.ts	code	… prod regions
 lib/components/new/change/detail-model.ts	code	… runs
 lib/components/new/change/detail-model.ts	code	… waiting
-lib/components/new/change/detail-model.ts	code	All … places run the newest build
+lib/components/new/change/detail-model.ts	code	All … run the newest build
 lib/components/new/change/detail-model.ts	code	and $1
 lib/components/new/change/detail-model.ts	code	Checking in …
 lib/components/new/change/detail-model.ts	code	Deployed in …
@@ -697,8 +697,8 @@ lib/components/new/change/detail-model.ts	code	Final check
 lib/components/new/change/detail-model.ts	code	Held by a rule
 lib/components/new/change/detail-model.ts	code	last healthy
 lib/components/new/change/detail-model.ts	code	Newer build failed
-lib/components/new/change/detail-model.ts	code	Newest build … runs in … of … places
-lib/components/new/change/detail-model.ts	code	Newest build … runs in all … places
+lib/components/new/change/detail-model.ts	code	Newest build … runs in … of …
+lib/components/new/change/detail-model.ts	code	Newest build … runs in all …
 lib/components/new/change/detail-model.ts	code	not reached
 lib/components/new/change/detail-model.ts	code	Not reached
 lib/components/new/change/detail-model.ts	code	Not running anywhere yet
@@ -991,7 +991,7 @@ lib/components/new/Slipway.svelte	code	Newest build
 lib/components/new/Slipway.svelte	text	Next build
 lib/components/new/Slipway.svelte	code	Open rollout
 lib/components/new/Slipway.svelte	code	reached … of … place…
-lib/components/new/Slipway.svelte	code	reached all … places
+lib/components/new/Slipway.svelte	code	reached all … place…
 lib/components/new/Slipway.svelte	code	Rolled back from
 lib/components/new/Slipway.svelte	code	To deploy
 lib/components/new/Slipway.svelte	code	Your approval

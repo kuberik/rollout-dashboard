@@ -193,7 +193,7 @@ export function regionTally(
 		else if (n.state === 'deploying') add('deploying', id);
 		else add('on', id);
 	}
-	const order: RegionBucket['word'][] = ['failing on', 'checking', 'deploying', 'on', 'not deployed'];
+	const order: RegionBucket['word'][] = ['failing on', 'deploying', 'checking', 'on', 'not deployed'];
 	const buckets = [...keyed.values()].sort((a, b) => order.indexOf(a.word) - order.indexOf(b.word) || b.count - a.count);
 	return { total: nodes.length, buckets, heldBefore };
 }
