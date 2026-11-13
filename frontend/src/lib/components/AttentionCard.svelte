@@ -127,9 +127,9 @@
 			{#if meter}
 				<div class="mt-2" data-meter>{@render meter()}</div>
 			{:else if ratio && ratio.n > 1}
-				<div class="mt-2.5 flex" data-meter><RegionMeter k={ratio.k} n={ratio.n} ink={failed ? 'danger' : 'held'} label="{ratio.k} of {ratio.n} {fig.label}" /></div>
+				<div class="mt-2.5 flex" data-meter><RegionMeter class="flex-1" k={ratio.k} n={ratio.n} ink={failed ? 'danger' : 'held'} label="{ratio.k} of {ratio.n} {fig.label}" /></div>
 			{:else if fig.gauge}
-				<div class="relative mt-2 h-1 max-w-64 rounded-full bg-subtle" role="img" aria-label="{fig.value}{fig.unit} against the limit" data-gauge>
+				<div class="relative mt-2 h-1 rounded-full bg-subtle" role="img" aria-label="{fig.value}{fig.unit} against the limit" data-gauge>
 					<span class="absolute inset-y-0 left-0 rounded-full {fig.gauge.over ? 'bg-danger' : 'bg-fg-disabled'}" style:width="{Math.round(fig.gauge.fill * 100)}%"></span>
 					<span class="absolute -inset-y-0.5 w-px bg-fg-muted" style:left="{fig.gauge.limitAt * 100}%"></span>
 				</div>
