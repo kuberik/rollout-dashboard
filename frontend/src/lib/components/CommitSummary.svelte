@@ -10,6 +10,7 @@
 		type CommitInfo
 	} from '$lib/api/github';
 	import Avatar from './Avatar.svelte';
+	import AvatarStack from './AvatarStack.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { commitPullsQueryOptions } from '$lib/api/commit-pulls';
 
@@ -433,18 +434,7 @@
 			{/if}
 
 			{#if showAvatars && contributors.length > 0}
-				<span class="flex items-center -space-x-1.5">
-					{#each contributors.slice(0, 4) as c (c.author || c.sha)}
-						<span class="rounded-full ring-2 ring-surface" title={c.author}><Avatar name={c.author || 'unknown'} src={c.avatarUrl ?? null} size={20} /></span>
-					{/each}
-					{#if contributors.length > 4}
-						<span
-							class="t-meta flex h-5 w-5 items-center justify-center rounded-full bg-subtle text-fg-subtle ring-2 ring-surface"
-						>
-							+{contributors.length - 4}
-						</span>
-					{/if}
-				</span>
+				<AvatarStack people={contributors.map((c) => ({ name: c.author || 'unknown', src: c.avatarUrl ?? null }))} max={4} />
 			{/if}
 
 			{#if href}

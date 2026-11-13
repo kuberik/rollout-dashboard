@@ -59,8 +59,11 @@
 	// circle). From 24px the monogram takes a type-scale step: 24 draws the
 	// `t-label` size (11px), 32 the `t-ui-sm` size (12px) — no off-scale size
 	// (History AD r9: 13px was not on the scale).
-	// r34 r2-shared: 11/600 from 20px up (the type floor); the 16px one-letter mark keeps 10 so it sits in the disc with air.
-	const fontPx = $derived(size <= 16 ? 10 : 11);
+	// r34 r2-shared: 11/600 from 24px up; the 16px one-letter mark keeps 10 so it sits in the disc with air.
+	// Visual audit #8 (2026-11-13): 20px now uses the 10px the 16px mark already draws (a glyph inside a disc, not a
+	// text role, so the 11px type floor does not apply). At 11 two letters ran 13-17px wide in a
+	// 20px disc, so in an overlapping AvatarStack `PS AW MC` collided into one smeared word.
+	const fontPx = $derived(size <= 20 ? 10 : 11);
 </script>
 
 <span
