@@ -2229,9 +2229,10 @@
 																					size={16}
 																				/>
 																				{#if actor.kind === 'controller'}
-																					<span class="trigger-name">Automatic</span>
+																					<!-- a row with a skip fact keeps the word: an avatar alone right after "Skipped Business hours" would read as who skipped it -->
+																					<span class={skipped ? '' : 'trigger-name'}>Automatic</span>
 																				{:else}
-																					<span class="trigger-name max-w-40 truncate"
+																					<span class="{skipped ? '' : 'trigger-name '}max-w-40 truncate"
 																						>{actor.name}</span
 																					>
 																				{/if}
