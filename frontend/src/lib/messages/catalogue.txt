@@ -1132,6 +1132,7 @@ lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	code	Failed to load schedules
 lib/components/ScheduleStatus.svelte	text	Held by … rule … …
+lib/components/skeleton/RepoListSkeleton.svelte	aria-label	Loading your changes
 lib/components/SkipRuleModal.svelte	text	… failed.
 lib/components/SkipRuleModal.svelte	text	… of … selected
 lib/components/SkipRuleModal.svelte	text	… of … skipped.
