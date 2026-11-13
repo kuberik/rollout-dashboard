@@ -1476,9 +1476,7 @@
 		<div class="flex min-w-0 items-start gap-2.5">
 			<span class="mt-0.5">
 				{#if resolved}
-					<span class="inline-flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
-						<span class="bg-success-solid h-1.5 w-1.5 rounded-full"></span>
-					</span>
+					<StatusMark state="newest" />
 				{:else}
 					<StatusMark state="held" label="Held" />
 				{/if}

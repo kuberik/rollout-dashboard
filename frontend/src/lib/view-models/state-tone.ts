@@ -11,9 +11,10 @@
  *
  *   done        success   a calm green dot            held       held orange      failed   danger (the one solid disc)
  *   checking    progress  yellow, breathes           approval   held orange      stuck    warning amber
+ *   approval-yours  the SAME orange, plus the viewer's ring (`ring`): "you can approve this", against "someone else must" (approval)
  *   deploying   active    blue, sweeps               notreached dashed subtle ring (WaveMark's ring)   notaffected  dim subtle dot
  */
-export type ToneState = 'done' | 'checking' | 'deploying' | 'held' | 'approval' | 'failed' | 'stuck' | 'notreached' | 'notaffected';
+export type ToneState = 'done' | 'checking' | 'deploying' | 'held' | 'approval' | 'approval-yours' | 'failed' | 'stuck' | 'notreached' | 'notaffected';
 export type ToneHue = 'success' | 'progress' | 'active' | 'held' | 'danger' | 'warning' | 'subtle';
 
 export type Tone = {
@@ -27,12 +28,16 @@ export type Tone = {
 	ink: string;
 	/** the solid as a Tailwind background class (a corner dot, a legend swatch) */
 	bg: string;
+	/** a step disc's tint + glyph ink (StepDisc: the pipeline tab, the tray, the strand) */
+	disc: string;
 	/** StatusMark's chip (disc + edge + glyph colour), Tailwind classes */
 	chip: string;
 	/** 'disc' = filled; 'ring' = the hollow dashed not-reached ring; 'dim' = a quiet dot at reduced opacity */
 	shape: 'disc' | 'ring' | 'dim';
 	/** does the mark move (only these two ever animate) */
 	moves: boolean;
+	/** the viewer's own ask (the product marks "needs you" with the held line: `.ch-yours`, the yours bead, the field ring): a thin ring round the mark, null for every other state */
+	ring: string | null;
 };
 
 /** the word ink of a HUE (a rollup that names a hue, not a state: "danger", "held", "muted"); the state rows below read it too */
@@ -53,16 +58,17 @@ const hue = (h: Exclude<ToneHue, 'subtle'>) => ({ solid: `var(--k-${h}-solid)`, 
 const SUBTLE = { solid: 'var(--k-fg-subtle)', tint: 'var(--k-subtle)', line: 'var(--k-line-strong)' };
 
 export const TONE: Record<ToneState, Tone> = {
-	done: { hue: 'success', ...hue('success'), bg: 'bg-success-solid', ink: HUE_INK.muted, chip: 'bg-success-solid', shape: 'disc', moves: false },
-	checking: { hue: 'progress', ...hue('progress'), bg: 'bg-progress-solid', ink: HUE_INK.progress, chip: 'bg-progress-tint ring-progress-solid text-progress', shape: 'disc', moves: true },
-	deploying: { hue: 'active', ...hue('active'), bg: 'bg-active-solid', ink: HUE_INK.active, chip: 'bg-active-tint ring-active-line text-active', shape: 'disc', moves: true },
-	held: { hue: 'held', ...hue('held'), bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false },
-	approval: { hue: 'held', ...hue('held'), bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false },
+	done: { hue: 'success', ...hue('success'), disc: 'bg-success-tint text-success', bg: 'bg-success-solid', ink: HUE_INK.muted, chip: 'bg-success-solid', shape: 'disc', moves: false, ring: null },
+	checking: { hue: 'progress', ...hue('progress'), disc: 'bg-progress-tint text-progress', bg: 'bg-progress-solid', ink: HUE_INK.progress, chip: 'bg-progress-tint ring-progress-solid text-progress', shape: 'disc', moves: true, ring: null },
+	deploying: { hue: 'active', ...hue('active'), disc: 'bg-active-tint text-active', bg: 'bg-active-solid', ink: HUE_INK.active, chip: 'bg-active-tint ring-active-line text-active', shape: 'disc', moves: true, ring: null },
+	held: { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: null },
+	approval: { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: null },
+	'approval-yours': { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: 'var(--k-held-solid)' },
 	// Failed is the ONE solid disc (palette AD r3): white "!" on danger-solid, 4.33:1 light, 3.40:1 dark.
-	failed: { hue: 'danger', ...hue('danger'), bg: 'bg-danger-solid', ink: HUE_INK.danger, chip: 'bg-danger-solid ring-danger-solid text-white', shape: 'disc', moves: false },
-	stuck: { hue: 'warning', ...hue('warning'), bg: 'bg-warning-solid', ink: HUE_INK.warning, chip: 'bg-warning-tint ring-warning-line text-warning', shape: 'disc', moves: false },
-	notreached: { hue: 'subtle', ...SUBTLE, bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'ring', moves: false },
-	notaffected: { hue: 'subtle', ...SUBTLE, bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'dim', moves: false }
+	failed: { hue: 'danger', ...hue('danger'), disc: 'bg-danger-tint text-danger', bg: 'bg-danger-solid', ink: HUE_INK.danger, chip: 'bg-danger-solid ring-danger-solid text-white', shape: 'disc', moves: false, ring: null },
+	stuck: { hue: 'warning', ...hue('warning'), disc: 'bg-warning-tint text-warning', bg: 'bg-warning-solid', ink: HUE_INK.warning, chip: 'bg-warning-tint ring-warning-line text-warning', shape: 'disc', moves: false, ring: null },
+	notreached: { hue: 'subtle', ...SUBTLE, disc: 'bg-subtle text-fg-subtle', bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'ring', moves: false, ring: null },
+	notaffected: { hue: 'subtle', ...SUBTLE, disc: 'bg-subtle text-fg-subtle', bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'dim', moves: false, ring: null }
 };
 
 /** the product's other spellings of the same states */
@@ -71,7 +77,7 @@ const ALIAS: Record<string, ToneState> = {
 	checking: 'checking', baking: 'checking', retrying: 'checking',
 	deploying: 'deploying', current: 'deploying', promoting: 'deploying',
 	held: 'held', hold: 'held', 'held-by-rule': 'held',
-	approval: 'approval', waiting: 'approval', 'awaiting-approval': 'approval', 'approval-yours': 'approval',
+	approval: 'approval', waiting: 'approval', 'awaiting-approval': 'approval', 'approval-yours': 'approval-yours',
 	failed: 'failed', failing: 'failed',
 	stuck: 'stuck',
 	notreached: 'notreached', 'not-reached': 'notreached', none: 'notreached',

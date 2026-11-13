@@ -5,7 +5,8 @@ import type { FamilyProgressStep } from './changes';
  * plain dot in that state's colour; a wave in mixed states is a pie split by the share of sites in each state. Pure: the slice
  * order is fixed by KIND_ORDER (never by site order), so the same sites always draw the same pie.
  */
-export type MarkSiteState = 'done' | 'checking' | 'deploying' | 'held' | 'approval' | 'failed' | 'stuck' | 'notreached' | 'notaffected';
+export type MarkSiteState = 'done' | 'checking' | 'deploying' | 'held' | 'approval' | 'approval-yours' | 'failed' | 'stuck' | 'notreached' | 'notaffected';
+/** `approval-yours` is an approval the VIEWER can give: the same orange as `approval`, drawn with a ring (state-tone.ts `ring`). */
 /** the kinds that get their own colour: approval folds into held (both are the held orange) */
 export type MarkKind = 'done' | 'checking' | 'deploying' | 'held' | 'stuck' | 'failed' | 'notreached' | 'notaffected';
 
@@ -24,9 +25,9 @@ const NOUN: Record<MarkKind, string> = {
 export const ANIMATED: ReadonlySet<MarkKind> = new Set<MarkKind>(['checking', 'deploying']);
 
 export type WaveSlice = { kind: MarkKind; count: number; share: number; from: number; to: number };
-export type WaveMark = { slices: WaveSlice[]; mixed: boolean; label: string };
+export type WaveMark = { slices: WaveSlice[]; mixed: boolean; label: string; /** some site is an approval the viewer can give: the mark carries the viewer's ring */ yours: boolean };
 
-export const kindOf = (s: MarkSiteState): MarkKind => (s === 'approval' ? 'held' : s);
+export const kindOf = (s: MarkSiteState): MarkKind => (s === 'approval' || s === 'approval-yours' ? 'held' : s);
 
 /** `prefix`: "Wave 1" or the tier name. The label sums the sites: "Wave 1: 1 deployed, 1 checking". */
 export function waveMark(sites: { state: MarkSiteState }[], prefix = ''): WaveMark {
@@ -43,7 +44,8 @@ export function waveMark(sites: { state: MarkSiteState }[], prefix = ''): WaveMa
 		at += share;
 	}
 	const sum = slices.map((s) => `${s.count} ${NOUN[s.kind]}`).join(', ');
-	return { slices, mixed: slices.length > 1, label: (prefix ? prefix + ': ' : '') + (sum || 'no sites') };
+	const yours = sites.some((x) => x.state === 'approval-yours');
+	return { slices, mixed: slices.length > 1, label: (prefix ? prefix + ': ' : '') + (sum || 'no sites') + (yours ? ' (you can approve)' : ''), yours };
 }
 
 /** SVG path of one pie slice (fractions of a turn, clockwise from 12 o'clock) in a box centred on (cx, cy). A full turn is a circle. */

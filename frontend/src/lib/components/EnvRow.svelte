@@ -66,7 +66,7 @@
 		title?: string;
 		/** `getEnvironmentThemeStyle(theme)` for the tab's current fill */
 		style?: string;
-		mark?: { state: 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'approval' };
+		mark?: { state: 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'approval' | 'approval-yours' };
 		word?: string;
 		/**
 		 * NOTHING MOVES AS STATE CHANGES (owner 2026-11-12, "the boxes change width when 'Deploying' appears"): every word this box can ever

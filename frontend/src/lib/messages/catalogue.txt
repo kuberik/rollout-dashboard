@@ -775,6 +775,7 @@ lib/components/new/data.ts	code	GitHub did not answer.
 lib/components/new/data.ts	code	Held by
 lib/components/new/data.ts	code	held by a rule
 lib/components/new/data.ts	code	Held by a rule
+lib/components/new/data.ts	code	Held in …
 lib/components/new/data.ts	code	held: …
 lib/components/new/data.ts	code	In … · not in … yet
 lib/components/new/data.ts	code	in …${hc.window?.opens ?
@@ -1699,6 +1700,7 @@ lib/view-models/repo-card.ts	code	… waiting
 lib/view-models/revision-coverage.ts	code	: envs}
 lib/view-models/revision-coverage.ts	code	… · has not reached … yet
 lib/view-models/revision-coverage.ts	code	… · held in …
+lib/view-models/revision-coverage.ts	code	… border-transparent
 lib/view-models/revision-coverage.ts	code	… deploying it
 lib/view-models/revision-coverage.ts	code	… has not reached … yet
 lib/view-models/revision-coverage.ts	code	… have moved past it
@@ -1846,6 +1848,7 @@ lib/view-models/waits-for-text.ts	code	the deploy window to reopen
 lib/view-models/waits-for-text.ts	code	to allow
 lib/view-models/waits-for-text.ts	code	to deploy
 lib/view-models/waits-for-text.ts	code	to ship
+lib/view-models/wave-mark.ts	code	(you can approve)
 lib/view-models/wave-mark.ts	code	M… …a… … 0 1 1 0 …a… … 0 1 1 0 …Z
 lib/view-models/wave-mark.ts	code	M… …L…A… … 0 … 1 …Z
 lib/view-models/wave-mark.ts	code	no sites

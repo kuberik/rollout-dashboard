@@ -3119,11 +3119,7 @@
 											     mark like its neighbour, not the 6px rest dot alone:
 											     the rest dot inside StatusMark's own tint + line
 											     circle (success hue). -->
-											<span
-												class="bg-success-tint ring-success-line inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 ring-inset"
-											>
-												<span class="bg-success-solid h-1.5 w-1.5 rounded-full"></span>
-											</span>
+											<StatusMark state="newest" />
 										{:else}
 											<StatusMark state={mark} />
 										{/if}

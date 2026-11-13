@@ -72,7 +72,6 @@ const SEV = (s: string): number => beadRank(s);
 /** a ride's own state as a bead state: an approval the viewer can give is `approval-yours` */
 function beadState(r: Ride): BeadState {
 	if (r.state === 'approval') return rideAction(r)?.kind === 'approve' ? 'approval-yours' : 'approval';
-	if (r.state === 'healthy') return 'checking';
 	return r.state as BeadState;
 }
 /** the column a change sits in: a held/waiting change in the tier it reached (null = merged, not deployed yet), a moving / failing one where it is */

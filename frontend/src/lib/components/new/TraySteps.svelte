@@ -9,7 +9,8 @@
 	 * Why no existing component fits: the tab's list is inline in a 1,600-line card bound to a live Rollout object.
 	 * STRAND MODE (S2): `layout="strand"` is a one-line adapter over MiniPipeline.svelte (the one strand drawing). The vertical LIST mode stays here: it is a different job (a selectable nav with chips and a detail pane), not a strand, and its 44px rows have no pitch to equalise.
 	 */
-	import { CheckCircleSolid, ExclamationCircleSolid, ClockSolid } from 'flowbite-svelte-icons';
+	import StepDisc from '$lib/components/StepDisc.svelte';
+	import { TONE } from '$lib/view-models/state-tone';
 	import type { Step } from './data';
 	import { stepTone } from './rollout-view';
 	import MiniPipeline from './MiniPipeline.svelte';
@@ -27,10 +28,10 @@
 	/* the tab: a deploying stage is IN PROGRESS (blue), the final check is CHECKING (progress yellow) */
 	const chk = (s: Step) => stepTone(s, checkWord === 'Deploying' ? 'deploying' : 'checking') === 'checking';
 	const chipOf = (s: Step) => (s.state === 'active' && noActiveChip ? '' : s.state === 'active' ? (s.name === 'Check' ? checkWord : 'In progress') : s.state === 'todo' ? 'Pending' : s.state === 'hold' ? (noHoldChip ? '' : 'Waiting') : '');
-	const accent = (s: Step) => (s.state === 'fail' ? 'bg-danger-solid' : s.state === 'done' ? 'bg-success-solid' : chk(s) ? 'bg-progress-solid' : 'bg-active-solid');
-	/* inbox-14 (N85, additive): the tab's own spinner colours (DeploymentPipelineCard): the -solid hue ring, never currentColor at 30%, which vanished in light */
-	const spin = (s: Step) => (chk(s) ? 'border-progress-solid/40 border-t-progress-solid' : 'border-active-solid/40 border-t-active-solid');
-	const disc = (s: Step) => (s.state === 'done' ? 'bg-success-tint text-success' : s.state === 'fail' ? 'bg-danger-tint text-danger' : chk(s) ? 'bg-progress-tint text-progress' : s.state === 'active' ? 'bg-active-tint text-active' : 'bg-subtle text-fg-disabled'); /* inbox-8 (N27): a pending clock is the faintest mark in light, so the running ring is the strongest */
+	const toneOfStep = (s: Step) => (s.state === 'fail' ? 'failed' : s.state === 'done' ? 'done' : chk(s) ? 'checking' : 'deploying') as 'failed' | 'done' | 'checking' | 'deploying';
+	const accent = (s: Step) => TONE[toneOfStep(s)].bg;
+	/* the disc is StepDisc's: a hold and a todo step draw the clock (the tray never drew a pause here) */
+	const discState = (s: Step) => (s.state === 'done' ? 'done' : s.state === 'fail' ? 'failed' : s.state === 'active' ? (chk(s) ? 'checking' : 'deploying') : 'todo');
 	const chipTone = (s: Step) => (chk(s) ? 'border-progress-line text-progress' : s.state === 'active' ? 'border-active-line text-active' : 'border-line text-fg-subtle');
 </script>
 
@@ -46,17 +47,7 @@
 			{#if i < steps.length - 1}<span aria-hidden="true" class="absolute bottom-0 left-[27px] top-[34px] w-0.5 bg-line-strong"></span>{/if}
 			<div class="relative flex h-11 items-center gap-3 pl-4 pr-3 {on ? 'bg-selected' : ''}">
 				{#if on}<span aria-hidden="true" class="absolute inset-y-0 left-0 w-0.5 {accent(s)}"></span>{/if}
-				<span class="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full {disc(s)}" data-node>
-					{#if s.state === 'done'}
-						<CheckCircleSolid class="h-4 w-4" aria-hidden="true" />
-					{:else if s.state === 'fail'}
-						<ExclamationCircleSolid class="h-4 w-4" aria-hidden="true" />
-					{:else if s.state === 'active'}
-						<span class="h-4 w-4 animate-spin rounded-full border-2 {spin(s)}" aria-hidden="true"></span>
-					{:else}
-						<ClockSolid class="h-4 w-4" aria-hidden="true" />
-					{/if}
-				</span>
+				<span class="relative z-10 flex h-6 w-6 shrink-0" data-node><StepDisc state={discState(s)} class="h-6 w-6" /></span>
 				<span class="min-w-0 flex-1 truncate {s.state === 'fail' ? 't-card-title text-danger' : on ? 't-card-title text-fg' : 't-body text-fg-muted'}">{s.name}</span>
 				{#if chipOf(s)}<span class="chip t-label chip-wide shrink-0 {chipTone(s)}">{chipOf(s)}</span>{/if}
 				<span class="sr-only">{WORD[s.state]}</span>

@@ -14,7 +14,9 @@ import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, type HomeState } from '../sketch/home-data';
 import { changesDoor, compass, TIERS, type TierKey } from '../pocket/pocket-data';
 import { ago, isMe, pretty } from '../depot/depot-data';
-import type { GlyphState } from '../depot/StateGlyph.svelte';
+import type { GlyphState } from '../depot/depot-data';
+import { shortRevisionOrNull } from '$lib/version-utils';
+import { TIERS as TIER_LIST, TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 
 export { ago, pretty, isMe };
 export const TIER_NAME: Record<TierKey, string> = { dev: 'Dev', test: 'Test', staging: 'Staging', prod: 'Production' };
@@ -32,7 +34,7 @@ const glyphOf = (s: EnvState): GlyphState =>
 
 /** craft r6 (N1): the environments an app really has, in promotion order: the SAME list the app tab's environment strip draws
  *  (dev | test | staging | prod, only those the app has). A change spanning several apps takes the union. */
-const TORDER: TierKey[] = ['dev', 'test', 'staging', 'prod'];
+const TORDER: TierKey[] = [...TIER_LIST];
 export function appTiers(m: { apps: { app: string; envs: { isProdRegion: boolean; tier: string }[] }[] }, names: string[]): TierKey[] {
 	const have = new Set<TierKey>();
 	for (const a of m.apps) if (names.includes(a.app)) for (const e of a.envs) have.add(tierOf(e));
@@ -81,7 +83,7 @@ export type RestApp = { app: string; places: number; tiers: TierKey[]; href: str
 const isLiveHealthy = (s: string) => s !== 'failed' && s !== 'not-deployed' && s !== 'deploying' && s !== 'checking';
 
 /** craft r2: a git sha shortens to 7; a semver tag ("4.43.0-43") is already short and is never cut. */
-const shortVersion = (v: string | null | undefined): string | null => (!v ? null : /^[0-9a-f]{8,40}$/.test(v) ? v.slice(0, 7) : v);
+const shortVersion = shortRevisionOrNull; /* the one 7-character rule (version-utils) */
 
 export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.apps) {
 	const c = compass(state);
@@ -265,7 +267,7 @@ export type ChangeItem = {
 	/** craft r5 (D3): the change was rolled back where it stood: it is not "landed" (group stays 'landed' for older versions; v09 splits it out) */
 	rolledBack?: boolean;
 };
-const RANK_T: Record<TierKey, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+const RANK_T: Record<TierKey, number> = TIER_RANKS;
 const placeWord = (tier: TierKey, labels: string[]) =>
 	tier === 'prod' ? (labels.length > 1 ? `${labels.length} prod regions` : labels[0] === 'prod' ? 'production' : labels[0]) : labels[0];
 
@@ -452,7 +454,7 @@ export type AppItem = {
 export function apps(state: HomeState) {
 	const R = rollouts(state);
 	const c = R.c;
-	const RT: Record<TierKey, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+	const RT: Record<TierKey, number> = TIER_RANKS;
 	const items: AppItem[] = c.apps.map((a) => {
 		const model = c.m.apps.find((x) => x.app === a.app)!;
 		const rows = R.rows.filter((r) => r.app === a.app);

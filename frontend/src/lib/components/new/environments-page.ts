@@ -9,11 +9,12 @@
  * that failed or was rolled back says so ("failed 3m") where the mock prints the age alone.
  */
 import { siteCount, siteKey } from '$lib/view-models/regions';
+import { TONE } from '$lib/view-models/state-tone';
 import { envsModel, plural, type Mark } from './envs-model';
 import { waveHold } from './app/app-model';
 import { apps, placeHolds, type PlaceHold, inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
 
-export type Ink = 'danger' | 'held' | 'active' | 'muted';
+export type Ink = 'danger' | 'held' | 'active' | 'progress' | 'muted';
 export type StatePart = { text: string; you?: string };
 export type TileMark = 'failed' | 'approval-yours' | 'approval' | 'deploying' | 'checking' | 'rest';
 export type TileLast = { app: string; build: string; age: string; word: string | null; you: boolean; author: string | null; href: string };
@@ -36,9 +37,9 @@ export function stateLine(t: { places: number; failing: number; waiting: number;
 	if (t.moving) parts.push({ text: `${t.moving} ${movingWord}` });
 	if (t.rest) parts.push({ text: `${t.rest} healthy` });
 	const mv: TileMark = movingWord === 'checking' ? 'checking' : 'deploying';
-	if (t.failing) return { lead: { text: `${t.failing} failing`, ink: 'danger' }, parts, mark: 'failed' };
-	if (t.waiting) return { lead: { ...parts.shift()!, ink: 'held' }, parts, mark: t.yours ? 'approval-yours' : 'approval' };
-	if (t.moving) return { lead: { ...parts.shift()!, ink: 'active' }, parts, mark: mv };
+	if (t.failing) return { lead: { text: `${t.failing} failing`, ink: TONE.failed.hue as Ink }, parts, mark: 'failed' };
+	if (t.waiting) return { lead: { ...parts.shift()!, ink: TONE.held.hue as Ink }, parts, mark: t.yours ? 'approval-yours' : 'approval' };
+	if (t.moving) return { lead: { ...parts.shift()!, ink: TONE[mv].hue as Ink }, parts, mark: mv }; /* the word's ink is the mark's tone: "2 checking" is progress yellow beside the yellow clock, "2 deploying" active blue */
 	return { lead: { text: `All ${t.places} healthy`, ink: 'muted' }, parts: [], mark: 'rest' };
 }
 

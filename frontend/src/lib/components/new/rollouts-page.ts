@@ -22,6 +22,7 @@ import { failedBannerTitle } from '$lib/view-models/banner';
 import { causeText, joinCause, gateLabelText, labelPart, type Cause } from '$lib/view-models/gate-label';
 import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import { regionsPhrase, siteCount } from '$lib/view-models/regions';
+import { TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 
 const TIER_WORDS = new Set(['production', 'prod', 'staging', 'dev', 'test']);
 
@@ -159,7 +160,7 @@ function restSentence(p: { state: string; href: string }, settled: boolean): str
 }
 /** the rows that have no section of their own on the page above: at rest = every place not covered by a row, healthy or rolled back */
 function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState, settled: boolean): RestRow[] {
-	const order: Record<string, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+	const order: Record<string, number> = TIER_RANKS;
 	const covered = (p: { href: string; label: string; tier: string }, app: string) =>
 		rows.some((r) => r.href === p.href || (r.app === app && r.tier === p.tier && (r.regions.includes(p.label))));
 	const out: (RestRow & { o: number })[] = [];

@@ -1,4 +1,4 @@
-import type { RowState } from './Mark16.svelte';
+export type RowState = 'failed' | 'stuck' | 'approval' | 'deploying' | 'checking' | 'held' | 'waiting' | 'rest' | 'arrived' | 'rolledback';
 import type { EnvPipeline } from '$lib/view-models/home-model';
 import type { TierKey } from '../roster-data';
 /** craft r1: ONE change, ONE mark. A change in the 'waiting' group is the hollow ring unless the data says it is held by a rule or waits for approval (the tab's own state). */
@@ -27,7 +27,7 @@ export const failingAt = (p: EnvPipeline | null | undefined, bakeWord = false) =
 	return { text: s ? `Failing at ${s}` : 'Failing', adverse: 'Failing' };
 };
 
-const T: TierKey[] = ['dev', 'test', 'staging', 'prod'];
+const T: TierKey[] = [...TIER_LIST];
 const HELD = new Set(['awaiting-approval', 'held-by-rule', 'not-deployed']);
 type Env = { tier: string; isProdRegion?: boolean; version: string | null; state: string };
 const tierOf = (e: Env): TierKey => (e.isProdRegion || e.tier === 'prod' ? 'prod' : e.tier === 'dev' ? 'dev' : e.tier === 'test' ? 'test' : 'staging');
@@ -56,6 +56,7 @@ export const isHoldTone = (tone: string) => tone === 'you' || tone === 'waiting'
  * travelled (caption = where it stands: "production"). Same function per kind on every page.
  */
 import type { RolloutRow } from '../roster-data';
+import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 export type Seg = 'done' | 'active' | 'hold' | 'todo' | 'fail';
 export type Meter = { kind: 'steps' | 'reach'; segs: Seg[]; cap: string; adverse?: string; label: string; /** craft r6 (N1): a reach meter's nodes: the environments the app has, in promotion order */ tiers?: TierKey[] };
 export type ReachTone = 'failed' | 'waiting' | 'you' | 'moving' | 'landed';
@@ -102,7 +103,7 @@ export function rowMeter(r: RolloutRow): Meter | null {
 	return { kind: 'steps', segs, cap: `${done}/${segs.length} steps`, label: `${done} of ${segs.length} steps done` };
 }
 
-const TIERS4: TierKey[] = ['dev', 'test', 'staging', 'prod'];
+const TIERS4: TierKey[] = [...TIER_LIST];
 const TIER_WORD: Record<TierKey, string> = { dev: 'dev', test: 'test', staging: 'staging', prod: 'production' };
 /** the reach meter of a change or an app: the tiers its build has travelled, the state drawn at the tier where it happens */
 export function reachMeter(reach: TierKey | null, at: TierKey | null, tone: ReachTone, outcome: string | null = null, tiers: TierKey[] = TIERS4): Meter | null {

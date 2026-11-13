@@ -11,6 +11,7 @@
 	 * wants dots only, one per wave. BORROWS: the 16px slot and the state solids of StatusMark / the tabs' rest dot, Linear's pie status.
 	 *
 	 * FIXED SIZE (0px rule): always a 16px slot holding a 10px disc, whatever the state, so a state change repaints and moves nothing.
+	 * YOURS: an approval the viewer can give (`mark.yours`) adds a 1px ring in the held orange at r 6.75, inside the 16px slot: same size, nothing moves.
 	 * MOTION: only the checking slice breathes (opacity halo, 1.6s) and only the deploying slice sweeps (a rotating wedge, 2.4s, no
 	 * real progress is exposed per site, so it is indeterminate). transform + opacity only, inside the slot. Off under
 	 * prefers-reduced-motion; CSS animations also pause in hidden tabs and off-screen.
@@ -26,6 +27,7 @@
 </script>
 
 <svg class="wm" width="16" height="16" viewBox="0 0 16 16" role="img" aria-label={mark.label} data-wave-mark data-kinds={mark.slices.map((s) => s.kind).join(' ')}>
+	{#if mark.yours}<circle data-yours cx="8" cy="8" r="6.75" fill="none" stroke={TONE['approval-yours'].ring ?? undefined} stroke-width="1" />{/if}
 	{#if hollow}
 		<circle cx="8" cy="8" r={R - 0.5} fill="none" stroke={TONE[mark.slices[0].kind].solid} stroke-width="1" stroke-dasharray={mark.slices[0].kind === 'notreached' ? '2 1.5' : undefined} />
 	{:else}

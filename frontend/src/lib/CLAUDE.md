@@ -1245,7 +1245,7 @@ per family, aggregated over services) plus the frontier fact and time in the cur
 
 A new region reuses the component that plays its role on Home, /rollouts or the rollout detail
 (Card + 47px header + rollup, dot section headers, rail `dl` cards, RolloutGrid rows, `.btn`,
-Chip, HeldBanner, `t-*`). What is genuinely new is designed inside that grammar and its doc
+Chip, StatementBanner, `t-*`). What is genuinely new is designed inside that grammar and its doc
 comment says what role it plays, why nothing existing fits, and which reference lends its
 proportions. A list without a card, a page ≥1024 in one column, or an old role drawn a new way
 is a defect; a new object with its reason written down is not.
@@ -1261,13 +1261,14 @@ more than once and collapsed each to one place to draw it:
 
 - **Rollout name (D-4).** Six drawings (12/500 mono, 14/600 mono, 13/500 mono, 12.5/400 sans,
   14 sans) are now `.t-rollout-name` (14px/600 mono) / `.t-rollout-name--dense` (12px, same
-  family and weight) in `app.css`, with `RolloutName.svelte` as the component wrapper most
-  call sites should reach for. Mono because a rollout's name is an identifier, not prose;
+  family and weight) in `styles/language.css` (the class has no users today; call sites type the
+  `t-code` roles directly, and there is no `RolloutName.svelte` wrapper). Mono because a rollout's name is an identifier, not prose;
   600 because `/rollouts` — 25 of the six drawings — already used it at that weight.
 - **Version/sha text (D-5/D-18).** No new role — `t-code` (13px/500 mono) and `t-code-sm`
   (11.5px/400 mono) already covered every size; the defect was call sites typing a sans face
-  or a one-off `font-mono` instead of adopting them. `VersionText.svelte` is the wrapper for
-  prose contexts (a version outside a chip — a picker row, a dialog heading, a page `h1`).
+  or a one-off `font-mono` instead of adopting them. There is no `VersionText.svelte`: a version
+  outside a chip (a picker row, a dialog heading, a page `h1`) is a `t-code` / `t-code-sm` span,
+  shortened by `shortenVersion` / `shortRevision` (`utils.ts`, `version-utils.ts`).
   Change/commit/repo page headings drop Montserrat for the product's own mono/display roles.
 - **State pills (D-11/D-12).** `Chip` gained `role="ready"` (zero new colour — `MINT`, same as
   `newest`) and `role="issue"` (zero new colour — `ADVERSE`, same as `failing`/`blocked`/

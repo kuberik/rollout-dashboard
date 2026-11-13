@@ -170,6 +170,11 @@ export function shortRevision(revision: string): string {
 	return revision.length > 7 ? revision.slice(0, 7) : revision;
 }
 
+/** `shortRevision` for a value that may be absent: null for none (the one 7-character rule; data.ts `shortBuild` and the roster's short version are this) */
+export function shortRevisionOrNull(revision: string | null | undefined): string | null {
+	return revision ? shortRevision(revision) : null;
+}
+
 /**
  * ⭐ THE ONE PLACE A RAW OCI TAG BECOMES THE BUILD NAME THE PRODUCT PRINTS.
  *

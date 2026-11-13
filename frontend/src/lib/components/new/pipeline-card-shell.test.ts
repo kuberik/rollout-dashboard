@@ -4,11 +4,12 @@ import { describe, expect, it } from 'vitest';
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), 'utf8');
 
 describe('PipelineCard header mark', () => {
-	it('draws the in-flight mark with the product spinner, never a hand-rolled span', () => {
+	it('draws the header mark with the one StatusMark, never a hand-rolled spinner or icon', () => {
 		const src = read('./PipelineCard.svelte');
-		expect(src).toContain("import StatusSpinner from '$lib/components/StatusSpinner.svelte'");
-		expect(src).toMatch(/<StatusSpinner size="4" color=\{st === 'checking' \? 'yellow' : 'blue'\}/);
+		expect(src).toContain("import StatusMark from '$lib/components/StatusMark.svelte'");
+		expect(src).toMatch(/<StatusMark state=\{MARK\[st\]\} \/>/);
 		expect(src).not.toContain('border-active-solid/40');
+		expect(src).not.toContain('as never');
 	});
 });
 

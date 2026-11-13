@@ -2,6 +2,10 @@
 
 <script lang="ts">
 	import Leaving from './Leaving.svelte';
+	import StepDisc from './StepDisc.svelte';
+	import { formatShortDuration } from '$lib/view-models/stage-advance';
+	import StatusSpinner from './StatusSpinner.svelte';
+	import { TONE } from '$lib/view-models/state-tone';
 	import { smoothHeight } from '$lib/smooth-height';
 	import { steadyHeight } from '$lib/steady-height';
 	import { deployKey, isDeployInFlight, pipelineSlots } from '$lib/view-models/pipeline-card';
@@ -118,19 +122,6 @@
 			default: return 0;
 		}
 	}
-
-	function formatDurationFromMs(ms: number): string {
-		if (ms <= 0) return '0s';
-		const s = Math.floor(ms / 1000);
-		const m = Math.floor(s / 60);
-		const h = Math.floor(m / 60);
-		const d = Math.floor(h / 24);
-		if (d > 0) return `${d}d ${h % 24}h`;
-		if (h > 0) return `${h}h ${m % 60}m`;
-		if (m > 0) return `${m}m ${s % 60}s`;
-		return `${s}s`;
-	}
-
 
 	type NodeStatus = 'done' | 'running' | 'paused' | 'failed' | 'pending';
 
@@ -494,18 +485,8 @@
 	);
 
 	// Styling helpers
-	// Pastel circle bg + colored icon — matches `getStatusCircleClass` in
-	// `lib/bake-status.ts` (used for all other status circles across the
-	// dashboard) so the pipeline stages don't read as a different style.
-	function circleBg(status: NodeStatus): string {
-		return {
-			done: 'bg-success-tint text-success',
-			running: 'bg-active-tint text-active',
-			paused: 'bg-progress-tint text-progress',
-			failed: 'bg-danger-tint text-danger',
-			pending: 'bg-subtle text-fg-subtle'
-		}[status];
-	}
+	/** a node's status as the one state-tone key (the disc, the ping and the sub-dot all read the table) */
+	const nodeTone = (status: NodeStatus) => (({ done: 'done', running: 'deploying', paused: 'checking', failed: 'failed', pending: 'notreached' }) as const)[status];
 
 	/**
 	 * ⛔ THE STEP LABEL IS THE CHIP ATOM. (2026-09-03, from the human: "typography
@@ -526,25 +507,15 @@
 		}[status];
 	}
 
+	/** the sub-dot / ping fill: the status's solid; a pending node is the quiet grey line */
 	function subDotBg(status: NodeStatus): string {
-		return {
-			done: 'bg-success-solid',
-			running: 'bg-active-solid',
-			paused: 'bg-progress-solid',
-			failed: 'bg-danger-solid',
-			pending: 'bg-line-strong'
-		}[status];
+		return status === 'pending' ? 'bg-line-strong' : TONE[nodeTone(status)].bg;
 	}
 
+	/** the selected row's left edge: the status's solid (a pending node leans on the active blue) */
 	function leftEdgeAccent(status: NodeStatus, selected: boolean): string {
 		if (!selected) return 'bg-transparent';
-		return {
-			done: 'bg-success-solid',
-			running: 'bg-active-solid',
-			paused: 'bg-progress-solid',
-			failed: 'bg-danger-solid',
-			pending: 'bg-active-solid'
-		}[status];
+		return TONE[status === 'pending' ? 'deploying' : nodeTone(status)].bg;
 	}
 
 	function rolloutSubStatus(sd: NonNullable<StageNode['stageData']>): {
@@ -701,22 +672,6 @@
 
 <!-- ━━━━━━━━━━━━━━━━━━━━━━ snippets ━━━━━━━━━━━━━━━━━━━━━━ -->
 
-{#snippet nodeIcon(status: NodeStatus)}
-	{#if status === 'done'}
-		<CheckCircleSolid class="h-4 w-4" />
-	{:else if status === 'failed'}
-		<ExclamationCircleSolid class="h-4 w-4" />
-	{:else if status === 'running' || status === 'paused'}
-		<!-- Rotating arc in the parent's text color (currentColor) so the
-		     spinner picks up the same hue as the rest of the icons —
-		     active for running, progress for paused/baking. Only RUNNING
-		     (deploying) pings or pulses: checking never glows (§1.12). -->
-		<div class="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current"></div>
-	{:else}
-		<ClockSolid class="h-4 w-4" />
-	{/if}
-{/snippet}
-
 <!--
 	⛔ U-19 — ONE CHIP PER ROW. (2026-10-08.) `navRow` (and its mobile twin
 	below) used to print a SECOND chip, "Active", beside the status chip
@@ -771,13 +726,7 @@
 						class="absolute inset-0 animate-ping rounded-full opacity-40 {subDotBg(node.status)}"
 					></span>
 				{/if}
-				<div
-					class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full {circleBg(
-						node.status
-					)}"
-				>
-					{@render nodeIcon(node.status)}
-				</div>
+				<StepDisc state={nodeTone(node.status)} class="relative z-10 h-7 w-7" />
 			</div>
 
 			<!-- Label -->
@@ -976,7 +925,7 @@
 					live ? Math.min(100, (elapsed / bakeTimeMs) * 100) : 0,
 					live
 						? remainingBake > 0
-							? formatDurationFromMs(remainingBake) + ' remaining'
+							? formatShortDuration(remainingBake) + ' remaining'
 							: 'Ready to continue'
 						: '0s remaining'
 				)}
@@ -998,7 +947,7 @@
 				{@render progressLine(
 					live,
 					live && totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0,
-					live ? (remainingMs > 0 ? formatDurationFromMs(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining'
+					live ? (remainingMs > 0 ? formatShortDuration(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining'
 				)}
 			{/if}
 		{/if}
@@ -1054,10 +1003,10 @@
 					     uses nowhere else) for two DIFFERENT spans — time since the
 					     check finished, and how long the check took. Both now use the
 					     same compact unit the rest of the card already prints
-					     (`formatDurationFromMs`, see the remaining-time bars above). -->
+					     (`formatShortDuration`, see the remaining-time bars above). -->
 					<span class="t-meta text-fg-subtle" title={formatDate(latestEntry.bakeEndTime)}>
 						{formatTimeAgoCompact(latestEntry.bakeEndTime, $now)} ·
-						{formatDurationFromMs(
+						{formatShortDuration(
 							new Date(latestEntry.bakeEndTime).getTime() -
 								new Date(latestEntry.bakeStartTime || latestEntry.timestamp).getTime()
 						)}
@@ -1073,7 +1022,7 @@
 							const timeoutMs = parseDuration(rollout.spec.deployTimeout);
 							const timeUntilTimeout = deploymentTime + timeoutMs - $now.getTime();
 							return timeUntilTimeout > 0
-								? `Timeout in ${formatDurationFromMs(timeUntilTimeout)}`
+								? `Timeout in ${formatShortDuration(timeUntilTimeout)}`
 								: 'Timed out';
 						})()}
 					</span>
@@ -1378,7 +1327,7 @@
 	     follow smoothly instead of jumping 18px — `$lib/smooth-height`. -->
 	<div class="border-b border-line" use:smoothHeight>
 	<div
-		class="flex min-h-[47px] items-center justify-between px-4 py-3"
+		class="flex min-h-[47px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3"
 	>
 		<div class="flex items-center gap-2">
 			{#if summary.failed > 0}
@@ -1386,19 +1335,11 @@
 			{:else if summary.running > 0}
 				<!-- The in-flight tone follows WHAT is in flight: deploying is
 				     blue (active), checking/baking is yellow (progress). -->
-				<div
-					aria-hidden="true"
-					class="h-4 w-4 animate-spin rounded-full border-2 {inflightIsDeploy
-						? 'border-active-solid/40 border-t-active-solid'
-						: 'border-progress-solid/40 border-t-progress-solid'}"
-				></div>
+				<StatusSpinner size="4" color={inflightIsDeploy ? 'blue' : 'yellow'} />
 			{:else if summary.checking > 0}
 				<!-- ITEM 9: the active steps are all `paused` (checking) — same
 				     yellow spin as `pillClasses`' own `paused` chip, never blue. -->
-				<div
-					aria-hidden="true"
-					class="h-4 w-4 animate-spin rounded-full border-2 border-progress-line border-t-progress-solid"
-				></div>
+				<StatusSpinner size="4" color="yellow" />
 			{:else if summary.done === summary.total}
 				<CheckCircleSolid class="h-4 w-4 text-success" />
 			{:else}
@@ -1583,13 +1524,7 @@
 									)}"
 								></span>
 							{/if}
-							<div
-								class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full {circleBg(
-									node.status
-								)}"
-							>
-								{@render nodeIcon(node.status)}
-							</div>
+							<StepDisc state={nodeTone(node.status)} class="relative z-10 h-7 w-7" />
 						</div>
 
 						<div class="flex min-w-0 flex-1 items-center justify-between gap-2">

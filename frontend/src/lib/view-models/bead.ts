@@ -5,7 +5,7 @@ import { beadRank } from './severity';
  * bead; a change that needs the viewer (failed, approval-yours) stays alone so it can be found. Pure; drawn by ChangeDot's
  * `bead` mode.
  */
-export type BeadState = 'failed' | 'approval-yours' | 'approval' | 'held' | 'deploying' | 'checking' | 'landed';
+export type BeadState = 'failed' | 'approval-yours' | 'approval' | 'held' | 'deploying' | 'checking' | 'healthy' | 'landed';
 
 export type BeadChange = { ref: string; title?: string; state: BeadState; href?: string; key?: string; /** the change's apps have no releases (no source, or an empty catalogue): the state word; it will not be promoted past the place it is in */ noReleases?: string };
 export type Bead = {

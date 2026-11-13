@@ -35,7 +35,7 @@
  */
 import { oldestFirst, newestFirst, earliest, isNotEarlier } from '$lib/instant';
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
-import { catalogueOrder, newestOf, behindIn } from '$lib/releases/order';
+import { catalogueOrder, newestOf, behindIn, catalogueBehind } from '$lib/releases/order';
 import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact, buildAge } from '$lib/utils';
 import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
@@ -52,7 +52,8 @@ export { deployableTags, approvalWrite };
 import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
 import { windowHeld, windowNameOf, windowOpensClause } from '$lib/view-models/window-words';
 import { heldHereOf, heldKeyOfHref } from '$lib/view-models/held-here.svelte';
-import { displayVersionForTag } from '$lib/version-utils';
+import { displayVersionForTag, shortRevisionOrNull } from '$lib/version-utils';
+import { TIERS as TIER_LIST, TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 import { gatePrettyOf } from '$lib/view-models/gate-pretty.svelte';
 import { githubAbsenceSentence } from '$lib/api/github';
 import { formatTransitionAt } from '$lib/api/schedules';
@@ -331,7 +332,7 @@ export type TChange = ChangeItem & { /** the person to print: the author, but ne
 	heldBuild: { build: string; title: string | null; author: string | null; person: string | null } | null;
 	/** the viewer can give the approval this change waits for (then it also shows in Mine) */
 	youApprove: boolean };
-const RANK_T: Record<TierKey, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+const RANK_T: Record<TierKey, number> = TIER_RANKS;
 const TWORD: Record<TierKey, string> = { dev: 'dev', test: 'test', staging: 'staging', prod: 'production' };
 type FxChange = { repo: string; title: string; mergedAt: string; mergeCommitSha: string; kind?: string; number?: number; author?: string; htmlUrl?: string };
 const chgList = (): FxChange[] => source().changes as unknown as FxChange[];
@@ -449,8 +450,9 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 				i.fact = `In ${TWORD[reach]} · not in ${next ? TWORD[next] : 'the next environment'} yet`;
 				i.where = TWORD[reach];
 				/* AD v2 (a): the next tier's place is gated by an approval (even while it checks its own deploy): the change waits for approval there */
-				const gated = next ? R.rows.find((r) => i.apps.includes(r.app) && r.tier === next && r.state === 'awaiting-approval') : null;
-				if (gated) { i.group = 'waiting'; i.glyph = 'approval'; i.where = gated.regionsOf || gated.regions.length > 1 ? `${gated.regions.length} prod regions` : gated.place; i.fact = `${sharedWord('approval')} in ${i.where}`; i.tabHref = gated.href; i.href = gated.href; i.since = gated.since ?? i.since; }
+				/* a pure promotion hold (held-by-rule) is the same wait: the change page says "Held in staging", so the list does too (2026-11-13: checkout-edge #89) */
+				const gated = next ? R.rows.find((r) => i.apps.includes(r.app) && r.tier === next && (r.state === 'awaiting-approval' || r.state === 'held-by-rule')) : null;
+				if (gated) { const appr = gated.state === 'awaiting-approval'; i.group = 'waiting'; i.glyph = appr ? 'approval' : 'held'; i.where = gated.regionsOf || gated.regions.length > 1 ? `${gated.regions.length} prod regions` : gated.place; i.fact = appr ? `${sharedWord('approval')} in ${i.where}` : `Held in ${i.where}`; i.tabHref = gated.href; i.href = gated.href; i.since = gated.since ?? i.since; }
 			} else if (reach) {
 				/* one rule for every landed change: regions that RUN a build carrying it (a held place still runs its deployed build), named when one, counted when several */
 				const runs = reach === 'prod' ? livePlaces(state, i.apps, sha, i.mergedAt, 'prod', true) : null;
@@ -597,7 +599,7 @@ export type Environments = ReturnType<typeof environments>;
 
 /* ═══ apps ═══ */
 /** AD h: a build id is cut to 7 only when it is a git SHA (8-40 hex); tags like "4.42.0-42" are never truncated. */
-export const shortBuild = (v: string | null | undefined): string | null => (!v ? null : /^[0-9a-f]{8,40}$/.test(v) ? v.slice(0, 7) : v);
+export const shortBuild = shortRevisionOrNull; /* the one 7-character rule (version-utils) */
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$/;
 const semverCmp = (a: string, b: string): number => { const x = SEMVER.exec(a)!, y = SEMVER.exec(b)!; for (let k = 1; k <= 4; k++) { const d = +(x[k] ?? 0) - +(y[k] ?? 0); if (d) return d; } return 0; };
 /** the failing build is reported separately from the newest build (AD j) */
@@ -735,7 +737,7 @@ export function apps(state: HomeState) {
 		const behindOf = (p: AppPlace) => behindIn(order, p.version);
 		if (!w) {
 			/* a quiet app with a place behind the newest: the app page's "Ready to promote · prod 1 behind" */
-			const order: TierKey[] = ['dev', 'test', 'staging', 'prod'];
+			const order: TierKey[] = [...TIER_LIST];
 			const lag = order.map((t) => ({ t, ps: placeList.filter((p) => p.tier === t && p.currency !== 'none' && !p.onNewest && p.state !== 'failed') })).find((x) => x.ps.length);
 			if (lag) {
 				const n = Math.max(...lag.ps.map((p) => behindOf(p) ?? 0));
@@ -874,7 +876,7 @@ export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'wo
 	/* the distance in the app's catalogue order (releases/order.ts); a place whose build is not in the order, or an app with no catalogue, keeps the place's own tab count */
 	const order = appOrder(row.app);
 	const here = placesOf('incident', row.app).find((p) => p.href === row.href)?.version ?? null;
-	const count = behindIn(order, here) ?? behindOfStatus(rawOf(row.href) as never, envsOfSource());
+	const count = catalogueBehind(order, here, () => behindOfStatus(rawOf(row.href) as never, envsOfSource()));
 	if (!count) return null;
 	const why = row.state === 'awaiting-approval' ? 'waiting for approval' : row.state === 'held-by-rule' ? row.word.replace(/^Waits on /, 'waiting on ') : row.state === 'failed' ? 'waiting for health checks' : null;
 	const nw = rel[rel.length - 1];

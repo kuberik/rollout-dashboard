@@ -9,8 +9,9 @@
 import type { TChange, HomeState } from '../data';
 import { classified } from './detail-model';
 import { mostSevere } from '../state-words';
+import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
-const RANK: Record<string, number> = { merged: 0, dev: 1, test: 2, staging: 3, prod: 4 };
+const RANK: Record<string, number> = { merged: 0, ...Object.fromEntries(TIER_LIST.map((t, i) => [t, i + 1])) };
 export type SvcState = 'failed' | 'approval-yours' | 'held' | 'deploying' | 'checking' | 'approval' | 'landed';
 /** `tier` = the furthest tier whose current build carries the change; `next` = the tier whose gate holds the change's build; `done` = runs healthily in the app's last tier */
 export type Svc = { app: string; tier: string; state: SvcState; next: string | null; since: number | null; href: string | null; done: boolean };
