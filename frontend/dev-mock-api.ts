@@ -27,7 +27,6 @@ import {
 	type HomeFixture,
 	type HomeScenario
 } from './src/lib/demo/home-incident';
-import { setReleaseSwitchFixtures } from './src/lib/demo/release-switch-fixtures';
 
 /**
  * `MOCK_SCENARIO=home-incident` — opt-in: serves the pinned Home fixture in
@@ -67,10 +66,10 @@ function readRequestBody(req: NodeJS.ReadableStream & { method?: string }): Prom
 	});
 }
 
-export function mockApiPlugin(): Plugin {
+export async function mockApiPlugin(): Promise<Plugin> {
 	/** `MOCK_FIXTURES=release-switch` adds ledger-api and search-web (release-switch-fixtures.ts); read once at plugin start. */
 	if ((process.env.MOCK_FIXTURES ?? '').split(',').includes('release-switch')) {
-		setReleaseSwitchFixtures(true);
+		(await import('./src/lib/demo/release-switch-fixtures')).install(); // dynamic: the demo build and the normal bundle never ship the fixtures
 		resetDemoState(); // state.ts built the fleet when it loaded, before this flag: rebuild it with the fixtures in
 	}
 	const homeFixture = loadHomeFixture();

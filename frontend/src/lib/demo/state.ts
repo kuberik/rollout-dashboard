@@ -81,7 +81,7 @@ import {
 	mkHwManagedResourcesFor,
 	mkHwEnvironment
 } from './mock-promote';
-import { mkReleaseSwitchRollouts } from './release-switch-fixtures';
+import { extraRollouts } from './extra-fixtures';
 import { resetDepsStory, runDepsStep, replaceHwvEnvironments, type DepsStep } from './deps-story';
 import { resetWavesStory, setWavesStep, wavesPlaces, type WavesStep } from './waves-story';
 import type { MockSend } from './respond';
@@ -1144,7 +1144,7 @@ export function resetDemoState(requestedScenario?: Scenario): void {
 	scenarioFleetRollouts = mockFleetRollouts.map(scenarioRollout);
 	resetWavesStory(); // before mkHwvRollouts: the stepped waves story overrides hwvLive only once a beat is fired
 	// hello-waves is the one app whose state follows the scenario (mock-data.ts FIXTURE E).
-	scenarioDepRollouts = [...mockDepRollouts, ...mkHwvRollouts(scenario), ...mkReleaseSwitchRollouts()].map(scenarioRollout);
+	scenarioDepRollouts = [...mockDepRollouts, ...mkHwvRollouts(scenario), ...extraRollouts()].map(scenarioRollout);
 	// The stepped dependencies story (`deps-story.ts`) mutates these clones
 	// and its own copies of the dependencies/environments — back to `arm`.
 	resetDepsStory(scenario);

@@ -58,11 +58,13 @@
 		measure();
 	});
 	const showRail = $derived(!!rail && rail.length >= 2);
+	/* a visible rail row shows the selected release: decided by the rows, not by the layout */
+	const inRail = $derived(showRail && !!rail?.some((it) => it.build === release?.build));
 	/* a row's link keeps every other query param (calm=1 ...) and sets release */
 	const railHref = (build: string) => { const sp = new URLSearchParams(page.url.search); sp.set('release', build); return page.url.pathname + '?' + sp.toString(); };
 
 	const multiApp = $derived(stages.lanes.length > 1);
-	const RAIL = 272, COMFY = 195, MIN = 148, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
+	const RAIL = 264, COMFY = 195, MIN = 148, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
 	let w = $state(0);
 	/* the card body's width (not the canvas's: the canvas depends on the form this decides) */
 	let bw = $state(0);
@@ -164,12 +166,13 @@
 			</div>
 		{/if}
 	<div class="canvas-dots stg-canvas min-w-0 px-4 py-4" bind:clientWidth={w} data-stages data-stages-form={horizontal ? 'graph' : 'list'}>
-		{#if release && (release.author || release.built || release.href)}
-			<!-- THE RELEASE LINE carries only what the selected rail row does not: who made it, how long ago, and the way to its change page (build and title live in the row) -->
+		{#if release && (release.author || release.built || release.href || !inRail)}
+			<!-- THE RELEASE LINE. A visible rail row already names the selected release (build, title): then the line carries only what it does not (who, how long ago, the way to the change page). With no row showing it (no rail, or a selection outside it) the line names the release itself: build and title first. Decided by the data (rail rows), never by what was measured. -->
 			<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3" data-stages-release>
-				{#if release.author}<span class="t-meta flex min-w-0 items-center gap-2 text-fg-muted"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate">{release.author}</span></span>{/if}
+				{#if !inRail}<span class="t-code-sm shrink-0 text-fg" data-release-build>{release.build}</span>{#if release.title}<span class="t-meta min-w-0 truncate text-fg-muted" title={release.title} data-release-title>{release.title}</span>{/if}{/if}
+				{#if release.author}<span class="t-meta flex items-center gap-2 text-fg-muted {inRail ? 'min-w-0' : 'shrink-0 max-sm:min-w-0'}"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate {inRail ? '' : 'max-sm:hidden'}">{release.author}</span></span>{/if}
 				{#if release.built}<span class="t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
-				{#if release.href}<a href={toHref(release.href)} class="nav-link -my-2 ml-auto shrink-0" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
+				{#if release.href}<a href={toHref(release.href)} class="nav-link -my-2 ml-auto shrink-0 max-sm:-my-3 max-sm:min-h-11" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
 			</div>
 		{/if}
 		{#if horizontal}
@@ -219,8 +222,10 @@
 	.stg-list { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: thin; }
 	.stg-list[data-more-h] { mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
 	.stg-rrow { flex: 0 0 264px; scroll-snap-align: start; border-right: 1px solid var(--k-line-subtle); box-shadow: none; }
+	/* the scroller clips an outside ring: the focus ring is drawn INSIDE the row (both forms) */
+	.stg-rrow:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
 	.stg-rrow[aria-current='true'] { box-shadow: inset 2px 0 0 var(--k-fg); }
-	.stg-split.side { display: grid; grid-template-columns: var(--rail, 272px) minmax(0, 1fr); min-height: calc(var(--n) * 56px); }
+	.stg-split.side { display: grid; grid-template-columns: var(--rail, 264px) minmax(0, 1fr); min-height: calc(var(--n) * 56px); }
 	.stg-split.side .stg-rail { position: relative; border-bottom: 0; border-right: 1px solid var(--k-line); }
 	/* never expands the card: the list is out of flow, the row height is the canvas's */
 	.stg-split.side .stg-list { position: absolute; inset: 0; display: block; overflow-x: hidden; overflow-y: auto; scroll-snap-type: none; mask-image: none; }

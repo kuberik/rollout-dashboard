@@ -5,7 +5,7 @@ import { installLiveSource, type FleetSource } from '$lib/components/home/sketch
 import { placesOf, placeHolds } from '$lib/components/new/data';
 import { ledgerOf } from '$lib/components/new/app/app-model';
 import { homeModel } from '$lib/components/home/sketch/home-data';
-import { releaseSwitchCatalogue, setReleaseSwitchFixtures } from './release-switch-fixtures';
+import { releaseSwitchCatalogue, install } from './release-switch-fixtures';
 import type { Environment, Rollout } from '../../types';
 
 /**
@@ -19,9 +19,9 @@ const load = (scenario: 'calm' | 'incident') => {
 	installLiveSource({ rollouts: b.rollouts.items, environments: b.environments.items, rolloutDependencies: b.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
 	return b as { rollouts: { items: Rollout[] }; environments: { items: Environment[] } };
 };
-beforeAll(() => setReleaseSwitchFixtures(true));
+beforeAll(() => install(true));
 afterAll(() => {
-	setReleaseSwitchFixtures(false);
+	install(false);
 	resetDemoState('calm');
 });
 afterEach(() => installLiveSource(null));
@@ -73,7 +73,7 @@ describe('ledger-api prod is rolling', () => {
 
 describe('opt-in', () => {
 	it('with the flag off neither app is in the model, the rollouts or the changes feed', () => {
-		setReleaseSwitchFixtures(false);
+		install(false);
 		try {
 			const l = load('calm');
 			const names = homeModel('calm').apps.map((a) => a.app);
@@ -82,7 +82,7 @@ describe('opt-in', () => {
 			expect(l.rollouts.items.some((r) => /^(ledger-api|search-web)-/.test(r.metadata?.namespace ?? ''))).toBe(false);
 			expect(JSON.stringify(JSON.parse(respond('GET', '/api/github/changes?days=365').body!))).not.toMatch(/ledger-api|search-web/);
 		} finally {
-			setReleaseSwitchFixtures(true);
+			install(true);
 		}
 	});
 });

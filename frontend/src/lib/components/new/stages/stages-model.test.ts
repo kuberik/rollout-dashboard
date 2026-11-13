@@ -169,14 +169,17 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 				if (!places.length) continue;
 				const st = stagesOf({ kind: 'app', app }, s);
 				const stops = ledgerOf(places);
-				const total = places.filter((p) => !noReleasesAt(p.href)).length;
-				const onNewest = stops[0] && !stops[0].custom ? stops[0].places.filter((p) => !noReleasesAt(p.href)).length : 0;
-				const sel = stagesOf({ kind: 'app', app, release: stops[0]?.build }, s);
 				if (!st.release) { expect(st.rollup.parts[0].text, `${b} ${s} ${app}`).toBe('No releases yet'); expect(releaseLine(app, s), `${b} ${s} ${app}`).toBeNull(); continue; }
-				/* the newest selected: N = places on it at rest (the Builds card's count minus the ones still moving or failed there) */
-				const n = Number(sel.rollup.parts[0].text.split(' ')[0]);
-				expect(sel.rollup.parts[0].text, `${b} ${s} ${app}`).toBe(`${n} of ${total} place${total === 1 ? '' : 's'} on ${stops[0].build}`);
-				expect(n, `${b} ${s} ${app}`).toBeLessThanOrEqual(onNewest);
+				/* the Builds card's count, for EVERY release (newest and older): N = places running it in any state; M = places on a catalogue build */
+				const rel = stops.filter((x) => x.index != null && !x.custom);
+				const total = rel.reduce((n, x) => n + x.places.filter((p) => !noReleasesAt(p.href)).length, 0);
+				for (const stop of [rel[0], rel[rel.length - 1]]) {
+					const onIt = stop.places.filter((p) => !noReleasesAt(p.href)).length;
+					const sel = stagesOf({ kind: 'app', app, release: stop.build }, s);
+					expect(sel.rollup.parts[0].text, `${b} ${s} ${app} ${stop.build}`).toBe(`${onIt} of ${total} place${total === 1 ? '' : 's'} on ${stop.build}`);
+				}
+				const onNewest = stops[0] && !stops[0].custom ? stops[0].places.filter((p) => !noReleasesAt(p.href)).length : 0;
+				expect(Number(stagesOf({ kind: 'app', app, release: stops[0].build }, s).rollup.parts[0].text.split(' ')[0]), `${b} ${s} ${app}`).toBe(onNewest);
 			}
 		};
 		for (const b of WAVES_STEPS) { beat(b); check(b, 'incident'); }
@@ -224,12 +227,12 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 	it('narrow rollup: more than one adverse count folds checking + deploying into one "N in progress"; the unit never shortens', () => {
 		beat('wave1');
 		const st = stagesOf({ kind: 'app', app: APP }, 'incident');
-		expect(st.rollup.text).toBe('2 of 5 places on c6f19d2 · 1 checking · 1 deploying');
-		expect(st.narrow?.text).toBe('2 of 5 on c6f19d2 · 2 in progress');
+		expect(st.rollup.text).toBe('4 of 5 places on c6f19d2 · 1 checking · 1 deploying');
+		expect(st.narrow?.text).toBe('4 of 5 on c6f19d2 · 2 in progress');
 		expect(st.narrow?.parts.at(-1)?.ink).toBe('active');
 		/* one adverse count: unchanged; held and failed stay separate */
 		beat('wave1-half');
-		expect(stagesOf({ kind: 'app', app: APP }, 'incident').narrow?.text).toBe('3 of 5 on c6f19d2 · 1 deploying');
+		expect(stagesOf({ kind: 'app', app: APP }, 'incident').narrow?.text).toBe('4 of 5 on c6f19d2 · 1 deploying');
 		const r = { text: '', parts: [{ text: '1 of 7 places', ink: 'muted' as const }, { text: '1 failing', ink: 'danger' as const }, { text: '1 checking', ink: 'progress' as const }, { text: '1 deploying', ink: 'active' as const }] };
 		expect(narrowRollup(r, 2).parts.map((p) => p.text)).toEqual(['1 of 7 places', '1 failing', '2 in progress']);
 	});
@@ -262,7 +265,7 @@ describe('pipeline release switcher', () => {
 		expect(stagesOf({ kind: 'app', app: A, release: other }, 'incident').release).toBe(other);
 		expect(stagesOf({ kind: 'app', app: A, release: 'nope' }, 'incident').release).toBe(r.selectedDefault);
 	});
-	it('reached by a newer build: Deployed "on <build>", counted in N, never live or not reached; live only for a place moving the selected build', () => {
+	it('reached by a newer build: Deployed "on <build>", not in N (N counts the places running the release), never live or not reached; live only for a place moving the selected build', () => {
 		installLiveSource(null);
 		const r = releasesInFlight(A, 'incident');
 		const stops = ledgerOf(placeHolds(A, 'incident').filter((p) => !noReleasesAt(p.href)));
@@ -289,7 +292,7 @@ describe('pipeline release switcher', () => {
 				if (p.live) expect(vi).toBe(rel);
 			}
 			const n = Number(st.rollup.parts[0].text.split(' ')[0]);
-			const want = ps.filter((p) => { const v = placesOf('incident', A).find((x) => x.href === p.href)!.version; const vi = stops.find((s) => s.build === v)?.index ?? null; return vi != null && (vi < rel || (vi === rel && (p.state === 'deployed' || p.state === 'held' || p.state === 'approval'))); }).length;
+			const want = ps.filter((p) => { const v = placesOf('incident', A).find((x) => x.href === p.href)!.version; const vi = stops.find((s) => s.build === v)?.index ?? null; return vi === rel; }).length; /* the Builds card's count: places RUNNING it, in any state; ahead places are not in N */
 			expect(n).toBe(want);
 		}
 		expect(sawAhead).toBe(true);

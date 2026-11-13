@@ -28,7 +28,8 @@ import {
 	waveStatusFor,
 	type WSite
 } from './mock-data';
-import { setReleaseSwitchApps } from './github-data';
+import { registerExtraApps, curated, OWNER, type AppFixture } from './github-data';
+import { setExtraFixtures } from './extra-fixtures';
 
 type Place = { ns: string; tier: string; site: string; wave: number; cluster: string; key: string; tag: string; bake: string; msg?: string };
 type Release = { tag: string; version: string; revision: string; created: string };
@@ -131,16 +132,39 @@ function rolloutsOf(f: Fixture) {
 	});
 }
 
-let enabled = false;
+/** the GitHub side of the two apps (changes feed, commit ranges): not in github-data's `APPS`, registered by `install()` */
+const GH: Record<string, AppFixture> = {
+	/** FIXTURE F: semver builds, three releases in flight. */
+	'ledger-api': curated(
+		OWNER,
+		'ledger-api',
+		['ad-40', 'ad-41', 'ad-42', 'ad-43', 'ad-44', 'ad-45', 'ad-46'],
+		['Add idempotency keys to ledger writes', 'Fix double-entry rounding on multi-currency posts', 'Batch settlement exports by account', 'Add audit trail for manual adjustments', 'Cap statement pagination at 500 rows', 'Fix stale balance read after reversal'],
+		undefined,
+		'Initial ledger-api release'
+	),
+	/** FIXTURE G: twenty semver builds, seventeen in flight. */
+	'search-web': curated(
+		OWNER,
+		'search-web',
+		['ce-01', 'ce-02', 'ce-03', 'ce-04', 'ce-05', 'ce-06', 'ce-07', 'ce-08', 'ce-09', 'ce-10', 'ce-11', 'ce-12', 'ce-13', 'ce-14', 'ce-15', 'ce-16', 'ce-17', 'ce-18', 'ce-19', 'ce-20'],
+		['Add query suggestions to the search box', 'Fix pagination reset on filter change', 'Debounce the search input', 'Highlight matched terms in results', 'Add keyboard navigation to the result list', 'Fix empty state flash on slow networks', 'Persist the selected facet in the URL', 'Add synonym support for product names', 'Fix mobile filter drawer scroll lock', 'Cache facet counts for 30s', 'Add did-you-mean for misspelled queries', 'Fix result ordering for ties', 'Add category breadcrumbs to results', 'Lazy load result thumbnails', 'Fix focus loss after clearing the query', 'Add recent searches', 'Tune ranking for in-stock items', 'Fix RTL layout of the filter bar', 'Add search analytics events'],
+		undefined,
+		'Initial search-web release'
+	)
+};
+/** the builds are made every 150 minutes (`created` above); each change merges 20 minutes before its build, so every one stays inside the live Changes window (30 days) and its change page exists */
+const MERGE_MIN_AGO: Readonly<Record<string, number>> = Object.fromEntries([
+	...Array.from({ length: 7 }, (_, k) => [`ad-${40 + k}`, (46 - (40 + k) + 1) * 150 + 20] as const),
+	...Array.from({ length: 20 }, (_, k) => [`ce-${String(k + 1).padStart(2, '0')}`, (20 - (k + 1) + 1) * 150 + 20] as const)
+]);
+
 /**
- * OPT-IN. The apps exist only after `setReleaseSwitchFixtures(true)` (dev-mock-api.ts calls it at plugin start when
- * `MOCK_FIXTURES=release-switch`; the demo build never does). Call it BEFORE the state is built (`resetDemoState`).
+ * OPT-IN. dev-mock-api.ts runs `(await import('./release-switch-fixtures')).install()` only under `MOCK_FIXTURES=release-switch`, so the demo
+ * build and the normal bundle never contain this file. Call it BEFORE the state is built (`resetDemoState`). `install(false)` takes the apps out.
  * Off, every route answers as it did without them: same apps, same Dependencies edges, same banners.
  */
-export function setReleaseSwitchFixtures(on: boolean): void {
-	enabled = on;
-	setReleaseSwitchApps(on);
+export function install(on = true): void {
+	setExtraFixtures(on ? { environments: () => RELEASE_SWITCH_FIXTURES.flatMap(environmentsOf), rollouts: () => RELEASE_SWITCH_FIXTURES.flatMap(rolloutsOf) } : null);
+	registerExtraApps(on ? GH : {}, on ? MERGE_MIN_AGO : {});
 }
-export const mkReleaseSwitchEnvironments = () => (enabled ? RELEASE_SWITCH_FIXTURES.flatMap(environmentsOf) : []);
-export const mkReleaseSwitchRollouts = () => (enabled ? RELEASE_SWITCH_FIXTURES.flatMap(rolloutsOf) : []);
-export const isReleaseSwitchNs = (ns: string) => RELEASE_SWITCH_APPS.some((a) => ns.startsWith(`${a}-`));

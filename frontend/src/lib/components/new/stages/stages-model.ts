@@ -127,7 +127,7 @@ export function stagesOf(scope: StagesScope, scenario: HomeState): Stages {
  *   - v is R: failed; deploying / checking (THE live object); else Deployed (a hold on it is about other builds).
  *   - v older than R (or a custom build): the old rules: failed > approval / held (with the cause) > in flight on its older build (quiet
  *     "Checking" / "Deploying" word, no glow) > not reached, the line 2 printing the build it still runs.
- * "N of M places": N = places that reached R, M = places with releases.
+ * "N of M places on R": N = the places RUNNING R in any state (the Builds card's count: in flight, held and failed included; the adverse ones also print as their own part, "1 checking"); M = the places on a catalogue build (custom-build and not-affected places are left out). Ahead places draw "On <build>" and are not in N. "Reached" (newer build, or R at rest) only decides the default selection and the rail.
  */
 type Entry = { x: ReturnType<typeof placesOf>[number]; p: Place; row: ReturnType<typeof rowsOf>[number] | null; kind: Place['kind']; col: StageColumn; site: string; leader: boolean; v: string | null; idx: number | null; inFlight: boolean; counted: boolean };
 type AppCtx = { stops: Stop[]; entries: Entry[]; columns: StageColumn[]; by: Map<string, Stop> };
@@ -192,10 +192,11 @@ function drawRelease(app: string, c: AppCtx, scenario: HomeState, release: strin
 	});
 	const out = assemble([app], items, c.columns, scenario, { text: '', parts: [] }, null);
 	const ps = out.lanes[0].cells.flatMap((cell) => cell?.places ?? []);
-	const counted = ps.filter((p) => p.state !== 'notaffected');
 	const k = (s: StageState) => ps.filter((p) => p.state === s && !((s === 'checking' || s === 'deploying') && p.ahead)).length;
-	const ran = r == null ? 0 : c.entries.filter((e) => reached(e, r)).length;
-	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${counted.length} place${counted.length === 1 ? '' : 's'} on ${release}`, short: `${ran} of ${counted.length} on ${release}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
+	/* THE BUILDS CARD'S COUNT: N = the places RUNNING this release in any state (in flight, held and failed included; the adverse ones also print as their own part), M = the places on a catalogue build (custom-build and not-affected places are left out, as the Builds card leaves them) */
+	const ran = r == null ? 0 : c.entries.filter((e) => e.counted && e.idx === r).length;
+	const total = c.entries.filter((e) => e.counted).length;
+	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${total} place${total === 1 ? '' : 's'} on ${release}`, short: `${ran} of ${total} on ${release}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
 	if (k('failed')) parts.push({ text: `${k('failed')} failing`, ink: 'danger' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });

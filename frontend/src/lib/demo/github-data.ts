@@ -395,7 +395,7 @@ const FILLER_MESSAGES = [
 // (idx ≥ 1 — there is no "commit that produced" the ladder's first entry,
 // only ones that produced every step after it).
 
-type AppFixture = {
+export type AppFixture = {
 	owner: string;
 	repo: string;
 	ladder: string[];
@@ -444,7 +444,7 @@ type AppFixture = {
 	stepWindowMs?: number;
 };
 
-function curated(
+export function curated(
 	owner: string,
 	repo: string,
 	ladder: string[],
@@ -485,7 +485,7 @@ function pooled(
 	};
 }
 
-const OWNER = 'exampleco';
+export const OWNER = 'exampleco';
 
 const APPS: Record<string, AppFixture> = {
 	'hello-world': curated(
@@ -756,32 +756,15 @@ const APPS: Record<string, AppFixture> = {
 };
 
 /**
- * FIXTURES F and G (release-switch-fixtures.ts), OPT-IN: not in `APPS`, so with the flag off every route answers as it did without them.
- * `setReleaseSwitchApps(true)` (called by `setReleaseSwitchFixtures`) adds them to the changes feed and the commit ranges.
+ * OPT-IN EXTRA APPS (the release-switch fixtures F and G, release-switch-fixtures.ts, loaded by a dynamic import behind `MOCK_FIXTURES`):
+ * not in `APPS`, so with the hook unset every route answers as it did without them and no build ships their names.
+ * `registerExtraApps` adds them to the changes feed and the commit ranges; `{}` takes them out again.
  */
-const RELEASE_SWITCH_GH: Record<string, AppFixture> = {
-	/** FIXTURE F (release-switch-fixtures.ts): semver builds, three releases in flight. */
-	'ledger-api': curated(
-		OWNER,
-		'ledger-api',
-		['ad-40', 'ad-41', 'ad-42', 'ad-43', 'ad-44', 'ad-45', 'ad-46'],
-		['Add idempotency keys to ledger writes', 'Fix double-entry rounding on multi-currency posts', 'Batch settlement exports by account', 'Add audit trail for manual adjustments', 'Cap statement pagination at 500 rows', 'Fix stale balance read after reversal'],
-		undefined,
-		'Initial ledger-api release'
-	),
-	/** FIXTURE G (release-switch-fixtures.ts): twenty semver builds, seventeen in flight. */
-	'search-web': curated(
-		OWNER,
-		'search-web',
-		['ce-01', 'ce-02', 'ce-03', 'ce-04', 'ce-05', 'ce-06', 'ce-07', 'ce-08', 'ce-09', 'ce-10', 'ce-11', 'ce-12', 'ce-13', 'ce-14', 'ce-15', 'ce-16', 'ce-17', 'ce-18', 'ce-19', 'ce-20'],
-		['Add query suggestions to the search box', 'Fix pagination reset on filter change', 'Debounce the search input', 'Highlight matched terms in results', 'Add keyboard navigation to the result list', 'Fix empty state flash on slow networks', 'Persist the selected facet in the URL', 'Add synonym support for product names', 'Fix mobile filter drawer scroll lock', 'Cache facet counts for 30s', 'Add did-you-mean for misspelled queries', 'Fix result ordering for ties', 'Add category breadcrumbs to results', 'Lazy load result thumbnails', 'Fix focus loss after clearing the query', 'Add recent searches', 'Tune ranking for in-stock items', 'Fix RTL layout of the filter bar', 'Add search analytics events'],
-		undefined,
-		'Initial search-web release'
-	)
-};
+let EXTRA_APPS: Record<string, AppFixture> = {};
+let EXTRA_MERGE_MIN_AGO: Readonly<Record<string, number>> = {};
 let releaseSwitchOn = false;
-const appOf = (name: string): AppFixture | undefined => APPS[name] ?? (releaseSwitchOn ? RELEASE_SWITCH_GH[name] : undefined);
-const activeApps = (): AppFixture[] => (releaseSwitchOn ? [...Object.values(APPS), ...Object.values(RELEASE_SWITCH_GH)] : Object.values(APPS));
+const appOf = (name: string): AppFixture | undefined => APPS[name] ?? (releaseSwitchOn ? EXTRA_APPS[name] : undefined);
+const activeApps = (): AppFixture[] => (releaseSwitchOn ? [...Object.values(APPS), ...Object.values(EXTRA_APPS)] : Object.values(APPS));
 
 /**
  * Test-only: the rollout `name` (the same string a `/api/rollouts/:ns/:name/
@@ -973,11 +956,6 @@ const EXPLICIT_MERGE_MINUTES_AGO: Readonly<Record<string, number>> = {
  * it predates `DENSITY_LANES`' deepest backfill of that same sha, but is
  * never younger-looking than the generic curve says.
  */
-/** the release-switch fixtures' builds are made every 150 minutes (release-switch-fixtures.ts `created`); each change merges 20 minutes before its build, so every one stays inside the live Changes window (30 days) and its change page exists */
-const RELEASE_SWITCH_MERGE_MIN_AGO: Readonly<Record<string, number>> = Object.fromEntries([
-	...Array.from({ length: 7 }, (_, k) => [`ad-${40 + k}`, (46 - (40 + k) + 1) * 150 + 20] as const),
-	...Array.from({ length: 20 }, (_, k) => [`ce-${String(k + 1).padStart(2, '0')}`, (20 - (k + 1) + 1) * 150 + 20] as const)
-]);
 const ladderDatesCache = new WeakMap<AppFixture, number[]>();
 function ladderDatesFor(app: AppFixture): number[] {
 	const hit = ladderDatesCache.get(app);
@@ -994,7 +972,7 @@ function ladderDatesFor(app: AppFixture): number[] {
 		} else {
 			const seed = `${app.repo}-${sha}`;
 			const realCreatedMinAgo = REAL_BUILD_CREATED_MIN_AGO.get(sha);
-			const pin = EXPLICIT_MERGE_MINUTES_AGO[sha] ?? RELEASE_SWITCH_MERGE_MIN_AGO[sha];
+			const pin = EXPLICIT_MERGE_MINUTES_AGO[sha] ?? EXTRA_MERGE_MIN_AGO[sha];
 			ms = pin
 				? hcNow.getTime() - pin * 60_000
 				: realCreatedMinAgo != null
@@ -1452,10 +1430,11 @@ const buildAllChanges = (): ChangeRecord[] =>
 		.flatMap((app) => [...landmarkChanges(app), ...fillerChanges(app, 3), ...orphanChanges(app)])
 		.sort((a, b) => b.mergedAtMs - a.mergedAtMs);
 let ALL_CHANGES: ChangeRecord[] = buildAllChanges();
-/** Turn the release-switch fixture apps (FIXTURES F and G) in or out of the feed. */
-export function setReleaseSwitchApps(on: boolean): void {
-	if (on === releaseSwitchOn) return;
-	releaseSwitchOn = on;
+/** Register extra fixture apps (and the minutes-ago each of their changes merged) in the feed; `{}` removes them. No-op by default. */
+export function registerExtraApps(apps: Record<string, AppFixture>, mergeMinAgo: Readonly<Record<string, number>> = {}): void {
+	EXTRA_APPS = apps;
+	EXTRA_MERGE_MIN_AGO = mergeMinAgo;
+	releaseSwitchOn = Object.keys(apps).length > 0;
 	ALL_CHANGES = buildAllChanges();
 }
 
