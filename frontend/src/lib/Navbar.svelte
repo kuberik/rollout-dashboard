@@ -3,7 +3,6 @@
 <script lang="ts">
 	import { isApplePlatform } from '$lib/shortcut-hint';
 	import { onMount } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { parseChangeSlug } from '$lib/pr-ref';
 	import { MoonOutline, SunOutline, SearchOutline } from 'flowbite-svelte-icons';
@@ -25,6 +24,7 @@
 	import type { Environment } from '../types';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { href, appPath } from '$lib/paths';
+	import { placeKeyOf } from '$lib/view-models/sites-waves';
 	import type { GateContext } from '$lib/view-models/blocking-story';
 	import { cardContext } from '$lib/view-models/card-context';
 
@@ -36,19 +36,6 @@
 	);
 	let switcherOpen = $state(false);
 	let isMac = $state(false);
-
-	/**
-	 * ⛔ U-26 — THE BREADCRUMB ENV CHIP UNCAPS ONLY WHERE THERE IS ROOM.
-	 * (2026-10-08.) The chip below was deliberately NOT `wide` (see its own
-	 * comment) because at a narrow width — right at `sm`, where this crumb
-	 * first appears — a long namespace/name pair and a 147px region chip on
-	 * one non-wrapping row genuinely do compete for space. But that reasoning
-	 * does not hold at 1440, where the finding measured ~350px sitting empty
-	 * while `PROD-US-EAST-2` clipped to `PROD-US…` for no width reason at
-	 * all. `lg` (1024px) is the floor the rollout layout itself already
-	 * treats as "plenty of room" (`.dpc-desktop`'s own master-detail split).
-	 */
-	const roomForWideEnvChip = new MediaQuery('(min-width: 1024px)', false);
 
 	theme.subscribe((value) => {
 		currentTheme = value;
@@ -196,8 +183,14 @@
 		})
 	);
 	const paletteGateContext = $derived<GateContext>(paletteCardCtx.gateContext);
+	// The Environment's PLACE (tier, or `prod-ap-south` once the tier has several
+	// sites) names the chip's right half. Same helper the strip and the picker use.
+	const rolloutEnvironment = $derived(rolloutQuery.data?.environment as Environment | undefined);
+	const rolloutPlace = $derived(
+		rolloutEnvironment?.spec?.environment ? placeKeyOf(rolloutEnvironment, allEnvironments) : null
+	);
 	const rolloutTheme = $derived(
-		rollout ? getRolloutEnvironmentTheme(rollout, rolloutQuery.data?.environment) : null
+		rollout ? getRolloutEnvironmentTheme(rollout, rolloutEnvironment, rolloutPlace) : null
 	);
 	const rolloutThemeStyle = $derived(
 		rolloutTheme ? getEnvironmentThemeStyle(rolloutTheme) : undefined
@@ -239,7 +232,7 @@
 	     rollout page. The environment is named by the neutral env chip in the
 	     breadcrumb and the page header. -->
 	<div class="flex min-h-[52px] w-full flex-wrap items-center justify-between px-2 py-2 sm:px-6">
-		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+		<div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 {isRolloutPage ? 'max-sm:min-w-fit' : ''}">
 			<a href={href('/')} class="flex shrink-0 items-center space-x-2 sm:hidden rtl:space-x-reverse">
 				<div class="flex h-7 w-7 items-center justify-center sm:h-8 sm:w-8">
 					<div
@@ -279,61 +272,49 @@
 
 				{#if detailContext?.kind === 'rollout' && rollout}
 					<span class="t-body hidden select-none text-fg-disabled sm:inline" aria-hidden="true">/</span>
+					<!-- THE APP IS THE PARENT OBJECT (owner, 2026-11-13: "no clear link to
+					     the App page"). A rollout's name is its app's name, so the crumb
+					     before the rollout's own address is a plain link to `/apps/<app>`,
+					     drawn exactly like the section crumb beside it. The switcher
+					     button below keeps the rest: namespace, the joined env chip, ⌘K. -->
+					<a
+						href={href(`/apps/${encodeURIComponent(rollout.metadata?.name ?? '')}`)}
+						class="min-w-0 truncate rounded px-2 py-1 t-ui text-fg transition-colors hover:bg-hover max-sm:hidden"
+						title="Open app {rollout.metadata?.name}"
+					>{rollout.metadata?.name}</a>
+					<span class="t-body hidden select-none text-fg-disabled sm:inline" aria-hidden="true">/</span>
 					<button
 						type="button"
 						onclick={() => { paletteScope = 'rollout'; switcherOpen = true; }}
-						class="group flex min-w-0 items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-hover"
+						class="group flex shrink-0 items-center gap-2 rounded px-2 py-1 transition-colors hover:bg-hover max-sm:ml-auto max-sm:px-0"
 						aria-haspopup="dialog"
 						aria-expanded={switcherOpen}
 						aria-label={isMac ? 'Switch rollout (⌘K)' : 'Switch rollout (Ctrl K)'}
 						title={isMac ? 'Switch rollout (⌘K)' : 'Switch rollout (Ctrl K)'}
 					>
-						<span class="flex min-w-0 items-baseline gap-1.5">
-							<span class="t-body hidden truncate text-fg-subtle sm:inline">
+						<span class="flex min-w-0 items-center gap-1.5">
+							<span class="t-body hidden max-w-[28ch] truncate text-fg-subtle sm:inline">
 								{rollout.metadata?.namespace}
 							</span>
-							<span class="t-body hidden text-fg-disabled sm:inline">/</span>
-							<span class="t-ui truncate text-fg">
-								{rollout.metadata?.name}
-							</span>
 							{#if rolloutTheme}
-								<span class="hidden shrink-0 sm:inline-flex">
-									<!-- NOT `wide` BELOW `lg` (2026-08-26, reversed in part
-									     2026-10-08 — see `roomForWideEnvChip`). Every other env
-									     chip in the product was widened in the clipping pass;
-									     this one and the two in `CommandPalette` were kept
-									     capped, because at `sm` the breadcrumb prints the
-									     namespace and the rollout name in full immediately to
-									     its left on a SINGLE NON-WRAPPING ROW, and a 147px
-									     region chip there takes its width straight out of the
-									     rollout name -- the exact row-eating the 12ch cap
-									     exists to prevent.
-									     ⛔ U-26 — BUT THAT TRADE DOES NOT HOLD AT 1440, where the
-									     finding measured ~350px sitting empty while
-									     `PROD-US-EAST-2` clipped to `PROD-US…` regardless. Wide
-									     only from `lg`, where the row has the room this
-									     component cannot see for itself. The full name is still
-									     in `title` below `lg`, and the rollout page's own H1
-									     chip, 60px below it, has always been `wide`. -->
-									<Chip
-										role="env"
-										theme={rolloutTheme}
-										label={shortEnvLabel(rolloutTheme) || rolloutTheme.label}
-										title={rolloutTheme.label}
-										wide={roomForWideEnvChip.current}
-									/>
-								</span>
+								<!-- The joined `PROD | ap-south` badge, the same one the strip,
+								     Gates and History draw: the label is the Environment's PLACE
+								     (`placeKeyOf`), not just its tier, so two prod sites are two
+								     distinguishable rollouts. ALWAYS `wide` and never shrunk: the
+								     name and namespace give way before the chip does. -->
+								<Chip
+									role="env"
+									theme={rolloutTheme}
+									label={shortEnvLabel(rolloutTheme) || rolloutTheme.label}
+									title={rolloutTheme.label}
+									wide
+								/>
 							{/if}
 						</span>
-						<!-- U-26: `self-center leading-none` — the kbd's own line box (15.4px
-						     at this `t-micro` size) sat slightly below the 14px chevron icon
-						     beside it even under the row's `items-center`; pinning both to the
-						     same cross-axis centre and collapsing the kbd's line-height removes
-						     the half-pixel-scale drift. -->
 						<kbd class="t-code-sm hidden shrink-0 self-center leading-none text-fg-subtle transition-colors group-hover:text-fg-muted md:inline-block">
 							{isMac ? '⌘K' : 'Ctrl K'}
 						</kbd>
-						<ChevronSortOutline class="h-3 w-3 shrink-0 text-fg-subtle transition-colors group-hover:text-fg" />
+						<ChevronSortOutline class="h-3 w-3 shrink-0 text-fg-subtle transition-colors group-hover:text-fg max-sm:hidden" />
 					</button>
 				{:else if detailContext?.kind === 'item'}
 					<span class="t-body hidden select-none text-fg-disabled sm:inline" aria-hidden="true">/</span>
@@ -359,7 +340,7 @@
 			{/if}
 		</div>
 		<!-- From `sm` up these live in the sidebar's footer; the phone keeps them here. -->
-		<div class="flex shrink-0 items-center gap-2 sm:hidden">
+		<div class="flex shrink-0 items-center gap-1 max-sm:ml-auto sm:hidden">
 
 			<!-- ⭐ THE ONLY WAY TO OPEN THE PALETTE, ON THE HOME PAGE, AT ANY
 			     WIDTH, WAS A PHYSICAL KEYBOARD SHORTCUT. (P8 follow-on,
