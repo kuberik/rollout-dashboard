@@ -1498,7 +1498,6 @@ lib/view-models/deploy-risk.ts	code	Every rule here allows this build, so this i
 lib/view-models/deploy-risk.ts	code	Goes back… to a version … has already run. It applies immediately; older code will run against data the newer version has already written.…
 lib/view-models/deploy-risk.ts	code	It also pins … to this version, so nothing newer promotes until the pin is cleared.
 lib/view-models/deploy-risk.ts	code	Nothing has vouched for this build in …. Type
-lib/view-models/deploy-risk.ts	code	Prod is selected, so type the build to confirm.
 lib/view-models/deploy-risk.ts	code	Prod is selected. Type
 lib/view-models/deploy-risk.ts	code	Redeploy to …
 lib/view-models/deploy-risk.ts	code	Redeploys … to … — the same build whose last deploy here failed.
