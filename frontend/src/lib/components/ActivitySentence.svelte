@@ -126,9 +126,7 @@
 			{:else if !personRow}
 				<!-- An automatic row at rest: the list-row resting mark (§3.11), a
 				     6px success dot, never a mascot on every success (/activity AD r1). -->
-				<span class="inline-flex h-4 w-4 items-center justify-center" aria-hidden="true"
-					><span class="size-1.5 rounded-full bg-success-solid"></span></span
-				>
+				<StatusMark state="newest" />
 			{:else}
 				<Avatar name={actor.name} src={actor.src} kind={actor.kind} size={20} />
 			{/if}

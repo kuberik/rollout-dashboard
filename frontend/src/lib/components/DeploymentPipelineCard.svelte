@@ -1338,7 +1338,7 @@
 	     follow smoothly instead of jumping 18px — `$lib/smooth-height`. -->
 	<div class="border-b border-line" use:smoothHeight>
 	<div
-		class="flex min-h-[47px] items-center justify-between px-4 py-3"
+		class="flex min-h-[47px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3"
 	>
 		<div class="flex items-center gap-2">
 			{#if summary.failed > 0}

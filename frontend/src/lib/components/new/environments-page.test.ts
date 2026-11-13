@@ -24,7 +24,7 @@ describe('environmentsPage', () => {
 		const w = stateLine({ places: 8, failing: 0, waiting: 3, yours: 1, moving: 0, rest: 5 }, 'deploying');
 		expect(w.lead).toMatchObject({ text: '3 waiting', you: '1 for you', ink: 'held' });
 		expect(w.mark).toBe('approval-yours');
-		expect(stateLine({ places: 2, failing: 0, waiting: 0, yours: 0, moving: 1, rest: 1 }, 'checking')).toMatchObject({ lead: { text: '1 checking', ink: 'active' }, mark: 'checking' });
+		expect(stateLine({ places: 2, failing: 0, waiting: 0, yours: 0, moving: 1, rest: 1 }, 'checking')).toMatchObject({ lead: { text: '1 checking', ink: 'progress' }, mark: 'checking' });
 		expect(stateLine({ places: 8, failing: 0, waiting: 0, yours: 0, moving: 0, rest: 8 }, 'deploying').lead.text).toBe('All 8 healthy');
 	});
 	it('bar drops empty segments, in failing, waiting, moving, healthy order', () => {

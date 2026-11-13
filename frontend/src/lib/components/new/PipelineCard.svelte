@@ -29,10 +29,13 @@
 	 * One shell, four hosts: Slipway (/rollouts lead, /apps, /envs), ChangeSlipway (/changes/<slug> places), Docket's open
 	 * failure (/needs-you), Folio (/changes lead).
 	 */
-	import { ExclamationCircleSolid, CheckCircleSolid, CodePullRequestSolid, ChevronDoubleRightOutline } from 'flowbite-svelte-icons';
-	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
+	import { ChevronDoubleRightOutline } from 'flowbite-svelte-icons';
+	import type { NodeState } from '$lib/view-models/promotion-lanes';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import type { Snippet } from 'svelte';
+
+	/** the header's one mark is StatusMark's: failed "!", the spinner arc / clock hand in the tone of what is in flight, the rest dot when done, the held pause, the dashed ring when idle */
+	const MARK: Record<PipelineState, NodeState> = { failed: 'failed', deploying: 'deploying', checking: 'checking', done: 'newest', held: 'held', idle: 'none' };
 
 	let {
 		state: st = 'idle',
@@ -77,14 +80,13 @@
 </script>
 
 <section class="pc pc-{shell} pc-at{at} {children && rail ? '' : 'pc-solo'} {mute ? 'pc-mute' : ''} {className}" style:--pc-rail={railWidth} aria-label={label ?? title} data-pipeline-card data-pc-state={st} {...rest}>
-	<header class="pc-head flex min-h-[47px] items-center gap-2 border-b border-line px-4 py-3">
-		{#if mute}<ChevronDoubleRightOutline class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />
-		{:else if st === 'failed'}<ExclamationCircleSolid class="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
-		{:else if st === 'deploying' || st === 'checking'}<StatusSpinner size="4" color={st === 'checking' ? 'yellow' : 'blue'} />
-		{:else if st === 'done'}<CheckCircleSolid class="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
-		{:else if st === 'held'}<StatusMark state={'held' as never} />
-		{:else}<CodePullRequestSolid class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />{/if}
-		<h3 class="t-card-title min-w-0 flex-1 text-fg">{title}</h3>
+	<!-- the Card's own header rule: title group and rollup on a wrapping space-between row (hard right when both fit, flush left under the title when not) -->
+	<header class="pc-head flex min-h-[47px] flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3">
+		<div class="flex min-w-0 items-center gap-2">
+			{#if mute}<ChevronDoubleRightOutline class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />
+			{:else}<StatusMark state={MARK[st]} />{/if}
+			<h3 class="t-card-title min-w-0 text-fg">{title}</h3>
+		</div>
 		{#if rollup}<span class="t-ui-sm shrink-0 whitespace-nowrap tabular-nums {rollupAdverse ? 'text-fg' : 'text-fg-subtle'}" data-pc-rollup>{rollup}</span>{/if}
 	</header>
 	<div class="pc-body {bodyClass}">

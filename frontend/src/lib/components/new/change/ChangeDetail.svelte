@@ -153,7 +153,7 @@
 			<!-- CG10: no "Live in 3 prod regions" band: the strip's marks and the Places' rollup say it; a band that restates them costs a card -->
 		{:else}
 			<div class="flex items-start gap-3 rounded-lg border border-line bg-surface px-4 py-3">
-				<span class="flex h-6 items-center"><StatusMark state={'newest' as never} /></span>
+				<span class="flex h-6 items-center"><StatusMark state="newest" /></span>
 				<div class="min-w-0"><p class="t-heading text-fg" data-statement-title>{st.title}</p></div>
 			</div>
 		{/if}

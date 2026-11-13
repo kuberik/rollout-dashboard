@@ -27,6 +27,7 @@
 	import Chip from './Chip.svelte';
 	import ClusterMark from './ClusterMark.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import StatusMark from './StatusMark.svelte';
 	import Toast from './Toast.svelte';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import { announce } from '$lib/stores/announce.svelte';
@@ -348,7 +349,7 @@
 										{#if status[r.key] === 'pending'}
 											<StatusSpinner size="4" />
 										{:else if status[r.key] === 'ok'}
-											<span class="bg-success-solid h-1.5 w-1.5 rounded-full"><span class="sr-only">Skipped</span></span>
+											<StatusMark state="newest" label="Skipped" />
 										{:else if status[r.key] === 'failed'}
 											<ExclamationCircleSolid class="h-4 w-4 text-danger" /><span class="sr-only">Failed</span>
 										{/if}
