@@ -19,6 +19,7 @@ import {
 import { rides, waitsOnMe, rideAction, ownTier, TIERS, type Ride } from './change-view';
 import { dedupeCommitOfPr } from './change-cards';
 import { rideTruth } from './change-truth';
+import { inScope, scoped } from './derivation-scope';
 import { rowAction, actionHref } from './rollout-view';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import { repoCardModel, rollupParts, type RepoCardModel, type RepoChange, type RollupPart } from '$lib/view-models/repo-card';
@@ -105,6 +106,9 @@ const plural = (n: number, w: string, many = w + 's') => `${n} ${n === 1 ? w : m
 
 /** every live change classified once, as the Changes page and Home both read it: the viewer's (mine) and the team's, with the lead failing change's key */
 export function classifyChanges(hs: HomeState): { mineP: PChange[]; teamP: PChange[]; leadKey: string | null } {
+	return inScope(() => scoped(`classify|${hs}`, () => classifyChangesRaw(hs)));
+}
+function classifyChangesRaw(hs: HomeState): { mineP: PChange[]; teamP: PChange[]; leadKey: string | null } {
 	const C = changes(hs, { rolledBackLands: true });
 	const R = rollouts(hs);
 	const live = dedupeCommitOfPr(C.items.filter((i) => !i.rolledBack));
@@ -129,6 +133,9 @@ export function attentionOrder<T extends { state: string }>(ps: T[], askSince: (
 	return [...ps].sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed') || oldestFirst(askSince(a), askSince(b)));
 }
 export function changesPage(hs: HomeState): ChangesPage {
+	return inScope(() => changesPageRaw(hs));
+}
+function changesPageRaw(hs: HomeState): ChangesPage {
 	const { mineP, teamP, leadKey } = classifyChanges(hs);
 
 	/* the banner: the first failing change (rides() puts the lead first, then the shared urgency order) */

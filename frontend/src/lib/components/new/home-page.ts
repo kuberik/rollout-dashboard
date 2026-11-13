@@ -10,6 +10,7 @@
  * figure; an approval ask leads with "N of M prod regions" only when `regionStates` says several prod regions wait (the count the change's own
  * line prints), else it is title-led. The viewer is 'you', never their own avatar; the lane drawing is built by the component (Footprint `laneOf`).
  */
+import { inScope } from './derivation-scope';
 import { oldestFirst, newestFirst, earliest, latest as latestInstant } from '$lib/instant';
 import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { approvalIdentity,
@@ -105,6 +106,9 @@ export function foldPinIntoFleet(by: Map<string, FleetTrouble & { since: string 
 }
 
 export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
+	return inScope(() => homePageRaw(hs, starred));
+}
+function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	const R = rollouts(hs, starred);
 	/* failures first (prod before the rest: the roster's urgency order already does it), then approvals; the sort is stable */
 	const rows = inbox(hs, starred).items.map((i) => i.row).sort((a, b) => Number(b.group === 'failed') - Number(a.group === 'failed'));
