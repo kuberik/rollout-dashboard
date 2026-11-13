@@ -35,7 +35,7 @@
  */
 import { oldestFirst, newestFirst, earliest, isNotEarlier } from '$lib/instant';
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
-import { catalogueOrder, newestOf, behindIn } from '$lib/releases/order';
+import { catalogueOrder, newestOf, behindIn, catalogueBehind } from '$lib/releases/order';
 import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact, buildAge } from '$lib/utils';
 import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
@@ -875,7 +875,7 @@ export function newestBuild(row: Pick<RolloutRow, 'app' | 'href' | 'state' | 'wo
 	/* the distance in the app's catalogue order (releases/order.ts); a place whose build is not in the order, or an app with no catalogue, keeps the place's own tab count */
 	const order = appOrder(row.app);
 	const here = placesOf('incident', row.app).find((p) => p.href === row.href)?.version ?? null;
-	const count = behindIn(order, here) ?? behindOfStatus(rawOf(row.href) as never, envsOfSource());
+	const count = catalogueBehind(order, here, () => behindOfStatus(rawOf(row.href) as never, envsOfSource()));
 	if (!count) return null;
 	const why = row.state === 'awaiting-approval' ? 'waiting for approval' : row.state === 'held-by-rule' ? row.word.replace(/^Waits on /, 'waiting on ') : row.state === 'failed' ? 'waiting for health checks' : null;
 	const nw = rel[rel.length - 1];

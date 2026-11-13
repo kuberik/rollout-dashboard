@@ -63,7 +63,7 @@
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
 	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
-	import { approvalMessage, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLineOf, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
+	import { approvalMessage, behindOfPlace, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLineOf, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
 
 	let { state: scenario, name, tab = 'overview', release: wanted = null }: { state: HomeState; name: string; /** Progress tab: the release the page draws (the `?release=` param); unknown or none = the default */ release?: string | null; /** 'overview' (default, the page as ever) or 'pipeline' (app-pipeline r0: the same header and statements, then the Pipeline card at full width, no strip row, no rail) */ tab?: 'overview' | 'progress' } = $props();
 	const pipeline = $derived(tab === 'progress');
@@ -125,15 +125,14 @@
 	let picked = $state<string | null | undefined>(undefined);
 	const openKey = $derived(picked !== undefined ? picked : phone ? null : leadKey);
 	const flip = (k: string) => (picked = openKey === k ? null : k);
-	/* AP1: the strip is the tab's: each node's lag is the tab's "N newer builds" of THAT place (staging "2 builds behind", prod "19 builds behind"), never the app-wide history's count */
+	/* AP1 (2026-11-13): each node's lag is the catalogue distance of THAT place, the same number the ledger below prints */
 	const lane = $derived.by(() => {
 		if (!built) return null;
 		const L = built.lane;
 		const swap = new Map<unknown, typeof L.stages[number]>();
 		const fix = (n: typeof L.stages[number]) => {
-			const k = places.find((x) => x.href === hrefFor(n))?.heldBuilds.length ?? 0;
-			/* no releases: no lag and no "newest" (a neutral ring), whatever the history says */
-			const m = noReleases ? { ...n, behind: 0, state: n.state === 'newest' ? ('behind' as const) : n.state } : k ? { ...n, behind: k } : n;
+			/* no releases: no lag and no "newest" (a neutral ring), whatever the history says. Otherwise the ONE behind: the catalogue distance (app-model behindOfPlace), the number the ledger prints. */
+			const m = noReleases ? { ...n, behind: 0, state: n.state === 'newest' ? ('behind' as const) : n.state } : { ...n, behind: behindOfPlace(hrefFor(n), name) };
 			swap.set(n, m);
 			return m;
 		};

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { catalogueOrder, newestOf, behindIn } from './order';
+import { catalogueOrder, newestOf, behindIn, catalogueBehind } from './order';
 
 describe('the release catalogue order of an app\'s builds', () => {
 	it('one list is its own order', () => {
@@ -33,5 +33,18 @@ describe('the release catalogue order of an app\'s builds', () => {
 	it('two lists that disagree still give every build exactly once', () => {
 		const o = catalogueOrder([['a', 'b'], ['b', 'a']]);
 		expect([...o].sort()).toEqual(['a', 'b']);
+	});
+});
+
+describe('catalogueBehind: the one "behind"', () => {
+	const order = ['c0', 'c1', 'c2', 'c3', 'c4'];
+	it('is the distance in the catalogue, whatever the place\'s own list says', () => {
+		expect(catalogueBehind(order, 'c1', () => 99)).toBe(3);
+		expect(catalogueBehind(order, 'c4', () => 99)).toBe(0);
+	});
+	it('falls back to the own list only for a build outside the catalogue', () => {
+		expect(catalogueBehind(order, 'custom', () => 2)).toBe(2);
+		expect(catalogueBehind([], 'c1', () => 5)).toBe(5);
+		expect(catalogueBehind(order, null, () => 1)).toBe(1);
 	});
 });

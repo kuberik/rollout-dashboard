@@ -56,3 +56,12 @@ export function behindIn(order: readonly string[], build: string | null | undefi
 	const i = order.lastIndexOf(build);
 	return i < 0 ? null : order.length - 1 - i;
 }
+
+/**
+ * THE ONE "BEHIND" (coordinator 2026-11-13): how many builds of the app's catalogue are newer than `build`. The Builds card, the Progress tab, the
+ * app page's header strip and the ledger all print this number; `ownCount` is the place's own list (releaseCandidates), used only when the build is
+ * not in the catalogue order (a custom build, or an app with no catalogue). Never the other way round.
+ */
+export function catalogueBehind(order: readonly string[], build: string | null | undefined, ownCount: () => number): number {
+	return behindIn(order, build) ?? ownCount();
+}
