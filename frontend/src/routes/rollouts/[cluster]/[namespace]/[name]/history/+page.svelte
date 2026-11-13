@@ -1996,13 +1996,15 @@
 												pill already states its state, so this is a POSITION
 												mark" (which build is running right now, as distinct
 												from which one is healthy). `role="count"` is the
-												product's neutral/no-hue chip tone, so a failed current
-												row still carries only two marks at full emphasis (the
-												glyph + the red verb below), not three — the thing the
-												prior note was protecting stays protected. -->
-																	{#if isCurrent && currentRowChip(entry.bakeStatus, currencyBehind)}
-																		<Chip role="count" wide label={currentRowChip(entry.bakeStatus, currencyBehind) ?? ''} />
-																	{/if}
+												product's neutral/no-hue chip tone — for CURRENCY only
+												(Up to date / N builds behind, a count). A failed or
+												in-flight current row prints the header's own state pill,
+												same role and word (`rolloutStateChip`, visual audit #3,
+												2026-11-13): a grey FAILING under a red FAILED drew the
+												tab's most adverse fact in its quietest chip. -->
+																	{#if isCurrent}{@const rowChip = currentRowChip(entry.bakeStatus, currencyBehind)}{#if rowChip}
+																		<Chip role={rowChip.role} wide label={rowChip.label} />
+																	{/if}{/if}
 																	<!--
 												⭐ §3.11 — THE VERB IN ITS STATUS INK, NOT A CHIP — AND NOT
 												ON THE RUNNING ROW (round 2, item 5, squad lead). The
