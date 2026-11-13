@@ -391,6 +391,12 @@ export interface components {
                     kind?: string;
                     /** @description Added by the dashboard API: the gate's `gate.kuberik.com/pretty-name`, omitted when it has none. */
                     displayName?: string;
+                    /** @description Added by the dashboard API: the RULE that owns this gate (a schedule, a dependency, an approval policy, an Environment, or the gate itself). One rule generates one gate per rollout, so this is what "the same rule" means across rollouts. `namespace` is absent for a cluster-scoped kind. */
+                    rule?: {
+                        kind: string;
+                        name: string;
+                        namespace?: string;
+                    };
                 }[];
                 /**
                  * @description History tracks the deployment history of this Rollout.
