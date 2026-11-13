@@ -8,9 +8,11 @@
  */
 import { plainMessage } from '$lib/utils';
 import { isSystemDefaultNote } from '$lib/history-marks';
+import { withoutSkipClause } from '$lib/view-models/skip-rule';
 
 export function deployReason(message: string | null | undefined): string | null {
-	const text = plainMessage(message);
+	// the controller's own "with gate bypass of <gate>" clause is system text, never a reason (the History row says "Skipped <Rule>")
+	const text = withoutSkipClause(plainMessage(message));
 	if (!text) return null;
 	if (/^automatic deployment$/i.test(text)) return null;
 	if (isSystemDefaultNote(text)) return null;

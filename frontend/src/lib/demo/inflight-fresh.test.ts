@@ -1,3 +1,4 @@
+import { isBypassRollout } from './bypass-demo';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { respond } from './respond';
 import { resetDemoState } from './state';
@@ -157,8 +158,10 @@ describe.each(['calm', 'incident', 'wide'] as const)('scenario %s', (scenario) =
 			vi.setSystemTime(Date.now() + advanceMs);
 
 			const body = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}');
-			const rollouts = body.rollouts.items as Rollout[];
-			const environments = body.environments.items as Environment[];
+			// the skip-once demo fleet (bypass-demo.ts) is held by a schedule and an approval ON PURPOSE; these invariants are about the story fleet
+			const demo = (o: { metadata?: { namespace?: string; name?: string } }) => isBypassRollout(o.metadata?.namespace ?? '', o.metadata?.name ?? '');
+			const rollouts = (body.rollouts.items as Rollout[]).filter((r) => !demo(r));
+			const environments = (body.environments.items as Environment[]).filter((e) => !demo(e));
 			const gateContext = buildGateContext({
 				environments: { items: environments },
 				rolloutDependencies: null

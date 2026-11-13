@@ -76,7 +76,7 @@
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import type { EnvironmentTheme } from '$lib/environment-theme';
 	import { rolloutPath } from '$lib/source-dashboard';
-	import { buildTopology, canonicalTier, deployNameOf } from '$lib/view-models/sites-waves';
+	import { buildTopology, canonicalTier, deployNameOf, placeKeyOf } from '$lib/view-models/sites-waves';
 	import { href } from '$lib/paths';
 	import { groupRolloutsByApp } from '$lib/version-utils';
 	import type { Rollout, Environment, RolloutDependency } from '../../../../../../types';
@@ -154,6 +154,19 @@
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { compareEnvironmentNames } from '$lib/env-order';
+	import SkipRuleModal from '$lib/components/SkipRuleModal.svelte';
+	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
+	import { rolloutEnvironmentName } from '$lib/view-models/deploy-risk';
+	import {
+		gateRuleLabels,
+		otherHolders,
+		pendingCovers,
+		pendingSkip,
+		skipRows,
+		targetBuild,
+		type SkipRow,
+		type SkipTarget
+	} from '$lib/view-models/skip-rule';
 	import RolloutNeighbourhood from '$lib/components/RolloutNeighbourhood.svelte';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
 	import { approvalsQueryOptions } from '$lib/api/approvals';
@@ -279,6 +292,45 @@
 		(permissionsQuery.data?.permissions?.update ?? false) || (permissionsQuery.data?.permissions?.patch ?? false)
 	);
 	let showClearPinModal = $state(false);
+
+	// ── SKIP ONCE (bypass-only) ─────────────────────────────────────────
+	// The trigger lives on the upstream tiles (RolloutNeighbourhood); the dialog lists every rollout the same rule holds. The rows are
+	// SNAPSHOTTED when it opens: a skip lands as a pending annotation, which would otherwise drop the row from the live list mid-dialog.
+	let showSkipModal = $state(false);
+	let skipTarget = $state<SkipTarget | null>(null);
+	let skipModalRows = $state<SkipRow[]>([]);
+	/** The place a fleet rollout lives in (the tier, or `tier-site` once the tier has several): the one name the chips and the sort use. */
+	function fleetEnvOf(r: Rollout): string {
+		const e = listEnvironments.find((env) => rolloutMatchesEnvironment(r, env));
+		return e ? placeKeyOf(e, listEnvironments) : rolloutEnvironmentName(r);
+	}
+	/** What one tile (its gate names, the rule's label on it) says about skipping: a pending skip always, the offer only for who may patch. */
+	function skipStateFor(gateNames: string[], label: string) {
+		const r = rollout;
+		if (!r) return null;
+		const tileGates = (r.status?.gates ?? []).filter((g) => g?.name && gateNames.includes(g.name));
+		const pending = pendingSkip(r);
+		if (pending && pendingCovers(pending, gateNames)) {
+			const skipped = pending.all ? (r.status?.gates ?? []).map((g) => g.name as string) : pending.gates;
+			return { kind: 'pending' as const, build: pending.build, waitsFor: otherHolders(r, pending.tag, skipped) };
+		}
+		const rule = tileGates.find((g) => g.rule)?.rule;
+		if (!rule) return null;
+		const t = targetBuild(r, rule);
+		if (!t) return null;
+		return { kind: 'offer' as const, target: { rule, ruleLabel: label, tag: t.tag, build: t.build, gateNames: t.gateNames } };
+	}
+	function openSkip(t: SkipTarget) {
+		skipTarget = t;
+		skipModalRows = skipRows({
+			fleet: listRollouts,
+			rule: t.rule,
+			here: { cluster, namespace, name },
+			envOf: fleetEnvOf,
+			compareEnv: compareEnvironmentNames
+		});
+		showSkipModal = true;
+	}
 	const autoDeploy = $derived(autoDeployState(rollout, (rolloutQuery.data?.rolloutGates?.items ?? []) as RolloutGate[]));
 
 	/**
@@ -1339,6 +1391,13 @@
 	{@const peerClause = chainOnly
 		? (waitsFor({ waitsForEnv: verdict.waitsForEnv }, { peersByEnv })?.heldCause ?? null)
 		: null}
+	<!-- a skip asked for and not yet used, for THIS build: the same fact the tile says, here in the row's own meta (no "·" separator: it is a flex of spans) -->
+	{@const pend = rollout ? pendingSkip(rollout) : null}
+	{@const skips = pend && pend.build === h.build
+		? pend.all
+			? 'Skips every rule once'
+			: `Skips ${[...new Set(pend.gates.map((g) => gateRuleLabels(rollout).get(g) ?? g))].join(', ')} once`
+		: null}
 	<li class="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-4 py-3.5">
 		<div class="flex min-w-0 items-start gap-2.5">
 			<span class="mt-0.5">
@@ -1380,6 +1439,7 @@
 							{/if}
 						{/if}
 					{/if}
+					{#if skips}<span class="t-meta text-fg-muted" data-skip-pending-row>{skips}</span>{/if}
 				</p>
 			</div>
 		</div>
@@ -1938,6 +1998,8 @@
 								hrefOf={(n) => rolloutPath(n.cluster || cluster, n.namespace, n.name, 'gates')}
 								heldBuildsOverride={gatesPin.heldBuildsOverride}
 								onClearPin={canModify && blockStory.pinnedTo ? () => (showClearPinModal = true) : null}
+								skipState={skipStateFor}
+								onSkipRule={canModify ? openSkip : null}
 								clearPinDisabled={gatesPin.clearPinDisabled}
 								reconciledUpstream={reconciled.upstream}
 								elsewhereCountOverride={elsewhereCounts}
@@ -2306,6 +2368,16 @@
 		</div>
 	{/if}
 </div>
+
+{#if rollout && skipTarget}
+	<SkipRuleModal
+		bind:open={showSkipModal}
+		target={skipTarget}
+		here={{ cluster, namespace, name, env: fleetEnvOf(rollout) }}
+		rows={skipModalRows}
+		themeOf={themeFor}
+	/>
+{/if}
 
 {#if rollout}
 	<ClearPinModal

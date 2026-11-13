@@ -109,7 +109,8 @@ export function convertRollout(r: Obj): {
 		(c) => ({
 			tag: c.tag,
 			...(c.created ? { created: c.created } : {}),
-			gated: gatedTags.has(c.tag)
+			gated: gatedTags.has(c.tag),
+			...(Array.isArray(c.blockedBy) ? { blockedBy: c.blockedBy } : {})
 		})
 	);
 	const {

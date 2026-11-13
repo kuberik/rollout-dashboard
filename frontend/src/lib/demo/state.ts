@@ -137,6 +137,11 @@ function nextRv(): string {
 	return String(rv);
 }
 
+/** A rollout changed outside this file's own mutations (bypass-demo.ts): tell every open stream to refetch it. */
+export function broadcastRolloutChange(namespace: string, name: string, cluster: string): void {
+	broadcastRollout(namespace, name, cluster, new Date());
+}
+
 function broadcastRollout(namespace: string, name: string, cluster: string, at: Date): void {
 	broadcastChanges([
 		{

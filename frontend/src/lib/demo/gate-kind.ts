@@ -27,9 +27,37 @@ export function approvalPolicyMeta(namespace: string, rolloutName: string, polic
 	};
 }
 
-type Gate = { name?: string; kind?: string; allowedVersions?: string[] | null };
-const stamp = (r: { status?: { gates?: Gate[] } } | null | undefined) => {
-	for (const g of r?.status?.gates ?? []) if (g.kind == null) g.kind = mockGateKind(g);
+type GateRuleJson = { kind: string; name: string; namespace?: string };
+type Gate = { name?: string; kind?: string; allowedVersions?: string[] | null; rule?: GateRuleJson };
+type RolloutMeta = { name?: string; namespace?: string };
+
+/**
+ * The mock backend's `rule` on every gate summary, the way pkg/kubernetes/gatekind.go's `GateRule` derives it from the owner: a schedule gate's rule is its schedule
+ * (the mock has no owners, so the one fixture schedule gate is named by hand), a promotion gate's is the Environment, a dependency gate's the RolloutDependency, an approval
+ * gate's the ApprovalPolicy, anything else is its own rule (`RolloutGate`, the gate's name). Cluster kinds carry no namespace.
+ */
+export function mockGateRule(g: Gate, rollout: RolloutMeta | undefined): GateRuleJson {
+	const name = g.name ?? '';
+	const namespace = rollout?.namespace;
+	switch (g.kind ?? mockGateKind(g)) {
+		case 'approval':
+			return { kind: 'ApprovalPolicy', name: 'prod-needs-approval', ...(namespace ? { namespace } : {}) };
+		case 'promotion':
+			return { kind: 'Environment', name: rollout?.name ?? name, ...(namespace ? { namespace } : {}) };
+		case 'dependency':
+			return { kind: 'RolloutDependency', name: name.replace(/^dependency-/, ''), ...(namespace ? { namespace } : {}) };
+		case 'schedule':
+			return { kind: 'RolloutSchedule', name: name === 'schedule-gate-ck7qx' ? 'checkout-business-hours' : name, ...(namespace ? { namespace } : {}) };
+		default:
+			return { kind: 'RolloutGate', name };
+	}
+}
+
+const stamp = (r: { metadata?: RolloutMeta; status?: { gates?: Gate[] } } | null | undefined) => {
+	for (const g of r?.status?.gates ?? []) {
+		if (g.kind == null) g.kind = mockGateKind(g);
+		if (g.rule == null) g.rule = mockGateRule(g, r?.metadata);
+	}
 };
 
 /** stamp `kind` on every gate summary of a JSON rollouts response (list, detail, or a mutation's `rollout`); anything else passes through untouched */

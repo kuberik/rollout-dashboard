@@ -17,6 +17,16 @@
  * ⛔ NOTHING NODE-SPECIFIC MAY ENTER THIS FILE — see `./mock-data.ts`.
  */
 
+import {
+	bypassGateObjects,
+	bypassPermissions,
+	bypassSchedule,
+	getBypassEnvironments,
+	getBypassRollouts,
+	isBypassRollout,
+	resetBypassDemo,
+	skipBypass
+} from './bypass-demo';
 import { staleClusterErrors, type StaleMockMode } from './cluster-errors-mock';
 import { applySlicesMode, sliceDetailRollout } from './mock-slices';
 import {
@@ -440,7 +450,7 @@ function withLiveOverrides(rollouts: unknown[]): Stampable[] {
  * one underneath it.
  */
 function findListRollout(namespace: string, name: string): Record<string, unknown> | undefined {
-	const all = [...getScenarioFleetRollouts(), ...getScenarioDepRollouts()] as {
+	const all = [...getScenarioFleetRollouts(), ...getScenarioDepRollouts(), ...getBypassRollouts()] as {
 		metadata?: { namespace?: string; name?: string };
 	}[];
 	return all.find((r) => r.metadata?.namespace === namespace && r.metadata?.name === name) as
@@ -452,7 +462,7 @@ function findListRollout(namespace: string, name: string): Record<string, unknow
  * every `mk*Environment` helper in `mock-data.ts` keys its `metadata.name`/
  * `metadata.namespace` identically to the rollout it belongs to. */
 function findListEnvironment(namespace: string): Record<string, unknown> | undefined {
-	const all = [...mockFleetEnvironments, ...getStoryDepEnvironments()] as {
+	const all = [...mockFleetEnvironments, ...getStoryDepEnvironments(), ...getBypassEnvironments()] as {
 		metadata?: { namespace?: string };
 	}[];
 	return all.find((e) => e.metadata?.namespace === namespace) as Record<string, unknown> | undefined;
@@ -489,7 +499,9 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 					// `hello-world-staging`/`hello-world-prod` — the `promote`
 					// scenario's chain (mock-promote.ts). No FLEET placeholder to
 					// override; these ARE the live fixtures already.
-					...getHwEnvRollouts()
+					...getHwEnvRollouts(),
+					// the "skip one rule once" demo (bypass-demo.ts)
+					...getBypassRollouts()
 				]));
 		return json({
 			rollouts: { items: slicesMode.rollouts.map(stampSourceCluster) },
@@ -504,7 +516,8 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 					// `mock-promote.ts`'s own doc comment.
 					mkHwEnvironment('dev'),
 					mkHwEnvironment('staging'),
-					mkHwEnvironment('prod')
+					mkHwEnvironment('prod'),
+					...getBypassEnvironments()
 				].map(stampSourceCluster)
 			},
 			// The `rolloutDependencies` sibling collection, exactly as the
@@ -697,6 +710,10 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				return json(sliceDetailRollout2(clone));
 			}
 			const listRollout = findListRollout(rNs, rName);
+			if (listRollout && isBypassRollout(rNs, rName)) {
+				const detail = deriveGenericDetail(listRollout, findListEnvironment(rNs));
+				return json(sliceDetailRollout2({ ...detail, rolloutGates: { items: bypassGateObjects(rNs, rName) } }));
+			}
 			if (listRollout) return json(sliceDetailRollout2(deriveGenericDetail(listRollout, findListEnvironment(rNs))));
 		}
 	}
@@ -707,7 +724,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 	// had no buttons at all on its own page).
 	{
 		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/permissions\/all$/);
-		if (m) return json(getPermissionsAll(m[1], m[2]));
+		if (m) return json(bypassPermissions(m[1], m[2]) ?? getPermissionsAll(m[1], m[2]));
 	}
 
 	// POST /api/rollouts/:namespace/:name/approve — the approval contract (src/lib/api/approvals.ts).
@@ -730,6 +747,15 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 	if (reqPath === '/api/demo/approvals' && method !== 'GET') {
 		const b = parseBody(opts.body) as { namespace?: string; name?: string; version?: string; approvalName?: string };
 		return b?.namespace && b?.name && b?.version && seedGitApproval(b.namespace, b.name, b.version, b.approvalName) ? json({}) : json({ error: 'unknown rollout' }, 404);
+	}
+
+	// POST /api/rollouts/:namespace/:name/bypass-gates — skip one rule once (bypass-demo.ts, the BRIEF's contract).
+	{
+		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/bypass-gates$/);
+		if (m && method !== 'GET' && isBypassRollout(m[1], m[2])) {
+			const r = skipBypass(m[1], m[2], parseBody(opts.body));
+			return json(r.body, r.status);
+		}
 	}
 
 	// POST /api/rollouts/:namespace/:name/retry — task A.4/A.1.
@@ -785,6 +811,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				? requested
 				: undefined;
 		resetDemoState(scenarioParam);
+		resetBypassDemo();
 		return json({ ok: true });
 	}
 
@@ -875,7 +902,8 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 		if (m) {
 			return json({
 				rolloutSchedules: { items: mockSchedules(m[1]) },
-				clusterRolloutSchedules: { items: [] }
+				// the closed `business-hours` ClusterRolloutSchedule holds the six bypass-demo rollouts
+				clusterRolloutSchedules: { items: isBypassRollout(m[1], m[2]) ? [bypassSchedule(m[1])] : [] }
 			});
 		}
 		if (reqPath === '/api/schedules') {

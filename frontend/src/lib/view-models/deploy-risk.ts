@@ -435,6 +435,65 @@ export function confirmLevel(intent: DeployIntent): ConfirmLevel {
 	return intent.vouched ? 'none' : 'notice';
 }
 
+/**
+ * ⭐ SKIPPING ONE RULE FOR ONE BUILD: THE CEREMONY (bypass-only, 2026-11-13, coordinator ruling).
+ *
+ * `confirmLevel` grades a DEPLOY from direction, tier and vouching. Skipping a rule deploys nothing by itself, but it lets one
+ * build past the thing that held it, on one or many rollouts, and production anywhere in the selection is the tier a mistake costs most
+ * on. So: no production selected is the dialog's own sentence (`notice`); production selected is `typed`.
+ *
+ * WHAT IS TYPED depends on what the selection shares. When every selected production rollout takes the SAME build, the operator types
+ * that build, exactly as the deploy dialogs ask. When the production rollouts span SEVERAL builds there is no single build to type, so
+ * the dialog lists each production rollout with its build and asks for the one thing they share and the thing being switched off: the
+ * rule's name. `why` says that in one plain line.
+ */
+export type SkipSelection = { env: string; build: string; name: string };
+
+export type SkipConfirm =
+	| { level: 'notice' }
+	| {
+			level: 'typed';
+			/** `build`: type the one shared build. `rule`: the production builds differ, type the rule's name. */
+			by: 'build' | 'rule';
+			/** The exact text that unlocks the confirm. */
+			expected: string;
+			/** One plain line: why it asks for that. Null when the prompt already says it (one shared build: "Prod is selected. Type <build>"). */
+			why: string | null;
+			/** The label above the box, ending where the value goes. */
+			prompt: string;
+			/** The production rollouts, with their builds: listed when `by === 'rule'`. */
+			production: SkipSelection[];
+	  };
+
+/** `typed` iff any selected rollout is production. */
+export function skipConfirmLevel(envs: readonly string[]): 'notice' | 'typed' {
+	return envs.some((e) => isProductionTarget(e)) ? 'typed' : 'notice';
+}
+
+export function skipConfirm(selection: readonly SkipSelection[], rule: { name: string }): SkipConfirm {
+	const production = selection.filter((s) => isProductionTarget(s.env));
+	if (skipConfirmLevel(selection.map((s) => s.env)) === 'notice') return { level: 'notice' };
+	const builds = [...new Set(production.map((p) => p.build))];
+	if (builds.length === 1) {
+		return {
+			level: 'typed',
+			by: 'build',
+			expected: builds[0],
+			why: null,
+			prompt: 'Prod is selected. Type',
+			production: [...production]
+		};
+	}
+	return {
+		level: 'typed',
+		by: 'rule',
+		expected: rule.name,
+		why: "Several builds are selected, so type the rule's name.",
+		prompt: 'Prod is selected. Type',
+		production: [...production]
+	};
+}
+
 /** What a retry destroys and what it does not, as facts the caller measured. */
 export type RetryFacts = {
 	/** Health checks reporting failure right now, by display name. */

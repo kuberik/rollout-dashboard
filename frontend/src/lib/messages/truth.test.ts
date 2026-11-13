@@ -27,6 +27,7 @@ import {
 	deployIntent,
 	retryIntent,
 	retryConsequences,
+	skipConfirm,
 	rollbackTarget,
 	targetPhrase,
 	gatesAllow,
@@ -1991,6 +1992,24 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 		says(confirmLevel(known), 'typed');
 		says(deployActionLabel(known), 'Deploy anyway');
 		says(typedPrompt(known), 'This build already failed here. Type');
+	});
+});
+
+describe('deploy-risk: skipping one rule, what production asks for and why', () => {
+	test('one shared production build: type the build; several builds: type the rule', () => {
+		const same = skipConfirm([{ env: 'prod', build: '5.8.0-62', name: 'ledger-api' }], { name: 'business-hours' });
+		if (same.level !== 'typed') throw new Error('production is typed');
+		expect(same.why).toBeNull();
+		says(same.prompt, 'Prod is selected. Type');
+		const many = skipConfirm(
+			[
+				{ env: 'prod', build: '5.8.0-62', name: 'ledger-api' },
+				{ env: 'prod', build: '2.3.0-31', name: 'invoice-worker' }
+			],
+			{ name: 'business-hours' }
+		);
+		if (many.level !== 'typed') throw new Error('production is typed');
+		says(many.why, "Several builds are selected, so type the rule's name.");
 	});
 });
 

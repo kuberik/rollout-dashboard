@@ -68,6 +68,11 @@
 	import CauseText from './CauseText.svelte';
 	import type { Cause } from '$lib/view-models/gate-label';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
+	import { ForwardStepOutline } from 'flowbite-svelte-icons';
+	import type { SkipTarget } from '$lib/view-models/skip-rule';
+
+	/** What a tile says about skipping its rule once (see the `skipState` prop). */
+	type SkipTileState = { kind: 'pending'; build: string; waitsFor: string[] } | { kind: 'offer'; target: SkipTarget };
 	import { approvalWord, ASK_LOADING } from '$lib/components/new/state-words';
 	import { fade } from 'svelte/transition';
 	import type { ApprovalTarget } from '$lib/components/new/data';
@@ -90,6 +95,8 @@
 		hrefOf = () => null,
 		heldBuildsOverride,
 		onClearPin = null,
+		skipState = null,
+		onSkipRule = null,
 		approveAsk = null,
 		clearPinDisabled = false,
 		reconciledUpstream,
@@ -123,6 +130,14 @@
 		heldBuildsOverride?: string[];
 		/** The pin box's own action: the Overview's Clear pin, one dialog. Null draws no button (no permission, or not pinned). */
 		onClearPin?: (() => void) | null;
+		/**
+		 * ⭐ SKIP ONCE (bypass-only): what an UPSTREAM tile says about skipping its rule for one build. `gateNames` are the RolloutGates behind the
+		 * tile, `label` the rule as the tile names it. `pending`: a skip is asked for and not yet used (drawn as a line, no button, whoever is
+		 * looking). `offer`: the rule holds a build and the viewer may skip it (the button; only drawn when `onSkipRule` is set). Null: nothing.
+		 */
+		skipState?: ((gateNames: string[], label: string) => SkipTileState | null) | null;
+		/** The Skip once button's action: opens the dialog for this target. Null draws no button (no permission, or permission still loading). */
+		onSkipRule?: ((t: SkipTarget) => void) | null;
 		/** The approval the viewer can give at this rollout (data.ts `approvalAskAt`, the one Home offers): the held approval gate says "Needs your approval" and carries Approve instead of "How to approve". Null: today's words. */
 		approveAsk?: ApprovalTarget | typeof ASK_LOADING | null;
 		/** The builds this place's approval gate has been given an approval for, as the place's own RolloutApprovals say it (`approvedFactOf`): "c0d3e88 · approved by wyatt" under the approval gate, held or not, so an approved build never reads as merely not held. */
@@ -572,6 +587,25 @@
 	<span class="inline-flex shrink-0" data-gate-mark={state}><StatusMark {state} /></span>
 {/snippet}
 
+<!-- ⭐ SKIP ONCE, THE TILE'S TWO PARTS (bypass-only spec §1, §4). New by design: no existing state means "armed, not fired". Pending: the tile's own held
+     line (same slot, same `t-meta`), neutral ink, a 12px glyph; the tile border and mark stay as the controller says (the rule still holds every other
+     build). The button is the pin tile's `Clear pin` slot and shape. -->
+{#snippet skipPending(sk: Extract<SkipTileState, { kind: 'pending' }>)}
+	<span class="inline-flex min-w-0 items-center gap-1.5" data-skip-pending>
+		<ForwardStepOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+		<span class="min-w-0 break-words"
+			>Skipped once for <span class="t-code-sm">{sk.build}</span
+			>{#if sk.waitsFor.length > 0}<span class="text-fg-subtle ml-1">· waits for {sk.waitsFor.join(', ')}</span>{/if}</span
+		>
+	</span>
+{/snippet}
+
+{#snippet skipButton(t: SkipTarget, kind: 'secondary' | 'ghost' = 'secondary')}
+	<button type="button" class="btn btn-xs btn-{kind} hit-32 shrink-0 max-sm:min-h-11 max-sm:px-3.5 max-sm:text-sm" data-skip-rule onclick={() => onSkipRule?.(t)}>
+		<ForwardStepOutline class="h-4 w-4" aria-hidden="true" />Skip once
+	</button>
+{/snippet}
+
 {#snippet linkBox(l: NeighbourLink)}
 	{@const theme = themeOf(l.node.env)}
 	{@const href = l.node.unresolved ? null : hrefOf(l.node)}
@@ -584,9 +618,15 @@
 	{@const chain = l.chainPredecessor ? chainLine(l) : null}
 	{@const line = chain ?? (waiting || held ? [linkReleaseLine(l)] : null)}
 	{@const quiet = !held}
+	{@const sk = l.side === 'upstream' && l.gate && (held || waiting)
+		? (skipState?.([l.gate], type === 'promotion' ? `Promotion from ${l.node.env}` : `${l.node.name} dependency`) ?? null)
+		: null}
+	{@const offer = sk?.kind === 'offer' && onSkipRule ? sk.target : null}
+	<!-- A button cannot nest in an <a>: a tile that carries Skip once is a div, its identity is the `.tap-link` whose overlay still makes the whole tile navigate. -->
+	{@const stretch = !!offer && !!href}
 	<svelte:element
-		this={href ? 'a' : 'div'}
-		{href}
+		this={href && !stretch ? 'a' : 'div'}
+		href={stretch ? undefined : href}
 		data-hood-link={l.side}
 		use:holdHeight={focus?.id}
 		data-state={l.state}
@@ -601,21 +641,21 @@
 			: l.node.unresolved
 				? 'border-dashed border-line-strong bg-subtle'
 				: 'border-line bg-surface'}
-			{href ? 'hover:border-line-strong' : ''}"
+			{href ? 'hover:border-line-strong' : ''} {stretch ? 'tap-zone' : ''}"
 	>
 		<span class="gh-row flex min-w-0 items-center gap-2" data-hood-port>
 			{@render glyph(type)}
 			<!-- identity in the type's own shape: a promotion IS an environment (the env chip alone: the app is the focus's own name and the
 			     build that env runs is one click away); a dependency is the other app and the version it runs (its environment in the tooltip:
 			     one chip form on the canvas, the env badge belongs to a promotion). -->
-			<span class="flex min-w-0 flex-1 items-center gap-2">
+			<svelte:element this={stretch ? 'a' : 'span'} href={stretch ? href : undefined} class="{stretch ? 'tap-link ' : ''}flex min-w-0 flex-1 items-center gap-2">
 				{#if !sameApp}<span class="gh-name t-card-title text-fg">{l.node.name}</span>{/if}
 				{#if sameApp && theme}
 					<Chip role="env" {theme} label={envLabel(l.node.env)} title={l.node.env} class="min-w-0" />
 				{:else if sameApp}
 					<span class="t-meta min-w-0 truncate text-fg-subtle">{l.node.env}</span>
 				{/if}
-			</span>
+			</svelte:element>
 			{#if sameApp}
 				<!-- no right-hand object: the chip is the promotion's drawing -->
 			{:else if l.node.build}
@@ -625,8 +665,13 @@
 			{/if}
 			{@render mark(waiting ? 'behind' : l.chainPredecessor ? (chainMark(l) === 'held' ? 'behind' : chainMark(l)) : markState(l.state))}
 		</span>
-		{#if line}
+		{#if sk?.kind === 'pending'}
+			<p class="gh-line t-meta min-w-0 text-fg-muted" data-gate-release>{@render skipPending(sk)}</p>
+		{:else if line}
 			<p class="gh-line t-meta min-w-0 break-words {quiet ? 'text-fg-muted' : 'text-held'}" data-gate-release><CauseText parts={line} /></p>
+		{/if}
+		{#if offer}
+			<div class="gh-line mt-1 self-start">{@render skipButton(offer)}</div>
 		{/if}
 	</svelte:element>
 {/snippet}
@@ -642,6 +687,9 @@
 	{@const docsHref = held && isApproval && !ask && !loading ? 'https://docs.kuberik.com/concepts/gates#approvals' : null}
 	{@const bar = type === 'window' || type === 'freeze' ? windowBar(b.window, new Date(minute * 60_000)) : null}
 	{@const fact = isApproval && !held ? approvedFacts.find((f) => f.who) ?? approvedFacts[0] : undefined}
+	<!-- Skip once: schedule / freeze / approval / hand-written gate tiles only (never the pin, never health: not a rule). -->
+	{@const sk = held && b.gates.length > 0 && b.kind !== 'pin' && b.kind !== 'health' ? (skipState?.(b.gates, b.title) ?? null) : null}
+	{@const offer = sk?.kind === 'offer' && onSkipRule ? sk.target : null}
 	<svelte:element
 		this={docsHref ? 'a' : 'div'}
 		href={docsHref}
@@ -693,9 +741,14 @@
 			<!-- The action row is 28px in every state, so Approve (its label can be long: "Approve all 5 regions") never squeezes the gate's
 			     name on the row above, and swapping it for "Approved by …" moves nothing. -->
 			<span class="gh-line flex h-7 min-w-0 items-center gap-2">
-				<span class="t-meta min-w-0 flex-1 truncate {held ? 'text-held' : 'text-fg-muted'}" data-gate-release
-					>{#if held}{ask ? 'Needs you' : 'Needs approval'}{:else if fact}{fact.text.charAt(0).toUpperCase() + fact.text.slice(1)}{:else}Approved{/if}</span
-				>
+				{#if sk?.kind === 'pending'}
+					<span class="t-meta min-w-0 flex-1 truncate text-fg-muted" data-gate-release>{@render skipPending(sk)}</span>
+				{:else}
+					<span class="t-meta min-w-0 flex-1 truncate {held ? 'text-held' : 'text-fg-muted'}" data-gate-release
+						>{#if held}{ask ? 'Needs you' : 'Needs approval'}{:else if fact}{fact.text.charAt(0).toUpperCase() + fact.text.slice(1)}{:else}Approved{/if}</span
+					>
+				{/if}
+				{#if offer}{@render skipButton(offer, held && ask ? 'ghost' : 'secondary')}{/if}
 				{#if held && ask}
 					<span class="shrink-0" in:fade={{ duration: 150 }}><ApproveButton target={ask} class="btn btn-primary btn-xs" scope /></span>
 				{:else if held && loading}
@@ -703,9 +756,16 @@
 				{/if}
 			</span>
 		{:else if held}
-			<p class="gh-line t-meta min-w-0 break-words text-held" data-gate-release>{type === 'window' || type === 'freeze' ? windowLine(b) : boxReleaseLine(b)}</p>
+			{#if sk?.kind === 'pending'}
+				<p class="gh-line t-meta min-w-0 text-fg-muted" data-gate-release>{@render skipPending(sk)}</p>
+			{:else}
+				<p class="gh-line t-meta min-w-0 break-words text-held" data-gate-release>{type === 'window' || type === 'freeze' ? windowLine(b) : boxReleaseLine(b)}</p>
+			{/if}
 			{#if b.kind === 'pin' && onClearPin}
 				<button type="button" class="gh-line btn btn-xs btn-secondary mt-1 self-start" disabled={clearPinDisabled} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
+			{/if}
+			{#if offer}
+				<div class="gh-line mt-1 self-start">{@render skipButton(offer)}</div>
 			{/if}
 		{/if}
 	</svelte:element>
