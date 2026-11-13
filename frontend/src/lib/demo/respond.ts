@@ -903,7 +903,7 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 			return json({
 				rolloutSchedules: { items: mockSchedules(m[1]) },
 				// the closed `business-hours` ClusterRolloutSchedule holds the six bypass-demo rollouts
-				clusterRolloutSchedules: { items: isBypassRollout(m[1], m[2]) ? [bypassSchedule()] : [] }
+				clusterRolloutSchedules: { items: isBypassRollout(m[1], m[2]) ? [bypassSchedule(m[1])] : [] }
 			});
 		}
 		if (reqPath === '/api/schedules') {

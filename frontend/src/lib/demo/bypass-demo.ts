@@ -207,7 +207,7 @@ export function bypassGateObjects(namespace: string, name: string): Obj[] {
 }
 
 /** The cluster-scoped schedule, closed now (the rules are shifted off the current Zagreb hour when it would be open). */
-export function bypassSchedule(): Obj {
+export function bypassSchedule(namespace?: string): Obj {
 	const zagreb = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Zagreb', hour: '2-digit', hourCycle: 'h23' }).format(d);
 	const hour = Number(zagreb(hcNow));
 	const day = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Zagreb', weekday: 'long' }).format(hcNow);
@@ -225,7 +225,9 @@ export function bypassSchedule(): Obj {
 		status: {
 			active: false,
 			nextTransition: new Date(hcNow.getTime() + 5 * 3600_000).toISOString(),
-			managedGates: SPECS.map((s) => `${ns(s)}/${bhGateName(s.app)}`),
+			// bare gate names, as the controller publishes them and every other fixture does: `withSchedules` joins them to the REQUESTING
+			// namespace (a `<ns>/<gate>` here joined to nothing, so Business hours read as `a check starts passing`)
+			managedGates: SPECS.filter((s) => !namespace || ns(s) === namespace).map((s) => bhGateName(s.app)),
 			matchingRollouts: SPECS.length
 		}
 	};
@@ -283,7 +285,9 @@ export function skipBypass(namespace: string, name: string, body: Obj): Result {
 	recompute(r);
 	scheduleDeploy(namespace, name);
 	broadcastRolloutChange(namespace, name, namespace.includes('prod') ? 'prod' : 'staging');
-	return { status: 200, body: { rollout: r, version, gates: names, scope } };
+	// like the backend: the MERGED gate list the pending skip now names (the whole annotation for an only-skip), not just this request's
+	const merged = scope === 'all' ? names : (ann[BYPASS_ONLY] ?? '').split(',').filter(Boolean);
+	return { status: 200, body: { rollout: r, version, gates: merged, scope } };
 }
 
 /** The controller's next reconcile: a skipped build nothing else holds is deployed once, and the annotations are cleared. */
