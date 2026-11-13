@@ -3172,6 +3172,7 @@
 				{/snippet}
 				<PageHeader
 					title={rollout.metadata?.name ?? ''}
+					app={rollout.metadata?.name ?? null}
 					titleAfter={heroTitleAfter}
 					metaSeparated
 					class="mb-6"
