@@ -66,7 +66,7 @@
 		{#if P.attention.length}
 			<section id="attention" data-section="attention">
 				<SectionHeader title="Attention" icon={InboxOutline} rollup={attRollup} />
-				<AttentionBand count={P.attention.length} cols={3}>
+				<AttentionBand count={P.attention.length}>
 					{#each P.attention as a (a.key)}
 						{@const act = a.yours ? rowAction(a.row) : null}
 						<div class="contents" data-truth-kind="attention" data-truth-app={a.app} data-truth-href={a.href} data-truth-group={a.row.group} {...truthAttrs(a.row)}>

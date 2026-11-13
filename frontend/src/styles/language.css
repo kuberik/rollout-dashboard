@@ -648,6 +648,27 @@ html.dark .surface-raised,
 		row-gap: 0;
 	}
 
+	/* ── CARD TRACKS. The column template a page's card grids share, so a band of cards and the tile grid under it
+	   draw the same right edges (visual audit #13, 2026-11-13). Columns step by the width of the nearest
+	   `container-type: inline-size` ancestor (never the viewport: the sidebar makes viewport width lie), equal
+	   widths, a short last row left short, never stretched to fill.
+	     .tracks        tiles (Environment page Held / Ready, the Attention band): 1 / 2 from 640 / 3 from 1100 / 4 from 1700
+	     .tracks--repo  repo cards (RepoGrid, the Changes Attention band): 1 / 2 from 520 / 3 from 920 / 4 from 1480, 12px gap
+	   Reference: the /rollouts band at 1440, three cards filling exactly three tracks. */
+	.tracks {
+		display: grid;
+		gap: 16px;
+		grid-template-columns: minmax(0, 1fr);
+		min-width: 0;
+	}
+	@container (min-width: 640px) { .tracks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+	@container (min-width: 1100px) { .tracks { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+	@container (min-width: 1700px) { .tracks { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+	.tracks.tracks--repo { gap: 12px; }
+	@container (min-width: 520px) { .tracks.tracks--repo { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+	@container (min-width: 920px) { .tracks.tracks--repo { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+	@container (min-width: 1480px) { .tracks.tracks--repo { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
 	/* ── SECTION HEADER. dot · title · count · description …… action.
 	   The dot is the section's state colour (or `--k-fg-subtle` when the
 	   section is neutral). One dialect for every page. */
