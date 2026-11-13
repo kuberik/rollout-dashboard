@@ -23,7 +23,7 @@
 	import { avatarSrc } from '../data';
 	import { ChevronDoubleRightOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import { envTheme } from '../rollout-view';
-	import { SITE_MARK as SITE, type Stages, type StageState, type StagePlace, type StageColumn, type ReleaseLine, type RailItem } from './stages-model';
+	import { columnWidth, MIN_TAIL, TAIL_BESIDE, SITE_MARK as SITE, type Stages, type StageState, type StagePlace, type StageColumn, type ReleaseLine, type RailItem } from './stages-model';
 
 	let { stages, release = null, rail = null, class: className = '' }: { stages: Stages; /** the release line that opens the canvas (app scope) */ release?: ReleaseLine | null; /** the RELEASE RAIL's rows (app scope, oldest first); drawn only with 2+ in flight */ rail?: RailItem[] | null; class?: string } = $props();
 	/* overflow cue: a fade on the end edge of the rail scroller, only while it is not scrolled to the end (mask only: no geometry) */
@@ -85,8 +85,8 @@
 	const px = (n: number) => n + 'px';
 	const base = $derived(multiApp ? 3 : 1);
 	const track = (i: number) => base + 2 * i;
-	/* a tile that carries a build tail (app scope, decided by scope alone, never by state) needs 176px to show the whole build, else the graph yields to the list; change scope keeps 148 */
-	const minCol = $derived(stages.release ? 176 : MIN);
+	/* a tile that carries a build tail (app scope, decided by scope alone, never by state): at a tile of 192px or more the build sits beside the state word on line 2; below that EVERY app-scope row stacks it on its own line 3 (see `.stg-tail` below), so the widest unit of text is the build itself (~70px) and 152px columns show every word and build in full. Change scope keeps 148 */
+	const minCol = $derived(stages.release ? MIN_TAIL : MIN);
 	const gridCols = $derived((multiApp ? [LABEL, GAP_TIER].map(px).join(' ') + ' ' : '') + stages.columns.map((_, i) => (i ? px(gapBefore(i)) + ' ' : '') + 'minmax(' + [minCol, CAP].map(px).join(', ') + ')').join(' '));
 	const needW = $derived(stages.columns.length * minCol + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
 	/* THE RAIL FORM, decided by width and column count only (never by state or selection): the side rail only when the canvas beside it keeps COMFORTABLE columns (195px, so a held cause never wraps); otherwise the stacked scroller above a full-width canvas. Before the first measure (bw 0) the stacked form: it can never widen the page. */
@@ -95,6 +95,9 @@
 	/* a roomier rail (336px) only when the canvas beside it still keeps columns of 220px or more; decided by width alone */
 	const railW = $derived(side && bw >= sideNeed + (336 - RAIL) + stages.columns.length * (220 - COMFY) ? 336 : RAIL);
 	const horizontal = $derived(w === 0 || w >= needW);
+	/* THE TAIL STACK: the column width the graph will draw (the grid hands out equal tracks up to CAP), decided by width and column count alone; app scope only */
+	const colW = $derived(columnWidth(w, stages.columns.length, stages.columns.reduce((n, _, i) => n + gapBefore(i), 0), multiApp ? LABEL + GAP_TIER : 0, CAP));
+	const stackTail = $derived(!!stages.release && horizontal && w > 0 && colW < TAIL_BESIDE);
 	const laneRow = (li: number) => 2 + (anyMulti ? 1 : 0) + li;
 	const ATTR: Record<StageState, string> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'waiting', failed: 'failed', notreached: 'not-reached', notaffected: 'not-affected', replaced: 'not-affected' };
 	/* the pie of one wave column: every site of it, every lane */
@@ -117,12 +120,12 @@
 {/snippet}
 
 {#snippet row(p: StagePlace, sep: boolean, withApp: boolean)}
-				<a href={toHref(p.href)} aria-current={p.here ? 'location' : undefined} class="stg-row {p.here ? 'stg-here' : ''} {sep ? 'border-t border-line-subtle' : ''} flex min-h-11 min-w-0 items-center gap-2 px-2 py-1 hover:bg-hover" data-stage-row="{p.app}|{p.href}" data-stage-state={ATTR[p.state]}>
-					<span class="flex h-4 w-4 shrink-0 items-center justify-center"><WaveMark mark={waveMark([{ state: SITE[p.state] }])} /></span>
-					<span class="flex min-w-0 flex-col">
-											<span class="t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
+				<a href={toHref(p.href)} aria-current={p.here ? 'location' : undefined} class="stg-row {stages.release ? 'stg-tail' : ''} {p.here ? 'stg-here' : ''} {sep ? 'border-t border-line-subtle' : ''} flex min-h-11 min-w-0 items-center gap-2 px-2 py-1 hover:bg-hover" data-stage-row="{p.app}|{p.href}" data-stage-state={ATTR[p.state]}>
+					<span class="stg-mark flex h-4 w-4 shrink-0 items-center justify-center"><WaveMark mark={waveMark([{ state: SITE[p.state] }])} /></span>
+					<span class="stg-txt flex min-w-0 flex-col">
+											<span class="stg-name t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
 							<!-- line 2: the state word / cause never shrinks (it wraps before it is cut); the tail sheds the build first, then the age or step -->
-							<span class="t-meta flex min-w-0 gap-1 overflow-hidden {toneInk(p.state)}" title={p.ahead ? (p.state === 'checking' ? 'Checking ' : p.state === 'deploying' ? 'Deploying ' : p.state === 'failed' ? 'Failed ' : 'On ') + p.build : p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build && p.ahead}<span class="t-code-sm flex-none whitespace-nowrap {p.state === 'deployed' ? 'text-fg-muted' : 'text-fg-subtle'}">{p.build}</span>{:else if p.build}<span class="t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
+							<span class="stg-l2 t-meta flex min-w-0 gap-1 overflow-hidden {toneInk(p.state)}" title={p.ahead ? (p.state === 'checking' ? 'Checking ' : p.state === 'deploying' ? 'Deploying ' : p.state === 'failed' ? 'Failed ' : 'On ') + p.build : p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build && p.ahead}<span class="stg-build t-code-sm flex-none whitespace-nowrap {p.state === 'deployed' ? 'text-fg-muted' : 'text-fg-subtle'}">{p.build}</span>{:else if p.build}<span class="stg-build t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle"><span class="stg-dot">· </span>{p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
 									</span>
 				</a>
 {/snippet}
@@ -176,7 +179,7 @@
 		{/if}
 		{#if horizontal}
 			<!-- tiles top-aligned, never stretched to the lane (coordinator ruling: a one-place tile keeps its own height); the header rows and the tiles are placed on explicit tracks, with 12px between a tier's waves and 24px between tiers -->
-			<div class="stg-graph grid w-full items-start gap-y-3" style="grid-template-columns: {gridCols};">
+			<div class="stg-graph grid w-full items-start gap-y-3" style="grid-template-columns: {gridCols}; --cy: {stackTail ? 14 : 22}px;" data-tail={stackTail ? 'stack' : undefined}>
 				{#each groups as g (g.tier)}
 					<div class="min-w-0 self-start" style="grid-column: {track(g.first)} / {track(g.last) + 1}; grid-row: 1;">{@render tierHead(g)}</div>
 					{#if g.multi}{#each stages.columns as _, i (i)}{#if i >= g.first && i <= g.last}<div class="min-w-0 self-start" style="grid-column: {track(i)}; grid-row: 2;">{@render waveHead(i)}</div>{/if}{/each}{/if}
@@ -244,8 +247,15 @@
 	.stg-tile.stg-quiet { background: var(--k-ground); border-style: dashed; border-color: var(--k-line); }
 	/* rollout scope: the place being viewed rests on the hover fill (same row size and position, no new hue) */
 	.stg-row.stg-here { background: var(--k-hover); }
+	/* TAIL STACK (app scope, `data-tail` on the grid): below a 192px column (`stackTail`, decided by width and column count only) EVERY row draws mark + name on line 1 and lets the state word (+ age / step) and the build run the full tile width beneath it (word on line 2, build on its own line 3; the "· " separator is dropped). Rows are one fixed height whatever they hold; the mark is centred on the name line and the connector follows it (`--cy`: 14px). */
+	[data-tail='stack'] .stg-row.stg-tail { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 8px; row-gap: 0; align-content: start; align-items: center; min-height: 66px; padding-left: 6px; padding-right: 6px; }
+	[data-tail='stack'] .stg-tail .stg-txt { display: contents; }
+	[data-tail='stack'] .stg-tail .stg-name { grid-column: 2; grid-row: 1; min-height: 20px; }
+	[data-tail='stack'] .stg-tail .stg-l2 { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 4px; }
+	[data-tail='stack'] .stg-tail .stg-build { grid-column: 1 / -1; grid-row: 2; }
+	[data-tail='stack'] .stg-tail .stg-dot { display: none; }
 	/* the connector: one 1px line in line-strong at the first row's mark centre (row 44px: centre 22px), from the previous tile across the 24px gap */
-	.stg-link::before, .stg-pass::before { content: ''; position: absolute; top: 22px; height: 1px; background: var(--k-line-strong); }
+	.stg-link::before, .stg-pass::before { content: ''; position: absolute; top: var(--cy, 22px); height: 1px; background: var(--k-line-strong); }
 	.stg-tile.stg-link { overflow: visible; }
 	.stg-tile.stg-link::before { left: calc(-1 * var(--g)); width: var(--g); }
 	.stg-ph { position: relative; }

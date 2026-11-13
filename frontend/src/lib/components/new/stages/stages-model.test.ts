@@ -326,3 +326,14 @@ describe('pipeline release switcher', () => {
 		}
 	});
 });
+
+describe('columnWidth / tail stack', () => {
+	it('five columns with two 24px and two 12px gaps fit the graph from an 880px canvas and stack the tail', async () => {
+		const { columnWidth, MIN_TAIL, TAIL_BESIDE } = await import('./stages-model');
+		const w = columnWidth(880, 5, 72, 0);
+		expect(w).toBeGreaterThanOrEqual(MIN_TAIL);
+		expect(w).toBeLessThan(TAIL_BESIDE);
+		expect(columnWidth(1143, 5, 72, 0)).toBeGreaterThanOrEqual(TAIL_BESIDE);
+		expect(columnWidth(4000, 3, 48, 0)).toBe(280);
+	});
+});
