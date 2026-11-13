@@ -659,6 +659,16 @@ html.dark .surface-raised,
 		margin-bottom: 12px;
 	}
 
+	/* visual audit #11: on a phone a header with a VISIBLE action (an `.sh-action` child that is not `hidden` there) puts its
+	   rollup on the line below, hard-right, so the action keeps the title row and no count is ellipsized. An action that
+	   renders nothing, or only a `hidden sm:flex` control, leaves the rollup beside the title when it fits. */
+	@media (width < 40rem) {
+		.section-header:has(> .sh-action > :not(.hidden)) > [data-rollup] {
+			order: 1;
+			flex-basis: 100%;
+		}
+	}
+
 	.section-dot {
 		width: 6px;
 		height: 6px;
