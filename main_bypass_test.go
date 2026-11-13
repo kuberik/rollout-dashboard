@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"testing"
 
 	rolloutv1alpha1 "github.com/kuberik/rollout-controller/api/v1alpha1"
 	"github.com/kuberik/rollout-dashboard/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 func bypassGate(name string, owner *metav1.OwnerReference) *rolloutv1alpha1.RolloutGate {
@@ -92,5 +97,26 @@ func TestBypassGates_ErrorCodes(t *testing.T) {
 	}
 	if w := env.do(http.MethodPost, "/api/rollouts/"+approvalNS+"/missing/bypass-gates", `{"version":"v1.42.0"}`); w.Code != 404 {
 		t.Errorf("missing rollout: %d", w.Code)
+	}
+}
+
+// A resourceVersion conflict (the controller wrote status between our read and
+// our patch) is retried against the live object, not reported as a 409
+// "not a candidate".
+func TestBypassGates_RetriesOnConflict(t *testing.T) {
+	patches := 0
+	fc, _ := kubernetes.NewTestClientWithInterceptor(interceptor.Funcs{
+		Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, p client.Patch, opts ...client.PatchOption) error {
+			patches++
+			if patches == 1 {
+				return apierrors.NewConflict(schema.GroupResource{Group: "kuberik.com", Resource: "rollouts"}, obj.GetName(), errors.New("the object has been modified"))
+			}
+			return c.Patch(ctx, obj, p, opts...)
+		},
+	}, bypassObjs()...)
+	env := newApprovalEnv(t, fc, "oidc:luka")
+	w := env.do(http.MethodPost, "/api/rollouts/"+approvalNS+"/checkout/bypass-gates", `{"version":"v1.42.0","gates":["kill-switch"]}`)
+	if w.Code != 200 || patches != 2 {
+		t.Fatalf("code %d patches %d body %s", w.Code, patches, w.Body)
 	}
 }

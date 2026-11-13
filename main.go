@@ -42,6 +42,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 )
 
 // dockerConfigKeychain implements authn.Keychain interface for Docker config JSON
@@ -951,36 +952,49 @@ func setupRouter() *gin.Engine {
 			// Read the rollout live with the operator's token so the
 			// resourceVersion we lock on is current; list the gates through the
 			// shared read client (a read; the write is the patch below).
-			rollout, err := k8sClient.GetRollout(ctx, namespace, name)
-			if err != nil {
-				log.Printf("Error reading rollout for bypass-gates: %v", err)
-				writeUpstreamError(c, "Failed to read rollout", err)
-				return
-			}
 			gateReader := k8sClient
 			if rc, rerr := kubernetes.GetReadClient(c); rerr == nil {
 				gateReader = rc
 			}
-			gates, err := gateReader.ListRolloutGates(ctx, namespace)
-			if err != nil {
-				log.Printf("Error listing rollout gates for bypass-gates: %v", err)
-				writeUpstreamError(c, "Failed to list rollout gates", err)
-				return
-			}
-			plan, err := kubernetes.ResolveBypass(gates, rollout, bypassRequest)
+			// The patch locks on resourceVersion, and the controller's status
+			// writes bump it too: on a conflict, re-read, re-resolve and re-patch
+			// (so the accumulate/union decision is made against the live state)
+			// instead of reporting a race as "not a candidate".
+			var (
+				plan           *kubernetes.BypassPlan
+				updatedRollout *rolloutv1alpha1.Rollout
+				failMsg        string
+			)
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				rollout, err := k8sClient.GetRollout(ctx, namespace, name)
+				if err != nil {
+					failMsg = "Failed to read rollout"
+					return err
+				}
+				gates, err := gateReader.ListRolloutGates(ctx, namespace)
+				if err != nil {
+					failMsg = "Failed to list rollout gates"
+					return err
+				}
+				plan, err = kubernetes.ResolveBypass(gates, rollout, bypassRequest)
+				if err != nil {
+					failMsg = "Failed to resolve bypass"
+					return err
+				}
+				updatedRollout, err = k8sClient.PatchRolloutAnnotations(ctx, rollout, plan.Annotations)
+				if err != nil {
+					failMsg = "Failed to add bypass-gates annotation"
+				}
+				return err
+			})
 			if err != nil {
 				var be *kubernetes.BypassError
 				if errors.As(err, &be) {
 					c.JSON(be.Status, gin.H{"error": be.Message})
 					return
 				}
-				writeUpstreamError(c, "Failed to resolve bypass", err)
-				return
-			}
-			updatedRollout, err := k8sClient.PatchRolloutAnnotations(ctx, rollout, plan.Annotations)
-			if err != nil {
-				log.Printf("Error patching bypass-gates annotations: %v", err)
-				writeUpstreamError(c, "Failed to add bypass-gates annotation", err)
+				log.Printf("bypass-gates %s/%s: %s: %v", namespace, name, failMsg, err)
+				writeUpstreamError(c, failMsg, err)
 				return
 			}
 
