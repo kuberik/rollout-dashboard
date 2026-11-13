@@ -14,7 +14,7 @@ import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, type HomeState } from '../sketch/home-data';
 import { changesDoor, compass, TIERS, type TierKey } from '../pocket/pocket-data';
 import { ago, isMe, pretty } from '../depot/depot-data';
-import type { GlyphState } from '../depot/StateGlyph.svelte';
+import type { GlyphState } from '../depot/depot-data';
 
 export { ago, pretty, isMe };
 export const TIER_NAME: Record<TierKey, string> = { dev: 'Dev', test: 'Test', staging: 'Staging', prod: 'Production' };

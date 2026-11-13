@@ -5,6 +5,7 @@ import { shortEnvLabel } from '$lib/environment-theme';
 import { BAKE_WORD } from '$lib/bake-status';
 import { joinClauses } from './blocking-story';
 import { detectRollback } from '$lib/rollout-cards';
+import { TONE } from './state-tone';
 
 /**
  * RELEASE COVERAGE — the one question the revision pages exist to answer.
@@ -316,15 +317,15 @@ export const COVERAGE_FILL: Record<CoverageKey, string> = {
 	// on the page including the brand mark. `green-600` is the same hue two
 	// steps down, still unmistakably the health green, and it is the only
 	// value in this table that differs between ink and fill.
-	live: 'bg-success-solid',
+	live: TONE.done.bg,
 	// `Deploying`'s own hue product-wide (`bake-status.ts` DOT/`BakeStatusIcon`
 	// spinner) — a bucket merging `Deploying` AND `InProgress` still reads as
 	// "in progress", the STATUS meaning of blue, not the separate reservation
 	// `Chip`'s `rank` role gives blue on a joined badge (a different component,
 	// a different context — see that file's own note on why the two do not
 	// collide).
-	deploying: 'bg-active-solid',
-	failing: 'bg-danger-solid',
+	deploying: TONE.deploying.bg,
+	failing: TONE.failed.bg,
 	ahead: 'bg-line-strong',
 	// THE TRACK. Faintest fill in the object, because this is the part of the
 	// fleet the build has NOT reached — the bar visibly stopping short is the
@@ -399,9 +400,9 @@ export function coverageSwatch(key: CoverageKey, _reachable = true): string {
  * borrows a 1px `gray-300` perimeter, which is ink on ~48px rather than area.
  */
 export const COVERAGE_SWATCH: Record<CoverageKey, string> = {
-	live: 'bg-success-solid border-transparent',
-	deploying: 'bg-active-solid border-transparent',
-	failing: 'bg-danger-solid border-transparent',
+	live: `${TONE.done.bg} border-transparent`,
+	deploying: `${TONE.deploying.bg} border-transparent`,
+	failing: `${TONE.failed.bg} border-transparent`,
 	ahead: 'bg-line-strong border-transparent',
 	// The swatch is the bar's own treatment at 12px, so the two neutral
 	// buckets keep the bar's own distinction: `notYet` is the faint TRACK (it
@@ -580,11 +581,11 @@ const WEIGHT_TITLE: Record<CoverageWeight, string> = {
 };
 
 const DOT: Record<string, string> = {
-	fail: 'bg-danger-solid',
-	stuck: 'bg-warning-solid',
+	fail: TONE.failed.bg,
+	stuck: TONE.stuck.bg,
 	pending: 'bg-line-strong',
-	deploying: 'bg-active-solid',
-	baking: 'bg-progress-solid',
+	deploying: TONE.deploying.bg,
+	baking: TONE.checking.bg,
 	ok: 'bg-fg-subtle'
 };
 

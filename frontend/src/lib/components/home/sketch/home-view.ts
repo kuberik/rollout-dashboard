@@ -33,7 +33,7 @@ function group(rows: PreviewRow[]): PreviewRow[] {
 	}
 	return out;
 }
-import type { PreviewRow } from './ActionPreview.svelte';
+export type PreviewRow = { place: string; before: string; beforeTone: 'danger' | 'held' | 'neutral' | 'active'; after: string | null };
 
 export type Step = { label: string; at: string | null; state: 'done' | 'active' | 'fail' | 'pending'; note?: string | null };
 /** A gap's own words, drawn on the segment INTO step i (index = target). */

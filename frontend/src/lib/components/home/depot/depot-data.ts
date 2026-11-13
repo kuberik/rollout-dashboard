@@ -12,7 +12,7 @@ import type { AppEnv, EnvState } from '$lib/view-models/home-model';
 import { changeBySha, ME, NOW, viewerLogin, liveViewer, type HomeState } from '../sketch/home-data';
 import { dur } from '../sketch/home-view';
 import { changesDoor, compass, TIERS, type Compass, type TierKey } from '../pocket/pocket-data';
-import type { GlyphState } from './StateGlyph.svelte';
+export type GlyphState = 'failed' | 'approval' | 'deploying' | 'checking' | 'held' | 'waiting' | 'rest' | 'arrived';
 
 export const pretty = (login: string | null | undefined) =>
 	!login ? null : login.includes('-') ? login.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') : login === 'danielreed' ? 'Daniel Reed' : login;

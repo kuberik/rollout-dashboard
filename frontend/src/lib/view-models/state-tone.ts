@@ -28,6 +28,8 @@ export type Tone = {
 	ink: string;
 	/** the solid as a Tailwind background class (a corner dot, a legend swatch) */
 	bg: string;
+	/** a step disc's tint + glyph ink (StepDisc: the pipeline tab, the tray, the strand) */
+	disc: string;
 	/** StatusMark's chip (disc + edge + glyph colour), Tailwind classes */
 	chip: string;
 	/** 'disc' = filled; 'ring' = the hollow dashed not-reached ring; 'dim' = a quiet dot at reduced opacity */
@@ -56,17 +58,17 @@ const hue = (h: Exclude<ToneHue, 'subtle'>) => ({ solid: `var(--k-${h}-solid)`, 
 const SUBTLE = { solid: 'var(--k-fg-subtle)', tint: 'var(--k-subtle)', line: 'var(--k-line-strong)' };
 
 export const TONE: Record<ToneState, Tone> = {
-	done: { hue: 'success', ...hue('success'), bg: 'bg-success-solid', ink: HUE_INK.muted, chip: 'bg-success-solid', shape: 'disc', moves: false, ring: null },
-	checking: { hue: 'progress', ...hue('progress'), bg: 'bg-progress-solid', ink: HUE_INK.progress, chip: 'bg-progress-tint ring-progress-solid text-progress', shape: 'disc', moves: true, ring: null },
-	deploying: { hue: 'active', ...hue('active'), bg: 'bg-active-solid', ink: HUE_INK.active, chip: 'bg-active-tint ring-active-line text-active', shape: 'disc', moves: true, ring: null },
-	held: { hue: 'held', ...hue('held'), bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: null },
-	approval: { hue: 'held', ...hue('held'), bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: null },
-	'approval-yours': { hue: 'held', ...hue('held'), bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: 'var(--k-held-solid)' },
+	done: { hue: 'success', ...hue('success'), disc: 'bg-success-tint text-success', bg: 'bg-success-solid', ink: HUE_INK.muted, chip: 'bg-success-solid', shape: 'disc', moves: false, ring: null },
+	checking: { hue: 'progress', ...hue('progress'), disc: 'bg-progress-tint text-progress', bg: 'bg-progress-solid', ink: HUE_INK.progress, chip: 'bg-progress-tint ring-progress-solid text-progress', shape: 'disc', moves: true, ring: null },
+	deploying: { hue: 'active', ...hue('active'), disc: 'bg-active-tint text-active', bg: 'bg-active-solid', ink: HUE_INK.active, chip: 'bg-active-tint ring-active-line text-active', shape: 'disc', moves: true, ring: null },
+	held: { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: null },
+	approval: { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: null },
+	'approval-yours': { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: 'var(--k-held-solid)' },
 	// Failed is the ONE solid disc (palette AD r3): white "!" on danger-solid, 4.33:1 light, 3.40:1 dark.
-	failed: { hue: 'danger', ...hue('danger'), bg: 'bg-danger-solid', ink: HUE_INK.danger, chip: 'bg-danger-solid ring-danger-solid text-white', shape: 'disc', moves: false, ring: null },
-	stuck: { hue: 'warning', ...hue('warning'), bg: 'bg-warning-solid', ink: HUE_INK.warning, chip: 'bg-warning-tint ring-warning-line text-warning', shape: 'disc', moves: false, ring: null },
-	notreached: { hue: 'subtle', ...SUBTLE, bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'ring', moves: false, ring: null },
-	notaffected: { hue: 'subtle', ...SUBTLE, bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'dim', moves: false, ring: null }
+	failed: { hue: 'danger', ...hue('danger'), disc: 'bg-danger-tint text-danger', bg: 'bg-danger-solid', ink: HUE_INK.danger, chip: 'bg-danger-solid ring-danger-solid text-white', shape: 'disc', moves: false, ring: null },
+	stuck: { hue: 'warning', ...hue('warning'), disc: 'bg-warning-tint text-warning', bg: 'bg-warning-solid', ink: HUE_INK.warning, chip: 'bg-warning-tint ring-warning-line text-warning', shape: 'disc', moves: false, ring: null },
+	notreached: { hue: 'subtle', ...SUBTLE, disc: 'bg-subtle text-fg-subtle', bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'ring', moves: false, ring: null },
+	notaffected: { hue: 'subtle', ...SUBTLE, disc: 'bg-subtle text-fg-subtle', bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'dim', moves: false, ring: null }
 };
 
 /** the product's other spellings of the same states */

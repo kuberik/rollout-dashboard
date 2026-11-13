@@ -1,4 +1,4 @@
-import type { RowState } from './Mark16.svelte';
+export type RowState = 'failed' | 'stuck' | 'approval' | 'deploying' | 'checking' | 'held' | 'waiting' | 'rest' | 'arrived' | 'rolledback';
 import type { EnvPipeline } from '$lib/view-models/home-model';
 import type { TierKey } from '../roster-data';
 /** craft r1: ONE change, ONE mark. A change in the 'waiting' group is the hollow ring unless the data says it is held by a rule or waits for approval (the tab's own state). */

@@ -65,7 +65,17 @@ describe('the strand dots (.st-*) read the table', () => {
 
 describe('one table, no local maps', () => {
 	// a map that spells the state inks out again; none is left outside state-tone.ts
-	const PENDING = new Set<string>();
+	/* hue- or bakeStatus-keyed maps the table does not own yet (the 2026-11-13 pass 3 moved the state-keyed ones): each is a leftover, not a pattern to copy */
+	const PENDING = new Set<string>([
+		'components/LogsViewer.svelte', // liveMark tone -> dot
+		'components/SectionHeader.svelte', // Tone (hue) -> dot, rollup ink
+		'components/Toast.svelte', // toast tone -> ink
+		'components/atoms/RegionMeter.svelte', // CSS vars per hue
+		'components/new/EnvStateBar.svelte', // CSS vars for the bar
+		'components/new/Slipway.svelte', // sub-row tone -> ink
+		'../routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte',
+		'../routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte'
+	]);
 	const INKS = ['text-danger', 'text-held', 'text-active', 'text-progress'];
 	it('no file outside state-tone.ts spells out 3 of the 4 state inks inside a 6-line window', () => {
 		const bad: string[] = [];
@@ -75,6 +85,32 @@ describe('one table, no local maps', () => {
 			for (let i = 0; i < lines.length; i++) {
 				const win = lines.slice(i, i + 6).join('\n');
 				if (INKS.filter((k) => new RegExp(`['"\`]${k}['"\`]`).test(win)).length >= 3) { bad.push(`${rel(f)}:${i + 1}`); break; }
+			}
+		}
+		expect(bad).toEqual([]);
+	});
+	it('no file outside state-tone.ts keeps a second map of the state SOLIDS (bg-*-solid / var(--k-*-solid)) inside a 6-line window', () => {
+		const SOL = ['danger', 'progress', 'active', 'success', 'held', 'warning'];
+		const bad: string[] = [];
+		for (const f of SOURCES) {
+			if (rel(f) === 'view-models/state-tone.ts' || PENDING.has(rel(f))) continue;
+			const lines = src(f).split('\n');
+			for (let i = 0; i < lines.length; i++) {
+				const win = lines.slice(i, i + 6).join('\n');
+				if (SOL.filter((k) => win.includes(`bg-${k}-solid`) || win.includes(`--k-${k}-solid`)).length >= 3) { bad.push(`${rel(f)}:${i + 1}`); break; }
+			}
+		}
+		expect(bad).toEqual([]);
+	});
+	it('no file outside state-tone.ts keeps a second map of the state inks (text-*) over 2 of the hues in one switch/record', () => {
+		const bad: string[] = [];
+		for (const f of SOURCES) {
+			if (rel(f) === 'view-models/state-tone.ts' || PENDING.has(rel(f))) continue;
+			const lines = src(f).split('\n');
+			for (let i = 0; i < lines.length; i++) {
+				if (!/(switch \(|Record<|: \{$|= \{$)/.test(lines[i])) continue;
+				const win = lines.slice(i, i + 12).join('\n');
+				if (['danger', 'progress', 'active', 'success'].filter((k) => new RegExp(`['"\`](?:text|bg|ring)-${k}(?:-solid)?['"\`]`).test(win)).length >= 2) { bad.push(`${rel(f)}:${i + 1}`); break; }
 			}
 		}
 		expect(bad).toEqual([]);

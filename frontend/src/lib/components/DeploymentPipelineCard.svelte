@@ -2,6 +2,9 @@
 
 <script lang="ts">
 	import Leaving from './Leaving.svelte';
+	import StepDisc from './StepDisc.svelte';
+	import StatusSpinner from './StatusSpinner.svelte';
+	import { TONE } from '$lib/view-models/state-tone';
 	import { smoothHeight } from '$lib/smooth-height';
 	import { steadyHeight } from '$lib/steady-height';
 	import { deployKey, isDeployInFlight, pipelineSlots } from '$lib/view-models/pipeline-card';
@@ -494,18 +497,8 @@
 	);
 
 	// Styling helpers
-	// Pastel circle bg + colored icon — matches `getStatusCircleClass` in
-	// `lib/bake-status.ts` (used for all other status circles across the
-	// dashboard) so the pipeline stages don't read as a different style.
-	function circleBg(status: NodeStatus): string {
-		return {
-			done: 'bg-success-tint text-success',
-			running: 'bg-active-tint text-active',
-			paused: 'bg-progress-tint text-progress',
-			failed: 'bg-danger-tint text-danger',
-			pending: 'bg-subtle text-fg-subtle'
-		}[status];
-	}
+	/** a node's status as the one state-tone key (the disc, the ping and the sub-dot all read the table) */
+	const nodeTone = (status: NodeStatus) => (({ done: 'done', running: 'deploying', paused: 'checking', failed: 'failed', pending: 'notreached' }) as const)[status];
 
 	/**
 	 * ⛔ THE STEP LABEL IS THE CHIP ATOM. (2026-09-03, from the human: "typography
@@ -526,25 +519,14 @@
 		}[status];
 	}
 
+	/** the sub-dot / ping fill: the status's solid (a pending node pings in the active blue, as before) */
 	function subDotBg(status: NodeStatus): string {
-		return {
-			done: 'bg-success-solid',
-			running: 'bg-active-solid',
-			paused: 'bg-progress-solid',
-			failed: 'bg-danger-solid',
-			pending: 'bg-line-strong'
-		}[status];
+		return TONE[status === 'pending' ? 'deploying' : nodeTone(status)].bg;
 	}
 
 	function leftEdgeAccent(status: NodeStatus, selected: boolean): string {
 		if (!selected) return 'bg-transparent';
-		return {
-			done: 'bg-success-solid',
-			running: 'bg-active-solid',
-			paused: 'bg-progress-solid',
-			failed: 'bg-danger-solid',
-			pending: 'bg-active-solid'
-		}[status];
+		return subDotBg(status);
 	}
 
 	function rolloutSubStatus(sd: NonNullable<StageNode['stageData']>): {
@@ -701,22 +683,6 @@
 
 <!-- ━━━━━━━━━━━━━━━━━━━━━━ snippets ━━━━━━━━━━━━━━━━━━━━━━ -->
 
-{#snippet nodeIcon(status: NodeStatus)}
-	{#if status === 'done'}
-		<CheckCircleSolid class="h-4 w-4" />
-	{:else if status === 'failed'}
-		<ExclamationCircleSolid class="h-4 w-4" />
-	{:else if status === 'running' || status === 'paused'}
-		<!-- Rotating arc in the parent's text color (currentColor) so the
-		     spinner picks up the same hue as the rest of the icons —
-		     active for running, progress for paused/baking. Only RUNNING
-		     (deploying) pings or pulses: checking never glows (§1.12). -->
-		<div class="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current"></div>
-	{:else}
-		<ClockSolid class="h-4 w-4" />
-	{/if}
-{/snippet}
-
 <!--
 	⛔ U-19 — ONE CHIP PER ROW. (2026-10-08.) `navRow` (and its mobile twin
 	below) used to print a SECOND chip, "Active", beside the status chip
@@ -771,13 +737,7 @@
 						class="absolute inset-0 animate-ping rounded-full opacity-40 {subDotBg(node.status)}"
 					></span>
 				{/if}
-				<div
-					class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full {circleBg(
-						node.status
-					)}"
-				>
-					{@render nodeIcon(node.status)}
-				</div>
+				<StepDisc state={nodeTone(node.status)} class="relative z-10 h-7 w-7" />
 			</div>
 
 			<!-- Label -->
@@ -1386,19 +1346,11 @@
 			{:else if summary.running > 0}
 				<!-- The in-flight tone follows WHAT is in flight: deploying is
 				     blue (active), checking/baking is yellow (progress). -->
-				<div
-					aria-hidden="true"
-					class="h-4 w-4 animate-spin rounded-full border-2 {inflightIsDeploy
-						? 'border-active-solid/40 border-t-active-solid'
-						: 'border-progress-solid/40 border-t-progress-solid'}"
-				></div>
+				<StatusSpinner size="4" color={inflightIsDeploy ? 'blue' : 'yellow'} />
 			{:else if summary.checking > 0}
 				<!-- ITEM 9: the active steps are all `paused` (checking) — same
 				     yellow spin as `pillClasses`' own `paused` chip, never blue. -->
-				<div
-					aria-hidden="true"
-					class="h-4 w-4 animate-spin rounded-full border-2 border-progress-line border-t-progress-solid"
-				></div>
+				<StatusSpinner size="4" color="yellow" />
 			{:else if summary.done === summary.total}
 				<CheckCircleSolid class="h-4 w-4 text-success" />
 			{:else}
@@ -1583,13 +1535,7 @@
 									)}"
 								></span>
 							{/if}
-							<div
-								class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full {circleBg(
-									node.status
-								)}"
-							>
-								{@render nodeIcon(node.status)}
-							</div>
+							<StepDisc state={nodeTone(node.status)} class="relative z-10 h-7 w-7" />
 						</div>
 
 						<div class="flex min-w-0 flex-1 items-center justify-between gap-2">

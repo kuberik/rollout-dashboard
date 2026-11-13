@@ -29,7 +29,7 @@
 	 * MEASURED BY tools/strand-pitch.mjs: root `[data-strand]` with data-pitch / data-d / data-n, every node
 	 * `[data-node]`; node-centre deltas must equal pitch ± 1px and the root no wider than (n−1)×pitch+d + 1.
 	 */
-	import { CheckCircleSolid, ExclamationCircleSolid, ClockSolid, UserOutline } from 'flowbite-svelte-icons';
+	import StepDisc from '$lib/components/StepDisc.svelte';
 
 	import { GEO, type MiniNode, type MiniState } from './mini-pipeline';
 
@@ -81,9 +81,8 @@
 	const WORD: Record<MiniState, string> = { done: 'done', current: 'running', pending: 'not started', failed: 'failed', held: 'waiting', approval: 'waiting for approval', checking: 'checking', rest: 'healthy' };
 	const aria = $derived(label ?? 'Steps: ' + nodes.map((n) => `${n.label ?? n.step ?? ''} ${WORD[n.state]}`.trim()).join(', '));
 	const xsCls = (s: MiniState) => (s === 'done' ? 'mp-done' : s === 'failed' ? 'st-fail' : s === 'held' ? 'st-hold' : s === 'approval' ? 'mp-ask' : s === 'checking' ? 'st-check' : s === 'current' ? 'st-active ' + (lit ? 'st-live' : '') : s === 'rest' ? 'mp-rest' : 'mp-ring mp-ring-off');
-	/* sm discs: the tab's own tint + glyph per state (TraySteps' disc, same tokens) */
-	const smCls = (s: MiniState) => (s === 'done' ? 'bg-success-tint text-success' : s === 'failed' ? 'bg-danger-tint text-danger' : s === 'checking' ? 'bg-progress-tint text-progress' : s === 'current' ? 'bg-active-tint text-active' : s === 'held' ? 'bg-held-tint text-held' : s === 'approval' ? 'mp-ask text-fg' : s === 'rest' ? 'bg-subtle' : 'bg-subtle text-fg-disabled');
-	const spin = (s: MiniState) => (s === 'checking' ? 'border-progress-solid/40 border-t-progress-solid' : 'border-active-solid/40 border-t-active-solid');
+	/* sm discs are StepDisc's (the tab's own tint + glyph per state); a strand's approval keeps its person ring and its rest disc stays quiet */
+	const smTint = (s: MiniState) => (s === 'approval' ? 'bg-transparent text-fg' : s === 'rest' ? 'bg-subtle' : undefined);
 	const nodeTitle = (n: MiniNode) => n.title ?? `${n.label ?? n.step ?? ''}${n.label || n.step ? ' · ' : ''}${WORD[n.state]}`;
 </script>
 
@@ -125,15 +124,7 @@
 				{#if size === 'xs'}
 					<span class="st-node mp-dot {xsCls(n.state)}" aria-hidden="true"></span>
 				{:else}
-					<span class="mp-disc {smCls(n.state)}" aria-hidden="true">
-						{#if n.state === 'done'}<CheckCircleSolid class="h-4 w-4" />
-						{:else if n.state === 'failed'}<ExclamationCircleSolid class="h-4 w-4" />
-						{:else if n.state === 'current' || n.state === 'checking'}<span class="h-4 w-4 animate-spin rounded-full border-2 {spin(n.state)}"></span>
-						{:else if n.state === 'held'}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M9 5.5v13M15 5.5v13" /></svg>
-						{:else if n.state === 'approval'}<UserOutline class="h-3.5 w-3.5" />
-						{:else if n.state === 'rest'}<span class="h-1.5 w-1.5 rounded-full bg-success-solid"></span>
-						{:else}<ClockSolid class="h-4 w-4" />{/if}
-					</span>
+					<span class="mp-disc {n.state === 'approval' ? 'mp-ask' : ''}" aria-hidden="true"><StepDisc state={n.state} tint={smTint(n.state)} class="h-full w-full" /></span>
 					{#if n.label}<span class="mp-name {lit && FRONTIER.has(n.state) ? 't-ui-sm text-fg' : 't-meta text-fg-subtle'} {n.state === 'failed' && lit ? 'text-danger' : ''}" title={n.label}>{n.label}</span>{/if}
 				{/if}
 			</li>
