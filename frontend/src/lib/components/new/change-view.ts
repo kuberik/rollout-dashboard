@@ -5,6 +5,7 @@
  *   "where are my changes right now"         -> On the way
  *   "when did they land"                     -> Landed
  */
+import { shortRevision } from '$lib/version-utils';
 import { newestFirst, latest } from '$lib/instant';
 import type { TChange, TierKey, HeldCause, TRow, HomeState, ApprovalTarget } from './data';
 import { approvalTarget, urgency, lastHealthy, buildOf, candidateBuilds, deployedBuild, buildInQuestionFacts, avatarSrc, NOW } from './data';
@@ -278,7 +279,7 @@ export function folioFacts(r: Pick<Ride, 'state' | 'row' | 'href'>): FolioFacts 
 		try {
 			/* changes-8 (Y1): the range the TABS read = the home-incident router (it re-headlines a range github-data can only answer with "Release commit for build X" from the fixture's own change: title AND author), github-data's own answer otherwise */
 			const j = rangeJson(p[2], p[3], base, head, p[1]) ?? {};
-			const commits = (j.commits ?? []).map((c) => ({ sha: c.sha.slice(0, 7), title: (c.message ?? '').split('\n')[0], author: c.author ?? null, at: c.commitDate ?? null, url: c.url ?? null })).reverse();
+			const commits = (j.commits ?? []).map((c) => ({ sha: shortRevision(c.sha), title: (c.message ?? '').split('\n')[0], author: c.author ?? null, at: c.commitDate ?? null, url: c.url ?? null })).reverse();
 			return { ...none, lastGood: lg, commits, stat: j.changedFiles ? { add: j.additions ?? 0, del: j.deletions ?? 0, files: j.changedFiles } : null };
 		} catch { /* no mock for this app */ }
 	}

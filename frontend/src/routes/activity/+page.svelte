@@ -552,7 +552,7 @@
 		rolled_back: windowedNoKind.filter(isRolledBack).length
 	});
 	const tierCounts = $derived.by<Record<Tier, number>>(() => {
-		const counts: Record<Tier, number> = { dev: 0, test: 0, staging: 0, other: 0, prod: 0 };
+		const counts: Record<Tier, number> = Object.fromEntries(TIER_ORDER.map((t) => [t, 0])) as Record<Tier, number>;
 		for (const e of windowedNoTier) counts[tierOf(e.envKey || e.envLabel)]++;
 		return counts;
 	});

@@ -27,6 +27,7 @@ import { waitingSince } from '$lib/view-models/fleet-facts';
 import { eventAge } from '$lib/view-models/event-age';
 import { kApp } from '$lib/view-models/kstairs';
 import { shortenVersion, getDisplayVersion, failureKind, parseGoDuration } from '$lib/utils';
+import { shortRevision } from '$lib/version-utils';
 import * as msg from '$lib/paraglide/messages';
 import { healthCheckKey } from '$lib/health-check-key';
 
@@ -197,7 +198,7 @@ function allDeploys(cards: readonly RolloutCard[]) {
 			const at = h.timestamp ? Date.parse(h.timestamp) : NaN;
 			if (!Number.isFinite(at)) continue;
 			const v = h.version ? getDisplayVersion(h.version) || '' : '';
-			const rev = h.version?.revision ? shortenVersion(h.version.revision).slice(0, 7) : shortenVersion(v).slice(0, 7);
+			const rev = h.version?.revision ? shortRevision(shortenVersion(h.version.revision)) : shortRevision(shortenVersion(v));
 			out.push({ at, card: c, version: shortenVersion(v), rev });
 		}
 	}

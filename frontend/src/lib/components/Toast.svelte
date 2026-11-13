@@ -48,6 +48,7 @@
 		CloseOutline
 	} from 'flowbite-svelte-icons';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { HUE_INK } from '$lib/view-models/state-tone';
 	import { showToast, hideToast } from '$lib/stores/toast-visibility.svelte';
 	import { untrack, type Snippet } from 'svelte';
 
@@ -92,10 +93,10 @@
 
 	const ICON = { success: CheckCircleSolid, danger: ExclamationCircleSolid, info: InfoCircleSolid };
 	const INK: Record<Tone, string> = {
-		success: 'text-success',
-		danger: 'text-danger',
-		info: 'text-fg-subtle',
-		loading: 'text-active'
+		success: HUE_INK.success,
+		danger: HUE_INK.danger,
+		info: HUE_INK.subtle,
+		loading: HUE_INK.active
 	};
 	const Icon = $derived(tone === 'loading' ? null : ICON[tone]);
 

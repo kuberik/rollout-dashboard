@@ -32,6 +32,13 @@ export const TIERS = ['dev', 'test', 'staging', 'prod'] as const;
 export type Tier = (typeof TIERS)[number];
 /** THE ONE TIER ORDER AS NUMBERS (dev 0 .. prod 3): every hand-kept `{ dev: 0, test: 1, staging: 2, prod: 3 }` reads this (dedup pass 3, 2026-11-13). */
 export const TIER_RANK: Record<Tier, number> = { dev: 0, test: 1, staging: 2, prod: 3 };
+/**
+ * THE ONE TIER ORDER FOR SURFACES THAT DRAW A PLACE THE TIER TABLE CANNOT NAME (dedup pass 4): the four tiers with `other` (an environment whose
+ * name maps to no tier) between staging and prod, as the promotion lanes, the Facia tile, the footprint and the activity counts draw them.
+ * `TIER_RANK`/`tierRank` stay four-tier (an unknown name sorts after prod there); this is the lane vocabulary.
+ */
+export const TIERS_WITH_OTHER = ['dev', 'test', 'staging', 'other', 'prod'] as const;
+export type TierOrOther = (typeof TIERS_WITH_OTHER)[number];
 /** a tier's rank; `unknown` (default: after prod) for a name the table does not know */
 export const tierRank = (t: string | null | undefined, unknown: number = TIERS.length): number => TIER_RANK[t as Tier] ?? unknown;
 

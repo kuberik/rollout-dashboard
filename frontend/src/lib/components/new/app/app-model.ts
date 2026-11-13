@@ -16,6 +16,7 @@ import {
 	bakeFailedOn,
 	streamBuilds,
 	newestBuild,
+	behindOfPlace,
 	noReleasesAt,
 	deployedBuild,
 	waitClock,
@@ -386,11 +387,7 @@ export function recentBuilds(places: PlaceHold[], limit = 8): AppBuild[] {
  * Newer builds list: data.ts newestBuild). `behind` = builds newer than the one it runs; the word is "Up to date" or "N builds behind".
  * Never a cross-app version. Health is a different fact (the state word); the two are never merged into one word.
  */
-/** a place's "N behind": the catalogue distance (releases/order.ts catalogueBehind, through newestBuild), 0 when it runs the newest or has no releases. The strip, the ledger, the tiles and the Builds card all read this. */
-export function behindOfPlace(href: string, app = ''): number {
-	if (noReleasesAt(href)) return 0;
-	return newestBuild({ app, href, state: 'healthy', word: '' } as never)?.count ?? 0;
-}
+export { behindOfPlace };
 export function currencyOf(href: string, app = ''): { behind: number; word: string } {
 	/* no release = not affected: a place without releases has no currency to print (its own word is "No releases yet") */
 	if (noReleasesAt(href)) return { behind: 0, word: '' };

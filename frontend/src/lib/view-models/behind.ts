@@ -6,6 +6,10 @@
 import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import { rankBehindBy, type RankVerdict } from './env-rank';
+import { groupRolloutsByApp } from '$lib/version-utils';
+import { catalogueBehind, catalogueOrder } from '$lib/releases/order';
+import { shortRevisionOrNull } from '$lib/version-utils';
+import type { Environment } from '$lib/../types';
 import { liveForPlace, newerReleaseCountLive, type Fleet } from './failed-builds';
 
 type Rel = { tag?: string; version?: string; revision?: string };
@@ -50,4 +54,35 @@ export function behindWhenSettled(rollout: Ro, fleet: Fleet | null | undefined, 
 	/* an UNKNOWN lag (the current build aged out of availableReleases: the rank says null) is no count, never 0 / "Up to date" (batch4 #3d, QA17) */
 	if (!rank && newerReleaseCountLive(rollout as never, fleet) === null) return null;
 	return behindOfRollout(rollout, rank, fleet);
+}
+
+/**
+ * THE CATALOGUE "BEHIND" FOR LIVE ROLLOUTS (dedup pass 4, coordinator 2026-11-13: one number everywhere). `rollout-cards`, and through it the rollout
+ * page's strip, /rollouts and the palette, count builds of the app's catalogue (releases/order.ts) newer than the one a place runs, exactly as the
+ * app page does (data.ts newestBuild). A place's own list (`behindOfRollout`) is only the fallback for a build the catalogue does not contain.
+ */
+const buildName = (r: Rel): string | null => shortRevisionOrNull(r.version ?? r.tag ?? r.revision);
+/** the catalogue order of every rollout's app (release streams joined, no-release places left out), keyed by rollout object */
+export function catalogueOrdersByRollout(rollouts: Rollout[], environments: Environment[]): Map<Rollout, string[]> {
+	const out = new Map<Rollout, string[]>();
+	for (const group of groupRolloutsByApp(rollouts, environments).values()) {
+		const lists = group.cells
+			.filter((c) => !noReleasesOf(c.rollout))
+			.map((c) => ((availableReleases(c.rollout) ?? []) as Rel[]).map(buildName).filter((b): b is string => !!b));
+		const order = catalogueOrder(lists);
+		for (const c of group.cells) out.set(c.rollout, order);
+	}
+	return out;
+}
+/** the build a rollout runs, named as the catalogue names builds (its release entry's version/tag/revision, else the current version cut by the one 7-character rule) */
+export function runningBuild(rollout: Ro): string | null {
+	const cur = (rollout?.status as Status)?.currentVersion;
+	if (!cur) return null;
+	const rel = ((availableReleases(rollout as unknown as Rollout) ?? []) as Rel[]).find((r) => r.tag === cur || r.version === cur);
+	return (rel && buildName(rel)) ?? shortRevisionOrNull(cur);
+}
+/** the ONE count for a live rollout: catalogue distance, the place's own count only when its build is not in the catalogue */
+export function behindInCatalogue(rollout: Ro, order: readonly string[], rank?: RankVerdict | null, fleet?: Fleet | null): number {
+	if (noReleasesOf(rollout as unknown as Rollout)) return 0;
+	return catalogueBehind(order, runningBuild(rollout), () => behindOfRollout(rollout, rank, fleet));
 }

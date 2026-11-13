@@ -10,6 +10,7 @@
  * Honest fallbacks: no `observations[]` on the list payload, so a failing card leads with the check NAME + message (attention.ts), never a figure;
  * a prod approval card counts its regions (the region meter, as on Home); other approvals stay title-led.
  */
+import { shortRevision } from '$lib/version-utils';
 import { oldestFirst } from '$lib/instant';
 import { beadRank } from '$lib/view-models/severity';
 import {
@@ -28,7 +29,7 @@ import { servicesOf, spreadOf, type Svc } from './change/service-spread';
 const NONTIER = (w: string | null | undefined) => !!w && !/^(production|prod|staging|dev|test)$/.test(w);
 
 /** the change's short ref: #PR, else the 7-char sha */
-export const refOf = (c: Pick<TChange, 'prNumber' | 'ref'>): string => (c.prNumber ? `#${c.prNumber}` : String(c.ref ?? '').slice(0, 7));
+export const refOf = (c: Pick<TChange, 'prNumber' | 'ref'>): string => (c.prNumber ? `#${c.prNumber}` : shortRevision(String(c.ref ?? '')));
 /** the tier whose gate holds the change / where it fails: a prod place is "prod", otherwise the change's own tier */
 export const gateOf = (c: Pick<TChange, 'where' | 'at'>): string => (/prod/.test(c.where ?? '') ? 'prod' : c.at ?? '');
 /** the region / cluster beside the tier when the place is not just the tier ("eu-west") */

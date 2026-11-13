@@ -17,7 +17,7 @@ import { severityRank } from '$lib/view-models/severity';
 import { noReleasesOf } from '$lib/releases/registry.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 import { getEnvironmentRank } from '$lib/env-order';
-import { canonicalTier } from '$lib/view-models/sites-waves';
+import { canonicalTier, TIERS_WITH_OTHER, type TierOrOther } from '$lib/view-models/sites-waves';
 import { shortEnvLabel } from '$lib/environment-theme';
 import { isHeld, isNeedsYou } from '$lib/view-models/fleet-groups';
 import { rankBehindBy } from '$lib/view-models/env-rank';
@@ -26,8 +26,8 @@ import { rankBehindBy } from '$lib/view-models/env-rank';
 export type NodeState = 'failed' | 'stuck' | 'deploying' | 'checking' | 'held' | 'behind' | 'newest' | 'none';
 
 /** The column a node sits in. Stages are a line; `prod` is a set. */
-export type Tier = 'dev' | 'test' | 'staging' | 'other' | 'prod';
-export const TIER_ORDER: Tier[] = ['dev', 'test', 'staging', 'other', 'prod'];
+export type Tier = TierOrOther;
+export const TIER_ORDER: Tier[] = [...TIERS_WITH_OTHER];
 
 export function tierOf(envName: string): Tier {
 	const canon = canonicalTier(envName);

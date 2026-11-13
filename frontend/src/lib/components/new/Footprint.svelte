@@ -5,6 +5,7 @@
 	import type { RolloutCard } from '$lib/rollout-cards';
 	import { severityRank } from '$lib/view-models/severity';
 	import { type Lane, type LaneNode, type NodeState, type Tier } from '$lib/view-models/promotion-lanes';
+	import { TIERS_WITH_OTHER } from '$lib/view-models/sites-waves';
 	import { getRolloutEnvironmentTheme, shortEnvLabel } from '$lib/environment-theme';
 	import { waveInfoOfHref, type TApp, type TRow } from './data';
 	import { currentAt } from './change/detail-model';
@@ -17,7 +18,7 @@
 	const STATE: Partial<Record<EnvState, NodeState>> = { failed: 'failed', 'awaiting-approval': 'held', 'held-by-rule': 'held', deploying: 'deploying', checking: 'checking' };
 	/** a place's lane node state as the held counts read it (a place a pin holds is held); undefined = the place's own health decides. ONE map for the model lane and the live lane (Apps.svelte's `masked`). */
 	export const nodeStateOfPlace = (p: { state: EnvState; pinned?: boolean }): NodeState | undefined => STATE[placeStateWithPin(p.state, p.pinned)];
-	const ORDER: Tier[] = ['dev', 'test', 'staging', 'other', 'prod'];
+	const ORDER: Tier[] = [...TIERS_WITH_OTHER];
 
 	/**
 	 * W4/C1 — an app that waits for a person's approval anywhere: read from the rows of Rollouts' own Waiting-for-approval

@@ -6,6 +6,7 @@
  *  - hopsOf(repo, sha): each place's history entry for the change's merge commit (deploy start -> bake end), the first
  *    production arrival only; the origin is the merge.
  */
+import { shortRevision } from '$lib/version-utils';
 import { source, NOW, type HomeState } from '$lib/components/home/sketch/home-data';
 import { rollouts, checkClock } from '$lib/components/new/data';
 import type { Hop } from './LeadBar.svelte';
@@ -57,7 +58,7 @@ export function hopsOf(repo: string, ref: string): { hops: Hop[]; merged: number
 	const chs = source().changes as unknown as Chg[];
 	const c = chs.find((x) => x.repo === repo && (ref.startsWith('#') ? `#${x.number ?? (x.htmlUrl ?? '').split('/').pop()}` === ref : x.mergeCommitSha.startsWith(ref)));
 	if (!c) return null;
-	const sha = c.mergeCommitSha.slice(0, 7);
+	const sha = shortRevision(c.mergeCommitSha);
 	const byTier = new Map<string, Hop>();
 	for (const r of raws()) {
 		if (!(r.metadata.name.startsWith(repo) || repo.startsWith(r.metadata.name))) continue;

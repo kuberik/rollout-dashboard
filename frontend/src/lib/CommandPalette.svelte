@@ -55,6 +55,7 @@
 	 * 390 honest — at full-bleed width the namespace gives up characters and
 	 * the marks never do.
 	 */
+	import { shortRevision } from '$lib/version-utils';
 	import { placeKeyOf } from '$lib/view-models/sites-waves';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -1828,7 +1829,7 @@
 	{@const changeSteps = changeMeta ? familyProgress(changeMeta) : null}
 	{@const changeRef =
 		r.changeRef && r.repo && !r.ungrouped
-			? `${r.changeRef.kind === 'pull' ? `#${r.changeRef.number}` : r.changeRef.sha.slice(0, 7)} · ${r.repo}`
+			? `${r.changeRef.kind === 'pull' ? `#${r.changeRef.number}` : shortRevision(r.changeRef.sha)} · ${r.repo}`
 			: null}
 	<button
 		type="button"

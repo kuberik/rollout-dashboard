@@ -47,13 +47,7 @@ import { releaseMetadataUnresolved } from '$lib/../types';
 import { getDisplayVersion } from '$lib/utils';
 import { parseGoDuration } from '$lib/utils';
 import { getEnvironmentRank } from '$lib/env-order';
-import {
-	groupRolloutsByApp,
-	repoKeyFromSource,
-	repoLabel,
-	envFamilyWord,
-	type AppCell
-} from '$lib/version-utils';
+import { groupRolloutsByApp, repoKeyFromSource, repoLabel, envFamilyWord, type AppCell, shortRevision } from '$lib/version-utils';
 import { deployActs, historyAtLimit, type DeployAct } from '$lib/history-marks';
 import { rolloutPath } from '$lib/source-dashboard';
 import type { EnvironmentTheme } from '$lib/environment-theme';
@@ -2113,7 +2107,7 @@ export function buildChangeHistory(
 					theme: c.theme,
 					href: rolloutPath(c.cluster || localClusterName, c.namespace, c.rolloutName),
 					displayVersion: match.displayVersion,
-					shortRevision: match.revision ? match.revision.slice(0, 7) : null,
+					shortRevision: match.revision ? shortRevision(match.revision) : null,
 					bakeStatus: match.bakeStatus,
 					actorName: match.triggeredBy?.name ?? null,
 					actorKind: match.triggeredBy?.kind ?? null,

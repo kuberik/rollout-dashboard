@@ -6,12 +6,14 @@
 	 * single Environment page's header draw the SAME two lines: ONE state line (the worst fact leads in its ink, the rest muted, on a 16px mark
 	 * column) and ONE proportional bar (one fill per state, healthy neutral). Nothing is decided here: the model is environments-page.ts.
 	 */
-	import { hueInk } from '$lib/view-models/state-tone';
+	import { hueInk, TONE } from '$lib/view-models/state-tone';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { barSegments, type EnvTile } from './environments-page';
 
 	let { tile }: { tile: Pick<EnvTile, 'mark' | 'lead' | 'parts' | 'calm' | 'label' | 'failing' | 'waiting' | 'moving' | 'rest'> } = $props();
 	const segs = $derived(barSegments(tile));
+	/** bar segment key -> fill (the table's solids; `r` rest stays the neutral line in CSS) */
+	const FILL: Record<string, string | undefined> = { f: TONE.failed.solid, w: TONE.held.solid, m: TONE.deploying.solid };
 </script>
 
 <p class="et-state t-meta">
@@ -26,7 +28,7 @@
 </p>
 
 <div class="et-bar" class:ok={tile.calm} role="img" aria-label={tile.label}>
-	{#each segs as s (s.k)}<i class={s.k} style="--g:{s.v}" title={String(s.v)}></i>{/each}
+	{#each segs as s (s.k)}<i class={s.k} style="--g:{s.v};{FILL[s.k] ? `background:${FILL[s.k]}` : ''}" title={String(s.v)}></i>{/each}
 </div>
 
 <style>
@@ -36,9 +38,6 @@
 	.et-rest { min-width: 0; }
 	.et-bar { display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; background: var(--k-subtle); }
 	.et-bar i { display: block; height: 100%; flex: var(--g) var(--g) 0; }
-	.et-bar .f { background: var(--k-danger-solid); }
-	.et-bar .w { background: var(--k-held-solid); }
-	.et-bar .m { background: var(--k-active-solid); }
 	.et-bar .r { background: var(--k-line-strong); }
 	.et-bar.ok { background: var(--k-line-strong); }
 </style>

@@ -28,6 +28,7 @@
 		label = undefined,
 		resolved = false,
 		tone = undefined,
+		yours = false,
 		progress = null
 	}: {
 		/**
@@ -39,6 +40,8 @@
 		progress?: number | null;
 		/** r34 build-r4 (additive, /changes AD r1 #2): `held` draws the approval glyph in held ink ("waits for YOU"); default = the fg ink. */
 		tone?: 'held' | 'neutral';
+		/** an approval the VIEWER can give: the `approval-yours` mark, the same held orange plus the viewer's ring (state-tone.ts `ring`, as WaveMark draws it on the strips) */
+		yours?: boolean;
 		/**
 		 * `approval`: held on a PERSON (an approval only someone can give), not
 		 * the orange pause of a rule hold that clears by itself. An unfilled
@@ -79,7 +82,7 @@
 
 <span class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center" title={label}>
 	{#if state === 'approval'}
-		<span class="sm-ask inline-flex h-4 w-4 items-center justify-center rounded-full {tone === 'held' ? 'sm-ask-held text-held' : tone === 'neutral' ? 'sm-ask-neutral text-fg-muted' : 'text-fg'}">
+		<span style={yours ? `--sm-ring:${TONE['approval-yours'].ring}` : undefined} class="sm-ask inline-flex h-4 w-4 items-center justify-center rounded-full {yours ? 'sm-ask-held sm-ask-yours text-held' : tone === 'held' ? 'sm-ask-held text-held' : tone === 'neutral' ? 'sm-ask-neutral text-fg-muted' : 'text-fg'}">
 			<UserOutline class="h-3 w-3" aria-hidden="true" />
 		</span>
 	{:else if pie != null}
@@ -137,6 +140,7 @@
 	}
 	/* r34 build-r4 (/changes AD r2 F, additive): the approval glyph gets a wash so it reads at 12-15px: held tint + held ring for YOUR approval, a neutral wash for one someone else gives */
 	.sm-ask-held { background-color: var(--k-held-tint); box-shadow: inset 0 0 0 1px var(--k-held-line); }
+	.sm-ask-yours { box-shadow: inset 0 0 0 1.5px var(--sm-ring); }
 	.sm-ask-neutral { background-color: var(--k-subtle); box-shadow: inset 0 0 0 1px var(--k-line-strong); }
 	.sm-pm-progress { --pm-tint: var(--k-progress-tint); --pm-solid: var(--k-progress-solid); }
 	.sm-pm-active { --pm-tint: var(--k-active-tint); --pm-solid: var(--k-active-solid); }

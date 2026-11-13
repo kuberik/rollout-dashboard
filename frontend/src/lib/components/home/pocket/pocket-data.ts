@@ -10,6 +10,7 @@
  *   yours     "where are my changes?"                                            → journey ticks
  *   activity  "what just happened?"                                              → a spined timeline
  */
+import { shortRevision } from '$lib/version-utils';
 import { newestFirst, earliest } from '$lib/instant';
 import type { EnvState, HomeModel } from '$lib/view-models/home-model';
 import { changeBySha, homeModel, source, NOW, type HomeState } from '../sketch/home-data';
@@ -113,7 +114,7 @@ export function compass(state: HomeState): Compass {
 			if (bake === 'Failed' && state !== 'incident' && incidentFailed.has(`${r.metadata.name}|${env.env}`) && idx === 0) bake = 'Succeeded';
 			const prod = env.isProdRegion || env.tier === 'prod';
 			if (t >= start && t <= now) {
-				events.push({ t, tier: tierOf(env), app: r.metadata.name, env: env.label, kind: bake === 'Failed' ? 'failed' : bake === 'Deploying' || bake === 'InProgress' ? 'live' : 'ok', sha: (h.version.revision ?? h.version.tag ?? '').slice(0, 7) });
+				events.push({ t, tier: tierOf(env), app: r.metadata.name, env: env.label, kind: bake === 'Failed' ? 'failed' : bake === 'Deploying' || bake === 'InProgress' ? 'live' : 'ok', sha: shortRevision(h.version.revision ?? h.version.tag ?? '') });
 				const b = bins[Math.min(n - 1, Math.floor((t - start) / binMs))];
 				if (bake === 'Failed') b.failed++;
 				else if (bake === 'Deploying' || bake === 'InProgress') b.live++;
@@ -121,7 +122,7 @@ export function compass(state: HomeState): Compass {
 				if (prod && bake !== 'Failed') prodArrivals++;
 			}
 			if (now - t < 12 * 3600000 && (prod || bake === 'Failed')) {
-				const sha = (h.version.revision ?? h.version.tag ?? '').slice(0, 7);
+				const sha = shortRevision(h.version.revision ?? h.version.tag ?? '');
 				const ch = changeBySha(r.metadata.name, sha);
 				acts.push({
 					key: `${r.metadata.namespace}/${r.metadata.name}/${idx}`,
@@ -167,7 +168,7 @@ export function compass(state: HomeState): Compass {
 				href: a.href,
 				places: envs.length,
 				onNewest: envs.filter((e) => e.version === newest).length,
-				newest: newest ? newest.slice(0, 7) : null,
+				newest: newest ? shortRevision(newest) : null,
 				state: st,
 				where: w?.label ?? null,
 				prodRegions: envs.filter((e) => e.isProdRegion || e.tier === 'prod').length
@@ -286,7 +287,7 @@ export function changesDoor(state: HomeState): ChangesDoor {
 	for (const ch of chgList()) {
 		const t = Date.parse(ch.mergedAt);
 		if (!(t <= now && now - t < 24 * 3600000)) continue;
-		const sha = ch.mergeCommitSha.slice(0, 7);
+		const sha = shortRevision(ch.mergeCommitSha);
 		let best: TierKey | null = null;
 		for (const r of rawList()) {
 			if (!r.metadata.name.startsWith(ch.repo)) continue;

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { shortRevision } from '$lib/version-utils';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	/**
 	 * ⭐ "WHAT CHANGED" — AND IT NEVER EXPANDS TO NOTHING.
@@ -237,7 +238,7 @@
 			onclick={() => (open = !open)}
 			aria-expanded={open}
 			aria-controls={panelId}
-			aria-label={`What changed in ${name}${head ? ` at ${head.slice(0, 7)}` : ''}`}
+			aria-label={`What changed in ${name}${head ? ` at ${shortRevision(head)}` : ''}`}
 			class="hit-32 t-meta inline-flex shrink-0 items-center gap-1 rounded-xs text-fg-subtle transition-colors hover:text-fg"
 		>
 			<CodeBranchSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -347,7 +348,7 @@
 									target="_blank"
 									rel="noopener noreferrer"
 									class="ident t-code-sm shrink-0 text-accent-text hover:underline"
-									>{(c.sha ?? '').slice(0, 7)}</a
+									>{shortRevision(c.sha ?? '')}</a
 								>
 								<span class="t-meta min-w-0 flex-1 truncate text-fg-muted"
 									>{formatCommitMessage(c.message)}</span

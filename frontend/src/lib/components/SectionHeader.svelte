@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { HUE_SOLID, hueInk } from '$lib/view-models/state-tone';
 	/**
 	 * THE SECTION HEADER. One dialect for every page: dot · title · count ·
 	 * description …… action.
@@ -53,15 +54,7 @@
 		class?: string;
 	} = $props();
 
-	const DOT: Record<Tone, string> = {
-		neutral: 'bg-fg-subtle',
-		success: 'bg-success-solid',
-		danger: 'bg-danger-solid',
-		warning: 'bg-warning-solid',
-		held: 'bg-held-solid',
-		progress: 'bg-progress-solid',
-		active: 'bg-active-solid'
-	};
+	const DOT: Record<Tone, string> = { ...HUE_SOLID, neutral: HUE_SOLID.subtle };
 	const Icon = $derived(icon);
 </script>
 
@@ -87,7 +80,7 @@
 				{@const last = i === rollup.length - 1}
 				{@const text = typeof part === 'string' ? part : part.text}
 				{@const ink = typeof part === 'string' ? undefined : part.ink}
-				<span class="{last ? 'truncate' : foldsOnPhone(part) ? 'hidden sm:inline rp-dot' : 'rp-dot'} {ink === 'danger' ? 'font-medium text-danger' : ink === 'held' ? 'font-medium text-held' : ''}">{text}</span>
+				<span class="{last ? 'truncate' : foldsOnPhone(part) ? 'hidden sm:inline rp-dot' : 'rp-dot'} {ink ? `font-medium ${hueInk(ink)}` : ''}">{text}</span>
 			{/each}
 		</span>
 	{/if}

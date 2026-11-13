@@ -40,7 +40,7 @@ import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact, buildAge } from '$lib/utils';
 import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
-import { behindOfStatus, behindWhenSettled } from '$lib/view-models/behind';
+import { behindOfStatus } from '$lib/view-models/behind';
 import { failedHere, liveForPlace, waveBlockingRevisions, waveFailedRevisions } from '$lib/view-models/failed-builds';
 import { failedHereVerdict, shaNamesBuild } from '$lib/view-models/deploy-risk';
 import { siteCount, siteKey, placeLabel } from '$lib/view-models/regions';
@@ -52,7 +52,7 @@ export { deployableTags, approvalWrite };
 import { gateKindOf, type GateKind } from '$lib/view-models/gate-kind';
 import { windowHeld, windowNameOf, windowOpensClause } from '$lib/view-models/window-words';
 import { heldHereOf, heldKeyOfHref } from '$lib/view-models/held-here.svelte';
-import { displayVersionForTag, shortRevisionOrNull } from '$lib/version-utils';
+import { displayVersionForTag, shortRevisionOrNull, shortRevision } from '$lib/version-utils';
 import { TIERS as TIER_LIST, TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 import { gatePrettyOf } from '$lib/view-models/gate-pretty.svelte';
 import { githubAbsenceSentence } from '$lib/api/github';
@@ -254,13 +254,13 @@ export const buildTitle = (r: Pick<RolloutRow, 'href' | 'version'>): string => {
 	return (v ? shortBuild(v.version ?? v.tag ?? v.revision) : null) ?? r.version ?? '';
 };
 export const buildMeta = (r: Pick<RolloutRow, 'href' | 'version'>): string | null => {
-	const rev = rawOf(r.href)?.status.history?.[0]?.version.revision?.slice(0, 7) ?? null;
+	const rev = shortRevisionOrNull(rawOf(r.href)?.status.history?.[0]?.version.revision) ?? null;
 	return rev && rev !== buildTitle(r) ? rev : null;
 };
 /** The build id the tab prints (short revision of the deployed history entry), falling back to the row's version. */
 export const buildOf = (r: Pick<RolloutRow, 'href' | 'version'>): string => {
 	const rev = rawOf(r.href)?.status.history?.[0]?.version.revision;
-	return rev ? rev.slice(0, 7) : r.version ?? '';
+	return rev ? shortRevision(rev) : r.version ?? '';
 };
 /** data-truth-* attributes for a rollout row (spread onto the link). */
 export function truthAttrs(r: TRow | RolloutRow): Record<string, string> {
@@ -350,7 +350,7 @@ function reachByAncestry(state: HomeState, apps: string[], sha: string | null, m
 			/* a place the scenario shows healthy (calm masks the model's state, not the raw bake) runs its CURRENT build, whatever that entry's raw bake says */
 			const ok = (raw?.status.history ?? []).some((h, i) => {
 				if ((h.bakeStatus ?? 'Succeeded') === 'Failed' && !(i === 0 && e.state !== 'failed')) return false;
-				const v = (h.version.revision ?? h.version.tag ?? '').slice(0, 7);
+				const v = shortRevision(h.version.revision ?? h.version.tag ?? '');
 				if (sha && v === sha) return true;
 				const c = changeBySha(a.app, v);
 				return !!c && isNotEarlier(c.mergedAt, mergedAt);
@@ -374,7 +374,7 @@ function livePlaces(state: HomeState, apps: string[], sha: string | null, merged
 			const hist = [...(raw?.status.history ?? [])].reverse(); /* oldest first */
 			const first = hist.find((h, i) => {
 				if ((h.bakeStatus ?? 'Succeeded') === 'Failed' && !(i === hist.length - 1 && e.state !== 'failed')) return false; /* the current entry of a place the scenario shows healthy runs */
-				const v = (h.version.revision ?? h.version.tag ?? '').slice(0, 7);
+				const v = shortRevision(h.version.revision ?? h.version.tag ?? '');
 				if (sha && v === sha) return true;
 				const c = changeBySha(a.app, v);
 				return !!c && isNotEarlier(c.mergedAt, mergedAt);
@@ -438,7 +438,7 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 		   team alike. The change links to a place that is LIVE with it, and its age counts from that place's arrival (one `since` per change). */
 		if (i.group === 'landed' && !i.rolledBack) {
 			const ch = chgList().find((c) => i.repo === c.repo && c.mergedAt === i.mergedAt);
-			const sha = ch?.mergeCommitSha.slice(0, 7) ?? null;
+			const sha = shortRevisionOrNull(ch?.mergeCommitSha) ?? null;
 			const reach = reachByAncestry(state, i.apps, sha, i.mergedAt) ?? i.reach;
 			const last = i.tiers[i.tiers.length - 1];
 			const live = livePlaces(state, i.apps, sha, i.mergedAt, reach);
@@ -481,7 +481,7 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 		/* AD (2): "n of m" is the tab's prod n/of: production regions that RUN a build carrying the change, over the app's production regions */
 		const ofProd = prodRegionCount(m, i.apps);
 		const chg = chgList().find((c) => c.repo === i.repo && c.mergedAt === i.mergedAt) ?? chgList().find((c) => c.title === i.title);
-		const nProd = ofProd > 1 ? (livePlaces(state, i.apps, chg?.mergeCommitSha.slice(0, 7) ?? null, i.mergedAt, 'prod', true)?.n ?? 0) : 0;
+		const nProd = ofProd > 1 ? (livePlaces(state, i.apps, shortRevisionOrNull(chg?.mergeCommitSha) ?? null, i.mergedAt, 'prod', true)?.n ?? 0) : 0;
 		i.regions = ofProd > 1 ? { n: nProd, of: ofProd } : null;
 		/* AD (3)(4): links to the change itself and its author's login, from the fixture's own change record */
 		i.author = chg?.author ?? null;
@@ -693,16 +693,24 @@ const prettyOfGate = (href: string, gate: string): string | null => {
 };
 /** QA #12 — THE ONE "how many builds behind" of a place, for every surface (Apps tile, app strip + ledger, Environments, Runs-in, the tab's header):
  *  the length of the tab's "Newer builds" list (`status.releaseCandidates`); only a rollout that carries no such list falls back to its position in `availableReleases`. */
-export { behindOfStatus };
-/** the place's "N behind" for a surface that prints it beside "on the newest" (the Rollouts rest row): the ONE count (`behindWhenSettled`, behind.ts), null until the fleet has answered or while the lag is unknown */
-export const placeBehind = (href: string, settled: boolean): number | null => behindWhenSettled(rawOf(href) as never, envsOfSource(), settled);
-export type RunsIn = { label: string; tier: TierKey; build: string | null; word: string; href: string; state: EnvState };
+/**
+ * THE ONE "N BEHIND" OF A PLACE (dedup pass 4, coordinator 2026-11-13): the catalogue distance (releases/order.ts catalogueBehind, through newestBuild); the place's
+ * own list only counts a build the catalogue does not contain. 0 when the place runs the newest or has no releases. The strips, ledger, tiles, Builds card,
+ * the Rollouts rest row and the rollout cards (view-models/behind.ts behindInCatalogue) all print this number.
+ */
+export function behindOfPlace(href: string, app = ''): number {
+	if (noReleasesAt(href)) return 0;
+	return newestBuild({ app, href, state: 'healthy', word: '' } as never)?.count ?? 0;
+}
+/** `behindOfPlace` for a surface that prints it beside "on the newest" (the Rollouts rest row): null until the fleet has answered, so no count is later corrected */
+export const placeBehind = (href: string, app: string, settled: boolean): number | null => (settled ? behindOfPlace(href, app) : null);
+export type RunsIn = { /** the catalogue distance (behindIn): null when the build is not in the catalogue (unknown lag) or the place is not behind */ behind: number | null; label: string; tier: TierKey; build: string | null; word: string; href: string; state: EnvState };
 /** The Gates tab's Runs-in rows for an app: one per deployed place in the tab's order, with the build as the tab prints it and its word ("on the newest" / "N behind" / "failing"). */
 export function runsIn(app: string, state: HomeState = 'incident'): RunsIn[] {
 	const order = appOrder(app, state);
 	return placesOf(state, app).map((p) => {
 		const behind = behindIn(order, p.version);
-		return { label: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, build: p.version, href: p.href, state: p.state, word: p.state === 'failed' ? 'failing' : p.currency === 'none' ? '' : p.onNewest ? 'on the newest' : behind != null ? `${behind} behind` : 'behind' };
+		return { behind: p.onNewest || p.currency === 'none' ? null : behind, label: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, build: p.version, href: p.href, state: p.state, word: p.state === 'failed' ? 'failing' : p.currency === 'none' ? '' : p.onNewest ? 'on the newest' : behind != null ? `${behind} behind` : 'behind' };
 	});
 }
 
@@ -867,7 +875,7 @@ export const oldestClock = (clocks: string[]): string | null => earliest(clocks)
 /** The DEPLOYED build of a place with its own commit: the change title the History headline prints (fixture change by sha, else the range head) and the range head's author. */
 export function deployedBuild(row: Pick<RolloutRow, 'app' | 'href' | 'version'>): { build: string; meta: string | null; title: string | null; author: string | null; at: string | null } {
 	const r = buildRange(row);
-	const sha = rawOf(row.href)?.status.history?.[0]?.version.revision?.slice(0, 7) ?? '';
+	const sha = shortRevisionOrNull(rawOf(row.href)?.status.history?.[0]?.version.revision) ?? '';
 	return { build: buildTitle(row), meta: buildMeta(row), title: titleOfBuild(row.href, sha, null) ?? buildIdentity(sha, row.href)?.title ?? changeBySha(row.app, sha)?.title ?? (r?.title && !/^Release commit for build /.test(r.title) ? r.title : null), author: r?.author ?? null, at: rawOf(row.href)?.status.history?.[0]?.timestamp ?? null };
 }
 /** "7 newer builds · held: waiting for health checks": the newest-build line of the tab header. null when the place is on the newest. */
@@ -1020,13 +1028,13 @@ function identities(): Map<string, BuildIdentity> {
 	if (hit) return hit;
 	const m = new Map<string, BuildIdentity>();
 	/* the changes list the page reads is the one source: the PR pages and tabs print the same records */
-	for (const c of chgList()) m.set(c.mergeCommitSha.slice(0, 7), { pr: c.kind === 'pr' ? c.number ?? null : null, title: c.title, author: c.author ?? null, href: c.htmlUrl ?? null, repo: c.repo });
+	for (const c of chgList()) m.set(shortRevision(c.mergeCommitSha), { pr: c.kind === 'pr' ? c.number ?? null : null, title: c.title, author: c.author ?? null, href: c.htmlUrl ?? null, repo: c.repo });
 	if (!isLive()) {
 		/* unit tests: the demo GitHub universe also names builds the pinned fixture does not */
 		try {
 			const j = JSON.parse(respondGithub('GET', '/api/github/changes', new URLSearchParams({ days: '365' }))?.body ?? '{}');
 			for (const c of (j.changes ?? []) as { repo: string; kind?: string; number?: number; title: string; author: string; htmlUrl: string; mergeCommitSha: string }[])
-				m.set(c.mergeCommitSha.slice(0, 7), { pr: c.kind === 'pr' ? c.number ?? null : null, title: c.title, author: c.author, href: c.htmlUrl, repo: c.repo });
+				m.set(shortRevision(c.mergeCommitSha), { pr: c.kind === 'pr' ? c.number ?? null : null, title: c.title, author: c.author, href: c.htmlUrl, repo: c.repo });
 		} catch { /* fixture identities stand */ }
 	}
 	identityIndex.set(src, m);
@@ -1035,8 +1043,8 @@ function identities(): Map<string, BuildIdentity> {
 /** The one title/author/PR for a build, from the mock's /api/github/changes (what the PR pages print), the fixture where the mock has nothing. `build` is a SHA (any length) or, with `href`, a tag/version of that rollout. null when neither knows it. */
 export function buildIdentity(build: string | null | undefined, href?: string): BuildIdentity | null {
 	if (!build) return null;
-	let sha = /^[0-9a-f]{7,40}$/.test(build) ? build.slice(0, 7) : null;
-	if (!sha && href) { const r = (relsOf(rawOf(href)) ?? []).find((x) => x.tag === build || x.version === build); sha = r?.revision?.slice(0, 7) ?? null; }
+	let sha = /^[0-9a-f]{7,40}$/.test(build) ? shortRevision(build) : null;
+	if (!sha && href) { const r = (relsOf(rawOf(href)) ?? []).find((x) => x.tag === build || x.version === build); sha = shortRevisionOrNull(r?.revision) ?? null; }
 	return sha ? identities().get(sha) ?? null : null;
 }
 
@@ -1058,7 +1066,7 @@ function tabRange(href: string, tag: string): { title: string; author: string | 
 		/* r6 T5: github-data answers a range it cannot resolve with "Release commit for build X" and an invented author; the dev mock re-headlines it from the fixture's change (home-incident.ts), and so does this in-browser read (title AND author from the PR identity) */
 		const idn = /^Release commit for build /.test(String(hc.message)) ? buildIdentity(hc.sha, href) : null;
 		if (idn) { hc.message = idn.title; hc.author = idn.author ?? hc.author; }
-		return { title: String(hc.message).split('\n')[0], author: hc.author ?? null, additions: j.additions ?? 0, deletions: j.deletions ?? 0, files: j.changedFiles ?? 0, commits: cs.map((c) => ({ sha: c.sha.slice(0, 7), title: String(c.message).split('\n')[0], author: c.author ?? null })) };
+		return { title: String(hc.message).split('\n')[0], author: hc.author ?? null, additions: j.additions ?? 0, deletions: j.deletions ?? 0, files: j.changedFiles ?? 0, commits: cs.map((c) => ({ sha: shortRevision(c.sha), title: String(c.message).split('\n')[0], author: c.author ?? null })) };
 	} catch { return null; }
 }
 /** r5 R4: the History tab's HEADLINE for a build: the single-sha commit lookup the tab asks (`GET /api/github/repos/:owner/:repo/commits/:sha`, repo from the rollout's source), i.e. the commit
@@ -1247,7 +1255,7 @@ export function cleared(state: HomeState): Cleared[] {
 			if (act && act.kind === 'rollback') out.push({ kind: 'rollback', app: a.app, place, what: `Rolled back from ${act.from} to ${act.to}`, who: who(h), at: h.timestamp, href: e.href });
 			const prev = hist[i + 1];
 			if (prev && (prev.bakeStatus ?? '') === 'Failed' && (h.bakeStatus ?? 'Succeeded') === 'Succeeded' && !(act && act.kind === 'rollback'))
-				out.push({ kind: 'recovered', app: a.app, place, what: `Recovered after ${(prev.version.revision ?? prev.version.tag ?? '').slice(0, 7)} failed`, who: who(h), at: h.timestamp, href: e.href });
+				out.push({ kind: 'recovered', app: a.app, place, what: `Recovered after ${shortRevision(prev.version.revision ?? prev.version.tag ?? '')} failed`, who: who(h), at: h.timestamp, href: e.href });
 			if (h.triggeredBy?.kind === 'User' && act && act.kind === 'forward' && (raw.status.gates ?? []).some((g) => gateKindOf(g) === 'approval'))
 				out.push({ kind: 'approved', app: a.app, place, what: `Approved ${act.to}`, who: who(h), at: h.timestamp, href: e.href });
 		});
@@ -1259,7 +1267,7 @@ export function cleared(state: HomeState): Cleared[] {
 export function buildName(app: string, build: string | null | undefined): string | null {
 	if (!build) return null;
 	for (const r of raws()) if (r.metadata.name === app)
-		for (const x of relsOf(r) ?? []) if ([x.tag, x.version, x.revision, x.revision?.slice(0, 7)].includes(build) || x.revision?.startsWith(build)) return shortBuild(x.version ?? x.tag) ?? build;
+		for (const x of relsOf(r) ?? []) if ([x.tag, x.version, x.revision, shortRevisionOrNull(x.revision)].includes(build) || x.revision?.startsWith(build)) return shortBuild(x.version ?? x.tag) ?? build;
 	return shortBuild(build);
 }
 /** The fleet's newest deploy (any kind): app, place, author, time and the History link of that rollout. */
@@ -1496,6 +1504,8 @@ export function approvalAskAt(href: string, state: HomeState = 'incident'): Appr
 	}
 	return null;
 }
+/** the viewer can give the approval this place waits on (the ONE predicate, approvalAskAt): the strips draw the ring of `approval-yours` where it is true */
+export const canApproveAt = (href: string, state: HomeState = 'incident'): boolean => approvalAskAt(href, state) !== null;
 type Snap = { r: RawRollout; status: RawRollout['status']; href: string };
 const SNAPS = new Map<string, Snap[]>();
 /** Apply an approval to the fixture in place (the optimistic step): each place's approval gate allows its held builds and the named build starts deploying, unless another hold (`t.waitsOn`) still refuses it: then it stays a held candidate. */
@@ -1612,21 +1622,21 @@ const changeBuilds = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): { sha
 		const j = githubJson<{ containedIn?: string[] }>(`/api/github/pulls/${(entry as unknown as { owner?: string }).owner ?? 'exampleco'}/${entry.repo}/${entry.number}`);
 		if (Array.isArray(j?.containedIn)) contained = j!.containedIn!;
 	}
-	return { sha: entry?.mergeCommitSha.slice(0, 7) ?? null, contained: contained.map((x) => x.slice(0, 7)), entry };
+	return { sha: shortRevisionOrNull(entry?.mergeCommitSha) ?? null, contained: contained.map((x) => shortRevision(x)), entry };
 };
 /** (gg) Every place of the change's apps with its deployed build and whether that build CONTAINS the change (the PR's own containedIn: a "Custom build" does not count). */
 export function placesOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): { app: string; place: string; tier: TierKey; build: string | null; state: EnvState; href: string; containsChange: boolean }[] {
 	const { contained } = changeBuilds(c);
 	return c.apps.flatMap((app) => placesOf(state, app).map((p) => {
-		const sha = rawOf(p.href)?.status.history?.[0]?.version.revision?.slice(0, 7) ?? p.version ?? '';
+		const sha = shortRevisionOrNull(rawOf(p.href)?.status.history?.[0]?.version.revision) ?? p.version ?? '';
 		return { app, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, build: buildName(app, p.version), state: p.state, href: p.href, containsChange: contained.includes(sha) && p.state !== 'failed' };
 	}));
 }
 /** (hh) The PR's own commits (head commit with the PR's title and author) and, separately, the builds carrying the change. */
 export function changeCommits(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): { commits: { sha: string; title: string; author: string | null }[]; builds: { app: string; build: string; places: string[] }[] } {
 	const { entry } = changeBuilds(c);
-	const id = buildIdentity(entry?.mergeCommitSha.slice(0, 7));
-	const commits = entry ? [{ sha: entry.mergeCommitSha.slice(0, 7), title: id?.title ?? entry.title, author: id?.author ?? entry.author ?? null }] : [];
+	const id = buildIdentity(shortRevisionOrNull(entry?.mergeCommitSha));
+	const commits = entry ? [{ sha: shortRevision(entry.mergeCommitSha), title: id?.title ?? entry.title, author: id?.author ?? entry.author ?? null }] : [];
 	const by = new Map<string, { app: string; build: string; places: string[] }>();
 	for (const p of placesOfChange(c, state)) if (p.containsChange && p.build) { const k = `${p.app}|${p.build}`; const e = by.get(k) ?? { app: p.app, build: p.build, places: [] }; e.places.push(p.place); by.set(k, e); }
 	return { commits, builds: [...by.values()] };
@@ -1640,7 +1650,7 @@ export function historyOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 
 		if (!raw || e.state === 'not-deployed') continue;
 		const acts = deployActs(raw as never);
 		(raw.status.history ?? []).forEach((h, i) => {
-			if (!contained.includes((h.version.revision ?? h.version.tag ?? '').slice(0, 7))) return;
+			if (!contained.includes(shortRevision(h.version.revision ?? h.version.tag ?? ''))) return;
 			const k = acts[i]?.kind;
 			out.push({ app, place: placeLabel({ tier: tierOfEnv(e), regions: [e.label] }), build: shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) ?? '', at: h.timestamp, kind: k === 'rollback' ? 'rollback' : k === 'redeploy' ? 'redeploy' : 'deploy', who: h.triggeredBy?.kind === 'User' && h.triggeredBy.name ? RD.pretty(h.triggeredBy.name) ?? 'Automatic' : 'Automatic', outcome: h.bakeStatus ?? 'Succeeded', href: e.href });
 		});
@@ -1778,7 +1788,7 @@ export function buildCommitOf(href: string, build: string | null | undefined): {
 	const r = rel.find((x) => x.tag === build || x.version === build || (x.revision ?? '').startsWith(build));
 	const tag = r?.tag ?? r?.version ?? build;
 	const range = tabRange(href, tag);
-	return range ? { title: range.title, author: range.author, sha: (r?.revision ?? tag).slice(0, 7), commits: range.commits } : null;
+	return range ? { title: range.title, author: range.author, sha: shortRevision(r?.revision ?? tag), commits: range.commits } : null;
 }
 
 /* ═══ r5 rollouts lane (appended) ═══ */
@@ -1808,7 +1818,7 @@ export function deployedHistory(href: string, n = 8): { build: string; title: st
 	return (rawOf(href)?.status.history ?? []).slice(0, n).map((h) => {
 		const v = h.version as { tag?: string; version?: string; revision?: string };
 		const tag = v.tag ?? v.version ?? v.revision ?? '';
-		const sha = v.revision?.slice(0, 7) ?? '';
+		const sha = shortRevisionOrNull(v.revision) ?? '';
 		const r = tabRange(href, tag);
 		return { build: shortBuild(v.version ?? v.tag) ?? tag, title: titleOfBuild(href, sha || tag, r?.title ?? null), author: r?.author ?? null, at: h.timestamp ?? null };
 	});

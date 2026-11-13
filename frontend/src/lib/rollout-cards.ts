@@ -3,7 +3,7 @@
 // so stuck/behind/failure classification logic lives in exactly one place.
 
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
-import { behindOfRollout } from './view-models/behind';
+import { behindInCatalogue, behindOfRollout, catalogueOrdersByRollout } from './view-models/behind';
 import { severityRank } from './view-models/severity';
 import { liveForPlace, newerReleaseCountLive, type Fleet } from './view-models/failed-builds';
 import type { Rollout, Environment } from '../types';
@@ -434,7 +434,7 @@ export type RolloutCard = {
 	 * a perfectly ordinary rollout — see the note on `computeBehind`.
 	 */
 	behind: { fromEnv: string; version: string; behindBy: number | null } | null;
-	/** the "N newer builds" count the cards, palette and lanes print: `behindOfRollout` over this build's own fleet lists, so a build that failed upstream in its wave chain is not counted (batch4 #3b) */
+	/** the "N newer builds" count the cards, palette and lanes print: `behindInCatalogue` (behind.ts: the catalogue distance, the one number everywhere; a build outside the catalogue falls back to the own list, which skips builds failed upstream) */
 	behindCount?: number;
 	/**
 	 * ⛔ "1 BEHIND" AND "1 BEHIND, AND STUCK THERE" LOOK IDENTICAL WITHOUT
@@ -610,6 +610,7 @@ export function buildRolloutCards(
 	// `/apps` and `/environments` read. See env-rank.ts for why this and not
 	// each rollout's own `availableReleases`.
 	const ranks = rankVerdictsByRollout(rollouts, environments);
+	const orders = catalogueOrdersByRollout(rollouts, environments);
 	return rollouts.map((r) => {
 		const latest = r.status?.history?.[0];
 		const env = environments.find((e) => rolloutMatchesEnvironment(r, e));
@@ -695,7 +696,7 @@ export function buildRolloutCards(
 			checkFailure: checkFailure(r),
 			rank,
 			behind,
-			behindCount: behindOfRollout(r, rank, { environments, rollouts }),
+			behindCount: behindInCatalogue(r, orders.get(r) ?? [], rank, { environments, rollouts }),
 			held: pv ? pv.held : noAsk ? false : heldCardVerdict.held,
 			heldCause: pv ? pv.cause : noAsk ? null : heldCardVerdict.cause,
 			placeVerdict: pv?.verdict ?? null,

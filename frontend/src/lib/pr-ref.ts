@@ -19,6 +19,7 @@
  * guessing.
  */
 
+import { shortRevision } from '$lib/version-utils';
 import { href } from './paths';
 
 export type FullPrRef = {
@@ -154,6 +155,6 @@ export function changeSlugTitle(segments: readonly string[]): { title: string; r
 	const parts = p.repoSlug.split('/').filter(Boolean);
 	if (parts[0]?.includes('.')) parts.shift(); /* the host */
 	if (parts.length === 0) return null;
-	const ref = p.ref.kind === 'pull' ? `#${p.ref.number}` : p.ref.sha.slice(0, 7);
+	const ref = p.ref.kind === 'pull' ? `#${p.ref.number}` : shortRevision(p.ref.sha);
 	return { title: `${parts[parts.length - 1]} ${ref}`, repo: parts.join('/'), ref };
 }
