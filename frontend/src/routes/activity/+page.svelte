@@ -1688,7 +1688,7 @@
 			</AlertPanel>
 		{/if}
 
-		<div class="flex min-w-0 flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)] lg:items-start lg:gap-x-6">
+		<div class="flex min-w-0 flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)] lg:items-start lg:gap-x-4">
 			<div class="flex min-w-0 flex-col gap-8">
 				<!-- ══ DEPLOYS ═════════════════════════════════════════════════════ -->
 				{#if rolloutsQuery.isLoading}
@@ -2009,7 +2009,7 @@
 			<!-- NEW BY DESIGN: "This window". ROLE: the side column's one summary card, who is busiest in the SAME scoped-and-windowed set the main column
 			     shows. Why not HowItsGoing: three of its five rows need per-step timing this page never parses and `Furthest behind` is a rank this page
 			     dropped. Borrows the Card's 47px header and the Home Fleet card's row (glyph · name · meta ... count). Sticky under the 52px top bar. -->
-			<div class="min-w-0 lg:sticky lg:top-[68px]">
+			<div class="rail-under-head min-w-0 lg:sticky lg:top-[68px]">
 				{#if rolloutsQuery.isLoading}
 					<CardSkeleton titleWidth="w-28" rollupWidth="w-20" rows={4} rowHeight={32} />
 				{:else}

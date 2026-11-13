@@ -655,8 +655,22 @@ html.dark .surface-raised,
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		min-height: 32px;
-		margin-bottom: 12px;
+		min-height: var(--k-section-head-row, 32px);
+		margin-bottom: var(--k-section-head-gap, 12px);
+	}
+
+	/* ── A RAIL BESIDE A COLUMN THAT OPENS WITH A SECTION HEADER (Home's Fleet, /activity's "This window").
+	   The rail is one titled Card with no section header of its own, so from the side-by-side step (lg) it drops
+	   by exactly the header's row + gap: its card top shares the main column's first card top (visual audit
+	   #12, 2026-11-13; the /changes shape, where one header spans both columns, is the reference). */
+	:root {
+		--k-section-head-row: 32px;
+		--k-section-head-gap: 12px;
+	}
+	@media (min-width: 1024px) {
+		.rail-under-head {
+			margin-top: calc(var(--k-section-head-row) + var(--k-section-head-gap));
+		}
 	}
 
 	.section-dot {
