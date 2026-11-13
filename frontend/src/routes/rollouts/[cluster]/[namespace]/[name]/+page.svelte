@@ -53,7 +53,6 @@
 		ChevronDownOutline,
 		ChevronUpOutline,
 		ArrowUpRightFromSquareOutline,
-		ArrowUpOutline,
 		GithubSolid,
 		ChevronRightOutline,
 		ShareNodesSolid
@@ -2910,140 +2909,90 @@
 					{/if}
 				{/snippet}
 				{#snippet heroMeta()}
-					<!-- D8 (LOGOPEN r10): the age is a plain fact on the "·" line, no
-					     clock icon, the same as every other rollout tab. -->
-					<!-- r11, item 5: no age on the phone meta line (it has other facts). -->
-					<span
-						class="t-meta text-fg-subtle tabular-nums max-lg:hidden"
-						title={formatDate(latestEntry.timestamp)}
-						>{formatTimeAgoCompact(latestEntry.timestamp, $now)} ago</span
-					>
-					<span class="t-meta contents"
-						>{#if isCurrentVersionCustom || headerNewer > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)) || scheduleMetaText}
-							{#if headerNewer > 0}
+					<!-- ONE ICON-LED TRACK, THE APP HEADER'S (visual audit #16, 2026-11-13; reference: AppDetail's `data-ad-meta`). It was three grey
+					     prose lines: "9h ago • ↑ 7 newer builds · held: … · 1 failing", the commit, the namespace. Now, in the app page's reading
+					     order: the commit (who, title, ± lines; the title gives way first) · ◷ deployed N ago · N newer builds, then the hold as
+					     its own item behind the held mark instead of mid-sentence. The namespace line is gone: the navbar breadcrumb prints it.
+					     Below 640 the items flow into the phone row beside the state chip and the commit takes the last two lines (its reserved
+					     slot, as before). -->
+					<div class="flex min-w-0 basis-full items-center gap-x-3 max-sm:contents max-sm:[&>*]:pl-5" data-hdr-meta>
+						{#if rollout?.status?.source && rollout.status.history && rollout.status.history.length > 1}
+							{@const historyHref = rolloutPath(cluster, namespace, name, 'history')}
+							{@const latestKey = deployKey(latestEntry)}
+							<!-- r34 tabs-nb r2 (#9): the slot's height is RESERVED before the commit data arrives — two
+							     lines below 640 (title, then stats), one from there up — so the content under it never moves. -->
+							<div class="min-w-0 max-sm:order-last max-sm:basis-full sm:flex-[0_3_auto] {githubConnected ? 'min-h-[2.5rem] sm:min-h-[1.25rem]' : ''}" data-hdr-commit>
 								<!--
-															⭐ `available` MEANS `allowed`, AND A PIN ALLOWS
-															NOTHING. (P10, operator-walk finding) This line said
-															`↑ 1 upgrade available` while the panel one row down
-															said the rollout is PINNED — `available` is a claim
-															this dashboard would actually DEPLOY the candidate on
-															its own, which is false the moment `wantedVersion` is
-															set (see `blocking-story.ts`: a pin outranks every
-															gate and refuses ALL builds). The count is still true
-															and still worth a glance; the verb changes to name
-															what is actually true.
+															⭐ P11: THE ROLLUP NAMES WHY IT HAS NOTHING TO SAY,
+															RATHER THAN SAYING NOTHING. See `githubStatus`'s own
+															comment. `CommitSummary`'s `query.isError` branch is
+															deliberately silent for a LIST of these; this is the
+															page's only one, so the fallback is drawn HERE rather
+															than inside that shared component.
 														-->
-								<!--
-															⭐ THE SAME WAIT, SAID ON THE WHOLE PAGE, NOT ONLY
-															INSIDE THE NEWER BUILDS CARD. (2026-09-20, coordinator
-															relay) A viewer watching the version card never
-															scrolls to that card's own row, so the identical
-															`newestHeldByHealth`/`justOpenedHealthGate` facts ride
-															here too — same clause text
-															(`newestHealthHoldClause`), never a second sentence
-															for the same count. `promoting` reuses the `Deploying`
-															blue this page already spends on "the system is
-															moving this on its own" (`pendingAction`'s "Deploy
-															requested — starting", six lines up); `held` keeps
-															this line's existing orange, matching the `held` Chip
-															below and the pinned branch already here.
-														-->
-								<span
-									class="hdr-newer flex min-w-0 items-center gap-1 max-sm:max-w-[calc(100%-7rem)] {justOpenedHealthGate && !blockStory.pinnedTo
-										? HUE_INK.active
-										: 'text-fg-muted'}"
-								>
-									<ArrowUpOutline class="h-3 w-3" />
-									<!-- r34 tabs-nb r3 (#6): below 640 the fact is ONE line (ellipsis when the hold clause is long): the
-									     clause arrives after the health checks, and a wrap there pushed the whole header down 20px. -->
-									<span class="min-w-0 max-sm:truncate">
-										{#if blockStory.pinnedTo}
-										{headerNewer} newer · held by the pin
-									{:else if blockStory.blocked}
-										<!-- One fact, once: the held banner below names every
-																     cause (gate and contract); the meta only counts. -->
-										{headerNewer}
-										{headerNewer === 1 ? 'newer build' : 'newer builds'}
-									{:else if newestCandidateBlockedByGate}
-										{headerNewer}
-										{headerNewer === 1 ? 'newer build' : 'newer builds'}
-										· held: {newestGateHoldClause}
-									{:else if newestHeldByHealth}
-										{headerNewer}
-										{headerNewer === 1 ? 'newer build' : 'newer builds'}
-										· held: {newestHealthHoldClause}
-									{:else if justOpenedHealthGate}
-										{headerNewer}
-										{headerNewer === 1 ? 'newer build' : 'newer builds'}
-										· promoting
-									{:else}
-										{headerNewer}
-										{headerNewer === 1 ? 'newer build' : 'newer builds'}
-									{/if}</span>
+								{#if githubConnected}
+									<CommitSummary
+										{namespace}
+										{name}
+										{cluster}
+										base={rollout.status.history[1]?.version?.revision}
+										head={latestEntry.version?.revision}
+										href={latestKey
+											? `${historyHref}?${DEPLOY_PARAM}=${encodeURIComponent(latestKey)}`
+											: historyHref}
+										hrefLabel="Open this deploy in the history"
+										headline
+										bind:headPullNumber={hdrPullNumber}
+										hideWhenEmpty
+										class="hover:bg-hover -mx-1.5 rounded px-1.5 py-0.5 transition-colors sm:flex-nowrap!"
+									/>
+								{:else}
+									<p class="t-meta text-fg-subtle">
+										Commit message and author need GitHub. {githubAbsenceSentence(githubStatus.data)}
+									</p>
+								{/if}
+							</div>
+						{/if}
+						<!-- D8 (LOGOPEN r10) / r11 item 5: the age is not on the phone line (the phone state chip carries it). -->
+						<span
+							class="t-meta inline-flex shrink-0 items-center gap-2 whitespace-nowrap tabular-nums text-fg-subtle max-lg:hidden"
+							title={formatDate(latestEntry.timestamp)}
+							><ClockOutline class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />deployed {formatTimeAgoCompact(latestEntry.timestamp, $now)} ago</span
+						>
+						{#if headerNewer > 0}
+							<!-- ⭐ `available` MEANS `allowed`, AND A PIN ALLOWS NOTHING (P10): pinned, the count names the pin. `promoting` reuses
+							     the Deploying blue (`justOpenedHealthGate`, 2026-09-20 relay). -->
+							<span
+								class="t-meta shrink-0 whitespace-nowrap {justOpenedHealthGate && !blockStory.pinnedTo ? HUE_INK.active : 'text-fg-subtle'}"
+								data-hdr-newer
+								>{headerNewer} {headerNewer === 1 ? 'newer build' : 'newer builds'}{#if blockStory.pinnedTo}&nbsp;· held by the pin{:else if !blockStory.blocked && !newestCandidateBlockedByGate && !newestHeldByHealth && justOpenedHealthGate}&nbsp;· promoting{/if}</span
+							>
+							<!-- ⭐ THE SAME WAIT, SAID ON THE WHOLE PAGE, NOT ONLY INSIDE THE NEWER BUILDS CARD (2026-09-20 relay): same clause text
+							     as that card's row, never a second sentence. Its own item behind the held mark, so the page's most important fact is
+							     not buried mid-sentence. With a held banner (`blockStory.blocked`) the banner names every cause and the meta only counts. -->
+							{#if !blockStory.pinnedTo && !blockStory.blocked && (newestCandidateBlockedByGate || newestHeldByHealth)}
+								<span class="t-meta flex min-w-0 shrink items-center gap-1.5 text-fg-muted" data-hdr-held>
+									<HeldGlyph class="h-3.5 w-3.5 shrink-0 text-held" />
+									<span class="min-w-0 truncate">Held: {newestCandidateBlockedByGate ? newestGateHoldClause : newestHealthHoldClause}</span>
 								</span>
 							{/if}
-							{#if isCurrentVersionCustom}
-								<span class="text-fg-muted">Custom build</span>
-							{/if}
-							{#if getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)}
-								<span class="t-code-sm text-fg-subtle">
-									{formatRevision(getRevisionInfo(latestEntry.version)!)}
-								</span>
-							{/if}
-							<!--
-														⭐ THE SCHEDULE'S "NOTHING WAITING" FACT LANDS HERE,
-														NOT IN A BANNER. (F2, second re-check, 2026-09-03)
-														See `scheduleMetaText`'s own comment: a closed deploy
-														window with no candidate behind it is informational,
-														so it takes the same quiet, one-line treatment as
-														the upgrade count and the custom-version flag beside
-														it, instead of the page's one banner slot.
-													-->
-							{#if scheduleMetaText}
-								<span class="text-fg-subtle flex items-center gap-1">
-									<CalendarWeekSolid class="h-3 w-3" />
-									{scheduleMetaText}
-								</span>
-							{/if}
-						{/if}</span
-					>
-					{#if rollout?.status?.source && rollout.status.history && rollout.status.history.length > 1}
-						{@const historyHref = rolloutPath(cluster, namespace, name, 'history')}
-						{@const latestKey = deployKey(latestEntry)}
-						<!-- r34 tabs-nb r2 (#9): the slot's height is RESERVED before the commit data arrives — two
-						     lines below 640 (title, then stats), one from there up — so the content under it never moves. -->
-						<div class="min-w-0 basis-full {githubConnected ? 'min-h-[2.5rem] sm:min-h-[1.25rem]' : ''}">
-							<!--
-														⭐ P11: THE ROLLUP NAMES WHY IT HAS NOTHING TO SAY,
-														RATHER THAN SAYING NOTHING. See `githubStatus`'s own
-														comment. `CommitSummary`'s `query.isError` branch is
-														deliberately silent for a LIST of these; this is the
-														page's only one, so the fallback is drawn HERE rather
-														than inside that shared component.
-													-->
-							{#if githubConnected}
-								<CommitSummary
-									{namespace}
-									{name}
-									{cluster}
-									base={rollout.status.history[1]?.version?.revision}
-									head={latestEntry.version?.revision}
-									href={latestKey
-										? `${historyHref}?${DEPLOY_PARAM}=${encodeURIComponent(latestKey)}`
-										: historyHref}
-									hrefLabel="Open this deploy in the history"
-									headline
-									bind:headPullNumber={hdrPullNumber}
-									hideWhenEmpty
-									class="hover:bg-hover -mx-1.5 rounded px-1.5 py-0.5 transition-colors"
-								/>
-							{:else}
-								<p class="t-meta text-fg-subtle">
-									Commit message and author need GitHub. {githubAbsenceSentence(githubStatus.data)}
-								</p>
-							{/if}
-						</div>
-					{/if}
+						{/if}
+						{#if isCurrentVersionCustom}
+							<span class="t-meta shrink-0 text-fg-muted">Custom build</span>
+						{/if}
+						{#if getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)}
+							<span class="t-code-sm shrink-0 text-fg-subtle">
+								{formatRevision(getRevisionInfo(latestEntry.version)!)}
+							</span>
+						{/if}
+						<!-- ⭐ THE SCHEDULE'S "NOTHING WAITING" FACT LANDS HERE, NOT IN A BANNER (F2, 2026-09-03): see `scheduleMetaText`. -->
+						{#if scheduleMetaText}
+							<span class="t-meta flex min-w-0 items-center gap-1.5 text-fg-subtle">
+								<CalendarWeekSolid class="h-3.5 w-3.5 shrink-0" />
+								<span class="min-w-0 truncate">{scheduleMetaText}</span>
+							</span>
+						{/if}
+					</div>
 				{/snippet}
 				{#snippet heroActions()}
 					{#if rollout?.status?.artifactType === 'application/vnd.cncf.flux.config.v1+json'}
@@ -3247,13 +3196,7 @@
 						     sans (it is a name), so the cross-env link reads as a fact
 						     about it rather than a stray line. -->
 						{@render heroMeta()}
-						{#if rollout.metadata?.namespace}
-							<!-- Phone: the namespace is the top bar's context already; the
-							     meta line stays one row (r11). -->
-							<span class="t-meta text-fg-subtle min-w-0 truncate max-lg:hidden"
-								>{rollout.metadata.namespace}</span
-							>
-						{/if}
+						<!-- No namespace line (visual audit #16): the navbar breadcrumb names it at every width. -->
 					{/snippet}
 					{#snippet below()}
 						{#if appLane}
@@ -5035,15 +4978,6 @@
 />
 
 <style>
-	/* r34 tabs-nb r3 (#5): below 1024 the status badge (phone-only identity) leads the meta line, so the
-	   "N newer builds" fact right after it takes no separator dot (the `.contents` rule in language.css
-	   dots every fact; the badge is not a fact in a list, it is the line's lead). The 20px padding stays,
-	   so the glyph is never clipped when the fact wraps to a line start. */
-	@media (max-width: 1023px) {
-		.hdr-newer.hdr-newer.hdr-newer {
-			background-image: none;
-		}
-	}
 	/* r34 Newer builds ledger: History's spine (`lib/ledger-spine.ts` sets the vars). */
 	.nb-ledger {
 		position: relative;
