@@ -20,7 +20,7 @@
 	import EnvRow, { type EnvCell, type EnvSite } from '$lib/components/EnvRow.svelte';
 	import type { SiteState } from '$lib/components/SiteMark.svelte';
 	import { approvalWord, stateWord } from '$lib/components/new/state-words';
-	import { atoms } from '$lib/components/atoms/atoms-context';
+	import { toneInk } from '$lib/view-models/state-tone';
 	import type { Bead } from '$lib/view-models/bead';
 
 	let {
@@ -64,24 +64,12 @@
 		reserve?: boolean;
 	} = $props();
 	const size = $derived<'L' | 'M'>(fill ?? 'L');
-	/* r42 atoms (opt-in, /design/atoms): the progress pie in a checking / deploying box */
-	const AT = atoms();
 	const linked = $derived(!fill);
 
 	const cols = $derived<Tier[]>(
 		tiers?.filter((t) => lane.byTier[t]?.length) ?? (['dev', 'test', 'staging', 'other', 'prod'] as Tier[]).filter((t) => lane.byTier[t]?.length)
 	);
 
-	const INK: Record<NodeState, string> = {
-		failed: 'text-danger',
-		stuck: 'text-warning',
-		deploying: 'text-active',
-		checking: 'text-progress',
-		held: 'text-held',
-		behind: 'text-fg-muted',
-		newest: 'text-fg-muted',
-		none: 'text-fg-subtle'
-	};
 
 	const isCurrent = (n: LaneNode) => !!current && n.card.ns === current.ns && n.card.name === current.name;
 
@@ -95,7 +83,7 @@
 	const longWord = (n: LaneNode) => (wordOf(n) === stripWord(n) ? '' : ' · ' + wordOf(n));
 	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : WORD[n.state] || (n.state === 'none' ? '' : 'Deployed'));
 	/** a healthy box says "Deployed" quietly (the picker's word) so the reserved slot is not an empty tail */
-	const stripInk = (n: LaneNode) => (WORD[n.state] ? INK[n.state] : 'text-fg-subtle');
+	const stripInk = (n: LaneNode) => (WORD[n.state] ? toneInk(n.state) : 'text-fg-subtle');
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
 	const markOf = (n: LaneNode): EnvCell['mark'] => (MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined);
 	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || STATE_ORDER.indexOf(n.state) < STATE_ORDER.indexOf(b.state) ? n : b), null));
@@ -121,10 +109,6 @@
 	function prodRegion(ns: LaneNode[], worst: LaneNode): string {
 		return STATE_NOUN[worst.state] && ns.filter((r) => r.state === worst.state).length === 1 ? worst.env : '';
 	}
-	function withProgress(m: EnvCell['mark'], n: LaneNode): EnvCell['mark'] {
-		const p = m && AT.progress ? AT.progress.get(`${n.card.ns}/${n.card.name}`) : null;
-		return m && p ? { ...m, progress: p.fraction } : m;
-	}
 	/** a place without releases has no currency: a plain box would read as current, so it says so in the fact slot (same slot as "1 behind") */
 	const noRel = (n: LaneNode) => n.state === 'none' && !!n.noReleases;
 	function cellOf(n: LaneNode): EnvCell {
@@ -135,13 +119,13 @@
 			current: youAreHere && isCurrent(n),
 			title: `${n.card.envDisplay || n.env}: ${n.card.version ?? 'no build'}${n.behind > 0 ? ` · ${lagLabel({ builds: n.behind })} the newest` : ''}${noRel(n) ? ' · no releases' : ''}${reserve ? longWord(n) : ''}`,
 			style: n.card.theme ? getEnvironmentThemeStyle(n.card.theme) : undefined,
-			mark: withProgress(markOf(n), n),
+			mark: markOf(n),
 			...(reserve
 				? { word: stripWord(n) || undefined, wordSlot: WORD_SLOT, wordInk: stripInk(n) }
 				: {
 						word: wordOf(n) || undefined,
 						wordShort: n.state === 'held' && n.card.heldCause === 'person' && words ? (stateWord('approval', { compact: true }) ?? undefined) : undefined,
-						wordInk: INK[n.state]
+						wordInk: toneInk(n.state)
 					}),
 			hot: MARKED.has(n.state),
 			fact: n.behind > 0 ? (size === 'M' ? `${n.behind} behind` : lagLabel({ builds: n.behind })) : noRel(n) && !quietNoReleases ? 'no releases' : undefined,
@@ -183,7 +167,7 @@
 				state: n.state === 'held' && n.card.heldCause === 'person' ? 'approval' : SITE_STATE[n.state],
 				word: siteWord(n),
 				detail: siteDetail(n),
-				wordInk: INK[n.state],
+				wordInk: toneInk(n.state),
 				build: n.card.version ? shortenVersion(n.card.version) : undefined,
 				aside: n.card.timestamp ? formatTimeAgoCompact(n.card.timestamp) : undefined,
 				href: hrefFor(n),

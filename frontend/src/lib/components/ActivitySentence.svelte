@@ -23,6 +23,7 @@
 	 * deploying"). Below 720px, or when `compact`, it is two lines: line 1
 	 * the sentence + time; line 2, indented under the text, env + from -> to.
 	 */
+	import { TONE, toneBg, toneInk } from '$lib/view-models/state-tone';
 	import Avatar from './Avatar.svelte';
 	import StatusMark from './StatusMark.svelte';
 	import type { Actor } from '$lib/actor';
@@ -83,15 +84,6 @@
 		live?: boolean;
 	} = $props();
 
-	// The status solids `StatusMark` uses —
-	// drawn OVER `Avatar`, which never carries a status hue itself.
-	const CORNER: Partial<Record<NodeState, string>> = {
-		failed: 'bg-danger-solid',
-		stuck: 'bg-warning-solid',
-		held: 'bg-held-solid',
-		deploying: 'bg-active-solid',
-		checking: 'bg-progress-solid'
-	};
 	const fromKind = $derived(kind ? activityVerb(kind) : null);
 	// Only a PERSON is a subject. An automatic actor (the controller, CI) is
 	// never the sentence's subject: the app leads and the verb takes its
@@ -104,19 +96,11 @@
 	// Only `failed` ever resolves: every other tone (deploying, checking,
 	// held, stuck) is read live or not shown at all.
 	const resolvedFailure = $derived(tone === 'failed' && !live);
-	const cornerClass = $derived(resolvedFailure ? 'bg-fg-subtle' : tone ? CORNER[tone] : undefined);
+	// the corner dot is the state's solid from the one state-tone table (drawn OVER Avatar, which never carries a status hue itself)
+	const cornerClass = $derived(resolvedFailure ? TONE.notreached.bg : toneBg(tone));
 
-	// Static class names, not a `text-${tone}` template — Tailwind only
-	// generates utilities it can see literally in source.
-	const VERB_INK: Partial<Record<NodeState, string>> = {
-		failed: 'text-danger',
-		stuck: 'text-warning',
-		held: 'text-held',
-		deploying: 'text-active',
-		checking: 'text-progress'
-	};
 	const verbInk = $derived(
-		resolvedFailure ? 'text-fg-subtle' : tone ? (VERB_INK[tone] ?? 'text-fg-subtle') : 'text-fg-subtle'
+		resolvedFailure ? 'text-fg-subtle' : tone ? toneInk(tone, 'text-fg-subtle') : 'text-fg-subtle'
 	);
 
 	const destination = $derived(href ?? appHref ?? undefined);

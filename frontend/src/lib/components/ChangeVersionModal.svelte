@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { toneInk } from '$lib/view-models/state-tone';
 	import { availableReleases } from '$lib/releases/registry.svelte';
 	import HeldGlyph from './HeldGlyph.svelte';
 	import Avatar from './Avatar.svelte';
@@ -1917,11 +1918,11 @@
 	);
 	const fromTileState = $derived<TileState>(
 		fromTileRole === 'failing'
-			? { word: 'Failed', ink: 'text-danger' }
+			? { word: 'Failed', ink: toneInk('failed') }
 			: fromTileRole === 'checking'
-				? { word: 'Checking', ink: 'text-progress' }
+				? { word: 'Checking', ink: toneInk('checking') }
 				: fromTileRole === 'deploying'
-					? { word: 'Deploying', ink: 'text-active' }
+					? { word: 'Deploying', ink: toneInk('deploying') }
 					: fromTileRole === 'ready'
 						? { word: 'Running', ink: 'text-fg-subtle' }
 						: null

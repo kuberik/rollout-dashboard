@@ -8,7 +8,6 @@ import { rideAction, addsToTitle, folioFacts, type Ride, type ChangeState } from
 /** the state word of a card's fact line and a row's place text, the product's own (Failing, Waiting, Held, Checking, Deploying) */
 export const STATE_WORD: Record<ChangeState, string> = { failed: 'Failing', approval: 'Waiting', held: 'Held', deploying: 'Deploying', checking: 'Checking', healthy: 'Healthy', landed: 'Landed' };
 /** the hue class of a state word (state only; healthy and landed are neutral) */
-export const WORD_INK: Record<ChangeState, string> = { failed: 'text-danger', approval: 'text-held', held: 'text-held', deploying: 'text-active', checking: 'text-progress', healthy: 'text-fg-muted', landed: 'text-fg-muted' };
 
 /** a ride needs the viewer when it fails, or waits for an approval the viewer can give (rideAction = Rollouts' own rowAction) */
 export const needsViewer = (r: Ride): boolean => r.state === 'failed' || (r.state === 'approval' && rideAction(r)?.kind === 'approve');

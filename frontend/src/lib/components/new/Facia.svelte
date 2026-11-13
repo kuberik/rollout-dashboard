@@ -23,6 +23,7 @@
 	 * card (no frame of its own: the card is its frame), the strip spanning its width, then the state object — the
 	 * AlertPanel for a failure, a neutral inset (strip + wait line) for a wait.
 	 */
+	import { TONE } from '$lib/view-models/state-tone';
 	import ApproveButton from './ApproveButton.svelte';
 	import { approveAct } from './approvals.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
@@ -298,14 +299,14 @@
 	/* r2-cleanup: the strand beside the line says the state word (Checking / Deploying / Waiting) in its hue; the line keeps the badge + the reason (what is needed, the check, the build) and does not say the word twice */
 	const stateLine = $derived.by((): { ink: string; lead: string; leadC?: Cause; rest: string; build: string; badge: boolean } => {
 		switch (kind) {
-			case 'failed': return { ink: 'text-danger', lead: (failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), ''), rest: failMsg ?? '', build: '', badge: true };
+			case 'failed': return { ink: TONE.failed.ink, lead: (failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), ''), rest: failMsg ?? '', build: '', badge: true };
 			case 'wait': return checkingNow
-				? { ink: 'text-progress', lead: '', rest: waitRow?.state === 'awaiting-approval' ? `Then waits for ${rowAction(waitRow)?.kind === 'approve' ? 'your ' : ''}approval` : '', build: wait?.build ?? '', badge: true }
+				? { ink: TONE.checking.ink, lead: '', rest: waitRow?.state === 'awaiting-approval' ? `Then waits for ${rowAction(waitRow)?.kind === 'approve' ? 'your ' : ''}approval` : '', build: wait?.build ?? '', badge: true }
 				: waitRow?.state === 'awaiting-approval'
-				? { ink: 'text-held', lead: approvalIn(rowAction(waitRow)?.kind === 'approve', placeName), rest: '', build: wait?.build ?? '', badge: true }
-				: ((leadC) => ({ ink: 'text-held', lead: causeText(leadC), leadC, rest: '', build: wait?.build ?? '', badge: true }))(holdLeadCause(prodWordC(partsC[0] ?? [''])));
-			case 'deploying': return { ink: 'text-active', lead: '', rest: '', build: build, badge: true };
-			case 'checking': return { ink: 'text-progress', lead: '', rest: '', build: build, badge: true };
+				? { ink: TONE.held.ink, lead: approvalIn(rowAction(waitRow)?.kind === 'approve', placeName), rest: '', build: wait?.build ?? '', badge: true }
+				: ((leadC) => ({ ink: TONE.held.ink, lead: causeText(leadC), leadC, rest: '', build: wait?.build ?? '', badge: true }))(holdLeadCause(prodWordC(partsC[0] ?? [''])));
+			case 'deploying': return { ink: TONE.deploying.ink, lead: '', rest: '', build: build, badge: true };
+			case 'checking': return { ink: TONE.checking.ink, lead: '', rest: '', build: build, badge: true };
 			case 'ready': return { ink: 'text-fg', lead: 'Ready to promote to prod', rest: '', build: '', badge: false };
 			case 'quiet': if (item.noReleases) return { ink: 'text-fg', lead: 'All healthy', rest: item.noReleases.label.charAt(0).toLowerCase() + item.noReleases.label.slice(1), build: '', badge: false }; return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: prodWord(item.fact), rest: '', build: '', badge: false };
 			default: return restLine ? { ink: 'text-fg', lead: 'All healthy', rest: headCurrency ? headCurrency.charAt(0).toLowerCase() + headCurrency.slice(1) : '', build: '', badge: false } : { ink: 'text-fg-muted', lead: (typeof line2 === 'string' ? line2 : causeText(line2)).replace(/^./, (c) => c.toUpperCase()), rest: '', build: '', badge: false };

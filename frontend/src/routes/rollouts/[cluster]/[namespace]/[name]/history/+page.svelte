@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toneInk } from '$lib/view-models/state-tone';
 	import { lastFailureAgoOf } from '$lib/view-models/event-age';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import { currentRowChip } from '$lib/view-models/history-current-chip';
@@ -2014,13 +2015,7 @@
 											-->
 																	{#if entry.bakeStatus !== 'Succeeded' && entry.bakeStatus !== 'Failed' && !isCurrent}
 																		<span
-																			class="t-ui-sm shrink-0 {entry.bakeStatus === 'Failed'
-																				? 'text-danger'
-																				: entry.bakeStatus === 'InProgress'
-																					? 'text-progress'
-																					: entry.bakeStatus === 'Deploying'
-																						? 'text-active'
-																						: 'text-fg-subtle'}"
+																			class="t-ui-sm shrink-0 {toneInk(entry.bakeStatus === 'Failed' ? 'failed' : entry.bakeStatus === 'InProgress' ? 'checking' : entry.bakeStatus === 'Deploying' ? 'deploying' : null, 'text-fg-subtle')}"
 																			title={bakeTitle(entry.bakeStatus)}
 																		>
 																			{bakeWord(entry.bakeStatus)}

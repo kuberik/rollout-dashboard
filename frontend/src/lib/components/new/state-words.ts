@@ -6,6 +6,8 @@
  * `compact` is for a slot that is 104px wide (a StagePath M station label): the approval word is "Waiting" there and the full
  * phrase rides the station's title / aria-label (never dropped). Healthy / landed / at rest are NOT states: neutral, no word.
  */
+import { TONE } from '$lib/view-models/state-tone';
+
 export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking';
 
 /** accepts the product's other spellings of the same five states */
@@ -31,8 +33,7 @@ export function stateWord(s: string | null | undefined, o: { yours?: boolean; co
 }
 
 /** the hue of the word: state only (utility classes of the product's own state tokens) */
-const INK: Record<StateKind, string> = { failed: 'text-danger', approval: 'text-held', held: 'text-held', deploying: 'text-active', checking: 'text-progress' };
-export const stateInk = (s: string | null | undefined): string => { const k = stateKind(s); return k ? INK[k] : 'text-fg-muted'; };
+export const stateInk = (s: string | null | undefined): string => { const k = stateKind(s); return k ? TONE[k].ink : 'text-fg-muted'; };
 
 /** THE ONE APPROVAL WORD (r39 coordinator decision b, 2026-11-08): "Needs your approval" when the viewer can give it, "Waiting for approval" otherwise. */
 export const approvalWord = (yours: boolean): string => stateWord('approval', { yours })!;

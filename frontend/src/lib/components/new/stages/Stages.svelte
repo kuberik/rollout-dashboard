@@ -10,6 +10,7 @@
 	 * a state change repaints a mark and a word, it never moves, adds or drops anything. Fixed row height (44) for every state.
 	 * Horizontal while every column fits at >= 160px; otherwise the SAME stages as a vertical list. Decided by width and column count only.
 	 */
+	import { toneInk, hueInk } from '$lib/view-models/state-tone';
 	import Card from '$lib/components/Card.svelte';
 	import CauseText from '$lib/components/CauseText.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -95,11 +96,9 @@
 	const railW = $derived(side && bw >= sideNeed + (336 - RAIL) + stages.columns.length * (220 - COMFY) ? 336 : RAIL);
 	const horizontal = $derived(w === 0 || w >= needW);
 	const laneRow = (li: number) => 2 + (anyMulti ? 1 : 0) + li;
-	const INK: Record<StageState, string> = { deployed: 'text-fg-muted', checking: 'text-progress', deploying: 'text-active', held: 'text-held', approval: 'text-held', failed: 'text-danger', notreached: 'text-fg-subtle', notaffected: 'text-fg-muted', replaced: 'text-fg-muted' };
 	const ATTR: Record<StageState, string> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'waiting', failed: 'failed', notreached: 'not-reached', notaffected: 'not-affected', replaced: 'not-affected' };
 	/* the pie of one wave column: every site of it, every lane */
 	const waveOf = (i: number) => waveMark(stages.lanes.flatMap((l) => l.cells[i]?.places ?? []).map((p) => ({ state: SITE[p.state] })), `Wave ${stages.columns[i].wave}`);
-	const RUP: Record<string, string> = { danger: 'text-danger', held: 'text-held', progress: 'text-progress', active: 'text-active', muted: 'text-fg-subtle', fg: 'text-fg' };
 	const colKey = (i: number) => `${stages.columns[i].tier}:${stages.columns[i].wave ?? 0}`;
 	/* a lane's connector runs from its first tile to its last; an empty cell between two tiles lets it pass through */
 	const passes = (cells: unknown[], i: number) => !cells[i] && cells.slice(0, i).some(Boolean) && cells.slice(i + 1).some(Boolean);
@@ -123,7 +122,7 @@
 					<span class="flex min-w-0 flex-col">
 											<span class="t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
 							<!-- line 2: the state word / cause never shrinks (it wraps before it is cut); the tail sheds the build first, then the age or step -->
-							<span class="t-meta flex min-w-0 gap-1 overflow-hidden {INK[p.state]}" title={p.ahead ? (p.state === 'checking' ? 'Checking ' : p.state === 'deploying' ? 'Deploying ' : p.state === 'failed' ? 'Failed ' : 'On ') + p.build : p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build && p.ahead}<span class="t-code-sm flex-none whitespace-nowrap {p.state === 'deployed' ? 'text-fg-muted' : 'text-fg-subtle'}">{p.build}</span>{:else if p.build}<span class="t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
+							<span class="t-meta flex min-w-0 gap-1 overflow-hidden {toneInk(p.state)}" title={p.ahead ? (p.state === 'checking' ? 'Checking ' : p.state === 'deploying' ? 'Deploying ' : p.state === 'failed' ? 'Failed ' : 'On ') + p.build : p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build && p.ahead}<span class="t-code-sm flex-none whitespace-nowrap {p.state === 'deployed' ? 'text-fg-muted' : 'text-fg-subtle'}">{p.build}</span>{:else if p.build}<span class="t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle">· {p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
 									</span>
 				</a>
 {/snippet}
@@ -145,7 +144,7 @@
 	<div class="flex min-w-0 items-start gap-2 pt-[14px]" style:grid-column="1" style:grid-row={laneRow(li)}><AppGlyph name={stages.lanes[li].app} size={16} class="shrink-0" /><span class="t-card-title truncate text-fg" title={stages.lanes[li].app}>{stages.lanes[li].app}</span></div>
 {/snippet}
 
-{#snippet parts(ps: Stages['rollup']['parts'])}{#each ps as part, i (part.text)}{#if i > 0}<span class="shrink-0 text-fg-disabled" aria-hidden="true">·</span>{/if}<span class="{RUP[part.ink]} {i === 0 ? 'stg-first min-w-0 truncate' : 'shrink-0'}" title={part.text}>{part.text}</span>{/each}{/snippet}
+{#snippet parts(ps: Stages['rollup']['parts'])}{#each ps as part, i (part.text)}{#if i > 0}<span class="shrink-0 text-fg-disabled" aria-hidden="true">·</span>{/if}<span class="{hueInk(part.ink === 'muted' ? 'subtle' : part.ink)} {i === 0 ? 'stg-first min-w-0 truncate' : 'shrink-0'}" title={part.text}>{part.text}</span>{/each}{/snippet}
 
 <Card icon={ChevronDoubleRightOutline} title="Progress" padded={false} class={className}>
 	{#snippet rollup()}<span class="stg-rollup t-card-rollup flex min-w-0 flex-nowrap items-baseline justify-end gap-x-1 whitespace-nowrap tabular-nums" data-stages-rollup><span class="stg-long flex min-w-0 items-baseline gap-x-1">{@render parts(stages.rollup.parts)}</span><span class="stg-short min-w-0 items-baseline gap-x-1" data-stages-rollup-narrow>{@render parts((stages.narrow ?? stages.rollup).parts)}</span></span>{/snippet}
