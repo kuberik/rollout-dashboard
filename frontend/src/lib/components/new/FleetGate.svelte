@@ -93,10 +93,18 @@
 	 * It also READS the installed source, so it re-runs whenever someone clears or replaces it: on a client-side navigation the previous
 	 * route's gate tears down (clearing the slot) AFTER this one installed, and an effect that only tracked `src` never ran again, leaving
 	 * the page on its skeleton for good (2026-11-12; e2e/fleetgate-nav.test.ts). */
-	$effect.pre(() => { if (src && liveSource() !== src) installLiveSource(src); });
-	/* the live source never outlives its gate: a stale snapshot must not shadow the route that mounts next (batch4 #3b M1) */
-	$effect(() => () => installLiveSource(null));
-	const ready = $derived(!!src && liveSource() === src);
+	/* TWO GATES ON ONE PAGE (dedup pass 4: the rollout page draws the viewer's ring on its strip and carries RolloutAsk, each a bare gate): the first to
+	 * install owns the slot; a second one reads that source (same queries, same cache) instead of replacing it, or the two would swap the slot forever
+	 * (effect_update_depth_exceeded). When the owner tears down the slot is null, this effect re-runs and the next gate installs its own. */
+	let mine: FleetSource | null = null;
+	$effect.pre(() => {
+		if (!src) return;
+		const cur = liveSource();
+		if (!cur || cur === mine) { if (cur !== src) installLiveSource(src); mine = src; }
+	});
+	/* the live source never outlives its gate: a stale snapshot must not shadow the route that mounts next (batch4 #3b M1); a gate only clears a slot it owns */
+	$effect(() => () => { if (mine && liveSource() === mine) installLiveSource(null); mine = null; });
+	const ready = $derived(!!src && !!liveSource());
 </script>
 
 {#if bare}
