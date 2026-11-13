@@ -13,9 +13,15 @@
 	 * Continue and this dialog is REPLACED by that confirm at the same place:
 	 * any difference in width, inset, header or footer reads as a jump.
 	 *   - 640 wide, top-anchored at 12vh (the confirm's own position);
-	 *     below `sm` the confirm's own FULL-HEIGHT sheet (coordinator, round
-	 *     7, reversing round 6's bottom sheet: one dialog per step changing
-	 *     in place, never a sheet that grows into a full screen on Continue);
+	 *     below `sm` it takes the shape of the step Continue opens (coordinator,
+	 *     round 7: one dialog per step changing in place, never a sheet that
+	 *     grows into a full screen on Continue). With a build already chosen
+	 *     (`selectedTag`: a rollback, a Deploy on a candidate row) Continue opens
+	 *     `ChangeVersionModal`'s CONFIRM, which is a content-sized bottom sheet,
+	 *     so this is the same bottom sheet (visual audit #10, 2026-11-13: the
+	 *     full-height form left ~650px of empty surface between the one sentence
+	 *     and its buttons at 390). Without a build, Continue opens the PICKER,
+	 *     which is full height, so this stays full height;
 	 *   - header: the rollout crumb (`t-meta`) above the title (`t-heading`,
 	 *     wraps, never truncates), a 32px ghost close on the title's line;
 	 *   - body: one 16px inset, ONE sentence (`t-body text-fg-muted`) that
@@ -136,6 +142,8 @@
 	});
 
 	const crumb = $derived(rollout?.metadata?.name ?? null);
+	/** Below `sm`: a bottom sheet when Continue opens the (bottom-sheet) confirm, full height when it opens the picker. */
+	const sheet = $derived(!!selectedTag);
 
 	function cancel() {
 		open = false;
@@ -153,10 +161,12 @@
 	aria-modal="true"
 	aria-labelledby="rmw-title"
 	aria-describedby="rmw-summary"
-	classes={{ body: 'p-0 space-y-0 max-sm:h-full' }}
-	class="[&>div]:p-0 w-full max-w-[640px] rounded-lg sm:mt-[12vh] sm:mb-auto max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-screen max-sm:max-w-none max-sm:rounded-none"
+	classes={{ body: sheet ? 'p-0 space-y-0 max-sm:max-h-dvh' : 'p-0 space-y-0 max-sm:h-full' }}
+	class="[&>div]:p-0 w-full max-w-[640px] rounded-lg sm:mt-[12vh] sm:mb-auto max-sm:m-0 max-sm:w-screen max-sm:max-w-none {sheet
+		? 'max-sm:mt-auto max-sm:mb-0 max-sm:h-fit max-sm:max-h-dvh max-sm:rounded-b-none'
+		: 'max-sm:h-dvh max-sm:max-h-none max-sm:rounded-none'}"
 >
-	<div class="flex flex-col max-sm:h-full">
+	<div class="flex flex-col {sheet ? 'max-sm:max-h-dvh' : 'max-sm:h-full'}">
 		<div class="min-h-0 flex-1 max-sm:overflow-y-auto">
 			<header class="border-b border-line px-4 py-3">
 				{#if crumb}
