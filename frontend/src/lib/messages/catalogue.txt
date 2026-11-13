@@ -1039,6 +1039,7 @@ lib/components/NextStep.svelte	code	Roll back
 lib/components/NextStep.svelte	code	See what's blocking
 lib/components/NotFound.svelte	text	Go back
 lib/components/NotFound.svelte	title	Where to look
+lib/components/PageHeader.svelte	title	Open app …
 lib/components/PartialDataNotice.svelte	code	this page
 lib/components/pin-copy.ts	code	Clear pin
 lib/components/pin-copy.ts	code	Clear the pin on … in …?

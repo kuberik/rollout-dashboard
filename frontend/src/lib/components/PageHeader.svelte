@@ -15,6 +15,17 @@
 	 * `identity` stays the chip AFTER the name. Pages that pass neither render
 	 * exactly as before.
 	 *
+	 * `app` (optional): the page's object BELONGS TO an app (a rollout is one
+	 * app in one environment). The title row then leads with that app's
+	 * AppGlyph at 24 and the glyph + name are ONE link to `/apps/<app>`: the
+	 * app page's own header (AppDetail: glyph 24 · t-title name), at the
+	 * Sidebar's 8px glyph-to-name pitch so "/ build" still fits 390 beside a
+	 * 13-letter name. The glyph + name pair is already the product's app link
+	 * (Sidebar starred, Environments rows), so
+	 * the parent reads as the same object it opens. Owner 2026-11-13: a grey
+	 * meta link and the navbar crumb were "way too subtle". Hover underlines
+	 * the name; the link's title says where it goes. `leading` is ignored.
+	 *
 	 * ROLE: the first thing in `<main>` on every route. Replaces the four
 	 * compositions the audit found (Montserrat 24/300 count + sentence, mono
 	 * 24/500 object name, a Montserrat sentence as a title, a 20/700 404).
@@ -28,6 +39,8 @@
 	 * (4px in the title row, 12px between the header's own rows) when it wraps onto a line of its own at 390.
 	 */
 	import type { Snippet } from 'svelte';
+	import AppGlyph from './AppGlyph.svelte';
+	import { href } from '$lib/paths';
 
 	let {
 		title,
@@ -40,6 +53,7 @@
 		titleAfter,
 		identity,
 		leading,
+		app = null,
 		meta,
 		below,
 		actions,
@@ -62,6 +76,8 @@
 		titleAfter?: Snippet;
 		identity?: Snippet;
 		leading?: Snippet;
+		/** The app this object belongs to: glyph + title link to its app page. */
+		app?: string | null;
 		meta?: Snippet;
 		/** Object form: a strip under the meta row (the rollout's promotion lane). */
 		below?: Snippet;
@@ -85,16 +101,34 @@
 			<p class="t-label mb-1 text-fg-subtle">{eyebrow}</p>
 		{/if}
 		<div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-			{#if leading}
-				<div class="flex shrink-0 self-center">{@render leading()}</div>
+			{#if app}
+				<!-- One link, two marks: the glyph is the app's identity, the name its handle. `items-baseline`
+				     inside, the glyph `self-center`: the link's baseline is the h1's, so "/ build" stays on it. -->
+				<a
+					href={href(`/apps/${encodeURIComponent(app)}`)}
+					class="group/app inline-flex min-w-0 items-baseline gap-x-2 rounded-sm"
+					title="Open app {app}"
+					data-ph-app
+				>
+					<AppGlyph name={app} size={24} class="self-center" />
+					<h1
+						class="{mono ? 't-code-lg' : 't-title'} min-w-0 break-words text-fg underline decoration-transparent decoration-2 underline-offset-4 transition-colors group-hover/app:decoration-fg-subtle"
+					>
+						{title}
+					</h1>
+				</a>
+			{:else}
+				{#if leading}
+					<div class="flex shrink-0 self-center">{@render leading()}</div>
+				{/if}
+				<h1
+					class="{mono ? 't-code-lg' : 't-title'} min-w-0 break-words text-fg {srOnlyTitle
+						? 'sr-only'
+						: ''}"
+				>
+					{title}
+				</h1>
 			{/if}
-			<h1
-				class="{mono ? 't-code-lg' : 't-title'} min-w-0 break-words text-fg {srOnlyTitle
-					? 'sr-only'
-					: ''}"
-			>
-				{title}
-			</h1>
 			{#if count !== null && count !== undefined}
 				<span class="t-title tabular-nums text-fg-subtle">{count}</span>
 			{/if}

@@ -248,6 +248,7 @@
 
 <PageHeader
 	title={name}
+	app={name}
 	class={className}
 	{metaSeparated}
 	actions={actions || (inlineRollback && isFailed && rollbackNow) || (quietRollback && rollbackNow)
