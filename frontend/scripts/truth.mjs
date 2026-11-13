@@ -1274,13 +1274,17 @@ async function changeDetailChecks() {
 		await p.goto(`${base}${b.href}`, { waitUntil: 'load' });
 		await p.waitForSelector('[data-change-detail], h1', { timeout: 60000 }).catch(() => {});
 		await p.waitForTimeout(1200);
+		/* the change page's strip draws WaveMarks, not beads (#135/#148): each tier box holds `[data-stage-state]` sites whose value is the wave's slice kinds ("held", "done+held"). The list's bead state maps to one kind; the page agrees when the bead's tier box on the page carries it. */
+		const KIND = { failed: 'failed', held: 'held', approval: 'held', 'approval-yours': 'held', deploying: 'deploying', checking: 'checking', landed: 'done' };
+		const want = KIND[b.state];
 		const d = await p.evaluate(() => {
 			const s = document.querySelector('[data-change-strip]');
-			const bd = s?.querySelector('[data-bead]');
 			return {
 				found: !!document.querySelector('[data-change-detail]'),
-				state: bd?.dataset.bead ?? null,
-				tier: bd?.closest('[data-tier]')?.dataset.tier ?? null
+				boxes: [...(s?.querySelectorAll('[data-tier]') ?? [])].map((c) => ({
+					tier: c.dataset.tier,
+					kinds: [...c.querySelectorAll('[data-stage-state]')].flatMap((x) => x.dataset.stageState.split('+'))
+				}))
 			};
 		});
 		const tag = `changedetail ${b.href}`;
@@ -1288,8 +1292,9 @@ async function changeDetailChecks() {
 			bad(tag, 'the list links a change its page cannot find');
 			continue;
 		}
-		if (d.state !== b.state) bad(tag, `bead state "${d.state}" vs the list's "${b.state}"`);
-		if (d.tier !== b.tier) bad(tag, `bead in "${d.tier}" vs the list's "${b.tier}"`);
+		const box = d.boxes.find((x) => x.tier === b.tier);
+		if (!box) bad(tag, `no "${b.tier}" tier box in the page's strip (the list's bead sits there); boxes: ${d.boxes.map((x) => x.tier).join(', ') || 'none'}`);
+		else if (want === undefined || !box.kinds.includes(want)) bad(tag, `strip "${b.tier}" box shows [${box.kinds.join(', ')}] vs the list's bead "${b.state}" (${want})`);
 	}
 	console.log(`changedetail: ${seen.size} changes agree with their /changes bead`);
 	await p.close();
@@ -1332,9 +1337,10 @@ async function multiServiceChecks() {
 		bad('multiservice ' + href, 'telemetry-indexer prod is not shown as waiting');
 	/* the change page's place row for telemetry-indexer prod prints the same hold clock as the /rollouts row */
 	const w = holdClock.get('telemetry-indexer|prod');
-	const k = na.findIndex((l, j) => l === 'telemetry-indexer' && j > na.indexOf('Where it runs'));
-	const wi = k >= 0 ? na.slice(k, k + 14).findIndex((l) => l === 'Waiting for approval') : -1;
-	const cage = wi >= 0 ? na[k + wi + 1] : null;
+	/* the place table is gone (#135): the hold clock prints on the history row "Waiting for approval in prod", app name then age */
+	const k = na.findIndex((l) => /^Waiting for approval in prod/.test(l));
+	const wi = k >= 0 && na[k + 2] === 'telemetry-indexer' ? 3 : -1;
+	const cage = wi >= 0 ? na[k + wi] : null;
 	if (w && cage != null && !closeAge(cage, w))
 		bad(
 			'multiservice ' + href,
@@ -1343,7 +1349,7 @@ async function multiServiceChecks() {
 	else if (w && cage == null)
 		bad(
 			'multiservice ' + href,
-			'no "Waiting for approval" place row for telemetry-indexer on the change page'
+			'no "Waiting for approval in prod" history row with an age for telemetry-indexer on the change page'
 		);
 	console.log(
 		`multiservice ${href}: telemetry-indexer prod ${/telemetry-indexer/.test(tail) ? 'NOT AFFECTED' : /telemetry-indexer/.test(t) && /waiting|approval/i.test(t) ? 'waiting' : 'MISSING'}`
@@ -1483,11 +1489,16 @@ async function v2Checks() {
 		/* the app page: the environment cell's "Held N of M regions" counts the pin */
 		await read(`/apps/${pin.app}`, 3500);
 		const ap = await p.evaluate((tier) => ({
+			titles: [...document.querySelectorAll('main .env-cell [data-env-box]')].map((b) => b.getAttribute('title') ?? ''),
 			cells: [...document.querySelectorAll('main .env-cell')].map((c) => c.innerText.replace(/\s+/g, ' ').trim()).filter((t) => t.split(' ')[0] === tier),
 			rows: [...document.querySelectorAll('li[data-truth-kind=rollout]')].map((l) => ({ href: l.dataset.truthHref ?? '', state: l.dataset.truthState, text: l.innerText.replace(/\s+/g, ' ').trim() }))
 		}), pin.tier);
 		const mine = ap.rows.find((r) => placeKey(r.href) === pin.key);
-		const cell = ap.cells.map((t) => /Held (\d+) of (\d+) regions/.exec(t)).find(Boolean);
+		/* the cell is a button whose title lists every site ("wave 2 · us-east-1: Held · ..."): count the sites, and the held ones */
+		const cellTitle = ap.titles.find((t) => t.split('\n')[0] === pin.tier);
+		const siteLines = (cellTitle ?? '').split('\n').slice(1);
+		const heldSites = siteLines.filter((x) => /: Held\b/.test(x)).length;
+		const cell = cellTitle ? [`Held ${heldSites} of ${siteLines.length} sites`, String(heldSites), String(siteLines.length)] : null;
 		const tierPlaces = O.places.filter((q) => q.app === pin.app && q.tier === pin.tier);
 		const heldRows = ap.rows.filter((r) => O.places.some((q) => q.app === pin.app && q.tier === pin.tier && placeKey(r.href) === q.key) && /\bHeld\b|\bWaits (on|for)\b/.test(r.text));
 		if (!mine) bad(tag, `/apps/${pin.app} has no place row for the pin`);
@@ -1495,7 +1506,7 @@ async function v2Checks() {
 			if (!/Held by the pin/.test(mine.text)) bad(tag, `/apps/${pin.app} place row does not say "Held by the pin": ${mine.text.slice(0, 90)}`);
 			if (mine.state !== 'held-by-rule') bad(tag, `/apps/${pin.app} place row carries state "${mine.state}", /rollouts says held-by-rule for the same pin`);
 		}
-		if (!cell) bad(tag, `/apps/${pin.app} ${pin.tier} environment cell prints no "Held N of M regions" (cells: ${ap.cells.join(' | ') || 'none'})`);
+		if (!cell) bad(tag, `/apps/${pin.app} ${pin.tier} environment cell has no site list in its title (cells: ${ap.cells.join(' | ') || 'none'})`);
 		else {
 			if (+cell[2] !== tierPlaces.length) bad(tag, `${pin.tier} cell says "${cell[0]}" but the fixture has ${tierPlaces.length} ${pin.tier} places`);
 			/* the pins come from the RAW fixture (spec.wantedVersion set while newer candidates exist), never from the page's rows; the other held places are the page's own place rows that are not a pin */
