@@ -65,7 +65,7 @@
 	const railHref = (build: string) => { const sp = new URLSearchParams(page.url.search); sp.set('release', build); return page.url.pathname + '?' + sp.toString(); };
 
 	const multiApp = $derived(stages.lanes.length > 1);
-	const RAIL = 264, COMFY = 195, MIN = 148,  CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
+	const RAIL = 264, COMFY = 195, MIN = 148, CAP = 280, GAP_TIER = 24, GAP_WAVE = 12, LABEL = 168;
 	let w = $state(0);
 	/* the card body's width (not the canvas's: the canvas depends on the form this decides) */
 	let bw = $state(0);
@@ -85,7 +85,7 @@
 	const px = (n: number) => n + 'px';
 	const base = $derived(multiApp ? 3 : 1);
 	const track = (i: number) => base + 2 * i;
-	/* a tile that carries a build tail (app scope, decided by scope alone, never by state): at a tile of 192px or more the build sits beside the state word on line 2; below that EVERY app-scope row stacks it on its own line 3 (see `.stg-tail` below), so the widest unit of text is the build itself (~70px) and 150px columns show every word and build in full. Change scope keeps 148 */
+	/* a tile that carries a build tail (app scope, decided by scope alone, never by state): at a tile of 192px or more the build sits beside the state word on line 2; below that EVERY app-scope row stacks it on its own line 3 (see `.stg-tail` below), so the widest unit of text is the build itself (~70px) and 152px columns show every word and build in full. Change scope keeps 148 */
 	const minCol = $derived(stages.release ? MIN_TAIL : MIN);
 	const gridCols = $derived((multiApp ? [LABEL, GAP_TIER].map(px).join(' ') + ' ' : '') + stages.columns.map((_, i) => (i ? px(gapBefore(i)) + ' ' : '') + 'minmax(' + [minCol, CAP].map(px).join(', ') + ')').join(' '));
 	const needW = $derived(stages.columns.length * minCol + stages.columns.reduce((n, _, i) => n + gapBefore(i), 0) + (multiApp ? LABEL + GAP_TIER : 0) + 32);
@@ -247,7 +247,7 @@
 	.stg-tile.stg-quiet { background: var(--k-ground); border-style: dashed; border-color: var(--k-line); }
 	/* rollout scope: the place being viewed rests on the hover fill (same row size and position, no new hue) */
 	.stg-row.stg-here { background: var(--k-hover); }
-	/* TAIL STACK (app scope, container query on the tile): below a 192px column (`stackTail`, decided by width and column count only) EVERY row draws mark + name on line 1 and lets the state word (+ age / step) and the build run the full tile width beneath it (word on line 2, build on its own line 3; the "· " separator is dropped). Rows are one fixed height whatever they hold; the mark is centred on the name line and the connector follows it (`--cy`: 14px). */
+	/* TAIL STACK (app scope, `data-tail` on the grid): below a 192px column (`stackTail`, decided by width and column count only) EVERY row draws mark + name on line 1 and lets the state word (+ age / step) and the build run the full tile width beneath it (word on line 2, build on its own line 3; the "· " separator is dropped). Rows are one fixed height whatever they hold; the mark is centred on the name line and the connector follows it (`--cy`: 14px). */
 	[data-tail='stack'] .stg-row.stg-tail { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 8px; row-gap: 0; align-content: start; align-items: center; min-height: 66px; padding-left: 6px; padding-right: 6px; }
 	[data-tail='stack'] .stg-tail .stg-txt { display: contents; }
 	[data-tail='stack'] .stg-tail .stg-name { grid-column: 2; grid-row: 1; min-height: 20px; }

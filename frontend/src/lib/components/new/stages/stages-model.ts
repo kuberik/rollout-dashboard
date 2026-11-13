@@ -296,4 +296,4 @@ export function columnWidth(canvas: number, columns: number, gaps: number, label
 /** App scope: below this column width every row stacks its build on its own line (line 3); at or above it the build sits beside the state word. */
 export const TAIL_BESIDE = 192;
 /** The narrowest column that still shows every word and build in full once the tail is stacked (the build is the widest unit, ~70px, plus the longest cause ~137px under the tile's 6px padding). */
-export const MIN_TAIL = 150;
+export const MIN_TAIL = 152;
