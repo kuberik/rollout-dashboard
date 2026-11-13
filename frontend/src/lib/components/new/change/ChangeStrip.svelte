@@ -28,7 +28,7 @@
 		key: p.href,
 		name: p.name,
 		wave,
-		state: SITE[p.state],
+		state: p.state === 'approval' && p.yours ? 'approval-yours' : SITE[p.state],
 		word: p.word,
 		/* AD strip r2 N1: line 2 says the same fact in every scope (the App / Rollout lanes carry no step count): the state, then the currency; steps are one tap away on the rollout */
 		detail: p.lag || undefined,

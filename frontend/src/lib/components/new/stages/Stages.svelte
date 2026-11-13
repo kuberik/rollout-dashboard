@@ -23,7 +23,7 @@
 	import { avatarSrc } from '../data';
 	import { ChevronDoubleRightOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
 	import { envTheme } from '../rollout-view';
-	import { columnWidth, MIN_TAIL, TAIL_BESIDE, SITE_MARK as SITE, type Stages, type StageState, type StagePlace, type StageColumn, type ReleaseLine, type RailItem } from './stages-model';
+	import { columnWidth, MIN_TAIL, TAIL_BESIDE, SITE_MARK as SITE, siteMarkOf, type Stages, type StageState, type StagePlace, type StageColumn, type ReleaseLine, type RailItem } from './stages-model';
 
 	let { stages, release = null, rail = null, class: className = '' }: { stages: Stages; /** the release line that opens the canvas (app scope) */ release?: ReleaseLine | null; /** the RELEASE RAIL's rows (app scope, oldest first); drawn only with 2+ in flight */ rail?: RailItem[] | null; class?: string } = $props();
 	/* overflow cue: a fade on the end edge of the rail scroller, only while it is not scrolled to the end (mask only: no geometry) */
@@ -101,7 +101,7 @@
 	const laneRow = (li: number) => 2 + (anyMulti ? 1 : 0) + li;
 	const ATTR: Record<StageState, string> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'waiting', failed: 'failed', notreached: 'not-reached', notaffected: 'not-affected', replaced: 'not-affected' };
 	/* the pie of one wave column: every site of it, every lane */
-	const waveOf = (i: number) => waveMark(stages.lanes.flatMap((l) => l.cells[i]?.places ?? []).map((p) => ({ state: SITE[p.state] })), `Wave ${stages.columns[i].wave}`);
+	const waveOf = (i: number) => waveMark(stages.lanes.flatMap((l) => l.cells[i]?.places ?? []).map((p) => ({ state: siteMarkOf(p) })), `Wave ${stages.columns[i].wave}`);
 	const colKey = (i: number) => `${stages.columns[i].tier}:${stages.columns[i].wave ?? 0}`;
 	/* a lane's connector runs from its first tile to its last; an empty cell between two tiles lets it pass through */
 	const passes = (cells: unknown[], i: number) => !cells[i] && cells.slice(0, i).some(Boolean) && cells.slice(i + 1).some(Boolean);
@@ -121,7 +121,7 @@
 
 {#snippet row(p: StagePlace, sep: boolean, withApp: boolean)}
 				<a href={toHref(p.href)} aria-current={p.here ? 'location' : undefined} class="stg-row {stages.release ? 'stg-tail' : ''} {p.here ? 'stg-here' : ''} {sep ? 'border-t border-line-subtle' : ''} flex min-h-11 min-w-0 items-center gap-2 px-2 py-1 hover:bg-hover" data-stage-row="{p.app}|{p.href}" data-stage-state={ATTR[p.state]}>
-					<span class="stg-mark flex h-4 w-4 shrink-0 items-center justify-center"><WaveMark mark={waveMark([{ state: SITE[p.state] }])} /></span>
+					<span class="stg-mark flex h-4 w-4 shrink-0 items-center justify-center"><WaveMark mark={waveMark([{ state: siteMarkOf(p) }])} /></span>
 					<span class="stg-txt flex min-w-0 flex-col">
 											<span class="stg-name t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
 							<!-- line 2: the state word / cause never shrinks (it wraps before it is cut); the tail sheds the build first, then the age or step -->

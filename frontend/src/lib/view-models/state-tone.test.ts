@@ -22,6 +22,9 @@ describe('the state-tone table', () => {
 	});
 	it('approval and held are one orange; stuck is warning; failed is danger; healthy is a calm green', () => {
 		expect(TONE.approval.solid).toBe(TONE.held.solid);
+		expect(TONE['approval-yours'].solid).toBe(TONE.approval.solid);
+		expect(TONE['approval-yours'].ring).not.toBeNull();
+		expect(TONE.approval.ring).toBeNull();
 		expect(TONE.stuck.hue).toBe('warning');
 		expect(TONE.failed.hue).toBe('danger');
 		expect(TONE.done.solid).toBe('var(--k-success-solid)');
@@ -30,7 +33,7 @@ describe('the state-tone table', () => {
 	it('folds the product spellings into the keys and knows nothing else', () => {
 		expect(toneOf('failing')).toBe('failed');
 		expect(toneOf('awaiting-approval')).toBe('approval');
-		expect(toneOf('approval-yours')).toBe('approval');
+		expect(toneOf('approval-yours')).toBe('approval-yours');
 		expect(toneOf('deployed')).toBe('done');
 		expect(toneOf('baking')).toBe('checking');
 		expect(toneOf('mystery')).toBeNull();

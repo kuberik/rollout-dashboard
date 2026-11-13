@@ -86,7 +86,8 @@
 	/** a healthy box says "Deployed" quietly (the picker's word) so the reserved slot is not an empty tail */
 	const stripInk = (n: LaneNode) => (WORD[n.state] ? toneInk(n.state) : 'text-fg-subtle');
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
-	const markOf = (n: LaneNode): EnvCell['mark'] => (MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined);
+	const markOf = (n: LaneNode): EnvCell['mark'] =>
+		n.state === 'held' && n.card.heldCause === 'person' && yours ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined;
 	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || severityRank(n.state) < severityRank(b.state) ? n : b), null));
 
 	const STATE_NOUN: Record<NodeState, string> = { failed: 'failing', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: '', newest: '', none: '' };
@@ -165,7 +166,7 @@
 				key: `${n.card.ns}/${n.card.name}`,
 				name: siteName(n),
 				wave: multiWave ? (n.card.wave ?? 1) : null,
-				state: n.state === 'held' && n.card.heldCause === 'person' ? 'approval' : SITE_STATE[n.state],
+				state: n.state === 'held' && n.card.heldCause === 'person' ? (yours ? 'approval-yours' : 'approval') : SITE_STATE[n.state],
 				word: siteWord(n),
 				detail: siteDetail(n),
 				wordInk: toneInk(n.state),
