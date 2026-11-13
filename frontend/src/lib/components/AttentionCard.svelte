@@ -76,7 +76,10 @@
 	const AT = atoms();
 	const ratio = $derived(AT.regions && model.figure?.kind === 'ratio' ? { k: Number(model.figure.value), n: Number(/of (\d+)/.exec(model.figure.unit)?.[1] ?? 0) } : null);
 	const fig = $derived(model.figure);
-	const hasActions = $derived(failed ? !!rollbackHref || !!openHref : !!approve || !!approveFallbackHref || !!openHref);
+	/* the primary in place (Roll back / Approve); without one the card still offers a way in: "Open rollout ›" on its own href */
+	const hasPrimary = $derived(failed ? !!rollbackHref : !!approve || !!approveFallbackHref);
+	const openTo = $derived(openHref ?? (hasPrimary ? undefined : href));
+	const hasActions = $derived(hasPrimary || !!openTo);
 	const label = $derived(id.title || id.name);
 	/* the tier chip names its place the way every env chip does: "prod-eu-west", a folded set "5 prod regions" (Chip splits it into the tinted tier + neutral place halves) */
 	const tierLabel = $derived(!model.place ? model.tier : /^\d+ regions?$/.test(model.place) ? model.place.replace(/ (regions?)$/, ` ${model.tier} $1`) : `${model.tier}-${model.place}`);
@@ -112,7 +115,7 @@
 			{:else}
 				<ApproveButton target={approve} fallbackHref={approveFallbackHref} class="btn btn-primary" icon />
 			{/if}
-			{#if openHref}<a href={openHref} class="btn btn-secondary">{openLabel} ›</a>{/if}
+			{#if openTo}<a href={openTo} class="btn btn-secondary" data-action="open">{openLabel} ›</a>{/if}
 		</div>
 	{/if}
 {/snippet}
@@ -169,7 +172,7 @@
 		{#if !compact}
 			<div class="flex flex-col gap-3 border-t border-line px-4 py-3 sm:px-5 sm:py-4">
 				{@render identity()}
-				<div class="ac-foot flex min-w-0 items-center gap-3">
+				<div class="ac-foot flex min-w-0 flex-col gap-3">
 					{@render changeLine()}
 					{#if hasActions}{@render actions()}{/if}
 				</div>
@@ -195,11 +198,6 @@
 <style>
 	.ac { container-type: inline-size; }
 	.ac :global(.btn) { position: relative; z-index: 1; }
-	@container (max-width: 520px) {
-		.ac-foot { flex-direction: column; align-items: stretch; }
-		.ac-foot .ac-act { width: 100%; }
-		.ac-foot .ac-act :global(.btn) { flex: 1; }
-	}
 	.ac-fig { font-size: 32px; line-height: 40px; }
 	.ac-fig--lead { font-size: 40px; line-height: 48px; }
 	.ac-title { font-size: 18px; line-height: 26px; font-weight: 600; letter-spacing: -0.012em; }
