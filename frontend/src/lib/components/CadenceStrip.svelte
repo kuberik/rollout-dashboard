@@ -1063,10 +1063,12 @@
 					<button
 						type="button"
 						class="btn btn-secondary btn-xs"
+						aria-label="Roll back to this build"
+						title="Roll back to this build"
 						onclick={() => onRollback?.(seg.i)}
 					>
 						<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-						Roll back to this
+						Roll back
 					</button>
 				{:else if reason}
 					<span class="t-meta text-fg-subtle">{reason}</span>

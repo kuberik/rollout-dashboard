@@ -184,13 +184,6 @@
 			flex: 1 1 0;
 			min-width: 0;
 		}
-		/* r4 AD envs-2 (additive, 360): the lead's label WRAPS at a space ("Roll back to / a11c101") instead of truncating to "Roll back to a1…"; the row stretches so both buttons stay one height */
-		.ar-fill :global(.ar-lead > span) {
-			min-width: 0;
-			white-space: normal;
-			text-align: center;
-			line-height: 20px;
-		}
 		.ar-fill {
 			align-items: stretch;
 		}

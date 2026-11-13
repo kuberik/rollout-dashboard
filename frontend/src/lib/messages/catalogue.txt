@@ -181,9 +181,11 @@ lib/components/CadenceStrip.svelte	code	Failing now
 lib/components/CadenceStrip.svelte	code	Failing now · last healthy …
 lib/components/CadenceStrip.svelte	text	No earlier deploys
 lib/components/CadenceStrip.svelte	code	Not offered as a rollback
+lib/components/CadenceStrip.svelte	text	Roll back
 lib/components/CadenceStrip.svelte	aria-label	Roll back to this
-lib/components/CadenceStrip.svelte	text	Roll back to this
 lib/components/CadenceStrip.svelte	title	Roll back to this
+lib/components/CadenceStrip.svelte	aria-label	Roll back to this build
+lib/components/CadenceStrip.svelte	title	Roll back to this build
 lib/components/CadenceStrip.svelte	code	Running for …
 lib/components/CadenceStrip.svelte	code	Running now
 lib/components/CadenceStrip.svelte	code	same build
@@ -2047,7 +2049,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Pinned to … —
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Ready to deploy
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Recovery mode
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Retry started
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Roll back to …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Roll back
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	rolled back …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rolled back … ago … .
@@ -2165,7 +2167,9 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	No deploy
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	no note recorded
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	pinned to
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Recorded note
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Roll back to this
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Roll back
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	aria-label	Roll back to this build
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Roll back to this build
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	rolled back
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Rolled back from
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Same build as …

@@ -2346,6 +2346,8 @@
 																>
 																	{#if entry.bakeStatus === 'Succeeded'}
 																		<button
+																			title="Roll back to this build"
+																			aria-label="Roll back to this build"
 																			type="button"
 																			class="btn btn-secondary btn-xs"
 																			onclick={(ev) => {
@@ -2356,7 +2358,7 @@
 																			}}
 																		>
 																			<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-																			Roll back to this
+																			Roll back
 																		</button>
 																	{/if}
 																	<DiffLink
@@ -2954,6 +2956,8 @@
 											     not a button that would redeploy the same break. -->
 																{#if entry.version.tag !== rollout?.status?.history?.[0]?.version?.tag && entry.bakeStatus === 'Succeeded'}
 																	<button
+																		title="Roll back to this build"
+																		aria-label="Roll back to this build"
 																		type="button"
 																		class="btn btn-secondary btn-xs"
 																		onclick={() => {
@@ -2969,7 +2973,7 @@
 																		}}
 																	>
 																		<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-																		Roll back to this
+																		Roll back
 																	</button>
 																{/if}
 																<!-- "View diff" only when both manifests resolve (`DiffLink`, qa11 B3);

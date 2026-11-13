@@ -68,6 +68,8 @@ const DENY: Array<{
 	id: string;
 	concept: 'state' | 'obstacle' | 'newest' | 'object' | 'action' | 'environment';
 	re: RegExp;
+	/** when set, only literals of these kinds are checked */
+	kinds?: string[];
 	why: string;
 	/** `file\tkind\ttext` triples -- exact catalogue lines, not files or words. */
 	allow?: string[];
@@ -307,6 +309,49 @@ const DENY: Array<{
 		why: '"STG"/"PRD" are retired abbreviations — every drawn environment family word is the full uppercase name (DEV/STAGING/PROD/TEST). See CLAUDE.md (f).'
 	},
 	{
+		id: 'trigger button label carrying a build, sha, version or place',
+		concept: 'action',
+		// Owner rule, 2026-11-03 (e), restated 2026-11-13: "A trigger button
+		// never carries the target or build ... not `Roll back eu-west to #36`,
+		// not `Roll back to a11c101`". Visible labels are the bare verb (Roll
+		// back, Deploy, Approve, Skip once); the detail lives in `title` and
+		// `aria-label`, which the census reports as their own kinds and this rule
+		// ignores. Only `text` (button inner text) and `code` (label builders)
+		// can be a visible label. DIALOG titles and their confirm buttons name
+		// their target by decision (e) and are allowlisted below by exact line.
+		re: /^(Roll ?back|Redeploy|Deploy|Approve|Pin|Unpin|Skip|Promote)\s+(to\b|at\b|in\b|for\b|on\b|…|\S*\d)/,
+		kinds: ['text', 'code'],
+		why: 'A visible button label is the bare verb; the build, sha or place goes in title/aria-label or the dialog it opens. See CLAUDE.md (e).',
+		allow: [
+			// dialog title
+			'lib/components/ChangeVersionModal.svelte\tcode\tDeploy … to …',
+			// dialog title/confirm
+			'lib/components/ChangeVersionModal.svelte\tcode\tPin … to …',
+			// dialog title
+			'lib/components/ChangeVersionModal.svelte\tcode\tRoll back … to …',
+			// dialog explanation sentence
+			'lib/components/new/app/AppDetail.svelte\tcode\tDeploy … to ….',
+			// confirm dialog question, not a button
+			'lib/components/new/approvals.svelte.ts\tcode\tApprove … … …?',
+			// dialog title
+			'lib/components/RecoveryModeWarningModal.svelte\tcode\tDeploy … to …',
+			// dialog confirm button per (e)
+			'lib/components/RecoveryModeWarningModal.svelte\tcode\tDeploy to …',
+			// dialog title
+			'lib/components/RecoveryModeWarningModal.svelte\tcode\tRoll back … to …',
+			// dialog title (h2)
+			'lib/components/SkipRuleModal.svelte\ttext\tSkip … once',
+			// dialog confirm button; the count is the scope of the act
+			'lib/components/SkipRuleModal.svelte\tcode\tSkip for ${toSend.length === 1 ? \'1 rollout\' :',
+			// dialog confirm button per (e)
+			'lib/view-models/deploy-risk.ts\tcode\tDeploy to …',
+			// dialog confirm button per (e)
+			'lib/view-models/deploy-risk.ts\tcode\tRedeploy to …',
+			// accessibility skip-link, not a trigger
+			'routes/+layout.svelte\ttext\tSkip to main content'
+		]
+	},
+	{
 		id: 'Rollback (one word, title case) as a button verb',
 		concept: 'action',
 		// Case-sensitive — the kept noun is lowercase "rollback" ("one
@@ -325,6 +370,7 @@ describe('vocabulary: a retired spelling may not reappear', () => {
 		test(`${rule.id} -- ${rule.why}`, () => {
 			const allow = new Set(rule.allow ?? []);
 			const violations = literals.filter((l) => {
+				if (rule.kinds && !rule.kinds.includes(l.kind)) return false;
 				if (!rule.re.test(l.text)) return false;
 				const key = `${l.file}\t${l.kind}\t${l.text}`;
 				return !allow.has(key);
