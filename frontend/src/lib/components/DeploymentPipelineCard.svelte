@@ -507,14 +507,15 @@
 		}[status];
 	}
 
-	/** the sub-dot / ping fill: the status's solid (a pending node pings in the active blue, as before) */
+	/** the sub-dot / ping fill: the status's solid; a pending node is the quiet grey line */
 	function subDotBg(status: NodeStatus): string {
-		return TONE[status === 'pending' ? 'deploying' : nodeTone(status)].bg;
+		return status === 'pending' ? 'bg-line-strong' : TONE[nodeTone(status)].bg;
 	}
 
+	/** the selected row's left edge: the status's solid (a pending node leans on the active blue) */
 	function leftEdgeAccent(status: NodeStatus, selected: boolean): string {
 		if (!selected) return 'bg-transparent';
-		return subDotBg(status);
+		return TONE[status === 'pending' ? 'deploying' : nodeTone(status)].bg;
 	}
 
 	function rolloutSubStatus(sd: NonNullable<StageNode['stageData']>): {
