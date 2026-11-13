@@ -7,6 +7,7 @@
  * not reach is listed as "not affected", the History spine keeps every place's current deploy and waiting events read in the tab's own age.
  */
 import { shortRevision } from '$lib/version-utils';
+import { inScope } from '../derivation-scope';
 import { oldestFirst, newestFirst, earliest, latest, isLater, isNotEarlier } from '$lib/instant';
 import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
@@ -70,6 +71,9 @@ const TIER_RANK: Record<TierKey, number> = TIER_RANKS;
 
 /** every place of the change's app(s), each with how it relates to the change; worst first (failing, waiting, running), then furthest tier, then newest */
 export function classified(c: TChange, scenario: HomeState): { all: Unit[]; places: Place[]; unaffected: Place[] } {
+	return inScope(() => classifiedRaw(c, scenario));
+}
+function classifiedRaw(c: TChange, scenario: HomeState): { all: Unit[]; places: Place[]; unaffected: Place[] } {
 	const pc = placesOfChange(c, scenario);
 	const hist = historyOfChange(c, scenario);
 	const all: Unit[] = pc.map((p) => {

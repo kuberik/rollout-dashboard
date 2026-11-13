@@ -10,6 +10,7 @@ import { rowsOf, rollouts, placesOf } from './data';
 import { inScope, scoped, stats } from './derivation-scope';
 
 const misses = (prefix: string) => [...stats.byKey].filter(([k]) => k.startsWith(prefix)).reduce((n, [, v]) => n + v, 0);
+stats.track = true;
 const reset = () => { stats.hits = 0; stats.misses = 0; stats.byKey.clear(); };
 
 describe('derivation scope', () => {
