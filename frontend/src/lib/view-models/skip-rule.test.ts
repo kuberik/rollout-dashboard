@@ -211,6 +211,16 @@ describe('History: the controller message names the skipped gates, never a perso
 	});
 	it('says nothing for a message without the clause', () => {
 		expect(skippedRulesOf('Automatic deployment')).toBeNull();
+	});
+
+	it("reads the controller's exact messages: unknown suffix ignored, `no gate` is no skip, bare is every rule", () => {
+		expect(skippedRulesOf('Automatic deployment, with gate bypass of a, b (unknown: x, y)')).toEqual({ all: false, gates: ['a', 'b'] });
+		expect(skippedRulesOf('Manual deployment, with gate bypass of a (unknown: x), with failed bake unblock')).toEqual({ all: false, gates: ['a'] });
+		expect(skippedRulesOf('Manual deployment, with gate bypass of no gate (unknown: x)')).toBeNull();
+		expect(skippedRulesOf('Manual deployment, with gate bypass of no gate')).toBeNull();
+		expect(skippedRulesOf('Automatic deployment, with gate bypass')).toEqual({ all: true, gates: [] });
+		expect(withoutSkipClause('Automatic deployment, with gate bypass of a, b (unknown: x, y)')).toBe('Automatic deployment');
+		expect(withoutSkipClause('Manual deployment, with gate bypass of no gate (unknown: x)')).toBe('Manual deployment');
 		expect(skippedRulesOf(undefined)).toBeNull();
 	});
 	it('maps gate names back to the rule label, one fact per rule, and prints an unknown gate as itself', () => {

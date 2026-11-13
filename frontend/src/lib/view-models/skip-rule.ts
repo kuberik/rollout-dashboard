@@ -206,18 +206,23 @@ export function skipRows(args: {
 export type SkippedRules = { all: boolean; gates: string[] };
 
 /**
- * The controller writes `<Manual|Automatic> deployment[, with force deploy], with gate bypass of g1, g2[, with failed bake unblock]`
- * (partial) or `..., with gate bypass` (every rule). Who set it is not recorded, and nothing here invents it.
+ * The controller writes `<Manual|Automatic> deployment[, with force deploy], with gate bypass of g1, g2[ (unknown: x, y)][, with failed
+ * bake unblock]` (partial), `..., with gate bypass` (every rule), or `..., with gate bypass of no gate[ (unknown: x)]` when the request
+ * named only gates this rollout does not have (rollout-controller `bypassDescription`). The `(unknown: ...)` suffix names what matched
+ * nothing and is ignored; "no gate" skipped nothing by name, so it reads as no skip at all (null) rather than a rule called "no gate".
+ * Who set it is not recorded, and nothing here invents it.
  */
 export function skippedRulesOf(message: string | null | undefined): SkippedRules | null {
 	if (!message) return null;
 	const m = /with gate bypass(?: of ([^]*?))?(?=, with |$)/.exec(message);
 	if (!m) return null;
-	const gates = (m[1] ?? '')
+	const named = (m[1] ?? '').replace(/\s*\(unknown:[^)]*\)/, '').trim();
+	if (m[1] !== undefined && (named === 'no gate' || named === '')) return null;
+	const gates = named
 		.split(',')
 		.map((g) => g.trim())
 		.filter(Boolean);
-	return { all: gates.length === 0, gates };
+	return { all: m[1] === undefined, gates };
 }
 
 /** The same clause out of the message, so what is left is only what a person could have written. */
