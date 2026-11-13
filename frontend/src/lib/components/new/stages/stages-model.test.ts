@@ -229,11 +229,11 @@ describe('app-pipeline: app scope (hello-waves-app)', () => {
 		const st = stagesOf({ kind: 'app', app: APP }, 'incident');
 		expect(st.rollup.text).toBe('4 of 5 places on c6f19d2 · 1 checking · 1 deploying');
 		expect(st.narrow?.text).toBe('4 of 5 on c6f19d2 · 2 in progress');
-		expect(st.narrow?.parts.at(-1)?.ink).toBe('active');
+		expect(st.narrow?.parts.at(-1)).toMatchObject({ ink: 'muted', moving: true }); /* visual audit #15: a moving count is neutral, like its word */
 		/* one adverse count: unchanged; held and failed stay separate */
 		beat('wave1-half');
 		expect(stagesOf({ kind: 'app', app: APP }, 'incident').narrow?.text).toBe('4 of 5 on c6f19d2 · 1 deploying');
-		const r = { text: '', parts: [{ text: '1 of 7 places', ink: 'muted' as const }, { text: '1 failing', ink: 'danger' as const }, { text: '1 checking', ink: 'progress' as const }, { text: '1 deploying', ink: 'active' as const }] };
+		const r = { text: '', parts: [{ text: '1 of 7 places', ink: 'muted' as const }, { text: '1 failing', ink: 'danger' as const }, { text: '1 checking', ink: 'muted' as const, moving: true as const }, { text: '1 deploying', ink: 'muted' as const, moving: true as const }] };
 		expect(narrowRollup(r, 2).parts.map((p) => p.text)).toEqual(['1 of 7 places', '1 failing', '2 in progress']);
 	});
 });

@@ -24,7 +24,13 @@ export type Tone = {
 	/** the state's tint and line (a ring-mark's disc and edge) */
 	tint: string;
 	line: string;
-	/** the state word's text colour, a Tailwind class (written out in full so the scanner sees it) */
+	/**
+	 * the state word's text colour, a Tailwind class (written out in full so the scanner sees it).
+	 * A word takes state ink only when the state needs a PERSON: failed (danger), stuck (warning), held / approval (held). The two
+	 * states that move on their own, checking and deploying, print their word in neutral ink and leave the hue to their mark (the
+	 * breathing yellow clock, the blue sweep). DESIGN.md "Colour goes on MARKS, never on PROSE"; /rollouts is the reference.
+	 * Visual audit #15 (2026-11-13): "Checking" was olive on /apps and the change page, neutral on /rollouts and Home.
+	 */
 	ink: string;
 	/** the solid as a Tailwind background class (a corner dot, a legend swatch) */
 	bg: string;
@@ -59,8 +65,8 @@ const SUBTLE = { solid: 'var(--k-fg-subtle)', tint: 'var(--k-subtle)', line: 'va
 
 export const TONE: Record<ToneState, Tone> = {
 	done: { hue: 'success', ...hue('success'), disc: 'bg-success-tint text-success', bg: 'bg-success-solid', ink: HUE_INK.muted, chip: 'bg-success-solid', shape: 'disc', moves: false, ring: null },
-	checking: { hue: 'progress', ...hue('progress'), disc: 'bg-progress-tint text-progress', bg: 'bg-progress-solid', ink: HUE_INK.progress, chip: 'bg-progress-tint ring-progress-solid text-progress', shape: 'disc', moves: true, ring: null },
-	deploying: { hue: 'active', ...hue('active'), disc: 'bg-active-tint text-active', bg: 'bg-active-solid', ink: HUE_INK.active, chip: 'bg-active-tint ring-active-line text-active', shape: 'disc', moves: true, ring: null },
+	checking: { hue: 'progress', ...hue('progress'), disc: 'bg-progress-tint text-progress', bg: 'bg-progress-solid', ink: HUE_INK.muted, chip: 'bg-progress-tint ring-progress-solid text-progress', shape: 'disc', moves: true, ring: null },
+	deploying: { hue: 'active', ...hue('active'), disc: 'bg-active-tint text-active', bg: 'bg-active-solid', ink: HUE_INK.muted, chip: 'bg-active-tint ring-active-line text-active', shape: 'disc', moves: true, ring: null },
 	held: { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: null },
 	approval: { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: null },
 	'approval-yours': { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: 'var(--k-held-solid)' },

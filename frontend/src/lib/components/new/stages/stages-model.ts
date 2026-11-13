@@ -21,7 +21,7 @@ export type StagePlace = { href: string; /** an approval the viewer can give (th
 export type StageColumn = { key: string; tier: TierKey; wave: number | null; /** the env chip's label */ label: string; /** the tier has more than one wave: "Wave N" is worth printing */ multi: boolean };
 export type StageCell = { places: StagePlace[] };
 export type StageLane = { app: string; cells: (StageCell | null)[] };
-export type StageRollup = { text: string; parts: { text: string; /** the short spelling a narrow card prints ("4 of 5"): chosen by width, never by state */ short?: string; ink: 'danger' | 'held' | 'progress' | 'active' | 'muted' | 'fg' }[] };
+export type StageRollup = { text: string; parts: { text: string; /** the short spelling a narrow card prints ("4 of 5"): chosen by width, never by state */ short?: string; ink: 'danger' | 'held' | 'muted' | 'fg'; /** a count of places that move on their own (checking / deploying): neutral ink like their state word (state-tone.ts), folded on a narrow card */ moving?: true }[] };
 export type StagesScope = { kind: 'change'; change: TChange } | { kind: 'app'; app: string; /** the selected release (a build of the Builds card's ledger); unknown or absent = the default */ release?: string | null };
 /** `release`: app scope only, the build the drawing is about (the app's newest, `placesOf(...).newest`), null without releases */
 export type Stages = { columns: StageColumn[]; lanes: StageLane[]; rollup: StageRollup; /** the narrow card's rollup (app scope): with more than one adverse count the in-flight ones (checking + deploying) read as one "N in progress"; "N of M places" never shortens */ narrow?: StageRollup; release?: string | null };
@@ -203,8 +203,8 @@ function drawRelease(app: string, c: AppCtx, scenario: HomeState, release: strin
 	if (k('failed')) parts.push({ text: `${k('failed')} failing`, ink: 'danger' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
-	if (k('checking')) parts.push({ text: `${k('checking')} checking`, ink: 'progress' });
-	if (k('deploying')) parts.push({ text: `${k('deploying')} deploying`, ink: 'active' });
+	if (k('checking')) parts.push({ text: `${k('checking')} checking`, ink: 'muted', moving: true });
+	if (k('deploying')) parts.push({ text: `${k('deploying')} deploying`, ink: 'muted', moving: true });
 	out.rollup = { text: parts.map((p) => p.text).join(' · '), parts };
 	out.narrow = narrowRollup(out.rollup, k('checking') + k('deploying'));
 	out.release = release;
@@ -253,8 +253,8 @@ function rollupOf(c: TChange, scenario: HomeState): StageRollup {
 	if (n.failing) parts.push({ text: `${n.failing} failing`, ink: 'danger' });
 	if (n.waiting) parts.push({ text: `${n.waiting} waiting`, ink: 'held' });
 	if (n.held) parts.push({ text: `${n.held} held`, ink: 'held' });
-	if (n.checking) parts.push({ text: `${n.checking} checking`, ink: 'progress' });
-	if (n.deploying) parts.push({ text: `${n.deploying} deploying`, ink: 'active' });
+	if (n.checking) parts.push({ text: `${n.checking} checking`, ink: 'muted', moving: true });
+	if (n.deploying) parts.push({ text: `${n.deploying} deploying`, ink: 'muted', moving: true });
 	return { text: parts.map((p) => p.text).join(' · '), parts };
 }
 
@@ -280,14 +280,14 @@ export function releaseLine(app: string, scenario: HomeState, build?: string | n
 }
 
 
-/** the narrow form of an app rollup: more than one adverse count collapses checking + deploying into one "N in progress" (active ink); held and failed keep their own */
+/** the narrow form of an app rollup: more than one adverse count collapses checking + deploying into one "N in progress" (neutral, like the words it folds); held and failed keep their own */
 export function narrowRollup(r: StageRollup, inFlight: number): StageRollup {
 	/* the narrow card prints the short spelling ("3 of 5 on 4.44.0-44"): chosen by width (this form is the container's narrow branch), never by state */
 	r = { text: '', parts: r.parts.map((p) => (p.short ? { ...p, text: p.short } : p)) };
 	r.text = r.parts.map((p) => p.text).join(' · ');
-	const live = r.parts.filter((p) => p.ink === 'progress' || p.ink === 'active');
+	const live = r.parts.filter((p) => p.moving);
 	if (r.parts.length - 1 < 2 || live.length < 2) return r;
-	const parts: StageRollup['parts'] = [...r.parts.filter((p) => p.ink !== 'progress' && p.ink !== 'active'), { text: `${inFlight} in progress`, ink: 'active' }];
+	const parts: StageRollup['parts'] = [...r.parts.filter((p) => !p.moving), { text: `${inFlight} in progress`, ink: 'muted', moving: true }];
 	return { text: parts.map((p) => p.text).join(' · '), parts };
 }
 
