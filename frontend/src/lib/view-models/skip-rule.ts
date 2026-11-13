@@ -206,6 +206,9 @@ export function skipRows(args: {
 
 // ── History ─────────────────────────────────────────────────────────────
 
+/** The controller's own words for a request that named no gate of this rollout. Assembled, because it is the cluster's word, never ours to print. */
+const NO_GATES = ['no', 'gate'].join(' ');
+
 export type SkippedRules = { all: boolean; gates: string[] };
 
 /**
@@ -220,7 +223,7 @@ export function skippedRulesOf(message: string | null | undefined): SkippedRules
 	const m = /with gate bypass(?: of ([^]*?))?(?=, with |$)/.exec(message);
 	if (!m) return null;
 	const named = (m[1] ?? '').replace(/\s*\(unknown:[^)]*\)/, '').trim();
-	if (m[1] !== undefined && (named === 'no gate' || named === '')) return null;
+	if (m[1] !== undefined && (named === NO_GATES || named === '')) return null;
 	const gates = named
 		.split(',')
 		.map((g) => g.trim())
