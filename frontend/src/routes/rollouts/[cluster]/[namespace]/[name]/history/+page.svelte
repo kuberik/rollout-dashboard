@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	import { toneInk } from '$lib/view-models/state-tone';
 	import { lastFailureAgoOf } from '$lib/view-models/event-age';
 	import NotFound from '$lib/components/NotFound.svelte';
@@ -2605,7 +2606,7 @@
 																     draw; one commit row, drawn once, whichever
 																     case fills it. -->
 																					<a
-																						href={rowCommit.htmlUrl}
+																						href={safeHref(rowCommit.htmlUrl)}
 																						target="_blank"
 																						rel="noopener noreferrer"
 																						class="t-code-sm text-accent-text shrink-0 hover:underline"

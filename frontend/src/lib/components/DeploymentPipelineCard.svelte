@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	import Leaving from './Leaving.svelte';
 	import StepDisc from './StepDisc.svelte';
 	import { formatShortDuration } from '$lib/view-models/stage-advance';
@@ -888,7 +889,7 @@
 								{#each testLinks as link}
 									{@const Mark = TEST_LINK_MARK[link.kind]}
 									<a
-										href={link.url}
+										href={safeHref(link.url)}
 										target="_blank"
 										rel="noopener noreferrer"
 										title={link.vendor ? `${link.label} in ${link.vendor}` : link.label}

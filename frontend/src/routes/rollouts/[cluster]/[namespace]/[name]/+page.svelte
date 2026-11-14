@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
 	import { isDeployInFlight, showNewerBuildsCard } from '$lib/view-models/pipeline-card';
@@ -3057,10 +3058,10 @@
 					{#if rollout?.status?.source}
 						<a
 							class="btn btn-secondary max-lg:h-11"
-							href={getGitHubUrl(
+							href={safeHref(getGitHubUrl(
 								getDisplayVersion(latestEntry.version),
 								latestEntry.version.revision
-							)}
+							))}
 							target="_blank"
 							rel="noopener noreferrer"
 						>
@@ -4749,7 +4750,7 @@
 									<div class="divide-line-subtle divide-y">
 										{#if datadogServiceInfo}
 											<a
-												href={datadogServiceInfo.url}
+												href={safeHref(datadogServiceInfo.url)}
 												target="_blank"
 												rel="noopener noreferrer"
 												class="hover:bg-hover flex items-center gap-3 px-4 py-3"

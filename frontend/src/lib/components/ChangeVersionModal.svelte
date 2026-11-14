@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	import { toneInk } from '$lib/view-models/state-tone';
 	import { availableReleases } from '$lib/releases/registry.svelte';
 	import HeldGlyph from './HeldGlyph.svelte';
@@ -3606,7 +3607,7 @@
 												></span>
 												<div class="min-w-0 flex-1">
 													<a
-														href={commit.url}
+														href={safeHref(commit.url)}
 														target="_blank"
 														rel="noopener noreferrer"
 														class="t-ui-sm text-fg hover:text-accent-text block truncate"
