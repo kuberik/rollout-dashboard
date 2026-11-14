@@ -170,11 +170,14 @@
 	<div class="canvas-dots stg-canvas min-w-0 px-4 py-4" bind:clientWidth={w} data-stages data-stages-form={horizontal ? 'graph' : 'list'}>
 		{#if release && (release.author || release.built || release.href || !inRail)}
 			<!-- THE RELEASE LINE. A visible rail row already names the selected release (build, title): then the line carries only what it does not (who, how long ago, the way to the change page). With no row showing it (no rail, or a selection outside it) the line names the release itself: build and title first. Decided by the data (rail rows), never by what was measured. -->
-			<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3" data-stages-release>
-				{#if !inRail}<span class="t-code-sm shrink-0 text-fg" data-release-build>{release.build}</span>{#if release.title}<span class="t-meta min-w-0 truncate text-fg-muted" title={release.title} data-release-title>{release.title}</span>{/if}{/if}
-				{#if release.author}<span class="t-meta flex items-center gap-2 text-fg-muted {inRail ? 'min-w-0' : 'shrink-0 max-sm:min-w-0'}"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate {inRail ? '' : 'max-sm:hidden'}">{release.author}</span></span>{/if}
-				{#if release.built}<span class="t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
-				{#if release.href}<a href={toHref(release.href)} class="nav-link -my-2 ml-auto shrink-0 max-sm:-my-3 max-sm:min-h-11" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
+			<!-- NARROW (the line's own width < 600px, `.stg-rel-cq`): two lines. Line 1 is build · avatar · View change, line 2 is the title (ellipsis) · built ago, so the title is never squeezed to "#" or "#38 S…" and View change never leaves the padding. Decided by width alone. -->
+			<div class="stg-rel-cq mb-4 min-w-0">
+				<div class="stg-rel flex min-h-5 min-w-0 items-center gap-3" data-stages-release>
+					{#if !inRail}<span class="t-code-sm shrink-0 text-fg" data-release-build>{release.build}</span>{#if release.title}<span class="stg-rel-title t-meta min-w-0 truncate text-fg-muted" title={release.title} data-release-title>{release.title}</span>{/if}{/if}
+					{#if release.author}<span class="t-meta flex items-center gap-2 text-fg-muted {inRail ? 'min-w-0' : 'shrink-0'}"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate {inRail ? '' : 'stg-rel-name'}" data-release-author>{release.author}</span></span>{/if}
+					{#if !inRail && release.title}<span class="stg-rel-br" aria-hidden="true"></span>{/if}{#if release.built}<span class="stg-rel-age t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
+					{#if release.href}<a href={toHref(release.href)} class="nav-link -my-2 ml-auto shrink-0 max-sm:-my-3 max-sm:min-h-11" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
+				</div>
 			</div>
 		{/if}
 		{#if horizontal}
@@ -238,6 +241,20 @@
 	.stg-short { display: none; }
 	.stg-short { gap: 4px; }
 	@container (max-width: 559.98px) { .stg-long { display: none; } .stg-short { display: flex; } }
+	/* THE RELEASE LINE's two forms (container: the line's own width). Wide: one row, the title truncates between the build and the author.
+	   Narrow (< 600px): a zero-height break item splits it in two lines; line 1 is build · avatar (the name is the avatar's tooltip and
+	   label) · View change at the end, line 2 is the title (one line, ellipsis) with the age at its end. The build, View change and the
+	   age never shrink; the title is the only part that gives, and on line 2 it keeps >= 180px down to a 280px line. With no title
+	   (or the rail naming the release) there is no break and the line is one row that wraps only if it must. */
+	.stg-rel-cq { container-type: inline-size; }
+	.stg-rel-br { display: none; }
+	@container (max-width: 599.98px) {
+		.stg-rel { flex-wrap: wrap; row-gap: 0; }
+		.stg-rel-br { display: block; order: 9; flex: 0 0 100%; height: 0; }
+		.stg-rel-title { order: 10; flex: 1 1 0; margin-top: 4px; }
+		.stg-rel-br + .stg-rel-age { order: 11; margin-top: 4px; margin-left: auto; }
+		.stg-rel-name { display: none; }
+	}
 	/* graph group: start-aligned at the card padding; centred only past 2300 where the 280px column cap leaves space (the Gates canvas rule for very wide) */
 	.stg-graph { justify-content: start; }
 	@media (min-width: 2300px) { .stg-graph { justify-content: center; } }

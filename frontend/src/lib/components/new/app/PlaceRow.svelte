@@ -7,6 +7,7 @@
 	 * mark rule, env chip (a link to the place's tab), the Slipway pipeline opened under the row, truth attributes.
 	 * Slots >= 560 container: mark 16 | chip 168 | state word 168 | note 1fr | time in state 64 (container >= 640, the 1440 main column) | Approve btn-xs | chevron.
 	 * Phone (owner §5): mark | chip + state word (wrap, never clipped) | chevron: build, age, title and the rest sit on the build row above.
+	 * A list holding a region chip uses one stacked form for every row below a 480px container (see `.pl-mid` below): one list, one row form.
 	 * The build row owns the lag; `note` only exists when this place's own tab disagrees with the stop (placeNote).
 	 */
 	import ApproveButton from '../ApproveButton.svelte';
@@ -53,8 +54,17 @@
 	.pl-mid { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; column-gap: 8px; row-gap: 2px; min-width: 0; }
 	/* phone: the word may wrap inside its track ("Waiting for approval" is never cut to "Waiting for app…") */
 	.pl-word { white-space: normal; overflow: visible; text-overflow: clip; }
-	/* a chip that names a region (PROD | ap-southeast-2, ~160px) does not fit the 88px track: on a phone it takes the row's width and the state word sits under it, so neither is clipped */
-	.pl-mid--long { grid-template-columns: minmax(0, 1fr); }
+	/* ONE ROW FORM PER LIST (narrow-cards fix): a chip that names a region (PROD | ap-southeast-2, ~160px) does not fit the 88px track. The
+	   form is decided for the whole ledger, never per row (`[data-ledger]:has(.pl-mid--long)`: any region chip in the list), so the DEV row
+	   never sits inline beside a PROD row that stacked. Below a 480px container EVERY row stacks (chip, then the state word under it);
+	   480-560 every row keeps the word inline on the >= 560 form's 168px chip track; >= 560 is the desktop form below. Decided by width
+	   and the list's chip set only, never by state. */
+	@container (max-width: 559.98px) {
+		:global([data-ledger]:has(.pl-mid--long)) .pl-mid { grid-template-columns: minmax(0, 1fr); }
+	}
+	@container (min-width: 480px) and (max-width: 559.98px) {
+		:global([data-ledger]:has(.pl-mid--long)) .pl-mid { grid-template-columns: 168px minmax(0, 1fr); }
+	}
 	.pl-since { display: none; }
 	/* the note exists only where the place's tab disagrees with its build row ("4 to deploy · 4.41.0-41 failed here"): that is information, so a phone reads it on its own line under the state word (hover does not exist there) */
 	.pl-note { grid-column: 1 / -1; white-space: normal; }
