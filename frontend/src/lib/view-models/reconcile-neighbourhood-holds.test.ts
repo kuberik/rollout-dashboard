@@ -116,6 +116,17 @@ describe('reconcileNeighbourhoodHolds: a chain predecessor is left alone; a real
 });
 
 describe('reconcileNeighbourhoodHolds: a same-tier promotion link (not a chain predecessor) still reconciles', () => {
+	it('a non-chain promotion link whose builds have not reached here still reads clear (sequencing, not a hold)', () => {
+		const sibling: NeighbourLink = {
+			...stagingLink,
+			key: 'promotion:focus:prod-eu-central',
+			node: node('checkout-api', 'prod-eu-central'),
+			chainPredecessor: false
+		};
+		const { upstream, holding } = reconcileNeighbourhoodHolds([sibling], breakdown, { heldHere: () => false });
+		expect(upstream[0]).toMatchObject({ state: 'clear', held: [] });
+		expect(holding).toBe(0);
+	});
 	it('a sibling order gate the breakdown names IS reconciled to blocked', () => {
 		const sibling: NeighbourLink = {
 			...stagingLink,

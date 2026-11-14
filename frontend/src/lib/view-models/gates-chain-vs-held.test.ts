@@ -145,11 +145,6 @@ describe('the dependency tile agrees with the dependency\'s own refusal (dash-bu
 		expect(states[0].state).toBe('blocked');
 		expect(states[1].holding).toBeGreaterThanOrEqual(1);
 	});
-
-	it('a promotion link for a build that has not reached here is still `clear` (sequencing, not a hold)', () => {
-		const r = reconcileNeighbourhoodHolds(hood.upstream, breakdown, { heldHere: () => false });
-		for (const l of r.upstream.filter((x) => x.writer === 'promotion')) expect(l.state).not.toBe('blocked');
-	});
 });
 
 /**
