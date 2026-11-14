@@ -58,8 +58,8 @@ export function providerScopeCounts(
 	 * The RECONCILED contract links (`reconcileNeighbourhoodHolds().upstream`).
 	 * A blocked contract link is the tile's and the header's "holds here": the
 	 * dependency refuses those builds whether or not an earlier stage has passed
-	 * them. The card must say the same, so when a provider's link is blocked its
-	 * refused builds count HERE even if none has reached this environment yet.
+	 * them. The card must say the same: a provider with a blocked link is `held`,
+	 * and its refused builds that sit in this environment's queue are `queued`.
 	 */
 	links: readonly { writer?: string; state: string; node: { name: string }; held: readonly string[] }[] = []
 ): Map<string, ProviderScope> {
@@ -90,4 +90,29 @@ export function providerScopeCounts(
 		});
 	}
 	return out;
+}
+
+/**
+ * The Waiting-on row's trailing sentence. One place alone reads "holding 1 build
+ * elsewhere"; several read "holding 3 builds · 1 queued here · 2 elsewhere". The
+ * unit (a build) is named once, on the total.
+ */
+export function providerScopeLabel(scope: ProviderScope | undefined, totalHeld: number): string {
+	const builds = (n: number) => `${n} ${n === 1 ? 'build' : 'builds'}`;
+	if (!scope) return `holding ${builds(totalHeld)}`;
+	const places: string[] = [];
+	if (scope.here > 0) places.push('here');
+	if (scope.queued > 0) places.push('queued here');
+	if (scope.elsewhere > 0) places.push('elsewhere');
+	const counts = [scope.here, scope.queued, scope.elsewhere].filter((n) => n > 0);
+	const total = counts.reduce((a, b) => a + b, 0);
+	if (places.length === 1) return `holding ${builds(total)} ${places[0]}`;
+	if (places.length > 1) {
+		const parts = [scope.here, scope.queued, scope.elsewhere]
+			.map((n, i) => [n, ['here', 'queued here', 'elsewhere'][i]] as const)
+			.filter(([n]) => n > 0)
+			.map(([n, w]) => `${n} ${w}`);
+		return `holding ${builds(total)} · ${parts.join(' · ')}`;
+	}
+	return scope.held ? `holding ${builds(totalHeld)}` : 'not holding';
 }

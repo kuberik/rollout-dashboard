@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	import { availableReleases } from '$lib/releases/registry.svelte';
-	import { providerScopeCounts } from '$lib/view-models/dependency-hold';
+	import { providerScopeCounts, providerScopeLabel } from '$lib/view-models/dependency-hold';
 	import { waitsForText } from '$lib/view-models/waits-for-text';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { outageEscalation } from '$lib/view-models/outage-escalation.svelte';
@@ -681,20 +681,7 @@
 	 * live).
 	 */
 	function scopeLabel(providerName: string, totalHeld: number): string {
-		const scope = providerScope.get(providerName);
-		if (!scope) return `holding ${totalHeld} ${totalHeld === 1 ? 'build' : 'builds'}`;
-		// The unit is a BUILD, named once on the first count (the Held builds
-		// rollup beside it counts builds too): "1 build here · 2 elsewhere".
-		const builds = (n: number) => `${n} ${n === 1 ? 'build' : 'builds'}`;
-		const bits: string[] = [];
-		if (scope.here > 0) bits.push(`${scope.here} here`);
-		if (scope.queued > 0) bits.push(`${scope.queued} queued here`);
-		if (scope.elsewhere > 0) bits.push(`${scope.elsewhere} elsewhere`);
-		const total = builds(scope.here + scope.queued + scope.elsewhere);
-		if (bits.length === 1) return `holding ${total} ${bits[0]}`;
-		if (bits.length > 1) return `holding ${total} · ${bits.join(' · ')}`;
-		if (scope.held) return `holding ${total}`;
-		return 'not holding';
+		return providerScopeLabel(providerScope.get(providerName), totalHeld);
 	}
 
 	/**
