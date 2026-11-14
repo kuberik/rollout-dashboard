@@ -42,7 +42,23 @@ func normalizeHost(h string) string {
 	return strings.TrimRight(strings.ToLower(h), ".")
 }
 
+// parseSpokeAllowlist parses once per distinct raw value (cached, so the
+// malformed-entry warnings fire once, not on every request).
 func parseSpokeAllowlist(raw string) []spokeOriginRule {
+	if v, ok := spokeAllowlistCache.Load(raw); ok {
+		return v.([]spokeOriginRule)
+	}
+	rules := parseSpokeAllowlistUncached(raw)
+	v, _ := spokeAllowlistCache.LoadOrStore(raw, rules)
+	return v.([]spokeOriginRule)
+}
+
+var spokeAllowlistCache sync.Map // raw string -> []spokeOriginRule
+
+// droppedSpokeLogged dedupes the "dropping discovered spoke" line per URL.
+var droppedSpokeLogged sync.Map
+
+func parseSpokeAllowlistUncached(raw string) []spokeOriginRule {
 	var rules []spokeOriginRule
 	for _, entry := range strings.Split(raw, ",") {
 		entry = strings.TrimSpace(entry)
@@ -130,7 +146,10 @@ func filterAllowedSpokeURLs(urls []string) []string {
 		if spokeURLAllowed(u) {
 			out = append(out, u)
 		} else {
-			log.Printf("spoke allowlist: dropping discovered spoke %q (origin not in %s)", dashboardBaseURL(u), spokeAllowlistEnv)
+			base := dashboardBaseURL(u)
+			if _, seen := droppedSpokeLogged.LoadOrStore(base, true); !seen {
+				log.Printf("spoke allowlist: dropping discovered spoke %q (origin not in %s); logged once per process", base, spokeAllowlistEnv)
+			}
 		}
 	}
 	return out

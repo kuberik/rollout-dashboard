@@ -425,7 +425,7 @@ func doFetchSpoke(ctx context.Context, spokeURL, path, token string) (map[string
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set(fanoutHeader, "1")
-	c := &http.Client{Transport: fanoutTransport, Timeout: spokeFetchTimeout}
+	c := newSpokeHTTPClient(spokeFetchTimeout)
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, &spokeTransportError{err: err}
@@ -504,7 +504,7 @@ func doFetchSpokeClusterName(ctx context.Context, spokeURL, token string) (strin
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set(fanoutHeader, "1")
-	c := &http.Client{Transport: fanoutTransport, Timeout: spokeNameTimeout}
+	c := newSpokeHTTPClient(spokeNameTimeout)
 	resp, err := c.Do(req)
 	if err != nil {
 		return "", &spokeTransportError{err: err}
