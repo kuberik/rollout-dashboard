@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script module lang="ts">
+	import { highlightSearch } from '$lib/highlight-search';
 	import { newestFirst, isLater } from '$lib/instant';
 	import { displayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
 	import { formatTimestamp } from '$lib/display-time';
@@ -1701,36 +1702,6 @@
 	// identifier in a component tag position renders as a literal `<x>`
 	// element, not this reference.
 	const EmptyIcon = $derived(filterType === 'test' ? FlaskOutline : TerminalOutline);
-
-	// Highlight search matches in log lines
-	function escapeHtml(text: string): string {
-		return text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#39;');
-	}
-
-	function highlightSearch(text: string, query: string): string {
-		if (!query.trim()) return escapeHtml(text);
-		const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-		// ⭐ `bg-selected`, NOT a hue. (2026-10-08, design-language pass) A
-		// search match is not a status — nothing here needs a person — so it
-		// takes the same neutral "this is the thing in view" token a
-		// selected row already uses, rather than inventing a highlight
-		// colour the closed status palette has no slot for.
-		// Odd indexes of a capturing split are the matches. Every piece is escaped
-		// before it reaches `{@html}`: log text is untrusted.
-		return text
-			.split(regex)
-			.map((part, i) =>
-				i % 2 === 1
-					? `<mark class="rounded-xs bg-selected text-fg">${escapeHtml(part)}</mark>`
-					: escapeHtml(part)
-			)
-			.join('');
-	}
 
 	// The row clock is formatted here, not taken from the worker's
 	// `formattedTimestamp`: the worker formats once on arrival, so a line already
