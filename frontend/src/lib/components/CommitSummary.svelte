@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	import { shortRevision } from '$lib/version-utils';
 	import { availableReleases } from '$lib/releases/registry.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -476,7 +477,7 @@
 				{#each visibleRows as c (c.sha)}
 					<li class="t-meta flex {rowAvatars ? 'items-center' : 'items-baseline'} gap-2">
 						<a
-							href={c.url}
+							href={safeHref(c.url)}
 							target="_blank"
 							rel="noopener noreferrer"
 							class="t-code-sm shrink-0 text-accent-text hover:underline"

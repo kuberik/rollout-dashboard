@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	import { shortRevision } from '$lib/version-utils';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	/**
@@ -323,7 +324,7 @@
 					     correct, because it is the only one that changes anything. -->
 					<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
 						{#if compareUrl}
-							<a href={compareUrl} target="_blank" rel="noopener noreferrer" class="nav-link">
+							<a href={safeHref(compareUrl)} target="_blank" rel="noopener noreferrer" class="nav-link">
 								<GithubSolid aria-hidden="true" />
 								See the diff on GitHub
 							</a>
@@ -344,7 +345,7 @@
 						{#each commits as c (c.sha)}
 							<li class="flex items-baseline gap-2">
 								<a
-									href={c.url}
+									href={safeHref(c.url)}
 									target="_blank"
 									rel="noopener noreferrer"
 									class="ident t-code-sm shrink-0 text-accent-text hover:underline"
@@ -361,7 +362,7 @@
 					</ul>
 					{#if compareUrl}
 						<a
-							href={compareUrl}
+							href={safeHref(compareUrl)}
 							target="_blank"
 							rel="noopener noreferrer"
 							class="t-meta mt-2 inline-flex items-center gap-1 text-fg-subtle hover:text-fg"

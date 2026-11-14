@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	/**
 	 * r34 v2 CD r2 — THE CHANGE DETAIL PAGE (/changes/<slug>), built from the objects the Changes list and the rollout tabs draw.
 	 *
@@ -112,8 +113,8 @@
 </script>
 
 {#snippet links()}
-	{#if ext}<a href={ext} target="_blank" rel="noopener noreferrer" class="btn btn-secondary" data-link="pr"><GithubSolid class="h-4 w-4" aria-hidden="true" />{c.prHref ? 'Open PR' : 'Open commit'}<span aria-hidden="true">↗</span></a>{/if}
-	{#if checks?.href}<a href={checks.href} target="_blank" rel="noopener noreferrer" class="btn btn-secondary" data-link="checks">CI checks<span aria-hidden="true">↗</span></a>{/if}
+	{#if ext}<a href={safeHref(ext)} target="_blank" rel="noopener noreferrer" class="btn btn-secondary" data-link="pr"><GithubSolid class="h-4 w-4" aria-hidden="true" />{c.prHref ? 'Open PR' : 'Open commit'}<span aria-hidden="true">↗</span></a>{/if}
+	{#if checks?.href}<a href={safeHref(checks.href)} target="_blank" rel="noopener noreferrer" class="btn btn-secondary" data-link="checks">CI checks<span aria-hidden="true">↗</span></a>{/if}
 {/snippet}
 
 <div class="w-full px-4 py-6 sm:px-6" data-change-detail data-truth-kind="change-detail" data-truth-state={st.kind} data-truth-ref={c.refLabel} data-truth-author={c.author ?? ''} {...changeTruth(c, scenario)}>
@@ -133,8 +134,8 @@
 					{#if head.build && head.build !== ref}<span class="t-code whitespace-nowrap text-fg" data-head-build>{head.build}</span>{/if}
 				</div></div>
 				<span class="flex flex-wrap items-center gap-x-4 lg:hidden" data-header-links>
-					{#if ext}<a href={ext} target="_blank" rel="noopener noreferrer" class="nav-link inline-flex min-h-11 items-center max-sm:-my-1" data-link="pr-phone"><GithubSolid class="mr-1.5 h-4 w-4" aria-hidden="true" />{c.prHref ? 'Open PR' : 'Open commit'}<span aria-hidden="true" class="ml-1">↗</span></a>{/if}
-					{#if checks?.href}<a href={checks.href} target="_blank" rel="noopener noreferrer" class="nav-link inline-flex min-h-11 items-center whitespace-nowrap max-sm:-my-1" data-link="checks-phone">CI checks<span aria-hidden="true" class="ml-1">↗</span></a>{/if}
+					{#if ext}<a href={safeHref(ext)} target="_blank" rel="noopener noreferrer" class="nav-link inline-flex min-h-11 items-center max-sm:-my-1" data-link="pr-phone"><GithubSolid class="mr-1.5 h-4 w-4" aria-hidden="true" />{c.prHref ? 'Open PR' : 'Open commit'}<span aria-hidden="true" class="ml-1">↗</span></a>{/if}
+					{#if checks?.href}<a href={safeHref(checks.href)} target="_blank" rel="noopener noreferrer" class="nav-link inline-flex min-h-11 items-center whitespace-nowrap max-sm:-my-1" data-link="checks-phone">CI checks<span aria-hidden="true" class="ml-1">↗</span></a>{/if}
 				</span>
 			</div>
 		{/snippet}
