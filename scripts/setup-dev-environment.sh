@@ -168,6 +168,7 @@ cm_args=(
   --from-literal=name="${CLUSTER_DISPLAY}"
   --from-literal=url="https://${DASHBOARD_HOSTNAME}"
   --from-literal=insecureSkipTLSVerify="${INSECURE_SKIP_TLS_VERIFY:-false}"
+  --from-literal=spokeUrlAllowlist="${SPOKE_URL_ALLOWLIST:-}"
 )
 if [ -n "${HUB_URL:-}" ]; then
   cm_args+=(--from-literal=hubUrl="${HUB_URL}")

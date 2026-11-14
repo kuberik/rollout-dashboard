@@ -133,6 +133,26 @@ data:
   url: https://kuberik.prod.example.com
 ```
 
+### Spoke trust list (`SPOKE_URL_ALLOWLIST`, required on the hub)
+
+Spoke URLs are discovered from Environment status, which anyone able to post a
+GitHub deployment status can influence. The hub sends the viewer's Bearer token
+and `gh_token` cookie to spokes (fan-out, `?cluster=` proxy, SSE), so it only
+ever talks to origins the operator lists:
+
+- `SPOKE_URL_ALLOWLIST` — comma-separated origins `scheme://host[:port]`;
+  `https://*.example.com` matches any subdomain (not the apex). `http://` is
+  accepted only when listed explicitly. Matching is on the parsed origin
+  (scheme, lowercased host, effective port), never a string prefix.
+- **Fail closed**: unset/empty means every discovered spoke is dropped (one log
+  line names the variable). The local cluster is unaffected.
+- Wired via the `kuberik-cluster-info` ConfigMap key `spokeUrlAllowlist`
+  (`scripts/setup-dev-environment.sh` reads `SPOKE_URL_ALLOWLIST`).
+- The proxy forwards only the `gh_token` cookie (plus the hub-set Bearer token)
+  to an allowlisted spoke; the browser's other cookies/Authorization never go.
+
+Dev demo: `SPOKE_URL_ALLOWLIST=https://kuberik-spoke.192.168.1.102.nip.io`.
+
 If neither env var is set, the backend falls back to:
 - Name: parse `kuberik.<name>.<rest>` from the request hostname; if `<name>` is
   numeric (IP octet from nip.io/sslip.io) use the full hostname instead

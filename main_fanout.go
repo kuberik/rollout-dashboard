@@ -293,7 +293,11 @@ func extractSpokeURLs(envs *parsedEnvironments, selfURLs []string) []string {
 			result = append(result, base)
 		}
 	}
-	return result
+	// Trust boundary: Environment status is attacker-influenceable, so only
+	// operator-allowlisted origins ever leave discovery (see
+	// main_spoke_allowlist.go). Every consumer (fan-out, proxy, SSE, the
+	// registry) goes through here.
+	return filterAllowedSpokeURLs(result)
 }
 
 // sourceAnnotations is the pair every item (a list item or a single rollout)
@@ -409,6 +413,9 @@ func fetchSpokePath(ctx context.Context, spokeURL, path, token string) (map[stri
 }
 
 func doFetchSpoke(ctx context.Context, spokeURL, path, token string) (map[string]json.RawMessage, error) {
+	if !spokeURLAllowed(spokeURL) {
+		return nil, fmt.Errorf("spoke %q is not in %s", spokeURL, spokeAllowlistEnv)
+	}
 	reqURL := spokeURL + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
@@ -485,6 +492,9 @@ func recordSpokeOutcome(spokeURL string, err error) {
 }
 
 func doFetchSpokeClusterName(ctx context.Context, spokeURL, token string) (string, error) {
+	if !spokeURLAllowed(spokeURL) {
+		return "", fmt.Errorf("spoke %q is not in %s", spokeURL, spokeAllowlistEnv)
+	}
 	reqURL := spokeURL + "/api/cluster"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
