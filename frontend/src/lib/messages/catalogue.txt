@@ -1478,6 +1478,11 @@ lib/view-models/dependency-graph.ts	code	picks it first
 lib/view-models/dependency-graph.ts	code	Pinned to …
 lib/view-models/dependency-graph.ts	code	the deploy in front of each of them lands
 lib/view-models/dependency-graph.ts	code	the deploys ahead of them land
+lib/view-models/dependency-hold.ts	code	holding …
+lib/view-models/dependency-hold.ts	code	holding … …
+lib/view-models/dependency-hold.ts	code	holding … · …
+lib/view-models/dependency-hold.ts	code	not holding
+lib/view-models/dependency-hold.ts	code	queued here
 lib/view-models/deploy-bars.ts	code	…d ago
 lib/view-models/deploy-bars.ts	code	…h ago
 lib/view-models/deploy-bars.ts	code	…m ago
@@ -2115,16 +2120,12 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Depends on
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Each environment waits on its own copy of … .
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Held builds
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Held here
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	holding … …
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	holding … elsewhere
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	holding … here
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	holding … here · … elsewhere
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Learn about gates ›
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Needs … …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	No gates on this rollout
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	No other service waits on this app.
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	none held here
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	none held now
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	not holding
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Nothing is holding this rollout. … … pass.
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	Nothing promotes itself here until … clears this build.
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	Nothing promotes itself here until … deploys this build.

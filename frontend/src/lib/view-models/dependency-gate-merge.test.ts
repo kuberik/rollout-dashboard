@@ -16,7 +16,7 @@ import {
 	isDependencyGateCoveredBy,
 	type ContractHolds
 } from './blocking-story';
-import { dependencyOnlyHold, providerScopeCounts } from './dependency-hold';
+import { dependencyOnlyHold, providerScopeCounts, providerScopeLabel } from './dependency-hold';
 import { composeHeldLeadSentence, heldVerdictForBuild } from './held';
 import { reconcileNeighbourhoodHolds, type NeighbourLink } from './rollout-neighbourhood';
 import type { Environment, Rollout, RolloutDependency, RolloutGate } from '../../types';
@@ -239,15 +239,62 @@ describe('1. the Waiting-on card counts builds refused here, not queued here', (
 		}
 	];
 	it('here is the one build refused here; the queued one is neither here nor elsewhere', () => {
-		expect(providerScopeCounts(blocks, hereHeld, 'prod').get('payments-svc')).toEqual({
+		expect(providerScopeCounts(blocks, hereHeld, 'prod').get('payments-svc')).toMatchObject({
 			here: 1,
 			elsewhere: 1
 		});
 	});
 	it('with nothing refused here the card says none here (agrees with the header)', () => {
-		expect(providerScopeCounts(blocks, [], 'prod').get('payments-svc')).toEqual({
+		expect(providerScopeCounts(blocks, [], 'prod').get('payments-svc')).toMatchObject({
 			here: 0,
 			elsewhere: 1
 		});
+	});
+});
+
+describe('2. the Waiting-on card reads the same reconciled link as the tile', () => {
+	const blocks = [
+		{
+			providerName: 'payments-svc',
+			blocked: [
+				{ display: '4.43.0-43', envs: ['prod'] },
+				{ display: '4.44.0-44', envs: ['staging'] },
+				{ display: '4.45.0-45', envs: ['staging'] }
+			]
+		}
+	];
+	const link = (state: string, writer = 'contract') => [
+		{ writer, state, node: { name: 'payments-svc' }, held: ['4.43.0-43', '4.44.0-44', '4.45.0-45'] }
+	];
+	it('a blocked contract link marks the row held and names the build queued here, never "here"', () => {
+		expect(providerScopeCounts(blocks, [], 'prod', link('blocked')).get('payments-svc')).toEqual({
+			here: 0,
+			queued: 1,
+			elsewhere: 2,
+			held: true
+		});
+	});
+	it('a clear link leaves the row not held', () => {
+		expect(providerScopeCounts(blocks, [], 'prod', link('clear')).get('payments-svc')?.held).toBe(false);
+	});
+	it('promotion links never mark a dependency row held', () => {
+		expect(providerScopeCounts(blocks, [], 'prod', link('blocked', 'promotion')).get('payments-svc')?.held).toBe(false);
+	});
+});
+
+describe('3. the Waiting-on sentence', () => {
+	const sc = (here: number, queued: number, elsewhere: number) => ({ here, queued, elsewhere, held: true });
+	it('names the unit once and a single place without repeating the count', () => {
+		expect(providerScopeLabel(sc(0, 0, 1), 1)).toBe('holding 1 build elsewhere');
+		expect(providerScopeLabel(sc(2, 0, 0), 2)).toBe('holding 2 builds here');
+		expect(providerScopeLabel(sc(0, 1, 0), 1)).toBe('holding 1 build queued here');
+	});
+	it('splits several places after the total', () => {
+		expect(providerScopeLabel(sc(0, 1, 2), 3)).toBe('holding 3 builds · 1 queued here · 2 elsewhere');
+		expect(providerScopeLabel(sc(1, 0, 2), 3)).toBe('holding 3 builds · 1 here · 2 elsewhere');
+	});
+	it('falls back to the raw count for a held row with no counted build, and to not holding', () => {
+		expect(providerScopeLabel(sc(0, 0, 0), 2)).toBe('holding 2 builds');
+		expect(providerScopeLabel({ here: 0, queued: 0, elsewhere: 0, held: false }, 0)).toBe('not holding');
 	});
 });
