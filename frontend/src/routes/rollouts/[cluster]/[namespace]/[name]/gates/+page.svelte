@@ -686,10 +686,14 @@
 		// The unit is a BUILD, named once on the first count (the Held builds
 		// rollup beside it counts builds too): "1 build here · 2 elsewhere".
 		const builds = (n: number) => `${n} ${n === 1 ? 'build' : 'builds'}`;
-		if (scope.here > 0 && scope.elsewhere > 0)
-			return `holding ${builds(scope.here)} here · ${scope.elsewhere} elsewhere`;
-		if (scope.here > 0) return `holding ${builds(scope.here)} here`;
-		if (scope.elsewhere > 0) return `holding ${builds(scope.elsewhere)} elsewhere`;
+		const bits: string[] = [];
+		if (scope.here > 0) bits.push(`${scope.here} here`);
+		if (scope.queued > 0) bits.push(`${scope.queued} queued here`);
+		if (scope.elsewhere > 0) bits.push(`${scope.elsewhere} elsewhere`);
+		const total = builds(scope.here + scope.queued + scope.elsewhere);
+		if (bits.length === 1) return `holding ${total} ${bits[0]}`;
+		if (bits.length > 1) return `holding ${total} · ${bits.join(' · ')}`;
+		if (scope.held) return `holding ${total}`;
 		return 'not holding';
 	}
 
@@ -2216,7 +2220,7 @@
 													<div class="flex min-w-0 items-start gap-2.5">
 														<span class="mt-0.5"
 															><StatusMark
-																state={scope && scope.here > 0 ? 'held' : 'none'}
+																state={scope?.held ? 'held' : 'none'}
 															/></span
 														>
 														<div class="min-w-0">

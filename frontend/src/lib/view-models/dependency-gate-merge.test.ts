@@ -239,13 +239,13 @@ describe('1. the Waiting-on card counts builds refused here, not queued here', (
 		}
 	];
 	it('here is the one build refused here; the queued one is neither here nor elsewhere', () => {
-		expect(providerScopeCounts(blocks, hereHeld, 'prod').get('payments-svc')).toEqual({
+		expect(providerScopeCounts(blocks, hereHeld, 'prod').get('payments-svc')).toMatchObject({
 			here: 1,
 			elsewhere: 1
 		});
 	});
 	it('with nothing refused here the card says none here (agrees with the header)', () => {
-		expect(providerScopeCounts(blocks, [], 'prod').get('payments-svc')).toEqual({
+		expect(providerScopeCounts(blocks, [], 'prod').get('payments-svc')).toMatchObject({
 			here: 0,
 			elsewhere: 1
 		});
@@ -257,28 +257,27 @@ describe('2. the Waiting-on card reads the same reconciled link as the tile', ()
 		{
 			providerName: 'payments-svc',
 			blocked: [
+				{ display: '4.43.0-43', envs: ['prod'] },
 				{ display: '4.44.0-44', envs: ['staging'] },
 				{ display: '4.45.0-45', envs: ['staging'] }
 			]
 		}
 	];
-	const link = (state: string) => [
-		{ writer: 'contract', state, node: { name: 'payments-svc' }, held: ['4.44.0-44', '4.45.0-45'] }
+	const link = (state: string, writer = 'contract') => [
+		{ writer, state, node: { name: 'payments-svc' }, held: ['4.43.0-43', '4.44.0-44', '4.45.0-45'] }
 	];
-	it('a blocked contract link means held here, even before the build reaches this place', () => {
+	it('a blocked contract link marks the row held and names the build queued here, never "here"', () => {
 		expect(providerScopeCounts(blocks, [], 'prod', link('blocked')).get('payments-svc')).toEqual({
-			here: 2,
-			elsewhere: 0
-		});
-	});
-	it('a clear link leaves the build-by-build split', () => {
-		expect(providerScopeCounts(blocks, [], 'prod', link('clear')).get('payments-svc')).toEqual({
 			here: 0,
-			elsewhere: 2
+			queued: 1,
+			elsewhere: 2,
+			held: true
 		});
 	});
-	it('promotion links never count as a dependency hold', () => {
-		const l = [{ ...link('blocked')[0], writer: 'promotion' }];
-		expect(providerScopeCounts(blocks, [], 'prod', l).get('payments-svc')?.here).toBe(0);
+	it('a clear link leaves the row not held', () => {
+		expect(providerScopeCounts(blocks, [], 'prod', link('clear')).get('payments-svc')?.held).toBe(false);
+	});
+	it('promotion links never mark a dependency row held', () => {
+		expect(providerScopeCounts(blocks, [], 'prod', link('blocked', 'promotion')).get('payments-svc')?.held).toBe(false);
 	});
 });

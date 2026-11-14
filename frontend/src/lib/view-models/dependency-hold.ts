@@ -27,7 +27,14 @@ export function dependencyOnlyHold(
 	);
 }
 
-export type ProviderScope = { here: number; elsewhere: number };
+/**
+ * `queued`: builds this provider's blocked link refuses that have reached this
+ * environment's queue but are not yet refused HERE (they wait for an earlier
+ * stage). The Held builds card lists them under "Waiting for ...", so the
+ * Waiting-on card names them as queued, never as "held here". A blocked link
+ * (`held`) is what marks the row held, as on the tile.
+ */
+export type ProviderScope = { here: number; elsewhere: number; queued: number; held: boolean };
 
 /**
  * "Holding N here · M elsewhere" for each provider of the Waiting-on card.
@@ -65,13 +72,18 @@ export function providerScopeCounts(
 	}
 	const out = new Map<string, ProviderScope>();
 	for (const b of blocks) {
-		const hereBuilds = new Set<string>(linkHeld.get(b.providerName) ?? []);
+		const hereBuilds = new Set<string>();
 		for (const h of reallyHeldHere) {
 			const cs = h.contracts ?? (h.contract ? [h.contract] : []);
 			if (cs.some((c) => c.provider === b.providerName)) hereBuilds.add(h.build);
 		}
+		const linked = linkHeld.get(b.providerName);
 		out.set(b.providerName, {
+			held: hereBuilds.size > 0 || (linked?.size ?? 0) > 0,
 			here: b.blocked.filter((w) => hereBuilds.has(w.display)).length,
+			queued: b.blocked.filter(
+				(w) => !hereBuilds.has(w.display) && w.envs.includes(currentEnvKey) && linked?.has(w.display)
+			).length,
 			elsewhere: b.blocked.filter(
 				(w) => !hereBuilds.has(w.display) && !w.envs.includes(currentEnvKey)
 			).length
