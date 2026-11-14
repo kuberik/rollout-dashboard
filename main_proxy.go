@@ -65,6 +65,10 @@ func proxyToRemote(c *gin.Context, spokeBase string) {
 		target += "?" + encoded
 	}
 
+	if !spokeURLAllowed(spokeBase) {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "spoke not allowlisted", "details": "set " + spokeAllowlistEnv})
+		return
+	}
 	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, target, c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "spoke proxy: build request", "details": err.Error()})
@@ -82,12 +86,20 @@ func proxyToRemote(c *gin.Context, spokeBase string) {
 	// transport negotiates gzip with the spoke itself and transparently
 	// decompresses, so the hub's middleware compresses exactly once.
 	for k, vs := range c.Request.Header {
-		if hopByHopHeaders[strings.ToLower(k)] || strings.EqualFold(k, "Accept-Encoding") {
+		// Ambient credentials are never copied: Cookie is rebuilt below with
+		// only gh_token, Authorization is set from the verified token.
+		if hopByHopHeaders[strings.ToLower(k)] || strings.EqualFold(k, "Accept-Encoding") ||
+			strings.EqualFold(k, "Cookie") || strings.EqualFold(k, "Authorization") {
 			continue
 		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
+	}
+	// The spoke's GitHub-backed routes read the gh_token cookie; forward that
+	// one cookie (we only get here for allowlisted spokes) and nothing else.
+	if gh := readCookie(c, githubTokenCookie); gh != "" {
+		req.AddCookie(&http.Cookie{Name: githubTokenCookie, Value: gh})
 	}
 	// Ensure Bearer token is set from context — the spoke validates the same OIDC token.
 	if token := auth.GetTokenFromContext(c); token != "" {

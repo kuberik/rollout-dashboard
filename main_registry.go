@@ -31,7 +31,8 @@ var registry = &clusterRegistry{nameToURL: map[string]string{}}
 func (r *clusterRegistry) put(clusters []ClusterInfo) {
 	m := make(map[string]string, len(clusters))
 	for _, ci := range clusters {
-		if ci.Name != "" && ci.URL != "" {
+		// Choke point: nothing unallowlisted may be cached, whoever calls put.
+		if ci.Name != "" && ci.URL != "" && spokeURLAllowed(ci.URL) {
 			m[ci.Name] = dashboardBaseURL(ci.URL)
 		}
 	}
