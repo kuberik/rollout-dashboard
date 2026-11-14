@@ -81,6 +81,7 @@ HOSTNAME_PREFIX="kuberik" \
 CLUSTER_DISPLAY="prod" \
 APP_ENVS="prod" \
 INSECURE_SKIP_TLS_VERIFY="true" \
+SPOKE_URL_ALLOWLIST="https://${SPOKE_HOSTNAME}" \
 SKIP_PROXY="true" \
   "${SCRIPT_DIR}/setup-dev-environment.sh"
 
