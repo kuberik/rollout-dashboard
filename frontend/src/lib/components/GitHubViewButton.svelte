@@ -14,6 +14,7 @@
 	 */
 	import { gitRef } from '$lib/git-ref';
 	import { sourceTreeUrl } from '$lib/source-url';
+	import { openExternal } from '$lib/open-external';
 	import { GithubSolid } from 'flowbite-svelte-icons';
 
 	export let sourceUrl: string;
@@ -57,7 +58,7 @@
 		// `mode="commit"` swaps the tree segment for the commit page.
 		const tree = sourceTreeUrl(sourceUrl, gitRef(revision, version));
 		const url = tree && segment === 'commit' ? tree.replace(/\/tree\/([^/]+)$/, '/commit/$1') : tree;
-		if (url) window.open(url, '_blank');
+		openExternal(url);
 	}
 </script>
 

@@ -22,6 +22,7 @@
 	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
 	import { sourceTreeUrl } from '$lib/source-url';
+	import { openExternal } from '$lib/open-external';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { gitRef } from '$lib/git-ref';
@@ -4537,7 +4538,7 @@
 																			getDisplayVersion(releaseCandidate),
 																			releaseCandidate.revision
 																		);
-																		window.open(url, '_blank');
+																		openExternal(url);
 																	}}
 																>
 																	<GithubSolid />{#if nbOpen[version]}GitHub{/if}
@@ -4672,12 +4673,11 @@
 																	title={`View ${getDisplayVersion(latestEntry.version)} on GitHub`}
 																	aria-label={`View ${getDisplayVersion(latestEntry.version)} on GitHub`}
 																	onclick={() => {
-																		window.open(
+																		openExternal(
 																			getGitHubUrl(
 																				getDisplayVersion(latestEntry.version),
 																				latestEntry.version.revision
-																			),
-																			'_blank'
+																			)
 																		);
 																	}}
 																>

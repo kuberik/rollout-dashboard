@@ -9,10 +9,11 @@
  * for everything else, so `<a href={safeHref(u)}>` renders with no href
  * (Svelte omits an undefined attribute) and the text stays plain.
  *
- * Parsing is done by the WHATWG URL parser, which strips the leading C0
- * control/space characters and the tab/newline characters inside the scheme
- * exactly as a browser does, so `"\x01 JaVa\nScRiPt:..."` is judged by the same
- * rule the browser will apply.
+ * This is a hand-written check, not the WHATWG URL parser. It strips leading
+ * and trailing C0 controls and spaces, drops tab/CR/LF anywhere (as browsers do
+ * before parsing), takes the scheme to be the text before the first `:` when
+ * that `:` comes before any `/`, `?` or `#`, and allows only `http`/`https`
+ * (case-insensitive) or no scheme at all.
  */
 export function safeHref(url: string | null | undefined): string | undefined {
 	if (typeof url !== 'string') return undefined;
