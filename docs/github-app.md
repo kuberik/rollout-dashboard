@@ -27,7 +27,7 @@ that owns your source repos, or on your user).
 | Expire user authorization tokens | **unchecked** — the dashboard stores a non-expiring user token in an httpOnly cookie and does not refresh |
 | Request user authorization (OAuth) during installation | optional |
 | Webhook | **Active unchecked** — the dashboard receives no webhooks |
-| Repository permissions | **Contents: Read-only** (commit compare), **Metadata: Read-only** (added automatically) |
+| Repository permissions | **Contents: Read-only** (commits and compare), **Pull requests: Read-only** (the Changes pages and the pull requests behind a commit), **Checks: Read-only** (the check-run summary on a pull request; without it the checks show as none), **Metadata: Read-only** (added automatically) |
 | Where can this GitHub App be installed? | *Only on this account* is enough for one org |
 
 `<hub-host>` is the host the browser loads the UI from. In a multi-cluster setup only the
