@@ -194,11 +194,11 @@ describe('2. "Holding N here" counts builds refused HERE only', () => {
 		expect(r.upstream[0].held).toEqual(['4.43.0-43']);
 		expect(r.holding).toBe(1);
 	});
-	it('a link whose only builds have not reached here reads clear, not blocked', () => {
+	it('a contract link whose only refused builds have not reached here stays blocked: the dependency refuses them regardless of position', () => {
 		const only44 = { ...bd, held: bd.held.filter((h) => h.build === '4.44.0-44') };
 		const r = reconcileNeighbourhoodHolds([link], only44, { heldHere: () => false });
-		expect(r.upstream[0]).toMatchObject({ state: 'clear', held: [] });
-		expect(r.holding).toBe(0);
+		expect(r.upstream[0]).toMatchObject({ state: 'blocked', held: ['4.44.0-44'] });
+		expect(r.holding).toBe(1);
 	});
 });
 
