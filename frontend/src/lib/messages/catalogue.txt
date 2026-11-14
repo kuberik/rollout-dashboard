@@ -2123,6 +2123,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Learn about
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Needs … …
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	No gates on this rollout
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	No other service waits on this app.
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	none held here
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	none held now
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	not holding
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Nothing is holding this rollout. … … pass.

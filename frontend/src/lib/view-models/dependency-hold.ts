@@ -46,19 +46,30 @@ export function providerScopeCounts(
 		contract?: { provider: string };
 		contracts?: readonly { provider: string }[];
 	}[],
-	currentEnvKey: string
+	currentEnvKey: string,
+	/**
+	 * The RECONCILED contract links (`reconcileNeighbourhoodHolds().upstream`).
+	 * A blocked contract link is the tile's and the header's "holds here": the
+	 * dependency refuses those builds whether or not an earlier stage has passed
+	 * them. The card must say the same, so when a provider's link is blocked its
+	 * refused builds count HERE even if none has reached this environment yet.
+	 */
+	links: readonly { writer?: string; state: string; node: { name: string }; held: readonly string[] }[] = []
 ): Map<string, ProviderScope> {
+	const linkHeld = new Map<string, Set<string>>();
+	for (const l of links) {
+		if (l.writer !== 'contract' || l.state !== 'blocked') continue;
+		const set = linkHeld.get(l.node.name) ?? new Set<string>();
+		for (const b of l.held) set.add(b);
+		linkHeld.set(l.node.name, set);
+	}
 	const out = new Map<string, ProviderScope>();
 	for (const b of blocks) {
-		const hereBuilds = new Set(
-			reallyHeldHere
-				.filter((h) =>
-					(h.contracts ?? (h.contract ? [h.contract] : [])).some(
-						(c) => c.provider === b.providerName
-					)
-				)
-				.map((h) => h.build)
-		);
+		const hereBuilds = new Set<string>(linkHeld.get(b.providerName) ?? []);
+		for (const h of reallyHeldHere) {
+			const cs = h.contracts ?? (h.contract ? [h.contract] : []);
+			if (cs.some((c) => c.provider === b.providerName)) hereBuilds.add(h.build);
+		}
 		out.set(b.providerName, {
 			here: b.blocked.filter((w) => hereBuilds.has(w.display)).length,
 			elsewhere: b.blocked.filter(

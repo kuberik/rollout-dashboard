@@ -1163,12 +1163,6 @@
 	const skippedHere = $derived(heldSplit.skipped.map((x) => x.entry));
 	const skippedStage = $derived(heldSplit.skipped[0]?.stage ?? null);
 	const heldHereCount = $derived(reallyHeldHere.length);
-	/** Per provider: builds refused HERE vs held only elsewhere (`providerScopeCounts`). */
-	const providerScope = $derived(providerScopeCounts(blocks, reallyHeldHere, currentEnvKey));
-	/** The tile only needs the "elsewhere" half. */
-	const elsewhereCounts = $derived(
-		new Map([...providerScope.entries()].map(([name, s]) => [name, s.elsewhere]))
-	);
 	const heldOtherCount = $derived(heldRows.filter((r) => !r.envs.includes(currentEnvKey)).length);
 	/**
 	 * ⭐ THE "Held builds" CARD'S OWN TWO FACTS, NEVER ONE BLENDED LIST
@@ -1209,18 +1203,21 @@
 		heldHereCount === 0 && waitsForFact ? waitsForSentence(waitsForFact) : null
 	);
 	/** The card's own rollup — THIS rollout's count first, per the spec. */
-	const heldBuildsVerdict = $derived.by(() => {
+	function heldBuildsRollup(withWait: boolean): string {
 		const parts: string[] = [];
 		// ⭐ qa11b, item 4: "held", never "wait" — a REALLY held build is
 		// refused HERE, not merely queued. "wait"/"waits" stays for
 		// `focusWaitsFor`'s own chain sentence (the `else if` below).
 		if (heldHereCount > 0) parts.push(`${heldHereCount} held here`);
-		else if (focusWaitsFor) parts.push(focusWaitsFor);
+		else if (withWait && focusWaitsFor) parts.push(focusWaitsFor);
 		if (heldOtherCount > 0) parts.push(`${heldOtherCount} held elsewhere`);
-		if (parts.length === 0) parts.push('none held now');
+		if (parts.length === 0) parts.push(!withWait && focusWaitsFor ? 'none held here' : 'none held now');
 		if (releasedShownCount > 0) parts.push(`${releasedShownCount} released`);
 		return parts.join(' · ');
-	});
+	}
+	const heldBuildsVerdict = $derived(heldBuildsRollup(true));
+	/** Below the card's 560px: the counts alone. The "Waits for wave …" sentence is the group heading right under the header, so on a phone it is not said twice and the counts are never clipped. */
+	const heldBuildsVerdictCompact = $derived(heldBuildsRollup(false));
 
 	/** Gate names already drawn as EDGES into the focus — never boxed twice. */
 	const edgeGates = $derived(
@@ -1286,6 +1283,12 @@
 		reconcileNeighbourhoodHolds(hood.upstream, holdBreakdown, {
 			heldHere: (h) => reallyHeldHere.some((r) => r.build === h.build)
 		})
+	);
+	/** Per provider: builds refused HERE vs held only elsewhere (`providerScopeCounts`). */
+	const providerScope = $derived(providerScopeCounts(blocks, reallyHeldHere, currentEnvKey, reconciled.upstream));
+	/** The tile only needs the "elsewhere" half. */
+	const elsewhereCounts = $derived(
+		new Map([...providerScope.entries()].map(([name, s]) => [name, s.elsewhere]))
 	);
 	/**
 	 * The FULL "N of M holding" rollup: `reconciled.holding` (upstream only —
@@ -2054,6 +2057,7 @@
 										icon={HeldGlyph}
 										title="Held builds"
 										verdict={heldBuildsVerdict}
+										verdictCompact={heldBuildsVerdictCompact}
 										verdictTone={heldHereCount > 0 || heldOtherCount > 0 ? 'held' : 'neutral'}
 										verdictTitle="Builds of this app that are currently held — THIS rollout's own count first, then the rest of the app"
 										padded={false}

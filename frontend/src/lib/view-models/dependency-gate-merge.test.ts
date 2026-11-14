@@ -251,3 +251,34 @@ describe('1. the Waiting-on card counts builds refused here, not queued here', (
 		});
 	});
 });
+
+describe('2. the Waiting-on card reads the same reconciled link as the tile', () => {
+	const blocks = [
+		{
+			providerName: 'payments-svc',
+			blocked: [
+				{ display: '4.44.0-44', envs: ['staging'] },
+				{ display: '4.45.0-45', envs: ['staging'] }
+			]
+		}
+	];
+	const link = (state: string) => [
+		{ writer: 'contract', state, node: { name: 'payments-svc' }, held: ['4.44.0-44', '4.45.0-45'] }
+	];
+	it('a blocked contract link means held here, even before the build reaches this place', () => {
+		expect(providerScopeCounts(blocks, [], 'prod', link('blocked')).get('payments-svc')).toEqual({
+			here: 2,
+			elsewhere: 0
+		});
+	});
+	it('a clear link leaves the build-by-build split', () => {
+		expect(providerScopeCounts(blocks, [], 'prod', link('clear')).get('payments-svc')).toEqual({
+			here: 0,
+			elsewhere: 2
+		});
+	});
+	it('promotion links never count as a dependency hold', () => {
+		const l = [{ ...link('blocked')[0], writer: 'promotion' }];
+		expect(providerScopeCounts(blocks, [], 'prod', l).get('payments-svc')?.here).toBe(0);
+	});
+});
