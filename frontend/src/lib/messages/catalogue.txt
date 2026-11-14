@@ -2126,7 +2126,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	No gates on
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	No other service waits on this app.
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	none held here
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	none held now
-routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Nothing is holding this rollout. … … pass.
+routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	text	Nothing is holding this rollout. … … .
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	Nothing promotes itself here until … clears this build.
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	code	Nothing promotes itself here until … deploys this build.
 routes/rollouts/[cluster]/[namespace]/[name]/gates/+page.svelte	title	Open … and see this same relation from its side

@@ -1978,7 +1978,7 @@
 								{:else}
 									<p class="t-body text-fg-muted">
 										Nothing is holding this rollout. {realGateTotal}
-										{realGateTotal === 1 ? 'gate' : 'gates'} pass.
+										{realGateTotal === 1 ? 'gate passes' : 'gates pass'}.
 									</p>
 								{/if}
 							</div>
