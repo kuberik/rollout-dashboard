@@ -176,7 +176,7 @@
 					{#if !inRail}<span class="t-code-sm shrink-0 text-fg" data-release-build>{release.build}</span>{#if release.title}<span class="stg-rel-title t-meta min-w-0 truncate text-fg-muted" title={release.title} data-release-title>{release.title}</span>{/if}{/if}
 					{#if release.author}<span class="t-meta flex items-center gap-2 text-fg-muted {inRail ? 'min-w-0' : 'shrink-0'}"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate {inRail ? '' : 'stg-rel-name'}" data-release-author>{release.author}</span></span>{/if}
 					{#if !inRail && release.title}<span class="stg-rel-br" aria-hidden="true"></span>{/if}{#if release.built}<span class="stg-rel-age t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
-					{#if release.href}<a href={toHref(release.href)} class="nav-link -my-2 ml-auto shrink-0 max-sm:-my-3 max-sm:min-h-11" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
+					{#if release.href}<a href={toHref(release.href)} class="stg-rel-view nav-link -my-2 ml-auto shrink-0 max-sm:-my-3 max-sm:min-h-11" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
 				</div>
 			</div>
 		{/if}
@@ -254,6 +254,8 @@
 		.stg-rel-title { order: 10; flex: 1 1 0; margin-top: 4px; }
 		.stg-rel-br + .stg-rel-age { order: 11; margin-top: 4px; margin-left: auto; }
 		.stg-rel-name { display: none; }
+		/* the link's tap box overhangs its line (-my-2 / -my-3 on a phone): on the two-line form it overhangs 4px each way (symmetric, so it stays centred on the build) and stops at line 2's top: a tap on the title or the age never opens the change */
+		.stg-rel-br ~ .stg-rel-view { margin-block: -4px; }
 	}
 	/* graph group: start-aligned at the card padding; centred only past 2300 where the 280px column cap leaves space (the Gates canvas rule for very wide) */
 	.stg-graph { justify-content: start; }

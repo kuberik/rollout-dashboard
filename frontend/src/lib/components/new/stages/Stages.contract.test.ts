@@ -17,7 +17,10 @@ describe('Progress release line degrades by width, never to a lone "#"', () => {
 	it('the break exists only when the line names a titled release itself', () => {
 		expect(src).toContain('{#if !inRail && release.title}<span class="stg-rel-br" aria-hidden="true"></span>{/if}');
 	});
+	it('on the two-line form the View change tap box stops at line 2 (no tap on the age opens the change)', () => {
+		expect(src).toContain('.stg-rel-br ~ .stg-rel-view { margin-block: -4px; }');
+	});
 	it('View change never shrinks', () => {
-		expect(src).toMatch(/class="nav-link -my-2 ml-auto shrink-0[^"]*" data-release-change/);
+		expect(src).toMatch(/class="stg-rel-view nav-link -my-2 ml-auto shrink-0[^"]*" data-release-change/);
 	});
 });
