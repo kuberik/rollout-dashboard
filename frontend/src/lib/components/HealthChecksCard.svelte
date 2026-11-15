@@ -1,7 +1,6 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import Chip from './Chip.svelte';
 	import { HeartOutline } from 'flowbite-svelte-icons';
 	import { untrack } from 'svelte';
 	import type { HealthCheck } from '../../types';
@@ -259,11 +258,7 @@
 	apart the way the capsule and the bare word already did once.
 -->
 {#snippet stateChip(word: keyof typeof CHECK_TONE, title: string | undefined)}
-	{#if word === 'pending'}
-		<Chip role="checking" label="pending" wide class="shrink-0" {title} />
-	{:else}
-		<span class="chip t-label chip-wide shrink-0 {CHECK_TONE[word]}" {title}>{word}</span>
-	{/if}
+	<span class="chip t-label chip-wide shrink-0 {CHECK_TONE[word]}" {title}>{word}</span>
 {/snippet}
 
 {#if loadError}

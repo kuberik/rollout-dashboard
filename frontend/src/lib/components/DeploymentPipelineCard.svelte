@@ -1,7 +1,6 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import Chip from './Chip.svelte';
 	import Leaving from './Leaving.svelte';
 	import StepDisc from './StepDisc.svelte';
 	import { bakeElapsedMs, bakePaused } from '$lib/bake-hold';
@@ -822,8 +821,8 @@
 			     and title are already red; a `FAILED` chip beside them was a
 			     third mark. Every other state keeps its chip. -->
 			{#if status === 'pending' && extra === 'hc'}
-				<!-- the same state as the Health checks card's PENDING rows: one chip -->
-				<Chip role="checking" label={label.toLowerCase()} wide class="flex-shrink-0" />
+				<!-- the same state as the Health checks card's pending rows: the same chip atom, the same progress ink -->
+				<span class="chip t-label chip-wide flex-shrink-0 {pillClasses('paused')}">{label}</span>
 			{:else if status === 'pending'}
 				<!-- Sub-rows: the detail header above already carries the stage's
 				     one chip; a running or done sub-row is its glyph + ink only,

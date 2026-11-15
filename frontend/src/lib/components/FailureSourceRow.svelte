@@ -29,10 +29,10 @@
 	{#if row.figure}
 		<span class="col-start-2 whitespace-nowrap" data-testid="failure-figure">
 			<b class="t-ui-sm font-semibold tabular-nums {row.state === 'recovered' ? 'text-fg-muted' : 'text-fg'}">{row.figure.value}</b>
-			{#if row.figure.note}<span class="ev-meta t-meta text-fg-muted">&nbsp;{row.figure.note}</span>{/if}
+			{#if row.figure.note}<span class="t-meta text-fg-muted">&nbsp;{row.figure.note}</span>{/if}
 		</span>
 	{/if}
 	{#if row.message}
-		<span class="ev-meta col-start-2 t-meta text-fg-muted [overflow-wrap:anywhere]">{row.message}</span>
+		<span class="col-start-2 t-meta text-fg-muted [overflow-wrap:anywhere]">{row.message}</span>
 	{/if}
 </li>
