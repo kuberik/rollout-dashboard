@@ -2001,7 +2001,7 @@
 						behindLabel={r.verdict?.label}
 					/>
 				{:else}
-					<StatusMark state={r.nodeState ?? 'newest'} label={r.stateWord || bakeWord(r.bakeStatus)} />
+					<StatusMark state={r.nodeState ?? 'newest'} label={r.stateWord || (r.nodeState === 'paused' ? 'paused' : bakeWord(r.bakeStatus))} />
 				{/if}
 			</span>
 		{:else}
