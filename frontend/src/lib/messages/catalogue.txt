@@ -1147,6 +1147,7 @@ lib/components/SkipRuleModal.svelte	text	this rollout
 lib/components/SkipRuleModal.svelte	text	to confirm
 lib/components/SourceViewer.svelte	code	Failed to fetch files
 lib/components/SourceViewer.svelte	code	Failed to fetch files: …
+lib/components/SourceViewer.svelte	text	No manifest was recorded for this build.
 lib/components/SourceViewer.svelte	text	Source files for
 lib/components/SourceViewer.svelte	text	View source
 lib/components/StatementBanner.svelte	code	Open rollout
