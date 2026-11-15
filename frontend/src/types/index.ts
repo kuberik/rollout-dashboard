@@ -27,6 +27,8 @@ export type HealthObservation = {
 	window?: string;
 	healthy?: boolean;
 	observedTime?: string;
+	/** PROPOSED, mock-only until the controllers write it (health-conditions take C): one line about the thing observed, verbatim from the provider (a resource's status message, an alert's identifying labels, a monitor's alerting groups). Never parsed. */
+	message?: string;
 };
 type HealthCheckBase = components['schemas']['HealthCheck'];
 export type HealthCheck = Omit<HealthCheckBase, 'status'> & { status?: NonNullable<HealthCheckBase['status']> & { observations?: HealthObservation[] } };

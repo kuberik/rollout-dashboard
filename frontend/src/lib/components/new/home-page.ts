@@ -78,6 +78,10 @@ export function askOf(r: TRow, hs: HomeState, o: { noTier?: boolean } = {}): Ask
 		tier: o.noTier ? '' : r.tier, place: (/regions?$/.test(chipPlace(r) ?? '') ? '' : chipPlace(r)) ?? '',
 		check: failed ? { name: r.failure?.check ?? null, message: r.failure?.message ?? r.failure?.line ?? '' } : null,
 		observations: failed ? r.failure?.observations ?? null : null,
+		cls: failed ? r.failure?.cls : undefined,
+		note: failed ? r.failure?.note ?? null : null,
+		recovered: failed ? !!r.failure?.recovered : false,
+		recoveredAt: failed ? r.failure?.recoveredAt ?? null : null,
 		regions: !failed && r.tier === 'prod' ? regionStates(r.app, hs) : null,
 		gateSentence: failed ? null : gateName(r, hs)?.sentence ?? null,
 		title: id.title ?? r.app
@@ -108,12 +112,15 @@ export function foldPinIntoFleet(by: Map<string, FleetTrouble & { since: string 
 export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	return inScope(() => homePageRaw(hs, starred));
 }
+/** a live failure, then a recovered one (its checks are OK again), then the approvals; the sort is stable */
+const askRank = (r: TRow) => (r.group !== 'failed' ? 2 : r.failure?.recovered ? 1 : 0);
 function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	const R = rollouts(hs, starred);
 	/* failures first (prod before the rest: the roster's urgency order already does it), then approvals; the sort is stable */
-	const rows = inbox(hs, starred).items.map((i) => i.row).sort((a, b) => Number(b.group === 'failed') - Number(a.group === 'failed'));
+	const rows = inbox(hs, starred).items.map((i) => i.row).sort((a, b) => askRank(a) - askRank(b));
 	const asks = rows.map((r) => askOf(r, hs));
 	const failing = asks.filter((a) => a.failed).length;
+	const recovered = asks.filter((a) => a.failed && !!a.row.failure?.recovered).length;
 	const toApprove = asks.length - failing;
 	const askKeys = new Set(rows.map((r) => r.key));
 
@@ -175,7 +182,7 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 
 	return {
 		asks,
-		asksRollup: [...(failing ? [{ text: `${failing} failing`, ink: 'danger' as const }] : []), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])],
+		asksRollup: [...(failing - recovered ? [{ text: `${failing - recovered} failing`, ink: 'danger' as const }] : []), ...(recovered ? [`${recovered} recovered`] : []), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])],
 		repos, landedToday,
 		fleet: { trouble, deploys },
 		counts: { failing, toApprove },

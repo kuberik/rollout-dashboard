@@ -20,9 +20,15 @@ export function markOf(row: TRow): MarkState {
 	return row.group === 'failed' ? 'failed' : row.group === 'approval' ? (row.stillChecking ? 'checking' : 'approval') : row.group === 'held' ? 'held' : row.state === 'checking' ? 'checking' : 'deploying';
 }
 
+/** failing rows in the order a person should look: a LIVE failure first, a recovered one (its checks are OK again, a retry is reasonable) after every live one; within each, the `lead` row, then the longest-failing. Never reorders anything else. */
+export function byFailRank<T extends TRow>(rows: T[]): T[] {
+	const t = (r: TRow) => Date.parse(r.since ?? '') || Infinity;
+	return [...rows].sort((a, b) => Number(!!a.failure?.recovered) - Number(!!b.failure?.recovered) || Number(!!b.lead) - Number(!!a.lead) || t(a) - t(b));
+}
+
 /** the Runway's subject: the lead failure; else (calm / quiet) the newest place that is moving; else null */
 export function runwayRow(rows: TRow[]): TRow | null {
-	const failing = rows.find((r) => r.group === 'failed' && r.lead) ?? rows.find((r) => r.group === 'failed');
+	const failing = byFailRank(rows.filter((r) => r.group === 'failed'))[0];
 	if (failing) return failing;
 	return [...rows].filter((r) => r.group === 'moving').sort((a, b) => newestFirst(a.since, b.since))[0] ?? null;
 }

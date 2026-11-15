@@ -81,7 +81,7 @@ import {
 	mkHwManagedResourcesFor,
 	mkHwEnvironment
 } from './mock-promote';
-import { extraRollouts } from './extra-fixtures';
+import { extraRollouts, isKeptFailed, restampExtra } from './extra-fixtures';
 import { resetDepsStory, runDepsStep, replaceHwvEnvironments, type DepsStep } from './deps-story';
 import { resetWavesStory, setWavesStep, wavesPlaces, type WavesStep } from './waves-story';
 import type { MockSend } from './respond';
@@ -714,6 +714,7 @@ function healRolloutFailures(rollout: RolloutLike | null | undefined): void {
 		?.metadata;
 	if (scenario === 'wide' && meta && `${meta.namespace}/${meta.name}` === TM_ALWAYS_FAILED_KEY)
 		return;
+	if (isKeptFailed(meta?.namespace, meta?.name)) return; // opt-in health-failures fixtures are the failure
 	const head = rollout?.status?.history?.[0];
 	if (head?.bakeStatus === 'Failed') {
 		head.bakeStatus = 'Succeeded';
@@ -1045,6 +1046,7 @@ export function getScenarioFleetRollouts(): unknown[] {
 }
 export function getScenarioDepRollouts(): unknown[] {
 	for (const r of scenarioDepRollouts) {
+		restampExtra(r as Record<string, unknown>);
 		freshenInFlight(r as RolloutLike);
 		freshenCandidateAge(r as RolloutLike);
 	}

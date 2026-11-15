@@ -41,7 +41,8 @@
 		el.scrollIntoView({ block: 'start' });
 	});
 	const attRollup = $derived([
-		...(P.failing ? [{ text: `${P.failing} failing`, ink: 'danger' as const }] : []),
+		...(P.failing - P.recovered ? [{ text: `${P.failing - P.recovered} failing`, ink: 'danger' as const }] : []),
+		...(P.recovered ? [`${P.recovered} recovered`] : []),
 		...(P.toApprove ? [{ text: `${P.toApprove} to approve`, ink: 'held' as const }] : [])
 	]);
 	const allRollup = $derived([

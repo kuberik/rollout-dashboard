@@ -13,11 +13,12 @@ const props = (observations: unknown[]) => ({
 }) as never;
 
 describe('rollout detail failure banner', () => {
-	test('leads with the measured figure and keeps the check name + budget', () => {
+	test('leads with the measured figure; the name is the caption, the line under it is the budget', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: props([obs]) } });
 		expect(container.querySelector('[data-observation-figure]')?.textContent).toContain('4.2%');
 		expect(container.textContent).toContain('over a 1% budget');
-		expect(container.textContent).toContain('error-rate: over a 1% budget');
+		expect(container.querySelector('[data-observation-figure]')?.textContent).toContain('error rate');
+		expect(container.textContent).not.toContain('error rate: over');
 	});
 	test('no observations: no figure, the sentence is unchanged', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: props([]) } });

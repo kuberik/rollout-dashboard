@@ -16,7 +16,7 @@
 	let { fig, class: className = '' }: { fig: FigureLead; class?: string } = $props();
 </script>
 
-<div class="flex min-w-0 items-baseline gap-2 whitespace-nowrap {className}" data-lead={fig.kind} data-observation-figure>
-	<span class="text-2xl font-semibold leading-8 tabular-nums tracking-[-0.025em] text-fg">{fig.value}{#if fig.unit}<small class="ml-0.5 whitespace-pre text-base font-normal text-fg-muted">{fig.unit.startsWith('of ') ? ' ' : ''}{fig.unit}</small>{/if}</span>
-	<span class="t-body min-w-0 truncate text-fg-muted">{fig.label}</span>
+<div class="flex min-w-0 flex-wrap items-baseline gap-x-2 {className}" data-lead={fig.kind} data-observation-figure>
+	<span class="whitespace-nowrap text-2xl font-semibold leading-8 tabular-nums tracking-[-0.025em] text-fg">{fig.value}{#if fig.unit}<small class="ml-0.5 whitespace-pre text-base tracking-normal font-normal text-fg-muted">{fig.unit.startsWith('of ') ? ' ' : ''}{fig.unit}</small>{/if}</span>
+	<span class="t-body min-w-0 text-fg-muted [overflow-wrap:anywhere]">{fig.label}</span>
 </div>

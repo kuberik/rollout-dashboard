@@ -39,7 +39,7 @@
 		extractDatadogInfoFromContainers,
 		formatDate } from '$lib/utils';
 	import { now } from '$lib/stores/time';
-	import { HEALTH_CHECKS_UNAVAILABLE } from '$lib/view-models/health-witness';
+	import { HEALTH_CHECKS_UNAVAILABLE, classifyCheck, deployWindowStart } from '$lib/view-models/health-witness';
 	import { stageAdvance, type StageAdvance } from '$lib/view-models/stage-advance';
 	import { stageWeight, stageSplitText, type StageWeight } from '$lib/view-models/stage-weight';
 	import { href } from '$lib/paths';
@@ -183,6 +183,11 @@
 			.map((c) => c?.name ?? '')
 			.filter(Boolean)
 	);
+	/* take C rule 9: when the health card draws observation rows the grey message box would say the same fact twice; a failed bake whose checks are all Healthy again but errored in the window reads Recovered */
+	const hcShowsRows = $derived(healthChecks.some((hc) => (hc.status?.observations ?? []).some((o) => o.healthy !== true) && hc.status?.status !== 'Healthy'));
+	const hcRecoveredFailure = $derived(healthChecks.some((hc) => hc.status?.status === 'Healthy' && !!hc.status?.lastErrorTime));
+	const hcCardShowsEvidence = $derived(hcShowsRows || hcRecoveredFailure);
+	const anyRecovered = $derived(healthChecks.some((hc) => classifyCheck(hc, deployWindowStart(rollout)) === 'recovered'));
 	let hasHCSelector = $derived(Boolean(rollout.spec?.healthCheckSelector));
 	let allHCHealthy = $derived(
 		healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')
@@ -570,6 +575,8 @@
 			// Once any bake activity has started, report checks as healthy as soon
 			// as they actually are — don't keep showing "Waiting" just because the
 			// bake hasn't transitioned to InProgress yet.
+			/* a check that failed during this bake and is Healthy again reads "Recovered", not "Healthy" */
+			if (allHCHealthy && anyRecovered) return { status: 'done', label: 'Recovered' };
 			if (
 				allHCHealthy &&
 				(bakeIsDeploying || bakeIsInProgress || bakeIsSucceeded || bakeIsFailed)
@@ -823,7 +830,7 @@
 			{/if}
 		</div>
 
-		{#if extra === 'hc' && status === 'failed' && recordedFailedCheckNames.length > 0}
+		{#if extra === 'hc' && status === 'failed' && !hcCardShowsEvidence && recordedFailedCheckNames.length > 0}
 			<!-- The history's own snapshot names what failed, so it survives an unreadable live list. -->
 			<p class="t-meta mt-1 pl-5 text-fg-subtle">{recordedFailedCheckNames.join(', ')}</p>
 		{/if}
@@ -1235,7 +1242,7 @@
 			     cluster's text, not ours); it is shown only when it CARRIES
 			     something — a failure, a cancellation, a stall. -->
 			<!-- Leaves with its last words rather than vanishing — see `Leaving`. -->
-			<Leaving value={!bakeIsSucceeded && latestEntry.bakeStatusMessage}>
+			<Leaving value={!bakeIsSucceeded && !hcCardShowsEvidence && latestEntry.bakeStatusMessage}>
 				{#snippet children(message)}
 					<div class="rounded bg-subtle px-3 py-2">
 						<p class="t-body text-fg-muted">
@@ -1308,7 +1315,7 @@
 	class="dpc-cq overflow-hidden rounded-md border border-line bg-surface"
 	use:smoothHeight
 >
-	<div use:steadyHeight={deployKey(latestEntry, `${cluster ?? ""}/${namespace}/${name}`)}>
+	<div use:steadyHeight={deployKey(latestEntry, `${cluster ?? ""}/${namespace}/${name}`) + (hcCardShowsEvidence ? ':evidence' : '')}>
 	<!--
 		⭐ `min-h-[47px]`, MATCHING `Card`'S OWN FLOOR EXACTLY. (defect #4,
 		design re-check) This header hand-rolls its own bar rather than using

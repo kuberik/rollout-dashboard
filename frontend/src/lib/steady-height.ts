@@ -9,6 +9,12 @@ export function steadyHeight(node: HTMLElement, key: string) {
 	let state: SteadyState = { key, max: 0 };
 	let width = node.offsetWidth;
 	const apply = () => {
+		/* below lg (1024) the card sizes to its content: phones have no side-by-side neighbour to keep still */
+		if (window.innerWidth < 1024) {
+			state = { key: state.key, max: 0 };
+			if (node.style.minHeight !== '') node.style.minHeight = '';
+			return;
+		}
 		/* a width change (rotate, resize) re-flows the content: start over instead of holding a height the old width needed */
 		if (node.offsetWidth !== width) {
 			width = node.offsetWidth;

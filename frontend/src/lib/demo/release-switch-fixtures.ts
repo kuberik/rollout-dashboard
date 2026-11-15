@@ -31,13 +31,14 @@ import {
 import { registerExtraApps, curated, OWNER, type AppFixture } from './github-data';
 import { setExtraFixtures } from './extra-fixtures';
 
-type Place = { ns: string; tier: string; site: string; wave: number; cluster: string; key: string; tag: string; bake: string; msg?: string };
+/** `head` is merged onto the newest history entry and `spec` onto the Rollout spec (health-failures-fixtures.ts uses both). */
+export type Place = { ns: string; tier: string; site: string; wave: number; cluster: string; key: string; tag: string; bake: string; msg?: string; head?: Record<string, unknown>; spec?: Record<string, unknown> };
 type Release = { tag: string; version: string; revision: string; created: string };
 
 const CHECKING = 'checking';
 const DEPLOYING = 'Waiting for health checks to become healthy before starting bake.';
 
-function build(app: string, tagPrefix: string, semverOf: (n: number) => string, first: number, last: number, sites: { tier: string; site: string; wave: number; cluster: string; at: number; bake: string; msg?: string }[]) {
+export function build(app: string, tagPrefix: string, semverOf: (n: number) => string, first: number, last: number, sites: { tier: string; site: string; wave: number; cluster: string; at: number; bake: string; msg?: string; head?: Record<string, unknown>; spec?: Record<string, unknown> }[]) {
 	const releases: Release[] = [];
 	for (let n = first; n <= last; n++) {
 		const tag = `${tagPrefix}-${String(n).padStart(2, '0')}`;
@@ -45,12 +46,12 @@ function build(app: string, tagPrefix: string, semverOf: (n: number) => string, 
 	}
 	const places: Place[] = sites.map((s) => {
 		const key = s.tier === 'prod' ? `prod-${s.site}` : s.tier;
-		return { ns: `${app}-${key}`, tier: s.tier, site: s.site, wave: s.wave, cluster: s.cluster, key, tag: `${tagPrefix}-${String(s.at).padStart(2, '0')}`, bake: s.bake, msg: s.msg };
+		return { ns: `${app}-${key}`, tier: s.tier, site: s.site, wave: s.wave, cluster: s.cluster, key, tag: `${tagPrefix}-${String(s.at).padStart(2, '0')}`, bake: s.bake, msg: s.msg, head: s.head, spec: s.spec };
 	});
 	return { app, releases, places };
 }
 
-type Fixture = ReturnType<typeof build>;
+export type Fixture = ReturnType<typeof build>;
 
 const LEDGER = build('ledger-api', 'ad', (n) => `4.${n}.0-${n}`, 40, 46, [
 	{ tier: 'dev', site: 'default', wave: 1, cluster: 'dev', at: 46, bake: 'InProgress', msg: CHECKING },
@@ -84,11 +85,12 @@ function historyOf(f: Fixture, p: Place) {
 		version: { tag: r.tag, version: r.version, revision: r.revision, created: r.created },
 		timestamp: hcAgo(8 + (f.releases.length - 1 - f.releases.indexOf(r)) * 150),
 		bakeStatus: i === 0 ? p.bake : 'Succeeded',
-		...(i === 0 && p.msg ? { bakeStatusMessage: p.msg } : {})
+		...(i === 0 && p.msg ? { bakeStatusMessage: p.msg } : {}),
+		...(i === 0 ? p.head : {})
 	}));
 }
 
-function environmentsOf(f: Fixture) {
+export function environmentsOf(f: Fixture) {
 	const sites = sitesOf(f);
 	return sites.map((x) => {
 		const p = x.place;
@@ -108,7 +110,7 @@ function environmentsOf(f: Fixture) {
 	});
 }
 
-function rolloutsOf(f: Fixture) {
+export function rolloutsOf(f: Fixture) {
 	const envs = environmentsOf(f);
 	const hist = new Map(f.places.map((p) => [p.key, historyOf(f, p)] as const));
 	return f.places.map((p) => {
@@ -119,7 +121,7 @@ function rolloutsOf(f: Fixture) {
 			apiVersion: 'kuberik.com/v1alpha1',
 			kind: 'Rollout',
 			metadata: { name: f.app, namespace: p.ns, labels: { environment: p.tier }, annotations: { [SOURCE_CLUSTER]: p.cluster } },
-			spec: { releasesImagePolicy: `${p.ns}/${f.app}`, versionHistoryLimit: 25, minBakeTime: '3m' },
+			spec: { releasesImagePolicy: `${p.ns}/${f.app}`, versionHistoryLimit: 25, minBakeTime: '3m', ...p.spec },
 			status: {
 				source: `github.com/exampleco/${f.app}`,
 				availableReleases: f.releases,
@@ -133,7 +135,7 @@ function rolloutsOf(f: Fixture) {
 }
 
 /** the GitHub side of the two apps (changes feed, commit ranges): not in github-data's `APPS`, registered by `install()` */
-const GH: Record<string, AppFixture> = {
+export const GH: Record<string, AppFixture> = {
 	/** FIXTURE F: semver builds, three releases in flight. */
 	'ledger-api': curated(
 		OWNER,
@@ -154,7 +156,7 @@ const GH: Record<string, AppFixture> = {
 	)
 };
 /** the builds are made every 150 minutes (`created` above); each change merges 20 minutes before its build, so every one stays inside the live Changes window (30 days) and its change page exists */
-const MERGE_MIN_AGO: Readonly<Record<string, number>> = Object.fromEntries([
+export const MERGE_MIN_AGO: Readonly<Record<string, number>> = Object.fromEntries([
 	...Array.from({ length: 7 }, (_, k) => [`ad-${40 + k}`, (46 - (40 + k) + 1) * 150 + 20] as const),
 	...Array.from({ length: 20 }, (_, k) => [`ce-${String(k + 1).padStart(2, '0')}`, (20 - (k + 1) + 1) * 150 + 20] as const)
 ]);
@@ -165,6 +167,6 @@ const MERGE_MIN_AGO: Readonly<Record<string, number>> = Object.fromEntries([
  * Off, every route answers as it did without them: same apps, same Dependencies edges, same banners.
  */
 export function install(on = true): void {
-	setExtraFixtures(on ? { environments: () => RELEASE_SWITCH_FIXTURES.flatMap(environmentsOf), rollouts: () => RELEASE_SWITCH_FIXTURES.flatMap(rolloutsOf) } : null);
+	setExtraFixtures('release-switch', on ? { environments: () => RELEASE_SWITCH_FIXTURES.flatMap(environmentsOf), rollouts: () => RELEASE_SWITCH_FIXTURES.flatMap(rolloutsOf) } : null);
 	registerExtraApps(on ? GH : {}, on ? MERGE_MIN_AGO : {});
 }

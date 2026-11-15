@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	/**
-	 * THE ATTENTION BAND (r39 kit `attentionBand()`): an EVEN grid of AttentionCards, equal widths, a short last row left short.
+	 * THE ATTENTION BAND (r39 kit `attentionBand()`): an EVEN grid of AttentionCards, equal widths and, per row, equal heights (the cards stretch, the actions pin to the bottom), a short last row left short.
 	 * Columns by the band's own width (the band is the page's main column; a container query on the wrapper): `cols` 2 (default) | 3 | 4; the 4-up drops to 2 below
 	 * 1100px of main (a 4-up card needs ~270px), the 3-up below 1001px, everything is one column below 640px. `lead` true, or
 	 * 'auto' with an odd count in a 2-col band, makes the first card span the row (Home's three asks). Renders nothing for no
@@ -21,7 +21,7 @@
 
 <style>
 	.att-wrap { container-type: inline-size; min-width: 0; }
-	.att { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; min-width: 0; }
+	.att { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; min-width: 0; }
 	.att-c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 	.att-c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 	/* wide: three even columns whatever the count (a lone pair stays two thirds wide, never two 800px cards) */

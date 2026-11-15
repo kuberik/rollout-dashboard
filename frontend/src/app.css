@@ -1679,6 +1679,14 @@ textarea {
 /* An environment is a NAME: sans, sentence case as written (`prod-us-east-2`),
    never the uppercase state-label type (AD round 2: identity was drawn two ways
    on one screen). Uppercase stays for state chips only. */
+.chip.chip-label {
+	/* a label key/value is an identifier from the provider (service=checkout): keep its case, like .chip-env-name */
+	text-transform: none;
+	letter-spacing: 0;
+	font-variant-numeric: normal;
+	font-feature-settings: normal;
+	max-width: 100%;
+}
 .chip.chip-env-name {
 	text-transform: none;
 	letter-spacing: 0;

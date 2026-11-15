@@ -54,6 +54,7 @@
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import RestGlyph from '$lib/components/RestGlyph.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
+	import { snapshotCause } from '$lib/view-models/health-failures';
 
 	type Entry = {
 		timestamp: string;
@@ -73,7 +74,7 @@
 		 */
 		commitTitle?: string | null;
 		triggeredBy?: { kind?: string | null; name?: string | null } | null;
-		failedHealthChecks?: { name: string; message?: string }[];
+		failedHealthChecks?: { name: string; message?: string; observations?: any[]; failures?: any[] }[];
 		bakeStatusMessage?: string;
 	};
 
@@ -972,6 +973,7 @@
 		{@const diff = diffHref?.(seg.i)}
 		{@const canRb = canRollback(seg)}
 		{@const checks = seg.failed ? (e.failedHealthChecks ?? []) : []}
+		{@const sc = seg.failed ? snapshotCause(checks) : null}
 		{@const failMsg = seg.failed && checks.length === 0 ? (e.bakeStatusMessage ?? '') : ''}
 		{@const reason = footReason(seg)}
 		<!-- ONE TEMPLATE for every segment: mark · build · outcome; commit
@@ -1045,9 +1047,9 @@
 					     panel does, at the card's own 12px (`compact`). Only the
 					     live build (`i === 0`) is still an open alarm. -->
 					<span class="block min-w-0 flex-1">
-						<FailedCheckLine compact check={checks[0] ?? { name: failMsg }} danger={seg.i === 0} />
+						<FailedCheckLine compact check={sc?.check ?? checks[0] ?? { name: failMsg }} danger={seg.i === 0} />
 						<span class="text-fg-subtle block pl-[18px]"
-							>{checks.length > 1 ? `${checks.length} failed checks` : 'Failed check'} · Show in the
+							>{sc ? (sc.more > 0 ? `+${sc.more} more` : 'Failed check') : checks.length > 1 ? `${checks.length} failed checks` : 'Failed check'} · Show in the
 							list</span
 						>
 					</span>

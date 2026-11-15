@@ -6,6 +6,10 @@
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
+	import FailureSourceRow from '$lib/components/FailureSourceRow.svelte';
+	import { historyPool } from '$lib/view-models/health-failures';
+	import { deployWindowStart } from '$lib/view-models/health-witness';
+	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { displayTimeZone } from '$lib/timezone.svelte';
 	import type {
 		Rollout,
@@ -126,6 +130,14 @@
 	);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null);
+	/* the live HealthChecks (the Overview's own query key, so a shared cache): a failed check's snapshot takes its class (glyph, identifier type) and its display name from the object, as the Overview prints them */
+	const hcQuery = createQuery(() => ({ ...healthChecksQueryOptions(namespace, name, cluster), enabled: Boolean(rollout?.spec?.healthCheckSelector) }));
+	const liveChecks = $derived(hcQuery.data?.healthChecks ?? []);
+	/** HH:MM in the page's display zone: the one clock format inside an entry's panel */
+	function hm(ts: string): string {
+		const d = new Date(ts);
+		return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: displayTimeZone() });
+	}
 	/** gate name -> the rule's name, so History can say "Skipped Business hours" for the generated gate the controller names. */
 	const skipLabels = $derived(gateRuleLabels(rollout));
 	/** whether this cluster's approvals carry a trustworthy `by` (the history row's "approved by" shows it only then) */
@@ -2712,20 +2724,67 @@
 																	<div class="t-meta flex items-baseline gap-1.5">
 																		<span class="text-fg-subtle shrink-0">Started</span>
 																		<span class="text-fg-muted" title={formatDate(entry.timestamp)}
-																			>{clockTime(entry.timestamp)}</span
+																			>{hm(entry.timestamp)}</span
 																		>
 																	</div>
+																	{#if entry.failedHealthChecks && entry.failedHealthChecks.length > 0}
+																		<!-- ⛔ A FAILING ROW IS NEVER A BAND. (§2.5, principle 12;
+													     2026-10-08, TL review round 3.) This used to fill
+													     `bg-danger-tint` — a solid tinted block the size of
+													     the check, the "1600×124 brown slab" defect §2.5
+													     names by its measured dimensions. A neutral row
+													     with the glyph and the message in danger ink carries
+													     the same fact at chip scale, not area scale. -->
+																		<!-- ⭐ `FailedCheckLine` (History round 14, AD round
+													     10, D4, binding; extracted on the coordinator's
+													     follow-up for its own synthetic-data test — see
+													     the component's own doc comment). `danger={isCurrent}`
+													     is this row's own equivalent of the page header's
+													     `openFailed`: a PAST row's failed check is, by
+													     definition, no longer the open alarm (a later
+													     deploy is `history[0]` now), so it reads as
+													     history, muted, not as something still ringing.
+													     ⭐ `order-first` (History round 15,
+													     AD round 11, item 3, binding; widened to EVERY width in
+													     round 16, AD round 12, item 1): "the failed-check
+													     line is the FIRST line of the DEPLOY panel" — was
+													     phone only. The reason the check exists is the
+													     reason the row is here; `Started`/`Triggered
+													     by`/`Promoted` are context, not the headline, and at
+													     390 the headline is what has to clear the fold.
+													     The rest keeps its chronological order
+													     (Started → outcome → who → why) beneath it. -->
+																		<div class="flex flex-col gap-3">
+																			{#each historyPool(entry.failedHealthChecks as { name: string; message?: string; observations?: any[] }[], isCurrent ? liveChecks : [], isCurrent ? deployWindowStart(rollout) : null) as sv (sv.key)}
+																				{@const srcs = sv.verdict === 'recovered' ? (sv.recovery?.rows ?? []) : sv.rows}
+																				{#if srcs.length > 0}
+																					<div data-testid="hist-check" data-state={sv.verdict}>
+																						<div class="mb-1.5 flex flex-wrap items-baseline gap-x-2"><span class="t-body text-fg">{sv.name}</span>
+																							<!-- Overview's fact-line grammar: state word in state ink, then `· HH:MM` in fg-muted; green only on the OK word -->
+																							{#if sv.verdict === 'pending'}<span class="t-meta"><span class="text-progress">waiting</span>{#if sv.since}<span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span>{/if}</span>
+																							{:else if sv.verdict === 'recovered' && sv.recovery?.okSince}<span class="t-meta text-fg-muted">{#if sv.recovery.failedAt}<span class={isCurrent ? 'text-danger' : 'text-fg-muted'}>{'failed'}</span><span class="tabular-nums">{' '}{hm(sv.recovery.failedAt)}</span>{' · '}{/if}<span class="text-success">OK</span><span class="tabular-nums">{' '}{hm(sv.recovery.okSince)}</span></span>
+																							{:else if sv.since}<span class="t-meta"><span class={isCurrent && sv.verdict === 'failing' ? 'text-danger' : 'text-fg-muted'}>{sv.verdict === 'failing' ? 'failing' : 'failed'}</span><span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span></span>{/if}</div>
+																						<ul class="flex flex-col gap-3">
+																							{#each srcs as s (s.key)}<FailureSourceRow row={s} />{/each}
+																						</ul>
+																					</div>
+																				{:else}
+																					<FailedCheckLine check={{ name: sv.name, message: sv.message }} danger={isCurrent && sv.verdict === 'failing'} />
+																				{/if}
+																			{/each}
+																		</div>
+																	{/if}
 																	{#if wait}
 																		<div class="t-meta flex items-baseline gap-1.5">
 																			<span class="text-fg-subtle shrink-0"
 																				>{wait.outcome === 'Failed'
-																					? 'Failed at'
+																					? 'Check timer failed'
 																					: 'Checks finished'}</span
 																			>
 																			<span
 																				class="text-fg-muted"
 																				title={formatDate(entry.bakeEndTime ?? '')}
-																				>{clockTime(entry.bakeEndTime ?? '')}</span
+																				>{hm(entry.bakeEndTime ?? '')}</span
 																			>
 																		</div>
 																	{/if}
@@ -2844,7 +2903,7 @@
 														     prints in the one shared line — first in the
 														     column, muted once resolved — not as a bespoke
 														     plain note. -->
-																			<div class="order-first flex flex-col gap-1.5">
+																			<div class="order-first flex flex-col gap-3">
 																				<FailedCheckLine
 																					check={{ name: entry.bakeStatusMessage }}
 																					danger={isCurrent}
@@ -2862,39 +2921,6 @@
 												     line 2's own deploy-to-healthy span) read as a
 												     correction of the row's own figure rather than a new
 												     fact — one deploy, two timers. -->
-																	{#if entry.failedHealthChecks && entry.failedHealthChecks.length > 0}
-																		<!-- ⛔ A FAILING ROW IS NEVER A BAND. (§2.5, principle 12;
-													     2026-10-08, TL review round 3.) This used to fill
-													     `bg-danger-tint` — a solid tinted block the size of
-													     the check, the "1600×124 brown slab" defect §2.5
-													     names by its measured dimensions. A neutral row
-													     with the glyph and the message in danger ink carries
-													     the same fact at chip scale, not area scale. -->
-																		<!-- ⭐ `FailedCheckLine` (History round 14, AD round
-													     10, D4, binding; extracted on the coordinator's
-													     follow-up for its own synthetic-data test — see
-													     the component's own doc comment). `danger={isCurrent}`
-													     is this row's own equivalent of the page header's
-													     `openFailed`: a PAST row's failed check is, by
-													     definition, no longer the open alarm (a later
-													     deploy is `history[0]` now), so it reads as
-													     history, muted, not as something still ringing.
-													     ⭐ `order-first` (History round 15,
-													     AD round 11, item 3, binding; widened to EVERY width in
-													     round 16, AD round 12, item 1): "the failed-check
-													     line is the FIRST line of the DEPLOY panel" — was
-													     phone only. The reason the check exists is the
-													     reason the row is here; `Started`/`Triggered
-													     by`/`Promoted` are context, not the headline, and at
-													     390 the headline is what has to clear the fold.
-													     The rest keeps its chronological order
-													     (Started → outcome → who → why) beneath it. -->
-																		<div class="order-first flex flex-col gap-1.5">
-																			{#each entry.failedHealthChecks as check}
-																				<FailedCheckLine {check} danger={isCurrent} />
-																			{/each}
-																		</div>
-																	{/if}
 																</div>
 															</div>
 

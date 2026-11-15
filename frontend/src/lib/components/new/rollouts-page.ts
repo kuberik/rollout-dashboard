@@ -13,12 +13,13 @@ import {
 	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
-import { markOf, tabEnv, rowAction, actionHref, runwayRow, type MarkState } from './rollout-view';
+import { markOf, tabEnv, rowAction, actionHref, runwayRow, byFailRank, type MarkState } from './rollout-view';
 import { nodesOfSteps, type MiniNode } from './mini-pipeline';
 import { holdWordParts } from './rollout-view';
 import { approvalWord } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
+import { bannerEvidence, type BannerEvidence } from '$lib/view-models/health-failures';
 import { causeText, joinCause, gateLabelText, labelPart, type Cause } from '$lib/view-models/gate-label';
 import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import { regionsPhrase, siteCount } from '$lib/view-models/regions';
@@ -51,7 +52,7 @@ export function changeLineOf(r: TRow): ChangeLine | null {
 
 /** the failure banner's meta line (Since · build), one fact each; null parts are not printed. The place is the title's own ("failed in prod · eu-west"), never a second chip. */
 export type BannerMeta = { since: string | null; build: string | null };
-export type BannerModel = { row: TRow; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; meta: BannerMeta };
+export type BannerModel = { /** the Overview banner's own evidence (observation figure, check line + class glyph, "n health checks failing" / "Recovered at 14:05", Details); null without observations */ evidence?: BannerEvidence | null; row: TRow; title: string; check: { name: string; message: string; cls?: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; meta: BannerMeta };
 export type AttentionItem = { key: string; row: TRow; model: AttentionModel; app: string; href: string; rollbackHref: string | null; openHref: string; yours: boolean };
 export type StrandRow = { key: string; row: TRow; app: string; href: string; tier: string; place: string | null; mark: MarkState; nodes: MiniNode[]; /** the state word / cause, typed (`CauseText` draws a promotion label by kind); `causeText(lead)` is its plain form */ lead: Cause; rest: string; age: string; yours: boolean; };
 export type RestRow = { key: string; app: string; href: string; place: string; rep: boolean; sentence: string; code: string; age: string; tier: string; /** the quiet row prints the build code before the sentence (Changes' At rest) */ codeFirst?: boolean; /** r42 atoms (opt-in, /design/atoms): the landed change's lead bar */ lead?: { hops: import('$lib/components/atoms/LeadBar.svelte').Hop[]; origin?: number; scale: number; total: string } | null };
@@ -61,7 +62,8 @@ export const GROUP_WORD: Record<GroupKey, string> = { moving: 'In flight', waiti
 export type RolloutsPage = {
 	banner: BannerModel | null;
 	attention: AttentionItem[];
-	failing: number; toApprove: number;
+	/** live failures  */
+	failing: number; recovered: number; toApprove: number;
 	groups: { key: GroupKey; word: string; rows: StrandRow[] }[];
 	rest: RestRow[]; restApps: number;
 	counts: { moving: number; waiting: number; held: number; rest: number };
@@ -130,7 +132,7 @@ export function bannerMeta(r: TRow | null | undefined): BannerMeta {
 /** the failure banner of a lead failing row (AlertPanel shape; the change line = the build's own PR identity) */
 export function bannerOf(lead: TRow): BannerModel {
 	const a = rowAction(lead);
-	return { row: lead, title: failedBannerTitle(lead.app, lead.tier, chipPlace(lead)), check: lead.failure?.check ? { name: lead.failure.check, message: lead.failure.message ?? '' } : null, line: lead.failure?.line ?? null, change: changeLineOf(lead), meta: bannerMeta(lead), openHref: lead.href, rollbackHref: a?.kind === 'rollback' ? actionHref(a) : null };
+	return { evidence: lead.failure?.pool ? bannerEvidence(lead.failure.pool, lead.failure.pendingN ?? 0, null) : null, row: lead, title: failedBannerTitle(lead.app, lead.tier, chipPlace(lead)), check: lead.failure?.check ? { name: lead.failure.check, message: lead.failure.message ?? '', cls: lead.failure.cls } : null, line: lead.failure?.line ?? null, change: changeLineOf(lead), meta: bannerMeta(lead), openHref: lead.href, rollbackHref: a?.kind === 'rollback' ? actionHref(a) : null };
 }
 export function attentionItem(r: TRow, hs: HomeState): AttentionItem {
 	const failed = r.group === 'failed';
@@ -146,6 +148,10 @@ export function attentionItem(r: TRow, hs: HomeState): AttentionItem {
 		regions,
 		check: failed ? { name: r.failure?.check ?? null, message: r.failure?.message ?? r.failure?.line ?? '' } : null,
 		observations: failed ? r.failure?.observations ?? null : null,
+		cls: failed ? r.failure?.cls : undefined,
+		note: failed ? r.failure?.note ?? null : null,
+		recovered: failed ? !!r.failure?.recovered : false,
+		recoveredAt: failed ? r.failure?.recoveredAt ?? null : null,
 		gateSentence: failed ? null : gateName(r, hs)?.sentence ?? null,
 		title: r.app
 	});
@@ -184,7 +190,7 @@ function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState, sett
 export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): RolloutsPage {
 	const R = rollouts(hs);
 	const rows = R.rows;
-	const failedRows = rows.filter((r) => r.group === 'failed');
+	const failedRows = byFailRank(rows.filter((r) => r.group === 'failed'));
 	const lead = runwayRow(failedRows);
 	const banner = lead ? bannerOf(lead) : null;
 	const yours = rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking);
@@ -204,7 +210,7 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 	const rest = restRows(rows, R.restAll ?? R.rest, hs, o.settled ?? true).filter((p) => !pinHrefs.has(p.href));
 	const groups = ([['moving', moving], ['waiting', waiting], ['held', held]] as [GroupKey, StrandRow[]][]).filter(([, g]) => g.length).map(([key, g]) => ({ key, word: GROUP_WORD[key], rows: g }));
 	return {
-		banner, attention: attentionRows.map((r) => attentionItem(r, hs)), failing: failedRows.length, toApprove: yours.length,
+		banner, attention: attentionRows.map((r) => attentionItem(r, hs)), failing: failedRows.length, recovered: failedRows.filter((r) => r.failure?.recovered).length, toApprove: yours.length,
 		groups, rest, restApps: new Set(rest.map((p) => p.app)).size,
 		counts: { moving: moving.length, waiting: waiting.length, held: held.length, rest: rest.length },
 		empty: !rows.length && !rest.length

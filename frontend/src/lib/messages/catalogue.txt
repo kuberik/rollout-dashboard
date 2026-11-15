@@ -405,6 +405,8 @@ lib/components/FailurePanel.svelte	code	A health check
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
 lib/components/FailurePanel.svelte	text	Automated deployments are held until this is resolved.
 lib/components/FailurePanel.svelte	title	Deployment failed
+lib/components/FailurePanel.svelte	code	Roll back
+lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FleetCard.svelte	text	all apps
 lib/components/FleetCard.svelte	text	All healthy elsewhere
 lib/components/FleetCard.svelte	text	No deploys in the last 24 h
@@ -441,15 +443,15 @@ lib/components/GraphCanvasInner.svelte	aria-label	Zoom in
 lib/components/GraphCanvasInner.svelte	title	Zoom in
 lib/components/GraphCanvasInner.svelte	aria-label	Zoom out
 lib/components/GraphCanvasInner.svelte	title	Zoom out
-lib/components/HealthChecksCard.svelte	text	… / … healthy
-lib/components/HealthChecksCard.svelte	text	… failing … … · … passing
-lib/components/HealthChecksCard.svelte	text	… passing · … recovered
-lib/components/HealthChecksCard.svelte	text	… pending … · … passing
-lib/components/HealthChecksCard.svelte	text	failing … … … …
+lib/components/HealthChecksCard.svelte	code	… failing
+lib/components/HealthChecksCard.svelte	code	… passing
+lib/components/HealthChecksCard.svelte	code	… pending
+lib/components/HealthChecksCard.svelte	code	… recovered
+lib/components/HealthChecksCard.svelte	code	…/… healthy
 lib/components/HealthChecksCard.svelte	code	health check
 lib/components/HealthChecksCard.svelte	title	Health checks
 lib/components/HealthChecksCard.svelte	text	No health checks select this rollout, so a deploy counts as done when its steps finish.
-lib/components/HealthChecksCard.svelte	text	passing … …
+lib/components/HealthChecksCard.svelte	text	Show … more
 lib/components/HistorySummaryCard.svelte	text	Last failure
 lib/components/HistorySummaryCard.svelte	text	Median …
 lib/components/HistorySummaryCard.svelte	title	Median …
@@ -930,6 +932,7 @@ lib/components/new/HoldingCard.svelte	text	Approvals and rules that hold a build
 lib/components/new/HoldingCard.svelte	text	Nothing is holding a build
 lib/components/new/HoldingCard.svelte	code	Waits on
 lib/components/new/home-page.ts	code	… failing
+lib/components/new/home-page.ts	code	… recovered
 lib/components/new/home-page.ts	code	… to approve
 lib/components/new/home-page.ts	code	Needs your approval
 lib/components/new/home-page.ts	code	Waiting for approval
@@ -974,6 +977,7 @@ lib/components/new/Rollouts.svelte	code	… failing
 lib/components/new/Rollouts.svelte	code	… held
 lib/components/new/Rollouts.svelte	text	… is itself waiting on …
 lib/components/new/Rollouts.svelte	code	… moving
+lib/components/new/Rollouts.svelte	code	… recovered
 lib/components/new/Rollouts.svelte	code	… to approve
 lib/components/new/Rollouts.svelte	code	… waiting
 lib/components/new/Rollouts.svelte	title	All rollouts
@@ -1051,6 +1055,7 @@ lib/components/PromotionLane.svelte	code	no releases
 lib/components/PromotionLane.svelte	code	No releases
 lib/components/PromotionLane.svelte	code	Up to date
 lib/components/PromotionLane.svelte	code	wave …
+lib/components/RecoveredStrip.svelte	title	Failed …, OK …
 lib/components/RecoveryModeWarningModal.svelte	code	… failed
 lib/components/RecoveryModeWarningModal.svelte	code	… hasn't finished (it is still deploying or baking)
 lib/components/RecoveryModeWarningModal.svelte	code	… was cancelled before it finished
@@ -1266,8 +1271,10 @@ lib/view-models/activity-verb.ts	code	was approved
 lib/view-models/activity-verb.ts	code	was pinned
 lib/view-models/activity-verb.ts	code	was promoted
 lib/view-models/attention.ts	code	Needs your approval
+lib/view-models/attention.ts	code	of …${o.unit ?
 lib/view-models/attention.ts	code	over a … budget
 lib/view-models/attention.ts	code	prod regions
+lib/view-models/attention.ts	code	recovered at …
 lib/view-models/attention.ts	code	under a … floor
 lib/view-models/auto-deploy.ts	code	a rule is holding it
 lib/view-models/auto-deploy.ts	code	a rule is holding it (…)
@@ -1567,6 +1574,19 @@ lib/view-models/gate-fact.ts	code	… of … gates holding
 lib/view-models/gate-fact.ts	code	1 gate failing
 lib/view-models/gate-fact.ts	code	1 of … gates failing
 lib/view-models/gate-label.ts	code	… from …
+lib/view-models/health-failures.ts	code	: ''}, so a retry is reasonable.
+lib/view-models/health-failures.ts	code	… …/…${unit ?
+lib/view-models/health-failures.ts	code	… …${o.window ?
+lib/view-models/health-failures.ts	code	… of …
+lib/view-models/health-failures.ts	code	… recovered
+lib/view-models/health-failures.ts	code	…${at ?
+lib/view-models/health-failures.ts	code	…${f.note ?
+lib/view-models/health-failures.ts	code	· … ago
+lib/view-models/health-failures.ts	code	+… more
+lib/view-models/health-failures.ts	code	check …
+lib/view-models/health-failures.ts	code	failed …
+lib/view-models/health-failures.ts	code	health check
+lib/view-models/health-failures.ts	code	Recovered${ok ?
 lib/view-models/health-witness.ts	code	… failing
 lib/view-models/health-witness.ts	code	… is failing…. Automatic deploys here are held until it passes; a deploy you start by hand still applies.
 lib/view-models/health-witness.ts	code	… is passing now, but it errored … — inside the window of the deploy that is running. The controller keeps that error as evidence; this mark clears on the next deploy or retry.

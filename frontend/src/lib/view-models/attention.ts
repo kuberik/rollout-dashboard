@@ -19,7 +19,7 @@ import type { HealthObservation } from '$lib/../types';
 export type AttentionState = 'failed' | 'approval';
 
 export type Gauge = { /** 0..1 fill */ fill: number; /** 0..1 where the limit sits */ limitAt: number; over: boolean };
-export type FigureLead = { kind: 'threshold' | 'ratio' | 'count'; value: string; unit: string; /** beside the figure: the observation's name */ label: string; /** Threshold only: "over a 1% budget" (the fact line) */ budget: string | null; gauge: Gauge | null };
+export type FigureLead = { kind: 'threshold' | 'ratio' | 'count'; value: string; unit: string; /** beside the figure: the observation's name */ label: string; /** Threshold only: "over a 1% budget" (the fact line) */ budget: string | null; gauge: Gauge | null; /** Ratio / Count: the unit word ("ready"), the fact line's lead when there is no budget */ phrase?: string | null; /** the observation's own `message`, the rest of the fact line (the name is the caption, said once) */ detail?: string | null };
 export type CheckLead = { kind: 'check'; name: string | null; message: string };
 export type AttentionLead = FigureLead | CheckLead;
 
@@ -46,15 +46,16 @@ export function drawable(o: HealthObservation): FigureLead | null {
 		// the limit sits at the middle of the track; the fill saturates at twice the limit (Below: mirrored)
 		const gauge: Gauge | null = l > 0 ? { fill: Math.max(0, Math.min(1, v / (2 * l))), limitAt: 0.5, over } : null;
 		const budget = o.direction === 'Above' ? `over a ${withUnit(num(o.limit), unit)} budget` : `under a ${withUnit(num(o.limit), unit)} floor`;
-		return { kind: 'threshold', value: num(o.value), unit, label: name, budget, gauge };
+		return { kind: 'threshold', value: num(o.value), unit, label: name, budget, gauge, detail: o.message?.trim() || null };
 	}
 	if (o.kind === 'Ratio') {
 		if (!isDec(o.value) || !isDec(o.total) || Number(o.total) <= 0) return null;
-		return { kind: 'ratio', value: num(o.value), unit: `of ${num(o.total)}`, label: name, budget: null, gauge: null };
+		/* the unit word stays on the figure line ("1 of 3 ready"), never alone on the message line */
+		return { kind: 'ratio', value: num(o.value), unit: `of ${num(o.total)}${o.unit ? ` ${o.unit}` : ''}`, label: name, budget: null, gauge: null, phrase: null, detail: o.message?.trim() || null };
 	}
 	if (o.kind === 'Count') {
 		if (!isDec(o.value)) return null;
-		return { kind: 'count', value: num(o.value), unit: '', label: name, budget: null, gauge: null };
+		return { kind: 'count', value: num(o.value), unit: o.unit ?? '', label: name, budget: null, gauge: null, phrase: null, detail: o.message?.trim() || null };
 	}
 	return null; // State: a word, not a measurement
 }
@@ -97,6 +98,13 @@ export type AttentionInput = {
 	regions?: readonly { ink: string }[] | null;
 	/** the approval's fact line ("Releases when someone approves") */
 	gateSentence?: string | null;
+	/** health evidence (take A): a quiet line under the fact ("+2 more failing") and the recovered flag (word `Failed`, not `Failing`) */
+	note?: string | null;
+	recovered?: boolean;
+	/** recovered: "09:34", the moment the check went OK (the card's fact: "recovered at 09:34") */
+	recoveredAt?: string | null;
+	/** the failing check's class (kustomization, datadog, prometheus, incidents): the fact line's glyph */
+	cls?: string;
 	/** the title-led title (the change title or the ask's message) */
 	title?: string;
 };
@@ -112,27 +120,38 @@ export type AttentionModel = {
 	title: string;
 	/** the fact line: a failing check's name + message, or an approval's sentence */
 	fact: { name: string | null; message: string } | null;
+	note: string | null;
+	/** the check is OK again: the figure draws in recovered ink */
+	recovered: boolean;
+	cls: string;
 };
 
 export function attentionModel(i: AttentionInput): AttentionModel {
 	const failed = i.state === 'failed';
 	const lead = failed ? failingLead(i.check ?? null, i.observations) : approvalLead(i.regions);
 	const figure = lead && lead.kind !== 'check' ? lead : null;
-	const fact = failed && figure?.budget
-		? { name: i.check?.name ?? null, message: figure.budget }
+	/* the name appears once, as the figure's caption: the fact line under it is the limit phrase and the observation's message */
+	const figLine = figure ? [figure.budget ?? figure.phrase, figure.detail].filter(Boolean).join(' \u00b7 ') : '';
+	const fact = failed && figure && i.recovered
+		? { name: null, message: i.recoveredAt ? `recovered at ${i.recoveredAt}` : 'recovered' }
+		: failed && figure
+		? figLine ? { name: null, message: figLine } : null
 		: failed
 		? i.check && (i.check.name || i.check.message) ? { name: i.check.name ?? null, message: i.check.message ?? '' } : null
 		: i.gateSentence ? { name: null, message: i.gateSentence } : null;
 	return {
 		state: i.state,
-		word: statusWord(i.state),
+		word: failed && i.recovered ? 'Failed' : statusWord(i.state),
 		forAge: i.age ? `for ${i.age}` : null,
 		tier: i.tier ?? '',
 		place: i.place ?? '',
 		lead,
 		figure,
 		title: i.title ?? '',
-		fact
+		fact,
+		note: failed ? i.note ?? null : null,
+		recovered: !!(failed && i.recovered),
+		cls: i.cls ?? ''
 	};
 }
 

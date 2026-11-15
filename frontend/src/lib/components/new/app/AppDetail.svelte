@@ -60,7 +60,10 @@
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
 	import { apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
-	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
+	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme, byFailRank } from '../rollout-view';
+	import FailureDetails from '$lib/components/FailureDetails.svelte';
+	import { bannerEvidence } from '$lib/view-models/health-failures';
+	import { formatTimeAgoCompact } from '$lib/utils';
 	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { approvalMessage, behindOfPlace, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLineOf, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
@@ -271,7 +274,9 @@
 	const waitMessage = $derived(checkingNow ? (checkLeft ?? 'The health checks are running.') : waitsOnApproval ? approvalMessage(heldN, places.find((p) => p.href === stateRow?.href) ?? null, places) : cause);
 
 	/* the statement = the Apps tile's own: the failing place (the lead, else the first), its check line, Roll back (+ Retry, as the tab offers) + Open rollout */
-	const failRow = $derived(failing.find((r) => r.lead) ?? failing[0] ?? null);
+	const failRow = $derived(byFailRank(failing)[0] ?? null);
+	/* the rollout Overview banner's own lines, Details and class glyph (view-models/health-failures.ts bannerEvidence): the age is in the message, as there */
+	const failEv = $derived(failRow?.failure?.pool ? bannerEvidence(failRow.failure.pool, failRow.failure.pendingN ?? 0, failRow.failure.since ? formatTimeAgoCompact(failRow.failure.since, $now) : null) : null);
 	const failCheck = $derived(failRow?.failure ? { name: failRow.failure.check ?? failRow.failure.line, message: failRow.failure.check ? (failRow.failure.message ?? undefined) : undefined } : null);
 	const failAct = $derived(failRow ? rowAction(failRow) : null);
 	let retry = $state<'idle' | 'busy' | 'done' | 'error'>('idle');
@@ -378,7 +383,8 @@
 			{/if}
 			{#if failRow}
 				<div data-ad-statement>
-					<StatementBanner severity="failed" title="Deployment failed" check={failCheck ?? undefined} observations={failRow.failure?.observations}
+					{#snippet failDetails()}{#if failEv}<FailureDetails pool={failEv.pool} />{/if}{/snippet}
+					<StatementBanner severity="failed" title="Deployment failed" check={failEv ? failEv.check : failCheck ?? undefined} observations={failEv ? failEv.observations : failRow.failure?.observations} message={failEv?.message} footnoteLabel={failEv ? 'Details' : undefined} footnoteBody={failEv ? failDetails : undefined}
 						primary={failAct ? { label: 'Roll back', href: actionHref(failAct), icon: UndoOutline, key: 'rollback' } : undefined}
 						secondary={[
 							{ label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },

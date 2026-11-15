@@ -139,7 +139,7 @@ describe('HealthChecksCard — one status grammar', () => {
 		expect(pending.className).toContain('border-progress-line');
 	});
 
-	test('a recovered check keeps its chip; the passing check beside it does not', () => {
+	test('a recovered check draws no chip (the rollup and fact line say it); neither does the passing one', () => {
 		render(HealthChecksCard, {
 			props: {
 				healthChecks: [
@@ -153,9 +153,7 @@ describe('HealthChecksCard — one status grammar', () => {
 			}
 		});
 		const marks = stateMarks();
-		expect(marks.map((m) => m.textContent?.trim())).toEqual(['recovered']);
-		expect(marks[0].className).toContain('chip');
-		expect(marks[0].className).toContain('text-progress');
+		expect(marks).toEqual([]);
 		expect(rowNames()).toEqual(['latency', 'flux']);
 	});
 

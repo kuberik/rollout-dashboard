@@ -158,6 +158,7 @@
 	import { dashboardManagesWantedVersion, newerBuildsShown } from '$lib/view-models/pin-hold';
 	import { fleetSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
+	import type { SnapCheck } from '$lib/view-models/health-failures';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
 	import EventsCard from '$lib/components/EventsCard.svelte';
@@ -4797,6 +4798,8 @@
 								<HealthChecksCard
 									healthChecks={visibleHealthChecks}
 									windowStart={errorCutoff}
+									failedChecks={(rollout?.status?.history?.[0]?.failedHealthChecks ?? []) as SnapCheck[]}
+									bakeStart={rollout?.status?.history?.[0]?.bakeStartTime ?? null}
 									emptyState
 									loadError={healthChecksFailed}
 									onRetry={() => healthChecksQuery.refetch()}

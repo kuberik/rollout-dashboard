@@ -42,9 +42,11 @@
 	 * message to pair it with.
 	 */
 	import { ExclamationCircleSolid } from 'flowbite-svelte-icons';
+	import CheckGlyph from './CheckGlyph.svelte';
 
 	interface Props {
-		check: { name: string; message?: string };
+		/** `name` empty = the line carries only the message (a banner whose figure caption already names the observation) */
+		check: { name?: string; message?: string; /** the check's class: the glyph lookup (CheckGlyph) instead of the generic mark */ cls?: string };
 		/** True for the open/live failure (History's own `isCurrent`); false
 		 * for a past row whose failure a later deploy has already superseded. */
 		danger: boolean;
@@ -54,20 +56,22 @@
 		compact?: boolean;
 		/** apps-9 AQ1 (additive): the check NAME prints in ink (as the tab's banner does); only the 16px glyph keeps the danger hue. Default false = unchanged. */
 		ink?: boolean;
+		/** the line is never smaller than the message under it: 14px at every width (the banner) */
+		body?: boolean;
 	}
 
-	let { check, danger, compact = false, ink = false }: Props = $props();
+	let { check, danger, compact = false, ink = false, body = false }: Props = $props();
 </script>
 
 <div
-	class="t-meta flex items-start gap-1.5 {compact ? '' : 'check-line'} {danger
+	class="t-meta flex items-start gap-1.5 {compact ? '' : 'check-line'} {body ? 'check-body' : ''} {danger
 		? 'text-danger'
 		: 'text-fg-muted'}"
 >
-	<ExclamationCircleSolid class="check-glyph h-3 w-3 shrink-0 translate-y-0.5" aria-hidden="true" />
+	{#if check.cls}<CheckGlyph cls={check.cls} class="check-glyph h-3.5 w-3.5 shrink-0 translate-y-0.5" />{:else}<ExclamationCircleSolid class="check-glyph h-3 w-3 shrink-0 translate-y-0.5" aria-hidden="true" />{/if}
 	<span class={compact ? 'line-clamp-2' : ''}
 		><span class={ink ? 'text-fg' : danger ? 'text-danger' : 'text-fg-muted'}
-			>{check.name}{check.message ? ':' : ''}</span
+			>{check.name ?? ''}{check.name && check.message ? ':' : ''}</span
 		>
 		{#if check.message}
 			<span class="text-fg-muted">{check.message}</span>
@@ -76,6 +80,13 @@
 </div>
 
 <style>
+	.check-body {
+		font-size: 14px;
+		line-height: 20px;
+	}
+	.check-body :global(.check-glyph) {
+		transform: translateY(3px);
+	}
 	@media (min-width: 1024px) {
 		.check-line {
 			font-size: 14px;
