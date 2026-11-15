@@ -196,14 +196,7 @@
 	let allHCHealthy = $derived(
 		healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')
 	);
-	// The timer reads Failed ("the bake timed out") only when the checks are KNOWN
-	// healthy. On an unreadable list: the history's own snapshot of failing
-	// checks stands in (so it reads as when the list is known), else unknown. A list still
-	// LOADING is unknown in the same way.
 	let hcUnknown = $derived(healthChecksUnavailable || healthChecksPending);
-	let timerHCHealthy = $derived<boolean | null>(
-		hcUnknown ? (recordedFailedCheckNames.length > 0 ? false : null) : allHCHealthy
-	);
 	let hasMultipleKRs = $derived(pipelineValidRollouts.length > 1);
 
 	let nodes = $derived<StageNode[]>(
@@ -601,7 +594,8 @@
 	// word, same as every other `NodeStatus` label on this card.
 	let finalBakeTimerStatus = $derived<{ status: NodeStatus; label: string }>(
 		(() => {
-			if (bakeIsFailed && timerHCHealthy === true) return { status: 'failed', label: 'Failed' };
+			/* a terminal Failed bake wins over every hold or pending reading: the timer never reads Pending or Paused once the bake has failed */
+			if (bakeIsFailed) return { status: 'failed', label: 'Failed' };
 			if (bakeIsSucceeded) return { status: 'done', label: 'Done' };
 			if (bakeIsInProgress) return bakeHeld ? { status: 'held', label: 'Paused' } : { status: 'paused', label: 'Checking' };
 			return { status: 'pending', label: 'Pending' };

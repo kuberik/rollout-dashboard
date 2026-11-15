@@ -61,29 +61,36 @@ describe('DeploymentPipelineCard Health checks row on a failed load', () => {
 		const { healthChecksUnavailable: _u, ...rest } = failedBake(names);
 		return { ...rest, healthChecksPending: true };
 	};
-	test('timer: failed load + failed bake, NO snapshot: the timer says Pending, never Failed (the timeout is not known)', () => {
+	test('timer: failed load + failed bake, NO snapshot: the timer says Failed, never Pending', () => {
 		const { container } = render(DeploymentPipelineCard, { props: base(failedBake([])) as any });
-		expect(rowText(container, 'Check timer')).toBe('Check timer Pending');
+		expect(rowText(container, 'Check timer')).toBe('Check timer Failed');
 	});
-	test('timer: failed load + failed bake WITH a snapshot: the timer says Pending (a check failed, not the clock)', () => {
+	test('timer: failed load + failed bake WITH a snapshot: the timer says Failed (a terminal bake wins)', () => {
 		const { container } = render(DeploymentPipelineCard, { props: base(failedBake(['error-rate'])) as any });
-		expect(rowText(container, 'Check timer')).toBe('Check timer Pending');
+		expect(rowText(container, 'Check timer')).toBe('Check timer Failed');
 		expect(rowText(container, 'Health checks')).toContain('Failed');
 	});
-	test('timer: loading list + failed bake, NO snapshot: Pending, not Failed', () => {
+	test('timer: loading list + failed bake, NO snapshot: Failed, not Pending', () => {
 		const { container } = render(DeploymentPipelineCard, { props: base(pendingList([])) as any });
-		expect(rowText(container, 'Check timer')).toBe('Check timer Pending');
+		expect(rowText(container, 'Check timer')).toBe('Check timer Failed');
 	});
-	test('loading list + failed bake WITH a snapshot: the row reads Failed and names the checks; the timer is Pending', () => {
+	test('loading list + failed bake WITH a snapshot: the row reads Failed and names the checks; the timer is Failed', () => {
 		const { container } = render(DeploymentPipelineCard, { props: base(pendingList(['error-rate'])) as any });
 		expect(rowText(container, 'Health checks')).toContain('Failed');
 		expect(rowText(container, 'Health checks')).toContain('error-rate');
-		expect(rowText(container, 'Check timer')).toBe('Check timer Pending');
+		expect(rowText(container, 'Check timer')).toBe('Check timer Failed');
 	});
 	test('loading list, bake not failed: the Health checks row is never Healthy', () => {
 		const { container } = render(DeploymentPipelineCard, { props: base({ healthChecksPending: true }) as any });
 		expect(rowText(container, 'Health checks')).not.toContain('Healthy');
 		expect(rowText(container, 'Health checks')).not.toContain('Failed');
+	});
+	test('a failed bake whose hold fields are still set reads the timer Failed, never Paused or Pending', () => {
+		const e = { bakeStatus: 'Failed', timestamp: new Date().toISOString(), version: { tag: 't' }, bakeStartTime: new Date(Date.now() - 600_000).toISOString(), bakeHoldStartTime: new Date(Date.now() - 300_000).toISOString(), failedHealthChecks: [{ name: 'error-rate' }] };
+		const { container } = render(DeploymentPipelineCard, {
+			props: base({ healthChecksUnavailable: false, latestEntry: e, rollout: { metadata: { name: 'r', namespace: 'ns' }, spec: { bakeTime: '15m', healthCheckSelector: { matchLabels: { a: 'b' } } }, status: { history: [e] } } }) as any
+		});
+		expect(rowText(container, 'Check timer')).toBe('Check timer Failed');
 	});
 	test('a loaded, genuinely healthy list with a failed bake and no snapshot still reads the timer Failed (control)', () => {
 		const { container } = render(DeploymentPipelineCard, {
