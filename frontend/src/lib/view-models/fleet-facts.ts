@@ -101,6 +101,7 @@
  * and regions appear only as an explicit "in N places" or as region names in
  * a cell — never folded silently into an apps count, and vice versa.
  */
+import { exhaustive } from './exhaustive';
 import { instantMs } from '$lib/instant';
 import { severityRank } from '$lib/view-models/severity';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
@@ -405,7 +406,8 @@ function tally(acc: ReturnType<typeof emptyStage>, app: string, n: LaneNode, opt
 		acc.regionNames.add(n.env);
 		acc.regions = siteCount([...acc.regionNames]);
 	}
-	if (state in acc.placesByState) acc.placesByState[state as StageStateKey]++;
+	const key = stageKeyOf(state);
+	if (key) acc.placesByState[key]++;
 	if (state === 'held') {
 		const cause = classifyHold(n.card, opts);
 		acc.causeApps[cause].add(app);
@@ -430,8 +432,34 @@ function toStageFacts(acc: ReturnType<typeof emptyStage>): StageFacts {
 
 function appsByStateTally(worst: Map<string, NodeState>): Record<StageStateKey, number> {
 	const out = emptyStageState();
-	for (const st of worst.values()) if (st in out) out[st as StageStateKey]++;
+	for (const st of worst.values()) {
+		const key = stageKeyOf(st);
+		if (key) out[key]++;
+	}
 	return out;
+}
+
+/**
+ * The unit rule's bucket for a lane node state. A paused bake counts where a checking one does (the tally has no bucket of its
+ * own for it); a place that runs nothing counts in none. Exhaustive over NodeState, so a new state must be placed here.
+ */
+export function stageKeyOf(state: NodeState): StageStateKey | null {
+	switch (state) {
+		case 'failed':
+		case 'stuck':
+		case 'held':
+		case 'deploying':
+		case 'checking':
+		case 'behind':
+		case 'newest':
+			return state;
+		case 'paused':
+			return 'checking';
+		case 'none':
+			return null;
+		default:
+			return exhaustive(state, null);
+	}
 }
 
 /**

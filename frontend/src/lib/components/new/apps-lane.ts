@@ -38,6 +38,7 @@ export function maskLane(a: TApp, lane: Lane): Lane {
 		const p = byHref.get(nodeHref(n));
 		if (!p) return n;
 		const want =
+			(p.state === 'checking' && p.bakePaused && !p.pinned ? 'paused' : undefined) ??
 			NS[placeStateWithPin(p.state, p.pinned)] ??
 			(p.currency === 'none'
 				? 'none'

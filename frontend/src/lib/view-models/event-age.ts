@@ -48,6 +48,7 @@ import type { RolloutCard } from '../rollout-cards';
 import { formatTimeAgoCompact } from '../utils';
 import { waitingSince } from './fleet-facts';
 import type { NodeState } from './promotion-lanes';
+import { exhaustive } from './exhaustive';
 
 export type EventKind = 'failed' | 'deploying' | 'checking' | 'stuck' | 'held' | 'behind';
 
@@ -123,6 +124,7 @@ export function eventAge(card: RolloutCard, kind: EventAgeKind): string | null {
 		}
 		case 'deploying':
 		case 'checking':
+		case 'paused':
 		case 'stuck':
 			return head?.timestamp ?? card.timestamp ?? null;
 		case 'held':
@@ -131,7 +133,10 @@ export function eventAge(card: RolloutCard, kind: EventAgeKind): string | null {
 			const ms = waitingSince(card);
 			return ms != null ? new Date(ms).toISOString() : null;
 		}
-		default:
+		case 'newest':
+		case 'none':
 			return null;
+		default:
+			return exhaustive(kind, null);
 	}
 }

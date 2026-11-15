@@ -28,3 +28,12 @@ describe('StatusMark: approval', () => {
 		expect(container.textContent).toContain('waits for you');
 	});
 });
+
+describe('StatusMark: paused', () => {
+	it('draws the held ring and pause glyph, never the done dot', () => {
+		const html = markup('paused');
+		expect(html).toContain('M9 5.5v13');
+		expect(html).not.toContain('h-1.5 w-1.5');
+		expect(html).toBe(markup('held'));
+	});
+});

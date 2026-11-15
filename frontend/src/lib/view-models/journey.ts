@@ -22,6 +22,7 @@ import { rolloutPath } from '../source-dashboard';
 import type { PrCell, PrService, PrState } from './pr-pipeline';
 import { shortenVersion } from '../utils';
 import { lagLabel } from './env-rank';
+import { exhaustive } from './exhaustive';
 // Verbs come from NextStep's one table (DESIGN-LANGUAGE §3.19): the Gates-tab
 // link navigates, so it is "Review"; "Why held" has no step of its own.
 import { stepLabel } from '$lib/components/NextStep.svelte';
@@ -103,17 +104,20 @@ export type JourneyStop = {
 /** States where the subject has actually arrived — the line is solid up to
  *  the furthest one of these, and only one of these shows a time label that
  *  means "reached" rather than "next"/nothing. */
-const REACHED: ReadonlySet<NodeState> = new Set([
-	'newest',
-	'failed',
-	'stuck',
-	'held',
-	'deploying',
-	'checking'
-]);
+const REACHED: Record<NodeState, boolean> = {
+	newest: true,
+	failed: true,
+	stuck: true,
+	held: true,
+	deploying: true,
+	checking: true,
+	paused: true,
+	behind: false,
+	none: false
+};
 
 export function isReached(state: NodeState): boolean {
-	return REACHED.has(state);
+	return REACHED[state];
 }
 
 /* worst-first is `severity.ts`'s ONE order */
@@ -282,8 +286,12 @@ export function frontierStateWord(state: NodeState): string {
 			return 'Paused';
 		case 'deploying':
 			return 'Deploying';
-		default:
+		case 'newest':
+		case 'behind':
+		case 'none':
 			return 'Live';
+		default:
+			return exhaustive(state, 'Live');
 	}
 }
 
@@ -457,10 +465,15 @@ function actionFor(
 				: { kind: 'why-held', label: 'Why held', href };
 		case 'deploying':
 		case 'checking':
+		case 'paused':
 		case 'stuck':
 			return { kind: 'open', label: stepLabel('open'), href };
-		default:
+		case 'newest':
+		case 'behind':
+		case 'none':
 			return undefined;
+		default:
+			return exhaustive(state, undefined);
 	}
 }
 
@@ -514,8 +527,14 @@ function cellNodeLabel(
 			return `${env} · held`;
 		case 'behind':
 			return `${env} · queued`;
-		default:
+		case 'newest':
+		case 'deploying':
+		case 'checking':
+		case 'paused':
+		case 'none':
 			return `${env} · not reached yet`;
+		default:
+			return exhaustive(nodeState, `${env} · not reached yet`);
 	}
 }
 
@@ -680,8 +699,12 @@ function laneNodeLabel(env: string, n: Pick<LaneNode, 'state' | 'behind'>): stri
 			return `${env} · deploying`;
 		case 'checking':
 			return `${env} · checking`;
-		default:
+		case 'paused':
+			return `${env} · ${frontierStateWord('paused').toLowerCase()}`;
+		case 'none':
 			return `${env} · not reached yet`;
+		default:
+			return exhaustive(n.state, `${env} · not reached yet`);
 	}
 }
 
