@@ -375,6 +375,68 @@
 				)
 			: undefined
 	);
+	// ⛔ DECLARED ABOVE `appLane`, NOT BESIDE `blockStory`: `appLane` reads
+	// `gateContext` and `providerNetwork`, and `laneNodePerms`' `createQueries`
+	// evaluates its options EAGERLY at setup. When the fleet list and this
+	// rollout are already cached (back to Overview from Gates or History),
+	// that first read reaches them, and a `const` declared further down is
+	// still in its temporal dead zone: "Cannot access 'gateContext' before
+	// initialization". `warm-list-mount.svelte.test.ts` pins it. The long
+	// note on `gateContext` stays where `blockStory` is built, below.
+	let scheduleObjects = $state<any[] | null>(null);
+	const gateContext = $derived.by(() => {
+		const listData = listQuery.data;
+		const envItems = [...(listData?.environments?.items ?? [])];
+		if (environment) envItems.push(environment);
+		const base = buildGateContext({
+			// `null` when we genuinely have nothing — `buildGateContext` records
+			// that as "source not consulted", which downgrades an unattributable
+			// gate to `unknown` instead of promoting it to an approval.
+			environments: listData?.environments || environment ? { items: envItems } : null,
+			rolloutDependencies: listData?.rolloutDependencies ?? null,
+			rollouts: rollout ? [rollout] : null,
+			rolloutGates: rolloutQuery.data?.rolloutGates ?? null
+		});
+		return scheduleObjects !== null
+			? withSchedules(base, rollout?.metadata?.namespace, scheduleObjects)
+			: base;
+	});
+	/**
+	 * ⭐ THE SAME GRAPH THE DEPENDENCIES TAB BUILDS (`buildRolloutGraph`),
+	 * MOVED UP HERE SO `blockStory` CAN READ IT. (2026-10-09, coordinator
+	 * ruling: "held" = refused by a gate OR held by a contract.) This block
+	 * used to sit below, beside `heldByThis`/`holdEdgesIn` — it is relocated,
+	 * not duplicated: `$effect.pre` below reads `blockStory` EAGERLY, as
+	 * part of registering its own dependencies, which runs synchronously
+	 * while this `<script>` block is still executing top to bottom. A
+	 * `const` declared textually AFTER that point is in its own temporal
+	 * dead zone at that moment — "forward reference is safe, `$derived` is
+	 * lazy" is true of an ordinary read but NOT of the first run of an
+	 * `$effect`/`$effect.pre`, which is exactly the live crash this fixes
+	 * (`ReferenceError: Cannot access 'contractHoldsIn' before
+	 * initialization`, `subject-detail.svelte.test.ts`). `providerEnvOrder`/
+	 * `providerNetwork`/`providerFocusId` keep their own doc comments where
+	 * `heldByThis` still reads them, below.
+	 */
+	const providerEnvOrder = $derived(
+		[
+			...new Set(
+				(listQuery.data?.environments?.items ?? [])
+					.map((e: Environment) => e.spec?.environment)
+					.filter(Boolean) as string[]
+			)
+		].sort(compareEnvironmentNames)
+	);
+	const providerNetwork = $derived(
+		buildRolloutGraph({
+			rollouts: (listQuery.data?.rollouts?.items ?? []) as Rollout[],
+			environments: (listQuery.data?.environments?.items ?? []) as Environment[],
+			dependencies: (listQuery.data?.rolloutDependencies?.items ?? []) as RolloutDependency[],
+			envOrder: providerEnvOrder,
+			gates: gateContext
+		})
+	);
+	const providerFocusId = $derived(nodeId(cluster, namespace, name));
 	// ⭐ THIS APP'S LANE (design language): the same view-model Home draws,
 	// built from the fleet list for this rollout's name only.
 	const appLane = $derived.by(() => {
@@ -384,8 +446,8 @@
 		const mine = ((data.rollouts?.items ?? []) as Rollout[]).filter((r) => r.metadata?.name === me);
 		// The gate context goes in (QA 5): every stuck caller passes it, so the
 		// shared `detectRolloutStuck` excuses a correctly-held stage here the
-		// same way it does on Home. (`gateContext` is declared below; this
-		// closure only runs after component setup.)
+		// same way it does on Home. (`gateContext` is declared above, because
+		// this closure can run during component setup.)
 		// ⭐ THE HOLD-ONE-RULE, FOR THIS LANE TOO. (shared/held-predicate,
 		// 2026-10-11) Without `contractHoldsFor` a card held ONLY by a
 		// `RolloutDependency` contract (never published on `rollout.status.
@@ -597,63 +659,11 @@
 	 * `withSchedules` → `buildRolloutGraph` → `contractHoldsForRollout` below
 	 * are the SAME four functions `cardContext` composes, called the same
 	 * way, so this and every other surface still classify one gate
-	 * identically — see `appLane`, below, which already hands
+	 * identically — see `appLane`, above, which already hands
 	 * `buildRolloutCards` both `gateContext` and `contractHoldsForRollout`.
 	 */
-	let scheduleObjects = $state<any[] | null>(null);
-	const gateContext = $derived.by(() => {
-		const listData = listQuery.data;
-		const envItems = [...(listData?.environments?.items ?? [])];
-		if (environment) envItems.push(environment);
-		const base = buildGateContext({
-			// `null` when we genuinely have nothing — `buildGateContext` records
-			// that as "source not consulted", which downgrades an unattributable
-			// gate to `unknown` instead of promoting it to an approval.
-			environments: listData?.environments || environment ? { items: envItems } : null,
-			rolloutDependencies: listData?.rolloutDependencies ?? null,
-			rollouts: rollout ? [rollout] : null,
-			rolloutGates: rolloutQuery.data?.rolloutGates ?? null
-		});
-		return scheduleObjects !== null
-			? withSchedules(base, rollout?.metadata?.namespace, scheduleObjects)
-			: base;
-	});
-	/**
-	 * ⭐ THE SAME GRAPH THE DEPENDENCIES TAB BUILDS (`buildRolloutGraph`),
-	 * MOVED UP HERE SO `blockStory` CAN READ IT. (2026-10-09, coordinator
-	 * ruling: "held" = refused by a gate OR held by a contract.) This block
-	 * used to sit below, beside `heldByThis`/`holdEdgesIn` — it is relocated,
-	 * not duplicated: `$effect.pre` below reads `blockStory` EAGERLY, as
-	 * part of registering its own dependencies, which runs synchronously
-	 * while this `<script>` block is still executing top to bottom. A
-	 * `const` declared textually AFTER that point is in its own temporal
-	 * dead zone at that moment — "forward reference is safe, `$derived` is
-	 * lazy" is true of an ordinary read but NOT of the first run of an
-	 * `$effect`/`$effect.pre`, which is exactly the live crash this fixes
-	 * (`ReferenceError: Cannot access 'contractHoldsIn' before
-	 * initialization`, `subject-detail.svelte.test.ts`). `providerEnvOrder`/
-	 * `providerNetwork`/`providerFocusId` keep their own doc comments where
-	 * `heldByThis` still reads them, below.
-	 */
-	const providerEnvOrder = $derived(
-		[
-			...new Set(
-				(listQuery.data?.environments?.items ?? [])
-					.map((e: Environment) => e.spec?.environment)
-					.filter(Boolean) as string[]
-			)
-		].sort(compareEnvironmentNames)
-	);
-	const providerNetwork = $derived(
-		buildRolloutGraph({
-			rollouts: (listQuery.data?.rollouts?.items ?? []) as Rollout[],
-			environments: (listQuery.data?.environments?.items ?? []) as Environment[],
-			dependencies: (listQuery.data?.rolloutDependencies?.items ?? []) as RolloutDependency[],
-			envOrder: providerEnvOrder,
-			gates: gateContext
-		})
-	);
-	const providerFocusId = $derived(nodeId(cluster, namespace, name));
+	// `scheduleObjects`, `gateContext` and `providerNetwork`/`providerEnvOrder`/
+	// `providerFocusId` are declared above `appLane` (see the note there).
 	/**
 	 * ⭐ THE HOLD-ONE-RULE'S CONTRACT HALF, FOR `blockStory` ITSELF. Built off
 	 * the SAME `providerNetwork` this page already builds for
