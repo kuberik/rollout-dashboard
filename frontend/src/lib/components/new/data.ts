@@ -216,7 +216,13 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 	if (row.group !== 'failed') return null;
 	const h = rawOf(row.href)?.status.history?.[0];
 	if (!h) return null;
-	const fc = h.failedHealthChecks?.[0] as ({ name: string; message?: string; observations?: HealthObservation[] }) | undefined;
+	type Snap = { name: string; message?: string; observations?: HealthObservation[] };
+	/* the check the line names is one failing now when there is one (a recovered check never fronts a failing rollout), else the first */
+	const hpEarly = hrefParts(row.href);
+	const liveEarly = hpEarly ? ((source().healthChecks ?? []).find((i) => i.metadata.namespace === hpEarly.ns && i.metadata.name === hpEarly.name)?.healthChecks ?? []) : [];
+	const failingNow = (liveEarly as HealthCheck[]).find((x) => (x.status as { status?: string } | undefined)?.status === 'Unhealthy')?.metadata?.name;
+	const snaps = (h.failedHealthChecks ?? []) as Snap[];
+	const fc = (failingNow ? snaps.find((s) => s.name === failingNow) : undefined) ?? snaps[0];
 	const generic = /^A HealthCheck reported an error/.test(h.bakeStatusMessage ?? '');
 	const phrase = h.bakeStatusMessage && !generic ? h.bakeStatusMessage : null;
 	const check = fc?.name ?? null, message = fc?.message ?? null;

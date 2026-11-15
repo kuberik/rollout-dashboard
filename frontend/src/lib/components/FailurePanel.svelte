@@ -312,9 +312,9 @@
 	class="mb-4"
 	severity="failed"
 	title="Deployment failed"
-	observations={worst ? evObservations : observations}
-	check={worst ? evCheck : undefined}
-	message={worst ? evMessage : failureAgo ? `${bannerMessage} \u00b7\u00a0${failureAgo}\u00a0ago` : bannerMessage}
+	observations={evidence ? evObservations : observations}
+	check={evidence ? evCheck : undefined}
+	message={evidence ? evMessage : failureAgo ? `${bannerMessage} \u00b7\u00a0${failureAgo}\u00a0ago` : bannerMessage}
 	footnoteLabel="Details"
 	pulse={true}
 	primary={retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
