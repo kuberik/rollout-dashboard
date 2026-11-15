@@ -9,7 +9,8 @@
  *
  *  - the status is connected and names the viewer;
  *  - every repo a rollout in the fleet links has changes in the feed (same repos, commits, releases);
- *  - every PR in the feed resolves on the PR route, and a pasted PR URL for it resolves too;
+ *  - every PR in the feed resolves on the PR route (the pasted-URL flow itself is in scripts/mock-github-smoke.mjs);
+ *  - no two repos share a commit sha (payout-api and billing-edge run the same tags);
  *  - the viewer authors some changes ("yours");
  *  - the unknown-PR and unknown-repo answers stay the real 404 shapes (scope pr / repo).
  *
@@ -47,6 +48,26 @@ describe('mock GitHub (respond)', () => {
 		const have = new Set(changes.changes.map((c) => `${c.owner}/${c.repo}`));
 		const missing = [...repos].filter((r) => !have.has(r));
 		expect(missing).toEqual([]);
+	});
+
+	it('the bypass-demo apps\' newest change is the build their rollouts offer (same sha)', () => {
+		const fleet = get('/api/rollouts').body as string;
+		for (const repo of ['payout-api', 'billing-edge', 'invoice-worker']) {
+			const newest = changes.changes.filter((c) => c.repo === repo && c.kind === 'pr').sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt))[0];
+			expect(newest, repo).toBeDefined();
+			expect(fleet.includes(newest.mergeCommitSha!), `${repo} ${newest.mergeCommitSha}`).toBe(true);
+		}
+	});
+
+	it('never gives two repos the same commit sha', () => {
+		const seen = new Map<string, string>();
+		for (const c of changes.changes) {
+			const sha = c.mergeCommitSha;
+			if (!sha) continue;
+			const prev = seen.get(sha);
+			expect(prev === undefined || prev === `${c.owner}/${c.repo}`, `${sha} in ${prev} and ${c.owner}/${c.repo}`).toBe(true);
+			seen.set(sha, `${c.owner}/${c.repo}`);
+		}
 	});
 
 	it('resolves every PR of the feed on the PR route', () => {

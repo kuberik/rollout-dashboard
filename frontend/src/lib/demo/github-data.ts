@@ -154,6 +154,8 @@ function stripPad(s: string): string {
  * worked before this fix).
  */
 const REVISION_ALIASES: Record<string, Record<string, string>> = {
+	// payout-api and billing-edge run the same tags; payout-api's revisions are salted (bypass-demo.ts `bypassRevision`) so no two repos share a sha.
+	'payout-api': Object.fromEntries(['m-60', 'm-61', 'm-62'].map((t) => [t, expandSha('ab' + t)])),
 	'hello-frontend-app': {
 		'rel-2': 'e87f059fd602466f1c13e293210b3d2e430504c8',
 		'rel-63': '66e4133a4289eec3b88439b2069b617c8435975f',
@@ -756,7 +758,7 @@ const APPS: Record<string, AppFixture> = {
 	/**
 	 * The three apps of `bypass-demo.ts` (payout-api, billing-edge, invoice-worker). They are in the fleet, on Home's
 	 * "Needs your approval" card and on the gates pages, so their builds (`m-60..62`, `w-29..31`, the same tags the
-	 * rollouts run) must also have a change each: without these the Home card's "BE billing-edge · Mark Collins" row,
+	 * rollouts run) must also have a change each: without these the Home card's billing-edge row,
 	 * the release's change page and the commit rollup had nothing to resolve against (the "agree with the fleet" rule,
 	 * pinned by `github-mock-agreement.test.ts`).
 	 */
