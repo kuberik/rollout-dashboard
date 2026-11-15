@@ -256,7 +256,8 @@
 	/* the checks the banner draws evidence from, read from observations only: the live HealthCheck when we have it, else the history snapshot */
 	const pool = $derived(poolOf(healthChecks, failedHCList as SnapCheck[], deployWindowStart(rollout)));
 	const worst = $derived(worstOf(pool));
-	const evidence = $derived(!!worst);
+	/* a failing check without observations has no evidence row: the panel keeps its sentence */
+	const evidence = $derived(!!worst && (worst.recovered || !!worst.row));
 	const allRecovered = $derived(!!worst?.recovered);
 	const evAgo = $derived.by(() => {
 		const since = checksFailingSince(pool);

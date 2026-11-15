@@ -157,6 +157,21 @@ describe('a recovered check follows its verdict, not the presence of observation
 	});
 });
 
+describe('a check failing now outranks a recovered one, even without observations', () => {
+	it('Unhealthy with no observations + another check recovered: not recovered, no "retry is reasonable"', () => {
+		const a = mk('kustomization', { status: 'Unhealthy', lastChangeTime: T(5) }, 'a');
+		const b = mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(6) }, 'b');
+		const pool = poolOf([a, b], [{ name: 'a' }, { name: 'b', message: 'monitor alerted' }], win);
+		expect(pool.map((c) => c.verdict).sort()).toEqual(['failing', 'recovered']);
+		const w = worstOf(pool);
+		expect(w?.recovered).toBe(false);
+		expect(w?.check.name).toBe('a');
+		expect(w?.row).toBeNull();
+		expect(evidenceLine(pool)).toBeNull();
+		expect(bannerEvidence(pool, 0, null)).toBeNull();
+	});
+});
+
 describe('failureSince: the failure has one age', () => {
 	it('is the earliest start among the failing checks, never a pending one', () => {
 		const dd = mk('datadog', { status: 'Unhealthy', lastChangeTime: T(8), lastErrorTime: T(40), observations: [{ name: 'a', kind: 'State', value: 'Alert', healthy: false }] }, 'dd');

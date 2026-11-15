@@ -207,6 +207,9 @@ export function worstOf(pool: CheckView[]): Worst | null {
 	const failing = pool.flatMap((check) => check.rows.filter((r) => r.state === 'failing').map((row) => ({ check, row })));
 	const w = failing.find((x) => x.row.figure) ?? failing[0];
 	if (w) return { ...w, recovered: false };
+	/* a check failing now without observations still outranks a recovered one: the failure is not over, so no "retry is reasonable" */
+	const failingNow = pool.find((c) => c.verdict === 'failing');
+	if (failingNow) return { check: failingNow, row: null, recovered: false };
 	const recs = pool.filter((c) => c.verdict === 'recovered');
 	const rec = recs.find((c) => c.recovery && c.recovery.rows.length > 0) ?? recs[0];
 	if (rec) {
