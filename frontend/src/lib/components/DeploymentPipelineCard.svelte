@@ -518,8 +518,9 @@
 	}
 
 	/** the sub-dot / ping fill: the status's solid; a pending node is the quiet grey line */
-	function subDotBg(status: NodeStatus): string {
-		return status === 'pending' ? 'bg-line-strong' : TONE[nodeTone(status)].bg;
+	function subDotBg(status: NodeStatus, wordInk = false): string {
+		if (status === 'pending') return wordInk ? TONE.checking.bg : 'bg-line-strong'; /* a sub-row's dot takes its word's ink (`wordInk`) */
+		return TONE[nodeTone(status)].bg;
 	}
 
 	/** the selected row's left edge: the status's solid (a pending node leans on the active blue) */
@@ -803,7 +804,7 @@
 		<div class="flex items-center gap-3">
 			<span
 				aria-hidden="true"
-				class="h-3 w-3 flex-shrink-0 rounded-full {subDotBg(status)} {status === 'running'
+				class="h-3 w-3 flex-shrink-0 rounded-full {subDotBg(status, !(extra === 'tests' && !sd?.hasTests))} {status === 'running'
 					? 'animate-pulse'
 					: ''}"
 			></span>
