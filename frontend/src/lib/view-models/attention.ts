@@ -98,7 +98,7 @@ export type AttentionInput = {
 	regions?: readonly { ink: string }[] | null;
 	/** the approval's fact line ("Releases when someone approves") */
 	gateSentence?: string | null;
-	/** health evidence (take A): a quiet line under the fact ("+2 more failing") and the recovered flag (word `Failed`, not `Failing`) */
+	/** health evidence: a quiet line under the fact ("+2 more failing") and the recovered flag (word `Failed`, not `Failing`) */
 	note?: string | null;
 	recovered?: boolean;
 	/** recovered: "09:34", the moment the check went OK (the card's fact: "recovered at 09:34") */

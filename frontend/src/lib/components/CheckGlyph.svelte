@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	/**
-	 * THE ONE GLYPH LOOKUP BY CHECK CLASS (take C rule 2): kustomization = cube, datadog / datadog-monitor-crd = chart line,
+	 * THE ONE GLYPH LOOKUP BY CHECK CLASS: kustomization = cube, datadog / datadog-monitor-crd = chart line,
 	 * prometheus-alert = bell, datadog-incidents = fire. Ink is the caller's (state). Used by the Overview rows, History,
 	 * the banner's details and every cause line (Attention cards on Home and /rollouts), so one class never has two glyphs.
 	 */

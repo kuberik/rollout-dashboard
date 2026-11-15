@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	/**
-	 * WHEN A RECOVERED CHECK FAILED, DRAWN ONCE: the one place take C draws time.
+	 * WHEN A RECOVERED CHECK FAILED, DRAWN ONCE: the one place the dashboard draws time.
 	 * Role: for a check that failed during the bake and is Healthy now (flapped, or recovered mid-bake), a single compact
 	 * lane: axis from the check's start ("check 14:00": the bake start, not the deploy) to a `now` label at the right end, one span [failed, OK]
 	 * in the danger solid at its recovered depth, a 1px mark at the failed instant labelled `failed 14:03`, the word `OK 14:05` in success

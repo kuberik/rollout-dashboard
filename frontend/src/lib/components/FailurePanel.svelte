@@ -253,7 +253,7 @@
 	const figure = $derived.by(() => { const l = failingLead(null, observations); return l.kind === 'check' ? null : l; });
 	/* with a figure the sentence keeps the check's NAME and the budget; the number is not said twice */
 	const bannerMessage = $derived(figure?.budget && failedHCList.length === 1 ? `${findDisplayName(failedHCList[0])}: ${figure.budget}` : summaryLine);
-	/* take C: the checks the banner draws evidence from, read from observations only: the live HealthCheck when we have it, else the history snapshot */
+	/* the checks the banner draws evidence from, read from observations only: the live HealthCheck when we have it, else the history snapshot */
 	const pool = $derived(poolOf(healthChecks, failedHCList as SnapCheck[], deployWindowStart(rollout)));
 	const worst = $derived(worstOf(pool));
 	const evidence = $derived(!!worst);
