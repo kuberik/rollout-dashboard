@@ -42,7 +42,7 @@
 	import { TIERS_WITH_OTHER } from '$lib/view-models/sites-waves';
 	import { holdLeadCause, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
-	import { canApproveAt } from './data';
+	import { canApproveAt, failureRecovered } from './data';
 	import { plural, rowAction, actionLabel, actionHref, markOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -360,7 +360,7 @@
 {#snippet envRow(cls: string)}
 	<!-- r39 (owner 2026-11-08: "Apps tiles use the boxed env row"): the SAME PromotionLane every page draws, neutral boxes (no current), bare = no app name column.
 	     The tile is one link, so nothing inside the row is a target. -->
-	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} fill={lead ? 'L' : 'M'} {calm} youCan={(n) => canApproveAt((n.card as { href?: string }).href ?? '', scenario)} /></div>
+	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} fill={lead ? 'L' : 'M'} {calm} youCan={(n) => canApproveAt((n.card as { href?: string }).href ?? '', scenario)} recovered={(n) => failureRecovered(hrefFor(n))}/></div>
 {/snippet}
 
 {#snippet facts(t: string | Cause)}{#each typeof t === 'string' ? [t] : t as run}{#if typeof run !== 'string'}<GateLabel label={run} />{:else}{#each chunks(run) as c}{#if c.nw}<span class="whitespace-nowrap">{c.x}</span>{:else}{c.x}{/if}{/each}{/if}{/each}{/snippet}

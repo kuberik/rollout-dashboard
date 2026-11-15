@@ -13,6 +13,7 @@
 	import { activityVerb } from '$lib/view-models/activity-verb';
 	import { formatClockTime } from '$lib/display-time';
 	import { activityKindOf } from '$lib/view-models/activity-kind';
+	import { bakePaused } from '$lib/bake-hold';
 	import type { ActivityKind } from '$lib/view-models/activity-verb';
 	import { getEnvironmentRank } from '$lib/env-order';
 	import { actorFrom, type Actor } from '$lib/actor';
@@ -51,7 +52,7 @@
 				const bs = h.bakeStatus || 'None';
 				const actor = actorFrom(h.triggeredBy, undefined);
 				const rank = getEnvironmentRank(envName);
-				const kind = activityKindOf({ bakeStatus: bs, bakeStatusMessage: h.bakeStatusMessage, isRollback: acts[i]?.kind === 'rollback', actorKind: actor.kind, envRank: rank, firstEnvRank: Math.min(ranks.get(r.metadata?.name ?? '') ?? Infinity, rank) });
+				const kind = activityKindOf({ bakeStatus: bs, bakeStatusMessage: h.bakeStatusMessage, bakePaused: bakePaused(h), isRollback: acts[i]?.kind === 'rollback', actorKind: actor.kind, envRank: rank, firstEnvRank: Math.min(ranks.get(r.metadata?.name ?? '') ?? Infinity, rank) });
 				const ts = bs === 'Failed' ? historyEntrySince(h) ?? h.timestamp : h.timestamp;
 				out.push({ key: `${ri}:${i}`, ts, kind, current: i === 0, env: shortEnvLabel(theme) || envName, theme, from: prev, to: ver, actor });
 			}
@@ -74,7 +75,7 @@
 	/** "6 of 35 today" when every shown event is one day's, else "6 of 41" */
 	const footLeft = $derived(groups.length === 1 ? `${shown} of ${totals.get(groups[0].key) ?? shown} ${groups[0].label.toLowerCase()}` : `${shown} of ${all.length}`);
 	/** the verb column: one word each, in a fixed 96px track */
-	const VERB: Record<ActivityKind, string> = { deployed: 'Deployed', promoted: 'Promoted', rolledBack: 'Rolled back', failed: 'Failed', failedHealthCheck: 'Check failed', deploying: 'Deploying', checking: 'Checking', held: 'Held', approved: 'Approved', pinned: 'Pinned' };
+	const VERB: Record<ActivityKind, string> = { deployed: 'Deployed', promoted: 'Promoted', rolledBack: 'Rolled back', failed: 'Failed', failedHealthCheck: 'Check failed', deploying: 'Deploying', checking: 'Checking', paused: 'Paused', held: 'Held', approved: 'Approved', pinned: 'Pinned' };
 </script>
 
 <Card icon={ClockOutline} title="Recent activity" padded={false} smooth={false}>

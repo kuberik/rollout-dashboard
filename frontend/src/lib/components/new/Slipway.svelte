@@ -35,7 +35,7 @@
 
 	const failing = $derived(row.group === 'failed');
 	const fr = $derived(row.failure);
-	const check = $derived(fr ? { name: fr.check ?? fr.line, message: fr.check ? (fr.message ?? undefined) : undefined } : null);
+	const check = $derived(fr ? { name: fr.check ?? fr.line, message: fr.check ? (fr.short ?? fr.message ?? undefined) : undefined } : null);
 	const sel = $derived((row.steps.find((s) => s.state === 'fail') ?? row.steps.find((s) => s.state === 'active' || s.state === 'hold') ?? row.steps[row.steps.length - 1])?.name ?? null);
 	/* gated rows (awaiting approval / held by rule) run their current build; lastHealthy(row) would return it (from=0) and print
 	   "X replaces X". Walk back one entry so the line reads the tab's "Roll back to <previous>". */

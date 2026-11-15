@@ -113,7 +113,7 @@
 	const latest = $derived(rollout?.status?.history?.[0]);
 	const build = $derived(latest ? getDisplayVersion(latest.version) : null);
 	const chip = $derived(
-		chipOverride !== undefined ? chipOverride : latest ? rolloutStateChip(latest.bakeStatus) : null
+		chipOverride !== undefined ? chipOverride : latest ? rolloutStateChip(latest.bakeStatus, latest) : null
 	);
 	const stuck = $derived(detectStuck(rollout, { now: $now }));
 	/**

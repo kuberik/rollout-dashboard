@@ -656,7 +656,9 @@ export function deriveGenericEvents(rollout: Record<string, unknown>) {
 			reason: 'Unhealthy',
 			involvedObject: { kind: 'Pod', name: `${name}-${tag}-0` },
 			message: head.bakeStatusMessage ?? 'Readiness probe failed',
-			lastTimestamp: hcAgo(3)
+			// a fixture whose failed check snapshot carries its failure instant (health-failures cases) agrees with the check's "failed HH:MM"
+			lastTimestamp:
+				((head as { failedHealthChecks?: unknown }).failedHealthChecks as { observations?: { observedTime?: string; healthy?: boolean }[] }[] | undefined)?.[0]?.observations?.find((o) => o.healthy === false && o.observedTime)?.observedTime ?? hcAgo(3)
 		});
 	}
 	return { events };

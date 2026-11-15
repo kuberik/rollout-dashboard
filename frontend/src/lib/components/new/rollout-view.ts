@@ -17,12 +17,18 @@ export const envTheme = (tier: string) => getRolloutEnvironmentTheme(null, TIER_
 /** the one mark of a row (StatusMark state) */
 export type MarkState = 'failed' | 'approval' | 'held' | 'deploying' | 'checking';
 export function markOf(row: TRow): MarkState {
-	return row.group === 'failed' ? 'failed' : row.group === 'approval' ? (row.stillChecking ? 'checking' : 'approval') : row.group === 'held' ? 'held' : row.state === 'checking' ? 'checking' : 'deploying';
+	return row.group === 'failed' ? 'failed' : row.group === 'approval' ? (row.stillChecking ? 'checking' : 'approval') : row.group === 'held' ? 'held' : row.state === 'checking' ? (row.paused ? 'held' : 'checking') : 'deploying';
+}
+
+/** failing rows in the order a person should look: a LIVE failure first, a recovered one (its checks are OK again, a retry is reasonable) after every live one; within each, the `lead` row, then the longest-failing. Never reorders anything else. */
+export function byFailRank<T extends TRow>(rows: T[]): T[] {
+	const t = (r: TRow) => Date.parse(r.since ?? '') || Infinity;
+	return [...rows].sort((a, b) => Number(!!a.failure?.recovered) - Number(!!b.failure?.recovered) || Number(!!b.lead) - Number(!!a.lead) || t(a) - t(b));
 }
 
 /** the Runway's subject: the lead failure; else (calm / quiet) the newest place that is moving; else null */
 export function runwayRow(rows: TRow[]): TRow | null {
-	const failing = rows.find((r) => r.group === 'failed' && r.lead) ?? rows.find((r) => r.group === 'failed');
+	const failing = byFailRank(rows.filter((r) => r.group === 'failed'))[0];
 	if (failing) return failing;
 	return [...rows].filter((r) => r.group === 'moving').sort((a, b) => newestFirst(a.since, b.since))[0] ?? null;
 }
@@ -145,6 +151,7 @@ export function stateWordOf(row: TRow, hs: HomeState, open = false, hasCheck = f
 		const of = approvalScope(row, hs).of;
 		return of > 1 ? `${stateWord('approval')} · ${of} regions` : stateWord('approval');
 	}
+	if (row.group === 'moving' && row.paused) return 'Paused';
 	if (row.group === 'moving' && clock) return open ? 'Checking' : `Checking · ${clock}`;
 	if (open && row.group === 'moving') return null;
 	return holdWord(row, hs) ?? (row.word.startsWith('Held by') && (row as TRow).cause ? ((row as TRow).cause as string) : row.word);

@@ -9,7 +9,7 @@
  */
 import { newestFirst } from '$lib/instant';
 import { startOfDayMs } from '$lib/display-time';
-import { approvalWord, severity } from '../state-words';
+import { approvalWord, failedWord, severity } from '../state-words';
 import {
 	tabPill,
 	deployedHistory,
@@ -182,8 +182,10 @@ export function placesInPillState(places: PlaceHold[], build: string, pill: stri
 	const want = (p: PlaceHold) =>
 		word === 'FAILED'
 			? p.state === 'failed'
+			: word === 'PAUSED'
+			? p.state === 'checking' && p.bakePaused
 			: word === 'CHECKING'
-				? p.state === 'checking'
+				? p.state === 'checking' && !p.bakePaused
 				: word === 'DEPLOYING'
 					? p.state === 'deploying'
 					: p.state !== 'failed' && p.state !== 'checking' && p.state !== 'deploying';
@@ -215,7 +217,7 @@ export type HoldRow = {
 	key: string;
 	/** a promotion hold's typed label: the card draws `Held by » [SOURCE]` (GateLabel), `name` is only its plain-text form */
 	label?: GateLabel;
-	kind: 'approval' | 'pin' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
+	kind: 'approval' | 'pin' | 'paused' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
 	name: string;
 	holding: boolean;
 	places: string[];
@@ -285,6 +287,9 @@ export function holdRows(
 		for (const p of pinned) for (const b of p.newerShown) if (!held.includes(b)) held.push(b);
 		rows.push({ key: 'pin', kind: 'pin', name: pinVersion ? `Pinned to ${pinVersion}` : 'Pinned', holding: true, places: pinned.map((p) => p.place), held, sentence: 'Releases when the pin is cleared', href: `${pinned[0].href}` });
 	}
+	/* a bake whose clock is stopped by a not-Healthy check holds nothing back but IS a hold the page names: the same word the place row and the strip say */
+	for (const p of places.filter((x) => x.state === 'checking' && x.bakePaused && !pins.has(x.place)))
+		rows.push({ key: `paused:${p.place}`, kind: 'paused', name: `${app ? `${app} ` : ''}${p.place}: bake paused, waiting on a health check`, holding: true, places: [p.place], held: [], sentence: 'The bake clock restarts when the check is Healthy again', href: p.href });
 	return rows.sort((a, b) => Number(b.holding) - Number(a.holding));
 }
 
@@ -598,13 +603,14 @@ export function waveFactOf(
 /** the separator + clause as drawn: dot and clause joined by a non-breaking space */
 export const waveClause = (fact: string): string => `\u00b7\u00a0${fact}`;
 /** the place's ONE state word, the strip cell's own (never "Live"): at rest "Healthy"; a place the pin holds says the tab's cause, "Held by the pin" */
-export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = false): string {
+export function placeWord(p: Pick<PlaceHold, 'state'> & { bakePaused?: boolean }, pinned = false, yours = false, recovered = false): string {
 	if (pinned) return 'Held by the pin';
+	if (p.state === 'checking' && p.bakePaused) return 'Paused';
 	/* detail pass 2026-11-08: one approval word on every page (approvalWord): "Needs your approval" when the viewer can give it */
 	return (
 		(
 			{
-				failed: 'Failing',
+				failed: failedWord(recovered),
 				'awaiting-approval': approvalWord(yours),
 				'held-by-rule': 'Held',
 				deploying: 'Deploying',

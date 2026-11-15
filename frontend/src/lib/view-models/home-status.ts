@@ -132,7 +132,7 @@ export function changeSummary(row: Pick<ChangeRowVM, 'services' | 'sha'>): { tex
 		else if (f.state === 'failed' || f.state === 'stuck') bump(`${f.state} in ${where(f)}`, 'failed');
 		else if (f.state === 'held' && f.action?.kind === 'review') bump('waits for approval', 'approval');
 		else if (f.state === 'held') bump(`held in ${where(f)}`, 'held');
-		else if (f.state === 'deploying' || f.state === 'checking') bump(`${f.state} in ${where(f)}`, 'active');
+		else if (f.state === 'deploying' || f.state === 'checking' || f.state === 'paused') bump(`${f.state} in ${where(f)}`, 'active');
 		else bump(`in ${where(f)}`, 'live');
 	}
 	// Round T: the apps it is already in prod on, by name — "2 of 4 in prod"
@@ -189,7 +189,7 @@ export function regionTally(
 		const id = n.card.version ? idOf(n.card.version) : '';
 		if (n.state === 'none' || !id) add('not deployed', null);
 		else if (n.state === 'failed' || n.state === 'stuck') add('failing on', id);
-		else if (n.state === 'checking') add('checking', id);
+		else if (n.state === 'checking' || n.state === 'paused') add('checking', id);
 		else if (n.state === 'deploying') add('deploying', id);
 		else add('on', id);
 	}

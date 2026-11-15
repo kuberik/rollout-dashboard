@@ -436,7 +436,8 @@ export function homeIncidentEvents(rollout: K8sObject): Record<string, unknown> 
 			// the pod-level symptom is the failing check's own message; the
 			// bake message is the controller's verdict, not a probe result
 			message: h.failedHealthChecks?.[0]?.message ?? h.bakeStatusMessage ?? 'Readiness probe failed',
-			lastTimestamp: h.bakeEndTime ?? h.timestamp
+			// the failure's own instant (its snapshot observation) when the fixture carries one, so the event agrees with the check's "failed HH:MM"
+			lastTimestamp: (h.failedHealthChecks as { observations?: { observedTime?: string; healthy?: boolean }[] }[] | undefined)?.[0]?.observations?.find((o) => o.healthy === false && o.observedTime)?.observedTime ?? h.bakeEndTime ?? h.timestamp
 		});
 	}
 	return { events };

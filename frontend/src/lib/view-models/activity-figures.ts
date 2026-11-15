@@ -15,18 +15,21 @@ export function isInFlightEntry(e: { bakeStatus: string | null | undefined; isLi
 	return e.isLive && (e.bakeStatus === 'InProgress' || e.bakeStatus === 'Deploying');
 }
 
-export type InFlightEntry = { rolloutKey: string; bakeStatus: string };
+export type InFlightEntry = { rolloutKey: string; bakeStatus: string; /** the bake clock is stopped (`bakePaused`) */ bakePaused?: boolean };
 
-export function inFlightRollouts(entries: readonly InFlightEntry[]): { total: number; checking: number; deploying: number } {
+export function inFlightRollouts(entries: readonly InFlightEntry[]): { total: number; checking: number; paused: number; deploying: number } {
 	const deploying = new Set<string>();
 	const checking = new Set<string>();
+	const paused = new Set<string>();
 	for (const e of entries) {
 		if (e.bakeStatus === 'Deploying') deploying.add(e.rolloutKey);
-		else if (e.bakeStatus === 'InProgress') checking.add(e.rolloutKey);
+		else if (e.bakeStatus === 'InProgress') (e.bakePaused ? paused : checking).add(e.rolloutKey);
 	}
 	// a rollout that is deploying one tier and checking another is moving once; deploying wins the word
-	for (const k of deploying) checking.delete(k);
-	return { total: deploying.size + checking.size, checking: checking.size, deploying: deploying.size };
+	for (const k of deploying) { checking.delete(k); paused.delete(k); }
+	/* checking wins over paused for a rollout holding both: one thing moving, the more active word */
+	for (const k of checking) paused.delete(k);
+	return { total: deploying.size + checking.size + paused.size, checking: checking.size, paused: paused.size, deploying: deploying.size };
 }
 
 const HOUR = 3_600_000;

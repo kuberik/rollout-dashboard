@@ -11,16 +11,22 @@
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
 	import { UndoOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
+	import FailureDetails from '$lib/components/FailureDetails.svelte';
+	import { agoOf, type BannerEvidence } from '$lib/view-models/health-failures';
+	import { now } from '$lib/stores/time';
 	import type { BannerMeta, ChangeLine } from './rollouts-page';
 
 	let { b, extra }: {
-		b: { title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; meta: BannerMeta };
+		b: { /** the Overview banner's evidence (same lines, Details and class glyph); absent = the check + line the row carries */ evidence?: BannerEvidence | null; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; meta: BannerMeta };
 		/** one more row under the sentence (/envs: the newer build that is waiting) */
 		extra?: Snippet;
 	} = $props();
 </script>
 
-<StatementBanner severity="failed" title={b.title} check={b.check ?? undefined} message={b.check ? undefined : (b.line ?? undefined)} change={b.change ?? undefined}
-	since={b.meta.since ?? undefined} build={b.meta.build ?? undefined} body={extra} class=""
+{#snippet details()}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
+<StatementBanner severity="failed" title={b.title} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
+	message={b.evidence ? b.evidence.message : b.check ? undefined : (b.line ?? undefined)} change={b.change ?? undefined}
+	since={b.evidence?.recovered ? undefined : (b.meta.sinceAt ? agoOf(b.meta.sinceAt, $now) : b.meta.since) ?? undefined} sinceLabel="" build={b.meta.build ?? undefined} body={extra} class=""
+	footnoteLabel={b.evidence ? 'Details' : undefined}
 	primary={b.rollbackHref ? { label: 'Roll back', href: b.rollbackHref, icon: UndoOutline, key: 'rollback' } : undefined}
-	secondary={[{ label: 'Open rollout', href: b.openHref, after: true, key: 'open' }]} />
+	secondary={[{ label: 'Open rollout', href: b.openHref, after: true, key: 'open' }]} footnoteBody={b.evidence ? details : undefined} />

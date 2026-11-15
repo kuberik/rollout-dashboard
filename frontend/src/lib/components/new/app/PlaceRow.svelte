@@ -24,7 +24,7 @@
 	let { row, place, pinned = false, note = null, noReleases = null, wait = null, approve = null, open = false, nested = false, toggle = null, hs = 'incident', slipAction = null }: { row: TRow; place: PlaceHold; pinned?: boolean; note?: string | null; /** this place's Rollout has no releases: its own word, printed beside the state (never counted as on the newest) */ noReleases?: string | null; /** a healthy place its rollout order has not reached: "Waiting for ap-southeast-2" + "to deploy 4.46.0-46" (app-model placeWait) */ wait?: PlaceWait | null; /** the Approve this place owns (>= 640 only; the phone's lives in the banner) */ approve?: TRow['action']; open?: boolean; nested?: boolean; toggle?: (() => void) | null; hs?: HomeState; slipAction?: TRow['action'] } = $props();
 
 	const age = $derived(placeAge(row, hs));
-	const word = $derived(placeWord(place, pinned, !!row.needsYou));
+	const word = $derived(placeWord(place, pinned, !!row.needsYou, !!row.failure?.recovered));
 	const label = $derived(tabEnv(row) === 'production' ? 'prod' : tabEnv(row));
 	/** change-strip r1: the wave itself is drawn ONCE, by the page's environment strip (PromotionLane `sites`); a row keeps only the wait's own fact ("to deploy 4.45.0-45"). */
 	const waveFact = $derived(wait && !pinned ? wait.fact : null);

@@ -17,6 +17,7 @@
 	import { actorFrom, type Actor } from '$lib/actor';
 	import type { ActivityKind } from '$lib/view-models/activity-verb';
 	import { activityKindOf } from '$lib/view-models/activity-kind';
+	import { bakePaused } from '$lib/bake-hold';
 	import { getEnvironmentRank } from '$lib/env-order';
 	import type { Rollout, Environment } from '../../types';
 	import { changeBuildPath, repoKeyFromSource } from '$lib/version-utils';
@@ -255,6 +256,7 @@
 					kind: activityKindOf({
 						bakeStatus: bs,
 						bakeStatusMessage: h.bakeStatusMessage,
+						bakePaused: bakePaused(h),
 						isRollback: !!rollbackAct,
 						actorKind: actor.kind,
 						envRank: getEnvironmentRank(envName),

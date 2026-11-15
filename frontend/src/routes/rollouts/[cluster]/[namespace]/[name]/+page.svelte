@@ -76,7 +76,7 @@
 	import { href } from '$lib/paths';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
 	import FleetGate from '$lib/components/new/FleetGate.svelte';
-	import { canApproveAt } from '$lib/components/new/data';
+	import { canApproveAt, failureRecovered } from '$lib/components/new/data';
 	import BlockedActions from '$lib/components/new/BlockedActions.svelte';
 	import { askView } from '$lib/components/new/state-words';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
@@ -158,6 +158,7 @@
 	import { dashboardManagesWantedVersion, newerBuildsShown } from '$lib/view-models/pin-hold';
 	import { fleetSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
+	import type { SnapCheck } from '$lib/view-models/health-failures';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
 	import EventsCard from '$lib/components/EventsCard.svelte';
@@ -189,6 +190,7 @@
 	import { createLoadFailedLatch } from '$lib/view-models/load-failed-latch.svelte';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { pageTitle } from '$lib/page-title';
 
@@ -2888,23 +2890,8 @@
 					</span>
 				{/snippet}
 				{#snippet heroIdentity()}
-					<Chip
-						role={latestEntry.bakeStatus === 'Succeeded'
-							? 'ready'
-							: latestEntry.bakeStatus === 'Failed'
-								? 'failing'
-								: latestEntry.bakeStatus === 'InProgress'
-									? 'checking'
-									: latestEntry.bakeStatus === 'Deploying'
-										? 'deploying'
-										: 'unranked'}
-						label={latestEntry.bakeStatus === 'Succeeded'
-							? 'deployed'
-							: latestEntry.bakeStatus === 'Failed'
-								? 'failed'
-								: bakeWord(latestEntry.bakeStatus)}
-						title={bakeTitle(latestEntry.bakeStatus)}
-					/>
+					{@const stateChip = rolloutStateChip(latestEntry.bakeStatus, latestEntry)}
+					<Chip role={stateChip.role} label={stateChip.label} title={stateChip.title} />
 					{#if stuckReason}
 						<StuckBadge reason={stuckReason} />
 					{/if}
@@ -3293,6 +3280,7 @@
 												quietNoReleases
 												sites
 												reserve
+												recovered={(n) => failureRecovered(rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name))}
 											/>
 										{/snippet}
 									</FleetGate>
@@ -4797,6 +4785,8 @@
 								<HealthChecksCard
 									healthChecks={visibleHealthChecks}
 									windowStart={errorCutoff}
+									failedChecks={(rollout?.status?.history?.[0]?.failedHealthChecks ?? []) as SnapCheck[]}
+									bakeStart={rollout?.status?.history?.[0]?.bakeStartTime ?? null}
 									emptyState
 									loadError={healthChecksFailed}
 									onRetry={() => healthChecksQuery.refetch()}

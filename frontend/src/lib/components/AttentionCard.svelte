@@ -17,10 +17,11 @@
 	 * The whole card is a cover link; buttons sit above it. What the lead IS lives in view-models/attention.ts (unit-tested).
 	 * Bands: `AttentionBand` below in this file's sibling `AttentionBand.svelte`.
 	 */
-	import { ExclamationCircleSolid, UndoOutline, ChartLineUpOutline, UsersGroupOutline, CodeBranchOutline } from 'flowbite-svelte-icons';
+	import { ExclamationCircleSolid, UndoOutline, UsersGroupOutline, CodeBranchOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import CheckGlyph from '$lib/components/CheckGlyph.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
@@ -94,14 +95,14 @@
 {#snippet factLine(cls: string)}
 	{#if model.fact}
 		<p class="{cls} min-w-0">
-			{#if fig}<span class="inline-flex shrink-0 text-fg-subtle">{#if failed}<ChartLineUpOutline class="h-3.5 w-3.5" aria-hidden="true" />{:else}<UsersGroupOutline class="h-3.5 w-3.5" aria-hidden="true" />{/if}</span>{/if}
-			<span class="min-w-0 {compact ? 'line-clamp-2' : fig ? 'truncate' : ''}" title="{model.fact.name ? model.fact.name + ': ' : ''}{model.fact.message}">{#if model.fact.name}<b class="font-medium text-fg">{model.fact.name}{model.fact.message ? ':' : ''}</b>{/if}{#if model.fact.message}{model.fact.name ? ' ' : ''}{model.fact.message}{/if}</span>
+			{#if fig || (failed && model.cls)}<span class="inline-flex shrink-0 translate-y-0.5 text-fg-subtle">{#if failed}<CheckGlyph cls={model.cls} class="h-3.5 w-3.5" />{:else}<UsersGroupOutline class="h-3.5 w-3.5" aria-hidden="true" />{/if}</span>{/if}
+			<span class="min-w-0 [overflow-wrap:anywhere] {compact ? 'line-clamp-2' : fig ? 'line-clamp-2' : ''}" title="{model.fact.name ? model.fact.name + ': ' : ''}{model.fact.message}">{#if model.fact.name}<b class="font-medium text-fg">{model.fact.name}{model.fact.message ? ':' : ''}</b>{/if}{#if model.fact.message}{model.fact.name ? ' ' : ''}{model.fact.message}{/if}</span>
 		</p>
 	{/if}
 {/snippet}
 
 {#snippet noteLine()}
-	{#if note}<p class="t-meta min-w-0 text-fg-subtle" data-note>{note}</p>{/if}
+	{#if note ?? model.note}<p class="t-meta min-w-0 text-fg-subtle" data-note>{note ?? model.note}</p>{/if}
 {/snippet}
 
 {#snippet actions()}
@@ -120,17 +121,17 @@
 {#snippet figure()}
 	{#if fig}
 		<div class="min-w-0">
-			<div class="flex min-w-0 items-baseline gap-2.5 whitespace-nowrap" data-lead={fig.kind}>
-				<span class="ac-fig font-semibold tabular-nums tracking-[-0.025em] text-fg {lead ? 'ac-fig--lead' : ''}">{fig.value}{#if fig.unit}<small class="ml-0.5 whitespace-pre font-normal text-fg-muted {lead ? 'text-lg' : 'text-base'}">{fig.unit.startsWith('of ') ? ' ' : ''}{fig.unit}</small>{/if}</span>
-				<span class="t-body min-w-0 truncate text-fg-muted">{fig.label}</span>
+			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2.5" data-lead={fig.kind}>
+				<span class="ac-fig whitespace-nowrap font-semibold tabular-nums tracking-[-0.025em] {model.recovered ? 'text-fg-muted' : 'text-fg'} {lead ? 'ac-fig--lead' : ''}" data-recovered={model.recovered || undefined}>{fig.value}{#if fig.unit}<small class="ml-0.5 whitespace-pre font-normal tracking-normal text-fg-muted {lead ? 'text-lg' : 'text-base'}">{fig.unit.startsWith('of ') ? ' ' : ''}{fig.unit}</small>{/if}</span>
+				<span class="t-body min-w-0 text-fg-muted [overflow-wrap:anywhere]">{fig.label}</span>
 			</div>
 			{#if meter}
 				<div class="mt-2" data-meter>{@render meter()}</div>
 			{:else if ratio && ratio.n > 1}
-				<div class="mt-2.5 flex" data-meter><RegionMeter k={ratio.k} n={ratio.n} ink={failed ? 'danger' : 'held'} label="{ratio.k} of {ratio.n} {fig.label}" /></div>
+				<div class="mt-2 flex" data-meter><RegionMeter k={ratio.k} n={ratio.n} ink={failed ? 'danger' : 'held'} label="{ratio.k} of {ratio.n} {fig.label}" /></div>
 			{:else if fig.gauge}
-				<div class="relative mt-2 h-1 max-w-64 rounded-full bg-subtle" role="img" aria-label="{fig.value}{fig.unit} against the limit" data-gauge>
-					<span class="absolute inset-y-0 left-0 rounded-full {fig.gauge.over ? 'bg-danger' : 'bg-fg-disabled'}" style:width="{Math.round(fig.gauge.fill * 100)}%"></span>
+				<div class="relative mt-2 h-1 w-full rounded-full bg-subtle" role="img" aria-label="{fig.value}{fig.unit} against the limit" data-gauge>
+					<span class="absolute inset-y-0 left-0 rounded-full {fig.gauge.over && !model.recovered ? 'bg-danger' : 'bg-fg-disabled'}" style:width="{Math.round(fig.gauge.fill * 100)}%"></span>
 					<span class="absolute -inset-y-0.5 w-px bg-fg-muted" style:left="{fig.gauge.limitAt * 100}%"></span>
 				</div>
 			{/if}
@@ -161,6 +162,10 @@
 	{#if fig}
 		<div class="flex flex-1 flex-col gap-3 px-4 pb-4 pt-3.5 sm:px-5 sm:pb-5">
 			{@render status()}
+			{#if compact}
+				<!-- the app is the card's identity in every state; the full card carries it in its foot -->
+				<div class="t-meta flex min-w-0 items-center gap-2" data-identity><AppGlyph name={id.name} size={20} class="shrink-0" /><b class="font-medium text-fg [overflow-wrap:anywhere]">{id.name}</b></div>
+			{/if}
 			{@render figure()}
 			{@render factLine('t-meta flex items-center gap-2 text-fg-subtle')}
 			{@render noteLine()}

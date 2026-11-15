@@ -34,12 +34,13 @@ describe('attention lead: failing asks', () => {
 });
 
 describe('attention model', () => {
-	it('threshold card: figure-led, fact = check name + the budget', () => {
+	it('threshold card: figure-led, the name is the caption, the fact is the budget (said once)', () => {
 		const m = attentionModel({ state: 'failed', age: '9h', tier: 'prod', place: 'eu-west', check, observations: [thr] });
 		expect(m.figure?.kind).toBe('threshold');
 		expect(m.word).toBe('Failing');
 		expect(m.forAge).toBe('for 9h');
-		expect(m.fact).toEqual({ name: 'invoice-api-error-rate', message: 'over a 1% budget' });
+		expect(m.fact).toEqual({ name: null, message: 'over a 1% budget' });
+		expect(m.figure?.label).toBeTruthy();
 	});
 	it('fallback card: title-led, fact = check name + message', () => {
 		const m = attentionModel({ state: 'failed', check, title: 'Retry webhook delivery' });

@@ -35,6 +35,7 @@ import {
 } from './source-dashboard';
 import { blockingStory } from './view-models/blocking-story';
 import type { BlockingStory, GateContext, ContractHolds } from './view-models/blocking-story';
+import { bakePaused } from './bake-hold';
 import { heldVerdict, verdictForGates, causeLabelForGates } from './view-models/held';
 import { placeVerdict, pickBuildInQuestion, alsoKindOf, isApprovalLike, type PlaceVerdict } from './view-models/place-verdict';
 import type { HeldCause, AlsoHold } from './view-models/held';
@@ -394,6 +395,8 @@ export type RolloutCard = {
 	version: string | null;
 	timestamp: string | null;
 	bakeStatus: string;
+	/** the bake clock is stopped by a not-Healthy check (only meaningful while the bake is InProgress) */
+	bakeHeld: boolean;
 	statusKey: StatusKey;
 	isRunning: boolean;
 	bakeStatusMessage: string | null;
@@ -684,6 +687,7 @@ export function buildRolloutCards(
 			version: latest?.version ? getDisplayVersion(latest.version) : null,
 			timestamp: latest?.timestamp || null,
 			bakeStatus,
+			bakeHeld: bakePaused(latest),
 			statusKey,
 			isRunning,
 			bakeStatusMessage: latest?.bakeStatusMessage || null,

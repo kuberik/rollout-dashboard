@@ -72,6 +72,12 @@ export async function mockApiPlugin(): Promise<Plugin> {
 		(await import('./src/lib/demo/release-switch-fixtures')).install(); // dynamic: the demo build and the normal bundle never ship the fixtures
 		resetDemoState(); // state.ts built the fleet when it loaded, before this flag: rebuild it with the fixtures in
 	}
+	/** `MOCK_SCENARIO=health-failures` (or `MOCK_FIXTURES=health-failures`) adds seven apps whose HealthChecks carry the proposed conditions + failures[] shape (health-failures-fixtures.ts). */
+	const fixtureFlags = (process.env.MOCK_FIXTURES ?? '').split(',');
+	if (process.env.MOCK_SCENARIO === 'health-failures' || fixtureFlags.includes('health-failures')) {
+		(await import('./src/lib/demo/health-failures-fixtures')).install(true, fixtureFlags.includes('release-switch'));
+		resetDemoState();
+	}
 	const homeFixture = loadHomeFixture();
 	/**
 	 * ⭐ SCENARIO PER REQUEST (r39). `MOCK_SCENARIO=home-incident|home-calm|home-quiet` is the default; the `kuberik_scenario` cookie (set by

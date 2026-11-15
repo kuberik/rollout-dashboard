@@ -16,12 +16,14 @@
 		retryConsequences,
 		retryTag
 	} from '$lib/view-models/deploy-risk';
-	import { checkFailure } from '$lib/view-models/health-witness';
+	import { checkFailure, deployWindowStart } from '$lib/view-models/health-witness';
 	import { historyEntrySince } from '$lib/view-models/event-age';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
+	import FailureDetails from './FailureDetails.svelte';
+	import { poolOf, worstOf, bannerEvidence, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
 
 	interface Props {
 		open?: boolean;
@@ -251,7 +253,26 @@
 	const figure = $derived.by(() => { const l = failingLead(null, observations); return l.kind === 'check' ? null : l; });
 	/* with a figure the sentence keeps the check's NAME and the budget; the number is not said twice */
 	const bannerMessage = $derived(figure?.budget && failedHCList.length === 1 ? `${findDisplayName(failedHCList[0])}: ${figure.budget}` : summaryLine);
+	/* the checks the banner draws evidence from, read from observations only: the live HealthCheck when we have it, else the history snapshot */
+	const pool = $derived(poolOf(healthChecks, failedHCList as SnapCheck[], deployWindowStart(rollout)));
+	const worst = $derived(worstOf(pool));
+	/* a failing check without observations has no evidence row: the panel keeps its sentence */
+	const evidence = $derived(!!worst && (worst.recovered || !!worst.row));
+	const allRecovered = $derived(!!worst?.recovered);
+	const evAgo = $derived.by(() => {
+		const since = checksFailingSince(pool);
+		return since ? formatTimeAgoCompact(since, $now) : failureAgo;
+	});
+	const pendingN = $derived(healthChecks.filter((h) => checkView(h, deployWindowStart(rollout), failedHCList as SnapCheck[]).verdict === 'pending').length);
+	/* the one evidence function every failure banner shares (view-models/health-failures.ts bannerEvidence) */
+	const ev = $derived(bannerEvidence(pool, pendingN, evAgo));
+	const evObservations = $derived<HealthObservation[]>(ev?.observations ?? []);
+	const evCheck = $derived(ev?.check);
+	const evMessage = $derived(ev?.message);
 	const failureAgo = $derived(failureSince ? formatTimeAgoCompact(failureSince, $now) : null);
+	const retryFirst = $derived(allRecovered);
+	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: handleRetry });
+	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback });
 	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
 </script>
 
@@ -291,12 +312,13 @@
 	class="mb-4"
 	severity="failed"
 	title="Deployment failed"
-	{observations}
-	message={failureAgo ? `${bannerMessage} · ${failureAgo} ago` : bannerMessage}
+	observations={evidence ? evObservations : observations}
+	check={evidence ? evCheck : undefined}
+	message={evidence ? evMessage : failureAgo ? `${bannerMessage} \u00b7\u00a0${failureAgo}\u00a0ago` : bannerMessage}
 	footnoteLabel="Details"
-	pulse
-	primary={rollbackShown ? { label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback } : undefined}
-	secondary={canUpdate ? [{ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: handleRetry }] : []}
+	pulse={true}
+	primary={retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
+	secondary={retryFirst ? (rollbackShown ? [rollbackAct] : []) : canUpdate ? [retryAct] : []}
 	tooltips={{
 		...(canUpdate ? { 'failure-retry-btn': 'Reset health checks and failed tests, then retry the deployment.' } : {}),
 		...(rollbackShown ? { 'failure-rollback-btn': 'Revert to the previous version.' + (!isDashboardManagingWantedVersion ? ' Disabled: wantedVersion managed externally.' : '') } : {})
@@ -304,7 +326,9 @@
 	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? "Another controller owns this rollout's wanted version, so the dashboard cannot pin it." : undefined}
 >
 	{#snippet footnoteBody()}
-		{#if failedHCList.length > 0}
+		{#if evidence}
+			<FailureDetails {pool} />
+		{:else if failedHCList.length > 0}
 			<ul class="list-disc space-y-0.5 pl-4">
 				{#each failedHCList.slice(0, 6) as hc}
 					{@const parts = (hc.message || '').split(/;\s*/).filter(Boolean)}

@@ -115,6 +115,17 @@ export function spanLabel(ms: number): string {
 	return h % 24 === 0 ? `${d}d` : `${d}d ${h % 24}h`;
 }
 
+/**
+ * The second half of a failed history row, "Failed after 30m of checks": how long the check timer ran before the controller gave up. It is a duration,
+ * not the failure's age (that is `failureSince`), so it says what it measured: when the deploy and the checks both have a start, the time spent
+ * on checks only; without a check start, the span from the deploy to the end.
+ */
+export function failedAfterRest(deployedAt: number, checksStartedAt: number, endedAt: number): string {
+	return checksStartedAt > deployedAt && endedAt > checksStartedAt
+		? `after ${spanLabel(endedAt - checksStartedAt)} of checks`
+		: `after ${spanLabel(endedAt - deployedAt)}`;
+}
+
 export type DeployOutcome = {
 	/** For RolloutTabHeader's `chip`; `undefined` = keep the rollout's live chip. */
 	chip: { role: 'ready' | 'failing' | 'checking' | 'deploying' | 'unranked'; label: string; title?: string } | undefined;

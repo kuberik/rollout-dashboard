@@ -3,6 +3,7 @@
 <script lang="ts">
 	import Leaving from './Leaving.svelte';
 	import StepDisc from './StepDisc.svelte';
+	import { bakeElapsedMs, bakePaused } from '$lib/bake-hold';
 	import { formatShortDuration } from '$lib/view-models/stage-advance';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import { TONE } from '$lib/view-models/state-tone';
@@ -39,7 +40,7 @@
 		extractDatadogInfoFromContainers,
 		formatDate } from '$lib/utils';
 	import { now } from '$lib/stores/time';
-	import { HEALTH_CHECKS_UNAVAILABLE } from '$lib/view-models/health-witness';
+	import { HEALTH_CHECKS_UNAVAILABLE, classifyCheck, deployWindowStart } from '$lib/view-models/health-witness';
 	import { stageAdvance, type StageAdvance } from '$lib/view-models/stage-advance';
 	import { stageWeight, stageSplitText, type StageWeight } from '$lib/view-models/stage-weight';
 	import { href } from '$lib/paths';
@@ -123,7 +124,7 @@
 		}
 	}
 
-	type NodeStatus = 'done' | 'running' | 'paused' | 'failed' | 'pending';
+	type NodeStatus = 'done' | 'running' | 'paused' | 'failed' | 'pending' | 'held';
 
 	type StageNode = {
 		id: string;
@@ -176,6 +177,9 @@
 	let deployInFlight = $derived(!allStagesDone || isDeployInFlight([latestEntry]));
 	let inflightIsDeploy = $derived(!allStagesDone || latestEntry.bakeStatus === 'Deploying');
 	let bakeIsInProgress = $derived(allStagesDone && latestEntry.bakeStatus === 'InProgress');
+	/** whole minutes once there is one ("4m"), seconds below it ("40s"): a bake figure never reads "15m 0s" */
+	const wholeSpan = (ms: number) => (ms >= 60_000 ? `${Math.floor(ms / 60_000)}m` : `${Math.floor(ms / 1000)}s`);
+	let bakeHeld = $derived(bakeIsInProgress && bakePaused(latestEntry));
 	let bakeIsSucceeded = $derived(allStagesDone && latestEntry.bakeStatus === 'Succeeded');
 	let bakeIsFailed = $derived(allStagesDone && latestEntry.bakeStatus === 'Failed');
 	let recordedFailedCheckNames = $derived<string[]>(
@@ -183,18 +187,16 @@
 			.map((c) => c?.name ?? '')
 			.filter(Boolean)
 	);
+	/* when the health card draws observation rows the grey message box would say the same fact twice; a failed bake whose checks are all Healthy again but errored in the window reads Recovered */
+	const hcShowsRows = $derived(healthChecks.some((hc) => (hc.status?.observations ?? []).some((o) => o.healthy !== true) && hc.status?.status !== 'Healthy'));
+	const hcRecoveredFailure = $derived(healthChecks.some((hc) => hc.status?.status === 'Healthy' && !!hc.status?.lastErrorTime));
+	const hcCardShowsEvidence = $derived(hcShowsRows || hcRecoveredFailure);
+	const anyRecovered = $derived(healthChecks.some((hc) => classifyCheck(hc, deployWindowStart(rollout)) === 'recovered'));
 	let hasHCSelector = $derived(Boolean(rollout.spec?.healthCheckSelector));
 	let allHCHealthy = $derived(
 		healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')
 	);
-	// The timer reads Failed ("the bake timed out") only when the checks are KNOWN
-	// healthy. On an unreadable list: the history's own snapshot of failing
-	// checks stands in (so it reads as when the list is known), else unknown. A list still
-	// LOADING is unknown in the same way.
 	let hcUnknown = $derived(healthChecksUnavailable || healthChecksPending);
-	let timerHCHealthy = $derived<boolean | null>(
-		hcUnknown ? (recordedFailedCheckNames.length > 0 ? false : null) : allHCHealthy
-	);
 	let hasMultipleKRs = $derived(pipelineValidRollouts.length > 1);
 
 	let nodes = $derived<StageNode[]>(
@@ -366,8 +368,9 @@
 				bakeStatus = 'failed';
 				bakeStatusLabel = 'Failed';
 			} else if (bakeIsInProgress) {
-				bakeStatus = 'paused';
-				bakeStatusLabel = 'Checking';
+				/* the bake clock is stopped while a check is not Healthy: one state, drawn in the held ink */
+				bakeStatus = bakeHeld ? 'held' : 'paused';
+				bakeStatusLabel = bakeHeld ? 'Paused' : 'Checking';
 			} else if (bakeIsDeploying) {
 				bakeStatus = 'running';
 				bakeStatusLabel = 'Deploying';
@@ -486,7 +489,7 @@
 
 	// Styling helpers
 	/** a node's status as the one state-tone key (the disc, the ping and the sub-dot all read the table) */
-	const nodeTone = (status: NodeStatus) => (({ done: 'done', running: 'deploying', paused: 'checking', failed: 'failed', pending: 'notreached' }) as const)[status];
+	const nodeTone = (status: NodeStatus) => (({ done: 'done', running: 'deploying', paused: 'checking', held: 'held', failed: 'failed', pending: 'notreached' }) as const)[status];
 
 	/**
 	 * ⛔ THE STEP LABEL IS THE CHIP ATOM. (2026-09-03, from the human: "typography
@@ -502,14 +505,22 @@
 			done: 'border-success-line text-success',
 			running: 'border-active-line text-active',
 			paused: 'border-progress-line text-progress',
+			held: 'border-held-line text-held',
 			failed: 'border-danger-line text-danger',
 			pending: 'border-line text-fg-subtle'
 		}[status];
 	}
 
+	/** the ink of a sub-row's status word: state only (`quiet`: a step that has nothing to wait for, e.g. no tests, stays neutral) */
+	function subWordInk(status: NodeStatus, quiet = false): string {
+		if (status === 'done' || (status === 'pending' && quiet)) return 'text-fg-subtle';
+		return TONE[status === 'pending' ? 'checking' : nodeTone(status)].ink;
+	}
+
 	/** the sub-dot / ping fill: the status's solid; a pending node is the quiet grey line */
-	function subDotBg(status: NodeStatus): string {
-		return status === 'pending' ? 'bg-line-strong' : TONE[nodeTone(status)].bg;
+	function subDotBg(status: NodeStatus, wordInk = false): string {
+		if (status === 'pending') return wordInk ? TONE.checking.bg : 'bg-line-strong'; /* a sub-row's dot takes its word's ink (`wordInk`) */
+		return TONE[nodeTone(status)].bg;
 	}
 
 	/** the selected row's left edge: the status's solid (a pending node leans on the active blue) */
@@ -570,6 +581,8 @@
 			// Once any bake activity has started, report checks as healthy as soon
 			// as they actually are — don't keep showing "Waiting" just because the
 			// bake hasn't transitioned to InProgress yet.
+			/* a check that failed during this bake and is Healthy again reads "Recovered", not "Healthy" */
+			if (allHCHealthy && anyRecovered) return { status: 'done', label: 'Recovered' };
 			if (
 				allHCHealthy &&
 				(bakeIsDeploying || bakeIsInProgress || bakeIsSucceeded || bakeIsFailed)
@@ -588,9 +601,10 @@
 	// word, same as every other `NodeStatus` label on this card.
 	let finalBakeTimerStatus = $derived<{ status: NodeStatus; label: string }>(
 		(() => {
-			if (bakeIsFailed && timerHCHealthy === true) return { status: 'failed', label: 'Failed' };
+			/* a terminal Failed bake wins over every hold or pending reading: the timer never reads Pending or Paused once the bake has failed */
+			if (bakeIsFailed) return { status: 'failed', label: 'Failed' };
 			if (bakeIsSucceeded) return { status: 'done', label: 'Done' };
-			if (bakeIsInProgress) return { status: 'paused', label: 'Checking' };
+			if (bakeIsInProgress) return bakeHeld ? { status: 'held', label: 'Paused' } : { status: 'paused', label: 'Checking' };
 			return { status: 'pending', label: 'Pending' };
 		})()
 	);
@@ -763,15 +777,15 @@
 	</li>
 {/snippet}
 
-{#snippet progressLine(live: boolean, pct: number, text: string)}
+{#snippet progressLine(live: boolean, pct: number, text: string, held = false)}
 	<!-- ⭐ A SLOT, NOT AN ARRIVAL. While a deploy is in flight this line is laid out from the first frame and
 	     simply drawn invisible until its bar has something to measure (`pipelineSlots`), so the rows below it
 	     do not drop a line when the check window opens. `bar-progress-active`: see app.css — the width is a
 	     true, $now-derived percentage; the stripe is the mark that this is still a live process. -->
 	<div class="mt-2 pl-5" class:invisible={!live} aria-hidden={!live}>
-		<div class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line">
+		<div class="h-1.5 w-full overflow-hidden rounded-full bg-line">
 			<div
-				class="h-full rounded-full bg-progress-solid transition-[width] duration-500 bar-progress-active"
+				class="h-full rounded-full transition-[width] duration-500 {held ? 'bg-held-solid' : 'bg-progress-solid bar-progress-active'}"
 				style="width: {pct}%"
 			></div>
 		</div>
@@ -790,7 +804,7 @@
 		<div class="flex items-center gap-3">
 			<span
 				aria-hidden="true"
-				class="h-3 w-3 flex-shrink-0 rounded-full {subDotBg(status)} {status === 'running'
+				class="h-3 w-3 flex-shrink-0 rounded-full {subDotBg(status, !(extra === 'tests' && !sd?.hasTests))} {status === 'running'
 					? 'animate-pulse'
 					: ''}"
 			></span>
@@ -807,23 +821,12 @@
 			<!-- ⭐ ONE FACT, ONCE, ROUND 2 (2026-10-08): a failed sub-row's dot
 			     and title are already red; a `FAILED` chip beside them was a
 			     third mark. Every other state keeps its chip. -->
-			{#if status === 'pending'}
-				<!-- Sub-rows: the detail header above already carries the stage's
-				     one chip; a running or done sub-row is its glyph + ink only,
-				     so CHECKING is said once, not three times. -->
-				<span
-					class="chip t-label chip-wide flex-shrink-0 {pillClasses(
-						status
-					)}"
-				>
-					{label}
-				</span>
-			{:else}
-				<span class="t-meta flex-shrink-0 text-fg-subtle">{label}</span>
-			{/if}
+			<!-- ONE ATOM IN THIS COLUMN: the bare word in its state's ink (failed red, pending and checking in the Health checks card's progress
+			     ink, paused held, rolling active); the chip form is the step header's, never a sub-row's. -->
+			<span class="t-meta flex-shrink-0 {subWordInk(status, extra === 'tests' && !sd?.hasTests)}" data-sub-word={status}>{label}</span>
 		</div>
 
-		{#if extra === 'hc' && status === 'failed' && recordedFailedCheckNames.length > 0}
+		{#if extra === 'hc' && status === 'failed' && !hcCardShowsEvidence && recordedFailedCheckNames.length > 0}
 			<!-- The history's own snapshot names what failed, so it survives an unreadable live list. -->
 			<p class="t-meta mt-1 pl-5 text-fg-subtle">{recordedFailedCheckNames.join(', ')}</p>
 		{/if}
@@ -941,13 +944,14 @@
 		{#if extra === 'timer' && rollout.spec?.bakeTime}
 			{@const live = bakeIsInProgress && !!latestEntry.bakeStartTime}
 			{@const totalMs = parseDuration(rollout.spec.bakeTime)}
-			{@const elapsedMs = live ? $now.getTime() - new Date(latestEntry.bakeStartTime).getTime() : 0}
-			{@const remainingMs = Math.max(0, totalMs - elapsedMs)}
+			{@const elapsedMs = live ? bakeElapsedMs(latestEntry, $now) : 0}
+			{@const paused = live && bakePaused(latestEntry)}
 			{#if live || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: false, timerConfigured: totalMs > 0 }).timerLine}
 				{@render progressLine(
 					live,
 					live && totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0,
-					live ? (remainingMs > 0 ? formatShortDuration(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining'
+					live ? (elapsedMs < totalMs || paused ? wholeSpan(elapsedMs) + ' of ' + wholeSpan(totalMs) : 'Finishing…') : '0s remaining',
+					paused
 				)}
 			{/if}
 		{/if}
@@ -1235,7 +1239,7 @@
 			     cluster's text, not ours); it is shown only when it CARRIES
 			     something — a failure, a cancellation, a stall. -->
 			<!-- Leaves with its last words rather than vanishing — see `Leaving`. -->
-			<Leaving value={!bakeIsSucceeded && latestEntry.bakeStatusMessage}>
+			<Leaving value={!bakeIsSucceeded && !hcCardShowsEvidence && latestEntry.bakeStatusMessage}>
 				{#snippet children(message)}
 					<div class="rounded bg-subtle px-3 py-2">
 						<p class="t-body text-fg-muted">
@@ -1308,7 +1312,7 @@
 	class="dpc-cq overflow-hidden rounded-md border border-line bg-surface"
 	use:smoothHeight
 >
-	<div use:steadyHeight={deployKey(latestEntry, `${cluster ?? ""}/${namespace}/${name}`)}>
+	<div use:steadyHeight={hcCardShowsEvidence ? null : deployKey(latestEntry, `${cluster ?? ""}/${namespace}/${name}`)}>
 	<!--
 		⭐ `min-h-[47px]`, MATCHING `Card`'S OWN FLOOR EXACTLY. (defect #4,
 		design re-check) This header hand-rolls its own bar rather than using

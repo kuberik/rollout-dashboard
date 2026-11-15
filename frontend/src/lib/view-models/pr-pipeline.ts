@@ -41,6 +41,7 @@
  * reverted ranges"); `pr-pipeline.test.ts`'s revert fixture asserts the
  * CURRENT behaviour so a future fix has something concrete to change.
  */
+import { bakeHeldMs, bakePaused, type BakeHoldFields } from '$lib/bake-hold';
 import { availableReleases, noReleasesOf } from '$lib/releases/registry.svelte';
 import type { Rollout, Environment, RolloutDependency } from '$lib/../types';
 import { releaseMetadataUnresolved } from '$lib/../types';
@@ -135,6 +136,8 @@ export type PrCell = {
 	usuallyMs: number | null;
 	/** Time left against `deployTimeout`/`bakeTime`, or `null`. */
 	bakeLeftMs: number | null;
+	/** a baking cell whose clock is stopped by a not-Healthy check */
+	bakePaused?: boolean;
 	/** The display name of the build this cell is about, `''` when none. */
 	releaseLabel: string;
 	/** The git revision this cell is about, `null` when none. */
@@ -637,14 +640,15 @@ function displayVersionForTag(rollout: Rollout, tag: string): string {
 function deadlineLeftMs(
 	startIso: string | undefined,
 	duration: string | undefined,
-	now: Date
+	now: Date,
+	hold?: BakeHoldFields | null
 ): number | null {
 	if (!startIso || !duration) return null;
 	const totalMs = parseGoDuration(duration);
 	if (!totalMs) return null;
 	const start = new Date(startIso).getTime();
 	if (!Number.isFinite(start)) return null;
-	return totalMs - (now.getTime() - start);
+	return totalMs - (now.getTime() - start - bakeHeldMs(hold, now));
 }
 
 /**
@@ -1015,9 +1019,10 @@ function buildCell(
 				return cell({
 					...NOTHING,
 					state: 'baking',
-					reason: rollout.spec?.bakeTime ? 'baking' : 'baking, no timer',
+					bakePaused: bakePaused(head),
+					reason: bakePaused(head) ? 'baking, waiting on a check' : rollout.spec?.bakeTime ? 'baking' : 'baking, no timer',
 					since: head?.bakeStartTime ?? head?.timestamp ?? null,
-					bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now),
+					bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now, head),
 					releaseLabel,
 					revision: headRevision
 				});
@@ -1028,7 +1033,7 @@ function buildCell(
 					state: 'retrying',
 					reason: head?.bakeStatusMessage || 'retrying the bake',
 					since: head?.bakeStartTime ?? head?.timestamp ?? null,
-					bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now),
+					bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now, head),
 					releaseLabel,
 					revision: headRevision
 				});

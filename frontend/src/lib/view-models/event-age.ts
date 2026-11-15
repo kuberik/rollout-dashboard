@@ -48,6 +48,7 @@ import type { RolloutCard } from '../rollout-cards';
 import { formatTimeAgoCompact } from '../utils';
 import { waitingSince } from './fleet-facts';
 import type { NodeState } from './promotion-lanes';
+import { exhaustive } from './exhaustive';
 
 export type EventKind = 'failed' | 'deploying' | 'checking' | 'stuck' | 'held' | 'behind';
 
@@ -93,8 +94,10 @@ export function lastFailureMs(histories: ReadonlyArray<ReadonlyArray<(NonNullabl
 }
 
 /** "31m ago" for the last failure of `histories` (see lastFailureMs), or null when none failed: the History tab's Summary prints it */
-export function lastFailureAgoOf(histories: Parameters<typeof lastFailureMs>[0], now: Date): string | null {
-	const ms = lastFailureMs(histories);
+export function lastFailureAgoOf(histories: Parameters<typeof lastFailureMs>[0], now: Date, headFailureSince?: string | null): string | null {
+	/* the newest entry failed on a health check: its failure is when the earliest failing check began failing (`failureSince`), not when its check timer ended */
+	const head = Date.parse(headFailureSince ?? '');
+	const ms = histories[0]?.[0]?.bakeStatus === 'Failed' && Number.isFinite(head) ? head : lastFailureMs(histories);
 	return ms === null ? null : `${formatTimeAgoCompact(new Date(ms).toISOString(), now)} ago`;
 }
 
@@ -123,6 +126,7 @@ export function eventAge(card: RolloutCard, kind: EventAgeKind): string | null {
 		}
 		case 'deploying':
 		case 'checking':
+		case 'paused':
 		case 'stuck':
 			return head?.timestamp ?? card.timestamp ?? null;
 		case 'held':
@@ -131,7 +135,10 @@ export function eventAge(card: RolloutCard, kind: EventAgeKind): string | null {
 			const ms = waitingSince(card);
 			return ms != null ? new Date(ms).toISOString() : null;
 		}
-		default:
+		case 'newest':
+		case 'none':
 			return null;
+		default:
+			return exhaustive(kind, null);
 	}
 }

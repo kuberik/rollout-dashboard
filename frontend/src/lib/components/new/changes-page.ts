@@ -168,6 +168,10 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 			state: failed ? 'failed' : 'approval', age: ago(askSince(p)), tier: failed ? p.c.at ?? '' : gateOf(p.c), place: failed ? placeOf(p.c) : '',
 			check: failed ? { name: p.c.failure?.check ?? null, message: p.c.failure?.message ?? p.c.failure?.line ?? '' } : null,
 			observations: failed ? p.c.failure?.observations ?? null : null,
+			cls: failed ? p.c.failure?.cls : undefined,
+			note: failed ? p.c.failure?.note ?? null : null,
+			recovered: failed ? !!p.c.failure?.recovered : false,
+			recoveredAt: failed ? p.c.failure?.recoveredAt ?? null : null,
 			regions: !failed && gateOf(p.c) === 'prod' ? regionStates(p.ride.app, hs) : null,
 			gateSentence: failed || (p.c.scope ?? '').includes(' of ') ? null : (p.c.scope ?? '').replace(/^Wait(?:s|ing) for your approval · /, '').replace(/^prod-/, '') || null,
 			title: p.c.title

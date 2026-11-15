@@ -200,3 +200,15 @@ describe('History tab last failure', () => {
 		expect(lastFailureAgoOf([[{ ...failed, bakeStatus: 'Succeeded' }]], new Date('2026-11-10T10:48:00Z'))).toBeNull();
 	});
 });
+
+describe('lastFailureAgoOf: a health failure keeps one age', () => {
+	const now = new Date('2026-11-10T10:48:00Z');
+	const failed = { timestamp: '2026-11-10T10:00:00Z', bakeEndTime: '2026-11-10T10:44:00Z', bakeStatus: 'Failed' };
+	it('prefers the earliest failing check over the check timer when the newest entry failed', () => {
+		expect(lastFailureAgoOf([[failed]], now)).toBe('4m ago');
+		expect(lastFailureAgoOf([[failed]], now, '2026-11-10T10:36:00Z')).toBe('12m ago');
+	});
+	it('ignores it when the newest entry did not fail', () => {
+		expect(lastFailureAgoOf([[{ timestamp: '2026-11-10T10:40:00Z', bakeStatus: 'Succeeded' }, failed]], now, '2026-11-10T10:36:00Z')).toBe('4m ago');
+	});
+});
