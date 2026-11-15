@@ -4,7 +4,7 @@
 	import { HeartOutline } from 'flowbite-svelte-icons';
 	import { untrack } from 'svelte';
 	import type { HealthCheck } from '../../types';
-	import StatusSpinner from './StatusSpinner.svelte';
+	import CheckStateMark from './CheckStateMark.svelte';
 	import Card from './Card.svelte';
 	import UnavailableCard from './UnavailableCard.svelte';
 	import { CheckCircleSolid, ExclamationCircleSolid, ClockSolid, ClockArrowOutline } from 'flowbite-svelte-icons';
@@ -321,15 +321,7 @@
 				{@const expanded = expandedMessages.has(key)}
 				<div data-testid="hc-row" class="border-line-subtle border-b px-4 py-3 last:border-b-0">
 				<div class="flex items-start gap-3">
-					{#if failing}
-						<ExclamationCircleSolid class="text-danger mt-0.5 h-4 w-4 flex-shrink-0" />
-					{:else if pending}
-						<StatusSpinner size="4" color="yellow" class="mt-0.5" />
-					{:else if recoveredRow}
-						<ClockArrowOutline class="text-success mt-0.5 h-4 w-4 flex-shrink-0" />
-					{:else}
-						<CheckCircleSolid class="text-success mt-0.5 h-4 w-4 flex-shrink-0" />
-					{/if}
+					<CheckStateMark verdict={state} class="mt-0.5" />
 					<div class="min-w-0 flex-1">
 						<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
 							{displayName(hc)}

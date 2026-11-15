@@ -180,6 +180,11 @@ export function poolOf(live: HealthCheck[], snaps: SnapCheck[], windowStart: Dat
 	return out;
 }
 
+/** the card's order of checks: failing, pending, recovered, then the rest */
+export const verdictRank = (v: Pick<CheckView, 'verdict'>): number => (v.verdict === 'failing' ? 0 : v.verdict === 'pending' ? 1 : v.verdict === 'recovered' ? 2 : 3);
+/** a pool in the card's order (stable within a verdict), so a banner's Details reads like the Health checks card */
+export const byVerdict = (pool: CheckView[]): CheckView[] => pool.map((v, i) => ({ v, i })).sort((a, b) => verdictRank(a.v) - verdictRank(b.v) || a.i - b.i).map((x) => x.v);
+
 /**
  * THE ONE "SINCE" OF A FAILURE: when the earliest of the failing checks began failing (each check's own `since`: `lastChangeTime`, else `lastErrorTime`;
  * a snapshot-only check: its earliest failing observation). The banners, the Attention card and the History summary all print this instant, so
@@ -325,7 +330,7 @@ export function bannerEvidence(pool: CheckView[], pendingN: number, ago: string 
  * every snapshot as a failed check (`snapView`).
  */
 export function historyPool(snaps: SnapCheck[], live: HealthCheck[], windowStart: Date | null): CheckView[] {
-	const rank = (v: CheckView) => (v.verdict === 'failing' ? 0 : v.verdict === 'pending' ? 1 : v.verdict === 'recovered' ? 2 : 3);
+	const rank = verdictRank;
 	const idx = (v: CheckView, s: SnapCheck) => { const i = live.findIndex((h) => h.metadata?.name === s.name); return i < 0 ? live.length : i; };
 	return snaps
 		.map((s, i) => {
