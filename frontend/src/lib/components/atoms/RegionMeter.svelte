@@ -18,7 +18,7 @@
 		k,
 		n,
 		ink = 'held',
-		width = 256,
+		width = undefined,
 		label = undefined,
 		class: className = ''
 	}: {
@@ -27,7 +27,7 @@
 		/** all segments (regions) */
 		n: number;
 		ink?: 'held' | 'danger' | 'active' | 'progress' | 'neutral';
-		/** px; the card form is the gauge's max-w-64 (256), the inline form ~32 */
+		/** px for the inline form (~32); omitted, the meter fills its row like the threshold gauge */
 		width?: number;
 		label?: string;
 		class?: string;
@@ -37,7 +37,7 @@
 	const segs = $derived(Array.from({ length: Math.max(1, n) }, (_, i) => i < k));
 </script>
 
-<span class="rm {className}" style:width="{width}px" role="img" aria-label={label ?? `${k} of ${n}`} data-region-meter>
+<span class="rm {className}" style:width={width ? `${width}px` : '100%'} role="img" aria-label={label ?? `${k} of ${n}`} data-region-meter>
 	{#each segs as on, i (i)}<span class="rm-s" class:on style:background={on ? FILL[ink] : undefined}></span>{/each}
 </span>
 
