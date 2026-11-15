@@ -1609,7 +1609,7 @@
 				{/if}
 			</p>
 			<a
-				href="https://docs.kuberik.com/concepts/gates"
+				href="https://kuberik.com/docs/gates/"
 				target="_blank"
 				rel="noreferrer"
 				class="nav-link t-ui-sm">Learn about gates ›</a

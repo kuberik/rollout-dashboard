@@ -23,7 +23,7 @@
 	const holding = $derived(rows.filter((r) => r.holding));
 	let shown = $state(new Set<string>());
 	const flip = (k: string) => { const n = new Set(shown); if (n.has(k)) n.delete(k); else n.add(k); shown = n; };
-	const DOCS = 'https://docs.kuberik.com/concepts/gates#approvals';
+	const DOCS = 'https://kuberik.com/docs/gates/approvals/';
 </script>
 
 <Card icon={LockOutline} title="Holding" padded={false}>
