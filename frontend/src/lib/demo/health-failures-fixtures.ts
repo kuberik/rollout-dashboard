@@ -237,7 +237,7 @@ function cases(): Case[] {
 		app: 'inventory-api',
 		deployed: 12,
 		bake: 'InProgress',
-		bakeMessage: 'Baking: waiting for a health check',
+		bakeMessage: 'Paused: waiting for a health check',
 		snapshot: [],
 		checks: [
 			{
