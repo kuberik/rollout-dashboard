@@ -3,6 +3,7 @@
 <script lang="ts">
 	import Leaving from './Leaving.svelte';
 	import StepDisc from './StepDisc.svelte';
+	import { bakeElapsedMs, bakePaused } from '$lib/bake-hold';
 	import { formatShortDuration } from '$lib/view-models/stage-advance';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import { TONE } from '$lib/view-models/state-tone';
@@ -183,7 +184,7 @@
 			.map((c) => c?.name ?? '')
 			.filter(Boolean)
 	);
-	/* take C rule 9: when the health card draws observation rows the grey message box would say the same fact twice; a failed bake whose checks are all Healthy again but errored in the window reads Recovered */
+	/* when the health card draws observation rows the grey message box would say the same fact twice; a failed bake whose checks are all Healthy again but errored in the window reads Recovered */
 	const hcShowsRows = $derived(healthChecks.some((hc) => (hc.status?.observations ?? []).some((o) => o.healthy !== true) && hc.status?.status !== 'Healthy'));
 	const hcRecoveredFailure = $derived(healthChecks.some((hc) => hc.status?.status === 'Healthy' && !!hc.status?.lastErrorTime));
 	const hcCardShowsEvidence = $derived(hcShowsRows || hcRecoveredFailure);
@@ -770,7 +771,7 @@
 	</li>
 {/snippet}
 
-{#snippet progressLine(live: boolean, pct: number, text: string)}
+{#snippet progressLine(live: boolean, pct: number, text: string, paused = false)}
 	<!-- ⭐ A SLOT, NOT AN ARRIVAL. While a deploy is in flight this line is laid out from the first frame and
 	     simply drawn invisible until its bar has something to measure (`pipelineSlots`), so the rows below it
 	     do not drop a line when the check window opens. `bar-progress-active`: see app.css — the width is a
@@ -778,7 +779,8 @@
 	<div class="mt-2 pl-5" class:invisible={!live} aria-hidden={!live}>
 		<div class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line">
 			<div
-				class="h-full rounded-full bg-progress-solid transition-[width] duration-500 bar-progress-active"
+				class="h-full rounded-full bg-progress-solid transition-[width] duration-500"
+				class:bar-progress-active={!paused}
 				style="width: {pct}%"
 			></div>
 		</div>
@@ -948,13 +950,15 @@
 		{#if extra === 'timer' && rollout.spec?.bakeTime}
 			{@const live = bakeIsInProgress && !!latestEntry.bakeStartTime}
 			{@const totalMs = parseDuration(rollout.spec.bakeTime)}
-			{@const elapsedMs = live ? $now.getTime() - new Date(latestEntry.bakeStartTime).getTime() : 0}
+			{@const elapsedMs = live ? bakeElapsedMs(latestEntry, $now) : 0}
+			{@const paused = live && bakePaused(latestEntry)}
 			{@const remainingMs = Math.max(0, totalMs - elapsedMs)}
 			{#if live || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: false, timerConfigured: totalMs > 0 }).timerLine}
 				{@render progressLine(
 					live,
 					live && totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0,
-					live ? (remainingMs > 0 ? formatShortDuration(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining'
+					live ? (paused ? 'paused' : remainingMs > 0 ? formatShortDuration(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining',
+					paused
 				)}
 			{/if}
 		{/if}
@@ -1315,7 +1319,7 @@
 	class="dpc-cq overflow-hidden rounded-md border border-line bg-surface"
 	use:smoothHeight
 >
-	<div use:steadyHeight={deployKey(latestEntry, `${cluster ?? ""}/${namespace}/${name}`) + (hcCardShowsEvidence ? ':evidence' : '')}>
+	<div use:steadyHeight={hcCardShowsEvidence ? null : deployKey(latestEntry, `${cluster ?? ""}/${namespace}/${name}`)}>
 	<!--
 		⭐ `min-h-[47px]`, MATCHING `Card`'S OWN FLOOR EXACTLY. (defect #4,
 		design re-check) This header hand-rolls its own bar rather than using

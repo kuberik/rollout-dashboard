@@ -2761,9 +2761,9 @@
 																					<div data-testid="hist-check" data-state={sv.verdict}>
 																						<div class="mb-1.5 flex flex-wrap items-baseline gap-x-2"><span class="t-body text-fg">{sv.name}</span>
 																							<!-- Overview's fact-line grammar: state word in state ink, then `· HH:MM` in fg-muted; green only on the OK word -->
-																							{#if sv.verdict === 'pending'}<span class="t-meta"><span class="text-progress">waiting</span>{#if sv.since}<span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span>{/if}</span>
-																							{:else if sv.verdict === 'recovered' && sv.recovery?.okSince}<span class="t-meta text-fg-muted">{#if sv.recovery.failedAt}<span class={isCurrent ? 'text-danger' : 'text-fg-muted'}>{'failed'}</span><span class="tabular-nums">{' '}{hm(sv.recovery.failedAt)}</span>{' · '}{/if}<span class="text-success">OK</span><span class="tabular-nums">{' '}{hm(sv.recovery.okSince)}</span></span>
-																							{:else if sv.since}<span class="t-meta"><span class={isCurrent && sv.verdict === 'failing' ? 'text-danger' : 'text-fg-muted'}>{sv.verdict === 'failing' ? 'failing' : 'failed'}</span><span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span></span>{/if}</div>
+																							{#if sv.verdict === 'pending'}<span class="ev-meta t-meta"><span class="text-progress">waiting</span>{#if sv.since}<span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span>{/if}</span>
+																							{:else if sv.verdict === 'recovered' && sv.recovery?.okSince}<span class="ev-meta t-meta text-fg-muted">{#if sv.recovery.failedAt}<span class={isCurrent ? 'text-danger' : 'text-fg-muted'}>{'failed'}</span><span class="tabular-nums">{' '}{hm(sv.recovery.failedAt)}</span>{' · '}{/if}<span class="text-success">OK</span><span class="tabular-nums">{' '}{hm(sv.recovery.okSince)}</span></span>
+																							{:else if sv.since}<span class="ev-meta t-meta"><span class={isCurrent && sv.verdict === 'failing' ? 'text-danger' : 'text-fg-muted'}>{sv.verdict === 'failing' ? 'failing' : 'failed'}</span><span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span></span>{/if}</div>
 																						<ul class="flex flex-col gap-3">
 																							{#each srcs as s (s.key)}<FailureSourceRow row={s} />{/each}
 																						</ul>
@@ -3184,7 +3184,7 @@
 	   rule simply stops matching `.check-line` at all rather than racing
 	   it. */
 	@media (min-width: 1024px) {
-		.hist-panel-lg-weight :global(.t-meta):not(.check-line) {
+		.hist-panel-lg-weight :global(.t-meta):not(.check-line):not(.ev-meta) {
 			font-size: 13px;
 			line-height: 18px;
 		}

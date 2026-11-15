@@ -4,7 +4,7 @@
 	/**
 	 * ONE FAILING OBSERVATION AS EVIDENCE: what was measured, the figure that failed, and the provider's own line about it.
 	 * Role: a health check's failing (or still-pending, or recovered) `status.observations[]` entry, drawn identically on the
-	 * rollout Overview card, in the failure banner's details and in History (take C, health-conditions).
+	 * rollout Overview card, in the failure banner's details and in History.
 	 * Why new: `FailedCheckLine` is a `name: message` sentence with no tracks; `FactList` is a record, too tall for a list
 	 * of several. Nothing on Home, /rollouts or rollout detail lists measured things with a figure.
 	 * Proportions borrowed from: HealthChecksCard's own row (14px glyph column, 12px gap, `t-body`/`t-meta` pair) and
@@ -29,10 +29,10 @@
 	{#if row.figure}
 		<span class="col-start-2 whitespace-nowrap" data-testid="failure-figure">
 			<b class="t-ui-sm font-semibold tabular-nums {row.state === 'recovered' ? 'text-fg-muted' : 'text-fg'}">{row.figure.value}</b>
-			{#if row.figure.note}<span class="t-meta text-fg-muted">&nbsp;{row.figure.note}</span>{/if}
+			{#if row.figure.note}<span class="ev-meta t-meta text-fg-muted">&nbsp;{row.figure.note}</span>{/if}
 		</span>
 	{/if}
 	{#if row.message}
-		<span class="col-start-2 t-meta text-fg-muted [overflow-wrap:anywhere]">{row.message}</span>
+		<span class="ev-meta col-start-2 t-meta text-fg-muted [overflow-wrap:anywhere]">{row.message}</span>
 	{/if}
 </li>

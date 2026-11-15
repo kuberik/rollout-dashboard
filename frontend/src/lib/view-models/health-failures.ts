@@ -1,5 +1,5 @@
 /**
- * Health-check failures as evidence rows (take C, health-conditions).
+ * Health-check failures as evidence rows.
  *
  * Reads ONLY what a HealthCheck already carries plus one optional field: `status.status`, `message`, `lastErrorTime`
  * (the witness), `lastChangeTime`, `observations[]` (name, kind, value, limit, total, direction, unit, window, healthy,
@@ -301,7 +301,8 @@ export function bannerEvidence(pool: CheckView[], pendingN: number, ago: string 
 	return {
 		observations: [r.obs],
 		check: { name: r.name, cls: r.cls, message: r.message },
-		message: `${n} health check${n === 1 ? '' : 's'} failing${pendingN > 0 ? `, ${pendingN} pending` : ''}${tail}`,
+		/* a count and its word never part: "1 pending" stays on one line */
+		message: `${n}\u00a0health check${n === 1 ? '' : 's'} failing${pendingN > 0 ? `, ${pendingN}\u00a0pending` : ''}${tail}`,
 		recovered: false,
 		pool
 	};

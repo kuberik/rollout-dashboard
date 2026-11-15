@@ -6,7 +6,7 @@ const mk = (cls: string, status: Record<string, unknown>, name = 'x'): HealthChe
 const win = new Date('2026-11-15T09:00:00Z');
 const T = (m: number) => `2026-11-15T10:${String(m).padStart(2, '0')}:00Z`;
 
-describe('health-failures (take C, observations only)', () => {
+describe('health-failures (observations only)', () => {
 	it('C1 resource ratio: row from the failing observation, message verbatim', () => {
 		const hc = mk('kustomization', { status: 'Unhealthy', lastChangeTime: T(1), observations: [{ name: 'Deployment shop/checkout-api', kind: 'Ratio', value: '1', total: '3', unit: 'ready', healthy: false, message: 'Readiness probe failed: HTTP probe failed with statuscode: 503' }] });
 		const v = checkView(hc, win);
@@ -122,10 +122,10 @@ describe('r2 rulings', () => {
 	});
 	it('banner evidence: live failure counts checks and ages; recovered says when a retry is reasonable', () => {
 		const live = bannerEvidence(poolOf([failing, pending, recovered], snaps, win), 1, '12m')!;
-		expect(live.message).toBe('1 health check failing, 1 pending\u00a0\u00b7\u00a012m\u00a0ago');
+		expect(live.message).toBe('1\u00a0health check failing, 1\u00a0pending\u00a0\u00b7\u00a012m\u00a0ago');
 		expect(live.check.cls).toBe('datadog');
 		const none = bannerEvidence(poolOf([failing], [snaps[2]], win), 0, null)!;
-		expect(none.message).toBe('1 health check failing');
+		expect(none.message).toBe('1\u00a0health check failing');
 		const rec = bannerEvidence(poolOf([recovered], [snaps[0]], win), 0, null)!;
 		expect(rec.recovered).toBe(true);
 		expect(rec.message).toMatch(/^Recovered at \d\d:\d\d, so a retry is reasonable\.$/);
