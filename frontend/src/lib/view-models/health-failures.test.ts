@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { HealthCheck } from '../../types';
-import { checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool } from './health-failures';
+import { checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince } from './health-failures';
 
 const mk = (cls: string, status: Record<string, unknown>, name = 'x'): HealthCheck => ({ metadata: { name }, spec: { class: cls }, status } as unknown as HealthCheck);
 const win = new Date('2026-11-15T09:00:00Z');
@@ -135,5 +135,19 @@ describe('r2 rulings', () => {
 		const rec = checkView(recovered, win, [snaps[0]]).recovery!;
 		const s = windowStrip(rec, new Date(T(2)), new Date(T(30)))!;
 		expect(s.startLabel).toMatch(/^check \d\d:\d\d$/);
+	});
+});
+
+describe('failureSince: the failure has one age', () => {
+	it('is the earliest start among the failing checks, never a pending or recovered one', () => {
+		const dd = mk('datadog', { status: 'Unhealthy', lastChangeTime: T(8), lastErrorTime: T(40), observations: [{ name: 'a', kind: 'State', value: 'Alert', healthy: false }] }, 'dd');
+		const prom = mk('prometheus-alert', { status: 'Unhealthy', lastChangeTime: T(12), lastErrorTime: T(40), observations: [{ name: 'b', kind: 'State', value: 'Alert', healthy: false }] }, 'prom');
+		const kust = mk('kustomization', { status: 'Pending', lastChangeTime: T(2) }, 'kust');
+		const pool = poolOf([prom, kust, dd], [], null);
+		expect(failureSince(pool)).toBe(T(8));
+	});
+	it('is null when nothing is failing', () => {
+		const kust = mk('kustomization', { status: 'Pending', lastChangeTime: T(3) }, 'kust');
+		expect(failureSince(poolOf([kust], [], null))).toBeNull();
 	});
 });

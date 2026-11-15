@@ -23,7 +23,7 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import { poolOf, worstOf, bannerEvidence, checkView, type SnapCheck } from '$lib/view-models/health-failures';
+	import { poolOf, worstOf, bannerEvidence, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
 
 	interface Props {
 		open?: boolean;
@@ -259,7 +259,7 @@
 	const evidence = $derived(!!worst);
 	const allRecovered = $derived(!!worst?.recovered);
 	const evAgo = $derived.by(() => {
-		const since = worst?.check.since;
+		const since = worst?.recovered ? worst.check.since : checksFailingSince(pool);
 		return since ? formatTimeAgoCompact(since, $now) : failureAgo;
 	});
 	const pendingN = $derived(healthChecks.filter((h) => checkView(h, deployWindowStart(rollout), failedHCList as SnapCheck[]).verdict === 'pending').length);

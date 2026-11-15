@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { toneInk } from '$lib/view-models/state-tone';
 	import { lastFailureAgoOf } from '$lib/view-models/event-age';
+	import { failedAfterRest } from '$lib/view-models/diff-page-title';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import { currentRowChip, liveStatusVerb, pausedRollup } from '$lib/view-models/history-current-chip';
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
 	import FailureSourceRow from '$lib/components/FailureSourceRow.svelte';
-	import { historyPool } from '$lib/view-models/health-failures';
+	import { historyPool, failureSince } from '$lib/view-models/health-failures';
 	import { deployWindowStart } from '$lib/view-models/health-witness';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { displayTimeZone } from '$lib/timezone.svelte';
@@ -841,7 +842,9 @@
 		return durations.length % 2 === 0 ? (durations[mid - 1] + durations[mid]) / 2 : durations[mid];
 	});
 	const lastFailureAgo = $derived.by(() => {
-		return lastFailureAgoOf([filteredHistory.map(({ e }) => e)], $now);
+		const head = rollout?.status?.history?.[0];
+		const headSince = head && filteredHistory[0]?.e === head ? failureSince(historyPool((head.failedHealthChecks ?? []) as { name: string }[], liveChecks, deployWindowStart(rollout))) : null;
+		return lastFailureAgoOf([filteredHistory.map(({ e }) => e)], $now, headSince);
 	});
 	/**
 	 * ⭐ "Keeps up to N", ONLY WHEN AT THE LIMIT (round 3, item 5, squad
@@ -950,7 +953,7 @@
 		// than how long it took, which `title` already carried for anyone
 		// who wants it.
 		const rest =
-			outcome === 'Failed' ? `after ${spanLabel(end - t0)}` : `at ${clockTime(entry.bakeEndTime)}`;
+			outcome === 'Failed' ? failedAfterRest(t0, start, end) : `at ${clockTime(entry.bakeEndTime)}`;
 		return { outcome, rest, title };
 	}
 

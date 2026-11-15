@@ -180,6 +180,15 @@ export function poolOf(live: HealthCheck[], snaps: SnapCheck[], windowStart: Dat
 	return out;
 }
 
+/**
+ * THE ONE "SINCE" OF A FAILURE: when the earliest of the failing checks began failing (each check's own `since`: `lastChangeTime`, else `lastErrorTime`;
+ * a snapshot-only check: its earliest failing observation). The banners, the Attention card and the History summary all print this instant, so
+ * the failure has one age. It is NOT the check timer's end (`bakeEndTime`), which is a different fact ("Failed after 30m"). null when no check is failing.
+ */
+export function failureSince(pool: CheckView[]): string | null {
+	return earliest(pool.filter((c) => c.verdict === 'failing').map((c) => c.since ?? undefined));
+}
+
 export type Worst = { check: CheckView; row: ObsRow | null; recovered: boolean };
 
 /** the worst failing observation (a drawable figure first, live before snapshot as `poolOf` orders them), else the first recovered one; null when nothing is evidence */

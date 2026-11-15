@@ -77,7 +77,7 @@ import { stateWord as sharedWord, severity } from './state-words';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { buildTopology, deployNameOf, siteNodeOf, upstreamOf, type AppTopology } from '$lib/view-models/sites-waves';
 import type { Environment, HealthObservation, HealthCheck } from '../../../types';
-import { evidenceLine, worstOf, poolOf, checkView, clock, type SnapCheck, type CheckView } from '../../view-models/health-failures';
+import { evidenceLine, worstOf, failureSince, poolOf, checkView, clock, type SnapCheck, type CheckView } from '../../view-models/health-failures';
 import type { Rollout } from '$lib/../types';
 import { placeStateWithPin } from '$lib/view-models/pin-hold';
 import type { TierKey, RolloutRow, ChangeItem, ChangeGroupKey, Region as RDRegion, AppItem, ArrivalRow } from '$lib/components/home/roster/roster-data';
@@ -234,7 +234,7 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 	if (ev) {
 		const pool = poolOf(liveAll as HealthCheck[], (h.failedHealthChecks ?? []) as SnapCheck[], winStart);
 		const pendingN = (liveAll as HealthCheck[]).filter((x) => checkView(x, winStart, (h.failedHealthChecks ?? []) as SnapCheck[]).verdict === 'pending').length;
-		const since = ev.recovered ? null : worstOf(pool)?.check.since ?? null;
+		const since = ev.recovered ? null : failureSince(pool);
 		return { check: ev.name, message: ev.message, phrase, line: ev.cause, cls: ev.cls, observations: ev.observations, note: ev.note, recovered: ev.recovered, short: ev.short, pool, pendingN, since, recoveredAt: ev.okSince ? clock(ev.okSince) : null };
 	}
 	return { check, message, phrase, line, observations };
