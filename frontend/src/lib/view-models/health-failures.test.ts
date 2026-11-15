@@ -138,6 +138,25 @@ describe('r2 rulings', () => {
 	});
 });
 
+describe('a recovered check follows its verdict, not the presence of observations', () => {
+	const hc = mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(6) }, 'dd');
+	const pool = () => poolOf([hc], [{ name: 'dd', message: 'monitor alerted' }], win);
+	it('Healthy + a recent lastErrorTime + no observations is recovered, and the evidence says so', () => {
+		const v = checkView(hc, win, [{ name: 'dd' }]);
+		expect(v.verdict).toBe('recovered');
+		const w = worstOf(pool());
+		expect(w?.recovered).toBe(true);
+		expect(w?.row).toBeNull();
+		const ev = evidenceLine(pool());
+		expect(ev?.recovered).toBe(true);
+		expect(ev?.cause).toBe('dd recovered');
+		expect(ev?.okSince).toBe(T(6));
+		const b = bannerEvidence(pool(), 0, null);
+		expect(b?.recovered).toBe(true);
+		expect(b?.check.name).toBe('dd');
+	});
+});
+
 describe('failureSince: the failure has one age', () => {
 	it('is the earliest start among the failing checks, never a pending or recovered one', () => {
 		const dd = mk('datadog', { status: 'Unhealthy', lastChangeTime: T(8), lastErrorTime: T(40), observations: [{ name: 'a', kind: 'State', value: 'Alert', healthy: false }] }, 'dd');

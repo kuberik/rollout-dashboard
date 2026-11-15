@@ -194,15 +194,21 @@ export function failureSince(pool: CheckView[]): string | null {
 	return earliest(pool.filter((c) => c.verdict === 'failing').map((c) => c.since ?? undefined));
 }
 
-export type Worst = { check: CheckView; row: ObsRow | null; recovered: boolean };
-
-/** the worst failing observation (a drawable figure first, live before snapshot as `poolOf` orders them), else the first recovered one; null when nothing is evidence */
+/**
+ * the worst failing observation (a drawable figure first, live before snapshot as `poolOf` orders them), else a recovered check (its first
+ * recovered observation when the snapshot kept one, else no row: a check that is Healthy with a recent `lastErrorTime` is recovered whether or
+ * not any observation was recorded); null when nothing failed
+ */
 export function worstOf(pool: CheckView[]): Worst | null {
 	const failing = pool.flatMap((check) => check.rows.filter((r) => r.state === 'failing').map((row) => ({ check, row })));
 	const w = failing.find((x) => x.row.figure) ?? failing[0];
 	if (w) return { ...w, recovered: false };
-	const rec = pool.find((c) => c.recovery && c.recovery.rows.length > 0);
-	if (rec) return { check: rec, row: rec.recovery!.rows.find((r) => r.figure) ?? rec.recovery!.rows[0], recovered: true };
+	const recs = pool.filter((c) => c.verdict === 'recovered');
+	const rec = recs.find((c) => c.recovery && c.recovery.rows.length > 0) ?? recs[0];
+	if (rec) {
+		const rows = rec.recovery?.rows ?? [];
+		return { check: rec, row: rows.find((r) => r.figure) ?? rows[0] ?? null, recovered: true };
+	}
 	return null;
 }
 
@@ -236,9 +242,15 @@ export function shortFact(row: ObsRow): string {
 export type Evidence = { /** recovered: when the check went OK (ISO) */ okSince?: string | null; name: string; cls: CheckClass; /** the cause line of rows and strips (spec rule 7): `{name} {value} / {limit}`, `{name} {value}/{total} {unit}`, `{name} recovered`, else the name */ cause: string; message: string; /** the strips' only room: the fact without the name */ short: string; observations: HealthObservation[]; note: string | null; recovered: boolean };
 export function evidenceLine(pool: CheckView[]): Evidence | null {
 	const w = worstOf(pool);
-	if (!w || !w.row) return null;
+	if (!w) return null;
+	if (w.recovered) {
+		const r = w.row;
+		const name = r?.name ?? w.check.name;
+		/* the snapshot figure the card draws in recovered ink, when the snapshot kept one */
+		return { name, cls: r?.cls ?? w.check.cls, cause: r ? shortCause(r, true) : `${name} recovered`, message: 'recovered', short: 'recovered', observations: r ? [r.obs] : [], okSince: w.check.recovery?.okSince ?? null, note: null, recovered: true };
+	}
+	if (!w.row) return null;
 	const r = w.row;
-	if (w.recovered) return { name: r.name, cls: r.cls, cause: shortCause(r, true), message: 'recovered', short: 'recovered', /* the snapshot figure the card draws in recovered ink */ observations: [r.obs], okSince: w.check.recovery?.okSince ?? null, note: null, recovered: true };
 	const more = failingRowCount(pool) - 1;
 	const short = shortFact(r);
 	return {
@@ -297,19 +309,21 @@ export function windowStrip(rec: Recovery, axisStart: Date | null, now: Date): W
 export type BannerEvidence = { observations: HealthObservation[]; check: { name: string; message?: string; cls?: string }; message: string; recovered: boolean; pool: CheckView[] };
 export function bannerEvidence(pool: CheckView[], pendingN: number, ago: string | null): BannerEvidence | null {
 	const worst = worstOf(pool);
-	if (!worst?.row) return null;
-	const r = worst.row;
+	if (!worst) return null;
 	if (worst.recovered) {
+		const r = worst.row;
 		const at = worst.check.recovery?.failedAt;
 		const ok = worst.check.recovery?.okSince;
 		return {
 			observations: [],
-			check: { name: r.name, cls: r.cls, message: `${figureText(r.figure)}${at ? ` at ${clock(at)}` : ''}`.trim() || undefined },
+			check: { name: r?.name ?? worst.check.name, cls: r?.cls ?? worst.check.cls, message: `${r ? figureText(r.figure) : ''}${at ? ` at ${clock(at)}` : ''}`.trim() || undefined },
 			message: `Recovered${ok ? ` at ${clock(ok)}` : ''}, so a retry is reasonable.`,
 			recovered: true,
 			pool
 		};
 	}
+	if (!worst.row) return null;
+	const r = worst.row;
 	const n = failingCheckCount(pool);
 	/* "12m ago" stays together: non-breaking spaces inside the time unit */
 	const tail = ago ? `\u00a0· ${ago} ago` : '';
