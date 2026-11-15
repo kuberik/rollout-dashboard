@@ -20,7 +20,7 @@ import { rowAction, actionHref } from './rollout-view';
 import { chipPlace, changeLineOf } from './rollouts-page';
 import { classifyChanges, groupByRepo, cardOf, tiersOf, type RepoGroup, type Rollup } from './changes-page';
 import { TIERS } from './change-view';
-import { severity, approvalWord } from './state-words';
+import { severity, approvalWord, failedWord } from './state-words';
 import { siteCount, siteKey, regionsPhrase } from '$lib/view-models/regions';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import type { RepoCardModel } from '$lib/view-models/repo-card';
@@ -37,7 +37,7 @@ export type AskItem = {
 	id: { name: string; ref?: string; title?: string; person?: string; you?: boolean };
 };
 /** `mark` is the StatusMark state of the row: failing, held by a rule, waiting on an approval, or moving (QA #6: an approval-held or moving rollout must show on Home even when it is not the viewer's ask). */
-export type FleetTrouble = { key: string; app: string; failing: boolean; mark: 'failed' | 'held' | 'approval' | 'deploying' | 'checking'; word: 'Failing' | 'Held' | 'Waiting for approval' | 'Needs your approval' | 'Deploying' | 'Checking' | 'Paused'; href: string; places: { tier: string; place: string }[] };
+export type FleetTrouble = { key: string; app: string; failing: boolean; mark: 'failed' | 'held' | 'approval' | 'deploying' | 'checking'; word: 'Failing' | 'Failed' | 'Held' | 'Waiting for approval' | 'Needs your approval' | 'Deploying' | 'Checking' | 'Paused'; href: string; places: { tier: string; place: string }[] };
 export type FleetDeploy = { key: string; app: string; tier: string; place: string; at: string; age: string; failing: boolean; href: string };
 export type HomePage = {
 	asks: AskItem[];
@@ -146,11 +146,12 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 		const failedRow = r.group === 'failed';
 		const k = `${r.app}|${r.group}`;
 		const place = (chipPlace(r) ?? '');
-		const kind = failedRow ? { mark: 'failed' as const, word: 'Failing' as const }
+		const kind = failedRow ? { mark: 'failed' as const, word: failedWord(!!r.failure?.recovered) }
 			: r.group === 'held' ? { mark: 'held' as const, word: 'Held' as const }
 			: r.group === 'approval' ? { mark: 'approval' as const, word: approvalWord(false) as FleetTrouble['word'] }
 			: r.state === 'checking' ? (r.paused ? { mark: 'held' as const, word: 'Paused' as const } : { mark: 'checking' as const, word: 'Checking' as const }) : { mark: 'deploying' as const, word: 'Deploying' as const };
 		const x = by.get(k) ?? { key: k, app: r.app, failing: failedRow, ...kind, href: r.href, places: [] as FleetTrouble['places'], since: r.since ?? '' };
+		if (failedRow && !r.failure?.recovered) x.word = 'Failing'; /* one live failure among the app's failed places makes the row Failing */
 		x.places.push({ tier: r.tier, place });
 		x.since = earliest([x.since, r.since]) ?? '';
 		by.set(k, x);

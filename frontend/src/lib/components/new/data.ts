@@ -240,6 +240,9 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 	return { check, message, phrase, line, observations };
 }
 
+/** A failed place whose checks are all OK again (what its Attention card, Fleet row and strip box read as "Failed", not "Failing"): the failure reason's own `recovered`, by href. */
+export const failureRecovered = (href: string): boolean => !!failureReason({ group: 'failed', href })?.recovered;
+
 /* ═══ places (defect 5) ═══ */
 /* the one place word lives in view-models/regions.ts (Home reads it too); re-exported for every surface that imported it from here */
 export { placeLabel };

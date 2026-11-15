@@ -16,7 +16,7 @@ import {
 import { markOf, tabEnv, rowAction, actionHref, runwayRow, byFailRank, type MarkState } from './rollout-view';
 import { nodesOfSteps, type MiniNode } from './mini-pipeline';
 import { holdWordParts } from './rollout-view';
-import { approvalWord } from './state-words';
+import { approvalWord, failedWord } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
 import { bannerEvidence, type BannerEvidence } from '$lib/view-models/health-failures';
@@ -215,4 +215,13 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 		counts: { moving: moving.length, waiting: waiting.length, held: held.length, rest: rest.length },
 		empty: !rows.length && !rest.length
 	};
+}
+
+/** The Attention header's rollup. Its words are the cards' own: a failure whose checks recovered reads `Failed` on its card, so the rollup counts it as `failed`; `failing` is a check failing right now. */
+export function attentionRollup(P: { failing: number; recovered: number; toApprove: number }): (string | { text: string; ink: 'danger' | 'held' })[] {
+	return [
+		...(P.failing - P.recovered ? [{ text: `${P.failing - P.recovered} ${failedWord(false).toLowerCase()}`, ink: 'danger' as const }] : []),
+		...(P.recovered ? [`${P.recovered} ${failedWord(true).toLowerCase()}`] : []),
+		...(P.toApprove ? [{ text: `${P.toApprove} to approve`, ink: 'held' as const }] : [])
+	];
 }

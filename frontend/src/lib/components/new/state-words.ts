@@ -8,6 +8,12 @@
  */
 import { TONE } from '$lib/view-models/state-tone';
 
+/**
+ * THE ONE FAILURE WORD. "Failing" is reserved for a check that is failing right now; a failure whose checks have since recovered
+ * (the lastErrorTime witness keeps the deploy failed) is "Failed". Every surface that prints the word for a failed place asks here.
+ */
+export const failedWord = (recovered: boolean): 'Failing' | 'Failed' => (recovered ? 'Failed' : 'Failing');
+
 export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking' | 'paused';
 
 /** accepts the product's other spellings of the same five states */
@@ -21,11 +27,11 @@ const ALIAS: Record<string, StateKind> = {
 };
 export const stateKind = (s: string | null | undefined): StateKind | null => (s ? (ALIAS[s] ?? null) : null);
 
-export function stateWord(s: string | null | undefined, o: { yours?: boolean; compact?: boolean } = {}): string | null {
+export function stateWord(s: string | null | undefined, o: { yours?: boolean; compact?: boolean; recovered?: boolean } = {}): string | null {
 	const k = stateKind(s);
 	if (!k) return null;
 	switch (k) {
-		case 'failed': return 'Failing';
+		case 'failed': return failedWord(!!o.recovered);
 		case 'approval': return o.compact ? 'Waiting' : o.yours ? 'Needs your approval' : 'Waiting for approval';
 		case 'held': return 'Held';
 		case 'deploying': return 'Deploying';

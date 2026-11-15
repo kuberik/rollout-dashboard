@@ -969,6 +969,7 @@ lib/components/new/rollout-view.ts	code	Your approval
 lib/components/new/rollouts-page.ts	code	… behind
 lib/components/new/rollouts-page.ts	code	… of … regions
 lib/components/new/rollouts-page.ts	code	… regions
+lib/components/new/rollouts-page.ts	code	… to approve
 lib/components/new/rollouts-page.ts	code	· also needs …approval
 lib/components/new/rollouts-page.ts	code	check still running
 lib/components/new/rollouts-page.ts	code	Held by
@@ -977,12 +978,9 @@ lib/components/new/rollouts-page.ts	code	On the newest
 lib/components/new/rollouts-page.ts	code	Rolled back
 lib/components/new/Rollouts.svelte	text	… apps
 lib/components/new/Rollouts.svelte	code	… at rest
-lib/components/new/Rollouts.svelte	code	… failing
 lib/components/new/Rollouts.svelte	code	… held
 lib/components/new/Rollouts.svelte	text	… is itself waiting on …
 lib/components/new/Rollouts.svelte	code	… moving
-lib/components/new/Rollouts.svelte	code	… recovered
-lib/components/new/Rollouts.svelte	code	… to approve
 lib/components/new/Rollouts.svelte	code	… waiting
 lib/components/new/Rollouts.svelte	title	All rollouts
 lib/components/new/Rollouts.svelte	text	At rest

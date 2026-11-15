@@ -13,3 +13,19 @@ describe('approval wording names its place (subject test)', () => {
 		expect(rowPlaceName({ regions: [], place: 'staging', tier: 'staging' })).toBe('staging');
 	});
 });
+
+describe('one failure vocabulary', () => {
+	it('Failing is a check failing now; a recovered failure reads Failed', async () => {
+		const { failedWord, stateWord } = await import('./state-words');
+		expect(failedWord(false)).toBe('Failing');
+		expect(failedWord(true)).toBe('Failed');
+		expect(stateWord('failed')).toBe('Failing');
+		expect(stateWord('failed', { recovered: true })).toBe('Failed');
+		expect(stateWord('failing', { recovered: true })).toBe('Failed');
+	});
+	it('the Attention rollup uses the cards\' words', async () => {
+		const { attentionRollup } = await import('./rollouts-page');
+		expect(attentionRollup({ failing: 6, recovered: 2, toApprove: 1 })).toEqual([{ text: '4 failing', ink: 'danger' }, '2 failed', { text: '1 to approve', ink: 'held' }]);
+		expect(attentionRollup({ failing: 0, recovered: 0, toApprove: 0 })).toEqual([]);
+	}, 30000);
+});

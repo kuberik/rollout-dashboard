@@ -9,7 +9,7 @@
  */
 import { newestFirst } from '$lib/instant';
 import { startOfDayMs } from '$lib/display-time';
-import { approvalWord, severity } from '../state-words';
+import { approvalWord, failedWord, severity } from '../state-words';
 import {
 	tabPill,
 	deployedHistory,
@@ -603,14 +603,14 @@ export function waveFactOf(
 /** the separator + clause as drawn: dot and clause joined by a non-breaking space */
 export const waveClause = (fact: string): string => `\u00b7\u00a0${fact}`;
 /** the place's ONE state word, the strip cell's own (never "Live"): at rest "Healthy"; a place the pin holds says the tab's cause, "Held by the pin" */
-export function placeWord(p: Pick<PlaceHold, 'state'> & { bakePaused?: boolean }, pinned = false, yours = false): string {
+export function placeWord(p: Pick<PlaceHold, 'state'> & { bakePaused?: boolean }, pinned = false, yours = false, recovered = false): string {
 	if (pinned) return 'Held by the pin';
 	if (p.state === 'checking' && p.bakePaused) return 'Paused';
 	/* detail pass 2026-11-08: one approval word on every page (approvalWord): "Needs your approval" when the viewer can give it */
 	return (
 		(
 			{
-				failed: 'Failing',
+				failed: failedWord(recovered),
 				'awaiting-approval': approvalWord(yours),
 				'held-by-rule': 'Held',
 				deploying: 'Deploying',

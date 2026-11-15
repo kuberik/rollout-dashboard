@@ -22,7 +22,7 @@
 	import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 	import { heldChain, fleetGraph } from './held-chain';
 	import { actionHref, rowAction } from './rollout-view';
-	import { rolloutsPage } from './rollouts-page';
+	import { rolloutsPage, attentionRollup } from './rollouts-page';
 	import type { PageProps } from './pages';
 
 	let { state: hs }: PageProps = $props();
@@ -40,11 +40,7 @@
 		scrolledTo = id;
 		el.scrollIntoView({ block: 'start' });
 	});
-	const attRollup = $derived([
-		...(P.failing - P.recovered ? [{ text: `${P.failing - P.recovered} failing`, ink: 'danger' as const }] : []),
-		...(P.recovered ? [`${P.recovered} recovered`] : []),
-		...(P.toApprove ? [{ text: `${P.toApprove} to approve`, ink: 'held' as const }] : [])
-	]);
+	const attRollup = $derived(attentionRollup(P));
 	const allRollup = $derived([
 		`${P.counts.moving} moving`,
 		...(P.counts.waiting ? [`${P.counts.waiting} waiting`] : []),

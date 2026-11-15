@@ -21,7 +21,7 @@
 	import { lagLabel } from '$lib/view-models/env-rank';
 	import EnvRow, { type EnvCell, type EnvSite } from '$lib/components/EnvRow.svelte';
 	import type { SiteState } from '$lib/components/SiteMark.svelte';
-	import { approvalWord, stateWord } from '$lib/components/new/state-words';
+	import { approvalWord, failedWord, stateWord } from '$lib/components/new/state-words';
 	import { toneInk } from '$lib/view-models/state-tone';
 	import type { Bead } from '$lib/view-models/bead';
 
@@ -38,7 +38,8 @@
 		youCan = undefined,
 		quietNoReleases = false,
 		sites = false,
-		reserve = false
+		reserve = false,
+		recovered
 	}: {
 		lane: Lane;
 		/** Restrict / order the boxes; defaults to this lane's own tiers. */
@@ -67,6 +68,8 @@
 		sites?: boolean;
 		/** NOTHING MOVES AS STATE CHANGES (App view, Rollout overview): every box reserves the width of the widest state word and says "Deployed" quietly when healthy, so a word appearing moves no box */
 		reserve?: boolean;
+		/** a failed place whose checks are all OK again: the box says "Failed", not "Failing" (state-words `failedWord`). Unknown reads as Failing. */
+		recovered?: (n: LaneNode) => boolean;
 	} = $props();
 	const size = $derived<'L' | 'M'>(fill ?? 'L');
 	const linked = $derived(!fill);
@@ -81,13 +84,13 @@
 	const WORD: Record<NodeState, string> = { failed: 'Failing', stuck: 'Stuck', deploying: 'Deploying', checking: 'Checking', paused: 'Paused', held: 'Held', behind: '', newest: '', none: '' };
 	/** a healthy box (behind / newest) says no word: its name and its lag are the whole statement */
 	const mine = (n: LaneNode) => (youCan ? youCan(n) : yours);
-	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(mine(n)) : 'Waiting') : WORD[n.state]);
+	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(mine(n)) : 'Waiting') : n.state === 'failed' ? failedWord(recovered?.(n) ?? false) : WORD[n.state]);
 	/** nothing moves as state changes: every strip box reserves the width of the widest word IT can say (EnvRow `wordSlot`). The strip's approval
 	 *  word is always the short one ("Waiting"); "Needs your approval" stays in the title, the picker and the ask banner. */
-	const WORD_SLOT = [...new Set([...Object.values(WORD), 'Waiting', 'Deployed'].filter(Boolean))];
+	const WORD_SLOT = [...new Set([...Object.values(WORD), 'Failed', 'Waiting', 'Deployed'].filter(Boolean))];
 	/** the title says the full approval word the box shortens */
 	const longWord = (n: LaneNode) => (wordOf(n) === stripWord(n) ? '' : ' · ' + wordOf(n));
-	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : WORD[n.state] || (n.state === 'none' ? '' : 'Deployed'));
+	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : n.state === 'failed' ? wordOf(n) : WORD[n.state] || (n.state === 'none' ? '' : 'Deployed'));
 	/** a healthy box says "Deployed" quietly (the picker's word) so the reserved slot is not an empty tail */
 	const stripInk = (n: LaneNode) => (WORD[n.state] ? toneInk(n.state) : 'text-fg-subtle');
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking', 'paused']);
