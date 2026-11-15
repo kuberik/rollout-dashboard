@@ -20,6 +20,7 @@
 	} from '../../../../../../types';
 	import { Spinner } from 'flowbite-svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import PendingCheckBlock from '$lib/components/PendingCheckBlock.svelte';
 	import {
 		UndoOutline,
 		ChevronDownOutline,
@@ -1958,6 +1959,7 @@
 														>
 															<RestGlyph
 																bakeStatus={entry.bakeStatus}
+																state={isCurrent && entry.bakeStatus === 'InProgress' && bakePaused(entry) ? 'paused' : null}
 																timestamp={entry.timestamp}
 																now={$now.getTime()}
 																class="deploy-glyph-ring"
@@ -2016,7 +2018,7 @@
 												glyph + the red verb below), not three — the thing the
 												prior note was protecting stays protected. -->
 																	{#if isCurrent && currentRowChip(entry.bakeStatus, currencyBehind, bakePaused(entry))}
-																		<Chip role="count" wide label={currentRowChip(entry.bakeStatus, currencyBehind, bakePaused(entry)) ?? ''} />
+																		<Chip role={entry.bakeStatus === 'InProgress' && bakePaused(entry) ? 'held' : 'count'} wide label={currentRowChip(entry.bakeStatus, currencyBehind, bakePaused(entry)) ?? ''} />
 																	{/if}
 																	<!--
 												⭐ §3.11 — THE VERB IN ITS STATUS INK, NOT A CHIP — AND NOT
@@ -2769,13 +2771,16 @@
 																					<div data-testid="hist-check" data-state={sv.verdict}>
 																						<div class="mb-1.5 flex flex-wrap items-baseline gap-x-2"><span class="t-body text-fg">{sv.name}</span>
 																							<!-- Overview's fact-line grammar: state word in state ink, then `· HH:MM` in fg-muted; green only on the OK word -->
-																							{#if sv.verdict === 'pending'}<span class="t-meta"><span class="text-progress">waiting</span>{#if sv.since}<span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span>{/if}</span>
+																							{#if sv.verdict === 'pending'}<span class="t-meta"><span class="text-progress">pending</span>{#if sv.since}<span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span>{/if}</span>
 																							{:else if sv.verdict === 'recovered' && sv.recovery?.okSince}<span class="t-meta text-fg-muted">{#if sv.recovery.failedAt}<span class={isCurrent ? 'text-danger' : 'text-fg-muted'}>{'failed'}</span><span class="tabular-nums">{' '}{hm(sv.recovery.failedAt)}</span>{' · '}{/if}<span class="text-success">OK</span><span class="tabular-nums">{' '}{hm(sv.recovery.okSince)}</span></span>
 																							{:else if sv.since}<span class="t-meta"><span class={isCurrent && sv.verdict === 'failing' ? 'text-danger' : 'text-fg-muted'}>{sv.verdict === 'failing' ? 'failing' : 'failed'}</span><span class="text-fg-muted tabular-nums">{' · '}{hm(sv.since)}</span></span>{/if}</div>
 																						<ul class="flex flex-col gap-3">
 																							{#each srcs as s (s.key)}<FailureSourceRow row={s} />{/each}
 																						</ul>
 																					</div>
+																				{:else if sv.verdict === 'pending'}
+																					<!-- no observation: the same block as a check that has them -->
+																					<PendingCheckBlock name={sv.name} cls={sv.cls} message={sv.message} time={sv.since ? hm(sv.since) : null} />
 																				{:else}
 																					<FailedCheckLine check={{ name: sv.name, message: sv.message }} danger={isCurrent && sv.verdict === 'failing'} />
 																				{/if}
