@@ -60,7 +60,7 @@ describe('the held approval tile', () => {
 		const c = tile(null);
 		const el = c.querySelector('[data-hood-link]');
 		expect(el?.tagName).toBe('A');
-		expect(el?.getAttribute('href')).toBe('https://docs.kuberik.com/concepts/gates#approvals');
+		expect(el?.getAttribute('href')).toBe('https://kuberik.com/docs/gates/approvals/');
 		expect(el?.getAttribute('title')).toBe('How to approve a held build');
 		expect(el?.querySelector('[data-approve-none]')?.getAttribute('title')).toBe("You can't approve this build here");
 		expect(el?.querySelector('[data-gate-release]')?.textContent?.trim()).toBe('Needs approval');

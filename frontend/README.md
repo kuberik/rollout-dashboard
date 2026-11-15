@@ -61,6 +61,21 @@ GITHUB_DEV_TOKEN=ghp_xxx npm run dev
 Unset by default — nothing changes for a `GITHUB_DEV_TOKEN`-less `npm run
 dev`. See `dev-auth.ts`'s own header comment for the exact mechanics.
 
+## Mock mode with GitHub (no cluster, no login)
+
+```bash
+MOCK_API=1 MOCK_SCENARIO=home-incident pnpm run dev      # Home with an Approve button, held gates, the incident
+MOCK_API=1 pnpm run dev                                    # the calm fleet; add MOCK_FIXTURES=release-switch for the extra apps
+```
+
+The mock answers GitHub as a connected account (`danielreed`): `/api/auth/github/status`, the changes feed, PR and
+commit lookups and commit ranges (`src/lib/demo/github-data.ts`), for the same repos, builds and releases the mock
+fleet runs. Home's "Your changes", `/changes`, a change page (`/changes/github.com/exampleco/checkout-api/pull/80`),
+the PR view (`/pr/exampleco/checkout-api/80`), the palette paste ("Search, or paste a PR link or sha" then "Open change
+#80") and Change version all render with no "GitHub is not connected" state. Mock mode only: the fixtures live behind
+`MOCK_API` and the demo build, never in the real backend path. Pins: `src/lib/demo/github-mock-agreement.test.ts`
+(unit) and `node scripts/mock-github-smoke.mjs <base>` (pages, against a running mock).
+
 ## The demo build (`/demo/`, embedded by kuberik.com)
 
 `scripts/build-demo.sh` produces a static dashboard that runs entirely in the

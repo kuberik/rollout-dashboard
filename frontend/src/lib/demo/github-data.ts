@@ -752,6 +752,37 @@ const APPS: Record<string, AppFixture> = {
 		'platform-telemetry',
 		['7b3c9f1', '4a8d2e6'],
 		['Bump the shared platform-telemetry client to v3']
+	),
+	/**
+	 * The three apps of `bypass-demo.ts` (payout-api, billing-edge, invoice-worker). They are in the fleet, on Home's
+	 * "Needs your approval" card and on the gates pages, so their builds (`m-60..62`, `w-29..31`, the same tags the
+	 * rollouts run) must also have a change each: without these the Home card's "BE billing-edge · Mark Collins" row,
+	 * the release's change page and the commit rollup had nothing to resolve against (the "agree with the fleet" rule,
+	 * pinned by `github-mock-agreement.test.ts`).
+	 */
+	'payout-api': curated(
+		OWNER,
+		'payout-api',
+		['m-60', 'm-61', 'm-62'],
+		['Hold payouts until the ledger has settled', 'Add a sign-off step for payouts over the daily limit'],
+		undefined,
+		'Initial payout-api release'
+	),
+	'billing-edge': curated(
+		OWNER,
+		'billing-edge',
+		['m-60', 'm-61', 'm-62'],
+		['Round invoice totals to the currency minor unit', 'Add per-region tax identifiers to the billing edge'],
+		undefined,
+		'Initial billing-edge release'
+	),
+	'invoice-worker': curated(
+		OWNER,
+		'invoice-worker',
+		['w-29', 'w-30', 'w-31'],
+		['Retry failed invoice renders with backoff', 'Render invoices in the customer language'],
+		undefined,
+		'Initial invoice-worker release'
 	)
 };
 
