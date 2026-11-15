@@ -69,7 +69,7 @@
 		: 'text-fg-muted'}"
 >
 	{#if check.cls}<CheckGlyph cls={check.cls} class="check-glyph h-3.5 w-3.5 shrink-0 translate-y-0.5" />{:else}<ExclamationCircleSolid class="check-glyph h-3 w-3 shrink-0 translate-y-0.5" aria-hidden="true" />{/if}
-	<span class={compact ? 'line-clamp-2' : ''}
+	<span class="min-w-0 break-words {compact ? 'line-clamp-2' : ''}"
 		><span class={ink ? 'text-fg' : danger ? 'text-danger' : 'text-fg-muted'}
 			>{check.name ?? ''}{check.name && check.message ? ':' : ''}</span
 		>
