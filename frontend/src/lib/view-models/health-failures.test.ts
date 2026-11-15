@@ -158,12 +158,27 @@ describe('a recovered check follows its verdict, not the presence of observation
 });
 
 describe('failureSince: the failure has one age', () => {
-	it('is the earliest start among the failing checks, never a pending or recovered one', () => {
+	it('is the earliest start among the failing checks, never a pending one', () => {
 		const dd = mk('datadog', { status: 'Unhealthy', lastChangeTime: T(8), lastErrorTime: T(40), observations: [{ name: 'a', kind: 'State', value: 'Alert', healthy: false }] }, 'dd');
 		const prom = mk('prometheus-alert', { status: 'Unhealthy', lastChangeTime: T(12), lastErrorTime: T(40), observations: [{ name: 'b', kind: 'State', value: 'Alert', healthy: false }] }, 'prom');
 		const kust = mk('kustomization', { status: 'Pending', lastChangeTime: T(2) }, 'kust');
 		const pool = poolOf([prom, kust, dd], [], null);
 		expect(failureSince(pool)).toBe(T(8));
+	});
+	it('a recovered failure keeps the age its evidence prints: recovery.failedAt, the earliest across checks', () => {
+		const rec = mk('prometheus-alert', { status: 'Healthy', lastErrorTime: T(4), lastChangeTime: T(5), observations: [{ name: 'HighLatency', kind: 'Threshold', value: '0.4', limit: '1', direction: 'Above', unit: 's', healthy: true }] }, 'rec');
+		const snaps = [{ name: 'rec', observations: [{ name: 'HighLatency', kind: 'Threshold' as const, value: '1.9', limit: '1', direction: 'Above' as const, unit: 's', healthy: false, observedTime: T(2) }] }];
+		const pool = poolOf([rec], snaps, win);
+		expect(pool[0].verdict).toBe('recovered');
+		expect(failureSince(pool)).toBe(T(2));
+		expect(failureSince(pool)).toBe(pool[0].recovery?.failedAt);
+		/* a check still failing joins in: the earliest of the two */
+		const dd = mk('datadog', { status: 'Unhealthy', lastChangeTime: T(1), observations: [{ name: 'a', kind: 'State', value: 'Alert', healthy: false }] }, 'dd');
+		expect(failureSince(poolOf([rec, dd], snaps, win))).toBe(T(1));
+	});
+	it('a recovered check with no observations ages from its witness lastErrorTime', () => {
+		const hc = mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(6) }, 'dd');
+		expect(failureSince(poolOf([hc], [{ name: 'dd' }], win))).toBe(T(3));
 	});
 	it('is null when nothing is failing', () => {
 		const kust = mk('kustomization', { status: 'Pending', lastChangeTime: T(3) }, 'kust');

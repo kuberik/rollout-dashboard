@@ -259,7 +259,7 @@
 	const evidence = $derived(!!worst);
 	const allRecovered = $derived(!!worst?.recovered);
 	const evAgo = $derived.by(() => {
-		const since = worst?.recovered ? worst.check.since : checksFailingSince(pool);
+		const since = checksFailingSince(pool);
 		return since ? formatTimeAgoCompact(since, $now) : failureAgo;
 	});
 	const pendingN = $derived(healthChecks.filter((h) => checkView(h, deployWindowStart(rollout), failedHCList as SnapCheck[]).verdict === 'pending').length);

@@ -234,7 +234,7 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 	if (ev) {
 		const pool = poolOf(liveAll as HealthCheck[], (h.failedHealthChecks ?? []) as SnapCheck[], winStart);
 		const pendingN = (liveAll as HealthCheck[]).filter((x) => checkView(x, winStart, (h.failedHealthChecks ?? []) as SnapCheck[]).verdict === 'pending').length;
-		const since = ev.recovered ? null : failureSince(pool);
+		const since = failureSince(pool);
 		return { check: ev.name, message: ev.message, phrase, line: ev.cause, cls: ev.cls, observations: ev.observations, note: ev.note, recovered: ev.recovered, short: ev.short, pool, pendingN, since, recoveredAt: ev.okSince ? clock(ev.okSince) : null };
 	}
 	return { check, message, phrase, line, observations };

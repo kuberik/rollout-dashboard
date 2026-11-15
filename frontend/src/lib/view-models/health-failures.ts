@@ -186,13 +186,17 @@ export const verdictRank = (v: Pick<CheckView, 'verdict'>): number => (v.verdict
 export const byVerdict = (pool: CheckView[]): CheckView[] => pool.map((v, i) => ({ v, i })).sort((a, b) => verdictRank(a.v) - verdictRank(b.v) || a.i - b.i).map((x) => x.v);
 
 /**
- * THE ONE "SINCE" OF A FAILURE: when the earliest of the failing checks began failing (each check's own `since`: `lastChangeTime`, else `lastErrorTime`;
- * a snapshot-only check: its earliest failing observation). The banners, the Attention card and the History summary all print this instant, so
- * the failure has one age. It is NOT the check timer's end (`bakeEndTime`), which is a different fact ("Failed after 30m"). null when no check is failing.
+ * THE ONE "SINCE" OF A FAILURE: when the earliest of the checks that failed in this deploy began failing. A check failing now contributes its own
+ * `since` (`lastChangeTime`, else `lastErrorTime`; a snapshot-only check: its earliest failing observation); a check that has since recovered
+ * contributes `recovery.failedAt`, the same instant the Health checks card and the History evidence print, so a recovered failure keeps the age it
+ * had. The banners, the Attention card, the Health checks card and the History summary all print this instant, so the failure has one age. It is
+ * NOT the check timer's end (`bakeEndTime`), which is a different fact ("Failed after 30m"). null when no check failed.
  */
 export function failureSince(pool: CheckView[]): string | null {
-	return earliest(pool.filter((c) => c.verdict === 'failing').map((c) => c.since ?? undefined));
+	return earliest(pool.map((c) => (c.verdict === 'failing' ? c.since : c.verdict === 'recovered' ? c.recovery?.failedAt : null) ?? undefined));
 }
+
+export type Worst = { check: CheckView; row: ObsRow | null; recovered: boolean };
 
 /**
  * the worst failing observation (a drawable figure first, live before snapshot as `poolOf` orders them), else a recovered check (its first
