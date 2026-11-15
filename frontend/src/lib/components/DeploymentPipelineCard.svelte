@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import Chip from './Chip.svelte';
 	import Leaving from './Leaving.svelte';
 	import StepDisc from './StepDisc.svelte';
 	import { bakeElapsedMs, bakePaused } from '$lib/bake-hold';
@@ -124,7 +125,7 @@
 		}
 	}
 
-	type NodeStatus = 'done' | 'running' | 'paused' | 'failed' | 'pending';
+	type NodeStatus = 'done' | 'running' | 'paused' | 'failed' | 'pending' | 'held';
 
 	type StageNode = {
 		id: string;
@@ -177,6 +178,9 @@
 	let deployInFlight = $derived(!allStagesDone || isDeployInFlight([latestEntry]));
 	let inflightIsDeploy = $derived(!allStagesDone || latestEntry.bakeStatus === 'Deploying');
 	let bakeIsInProgress = $derived(allStagesDone && latestEntry.bakeStatus === 'InProgress');
+	/** whole minutes once there is one ("4m"), seconds below it ("40s"): a bake figure never reads "15m 0s" */
+	const wholeSpan = (ms: number) => (ms >= 60_000 ? `${Math.floor(ms / 60_000)}m` : `${Math.floor(ms / 1000)}s`);
+	let bakeHeld = $derived(bakeIsInProgress && bakePaused(latestEntry));
 	let bakeIsSucceeded = $derived(allStagesDone && latestEntry.bakeStatus === 'Succeeded');
 	let bakeIsFailed = $derived(allStagesDone && latestEntry.bakeStatus === 'Failed');
 	let recordedFailedCheckNames = $derived<string[]>(
@@ -372,8 +376,9 @@
 				bakeStatus = 'failed';
 				bakeStatusLabel = 'Failed';
 			} else if (bakeIsInProgress) {
-				bakeStatus = 'paused';
-				bakeStatusLabel = 'Checking';
+				/* the bake clock is stopped while a check is not Healthy: one state, drawn in the held ink */
+				bakeStatus = bakeHeld ? 'held' : 'paused';
+				bakeStatusLabel = bakeHeld ? 'Paused' : 'Checking';
 			} else if (bakeIsDeploying) {
 				bakeStatus = 'running';
 				bakeStatusLabel = 'Deploying';
@@ -492,7 +497,7 @@
 
 	// Styling helpers
 	/** a node's status as the one state-tone key (the disc, the ping and the sub-dot all read the table) */
-	const nodeTone = (status: NodeStatus) => (({ done: 'done', running: 'deploying', paused: 'checking', failed: 'failed', pending: 'notreached' }) as const)[status];
+	const nodeTone = (status: NodeStatus) => (({ done: 'done', running: 'deploying', paused: 'checking', held: 'held', failed: 'failed', pending: 'notreached' }) as const)[status];
 
 	/**
 	 * ⛔ THE STEP LABEL IS THE CHIP ATOM. (2026-09-03, from the human: "typography
@@ -508,6 +513,7 @@
 			done: 'border-success-line text-success',
 			running: 'border-active-line text-active',
 			paused: 'border-progress-line text-progress',
+			held: 'border-held-line text-held',
 			failed: 'border-danger-line text-danger',
 			pending: 'border-line text-fg-subtle'
 		}[status];
@@ -598,7 +604,7 @@
 		(() => {
 			if (bakeIsFailed && timerHCHealthy === true) return { status: 'failed', label: 'Failed' };
 			if (bakeIsSucceeded) return { status: 'done', label: 'Done' };
-			if (bakeIsInProgress) return { status: 'paused', label: 'Checking' };
+			if (bakeIsInProgress) return bakeHeld ? { status: 'held', label: 'Paused' } : { status: 'paused', label: 'Checking' };
 			return { status: 'pending', label: 'Pending' };
 		})()
 	);
@@ -771,7 +777,7 @@
 	</li>
 {/snippet}
 
-{#snippet progressLine(live: boolean, pct: number, text: string, paused = false)}
+{#snippet progressLine(live: boolean, pct: number, text: string, held = false)}
 	<!-- ⭐ A SLOT, NOT AN ARRIVAL. While a deploy is in flight this line is laid out from the first frame and
 	     simply drawn invisible until its bar has something to measure (`pipelineSlots`), so the rows below it
 	     do not drop a line when the check window opens. `bar-progress-active`: see app.css — the width is a
@@ -779,8 +785,7 @@
 	<div class="mt-2 pl-5" class:invisible={!live} aria-hidden={!live}>
 		<div class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line">
 			<div
-				class="h-full rounded-full bg-progress-solid transition-[width] duration-500"
-				class:bar-progress-active={!paused}
+				class="h-full rounded-full transition-[width] duration-500 {held ? 'bg-held-solid' : 'bg-progress-solid bar-progress-active'}"
 				style="width: {pct}%"
 			></div>
 		</div>
@@ -816,7 +821,10 @@
 			<!-- ⭐ ONE FACT, ONCE, ROUND 2 (2026-10-08): a failed sub-row's dot
 			     and title are already red; a `FAILED` chip beside them was a
 			     third mark. Every other state keeps its chip. -->
-			{#if status === 'pending'}
+			{#if status === 'pending' && extra === 'hc'}
+				<!-- the same state as the Health checks card's PENDING rows: one chip -->
+				<Chip role="checking" label={label.toLowerCase()} wide class="flex-shrink-0" />
+			{:else if status === 'pending'}
 				<!-- Sub-rows: the detail header above already carries the stage's
 				     one chip; a running or done sub-row is its glyph + ink only,
 				     so CHECKING is said once, not three times. -->
@@ -828,7 +836,7 @@
 					{label}
 				</span>
 			{:else}
-				<span class="t-meta flex-shrink-0 text-fg-subtle">{label}</span>
+				<span class="t-meta flex-shrink-0 {status === 'held' ? 'text-held' : 'text-fg-subtle'}">{label}</span>
 			{/if}
 		</div>
 
@@ -952,12 +960,11 @@
 			{@const totalMs = parseDuration(rollout.spec.bakeTime)}
 			{@const elapsedMs = live ? bakeElapsedMs(latestEntry, $now) : 0}
 			{@const paused = live && bakePaused(latestEntry)}
-			{@const remainingMs = Math.max(0, totalMs - elapsedMs)}
 			{#if live || pipelineSlots({ deployInFlight, canUpdate, stageCheckConfigured: false, timerConfigured: totalMs > 0 }).timerLine}
 				{@render progressLine(
 					live,
 					live && totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0,
-					live ? (paused ? 'paused' : remainingMs > 0 ? formatShortDuration(remainingMs) + ' remaining' : 'Finishing…') : '0s remaining',
+					live ? (elapsedMs < totalMs || paused ? wholeSpan(elapsedMs) + ' of ' + wholeSpan(totalMs) : 'Finishing…') : '0s remaining',
 					paused
 				)}
 			{/if}

@@ -190,6 +190,7 @@
 	import { createLoadFailedLatch } from '$lib/view-models/load-failed-latch.svelte';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { bakePaused } from '$lib/bake-hold';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { pageTitle } from '$lib/page-title';
 
@@ -2895,7 +2896,7 @@
 							: latestEntry.bakeStatus === 'Failed'
 								? 'failing'
 								: latestEntry.bakeStatus === 'InProgress'
-									? 'checking'
+									? bakePaused(latestEntry) ? 'held' : 'checking'
 									: latestEntry.bakeStatus === 'Deploying'
 										? 'deploying'
 										: 'unranked'}
@@ -2903,7 +2904,9 @@
 							? 'deployed'
 							: latestEntry.bakeStatus === 'Failed'
 								? 'failed'
-								: bakeWord(latestEntry.bakeStatus)}
+								: latestEntry.bakeStatus === 'InProgress' && bakePaused(latestEntry)
+									? 'paused'
+									: bakeWord(latestEntry.bakeStatus)}
 						title={bakeTitle(latestEntry.bakeStatus)}
 					/>
 					{#if stuckReason}
