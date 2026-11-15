@@ -93,8 +93,12 @@
 </button>
 
 <Modal bind:open={showModal} size="xl">
-	<div class="p-6">
-		<h3 class="t-heading mb-4 text-fg">
+	<!-- No padding of its own below `md`: the flowbite body already pads 16px, and
+	     the old `p-6` on top left a 260px column at 355px, which clipped the file tabs
+	     and the code (PRODUCT-BUGS #24). `min-w-0` lets the block shrink inside the
+	     dialog's flex column instead of widening it. -->
+	<div class="min-w-0 p-0 md:p-1">
+		<h3 class="t-heading mb-4 pr-8 text-fg [overflow-wrap:anywhere]">
 			Source files for <span class="t-code">{name}</span> <span class="t-code-sm text-fg-subtle">v{version}</span>
 		</h3>
 
@@ -105,10 +109,13 @@
 		{:else if error}
 			<p class="t-body text-danger">{error}</p>
 		{:else}
+			<!-- Many or long file names scroll sideways in their own row instead of being
+			     cut at the dialog edge. -->
+			<div class="min-w-0 [&_ul]:flex-nowrap [&_ul]:overflow-x-auto [&_ul>li]:shrink-0">
 			<Tabs>
 				{#each Object.entries(files) as [filename, content]}
 					<TabItem title={filename}>
-						<div class="t-code h-[60vh] overflow-auto rounded-md border border-line bg-subtle p-4">
+						<div class="t-code max-h-[60dvh] min-w-0 max-w-full overflow-auto rounded-md border border-line bg-subtle p-4">
 							<Highlight
 								language={getLanguage(filename) === 'yaml' ? yaml : plaintext}
 								code={content}
@@ -117,6 +124,7 @@
 					</TabItem>
 				{/each}
 			</Tabs>
+			</div>
 		{/if}
 	</div>
 </Modal>

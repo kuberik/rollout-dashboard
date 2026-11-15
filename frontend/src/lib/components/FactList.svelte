@@ -123,6 +123,14 @@
 	}
 
 	/**
+	 * ⭐ THE LABEL COLUMN IS CAPPED AT 40% (`fit-content(50%)`, value column
+	 * `minmax(0,1fr)`). A label is usually a short noun, but ChangeVersionModal's
+	 * override rows are labelled by a promotion rule ("After wave 1 (eu-central,
+	 * us-east-1)"): with a bare `auto` track the max-content label took the whole
+	 * width at 355px and the reason beside it wrapped one character per line
+	 * (PRODUCT-BUGS #25). Now a long label wraps inside its 50% and the value
+	 * keeps the rest, at any width.
+	 *
 	 * ⭐ THE LABEL COLUMN COLLAPSES WHEN THE RECORD IS NARROW — MEASURED WITH
 	 * A `ResizeObserver`, NOT `container-type`. (F17, 2026-09-03)
 	 *
@@ -169,11 +177,11 @@
 	     `@container` query. -->
 	<div bind:this={wrapperEl} class={className}>
 		<dl
-			class="grid gap-x-3 gap-y-1 {narrow ? 'grid-cols-1' : 'grid-cols-[auto_1fr]'}"
+			class="grid gap-x-3 gap-y-1 {narrow ? 'grid-cols-1' : 'grid-cols-[fit-content(50%)_minmax(0,1fr)]'}"
 			class:gap-y-0.5={narrow}
 		>
 			{#each facts as f, i (`${f.label}-${i}`)}
-				<dt class="t-label {ink.label}">{f.label}</dt>
+				<dt class="t-label min-w-0 break-words {ink.label}">{f.label}</dt>
 				{#if f.gate}
 					<dd class="t-meta min-w-0 break-words {ink.value}"><GateLabelView label={f.gate} /></dd>
 				{:else if f.handle}

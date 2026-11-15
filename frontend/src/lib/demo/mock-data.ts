@@ -1254,6 +1254,10 @@ export const mkHfRollout = (lane: (typeof HF_LANES)[number]) => {
 			// See `mkFleetRollout`'s identical note (fix-dash, 2026-10-08) —
 			// `checkout-edge`'s own change page was empty for lack of this.
 			source: `github.com/exampleco/${HF_APP}`,
+			// A Flux-config artifact, so the hero shows "View source" (the Source
+			// files dialog) -- `respond.ts` serves this rollout's last two builds'
+			// manifests for it. Without it nothing in mock mode opens that dialog.
+			artifactType: 'application/vnd.cncf.flux.config.v1+json',
 			wantedVersion: currentVersion,
 			currentVersion,
 			previousVersion,
