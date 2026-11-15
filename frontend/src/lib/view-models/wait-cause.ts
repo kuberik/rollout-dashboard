@@ -89,7 +89,7 @@ export function waitCause(m: KApp, ctx: WaitCauseCtx): WaitCause | null {
 			const baking = up.nodes.find((n) => n.state === 'checking');
 			if (baking) {
 				const h = head(baking.card);
-				const prog = computeBakeProgress(h?.bakeStartTime, baking.card.rollout.spec?.bakeTime, ctx.now);
+				const prog = computeBakeProgress(h?.bakeStartTime, baking.card.rollout.spec?.bakeTime, ctx.now, h);
 				return { kind: 'bake', place, upstream: placeOf(up), id: ctx.idOf(baking.card.version), leftMs: prog ? Math.max(0, prog.totalMs - prog.elapsedMs) : null };
 			}
 			// An upstream deploy in flight is the app's own headline; no wait to explain yet.

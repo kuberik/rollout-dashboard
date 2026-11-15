@@ -1,7 +1,7 @@
 /**
- * HEALTH FAILURES, MOCK ONLY (health-conditions TAKE C, 2026-11-15). Seven apps whose prod rollout carries HealthChecks drawn from what the API
+ * HEALTH FAILURES, MOCK ONLY. Seven apps whose prod rollout carries HealthChecks drawn from what the API
  * ALREADY has (`status`, `message`, `lastErrorTime`, `lastChangeTime`, `observations[]`, the history snapshot `failedHealthChecks[].observations`)
- * plus ONE proposed optional field, `status.observations[].message`. NO `conditions`, NO `failures[]`. Spec: `.work/health-conditions/design/health-c.md`.
+ * plus the optional `status.observations[].message`. NO `conditions`, NO `failures[]`.
  *
  *   OPT-IN: `MOCK_SCENARIO=health-failures` or `MOCK_FIXTURES=health-failures` (dev-mock-api.ts). Without it nothing here is imported.
  *
@@ -276,12 +276,17 @@ function fixtureOf(c: Case, index: number): Fixture {
 						return { name: n, namespace: NS(c.app), message: st.message, ...(o.length ? { observations: o } : {}) };
 					})
 				}
-			: { bakeStartTime: ago(c.deployed - 2) })
+			: {
+					bakeStartTime: ago(c.deployed - 2),
+					/* the bake clock is stopped while a selected check is Pending: since the check last changed, plus one earlier hold */
+					bakeHoldStartTime: ago(5),
+					bakeHeldDuration: '1m30s'
+				})
 	};
 	return build(c.app, `hf${index + 1}`, (n) => `1.${n}.0`, 1, 4, [
 		{ tier: 'dev', site: 'default', wave: 1, cluster: 'dev', at: 4, bake: 'Succeeded' },
 		{ tier: 'staging', site: 'default', wave: 1, cluster: 'dev', at: 4, bake: 'Succeeded' },
-		{ tier: 'prod', site: 'default', wave: 1, cluster: 'prod', at: 4, bake: c.bake, head, spec: { healthCheckSelector: { matchLabels: { app: c.app } } } }
+		{ tier: 'prod', site: 'default', wave: 1, cluster: 'prod', at: 4, bake: c.bake, head, spec: { healthCheckSelector: { matchLabels: { app: c.app } }, ...(failed ? {} : { bakeTime: '15m' }) } }
 	]);
 }
 
@@ -305,7 +310,7 @@ function restamp(r: Obj): void {
 	const delta = Date.now() - c.deployed * 60_000 - Date.parse(head.timestamp);
 	if (Math.abs(delta) < 1000) return;
 	const shift = (v: unknown): unknown => (typeof v === 'string' && /^\d{4}-\d\d-\d\dT/.test(v) ? new Date(Date.parse(v) + delta).toISOString() : v);
-	for (const k of ['timestamp', 'bakeStartTime', 'bakeEndTime']) if (head[k]) head[k] = shift(head[k]);
+	for (const k of ['timestamp', 'bakeStartTime', 'bakeEndTime', 'bakeHoldStartTime']) if (head[k]) head[k] = shift(head[k]);
 	for (const f of (head.failedHealthChecks as { observations?: Obj[] }[] | undefined) ?? []) for (const o of f.observations ?? []) if (o.observedTime) o.observedTime = shift(o.observedTime);
 }
 

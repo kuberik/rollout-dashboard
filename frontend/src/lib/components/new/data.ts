@@ -33,6 +33,7 @@
  *  8 step names                              -> stepsOf(): 'Started', 'Stage N', 'Check' exactly as the tab (DeploymentPipelineCard.shortLabel)
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
+import { bakeHeldMs, bakePaused } from '$lib/bake-hold';
 import { oldestFirst, newestFirst, earliest, isNotEarlier } from '$lib/instant';
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import { catalogueOrder, newestOf, behindIn, catalogueBehind } from '$lib/releases/order';
@@ -101,7 +102,7 @@ export const builtAgo = (iso: string | null | undefined): string => (iso ? build
 export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */
-type RawEntry = { message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
+type RawEntry = { bakeHoldStartTime?: string; bakeHeldDuration?: string; message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
 type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; kind?: GateKind; displayName?: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; wantedVersion?: string; currentVersion?: string } };
 const raws = (): RawRollout[] => source().rollouts as unknown as RawRollout[];
 const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean); return p[0] === 'rollouts' ? { cluster: p[1], ns: p[2], name: p[3] } : null; };
@@ -208,7 +209,7 @@ export function reachSentence({ n, m }: Pick<PathReach, 'n' | 'm'>): string {
 export const pathPosition = (row: Pick<RolloutRow, 'app'>, state: HomeState = 'incident'): string => reachSentence(pathReach(row, state));
 
 /* ═══ failure reason (defect 9) ═══ */
-export type FailureReason = { /** the failing check's class (glyph lookup) */ cls?: string; /** health evidence (take A): a quiet line under the fact and whether everything recovered */ note?: string | null; recovered?: boolean; short?: string; /** take C: the checks the banners draw evidence and Details from (poolOf), the pending count and the worst failing check's `lastChangeTime` (the age every surface prints) */ pool?: CheckView[]; pendingN?: number; since?: string | null; /** recovered: "09:34" */ recoveredAt?: string | null; check: string | null; message: string | null; phrase: string | null; line: string; /** what the failing check measures (the HealthCheck's `status.observations`, else the snapshot on the history entry): the Attention card's figure */ observations: HealthObservation[] };
+export type FailureReason = { /** the failing check's class (glyph lookup) */ cls?: string; /** health evidence: a quiet line under the fact and whether everything recovered */ note?: string | null; recovered?: boolean; short?: string; /** the checks the banners draw evidence and Details from (poolOf), the pending count and the worst failing check's `lastChangeTime` (the age every surface prints) */ pool?: CheckView[]; pendingN?: number; since?: string | null; /** recovered: "09:34" */ recoveredAt?: string | null; check: string | null; message: string | null; phrase: string | null; line: string; /** what the failing check measures (the HealthCheck's `status.observations`, else the snapshot on the history entry): the Attention card's figure */ observations: HealthObservation[] };
 /** The tab's failing-check line ("invoice-api-error-rate: error rate 8.2% over a 1% budget") and, where the history carries one that is not
  *  the generic bake sentence, the controller's own phrase ("HighErrorRate firing · paged on-call"). null unless the place is failing. */
 export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureReason | null {
@@ -226,7 +227,7 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 	const hp = hrefParts(row.href);
 	const live = hp ? (source().healthChecks ?? []).find((i) => i.metadata.namespace === hp.ns && i.metadata.name === hp.name)?.healthChecks.find((c) => c.metadata?.name === check) : undefined;
 	const observations = (live?.status as { observations?: HealthObservation[] } | undefined)?.observations ?? fc?.observations ?? [];
-	/* take C: the worst failing observation across the history entry's checks (the live HealthChecks first, the snapshot otherwise), read from observations only */
+	/* the worst failing observation across the history entry's checks (the live HealthChecks first, the snapshot otherwise), read from observations only */
 	const liveAll = hp ? ((source().healthChecks ?? []).find((i) => i.metadata.namespace === hp.ns && i.metadata.name === hp.name)?.healthChecks ?? []) : [];
 	const winStart = new Date(Math.max(Date.parse(h.timestamp ?? '') || 0, Date.parse((h as { lastRetryTimestamp?: string }).lastRetryTimestamp ?? '') || 0));
 	const ev = evidenceLine(poolOf(liveAll as HealthCheck[], (h.failedHealthChecks ?? []) as SnapCheck[], winStart));
@@ -257,7 +258,7 @@ const enrich = (r: RolloutRow): TRow => {
 		/* the tab ages "Deployment failed … · 20m ago" from the failing bake's END (the failed check's moment), not from the deploy timestamp */
 		const be = rawOf(r.href)?.status.history?.[0]?.bakeEndTime;
 		if (be) t.since = be;
-		/* take C: with observation evidence the age is the worst failing check's own ("failing 6m"), the same on the hero, the cards and the Overview banner */
+		/* with observation evidence the age is the worst failing check's own ("failing 6m"), the same on the hero, the cards and the Overview banner */
 		if (failure.since) t.since = failure.since;
 	}
 	/* a Rollout with no ReleaseSource has no builds to show: its row says why, in the controller's words */
@@ -1232,7 +1233,8 @@ export function checkClock(row: Pick<RolloutRow, 'state' | 'href' | 'group'>): s
 	const raw = rawOf(row.href), e = raw?.status.history?.[0];
 	const m = /^(\d+)(s|m|h)$/.exec(raw?.spec?.bakeTime ?? '');
 	if (!e?.bakeStartTime || !m) return null;
-	const left = Date.parse(e.bakeStartTime) + +m[1] * ({ s: 1e3, m: 60e3, h: 3600e3 } as Record<string, number>)[m[2]] - NOW.getTime();
+	if (bakePaused(e)) return 'paused';
+	const left = Date.parse(e.bakeStartTime) + bakeHeldMs(e, NOW) + +m[1] * ({ s: 1e3, m: 60e3, h: 3600e3 } as Record<string, number>)[m[2]] - NOW.getTime();
 	if (!(left > 0)) return null;
 	const min = Math.ceil(left / 60000);
 	return min < 60 ? `${min} min left` : `${Math.floor(min / 60)} h ${min % 60} min left`;
