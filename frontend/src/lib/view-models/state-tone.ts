@@ -88,7 +88,7 @@ const ALIAS: Record<string, ToneState> = {
 	done: 'done', deployed: 'done', healthy: 'done', live: 'done', newest: 'done', landed: 'done',
 	checking: 'checking', baking: 'checking', retrying: 'checking',
 	deploying: 'deploying', current: 'deploying', promoting: 'deploying',
-	held: 'held', hold: 'held', 'held-by-rule': 'held',
+	held: 'held', hold: 'held', paused: 'held', 'held-by-rule': 'held',
 	approval: 'approval', waiting: 'approval', 'awaiting-approval': 'approval', 'approval-yours': 'approval-yours',
 	failed: 'failed', failing: 'failed',
 	stuck: 'stuck',

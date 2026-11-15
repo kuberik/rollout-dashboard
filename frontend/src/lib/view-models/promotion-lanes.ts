@@ -23,7 +23,7 @@ import { isHeld, isNeedsYou } from '$lib/view-models/fleet-groups';
 import { rankBehindBy } from '$lib/view-models/env-rank';
 
 /** What a node is, in the order of who needs a person first. */
-export type NodeState = 'failed' | 'stuck' | 'deploying' | 'checking' | 'held' | 'behind' | 'newest' | 'none';
+export type NodeState = 'failed' | 'stuck' | 'deploying' | 'checking' | 'paused' | 'held' | 'behind' | 'newest' | 'none';
 
 /** The column a node sits in. Stages are a line; `prod` is a set. */
 export type Tier = TierOrOther;
@@ -74,7 +74,7 @@ export function nodeState(c: RolloutCard): NodeState {
 	if (c.statusKey === 'failed' || c.checkFailure != null) return 'failed';
 	if (c.stuck != null) return 'stuck';
 	if (c.bakeStatus === 'Deploying') return 'deploying';
-	if (c.bakeStatus === 'InProgress') return 'checking';
+	if (c.bakeStatus === 'InProgress') return c.bakeHeld ? 'paused' : 'checking';
 	if (c.statusKey === 'pending' || c.bakeStatus === 'None') return 'none';
 	if (isHeld(c)) return 'held';
 	if (rankBehindBy(c.rank) > 0 || c.rank.kind === 'diverged') return 'behind';

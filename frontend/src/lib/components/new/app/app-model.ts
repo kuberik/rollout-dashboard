@@ -182,8 +182,10 @@ export function placesInPillState(places: PlaceHold[], build: string, pill: stri
 	const want = (p: PlaceHold) =>
 		word === 'FAILED'
 			? p.state === 'failed'
+			: word === 'PAUSED'
+			? p.state === 'checking' && p.bakePaused
 			: word === 'CHECKING'
-				? p.state === 'checking'
+				? p.state === 'checking' && !p.bakePaused
 				: word === 'DEPLOYING'
 					? p.state === 'deploying'
 					: p.state !== 'failed' && p.state !== 'checking' && p.state !== 'deploying';
@@ -598,8 +600,9 @@ export function waveFactOf(
 /** the separator + clause as drawn: dot and clause joined by a non-breaking space */
 export const waveClause = (fact: string): string => `\u00b7\u00a0${fact}`;
 /** the place's ONE state word, the strip cell's own (never "Live"): at rest "Healthy"; a place the pin holds says the tab's cause, "Held by the pin" */
-export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = false): string {
+export function placeWord(p: Pick<PlaceHold, 'state'> & { bakePaused?: boolean }, pinned = false, yours = false): string {
 	if (pinned) return 'Held by the pin';
+	if (p.state === 'checking' && p.bakePaused) return 'Paused';
 	/* detail pass 2026-11-08: one approval word on every page (approvalWord): "Needs your approval" when the viewer can give it */
 	return (
 		(

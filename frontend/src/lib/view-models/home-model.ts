@@ -76,7 +76,7 @@ import { href as toHref } from '../paths';
 import { changePath } from '../pr-ref';
 import { getEnvironmentRank } from '../env-order';
 import { derivePipeline, kruiseRolloutsForRollout, type StageState } from '../pipeline';
-import { buildLanes, type Lane, type LaneNode, type Tier } from './promotion-lanes';
+import { buildLanes, nodeState, type Lane, type LaneNode, type Tier } from './promotion-lanes';
 import { isHeld, isNeedsYou, isTrailing } from './fleet-groups';
 import { fleetFacts, type FleetFacts, type PulseRange } from './fleet-facts';
 import {
@@ -268,6 +268,8 @@ export type AppEnv = {
 	alsoApproval?: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null;
 	/** the place reads its approval or rule hold while its OWN build is still baking (`placeVerdict`): the row keeps the bake's pipeline nodes */
 	stillChecking?: boolean;
+	/** the place is baking and its bake clock is stopped by a not-Healthy check: it reads "Paused", not "Checking" (a flag beside `state`: it is still in flight) */
+	bakePaused?: boolean;
 	/** THE per-place verdict (`place-verdict.ts`): null when no approval is pending here. Its `target` is the build in question every surface judges. */
 	placeVerdict?: PlaceVerdict | null;
 	/** The viewer's own changes positioned at this exact place — see the
@@ -832,6 +834,7 @@ function buildAppEnvs(
 		pinned: pinHoldsBuilds(node.card),
 		alsoApproval: alsoApprovalOf(node.card),
 		placeVerdict: cardVerdict(node.card),
+		bakePaused: nodeState(node.card) === 'paused',
 		stillChecking: !!cardVerdict(node.card) && cardVerdict(node.card)!.state !== 'running' && (node.card.bakeStatus === 'Deploying' || node.card.bakeStatus === 'InProgress' || node.card.stuck != null),
 		myChanges: ledger.byEnv.get(node.card.envName) ?? [],
 		pipeline: buildEnvPipeline(node.card, kustomizations, kruiseRollouts),

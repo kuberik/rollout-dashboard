@@ -26,7 +26,7 @@ const SLOT: Record<string, Severity> = {
 	approval: 'approval', 'awaiting-approval': 'approval', 'approval-yours': 'approval', waiting: 'approval',
 	held: 'held', 'held-by-rule': 'held', hold: 'held',
 	deploying: 'deploying', current: 'deploying',
-	checking: 'checking',
+	checking: 'checking', paused: 'checking',
 	'rolled-back': 'rolled-back',
 	behind: 'behind', queued: 'behind',
 	healthy: 'healthy', newest: 'healthy', landed: 'healthy', live: 'healthy', running: 'healthy',

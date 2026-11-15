@@ -190,7 +190,7 @@
 	import { createLoadFailedLatch } from '$lib/view-models/load-failed-latch.svelte';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
-	import { bakePaused } from '$lib/bake-hold';
+	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { pageTitle } from '$lib/page-title';
 
@@ -2890,25 +2890,8 @@
 					</span>
 				{/snippet}
 				{#snippet heroIdentity()}
-					<Chip
-						role={latestEntry.bakeStatus === 'Succeeded'
-							? 'ready'
-							: latestEntry.bakeStatus === 'Failed'
-								? 'failing'
-								: latestEntry.bakeStatus === 'InProgress'
-									? bakePaused(latestEntry) ? 'held' : 'checking'
-									: latestEntry.bakeStatus === 'Deploying'
-										? 'deploying'
-										: 'unranked'}
-						label={latestEntry.bakeStatus === 'Succeeded'
-							? 'deployed'
-							: latestEntry.bakeStatus === 'Failed'
-								? 'failed'
-								: latestEntry.bakeStatus === 'InProgress' && bakePaused(latestEntry)
-									? 'paused'
-									: bakeWord(latestEntry.bakeStatus)}
-						title={bakeTitle(latestEntry.bakeStatus)}
-					/>
+					{@const stateChip = rolloutStateChip(latestEntry.bakeStatus, latestEntry)}
+					<Chip role={stateChip.role} label={stateChip.label} title={stateChip.title} />
 					{#if stuckReason}
 						<StuckBadge reason={stuckReason} />
 					{/if}

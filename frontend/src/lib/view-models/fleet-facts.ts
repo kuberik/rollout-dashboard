@@ -686,7 +686,7 @@ export function fleetFacts(
 
 	// ── IN MOTION / STUCK ──
 	const deployingCards = cards.filter((c) => placeState(c) === 'deploying');
-	const checkingCards = cards.filter((c) => placeState(c) === 'checking');
+	const checkingCards = cards.filter((c) => placeState(c) === 'checking' || placeState(c) === 'paused');
 	const stuckCards = cards.filter((c) => placeState(c) === 'stuck');
 
 	// ── NEEDS YOU: failed live + stuck + a person-held approval, among the

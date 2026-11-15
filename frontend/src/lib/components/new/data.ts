@@ -647,7 +647,7 @@ function placesOfRaw(state: HomeState, app: string): (AppPlace & { newest: strin
 	})[0];
 	const order = orderOfEnvs(envs);
 	const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : null);
-	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0, newest }));
+	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, bakePaused: !!e.bakePaused && e.state === 'checking', pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0, newest }));
 }
 export type AppFailing = { build: string | null; place: string; href: string; line: string };
 /**
@@ -658,7 +658,7 @@ export type AppFailing = { build: string | null; place: string; href: string; li
  * Every reader that turns `!onNewest` into "behind" must check `currency !== 'none'` first (onNewest/onBuild are false for it).
  */
 export type PlaceCurrency = 'newest' | 'behind' | 'none';
-export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean; /** builds of the catalogue's order newer than the one it runs (releases/order.ts); 0 for a place without releases or on a build outside the order */ behind: number };
+export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** baking with the clock stopped by a not-Healthy check: reads Paused, still in flight (state stays checking) */ bakePaused: boolean; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean; /** builds of the catalogue's order newer than the one it runs (releases/order.ts); 0 for a place without releases or on a build outside the order */ behind: number };
 /** the place's currency against `newest` (see PlaceCurrency) */
 const currencyOfPlace = (href: string, version: string | null, newest: string | null): PlaceCurrency => noReleasesAt(href) ? 'none' : version === newest ? 'newest' : 'behind';
 export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {
@@ -768,7 +768,7 @@ export function apps(state: HomeState) {
 		})[0];
 		const order = orderOfEnvs(envs);
 		const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : a.newest);
-		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0 }));
+		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, bakePaused: !!e.bakePaused && e.state === 'checking', pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0 }));
 		const onNewest = placeList.filter((p) => p.onNewest).length;
 		const prodPl = placeList.filter((p) => p.tier === 'prod');
 		/* the outcome is recomputed from OUR pick (production first among equals) so the text and its link name the same place */
@@ -1263,7 +1263,7 @@ export function stepDetail(row: Pick<RolloutRow, 'state' | 'href' | 'since' | 'g
 /** The tab's state pill (rolloutStateChip on the deployed entry, upper-cased as drawn) and its gate-holding count ("1 gate holding", "1 of 5 gates holding"; null when no gate holds). */
 export function tabPill(row: Pick<RolloutRow, 'href'>): { word: string; role: string; holding: string | null } {
 	const st = rawOf(row.href)?.status;
-	const chip = rolloutStateChip(st?.history?.[0]?.bakeStatus ?? null);
+	const chip = rolloutStateChip(st?.history?.[0]?.bakeStatus ?? null, st?.history?.[0]);
 	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version;
 	const gs = st?.gates ?? [];
 	const n = gs.filter((g) => g.allowedVersions != null && !!cand && !g.allowedVersions.includes(cand)).length;
@@ -1354,7 +1354,7 @@ export function bakeFailedOn(q: { href: string }, build: string): boolean {
 	const v = entry ? failedHereVerdict({ status: st } as never, entry.version) : null;
 	return !!entry && v?.kind === 'failed' && v.rolledBackAt == null;
 }
-export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string; label: GateLabel } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; /** the catalogue builds newer than this place's own that failed in this place (history, or the wave's own failure): what the row's note names when the tab offers fewer builds than the catalogue has */ failedHere?: string[]; heldBuilds: ReturnType<typeof candidateBuilds>; /** the builds a pin holds AT THIS PLACE: `newerBuildsShown`, the list the rollout's Overview and Gates tab count (a pin is per place, never the app baseline) */ newerShown: string[]; runs: string | null };
+export type PlaceHold = { bakePaused: boolean; wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string; label: GateLabel } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; /** the catalogue builds newer than this place's own that failed in this place (history, or the wave's own failure): what the row's note names when the tab offers fewer builds than the catalogue has */ failedHere?: string[]; heldBuilds: ReturnType<typeof candidateBuilds>; /** the builds a pin holds AT THIS PLACE: `newerBuildsShown`, the list the rollout's Overview and Gates tab count (a pin is per place, never the app baseline) */ newerShown: string[]; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.
  *  invoice-api: eu-west failed (health), us-east and us-west held by the manual-approval gate (allowed a11c404 only). */
 export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHold[] {
@@ -1376,7 +1376,7 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const g = g0 ?? (rule && !approval ? (() => { const h = heldCauses(state).find((x) => x.rows.some((r) => r.href === p.href || r.hrefs?.includes(p.href))); const c = h?.cause.replace(/^Waiting on /, ''); return c && c !== 'Held by a rule' ? { name: c, label: { kind: 'named', text: c } as GateLabel, sentence: h?.reason === 'check' ? 'Releases when the check starts passing' : `Releases when ${c} ships a newer version` } : null; })() : null);
 		const cat = appOrder(app, state);
 		const failedBuilds = (p.version ? cat.slice(cat.lastIndexOf(buildName(app, p.version) ?? p.version) + 1) : []).filter((b) => failedHere(rawOf(p.href)?.status as never, { tag: b, version: b, revision: b }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())));
-		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, failedHere: failedBuilds, heldBuilds: held, newerShown: newerBuildsShown(rawOf(p.href) as never, envsOfSource(), true).map((c) => { const b = (c as { version?: string; tag?: string }).version ?? (c as { tag?: string }).tag ?? ''; return shortBuild(b) ?? b; }), runs: p.version };
+		return { bakePaused: p.bakePaused, wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, failedHere: failedBuilds, heldBuilds: held, newerShown: newerBuildsShown(rawOf(p.href) as never, envsOfSource(), true).map((c) => { const b = (c as { version?: string; tag?: string }).version ?? (c as { tag?: string }).tag ?? ''; return shortBuild(b) ?? b; }), runs: p.version };
 	});
 }
 /** Where a build already runs (the Builds list's "live in us-east, us-west"): the app's places whose deployed build is `build` (tab name, tag or SHA). */

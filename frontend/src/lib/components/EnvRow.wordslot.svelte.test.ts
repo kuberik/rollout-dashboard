@@ -8,7 +8,7 @@ import { laneOf } from './new/Footprint.svelte';
 // NOTHING MOVES AS STATE CHANGES (owner 2026-11-12): a strip box keeps its width when its state word appears or goes.
 // jsdom has no layout, so this pins the mechanism (the same invisible words under the real one, in every state) and the
 // rules it hangs on; the measured result (0px across every beat, App view + Rollout overview, 390 and 1440) is in the PR.
-const SLOT = ['Failing', 'Stuck', 'Deploying', 'Checking', 'Held', 'Waiting', 'Deployed'];
+const SLOT = ['Failing', 'Stuck', 'Deploying', 'Checking', 'Paused', 'Held', 'Waiting', 'Deployed'];
 
 describe('EnvRow word slot', () => {
 	for (const sites of [false, true]) {

@@ -22,7 +22,7 @@ const NS: Partial<Record<string, NodeState>> = {
 	deploying: 'deploying',
 	checking: 'checking'
 };
-export const NOISY = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
+export const NOISY = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking', 'paused']);
 export const nodeHref = (n: LaneNode) => {
 	const c = n.card as unknown as {
 		href?: string;

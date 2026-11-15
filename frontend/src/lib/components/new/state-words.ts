@@ -8,7 +8,7 @@
  */
 import { TONE } from '$lib/view-models/state-tone';
 
-export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking';
+export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking' | 'paused';
 
 /** accepts the product's other spellings of the same five states */
 const ALIAS: Record<string, StateKind> = {
@@ -16,7 +16,8 @@ const ALIAS: Record<string, StateKind> = {
 	approval: 'approval', waiting: 'approval',
 	held: 'held', hold: 'held',
 	deploying: 'deploying', current: 'deploying',
-	checking: 'checking'
+	checking: 'checking',
+	paused: 'paused'
 };
 export const stateKind = (s: string | null | undefined): StateKind | null => (s ? (ALIAS[s] ?? null) : null);
 
@@ -29,11 +30,12 @@ export function stateWord(s: string | null | undefined, o: { yours?: boolean; co
 		case 'held': return 'Held';
 		case 'deploying': return 'Deploying';
 		case 'checking': return 'Checking';
+		case 'paused': return 'Paused';
 	}
 }
 
 /** the hue of the word: state only (utility classes of the product's own state tokens) */
-export const stateInk = (s: string | null | undefined): string => { const k = stateKind(s); return k ? TONE[k].ink : 'text-fg-muted'; };
+export const stateInk = (s: string | null | undefined): string => { const k = stateKind(s); return k ? TONE[k === 'paused' ? 'held' : k].ink : 'text-fg-muted'; };
 
 /** THE ONE APPROVAL WORD (r39 coordinator decision b, 2026-11-08): "Needs your approval" when the viewer can give it, "Waiting for approval" otherwise. */
 export const approvalWord = (yours: boolean): string => stateWord('approval', { yours })!;

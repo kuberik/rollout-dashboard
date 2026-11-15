@@ -17,7 +17,7 @@
 	/* Y3: a pin ('rolled-back') draws no mark of its own (no second warm hue on the strip); the text says it. Waiting = the one hollow ring. */
 	const STATE: Partial<Record<EnvState, NodeState>> = { failed: 'failed', 'awaiting-approval': 'held', 'held-by-rule': 'held', deploying: 'deploying', checking: 'checking' };
 	/** a place's lane node state as the held counts read it (a place a pin holds is held); undefined = the place's own health decides. ONE map for the model lane and the live lane (Apps.svelte's `masked`). */
-	export const nodeStateOfPlace = (p: { state: EnvState; pinned?: boolean }): NodeState | undefined => STATE[placeStateWithPin(p.state, p.pinned)];
+	export const nodeStateOfPlace = (p: { state: EnvState; pinned?: boolean; bakePaused?: boolean }): NodeState | undefined => (p.state === 'checking' && p.bakePaused && !p.pinned ? 'paused' : STATE[placeStateWithPin(p.state, p.pinned)]);
 	const ORDER: Tier[] = [...TIERS_WITH_OTHER];
 
 	/**

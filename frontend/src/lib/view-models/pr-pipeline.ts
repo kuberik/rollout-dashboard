@@ -136,6 +136,8 @@ export type PrCell = {
 	usuallyMs: number | null;
 	/** Time left against `deployTimeout`/`bakeTime`, or `null`. */
 	bakeLeftMs: number | null;
+	/** a baking cell whose clock is stopped by a not-Healthy check */
+	bakePaused?: boolean;
 	/** The display name of the build this cell is about, `''` when none. */
 	releaseLabel: string;
 	/** The git revision this cell is about, `null` when none. */
@@ -1017,6 +1019,7 @@ function buildCell(
 				return cell({
 					...NOTHING,
 					state: 'baking',
+					bakePaused: bakePaused(head),
 					reason: bakePaused(head) ? 'baking, waiting on a check' : rollout.spec?.bakeTime ? 'baking' : 'baking, no timer',
 					since: head?.bakeStartTime ?? head?.timestamp ?? null,
 					bakeLeftMs: deadlineLeftMs(head?.bakeStartTime, rollout.spec?.bakeTime, now, head),

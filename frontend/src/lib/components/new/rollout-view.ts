@@ -17,7 +17,7 @@ export const envTheme = (tier: string) => getRolloutEnvironmentTheme(null, TIER_
 /** the one mark of a row (StatusMark state) */
 export type MarkState = 'failed' | 'approval' | 'held' | 'deploying' | 'checking';
 export function markOf(row: TRow): MarkState {
-	return row.group === 'failed' ? 'failed' : row.group === 'approval' ? (row.stillChecking ? 'checking' : 'approval') : row.group === 'held' ? 'held' : row.state === 'checking' ? 'checking' : 'deploying';
+	return row.group === 'failed' ? 'failed' : row.group === 'approval' ? (row.stillChecking ? 'checking' : 'approval') : row.group === 'held' ? 'held' : row.state === 'checking' ? (row.paused ? 'held' : 'checking') : 'deploying';
 }
 
 /** failing rows in the order a person should look: a LIVE failure first, a recovered one (its checks are OK again, a retry is reasonable) after every live one; within each, the `lead` row, then the longest-failing. Never reorders anything else. */
@@ -151,6 +151,7 @@ export function stateWordOf(row: TRow, hs: HomeState, open = false, hasCheck = f
 		const of = approvalScope(row, hs).of;
 		return of > 1 ? `${stateWord('approval')} · ${of} regions` : stateWord('approval');
 	}
+	if (row.group === 'moving' && row.paused) return 'Paused';
 	if (row.group === 'moving' && clock) return open ? 'Checking' : `Checking · ${clock}`;
 	if (open && row.group === 'moving') return null;
 	return holdWord(row, hs) ?? (row.word.startsWith('Held by') && (row as TRow).cause ? ((row as TRow).cause as string) : row.word);

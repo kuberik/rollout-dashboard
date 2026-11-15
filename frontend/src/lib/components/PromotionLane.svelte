@@ -78,7 +78,7 @@
 
 	const isCurrent = (n: LaneNode) => !!current && n.card.ns === current.ns && n.card.name === current.name;
 
-	const WORD: Record<NodeState, string> = { failed: 'Failing', stuck: 'Stuck', deploying: 'Deploying', checking: 'Checking', held: 'Held', behind: '', newest: '', none: '' };
+	const WORD: Record<NodeState, string> = { failed: 'Failing', stuck: 'Stuck', deploying: 'Deploying', checking: 'Checking', paused: 'Paused', held: 'Held', behind: '', newest: '', none: '' };
 	/** a healthy box (behind / newest) says no word: its name and its lag are the whole statement */
 	const mine = (n: LaneNode) => (youCan ? youCan(n) : yours);
 	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(mine(n)) : 'Waiting') : WORD[n.state]);
@@ -90,12 +90,12 @@
 	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : WORD[n.state] || (n.state === 'none' ? '' : 'Deployed'));
 	/** a healthy box says "Deployed" quietly (the picker's word) so the reserved slot is not an empty tail */
 	const stripInk = (n: LaneNode) => (WORD[n.state] ? toneInk(n.state) : 'text-fg-subtle');
-	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
+	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking', 'paused']);
 	const markOf = (n: LaneNode): EnvCell['mark'] =>
-		n.state === 'held' && n.card.heldCause === 'person' && mine(n) ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined;
+		n.state === 'held' && n.card.heldCause === 'person' && mine(n) ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: (n.state === 'paused' ? 'held' : n.state) as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined;
 	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || severityRank(n.state) < severityRank(b.state) ? n : b), null));
 
-	const STATE_NOUN: Record<NodeState, string> = { failed: 'failing', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: '', newest: '', none: '' };
+	const STATE_NOUN: Record<NodeState, string> = { failed: 'failing', stuck: 'stuck', deploying: 'deploying', checking: 'checking', paused: 'paused', held: 'held', behind: '', newest: '', none: '' };
 	/** The prod cell's tooltip: every site with its state word and build, under its wave (leader marked) once the tier has more than one wave. */
 	const prodTitle = (ns: LaneNode[]) => {
 		const waves = [...new Set(ns.map((r) => r.card.wave ?? 1))];
@@ -158,11 +158,11 @@
 	}
 
 	/* change-strip r1: the tier's sites for EnvRow, in topology order (wave, leader, name), never by state */
-	const SITE_STATE: Record<NodeState, SiteState> = { failed: 'failed', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: 'done', newest: 'done', none: 'notaffected' };
+	const SITE_STATE: Record<NodeState, SiteState> = { failed: 'failed', stuck: 'stuck', deploying: 'deploying', checking: 'checking', paused: 'held', held: 'held', behind: 'done', newest: 'done', none: 'notaffected' };
 	const siteName = (n: LaneNode) => (n.card.site && n.card.site !== 'default' ? n.card.site : n.tier === 'prod' ? (splitEnvName(n.env).place ?? n.env) : n.env);
 	/* the picker row speaks as the Change page's does: the state word, then the currency ("Deployed · 2 builds behind") */
 	const siteWord = (n: LaneNode) => wordOf(n) || (noRel(n) ? 'No releases' : 'Deployed');
-	const siteDetail = (n: LaneNode) => (noRel(n) || n.state === 'deploying' || n.state === 'checking' ? undefined : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
+	const siteDetail = (n: LaneNode) => (noRel(n) || n.state === 'deploying' || n.state === 'checking' || n.state === 'paused' ? undefined : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
 	function sitesOf(ns: LaneNode[]): EnvSite[] {
 		const multiWave = new Set(ns.map((n) => n.card.wave ?? 1)).size > 1;
 		return [...ns]

@@ -86,7 +86,7 @@ export function waitCause(m: KApp, ctx: WaitCauseCtx): WaitCause | null {
 		if (!behind && !held.length) continue;
 		const up = i > 0 ? m.plates[i - 1] : null;
 		if (up) {
-			const baking = up.nodes.find((n) => n.state === 'checking');
+			const baking = up.nodes.find((n) => n.state === 'checking' || n.state === 'paused');
 			if (baking) {
 				const h = head(baking.card);
 				const prog = computeBakeProgress(h?.bakeStartTime, baking.card.rollout.spec?.bakeTime, ctx.now, h);

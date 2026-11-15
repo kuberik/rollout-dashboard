@@ -1641,7 +1641,6 @@ lib/view-models/journey.ts	code	… · …${rev ?
 lib/view-models/journey.ts	code	… · ${lagLabel({ builds: n.behind })}
 lib/view-models/journey.ts	code	… · cancelled
 lib/view-models/journey.ts	code	… · checking
-lib/view-models/journey.ts	code	… · checking${rev ?
 lib/view-models/journey.ts	code	… · deploying
 lib/view-models/journey.ts	code	… · deploying${rev ?
 lib/view-models/journey.ts	code	… · failed
@@ -1806,6 +1805,7 @@ lib/view-models/rollout-gates.ts	code	Pinned to … by …
 lib/view-models/rollout-gates.ts	code	starts …
 lib/view-models/rollout-gates.ts	code	to … until the pin is cleared
 lib/view-models/rollout-gates.ts	code	until …
+lib/view-models/rollout-state-chip.ts	code	The new version is live; the bake clock is stopped while a health check is not healthy
 lib/view-models/skip-rule.ts	code	… lets
 lib/view-models/skip-rule.ts	code	… lets each rollout's held build through once.
 lib/view-models/skip-rule.ts	code	… skipped once for …

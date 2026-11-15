@@ -109,7 +109,7 @@ export function sentenceParts(r: TRow, hs: HomeState, o: { clockInSentence?: boo
 		const stage = cur && /^Stage/.test(cur.name) ? cur.name : '';
 		return [['Deploying'], [stage, title].filter(Boolean).join(' · ')];
 	}
-	return [['Checking'], title];
+	return [[r.paused ? 'Paused' : 'Checking'], title];
 }
 
 export function strandRow(r: TRow, hs: HomeState): StrandRow {

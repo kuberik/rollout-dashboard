@@ -37,7 +37,7 @@ export type AskItem = {
 	id: { name: string; ref?: string; title?: string; person?: string; you?: boolean };
 };
 /** `mark` is the StatusMark state of the row: failing, held by a rule, waiting on an approval, or moving (QA #6: an approval-held or moving rollout must show on Home even when it is not the viewer's ask). */
-export type FleetTrouble = { key: string; app: string; failing: boolean; mark: 'failed' | 'held' | 'approval' | 'deploying' | 'checking'; word: 'Failing' | 'Held' | 'Waiting for approval' | 'Needs your approval' | 'Deploying' | 'Checking'; href: string; places: { tier: string; place: string }[] };
+export type FleetTrouble = { key: string; app: string; failing: boolean; mark: 'failed' | 'held' | 'approval' | 'deploying' | 'checking'; word: 'Failing' | 'Held' | 'Waiting for approval' | 'Needs your approval' | 'Deploying' | 'Checking' | 'Paused'; href: string; places: { tier: string; place: string }[] };
 export type FleetDeploy = { key: string; app: string; tier: string; place: string; at: string; age: string; failing: boolean; href: string };
 export type HomePage = {
 	asks: AskItem[];
@@ -149,7 +149,7 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 		const kind = failedRow ? { mark: 'failed' as const, word: 'Failing' as const }
 			: r.group === 'held' ? { mark: 'held' as const, word: 'Held' as const }
 			: r.group === 'approval' ? { mark: 'approval' as const, word: approvalWord(false) as FleetTrouble['word'] }
-			: r.state === 'checking' ? { mark: 'checking' as const, word: 'Checking' as const } : { mark: 'deploying' as const, word: 'Deploying' as const };
+			: r.state === 'checking' ? (r.paused ? { mark: 'held' as const, word: 'Paused' as const } : { mark: 'checking' as const, word: 'Checking' as const }) : { mark: 'deploying' as const, word: 'Deploying' as const };
 		const x = by.get(k) ?? { key: k, app: r.app, failing: failedRow, ...kind, href: r.href, places: [] as FleetTrouble['places'], since: r.since ?? '' };
 		x.places.push({ tier: r.tier, place });
 		x.since = earliest([x.since, r.since]) ?? '';
