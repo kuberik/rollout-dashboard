@@ -468,11 +468,13 @@
 	/* the viewer's ring on the strip is only drawn where the viewer may approve: the per-rollout permission the Approve button uses (`permissions.approve === false` = no ring); unknown while loading keeps the ring (the fleet predicate already says an approval waits) */
 	const laneNodes = $derived(appLane ? [...appLane.stages, ...appLane.prod] : []);
 	const laneNodePerms = createQueries(() => ({
-		queries: laneNodes.map((n) => rolloutPermissionsQueryOptions({ namespace: n.card.ns, name: n.card.name, cluster: n.card.sourceCluster || cluster }))
+		queries: laneNodes.map((n) => rolloutPermissionsQueryOptions({ namespace: n.card.ns, name: n.card.name, cluster: n.card.sourceCluster || cluster })),
+		// See ChangeVersionModal `pickerTitleQueries`: svelte-query 6.0.12 throws when a top-level result array shrinks by 2+ (the lane empties while the next rollout loads).
+		combine: (results) => ({ items: results.map((r) => ({ data: r.data })) })
 	}));
 	const laneCannotApprove = (n: { card: { ns: string; name: string } }): boolean => {
 		const i = laneNodes.findIndex((x) => x.card.ns === n.card.ns && x.card.name === n.card.name && x.env === (n as { env?: string }).env);
-		return i >= 0 && laneNodePerms[i]?.data?.permissions?.approve === false;
+		return i >= 0 && laneNodePerms.items[i]?.data?.permissions?.approve === false;
 	};
 	/**
 	 * ⭐ THE "NOT REACHED YET" FACT FOR THIS BANNER. (shared/held-predicate,
