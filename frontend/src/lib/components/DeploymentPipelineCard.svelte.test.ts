@@ -92,6 +92,16 @@ describe('DeploymentPipelineCard Health checks row on a failed load', () => {
 		});
 		expect(rowText(container, 'Check timer')).toBe('Check timer Failed');
 	});
+	test('one atom in the status column: bare words in state ink, no chips, no fill', () => {
+		const { container } = render(DeploymentPipelineCard, { props: base(failedBake(['error-rate'])) as any });
+		const words = Array.from(container.querySelectorAll('[data-sub-word]'));
+		expect(words.length).toBeGreaterThan(0);
+		for (const w of words) {
+			expect(w.className).not.toMatch(/\bchip\b|\bbg-/);
+			expect(w.className).toMatch(/text-(danger|progress|held|active|fg-subtle)/);
+		}
+		expect(words.find((w) => w.textContent === 'Failed')?.className).toContain('text-danger');
+	});
 	test('a loaded, genuinely healthy list with a failed bake and no snapshot still reads the timer Failed (control)', () => {
 		const { container } = render(DeploymentPipelineCard, {
 			props: base({ ...failedBake([]), healthChecksUnavailable: false }) as any

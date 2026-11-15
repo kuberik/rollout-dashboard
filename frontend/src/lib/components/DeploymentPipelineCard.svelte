@@ -511,6 +511,12 @@
 		}[status];
 	}
 
+	/** the ink of a sub-row's status word: state only (`quiet`: a step that has nothing to wait for, e.g. no tests, stays neutral) */
+	function subWordInk(status: NodeStatus, quiet = false): string {
+		if (status === 'done' || (status === 'pending' && quiet)) return 'text-fg-subtle';
+		return TONE[status === 'pending' ? 'checking' : nodeTone(status)].ink;
+	}
+
 	/** the sub-dot / ping fill: the status's solid; a pending node is the quiet grey line */
 	function subDotBg(status: NodeStatus): string {
 		return status === 'pending' ? 'bg-line-strong' : TONE[nodeTone(status)].bg;
@@ -814,23 +820,9 @@
 			<!-- ⭐ ONE FACT, ONCE, ROUND 2 (2026-10-08): a failed sub-row's dot
 			     and title are already red; a `FAILED` chip beside them was a
 			     third mark. Every other state keeps its chip. -->
-			{#if status === 'pending' && extra === 'hc'}
-				<!-- the same state as the Health checks card's pending rows: the same chip atom, the same progress ink -->
-				<span class="chip t-label chip-wide flex-shrink-0 {pillClasses('paused')}">{label}</span>
-			{:else if status === 'pending'}
-				<!-- Sub-rows: the detail header above already carries the stage's
-				     one chip; a running or done sub-row is its glyph + ink only,
-				     so CHECKING is said once, not three times. -->
-				<span
-					class="chip t-label chip-wide flex-shrink-0 {pillClasses(
-						status
-					)}"
-				>
-					{label}
-				</span>
-			{:else}
-				<span class="t-meta flex-shrink-0 {status === 'held' ? 'text-held' : 'text-fg-subtle'}">{label}</span>
-			{/if}
+			<!-- ONE ATOM IN THIS COLUMN: the bare word in its state's ink (failed red, pending and checking in the Health checks card's progress
+			     ink, paused held, rolling active); the chip form is the step header's, never a sub-row's. -->
+			<span class="t-meta flex-shrink-0 {subWordInk(status, extra === 'tests' && !sd?.hasTests)}" data-sub-word={status}>{label}</span>
 		</div>
 
 		{#if extra === 'hc' && status === 'failed' && !hcCardShowsEvidence && recordedFailedCheckNames.length > 0}
