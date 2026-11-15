@@ -40,18 +40,3 @@ replacements:
           - spec.environment
         options:
           create: true
-patches:
-  - patch: |-
-      apiVersion: environments.kuberik.com/v1alpha1
-      kind: Environment
-      metadata:
-        name: hello-api-app
-      spec:
-        relationship: null
-  - patch: |-
-      apiVersion: environments.kuberik.com/v1alpha1
-      kind: Environment
-      metadata:
-        name: hello-frontend-app
-      spec:
-        relationship: null
