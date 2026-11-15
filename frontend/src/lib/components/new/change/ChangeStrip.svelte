@@ -19,7 +19,7 @@
 
 	let { change: c, scenario = 'incident', class: className = '' }: { change: TChange; scenario?: HomeState; class?: string } = $props();
 
-	const SITE: Record<StageState, SiteState> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'approval', failed: 'failed', notreached: 'notreached', notaffected: 'notaffected', replaced: 'notaffected' };
+	const SITE: Record<StageState, SiteState> = { deployed: 'done', checking: 'checking', paused: 'held', deploying: 'deploying', held: 'held', approval: 'approval', failed: 'failed', notreached: 'notreached', notaffected: 'notaffected', replaced: 'notaffected' };
 	const QUIET = new Set<StageState>(['deployed', 'notreached', 'notaffected', 'replaced']);
 
 	const stages = $derived(stagesOf({ kind: 'change', change: c }, scenario));

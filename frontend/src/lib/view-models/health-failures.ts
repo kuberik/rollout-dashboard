@@ -11,6 +11,7 @@ import type { HealthCheck, HealthObservation } from '../../types';
 import { classifyCheck } from './health-witness';
 import { formatAgoCompact } from '../utils';
 import { num } from './attention';
+import { displayTimeZone } from '$lib/timezone.svelte';
 
 export type CheckVerdict = 'failing' | 'pending' | 'recovered' | 'passing';
 /** the check's class decides the row's glyph and the identity's type: a kustomization names a resource, a prometheus alert an alertname */
@@ -251,7 +252,7 @@ export const agoOf = (iso: string | null | undefined, now: Date): string | null 
 
 /** `HH:MM`, 24h, the way the recovered strip and the fact line print a moment */
 export const clock = (iso: string, secs = false): string =>
-	new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', ...(secs ? { second: '2-digit' } : {}), hour12: false });
+	new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', ...(secs ? { second: '2-digit' } : {}), hour12: false, timeZone: displayTimeZone() });
 
 /** the recovered strip's geometry, as 0..1 fractions of the axis (bake start .. now), clamped. The axis starts where the bake (the check) started, not at the deploy: the label says `check 09:21`. */
 export type WindowStrip = { startLabel: string; failedPct: number; okPct: number; failedLabel: string; okLabel: string; };

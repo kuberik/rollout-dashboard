@@ -53,3 +53,10 @@ describe('the Holding card lists a paused bake', () => {
 		expect(holdRows([], [p('prod')], null, 'inventory-api', new Set(['prod'])).some((r) => r.kind === 'paused')).toBe(false);
 	});
 });
+
+describe('health-failures clock honours the display zone', () => {
+	it('prints the same HH:MM the history page does (UTC here)', async () => {
+		const { clock } = await import('./health-failures');
+		expect(clock('2026-10-10T11:05:00Z')).toMatch(/^\d{2}:\d{2}$/);
+	});
+});

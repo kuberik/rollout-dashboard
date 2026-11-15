@@ -9,7 +9,7 @@
 	 * (the one green word) and the clean stretch from OK to now as a success hairline. The strip is capped at the evidence row's width.
 	 * Why new: the Overview has no time-axis object for a single check; the recovered fact is otherwise only a clock time,
 	 * and "it failed for three minutes of a thirty-eight minute bake" is a position, not a sentence.
-	 * Proportions borrowed from: take B's BakeLanes (2px mark, 6px span radius 4, 1px hairline axis, t-micro tick labels);
+	 * Proportions borrowed from: DeploymentPipelineCard's check-timer progress line (2px mark, 6px span radius 4, 1px hairline axis, t-micro tick labels);
 	 * one lane per recovered check only: failing checks never draw a strip (their rows already say what failed).
 	 * Labels never collide: the failed label ends at its mark (or starts at it when the mark is near the left edge), the start
 	 * tick hides when it would touch the failed label, and OK is always right-aligned.
