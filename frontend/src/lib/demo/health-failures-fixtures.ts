@@ -306,6 +306,11 @@ function restamp(r: Obj): void {
 	const m = r.metadata as { namespace?: string; name?: string } | undefined;
 	const c = m?.name ? caseFor(m.namespace ?? '', m.name) : undefined;
 	const head = (r.status as { history?: Obj[] } | undefined)?.history?.[0] as Obj | undefined;
+	/* a running bake with a configured window (checkout-edge prod): its Check timer draws the bar, 8m into a 30m bake, on every read */
+	if (m?.name === 'checkout-edge' && m.namespace === 'checkout-edge-prod' && head?.bakeStatus === 'InProgress') {
+		(r.spec as Obj).bakeTime = '30m';
+		head.bakeStartTime = ago(8);
+	}
 	if (!c || !head || typeof head.timestamp !== 'string') return;
 	const delta = Date.now() - c.deployed * 60_000 - Date.parse(head.timestamp);
 	if (Math.abs(delta) < 1000) return;

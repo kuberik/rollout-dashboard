@@ -1039,6 +1039,7 @@ let scenarioDepRollouts: unknown[] = [];
 
 export function getScenarioFleetRollouts(): unknown[] {
 	for (const r of scenarioFleetRollouts) {
+		restampExtra(r as Record<string, unknown>); /* opt-in fixture sets patch the base fleet's own rollouts too (health-failures: a running bake with a window) */
 		freshenInFlight(r as RolloutLike);
 		freshenCandidateAge(r as RolloutLike);
 	}
