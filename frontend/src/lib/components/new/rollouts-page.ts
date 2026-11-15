@@ -51,7 +51,7 @@ export function changeLineOf(r: TRow): ChangeLine | null {
 }
 
 /** the failure banner's meta line (Since · build), one fact each; null parts are not printed. The place is the title's own ("failed in prod · eu-west"), never a second chip. */
-export type BannerMeta = { since: string | null; build: string | null };
+export type BannerMeta = { since: string | null; /** the instant `since` counts from: the banner ages it against the live clock (`agoOf`), the same call the rollout Overview's banner makes */ sinceAt?: string | null; build: string | null };
 export type BannerModel = { /** the Overview banner's own evidence (observation figure, check line + class glyph, "n health checks failing" / "Recovered at 14:05", Details); null without observations */ evidence?: BannerEvidence | null; row: TRow; title: string; check: { name: string; message: string; cls?: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; meta: BannerMeta };
 export type AttentionItem = { key: string; row: TRow; model: AttentionModel; app: string; href: string; rollbackHref: string | null; openHref: string; yours: boolean };
 export type StrandRow = { key: string; row: TRow; app: string; href: string; tier: string; place: string | null; mark: MarkState; nodes: MiniNode[]; /** the state word / cause, typed (`CauseText` draws a promotion label by kind); `causeText(lead)` is its plain form */ lead: Cause; rest: string; age: string; yours: boolean; };
@@ -127,7 +127,7 @@ function waitScopeOf(app: string, hs: HomeState): string | null {
 /** the meta line of a failure banner from its row: how long it has failed, the failing build */
 export function bannerMeta(r: TRow | null | undefined): BannerMeta {
 	if (!r) return { since: null, build: null };
-	return { since: r.since ? ago(r.since) : null, build: r.version ?? null };
+	return { since: r.since ? ago(r.since) : null, sinceAt: r.since ?? null, build: r.version ?? null };
 }
 /** the failure banner of a lead failing row (AlertPanel shape; the change line = the build's own PR identity) */
 export function bannerOf(lead: TRow): BannerModel {

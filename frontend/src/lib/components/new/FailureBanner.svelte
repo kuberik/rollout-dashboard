@@ -12,7 +12,8 @@
 	import { UndoOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 	import FailureDetails from '$lib/components/FailureDetails.svelte';
-	import type { BannerEvidence } from '$lib/view-models/health-failures';
+	import { agoOf, type BannerEvidence } from '$lib/view-models/health-failures';
+	import { now } from '$lib/stores/time';
 	import type { BannerMeta, ChangeLine } from './rollouts-page';
 
 	let { b, extra }: {
@@ -25,7 +26,7 @@
 {#snippet details()}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
 <StatementBanner severity="failed" title={b.title} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
 	message={b.evidence ? b.evidence.message : b.check ? undefined : (b.line ?? undefined)} change={b.change ?? undefined}
-	since={b.evidence?.recovered ? undefined : b.meta.since ?? undefined} sinceLabel="for" build={b.meta.build ?? undefined} body={extra} class=""
+	since={b.evidence?.recovered ? undefined : (b.meta.sinceAt ? agoOf(b.meta.sinceAt, $now) : b.meta.since) ?? undefined} sinceLabel="" build={b.meta.build ?? undefined} body={extra} class=""
 	footnoteLabel={b.evidence ? 'Details' : undefined}
 	primary={b.rollbackHref ? { label: 'Roll back', href: b.rollbackHref, icon: UndoOutline, key: 'rollback' } : undefined}
 	secondary={[{ label: 'Open rollout', href: b.openHref, after: true, key: 'open' }]} footnoteBody={b.evidence ? details : undefined} />
