@@ -97,6 +97,15 @@ const DENY: Array<{
 		re: /\bpaused\b/i,
 		why: '"paused" was one of five spellings for the same held state. See CLAUDE.md (a).',
 		allow: [
+			// PAUSED is the one word for a bake whose clock is stopped while a health check is not Healthy (a state of its own, in the held
+			// ink, not a competing spelling of `held`): every surface that names that state reads it here.
+			'lib/components/new/app/app-model.ts\tcode\t: \'\'}…: bake paused, waiting on a health check',
+			'lib/components/new/change/detail-model.ts\tcode\t… paused',
+			'lib/components/new/stages/stages-model.ts\tcode\t… paused',
+			'lib/view-models/activity-verb.ts\tcode\tis paused',
+			'lib/view-models/history-current-chip.ts\tcode\tBake paused',
+			'lib/view-models/history-current-chip.ts\tcode\tPaused for',
+			'lib/view-models/history-current-chip.ts\tcode\tBake paused · … check… pending',
 			// A test-retry pipeline mid-execution, not the auto-promotion
 			// "held" state -- a different, narrower fact (this deploy's own
 			// checks are re-running) that "held" would misname.

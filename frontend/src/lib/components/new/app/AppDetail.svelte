@@ -246,7 +246,7 @@
 		const act = rowAction(r);
 		return { row: r, pinned: pins.has(p.place), approve, slipAction: r.group === 'failed' || act?.kind === 'approve' ? null : act, toggle: r.group === 'rest' ? null : () => flip(r.key), open: r.key === openKey };
 	};
-	const gateRows = $derived(holdRows(gates, places, only, name, pins, pinnedVersion(item?.holds ?? [])).filter((r) => r.holding && (r.kind === 'pin' || r.held.length > 0)));
+	const gateRows = $derived(holdRows(gates, places, only, name, pins, pinnedVersion(item?.holds ?? [])).filter((r) => r.holding && (r.kind === 'pin' || r.kind === 'paused' || r.held.length > 0)));
 	const current = $derived.by(() => { const h = (focus?.href ?? '').split('/').filter(Boolean); return h[0] === 'rollouts' ? { ns: h[2], name: h[3] } : null; });
 
 	/* the wait line (a waiting or held app): the Facia lead's words, from the same helpers */

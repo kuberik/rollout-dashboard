@@ -326,3 +326,14 @@ export function historyPool(snaps: SnapCheck[], live: HealthCheck[], windowStart
 		.sort((a, b) => rank(a.v) - rank(b.v) || a.at - b.at || a.i - b.i)
 		.map((x) => x.v);
 }
+
+/**
+ * The checks a PAUSED bake is waiting on, as the snapshots a History row lists as evidence: every live check that is not Healthy
+ * (Pending or failing), by name, with its message. The controller records `failedHealthChecks` only when a bake ends Failed, so a
+ * held, still-running bake has none; this is the same evidence read from the live list.
+ */
+export function heldCheckSnaps(live: HealthCheck[]): SnapCheck[] {
+	return live
+		.filter((h) => h.status?.status !== 'Healthy')
+		.map((h) => ({ name: h.metadata?.name ?? '', namespace: h.metadata?.namespace, message: h.status?.message }));
+}

@@ -2,7 +2,7 @@
 	import { toneInk } from '$lib/view-models/state-tone';
 	import { lastFailureAgoOf } from '$lib/view-models/event-age';
 	import NotFound from '$lib/components/NotFound.svelte';
-	import { currentRowChip } from '$lib/view-models/history-current-chip';
+	import { currentRowChip, liveStatusVerb, pausedRollup } from '$lib/view-models/history-current-chip';
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
@@ -43,6 +43,8 @@
 	import { rolloutEnvironmentName, rollbackTarget } from '$lib/view-models/deploy-risk';
 	import { stripEmphasisMarkers } from '$lib/view-models/plain-text-note';
 	import { isHistoryCurrentlyFailed } from '$lib/view-models/deploy-history';
+	import { bakePaused } from '$lib/bake-hold';
+	import { heldCheckSnaps } from '$lib/view-models/health-failures';
 	import { apiPath } from '$lib/api/urls';
 	import { href } from '$lib/paths';
 	/**
@@ -625,6 +627,11 @@
 	// Stats (over all history, not filtered)
 	const allHistory = $derived(rollout?.status?.history ?? []);
 	const totalDeploys = $derived(allHistory.length);
+	/** the current deploy's bake clock is stopped: the Deploys card says so instead of "All healthy" */
+	const currentHeld = $derived(allHistory[0]?.bakeStatus === 'InProgress' && bakePaused(allHistory[0]));
+	/** the checks an entry's panel lists as evidence: the recorded failures, or for the current paused bake the checks it is waiting on */
+	const evidenceOf = (entry: (typeof allHistory)[number], isCurrent: boolean) =>
+		entry.failedHealthChecks && entry.failedHealthChecks.length > 0 ? entry.failedHealthChecks : isCurrent && entry.bakeStatus === 'InProgress' && bakePaused(entry) ? heldCheckSnaps(liveChecks) : [];
 
 	/**
 	 * ⭐ (2026-10-10, truth-bug fix; revised 2026-10-10, AD round 6 item 1)
@@ -1019,17 +1026,13 @@
 	 * earns its place: not the state again, but how long it has held it.
 	 */
 	function liveStatusWait(
-		entry: { timestamp: string; bakeStatus?: string },
+		entry: { timestamp: string; bakeStatus?: string; bakeHoldStartTime?: string | null },
 		nowMs: number
 	): { text: string; title: string } | null {
-		const word =
-			entry.bakeStatus === 'InProgress'
-				? 'Checking for'
-				: entry.bakeStatus === 'Deploying'
-					? 'Deploying for'
-					: null;
-		if (!word) return null;
-		const t0 = new Date(entry.timestamp).getTime();
+		const v = liveStatusVerb(entry);
+		if (!v) return null;
+		const word = v.word;
+		const t0 = new Date(v.since === 'hold' ? (entry.bakeHoldStartTime as string) : entry.timestamp).getTime();
 		if (!Number.isFinite(t0)) return null;
 		const elapsed = Math.max(0, nowMs - t0);
 		return {
@@ -1797,6 +1800,8 @@
 									<span class="t-ui-sm text-fg-subtle tabular-nums"
 										>{rangeRolledBack} rolled back</span
 									>
+								{:else if currentHeld}
+									<span class="t-ui-sm text-held">{pausedRollup(heldCheckSnaps(liveChecks).length)}</span>
 								{:else if filteredHistory.length > 0}
 									<span class="t-ui-sm text-fg-subtle">All healthy</span>
 								{/if}
@@ -2007,8 +2012,8 @@
 												row still carries only two marks at full emphasis (the
 												glyph + the red verb below), not three — the thing the
 												prior note was protecting stays protected. -->
-																	{#if isCurrent && currentRowChip(entry.bakeStatus, currencyBehind)}
-																		<Chip role="count" wide label={currentRowChip(entry.bakeStatus, currencyBehind) ?? ''} />
+																	{#if isCurrent && currentRowChip(entry.bakeStatus, currencyBehind, bakePaused(entry))}
+																		<Chip role="count" wide label={currentRowChip(entry.bakeStatus, currencyBehind, bakePaused(entry)) ?? ''} />
 																	{/if}
 																	<!--
 												⭐ §3.11 — THE VERB IN ITS STATUS INK, NOT A CHIP — AND NOT
@@ -2727,7 +2732,7 @@
 																			>{hm(entry.timestamp)}</span
 																		>
 																	</div>
-																	{#if entry.failedHealthChecks && entry.failedHealthChecks.length > 0}
+																	{#if evidenceOf(entry, isCurrent).length > 0}
 																		<!-- ⛔ A FAILING ROW IS NEVER A BAND. (§2.5, principle 12;
 													     2026-10-08, TL review round 3.) This used to fill
 													     `bg-danger-tint` — a solid tinted block the size of
@@ -2755,7 +2760,7 @@
 													     The rest keeps its chronological order
 													     (Started → outcome → who → why) beneath it. -->
 																		<div class="flex flex-col gap-3">
-																			{#each historyPool(entry.failedHealthChecks as { name: string; message?: string; observations?: any[] }[], isCurrent ? liveChecks : [], isCurrent ? deployWindowStart(rollout) : null) as sv (sv.key)}
+																			{#each historyPool(evidenceOf(entry, isCurrent) as { name: string; message?: string; observations?: any[] }[], isCurrent ? liveChecks : [], isCurrent ? deployWindowStart(rollout) : null) as sv (sv.key)}
 																				{@const srcs = sv.verdict === 'recovered' ? (sv.recovery?.rows ?? []) : sv.rows}
 																				{#if srcs.length > 0}
 																					<div data-testid="hist-check" data-state={sv.verdict}>

@@ -217,7 +217,7 @@ export type HoldRow = {
 	key: string;
 	/** a promotion hold's typed label: the card draws `Held by » [SOURCE]` (GateLabel), `name` is only its plain-text form */
 	label?: GateLabel;
-	kind: 'approval' | 'pin' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
+	kind: 'approval' | 'pin' | 'paused' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
 	name: string;
 	holding: boolean;
 	places: string[];
@@ -287,6 +287,9 @@ export function holdRows(
 		for (const p of pinned) for (const b of p.newerShown) if (!held.includes(b)) held.push(b);
 		rows.push({ key: 'pin', kind: 'pin', name: pinVersion ? `Pinned to ${pinVersion}` : 'Pinned', holding: true, places: pinned.map((p) => p.place), held, sentence: 'Releases when the pin is cleared', href: `${pinned[0].href}` });
 	}
+	/* a bake whose clock is stopped by a not-Healthy check holds nothing back but IS a hold the page names: the same word the place row and the strip say */
+	for (const p of places.filter((x) => x.state === 'checking' && x.bakePaused && !pins.has(x.place)))
+		rows.push({ key: `paused:${p.place}`, kind: 'paused', name: `${app ? `${app} ` : ''}${p.place}: bake paused, waiting on a health check`, holding: true, places: [p.place], held: [], sentence: 'The bake clock restarts when the check is Healthy again', href: p.href });
 	return rows.sort((a, b) => Number(b.holding) - Number(a.holding));
 }
 

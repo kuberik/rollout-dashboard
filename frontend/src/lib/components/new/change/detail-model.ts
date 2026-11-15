@@ -115,17 +115,17 @@ export const runningN = (ps: Place[]) => ps.filter((p) => p.kind === 'running').
 export function countsOf(all: Unit[], places: Place[]) {
 	/* the tab's own words for a place that runs the change: Deployed, Checking (clock), Deploying (arc); a count says each once (CF2). A place whose NEWER build fails is FAILING (the tab's red), not deployed (CE3) */
 	const run = places.filter((p) => p.kind === 'running' && !p.newerFails);
-	const checking = run.filter((p) => p.row?.state === 'checking').length, deploying = run.filter((p) => p.row?.state === 'deploying').length;
+	const checking = run.filter((p) => p.row?.state === 'checking' && !p.row.paused).length, paused = run.filter((p) => p.row?.state === 'checking' && !!p.row.paused).length, deploying = run.filter((p) => p.row?.state === 'deploying').length;
 	const waiting = places.filter((p) => p.kind === 'waiting' && p.group !== 'held').length, held = places.filter((p) => p.kind === 'waiting' && p.group === 'held').length, failing = places.filter((p) => p.kind === 'failed' || p.newerFails).length;
 	/* AD r2 (2): a place held by a rule is "held", one waiting for an approval is "waiting" (the banner's, the chip's and the row's words) */
-	return { places: places.length, live: run.length - checking - deploying, checking, deploying, waiting, held, failing, notAffected: Math.max(0, all.length - places.length) };
+	return { places: places.length, live: run.length - checking - paused - deploying, checking, paused, deploying, waiting, held, failing, notAffected: Math.max(0, all.length - places.length) };
 }
-const countParts = (n: ReturnType<typeof countsOf>) => [n.live ? `${n.live} deployed` : '', n.checking ? `${n.checking} checking` : '', n.deploying ? `${n.deploying} deploying` : '', n.waiting ? `${n.waiting} waiting` : '', n.held ? `${n.held} held` : '', n.failing ? `${n.failing} failing` : ''];
+const countParts = (n: ReturnType<typeof countsOf>) => [n.live ? `${n.live} deployed` : '', n.checking ? `${n.checking} checking` : '', n.paused ? `${n.paused} paused` : '', n.deploying ? `${n.deploying} deploying` : '', n.waiting ? `${n.waiting} waiting` : '', n.held ? `${n.held} held` : '', n.failing ? `${n.failing} failing` : ''];
 export function countLine(n: ReturnType<typeof countsOf>): string {
 	return [`${n.places} place${n.places === 1 ? '' : 's'}`, ...countParts(n), n.notAffected ? `${n.notAffected} not affected` : ''].filter(Boolean).join(' · ');
 }
 /** the phone's count (owner 2026-11-02 §5, CF5): what RUNS only; "9 places" is the Places card's rollup, and what fails or waits is the banner's word, said once */
-export const countShort = (n: ReturnType<typeof countsOf>): string => [n.live ? `${n.live} deployed` : '', n.checking ? `${n.checking} checking` : '', n.deploying ? `${n.deploying} deploying` : ''].filter(Boolean).join(' · ');
+export const countShort = (n: ReturnType<typeof countsOf>): string => [n.live ? `${n.live} deployed` : '', n.checking ? `${n.checking} checking` : '', n.paused ? `${n.paused} paused` : '', n.deploying ? `${n.deploying} deploying` : ''].filter(Boolean).join(' · ');
 
 /* ═══ the strip (S1/S2): the tab strip's tiles one size up; prod's squares COUNT THE CHANGE (CD2) ═══ */
 export type Ink = 'failed' | 'waiting' | 'moving' | 'healthy' | 'behind' | 'checking';

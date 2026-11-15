@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { bakePaused } from '$lib/bake-hold';
 	/**
 	 * THE TENURE STRIP (History's header `below` slot). Redesign, round 4,
 	 * 2026-10-10.
@@ -45,7 +46,7 @@
 	 * WHY NOT `DeploymentTimeline`: that is the multi-lane compare tool with
 	 * zoom and fanning; it is still what "Compare namespace" opens.
 	 */
-	import { toneInk } from '$lib/view-models/state-tone';
+	import { toneInk, toneSolid } from '$lib/view-models/state-tone';
 	import { ArrowsRepeatOutline, UndoOutline, CodePullRequestSolid } from 'flowbite-svelte-icons';
 	import { startOfDayMs, formatRelativeShort } from '$lib/display-time';
 	import { displayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
@@ -60,6 +61,8 @@
 		timestamp: string;
 		bakeStatus?: string;
 		bakeStartTime?: string;
+		/** set while the bake clock is stopped (`bake-hold.ts`): the running build reads Paused */
+		bakeHoldStartTime?: string | null;
 		bakeEndTime?: string;
 		version: { tag: string; version?: string };
 		/**
@@ -233,14 +236,14 @@
 		return out.reverse(); // chronological, left to right
 	});
 
-	function liveState(s: Seg): 'checking' | 'deploying' | null {
+	function liveState(s: Seg): 'checking' | 'paused' | 'deploying' | null {
 		if (!s.head) return null;
-		if (s.e.bakeStatus === 'InProgress') return 'checking';
+		if (s.e.bakeStatus === 'InProgress') return bakePaused(s.e) ? 'paused' : 'checking';
 		if (s.e.bakeStatus === 'Deploying' || !s.e.bakeStatus) return 'deploying';
 		return null;
 	}
 	/** The mark at a segment's start: an outcome or an act, never the norm. */
-	function markOf(s: Seg): 'failed' | 'checking' | 'deploying' | 'rollback' | null {
+	function markOf(s: Seg): 'failed' | 'checking' | 'paused' | 'deploying' | 'rollback' | null {
 		if (s.failed) return 'failed';
 		const live = liveState(s);
 		if (live) return live;
@@ -573,13 +576,14 @@
 		if (s.failed) return 'Failed';
 		const live = liveState(s);
 		if (live === 'checking') return 'Checking';
+		if (live === 'paused') return 'Paused';
 		if (live === 'deploying') return 'Deploying';
 		return 'Healthy';
 	}
 	function outcomeInk(s: Seg): string {
 		if (s.failed) return toneInk('failed');
 		const live = liveState(s);
-		if (live === 'checking' || live === 'deploying') return toneInk(live);
+		if (live === 'checking' || live === 'paused' || live === 'deploying') return toneInk(live);
 		return 'text-fg-muted';
 	}
 	function whenLabel(t: number): string {
@@ -801,11 +805,7 @@
 								<!-- The running build's foot: its state colour, ending at Now. -->
 								<span
 									class="cadence-live-line"
-									style="background-color: {live === 'checking'
-										? 'var(--k-progress-solid)'
-										: live === 'deploying'
-											? 'var(--k-active-solid)'
-											: 'var(--k-fg-muted)'}"
+									style="background-color: {live ? toneSolid(live) : 'var(--k-fg-muted)'}"
 									aria-hidden="true"
 								></span>
 							{/if}

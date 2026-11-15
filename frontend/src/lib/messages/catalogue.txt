@@ -548,6 +548,7 @@ lib/components/LogsViewer.svelte	aria-label	Visible columns
 lib/components/LogsViewer.svelte	label	visible log lines
 lib/components/ManifestDiff.svelte	text	… line … :
 lib/components/ManifestDiff.svelte	text	… unchanged line … below
+lib/components/new/app/app-model.ts	code	: ''}…: bake paused, waiting on a health check
 lib/components/new/app/app-model.ts	code	: 'in sequence'}
 lib/components/new/app/app-model.ts	code	… · ${failed.length === 1 ? failed[0] :
 lib/components/new/app/app-model.ts	code	… behind
@@ -563,6 +564,7 @@ lib/components/new/app/app-model.ts	code	… waiting here.
 lib/components/new/app/app-model.ts	code	… was skipped · … runs …
 lib/components/new/app/app-model.ts	code	} failed here
 lib/components/new/app/app-model.ts	code	} in …
+lib/components/new/app/app-model.ts	code	${app ?
 lib/components/new/app/app-model.ts	code	a rule
 lib/components/new/app/app-model.ts	code	Custom build
 lib/components/new/app/app-model.ts	code	follows …
@@ -581,6 +583,7 @@ lib/components/new/app/app-model.ts	code	Pinned to …
 lib/components/new/app/app-model.ts	code	Releases when the check starts passing
 lib/components/new/app/app-model.ts	code	Releases when the pin is cleared
 lib/components/new/app/app-model.ts	code	Rolled back
+lib/components/new/app/app-model.ts	code	The bake clock restarts when the check is Healthy again
 lib/components/new/app/app-model.ts	code	Then … more … follow….
 lib/components/new/app/app-model.ts	code	Up to date
 lib/components/new/app/app-model.ts	code	wave …
@@ -689,6 +692,7 @@ lib/components/new/change/detail-model.ts	code	… not affected
 lib/components/new/change/detail-model.ts	code	… of … prod regions
 lib/components/new/change/detail-model.ts	code	… of … run it
 lib/components/new/change/detail-model.ts	code	… of … run the newest build
+lib/components/new/change/detail-model.ts	code	… paused
 lib/components/new/change/detail-model.ts	code	… place…
 lib/components/new/change/detail-model.ts	code	… places
 lib/components/new/change/detail-model.ts	code	… prod regions
@@ -1014,6 +1018,7 @@ lib/components/new/stages/stages-model.ts	code	… of …
 lib/components/new/stages/stages-model.ts	code	… of … on …
 lib/components/new/stages/stages-model.ts	code	… of … place…
 lib/components/new/stages/stages-model.ts	code	… of … place… on …
+lib/components/new/stages/stages-model.ts	code	… paused
 lib/components/new/stages/stages-model.ts	code	… waiting
 lib/components/new/stages/stages-model.ts	code	No releases
 lib/components/new/stages/stages-model.ts	code	No releases yet
@@ -1266,6 +1271,7 @@ lib/view-models/activity-verb.ts	code	health check
 lib/view-models/activity-verb.ts	code	is checking
 lib/view-models/activity-verb.ts	code	is deploying
 lib/view-models/activity-verb.ts	code	is held
+lib/view-models/activity-verb.ts	code	is paused
 lib/view-models/activity-verb.ts	code	rolled back
 lib/view-models/activity-verb.ts	code	was approved
 lib/view-models/activity-verb.ts	code	was pinned
@@ -1622,6 +1628,11 @@ lib/view-models/history-approval.ts	code	approved by …
 lib/view-models/history-approval.ts	code	Approved by …
 lib/view-models/history-approval.ts	code	Approved by … (…)
 lib/view-models/history-approval.ts	code	Approved by RolloutApproval … (no verified approver)
+lib/view-models/history-current-chip.ts	code	Bake paused
+lib/view-models/history-current-chip.ts	code	Bake paused · … check… pending
+lib/view-models/history-current-chip.ts	code	Checking for
+lib/view-models/history-current-chip.ts	code	Deploying for
+lib/view-models/history-current-chip.ts	code	Paused for
 lib/view-models/home-model.ts	code	deploy window
 lib/view-models/home-model.ts	code	health check failing
 lib/view-models/home-status.ts	code	… and …
@@ -2182,12 +2193,10 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	(retentio
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	after …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	All healthy
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Automatic deploys are paused until this pin is cleared.
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Checking for
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Choose "All" on the cadence strip above to see every deploy.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Commit …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	deploy …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	deployed by
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Deploying for
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Deployment timeline
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	First deploy
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Keeps up to …
