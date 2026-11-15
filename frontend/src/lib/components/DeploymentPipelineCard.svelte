@@ -776,7 +776,7 @@
 	     do not drop a line when the check window opens. `bar-progress-active`: see app.css — the width is a
 	     true, $now-derived percentage; the stripe is the mark that this is still a live process. -->
 	<div class="mt-2 pl-5" class:invisible={!live} aria-hidden={!live}>
-		<div class="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line">
+		<div class="h-1.5 w-full overflow-hidden rounded-full bg-line">
 			<div
 				class="h-full rounded-full transition-[width] duration-500 {held ? 'bg-held-solid' : 'bg-progress-solid bar-progress-active'}"
 				style="width: {pct}%"
