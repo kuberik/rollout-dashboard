@@ -16,6 +16,18 @@ function entry(partial: Partial<GroupableEntry> & { key: string; envLabel: strin
 	};
 }
 
+describe('groupActivityEntries: a paused bake', () => {
+	it('carries the hold onto the group and never shares a row with a checking one', () => {
+		const groups = groupActivityEntries([
+			entry({ key: 'a', envLabel: 'prod', bakeStatus: 'InProgress', bakePaused: true }),
+			entry({ key: 'b', envLabel: 'staging', bakeStatus: 'InProgress' })
+		]);
+		expect(groups).toHaveLength(2);
+		expect(groups.find((g) => g.members[0].key === 'a')?.worstBakePaused).toBe(true);
+		expect(groups.find((g) => g.members[0].key === 'b')?.worstBakePaused).toBe(false);
+	});
+});
+
 describe('groupActivityEntries', () => {
 	it('collapses the same app + release + minute into one row', () => {
 		const entries = [

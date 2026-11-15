@@ -1919,6 +1919,7 @@ routes/activity/+page.svelte	code	… deploying
 routes/activity/+page.svelte	code	… deploys failed
 routes/activity/+page.svelte	code	… failing
 routes/activity/+page.svelte	code	… of … unresolved
+routes/activity/+page.svelte	code	… paused
 routes/activity/+page.svelte	code	… tier…
 routes/activity/+page.svelte	code	…… failed …, on ….
 routes/activity/+page.svelte	code	…… failed on …

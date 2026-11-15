@@ -103,6 +103,7 @@ const DENY: Array<{
 			'lib/components/new/change/detail-model.ts\tcode\t… paused',
 			'lib/components/new/stages/stages-model.ts\tcode\t… paused',
 			'lib/view-models/activity-verb.ts\tcode\tis paused',
+			'routes/activity/+page.svelte\tcode\t… paused',
 			'lib/view-models/history-current-chip.ts\tcode\tBake paused',
 			'lib/view-models/history-current-chip.ts\tcode\tPaused for',
 			'lib/view-models/history-current-chip.ts\tcode\tBake paused · … check… pending',

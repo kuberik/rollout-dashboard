@@ -34,6 +34,8 @@ export type GroupableEntry = {
 	 *  the generic "failed to deploy" — see `activity-kind.ts`'s doc
 	 *  comment and `/activity`'s `activityKindForGroup`. */
 	bakeStatusMessage?: string | null;
+	/** the entry's bake clock is stopped right now (`bakePaused`). Part of the grouping key, so a paused bake and a checking one never share a verb. */
+	bakePaused?: boolean;
 	/** Default `false`. Part of the grouping key alongside `bakeStatus` — see
 	 *  `groupKeyFor`'s own note. */
 	isRollback?: boolean;
@@ -63,6 +65,8 @@ export type ActivityGroup<E extends GroupableEntry> = {
 	 *  the same way a solo row's `categorizeFailure` does. `null` unless the
 	 *  worst status is `Failed` and that member actually carried one. */
 	worstBakeStatusMessage: string | null;
+	/** the group's in-flight bake has its clock stopped (`bakePaused`): `activityKindOf` reads `paused`, not `checking` */
+	worstBakePaused: boolean;
 	/** Every original entry, newest first — what a row-level "Details" expand shows. */
 	members: E[];
 };
@@ -80,7 +84,7 @@ export type ActivityGroup<E extends GroupableEntry> = {
  */
 function groupKeyFor(e: GroupableEntry): string {
 	const minuteBucket = Math.floor(new Date(e.timestamp).getTime() / 60_000);
-	const kind = `${e.bakeStatus}${e.isRollback ? ':rb' : ''}`;
+	const kind = `${e.bakeStatus}${e.isRollback ? ':rb' : ''}${e.bakeStatus === 'InProgress' && e.bakePaused ? ':hold' : ''}`;
 	return `${e.displayName}::${e.version}::${minuteBucket}::${kind}`;
 }
 
@@ -177,6 +181,7 @@ export function groupActivityEntries<E extends GroupableEntry>(entries: E[]): Ac
 			envLabels,
 			worstBakeStatus,
 			worstBakeStatusMessage,
+			worstBakePaused: worstBakeStatus === 'InProgress' && members.some((m) => m.bakeStatus === 'InProgress' && !!m.bakePaused),
 			members
 		});
 	}

@@ -31,6 +31,7 @@
 	} from '$lib/environment-theme';
 	import { compareEnvironmentNames, getEnvironmentRank } from '$lib/env-order';
 	import { activityKindOf } from '$lib/view-models/activity-kind';
+	import { bakePaused } from '$lib/bake-hold';
 	import { now } from '$lib/stores/time';
 	import {
 		ClockOutline,
@@ -129,6 +130,8 @@
 		 *  reads, so a grouped row's "failed to deploy" vs "failed its
 		 *  health check" never drifts from the Needs-you row's. */
 		bakeStatusMessage: string | null;
+		/** the bake clock is stopped right now (`bakePaused`): an in-flight row reads `paused`, not `checking` */
+		bakePaused: boolean;
 		timestamp: string;
 		href: string;
 		actor: string;
@@ -265,6 +268,7 @@
 					previousVersion,
 					bakeStatus: h.bakeStatus || 'None',
 					bakeStatusMessage: h.bakeStatusMessage ?? null,
+					bakePaused: bakePaused(h),
 					// ⭐ shared/age-lag-total: ONE AGE PER EVENT. A Failed row used to
 					// show the deploy's own START (`h.timestamp`) here — this page has
 					// its own entry list (never `ActivityRail.svelte`, which Home's
@@ -877,6 +881,7 @@
 			href: entry.href,
 			bakeStatus: entry.bakeStatus,
 			bakeStatusMessage: entry.bakeStatusMessage,
+			bakePaused: entry.bakePaused,
 			isRollback: !!entry.rollbackAct
 		};
 	}
@@ -1183,7 +1188,7 @@
 	/** QA #21: in flight is counted in ROLLOUTS (what Home and /rollouts count), not in history rows. */
 	const inFlight = $derived(
 		inFlightRollouts(
-			windowed.filter(isInFlight).map((e) => ({ rolloutKey: `${e.rolloutNamespace}/${e.rolloutName}`, bakeStatus: e.bakeStatus ?? '' }))
+			windowed.filter(isInFlight).map((e) => ({ rolloutKey: `${e.rolloutNamespace}/${e.rolloutName}`, bakeStatus: e.bakeStatus ?? '', bakePaused: e.bakePaused }))
 		)
 	);
 	const flyingCount = $derived(inFlight.total);
@@ -1196,6 +1201,8 @@
 		const deploying = inFlight.deploying;
 		const parts: string[] = [];
 		if (checking > 0) parts.push(`${checking} checking`);
+		/* the app feed words a paused bake as its own state (`paused in prod`), never as checking */
+		if (inFlight.paused > 0) parts.push(`${inFlight.paused} paused`);
 		if (deploying > 0) parts.push(`${deploying} deploying`);
 		return parts.length ? parts.join(' · ') : undefined;
 	});
@@ -1583,6 +1590,7 @@
 		return activityKindOf({
 			bakeStatus: group.worstBakeStatus,
 			bakeStatusMessage: group.worstBakeStatusMessage,
+			bakePaused: group.worstBakePaused,
 			isRollback: group.members.some((m) => m.rollbackAct),
 			actorKind: actor.kind,
 			envRank,
