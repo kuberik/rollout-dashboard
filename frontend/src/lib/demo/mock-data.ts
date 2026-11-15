@@ -1257,7 +1257,7 @@ export const mkHfRollout = (lane: (typeof HF_LANES)[number]) => {
 			// A Flux-config artifact, so the hero shows "View source" (the Source
 			// files dialog) -- `respond.ts` serves this rollout's last two builds'
 			// manifests for it. Without it nothing in mock mode opens that dialog.
-			artifactType: 'application/vnd.cncf.flux.config.v1+json',
+			...(lane.env === 'prod' ? { artifactType: 'application/vnd.cncf.flux.config.v1+json' } : {}),
 			wantedVersion: currentVersion,
 			currentVersion,
 			previousVersion,

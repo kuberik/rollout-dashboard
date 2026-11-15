@@ -123,7 +123,7 @@
 	}
 
 	/**
-	 * ⭐ THE LABEL COLUMN IS CAPPED AT 40% (`fit-content(50%)`, value column
+	 * ⭐ THE LABEL COLUMN IS CAPPED AT 50% (`fit-content(50%)`, value column
 	 * `minmax(0,1fr)`). A label is usually a short noun, but ChangeVersionModal's
 	 * override rows are labelled by a promotion rule ("After wave 1 (eu-central,
 	 * us-east-1)"): with a bare `auto` track the max-content label took the whole

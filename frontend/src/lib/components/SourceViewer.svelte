@@ -18,6 +18,7 @@
 
 	let files: Record<string, string> = {};
 	let loading = false;
+	let fetched = false;
 	let error: string | null = null;
 	let showModal = false;
 	let currentTheme: 'light' | 'dark' = 'light';
@@ -31,6 +32,7 @@
 	});
 
 	async function fetchFiles() {
+		fetched = true;
 		loading = true;
 		error = null;
 		try {
@@ -41,7 +43,7 @@
 				throw new Error(`Failed to fetch files: ${response.statusText}`);
 			}
 			const data = await response.json();
-			files = data.files;
+			files = data.files ?? {};
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to fetch files';
 		} finally {
@@ -74,7 +76,7 @@
 		}
 	}
 
-	$: if (showModal && Object.keys(files).length === 0) {
+	$: if (showModal && !fetched) {
 		fetchFiles();
 	}
 </script>
@@ -108,6 +110,8 @@
 			</div>
 		{:else if error}
 			<p class="t-body text-danger">{error}</p>
+		{:else if Object.keys(files).length === 0}
+			<p class="t-body text-fg-muted">No manifest was recorded for this build.</p>
 		{:else}
 			<!-- Many or long file names scroll sideways in their own row instead of being
 			     cut at the dialog edge. -->
