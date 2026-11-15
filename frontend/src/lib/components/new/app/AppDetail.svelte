@@ -83,9 +83,11 @@
 	/* round 2 B4: the held places' gate objects (the Gates tab's own source, same query key) give the pretty names the fleet list lacks */
 	const heldPlaces = $derived(places.filter((p) => p.holdReason === 'approval' || p.holdReason === 'rule'));
 	const gateQueries = createQueries(() => ({
-		queries: heldPlaces.map((p) => { const [, , cluster, ns, nm] = p.href.split('/'); return rolloutQueryOptions({ namespace: ns, name: nm, cluster, options: { staleTime: 15000, retry: false } }); })
+		queries: heldPlaces.map((p) => { const [, , cluster, ns, nm] = p.href.split('/'); return rolloutQueryOptions({ namespace: ns, name: nm, cluster, options: { staleTime: 15000, retry: false } }); }),
+		// See ChangeVersionModal `pickerTitleQueries`: svelte-query 6.0.12 throws when a top-level result array shrinks by 2+.
+		combine: (results) => ({ items: results.map((r) => ({ data: r.data })) })
 	}));
-	$effect(() => { gateQueries.forEach((q, i) => { const h = heldPlaces[i]?.href; const key = h ? heldKeyOfHref(h) : null; if (!q.data || !key) return; const [, , cluster, ns] = (h as string).split('/'); publishGatePretty(cluster, ns, prettyMapOf(q.data.rolloutGates)); publishHeldHere(key, heldHereOfDetail(q.data as never)); }); });
+	$effect(() => { gateQueries.items.forEach((q, i) => { const h = heldPlaces[i]?.href; const key = h ? heldKeyOfHref(h) : null; if (!q.data || !key) return; const [, , cluster, ns] = (h as string).split('/'); publishGatePretty(cluster, ns, prettyMapOf(q.data.rolloutGates)); publishHeldHere(key, heldHereOfDetail(q.data as never)); }); });
 	const gates = $derived(gatesOf(name, scenario));
 	const rowFor = (p: PlaceHold): TRow => {
 		const un = rowsOf(scenario, p.tier, p.label).find((r) => r.app === name);
