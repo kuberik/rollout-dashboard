@@ -5,8 +5,7 @@ import HealthChecksCard from './HealthChecksCard.svelte';
 import type { HealthCheck } from '../../types';
 
 /** Every row in the card, top to bottom, by its `displayName` — found by the
- *  row's own `data-testid`, not by the status mark, since a passing OR
- *  failing row no longer carries one (see the chip-budget note below). */
+ *  row's own `data-testid`, since no row carries a status chip. */
 function rowNames(): string[] {
 	return Array.from(document.querySelectorAll<HTMLElement>('[data-testid="hc-row"]')).map(
 		(row) => row.querySelector('span')?.textContent?.trim() ?? ''
@@ -14,30 +13,9 @@ function rowNames(): string[] {
 }
 
 /**
- * ⭐ NEW BY DESIGN (2026-09-13, demo capture, lane 4; migrated to the shared
- * design language and the chip-budget rule 2026-10-08, then tightened again
- * in round 2 of the same coordinator review). ROLE: the regression guard for
- * ONE STATUS GRAMMAR in this card. WHY NOTHING EXISTING FITS: this component
- * had no test file at all, and the defect it originally shipped a fix for —
- * a FILLED `rounded-full` capsule on the pending row beside BARE GREEN TEXT
- * on the passing rows, 40px apart, for the same axis — is invisible to every
- * other guard in the suite. WHICH REFERENCE LENDS ITS PROPORTIONS:
- * `ChangeHistoryCard.svelte.test.ts`.
- *
- * ⛔ THE CHIP BUDGET, ROUND 2 (2026-10-08, coordinator review): "one fact,
- * once" — a row spends at most two emphases, the NAME and ONE status mark.
- * Round 1 dropped the chip for a PASSING row (the green glyph is already the
- * mark). Round 2 does the same for a FAILING row: the glyph is red, and the
- * row now prints `failing · <time>` in that same red ink instead of a chip
- * — red glyph + red words is one mark, not two. Pending and recovered rows
- * still keep their chip, because their glyph alone cannot carry PENDING vs
- * RECOVERED (no single glyph does).
- *
- * ⚠️ IT ASSERTS ON THE CLASS LIST, WHICH IS UNUSUAL HERE AND DELIBERATE. The
- * thing under test IS the geometry: every status mark that DOES render must
- * be the product's chip atom (`.chip.t-label`) and no status mark may carry
- * a fill. A test that only checked the words would have passed on the day
- * the original defect shipped.
+ * One row grammar for every state: glyph, name, and "state · age" under the
+ * name. No row draws a state chip; the specs below assert that on the class
+ * list, because a words-only check would pass with a chip back in the row.
  */
 
 const WINDOW_START = new Date('2026-09-13T09:00:00Z');
@@ -50,7 +28,7 @@ function hc(name: string, status: string, extra: Record<string, unknown> = {}): 
 }
 
 /** Every element in the card that states a check's state as a chip — never
- *  present for a passing or failing row (see the chip-budget note above). */
+ *  present in any row. */
 function stateMarks(): HTMLElement[] {
 	return Array.from(document.querySelectorAll<HTMLElement>('.chip.t-label'));
 }
