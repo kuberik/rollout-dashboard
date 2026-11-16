@@ -308,8 +308,8 @@ export function failingSummary(list: SnapCheck[], nameOf: (c: SnapCheck) => stri
 /** the compact age of a check's fact line ("6m") */
 export const agoOf = (iso: string | null | undefined, now: Date): string | null => (iso ? formatAgoCompact(iso, now) : null);
 
-/** a banner's health line with the failure's age at its end ("2 health checks failing, 1 pending · 12m ago"); `age` already carries its "ago" (agoOf) */
-export const withAge = (message: string, age: string | null | undefined): string => (age ? `${message}\u00a0· ${age}` : message);
+/** a banner's health line with the failure's age at its end ("2 health checks failing, 1 pending · 12m ago"); `age` already carries its "ago" (agoOf). The last word, the dot and the age are one no-break unit, so the dot never ends or starts a line alone (the live evidence line spells its tail the same way) */
+export const withAge = (message: string, age: string | null | undefined): string => (age ? `${message}\u00a0\u00b7\u00a0${age.replace(/ /g, '\u00a0')}` : message);
 
 /** `HH:MM`, 24h, the way the recovered strip and the fact line print a moment */
 export const clock = (iso: string, secs = false): string =>

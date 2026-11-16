@@ -238,7 +238,7 @@ describe('the banner sentence counts only the checks failing now', () => {
 
 describe('withAge', () => {
 	it('puts the age on the health line, never on a meta line', () => {
-		expect(withAge('2 health checks failing, 1 pending', '12m ago')).toBe('2 health checks failing, 1 pending · 12m ago');
+		expect(withAge('2\u00a0health checks failing, 1\u00a0pending', '12m ago')).toBe('2\u00a0health checks failing, 1\u00a0pending\u00a0\u00b7\u00a012m\u00a0ago');
 		expect(withAge('2 health checks failing', null)).toBe('2 health checks failing');
 	});
 });
