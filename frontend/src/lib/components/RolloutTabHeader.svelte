@@ -54,6 +54,7 @@
 		inlineRollback = true,
 		quietRollback = false,
 		failingNow = false,
+		recovered: recoveredIn,
 		below,
 		metaSeparated = true,
 		subtitleOnPhone = true,
@@ -108,6 +109,8 @@
 		quietRollback?: boolean;
 		/** A health check of the head deploy fails right now (`headFailingNow`, the Overview's own reading): the state pill then says "failing", not "failed", so switching tabs never changes the word. */
 		failingNow?: boolean;
+		/** the head failure's checks are all OK again (the page's own `headRecovered`); absent: read from the fleet source */
+		recovered?: boolean;
 		below?: Snippet;
 		metaSeparated?: boolean;
 		/** false: the description is dropped below sm, so the tab's own (adverse) fact is never the one the one-line meta row cuts. QA #19-adjacent (Gates tab, 390). */
@@ -137,7 +140,7 @@
 	 * Retry lives on the rollout's Overview, so here it is a link there; Roll back stays beside it on lg+ (the phone's one
 	 * meta-line action is the lead).
 	 */
-	const recovered = $derived(isFailed && failureRecovered(rolloutPath(page.params.cluster ?? '', page.params.namespace ?? '', page.params.name ?? name)));
+	const recovered = $derived(isFailed && (recoveredIn ?? failureRecovered(rolloutPath(page.params.cluster ?? '', page.params.namespace ?? '', page.params.name ?? name))));
 	const retryLink = $derived(href(`/rollouts/${page.params.cluster}/${page.params.namespace}/${page.params.name ?? name}`));
 	const rollbackDisplay = $derived(
 		rollbackNow ? getDisplayVersion({ tag: rollbackNow.tag, version: rollbackNow.version }) : ''

@@ -155,7 +155,7 @@
 	import { fetchRolloutSchedules, scheduleWindowQueryKey } from '$lib/api/schedules';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
-	import { headFailingNow } from '$lib/view-models/health-failures';
+	import { headFailingNow, headRecovered as headRecoveredLive } from '$lib/view-models/health-failures';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import SkipRuleModal from '$lib/components/SkipRuleModal.svelte';
 	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
@@ -186,8 +186,8 @@
 
 	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
-	/** the failed head's checks are all OK again (fleet reading, the same one the header and Overview use) */
-	const headRecovered = $derived(failureRecovered(rolloutPath(cluster, namespace, page.params.name as string)));
+	/** the failed head's checks are all OK again (the page's own live checks, the reading History and the Overview's banner use); the fleet reading when they have not arrived */
+	const headRecovered = $derived(headRecoveredLive(healthChecks ?? [], rollout?.status?.history?.[0] as never) || failureRecovered(rolloutPath(cluster, namespace, page.params.name as string)));
 	const name = $derived(page.params.name as string);
 
 	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see Navbar.svelte).
@@ -1785,6 +1785,7 @@
 				{rollout}
 				quietRollback
 				failingNow={headFailingNow(healthChecks ?? [], rollout?.status?.history?.[0] as never)}
+				recovered={headRecovered}
 				subtitleOnPhone={false}
 				titleAfter={reallyHeldHere.length > 0 ? heldTitle : undefined}
 				chip={reallyHeldHere.length > 0 ? null : undefined}

@@ -1506,6 +1506,7 @@
 				{rollout}
 				quietRollback
 				failingNow={headFailingNow(liveChecks as never, rollout?.status?.history?.[0] as never)}
+				recovered={headRecovered(liveChecks as never, rollout?.status?.history?.[0] as never)}
 				rollbackHref={href(`/rollouts/${cluster}/${namespace}/${name}/history?action=rollback`)}
 			>
 				<!-- ⭐ ONE ACTION SET ON EVERY TAB (LOGOPEN r11, item 4): History,

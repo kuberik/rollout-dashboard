@@ -51,7 +51,14 @@ describe('every surface routes its failure actions through the one order', () =>
 	});
 	it('the History and Gates tab header leads with Retry when the failure recovered', () => {
 		const s = src('components/RolloutTabHeader.svelte');
-		expect(s).toMatch(/const recovered = \$derived\(isFailed && failureRecovered\(/);
+		expect(s).toMatch(/const recovered = \$derived\(isFailed && \(recoveredIn \?\? failureRecovered\(/);
 		expect(s.indexOf('data-action="retry"')).toBeLessThan(s.indexOf('Roll back to {rollbackDisplay}'));
+	});
+	it('History, Gates and Logs hand the header the head failure\'s own recovered reading, so a direct load leads with Retry too', () => {
+		for (const t of ['history', 'gates', 'logs']) {
+			const page = readFileSync(resolve(__dirname, `../../../routes/rollouts/[cluster]/[namespace]/[name]/${t}/+page.svelte`), 'utf8');
+			expect(page, t).toMatch(/recovered(=\{|\}| )/);
+			expect(page, t).toMatch(/headRecovered/);
+		}
 	});
 });
