@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { HealthCheck } from '../../types';
-import { checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince } from './health-failures';
+import { checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary } from './health-failures';
 
 const mk = (cls: string, status: Record<string, unknown>, name = 'x'): HealthCheck => ({ metadata: { name }, spec: { class: cls }, status } as unknown as HealthCheck);
 const win = new Date('2026-11-15T09:00:00Z');
@@ -198,5 +198,31 @@ describe('failureSince: the failure has one age', () => {
 	it('is null when nothing is failing', () => {
 		const kust = mk('kustomization', { status: 'Pending', lastChangeTime: T(3) }, 'kust');
 		expect(failureSince(poolOf([kust], [], null))).toBeNull();
+	});
+});
+
+describe('the banner sentence counts only the checks failing now', () => {
+	const snaps = [{ name: 'a', message: 'a: latency over budget; more' }, { name: 'b', message: 'b monitor alerted' }];
+	const live = [mk('datadog', { status: 'Unhealthy' }, 'a'), mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(5) }, 'b')];
+	const nameOf = (c: { name: string }) => c.name;
+	it('A failing, B recovered: one check, named, not "2 health checks failing: a, b"', () => {
+		const list = failingNowList(snaps, live);
+		expect(list.map((c) => c.name)).toEqual(['a']);
+		expect(failingSummary(list, nameOf)).toBe('a: a: latency over budget');
+	});
+	it('both failing now: counts and names both', () => {
+		const both = [mk('datadog', { status: 'Unhealthy' }, 'a'), mk('datadog', { status: 'Unhealthy' }, 'b')];
+		expect(failingSummary(failingNowList(snaps, both), nameOf)).toBe('2 health checks failing: a, b');
+	});
+	it('all recovered, or no live checks (older controllers): the history record answers', () => {
+		const rec = [mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(5) }, 'a'), live[1]];
+		expect(failingNowList(snaps, rec)).toBe(snaps);
+		expect(failingNowList(snaps, [])).toBe(snaps);
+		expect(failingSummary(failingNowList(snaps, []), nameOf)).toBe('2 health checks failing: a, b');
+		expect(failingSummary([], nameOf)).toBeNull();
+	});
+	it('a check failing now that the snapshot never recorded is still named, with its live message', () => {
+		const only = [mk('datadog', { status: 'Unhealthy', message: 'late failure' }, 'c')];
+		expect(failingSummary(failingNowList(snaps, only), nameOf)).toBe('c: late failure');
 	});
 });

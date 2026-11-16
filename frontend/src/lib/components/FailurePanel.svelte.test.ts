@@ -38,4 +38,16 @@ describe('rollout detail failure banner', () => {
 		expect(head).not.toContain('retry is reasonable');
 		expect(head.length).toBeGreaterThan('Deployment failed'.length + 5);
 	});
+	test('one check failing now and one recovered: the sentence counts and names only the failing one', () => {
+		const live = [
+			{ metadata: { name: 'error-rate' }, spec: { class: 'datadog' }, status: { status: 'Unhealthy', lastChangeTime: '2026-11-10T10:05:00Z' } },
+			{ metadata: { name: 'latency' }, spec: { class: 'datadog' }, status: { status: 'Healthy', lastErrorTime: '2026-11-10T10:03:00Z', lastChangeTime: '2026-11-10T10:06:00Z' } }
+		];
+		const p = { ...(props([]) as object), healthChecks: live, failedHCList: [{ name: 'latency', message: 'latency monitor alerted' }, { name: 'error-rate', message: 'error-rate: 4.2% of requests failed' }] } as never;
+		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: p } });
+		const head = (container.textContent ?? '').split('Details')[0];
+		expect(head).not.toContain('2 health checks failing');
+		expect(head).not.toContain('latency');
+		expect(head).toContain('error-rate: 4.2% of requests failed');
+	});
 });

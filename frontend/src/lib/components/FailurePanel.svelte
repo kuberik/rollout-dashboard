@@ -23,7 +23,7 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import { poolOf, worstOf, bannerEvidence, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
+	import { poolOf, worstOf, bannerEvidence, failingNowList, failingSummary, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
 
 	interface Props {
 		open?: boolean;
@@ -216,16 +216,11 @@
 		showRollbackModal = true;
 	}
 	// One sentence for the banner body: the failing check and its first fact.
+	/* counted and named from the checks failing now, not from the history record (a recovered check is not "failing") */
+	const shownList = $derived(failingNowList(failedHCList as SnapCheck[], healthChecks));
 	const summaryLine = $derived.by(() => {
-		if (failedHCList.length === 1) {
-			const first = (failedHCList[0].message || '').split(/;\s*/).filter(Boolean)[0];
-			return `${findDisplayName(failedHCList[0])}${first ? `: ${first}` : ' is failing'}`;
-		}
-		if (failedHCList.length > 1)
-			return `${failedHCList.length} health checks failing: ${failedHCList
-				.slice(0, 3)
-				.map((hc) => findDisplayName(hc))
-				.join(', ')}${failedHCList.length > 3 ? '…' : ''}`;
+		const line = failingSummary(shownList, findDisplayName);
+		if (line) return line;
 		const msg = (rollout.status?.history?.[0] as any)?.bakeStatusMessage as string | undefined;
 		return msg ? msg.split(/;\s*/).filter(Boolean)[0] : 'An error occurred during deployment.';
 	});
@@ -252,7 +247,7 @@
 	);
 	const figure = $derived.by(() => { const l = failingLead(null, observations); return l.kind === 'check' ? null : l; });
 	/* with a figure the sentence keeps the check's NAME and the budget; the number is not said twice */
-	const bannerMessage = $derived(figure?.budget && failedHCList.length === 1 ? `${findDisplayName(failedHCList[0])}: ${figure.budget}` : summaryLine);
+	const bannerMessage = $derived(figure?.budget && shownList.length === 1 ? `${findDisplayName(shownList[0])}: ${figure.budget}` : summaryLine);
 	/* the checks the banner draws evidence from, read from observations only: the live HealthCheck when we have it, else the history snapshot */
 	const pool = $derived(poolOf(healthChecks, failedHCList as SnapCheck[], deployWindowStart(rollout)));
 	const worst = $derived(worstOf(pool));

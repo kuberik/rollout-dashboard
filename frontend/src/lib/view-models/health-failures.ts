@@ -280,6 +280,31 @@ export function snapshotCause(snaps: SnapCheck[]): { check: { name: string; mess
 	return { check: { name: ev.name, message: ev.short }, more: Math.max(0, failingRowCount(pool) - 1) };
 }
 
+/**
+ * The checks the banner's sentence counts and names: the ones failing NOW (the live list, status Unhealthy), each with the message its
+ * history snapshot kept (else the live status message). `snaps` is a record of the deploy and never expires, so it only answers when
+ * nothing is failing now: nothing live is Unhealthy, or the live checks are not known.
+ */
+export function failingNowList(snaps: SnapCheck[], live: HealthCheck[]): SnapCheck[] {
+	const now = live.filter((h) => h?.status?.status === 'Unhealthy');
+	if (!now.length) return snaps;
+	return now.map((h) => {
+		const name = h.metadata?.name ?? '';
+		const snap = snaps.find((s) => s.name === name);
+		return { ...(snap ?? {}), name, namespace: h.metadata?.namespace, message: snap?.message ?? h.status?.message };
+	});
+}
+
+/** one sentence for the banner body: a lone failing check and its first fact, else "N health checks failing: a, b, c…" */
+export function failingSummary(list: SnapCheck[], nameOf: (c: SnapCheck) => string): string | null {
+	if (list.length === 1) {
+		const first = (list[0].message || '').split(/;\s*/).filter(Boolean)[0];
+		return `${nameOf(list[0])}${first ? `: ${first}` : ' is failing'}`;
+	}
+	if (list.length > 1) return `${list.length} health checks failing: ${list.slice(0, 3).map(nameOf).join(', ')}${list.length > 3 ? '…' : ''}`;
+	return null;
+}
+
 /** the compact age of a check's fact line ("6m") */
 export const agoOf = (iso: string | null | undefined, now: Date): string | null => (iso ? formatAgoCompact(iso, now) : null);
 
