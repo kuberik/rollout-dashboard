@@ -10,7 +10,7 @@
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { barSegments, type EnvTile } from './environments-page';
 
-	let { tile }: { tile: Pick<EnvTile, 'mark' | 'lead' | 'parts' | 'calm' | 'label' | 'failing' | 'waiting' | 'moving' | 'rest'> } = $props();
+	let { tile }: { tile: Pick<EnvTile, 'mark' | 'markRecovered' | 'lead' | 'parts' | 'calm' | 'label' | 'failing' | 'waiting' | 'moving' | 'rest'> } = $props();
 	const segs = $derived(barSegments(tile));
 	/** bar segment key -> fill (the table's solids; `r` rest stays the neutral line in CSS) */
 	const FILL: Record<string, string | undefined> = { f: TONE.failed.solid, w: TONE.held.solid, m: TONE.deploying.solid };
@@ -21,7 +21,7 @@
 		{#if tile.mark === 'rest'}<StatusMark state="newest" />
 		{:else if tile.mark === 'approval-yours'}<StatusMark state="approval" tone="held" />
 		{:else if tile.mark === 'approval'}<StatusMark state="approval" tone="neutral" />
-		{:else}<StatusMark state={tile.mark} />{/if}
+		{:else}<StatusMark state={tile.mark} recovered={tile.markRecovered} />{/if}
 	</span>
 	<span class="et-lead {hueInk(tile.lead.ink)}" data-truth="state-lead">{tile.lead.text}{#if tile.lead.you}{' '}<span class="text-held">({tile.lead.you})</span>{/if}</span>
 	{#if tile.parts.length}<span class="et-rest">{#each tile.parts as p, i (i)}{#if i}<span aria-hidden="true">{' · '}</span>{/if}{p.text}{#if p.you}{' '}<span class="text-held">({p.you})</span>{/if}{/each}</span>{/if}

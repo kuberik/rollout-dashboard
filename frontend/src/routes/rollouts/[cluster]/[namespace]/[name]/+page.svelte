@@ -4203,7 +4203,7 @@
 													}}
 												>
 													<span class="nb-c-mark flex items-center justify-center">
-														<span class="nb-mark" data-spine-mark><StatusMark state={markState} /></span>
+														<span class="nb-mark" data-spine-mark><StatusMark state={markState} recovered={markState === 'failed' && failureRecovered(rolloutPath(cluster, namespace, name))} /></span>
 													</span>
 													<span class="nb-c-build nb-build t-code text-fg">
 														{getDisplayVersion(releaseCandidate)}

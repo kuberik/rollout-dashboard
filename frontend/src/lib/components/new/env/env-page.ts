@@ -18,7 +18,8 @@
 import { inScope } from '../derivation-scope';
 import { toneInk } from '$lib/view-models/state-tone';
 import { newestFirst, latest } from '$lib/instant';
-import { heldHere } from '../data';
+import { heldHere, failureRecoveredNow } from '../data';
+import { newestFailureEvents } from '$lib/view-models/failure-currency';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import {
 	rollouts, environments, placeHolds, inbound, rowsOf, ago, buildInQuestionFacts, deployedBuild, holdSince, commitHeadline, buildIdentity, isViewer, TIER_NAME, TIERS, apps as appsOf, fleet24hEvents,
@@ -109,7 +110,7 @@ export type GangTile = {
 	/** the footer: the oldest change still on its way (title, ref, age + its honest label), or the build and where it comes from */
 	foot: { title: string | null; ref: string; age: string; ageLabel: string; ageTitle: string; from: string | null };
 };
-export type DayRow = { key: string; kind: 'deploy' | 'failed' | 'rolledBack'; app: string; href: string; place: string; title: string | null; build: string; who: string; age: string; /** a person pressed deploy (not the controller) */ mark: 'manual' | null; /** the reason they typed, or null (QA #14) */ reason: string | null };
+export type DayRow = { key: string; kind: 'deploy' | 'failed' | 'rolledBack'; app: string; href: string; place: string; title: string | null; build: string; who: string; age: string; /** a person pressed deploy (not the controller) */ mark: 'manual' | null; /** the reason they typed, or null (QA #14) */ reason: string | null; /** the place's newest failure, still failed, every check OK again: the ring */ recovered?: boolean };
 export type Gangway = { held: GangTile[]; ready: GangTile[]; heldRollup: Rollup; inStep: { app: string; href: string }[]; /** apps here that run an older build and have nothing inbound: the same "N behind" the at-rest predicate prints, so they are never listed In step */ behind: { app: string; /** the lagging place's rollout (where the Deploy action is) */ href: string; n: number; /** its site, '' when the environment has one default site */ place: string; /** why nothing is inbound, from the lagging place's own tab data (behindWhy) */ why: string }[]; today: DayRow[]; todayRollup: Rollup };
 
 /* a NAMED site: not empty and not a tier word (regions.ts siteKey, the one default-site rule) */
@@ -314,11 +315,12 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 		return { ...b, href: lag?.href ?? b.href, place: !lag || lag.label === tierKey || ['prod', 'production'].includes(lag.label) ? '' : lag.label, why: behindWhy(lag ? placeHolds(b.app, hs).find((h) => h.href === lag.href) : null) };
 	});
 	const evs = fleet24hEvents(hs, tierKey).filter((e) => !region || e.place === region || e.place === `prod-${region}` || e.place.endsWith(region));
+	const newestFail = newestFailureEvents(evs);
 	const today: DayRow[] = evs.map((e, i) => {
 		const pl = e.place.replace(/^prod-/, '');
 		const raw = commitHeadline(e.href, e.build)?.title ?? buildIdentity(e.build, e.href)?.title ?? null;
 		const title = raw && !/^(Initial commit|Release commit for build )/.test(raw) ? raw : null;
-		return { key: `${e.app}-${e.place}-${e.at}-${i}`, kind: e.kind, app: e.app, href: e.href, place: ['prod', 'production', 'staging', 'dev', 'test'].includes(pl) ? '' : pl, title, build: e.build, who: isViewer(e.trigger) ? 'you' : e.who, age: ago(e.at), mark: e.mark, reason: e.reason };
+		return { key: `${e.app}-${e.place}-${e.at}-${i}`, kind: e.kind, app: e.app, href: e.href, place: ['prod', 'production', 'staging', 'dev', 'test'].includes(pl) ? '' : pl, title, build: e.build, who: isViewer(e.trigger) ? 'you' : e.who, age: ago(e.at), mark: e.mark, reason: e.reason, ...(e.kind === 'failed' && newestFail.has(e) && failureRecoveredNow(e.href) ? { recovered: true } : {}) };
 	});
 	const nFailed = today.filter((d) => d.kind === 'failed').length;
 	const todayRollup: Rollup = [plural(today.length, 'deploy'), ...(nFailed ? [{ text: `${nFailed} failed`, ink: 'danger' as const }] : [])];

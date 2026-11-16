@@ -249,6 +249,8 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 /** A failed place whose checks are all OK again (what its Attention card, Fleet row and strip box read as "Failed", not "Failing"): the failure reason's own `recovered`, by href. */
 export const failureRecovered = (href: string): boolean => !!failureReason({ group: 'failed', href })?.recovered;
 /** THE ONE age of a failed place: when its failure began (the instant the banners and the Health checks card print), null when no health evidence was kept */
+/** the recovered flag of a place that is STILL failed (its newest deploy failed): history of an earlier failure is never "recovered" by the place's later health */
+export const failureRecoveredNow = (href: string): boolean => rawOf(href)?.status.history?.[0]?.bakeStatus === 'Failed' && failureRecovered(href);
 export const failureSinceAt = (href: string): string | null => failureReason({ group: 'failed', href })?.since ?? null;
 
 /* ═══ places (defect 5) ═══ */
