@@ -24,6 +24,15 @@ describe('ChangesPlumb: the failed marks', () => {
 		expect(chip(c, '[data-key="live"]')).toContain('bg-danger-solid');
 		expect(chip(c, '[data-key="move"]')).not.toContain('ring-[1.5px]');
 	});
+	it('row word: a recovered failure reads Failed in neutral ink, failing now reads Failing in danger ink', () => {
+		const c = draw([row('rec', { recovered: true }), row('live', {})]);
+		const word = (k: string) => c.querySelector(`[data-key="${k}"] .plb-word > span:last-child`)!;
+		expect(word('rec').textContent).toBe('Failed');
+		expect(word('rec').className).toContain('text-fg-muted');
+		expect(word('rec').className).not.toContain('text-danger');
+		expect(word('live').textContent).toBe('Failing');
+		expect(word('live').className).toContain('text-danger');
+	});
 	it('service marks: a recovered service is the ring, one failing now the solid disc', async () => {
 		const c = draw([row('multi', { services: [svc('indexer', true), svc('worker', false)], worst: 'worker' })]);
 		(c.querySelector('.plb-spread') as HTMLElement).click();
@@ -31,5 +40,10 @@ describe('ChangesPlumb: the failed marks', () => {
 		const marks = [...c.querySelectorAll('.plb-svc')].map((li) => li.querySelector('span.rounded-full.ring-inset')!.className);
 		expect(marks[0]).toContain('ring-[1.5px]');
 		expect(marks[1]).toContain('bg-danger-solid');
+		const words = [...c.querySelectorAll('.plb-svc-word')];
+		expect(words[0].textContent).toMatch(/^Failed/);
+		expect(words[0].className).toContain('text-fg-muted');
+		expect(words[0].className).not.toContain('text-danger');
+		expect(words[1].className).toContain('text-danger');
 	});
 });

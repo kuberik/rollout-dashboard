@@ -50,6 +50,8 @@
 
 	const word = (r: PlumbRow): [string, string] => {
 		if (r.col === 'merged' && r.state !== 'failed') return ['Not deployed yet', 'text-fg-muted'];
+		/* a failed change whose checks are all OK again: "Failed" in neutral ink beside the ring; failing now keeps the danger word */
+		if (r.state === 'failed' && r.recovered) return [stateWord('failed', { recovered: true }) ?? 'Failed', 'text-fg-muted'];
 		const w = stateWord(r.state === 'approval-yours' ? 'approval' : r.state, { yours: r.state === 'approval-yours' });
 		return [w ?? 'In ' + r.col, toneInk(r.state)];
 	};
@@ -116,7 +118,7 @@
 													<span class="plb-mark"><StatusMark {...svcMark(x)} /></span>
 													<AppGlyph name={x.app} size={16} />
 													{#if x.href}<a href={x.href} class="tap-link t-ui-sm truncate text-fg">{x.app}</a>{:else}<span class="t-ui-sm truncate text-fg">{x.app}</span>{/if}
-													<span class="plb-svc-word t-meta {toneInk(x.state)}">{serviceWord(x)}</span>
+													<span class="plb-svc-word t-meta {x.state === 'failed' && x.recovered ? 'text-fg-muted' : toneInk(x.state)}">{serviceWord(x)}</span>
 													<span class="plb-age t-meta tabular-nums text-fg-subtle">{sage(x.since)}</span>
 												</li>
 											{/each}
