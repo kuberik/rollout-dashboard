@@ -11,6 +11,7 @@
 	import type { Act } from '$lib/components/ActRow.svelte';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
 	import { UndoOutline, PlaySolid } from 'flowbite-svelte-icons';
+	import { retryActionHref } from './rollout-view';
 	import { failureActs } from '$lib/view-models/failure-actions';
 	import type { Snippet } from 'svelte';
 	import FailureDetails from '$lib/components/FailureDetails.svelte';
@@ -29,7 +30,7 @@
 	const acts = $derived(failureActs<Act>(!!b.recovered, {
 		rollback: b.rollbackHref ? { label: 'Roll back', href: b.rollbackHref, icon: UndoOutline, key: 'rollback' } : null,
 		/* a failure still failing keeps its order and its buttons: Retry is offered here only once its checks are OK again */
-		retry: b.recovered ? { label: 'Retry', href: b.retryHref ?? b.openHref, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
+		retry: b.recovered ? { label: 'Retry', href: retryActionHref(b.retryHref ?? b.openHref), icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
 		rest: [{ label: 'Open rollout', href: b.openHref, after: true, key: 'open' }]
 	}));
 </script>

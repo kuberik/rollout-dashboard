@@ -31,6 +31,7 @@
 	import type { AttentionModel } from '$lib/view-models/attention';
 	import { TONE } from '$lib/view-models/state-tone';
 	import { cardActs } from '$lib/view-models/failure-actions';
+	import { retryActionHref } from '$lib/components/new/rollout-view';
 	import { now } from '$lib/stores/time';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { atoms } from '$lib/components/atoms/atoms-context';
@@ -127,7 +128,7 @@
 				{:else if a.key === 'rollback'}
 					<a href={rollbackHref} class="btn {a.primary ? 'btn-primary' : 'btn-secondary'}" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>
 				{:else if a.key === 'retry'}
-					<a href={retryHref} class="btn btn-secondary" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
+					<a href={retryActionHref(retryHref ?? href)} class="btn btn-secondary" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
 				{:else}
 					<a href={openHref} class="btn btn-secondary" data-action="open">{openLabel} ›</a>
 				{/if}

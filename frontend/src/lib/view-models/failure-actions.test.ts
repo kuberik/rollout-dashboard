@@ -32,8 +32,8 @@ describe('failedRowAction (the palette row, also what Enter does)', () => {
 		expect(failedRowAction(false, true)).toEqual({ label: 'Roll back', sub: undefined, query: 'action=rollback' });
 		expect(FAILED_ROW_SECONDARY).toEqual({ label: 'Open logs', sub: 'logs' });
 	});
-	it('a recovered failure leads with Retry (the Overview, where its typed confirm lives)', () => {
-		expect(failedRowAction(true, false)).toEqual({ label: 'Retry', sub: undefined });
+	it('a recovered failure leads with Retry (the Overview, where its typed confirm opens on arrival, ?action=retry)', () => {
+		expect(failedRowAction(true, false)).toEqual({ label: 'Retry', sub: undefined, query: 'action=retry' });
 	});
 	it('on the Overview already, a recovered failure falls back to the logs (never a no-op)', () => {
 		expect(failedRowAction(true, true)).toEqual({ label: 'Open logs', sub: 'logs' });

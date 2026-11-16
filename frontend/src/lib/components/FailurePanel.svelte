@@ -45,6 +45,9 @@
 		onRetry: (kruiseRolloutName?: string, testAction?: string) => Promise<void>;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
+		/** arrived by a Retry link (`?action=retry`, the way `?action=rollback` opens Roll back): open the typed confirm once permissions are known; `onRequestHandled` clears the request */
+		requestRetry?: boolean;
+		onRequestHandled?: () => void;
 	}
 
 	let {
@@ -63,7 +66,9 @@
 		onSuccess = () => {},
 		onError = () => {},
 		/** See `AlertPanel`'s `open`: the panel collapses out instead of vanishing. */
-		open = true
+		open = true,
+		requestRetry = false,
+		onRequestHandled = () => {}
 	}: Props = $props();
 
 	/**
@@ -149,6 +154,12 @@
 		}
 		showRetryConfirm = true;
 	}
+
+	$effect(() => {
+		if (!requestRetry || actionsPending) return;
+		if (open && canUpdate) handleRetry();
+		onRequestHandled();
+	});
 
 	function handleRollback() {
 		if (!isDashboardManagingWantedVersion) return;

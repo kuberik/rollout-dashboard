@@ -44,7 +44,7 @@
 	import { holdLeadCause, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
 	import { canApproveAt, failureRecovered } from './data';
-	import { plural, rowAction, actionLabel, actionHref, markOf, markRecoveredOf, VIEWER } from './rollout-view';
+	import { plural, rowAction, actionLabel, actionHref, retryActionHref, markOf, markRecoveredOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
@@ -352,7 +352,7 @@
 
 	/** the failing lead place's failure is over (every check OK again): Retry leads, Roll back follows (view-models/failure-actions.ts) */
 	const recoveredFail = $derived(kind === 'failed' && act?.kind === 'rollback' && !!stateRow && failureRecovered(stateRow.href));
-	const retryHrefOf = $derived(stateRow?.href ?? '');
+	const retryHrefOf = $derived(stateRow?.href ? retryActionHref(stateRow.href) : '');
 	const failActs = $derived(failureActs<Act>(recoveredFail, {
 		rollback: actAsAct() ?? null,
 		retry: recoveredFail ? { label: 'Retry', href: retryHrefOf, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
@@ -384,6 +384,9 @@
 	{/if}
 {/snippet}
 
+<!-- A failing tile keeps ONE button (Roll back), where the list cards add "Open rollout": the tile is a compact, whole-surface link (its cover link
+     already opens the rollout, the same destination), and a second button would double the tile's action row beside the app's env row. The failing card on
+     Home, /envs and /rollouts carries both because there the card is a stand-alone object. -->
 <!-- r39 (2026-11-08): tile actions are 32px (btn-sm) everywhere: Approve the one blue, Roll back the outline. `xs` is kept for callers and means nothing now. -->
 {#snippet actionBtn(primary: boolean, _xs = false)}
 	{#if act?.kind === 'approve'}

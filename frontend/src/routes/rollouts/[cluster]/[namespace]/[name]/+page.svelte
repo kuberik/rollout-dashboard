@@ -1700,8 +1700,17 @@
 	// status row's own Roll back button opens, pre-selected on `rollbackNow`.
 	let changeVersionPending = $state(page.url.searchParams.get('action') === 'change-version');
 	let rollbackPending = $state(page.url.searchParams.get('action') === 'rollback');
+	/* `?action=retry` (a card's or the palette's Retry): the failure panel opens its typed confirm, then the param goes */
+	let retryPending = $state(page.url.searchParams.get('action') === 'retry');
+	function retryHandled() {
+		retryPending = false;
+		const url = new URL(page.url);
+		url.searchParams.delete('action');
+		replaceState(url, {});
+	}
 	afterNavigate(() => {
 		const action = page.url.searchParams.get('action');
+		if (action === 'retry') retryPending = true;
 		if (action === 'change-version') changeVersionPending = true;
 		if (action === 'rollback') rollbackPending = true;
 	});
@@ -3482,6 +3491,8 @@
 						{cluster}
 						environmentName={environment?.spec?.environment ?? null}
 						onRetry={retryDeployment}
+						requestRetry={retryPending}
+						onRequestHandled={retryHandled}
 						onSuccess={(m) => {
 							toastType = 'success';
 							toastMessage = m;

@@ -68,7 +68,7 @@ export const failureActionOrder = (_recovered: boolean): readonly ('retry' | 'ro
  */
 export function failedRowAction(recovered: boolean, onOverview: boolean): { label: string; sub: 'logs' | undefined; query?: string } {
 	if (!recovered) return { label: 'Roll back', sub: undefined, query: 'action=rollback' };
-	return !onOverview ? { label: 'Retry', sub: undefined } : { label: 'Open logs', sub: 'logs' };
+	return !onOverview ? { label: 'Retry', sub: undefined, query: 'action=retry' } : { label: 'Open logs', sub: 'logs' };
 }
 export const FAILED_ROW_SECONDARY = { label: 'Open logs', sub: 'logs' as const };
 
