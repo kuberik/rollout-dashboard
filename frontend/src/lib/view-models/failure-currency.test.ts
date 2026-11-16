@@ -9,4 +9,22 @@ describe('newestFailureEvents', () => {
 		expect([...got]).toEqual([cur, other]);
 		expect(got.has(old)).toBe(false);
 	});
+	it('equal times: the first one seen is the current one, not the last', () => {
+		const first = ev('failed', '/a', '2026-11-16T10:00:00Z'), second = ev('failed', '/a', '2026-11-16T10:00:00Z');
+		expect([...newestFailureEvents([first, second])]).toEqual([first]);
+		expect([...newestFailureEvents([second, first])]).toEqual([second]);
+	});
+	it('a failure with no time never beats a dated one, in either order', () => {
+		const dated = ev('failed', '/a', '2026-11-16T10:00:00Z'), none = ev('failed', '/a', null);
+		expect([...newestFailureEvents([none, dated])]).toEqual([dated]);
+		expect([...newestFailureEvents([dated, none])]).toEqual([dated]);
+	});
+	it('a place whose failures all lack a time still has one current failure (the first)', () => {
+		const a = ev('failed', '/a', null), b = ev('failed', '/a', null);
+		expect([...newestFailureEvents([a, b])]).toEqual([a]);
+	});
+	it('an unparseable time counts as no time', () => {
+		const bad = ev('failed', '/a', 'not a date'), dated = ev('failed', '/a', '2026-11-16T10:00:00Z');
+		expect([...newestFailureEvents([bad, dated])]).toEqual([dated]);
+	});
 });
