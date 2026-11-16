@@ -644,7 +644,6 @@ lib/components/new/change-view.ts	code	${stateWord('approval', { yours })} in �
 lib/components/new/change-view.ts	code	Checking in …
 lib/components/new/change-view.ts	code	deploy …
 lib/components/new/change-view.ts	code	Deploying to …
-lib/components/new/change-view.ts	code	Failing in …
 lib/components/new/change-view.ts	code	Healthy in …
 lib/components/new/change-view.ts	code	Held by a rule
 lib/components/new/change-view.ts	code	held in … · …
@@ -769,7 +768,6 @@ lib/components/new/data.ts	code	Changes could not be read
 lib/components/new/data.ts	code	Changes need GitHub
 lib/components/new/data.ts	code	Deploy window
 lib/components/new/data.ts	code	Deployed again in … after a rollback
-lib/components/new/data.ts	code	Failing in …
 lib/components/new/data.ts	code	Final check
 lib/components/new/data.ts	code	Flux Deployment
 lib/components/new/data.ts	code	GitHub did not answer.
@@ -818,7 +816,7 @@ lib/components/new/env/env-page.ts	code	… builds
 lib/components/new/env/env-page.ts	code	… failed
 lib/components/new/env/env-page.ts	code	… held
 lib/components/new/env/env-page.ts	code	… not at rest
-lib/components/new/env/env-page.ts	code	… places: … failing, … waiting, … …, … healthy
+lib/components/new/env/env-page.ts	code	… places: …, … waiting, … …, … healthy
 lib/components/new/env/env-page.ts	code	… regions
 lib/components/new/env/env-page.ts	code	… to deploy
 lib/components/new/env/env-page.ts	code	… waiting on a check
@@ -847,7 +845,7 @@ lib/components/new/environments-page.ts	code	… failed the bake
 lib/components/new/environments-page.ts	code	… for you
 lib/components/new/environments-page.ts	code	… healthy
 lib/components/new/environments-page.ts	code	… held · … failed the bake
-lib/components/new/environments-page.ts	code	… places: … failing, … waiting, … …, … healthy
+lib/components/new/environments-page.ts	code	… places: …, … waiting, … …, … healthy
 lib/components/new/environments-page.ts	code	… waiting
 lib/components/new/environments-page.ts	code	… waiting for …
 lib/components/new/environments-page.ts	code	All … healthy
@@ -886,7 +884,6 @@ lib/components/new/envs-model.ts	code	Waiting on
 lib/components/new/envs-model.ts	code	Waiting on a dependency
 lib/components/new/envs-model.ts	code	Waiting on check
 lib/components/new/EnvTile.svelte	text	… arriving
-lib/components/new/EnvTile.svelte	text	… failing
 lib/components/new/EnvTile.svelte	text	… healthy
 lib/components/new/EnvTile.svelte	text	… held
 lib/components/new/EnvTile.svelte	text	… places · … apps
@@ -941,7 +938,6 @@ lib/components/new/PipelineCard.svelte	code	Deployment pipeline
 lib/components/new/PipelineCard.svelte	code	Pipeline steps
 lib/components/new/rollout-view.ts	code	… … you
 lib/components/new/rollout-view.ts	code	… · … regions
-lib/components/new/rollout-view.ts	code	… failing
 lib/components/new/rollout-view.ts	code	… in progress
 lib/components/new/rollout-view.ts	code	… waiting for approval
 lib/components/new/rollout-view.ts	code	… yours to approve
