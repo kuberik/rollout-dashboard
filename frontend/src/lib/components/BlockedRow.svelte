@@ -203,8 +203,8 @@
 			<span class="dot-list block min-w-0 flex-1">
 				<span class="dot-list-row flex min-w-0 flex-wrap items-baseline sm:flex-nowrap">
 					<span class="min-w-0 sm:truncate">{factText}</span>
-					{#if buildText}<span class="t-code-sm shrink-0">{buildText}</span>{/if}
-					{#if age}<span class="shrink-0 whitespace-nowrap tabular-nums">{age} ago</span>{/if}
+					<!-- the build and the age are one no-break fact, so "20m ago" never wraps onto a line by itself -->
+					{#if buildText || age}<span class="shrink-0 whitespace-nowrap" data-build-age>{#if buildText}<span class="t-code-sm">{buildText}</span>{/if}{#if buildText && age}{' · '}{/if}{#if age}<span class="tabular-nums">{age} ago</span>{/if}</span>{/if}
 				</span>
 			</span>
 			{#if trailing}<span class="ms-auto shrink-0">{@render trailing()}</span>{/if}

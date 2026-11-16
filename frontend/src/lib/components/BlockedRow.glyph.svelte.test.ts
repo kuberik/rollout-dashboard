@@ -14,3 +14,13 @@ describe('BlockedRow glyph', () => {
 		expect(sr(false, 'stuck')).toBe('stuck');
 	});
 });
+
+describe('BlockedRow palette wrap age', () => {
+	it('the build and the age are one no-break fact, so the age never wraps alone', () => {
+		const c = { ...card, version: 'a02f1c4' } as unknown as RolloutCard;
+		const { container } = render(BlockedRow, { card: c, kind: 'failed', href: '/x', size: 'palette', wrap: true });
+		const unit = container.querySelector('[data-build-age]')!;
+		expect(unit.className).toContain('whitespace-nowrap');
+		expect(unit.textContent).toMatch(/a02f1c4 · \S+ ago$/);
+	});
+});
