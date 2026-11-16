@@ -15,6 +15,16 @@ describe('BlockedRow glyph', () => {
 	});
 });
 
+describe('BlockedRow glyph mark', () => {
+	const chip = (recovered: boolean, kind: 'failed' | 'stuck' = 'failed') => render(BlockedRow, { card, kind, href: '/x', recovered }).container.querySelector('span.rounded-full')!.className;
+	it('a recovered failure is the ring, a failing one the solid disc, a recovered flag on another kind changes nothing', () => {
+		expect(chip(true)).toContain('ring-[1.5px]');
+		expect(chip(true)).not.toContain('bg-danger-solid');
+		expect(chip(false)).toContain('bg-danger-solid');
+		expect(chip(true, 'stuck')).toBe(chip(false, 'stuck'));
+	});
+});
+
 describe('BlockedRow palette wrap age', () => {
 	it('the build and the age are one no-break fact, so the age never wraps alone', () => {
 		const c = { ...card, version: 'a02f1c4' } as unknown as RolloutCard;

@@ -1831,7 +1831,7 @@
 {#snippet changeRow(r: Result, idx: number)}
 	{@const isActive = idx === selectedIndex}
 	{@const changeMeta = changeResultMeta(r)}
-	{@const changeSteps = changeMeta ? familyProgress(changeMeta) : null}
+	{@const changeSteps = changeMeta ? familyProgress(changeMeta, (cell) => failureRecovered(rolloutPath(cell.cluster, cell.namespace, cell.rolloutName))) : null}
 	{@const changeRef =
 		r.changeRef && r.repo && !r.ungrouped
 			? `${r.changeRef.kind === 'pull' ? `#${r.changeRef.number}` : shortRevision(r.changeRef.sha)} · ${r.repo}`
@@ -2006,7 +2006,7 @@
 						behindLabel={r.verdict?.label}
 					/>
 				{:else}
-					<StatusMark state={r.nodeState ?? 'newest'} label={r.stateWord || (r.nodeState === 'paused' ? 'paused' : bakeWord(r.bakeStatus))} />
+					<StatusMark state={r.nodeState ?? 'newest'} recovered={r.nodeState === 'failed' && failureRecovered(r.href)} label={r.stateWord || (r.nodeState === 'paused' ? 'paused' : bakeWord(r.bakeStatus))} />
 				{/if}
 			</span>
 		{:else}
