@@ -14,7 +14,6 @@
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { envTheme } from '$lib/components/new/rollout-view';
 	import type { FleetTrouble, FleetDeploy } from '$lib/components/new/home-page';
 
@@ -32,7 +31,7 @@
 			<ul class="m-0 list-none p-0" data-fleet-trouble>
 				{#each trouble as t (t.key)}
 					<li class="fl tap-zone relative flex min-h-10 min-w-0 items-center gap-2 px-4 py-1 hover:bg-hover" data-fleet-row="trouble" data-truth-app={t.app}>
-						<span class="inline-grid h-4 w-4 shrink-0 place-items-center">{#if t.mark === 'held'}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{:else}<StatusMark state={t.mark} tone="neutral" />{/if}</span>
+						<span class="inline-grid h-4 w-4 shrink-0 place-items-center">{#if t.mark === 'held'}<!-- the /rollouts held mark (held ink on the held tint), for Held and Paused alike: not a second, neutral pause --><StatusMark state="held" label={t.word} />{:else}<StatusMark state={t.mark} tone="neutral" />{/if}</span>
 						<div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
 							<a href={t.href} class="tap-link t-body min-w-0 max-w-full shrink-0 truncate text-fg">{t.app}</a>
 							<span class="flex shrink-0 items-center gap-1">{#each t.places as p (p.tier + p.place)}<Chip role="env" theme={envTheme(p.tier)} label={label(p.tier, p.place)} wide />{/each}</span>
