@@ -12,3 +12,11 @@ describe('Activity KPI head layout', () => {
 		expect(src).toMatch(/\.act-kpis \{ display: grid; grid-template-columns: repeat\(2,/);
 	});
 });
+
+describe('Activity In flight subline', () => {
+	it('is the shared dot list of count+noun facts, and the filter groups wrap instead of shrink-0', () => {
+		expect(src).toMatch(/\{#snippet inFlightSub\(\)\}[\s\S]*class="dot-list block"[\s\S]*dot-list-row flex flex-wrap/);
+		const strip = /data-activity-strip[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/.exec(src)?.[0] ?? '';
+		expect(strip).not.toMatch(/flex shrink-0 items-center gap-1\.5/);
+	});
+});

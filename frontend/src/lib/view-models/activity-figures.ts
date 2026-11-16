@@ -32,6 +32,18 @@ export function inFlightRollouts(entries: readonly InFlightEntry[]): { total: nu
 	return { total: deploying.size + checking.size + paused.size, checking: checking.size, paused: paused.size, deploying: deploying.size };
 }
 
+/**
+ * The In flight tile's subline as facts, worst-moving first: each is one "count noun" with a no-break space, so a wrapped
+ * line never splits a count from its noun; the caller joins them with the shared dot list (separators never sit at a line edge).
+ */
+export function inFlightFacts(f: { checking: number; paused: number; deploying: number }): string[] {
+	const out: string[] = [];
+	if (f.checking > 0) out.push(`${f.checking}\u00a0checking`);
+	if (f.paused > 0) out.push(`${f.paused}\u00a0paused`);
+	if (f.deploying > 0) out.push(`${f.deploying}\u00a0deploying`);
+	return out;
+}
+
 const HOUR = 3_600_000;
 
 /**

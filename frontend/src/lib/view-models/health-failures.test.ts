@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { HealthCheck } from '../../types';
-import { headRecovered, headFailingNow, checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary, withAge } from './health-failures';
+import { headRecovered, headFailingNow, checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary, withAge, checkNameSegments } from './health-failures';
 
 const mk = (cls: string, status: Record<string, unknown>, name = 'x'): HealthCheck => ({ metadata: { name }, spec: { class: cls }, status } as unknown as HealthCheck);
 const win = new Date('2026-11-15T09:00:00Z');
@@ -267,5 +267,13 @@ describe('headFailingNow', () => {
 		expect(headFailingNow([ok], head)).toBe(false);
 		expect(headFailingNow([], { timestamp: '2026-11-15T09:00:00Z' })).toBe(false);
 		expect(headFailingNow([], null)).toBe(false);
+	});
+});
+
+describe('checkNameSegments', () => {
+	it('splits after each slash and keeps the name intact', () => {
+		expect(checkNameSegments('orders/orders-worker')).toEqual(['orders/', 'orders-worker']);
+		expect(checkNameSegments('a/b/c-d').join('')).toBe('a/b/c-d');
+		expect(checkNameSegments('plain-name')).toEqual(['plain-name']);
 	});
 });

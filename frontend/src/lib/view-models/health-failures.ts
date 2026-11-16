@@ -418,3 +418,11 @@ export function heldCheckSnaps(live: HealthCheck[]): SnapCheck[] {
 		.filter((h) => h.status?.status !== 'Healthy')
 		.map((h) => ({ name: h.metadata?.name ?? '', namespace: h.metadata?.namespace, message: h.status?.message }));
 }
+
+/**
+ * A check's resource name as break-safe segments: split after each "/", the slash kept on the segment before it, so
+ * `orders/orders-worker` is `['orders/', 'orders-worker']`. A name may wrap only between segments (at a "/"), never at a hyphen.
+ */
+export function checkNameSegments(name: string): string[] {
+	return name.split(/(?<=\/)/).filter((s) => s !== '');
+}
