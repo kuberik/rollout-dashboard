@@ -90,3 +90,6 @@ export function attentionRollupOf<A>(failing: number, recovered: number, approva
 	const rec = Math.min(recovered, failing);
 	return [...failedRollup(failing - rec, 0), ...(approval ? [approval] : []), ...failedRollup(rec, rec)];
 }
+
+/** The one sentence of a recovered failure, on the banners and on the list cards: when its checks went OK, and why Retry is the reasonable next step. `at` is a clock ("09:34"), or null when unknown. */
+export const recoveredSentence = (at: string | null | undefined): string => `Recovered${at ? ` at ${at}` : ''}, so a retry is reasonable.`;

@@ -11,6 +11,7 @@ import type { HealthCheck, HealthObservation } from '../../types';
 import { classifyCheck } from './health-witness';
 import { formatAgoCompact } from '../utils';
 import { num } from './attention';
+import { recoveredSentence } from '$lib/components/new/state-words';
 import { displayTimeZone } from '$lib/timezone.svelte';
 
 export type CheckVerdict = 'failing' | 'pending' | 'recovered' | 'passing';
@@ -369,7 +370,7 @@ export function bannerEvidence(pool: CheckView[], pendingN: number, ago: string 
 		return {
 			observations: [],
 			check: { name: r?.name ?? worst.check.name, cls: r?.cls ?? worst.check.cls, message: `${r ? figureText(r.figure) : ''}${at ? ` at ${clock(at)}` : ''}`.trim() || undefined },
-			message: `Recovered${ok ? ` at ${clock(ok)}` : ''}, so a retry is reasonable.`,
+			message: recoveredSentence(ok ? clock(ok) : null),
 			recovered: true,
 			pool
 		};

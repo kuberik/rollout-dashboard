@@ -44,7 +44,7 @@
 						{#each P.asks as a, i (a.key)}
 							{@const act = a.failed ? null : a.href}
 							<div class="contents" data-truth-kind="attention" data-truth-app={a.app} data-truth-href={a.href} data-truth-group={a.failed ? 'failed' : 'approval'} {...truthAttrs(a.row)}>
-								<AttentionCard model={a.model} href={a.href} id={a.id} lead={span && i === 0} rollbackHref={a.rollbackHref ?? undefined} retryHref={a.href}
+								<AttentionCard model={a.model} href={a.href} id={a.id} lead={span && i === 0} rollbackHref={a.rollbackHref ?? undefined} retryHref={a.href} openHref={a.href}
 									approve={a.failed ? null : approvalTarget(a.row, hs)} approveFallbackHref={act ?? undefined}>
 								</AttentionCard>
 							</div>
