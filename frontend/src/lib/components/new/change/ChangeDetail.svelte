@@ -98,7 +98,7 @@
 	const prod = $derived(changeProd(c, scenario));
 	/* the one order of a failed place's actions (view-models/failure-actions.ts): Retry leads for a recovered failure, so it is the phone row's one visible action, not an entry behind "⋯" */
 	const failActs = $derived(failureActs<Act>(!!lead?.row?.failure?.recovered, {
-		rollback: backHref ? { label: 'Roll back', title: back ? `Roll back to ${back}` : undefined, href: backHref, icon: UndoOutline, key: 'rollback' } : null,
+		rollback: backHref ? { label: 'Roll back', href: backHref, icon: UndoOutline, key: 'rollback' } : null,
 		retry: lead ? { label: 'Retry', href: lead.href, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
 		rest: lead ? [{ label: 'Open rollout', href: lead.href, quiet: true, key: 'open-rollout' }] : []
 	}));
@@ -151,7 +151,8 @@
 			<!-- changedetail-9 CE8: the tab's set and order for a failed deploy: [Retry] [Roll back] + the quiet "Open rollout ›"; r34 S1a: the shared StatementBanner owns the shell and the phone action row -->
 			<StatementBanner severity="failed" title={failTitle} {check}
 				phoneMax={1}
-				primary={failActs.primary} secondary={failActs.secondary} />
+				primary={failActs.primary?.key === 'rollback' && back ? { ...failActs.primary, title: `Roll back to ${back}` } : failActs.primary}
+				secondary={failActs.secondary.map((a) => (a.key === 'rollback' && back ? { ...a, title: `Roll back to ${back}` } : a))} />
 		{:else if (st.kind === 'waiting' || st.kind === 'held') && lead}
 			<!-- the tab's held banner: the held hue with the pause disc; ONE button, and it says what it does: it navigates (CF1) -->
 			<StatementBanner severity="held" title={st.title} message={st.line ?? (st.kind === 'held' && lead.row ? (holdWord(lead.row, scenario) ?? undefined) : undefined)} messageDesktopOnly={st.kind !== 'held'}
