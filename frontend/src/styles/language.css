@@ -1007,6 +1007,10 @@ dialog[role='dialog'][aria-modal='true'] {
 	.page-header .dot-list:has(> .dot-list-row > [data-meta-phone-only]) {
 		display: none;
 	}
+	/* a below cell holding only the phone's action pair has nothing to show here (no empty row-gap) */
+	.page-header > [data-ph-below]:has(> [data-phone-actions]:only-child) {
+		display: none;
+	}
 }
 
 /* ── LANE H (squad-rollout, History, AD round 9, item 4): "drop the

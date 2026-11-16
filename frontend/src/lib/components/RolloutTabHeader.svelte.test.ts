@@ -61,7 +61,7 @@ describe('RolloutTabHeader: the phone meta line (LOGOPEN r8)', () => {
 		const phone = container.querySelector('a[data-phone-only]') as HTMLAnchorElement;
 		expect(phone).not.toBeNull();
 		expect(phone.textContent?.trim()).toBe('Roll back');
-		expect(phone.className).toMatch(/\blg:hidden\b/);
+		expect(phone.closest('[data-phone-actions]')!.className).toMatch(/\blg:hidden\b/);
 		expect(phone.className).toMatch(/\bh-11\b/);
 
 		const desktop = container.querySelector('a[data-desktop-only]') as HTMLAnchorElement;
@@ -148,7 +148,19 @@ describe('RolloutTabHeader: the phone shows the same pair as lg+', () => {
 	test('recovered: Roll back (secondary) then Retry (primary)', () => {
 		expect(phoneActs(true)).toEqual(['rollback:secondary', 'retry:primary']);
 	});
-	test('failing now: Roll back (primary), as lg+ shows it', () => {
-		expect(phoneActs(false)).toEqual(['rollback:primary']);
+	test('failing now: Roll back (primary) then Retry (secondary), as the Overview banner', () => {
+		expect(phoneActs(false)).toEqual(['rollback:primary', 'retry:secondary']);
+	});
+	test('the pair is its own line under the meta row: not inside it, no separator before it, gap-2', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false } });
+		const cell = container.querySelector('[data-phone-actions]') as HTMLElement;
+		expect(cell.closest('.dot-list-row')).toBeNull();
+		expect(cell.className).toMatch(/\bgap-2\b/);
+		expect(container.querySelector('[data-ph-below]')?.contains(cell)).toBe(true);
+	});
+	test('lg+ draws the same pair in the actions slot on a failing-now rollout (every tab shares this header)', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false } });
+		const d = [...container.querySelectorAll('a[data-desktop-only]')].map((a) => `${a.textContent?.trim()}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
+		expect(d).toEqual(['Roll back:primary', 'Retry:secondary']);
 	});
 });

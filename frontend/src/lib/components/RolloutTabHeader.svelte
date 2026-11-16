@@ -203,12 +203,10 @@
 			<UndoOutline class="h-4 w-4" aria-hidden="true" />
 			Roll back
 		</a>
-		{#if recovered}
-			<a class="btn btn-primary max-lg:hidden" data-desktop-only data-action="retry" href={retryLink}>
-				<PlaySolid class="h-4 w-4" aria-hidden="true" />
-				Retry
-			</a>
-		{/if}
+		<a class="btn {recovered ? 'btn-primary' : 'btn-secondary'} max-lg:hidden" data-desktop-only data-action="retry" href={retryLink}>
+			<PlaySolid class="h-4 w-4" aria-hidden="true" />
+			Retry
+		</a>
 	{/if}
 	{#if quietRollback && !isFailed && rollbackNow}
 		<a
@@ -227,8 +225,8 @@
 	<!-- ⭐ THE PHONE META LINE (LOGOPEN r8; below lg since r11, History AD
 	     round 12). Below lg (phones and the 768-1023 tablet width) the title
 	     row holds only the name and build, so it sits at the same y on every
-	     tab; the state chip leads this line and the failed build's one action
-	     ends it as a 44px "Roll back" (the dialog names the sha). A calm
+	     tab; the state chip leads this line; a failed build's action pair (Roll back,
+	     Retry; 44px) sits on its own line under it (`phoneActions`). A calm
 	     build's secondary "Roll back to <sha>" keeps its own row, pushed to
 	     the right edge (language.css `[data-phone-end]`). lg+ renders none of
 	     the phone copies (`lg:hidden`), and a meta row holding nothing else
@@ -255,29 +253,29 @@
 	{/if}
 	{#if subtitle}<a href={href(`/apps/${encodeURIComponent(name)}`)} class="min-w-0 truncate text-fg-subtle underline decoration-transparent underline-offset-[3px] transition-colors hover:text-fg hover:decoration-current {subtitleOnPhone ? '' : 'max-sm:hidden'}" title="Open app {subtitle}">{subtitle}</a>{/if}
 	{#if metaRender}{@render metaRender()}{/if}
+{/snippet}
+
+{#snippet phoneActions()}
+	<!-- ⭐ THE PHONE ACTION PAIR (below lg): the same pair the lg+ slot shows, in the same order (Roll back, then Retry; the
+	     state decides which is blue, as on the Overview banner), on its OWN line under the meta row. It is not part of the
+	     meta row: that row is one nowrap line of facts, and a pair at its end covered the age or the deploy count at 320.
+	     language.css hides the cell from lg up when this is its only child. -->
 	{#if inlineRollback && isFailed && rollbackNow}
-		{#if recovered}
-			<!-- the pair the lg+ header shows, in its order (Roll back, then the blue Retry): Roll back is never out of reach on a phone -->
-			<a class="btn btn-secondary ml-auto h-11 px-4 lg:hidden" data-phone-only data-action="rollback" href={rollbackLink} title="Roll back to {rollbackDisplay}">
+		<div class="flex flex-wrap items-center gap-2 lg:hidden" data-phone-actions>
+			<a class="btn {recovered ? 'btn-secondary' : 'btn-primary bg-none'} h-11 px-4" data-phone-only data-action="rollback" href={rollbackLink} title="Roll back to {rollbackDisplay}">
 				<UndoOutline class="h-4 w-4" aria-hidden="true" />
 				Roll back
 			</a>
-			<a class="btn btn-primary h-11 bg-none px-4 lg:hidden" data-phone-only data-action="retry" href={retryLink}>
+			<a class="btn {recovered ? 'btn-primary bg-none' : 'btn-secondary'} h-11 px-4" data-phone-only data-action="retry" href={retryLink}>
 				<PlaySolid class="h-4 w-4" aria-hidden="true" />
 				Retry
 			</a>
-		{:else}
-			<a
-				class="btn btn-primary ml-auto h-11 bg-none px-4 lg:hidden"
-				data-phone-only
-				href={rollbackLink}
-				title="Roll back to {rollbackDisplay}"
-			>
-				<UndoOutline class="h-4 w-4" aria-hidden="true" />
-				Roll back
-			</a>
-		{/if}
+		</div>
 	{/if}
+{/snippet}
+{#snippet belowAll()}
+	{@render phoneActions()}
+	{#if below}{@render below()}{/if}
 {/snippet}
 
 <PageHeader
@@ -288,10 +286,10 @@
 	actions={actions || (inlineRollback && isFailed && rollbackNow) || (quietRollback && rollbackNow)
 		? actionsRow
 		: undefined}
-	{below}
+	below={below || (inlineRollback && isFailed && rollbackNow) ? belowAll : undefined}
 	titleAfter={starThenTitleAfter}
 	identity={chip || identityExtra ? identity : undefined}
-	meta={subtitle || metaRender || chip || (inlineRollback && isFailed && rollbackNow)
+	meta={subtitle || metaRender || chip
 		? metaRow
 		: undefined}
 />
