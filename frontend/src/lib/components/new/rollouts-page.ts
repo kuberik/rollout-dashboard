@@ -19,7 +19,7 @@ import { holdWordParts } from './rollout-view';
 import { approvalWord, failedWord } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
-import { bannerEvidence, type BannerEvidence } from '$lib/view-models/health-failures';
+import { bannerEvidence, failureSince as checksFailingSince, type BannerEvidence } from '$lib/view-models/health-failures';
 import { causeText, joinCause, gateLabelText, labelPart, type Cause } from '$lib/view-models/gate-label';
 import { HELD_BY_PIN } from '$lib/view-models/pin-hold';
 import { regionsPhrase, siteCount } from '$lib/view-models/regions';
@@ -129,10 +129,19 @@ export function bannerMeta(r: TRow | null | undefined): BannerMeta {
 	if (!r) return { since: null, build: null };
 	return { since: r.since ? ago(r.since) : null, sinceAt: r.since ?? null, build: r.version ?? null };
 }
+/** a check of this failed row fails right now (its title says "failing"); with every check recovered, or a deploy failure, it says "failed". One rule for the /rollouts and /changes banners. */
+export const failingNowOf = (lead: TRow | null | undefined): boolean => !!lead?.failure?.pool?.some((c) => c.verdict === 'failing');
 /** the failure banner of a lead failing row (AlertPanel shape; the change line = the build's own PR identity) */
 export function bannerOf(lead: TRow): BannerModel {
 	const a = rowAction(lead);
-	return { evidence: lead.failure?.pool ? bannerEvidence(lead.failure.pool, lead.failure.pendingN ?? 0, null) : null, row: lead, title: failedBannerTitle(lead.app, lead.tier, chipPlace(lead)), check: lead.failure?.check ? { name: lead.failure.check, message: lead.failure.message ?? '', cls: lead.failure.cls } : null, line: lead.failure?.line ?? null, change: changeLineOf(lead), meta: bannerMeta(lead), openHref: lead.href, rollbackHref: a?.kind === 'rollback' ? actionHref(a) : null };
+	const pool = lead.failure?.pool ?? null;
+	/* `meta.since` is the age of the failure; FailureBanner prints it on the health line ("2 health checks failing, 1 pending · 12m ago"), as on the rollout Overview's banner; the meta line keeps only the build */
+	const checksSince = pool ? checksFailingSince(pool) : null;
+	const since = checksSince ?? lead.since ?? null;
+	const evidence = pool ? bannerEvidence(pool, lead.failure?.pendingN ?? 0, null) : null;
+	const failingNow = failingNowOf(lead);
+	const meta = bannerMeta(lead);
+	return { evidence, row: lead, title: failedBannerTitle(lead.app, lead.tier, chipPlace(lead), failingNow), check: lead.failure?.check ? { name: lead.failure.check, message: lead.failure.message ?? '', cls: lead.failure.cls } : null, line: lead.failure?.line ?? null, change: changeLineOf(lead), meta: { ...meta, since: since ? ago(since) : null, sinceAt: since }, openHref: lead.href, rollbackHref: a?.kind === 'rollback' ? actionHref(a) : null };
 }
 export function attentionItem(r: TRow, hs: HomeState): AttentionItem {
 	const failed = r.group === 'failed';
@@ -143,7 +152,8 @@ export function attentionItem(r: TRow, hs: HomeState): AttentionItem {
 	const counted = !!approvalLead(regions);
 	const model = attentionModel({
 		state: failed ? 'failed' : 'approval',
-		age: failed ? ago(r.since) : ago(waitClock(r, hs)),
+		age: failed ? ago(r.failure?.since ?? r.since) : ago(waitClock(r, hs)),
+		ageAt: failed ? (r.failure?.since ?? r.since ?? null) : null,
 		tier: r.tier, place: counted ? '' : (!failed && r.tier === 'prod' && waitScopeOf(r.app, hs)) || chipPlace(r) || '',
 		regions,
 		check: failed ? { name: r.failure?.check ?? null, message: r.failure?.message ?? r.failure?.line ?? '' } : null,

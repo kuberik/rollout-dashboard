@@ -1,3 +1,4 @@
+import { failedParts } from '$lib/components/new/state-words';
 import type { FamilyProgressStep } from './changes';
 /**
  * WAVE MARK aggregation (strip-dots, owner 2026-11-12: "just dots ... waves get an icon (it can be even mixed pie per sites)").
@@ -30,7 +31,7 @@ export type WaveMark = { slices: WaveSlice[]; mixed: boolean; label: string; /**
 export const kindOf = (s: MarkSiteState): MarkKind => (s === 'approval' || s === 'approval-yours' ? 'held' : s);
 
 /** `prefix`: "Wave 1" or the tier name. The label sums the sites: "Wave 1: 1 deployed, 1 checking". */
-export function waveMark(sites: { state: MarkSiteState }[], prefix = ''): WaveMark {
+export function waveMark(sites: { state: MarkSiteState; /** a failed site whose checks are all OK again: it reads `failed`, one with a check failing now `failing` */ recovered?: boolean }[], prefix = ''): WaveMark {
 	const n = sites.length;
 	const counts = new Map<MarkKind, number>();
 	for (const s of sites) counts.set(kindOf(s.state), (counts.get(kindOf(s.state)) ?? 0) + 1);
@@ -43,7 +44,8 @@ export function waveMark(sites: { state: MarkSiteState }[], prefix = ''): WaveMa
 		slices.push({ kind, count, share, from: at, to: at + share });
 		at += share;
 	}
-	const sum = slices.map((s) => `${s.count} ${NOUN[s.kind]}`).join(', ');
+	const failedSites = sites.filter((x) => x.state === 'failed');
+	const sum = slices.map((s) => (s.kind === 'failed' ? failedParts(failedSites.length, failedSites.filter((x) => x.recovered).length).join(', ') : `${s.count} ${NOUN[s.kind]}`)).join(', ');
 	const yours = sites.some((x) => x.state === 'approval-yours');
 	return { slices, mixed: slices.length > 1, label: (prefix ? prefix + ': ' : '') + (sum || 'no sites') + (yours ? ' (you can approve)' : ''), yours };
 }

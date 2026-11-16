@@ -5,7 +5,7 @@
  * (#37 in a11c202). Such a change has landed there; it is not "Failing in eu-west", it offers no roll back.
  */
 import type { HomeState, TChange } from './data';
-import { historyOfChange, regionStates } from './data';
+import { historyOfChange, regionStates, failureRecovered } from './data';
 import { TIERS, squaresSentence, type RideTruth, type SquareInk } from './change-view';
 import { classified, statementOf } from './change/detail-model';
 
@@ -35,5 +35,5 @@ export function regionSquares(app: string, scenario: HomeState): { inks: SquareI
 	const regions = regionStates(app, scenario);
 	const heldRule = regions.some((r) => r.state === 'held-by-rule') && !regions.some((r) => r.state === 'awaiting-approval');
 	const inks = regions.map((r) => (r.ink === 'moving' && r.state === 'checking' ? 'checking' : r.ink === 'healthy' && r.currency !== 'none' && !r.onNewest ? 'behind' : r.ink) as SquareInk);
-	return { inks, heldRule, sentence: squaresSentence(inks, heldRule) };
+	return { inks, heldRule, sentence: squaresSentence(inks, heldRule, regions.filter((r) => r.state === 'failed' && failureRecovered(r.href)).length) };
 }

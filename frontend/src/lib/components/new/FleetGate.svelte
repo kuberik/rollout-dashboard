@@ -86,7 +86,8 @@
 			schedules: schedulesQuery.data ?? null,
 			github: { configured: ghStatus.data?.configured ?? null, connected, login: ghStatus.data?.login, avatarUrl: ghStatus.data?.avatarUrl },
 			me: connected ? (ghStatus.data?.login ?? '').toLowerCase() : '',
-			now: clock
+			now: clock,
+			liveClock: true
 		};
 	});
 	/* installed BEFORE the children render, so their first derivation already reads the live source.

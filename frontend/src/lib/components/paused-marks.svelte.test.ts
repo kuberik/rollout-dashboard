@@ -70,12 +70,23 @@ describe('the banner age: one helper, one wording, floored', () => {
 
 import FailureBanner from './new/FailureBanner.svelte';
 
-describe('the list-page banner prints the age the rollout banner prints', () => {
-	it('"12m ago" off the live clock, never "for 11m" off a stale one', () => {
-		const b = { title: 'orders-hub failed in prod', check: null, line: null, change: null, openHref: '/x', rollbackHref: null, meta: { since: '11m', sinceAt: '2026-11-15T18:38:00Z', build: '1.4.0' } };
+describe('the list-page banner prints the age on the health line, as the rollout banner does', () => {
+	it('"12m ago" off the live clock ends the health line; the meta line keeps only the build', () => {
+		const b = { title: 'orders-hub failing in prod', check: null, line: '2 health checks failing', change: null, openHref: '/x', rollbackHref: null, meta: { since: '11m', sinceAt: '2026-11-15T18:38:00Z', build: '1.4.0' } };
 		const { container } = render(FailureBanner, { b });
 		const meta = container.querySelector('[data-statement-meta]')!.textContent!;
-		expect(meta).toContain('12m ago');
-		expect(meta).not.toMatch(/\bfor\b/);
+		expect(meta).toContain('1.4.0');
+		expect(meta).not.toMatch(/ago|\bfor\b/);
+		expect(container.querySelector('[data-statement-body]')!.textContent).toMatch(/2 health checks failing\s*·\s*12m\s*ago/);
+	});
+
+	it('the build leads the change line in mono; no bare build row, no build on the meta line', () => {
+		const b = { title: 'orders-hub failing in prod', check: null, line: '2 health checks failing', change: { title: 'Fix flaky readiness handler', ref: '#54', person: 'mark-collins' }, openHref: '/x', rollbackHref: null, meta: { since: '11m', sinceAt: '2026-11-15T18:38:00Z', build: '1.4.0' } };
+		const { container } = render(FailureBanner, { b });
+		const line = container.querySelector('[data-ap-change]')!;
+		expect(line.querySelector('[data-ap-build]')!.textContent).toBe('1.4.0');
+		expect(line.querySelector('[data-ap-build]')!.className).toContain('t-code');
+		expect(line.textContent).toMatch(/^\s*1\.4\.0\s*\u00b7\s*Fix flaky readiness handler\s*#54\s*M?mark-collins/);
+		expect(container.querySelector('[data-statement-meta]')).toBeNull();
 	});
 });

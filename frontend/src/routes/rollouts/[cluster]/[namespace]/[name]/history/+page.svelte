@@ -2018,7 +2018,7 @@
 												glyph + the red verb below), not three — the thing the
 												prior note was protecting stays protected. -->
 																	{#if isCurrent && currentRowChip(entry.bakeStatus, currencyBehind, bakePaused(entry))}
-																		<Chip role={entry.bakeStatus === 'InProgress' && bakePaused(entry) ? 'held' : 'count'} wide label={currentRowChip(entry.bakeStatus, currencyBehind, bakePaused(entry)) ?? ''} />
+																		<Chip role="count" wide label={currentRowChip(entry.bakeStatus, currencyBehind, bakePaused(entry)) ?? ''} />
 																	{/if}
 																	<!--
 												⭐ §3.11 — THE VERB IN ITS STATUS INK, NOT A CHIP — AND NOT

@@ -139,13 +139,16 @@ lib/components/AttentionCard.svelte	code	Open rollout
 lib/components/AttentionCard.svelte	text	Roll back
 lib/components/Avatar.svelte	code	… (CI)
 lib/components/Avatar.svelte	code	kuberik (automatic)
+lib/components/BlockedRow.svelte	code	: ''}… — …${holdLabel ?
 lib/components/BlockedRow.svelte	code	… failed
 lib/components/BlockedRow.svelte	code	… release… waiting
+lib/components/BlockedRow.svelte	code	…${c.envDisplay ?
 lib/components/BlockedRow.svelte	code	Checking for over an hour
 lib/components/BlockedRow.svelte	code	Deploy failed
 lib/components/BlockedRow.svelte	code	Deploying for over an hour
 lib/components/BlockedRow.svelte	code	Failed its health check
 lib/components/BlockedRow.svelte	code	Health check “…” failing
+lib/components/BlockedRow.svelte	code	Health check failing
 lib/components/BlockedRow.svelte	code	Stuck behind …
 lib/components/BlockedRow.svelte	code	Waiting on an approval…
 lib/components/BlockReason.svelte	title	… serves … …
@@ -397,9 +400,6 @@ lib/components/ErrorState.svelte	title	Where to look
 lib/components/EventsCard.svelte	text	… event …
 lib/components/EventsCard.svelte	text	… Nothing since the deploy started · … … No recent events …
 lib/components/EventsCard.svelte	title	Recent events
-lib/components/FailurePanel.svelte	code	: ' is failing'}
-lib/components/FailurePanel.svelte	code	… health checks failing: ……
-lib/components/FailurePanel.svelte	code	…${first ?
 lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
@@ -596,7 +596,6 @@ lib/components/new/app/AppActivity.svelte	text	No activity yet
 lib/components/new/app/AppActivity.svelte	title	Recent activity
 lib/components/new/app/AppActivity.svelte	code	Rolled back
 lib/components/new/app/AppBuilds.svelte	text	… builds not running anywhere
-lib/components/new/app/AppBuilds.svelte	text	… failing
 lib/components/new/app/AppBuilds.svelte	aria-label	…{noReleases ? '' : `, $…`}{s.title ? `, $…` : ''}
 lib/components/new/app/AppBuilds.svelte	text	Builds appear once a rollout deploys it.
 lib/components/new/app/AppBuilds.svelte	text	Builds from deploy history
@@ -632,7 +631,6 @@ lib/components/new/approvals.svelte.ts	code	main h1
 lib/components/new/approvals.svelte.ts	code	Undo failed, the approval stands
 lib/components/new/ApproveButton.svelte	text	… Approve
 lib/components/new/ApproveButton.svelte	code	Approve all
-lib/components/new/apps-page.ts	code	… failing
 lib/components/new/apps-page.ts	code	… yours
 lib/components/new/Apps.svelte	title	At rest
 lib/components/new/Apps.svelte	title	In flight
@@ -649,7 +647,6 @@ lib/components/new/change-view.ts	code	${stateWord('approval', { yours })} in �
 lib/components/new/change-view.ts	code	Checking in …
 lib/components/new/change-view.ts	code	deploy …
 lib/components/new/change-view.ts	code	Deploying to …
-lib/components/new/change-view.ts	code	Failing in …
 lib/components/new/change-view.ts	code	Healthy in …
 lib/components/new/change-view.ts	code	Held by a rule
 lib/components/new/change-view.ts	code	held in … · …
@@ -677,11 +674,9 @@ lib/components/new/change/ChangeHistory.svelte	label	Rolled back
 lib/components/new/change/ChangeHistory.svelte	text	Show … more
 lib/components/new/change/ChangeHistory.svelte	text	Show fewer
 lib/components/new/change/detail-model.ts	code	: ''} wait… behind this failure
-lib/components/new/change/detail-model.ts	code	… · failed
 lib/components/new/change/detail-model.ts	code	… checking
 lib/components/new/change/detail-model.ts	code	… deployed
 lib/components/new/change/detail-model.ts	code	… deploying
-lib/components/new/change/detail-model.ts	code	… failing
 lib/components/new/change/detail-model.ts	code	… has waited …
 lib/components/new/change/detail-model.ts	code	… held
 lib/components/new/change/detail-model.ts	code	… in …
@@ -722,13 +717,11 @@ lib/components/new/change/detail-model.ts	code	Waiting for approval
 lib/components/new/change/detail-model.ts	code	wave …
 lib/components/new/change/detail-model.ts	code	Wave … …
 lib/components/new/change/detail-model.ts	code	Wave … deployed
-lib/components/new/changes-page.ts	code	… failed in …${placeOf(lead.c) ?
-lib/components/new/changes-page.ts	code	… failing
 lib/components/new/changes-page.ts	code	… to approve
 lib/components/new/changes-page.ts	code	landed …
+lib/components/new/changes-plumb.ts	code	… in …
 lib/components/new/changes-plumb.ts	code	Checking in …
 lib/components/new/changes-plumb.ts	code	Deploying to …
-lib/components/new/changes-plumb.ts	code	Failing in …
 lib/components/new/changes-plumb.ts	code	Held before …
 lib/components/new/changes-plumb.ts	code	Needs your approval for …
 lib/components/new/changes-plumb.ts	code	Waiting for approval for …
@@ -774,7 +767,6 @@ lib/components/new/data.ts	code	Changes could not be read
 lib/components/new/data.ts	code	Changes need GitHub
 lib/components/new/data.ts	code	Deploy window
 lib/components/new/data.ts	code	Deployed again in … after a rollback
-lib/components/new/data.ts	code	Failing in …
 lib/components/new/data.ts	code	Final check
 lib/components/new/data.ts	code	Flux Deployment
 lib/components/new/data.ts	code	GitHub did not answer.
@@ -821,14 +813,12 @@ lib/components/new/env/env-page.ts	code	: versions[0] ?? ''}
 lib/components/new/env/env-page.ts	code	… behind
 lib/components/new/env/env-page.ts	code	… builds
 lib/components/new/env/env-page.ts	code	… failed
-lib/components/new/env/env-page.ts	code	… failing
 lib/components/new/env/env-page.ts	code	… held
 lib/components/new/env/env-page.ts	code	… not at rest
-lib/components/new/env/env-page.ts	code	… places: … failing, … waiting, … …, … healthy
 lib/components/new/env/env-page.ts	code	… regions
-lib/components/new/env/env-page.ts	code	… to approve
 lib/components/new/env/env-page.ts	code	… to deploy
 lib/components/new/env/env-page.ts	code	… waiting on a check
+lib/components/new/env/env-page.ts	code	…: …, … waiting, … …, … healthy
 lib/components/new/env/env-page.ts	code	from …
 lib/components/new/env/env-page.ts	code	Newer build … ready${n.from ?
 lib/components/new/env/env-page.ts	code	Newer build …${n.from ?
@@ -851,13 +841,12 @@ lib/components/new/env/EnvPage.svelte	text	Show … earlier
 lib/components/new/env/EnvPage.svelte	title	Today in …
 lib/components/new/env/GangwayTile.svelte	text	from …
 lib/components/new/environments-page.ts	code	… failed the bake
-lib/components/new/environments-page.ts	code	… failing
 lib/components/new/environments-page.ts	code	… for you
 lib/components/new/environments-page.ts	code	… healthy
 lib/components/new/environments-page.ts	code	… held · … failed the bake
-lib/components/new/environments-page.ts	code	… places: … failing, … waiting, … …, … healthy
 lib/components/new/environments-page.ts	code	… waiting
 lib/components/new/environments-page.ts	code	… waiting for …
+lib/components/new/environments-page.ts	code	…: …, … waiting, … …, … healthy
 lib/components/new/environments-page.ts	code	All … healthy
 lib/components/new/environments-page.ts	code	in progress
 lib/components/new/environments-page.ts	code	rolled back
@@ -894,11 +883,8 @@ lib/components/new/envs-model.ts	code	Waiting on
 lib/components/new/envs-model.ts	code	Waiting on a dependency
 lib/components/new/envs-model.ts	code	Waiting on check
 lib/components/new/EnvTile.svelte	text	… arriving
-lib/components/new/EnvTile.svelte	text	… failing
 lib/components/new/EnvTile.svelte	text	… healthy
 lib/components/new/EnvTile.svelte	text	… held
-lib/components/new/EnvTile.svelte	text	… places · … apps
-lib/components/new/EnvTile.svelte	text	… waiting
 lib/components/new/EnvTile.svelte	text	Last deploy
 lib/components/new/EnvTile.svelte	text	No deploys yet
 lib/components/new/EnvTile.svelte	text	Nothing arriving
@@ -935,8 +921,6 @@ lib/components/new/held-chain.ts	code	… is itself waiting on …
 lib/components/new/HoldingCard.svelte	text	Approvals and rules that hold a build appear here.
 lib/components/new/HoldingCard.svelte	text	Nothing is holding a build
 lib/components/new/HoldingCard.svelte	code	Waits on
-lib/components/new/home-page.ts	code	… failing
-lib/components/new/home-page.ts	code	… recovered
 lib/components/new/home-page.ts	code	… to approve
 lib/components/new/home-page.ts	code	Needs your approval
 lib/components/new/home-page.ts	code	Waiting for approval
@@ -951,7 +935,6 @@ lib/components/new/PipelineCard.svelte	code	Deployment pipeline
 lib/components/new/PipelineCard.svelte	code	Pipeline steps
 lib/components/new/rollout-view.ts	code	… … you
 lib/components/new/rollout-view.ts	code	… · … regions
-lib/components/new/rollout-view.ts	code	… failing
 lib/components/new/rollout-view.ts	code	… in progress
 lib/components/new/rollout-view.ts	code	… waiting for approval
 lib/components/new/rollout-view.ts	code	… yours to approve
@@ -1009,7 +992,6 @@ lib/components/new/Slipway.svelte	code	Your approval
 lib/components/new/Slipway.svelte	text	Your change
 lib/components/new/stages/stages-model.ts	code	… checking
 lib/components/new/stages/stages-model.ts	code	… deploying
-lib/components/new/stages/stages-model.ts	code	… failing
 lib/components/new/stages/stages-model.ts	code	… held
 lib/components/new/stages/stages-model.ts	code	… in progress
 lib/components/new/stages/stages-model.ts	code	… of …
@@ -1264,6 +1246,7 @@ lib/utils.ts	code	failed to deploy
 lib/version-utils.ts	code	… (no linked repository)
 lib/view-models/activity-figures.ts	code	… a day
 lib/view-models/activity-figures.ts	code	… an hour
+lib/view-models/activity-groups.ts	code	… deploy…
 lib/view-models/activity-groups.ts	code	… prod
 lib/view-models/activity-verb.ts	code	health check
 lib/view-models/activity-verb.ts	code	is checking
@@ -1294,7 +1277,7 @@ lib/view-models/auto-deploy.ts	code	Nothing moves off … until the pin is clear
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
-lib/view-models/banner.ts	code	… failed in …${place ?
+lib/view-models/banner.ts	code	… … in …${place ?
 lib/view-models/blocking-story.ts	code	— it is on
 lib/view-models/blocking-story.ts	code	, not 1
 lib/view-models/blocking-story.ts	code	, or this Environment is annotated environments.kuberik.com/take-over-site=true to take it over
@@ -1580,13 +1563,16 @@ lib/view-models/gate-fact.ts	code	… of … gates holding
 lib/view-models/gate-fact.ts	code	1 gate failing
 lib/view-models/gate-fact.ts	code	1 of … gates failing
 lib/view-models/gate-label.ts	code	… from …
+lib/view-models/health-failures.ts	code	: ' is failing'}
 lib/view-models/health-failures.ts	code	: ''}, so a retry is reasonable.
 lib/view-models/health-failures.ts	code	… …/…${unit ?
 lib/view-models/health-failures.ts	code	… …${o.window ?
+lib/view-models/health-failures.ts	code	… health checks failing: ……
 lib/view-models/health-failures.ts	code	… of …
 lib/view-models/health-failures.ts	code	… recovered
 lib/view-models/health-failures.ts	code	…${at ?
 lib/view-models/health-failures.ts	code	…${f.note ?
+lib/view-models/health-failures.ts	code	…${first ?
 lib/view-models/health-failures.ts	code	· … ago
 lib/view-models/health-failures.ts	code	+… more
 lib/view-models/health-failures.ts	code	check …
@@ -1733,7 +1719,6 @@ lib/view-models/regions.ts	code	repeat(auto-fit, minmax(…px, 1fr))
 lib/view-models/release-delta.ts	code	… … (new)
 lib/view-models/release-delta.ts	code	… … (removed)
 lib/view-models/release-delta.ts	code	Same commit as …. What changed: requires ….
-lib/view-models/repo-card.ts	code	… failing
 lib/view-models/repo-card.ts	code	… moving
 lib/view-models/repo-card.ts	code	… waiting
 lib/view-models/revision-coverage.ts	code	: envs}
@@ -1907,7 +1892,6 @@ routes/+layout.svelte	code	(min-width: 640px)
 routes/+layout.svelte	text	Skip to main content
 routes/activity/+page.svelte	code	, and … more
 routes/activity/+page.svelte	code	… · … ago
-routes/activity/+page.svelte	code	… · … failed
 routes/activity/+page.svelte	code	… · … failed, resolved
 routes/activity/+page.svelte	code	… · … rolled back
 routes/activity/+page.svelte	code	… · … still going
@@ -1917,7 +1901,6 @@ routes/activity/+page.svelte	text	… deploy …
 routes/activity/+page.svelte	code	… deploy…
 routes/activity/+page.svelte	code	… deploying
 routes/activity/+page.svelte	code	… deploys failed
-routes/activity/+page.svelte	code	… failing
 routes/activity/+page.svelte	code	… of … unresolved
 routes/activity/+page.svelte	code	… paused
 routes/activity/+page.svelte	code	… tier…

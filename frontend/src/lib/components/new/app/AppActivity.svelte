@@ -52,7 +52,7 @@
 				const bs = h.bakeStatus || 'None';
 				const actor = actorFrom(h.triggeredBy, undefined);
 				const rank = getEnvironmentRank(envName);
-				const kind = activityKindOf({ bakeStatus: bs, bakeStatusMessage: h.bakeStatusMessage, bakePaused: bakePaused(h), isRollback: acts[i]?.kind === 'rollback', actorKind: actor.kind, envRank: rank, firstEnvRank: Math.min(ranks.get(r.metadata?.name ?? '') ?? Infinity, rank) });
+				const kind = activityKindOf({ bakeStatus: bs, bakeStatusMessage: h.bakeStatusMessage, failedHealthChecks: !!h.failedHealthChecks?.length, bakePaused: bakePaused(h), isRollback: acts[i]?.kind === 'rollback', actorKind: actor.kind, envRank: rank, firstEnvRank: Math.min(ranks.get(r.metadata?.name ?? '') ?? Infinity, rank) });
 				const ts = bs === 'Failed' ? historyEntrySince(h) ?? h.timestamp : h.timestamp;
 				out.push({ key: `${ri}:${i}`, ts, kind, current: i === 0, env: shortEnvLabel(theme) || envName, theme, from: prev, to: ver, actor });
 			}

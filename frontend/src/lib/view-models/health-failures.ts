@@ -196,6 +196,16 @@ export function failureSince(pool: CheckView[]): string | null {
 	return earliest(pool.map((c) => (c.verdict === 'failing' ? c.since : c.verdict === 'recovered' ? c.recovery?.failedAt : null) ?? undefined));
 }
 
+/**
+ * Has the head deploy's failure recovered: every check it failed is OK again (the head's window opens at its deploy or last retry, as `failureReason` reads it)?
+ * For a page that holds the entry and the rollout's live checks but not the fleet source (the Activity feed).
+ */
+export function headRecovered(live: HealthCheck[], head: { timestamp?: string | null; lastRetryTimestamp?: string | null; failedHealthChecks?: readonly SnapCheck[] | null } | null | undefined): boolean {
+	if (!head) return false;
+	const winStart = new Date(Math.max(Date.parse(head.timestamp ?? '') || 0, Date.parse(head.lastRetryTimestamp ?? '') || 0));
+	return !!evidenceLine(poolOf(live, [...(head.failedHealthChecks ?? [])], winStart))?.recovered;
+}
+
 export type Worst = { check: CheckView; row: ObsRow | null; recovered: boolean };
 
 /**
@@ -280,8 +290,36 @@ export function snapshotCause(snaps: SnapCheck[]): { check: { name: string; mess
 	return { check: { name: ev.name, message: ev.short }, more: Math.max(0, failingRowCount(pool) - 1) };
 }
 
+/**
+ * The checks the banner's sentence counts and names: the ones failing NOW (the live list, status Unhealthy), each with the message its
+ * history snapshot kept (else the live status message). `snaps` is a record of the deploy and never expires, so it only answers when
+ * nothing is failing now: nothing live is Unhealthy, or the live checks are not known.
+ */
+export function failingNowList(snaps: SnapCheck[], live: HealthCheck[]): SnapCheck[] {
+	const now = live.filter((h) => h?.status?.status === 'Unhealthy');
+	if (!now.length) return snaps;
+	return now.map((h) => {
+		const name = h.metadata?.name ?? '';
+		const snap = snaps.find((s) => s.name === name);
+		return { ...(snap ?? {}), name, namespace: h.metadata?.namespace, message: snap?.message ?? h.status?.message, observations: snap?.observations ?? h.status?.observations };
+	});
+}
+
+/** one sentence for the banner body: a lone failing check and its first fact, else "N health checks failing: a, b, c…" */
+export function failingSummary(list: SnapCheck[], nameOf: (c: SnapCheck) => string): string | null {
+	if (list.length === 1) {
+		const first = (list[0].message || '').split(/;\s*/).filter(Boolean)[0];
+		return `${nameOf(list[0])}${first ? `: ${first}` : ' is failing'}`;
+	}
+	if (list.length > 1) return `${list.length} health checks failing: ${list.slice(0, 3).map(nameOf).join(', ')}${list.length > 3 ? '…' : ''}`;
+	return null;
+}
+
 /** the compact age of a check's fact line ("6m") */
 export const agoOf = (iso: string | null | undefined, now: Date): string | null => (iso ? formatAgoCompact(iso, now) : null);
+
+/** a banner's health line with the failure's age at its end ("2 health checks failing, 1 pending · 12m ago"); `age` already carries its "ago" (agoOf). The last word, the dot and the age are one no-break unit, so the dot never ends or starts a line alone (the live evidence line spells its tail the same way) */
+export const withAge = (message: string, age: string | null | undefined): string => (age ? `${message}\u00a0\u00b7\u00a0${age.replace(/ /g, '\u00a0')}` : message);
 
 /** `HH:MM`, 24h, the way the recovered strip and the fact line print a moment */
 export const clock = (iso: string, secs = false): string =>

@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	/**
-	 * The failure statement of the LIST pages (/rollouts, /changes, /envs/<name>): "<app> failed in <place>", the failed check, the meta line (Since · build; the place is the title's),
+	 * The failure statement of the LIST pages (/rollouts, /changes, /envs/<name>): "<app> failed in <place>", the failed check, the meta line (the place is the title's),
 	 * the change that failed, and Open rollout / Roll back. Role: the page's one blocking statement, the same as /apps and the app page print.
 	 * No existing component was missing: this IS `StatementBanner` (shell, meta line, phone action row, the ⋯ menu), given the list pages'
 	 * banner model once so the three pages stop hand-building a raw `AlertPanel` + `.btn` links (which had no meta line and no phone row).
@@ -12,7 +12,7 @@
 	import { UndoOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 	import FailureDetails from '$lib/components/FailureDetails.svelte';
-	import { agoOf, type BannerEvidence } from '$lib/view-models/health-failures';
+	import { agoOf, withAge, type BannerEvidence } from '$lib/view-models/health-failures';
 	import { now } from '$lib/stores/time';
 	import type { BannerMeta, ChangeLine } from './rollouts-page';
 
@@ -21,12 +21,15 @@
 		/** one more row under the sentence (/envs: the newer build that is waiting) */
 		extra?: Snippet;
 	} = $props();
+	/* the age rides on the health line ("2 health checks failing, 1 pending · 12m ago"), as on the rollout Overview's banner; the meta line keeps only the build */
+	const age = $derived(b.meta.sinceAt ? agoOf(b.meta.sinceAt, $now) : b.meta.since);
+	const sentence = $derived(b.evidence ? (b.evidence.recovered ? b.evidence.message : withAge(b.evidence.message, age)) : b.check ? undefined : b.line ? withAge(b.line, age) : undefined);
 </script>
 
 {#snippet details()}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
 <StatementBanner severity="failed" title={b.title} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
-	message={b.evidence ? b.evidence.message : b.check ? undefined : (b.line ?? undefined)} change={b.change ?? undefined}
-	since={b.evidence?.recovered ? undefined : (b.meta.sinceAt ? agoOf(b.meta.sinceAt, $now) : b.meta.since) ?? undefined} sinceLabel="" build={b.meta.build ?? undefined} body={extra} class=""
+	message={sentence} change={b.change ? { ...b.change, build: b.meta.build ?? undefined } : undefined}
+	build={b.change ? undefined : b.meta.build ?? undefined} body={extra} class=""
 	footnoteLabel={b.evidence ? 'Details' : undefined}
 	primary={b.rollbackHref ? { label: 'Roll back', href: b.rollbackHref, icon: UndoOutline, key: 'rollback' } : undefined}
 	secondary={[{ label: 'Open rollout', href: b.openHref, after: true, key: 'open' }]} footnoteBody={b.evidence ? details : undefined} />

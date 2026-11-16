@@ -15,6 +15,7 @@
  * are candidates, in array order ("the FIRST observation"); all healthy -> the check fallback.
  */
 import type { HealthObservation } from '$lib/../types';
+import { failedWord } from '$lib/components/new/state-words';
 
 export type AttentionState = 'failed' | 'approval';
 
@@ -83,12 +84,15 @@ export function checkFact(check: { name: string | null; message: string }): { na
 	return { name: check.name, message: check.message };
 }
 
-export const statusWord = (s: AttentionState): string => (s === 'failed' ? 'Failing' : 'Needs your approval');
+/** a failure whose checks all recovered reads `Failed`; `Failing` is a check failing now (state-words.ts failedWord) */
+export const statusWord = (s: AttentionState, recovered = false): string => (s === 'failed' ? failedWord(recovered) : 'Needs your approval');
 
 export type AttentionInput = {
 	state: AttentionState;
 	/** compact age ("9h"): printed as "for 9h" */
 	age?: string | null;
+	/** the instant `age` counts from (ISO): a card that ticks prints the age against the live clock, as the banners do, so one failure has one age on every page */
+	ageAt?: string | null;
 	tier?: string;
 	place?: string;
 	/** the failing check (Failing) — name + message */
@@ -112,6 +116,8 @@ export type AttentionModel = {
 	state: AttentionState;
 	word: string;
 	forAge: string | null;
+	/** the instant `forAge` counts from, when the card should tick it live */
+	forAgeAt: string | null;
 	tier: string;
 	place: string;
 	lead: AttentionLead | null;
@@ -141,8 +147,9 @@ export function attentionModel(i: AttentionInput): AttentionModel {
 		: i.gateSentence ? { name: null, message: i.gateSentence } : null;
 	return {
 		state: i.state,
-		word: failed && i.recovered ? 'Failed' : statusWord(i.state),
+		word: statusWord(i.state, !!i.recovered),
 		forAge: i.age ? `for ${i.age}` : null,
+		forAgeAt: i.ageAt ?? null,
 		tier: i.tier ?? '',
 		place: i.place ?? '',
 		lead,

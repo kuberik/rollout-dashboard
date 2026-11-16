@@ -13,6 +13,8 @@ import { TONE } from '$lib/view-models/state-tone';
  * (the lastErrorTime witness keeps the deploy failed) is "Failed". Every surface that prints the word for a failed place asks here.
  */
 export const failedWord = (recovered: boolean): 'Failing' | 'Failed' => (recovered ? 'Failed' : 'Failing');
+/** "2 failing" and "1 failed" as separate parts, zero parts left out: the one counting rule for failed places, `recovered` of the `failing` ones having all their checks OK again */
+export const failedParts = (failing: number, recovered: number): string[] => [failing - recovered > 0 ? `${failing - recovered} ${failedWord(false).toLowerCase()}` : '', recovered > 0 ? `${recovered} ${failedWord(true).toLowerCase()}` : ''].filter(Boolean);
 
 export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking' | 'paused';
 

@@ -19,6 +19,7 @@ import {
 	behindOfPlace,
 	noReleasesAt,
 	deployedBuild,
+	failureSinceAt,
 	waitClock,
 	type HomeState,
 	ago,
@@ -29,7 +30,7 @@ import {
 	type TRow,
 	type TierKey
 } from '../data';
-import { lastFailureMs } from '$lib/view-models/event-age';
+import { lastFailureMsWithHeads } from '$lib/view-models/event-age';
 import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
@@ -778,7 +779,7 @@ export function weekSummary(
 		failed,
 		rolledBack,
 		medianHealthyMs,
-		lastFailureMs: lastFailureMs(
+		lastFailureMs: lastFailureMsWithHeads(
 			rollouts.map((r) => r.history),
 			from,
 			nowMs
@@ -832,9 +833,9 @@ export const approvalMessage = (
 		.join(' ');
 
 /** the time-in-state a PlaceRow prints. A place that WAITS (approval / rule) prints the one clock of a wait, `waitClock` (the figure the /rollouts row prints);
- *  every other place prints since its deployed build landed. The waiting build's own age is not this row's to say. */
+ *  a failed place (the state word Failing / Failed) dates from when its check began failing, the age the banner and Summary print; every other place prints since its deployed build landed. The waiting build's own age is not this row's to say. */
 export const placeAge = (row: TRow, hs: HomeState = 'incident'): string =>
-	ago((row.group === 'approval' || row.group === 'held') && !row.stillChecking ? waitClock(row, hs) : (deployedBuild(row)?.at ?? row.since));
+	ago((row.group === 'approval' || row.group === 'held') && !row.stillChecking ? waitClock(row, hs) : row.group === 'failed' ? (failureSinceAt(row.href) ?? deployedBuild(row)?.at ?? row.since) : (deployedBuild(row)?.at ?? row.since));
 
 /** The banner message of a single-cause app: the parts after the lead, minus any that repeats the lead (the held cause and the app's own fact can both carry the hold's sentence). Null when nothing is left. */
 /** `causeLine` over typed causes: what the banner's message adds beyond its lead, a promotion label kept as a label */

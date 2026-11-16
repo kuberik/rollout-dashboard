@@ -99,15 +99,20 @@
 	const healthyChecks = $derived(
 		healthChecks.filter((hc) => classifyCheck(hc, windowStart) === 'passing')
 	);
-	const rollupText = $derived(
-		[
-			failedChecks.length > 0 ? `${failedChecks.length} failing` : '',
-			pendingChecks.length > 0 ? `${pendingChecks.length} pending` : '',
-			recovered.length > 0 ? `${recovered.length} recovered` : '',
-			healthyChecks.length > 0 ? (failedChecks.length + pendingChecks.length + recovered.length === 0 ? `${healthChecks.length}/${healthChecks.length} healthy` : `${healthyChecks.length} passing`) : ''
-		]
-			.filter(Boolean)
-			.join(' \u00b7 ')
+	/* state-only colour: only the failing part is in danger ink; pending, recovered and passing read in the neutral meta ink (the all-healthy sentence stays success). Same parts, same order as before. */
+	const rollupParts = $derived(
+		(
+			[
+				failedChecks.length > 0 ? { text: `${failedChecks.length} failing`, ink: 'text-danger' } : null,
+				pendingChecks.length > 0 ? { text: `${pendingChecks.length} pending`, ink: 'text-fg-muted' } : null,
+				recovered.length > 0 ? { text: `${recovered.length} recovered`, ink: 'text-fg-muted' } : null,
+				healthyChecks.length > 0
+					? failedChecks.length + pendingChecks.length + recovered.length === 0
+						? { text: `${healthChecks.length}/${healthChecks.length} healthy`, ink: 'text-success' }
+						: { text: `${healthyChecks.length} passing`, ink: 'text-fg-muted' }
+					: null
+			] as ({ text: string; ink: string } | null)[]
+		).filter((x): x is { text: string; ink: string } => x !== null)
 	);
 	function errorAgo(hc: HealthCheck): string {
 		return hc.status?.lastErrorTime ? formatAgoCompact(hc.status.lastErrorTime, $now) : 'earlier';
@@ -206,60 +211,12 @@
 				: 'text-success'
 	);
 
-	/**
-	 * ⛔ TWO STATUS GRAMMARS IN ONE CARD. (2026-09-13, demo capture, lane 4.)
-	 * Measured on `/rollouts/dev/default/hello-world` at 1920: the pending row
-	 * carried a FILLED `rounded-full bg-yellow-100` pill reading `Pending`
-	 * while the two rows directly under it carried BARE GREEN TEXT reading
-	 * `passing` — a filled capsule and an unboxed word, 40px apart, in one
-	 * rail card, for the same axis. A reader cannot tell whether the shape
-	 * difference means something (it did not) and the failing row had a THIRD
-	 * spelling again (a filled red capsule printing the raw CRD enum,
-	 * `Failed`/`Unknown`, not the card's own word).
-	 *
-	 * REFERENCE REGION, 600px to the LEFT IN THE SAME VIEWPORT:
-	 * `DeploymentPipelineCard`'s step rows. Every one of them is the chip atom
-	 * — `.chip t-chip chip-wide`, a neutral `gray-200`/`gray-700` hairline,
-	 * nothing filled, and ONLY the ink changing per state (that component's
-	 * own `pillClasses`, whose note records why: *"a state word in a box is
-	 * what `.chip` is for … only ink changes per state; the border stays
-	 * neutral and nothing fills — the alarm chip is the only fill in the
-	 * product"*). These four values are that map's `failed` / `paused` /
-	 * `done` rows, unchanged.
-	 *
-	 * ⚠️ NOT `<Chip role="failing">`. `Chip`'s status roles all carry a WASH
-	 * (`ADVERSE` is `bg-red-50`, `CHECKING` is `bg-yellow-50`) and these rows
-	 * already sit on a full-width `bg-red-50` / `bg-yellow-50` band — a wash
-	 * chip on its own wash disappears. The pipeline card hit the same wall and
-	 * answered it the same way, with the atom rather than the role.
-	 *
-	 * ⚠️ AND THE WORD IS THE CARD'S OWN, NOT THE CRD's. The rollup above says
-	 * `1 pending · 2 passing`; the rows now say `PENDING` and `PASSING`. The
-	 * raw `status.status` moves to the row's `title`, where a reader who wants
-	 * the controller's own enum can still get it.
-	 */
-	const CHECK_TONE = {
-		failing: 'border-danger-line text-danger',
-		pending: 'border-progress-line text-progress',
-		recovered: 'border-success-line text-success',
-		passing: 'border-success-line text-success'
-	} as const;
-
 	function displayName(hc: HealthCheck): string {
 		return (
 			hc.metadata?.annotations?.['kuberik.com/display-name'] || hc.metadata?.name || 'health check'
 		);
 	}
 </script>
-
-<!--
-	THE ONE STATUS MARK, rendered identically on all four kinds of row. It is a
-	snippet and not four hand-spelled spans so the geometry cannot drift back
-	apart the way the capsule and the bare word already did once.
--->
-{#snippet stateChip(word: keyof typeof CHECK_TONE, title: string | undefined)}
-	<span class="chip t-label chip-wide shrink-0 {CHECK_TONE[word]}" {title}>{word}</span>
-{/snippet}
 
 {#if loadError}
 	<!-- UNKNOWN is not NONE: the same fact the change-version dialog states when
@@ -280,10 +237,8 @@
 		dataTour="health-checks"
 	>
 		{#snippet rollup()}
-			<!-- never print a zero count; the leading verdict sets the ink (recovered is not a yellow: green) -->
-			<span class="t-ui-sm {failedChecks.length > 0 ? 'text-danger' : pendingChecks.length > 0 ? 'text-progress' : 'text-success'}"
-				>{rollupText}</span
-			>
+			<!-- never print a zero count; each part in its own ink (Group.svelte's rollup draws its counts the same way) -->
+			<span class="t-ui-sm">{#each rollupParts as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class={part.ink}>{part.text}</span>{/each}</span>
 		{/snippet}
 		<!--
 			⭐ ONE ROW, ONE POSITION, FOUR LOOKS. (2026-09-21, film critic finding
@@ -319,13 +274,17 @@
 				{@const passingRow = state === 'passing'}
 				{@const hasRows = v.rows.length > 0}
 				{@const expanded = expandedMessages.has(key)}
+				{@const pendingMessage = pending && !!v.since && !!v.message && !readsHealthy(v.message)}
 				<div data-testid="hc-row" class="border-line-subtle border-b px-4 py-3 last:border-b-0">
 				<div class="flex items-start gap-3">
 					<CheckStateMark verdict={state} class="mt-0.5" />
 					<div class="min-w-0 flex-1">
-						<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
-							{displayName(hc)}
-						</span>
+						<!-- one row grammar for every state: glyph + name, then the fact line ("state · age"); the provider's raw status is the pending fact line's title -->
+						<div class="flex min-w-0 items-center gap-2">
+							<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
+								{displayName(hc)}
+							</span>
+						</div>
 						<!--
 							EVERY STATE DRAWS THE NAME AND ONE FACT LINE (2026-11-12, owner rule: nothing moves as state changes).
 							The fact line is a single truncated line in every state; evidence (observation rows, the provider's
@@ -348,8 +307,8 @@
 							{/if}
 						{:else if pending}
 							{#if v.since}
-								<!-- a pending check says how long it has waited; what it is waiting on is the evidence under it -->
-								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate"><span class="text-progress">waiting</span>{' · '}<span class="whitespace-nowrap tabular-nums">{formatTimeAgoCompact(v.since, $now)}</span></p>
+								<!-- a pending check says how long it has waited; with no start time it says what the check is waiting on (the provider's message or the probe countdown) -->
+								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={hc.status?.status || undefined}><span class="text-progress">pending</span>{' · '}<span class="whitespace-nowrap tabular-nums">{formatTimeAgoCompact(v.since, $now)}</span></p>
 							{:else}
 								{@const text = pendingRowText(hc, $now)}
 								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={text}>{text}</p>
@@ -368,18 +327,9 @@
 							</p>
 						{/if}
 					</div>
-					<!-- the chip budget: a failing row's red glyph + red fact is its one mark; passing draws none -->
-					<div class="flex shrink-0 items-center gap-2">
-						{#if failing}
-							<!-- stated under the name -->
-						{:else if passingRow}
-							<!-- the age lives in the fact line -->
-						{:else if pending}
-							{@render stateChip(state, hc.status?.status || undefined)}
-						{/if}
-					</div>
 				</div>
-				<!-- the evidence spans the whole row (under the glyph + name, not squeezed beside the state chip) -->
+				<!-- the evidence spans the whole row (under the glyph + name, not squeezed beside the state chip); a row with none draws no wrapper -->
+				{#if hasRows || pendingMessage || (recoveredRow && v.recovery)}
 				<div class="flex flex-col pl-7">
 					{#if hasRows}
 						{@const folded = !showAll.has(key) && v.rows.length > SOURCE_FOLD}
@@ -389,7 +339,7 @@
 						{#if folded}
 							<button type="button" class="btn btn-secondary btn-xs mt-2 self-start" onclick={() => (showAll = new Set(showAll).add(key))}>Show {v.rows.length - SOURCE_FOLD} more</button>
 						{/if}
-					{:else if pending && v.since && v.message && !readsHealthy(v.message)}
+					{:else if pendingMessage}
 						<!-- a pending check with no observations: the provider's own error, in full on demand -->
 						<button
 							type="button"
@@ -408,6 +358,7 @@
 						{/if}
 					{/if}
 				</div>
+				{/if}
 				</div>
 			{/if}
 		{/each}

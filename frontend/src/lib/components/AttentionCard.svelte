@@ -28,6 +28,8 @@
 	import { envTheme } from '$lib/components/new/rollout-view';
 	import type { ApprovalTarget } from '$lib/components/new/data';
 	import type { AttentionModel } from '$lib/view-models/attention';
+	import { now } from '$lib/stores/time';
+	import { formatTimeAgoCompact } from '$lib/utils';
 	import { atoms } from '$lib/components/atoms/atoms-context';
 	import RegionMeter from '$lib/components/atoms/RegionMeter.svelte';
 
@@ -71,6 +73,8 @@
 		note?: string;
 		class?: string;
 	} = $props();
+	/* a failure's age counts against the live clock, the banners' rule: one failure, one age */
+	const forAge = $derived(model.forAgeAt ? `for ${formatTimeAgoCompact(model.forAgeAt, $now)}` : model.forAge);
 
 	const failed = $derived(model.state === 'failed');
 	/* r42 atom: the approval's ratio figure ("5 of 6 prod regions") counted as a region meter */
@@ -87,7 +91,7 @@
 	<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 		<span class="inline-grid shrink-0"><StatusMark state={failed ? 'failed' : 'approval'} /></span>
 		<span class="t-meta font-semibold {failed ? 'text-danger' : 'text-held'}" data-word>{model.word}</span>
-		{#if model.forAge}<span class="t-meta tabular-nums text-fg-subtle">· {model.forAge}</span>{/if}
+		{#if forAge}<span class="t-meta tabular-nums text-fg-subtle">· {forAge}</span>{/if}
 		{#if model.tier}<span class="ml-auto shrink-0"><Chip role="env" theme={envTheme(model.tier)} label={tierLabel} wide /></span>{/if}
 	</div>
 {/snippet}

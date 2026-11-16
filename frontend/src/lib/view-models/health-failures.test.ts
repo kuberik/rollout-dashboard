@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { HealthCheck } from '../../types';
-import { checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince } from './health-failures';
+import { headRecovered, checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary, withAge } from './health-failures';
 
 const mk = (cls: string, status: Record<string, unknown>, name = 'x'): HealthCheck => ({ metadata: { name }, spec: { class: cls }, status } as unknown as HealthCheck);
 const win = new Date('2026-11-15T09:00:00Z');
@@ -198,5 +198,61 @@ describe('failureSince: the failure has one age', () => {
 	it('is null when nothing is failing', () => {
 		const kust = mk('kustomization', { status: 'Pending', lastChangeTime: T(3) }, 'kust');
 		expect(failureSince(poolOf([kust], [], null))).toBeNull();
+	});
+});
+
+describe('the banner sentence counts only the checks failing now', () => {
+	const snaps = [{ name: 'a', message: 'a: latency over budget; more' }, { name: 'b', message: 'b monitor alerted' }];
+	const live = [mk('datadog', { status: 'Unhealthy' }, 'a'), mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(5) }, 'b')];
+	const nameOf = (c: { name: string }) => c.name;
+	it('A failing, B recovered: one check, named, not "2 health checks failing: a, b"', () => {
+		const list = failingNowList(snaps, live);
+		expect(list.map((c) => c.name)).toEqual(['a']);
+		expect(failingSummary(list, nameOf)).toBe('a: a: latency over budget');
+	});
+	it('both failing now: counts and names both', () => {
+		const both = [mk('datadog', { status: 'Unhealthy' }, 'a'), mk('datadog', { status: 'Unhealthy' }, 'b')];
+		expect(failingSummary(failingNowList(snaps, both), nameOf)).toBe('2 health checks failing: a, b');
+	});
+	it('all recovered, or no live checks (older controllers): the history record answers', () => {
+		const rec = [mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(5) }, 'a'), live[1]];
+		expect(failingNowList(snaps, rec)).toBe(snaps);
+		expect(failingNowList(snaps, [])).toBe(snaps);
+		expect(failingSummary(failingNowList(snaps, []), nameOf)).toBe('2 health checks failing: a, b');
+		expect(failingSummary([], nameOf)).toBeNull();
+	});
+	it('a check failing now that the snapshot never recorded is still named, with its live message', () => {
+		const only = [mk('datadog', { status: 'Unhealthy', message: 'late failure' }, 'c')];
+		expect(failingSummary(failingNowList(snaps, only), nameOf)).toBe('c: late failure');
+	});
+	it('the lead check is the one failing now, even when the record never named it (not the record\'s first, which may have recovered)', () => {
+		const rec = [{ name: 'a', message: 'a recovered earlier' }];
+		const only = [mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(5) }, 'a'), mk('datadog', { status: 'Unhealthy', message: 'c is down', observations: [{ name: 'q', healthy: false }] }, 'c')];
+		const lead = failingNowList(rec, only)[0];
+		expect(lead.name).toBe('c');
+		expect(lead.message).toBe('c is down');
+		expect(lead.observations?.[0].name).toBe('q');
+		expect(failingNowList(rec, [only[0]])[0].name).toBe('a');
+	});
+});
+
+describe('withAge', () => {
+	it('puts the age on the health line, never on a meta line', () => {
+		expect(withAge('2\u00a0health checks failing, 1\u00a0pending', '12m ago')).toBe('2\u00a0health checks failing, 1\u00a0pending\u00a0\u00b7\u00a012m\u00a0ago');
+		expect(withAge('2 health checks failing', null)).toBe('2 health checks failing');
+	});
+});
+
+describe('headRecovered', () => {
+	const snap = [{ name: 'chk', observations: [{ name: 'HighLatency', kind: 'Threshold' as const, value: '1.9', limit: '1', direction: 'Above' as const, unit: 's', healthy: false, observedTime: T(2) }] }];
+	const head = { timestamp: '2026-11-15T09:00:00Z', failedHealthChecks: snap };
+	it('is true once every failed check is OK again', () => {
+		const ok = mk('prometheus-alert', { status: 'Healthy', lastErrorTime: T(4), lastChangeTime: T(5), observations: [{ name: 'HighLatency', kind: 'Threshold', value: '0.4', limit: '1', direction: 'Above', unit: 's', healthy: true }] }, 'chk');
+		expect(headRecovered([ok], head)).toBe(true);
+	});
+	it('is false while a check fails now, and with no head', () => {
+		const bad = mk('prometheus-alert', { status: 'Unhealthy', lastChangeTime: T(5), observations: [{ name: 'HighLatency', kind: 'Threshold', value: '1.9', limit: '1', direction: 'Above', unit: 's', healthy: false }] }, 'chk');
+		expect(headRecovered([bad], head)).toBe(false);
+		expect(headRecovered([], null)).toBe(false);
 	});
 });

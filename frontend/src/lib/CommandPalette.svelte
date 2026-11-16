@@ -71,7 +71,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import RestGlyph from '$lib/components/RestGlyph.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import BlockedRow, { blockedKindOf } from '$lib/components/BlockedRow.svelte';
+	import BlockedRow, { blockedKindOf, blockedOptionLabel, blockedRecoveredRank } from '$lib/components/BlockedRow.svelte';
 	import { isHeldByApproval } from '$lib/view-models/held';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import Toast from '$lib/components/Toast.svelte';
@@ -122,6 +122,7 @@
 		shortEnvLabel
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
+	import { failureRecovered } from '$lib/components/new/data';
 	import { href, appPath } from '$lib/paths';
 	import { now } from '$lib/stores/time';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -914,6 +915,8 @@
 	function rowKind(c: RolloutCard) {
 		return blockedKindOf(c, approvalCards.has(c));
 	}
+	/** a failed row whose checks have recovered sorts below one failing now */
+	const recoveredRank = (c: RolloutCard) => blockedRecoveredRank(rowKind(c), failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)));
 	/** Failures, then stalls, then approvals (coordinator, 2026-10-11). */
 	const KIND_ORDER = { failed: 0, stuck: 1, held: 2 } as const;
 	const needsYouLeads = $derived(
@@ -929,6 +932,7 @@
 				(a, b) =>
 					Number(b === currentRolloutCard) - Number(a === currentRolloutCard) ||
 					KIND_ORDER[rowKind(a)] - KIND_ORDER[rowKind(b)] ||
+					recoveredRank(a) - recoveredRank(b) ||
 					cardSeverity(b) - cardSeverity(a) ||
 					a.name.localeCompare(b.name)
 			)
@@ -1776,7 +1780,7 @@
 		role="option"
 		id={`cp-opt-${idx}`}
 		aria-selected={isActive}
-		aria-label={`${c.name}${c.envDisplay ? ` · ${c.envDisplay}` : ''} — ${actionLabel}${approvalGateLabel(c) ? ` ${approvalGateLabel(c)}` : ''}`}
+		aria-label={blockedOptionLabel(c, rowKind(c), failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)), actionLabel, approvalGateLabel(c) ?? '')}
 		data-idx={idx}
 		tabindex="-1"
 		onmouseenter={() => (selectedIndex = idx)}
@@ -1792,6 +1796,7 @@
 			card={c}
 			kind={rowKind(c)}
 			approval={approvalCards.has(c)}
+			recovered={failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name))}
 			story={approvalStories.get(c) ?? null}
 			href={rowHref}
 			size="palette"

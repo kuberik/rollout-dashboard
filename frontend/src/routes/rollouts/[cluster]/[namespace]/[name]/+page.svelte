@@ -76,7 +76,7 @@
 	import { href } from '$lib/paths';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
 	import FleetGate from '$lib/components/new/FleetGate.svelte';
-	import { canApproveAt, failureRecovered } from '$lib/components/new/data';
+	import { canApproveAt, failureRecovered, failureSinceAt } from '$lib/components/new/data';
 	import BlockedActions from '$lib/components/new/BlockedActions.svelte';
 	import { askView } from '$lib/components/new/state-words';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
@@ -3280,7 +3280,7 @@
 												quietNoReleases
 												sites
 												reserve
-												recovered={(n) => failureRecovered(rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name))}
+												recovered={(n) => failureRecovered(rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name))} failedSince={(n) => failureSinceAt(rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name))}
 											/>
 										{/snippet}
 									</FleetGate>

@@ -13,10 +13,10 @@ import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import {
 	changes, candidateBuilds, shortBuild, placesOfChange, historyOfChange, changeCommits, runsIn, rowsOf, rollouts, heldBehind, lastHealthy, ago,
-	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathReach, reachSentence, buildCommitOf,
+	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathReach, reachSentence, buildCommitOf, failureRecovered,
 	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock, waveInfoOfHref
 } from '../data';
-import { stateWord, approvalWord } from '../state-words';
+import { stateWord, approvalWord, failedWord, failedParts } from '../state-words';
 import { holdWord as holdText } from '../rollout-view';
 import { changeBySha, homeModel } from '$lib/components/home/sketch/home-data';
 import { rangeJson, pullJson } from '../github-read.svelte';
@@ -87,7 +87,7 @@ function classifiedRaw(c: TChange, scenario: HomeState): { all: Unit[]; places: 
 		const mine = hist.filter((h) => h.href === u.href);
 		/* rideTruth (change-truth.ts): a place that already ran the change healthily (a Succeeded deploy in its History) did not fail on it: the failing build is a later change's, so the change LANDED there */
 		const ranOk = mine.some((h) => h.outcome === 'Succeeded');
-		if (u.state === 'failed' && mine.length && !ranOk) { places.push({ ...u, kind: 'failed', since: u.row?.since ?? mine[mine.length - 1].at, build: u.current, at: u.row?.since ?? currentAt(u.href) }); continue; }
+		if (u.state === 'failed' && mine.length && !ranOk) { places.push({ ...u, kind: 'failed', since: u.row?.failure?.since ?? u.row?.since ?? mine[mine.length - 1].at, build: u.current, at: u.row?.failure?.since ?? u.row?.since ?? currentAt(u.href) }); continue; }
 		if (u.state === 'failed' && ranOk) { const first = mine.find((h) => h.outcome === 'Succeeded')!; places.push({ ...u, row: null, tabRow: u.row, state: 'healthy', current: u.current, newerFails: true, carried: first.build, kind: 'running', since: first.at, build: u.current, at: currentAt(u.href) ?? first.at }); continue; }
 		if (u.containsChange) { const first = mine.find((h) => h.outcome === 'Succeeded') ?? mine[0]; places.push({ ...u, kind: 'running', since: first?.at ?? null, build: u.current, at: currentAt(u.href) ?? first?.at ?? null }); continue; }
 		if (u.row && (u.group === 'approval' || u.group === 'held')) {
@@ -112,15 +112,22 @@ function classifiedRaw(c: TChange, scenario: HomeState): { all: Unit[]; places: 
 const carriesBuild = (c: Pick<TChange, 'mergedAt' | 'repo'>, v: RawV) => { const k = changeBySha(c.repo, shortRevision(v.revision ?? v.tag ?? '')); return !!k && isNotEarlier(k.mergedAt, c.mergedAt); };
 export const runningN = (ps: Place[]) => ps.filter((p) => p.kind === 'running').length;
 /** CE2: THE count of the page, with its unit, read from here by the header, the Places rollup and the tests: "9 places · 3 live · 5 waiting · 1 not affected" */
+/** a failed place whose checks are all OK again (its rollout row's own `failure.recovered`, or the tab row behind a newer-build failure) */
+const recoveredPlace = (p: Place): boolean => !!(p.row ?? p.tabRow)?.failure?.recovered;
+export { failedParts };
+/** the failed places' rollup parts by rollout href: a place whose checks have all recovered reads `failed`, one with a check failing now `failing` */
+export const failedPartsOfHrefs = (hrefs: readonly string[]): string[] => failedParts(hrefs.length, hrefs.filter((h) => failureRecovered(h)).length);
 export function countsOf(all: Unit[], places: Place[]) {
 	/* the tab's own words for a place that runs the change: Deployed, Checking (clock), Deploying (arc); a count says each once (CF2). A place whose NEWER build fails is FAILING (the tab's red), not deployed (CE3) */
 	const run = places.filter((p) => p.kind === 'running' && !p.newerFails);
 	const checking = run.filter((p) => p.row?.state === 'checking' && !p.row.paused).length, paused = run.filter((p) => p.row?.state === 'checking' && !!p.row.paused).length, deploying = run.filter((p) => p.row?.state === 'deploying').length;
 	const waiting = places.filter((p) => p.kind === 'waiting' && p.group !== 'held').length, held = places.filter((p) => p.kind === 'waiting' && p.group === 'held').length, failing = places.filter((p) => p.kind === 'failed' || p.newerFails).length;
+	/* of the failing places, those whose checks have all recovered read `failed` (state-words.ts failedWord), never `failing` */
+	const recovered = places.filter((p) => (p.kind === 'failed' || p.newerFails) && recoveredPlace(p)).length;
 	/* AD r2 (2): a place held by a rule is "held", one waiting for an approval is "waiting" (the banner's, the chip's and the row's words) */
-	return { places: places.length, live: run.length - checking - paused - deploying, checking, paused, deploying, waiting, held, failing, notAffected: Math.max(0, all.length - places.length) };
+	return { places: places.length, live: run.length - checking - paused - deploying, checking, paused, deploying, waiting, held, failing, recovered, notAffected: Math.max(0, all.length - places.length) };
 }
-const countParts = (n: ReturnType<typeof countsOf>) => [n.live ? `${n.live} deployed` : '', n.checking ? `${n.checking} checking` : '', n.paused ? `${n.paused} paused` : '', n.deploying ? `${n.deploying} deploying` : '', n.waiting ? `${n.waiting} waiting` : '', n.held ? `${n.held} held` : '', n.failing ? `${n.failing} failing` : ''];
+const countParts = (n: ReturnType<typeof countsOf>) => [n.live ? `${n.live} deployed` : '', n.checking ? `${n.checking} checking` : '', n.paused ? `${n.paused} paused` : '', n.deploying ? `${n.deploying} deploying` : '', n.waiting ? `${n.waiting} waiting` : '', n.held ? `${n.held} held` : '', ...failedParts(n.failing, n.recovered)];
 export function countLine(n: ReturnType<typeof countsOf>): string {
 	return [`${n.places} place${n.places === 1 ? '' : 's'}`, ...countParts(n), n.notAffected ? `${n.notAffected} not affected` : ''].filter(Boolean).join(' · ');
 }
@@ -136,7 +143,7 @@ export type Tile = { tier: TierKey; href: string | null; /** "1 build behind" (t
  * deploy of the change failed, WAITING when a build that carries the change waits there (approval or rule), BEHIND otherwise (grey:
  * the change has not reached it). `frac` = healthy/regions. EXPORTED for the Folio side (change-view / Folio): import `changeProd`.
  */
-export function changeProd(c: TChange, scenario: HomeState): { squares: Ink[]; /** each square in the TAB's region state (regionStates: failed / waiting(held) / moving / checking / healthy): colour = state (AD Changes r5) */ states: Ink[]; healthy: number; of: number; frac: string; /** "2 of 3 run it · 1 failing" | "0 of 3 run it · 2 held" | "3 of 3 run it": the change's position with unit, adverse state after it */ count: string; /** "prod · " + count */ sentence: string; href: string | null; /** v2 r5 (additive): the regions the change can reach (a custom build / a build that does not carry it is NOT AFFECTED and never in a denominator) */ affected: number; notAffected: number; /** `count` over the affected regions, "waiting" for what waits: "0 of 5 run it · 5 waiting" */ countAffected: string } {
+export function changeProd(c: TChange, scenario: HomeState): { squares: Ink[]; /** each square in the TAB's region state (regionStates: failed / waiting(held) / moving / checking / healthy): colour = state (AD Changes r5) */ states: Ink[]; healthy: number; of: number; frac: string; /** "2 of 3 run it · 1 failing" | "0 of 3 run it · 2 held" | "3 of 3 run it": the change's position with unit, adverse state after it */ count: string; /** "prod · " + count */ sentence: string; href: string | null; /** v2 r5 (additive): the regions the change can reach (a custom build / a build that does not carry it is NOT AFFECTED and never in a denominator) */ affected: number; notAffected: number; /** `count` over the affected regions, "waiting" for what waits: "0 of 5 run it · 5 waiting" */ countAffected: string; /** of the failed regions, those whose checks have all recovered (they read `failed`, not `failing`) */ recovered: number } {
 	const { all, places } = classified(c, scenario);
 	const prod = all.filter((u) => u.tier === 'prod');
 	const ink = (u: Unit): Ink => {
@@ -149,18 +156,20 @@ export function changeProd(c: TChange, scenario: HomeState): { squares: Ink[]; /
 	const states = prod.map((u): Ink => { const p = places.find((x) => x.href === u.href); return !p ? 'behind' : p.kind === 'failed' || p.newerFails ? 'failed' : p.kind === 'waiting' ? 'waiting' : p.row?.state === 'checking' ? 'checking' : p.row?.state === 'deploying' ? 'moving' : 'healthy'; });
 	const reached = (u: Unit) => places.some((x) => x.href === u.href);
 	const failing = squares.filter((x) => x === 'failed').length;
+	const recovered = prod.filter((u, i) => squares[i] === 'failed' && recoveredPlace(places.find((x) => x.href === u.href)!)).length;
 	const held = prod.filter((u, i) => squares[i] !== 'healthy' && squares[i] !== 'failed' && states[i] === 'waiting').length;
-	const count = [`${healthy} of ${prod.length} run it`, failing ? `${failing} failing` : '', held ? `${held} held` : ''].filter(Boolean).join(' · ');
+	const count = [`${healthy} of ${prod.length} run it`, ...failedParts(failing, recovered), held ? `${held} held` : ''].filter(Boolean).join(' · ');
 	const affected = prod.filter(reached).length, notAffected = prod.length - affected;
 	const waitN = prod.filter((u, i) => squares[i] === 'waiting').length;
-	const countAffected = [`${healthy} of ${affected} run it`, failing ? `${failing} failing` : '', waitN ? `${waitN} waiting` : ''].filter(Boolean).join(' · ');
+	const countAffected = [`${healthy} of ${affected} run it`, ...failedParts(failing, recovered), waitN ? `${waitN} waiting` : ''].filter(Boolean).join(' · ');
 	const worst = prod.find((u) => ink(u) === 'failed') ?? prod.find((u) => ink(u) === 'waiting') ?? prod[0];
-	return { squares, states, healthy, of: prod.length, frac: `${healthy}/${prod.length}`, count, sentence: `prod · ${count}`, href: worst?.href ?? null, affected, notAffected, countAffected };
+	return { squares, states, healthy, of: prod.length, frac: `${healthy}/${prod.length}`, count, sentence: `prod · ${count}`, href: worst?.href ?? null, affected, notAffected, countAffected, recovered };
 }
 /** CE1: the strip's prod sentence in the page's words ("1 failing · 2 deployed"); "Live" is retired as a state word. change-view's squaresSentence still says "live" for the Changes list (not this lane's file). */
-const squaresWords = (inks: Ink[]): string => {
+export const squaresWords = (inks: Ink[], recovered = 0): string => {
 	const n = (k: Ink) => inks.filter((x) => x === k).length;
-	const out = ([[n('failed'), 'failing'], [n('waiting'), 'waiting'], [n('moving'), 'deploying'], [n('checking'), 'checking'], [n('healthy'), 'deployed']] as [number, string][]).filter(([k]) => k > 0).map(([k, w]) => `${k} ${w}`).join(' · ');
+	const rest = ([[n('waiting'), 'waiting'], [n('moving'), 'deploying'], [n('checking'), 'checking'], [n('healthy'), 'deployed']] as [number, string][]).filter(([k]) => k > 0).map(([k, w]) => `${k} ${w}`);
+	const out = [...failedParts(n('failed'), Math.min(recovered, n('failed'))), ...rest].join(' · ');
 	return out || (inks.length ? 'not reached' : '');
 };
 const sqInk = (state: string, onNewest: boolean): Ink =>
@@ -168,7 +177,7 @@ const sqInk = (state: string, onNewest: boolean): Ink =>
 /** the worst state of the change's places in one tier, as the tab's mark and word */
 function tierState(ps: Place[]): { mark: string; state: string } {
 	const f = ps.find((p) => p.kind === 'failed' || p.newerFails);
-	if (f) return { mark: 'failed', state: 'Failing' };
+	if (f) return { mark: 'failed', state: failedWord(ps.filter((p) => p.kind === 'failed' || p.newerFails).every((p) => !!(p.row ?? p.tabRow)?.failure?.recovered)) };
 	const w = ps.find((p) => p.kind === 'waiting');
 	if (w) return w.group === 'held' ? { mark: 'held', state: 'Held' } : { mark: 'held', state: 'Waiting' };
 	const run = ps.filter((p) => p.kind === 'running');
@@ -187,7 +196,7 @@ export function stripOf(c: TChange, scenario: HomeState): Tile[] {
 		const behind = Math.max(0, ...ps.map((p) => p.state === 'failed' ? 0 : (p.behind ?? 0)));
 		if (s.tier === 'prod') {
 			const pr = changeProd(c, scenario);
-			if (pr.of > 1) return { tier: s.tier, href: pr.href, word: null, squares: pr.states, frac: `${pr.healthy}/${pr.affected}`, label: squaresWords(pr.states), own: true, aside: pr.notAffected ? `${pr.notAffected} not affected` : null, flight: pr.states.includes('checking') ? 'checking' : pr.states.includes('moving') ? 'deploying' : null, ...tierState(placesAll.filter((p) => p.tier === 'prod')) };
+			if (pr.of > 1) return { tier: s.tier, href: pr.href, word: null, squares: pr.states, frac: `${pr.healthy}/${pr.affected}`, label: squaresWords(pr.states, pr.recovered), own: true, aside: pr.notAffected ? `${pr.notAffected} not affected` : null, flight: pr.states.includes('checking') ? 'checking' : pr.states.includes('moving') ? 'deploying' : null, ...tierState(placesAll.filter((p) => p.tier === 'prod')) };
 		}
 		const own = ps.find((p) => MARKED.has(p.state));
 		const href = (own ?? ps[0])?.href ?? null;
@@ -512,7 +521,7 @@ export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] 
 		/* one clock read: whole minutes between the two instants (History prints the same instants), days past a day */
 		return ms >= 86_400_000 ? `${Math.floor(ms / 86_400_000)}d` : span(Math.round(ms / 60_000) * 60_000);
 	};
-	return { running: run.length, of: all.length, /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? `${gap(prodFailed.since)} · failed` : null };
+	return { running: run.length, of: all.length, /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? `${gap(prodFailed.since)} · ${failedWord(places.filter((p) => p.tier === 'prod' && p.kind === 'failed').every(recoveredPlace)).toLowerCase()}` : null };
 }
 export { candidateBuilds, isViewer };
 
@@ -583,7 +592,7 @@ export function openedOf(p: Place, scenario: HomeState, landed = false): Opened 
 		const bc = buildCommitOf(p.href, p.current);
 		/* r11 CH2: the pane's heading is the tab's own name for the step that failed ("Final check") and its age; the banner above states the failure once */
 		const failName = steps.find((s) => s.state === 'fail')?.name;
-		return { state: 'failed', title: !failName || failName === 'Check' ? 'Final check' : failName, since: ago(row.since), took: null, build: p.current ?? buildTitle(row), relation: lh ? { word: 'last healthy', build: lh.build, age: ago(lh.at) } : null, commit: bc ? { title: bc.title, author: bc.author } : null, steps, selected: pick(steps), facts, rule: null, newerBuild: null, newer: (() => { const h = heldBehind(row); return h.count ? { count: h.count, mine: h.builds.find((b) => b.mine)?.pr != null ? `#${h.builds.find((b) => b.mine)!.pr}` : h.includesViewer ? 'yours' : null } : null; })() };
+		return { state: 'failed', title: !failName || failName === 'Check' ? 'Final check' : failName, since: ago(row.failure?.since ?? row.since), took: null, build: p.current ?? buildTitle(row), relation: lh ? { word: 'last healthy', build: lh.build, age: ago(lh.at) } : null, commit: bc ? { title: bc.title, author: bc.author } : null, steps, selected: pick(steps), facts, rule: null, newerBuild: null, newer: (() => { const h = heldBehind(row); return h.count ? { count: h.count, mine: h.builds.find((b) => b.mine)?.pr != null ? `#${h.builds.find((b) => b.mine)!.pr}` : h.includesViewer ? 'yours' : null } : null; })() };
 	}
 	if (row && p.kind === 'waiting') {
 		const hb = candidateBuilds(row).find((h) => h.build === p.build);

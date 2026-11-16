@@ -158,3 +158,43 @@ describe('groupActivityEntries', () => {
 		expect(groups[0].envText).toBe('');
 	});
 });
+
+describe('deploysRollupParts', () => {
+	it('splits failing now (danger ink) from failed (neutral), like every other rollup', async () => {
+		const { deploysRollupParts } = await import('./activity-groups');
+		expect(deploysRollupParts(12, 6, 2)).toEqual(['12 deploys', { text: '4 failing', ink: 'danger' }, '2 failed']);
+		expect(deploysRollupParts(1, 2, 2)).toEqual(['1 deploy', '2 failed']);
+		expect(deploysRollupParts(5, 0, 0)).toEqual(['5 deploys']);
+	});
+});
+
+describe('failedRollupParts', () => {
+	it('day-card rollups ink only the failing-now part red; recovered reads neutral failed', async () => {
+		const { failedRollupParts } = await import('./activity-groups');
+		expect(failedRollupParts(3, 1)).toEqual([{ text: '2 failing', ink: 'danger' }, '1 failed']);
+		expect(failedRollupParts(2, 2)).toEqual(['2 failed']);
+		expect(failedRollupParts(2, 0)).toEqual([{ text: '2 failing', ink: 'danger' }]);
+		expect(failedRollupParts(0, 0)).toEqual([]);
+	});
+});
+
+describe('rowIsLive', () => {
+	it('a recovered failure reads neutral; one failing now, or a mixed group, stays live; a superseded one is not live', async () => {
+		const { rowIsLive } = await import('./activity-groups');
+		const m = (isLive: boolean, recovered: boolean) => ({ isLive, recovered });
+		const rec = (x: { recovered: boolean }) => x.recovered;
+		expect(rowIsLive([m(true, true)], rec)).toBe(false);
+		expect(rowIsLive([m(true, false)], rec)).toBe(true);
+		expect(rowIsLive([m(true, true), m(true, false)], rec)).toBe(true);
+		expect(rowIsLive([m(false, false)], rec)).toBe(false);
+	});
+});
+
+describe('before the fleet health checks answer', () => {
+	it('the rollups show only the count, then add the failing / failed split in place', async () => {
+		const { deploysRollupParts, failedRollupParts } = await import('./activity-groups');
+		expect(deploysRollupParts(212, 6, 2, false)).toEqual(['212 deploys']);
+		expect(deploysRollupParts(212, 6, 2, true)).toEqual(['212 deploys', { text: '4 failing', ink: 'danger' }, '2 failed']);
+		expect(failedRollupParts(6, 2, false)).toEqual([]);
+	});
+});

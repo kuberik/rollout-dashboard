@@ -75,6 +75,26 @@ export function historyEntrySince(h: HistoryEntryLike): string | null {
 	return h?.bakeEndTime ?? h?.timestamp ?? null;
 }
 
+/** a history entry's failed health checks, as far as the age of the failure needs them */
+type FailedChecksEntry = { failedHealthChecks?: ReadonlyArray<{ observations?: ReadonlyArray<{ healthy?: boolean; observedTime?: string }> } | null> | null } | null | undefined;
+
+/**
+ * When the earliest failing check of this entry began failing: the earliest `observedTime` of the failing observations its
+ * `failedHealthChecks` snapshot kept (the instant the banners, the Health checks card and the History summary print through
+ * `failureSince`). null when the entry kept none, so callers fall back to the entry's own instants. It is not the bake's end, which is
+ * "Failed after 30m", a different fact.
+ */
+export function healthFailureSince(h: FailedChecksEntry): string | null {
+	let best: number | null = null;
+	for (const c of h?.failedHealthChecks ?? [])
+		for (const o of c?.observations ?? []) {
+			if (o?.healthy !== false) continue;
+			const t = Date.parse(o.observedTime ?? '');
+			if (Number.isFinite(t) && (best === null || t < best)) best = t;
+		}
+	return best === null ? null : new Date(best).toISOString();
+}
+
 /**
  * THE ONE "last failure" of a set of histories: the newest failed entry's own failure instant (`historyEntrySince`: when its bake ended),
  * as epoch ms, or null when none failed. The App summary, the History tab's summary and the Recent activity row all read it, so the card
@@ -91,6 +111,22 @@ export function lastFailureMs(histories: ReadonlyArray<ReadonlyArray<(NonNullabl
 			if (Number.isFinite(t) && (last === null || t > last)) last = t;
 		}
 	return last;
+}
+
+/**
+ * The last failure's instant for a card that sits beside a failing banner: a newest entry that failed on a health check is dated from when
+ * its earliest failing check began failing (`healthFailureSince`, the banner's own age), so the card and the banner give one age for one
+ * failure; with no such entry it is `lastFailureMs`. Several rollouts: the newest of their heads.
+ */
+export function lastFailureMsWithHeads(histories: Parameters<typeof lastFailureMs>[0], from = -Infinity, to = Infinity): number | null {
+	let head: number | null = null;
+	for (const hist of histories) {
+		const h = hist[0] as (NonNullable<HistoryEntryLike> & { bakeStatus?: string | null; failedHealthChecks?: unknown }) | null | undefined;
+		if (h?.bakeStatus !== 'Failed') continue;
+		const t = Date.parse(healthFailureSince(h as FailedChecksEntry) ?? '');
+		if (Number.isFinite(t) && (head === null || t > head)) head = t;
+	}
+	return head ?? lastFailureMs(histories, from, to);
 }
 
 /** "31m ago" for the last failure of `histories` (see lastFailureMs), or null when none failed: the History tab's Summary prints it */
@@ -121,6 +157,8 @@ export function eventAge(card: RolloutCard, kind: EventAgeKind): string | null {
 	const head = card.rollout?.status?.history?.[0];
 	switch (kind) {
 		case 'failed': {
+			const hf = healthFailureSince(head as FailedChecksEntry);
+			if (hf) return hf;
 			if (card.checkFailure?.since) return card.checkFailure.since;
 			return historyEntrySince(head) ?? card.timestamp ?? null;
 		}

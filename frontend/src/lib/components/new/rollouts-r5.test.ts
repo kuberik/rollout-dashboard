@@ -52,3 +52,9 @@ it('r6 T3/T6: recovery of a failed entry and the hold start', () => {
 	const hs = D.holdSince(held, 'incident');
 	expect(hs === null || hs > (D.buildInQuestionFacts(held)?.since ?? '')).toBe(true);
 });
+
+it('headerFacts: a recovered failure is counted as failed, not failing', () => {
+	const row = (recovered: boolean) => ({ group: 'failed', regions: ['x'], failure: { recovered } }) as never;
+	expect(headerFacts([row(false), row(false), row(true)]).map((f) => f.text)).toEqual(['2 failing', '1 failed']);
+	expect(headerFacts([row(true)]).map((f) => f.text)).toEqual(['1 failed']);
+});

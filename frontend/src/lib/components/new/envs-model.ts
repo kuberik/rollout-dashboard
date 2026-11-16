@@ -5,10 +5,10 @@
  * when they land. Pure, so it is unit-testable.
  */
 import { oldestFirst, newestFirst } from '$lib/instant';
-import { environments, rollouts, inbound as inboundOf, lastDeploy as lastDeployOf, lead as leadOf, fleetCounts, arrivals as arrivalsOf, heldCauses, failureReason, checkClock, buildInQuestionFacts, ago, ARRIVALS_WINDOW, TIERS, TIER_NAME, type HomeState, type TierKey, type HeldCause, type TRow } from './data';
+import { environments, rollouts, inbound as inboundOf, lastDeploy as lastDeployOf, lead as leadOf, fleetCounts, arrivals as arrivalsOf, heldCauses, failureReason, failureRecovered, checkClock, buildInQuestionFacts, ago, ARRIVALS_WINDOW, TIERS, TIER_NAME, type HomeState, type TierKey, type HeldCause, type TRow } from './data';
 
 import type { EnvState } from '$lib/view-models/home-model';
-import { stateWord } from './state-words';
+import { stateWord, failedWord } from './state-words';
 import { mostSevere, severityOf, severityRank } from '$lib/view-models/severity';
 export type Env = ReturnType<typeof environments>;
 export type TierRow = Env['tiers'][number];
@@ -84,7 +84,7 @@ export function dotCols(n: number, avail: number, dot: number, gap: number, cap 
 }
 export const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
-export type RegionTile = { label: string; regionless: boolean; places: number; failing: number; waiting: number; holds: number; approvals: number; moving: number; worst: string; mark: Mark; href: string; envHref: string };
+export type RegionTile = { label: string; regionless: boolean; places: number; failing: number; /** of the failing places, those whose checks all recovered (they read `failed`) */ recovered: number; waiting: number; holds: number; approvals: number; moving: number; /** the tier line's word for the moving places: checking / deploying / in progress when both */ movingWord: string; worst: string; mark: Mark; href: string; envHref: string };
 export type PlaceLike = { state: string };
 /** F1: a rule hold (held-by-rule) is the amber mark; an approval wait is the neutral ring. The tile's mark is its MOST SEVERE place in
  *  `severity.ts`'s one order (failing, approval, hold, deploying, checking, rest), the same word every other surface headlines. */
@@ -92,6 +92,11 @@ export function markOfPlaces(ps: PlaceLike[]): Mark {
 	const k = severityOf(mostSevere(ps, (p) => p.state)?.state);
 	return k === 'failed' || k === 'held' || k === 'deploying' || k === 'checking' || k === 'approval' ? k : 'newest';
 }
+/** THE ONE MOVING WORD: what the moving places are doing, the tier line's rule (all checking / all deploying / both = "in progress"; none = "in progress", the neutral word for a zero count) */
+export const movingWordOf = (ps: PlaceLike[]): string => {
+	const c = ps.some((p) => p.state === 'checking'), d = ps.some((p) => p.state === 'deploying');
+	return c && d ? 'in progress' : c ? 'checking' : d ? 'deploying' : 'in progress';
+};
 const MSEV = (m: Mark): number => severityRank(m);
 
 /** r34 truth-5 (lead ruling 2026-11-01): the unflip changes only what these pages DRAW (marks, dots, the in-progress partition); every COUNT of approvals is fleetCounts().places.approval (the tab's gate word), so a place that is checking AND gated counts under both facts.
@@ -112,6 +117,8 @@ export function unflipRegion<T extends RegionShape>(r: T, u: Unflip): T {
 	return { ...r, ...n, places, worst: n.failing ? 'failed' : n.waiting ? 'waiting' : n.moving ? 'deploying' : 'rest' };
 }
 
+/** a dot's title word: a failed place whose checks all recovered reads `Failed`, one with a check failing now `Failing` (state-words.ts failedWord) */
+export const dotWord = (mark: Mark, recovered: boolean, plain: string): string => (mark === 'failed' ? failedWord(recovered) : plain);
 export function envsModel(state: HomeState) {
 	const e0 = environments(state);
 	const U = unflipOf(state);
@@ -150,7 +157,7 @@ export function envsModel(state: HomeState) {
 	});
 	/* region tiles: the regions with something to say (failing, waiting, moving), regionless prod among them by severity; the rest fold */
 	const tile = (r: { label: string; apps: number; failing: number; waiting: number; moving: number; worst: string; href: string; places: PlaceLike[] }, regionless: boolean): RegionTile => ({
-		label: r.label, regionless, places: r.apps, failing: r.failing, waiting: r.waiting, moving: r.moving, worst: r.worst, href: r.href,
+		label: r.label, regionless, places: r.apps, failing: r.failing, recovered: r.places.filter((p) => p.state === 'failed' && failureRecovered((p as unknown as { href: string }).href)).length, waiting: r.waiting, moving: r.moving, movingWord: movingWordOf(r.places), worst: r.worst, href: r.href,
 		holds: r.places.filter((p) => p.state === 'held-by-rule').length, approvals: r.places.filter((p) => p.state === 'awaiting-approval' || U.hrefs.has((p as unknown as { href: string }).href)).length, mark: markOfPlaces(r.places),
 		envHref: regionless ? '/envs/prod' : `/envs/prod-${r.label}`
 	});
@@ -203,12 +210,12 @@ export function envsModel(state: HomeState) {
 	const holdLines = [...lines.values()].sort((a, b) => Number(b.rule) - Number(a.rule) || b.places - a.places || a.title.localeCompare(b.title));
 	const arrivals = arrivalsOf(state);
 	/* r34 v2 dots: ONE per place in its state (the tab strip's `prod ●●●`); Production draws its REGIONS (18 = 18), the band below is the legend */
-	const DOTWORD: Record<Mark, string> = { failed: 'Failing', held: 'Held', deploying: 'Deploying', checking: 'Checking', approval: stateWord('approval')!, newest: 'At rest' };
+	const DOTWORD: Record<Mark, string> = { failed: failedWord(false), held: 'Held', deploying: 'Deploying', checking: 'Checking', approval: stateWord('approval')!, newest: 'At rest' };
 	const dotOf = (s: string): Mark => markOfPlaces([{ state: s }]);
 	/* G1/G3: every dot has a title "place · state · app"; Production draws its base place first, then its REGIONS */
 	/* r34 v2-r6 (COMP 9): a place the tab shows as approval-gated while its deploy is still checked is an approval square, as its row says */
 	const stOf = (p: { state: string }, _t?: TierRow) => p.state; /* EG1: ONE state source = the place's own state (the flip is undone in unflipRegion/tiers above) */
-	const tierDots = new Map<TierKey, Dot[]>(tiers.map((t) => [t.key, t.placesList.map((p) => { const mark = dotOf(stOf(p as never, t)); return { mark, title: `${t.key === 'prod' ? placeName(p.label) : p.label} · ${DOTWORD[mark]} · ${p.app}` }; })]));
+	const tierDots = new Map<TierKey, Dot[]>(tiers.map((t) => [t.key, t.placesList.map((p) => { const mark = dotOf(stOf(p as never, t)); return { mark, title: `${t.key === 'prod' ? placeName(p.label) : p.label} · ${dotWord(mark, failureRecovered(p.href), DOTWORD[mark])} · ${p.app}` }; })]));
 	/* the tier in focus: most failing, then most holds + approvals; none when nothing is adverse (calm and quiet keep every title at 14) */
 	const score = (t: TierRow) => { const k = tierKinds.get(t.key)!; return t.failing * 100 + k.holds * 10 + k.approvals; };
 	const focusTier = [...tiers].sort((a, b) => score(b) - score(a))[0];

@@ -10,6 +10,7 @@
  */
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { TONE } from '$lib/view-models/state-tone';
+import { failedWord, failedParts } from './state-words';
 import { envsModel, plural, type Mark } from './envs-model';
 import { waveHold } from './app/app-model';
 import { apps, placeHolds, type PlaceHold, inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
@@ -18,7 +19,7 @@ export type Ink = 'danger' | 'held' | 'active' | 'progress' | 'muted';
 export type StatePart = { text: string; you?: string };
 export type TileMark = 'failed' | 'approval-yours' | 'approval' | 'deploying' | 'checking' | 'rest';
 export type TileLast = { app: string; build: string; age: string; word: string | null; you: boolean; author: string | null; href: string };
-export type RegionCell = { key: string; label: string; mark: Mark; failing: number; waiting: number; moving: number; movingWord: string; href: string };
+export type RegionCell = { key: string; label: string; mark: Mark; failing: number; recovered: number; waiting: number; moving: number; movingWord: string; href: string };
 export type EnvTile = {
 	key: TierKey; name: string; href: string; places: number; apps: number;
 	failing: number; waiting: number; yours: number; moving: number; rest: number;
@@ -31,13 +32,15 @@ export type Arrival = { key: string; app: string; build: string | null; place: s
 export type EnvironmentsPage = { tiles: EnvTile[]; prod: EnvTile | null; arrivals: Arrival[]; window: string; empty: boolean };
 
 /** the state line (kit `envStateLine`): the worst fact leads in its ink, the rest follow muted; nothing adverse = "All N healthy" */
-export function stateLine(t: { places: number; failing: number; waiting: number; yours: number; moving: number; rest: number }, movingWord: string): { lead: StatePart & { ink: Ink }; parts: StatePart[]; mark: TileMark } {
+export function stateLine(t: { places: number; failing: number; /** of the failed places, those whose checks have all recovered: they read `failed`, never `failing` (state-words.ts failedWord) */ recovered?: number; waiting: number; yours: number; moving: number; rest: number }, movingWord: string): { lead: StatePart & { ink: Ink }; parts: StatePart[]; mark: TileMark } {
 	const parts: StatePart[] = [];
+	const recovered = Math.min(t.recovered ?? 0, t.failing), live = t.failing - recovered;
+	if (live && recovered) parts.push({ text: `${recovered} ${failedWord(true).toLowerCase()}` });
 	if (t.waiting) parts.push({ text: `${t.waiting} waiting`, you: t.yours ? `${t.yours} for you` : undefined });
 	if (t.moving) parts.push({ text: `${t.moving} ${movingWord}` });
 	if (t.rest) parts.push({ text: `${t.rest} healthy` });
 	const mv: TileMark = movingWord === 'checking' ? 'checking' : 'deploying';
-	if (t.failing) return { lead: { text: `${t.failing} failing`, ink: TONE.failed.hue as Ink }, parts, mark: 'failed' };
+	if (t.failing) return { lead: { text: `${live || recovered} ${failedWord(!live).toLowerCase()}`, ink: live ? (TONE.failed.hue as Ink) : 'muted' }, parts, mark: 'failed' };
 	if (t.waiting) return { lead: { ...parts.shift()!, ink: TONE.held.hue as Ink }, parts, mark: t.yours ? 'approval-yours' : 'approval' };
 	if (t.moving) return { lead: { ...parts.shift()!, ink: TONE[mv].hue as Ink }, parts, mark: mv }; /* the word's ink is the mark's tone: "2 checking" is progress yellow beside the yellow clock, "2 deploying" active blue */
 	return { lead: { text: `All ${t.places} healthy`, ink: 'muted' }, parts: [], mark: 'rest' };
@@ -49,10 +52,19 @@ export function barSegments(t: { failing: number; waiting: number; moving: numbe
 }
 
 /** the Production band's cells: the places with something to say (base "production" first among equals), the rest fold to one count */
+/** A region cell's state line as parts, the tier line's rule: only the failing-now part takes danger ink, a recovered "failed" is neutral; the moving part carries its count and the tier's word ("1 checking") in the mark's own hue. */
+export function regionCellParts(r: Pick<RegionCell, 'failing' | 'recovered' | 'waiting' | 'moving' | 'movingWord'>): { text: string; ink: Ink | null }[] {
+	const recovered = Math.min(r.recovered, r.failing), live = r.failing - recovered;
+	const out: { text: string; ink: Ink | null }[] = [];
+	if (live) out.push({ text: `${live} ${failedWord(false).toLowerCase()}`, ink: 'danger' });
+	if (recovered) out.push({ text: `${recovered} ${failedWord(true).toLowerCase()}`, ink: null });
+	if (r.waiting) out.push({ text: `${r.waiting} waiting`, ink: 'held' });
+	if (r.moving) out.push({ text: `${r.moving} ${r.movingWord}`, ink: r.movingWord === 'checking' ? 'progress' : 'active' });
+	return out;
+}
 export function regionCells(m: ReturnType<typeof envsModel>): { cells: RegionCell[]; healthy: number } {
-	const word = (mk: Mark) => (mk === 'checking' ? 'checking' : 'deploying');
 	const all = [...(m.base ? [m.base] : []), ...m.busy, ...m.rest];
-	const cell = (r: (typeof all)[number]): RegionCell => ({ key: r.label + (r.regionless ? '*' : ''), label: r.label, mark: r.mark, failing: r.failing, waiting: r.waiting, moving: r.moving, movingWord: word(r.mark), href: r.envHref });
+	const cell = (r: (typeof all)[number]): RegionCell => ({ key: r.label + (r.regionless ? '*' : ''), label: r.label, mark: r.mark, failing: r.failing, recovered: r.recovered, waiting: r.waiting, moving: r.moving, movingWord: r.movingWord, href: r.envHref });
 	/* QA #10: cells are SITES. One site (the default one, or places that share a label) has no region cells and no region wording: the tile's state bar already says it */
 	if (siteCount(all.map((r) => (r.regionless ? '' : r.label))) <= 1) return { cells: [], healthy: 0 };
 	const adverse = all.filter((r) => r.mark !== 'newest').map(cell);
@@ -104,7 +116,9 @@ export function environmentsPage(hs: HomeState): EnvironmentsPage {
 		const yours = Math.min(t.waiting, placesOf(rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking)));
 		const kinds = new Set(rows.filter((r) => r.group === 'moving' || r.stillChecking).map((r) => (r.state === 'deploying' ? 'deploying' : 'checking')));
 		const movingWord = kinds.size > 1 ? 'in progress' : kinds.has('checking') ? 'checking' : 'deploying';
-		const c = { places: t.counts.places, failing: t.failing, waiting: t.waiting, yours, moving: t.moving, rest: t.places - t.failing - t.waiting - t.moving };
+		/* places whose failure has recovered: counted as failed, not failing (the row's own `failure.recovered`, the rollout page's word) */
+		const recovered = placesOf(rows.filter((r) => r.group === 'failed' && r.failure?.recovered));
+		const c = { places: t.counts.places, failing: t.failing, recovered, waiting: t.waiting, yours, moving: t.moving, rest: t.places - t.failing - t.waiting - t.moving };
 		const s = stateLine(c, movingWord);
 		const inb = inbound(hs, t.key).filter(isArriving);
 		const ld = lastDeploy(hs, t.key);
@@ -113,7 +127,7 @@ export function environmentsPage(hs: HomeState): EnvironmentsPage {
 			key: t.key, name: TIER_NAME[t.key] ?? t.key, href: `/envs/${t.key}`, places: t.places, apps: t.apps,
 			failing: c.failing, waiting: c.waiting, yours, moving: c.moving, rest: c.rest,
 			mark: s.mark, lead: s.lead, parts: s.parts, calm: !c.failing && !c.waiting && !c.moving,
-			label: `${t.places} places: ${c.failing} failing, ${c.waiting} waiting, ${c.moving} ${movingWord}, ${c.rest} healthy`,
+			label: `${plural(t.places, 'place')}: ${failedParts(c.failing, c.recovered).join(', ') || '0 failing'}, ${c.waiting} waiting, ${c.moving} ${c.moving ? movingWord : 'in progress'}, ${c.rest} healthy`,
 			arriving: { builds: inb.length, apps: [...new Set(inb.map((x) => x.app))] },
 			last,
 			regions: t.key === 'prod' ? withWaveHold(regionCells(m), hs, m) : null

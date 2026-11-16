@@ -73,11 +73,11 @@ import { approvalRev, bumpApprovals } from './approval-rev.svelte';
 import { scoped } from './derivation-scope';
 /** `homeModel` once per derivation scope (the calm/quiet lenses rebuild the sketch on every call) */
 const homeModel = (state: HomeState): ReturnType<typeof homeModelRaw> => scoped(`hm|${state}`, () => homeModelRaw(state));
-import { stateWord as sharedWord, severity } from './state-words';
+import { stateWord as sharedWord, severity, failedWord } from './state-words';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { buildTopology, deployNameOf, siteNodeOf, upstreamOf, type AppTopology } from '$lib/view-models/sites-waves';
 import type { Environment, HealthObservation, HealthCheck } from '../../../types';
-import { evidenceLine, worstOf, failureSince, poolOf, checkView, clock, type SnapCheck, type CheckView } from '../../view-models/health-failures';
+import { evidenceLine, failingNowList, worstOf, failureSince, poolOf, checkView, clock, type SnapCheck, type CheckView } from '../../view-models/health-failures';
 import type { Rollout } from '$lib/../types';
 import { placeStateWithPin } from '$lib/view-models/pin-hold';
 import type { TierKey, RolloutRow, ChangeItem, ChangeGroupKey, Region as RDRegion, AppItem, ArrivalRow } from '$lib/components/home/roster/roster-data';
@@ -220,9 +220,9 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 	/* the check the line names is one failing now when there is one (a recovered check never fronts a failing rollout), else the first */
 	const hpEarly = hrefParts(row.href);
 	const liveEarly = hpEarly ? ((source().healthChecks ?? []).find((i) => i.metadata.namespace === hpEarly.ns && i.metadata.name === hpEarly.name)?.healthChecks ?? []) : [];
-	const failingNow = (liveEarly as HealthCheck[]).find((x) => (x.status as { status?: string } | undefined)?.status === 'Unhealthy')?.metadata?.name;
 	const snaps = (h.failedHealthChecks ?? []) as Snap[];
-	const fc = (failingNow ? snaps.find((s) => s.name === failingNow) : undefined) ?? snaps[0];
+	/* the check failing now, even when the history record never named it; the record's first only when nothing is failing now */
+	const fc = failingNowList(snaps as SnapCheck[], liveEarly as HealthCheck[])[0] as Snap | undefined;
 	const generic = /^A HealthCheck reported an error/.test(h.bakeStatusMessage ?? '');
 	const phrase = h.bakeStatusMessage && !generic ? h.bakeStatusMessage : null;
 	const check = fc?.name ?? null, message = fc?.message ?? null;
@@ -248,6 +248,8 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 
 /** A failed place whose checks are all OK again (what its Attention card, Fleet row and strip box read as "Failed", not "Failing"): the failure reason's own `recovered`, by href. */
 export const failureRecovered = (href: string): boolean => !!failureReason({ group: 'failed', href })?.recovered;
+/** THE ONE age of a failed place: when its failure began (the instant the banners and the Health checks card print), null when no health evidence was kept */
+export const failureSinceAt = (href: string): string | null => failureReason({ group: 'failed', href })?.since ?? null;
 
 /* ═══ places (defect 5) ═══ */
 /* the one place word lives in view-models/regions.ts (Home reads it too); re-exported for every surface that imported it from here */
@@ -263,6 +265,8 @@ const enrich = (r: RolloutRow): TRow => {
 	t.place = placeLabel(r);
 	t.deployedAt = rawOf(r.href)?.status.history?.[0]?.timestamp ?? r.since ?? null; /* what the tab header's "9h ago" counts from */
 	if (failure) {
+		/* a failure whose checks have all recovered is `Failed`; `Failing` is a check failing now (state-words.ts failedWord) */
+		if (failure.recovered && t.word === 'Failing') t.word = failedWord(true);
 		t.cause = failure.line;
 		/* the tab ages "Deployment failed … · 20m ago" from the failing bake's END (the failed check's moment), not from the deploy timestamp */
 		const be = rawOf(r.href)?.status.history?.[0]?.bakeEndTime;
@@ -432,6 +436,8 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 	const R = rollouts(state);
 	const items = C.items as TChange[];
 	for (const i of items) i.fact = rosterWait(i.fact);
+	/* a change failing in a place whose checks have all recovered reads `Failed in …` (state-words.ts failedWord) */
+	for (const i of items) if (i.group === 'failed' && i.href && failureRecovered(i.href)) i.fact = i.fact.replace(/^Failing\b/, failedWord(true));
 	/* held places by label/app for linking a downstream-held change to the held tab */
 	const heldTab = (apps: string[], where: string): string | null => {
 		const tier: TierKey | null = where.endsWith('prod regions') || where === 'production' ? 'prod' : null;
@@ -708,8 +714,9 @@ function pickPlace(rows: TRow[]): TRow | null {
 	return [...rows].sort((p, q) => c(p) - c(q) || Number(q.tier === 'prod') - Number(p.tier === 'prod') || newestFirst(p.since, q.since))[0] ?? null;
 }
 /** one outcome grammar for a change and an app (roster-data's, kept verbatim) */
-const outcomeOf = (w: TRow): string =>
-	w.group === 'failed' ? `Failing in ${w.where}` : w.state === 'awaiting-approval' ? `${sharedWord('approval')} in ${w.where}`
+/** a failure whose checks all recovered reads `Failed in …`; `Failing in …` is a check failing now (state-words.ts failedWord) */
+export const outcomeOf = (w: TRow): string =>
+	w.group === 'failed' ? `${failedWord(!!w.failure?.recovered)} in ${w.where}` : w.state === 'awaiting-approval' ? `${sharedWord('approval')} in ${w.where}`
 	: w.group === 'moving' ? `${w.word} ${w.state === 'deploying' ? 'to' : 'in'} ${w.where}`
 	: `${w.word.startsWith('Waits on') ? w.word : 'Held'} in ${w.where}`;
 /** QA #23: the place's release stream, oldest first, as the builds are named everywhere (`status.availableReleases`). A build in it is a RELEASE of the app, whatever place runs it today. */

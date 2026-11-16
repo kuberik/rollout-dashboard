@@ -7,18 +7,18 @@
  * state, so a state change can never add, drop, reorder or move a tile (owner: "environments jumping").
  */
 import { inScope } from '../derivation-scope';
-import { ago, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
-import { approvalWord } from '../state-words';
+import { ago, failureRecovered, failureSinceAt, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
+import { approvalWord, failedWord } from '../state-words';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
 import { ledgerOf, type Stop } from '../app/app-model';
 import type { MarkSiteState } from '$lib/view-models/wave-mark';
 import { changeBySha } from '$lib/components/home/sketch/home-data';
-import { behindWords, classified, countsOf, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
+import { behindWords, classified, countsOf, failedParts, failedPartsOfHrefs, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
 import { TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 
 export type StageState = 'deployed' | 'checking' | 'paused' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
-export type StagePlace = { href: string; /** an approval the viewer can give (the strip draws it with the viewer's ring) */ yours?: boolean; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: Cause | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** change-strip r2: the build the place runs now and its lag in the words origin/main's "Where it runs" used ("3 builds behind" / "Up to date"); empty while moving, for a newer failure or without releases */ current: string | null; lag: string; /** app scope: the place runs a build NEWER than the selected release ("ahead"): drawn On <build>, or its own checking/deploying mark; never live, never counted as in flight */ ahead: boolean; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
+export type StagePlace = { href: string; /** an approval the viewer can give (the strip draws it with the viewer's ring) */ yours?: boolean; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: Cause | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** change-strip r2: the build the place runs now and its lag in the words origin/main's "Where it runs" used ("3 builds behind" / "Up to date"); empty while moving, for a newer failure or without releases */ current: string | null; lag: string; /** app scope: the place runs a build NEWER than the selected release ("ahead"): drawn On <build>, or its own checking/deploying mark; never live, never counted as in flight */ ahead: boolean; /** a failed place whose checks are all OK again: its word is Failed, not Failing */ recovered: boolean; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
 export type StageColumn = { key: string; tier: TierKey; wave: number | null; /** the env chip's label */ label: string; /** the tier has more than one wave: "Wave N" is worth printing */ multi: boolean };
 export type StageCell = { places: StagePlace[] };
 export type StageLane = { app: string; cells: (StageCell | null)[] };
@@ -80,7 +80,7 @@ function assemble(apps: string[], items: Item[], columns: StageColumn[], scenari
 		const st = i.st ?? stateOf(i.p, scenario);
 		const steps = i.p.row?.steps ?? restSteps(i.p.app, scenario, i.p.href);
 		const done = steps.filter((s) => s.state === 'done').length;
-		return { href: i.p.href, yours: st === 'approval' && !!i.p.row?.needsYou, app: i.p.app, tier: i.p.tier, name: i.site, leader: i.leader, state: st, word: i.word ?? (st === 'held' || st === 'approval' ? causeText(stageCause(i.p, scenario) ?? [WORD[st]]) : st === 'notaffected' && noReleasesAt(i.p.href) ? 'No releases' : WORD[st]), cause: st === 'held' || st === 'approval' ? stageCause(i.p, scenario) : null, progress: !i.ahead && (st === 'checking' || st === 'paused' || st === 'deploying') ? `${done} of ${steps.length}` : null, age: i.ahead ? null : st === 'deployed' ? ago(currentAt(i.p.href) ?? i.p.at ?? i.p.since) : st === 'failed' || st === 'checking' || st === 'paused' || st === 'deploying' ? ago(i.p.at ?? i.p.since) : null, build: i.build, here: here === i.p.href, ahead: !!i.ahead, live: false, current: i.p.current ?? null, lag: lagOf(i.p, st, scenario) };
+		return { href: i.p.href, yours: st === 'approval' && !!i.p.row?.needsYou, app: i.p.app, tier: i.p.tier, name: i.site, leader: i.leader, state: st, word: i.word ?? (st === 'failed' ? failedWord(failureRecovered(i.p.href)) : st === 'held' || st === 'approval' ? causeText(stageCause(i.p, scenario) ?? [WORD[st]]) : st === 'notaffected' && noReleasesAt(i.p.href) ? 'No releases' : WORD[st]), cause: st === 'held' || st === 'approval' ? stageCause(i.p, scenario) : null, progress: !i.ahead && (st === 'checking' || st === 'paused' || st === 'deploying') ? `${done} of ${steps.length}` : null, age: i.ahead ? null : st === 'deployed' ? ago(currentAt(i.p.href) ?? i.p.at ?? i.p.since) : st === 'failed' ? ago(failureSinceAt(i.p.href) ?? i.p.at ?? i.p.since) : st === 'checking' || st === 'paused' || st === 'deploying' ? ago(i.p.at ?? i.p.since) : null, recovered: st === 'failed' && failureRecovered(i.p.href), build: i.build, here: here === i.p.href, ahead: !!i.ahead, live: false, current: i.p.current ?? null, lag: lagOf(i.p, st, scenario) };
 	};
 	const lanes: StageLane[] = apps.map((app) => ({
 		app,
@@ -207,7 +207,8 @@ function drawRelease(app: string, c: AppCtx, scenario: HomeState, release: strin
 	const ran = r == null ? 0 : c.entries.filter((e) => e.counted && e.idx === r).length;
 	const total = c.entries.filter((e) => e.counted).length;
 	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${total} place${total === 1 ? '' : 's'} on ${release}`, short: `${ran} of ${total} on ${release}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
-	if (k('failed')) parts.push({ text: `${k('failed')} failing`, ink: 'danger' });
+	/* a failed place whose checks have all recovered reads `failed`; `failing` is a check failing now (state-words.ts failedWord) */
+	for (const t of failedPartsOfHrefs(ps.filter((p) => p.state === 'failed').map((p) => p.href))) parts.push({ text: t, ink: t.endsWith(' failing') ? 'danger' : 'muted' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
 	if (k('checking')) parts.push({ text: `${k('checking')} checking`, ink: 'progress' });
@@ -258,7 +259,7 @@ function rollupOf(c: TChange, scenario: HomeState): StageRollup {
 	const total = cl.places.length + unreached;
 	const ran = n.live + n.checking + n.paused + n.deploying;
 	const parts: StageRollup['parts'] = [{ text: `${ran} of ${total} place${total === 1 ? '' : 's'}`, short: `${ran} of ${total}`, ink: 'muted' }];
-	if (n.failing) parts.push({ text: `${n.failing} failing`, ink: 'danger' });
+	for (const t of failedParts(n.failing, n.recovered)) parts.push({ text: t, ink: 'danger' });
 	if (n.waiting) parts.push({ text: `${n.waiting} waiting`, ink: 'held' });
 	if (n.held) parts.push({ text: `${n.held} held`, ink: 'held' });
 	if (n.checking) parts.push({ text: `${n.checking} checking`, ink: 'progress' });

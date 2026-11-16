@@ -44,6 +44,9 @@
 	import { ExclamationCircleSolid } from 'flowbite-svelte-icons';
 	import CheckGlyph from './CheckGlyph.svelte';
 
+	/** a message's facts: the text between its ' · ' joints, empty ones dropped */
+	const factsOf = (message: string | undefined): string[] => (message ?? '').split(' \u00b7 ').map((x) => x.trim()).filter(Boolean);
+
 	interface Props {
 		/** `name` empty = the line carries only the message (a banner whose figure caption already names the observation) */
 		check: { name?: string; message?: string; /** the check's class: the glyph lookup (CheckGlyph) instead of the generic mark */ cls?: string };
@@ -61,6 +64,8 @@
 	}
 
 	let { check, danger, compact = false, ink = false, body = false }: Props = $props();
+	/** the message's facts, split where it joins them with a middle dot */
+	const parts = $derived(factsOf(check.message));
 </script>
 
 <div
@@ -69,6 +74,15 @@
 		: 'text-fg-muted'}"
 >
 	{#if check.cls}<CheckGlyph cls={check.cls} class="check-glyph h-3.5 w-3.5 shrink-0 translate-y-0.5" />{:else}<ExclamationCircleSolid class="check-glyph h-3 w-3 shrink-0 translate-y-0.5" aria-hidden="true" />{/if}
+	{#if parts.length > 1 && !compact}
+		<!-- A message made of several facts ("over a 1% budget · service:orders"): each fact is a unit of the shared dot list, whose dot is clipped when a unit starts a line, so no separator sits at a line edge. -->
+		<span class="dot-list min-w-0 flex-1" data-check-facts>
+			<span class="dot-list-row flex flex-wrap">
+				<span class="min-w-0 max-w-full break-words"><span class={ink ? 'text-fg' : danger ? 'text-danger' : 'text-fg-muted'}>{check.name ?? ''}{check.name ? ':' : ''}</span>{' '}<span class="text-fg-muted">{parts[0]}</span></span>
+				{#each parts.slice(1) as part, i (i)}<span class="min-w-0 max-w-full break-words text-fg-muted">{part}</span>{/each}
+			</span>
+		</span>
+	{:else}
 	<span class="min-w-0 break-words {compact ? 'line-clamp-2' : ''}"
 		><span class={ink ? 'text-fg' : danger ? 'text-danger' : 'text-fg-muted'}
 			>{check.name ?? ''}{check.name && check.message ? ':' : ''}</span
@@ -77,6 +91,7 @@
 			<span class="text-fg-muted">{check.message}</span>
 		{/if}</span
 	>
+	{/if}
 </div>
 
 <style>

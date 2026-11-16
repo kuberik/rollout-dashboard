@@ -18,10 +18,10 @@ import { approvalRev } from '$lib/components/new/approval-rev.svelte';
 import type { NetworkSchedules } from '$lib/api/schedules';
 import { liveSource, type FleetSource } from './fleet-source.svelte';
 
-/** the clock the pages count ages from: the live source's `now`, the fixture's capture instant when nothing is installed. A Date, so every `NOW.getTime()` / `NOW.toISOString()` reads the current source. */
+/** the clock the pages count ages from: the live source's `now` (the wall clock for the app's own gate), the fixture's capture instant when nothing is installed. A Date, so every `NOW.getTime()` / `NOW.toISOString()` reads the current source. */
 class SourceClock extends Date {
 	constructor() { super(FIXTURE_NOW.getTime()); }
-	private ms(): number { return (liveSource()?.now ?? FIXTURE_NOW).getTime(); }
+	private ms(): number { const s = liveSource(); return s?.liveClock ? Date.now() : (s?.now ?? FIXTURE_NOW).getTime(); }
 	override getTime(): number { return this.ms(); }
 	override valueOf(): number { return this.ms(); }
 	override toISOString(): string { return new Date(this.ms()).toISOString(); }

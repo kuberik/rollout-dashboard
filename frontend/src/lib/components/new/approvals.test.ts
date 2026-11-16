@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { deployableTags, placeHolds, inbox, gatesOf, gateName, candidateBuilds, rollouts, approvalTarget, grantApproval, revokeApproval, appHolds, apps, heldCauses, stateVerb, type TRow } from './data';
 import { sentenceOf, sentenceParts } from './rollouts-page';
 import { publishGatePretty } from '$lib/view-models/gate-pretty.svelte';
@@ -326,7 +326,14 @@ describe('one classification for the toast, the row, the Holding card and the bu
 	it('one wording per kind of other hold', () => {
 		const base = { other: 'Business hours gate', persistent: false };
 		expect(alsoApprovalAsk({ ...base, kind: 'window' }), 'a window is named as the window, never by its gate').toBe('Approve now; it deploys when the deploy window opens');
-		expect(alsoApprovalAsk({ ...base, kind: 'window' }, '2026-11-16T09:00:00Z')).toMatch(/^Approve now; it deploys when the deploy window opens \w{3} 09:00 UTC$/);
+		/* frozen clock: two days before the opening, so it names its weekday on any run date */
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-11-14T12:00:00Z'));
+		try {
+			expect(alsoApprovalAsk({ ...base, kind: 'window' }, '2026-11-16T09:00:00Z')).toMatch(/^Approve now; it deploys when the deploy window opens \w{3} 09:00 UTC$/);
+		} finally {
+			vi.useRealTimers();
+		}
 		expect(alsoApprovalAsk({ other: 'promotion order', persistent: false, kind: 'order' })).toBe('Approve now; it deploys when promotion order allows it');
 		expect(alsoApprovalAsk({ other: 'Smoke check', persistent: true, kind: 'hold' })).toBe("Approving won't deploy until Smoke check clears");
 	});

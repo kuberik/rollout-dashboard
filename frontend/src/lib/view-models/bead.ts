@@ -7,7 +7,7 @@ import { beadRank } from './severity';
  */
 export type BeadState = 'failed' | 'approval-yours' | 'approval' | 'held' | 'deploying' | 'checking' | 'healthy' | 'landed';
 
-export type BeadChange = { ref: string; title?: string; state: BeadState; href?: string; key?: string; /** the change's apps have no releases (no source, or an empty catalogue): the state word; it will not be promoted past the place it is in */ noReleases?: string };
+export type BeadChange = { ref: string; title?: string; state: BeadState; href?: string; key?: string; /** the change's apps have no releases (no source, or an empty catalogue): the state word; it will not be promoted past the place it is in */ noReleases?: string; /** failed, and every check has recovered: it reads `failed`, not `failing` */ recovered?: boolean };
 export type Bead = {
 	state: BeadState;
 	/** refs printed (<= 2 uncompacted, 1 otherwise) */
@@ -21,6 +21,8 @@ export type Bead = {
 	/** kit class: `failed` | `yours` | '' (team views show no personal emphasis) */
 	emphasis: '' | 'failed' | 'yours';
 	changes: BeadChange[];
+	/** a failed bead whose every change has its checks OK again (the shared `failed` mark); one failing now keeps `failing` */
+	recovered: boolean;
 };
 
 /** worst first: `severity.ts`'s one order, the approval the viewer can give first among approvals */
@@ -38,7 +40,8 @@ export function beadOf(changes: BeadChange[], { team = false, compact = false } 
 		href: changes[0].href,
 		title: changes.map((c) => `${c.ref} ${c.title ?? ''}`.trim()).join('\n\n'),
 		emphasis: !team && s === 'failed' ? 'failed' : !team && s === 'approval-yours' ? 'yours' : '',
-		changes
+		changes,
+		recovered: s === 'failed' && changes.every((c) => !!c.recovered)
 	};
 }
 

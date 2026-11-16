@@ -19,7 +19,7 @@
 	import { ArrowRightOutline } from 'flowbite-svelte-icons';
 	import { envTheme } from './rollout-view';
 	import { avatarSrc } from './data';
-	import type { EnvTile } from './environments-page';
+	import { regionCellParts, type EnvTile } from './environments-page';
 	import { plural } from './envs-model';
 
 	let { tile, wide = false }: { tile: EnvTile; wide?: boolean } = $props();
@@ -31,7 +31,7 @@
 	<header class="et-id">
 		<Chip role="env" theme={envTheme(tile.key)} label={tile.key} wide />
 		<h3 class="et-nm t-ui"><a href={tile.href} class="tap-link">{tile.name}</a></h3>
-		<span class="et-cnt t-meta tabular-nums">{tile.places} places · {tile.apps} apps</span>
+		<span class="et-cnt t-meta tabular-nums">{plural(tile.places, 'place')} · {plural(tile.apps, 'app')}</span>
 	</header>
 
 	<EnvStateBar {tile} />
@@ -42,7 +42,7 @@
 				<a class="et-region" href={r.href} data-truth-kind="region" data-truth-region={r.label}>
 					<span class="et-rtop"><StatusMark state={regionMark(r.mark)} /><span class="et-rnm t-meta font-medium truncate">{r.label}</span></span>
 					<span class="et-rst t-meta">
-						{#if r.failing}<span class={hueInk('danger')}>{r.failing} failing</span>{/if}{#if r.failing && (r.waiting || r.moving)}{' · '}{/if}{#if r.waiting}<span class={hueInk('held')}>{r.waiting} waiting</span>{/if}{#if r.waiting && r.moving}{' · '}{/if}{#if r.moving}<span class={hueInk('active')}>{r.movingWord}</span>{/if}
+						<span class="dot-list block"><span class="dot-list-row flex flex-wrap">{#each regionCellParts(r) as w (w.text)}<span class="whitespace-nowrap {w.ink ? hueInk(w.ink) : ''}">{w.text}</span>{/each}</span></span>
 					</span>
 				</a>
 			{/each}
