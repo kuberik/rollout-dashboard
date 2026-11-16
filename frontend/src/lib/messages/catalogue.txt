@@ -1542,6 +1542,7 @@ lib/view-models/env-rank.ts	code	… is running a build that is on no environmen
 lib/view-models/env-rank.ts	code	… of … region… on the newest
 lib/view-models/env-rank.ts	code	…'s distance from the newest build cannot be resolved — the build it is running is not in its own release list
 lib/view-models/failure-actions.ts	code	Open logs
+lib/view-models/failure-actions.ts	code	Roll back
 lib/view-models/fleet-facts.ts	code	, incl. …
 lib/view-models/fleet-facts.ts	code	… · … in environments · … without
 lib/view-models/fleet-facts.ts	code	… app…

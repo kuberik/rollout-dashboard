@@ -149,12 +149,22 @@ describe('Needs you lists builds held by approval', { timeout: 20_000 }, () => {
 		expect(document.querySelector('dialog[open]')).toBeNull();
 	});
 
-	test('a failed row still navigates to its logs (unchanged)', async () => {
+	test('a failing row: Enter runs Roll back, as the cards do; Open logs stays a link on the row', async () => {
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
-		await fireEvent.mouseEnter(needsYouRows()[0]);
+		const row = needsYouRows()[0];
+		expect(row.querySelector('[data-meta="action"]')?.textContent).toContain('Roll back');
+		expect(row.querySelector('a[data-secondary="logs"]')?.getAttribute('href')).toMatch(/checkout-worker.*\/logs$/);
+		await fireEvent.mouseEnter(row);
 		await fireEvent.keyDown(window, { key: 'Enter' });
 		expect(goto).toHaveBeenCalledTimes(1);
-		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/checkout-worker.*\/logs$/);
+		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/checkout-worker[^/]*\?action=rollback$/);
+	});
+
+	test('a failing row says "failing" in danger ink and "for <age>", like the card', () => {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const row = needsYouRows()[0];
+		expect(row.querySelector('[data-failing-word]')?.className).toContain('text-danger');
+		expect(row.querySelector('[data-build-age]')?.textContent ?? row.textContent).toMatch(/for \d+\w/);
 	});
 
 	test('QA C7: the word "approval" finds the rollout that waits for one (state words are indexed)', async () => {

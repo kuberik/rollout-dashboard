@@ -6,6 +6,8 @@
 	import { approvalCellText } from '$lib/view-models/held';
 	import { shortenVersion } from '$lib/utils';
 	import { failedWord } from '$lib/components/new/state-words';
+	import { formatTimeAgoCompact } from '$lib/utils';
+	import { TONE } from '$lib/view-models/state-tone';
 
 	export type BlockedKind = 'failed' | 'stuck' | 'held';
 	/**
@@ -32,6 +34,21 @@
 	export function blockedOptionLabel(c: RolloutCard, kind: BlockedKind, recovered: boolean, actionLabel: string, holdLabel = ''): string {
 		const state = kind === 'failed' ? ` · ${blockedFact(c, kind, null, recovered).toLowerCase()}` : '';
 		return `${c.name}${c.envDisplay ? ` · ${c.envDisplay}` : ''}${state} — ${actionLabel}${holdLabel ? ` ${holdLabel}` : ''}`;
+	}
+
+	/**
+	 * The age phrase of a row, the AttentionCard's own: a failure that still fails reads "for 6m", one whose checks recovered "6m ago",
+	 * both counted from the failure's own instant (`failure.since`); every other row keeps "<age> ago" of its event.
+	 */
+	export function blockedAgeText(kind: BlockedKind, recovered: boolean, failedSince: string | null | undefined, eventInstant: string | null | undefined, at: Parameters<typeof formatTimeAgoCompact>[1]): string | null {
+		if (kind === 'failed' && failedSince) return `${recovered ? '' : 'for '}${formatTimeAgoCompact(failedSince, at)}${recovered ? ' ago' : ''}`;
+		return eventInstant ? `${formatTimeAgoCompact(eventInstant, at)} ago` : null;
+	}
+
+	/** The fact split so the word "failing" (a check failing right now) can take the danger ink; a recovered fact says "failed" in neutral ink and splits to one run. */
+	export function blockedFactRuns(text: string, recovered: boolean): { t: string; danger: boolean }[] {
+		if (recovered) return [{ t: text, danger: false }];
+		return text.split(/(\bfailing$)/).filter(Boolean).map((t) => ({ t, danger: t === "failing" }));
 	}
 
 	/** The row's fact, in plain words: why a person is needed. */
@@ -116,7 +133,6 @@
 	import Chip from './Chip.svelte';
 	import AppGlyph from './AppGlyph.svelte';
 	import { ChevronRightOutline } from 'flowbite-svelte-icons';
-	import { formatTimeAgoCompact } from '$lib/utils';
 	import { eventAge } from '$lib/view-models/event-age';
 	import { now } from '$lib/stores/time';
 	import type { Snippet } from 'svelte';
@@ -125,7 +141,7 @@
 		card,
 		kind,
 		href,
-		fact = undefined,
+		fact: factOverride = undefined,
 		story = null,
 		build = undefined,
 		size = 'row',
@@ -136,10 +152,13 @@
 		trailing = undefined,
 		approval = false,
 		recovered = false,
+		failedSince = null,
 		class: className = ''
 	}: {
 		/** a failed row whose health checks are all OK again (its fact says Failed, else a check failing now says failing) */
 		recovered?: boolean;
+		/** a failed row's own age instant (`failure.since`): "for 6m" while failing, "6m ago" once recovered */
+		failedSince?: string | null;
 		/** A held row whose hold waits on a PERSON (an approval): the approval
 		 *  mark (person glyph, strong ink), never the orange pause a rule hold
 		 *  wears. Only meaningful with `kind: 'held'`. */
@@ -168,7 +187,7 @@
 		class?: string;
 	} = $props();
 
-	const factText = $derived(fact ?? blockedFact(card, kind, story, recovered));
+	const factText = $derived(factOverride ?? blockedFact(card, kind, story, recovered));
 	const buildText = $derived(build === undefined ? blockedBuild(card, kind) : build);
 	// ⭐ shared/age-lag-total: ONE AGE PER EVENT. Was `card.timestamp`
 	// unconditionally — the deploy's own start — which is wrong for `held`
@@ -177,9 +196,12 @@
 	// disagreeing instants the coordinator's blind read found. `eventAge`
 	// reads the instant for THIS row's own `kind` (`event-age.ts`).
 	const ageInstant = $derived(eventAge(card, kind));
-	const age = $derived(ageInstant ? formatTimeAgoCompact(ageInstant, $now) : null);
+	const age = $derived(blockedAgeText(kind, recovered, failedSince, ageInstant, $now));
+	const factRuns = $derived(kind === 'failed' ? blockedFactRuns(factText, recovered) : [{ t: factText, danger: false }]);
 	const palette = $derived(size === 'palette');
 </script>
+
+{#snippet fact()}{#each factRuns as r}{#if r.danger}<span class="{TONE.failed.ink}" data-failing-word>{r.t}</span>{:else}{r.t}{/if}{/each}{/snippet}
 
 <svelte:element
 	this={as}
@@ -202,9 +224,9 @@
 		<span class="t-meta flex min-w-0 basis-full items-baseline gap-x-3 pl-7 text-fg-muted sm:basis-auto sm:flex-1 sm:pl-0">
 			<span class="dot-list block min-w-0 flex-1">
 				<span class="dot-list-row flex min-w-0 flex-wrap items-baseline sm:flex-nowrap">
-					<span class="min-w-0 sm:truncate">{factText}</span>
+					<span class="min-w-0 sm:truncate">{@render fact()}</span>
 					<!-- the build and the age are one no-break fact, so "20m ago" never wraps onto a line by itself -->
-					{#if buildText || age}<span class="shrink-0 whitespace-nowrap" data-build-age>{#if buildText}<span class="t-code-sm">{buildText}</span>{/if}{#if buildText && age}{' · '}{/if}{#if age}<span class="tabular-nums">{age} ago</span>{/if}</span>{/if}
+					{#if buildText || age}<span class="shrink-0 whitespace-nowrap" data-build-age>{#if buildText}<span class="t-code-sm">{buildText}</span>{/if}{#if buildText && age}{' · '}{/if}{#if age}<span class="tabular-nums">{age}</span>{/if}</span>{/if}
 				</span>
 			</span>
 			{#if trailing}<span class="ms-auto shrink-0">{@render trailing()}</span>{/if}
@@ -212,8 +234,8 @@
 	{:else if palette}
 		<!-- One truncated line that never wraps: text separators cannot orphan. -->
 		<span class="t-meta min-w-0 flex-1 truncate text-fg-muted">
-			<span>{factText}</span>{#if buildText}{' · '}<span class="t-code-sm">{buildText}</span>{/if}{#if age}{' · '}<span
-					class="whitespace-nowrap tabular-nums">{age} ago</span
+			<span>{@render fact()}</span>{#if buildText}{' · '}<span class="t-code-sm">{buildText}</span>{/if}{#if age}{' · '}<span
+					class="whitespace-nowrap tabular-nums">{age}</span
 				>{/if}
 		</span>
 		{#if trailing}<span class="shrink-0">{@render trailing()}</span>{/if}
@@ -232,9 +254,9 @@
 				     ("running 7b3c9f1 · 4a8d2e6 waits for you") drops under the fact
 				     instead of truncating either, and the action keeps the right. -->
 				<span class="dot-list-row flex min-w-0 flex-wrap items-baseline">
-					<span class="min-w-0">{factText}</span>
+					<span class="min-w-0">{@render fact()}</span>
 					{#if buildText}<span class="t-code-sm min-w-0 max-w-full truncate">{buildText}</span>{/if}
-					{#if age}<span class="shrink-0 whitespace-nowrap tabular-nums">{age} ago</span>{/if}
+					{#if age}<span class="shrink-0 whitespace-nowrap tabular-nums">{age}</span>{/if}
 				</span>
 			</span>
 		</span>

@@ -122,8 +122,8 @@
 		shortEnvLabel
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
-	import { failureRecovered } from '$lib/components/new/data';
-	import { failedRowAction } from '$lib/view-models/failure-actions';
+	import { failureRecovered, failureSinceAt } from '$lib/components/new/data';
+	import { failedRowAction, FAILED_ROW_SECONDARY } from '$lib/view-models/failure-actions';
 	import { href, appPath } from '$lib/paths';
 	import { now } from '$lib/stores/time';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -1114,10 +1114,10 @@
 	 * is shared with `thisRolloutActions` so both read one scope/cluster
 	 * rule for "where does this rollout's own link go."
 	 */
-	function goRolloutSub(c: RolloutCard, sub?: string) {
+	function goRolloutSub(c: RolloutCard, sub?: string, query?: string) {
 		open = false;
 		const cluster = c.sourceCluster || localClusterName;
-		goto(sub ? rolloutPath(cluster, c.ns, c.name, sub) : rolloutPath(cluster, c.ns, c.name));
+		goto((sub ? rolloutPath(cluster, c.ns, c.name, sub) : rolloutPath(cluster, c.ns, c.name)) + (query ? `?${query}` : ''));
 	}
 
 	/** The one rollout `goRolloutSub`'s "Logs, or Overview if already there"
@@ -1139,7 +1139,7 @@
 	 * A target that IS the tab already open falls back to Overview, so the
 	 * row never offers a no-op ("Open logs" while on Logs).
 	 */
-	type BlockedAction = { label: string; sub: string | undefined };
+	type BlockedAction = { label: string; sub: string | undefined; query?: string };
 	function blockedAction(c: RolloutCard): BlockedAction {
 		const approval = approvalCards.has(c);
 		const kind = blockedKindOf(c);
@@ -1164,7 +1164,8 @@
 	}
 	function blockedHref(c: RolloutCard): string {
 		const cluster = c.sourceCluster || localClusterName;
-		return rolloutPath(cluster, c.ns, c.name, blockedAction(c).sub);
+		const a = blockedAction(c);
+		return rolloutPath(cluster, c.ns, c.name, a.sub) + (a.query ? `?${a.query}` : '');
 	}
 	/** Search results: the RolloutCard behind a rollout result, when that
 	 *  rollout needs a person, so the row renders as `blockedOption`. */
@@ -1179,7 +1180,7 @@
 	/** THE ONE THING A BLOCKED ROW DOES, for ↵ and a search pick: go to its
 	 *  action's tab (a click follows the row's own link, same href). */
 	function runBlocked(c: RolloutCard) {
-		goRolloutSub(c, blockedAction(c).sub);
+		goRolloutSub(c, blockedAction(c).sub, blockedAction(c).query);
 	}
 	/**
 	 * ⭐ PALROW r7 (AD r6 nit): ONE IDENTITY PER ENV NAME. A rollout with no
@@ -1793,7 +1794,10 @@
 		class="rounded-sm {isActive ? 'bg-selected' : ''}"
 	>
 		{#snippet incidentAction()}
-			<span class="flex items-center gap-2" data-meta="action">
+			<span class="flex items-center gap-3" data-meta="action">
+				{#if rowKind(c) === 'failed' && !approvalCards.has(c) && actionLabel !== FAILED_ROW_SECONDARY.label}
+					<a href={rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name, FAILED_ROW_SECONDARY.sub)} class="t-ui-sm relative z-[1] whitespace-nowrap text-fg-muted hover:text-fg" data-secondary="logs" onclick={() => (open = false)}>{FAILED_ROW_SECONDARY.label}</a>
+				{/if}
 				{@render runKey(isActive)}
 				<span class="t-ui-sm whitespace-nowrap text-fg">{actionLabel}</span>
 			</span>
@@ -1803,6 +1807,7 @@
 			kind={rowKind(c)}
 			approval={approvalCards.has(c)}
 			recovered={failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name))}
+			failedSince={failureSinceAt(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name))}
 			story={approvalStories.get(c) ?? null}
 			href={rowHref}
 			size="palette"
