@@ -83,7 +83,8 @@
 	const ref = $derived(from && to ? `${from} → ${to}` : (to ?? ''));
 	const resolved = $derived(tone === 'failed' && !live);
 	const markResolved = $derived(tone === 'failed' && !(markLive ?? live));
-	const verbInk = $derived(resolved ? 'text-fg-subtle' : tone ? toneInk(tone) : bare ? 'text-fg' : 'text-fg-muted');
+	/* a recovered failure (current, checks OK again) says "failed" in neutral ink beside its ring, whichever page passes it as live */
+	const verbInk = $derived(tone === 'failed' && markRecovered && !markResolved ? toneInk('recovered') : resolved ? 'text-fg-subtle' : tone ? toneInk(tone) : bare ? 'text-fg' : 'text-fg-muted');
 </script>
 
 <li class="fr tap-zone" class:fr-bare={bare} data-feed-row data-tone={tone ?? 'ok'} title={outcome ?? undefined}>

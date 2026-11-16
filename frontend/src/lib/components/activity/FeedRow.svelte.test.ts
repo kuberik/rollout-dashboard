@@ -43,4 +43,10 @@ describe('FeedRow recovered failure', () => {
 		expect(verb({ live: false, markLive: true, markRecovered: true })).not.toContain('text-danger');
 		expect(verb({ live: true })).toContain('text-danger');
 	});
+	test('a recovered failure passed as live (the app page feed) still words it in neutral ink, not danger', () => {
+		const verb = (extra: Record<string, unknown>) => render(FeedRow, { props: { ...base, ...extra } }).container.querySelector('.fr-v')!.className;
+		expect(verb({ live: true, markRecovered: true })).toContain('text-fg-muted');
+		expect(verb({ live: true, markRecovered: true })).not.toContain('text-danger');
+		expect(verb({ live: false, markLive: true, markRecovered: true })).toContain('text-fg-muted');
+	});
 });

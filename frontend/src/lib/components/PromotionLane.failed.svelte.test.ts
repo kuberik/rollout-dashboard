@@ -24,4 +24,15 @@ describe('PromotionLane: a failed box', () => {
 			unmount();
 		}
 	});
+	it('words a recovered box "Failed" in neutral ink beside its ring, a failing one in danger ink', () => {
+		for (const sites of [true, false])
+			for (const [recovered, ink, word] of [[false, 'text-danger', 'Failing'], [true, 'text-fg-muted', 'Failed']] as const) {
+				const { container, unmount } = render(PromotionLane, { props: { lane: lane(), hrefFor: () => '/x', words: true, sites, recovered: () => recovered } as never });
+				const w = container.querySelector('[data-tier="prod"] .env-word')!;
+				expect(w.textContent).toContain(word);
+				expect(w.className).toContain(ink);
+				if (recovered) expect(w.className).not.toContain('text-danger');
+				unmount();
+			}
+	});
 });
