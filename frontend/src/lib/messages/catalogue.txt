@@ -1015,8 +1015,10 @@ lib/components/new/stages/Stages.svelte	aria-label	Releases in flight
 lib/components/new/stages/Stages.svelte	text	View change
 lib/components/new/stages/Stages.svelte	code	Wave …
 lib/components/new/stages/Stages.svelte	text	Wave …
+lib/components/new/state-words.ts	code	: ''}, so a retry is reasonable.
 lib/components/new/state-words.ts	code	… … approval
 lib/components/new/state-words.ts	code	Needs your approval
+lib/components/new/state-words.ts	code	Recovered${at ?
 lib/components/new/state-words.ts	code	Waiting for approval
 lib/components/new/StrandRow.svelte	label	… steps
 lib/components/new/StrandRow.svelte	text	to prod
@@ -1268,7 +1270,6 @@ lib/view-models/attention.ts	code	Needs your approval
 lib/view-models/attention.ts	code	of …${o.unit ?
 lib/view-models/attention.ts	code	over a … budget
 lib/view-models/attention.ts	code	prod regions
-lib/view-models/attention.ts	code	recovered at …
 lib/view-models/attention.ts	code	under a … floor
 lib/view-models/auto-deploy.ts	code	a rule is holding it
 lib/view-models/auto-deploy.ts	code	a rule is holding it (…)
@@ -1575,7 +1576,6 @@ lib/view-models/gate-fact.ts	code	1 gate failing
 lib/view-models/gate-fact.ts	code	1 of … gates failing
 lib/view-models/gate-label.ts	code	… from …
 lib/view-models/health-failures.ts	code	: ' is failing'}
-lib/view-models/health-failures.ts	code	: ''}, so a retry is reasonable.
 lib/view-models/health-failures.ts	code	… …/…${unit ?
 lib/view-models/health-failures.ts	code	… …${o.window ?
 lib/view-models/health-failures.ts	code	… health checks failing: ……
@@ -1589,7 +1589,6 @@ lib/view-models/health-failures.ts	code	+… more
 lib/view-models/health-failures.ts	code	check …
 lib/view-models/health-failures.ts	code	failed …
 lib/view-models/health-failures.ts	code	health check
-lib/view-models/health-failures.ts	code	Recovered${ok ?
 lib/view-models/health-witness.ts	code	… failing
 lib/view-models/health-witness.ts	code	… is failing…. Automatic deploys here are held until it passes; a deploy you start by hand still applies.
 lib/view-models/health-witness.ts	code	… is passing now, but it errored … — inside the window of the deploy that is running. The controller keeps that error as evidence; this mark clears on the next deploy or retry.

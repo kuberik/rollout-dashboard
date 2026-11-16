@@ -3,7 +3,7 @@ import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { respond } from '../../demo/respond';
 import { resetDemoState } from '../../demo/state';
 import { install } from '../../demo/health-failures-fixtures';
-import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
+import { installLiveSource, liveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { changes, rollouts } from './data';
 import { changesPage } from './changes-page';
 
@@ -30,5 +30,18 @@ describe('search-indexer: prod failed on #64 while dev and staging already run #
 		const parts = changesPage('calm').teamRollup.map((p) => (typeof p === 'string' ? p : p.text));
 		expect(parts).toContain('4 failing');
 		expect(parts).toContain('1 failed');
+	});
+	it('no failure drops out between the two sections: Your changes + Team count what /rollouts counts, and catalog-api is listed (the dev viewer)', () => {
+		load();
+		const src = liveSource();
+		installLiveSource({ ...(src as object), me: 'danielreed', github: { configured: true, connected: true, login: 'danielreed' } } as unknown as FleetSource);
+		const page = changesPage('calm');
+		const word = (r: typeof page.teamRollup, w: RegExp) => r.map((p) => (typeof p === 'string' ? p : p.text)).map((t) => Number(w.exec(t)?.[1] ?? 0)).reduce((a, b) => a + b, 0);
+		const failing = word(page.teamRollup, /^(\d+) failing/) + word(page.mineRollup, /^(\d+) failing/);
+		const failed = word(page.teamRollup, /^(\d+) failed/) + word(page.mineRollup, /^(\d+) failed/);
+		const ro = rollouts('calm').rows.filter((r) => r.group === 'failed');
+		expect(failing).toBe(ro.filter((r) => !r.failure?.recovered).length);
+		expect(failed).toBe(ro.filter((r) => !!r.failure?.recovered).length);
+		expect([...page.mine, ...page.team].some((g) => g.repo === 'catalog-api')).toBe(true);
 	});
 });
