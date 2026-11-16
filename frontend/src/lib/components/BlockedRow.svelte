@@ -20,6 +20,9 @@
 		return c.statusKey === 'failed' || c.checkFailure != null ? 'failed' : 'stuck';
 	}
 
+	/** Within one kind, a failure whose checks fail now sorts above one that has recovered (Home's `askRank`: failing 0, recovered 1; every other row 0). */
+	export const blockedRecoveredRank = (kind: BlockedKind, recovered: boolean): number => (kind === 'failed' && recovered ? 1 : 0);
+
 	/** The word the row's state glyph speaks (its hidden text): a failed row says "failing" while a check fails now and "failed" once its checks recovered (state-words `failedWord`); other kinds say their kind. */
 	export function blockedStateLabel(kind: BlockedKind, recovered = false): string {
 		return kind === 'failed' ? failedWord(recovered).toLowerCase() : kind;

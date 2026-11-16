@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/svelte';
-import BlockedRow, { blockedBuild, blockedFact, blockedStateLabel, blockedOptionLabel } from './BlockedRow.svelte';
+import BlockedRow, { blockedBuild, blockedFact, blockedStateLabel, blockedOptionLabel, blockedRecoveredRank } from './BlockedRow.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 
 /** A held rollout: 7b3c9f1 RUNS; 4a8d2e6 is the candidate an approval gate refuses. */
@@ -152,5 +152,13 @@ describe('the glyph and option say failing while a check fails now, failed once 
 		expect(blockedOptionLabel(failedCard, 'failed', false, 'Open logs')).toBe('checkout-gateway · prod · health check failing — Open logs');
 		expect(blockedOptionLabel(failedCard, 'failed', true, 'Open logs')).toBe('checkout-gateway · prod · failed its health check — Open logs');
 		expect(blockedOptionLabel(heldCard, 'held', false, 'Approve', 'approval')).toBe('telemetry-indexer · prod — Approve approval');
+	});
+});
+
+describe('palette Needs-you order', () => {
+	it('a failure failing now ranks above a recovered one; other kinds do not move', () => {
+		expect(blockedRecoveredRank('failed', false)).toBeLessThan(blockedRecoveredRank('failed', true));
+		expect(blockedRecoveredRank('held', true)).toBe(0);
+		expect(blockedRecoveredRank('stuck', true)).toBe(0);
 	});
 });

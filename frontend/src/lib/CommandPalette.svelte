@@ -71,7 +71,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import RestGlyph from '$lib/components/RestGlyph.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import BlockedRow, { blockedKindOf, blockedOptionLabel } from '$lib/components/BlockedRow.svelte';
+	import BlockedRow, { blockedKindOf, blockedOptionLabel, blockedRecoveredRank } from '$lib/components/BlockedRow.svelte';
 	import { isHeldByApproval } from '$lib/view-models/held';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import Toast from '$lib/components/Toast.svelte';
@@ -915,6 +915,8 @@
 	function rowKind(c: RolloutCard) {
 		return blockedKindOf(c, approvalCards.has(c));
 	}
+	/** a failed row whose checks have recovered sorts below one failing now */
+	const recoveredRank = (c: RolloutCard) => blockedRecoveredRank(rowKind(c), failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)));
 	/** Failures, then stalls, then approvals (coordinator, 2026-10-11). */
 	const KIND_ORDER = { failed: 0, stuck: 1, held: 2 } as const;
 	const needsYouLeads = $derived(
@@ -930,6 +932,7 @@
 				(a, b) =>
 					Number(b === currentRolloutCard) - Number(a === currentRolloutCard) ||
 					KIND_ORDER[rowKind(a)] - KIND_ORDER[rowKind(b)] ||
+					recoveredRank(a) - recoveredRank(b) ||
 					cardSeverity(b) - cardSeverity(a) ||
 					a.name.localeCompare(b.name)
 			)
