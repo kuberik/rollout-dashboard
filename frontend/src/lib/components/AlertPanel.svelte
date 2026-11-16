@@ -3,6 +3,7 @@
 <script lang="ts">
 	import HeldGlyph from './HeldGlyph.svelte';
 	import CauseText from './CauseText.svelte';
+	import { titleParts } from '$lib/view-models/banner';
 	import type { Cause } from '$lib/view-models/gate-label';
 	import Avatar from './Avatar.svelte';
 	import BangGlyph from './BangGlyph.svelte';
@@ -764,7 +765,7 @@
 								</div>
 							</div>
 						</div>
-						<p class="t-heading {palette.title} {compact ? 'ap-title-clamp' : ''}">{#if typeof title === 'string'}{title}{:else}<CauseText parts={title} />{/if}</p>
+						<p class="t-heading {palette.title} {compact ? 'ap-title-clamp' : ''}">{#if typeof title === 'string'}{@const tp = titleParts(title)}{tp.lead}{#if tp.place}<span class="whitespace-nowrap" data-title-place>{tp.place}</span>{/if}{:else}<CauseText parts={title} />{/if}</p>
 					</div>
 					{#if extra}{@render extra()}{/if}
 				</div>
