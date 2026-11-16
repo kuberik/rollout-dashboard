@@ -149,7 +149,7 @@
 	<div class="mt-6 max-sm:mt-4 empty:hidden" data-statement>
 		{#if st.kind === 'failed' && check}
 			<!-- changedetail-9 CE8: the tab's set and order for a failed deploy: [Retry] [Roll back] + the quiet "Open rollout ›"; r34 S1a: the shared StatementBanner owns the shell and the phone action row -->
-			<StatementBanner severity="failed" title={failTitle} {check}
+			<StatementBanner severity="failed" title={failTitle} {check} recovered={!!lead?.row?.failure?.recovered}
 				phoneMax={1}
 				primary={failActs.primary?.key === 'rollback' && back ? { ...failActs.primary, title: `Roll back to ${back}` } : failActs.primary}
 				secondary={failActs.secondary.map((a) => (a.key === 'rollback' && back ? { ...a, title: `Roll back to ${back}` } : a))} />

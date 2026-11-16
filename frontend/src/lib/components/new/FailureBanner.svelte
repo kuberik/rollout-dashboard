@@ -35,7 +35,7 @@
 </script>
 
 {#snippet details()}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
-<StatementBanner severity="failed" title={b.title} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
+<StatementBanner severity="failed" title={b.title} recovered={!!b.recovered} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
 	message={sentence} change={b.change ? { ...b.change, build: b.meta.build ?? undefined } : undefined}
 	build={b.change ? undefined : b.meta.build ?? undefined} body={extra} class=""
 	footnoteLabel={b.evidence ? 'Details' : undefined}
