@@ -136,7 +136,7 @@
 	);
 	const rollbackNow = $derived(rollout ? rollbackTarget(rollout) : null);
 	/**
-	 * The failed place's checks are all OK again: Retry leads (view-models/failure-actions.ts), the same as the Overview banner.
+	 * The failed place's checks are all OK again: Retry is the primary (view-models/failure-actions.ts), printed after Roll back as on the Overview banner.
 	 * Retry lives on the rollout's Overview, so here it is a link there; Roll back stays beside it on lg+ (the phone's one
 	 * meta-line action is the lead).
 	 */
@@ -193,12 +193,6 @@
 		<!-- sm+ only: below sm the action sits on the meta line (`metaRow`).
 		     `data-desktop-only` lets the actions cell collapse when this is its
 		     only child (language.css, "LOGOPEN r8"), so no empty 12px row. -->
-		{#if recovered}
-			<a class="btn btn-primary max-lg:hidden" data-desktop-only data-action="retry" href={retryLink}>
-				<PlaySolid class="h-4 w-4" aria-hidden="true" />
-				Retry
-			</a>
-		{/if}
 		<a
 			class="btn {recovered ? 'btn-secondary' : 'btn-primary'} max-lg:hidden"
 			data-desktop-only
@@ -208,6 +202,12 @@
 			<UndoOutline class="h-4 w-4" aria-hidden="true" />
 			Roll back
 		</a>
+		{#if recovered}
+			<a class="btn btn-primary max-lg:hidden" data-desktop-only data-action="retry" href={retryLink}>
+				<PlaySolid class="h-4 w-4" aria-hidden="true" />
+				Retry
+			</a>
+		{/if}
 	{/if}
 	{#if quietRollback && !isFailed && rollbackNow}
 		<a
