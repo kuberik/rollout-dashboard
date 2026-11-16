@@ -20,7 +20,8 @@
 	}
 
 	/** The row's fact, in plain words: why a person is needed. */
-	export function blockedFact(c: RolloutCard, kind: BlockedKind, story?: BlockingStory | null): string {
+	/** `recovered`: the failed head's checks are all OK again, so it reads "Failed"; while a check fails now it reads "failing" (state-words `failedWord`) */
+	export function blockedFact(c: RolloutCard, kind: BlockedKind, story?: BlockingStory | null, recovered = false): string {
 		if (kind === 'held') {
 			// The one hold-cause phrase product-wide (holdCausePhrase), from the
 			// classified story the caller holds. Without one, a needs-you held row
@@ -37,7 +38,7 @@
 			// (`activity-kind.ts`) now reads off the identical
 			// `bakeStatusMessage` to pick its own verb — one event, one phrase,
 			// on both the Needs-you row and the activity sentence.
-			if (c.failureCategory === 'healthcheck') return 'Failed its health check';
+			if (c.failureCategory === 'healthcheck') return recovered ? 'Failed its health check' : 'Health check failing';
 			return c.failureCategory && c.failureCategory !== 'failed'
 				? `${c.failureCategory.charAt(0).toUpperCase() + c.failureCategory.slice(1)} failed`
 				: 'Deploy failed';
@@ -119,8 +120,11 @@
 		wrap = false,
 		trailing = undefined,
 		approval = false,
+		recovered = false,
 		class: className = ''
 	}: {
+		/** a failed row whose health checks are all OK again (its fact says Failed, else a check failing now says failing) */
+		recovered?: boolean;
 		/** A held row whose hold waits on a PERSON (an approval): the approval
 		 *  mark (person glyph, strong ink), never the orange pause a rule hold
 		 *  wears. Only meaningful with `kind: 'held'`. */
@@ -149,7 +153,7 @@
 		class?: string;
 	} = $props();
 
-	const factText = $derived(fact ?? blockedFact(card, kind, story));
+	const factText = $derived(fact ?? blockedFact(card, kind, story, recovered));
 	const buildText = $derived(build === undefined ? blockedBuild(card, kind) : build);
 	// ⭐ shared/age-lag-total: ONE AGE PER EVENT. Was `card.timestamp`
 	// unconditionally — the deploy's own start — which is wrong for `held`

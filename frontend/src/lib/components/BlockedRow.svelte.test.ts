@@ -41,6 +41,13 @@ describe('BlockedRow', () => {
 		expect(container.textContent).toContain('4a8d2e6 waits for you');
 		expect(container.textContent).toContain('Waiting on an approval in prod');
 	});
+	it('a health-check failure says failing while a check fails now, failed once they recovered', () => {
+		const hc = { ...heldCard, statusKey: 'failed', failureCategory: 'healthcheck' } as unknown as RolloutCard;
+		expect(blockedFact(hc, 'failed', null, false)).toBe('Health check failing');
+		expect(blockedFact(hc, 'failed', null, true)).toBe('Failed its health check');
+		const { container } = render(BlockedRow, { card: hc, kind: 'failed', href: '/x', recovered: true });
+		expect(container.textContent).toContain('Failed its health check');
+	});
 	it('a failed row names what runs, and the row is one link', () => {
 		const failed = { ...heldCard, name: 'checkout-worker', statusKey: 'failed', version: 'a02f1c4', envDisplay: 'staging' } as unknown as RolloutCard;
 		expect(blockedFact(failed, 'failed')).toBe('Deploy failed');

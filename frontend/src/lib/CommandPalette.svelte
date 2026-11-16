@@ -122,6 +122,7 @@
 		shortEnvLabel
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
+	import { failureRecovered } from '$lib/components/new/data';
 	import { href, appPath } from '$lib/paths';
 	import { now } from '$lib/stores/time';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -1792,6 +1793,7 @@
 			card={c}
 			kind={rowKind(c)}
 			approval={approvalCards.has(c)}
+			recovered={failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name))}
 			story={approvalStories.get(c) ?? null}
 			href={rowHref}
 			size="palette"
