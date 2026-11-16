@@ -44,6 +44,9 @@
 	import { ExclamationCircleSolid } from 'flowbite-svelte-icons';
 	import CheckGlyph from './CheckGlyph.svelte';
 
+	/** a message's facts: the text between its ' · ' joints, empty ones dropped */
+	const factsOf = (message: string | undefined): string[] => (message ?? '').split(' \u00b7 ').map((x) => x.trim()).filter(Boolean);
+
 	interface Props {
 		/** `name` empty = the line carries only the message (a banner whose figure caption already names the observation) */
 		check: { name?: string; message?: string; /** the check's class: the glyph lookup (CheckGlyph) instead of the generic mark */ cls?: string };
@@ -61,6 +64,8 @@
 	}
 
 	let { check, danger, compact = false, ink = false, body = false }: Props = $props();
+	/** the message's facts, split where it joins them with a middle dot */
+	const parts = $derived(factsOf(check.message));
 </script>
 
 <div
@@ -69,6 +74,21 @@
 		: 'text-fg-muted'}"
 >
 	{#if check.cls}<CheckGlyph cls={check.cls} class="check-glyph h-3.5 w-3.5 shrink-0 translate-y-0.5" />{:else}<ExclamationCircleSolid class="check-glyph h-3 w-3 shrink-0 translate-y-0.5" aria-hidden="true" />{/if}
+	{#if parts.length > 1 && !compact}
+		<!--
+			A message made of several facts ("over a 1% budget · service:orders"): each fact is a unit, the separator is a 4px dot that leads every unit after the first.
+			The row is clipped and shifted left by one unit's lead (8px margin + 4px dot + 8px gap = 20px; the first unit carries it as padding), so a unit that wraps to
+			the start of a line has its dot pushed outside the clip and starts clean: no separator ever sits at a line edge.
+		-->
+		<span class="min-w-0 flex-1 overflow-hidden" data-check-facts>
+			<span class="-ml-[20px] flex w-[calc(100%+20px)] flex-wrap">
+				<span class="min-w-0 max-w-full break-words pl-[20px]"><span class={ink ? 'text-fg' : danger ? 'text-danger' : 'text-fg-muted'}>{check.name ?? ''}{check.name ? ':' : ''}</span>{' '}<span class="text-fg-muted">{parts[0]}</span></span>
+				{#each parts.slice(1) as part, i (i)}
+					<span class="ml-2 flex min-w-0 max-w-full items-start gap-2 text-fg-muted"><span class="cl-dot h-1 w-1 shrink-0 rounded-full bg-current opacity-60" aria-hidden="true"></span><span class="min-w-0 break-words">{part}</span></span>
+				{/each}
+			</span>
+		</span>
+	{:else}
 	<span class="min-w-0 break-words {compact ? 'line-clamp-2' : ''}"
 		><span class={ink ? 'text-fg' : danger ? 'text-danger' : 'text-fg-muted'}
 			>{check.name ?? ''}{check.name && check.message ? ':' : ''}</span
@@ -77,9 +97,16 @@
 			<span class="text-fg-muted">{check.message}</span>
 		{/if}</span
 	>
+	{/if}
 </div>
 
 <style>
+	.cl-dot {
+		margin-top: 6px;
+	}
+	.check-body .cl-dot {
+		margin-top: 8px;
+	}
 	.check-body {
 		font-size: 14px;
 		line-height: 20px;
@@ -95,6 +122,9 @@
 		/* build-r4 (AD /needs-you r2 #9, additive): a 12px glyph centred on a 20px line sits 4px down, not 1 (it measured 3px high) */
 		.check-line :global(.check-glyph) {
 			transform: translateY(3px);
+		}
+		.check-line .cl-dot {
+			margin-top: 8px;
 		}
 	}
 </style>
