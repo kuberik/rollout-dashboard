@@ -34,6 +34,7 @@ import {
 import { lastFailureMsWithHeads } from '$lib/view-models/event-age';
 import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+import { checkHoldSentence } from '$lib/view-models/check-hold-sentence';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
 import { waitFact } from '$lib/view-models/wait-fact';
 import { causeText, joinCause, labelPart, type Cause, type GateLabel } from '$lib/view-models/gate-label';
@@ -273,7 +274,7 @@ export function holdRows(
 			places: hp.map((p) => p.place),
 			held,
 			/* every place recovered: the check passes again, but the failed rollout is what still holds the builds, so it needs a retry or a new build */
-			sentence: recovered ? 'The check passes again; a retry or a new build releases it' : 'Releases when the check starts passing',
+			sentence: checkHoldSentence(recovered),
 			...(recovered ? { recovered: true } : {}),
 			href: `${hp[0].href}/gates`
 		});
