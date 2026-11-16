@@ -11,3 +11,19 @@ describe('DayRow failed mark', () => {
 		expect(chip()).toContain('bg-danger-solid');
 	});
 });
+
+/** The word and its ink follow the rule: failing now "Failing" in danger ink, a failure that is over "Failed" in neutral ink. */
+describe('DayRow failed word', () => {
+	const word = (extra: object) => render(DayRow, { row: { key: 'k', kind: 'failed' as const, app: 'a', href: '/x', place: '', title: null, build: 'a1b2c3d', who: 'Automatic', age: '3h', mark: null, reason: null, ...extra } }).container.querySelector('[data-word]')!;
+	it('failing now: Failing, danger ink', () => {
+		const w = word({});
+		expect(w.textContent).toBe('Failing');
+		expect(w.className).toContain('text-danger');
+	});
+	for (const extra of [{ recovered: true }, { superseded: true }]) it(`${JSON.stringify(extra)}: Failed, neutral ink`, () => {
+		const w = word(extra);
+		expect(w.textContent).toBe('Failed');
+		expect(w.className).toContain('text-fg-muted');
+		expect(w.className).not.toContain('text-danger');
+	});
+});
