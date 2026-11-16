@@ -66,3 +66,11 @@ describe('statusWord: failed for a recovered failure, failing while a check fail
 		expect(attentionModel({ state: 'failed', check }).word).toBe('Failing');
 	});
 });
+
+describe('attention card age', () => {
+	it('carries the instant the age counts from so the card can tick it like the banner', () => {
+		const m = attentionModel({ state: 'failed', age: '9m', ageAt: '2026-10-12T11:51:00Z', tier: 'prod', place: '', check, observations: [thr] });
+		expect(m.forAgeAt).toBe('2026-10-12T11:51:00Z');
+		expect(attentionModel({ state: 'approval', age: '9m', tier: 'prod', place: '' }).forAgeAt).toBeNull();
+	});
+});

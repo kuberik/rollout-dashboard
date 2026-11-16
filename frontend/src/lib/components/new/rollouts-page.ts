@@ -150,7 +150,8 @@ export function attentionItem(r: TRow, hs: HomeState): AttentionItem {
 	const counted = !!approvalLead(regions);
 	const model = attentionModel({
 		state: failed ? 'failed' : 'approval',
-		age: failed ? ago(r.since) : ago(waitClock(r, hs)),
+		age: failed ? ago(r.failure?.since ?? r.since) : ago(waitClock(r, hs)),
+		ageAt: failed ? (r.failure?.since ?? r.since ?? null) : null,
 		tier: r.tier, place: counted ? '' : (!failed && r.tier === 'prod' && waitScopeOf(r.app, hs)) || chipPlace(r) || '',
 		regions,
 		check: failed ? { name: r.failure?.check ?? null, message: r.failure?.message ?? r.failure?.line ?? '' } : null,

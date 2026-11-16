@@ -68,7 +68,7 @@
 	const fr = $derived(st.kind === 'failed' ? lead?.row?.failure ?? null : null);
 	const check = $derived(fr ? { name: fr.check ?? fr.line, message: fr.check ? (fr.message?.split(/;\s/)[0] ?? undefined) : undefined } : null);
 	/* changedetail-8 CD3: the banner is the tab's one cause line + age; the ids and the PR live in the pane's dl (Build / Last healthy / Newer builds) */
-	const failTitle = $derived(st.kind === 'failed' && lead?.row ? `Deployment failed in ${st.title.replace(/^Failing in /, '').replace(/-/g, '\u2011')}\u00a0·\u00a0${ago(lead.at ?? lead.row.since)}` : st.title);
+	const failTitle = $derived(st.kind === 'failed' && lead?.row ? `Deployment failed in ${st.title.replace(/^Failing in /, '').replace(/-/g, '\u2011')}\u00a0·\u00a0${ago(lead.at ?? lead.row.failure?.since ?? lead.row.since)}` : st.title);
 	const cn = $derived(countsOf(cl.all, places));
 	const head = $derived(headFacts(c, lead, scenario));
 	/* ONE approval row per build and cause: the places that wait for the same build (five regions of one app) fold into the first, with a chip each (CE12) */

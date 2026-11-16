@@ -87,7 +87,7 @@ function classifiedRaw(c: TChange, scenario: HomeState): { all: Unit[]; places: 
 		const mine = hist.filter((h) => h.href === u.href);
 		/* rideTruth (change-truth.ts): a place that already ran the change healthily (a Succeeded deploy in its History) did not fail on it: the failing build is a later change's, so the change LANDED there */
 		const ranOk = mine.some((h) => h.outcome === 'Succeeded');
-		if (u.state === 'failed' && mine.length && !ranOk) { places.push({ ...u, kind: 'failed', since: u.row?.since ?? mine[mine.length - 1].at, build: u.current, at: u.row?.since ?? currentAt(u.href) }); continue; }
+		if (u.state === 'failed' && mine.length && !ranOk) { places.push({ ...u, kind: 'failed', since: u.row?.failure?.since ?? u.row?.since ?? mine[mine.length - 1].at, build: u.current, at: u.row?.failure?.since ?? u.row?.since ?? currentAt(u.href) }); continue; }
 		if (u.state === 'failed' && ranOk) { const first = mine.find((h) => h.outcome === 'Succeeded')!; places.push({ ...u, row: null, tabRow: u.row, state: 'healthy', current: u.current, newerFails: true, carried: first.build, kind: 'running', since: first.at, build: u.current, at: currentAt(u.href) ?? first.at }); continue; }
 		if (u.containsChange) { const first = mine.find((h) => h.outcome === 'Succeeded') ?? mine[0]; places.push({ ...u, kind: 'running', since: first?.at ?? null, build: u.current, at: currentAt(u.href) ?? first?.at ?? null }); continue; }
 		if (u.row && (u.group === 'approval' || u.group === 'held')) {
@@ -592,7 +592,7 @@ export function openedOf(p: Place, scenario: HomeState, landed = false): Opened 
 		const bc = buildCommitOf(p.href, p.current);
 		/* r11 CH2: the pane's heading is the tab's own name for the step that failed ("Final check") and its age; the banner above states the failure once */
 		const failName = steps.find((s) => s.state === 'fail')?.name;
-		return { state: 'failed', title: !failName || failName === 'Check' ? 'Final check' : failName, since: ago(row.since), took: null, build: p.current ?? buildTitle(row), relation: lh ? { word: 'last healthy', build: lh.build, age: ago(lh.at) } : null, commit: bc ? { title: bc.title, author: bc.author } : null, steps, selected: pick(steps), facts, rule: null, newerBuild: null, newer: (() => { const h = heldBehind(row); return h.count ? { count: h.count, mine: h.builds.find((b) => b.mine)?.pr != null ? `#${h.builds.find((b) => b.mine)!.pr}` : h.includesViewer ? 'yours' : null } : null; })() };
+		return { state: 'failed', title: !failName || failName === 'Check' ? 'Final check' : failName, since: ago(row.failure?.since ?? row.since), took: null, build: p.current ?? buildTitle(row), relation: lh ? { word: 'last healthy', build: lh.build, age: ago(lh.at) } : null, commit: bc ? { title: bc.title, author: bc.author } : null, steps, selected: pick(steps), facts, rule: null, newerBuild: null, newer: (() => { const h = heldBehind(row); return h.count ? { count: h.count, mine: h.builds.find((b) => b.mine)?.pr != null ? `#${h.builds.find((b) => b.mine)!.pr}` : h.includesViewer ? 'yours' : null } : null; })() };
 	}
 	if (row && p.kind === 'waiting') {
 		const hb = candidateBuilds(row).find((h) => h.build === p.build);

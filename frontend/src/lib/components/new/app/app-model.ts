@@ -29,7 +29,7 @@ import {
 	type TRow,
 	type TierKey
 } from '../data';
-import { lastFailureMs } from '$lib/view-models/event-age';
+import { lastFailureMsWithHeads } from '$lib/view-models/event-age';
 import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
@@ -778,7 +778,7 @@ export function weekSummary(
 		failed,
 		rolledBack,
 		medianHealthyMs,
-		lastFailureMs: lastFailureMs(
+		lastFailureMs: lastFailureMsWithHeads(
 			rollouts.map((r) => r.history),
 			from,
 			nowMs

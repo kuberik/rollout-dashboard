@@ -91,6 +91,8 @@ export type AttentionInput = {
 	state: AttentionState;
 	/** compact age ("9h"): printed as "for 9h" */
 	age?: string | null;
+	/** the instant `age` counts from (ISO): a card that ticks prints the age against the live clock, as the banners do, so one failure has one age on every page */
+	ageAt?: string | null;
 	tier?: string;
 	place?: string;
 	/** the failing check (Failing) — name + message */
@@ -114,6 +116,8 @@ export type AttentionModel = {
 	state: AttentionState;
 	word: string;
 	forAge: string | null;
+	/** the instant `forAge` counts from, when the card should tick it live */
+	forAgeAt: string | null;
 	tier: string;
 	place: string;
 	lead: AttentionLead | null;
@@ -145,6 +149,7 @@ export function attentionModel(i: AttentionInput): AttentionModel {
 		state: i.state,
 		word: statusWord(i.state, !!i.recovered),
 		forAge: i.age ? `for ${i.age}` : null,
+		forAgeAt: i.ageAt ?? null,
 		tier: i.tier ?? '',
 		place: i.place ?? '',
 		lead,

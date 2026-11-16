@@ -74,7 +74,8 @@ export function askOf(r: TRow, hs: HomeState, o: { noTier?: boolean } = {}): Ask
 	const id = identityOf(r, hs, failed);
 	const model = attentionModel({
 		state: failed ? 'failed' : 'approval',
-		age: failed ? ago(r.since) : ago(waitClock(r, hs)),
+		age: failed ? ago(r.failure?.since ?? r.since) : ago(waitClock(r, hs)),
+		ageAt: failed ? (r.failure?.since ?? r.since ?? null) : null,
 		tier: o.noTier ? '' : r.tier, place: (/regions?$/.test(chipPlace(r) ?? '') ? '' : chipPlace(r)) ?? '',
 		check: failed ? { name: r.failure?.check ?? null, message: r.failure?.message ?? r.failure?.line ?? '' } : null,
 		observations: failed ? r.failure?.observations ?? null : null,
