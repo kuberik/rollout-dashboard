@@ -16,6 +16,7 @@ import Harness from '$lib/testing/RolloutLayoutHarness.svelte';
 import { respond } from '$lib/demo/respond';
 import { resetDemoState } from '$lib/demo/state';
 import { install } from '$lib/demo/health-failures-fixtures';
+import { failureRecovered, failureSinceAt } from '$lib/components/new/data';
 import { installLiveSource, liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 
 beforeAll(() => install(true));
@@ -39,5 +40,11 @@ for (const tab of ['', '/history', '/gates', '/logs']) {
 		render(WithQueryClient, { props: { component: Harness as never } });
 		await waitFor(() => expect(liveSource()).not.toBeNull(), { timeout: 8000 });
 		expect(liveSource()!.healthChecks).not.toBeNull();
+		// what the palette orders and draws by: one failure has one age, and a recovered failure is known as recovered, whatever the tab
+		const recovered = '/rollouts/prod/catalog-api-prod-default/catalog-api';
+		const failing = '/rollouts/prod/orders-hub-prod-default/orders-hub';
+		expect(failureRecovered(recovered)).toBe(true);
+		expect(failureRecovered(failing)).toBe(false);
+		expect(failureSinceAt(failing)).not.toBeNull();
 	});
 }
