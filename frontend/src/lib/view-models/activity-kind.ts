@@ -33,6 +33,8 @@ export function activityKindOf(e: {
 	/** The failing entry's own message — the same field `card.failureCategory`
 	 *  (`rollout-cards.ts`) classifies, so the two can never disagree. */
 	bakeStatusMessage?: string | null;
+	/** the entry recorded failed health checks (`failedHealthChecks[]`): a bake that failed on a check is a health-check failure whatever its message says */
+	failedHealthChecks?: boolean;
 	/** the entry's bake clock is stopped right now (`bakePaused`): an InProgress bake reads `paused`, not `checking` */
 	bakePaused?: boolean;
 	isRollback: boolean;
@@ -41,7 +43,7 @@ export function activityKindOf(e: {
 	firstEnvRank: number;
 }): ActivityKind {
 	if (e.bakeStatus === 'Failed') {
-		return categorizeFailure(e.bakeStatusMessage) === 'healthcheck' ? 'failedHealthCheck' : 'failed';
+		return e.failedHealthChecks || categorizeFailure(e.bakeStatusMessage) === 'healthcheck' ? 'failedHealthCheck' : 'failed';
 	}
 	if (e.bakeStatus === 'Deploying') return 'deploying';
 	if (e.bakeStatus === 'InProgress') return e.bakePaused ? 'paused' : 'checking';

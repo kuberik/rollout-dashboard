@@ -130,6 +130,8 @@
 		 *  reads, so a grouped row's "failed to deploy" vs "failed its
 		 *  health check" never drifts from the Needs-you row's. */
 		bakeStatusMessage: string | null;
+		/** the entry recorded failed health checks: its row reads "failed its health check" whatever the message says */
+		failedHealthChecks: boolean;
 		/** the bake clock is stopped right now (`bakePaused`): an in-flight row reads `paused`, not `checking` */
 		bakePaused: boolean;
 		timestamp: string;
@@ -268,6 +270,7 @@
 					previousVersion,
 					bakeStatus: h.bakeStatus || 'None',
 					bakeStatusMessage: h.bakeStatusMessage ?? null,
+					failedHealthChecks: !!h.failedHealthChecks?.length,
 					bakePaused: bakePaused(h),
 					// ⭐ shared/age-lag-total: ONE AGE PER EVENT. A Failed row used to
 					// show the deploy's own START (`h.timestamp`) here — this page has
@@ -881,6 +884,7 @@
 			href: entry.href,
 			bakeStatus: entry.bakeStatus,
 			bakeStatusMessage: entry.bakeStatusMessage,
+			failedHealthChecks: entry.failedHealthChecks,
 			bakePaused: entry.bakePaused,
 			isRollback: !!entry.rollbackAct
 		};
@@ -1590,6 +1594,7 @@
 		return activityKindOf({
 			bakeStatus: group.worstBakeStatus,
 			bakeStatusMessage: group.worstBakeStatusMessage,
+			failedHealthChecks: group.worstFailedHealthChecks,
 			bakePaused: group.worstBakePaused,
 			isRollback: group.members.some((m) => m.rollbackAct),
 			actorKind: actor.kind,

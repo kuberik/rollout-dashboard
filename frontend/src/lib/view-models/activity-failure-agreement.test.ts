@@ -5,6 +5,7 @@ import { buildRolloutCards } from '../rollout-cards';
 import { blockedFact, blockedKindOf } from '../components/BlockedRow.svelte';
 import { activityKindOf } from './activity-kind';
 import { activityVerb } from './activity-verb';
+import { groupActivityEntries } from './activity-groups';
 import type { Environment, Rollout } from '../../types';
 
 /**
@@ -86,5 +87,31 @@ describe('Needs-you fact and activity sentence agree on why a deploy failed', ()
 		const sentence = activityVerb(activityKind).appVerb;
 		expect(sentence.toLowerCase()).toContain('deploy');
 		expect(sentence.toLowerCase()).not.toContain('health check');
+	});
+});
+
+/**
+ * A bake that failed on health checks says so on /activity, whatever the controller's message wording: the history entry's recorded
+ * `failedHealthChecks` is the evidence (a monitor-count message such as "1 of 4 monitors alerting" matches no health-check keyword).
+ */
+describe('a deploy whose health check failed says it failed its health check', () => {
+	const base = { bakeStatus: 'Failed', isRollback: false, actorKind: 'controller' as const, envRank: 3, firstEnvRank: 1 };
+	it('failedHealthChecks recorded: failedHealthCheck, even with a message that names no check', () => {
+		const kind = activityKindOf({ ...base, bakeStatusMessage: 'HighLatency fired during the bake', failedHealthChecks: true });
+		expect(kind).toBe('failedHealthCheck');
+		expect(activityVerb(kind).appVerb).toBe('failed its health check');
+	});
+	it('no failed checks recorded and a deploy message: still "failed to deploy"', () => {
+		const kind = activityKindOf({ ...base, bakeStatusMessage: 'image pull backoff: manifest unknown', failedHealthChecks: false });
+		expect(kind).toBe('failed');
+		expect(activityVerb(kind).appVerb).toBe('failed to deploy');
+	});
+	it('a grouped row carries the evidence too', () => {
+		const [group] = groupActivityEntries([
+			{ key: 'k', rolloutName: 'search-indexer', rolloutNamespace: 'ns', displayName: 'search-indexer', envLabel: 'prod', envKey: 'prod', version: '1.0', previousVersion: null, timestamp: '2026-10-11T00:00:00Z', href: '/x', bakeStatus: 'Failed', bakeStatusMessage: '1 of 4 monitors alerting', failedHealthChecks: true }
+		]);
+		expect(group.worstFailedHealthChecks).toBe(true);
+		const kind = activityKindOf({ ...base, bakeStatus: group.worstBakeStatus, bakeStatusMessage: group.worstBakeStatusMessage, failedHealthChecks: group.worstFailedHealthChecks });
+		expect(activityVerb(kind).appVerb).toBe('failed its health check');
 	});
 });

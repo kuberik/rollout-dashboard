@@ -256,6 +256,7 @@
 					kind: activityKindOf({
 						bakeStatus: bs,
 						bakeStatusMessage: h.bakeStatusMessage,
+						failedHealthChecks: !!h.failedHealthChecks?.length,
 						bakePaused: bakePaused(h),
 						isRollback: !!rollbackAct,
 						actorKind: actor.kind,
