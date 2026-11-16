@@ -39,20 +39,23 @@ describe('every surface routes its failure actions through the one order', () =>
 	])('%s', (f, re) => {
 		expect(src(f)).toMatch(re);
 	});
-	it('AttentionCard offers Retry first only for a recovered failure, as the primary', () => {
+	it('AttentionCard offers Retry only for a recovered failure, as a secondary after Roll back; its set comes from cardActs', () => {
 		const s = src('components/AttentionCard.svelte');
 		expect(s).toMatch(/retryLead = \$derived\(failed && model\.recovered && !!retryHref\)/);
-		expect(s.indexOf('data-action="retry"')).toBeGreaterThan(0);
-		expect(s.indexOf('data-action="retry"')).toBeLessThan(s.indexOf('data-action="rollback"'));
-		expect(s).toMatch(/class="btn btn-primary" data-action="retry"/);
+		expect(s).toMatch(/cardActs\(/);
+		expect(s.indexOf('data-action="rollback"')).toBeGreaterThan(0);
+		expect(s.indexOf('data-action="rollback"')).toBeLessThan(s.indexOf('data-action="retry"'));
+		expect(s).toMatch(/class="btn btn-secondary" data-action="retry"/);
+		expect(s).not.toMatch(/btn-primary" data-action="retry"/);
 	});
 	it('every AttentionCard caller hands it the rollout Retry goes to', () => {
 		for (const f of ['components/new/Home.svelte', 'components/new/Rollouts.svelte', 'components/new/Changes.svelte', 'components/new/env/EnvPage.svelte']) expect(src(f), f).toMatch(/retryHref=\{a\.(href|retryHref)\}/);
 	});
-	it('the History and Gates tab header leads with Retry when the failure recovered', () => {
+	it('the History and Gates tab header prints Roll back, then Retry, as the Overview banner does', () => {
 		const s = src('components/RolloutTabHeader.svelte');
 		expect(s).toMatch(/const recovered = \$derived\(isFailed && \(recoveredIn \?\? failureRecovered\(/);
-		expect(s.indexOf('data-action="retry"')).toBeLessThan(s.indexOf('Roll back to {rollbackDisplay}'));
+		const desk = s.slice(s.indexOf('{#if inlineRollback && isFailed && rollbackNow}'));
+		expect(desk.indexOf('Roll back to {rollbackDisplay}')).toBeLessThan(desk.indexOf('data-desktop-only data-action="retry"'));
 	});
 	it('History, Gates and Logs hand the header the head failure\'s own recovered reading, so a direct load leads with Retry too', () => {
 		for (const t of ['history', 'gates', 'logs']) {

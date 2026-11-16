@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import AttentionCard from './AttentionCard.svelte';
@@ -57,5 +59,32 @@ describe('AttentionCard word and age', () => {
 		expect(word.textContent).toBe('Failing');
 		expect(word.className).toContain('text-danger');
 		expect(text).toContain('for 10m');
+	});
+});
+
+describe('AttentionCard actions (one set per state, the same on every list surface)', () => {
+	const props = (state: 'failed' | 'approval', recovered: boolean) => ({
+		model: attentionModel({ state, age: '5h', tier: 'prod', title: 'x', recovered }),
+		href: '/rollouts/hub/ns/x', id: { name: 'x' }, compact: true,
+		rollbackHref: '/rollouts/hub/ns/x?action=rollback', retryHref: '/rollouts/hub/ns/x', openHref: '/rollouts/hub/ns/x'
+	});
+	const rows = (state: 'failed' | 'approval', recovered: boolean) => {
+		const { container } = render(AttentionCard, { props: props(state, recovered) as never });
+		return [...container.querySelectorAll<HTMLElement>('[data-actions] a.btn')].map((a) => ({ key: a.getAttribute('data-action'), primary: a.classList.contains('btn-primary'), cls: a.className }));
+	};
+	it('failing now: Roll back is the blue primary, Open rollout the secondary; no Retry', () => {
+		const r = rows('failed', false);
+		expect(r.map((x) => x.key)).toEqual(['rollback', 'open']);
+		expect(r.map((x) => x.primary)).toEqual([true, false]);
+	});
+	it('recovered: Roll back then Retry, both secondary (no blue on the quietest card)', () => {
+		const r = rows('failed', true);
+		expect(r.map((x) => x.key)).toEqual(['rollback', 'retry']);
+		expect(r.some((x) => x.primary)).toBe(false);
+	});
+	it('the buttons hug their label: no stretch rule in the card, only the phone one', () => {
+		const s = readFileSync(resolve(__dirname, 'AttentionCard.svelte'), 'utf8');
+		const container = s.slice(s.indexOf('@container'), s.indexOf('.ac-fig {'));
+		expect(container).not.toMatch(/flex:\s*1/);
 	});
 });

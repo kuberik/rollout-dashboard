@@ -390,11 +390,11 @@
 		<ApproveButton target={apTarget} fallbackHref={actHref} icon class="btn btn-sm {primary || act?.kind === 'approve' ? 'btn-primary' : 'btn-secondary'} shrink-0 gap-2 max-sm:min-h-11" />
 	{:else if act && recoveredFail}
 		<span class="inline-flex shrink-0 flex-wrap items-center gap-2" data-fp-acts>
-			<a href={retryHrefOf} class="btn btn-sm btn-primary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
 			<a href={actHref} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</a>
+			<a href={retryHrefOf} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
 		</span>
 	{:else if act}
-		<a href={actHref} class="btn btn-sm {primary ? 'btn-primary' : 'btn-secondary'} relative z-[1] shrink-0 gap-2 max-sm:min-h-11">
+		<a href={actHref} class="btn btn-sm {primary || act.kind === 'rollback' ? 'btn-primary' : 'btn-secondary'} relative z-[1] shrink-0 gap-2 max-sm:min-h-11">
 			{#if act.kind === 'rollback'}<UndoOutline class="h-4 w-4" aria-hidden="true" />{:else}<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />{/if}{label}
 		</a>
 	{/if}

@@ -13,7 +13,8 @@
 	 *   title-led   (no measurement)                          the change title 18/600 + the check name: message (`checkFact`)
 	 *   compact     status · lead · fact · actions only (Rollouts' band; the strand lives on the row below)
 	 *
-	 * Actions: Roll back is the outline, Approve the one blue (ApproveButton), the secondary an outlined "Open rollout ›".
+	 * Actions (view-models/failure-actions.ts `cardActs`): failing now = Roll back the one blue + "Open rollout ›"; recovered = Roll back, Retry, both outlined;
+	 * approval = Approve the one blue (ApproveButton) + "Open ›". They hug their labels (full width only on a phone) and pin to the card's bottom.
 	 * The whole card is a cover link; buttons sit above it. What the lead IS lives in view-models/attention.ts (unit-tested).
 	 * Bands: `AttentionBand` below in this file's sibling `AttentionBand.svelte`.
 	 */
@@ -29,6 +30,7 @@
 	import type { ApprovalTarget } from '$lib/components/new/data';
 	import type { AttentionModel } from '$lib/view-models/attention';
 	import { TONE } from '$lib/view-models/state-tone';
+	import { cardActs } from '$lib/view-models/failure-actions';
 	import { now } from '$lib/stores/time';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { atoms } from '$lib/components/atoms/atoms-context';
@@ -86,7 +88,9 @@
 	const ratio = $derived(AT.regions && model.figure?.kind === 'ratio' ? { k: Number(model.figure.value), n: Number(/of (\d+)/.exec(model.figure.unit)?.[1] ?? 0) } : null);
 	const fig = $derived(model.figure);
 	const retryLead = $derived(failed && model.recovered && !!retryHref);
-	const hasActions = $derived(failed ? !!rollbackHref || !!openHref || retryLead : !!approve || !!approveFallbackHref || !!openHref);
+	/* the actions of this state, in print order (view-models/failure-actions.ts `cardActs`) */
+	const acts = $derived(cardActs({ state: failed ? 'failed' : 'approval', recovered: !!model.recovered, rollback: !!rollbackHref, retry: retryLead, open: !!openHref && !(retryLead && openHref === retryHref), approve: !!approve || !!approveFallbackHref }));
+	const hasActions = $derived(acts.length > 0);
 	const label = $derived(id.title || id.name);
 	/* the tier chip names its place the way every env chip does: "prod-eu-west", a folded set "5 prod regions" (Chip splits it into the tinted tier + neutral place halves) */
 	const tierLabel = $derived(!model.place ? model.tier : /^\d+ regions?$/.test(model.place) ? model.place.replace(/ (regions?)$/, ` ${model.tier} $1`) : `${model.tier}-${model.place}`);
@@ -116,14 +120,18 @@
 
 {#snippet actions()}
 	{#if hasActions}
-		<div class="ac-act relative z-[1] mt-auto flex shrink-0 flex-wrap items-center gap-2">
-			{#if failed}
-				{#if retryLead}<a href={retryHref} class="btn btn-primary" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>{/if}
-				{#if rollbackHref}<a href={rollbackHref} class="btn btn-secondary" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>{/if}
-			{:else}
-				<ApproveButton target={approve} fallbackHref={approveFallbackHref} class="btn btn-primary" icon />
-			{/if}
-			{#if openHref && !(retryLead && openHref === retryHref)}<a href={openHref} class="btn btn-secondary">{openLabel} ›</a>{/if}
+		<div class="ac-act relative z-[1] mt-auto flex shrink-0 flex-wrap items-center gap-2" data-actions>
+			{#each acts as a (a.key)}
+				{#if a.key === 'approve'}
+					<ApproveButton target={approve} fallbackHref={approveFallbackHref} class="btn btn-primary" icon />
+				{:else if a.key === 'rollback'}
+					<a href={rollbackHref} class="btn {a.primary ? 'btn-primary' : 'btn-secondary'}" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>
+				{:else if a.key === 'retry'}
+					<a href={retryHref} class="btn btn-secondary" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
+				{:else}
+					<a href={openHref} class="btn btn-secondary" data-action="open">{openLabel} ›</a>
+				{/if}
+			{/each}
 		</div>
 	{/if}
 {/snippet}
@@ -213,7 +221,6 @@
 	@container (max-width: 520px) {
 		.ac-foot { flex-direction: column; align-items: stretch; }
 		.ac-foot .ac-act { width: 100%; }
-		.ac-foot .ac-act :global(.btn) { flex: 1; }
 	}
 	.ac-fig { font-size: 32px; line-height: 40px; }
 	.ac-fig--lead { font-size: 40px; line-height: 48px; }
