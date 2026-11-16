@@ -25,7 +25,8 @@ import { attentionModel, type AttentionModel } from '$lib/view-models/attention'
 import { repoCardModel, rollupParts, type RepoCardModel, type RepoChange, type RollupPart } from '$lib/view-models/repo-card';
 import type { BeadState } from '$lib/view-models/bead';
 import { failedParts } from './state-words';
-import { bannerMeta, type BannerMeta, type ChangeLine } from './rollouts-page';
+import { failedBannerTitle } from '$lib/view-models/banner';
+import { failingNowOf, bannerMeta, type BannerMeta, type ChangeLine } from './rollouts-page';
 import { servicesOf, spreadOf, type Svc } from './change/service-spread';
 
 const NONTIER = (w: string | null | undefined) => !!w && !/^(production|prod|staging|dev|test)$/.test(w);
@@ -165,7 +166,7 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 	};
 	const changeLine = (p: PChange): ChangeLine => { const you = isViewer(p.c.who); const person = personName(p.c.who); return { title: p.c.title, ref: p.ref, person: you ? 'you' : person ?? undefined, you, src: you || !person ? null : avatarSrc(person) ?? null }; };
 	const banner: Banner | null = lead
-		? { p: lead, title: `${lead.ride.app} failed in ${gateOf(lead.c) || lead.c.at}${placeOf(lead.c) ? ` · ${placeOf(lead.c)}` : ''}`, check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead) }
+		? { p: lead, title: failedBannerTitle(lead.ride.app, gateOf(lead.c) || lead.c.at, placeOf(lead.c), failingNowOf(lead.ride.row)), check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead) }
 		: null;
 
 	/* Attention: your changes that need you (failing, or an approval you can give), minus the banner's; failing first, then oldest ask first */

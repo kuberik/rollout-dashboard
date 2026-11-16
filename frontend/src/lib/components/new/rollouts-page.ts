@@ -129,6 +129,8 @@ export function bannerMeta(r: TRow | null | undefined): BannerMeta {
 	if (!r) return { since: null, build: null };
 	return { since: r.since ? ago(r.since) : null, sinceAt: r.since ?? null, build: r.version ?? null };
 }
+/** a check of this failed row fails right now (its title says "failing"); with every check recovered, or a deploy failure, it says "failed". One rule for the /rollouts and /changes banners. */
+export const failingNowOf = (lead: TRow | null | undefined): boolean => !!lead?.failure?.pool?.some((c) => c.verdict === 'failing');
 /** the failure banner of a lead failing row (AlertPanel shape; the change line = the build's own PR identity) */
 export function bannerOf(lead: TRow): BannerModel {
 	const a = rowAction(lead);
@@ -137,7 +139,7 @@ export function bannerOf(lead: TRow): BannerModel {
 	const checksSince = pool ? checksFailingSince(pool) : null;
 	const since = checksSince ?? lead.since ?? null;
 	const evidence = pool ? bannerEvidence(pool, lead.failure?.pendingN ?? 0, null) : null;
-	const failingNow = !!pool && pool.some((c) => c.verdict === 'failing');
+	const failingNow = failingNowOf(lead);
 	const meta = bannerMeta(lead);
 	return { evidence, row: lead, title: failedBannerTitle(lead.app, lead.tier, chipPlace(lead), failingNow), check: lead.failure?.check ? { name: lead.failure.check, message: lead.failure.message ?? '', cls: lead.failure.cls } : null, line: lead.failure?.line ?? null, change: changeLineOf(lead), meta: { ...meta, since: since ? ago(since) : null, sinceAt: since }, openHref: lead.href, rollbackHref: a?.kind === 'rollback' ? actionHref(a) : null };
 }
