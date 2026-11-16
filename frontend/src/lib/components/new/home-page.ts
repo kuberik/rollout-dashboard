@@ -168,7 +168,7 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	foldPinIntoFleet(by, heldRegions, pinOnlyPlaces(R.c.m.apps as never, R.rows, new Set([...askKeys, ...mineKeys])));
 	/* a held app's prod chip says the same count the Apps tile, the app page and the rollout page say: "3 of 5 regions" (every cause and the pin once), not the rows' own region count */
 	for (const x of by.values()) if (x.mark === 'held') { const ph = heldRegionsPhrase(x.app, hs); const pr = x.places.find((q) => q.tier === 'prod'); if (ph && pr) pr.place = ph; }
-	const trouble = [...by.values()].sort((a, b) => TROUBLE_ORDER(a.mark) - TROUBLE_ORDER(b.mark) || oldestFirst(a.since, b.since)).map(({ since: _s, ...t }) => t);
+	const trouble = [...by.values()].sort((a, b) => TROUBLE_ORDER(a.mark) - TROUBLE_ORDER(b.mark) || Number(!!a.recovered) - Number(!!b.recovered) || oldestFirst(a.since, b.since)).map(({ since: _s, ...t }) => t);
 
 	const failingApps = new Set(R.rows.filter((r) => r.group === 'failed').map((r) => r.app));
 	const recoveredApps = new Set([...failingApps].filter((a) => R.rows.every((r) => r.app !== a || r.group !== 'failed' || !!r.failure?.recovered)));

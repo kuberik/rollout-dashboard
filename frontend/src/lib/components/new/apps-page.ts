@@ -4,6 +4,8 @@
  * active app (moving, waiting, at rest) and then by name, as the mock does.
  */
 import { needApprovalCount, failedInkParts } from './state-words';
+/** The Attention tier of an app by its worst state: a failure live now (0), a recovered failure whose checks are OK again (1), a wait for approval (2), the rest (3). A lead or a person's ability to act only breaks ties inside a tier. */
+export const attentionTier = (worst: string, recovered: boolean): number => (worst === 'failed' ? (recovered ? 1 : 0) : worst === 'approval' ? 2 : 3);
 /** Apps group by STATE only (owner 2026-11-08; "By repo" is retired): the apps Attention does not claim are In flight (something is moving) or At rest. Each list keeps its caller's order. */
 export function groupByState<T extends { group: string }>(apps: readonly T[]): { inFlight: T[]; atRest: T[] } {
 	return { inFlight: apps.filter((a) => a.group === 'moving'), atRest: apps.filter((a) => a.group !== 'moving') };

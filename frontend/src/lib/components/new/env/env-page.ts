@@ -29,7 +29,7 @@ import { environmentsPage, stateLine, barSegments, type EnvTile } from '../envir
 import { askOf, type AskItem } from '../home-page';
 import { bannerOf, attentionRollup as attentionRollupOf, type BannerModel, type RestRow } from '../rollouts-page';
 import { failedParts, failedRollup, needApprovalCount, approvalWord, mostSevere, severity, stateWord } from '../state-words';
-import { runwayRow, rowAction } from '../rollout-view';
+import { runwayRow, rowAction, byFailRank } from '../rollout-view';
 import { plural } from '../envs-model';
 import { classifyChanges, rc, type Rollup } from '../changes-page';
 import { beadsFor } from '$lib/view-models/bead';
@@ -203,7 +203,7 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 		: { failing: counts.failing, waiting: counts.waiting, moving: counts.moving, rest: counts.rest, mark: listTile!.mark, lead: listTile!.lead, parts: listTile!.parts, calm: listTile!.calm, label: listTile!.label };
 
 	/* banner + Attention: the lead failure here, then the other failures and the approvals the viewer can give */
-	const failed = rows.filter((r) => r.group === 'failed');
+	const failed = byFailRank(rows.filter((r) => r.group === 'failed'));
 	const lead = runwayRow(failed);
 	const yours = rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking);
 	const attRows = [...failed.filter((r) => r !== lead), ...yours];
