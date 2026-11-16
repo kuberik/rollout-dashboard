@@ -28,3 +28,14 @@ describe('Home fleet draws a recovered failure as the ring', () => {
 		expect(cls('[data-truth-app="d"]')).toContain('bg-danger-solid');
 	});
 });
+
+describe('Home fleet words a failure by the rule', () => {
+	test('Failing in danger ink, Failed in neutral ink', () => {
+		const trouble = (key: string, recovered: boolean) => ({ key, app: key, failing: true, mark: 'failed' as const, word: recovered ? ('Failed' as const) : ('Failing' as const), href: '/x', places: [{ tier: 'prod', place: '' }], recovered });
+		render(FleetCard, { props: { trouble: [trouble('a', true), trouble('b', false)], deploys: [] } });
+		const w = (app: string) => document.querySelector(`[data-truth-app="${app}"] [data-fleet-word]`)!;
+		expect(w('a').className).toContain('text-fg-muted');
+		expect(w('b').className).toContain('text-danger');
+		expect(w('b').className).not.toContain('text-fg-muted');
+	});
+});

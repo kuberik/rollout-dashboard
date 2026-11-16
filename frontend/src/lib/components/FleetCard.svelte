@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { TONE } from '$lib/view-models/state-tone';
 	/**
 	 * THE FLEET CARD (r39 kit parts/repocard.js `fleetCard`): Home's side column. "Is anything wrong elsewhere, and what just shipped."
 	 * Role: the rail's context card. WHY NOTHING EXISTING FITS: HomeRail/FleetRow draw every app as a lane (a spreadsheet of cells beside an Attention
@@ -35,7 +36,7 @@
 						<div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
 							<a href={t.href} class="tap-link t-body min-w-0 max-w-full shrink-0 truncate text-fg">{t.app}</a>
 							<span class="flex shrink-0 items-center gap-1">{#each t.places as p (p.tier + p.place)}<Chip role="env" theme={envTheme(p.tier)} label={label(p.tier, p.place)} wide />{/each}</span>
-							<span class="t-meta ml-auto shrink-0 tabular-nums text-fg-muted">{t.word}</span>
+							<span class="t-meta ml-auto shrink-0 tabular-nums {t.mark === 'failed' && !t.recovered ? TONE.failed.ink : 'text-fg-muted'}" data-fleet-word>{t.word}</span>
 						</div>
 					</li>
 				{/each}
