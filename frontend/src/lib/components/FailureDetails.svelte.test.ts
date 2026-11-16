@@ -20,4 +20,13 @@ describe('the failure banner Details: each check leads with its state mark, in t
 		expect(container.querySelectorAll('[data-check-mark="failing"]')).toHaveLength(2);
 		expect(container.querySelectorAll('svg[data-check-mark="pending"], [data-testid="status-spinner"], .animate-spin').length).toBeGreaterThanOrEqual(1);
 	});
+
+	test('a Flux check name breaks only at a slash, never at a hyphen', () => {
+		const kust = hc('kust', 'kustomization', { status: 'Unhealthy', lastChangeTime: '2026-11-15T10:06:00Z', observations: [obs('orders/orders-worker', false)] });
+		const { container } = render(FailureDetails, { props: { pool: poolOf([kust], [{ name: 'kust' }], null) } });
+		const segs = [...container.querySelectorAll('[data-name-segment]')].map((e) => e.textContent);
+		expect(segs).toEqual(['orders/', 'orders-worker']);
+		expect(container.querySelector('[data-testid="failure-source"] [title="orders/orders-worker"]')?.textContent).toBe('orders/orders-worker');
+		expect(container.querySelector('[data-name-segment]')?.className).toContain('whitespace-nowrap');
+	});
 });
