@@ -276,3 +276,10 @@ describe('state words and rollup ink', () => {
 		expect(ink.passing).not.toContain('text-danger');
 	});
 });
+
+describe('evidence wrapper', () => {
+	test('a row with no evidence draws no empty wrapper', () => {
+		render(HealthChecksCard, { props: { healthChecks: [hc('quiet', 'Healthy')] } });
+		expect(document.querySelectorAll('[data-testid="hc-row"] .pl-7')).toHaveLength(0);
+	});
+});

@@ -274,6 +274,7 @@
 				{@const passingRow = state === 'passing'}
 				{@const hasRows = v.rows.length > 0}
 				{@const expanded = expandedMessages.has(key)}
+				{@const pendingMessage = pending && !!v.since && !!v.message && !readsHealthy(v.message)}
 				<div data-testid="hc-row" class="border-line-subtle border-b px-4 py-3 last:border-b-0">
 				<div class="flex items-start gap-3">
 					<CheckStateMark verdict={state} class="mt-0.5" />
@@ -306,7 +307,7 @@
 							{/if}
 						{:else if pending}
 							{#if v.since}
-								<!-- a pending check says how long it has waited; what it is waiting on is the evidence under it -->
+								<!-- a pending check says how long it has waited; with no start time it says what the check is waiting on (the provider's message or the probe countdown) -->
 								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={hc.status?.status || undefined}><span class="text-progress">pending</span>{' · '}<span class="whitespace-nowrap tabular-nums">{formatTimeAgoCompact(v.since, $now)}</span></p>
 							{:else}
 								{@const text = pendingRowText(hc, $now)}
@@ -327,7 +328,8 @@
 						{/if}
 					</div>
 				</div>
-				<!-- the evidence spans the whole row (under the glyph + name, not squeezed beside the state chip) -->
+				<!-- the evidence spans the whole row (under the glyph + name, not squeezed beside the state chip); a row with none draws no wrapper -->
+				{#if hasRows || pendingMessage || (recoveredRow && v.recovery)}
 				<div class="flex flex-col pl-7">
 					{#if hasRows}
 						{@const folded = !showAll.has(key) && v.rows.length > SOURCE_FOLD}
@@ -337,7 +339,7 @@
 						{#if folded}
 							<button type="button" class="btn btn-secondary btn-xs mt-2 self-start" onclick={() => (showAll = new Set(showAll).add(key))}>Show {v.rows.length - SOURCE_FOLD} more</button>
 						{/if}
-					{:else if pending && v.since && v.message && !readsHealthy(v.message)}
+					{:else if pendingMessage}
 						<!-- a pending check with no observations: the provider's own error, in full on demand -->
 						<button
 							type="button"
@@ -356,6 +358,7 @@
 						{/if}
 					{/if}
 				</div>
+				{/if}
 				</div>
 			{/if}
 		{/each}
