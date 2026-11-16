@@ -74,22 +74,20 @@
 		<span class="t-meta hidden min-w-0 truncate text-fg-subtle sm:inline">{description}</span>
 	{/if}
 	{#if rollup && rollup.length}
-		<span class="t-meta ml-auto flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap tabular-nums text-fg-subtle" data-rollup>
-			{#each rollup as part, i (i)}
-				<!-- phone: a ZERO count before the last is hidden (`rollup-fold.ts`, QA2 #7); every non-zero count and every INKED part stays. A dot trails every part but the last. -->
-				{@const last = i === rollup.length - 1}
-				{@const text = typeof part === 'string' ? part : part.text}
-				{@const ink = typeof part === 'string' ? undefined : part.ink}
-				<span class="{last ? 'truncate' : foldsOnPhone(part) ? 'hidden sm:inline rp-dot' : 'rp-dot'} {ink ? `font-medium ${hueInk(ink)}` : ''}">{text}</span>
-			{/each}
-		</span>
+		<!-- the shared dot list (language.css): a wrapped rollup never starts or ends a line with its separator; a ZERO count before the last is hidden on a phone (`rollup-fold.ts`); every non-zero count and every INKED part stays -->
+		<div class="dot-list t-meta ml-auto min-w-0 tabular-nums text-fg-subtle">
+			<div class="dot-list-row flex flex-wrap items-center gap-y-0.5" data-rollup>
+				{#each rollup as part, i (i)}
+					{@const last = i === rollup.length - 1}
+					{@const text = typeof part === 'string' ? part : part.text}
+					{@const ink = typeof part === 'string' ? undefined : part.ink}
+					<span class="whitespace-nowrap {!last && foldsOnPhone(part) ? 'hidden sm:block' : ''} {ink ? `font-medium ${hueInk(ink)}` : ''}">{text}</span>
+				{/each}
+			</div>
+		</div>
 	{/if}
 	{#if action}
 		<div class="flex shrink-0 items-center gap-2 {rollup && rollup.length ? '' : 'ml-auto'}">{@render action()}</div>
 	{/if}
 </div>
 
-<style>
-	/* the rollup's separator: a 3px dot after every part but the last (hidden together with its part on a phone) */
-	.rp-dot::after { content: ''; display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.45; margin-left: 8px; vertical-align: middle; }
-</style>
