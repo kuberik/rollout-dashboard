@@ -102,6 +102,8 @@
 
 	/* the fleet's health checks: which unresolved failures have since recovered (their checks are all OK again) */
 	const hcQuery = createQuery(() => fleetHealthChecksQuery());
+	/** the fleet's health checks have answered (until then a failure's failing / failed split is unknown, so the rollups show only the count) */
+	const checksKnown = $derived(!hcQuery.isPending);
 	const checksByRollout = $derived(healthChecksByRollout(rolloutHealthChecks(hcQuery.data)));
 	/** the failed deploy's rollout has recovered its health checks (it reads `failed`, not `failing`) */
 	const isHeadRecovered = (e: ActivityEntry) => headRecovered(checksByRollout.get(healthCheckKey(sourceClusterName(e.rollout), e.rolloutNamespace, e.rolloutName)) ?? [], e.rollout.status?.history?.[0] as never);
@@ -1148,7 +1150,7 @@
 		// the SectionHeader's rollup parts: the count, then the one adverse fact in its ink (only a live failure is red)
 		const rest = out.text.slice(noun.length).replace(/^ · /, '');
 		const parts: (string | { text: string; ink?: 'danger' })[] = [noun];
-		if (out.tone === 'adverse') parts.push(...failedRollupParts(unresolvedFailed, recoveredFailed));
+		if (out.tone === 'adverse') parts.push(...failedRollupParts(unresolvedFailed, recoveredFailed, checksKnown));
 		else if (rest) parts.push(rest);
 		return { ...out, parts, mayBeIncomplete };
 	}
@@ -1403,7 +1405,7 @@
 		return changeFailureRatePct !== null ? `${changeFailureRatePct}% of deploys` : undefined;
 	});
 	/** The Deploys section's rollup: the window's count, then the one adverse fact in its ink (only an unresolved failure is red). */
-	const deploysRollup = $derived(deploysRollupParts(windowed.length, unresolvedFailedCount, unresolvedFailures.filter(isHeadRecovered).length));
+	const deploysRollup = $derived(deploysRollupParts(windowed.length, unresolvedFailedCount, unresolvedFailures.filter(isHeadRecovered).length, checksKnown));
 	/** Deploys tile subline — a rate, not the range (round 8). */
 	/** ⭐ NOT A TAUTOLOGY AT 1D (round 9 review, 2026-10-10): "103 a day" at
 	 *  the 1d range IS the figure above it restated, since the window and

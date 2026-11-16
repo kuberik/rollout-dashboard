@@ -15,7 +15,9 @@ import { regionsPhrase, siteCount } from './regions';
 import { failedParts } from '$lib/components/new/state-words';
 
 /** The unresolved failures as the shared failing / failed split (state-words `failedParts`): only a check failing now is red, a failure whose checks recovered is neutral `failed`. */
-export function failedRollupParts(unresolved: number, recovered: number): (string | { text: string; ink?: 'danger' })[] {
+export function failedRollupParts(unresolved: number, recovered: number, checksKnown = true): (string | { text: string; ink?: 'danger' })[] {
+	/* until the fleet's health checks have answered, which of the failures recovered is unknown: say nothing yet rather than "failing" and then change it in place */
+	if (!checksKnown) return [];
 	return failedParts(unresolved, Math.min(recovered, unresolved)).map((text) => (text.endsWith(' failing') ? { text, ink: 'danger' as const } : text));
 }
 
@@ -23,8 +25,8 @@ export function failedRollupParts(unresolved: number, recovered: number): (strin
 export const rowIsLive = <T extends { isLive: boolean }>(members: readonly T[], recovered: (m: T) => boolean): boolean => members.some((m) => m.isLive && !recovered(m));
 
 /** The Deploys card's rollup parts: the window's count, then the unresolved failures split failing now from failed. */
-export function deploysRollupParts(deploys: number, unresolved: number, recovered: number): (string | { text: string; ink?: 'danger' })[] {
-	return [`${deploys} deploy${deploys === 1 ? '' : 's'}`, ...failedRollupParts(unresolved, recovered)];
+export function deploysRollupParts(deploys: number, unresolved: number, recovered: number, checksKnown = true): (string | { text: string; ink?: 'danger' })[] {
+	return [`${deploys} deploy${deploys === 1 ? '' : 's'}`, ...failedRollupParts(unresolved, recovered, checksKnown)];
 }
 
 export type GroupableEntry = {

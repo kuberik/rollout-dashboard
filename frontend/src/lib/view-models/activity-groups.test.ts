@@ -189,3 +189,12 @@ describe('rowIsLive', () => {
 		expect(rowIsLive([m(false, false)], rec)).toBe(false);
 	});
 });
+
+describe('before the fleet health checks answer', () => {
+	it('the rollups show only the count, then add the failing / failed split in place', async () => {
+		const { deploysRollupParts, failedRollupParts } = await import('./activity-groups');
+		expect(deploysRollupParts(212, 6, 2, false)).toEqual(['212 deploys']);
+		expect(deploysRollupParts(212, 6, 2, true)).toEqual(['212 deploys', { text: '4 failing', ink: 'danger' }, '2 failed']);
+		expect(failedRollupParts(6, 2, false)).toEqual([]);
+	});
+});
