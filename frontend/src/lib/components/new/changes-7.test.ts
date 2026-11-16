@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as D from './data';
-import { rides, primaryKey, squaresSentence, pathOrder, spanLabel, placeShort, shortState } from './change-view';
+import { rides, primaryKey, stateWords, squaresSentence, pathOrder, spanLabel, placeShort, shortState } from './change-view';
 import { rideTruth } from './change-truth';
 
 const all = (s: 'incident' | 'calm' | 'quiet' = 'incident') => {
@@ -33,7 +33,15 @@ describe('changes-7', () => {
 		expect(squaresSentence(['failed', 'waiting', 'waiting'])).toBe('1 failing · 2 waiting');
 		expect(squaresSentence(['failed', 'waiting', 'waiting'], true)).toBe('1 failing · 2 held');
 		expect(squaresSentence(['healthy', 'healthy', 'behind'])).toBe('2 deployed');
+		expect(squaresSentence(['failed', 'failed', 'failed', 'waiting'], false, 1)).toBe('2 failing · 1 failed · 1 waiting');
+		expect(squaresSentence(['failed', 'failed'], false, 2)).toBe('2 failed');
 		expect(squaresSentence(['behind'])).toBe('not reached');
+	});
+	it('stateWords: a failure whose checks recovered reads `Failed in`, a live one `Failing in`', () => {
+		const c = (recovered: boolean) => ({ where: 'eu-west', failure: { recovered } }) as never;
+		expect(stateWords(c(false), 'failed', [])).toBe('Failing in eu-west');
+		expect(stateWords(c(true), 'failed', [])).toBe('Failed in eu-west');
+		expect(stateWords({ where: 'eu-west', failure: null } as never, 'failed', [])).toBe('Failing in eu-west');
 	});
 	it('X19: tiers in path order', () => {
 		expect(pathOrder('Live in staging, test and dev')).toBe('Live in dev, test and staging');
