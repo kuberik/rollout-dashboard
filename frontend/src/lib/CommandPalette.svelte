@@ -1615,7 +1615,7 @@
 		return keys;
 	});
 	let prevRowKeys: string[] = [];
-	let prevAsk = `${query}\u0000${scope ?? ''}`;
+	let prevAsk = untrack(() => `${query}\u0000${scope ?? ''}`);
 	$effect.pre(() => {
 		const next = rowKeys;
 		const ask = `${query}\u0000${scope ?? ''}`;

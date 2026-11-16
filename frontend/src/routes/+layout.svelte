@@ -5,6 +5,7 @@
 	import MobileTabBar from '../lib/MobileTabBar.svelte';
 	import LiveRegion from '$lib/components/LiveRegion.svelte';
 	import FleetAppNames from '$lib/components/FleetAppNames.svelte';
+	import FleetGate from '$lib/components/new/FleetGate.svelte';
 	import ApprovalLayer from '$lib/components/new/ApprovalLayer.svelte';
 	import { installApprovalCache } from '$lib/components/new/approvals.svelte';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
@@ -368,6 +369,11 @@
 
 <QueryClientProvider client={queryClient}>
 	<FleetAppNames />
+	<!-- The command palette (in the shell) reads the live fleet source for its Needs-you list: failure ages and which failures have
+	     recovered. The source is installed here, once, for every page; a page's own FleetGate reads this one (same queries, same cache). -->
+	<FleetGate bare>
+		{#snippet children()}{/snippet}
+	</FleetGate>
 	<!-- ⭐ TWO SCROLL MODELS, ONE BREAKPOINT. (2026-09-04, from the human: "we
 	     broke how desktop looks like when we recently changed scrolling
 	     behaviour … navbar / sidebar bounces on chrome scrolling. it should be

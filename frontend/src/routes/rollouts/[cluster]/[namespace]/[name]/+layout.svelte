@@ -20,7 +20,6 @@
 	import { appPath } from '$lib/paths';
 	import { rolloutTabs } from '$lib/view-models/rollout-tabs';
 	import SectionTabs from '$lib/components/SectionTabs.svelte';
-	import FleetGate from '$lib/components/new/FleetGate.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -269,14 +268,6 @@
 	height without a second scrollbar. The tab strip itself no longer lives in
 	this flow at all — see `tabStripSnippet` below and `shell-chrome.svelte.ts`.
 -->
-<!--
-	The command palette (in the root shell) reads the live fleet source for its Needs-you list: failure ages and which failures have
-	recovered. Only the Overview and Gates tabs used to install it (through their RolloutAsk / lane gates), so on History and Logs the
-	palette fell back to no data and drew another list. The layout installs it for every tab; a page's own bare gate reads this one.
--->
-<FleetGate bare>
-	{#snippet children()}{/snippet}
-</FleetGate>
 <div class="flex min-h-full flex-col pb-16 md:pb-0">
 	{@render children()}
 </div>
