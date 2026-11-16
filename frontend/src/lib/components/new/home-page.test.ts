@@ -1,6 +1,6 @@
 import { it, expect } from 'vitest';
 import { homePage, asksRollupOf } from './home-page';
-import { needsYouRedirect } from '../../../routes/needs-you/+page';
+import { needsYouRedirect } from '$lib/view-models/needs-you-redirect';
 
 /* r39 build: the Home composition. Each ask once; Your changes never repeats an ask's change; the viewer is 'you'; no figure without data. */
 it('incident: asks are failures first, then approvals; counts agree with the rollup', () => {
