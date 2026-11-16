@@ -797,7 +797,7 @@ html.dark .surface-raised,
 
 	/* ── DOT LIST. Facts joined by a "·" drawn in CSS, never a text node, so a
 	   wrapped line never starts or ends with an orphaned separator and no two
-	   facts are ever glued ("staging·telemetry"). Markup:
+	   facts are ever glued ("staging·telemetry"). The dot is the size of the text "·" the lines beside it print (a 1.4px-radius disc read as a round bullet). Markup:
 	     <div class="dot-list"><div class="dot-list-row flex flex-wrap …">
 	       <span>fact</span><a>fact</a>…</div></div>
 	   Each direct child of the row is one fact. The dot is a background in the
@@ -818,7 +818,7 @@ html.dark .surface-raised,
 	.dot-list .dot-list-row > *,
 	.dot-list .dot-list-row > .contents > * {
 		padding-left: 20px;
-		background-image: radial-gradient(circle, var(--k-fg-disabled) 1.4px, transparent 1.9px);
+		background-image: radial-gradient(circle, var(--k-fg-disabled) 0.7px, transparent 1.1px);
 		background-repeat: no-repeat;
 		background-size: 4px 4px;
 		background-position: 8px 50%;
