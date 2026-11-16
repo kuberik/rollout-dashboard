@@ -946,7 +946,6 @@
 			.filter((c) => needsPerson(c) && (needsYouLeads || c !== currentRolloutCard))
 			.sort(
 				(a, b) =>
-					Number(b === currentRolloutCard) - Number(a === currentRolloutCard) ||
 					attentionRankOf(a) - attentionRankOf(b) ||
 					KIND_ORDER[rowKind(a)] - KIND_ORDER[rowKind(b)] ||
 					failedAtOf(a) - failedAtOf(b) ||
@@ -955,6 +954,19 @@
 			)
 	);
 	const attentionShown = $derived(attention.slice(0, ATTENTION_CAP));
+
+	/**
+	 * The palette closes on ANY navigation, not only the ones its own handlers start: a row's name is a plain link (a tap or a
+	 * click follows it, no handler of ours runs), and a page that opens behind an open palette is a page nobody can see. Fires on
+	 * a change of the location only, so opening the palette never closes it.
+	 */
+	let lastLocation = page.url.href;
+	$effect(() => {
+		const here = page.url.href;
+		if (here === lastLocation) return;
+		lastLocation = here;
+		open = false;
+	});
 
 	/**
 	 * ⭐ LANE P, §5 — "THIS ROLLOUT". ON A ROLLOUT PAGE, THE OPENING SCREEN'S
