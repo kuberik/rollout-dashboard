@@ -123,6 +123,7 @@
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
 	import { failureRecovered } from '$lib/components/new/data';
+	import { failedRowAction } from '$lib/view-models/failure-actions';
 	import { href, appPath } from '$lib/paths';
 	import { now } from '$lib/stores/time';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -1142,6 +1143,10 @@
 	function blockedAction(c: RolloutCard): BlockedAction {
 		const approval = approvalCards.has(c);
 		const kind = blockedKindOf(c);
+		if (kind === 'failed' && !approval) {
+			const fa = failedRowAction(failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)), c === currentRolloutCard && currentTab === 'overview');
+			if (fa.sub === undefined) return fa;
+		}
 		const wanted: 'logs' | 'gates' | undefined =
 			kind === 'failed' ? 'logs' : approval || hasGatesTab(c) ? 'gates' : undefined;
 		if (approval && !(c === currentRolloutCard && currentTab === 'gates')) {

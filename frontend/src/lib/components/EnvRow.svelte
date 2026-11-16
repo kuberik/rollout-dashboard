@@ -149,7 +149,7 @@
 	<span class="env-sites" data-env-sites>
 		{#each wavesOf(c.sites ?? []) as g, gi (gi)}
 			{@const w = g[0].wave}
-			<span class="env-site" class:env-site--here={g.some((x) => x.here)} data-stage-row="{lk}|{c.key}|{w ? 'wave' + w : 'tier'}" data-stage-state={waveMark(g).slices.map((x) => x.kind).join('+')}><WaveMark mark={waveMark(g, w ? 'Wave ' + w : c.label)} /></span>
+			<span class="env-site" class:env-site--here={g.some((x) => x.here)} class:env-site--here-ring={g.some((x) => x.here) && waveMark(g).slices.some((x) => x.kind === 'recovered')} data-stage-row="{lk}|{c.key}|{w ? 'wave' + w : 'tier'}" data-stage-state={waveMark(g).slices.map((x) => x.kind).join('+')}><WaveMark mark={waveMark(g, w ? 'Wave ' + w : c.label)} /></span>
 		{/each}
 	</span>
 {/snippet}
@@ -414,6 +414,12 @@
 	}
 	.env-site--here {
 		box-shadow: 0 0 0 1px var(--k-fg-muted);
+	}
+	/* "here" round a mark that is itself a ring (recovered): two touching concentric rings read as a radio button, so the cue steps out to a hairline with a clear gap and the two read as two objects */
+	.env-site--here.env-site--here-ring {
+		box-shadow: none;
+		outline: 1px solid var(--k-fg-subtle);
+		outline-offset: 2px;
 	}
 	button.env-box {
 		font: inherit;

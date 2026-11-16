@@ -28,4 +28,18 @@ describe('health-failures fixtures: the recovered surfaces', () => {
 		const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!) as { changes: { author: string; repo?: string; title?: string; sha?: string }[] };
 		expect(gh.changes.some((c) => c.author === 'danielreed' && JSON.stringify(c).includes('catalog-api'))).toBe(true);
 	});
+	it("catalog-api's deploy-failed time is when its check first failed, so the feed event reads the same age as every other page", () => {
+		const r = rollouts().find((x) => x.metadata.name === 'catalog-api' && x.metadata.namespace === 'catalog-api-prod-default') as unknown as { status: { history: { bakeEndTime: string; failedHealthChecks: { observations: { observedTime: string }[] }[] }[] } };
+		const head = r.status.history[0];
+		const firstFailing = Math.min(...head.failedHealthChecks.flatMap((f) => f.observations.map((o) => Date.parse(o.observedTime))));
+		expect(Math.abs(Date.parse(head.bakeEndTime) - firstFailing)).toBeLessThan(60_000);
+	});
+	it('no two apps share the title of their changes: each row and palette entry names its own change', () => {
+		const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!) as { changes: { repo?: string; title?: string }[] };
+		const byTitle = new Map<string, Set<string>>();
+		for (const c of gh.changes) if (c.title && c.repo && /^(checkout|payments|orders|search|catalog|inventory)/.test(c.repo.split('/').pop()!)) (byTitle.get(c.title) ?? byTitle.set(c.title, new Set()).get(c.title)!).add(c.repo);
+		const flaky = [...(byTitle.get('Fix flaky readiness handler') ?? [])];
+		expect(flaky.length).toBeLessThanOrEqual(1);
+		for (const [title, repos] of byTitle) if (/readiness|Fix flaky/.test(title)) expect(repos.size).toBeLessThanOrEqual(1);
+	});
 });

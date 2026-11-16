@@ -102,6 +102,7 @@
 		reconciledUpstream,
 		elsewhereCountOverride,
 		peerHeldByEnv,
+		focusRecovered = false,
 		chainWait = null,
 		focusWaitsFor = null,
 		approvedFacts = []
@@ -192,6 +193,8 @@
 		 * genuinely calm case.
 		 */
 		focusWaitsFor?: string | null;
+		/** the focus place's failure is over (every check OK again) but its rollout is still Failed: the focus draws the recovered ring, never the quiet green dot */
+		focusRecovered?: boolean;
 		/**
 		 * The card's wave/site wait sentence (`RolloutCard.waveWait`), read once
 		 * from blocking-story. Printed on the chain tile it names (or, when no
@@ -901,7 +904,7 @@
 						     component. -->
 						<span class="inline-flex h-5 w-5 shrink-0 items-center justify-center" data-hood-port>
 							<span style="transform: scale(1.25)"
-								><StatusMark state={focusHeldBuilds.length > 0 ? 'held' : 'newest'} /></span
+								><StatusMark state={focusRecovered ? 'failed' : focusHeldBuilds.length > 0 ? 'held' : 'newest'} recovered={focusRecovered} /></span
 							>
 						</span>
 						<!-- ONE SHAPE AT EVERY WIDTH (AD r3 #2): the name, then the env chip on its own line under it, always, so the centrepiece

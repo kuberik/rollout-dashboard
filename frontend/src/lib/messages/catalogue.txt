@@ -605,6 +605,10 @@ lib/components/new/app/AppDetail.svelte	text	All environments
 lib/components/new/app/AppDetail.svelte	code	Deploy … to ….
 lib/components/new/app/AppDetail.svelte	text	deployed … ago
 lib/components/new/app/AppDetail.svelte	title	Deployment failed
+lib/components/new/app/AppDetail.svelte	code	Open rollout
+lib/components/new/app/AppDetail.svelte	code	Retry failed
+lib/components/new/app/AppDetail.svelte	code	Retry started
+lib/components/new/app/AppDetail.svelte	code	Roll back
 lib/components/new/app/AppDetail.svelte	code	The health checks are running.
 lib/components/new/app/AppDetail.svelte	headline	This app does not exist
 lib/components/new/app/AppGates.svelte	aria-label	… details of …
@@ -661,7 +665,9 @@ lib/components/new/change/ChangeDetail.svelte	code	by … · merged by …
 lib/components/new/change/ChangeDetail.svelte	text	CI checks
 lib/components/new/change/ChangeDetail.svelte	code	Deployment failed in … · …
 lib/components/new/change/ChangeDetail.svelte	text	none running yet
+lib/components/new/change/ChangeDetail.svelte	code	Open rollout
 lib/components/new/change/ChangeDetail.svelte	text	Places running it
+lib/components/new/change/ChangeDetail.svelte	code	Roll back
 lib/components/new/change/ChangeDetail.svelte	code	Waiting for approval
 lib/components/new/change/ChangeDetail.svelte	aria-label	What holds this change and what happened to it
 lib/components/new/change/ChangeHistory.svelte	verdict	… events
@@ -898,6 +904,7 @@ lib/components/new/Facia.svelte	code	deploying to …
 lib/components/new/Facia.svelte	title	Deployment failed
 lib/components/new/Facia.svelte	code	held: …
 lib/components/new/Facia.svelte	code	held: waiting on
+lib/components/new/Facia.svelte	code	Open rollout
 lib/components/new/Facia.svelte	code	Ready to promote
 lib/components/new/Facia.svelte	code	ready to promote to prod
 lib/components/new/Facia.svelte	code	Ready to promote to prod
@@ -907,6 +914,8 @@ lib/components/new/Facia.svelte	code	Then waits for …approval
 lib/components/new/Facia.svelte	code	waiting for …approval in …
 lib/components/new/Facia.svelte	code	waiting on
 lib/components/new/Facia.svelte	code	waiting on …
+lib/components/new/FailureBanner.svelte	code	Open rollout
+lib/components/new/FailureBanner.svelte	code	Roll back
 lib/components/new/FleetGate.svelte	code	the fleet
 lib/components/new/Footprint.svelte	code	${stateWord('approval', { yours })} in …
 lib/components/new/held-chain.ts	code	… is itself waiting on …
@@ -1532,6 +1541,7 @@ lib/view-models/env-rank.ts	code	… is on the newest build available to it
 lib/view-models/env-rank.ts	code	… is running a build that is on no environment’s release list
 lib/view-models/env-rank.ts	code	… of … region… on the newest
 lib/view-models/env-rank.ts	code	…'s distance from the newest build cannot be resolved — the build it is running is not in its own release list
+lib/view-models/failure-actions.ts	code	Open logs
 lib/view-models/fleet-facts.ts	code	, incl. …
 lib/view-models/fleet-facts.ts	code	… · … in environments · … without
 lib/view-models/fleet-facts.ts	code	… app…

@@ -30,6 +30,8 @@
 	import { approveAct } from '../approvals.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
+	import type { Act } from '$lib/components/ActRow.svelte';
+	import { failureActs } from '$lib/view-models/failure-actions';
 	import Card from '$lib/components/Card.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
@@ -94,6 +96,12 @@
 	/* a check line that says "passing" while the change fails in production would be a lie: only the link survives a failure */
 	const checkText = $derived(checks && !checks.href && !failed.length ? checks.text : null);
 	const prod = $derived(changeProd(c, scenario));
+	/* the one order of a failed place's actions (view-models/failure-actions.ts): Retry leads for a recovered failure, so it is the phone row's one visible action, not an entry behind "⋯" */
+	const failActs = $derived(failureActs<Act>(!!lead?.row?.failure?.recovered, {
+		rollback: backHref ? { label: 'Roll back', href: backHref, icon: UndoOutline, key: 'rollback' } : null,
+		retry: lead ? { label: 'Retry', href: lead.href, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
+		rest: lead ? [{ label: 'Open rollout', href: lead.href, quiet: true, key: 'open-rollout' }] : []
+	}));
 	/* change-strip r2 (coordinator: restore the facts "Where it runs" carried): the strip's own count (stages-model rollup, so the two agree) and the builds that carry the change */
 	const stg = $derived(stagesOf({ kind: 'change', change: c }, scenario));
 	const reach = $derived(stg.rollup);
@@ -143,8 +151,8 @@
 			<!-- changedetail-9 CE8: the tab's set and order for a failed deploy: [Retry] [Roll back] + the quiet "Open rollout ›"; r34 S1a: the shared StatementBanner owns the shell and the phone action row -->
 			<StatementBanner severity="failed" title={failTitle} {check}
 				phoneMax={1}
-				primary={backHref ? { label: 'Roll back', title: back ? `Roll back to ${back}` : undefined, href: backHref, icon: UndoOutline, key: 'rollback' } : undefined}
-				secondary={lead ? [{ label: 'Retry', href: lead.href, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' }, { label: 'Open rollout', href: lead.href, quiet: true, key: 'open-rollout' }] : []} />
+				primary={failActs.primary?.key === 'rollback' && back ? { ...failActs.primary, title: `Roll back to ${back}` } : failActs.primary}
+				secondary={failActs.secondary.map((a) => (a.key === 'rollback' && back ? { ...a, title: `Roll back to ${back}` } : a))} />
 		{:else if (st.kind === 'waiting' || st.kind === 'held') && lead}
 			<!-- the tab's held banner: the held hue with the pause disc; ONE button, and it says what it does: it navigates (CF1) -->
 			<StatementBanner severity="held" title={st.title} message={st.line ?? (st.kind === 'held' && lead.row ? (holdWord(lead.row, scenario) ?? undefined) : undefined)} messageDesktopOnly={st.kind !== 'held'}

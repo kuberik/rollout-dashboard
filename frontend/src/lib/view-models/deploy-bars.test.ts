@@ -48,6 +48,12 @@ describe('placeMarkerLabels', () => {
 		expect(rows.has('b')).toBe(true);
 		expect(rows.has('a')).toBe(false);
 	});
+	it('a failure failing now keeps the label over a newer recovered one', () => {
+		const failing = { ...m('now', 100, 'failed') };
+		const recovered = { ...m('rec', 120, 'failed'), recovered: true };
+		expect([...placeMarkerLabels([recovered, failing], x, w).keys()]).toEqual(['now']);
+		expect([...placeMarkerLabels([failing, { ...m('old', 120, 'failed'), resolved: true }], x, w).keys()]).toEqual(['now']);
+	});
 	it('keeps labels that are far enough apart', () => {
 		const rows = placeMarkerLabels([m('a', 100), m('b', 300)], x, w);
 		expect([...rows.keys()].sort()).toEqual(['a', 'b']);

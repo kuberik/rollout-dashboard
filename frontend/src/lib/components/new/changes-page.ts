@@ -51,10 +51,10 @@ export type PChange = {
 	worst?: string;
 };
 
-export type AttentionItem = { key: string; p: PChange; model: AttentionModel; href: string; openHref: string; rollbackHref: string | null; yours: boolean; id: { name: string; ref: string; person?: string; you: boolean }; card: RepoCardModel };
+export type AttentionItem = { key: string; p: PChange; model: AttentionModel; href: string; openHref: string; rollbackHref: string | null; /** the rollout the failure is on (where Retry lives), not the change page */ retryHref?: string; yours: boolean; id: { name: string; ref: string; person?: string; you: boolean }; card: RepoCardModel };
 export type RepoGroup = { repo: string; changes: PChange[]; landed: PChange[]; flying: number; worst: number; href: string };
 export type RestRepo = { key: string; repo: string; href: string; ref: string; title: string; age: string };
-export type Banner = { p: PChange; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine; openHref: string; rollbackHref: string | null; meta: BannerMeta };
+export type Banner = { p: PChange; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine; openHref: string; rollbackHref: string | null; recovered?: boolean; meta: BannerMeta };
 /** `fold`: the part is dropped on a phone when it is not the last (a count the header can do without there) */
 export type Rollup = (string | { text: string; ink?: 'danger' | 'held'; fold?: boolean })[];
 
@@ -169,7 +169,7 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 	};
 	const changeLine = (p: PChange): ChangeLine => { const you = isViewer(p.c.who); const person = personName(p.c.who); return { title: p.c.title, ref: p.ref, person: you ? 'you' : person ?? undefined, you, src: you || !person ? null : avatarSrc(person) ?? null }; };
 	const banner: Banner | null = lead
-		? { p: lead, title: failedBannerTitle(lead.ride.app, gateOf(lead.c) || lead.c.at || '', placeOf(lead.c), failingNowOf(lead.ride.row)), check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead) }
+		? { p: lead, title: failedBannerTitle(lead.ride.app, gateOf(lead.c) || lead.c.at || '', placeOf(lead.c), failingNowOf(lead.ride.row)), check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead), recovered: !!lead.ride.row?.failure?.recovered }
 		: null;
 
 	/* Attention: your changes that need you (failing, or an approval you can give), minus the banner's; failing first, then oldest ask first */
@@ -193,7 +193,7 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 		});
 		const one: RepoGroup = { repo: p.c.repo, changes: [p], landed: [], flying: 1, worst: 0, href: '' };
 		return {
-			key: p.c.key, p, model, href: p.c.changeHref ?? p.ride.href, openHref: p.c.changeHref ?? p.ride.href, rollbackHref: failed ? rollbackOf(p) : null, yours: !failed,
+			key: p.c.key, p, model, href: p.c.changeHref ?? p.ride.href, openHref: p.c.changeHref ?? p.ride.href, rollbackHref: failed ? rollbackOf(p) : null, retryHref: p.ride.href, yours: !failed,
 			id: { name: p.ride.app, ref: p.ref, person: you ? undefined : person ?? undefined, you },
 			card: cardOf(one, TIERS.filter((t) => p.c.tiers.includes(t)))
 		};

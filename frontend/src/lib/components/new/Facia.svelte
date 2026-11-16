@@ -35,7 +35,8 @@
 	import GateLabel from '$lib/components/GateLabel.svelte';
 	import { causeText, joinCause, mapPlain, splitCause, type Cause } from '$lib/view-models/gate-label';
 	import type { Act } from '$lib/components/ActRow.svelte';
-	import { CodeBranchOutline, UndoOutline, CheckOutline, ClockOutline, ArrowUpRightFromSquareOutline, ChevronDownOutline, MapPinOutline } from 'flowbite-svelte-icons';
+	import { failureActs } from '$lib/view-models/failure-actions';
+	import { CodeBranchOutline, UndoOutline, PlaySolid, CheckOutline, ClockOutline, ArrowUpRightFromSquareOutline, ChevronDownOutline, MapPinOutline } from 'flowbite-svelte-icons';
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { TChange } from './data';
 	import type { Lane } from '$lib/view-models/promotion-lanes';
@@ -349,6 +350,14 @@
 		return null;
 	});
 
+	/** the failing lead place's failure is over (every check OK again): Retry leads, Roll back follows (view-models/failure-actions.ts) */
+	const recoveredFail = $derived(kind === 'failed' && act?.kind === 'rollback' && !!stateRow && failureRecovered(stateRow.href));
+	const retryHrefOf = $derived(stateRow?.href ?? '');
+	const failActs = $derived(failureActs<Act>(recoveredFail, {
+		rollback: actAsAct() ?? null,
+		retry: recoveredFail ? { label: 'Retry', href: retryHrefOf, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
+		rest: place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : []
+	}));
 	/** the Facia's one action as a banner Act (label, href and icon per kind) */
 	function actAsAct(): Act | undefined {
 		if (!act) return undefined;
@@ -379,6 +388,11 @@
 {#snippet actionBtn(primary: boolean, _xs = false)}
 	{#if act?.kind === 'approve'}
 		<ApproveButton target={apTarget} fallbackHref={actHref} icon class="btn btn-sm {primary || act?.kind === 'approve' ? 'btn-primary' : 'btn-secondary'} shrink-0 gap-2 max-sm:min-h-11" />
+	{:else if act && recoveredFail}
+		<span class="inline-flex shrink-0 flex-wrap items-center gap-2" data-fp-acts>
+			<a href={retryHrefOf} class="btn btn-sm btn-primary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
+			<a href={actHref} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</a>
+		</span>
 	{:else if act}
 		<a href={actHref} class="btn btn-sm {primary ? 'btn-primary' : 'btn-secondary'} relative z-[1] shrink-0 gap-2 max-sm:min-h-11">
 			{#if act.kind === 'rollback'}<UndoOutline class="h-4 w-4" aria-hidden="true" />{:else}<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />{/if}{label}
@@ -449,8 +463,7 @@
 		{@render envRow('')}
 		{#if failCheck}
 			<StatementBanner severity="failed" title="Deployment failed" check={failCheck}
-				primary={actAsAct()}
-				secondary={place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : []} />
+				primary={failActs.primary} secondary={failActs.secondary} />
 		{:else if waitRow}
 			<!-- apps-7 Q2: the tab's own held banner (the shared StatementBanner: tint, 40px pause disc, the tab's sentence) -->
 			<StatementBanner severity={checkingNow ? 'checking' : 'held'} title={checkingNow ? 'Checking' : waitRow.state === 'awaiting-approval' ? approvalIn(rowAction(waitRow)?.kind === 'approve', placeName) : joinCause(`${placeName} is held: waiting on `, gateC)} message={checkingNow ? `${checkLeft ? checkLeft.replace(/\.$/, '') + '. ' : 'The health checks are running. '}${waitRow.state === 'awaiting-approval' ? `Then it waits for ${act?.kind === 'approve' ? 'your ' : ''}approval${placeName ? ' in ' + placeName : ''}.` : ''}`.trim() : waitRow.state === 'awaiting-approval' && wait?.build ? `${act?.kind === 'approve' ? 'Your approval' : 'An approval'} releases ${wait.build} ${waitScope ? 'in ' + waitScope : placeName ? 'to ' + placeName : ''}.`.replace(/ \.$/, '.') : nb ? (waitRow.state === 'awaiting-approval' ? `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting.` : `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting. Nothing promotes itself until someone clears the hold.`) : undefined}

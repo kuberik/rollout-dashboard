@@ -1,6 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { failureRecovered } from '$lib/components/new/data';
+	import { checkHoldSentence } from '$lib/view-models/check-hold-sentence';
 	import { availableReleases } from '$lib/releases/registry.svelte';
 	import { providerScopeCounts, providerScopeLabel } from '$lib/view-models/dependency-hold';
 	import { waitsForText } from '$lib/view-models/waits-for-text';
@@ -153,7 +155,7 @@
 	import { fetchRolloutSchedules, scheduleWindowQueryKey } from '$lib/api/schedules';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
-	import { headFailingNow } from '$lib/view-models/health-failures';
+	import { headFailingNow, headRecovered as headRecoveredLive } from '$lib/view-models/health-failures';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import SkipRuleModal from '$lib/components/SkipRuleModal.svelte';
 	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
@@ -283,6 +285,8 @@
 	const fleetFailed = $derived(fleetLatch.failed && listQuery.data === undefined);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
+	/** the failed head's checks are all OK again (the page's own live checks, the reading History and the Overview's banner use); the fleet reading when they have not arrived */
+	const headRecovered = $derived(headRecoveredLive(healthChecks ?? [], rollout?.status?.history?.[0] as never) || failureRecovered(rolloutPath(cluster, namespace, page.params.name as string)));
 
 	// Clear pin, the Overview's own action: the same permission read, the same dialog.
 	const permissionsQuery = createQuery(() => ({
@@ -1781,6 +1785,7 @@
 				{rollout}
 				quietRollback
 				failingNow={headFailingNow(healthChecks ?? [], rollout?.status?.history?.[0] as never)}
+				recovered={headRecovered}
 				subtitleOnPhone={false}
 				titleAfter={reallyHeldHere.length > 0 ? heldTitle : undefined}
 				chip={reallyHeldHere.length > 0 ? null : undefined}
@@ -1977,6 +1982,9 @@
 									<!-- A health or downstream hold `holdBreakdown` does not see:
 									     state the header's own fact, never "Nothing is holding". -->
 									<p class="t-body text-fg-muted">{gateFactNow.text}.</p>
+								{:else if headRecovered}
+									<!-- the failure is over (every check OK again) but the rollout is still Failed: a retry or a new build releases it, so it is not "nothing" -->
+									<p class="t-body text-fg-muted" data-hold-recovered>{checkHoldSentence(true)}.</p>
 								{:else}
 									<p class="t-body text-fg-muted">
 										Nothing is holding this rollout. {realGateTotal}
@@ -1985,6 +1993,7 @@
 								{/if}
 							</div>
 							<RolloutNeighbourhood
+								focusRecovered={headRecovered}
 								approveAsk={ask}
 								{approvedFacts}
 								{hood}

@@ -215,7 +215,7 @@ function cases(): Case[] {
 		app: 'catalog-api',
 		deployed: 24,
 		bake: 'Failed',
-		bakeEnd: 1,
+		bakeEnd: 10,
 		bakeMessage: 'catalog cache hit ratio fell below its floor during the bake',
 		snapshot: ['catalog-api-datadog'],
 		snapObs: { 'catalog-api-datadog': [obs({ name: 'catalog cache hit ratio', kind: 'Threshold', value: '72', limit: '80', direction: 'Below', unit: '%', window: '5m', healthy: false, message: 'service:catalog, env:prod' }, 10)] },
@@ -347,9 +347,19 @@ export function healthFailuresFleet(): Obj {
 
 export const HEALTH_FAILURES_APPS = ['checkout-gateway', 'checkout-web', 'payments-api', 'orders-hub', 'search-indexer', 'catalog-api', 'inventory-api'] as const;
 
-const HEADLINES = ['Tune connection pool sizes', 'Add retry budget to outbound calls', 'Fix flaky readiness handler'];
+/** the newest change of each app: one title per app, so a row or a palette entry names ITS change and none reads as one change failing everywhere */
+const NEWEST_TITLE: Record<string, string> = {
+	'checkout-gateway': 'Raise the upstream timeout for card tokenisation',
+	'checkout-web': 'Debounce the promo code field',
+	'payments-api': 'Cap refund batches at 200 per run',
+	'orders-hub': 'Skip duplicate order webhooks',
+	'search-indexer': 'Reindex the product catalogue in smaller shards',
+	'catalog-api': 'Fix flaky readiness handler',
+	'inventory-api': 'Read stock levels from the replica'
+};
+const headlinesOf = (app: string): string[] => ['Tune connection pool sizes', 'Add retry budget to outbound calls', NEWEST_TITLE[app] ?? 'Fix flaky readiness handler'];
 const ghOf = (fs: Fixture[]): Record<string, AppFixture> =>
-	Object.fromEntries(fs.map((f) => [f.app, curated(OWNER, f.app, f.releases.map((r) => r.tag), HEADLINES, undefined, `Initial ${f.app} release`)]));
+	Object.fromEntries(fs.map((f) => [f.app, curated(OWNER, f.app, f.releases.map((r) => r.tag), headlinesOf(f.app), undefined, `Initial ${f.app} release`)]));
 const mergeOf = (fs: Fixture[]): Record<string, number> =>
 	Object.fromEntries(fs.flatMap((f) => f.releases.map((r, k) => [r.tag, (f.releases.length - k) * 150 + 20] as const)));
 
