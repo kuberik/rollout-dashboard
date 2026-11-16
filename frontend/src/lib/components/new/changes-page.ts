@@ -132,6 +132,16 @@ function classifyChangesRaw(hs: HomeState): { mineP: PChange[]; teamP: PChange[]
 export function attentionOrder<T extends { state: string }>(ps: T[], askSince: (p: T) => string | null): T[] {
 	return [...ps].sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed') || oldestFirst(askSince(a), askSince(b)));
 }
+/** When an Attention item began asking: an approval from its wait clock, a failure from when its check began failing
+ *  (the instant its card prints), else the ride's or change's own clock. */
+export function attentionSince(
+	p: { state: string; c: { since?: string | null; failure?: { since?: string | null } | null }; ride: { since?: string | null } },
+	approvalClock: () => string | null
+): string | null {
+	if (p.state === 'approval-yours') return approvalClock() ?? p.ride.since ?? p.c.since ?? null;
+	if (p.state === 'failed') return p.c.failure?.since ?? p.ride.since ?? p.c.since ?? null;
+	return p.ride.since ?? p.c.since ?? null;
+}
 export function changesPage(hs: HomeState): ChangesPage {
 	return inScope(() => changesPageRaw(hs));
 }
@@ -154,11 +164,7 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 		: null;
 
 	/* Attention: your changes that need you (failing, or an approval you can give), minus the banner's; failing first, then oldest ask first */
-	const askSince = (p: PChange): string | null => {
-		const r = rowOf(p);
-		if (p.state === 'approval-yours') return (r ? waitClock(r, hs) : null) ?? p.ride.since ?? p.c.since;
-		return p.ride.since ?? p.c.since;
-	};
+	const askSince = (p: PChange): string | null => attentionSince(p, () => { const r = rowOf(p); return r ? waitClock(r, hs) : null; });
 	const attP = attentionOrder(mineP.filter((p) => (p.state === 'failed' || p.state === 'approval-yours') && p !== lead), askSince);
 	const attention: AttentionItem[] = attP.map((p) => {
 		const failed = p.state === 'failed';

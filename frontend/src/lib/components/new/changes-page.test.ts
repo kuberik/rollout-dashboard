@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { changesPage, refOf, gateOf } from './changes-page';
+import { changesPage, refOf, gateOf, attentionOrder, attentionSince } from './changes-page';
 import { ago } from './data';
 
 /* r39 build: the Changes page composition. Each change once: banner / Attention / one repo card; section counts are the cards' own counts. */
@@ -36,4 +36,10 @@ it('incident: a failing Attention card ages from when its check began failing, l
 	expect(failing.length).toBeGreaterThan(0);
 	for (const a of failing) expect(a.model.forAgeAt).toBe(a.p.c.failure!.since);
 	for (const a of failing) expect(a.model.forAge).toBe(`for ${ago(a.p.c.failure!.since!)}`);
+});
+it('attention order: failures sort by when their check began failing, the age the card prints', () => {
+	const mk = (k: string, rideSince: string, failSince: string) => ({ k, state: 'failed', ride: { since: rideSince }, c: { since: rideSince, failure: { since: failSince } } });
+	/* a deployed first but began failing last; b deployed later but has failed longer */
+	const ps = [mk('a', '2026-11-14T10:00:00Z', '2026-11-14T11:50:00Z'), mk('b', '2026-11-14T11:00:00Z', '2026-11-14T11:10:00Z')];
+	expect(attentionOrder(ps, (p) => attentionSince(p, () => null)).map((p) => p.k)).toEqual(['b', 'a']);
 });
