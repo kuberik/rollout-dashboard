@@ -1,6 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render } from '@testing-library/svelte';
+import { createRawSnippet } from 'svelte';
 import RolloutTabHeader from './RolloutTabHeader.svelte';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -162,5 +163,17 @@ describe('RolloutTabHeader: the phone shows the same pair as lg+', () => {
 		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false } });
 		const d = [...container.querySelectorAll('a[data-desktop-only]')].map((a) => `${a.textContent?.trim()}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
 		expect(d).toEqual(['Roll back:primary', 'Retry:secondary']);
+	});
+});
+
+/** The gap under the phone action pair: one rule on every tab (24px, what Gates and Logs leave under the header), never 0 against a header's own `below` content (History's cadence strip). */
+describe('RolloutTabHeader: the space under the phone action pair', () => {
+	test('the pair is followed by the below content, and language.css gives it the 24px block gap when something follows', () => {
+		const css = readFileSync(resolve(__dirname, '../../styles/language.css'), 'utf8');
+		const belowSnippet = createRawSnippet(() => ({ render: () => '<div data-test-below="1"></div>' }));
+		expect(css).toMatch(/\[data-phone-actions\]:has\(\+ \*\)\s*\{\s*margin-bottom:\s*24px;/);
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false, below: belowSnippet } });
+		const cell = container.querySelector('[data-phone-actions]') as HTMLElement;
+		expect(cell.nextElementSibling?.getAttribute('data-test-below')).toBe('1');
 	});
 });

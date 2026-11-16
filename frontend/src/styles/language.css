@@ -1003,6 +1003,10 @@ dialog[role='dialog'][aria-modal='true'] {
 		display: none;
 	}
 }
+/* the phone action pair leaves the page's block gap (24px: what Gates and Logs leave under the same header) before whatever follows it in the header (the History cadence strip, the Overview lane); alone it adds nothing */
+[data-phone-actions]:has(+ *) {
+	margin-bottom: 24px;
+}
 @media (min-width: 1024px) {
 	.page-header .dot-list:has(> .dot-list-row > [data-meta-phone-only]) {
 		display: none;
