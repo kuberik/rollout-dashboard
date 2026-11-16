@@ -4,7 +4,7 @@ import { causeText, type Cause } from '$lib/view-models/gate-label';
 import { placeLabel, heldCauses, checkClock, approvalScope, actionFor } from './data';
 import type { TRow, GroupKey, HomeState, Step } from './data';
 import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
-import { stateWord } from './state-words';
+import { stateWord, failedParts } from './state-words';
 
 export { stepsOf, failureReason, placeLabel, truthAttrs, inbox, arrivals, lastHealthy, pathPosition, pathReach, reachSentence } from './data';
 export { heldCauses };
@@ -43,6 +43,7 @@ export function leadRow(rows: TRow[]): TRow | null {
 	return first ?? runwayRow(rows);
 }
 
+/** the group names are static buckets: `Failing` is the bucket's name, each row inside it says `Failing` or `Failed` for itself; counts go through failedParts */
 export const FILTERS: { key: GroupKey; label: string }[] = [
 	{ key: 'failed', label: 'Failing' }, { key: 'approval', label: 'Waiting for approval' },
 	{ key: 'held', label: 'Held' }, { key: 'moving', label: 'In progress' }, { key: 'rest', label: 'At rest' }
@@ -50,14 +51,17 @@ export const FILTERS: { key: GroupKey; label: string }[] = [
 
 export const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 export function headerFacts(rows: TRow[], _needs?: number) {
-	const failing = rows.filter((r) => r.group === 'failed').length;
+	const failedRows = rows.filter((r) => r.group === 'failed');
+	const failing = failedRows.length;
+	const recovered = failedRows.filter((r) => r.failure?.recovered).length;
 	const moving = rows.filter((r) => r.group === 'moving').length;
 	/* r34 truth-5: approvals are counted in PLACES (data.fleetCounts().places.approval's unit), the one number every page prints */
 	const waiting = rows.filter((r) => r.group === 'approval').reduce((n, r) => n + r.regions.length, 0);
 	/* what needs ME first: the approvals the viewer can give, named in the header (UX 10); r5 R9: the header and the chip count the same thing (all waiting) and name mine */
 	const yours = rows.filter((r) => r.group === 'approval' && r.needsYou).length;
 	const facts: { text: string; adverse: boolean }[] = [];
-	if (failing) facts.push({ text: `${failing} failing`, adverse: true });
+	/* a failure whose checks all recovered reads `failed`, one with a check failing now `failing` (state-words.ts failedWord) */
+	for (const text of failedParts(failing, recovered)) facts.push({ text, adverse: true });
 	if (waiting) facts.push({ text: `${plural(waiting, 'place')} waiting for approval`, adverse: false });
 	if (yours) facts.push({ text: `${yours} yours to approve`, adverse: false });
 	if (moving) facts.push({ text: `${moving} in progress`, adverse: false });
