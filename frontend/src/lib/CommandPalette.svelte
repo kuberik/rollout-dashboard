@@ -1615,11 +1615,17 @@
 		return keys;
 	});
 	let prevRowKeys: string[] = [];
+	let prevAsk = `${query}\u0000${scope ?? ''}`;
 	$effect.pre(() => {
 		const next = rowKeys;
+		const ask = `${query}\u0000${scope ?? ''}`;
 		const at = untrack(() => selectedIndex);
 		const was = prevRowKeys[at];
+		const sameAsk = ask === prevAsk;
 		prevRowKeys = next;
+		prevAsk = ask;
+		// a new query or scope is a new list: the best match is first, the old highlight means nothing
+		if (!sameAsk) { selectedIndex = 0; return; }
 		if (!was || next[at] === was) return;
 		const moved = next.indexOf(was);
 		if (moved >= 0) selectedIndex = moved;
