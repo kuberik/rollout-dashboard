@@ -54,7 +54,9 @@
 		type ActivityGroup,
 		deploysRollupParts
 	} from '$lib/view-models/activity-groups';
-	import { failureRecovered } from '$lib/components/new/data';
+	import { fleetHealthChecksQuery, rolloutHealthChecks, healthChecksByRollout } from '$lib/api/health-checks';
+	import { healthCheckKey } from '$lib/health-check-key';
+	import { headRecovered } from '$lib/view-models/health-failures';
 	import { bucketize, type DeployBucket, type DeployMarker } from '$lib/view-models/deploy-bars';
 	import { pickDefaultRange } from '$lib/view-models/activity-range';
 	import { deployReason, deployMark } from '$lib/view-models/activity-note';
@@ -94,6 +96,10 @@
 			}
 		})
 	);
+
+	/* the fleet's health checks: which unresolved failures have since recovered (their checks are all OK again) */
+	const hcQuery = createQuery(() => fleetHealthChecksQuery());
+	const checksByRollout = $derived(healthChecksByRollout(rolloutHealthChecks(hcQuery.data)));
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
@@ -1389,7 +1395,7 @@
 		return changeFailureRatePct !== null ? `${changeFailureRatePct}% of deploys` : undefined;
 	});
 	/** The Deploys section's rollup: the window's count, then the one adverse fact in its ink (only an unresolved failure is red). */
-	const deploysRollup = $derived(deploysRollupParts(windowed.length, unresolvedFailedCount, unresolvedFailures.filter((e) => failureRecovered(e.href)).length));
+	const deploysRollup = $derived(deploysRollupParts(windowed.length, unresolvedFailedCount, unresolvedFailures.filter((e) => headRecovered(checksByRollout.get(healthCheckKey(sourceClusterName(e.rollout), e.rolloutNamespace, e.rolloutName)) ?? [], e.rollout.status?.history?.[0] as never)).length));
 	/** Deploys tile subline — a rate, not the range (round 8). */
 	/** ⭐ NOT A TAUTOLOGY AT 1D (round 9 review, 2026-10-10): "103 a day" at
 	 *  the 1d range IS the figure above it restated, since the window and

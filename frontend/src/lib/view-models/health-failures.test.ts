@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { HealthCheck } from '../../types';
-import { checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary, withAge } from './health-failures';
+import { headRecovered, checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary, withAge } from './health-failures';
 
 const mk = (cls: string, status: Record<string, unknown>, name = 'x'): HealthCheck => ({ metadata: { name }, spec: { class: cls }, status } as unknown as HealthCheck);
 const win = new Date('2026-11-15T09:00:00Z');
@@ -240,5 +240,19 @@ describe('withAge', () => {
 	it('puts the age on the health line, never on a meta line', () => {
 		expect(withAge('2\u00a0health checks failing, 1\u00a0pending', '12m ago')).toBe('2\u00a0health checks failing, 1\u00a0pending\u00a0\u00b7\u00a012m\u00a0ago');
 		expect(withAge('2 health checks failing', null)).toBe('2 health checks failing');
+	});
+});
+
+describe('headRecovered', () => {
+	const snap = [{ name: 'chk', observations: [{ name: 'HighLatency', kind: 'Threshold' as const, value: '1.9', limit: '1', direction: 'Above' as const, unit: 's', healthy: false, observedTime: T(2) }] }];
+	const head = { timestamp: '2026-11-15T09:00:00Z', failedHealthChecks: snap };
+	it('is true once every failed check is OK again', () => {
+		const ok = mk('prometheus-alert', { status: 'Healthy', lastErrorTime: T(4), lastChangeTime: T(5), observations: [{ name: 'HighLatency', kind: 'Threshold', value: '0.4', limit: '1', direction: 'Above', unit: 's', healthy: true }] }, 'chk');
+		expect(headRecovered([ok], head)).toBe(true);
+	});
+	it('is false while a check fails now, and with no head', () => {
+		const bad = mk('prometheus-alert', { status: 'Unhealthy', lastChangeTime: T(5), observations: [{ name: 'HighLatency', kind: 'Threshold', value: '1.9', limit: '1', direction: 'Above', unit: 's', healthy: false }] }, 'chk');
+		expect(headRecovered([bad], head)).toBe(false);
+		expect(headRecovered([], null)).toBe(false);
 	});
 });

@@ -196,6 +196,16 @@ export function failureSince(pool: CheckView[]): string | null {
 	return earliest(pool.map((c) => (c.verdict === 'failing' ? c.since : c.verdict === 'recovered' ? c.recovery?.failedAt : null) ?? undefined));
 }
 
+/**
+ * Has the head deploy's failure recovered: every check it failed is OK again (the head's window opens at its deploy or last retry, as `failureReason` reads it)?
+ * For a page that holds the entry and the rollout's live checks but not the fleet source (the Activity feed).
+ */
+export function headRecovered(live: HealthCheck[], head: { timestamp?: string | null; lastRetryTimestamp?: string | null; failedHealthChecks?: readonly SnapCheck[] | null } | null | undefined): boolean {
+	if (!head) return false;
+	const winStart = new Date(Math.max(Date.parse(head.timestamp ?? '') || 0, Date.parse(head.lastRetryTimestamp ?? '') || 0));
+	return !!evidenceLine(poolOf(live, [...(head.failedHealthChecks ?? [])], winStart))?.recovered;
+}
+
 export type Worst = { check: CheckView; row: ObsRow | null; recovered: boolean };
 
 /**
