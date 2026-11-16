@@ -148,7 +148,8 @@ export function attentionModel(i: AttentionInput): AttentionModel {
 	return {
 		state: i.state,
 		word: statusWord(i.state, !!i.recovered),
-		forAge: i.age ? `for ${i.age}` : null,
+		/* a recovered failure is over: "Failed 10m ago"; one failing now keeps "for 10m" */
+		forAge: i.age ? (failed && i.recovered ? `${i.age} ago` : `for ${i.age}`) : null,
 		forAgeAt: i.ageAt ?? null,
 		tier: i.tier ?? '',
 		place: i.place ?? '',

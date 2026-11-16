@@ -36,3 +36,26 @@ describe('AttentionCard mark', () => {
 		expect(mark(false)).toContain('bg-danger-solid');
 	});
 });
+
+describe('AttentionCard word and age', () => {
+	const card = async (recovered: boolean) => {
+		const model = attentionModel({ state: 'failed', age: '5h', ageAt: new Date(T0.getTime() - 10 * 60_000).toISOString(), tier: 'prod', title: 'x', recovered });
+		const { container } = render(AttentionCard, { props: { model, href: '/x', id: { name: 'orders-hub' } } as never });
+		await vi.advanceTimersByTimeAsync(300);
+		return { word: container.querySelector('[data-word]')!, text: container.textContent ?? '' };
+	};
+	it('a recovered failure reads "Failed" in neutral ink, 10m ago', async () => {
+		const { word, text } = await card(true);
+		expect(word.textContent).toBe('Failed');
+		expect(word.className).toContain('text-fg-muted');
+		expect(word.className).not.toContain('text-danger');
+		expect(text).toContain('10m ago');
+		expect(text).not.toContain('for 10m');
+	});
+	it('a failure live now reads "Failing" in danger ink, for 10m', async () => {
+		const { word, text } = await card(false);
+		expect(word.textContent).toBe('Failing');
+		expect(word.className).toContain('text-danger');
+		expect(text).toContain('for 10m');
+	});
+});
