@@ -7,14 +7,14 @@
  * state, so a state change can never add, drop, reorder or move a tile (owner: "environments jumping").
  */
 import { inScope } from '../derivation-scope';
-import { ago, failureRecovered, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
+import { ago, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
 import { approvalWord } from '../state-words';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
 import { ledgerOf, type Stop } from '../app/app-model';
 import type { MarkSiteState } from '$lib/view-models/wave-mark';
 import { changeBySha } from '$lib/components/home/sketch/home-data';
-import { behindWords, classified, countsOf, failedParts, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
+import { behindWords, classified, countsOf, failedParts, failedPartsOfHrefs, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
 import { TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 
 export type StageState = 'deployed' | 'checking' | 'paused' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
@@ -208,8 +208,7 @@ function drawRelease(app: string, c: AppCtx, scenario: HomeState, release: strin
 	const total = c.entries.filter((e) => e.counted).length;
 	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${total} place${total === 1 ? '' : 's'} on ${release}`, short: `${ran} of ${total} on ${release}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
 	/* a failed place whose checks have all recovered reads `failed`; `failing` is a check failing now (state-words.ts failedWord) */
-	const failedPs = ps.filter((p) => p.state === 'failed');
-	for (const t of failedParts(failedPs.length, failedPs.filter((p) => failureRecovered(p.href)).length)) parts.push({ text: t, ink: 'danger' });
+	for (const t of failedPartsOfHrefs(ps.filter((p) => p.state === 'failed').map((p) => p.href))) parts.push({ text: t, ink: 'danger' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
 	if (k('checking')) parts.push({ text: `${k('checking')} checking`, ink: 'progress' });

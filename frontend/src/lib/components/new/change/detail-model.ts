@@ -13,7 +13,7 @@ import type { Rollout } from '$lib/../types';
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
 import {
 	changes, candidateBuilds, shortBuild, placesOfChange, historyOfChange, changeCommits, runsIn, rowsOf, rollouts, heldBehind, lastHealthy, ago,
-	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathReach, reachSentence, buildCommitOf,
+	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathReach, reachSentence, buildCommitOf, failureRecovered,
 	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock, waveInfoOfHref
 } from '../data';
 import { stateWord, approvalWord, failedWord } from '../state-words';
@@ -116,6 +116,8 @@ export const runningN = (ps: Place[]) => ps.filter((p) => p.kind === 'running').
 const recoveredPlace = (p: Place): boolean => !!(p.row ?? p.tabRow)?.failure?.recovered;
 /** "2 failing" and "1 failed" as separate parts, zero parts left out */
 export const failedParts = (failing: number, recovered: number): string[] => [failing - recovered > 0 ? `${failing - recovered} ${failedWord(false).toLowerCase()}` : '', recovered > 0 ? `${recovered} ${failedWord(true).toLowerCase()}` : ''].filter(Boolean);
+/** the failed places' rollup parts by rollout href: a place whose checks have all recovered reads `failed`, one with a check failing now `failing` */
+export const failedPartsOfHrefs = (hrefs: readonly string[]): string[] => failedParts(hrefs.length, hrefs.filter((h) => failureRecovered(h)).length);
 export function countsOf(all: Unit[], places: Place[]) {
 	/* the tab's own words for a place that runs the change: Deployed, Checking (clock), Deploying (arc); a count says each once (CF2). A place whose NEWER build fails is FAILING (the tab's red), not deployed (CE3) */
 	const run = places.filter((p) => p.kind === 'running' && !p.newerFails);

@@ -593,7 +593,6 @@ lib/components/new/app/AppActivity.svelte	text	No activity yet
 lib/components/new/app/AppActivity.svelte	title	Recent activity
 lib/components/new/app/AppActivity.svelte	code	Rolled back
 lib/components/new/app/AppBuilds.svelte	text	… builds not running anywhere
-lib/components/new/app/AppBuilds.svelte	text	… failing
 lib/components/new/app/AppBuilds.svelte	aria-label	…{noReleases ? '' : `, $…`}{s.title ? `, $…` : ''}
 lib/components/new/app/AppBuilds.svelte	text	Builds appear once a rollout deploys it.
 lib/components/new/app/AppBuilds.svelte	text	Builds from deploy history
