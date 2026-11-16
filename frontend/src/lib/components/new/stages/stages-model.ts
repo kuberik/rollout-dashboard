@@ -8,7 +8,7 @@
  */
 import { inScope } from '../derivation-scope';
 import { ago, failureRecovered, failureSinceAt, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
-import { approvalWord, failedWord } from '../state-words';
+import { approvalWord, failedWord, failedInkParts } from '../state-words';
 import { toneInk } from '$lib/view-models/state-tone';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
@@ -262,7 +262,7 @@ function rollupOf(c: TChange, scenario: HomeState): StageRollup {
 	const total = cl.places.length + unreached;
 	const ran = n.live + n.checking + n.paused + n.deploying;
 	const parts: StageRollup['parts'] = [{ text: `${ran} of ${total} place${total === 1 ? '' : 's'}`, short: `${ran} of ${total}`, ink: 'muted' }];
-	for (const t of failedParts(n.failing, n.recovered)) parts.push({ text: t, ink: 'danger' });
+	for (const t of failedInkParts(n.failing, n.recovered)) parts.push(t);
 	if (n.waiting) parts.push({ text: `${n.waiting} waiting`, ink: 'held' });
 	if (n.held) parts.push({ text: `${n.held} held`, ink: 'held' });
 	if (n.checking) parts.push({ text: `${n.checking} checking`, ink: 'progress' });
