@@ -712,8 +712,9 @@ function pickPlace(rows: TRow[]): TRow | null {
 	return [...rows].sort((p, q) => c(p) - c(q) || Number(q.tier === 'prod') - Number(p.tier === 'prod') || newestFirst(p.since, q.since))[0] ?? null;
 }
 /** one outcome grammar for a change and an app (roster-data's, kept verbatim) */
-const outcomeOf = (w: TRow): string =>
-	w.group === 'failed' ? `Failing in ${w.where}` : w.state === 'awaiting-approval' ? `${sharedWord('approval')} in ${w.where}`
+/** a failure whose checks all recovered reads `Failed in …`; `Failing in …` is a check failing now (state-words.ts failedWord) */
+export const outcomeOf = (w: TRow): string =>
+	w.group === 'failed' ? `${failedWord(!!w.failure?.recovered)} in ${w.where}` : w.state === 'awaiting-approval' ? `${sharedWord('approval')} in ${w.where}`
 	: w.group === 'moving' ? `${w.word} ${w.state === 'deploying' ? 'to' : 'in'} ${w.where}`
 	: `${w.word.startsWith('Waits on') ? w.word : 'Held'} in ${w.where}`;
 /** QA #23: the place's release stream, oldest first, as the builds are named everywhere (`status.availableReleases`). A build in it is a RELEASE of the app, whatever place runs it today. */
