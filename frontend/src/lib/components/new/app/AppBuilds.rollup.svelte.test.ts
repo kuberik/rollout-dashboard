@@ -9,7 +9,7 @@ import AppBuilds from './AppBuilds.svelte';
 describe('AppBuilds header rollup', () => {
 	it('failing is danger, failed is neutral', () => {
 		const places = [{ state: 'failed', href: '/a' }, { state: 'failed', href: '/b' }] as never;
-		const { container, getByText } = render(AppBuilds, { props: { stops: [], places, view: () => ({}) as never } });
+		const { container, getByText } = render(AppBuilds, { props: { stops: [], places, view: () => ({}) as never, onDeploy: () => {} } });
 		const failing = getByText('1 failing');
 		expect(failing.className).toContain('text-danger');
 		expect(failing.className).not.toContain('text-fg ');
