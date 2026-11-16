@@ -10,7 +10,7 @@
  */
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { TONE } from '$lib/view-models/state-tone';
-import { failedWord, failedParts } from './state-words';
+import { failedParts, failedInkParts } from './state-words';
 import { envsModel, plural, type Mark } from './envs-model';
 import { waveHold } from './app/app-model';
 import { apps, placeHolds, type PlaceHold, inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
@@ -35,12 +35,12 @@ export type EnvironmentsPage = { tiles: EnvTile[]; prod: EnvTile | null; arrival
 export function stateLine(t: { places: number; failing: number; /** of the failed places, those whose checks have all recovered: they read `failed`, never `failing` (state-words.ts failedWord) */ recovered?: number; waiting: number; yours: number; moving: number; rest: number }, movingWord: string): { lead: StatePart & { ink: Ink }; parts: StatePart[]; mark: TileMark } {
 	const parts: StatePart[] = [];
 	const recovered = Math.min(t.recovered ?? 0, t.failing), live = t.failing - recovered;
-	if (live && recovered) parts.push({ text: `${recovered} ${failedWord(true).toLowerCase()}` });
+	if (live && recovered) parts.push({ text: failedInkParts(t.failing, recovered)[1].text });
 	if (t.waiting) parts.push({ text: `${t.waiting} waiting`, you: t.yours ? `${t.yours} for you` : undefined });
 	if (t.moving) parts.push({ text: `${t.moving} ${movingWord}` });
 	if (t.rest) parts.push({ text: `${t.rest} healthy` });
 	const mv: TileMark = movingWord === 'checking' ? 'checking' : 'deploying';
-	if (t.failing) return { lead: { text: `${live || recovered} ${failedWord(!live).toLowerCase()}`, ink: live ? (TONE.failed.hue as Ink) : 'muted' }, parts, mark: 'failed' };
+	if (t.failing) return { lead: { text: failedInkParts(t.failing, recovered)[0].text, ink: live ? (TONE.failed.hue as Ink) : 'muted' }, parts, mark: 'failed' };
 	if (t.waiting) return { lead: { ...parts.shift()!, ink: TONE.held.hue as Ink }, parts, mark: t.yours ? 'approval-yours' : 'approval' };
 	if (t.moving) return { lead: { ...parts.shift()!, ink: TONE[mv].hue as Ink }, parts, mark: mv }; /* the word's ink is the mark's tone: "2 checking" is progress yellow beside the yellow clock, "2 deploying" active blue */
 	return { lead: { text: `All ${t.places} healthy`, ink: 'muted' }, parts: [], mark: 'rest' };
@@ -56,8 +56,7 @@ export function barSegments(t: { failing: number; waiting: number; moving: numbe
 export function regionCellParts(r: Pick<RegionCell, 'failing' | 'recovered' | 'waiting' | 'moving' | 'movingWord'>): { text: string; ink: Ink | null }[] {
 	const recovered = Math.min(r.recovered, r.failing), live = r.failing - recovered;
 	const out: { text: string; ink: Ink | null }[] = [];
-	if (live) out.push({ text: `${live} ${failedWord(false).toLowerCase()}`, ink: 'danger' });
-	if (recovered) out.push({ text: `${recovered} ${failedWord(true).toLowerCase()}`, ink: null });
+	for (const p of failedInkParts(r.failing, recovered)) out.push({ text: p.text, ink: p.ink === 'danger' ? 'danger' : null });
 	if (r.waiting) out.push({ text: `${r.waiting} waiting`, ink: 'held' });
 	if (r.moving) out.push({ text: `${r.moving} ${r.movingWord}`, ink: r.movingWord === 'checking' ? 'progress' : 'active' });
 	return out;

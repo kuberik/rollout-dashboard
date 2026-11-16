@@ -21,6 +21,9 @@ export type FailedPart = { text: string; ink: 'danger' | 'muted' };
 /** `failedParts` as ink parts: THE ONE INK RULE for the failure words (failing danger, failed neutral). Surfaces that print the count as `{ text, ink }` call this instead of colouring by hand. */
 export const failedInkParts = (failing: number, recovered: number): FailedPart[] => failedParts(failing, recovered).map((text) => ({ text, ink: text.endsWith(` ${failedWord(false).toLowerCase()}`) ? 'danger' : 'muted' }));
 
+/** `failedInkParts` for a rollup whose neutral parts are plain strings: only the danger part is an object `{ text, ink }`. */
+export const failedRollup = (failing: number, recovered: number): (string | { text: string; ink: 'danger' })[] => failedInkParts(failing, recovered).map((p) => (p.ink === 'danger' ? { text: p.text, ink: 'danger' as const } : p.text));
+
 export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking' | 'paused';
 
 /** accepts the product's other spellings of the same five states */

@@ -20,7 +20,7 @@ import { rowAction, actionHref } from './rollout-view';
 import { chipPlace, changeLineOf } from './rollouts-page';
 import { classifyChanges, groupByRepo, cardOf, tiersOf, type RepoGroup, type Rollup } from './changes-page';
 import { TIERS } from './change-view';
-import { severity, approvalWord, failedWord } from './state-words';
+import { severity, approvalWord, failedWord, failedRollup } from './state-words';
 import { siteCount, siteKey, regionsPhrase } from '$lib/view-models/regions';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import type { RepoCardModel } from '$lib/view-models/repo-card';
@@ -115,8 +115,7 @@ export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage
 }
 /** the Needs-you rollup: failures live now, failures whose checks recovered (`failed`, the word every page uses), then the approvals */
 export const asksRollupOf = (failing: number, recovered: number, toApprove: number): (string | { text: string; ink: 'danger' | 'held' })[] => [
-	...(failing - recovered ? [{ text: `${failing - recovered} ${failedWord(false).toLowerCase()}`, ink: 'danger' as const }] : []),
-	...(recovered ? [`${recovered} ${failedWord(true).toLowerCase()}`] : []),
+	...failedRollup(failing, recovered),
 	...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])
 ];
 
