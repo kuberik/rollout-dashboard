@@ -65,7 +65,7 @@
 					{#each P.attention as a (a.key)}
 						{@const row = a.p.ride.row}
 						<div class="contents" data-truth-kind="attention" data-truth-app={a.id.name} data-truth-href={a.href} data-truth-group={a.model.state === 'failed' ? 'failed' : 'approval'} {...row ? truthAttrs(row) : {}}>
-							<AttentionCard model={a.model} href={a.href} id={a.id} rollbackHref={a.rollbackHref ?? undefined} openHref={a.openHref} openLabel="Open change"
+							<AttentionCard model={a.model} href={a.href} id={a.id} rollbackHref={a.rollbackHref ?? undefined} retryHref={a.retryHref} openHref={a.openHref} openLabel="Open change"
 								approve={a.yours && row ? approvalTarget(row, hs) : null} approveFallbackHref={a.yours ? a.openHref : undefined}>
 								{#snippet drawing()}<RepoCells cells={a.card.cells} size="M" />{/snippet}
 							</AttentionCard>

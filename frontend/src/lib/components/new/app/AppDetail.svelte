@@ -41,6 +41,8 @@
 	import Card from '$lib/components/Card.svelte';
 	import { causeText, splitCause, type Cause } from '$lib/view-models/gate-label';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
+	import type { Act } from '$lib/components/ActRow.svelte';
+	import { failureActs } from '$lib/view-models/failure-actions';
 	import StarToggle from '$lib/components/StarToggle.svelte';
 	import PromotionLane from '$lib/components/PromotionLane.svelte';
 	import ChangeVersionFlow from '$lib/components/ChangeVersionFlow.svelte';
@@ -284,6 +286,15 @@
 	const failEv = $derived(failRow?.failure?.pool ? bannerEvidence(failRow.failure.pool, failRow.failure.pendingN ?? 0, failRow.failure.since ? formatTimeAgoCompact(failRow.failure.since, $now) : null) : null);
 	const failCheck = $derived(failRow?.failure ? { name: failRow.failure.check ?? failRow.failure.line, message: failRow.failure.check ? (failRow.failure.message ?? undefined) : undefined } : null);
 	const failAct = $derived(failRow ? rowAction(failRow) : null);
+	/* the one order of a failed place's actions (view-models/failure-actions.ts): a recovered failure retries first, a failing one rolls back first */
+	const failActs = $derived.by(() => {
+		if (!failRow) return { primary: undefined, secondary: [] as Act[] };
+		return failureActs<Act>(failureRecovered(failRow.href), {
+			rollback: failAct ? { label: 'Roll back', href: actionHref(failAct), icon: UndoOutline, key: 'rollback' } : null,
+			retry: { label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },
+			rest: [{ label: 'Open rollout', href: failRow.href, after: true, key: 'open-rollout' }]
+		});
+	});
 	let retry = $state<'idle' | 'busy' | 'done' | 'error'>('idle');
 	async function retryDeploy(r: TRow) {
 		const p = r.href.split('/').filter(Boolean);
@@ -390,11 +401,7 @@
 				<div data-ad-statement>
 					{#snippet failDetails()}{#if failEv}<FailureDetails pool={failEv.pool} />{/if}{/snippet}
 					<StatementBanner severity="failed" title="Deployment failed" check={failEv ? failEv.check : failCheck ?? undefined} observations={failEv ? failEv.observations : failRow.failure?.observations} message={failEv?.message} footnoteLabel={failEv ? 'Details' : undefined} footnoteBody={failEv ? failDetails : undefined}
-						primary={failAct ? { label: 'Roll back', href: actionHref(failAct), icon: UndoOutline, key: 'rollback' } : undefined}
-						secondary={[
-							{ label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },
-							{ label: 'Open rollout', href: failRow.href, after: true, key: 'open-rollout' }
-						]} />
+						primary={failActs.primary} secondary={failActs.secondary} />
 				</div>
 			{/if}
 

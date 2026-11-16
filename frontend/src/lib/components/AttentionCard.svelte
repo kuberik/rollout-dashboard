@@ -17,7 +17,7 @@
 	 * The whole card is a cover link; buttons sit above it. What the lead IS lives in view-models/attention.ts (unit-tested).
 	 * Bands: `AttentionBand` below in this file's sibling `AttentionBand.svelte`.
 	 */
-	import { ExclamationCircleSolid, UndoOutline, UsersGroupOutline, CodeBranchOutline } from 'flowbite-svelte-icons';
+	import { ExclamationCircleSolid, UndoOutline, PlaySolid, UsersGroupOutline, CodeBranchOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -45,6 +45,7 @@
 		approve = null,
 		approveFallbackHref,
 		rollbackHref,
+		retryHref,
 		openHref,
 		openLabel = 'Open rollout',
 		note,
@@ -66,6 +67,8 @@
 		approveFallbackHref?: string;
 		/** Failing: where Roll back goes (the tab's rollback entry) */
 		rollbackHref?: string;
+		/** where Retry goes (the rollout, which holds the retry and its confirmation): offered, and first, only for a recovered failure */
+		retryHref?: string;
 		/** the outlined secondary "Open rollout ›" */
 		openHref?: string;
 		openLabel?: string;
@@ -81,7 +84,8 @@
 	const AT = atoms();
 	const ratio = $derived(AT.regions && model.figure?.kind === 'ratio' ? { k: Number(model.figure.value), n: Number(/of (\d+)/.exec(model.figure.unit)?.[1] ?? 0) } : null);
 	const fig = $derived(model.figure);
-	const hasActions = $derived(failed ? !!rollbackHref || !!openHref : !!approve || !!approveFallbackHref || !!openHref);
+	const retryLead = $derived(failed && model.recovered && !!retryHref);
+	const hasActions = $derived(failed ? !!rollbackHref || !!openHref || retryLead : !!approve || !!approveFallbackHref || !!openHref);
 	const label = $derived(id.title || id.name);
 	/* the tier chip names its place the way every env chip does: "prod-eu-west", a folded set "5 prod regions" (Chip splits it into the tinted tier + neutral place halves) */
 	const tierLabel = $derived(!model.place ? model.tier : /^\d+ regions?$/.test(model.place) ? model.place.replace(/ (regions?)$/, ` ${model.tier} $1`) : `${model.tier}-${model.place}`);
@@ -113,11 +117,12 @@
 	{#if hasActions}
 		<div class="ac-act relative z-[1] mt-auto flex shrink-0 flex-wrap items-center gap-2">
 			{#if failed}
+				{#if retryLead}<a href={retryHref} class="btn btn-primary" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>{/if}
 				{#if rollbackHref}<a href={rollbackHref} class="btn btn-secondary" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>{/if}
 			{:else}
 				<ApproveButton target={approve} fallbackHref={approveFallbackHref} class="btn btn-primary" icon />
 			{/if}
-			{#if openHref}<a href={openHref} class="btn btn-secondary">{openLabel} ›</a>{/if}
+			{#if openHref && !(retryLead && openHref === retryHref)}<a href={openHref} class="btn btn-secondary">{openLabel} ›</a>{/if}
 		</div>
 	{/if}
 {/snippet}

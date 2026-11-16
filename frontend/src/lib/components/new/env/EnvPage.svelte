@@ -85,7 +85,7 @@
 					{#each P.attention as a (a.key)}
 						{@const act = a.failed ? null : a.href}
 						<div class="contents" data-truth-kind="attention" data-truth-app={a.app} data-truth-href={a.href} data-truth-group={a.failed ? 'failed' : 'approval'} {...truthAttrs(a.row)}>
-							<AttentionCard model={a.model} href={a.href} id={a.id} rollbackHref={a.rollbackHref ?? undefined} approve={a.failed ? null : approvalTarget(a.row, hs)} approveFallbackHref={act ?? undefined} note={a.newer ? newerNote(a.newer) : undefined} />
+							<AttentionCard model={a.model} href={a.href} id={a.id} rollbackHref={a.rollbackHref ?? undefined} retryHref={a.href} approve={a.failed ? null : approvalTarget(a.row, hs)} approveFallbackHref={act ?? undefined} note={a.newer ? newerNote(a.newer) : undefined} />
 						</div>
 					{/each}
 				</AttentionBand>

@@ -35,7 +35,9 @@
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
 	import { page } from '$app/state';
 	import { href } from '$lib/paths';
-	import { UndoOutline } from 'flowbite-svelte-icons';
+	import { UndoOutline, PlaySolid } from 'flowbite-svelte-icons';
+	import { failureRecovered } from '$lib/components/new/data';
+	import { rolloutPath } from '$lib/source-dashboard';
 	import { changePathForRollout } from '$lib/version-utils';
 	import { rolloutStateChip, type StateChipRole } from '$lib/view-models/rollout-state-chip';
 	import { now } from '$lib/stores/time';
@@ -130,6 +132,13 @@
 		!!rollout && hasFailedBakeStatus(rollout) && !hasUnblockFailedAnnotation(rollout)
 	);
 	const rollbackNow = $derived(rollout ? rollbackTarget(rollout) : null);
+	/**
+	 * The failed place's checks are all OK again: Retry leads (view-models/failure-actions.ts), the same as the Overview banner.
+	 * Retry lives on the rollout's Overview, so here it is a link there; Roll back stays beside it on lg+ (the phone's one
+	 * meta-line action is the lead).
+	 */
+	const recovered = $derived(isFailed && failureRecovered(rolloutPath(page.params.cluster ?? '', page.params.namespace ?? '', page.params.name ?? name)));
+	const retryLink = $derived(href(`/rollouts/${page.params.cluster}/${page.params.namespace}/${page.params.name ?? name}`));
 	const rollbackDisplay = $derived(
 		rollbackNow ? getDisplayVersion({ tag: rollbackNow.tag, version: rollbackNow.version }) : ''
 	);
@@ -181,8 +190,14 @@
 		<!-- sm+ only: below sm the action sits on the meta line (`metaRow`).
 		     `data-desktop-only` lets the actions cell collapse when this is its
 		     only child (language.css, "LOGOPEN r8"), so no empty 12px row. -->
+		{#if recovered}
+			<a class="btn btn-primary max-lg:hidden" data-desktop-only data-action="retry" href={retryLink}>
+				<PlaySolid class="h-4 w-4" aria-hidden="true" />
+				Retry
+			</a>
+		{/if}
 		<a
-			class="btn btn-primary max-lg:hidden"
+			class="btn {recovered ? 'btn-secondary' : 'btn-primary'} max-lg:hidden"
 			data-desktop-only
 			href={rollbackLink}
 			title="Roll back to {rollbackDisplay}"
@@ -237,15 +252,22 @@
 	{#if subtitle}<a href={href(`/apps/${encodeURIComponent(name)}`)} class="min-w-0 truncate text-fg-subtle underline decoration-transparent underline-offset-[3px] transition-colors hover:text-fg hover:decoration-current {subtitleOnPhone ? '' : 'max-sm:hidden'}" title="Open app {subtitle}">{subtitle}</a>{/if}
 	{#if metaRender}{@render metaRender()}{/if}
 	{#if inlineRollback && isFailed && rollbackNow}
-		<a
-			class="btn btn-primary ml-auto h-11 bg-none px-4 lg:hidden"
-			data-phone-only
-			href={rollbackLink}
-			title="Roll back to {rollbackDisplay}"
-		>
-			<UndoOutline class="h-4 w-4" aria-hidden="true" />
-			Roll back
-		</a>
+		{#if recovered}
+			<a class="btn btn-primary ml-auto h-11 bg-none px-4 lg:hidden" data-phone-only data-action="retry" href={retryLink}>
+				<PlaySolid class="h-4 w-4" aria-hidden="true" />
+				Retry
+			</a>
+		{:else}
+			<a
+				class="btn btn-primary ml-auto h-11 bg-none px-4 lg:hidden"
+				data-phone-only
+				href={rollbackLink}
+				title="Roll back to {rollbackDisplay}"
+			>
+				<UndoOutline class="h-4 w-4" aria-hidden="true" />
+				Roll back
+			</a>
+		{/if}
 	{/if}
 {/snippet}
 
