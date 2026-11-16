@@ -658,6 +658,10 @@ html.dark .surface-raised,
 		min-height: 32px;
 		margin-bottom: 12px;
 	}
+	/* with a rollup that can wrap: parts align to the top and centre on the title's first line (see SectionHeader) */
+	.section-header.section-header-rolled {
+		align-items: flex-start;
+	}
 
 	.section-dot {
 		width: 6px;

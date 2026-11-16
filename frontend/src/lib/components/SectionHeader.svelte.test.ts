@@ -25,4 +25,18 @@ describe('SectionHeader rollup', () => {
 		expect(rule).toContain('var(--k-fg-disabled)');
 		expect(rule).not.toContain('currentColor');
 	});
+	it('a wrapping rollup keeps the title on its first line: the row aligns to the top and each part centres 16px down', () => {
+		const { container } = render(SectionHeader, { title: 'Team', rollup } as never);
+		const header = container.querySelector('.section-header')!;
+		expect(header.classList.contains('section-header-rolled')).toBe(true);
+		expect(container.querySelector('h2')!.classList.contains('mt-1')).toBe(true);
+		expect(container.querySelector('[data-rollup]')!.parentElement!.classList.contains('mt-1')).toBe(true);
+		const css = readFileSync(join(__dirname, '../../styles/language.css'), 'utf8');
+		const block = css.slice(css.indexOf('.section-header.section-header-rolled {'));
+		expect(block.slice(0, block.indexOf('}'))).toContain('align-items: flex-start');
+	});
+	it('a header without a rollup stays centred', () => {
+		const { container } = render(SectionHeader, { title: 'Team' } as never);
+		expect(container.querySelector('.section-header')!.classList.contains('section-header-rolled')).toBe(false);
+	});
 });

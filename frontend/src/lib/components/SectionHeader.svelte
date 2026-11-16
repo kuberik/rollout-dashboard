@@ -56,15 +56,17 @@
 
 	const DOT: Record<Tone, string> = { ...HUE_SOLID, neutral: HUE_SOLID.subtle };
 	const Icon = $derived(icon);
+	/** a rollup may wrap at phone width: the row then aligns to its top and every part centres on the title's first line (16px down), not on the whole block */
+	const rolled = $derived(!!(rollup && rollup.length));
 </script>
 
-<div class="section-header {className}">
+<div class="section-header {rolled ? 'section-header-rolled' : ''} {className}">
 	{#if Icon}
-		<Icon class="h-4 w-4 shrink-0 text-fg-muted" aria-hidden="true" />
+		<Icon class="h-4 w-4 shrink-0 text-fg-muted {rolled ? 'mt-2' : ''}" aria-hidden="true" />
 	{:else}
-		<span class="section-dot {DOT[tone]}" aria-hidden="true"></span>
+		<span class="section-dot {DOT[tone]} {rolled ? 'mt-[13px]' : ''}" aria-hidden="true"></span>
 	{/if}
-	<svelte:element this={level === 3 ? 'h3' : 'h2'} {id} data-tour={dataTour} class="t-heading text-fg {rollup && rollup.length ? 'whitespace-nowrap' : ''}">
+	<svelte:element this={level === 3 ? 'h3' : 'h2'} {id} data-tour={dataTour} class="t-heading text-fg {rolled ? 'mt-1 whitespace-nowrap' : ''}">
 		{title}
 	</svelte:element>
 	{#if count !== null && count !== undefined}
@@ -75,7 +77,7 @@
 	{/if}
 	{#if rollup && rollup.length}
 		<!-- the shared dot list (language.css): a wrapped rollup never starts or ends a line with its separator; a ZERO count before the last is hidden on a phone (`rollup-fold.ts`); every non-zero count and every INKED part stays -->
-		<div class="dot-list t-meta ml-auto min-w-0 tabular-nums text-fg-subtle">
+		<div class="dot-list t-meta ml-auto mt-1 min-w-0 tabular-nums text-fg-subtle">
 			<div class="dot-list-row flex flex-wrap items-center gap-y-0.5" data-rollup>
 				{#each rollup as part, i (i)}
 					{@const last = i === rollup.length - 1}
@@ -87,7 +89,7 @@
 		</div>
 	{/if}
 	{#if action}
-		<div class="flex shrink-0 items-center gap-2 {rollup && rollup.length ? '' : 'ml-auto'}">{@render action()}</div>
+		<div class="flex shrink-0 items-center gap-2 {rolled ? 'h-8' : 'ml-auto'}">{@render action()}</div>
 	{/if}
 </div>
 
