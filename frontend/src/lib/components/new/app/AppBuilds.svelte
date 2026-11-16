@@ -42,7 +42,7 @@
 </script>
 
 <Card icon={CodeOutline} title="Builds" padded={false} class="min-w-0">
-	{#snippet rollup()}<span class="t-ui-sm inline-flex items-center gap-x-3 tabular-nums text-fg-subtle">{#each failedWords as w (w)}{#if w.endsWith(' failing')}<span class="inline-flex items-center gap-2 whitespace-nowrap font-medium {hueInk('danger')}" data-failing-part><span class="h-1.5 w-1.5 rounded-full bg-danger-solid" aria-hidden="true"></span>{w}</span>{:else}<span class="whitespace-nowrap">{w}</span>{/if}{/each}<span class="whitespace-nowrap">{noReleases ? noReleases : roll || `${onNewest} of ${total} ${total === 1 ? 'place' : 'places'} on the newest build`}</span></span>{/snippet}
+	{#snippet rollup()}<!-- the shared dot list: facts joined by a neutral dot that never starts or ends a line --><div class="dot-list t-ui-sm min-w-0 tabular-nums text-fg-subtle"><div class="dot-list-row flex flex-wrap items-center gap-y-0.5" data-builds-rollup>{#each failedWords as w (w)}{#if w.endsWith(' failing')}<span class="inline-flex items-center gap-2 whitespace-nowrap font-medium {hueInk('danger')}" data-failing-part><span class="h-1.5 w-1.5 rounded-full bg-danger-solid" aria-hidden="true"></span>{w}</span>{:else}<span class="whitespace-nowrap">{w}</span>{/if}{/each}<span class="whitespace-nowrap">{noReleases ? noReleases : roll || `${onNewest} of ${total} ${total === 1 ? 'place' : 'places'} on the newest build`}</span></div></div>{/snippet}
 	{#if stops.length}
 		{#if fromHistory}<p class="t-meta border-line-subtle border-b px-4 py-2 text-fg-subtle" data-from-history>Builds from deploy history</p>{/if}
 		<ul class="ledger relative" data-ledger>

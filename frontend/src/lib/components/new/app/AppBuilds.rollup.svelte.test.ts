@@ -18,4 +18,15 @@ describe('AppBuilds header rollup', () => {
 		expect(failed.className).not.toContain('text-fg');
 		expect(container.querySelectorAll('[data-failing-part]')).toHaveLength(1);
 	});
+
+	it('joins its facts with the shared dot list, so "1 failed" never runs into the next fact', () => {
+		const places = [{ state: 'failed', href: '/a' }, { state: 'failed', href: '/b' }] as never;
+		const { container } = render(AppBuilds, { props: { stops: [], places, view: () => ({}) as never, onDeploy: () => {} } });
+		const row = container.querySelector('[data-builds-rollup]');
+		expect(row?.classList.contains('dot-list-row')).toBe(true);
+		expect(row?.parentElement?.classList.contains('dot-list')).toBe(true);
+		const facts = [...(row?.children ?? [])].map((c) => c.textContent?.trim());
+		expect(facts.slice(0, 2)).toEqual(['1 failing', '1 failed']);
+		expect(facts).toHaveLength(3);
+	});
 });
