@@ -1246,6 +1246,9 @@ lib/utils.ts	code	failed to deploy
 lib/version-utils.ts	code	… (no linked repository)
 lib/view-models/activity-figures.ts	code	… a day
 lib/view-models/activity-figures.ts	code	… an hour
+lib/view-models/activity-figures.ts	code	… checking
+lib/view-models/activity-figures.ts	code	… deploying
+lib/view-models/activity-figures.ts	code	… paused
 lib/view-models/activity-groups.ts	code	… deploy…
 lib/view-models/activity-groups.ts	code	… prod
 lib/view-models/activity-verb.ts	code	health check
@@ -1896,13 +1899,10 @@ routes/activity/+page.svelte	code	… · … failed, resolved
 routes/activity/+page.svelte	code	… · … rolled back
 routes/activity/+page.svelte	code	… · … still going
 routes/activity/+page.svelte	code	… · all fine
-routes/activity/+page.svelte	code	… checking
 routes/activity/+page.svelte	text	… deploy …
 routes/activity/+page.svelte	code	… deploy…
-routes/activity/+page.svelte	code	… deploying
 routes/activity/+page.svelte	code	… deploys failed
 routes/activity/+page.svelte	code	… of … unresolved
-routes/activity/+page.svelte	code	… paused
 routes/activity/+page.svelte	code	… tier…
 routes/activity/+page.svelte	code	…… failed …, on ….
 routes/activity/+page.svelte	code	…… failed on …
