@@ -1,4 +1,4 @@
-/** Round 3 of the health follow-ups: the list cards' action set and the Retry link that opens its confirm on arrival. */
+/** The list cards' action set and the Retry link that opens its confirm on arrival. */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
@@ -25,7 +25,7 @@ const card = (o: { recovered: boolean; state?: 'failed' | 'approval' }, p: Recor
 	render(AttentionCard, { props: { model: attentionModel({ state: o.state ?? 'failed', age: '5m', tier: 'prod', title: 'x', recovered: o.recovered, recoveredAt: '09:34' }), href: '/rollouts/prod/ns/app', id: { name: 'app' }, rollbackHref: '/rollouts/prod/ns/app?action=rollback', retryHref: '/rollouts/prod/ns/app', openHref: '/rollouts/prod/ns/app', ...p } as never }).container;
 const acts = (c: HTMLElement) => [...c.querySelectorAll('[data-actions] [data-action]')].map((e) => `${(e as HTMLElement).dataset.action}:${/btn-primary/.test(e.className) ? 'primary' : 'secondary'}`);
 
-describe('one action set on every list card (D-02)', () => {
+describe('one action set on every list card', () => {
 	it('failing now: Roll back (blue) and Open rollout, when the page passes its openHref', () => {
 		expect(acts(card({ recovered: false }))).toEqual(['rollback:primary', 'open:secondary']);
 	});
@@ -34,7 +34,7 @@ describe('one action set on every list card (D-02)', () => {
 	});
 });
 
-describe('Retry links to the rollout with ?action=retry (U-01)', () => {
+describe('Retry links to the rollout with ?action=retry', () => {
 	it('the card\'s Retry carries the param, as Roll back carries its own', () => {
 		const c = card({ recovered: true });
 		expect(c.querySelector('[data-action="retry"]')!.getAttribute('href')).toBe('/rollouts/prod/ns/app?action=retry');
@@ -70,14 +70,14 @@ describe('Retry links to the rollout with ?action=retry (U-01)', () => {
 	});
 });
 
-describe('a recovered card says the sentence the banners say (U-06)', () => {
+describe('a recovered card says the sentence the banners say', () => {
 	it('"Recovered at 09:34, so a retry is reasonable."', () => {
 		const m = attentionModel({ state: 'failed', age: '5m', tier: 'prod', title: 'x', recovered: true, recoveredAt: '09:34', check: { name: 'hit ratio', message: 'at 72%' }, observations: [{ name: 'hit ratio', kind: 'Threshold', value: '72', limit: '80', unit: '%', direction: 'Below', healthy: false } as never] });
 		expect(m.fact?.message).toBe('Recovered at 09:34, so a retry is reasonable.');
 	});
 });
 
-describe('Home and /envs/<name> pass the card its Open rollout (D-02)', () => {
+describe('Home and /envs/<name> pass the card its Open rollout', () => {
 	for (const f of ['new/Home.svelte', 'new/env/EnvPage.svelte']) {
 		it(f, () => {
 			const src = readFileSync(resolve(__dirname, f), 'utf8');
@@ -86,7 +86,7 @@ describe('Home and /envs/<name> pass the card its Open rollout (D-02)', () => {
 	}
 });
 
-describe('the change page banner keeps its pair on a phone (D-03)', () => {
+describe('the change page banner keeps its pair on a phone', () => {
 	it('ChangeDetail does not cut the banner\'s phone row to one action', () => {
 		const src = readFileSync(resolve(__dirname, 'new/change/ChangeDetail.svelte'), 'utf8');
 		const banner = src.slice(src.indexOf('<StatementBanner severity="failed"'));
