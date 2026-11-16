@@ -168,7 +168,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 			regions: [p.label], state: p.state, group: g, glyph: p.prov ? 'waiting' : glyphOf(p.state), word, change, version: p.version, since: p.since, href: p.href,
 			needsYou, lead: isLead, stillChecking: p.stillChecking, paused: p.paused,
 			action: isLead && L?.action ? { label: L.action.label.replace(/ to [0-9a-f]{7}$/, ''), href: L.action.href, kind: 'rollback' }
-				: p.state === 'failed' && needsYou ? { label: 'Roll back', href: p.href, kind: 'rollback' }
+				: p.state === 'failed' ? { label: 'Roll back', href: p.href, kind: 'rollback' }
 				: p.state === 'awaiting-approval' && ap ? { label: 'Approve', href: p.href, kind: 'approve' } : null,
 			cause, pipeline: p.pipeline,
 			alsoApproval: p.also ? { ...p.also, yours: viewerAsks } : null
