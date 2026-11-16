@@ -192,14 +192,14 @@
 	const hcShowsRows = $derived(healthChecks.some((hc) => (hc.status?.observations ?? []).some((o) => o.healthy !== true) && hc.status?.status !== 'Healthy'));
 	const hcRecoveredFailure = $derived(healthChecks.some((hc) => hc.status?.status === 'Healthy' && !!hc.status?.lastErrorTime));
 	const hcCardShowsEvidence = $derived(hcShowsRows || hcRecoveredFailure);
-	/** the failed head's checks are all OK again (at least one check exists to say so): the header dot draws the recovered ring */
-	const headerRecovered = $derived(bakeIsFailed && healthChecks.length > 0 && allHCHealthy && !hcUnknown);
 	const anyRecovered = $derived(healthChecks.some((hc) => classifyCheck(hc, deployWindowStart(rollout)) === 'recovered'));
 	let hasHCSelector = $derived(Boolean(rollout.spec?.healthCheckSelector));
 	let allHCHealthy = $derived(
 		healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')
 	);
 	let hcUnknown = $derived(healthChecksUnavailable || healthChecksPending);
+	/** the failed head's checks are all OK again (at least one check exists to say so): the header dot draws the recovered ring */
+	const headerRecovered = $derived(bakeIsFailed && healthChecks.length > 0 && allHCHealthy && !hcUnknown);
 	let hasMultipleKRs = $derived(pipelineValidRollouts.length > 1);
 
 	let nodes = $derived<StageNode[]>(
