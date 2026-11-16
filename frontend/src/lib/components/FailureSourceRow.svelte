@@ -31,7 +31,7 @@
 	<span class="min-w-0 [overflow-wrap:anywhere] {code ? 't-code-sm text-fg' : 't-ui-sm font-medium text-fg'}" title={row.name}>{#if segments}{#each segments as seg, i (i)}{#if i > 0}<wbr />{/if}<span class="inline-block max-w-full overflow-hidden text-ellipsis whitespace-nowrap align-bottom" data-name-segment>{seg}</span>{/each}{:else}{row.name}{/if}</span>
 	{#if row.figure}
 		<span class="col-start-2 whitespace-nowrap" data-testid="failure-figure">
-			<b class="t-ui-sm font-semibold tabular-nums {row.state === 'recovered' ? 'text-fg-muted' : 'text-fg'}">{row.figure.value}</b>
+			<b class="t-ui-sm font-semibold tabular-nums {row.state === 'recovered' ? 'text-fg-muted' : 'text-fg'}">{row.figure.value}</b>{#if row.state === 'recovered'}<span class="t-meta text-fg-muted" data-at-failure>&nbsp;at failure</span>{/if}
 			{#if row.figure.note}<span class="t-meta text-fg-muted">&nbsp;{row.figure.note}</span>{/if}
 		</span>
 	{/if}
