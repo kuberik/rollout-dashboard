@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render } from '@testing-library/svelte';
 import RetryConfirmModal from './RetryConfirmModal.svelte';
+import { PlaySolid } from 'flowbite-svelte-icons';
 import type { DeployIntent } from '$lib/view-models/deploy-risk';
 
 // See the identical note in `ChangeVersionModal.svelte.test.ts` — jsdom has
@@ -91,5 +92,20 @@ describe('the Retry dialog says one verb in neutral ink', () => {
 		const label = d.querySelector('label[for="rcm-confirm"]')!.textContent!.replace(/\s+/g, ' ');
 		expect(label).toContain('This deploys to prod again, so it asks you to confirm. Type 1.4.0 to confirm');
 		expect(d.textContent).not.toMatch(/vouched/);
+	});
+});
+
+/** One glyph for Retry: the filled play triangle every Retry trigger draws, in the dialog's header disc and on its confirm button. */
+describe('the Retry dialog draws the same glyph as its triggers', () => {
+	test('header disc and confirm button both carry the play triangle', () => {
+		const ref = render(PlaySolid);
+		const play = ref.container.querySelector('svg path')!.getAttribute('d');
+		ref.unmount();
+		render(RetryConfirmModal, { open: true, intent: intent({ direction: 'retry' }), consequences: ['Redeploys 1.4.0 to prod.'], tag: '1.4.0', onConfirm: () => {} });
+		const d = document.querySelector('dialog')!;
+		const confirm = [...d.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Retry')!;
+		const disc = d.querySelector('#rcm-title')!.parentElement!.parentElement!;
+		expect(confirm.querySelector('svg path')!.getAttribute('d')).toBe(play);
+		expect(disc.querySelector('svg path')!.getAttribute('d')).toBe(play);
 	});
 });

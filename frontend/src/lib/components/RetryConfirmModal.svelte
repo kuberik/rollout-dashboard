@@ -42,7 +42,7 @@
 	 * tint; how careful to be stays in the confirm LEVEL (typed in prod), not in the colour.
 	 */
 	import { Modal } from 'flowbite-svelte';
-	import { RefreshOutline } from 'flowbite-svelte-icons';
+	import { PlaySolid } from 'flowbite-svelte-icons';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import {
 		confirmLevel,
@@ -101,7 +101,7 @@
 		<div class="flex items-start gap-3">
 			<!-- a neutral disc: Retry resends a build this place already ran, which is not the dangerous act a solid danger disc says; the typed version is the care -->
 			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-subtle ring-1 ring-line" data-retry-icon>
-				<RefreshOutline class="h-5 w-5 text-fg-muted" />
+				<PlaySolid class="h-5 w-5 text-fg-muted" />
 			</div>
 			<div class="min-w-0">
 				<h2 id="rcm-title" class="t-heading text-fg">{title}?</h2>
@@ -160,7 +160,7 @@
 				onConfirm();
 			}}
 		>
-			<RefreshOutline class="h-4 w-4 shrink-0" />
+			<PlaySolid class="h-4 w-4 shrink-0" />
 			<span class="truncate">{label}</span>
 		</button>
 	</div>
