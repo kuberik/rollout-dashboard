@@ -9,6 +9,7 @@
 import { inScope } from '../derivation-scope';
 import { ago, failureRecovered, failureSinceAt, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
 import { approvalWord, failedWord } from '../state-words';
+import { toneInk } from '$lib/view-models/state-tone';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
 import { ledgerOf, type Stop } from '../app/app-model';
@@ -18,6 +19,8 @@ import { behindWords, classified, countsOf, failedParts, failedPartsOfHrefs, cur
 import { TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 
 export type StageState = 'deployed' | 'checking' | 'paused' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
+/** The ink of a place's state word (line 2 of a strip row): a failure whose checks are OK again is neutral, as `failedWord(true)` is; every other state its tone. */
+export const placeInk = (p: { state: string; recovered?: boolean }): string => toneInk(p.state === 'failed' && p.recovered ? 'recovered' : p.state);
 export type StagePlace = { href: string; /** an approval the viewer can give (the strip draws it with the viewer's ring) */ yours?: boolean; app: string; tier: TierKey; /** the place's own name inside its tile (region / site) */ name: string; leader: boolean; state: StageState; /** the state word (t-meta, line 2) */ word: string; /** the cause of a hold, the one helper `stageCause` decides */ cause: Cause | null; /** "1 of 2" for a place in flight */ progress: string | null; age: string | null; /** the build this place runs, set only when the app's places differ (app and rollout scope), printed on the t-meta line */ build: string | null; /** rollout scope: the place of the rollout being viewed (aria-current="location") */ here: boolean; /** change-strip r2: the build the place runs now and its lag in the words origin/main's "Where it runs" used ("3 builds behind" / "Up to date"); empty while moving, for a newer failure or without releases */ current: string | null; lag: string; /** app scope: the place runs a build NEWER than the selected release ("ahead"): drawn On <build>, or its own checking/deploying mark; never live, never counted as in flight */ ahead: boolean; /** a failed place whose checks are all OK again: its word is Failed, not Failing */ recovered: boolean; /** THE one live object of the drawing: the deploying place, else the checking one (first in lane then column order); carries the product's `is-live` glow */ live: boolean };
 export type StageColumn = { key: string; tier: TierKey; wave: number | null; /** the env chip's label */ label: string; /** the tier has more than one wave: "Wave N" is worth printing */ multi: boolean };
 export type StageCell = { places: StagePlace[] };

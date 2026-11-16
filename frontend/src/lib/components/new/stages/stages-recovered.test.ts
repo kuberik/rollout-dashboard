@@ -4,7 +4,7 @@ import { respond } from '../../../demo/respond';
 import { resetDemoState } from '../../../demo/state';
 import { install } from '../../../demo/health-failures-fixtures';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
-import { stagesOf } from './stages-model';
+import { stagesOf, placeInk } from './stages-model';
 import { ago, failureSinceAt } from '../data';
 import { waveMark } from '$lib/view-models/wave-mark';
 
@@ -43,6 +43,7 @@ describe('a failed stage row follows the same failed/failing rule as the rollup'
 		expect(p.word).toBe('Failing');
 		expect(p.recovered).toBe(false);
 		expect(waveMark([{ state: 'failed', recovered: p.recovered }], 'prod').label).toBe('prod: 1 failing');
+		expect(placeInk(p)).toContain('text-danger');
 	});
 	it('a recovered failure reads Failed, in the word and in the mark label', () => {
 		load();
@@ -50,6 +51,7 @@ describe('a failed stage row follows the same failed/failing rule as the rollup'
 		expect(p.word).toBe('Failed');
 		expect(p.recovered).toBe(true);
 		expect(waveMark([{ state: 'failed', recovered: true }], 'prod').label).toBe('prod: 1 failed');
+		expect(placeInk(p)).toBe('text-fg-muted');
 	});
 	it("the row's age is the failure's age, not the deploy's", () => {
 		load();
