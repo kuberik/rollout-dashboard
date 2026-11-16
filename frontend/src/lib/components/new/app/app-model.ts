@@ -181,7 +181,7 @@ export function placesInPillState(places: PlaceHold[], build: string, pill: stri
 	const on = places.filter((p) => p.deployedBuild === build);
 	const word = pill.toUpperCase();
 	const want = (p: PlaceHold) =>
-		word === 'FAILED'
+		word === 'FAILED' || word === 'FAILING'
 			? p.state === 'failed'
 			: word === 'PAUSED'
 			? p.state === 'checking' && p.bakePaused
@@ -322,7 +322,7 @@ export function scenarioPill<T extends { word: string; role: string }>(
 	placeState: string | null | undefined,
 	settled: { word: string; role: string }
 ): { word: string; role: string } {
-	if (scenario !== 'incident' && pill.word === 'FAILED' && placeState !== 'failed') return settled;
+	if (scenario !== 'incident' && (pill.word === 'FAILED' || pill.word === 'FAILING') && placeState !== 'failed') return settled;
 	return { word: pill.word, role: pill.role };
 }
 

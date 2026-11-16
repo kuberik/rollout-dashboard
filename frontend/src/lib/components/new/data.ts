@@ -248,6 +248,8 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 
 /** A failed place whose checks are all OK again (what its Attention card, Fleet row and strip box read as "Failed", not "Failing"): the failure reason's own `recovered`, by href. */
 export const failureRecovered = (href: string): boolean => !!failureReason({ group: 'failed', href })?.recovered;
+/** A failed place with a health check failing right now (its pill reads "FAILING"); false for a deploy failure with no check involved and for all-recovered checks. The `failingNowOf` rule, by href. */
+export const failingNowAt = (href: string): boolean => !!failureReason({ group: 'failed', href })?.pool?.some((c) => c.verdict === 'failing');
 /** THE ONE age of a failed place: when its failure began (the instant the banners and the Health checks card print), null when no health evidence was kept */
 export const failureSinceAt = (href: string): string | null => failureReason({ group: 'failed', href })?.since ?? null;
 
@@ -1276,10 +1278,10 @@ export function stepDetail(row: Pick<RolloutRow, 'state' | 'href' | 'since' | 'g
 		checkTimer: live === 'checking' ? 'Checking' : live === 'done' ? 'Done' : 'Pending'
 	};
 }
-/** The tab's state pill (rolloutStateChip on the deployed entry, upper-cased as drawn) and its gate-holding count ("1 gate holding", "1 of 5 gates holding"; null when no gate holds). */
+/** The tab's state pill (rolloutStateChip on the deployed entry, upper-cased as drawn; FAILING while a check fails now, FAILED once recovered or when no check was involved) and its gate-holding count ("1 gate holding", "1 of 5 gates holding"; null when no gate holds). */
 export function tabPill(row: Pick<RolloutRow, 'href'>): { word: string; role: string; holding: string | null } {
 	const st = rawOf(row.href)?.status;
-	const chip = rolloutStateChip(st?.history?.[0]?.bakeStatus ?? null, st?.history?.[0]);
+	const chip = rolloutStateChip(st?.history?.[0]?.bakeStatus ?? null, st?.history?.[0], failingNowAt(row.href));
 	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version;
 	const gs = st?.gates ?? [];
 	const n = gs.filter((g) => g.allowedVersions != null && !!cand && !g.allowedVersions.includes(cand)).length;

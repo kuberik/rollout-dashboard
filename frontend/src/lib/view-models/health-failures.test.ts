@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { HealthCheck } from '../../types';
-import { headRecovered, checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary, withAge } from './health-failures';
+import { headRecovered, headFailingNow, checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary, withAge } from './health-failures';
 
 const mk = (cls: string, status: Record<string, unknown>, name = 'x'): HealthCheck => ({ metadata: { name }, spec: { class: cls }, status } as unknown as HealthCheck);
 const win = new Date('2026-11-15T09:00:00Z');
@@ -254,5 +254,18 @@ describe('headRecovered', () => {
 		const bad = mk('prometheus-alert', { status: 'Unhealthy', lastChangeTime: T(5), observations: [{ name: 'HighLatency', kind: 'Threshold', value: '1.9', limit: '1', direction: 'Above', unit: 's', healthy: false }] }, 'chk');
 		expect(headRecovered([bad], head)).toBe(false);
 		expect(headRecovered([], null)).toBe(false);
+	});
+});
+
+describe('headFailingNow', () => {
+	const snap = [{ name: 'chk', observations: [{ name: 'HighLatency', kind: 'Threshold' as const, value: '1.9', limit: '1', direction: 'Above' as const, unit: 's', healthy: false, observedTime: T(2) }] }];
+	const head = { timestamp: '2026-11-15T09:00:00Z', failedHealthChecks: snap };
+	const bad = mk('prometheus-alert', { status: 'Unhealthy', lastChangeTime: T(5), observations: [{ name: 'HighLatency', kind: 'Threshold', value: '1.9', limit: '1', direction: 'Above', unit: 's', healthy: false }] }, 'chk');
+	const ok = mk('prometheus-alert', { status: 'Healthy', lastErrorTime: T(4), lastChangeTime: T(5), observations: [{ name: 'HighLatency', kind: 'Threshold', value: '0.4', limit: '1', direction: 'Above', unit: 's', healthy: true }] }, 'chk');
+	it('is true while a check of the head deploy fails now', () => expect(headFailingNow([bad], head)).toBe(true));
+	it('is false once every check recovered, with no check involved, and with no head', () => {
+		expect(headFailingNow([ok], head)).toBe(false);
+		expect(headFailingNow([], { timestamp: '2026-11-15T09:00:00Z' })).toBe(false);
+		expect(headFailingNow([], null)).toBe(false);
 	});
 });

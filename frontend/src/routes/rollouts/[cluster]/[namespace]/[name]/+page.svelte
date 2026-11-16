@@ -191,6 +191,7 @@
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+	import { headFailingNow } from '$lib/view-models/health-failures';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { pageTitle } from '$lib/page-title';
 
@@ -2890,7 +2891,7 @@
 					</span>
 				{/snippet}
 				{#snippet heroIdentity()}
-					{@const stateChip = rolloutStateChip(latestEntry.bakeStatus, latestEntry)}
+					{@const stateChip = rolloutStateChip(latestEntry.bakeStatus, latestEntry, headFailingNow(healthChecks, latestEntry as never))}
 					<Chip role={stateChip.role} label={stateChip.label} title={stateChip.title} />
 					{#if stuckReason}
 						<StuckBadge reason={stuckReason} />

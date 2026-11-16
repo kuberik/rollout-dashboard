@@ -206,6 +206,13 @@ export function headRecovered(live: HealthCheck[], head: { timestamp?: string | 
 	return !!evidenceLine(poolOf(live, [...(head.failedHealthChecks ?? [])], winStart))?.recovered;
 }
 
+/** Does a check of the head deploy fail right now (not recovered, not merely pending)? False for a deploy that failed with no health check involved. Same window as `headRecovered`. */
+export function headFailingNow(live: HealthCheck[], head: { timestamp?: string | null; lastRetryTimestamp?: string | null; failedHealthChecks?: readonly SnapCheck[] | null } | null | undefined): boolean {
+	if (!head) return false;
+	const winStart = new Date(Math.max(Date.parse(head.timestamp ?? '') || 0, Date.parse(head.lastRetryTimestamp ?? '') || 0));
+	return poolOf(live, [...(head.failedHealthChecks ?? [])], winStart).some((c) => c.verdict === 'failing');
+}
+
 export type Worst = { check: CheckView; row: ObsRow | null; recovered: boolean };
 
 /**

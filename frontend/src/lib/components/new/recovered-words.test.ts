@@ -4,7 +4,7 @@ import { respond } from '../../demo/respond';
 import { resetDemoState } from '../../demo/state';
 import { install } from '../../demo/health-failures-fixtures';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
-import { changes, placesOf } from './data';
+import { changes, placesOf, tabPill } from './data';
 import { serviceWord } from './changes-plumb';
 import { squaresWords, failedPartsOfHrefs } from './change/detail-model';
 
@@ -48,5 +48,16 @@ describe('failedPartsOfHrefs (Builds card, app stage rollup)', () => {
 		load();
 		expect(failedPartsOfHrefs(failedHrefs('catalog-api'))).toEqual(['1 failed']);
 		expect(failedPartsOfHrefs(failedHrefs('checkout-gateway'))).toEqual(['1 failing']);
+	});
+});
+
+describe('tabPill (app header, tile and rollout tab pill)', () => {
+	beforeAll(() => install(true));
+	afterEach(() => installLiveSource(null));
+	const failedHref = (app: string) => placesOf('calm', app).find((p) => p.state === 'failed')!.href;
+	it('FAILING while a check fails now, FAILED once every check recovered', () => {
+		load();
+		expect(tabPill({ href: failedHref('checkout-gateway') }).word).toBe('FAILING');
+		expect(tabPill({ href: failedHref('catalog-api') }).word).toBe('FAILED');
 	});
 });
