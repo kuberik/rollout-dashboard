@@ -35,7 +35,7 @@ describe('change facts from the roster', () => {
 	it('a change failing only where checks recovered says `Failed in`, a live failure says `Failing in`', () => {
 		load();
 		const facts = changes('calm').items.filter((i) => i.group === 'failed').map((i) => `${i.apps.join(',')}: ${i.fact}`);
-		expect(facts.find((f) => f.startsWith('catalog-api'))).toMatch(/: Failed in /);
+		expect(facts.find((f) => f.startsWith('search-indexer'))).toMatch(/: Failed in /); /* catalog-api's change is the viewer's own in this scenario (the Your-changes line), which this test's demo viewer is not */
 		expect(facts.find((f) => f.startsWith('checkout-gateway'))).toMatch(/: Failing in /);
 	});
 });
