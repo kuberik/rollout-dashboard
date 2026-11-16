@@ -10,7 +10,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import { ClockOutline } from 'flowbite-svelte-icons';
 	import FeedRow from '$lib/components/activity/FeedRow.svelte';
-	import { activityVerb } from '$lib/view-models/activity-verb';
+	import { activityVerb, bareVerb } from '$lib/view-models/activity-verb';
 	import { formatClockTime } from '$lib/display-time';
 	import { activityKindOf } from '$lib/view-models/activity-kind';
 	import { bakePaused } from '$lib/bake-hold';
@@ -74,8 +74,6 @@
 	const shown = $derived(groups.reduce((n, g) => n + g.rows.length, 0));
 	/** "6 of 35 today" when every shown event is one day's, else "6 of 41" */
 	const footLeft = $derived(groups.length === 1 ? `${shown} of ${totals.get(groups[0].key) ?? shown} ${groups[0].label.toLowerCase()}` : `${shown} of ${all.length}`);
-	/** the verb column: one word each, in a fixed 96px track */
-	const VERB: Record<ActivityKind, string> = { deployed: 'Deployed', promoted: 'Promoted', rolledBack: 'Rolled back', failed: 'Failed', failedHealthCheck: 'Check failed', deploying: 'Deploying', checking: 'Checking', paused: 'Paused', held: 'Held', approved: 'Approved', pinned: 'Pinned' };
 </script>
 
 <Card icon={ClockOutline} title="Recent activity" padded={false} smooth={false}>
@@ -93,7 +91,7 @@
 			<ul class="lc-rows">
 				{#each g.rows as e (e.key)}
 					{@const vb = activityVerb(e.kind)}
-					<FeedRow bare app="" href="" verb={VERB[e.kind]} tone={vb.tone} live={e.current} markRecovered={e.recovered} chip={e.env ? (e.env === 'production' ? 'prod' : e.env) : null} theme={e.theme}
+					<FeedRow bare app="" href="" verb={bareVerb(e.kind)} tone={vb.tone} live={e.current} markRecovered={e.recovered} chip={e.env ? (e.env === 'production' ? 'prod' : e.env) : null} theme={e.theme}
 						from={e.from} to={e.to} actor={e.actor.kind === 'person' ? { ...e.actor, src: avatarSrc(e.actor.name) } : null} age={formatClockTime(e.ts)} />
 				{/each}
 			</ul>

@@ -4,7 +4,7 @@ import { resetDemoState } from '../demo/state';
 import { buildRolloutCards } from '../rollout-cards';
 import { blockedFact, blockedKindOf } from '../components/BlockedRow.svelte';
 import { activityKindOf } from './activity-kind';
-import { activityVerb } from './activity-verb';
+import { activityVerb, bareVerb } from './activity-verb';
 import { groupActivityEntries } from './activity-groups';
 import type { Environment, Rollout } from '../../types';
 
@@ -100,6 +100,7 @@ describe('a deploy whose health check failed says it failed its health check', (
 		const kind = activityKindOf({ ...base, bakeStatusMessage: 'HighLatency fired during the bake', failedHealthChecks: true });
 		expect(kind).toBe('failedHealthCheck');
 		expect(activityVerb(kind).appVerb).toBe('failed its health check');
+		expect(bareVerb(kind)).toBe('Failed its health check');
 	});
 	it('no failed checks recorded and a deploy message: still "failed to deploy"', () => {
 		const kind = activityKindOf({ ...base, bakeStatusMessage: 'image pull backoff: manifest unknown', failedHealthChecks: false });

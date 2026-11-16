@@ -60,3 +60,10 @@ const VERBS: Record<ActivityKind, { verb: string; appVerb: string; tone: NodeSta
 export function activityVerb(kind: ActivityKind): { verb: string; appVerb: string; tone: NodeState | null } {
 	return VERBS[kind];
 }
+
+/**
+ * The verb of a row whose page IS the app (/apps/<name>'s Recent activity): it leads the row, capitalised, with no subject before it.
+ * A failed health check reads as `/activity` prints it ("Failed its health check"); every other kind keeps its short lead word.
+ */
+const BARE: Partial<Record<ActivityKind, string>> = { deployed: 'Deployed', promoted: 'Promoted', rolledBack: 'Rolled back', failed: 'Failed', deploying: 'Deploying', checking: 'Checking', paused: 'Paused', held: 'Held', approved: 'Approved', pinned: 'Pinned' };
+export const bareVerb = (kind: ActivityKind): string => BARE[kind] ?? VERBS[kind].appVerb.replace(/^./, (c) => c.toUpperCase());
