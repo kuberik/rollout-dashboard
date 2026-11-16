@@ -142,7 +142,7 @@ export type Tile = { tier: TierKey; href: string | null; /** "1 build behind" (t
  * deploy of the change failed, WAITING when a build that carries the change waits there (approval or rule), BEHIND otherwise (grey:
  * the change has not reached it). `frac` = healthy/regions. EXPORTED for the Folio side (change-view / Folio): import `changeProd`.
  */
-export function changeProd(c: TChange, scenario: HomeState): { squares: Ink[]; /** each square in the TAB's region state (regionStates: failed / waiting(held) / moving / checking / healthy): colour = state (AD Changes r5) */ states: Ink[]; healthy: number; of: number; frac: string; /** "2 of 3 run it · 1 failing" | "0 of 3 run it · 2 held" | "3 of 3 run it": the change's position with unit, adverse state after it */ count: string; /** "prod · " + count */ sentence: string; href: string | null; /** v2 r5 (additive): the regions the change can reach (a custom build / a build that does not carry it is NOT AFFECTED and never in a denominator) */ affected: number; notAffected: number; /** `count` over the affected regions, "waiting" for what waits: "0 of 5 run it · 5 waiting" */ countAffected: string } {
+export function changeProd(c: TChange, scenario: HomeState): { squares: Ink[]; /** each square in the TAB's region state (regionStates: failed / waiting(held) / moving / checking / healthy): colour = state (AD Changes r5) */ states: Ink[]; healthy: number; of: number; frac: string; /** "2 of 3 run it · 1 failing" | "0 of 3 run it · 2 held" | "3 of 3 run it": the change's position with unit, adverse state after it */ count: string; /** "prod · " + count */ sentence: string; href: string | null; /** v2 r5 (additive): the regions the change can reach (a custom build / a build that does not carry it is NOT AFFECTED and never in a denominator) */ affected: number; notAffected: number; /** `count` over the affected regions, "waiting" for what waits: "0 of 5 run it · 5 waiting" */ countAffected: string; /** of the failed regions, those whose checks have all recovered (they read `failed`, not `failing`) */ recovered: number } {
 	const { all, places } = classified(c, scenario);
 	const prod = all.filter((u) => u.tier === 'prod');
 	const ink = (u: Unit): Ink => {
@@ -162,12 +162,13 @@ export function changeProd(c: TChange, scenario: HomeState): { squares: Ink[]; /
 	const waitN = prod.filter((u, i) => squares[i] === 'waiting').length;
 	const countAffected = [`${healthy} of ${affected} run it`, ...failedParts(failing, recovered), waitN ? `${waitN} waiting` : ''].filter(Boolean).join(' · ');
 	const worst = prod.find((u) => ink(u) === 'failed') ?? prod.find((u) => ink(u) === 'waiting') ?? prod[0];
-	return { squares, states, healthy, of: prod.length, frac: `${healthy}/${prod.length}`, count, sentence: `prod · ${count}`, href: worst?.href ?? null, affected, notAffected, countAffected };
+	return { squares, states, healthy, of: prod.length, frac: `${healthy}/${prod.length}`, count, sentence: `prod · ${count}`, href: worst?.href ?? null, affected, notAffected, countAffected, recovered };
 }
 /** CE1: the strip's prod sentence in the page's words ("1 failing · 2 deployed"); "Live" is retired as a state word. change-view's squaresSentence still says "live" for the Changes list (not this lane's file). */
-const squaresWords = (inks: Ink[]): string => {
+export const squaresWords = (inks: Ink[], recovered = 0): string => {
 	const n = (k: Ink) => inks.filter((x) => x === k).length;
-	const out = ([[n('failed'), 'failing'], [n('waiting'), 'waiting'], [n('moving'), 'deploying'], [n('checking'), 'checking'], [n('healthy'), 'deployed']] as [number, string][]).filter(([k]) => k > 0).map(([k, w]) => `${k} ${w}`).join(' · ');
+	const rest = ([[n('waiting'), 'waiting'], [n('moving'), 'deploying'], [n('checking'), 'checking'], [n('healthy'), 'deployed']] as [number, string][]).filter(([k]) => k > 0).map(([k, w]) => `${k} ${w}`);
+	const out = [...failedParts(n('failed'), Math.min(recovered, n('failed'))), ...rest].join(' · ');
 	return out || (inks.length ? 'not reached' : '');
 };
 const sqInk = (state: string, onNewest: boolean): Ink =>
@@ -194,7 +195,7 @@ export function stripOf(c: TChange, scenario: HomeState): Tile[] {
 		const behind = Math.max(0, ...ps.map((p) => p.state === 'failed' ? 0 : (p.behind ?? 0)));
 		if (s.tier === 'prod') {
 			const pr = changeProd(c, scenario);
-			if (pr.of > 1) return { tier: s.tier, href: pr.href, word: null, squares: pr.states, frac: `${pr.healthy}/${pr.affected}`, label: squaresWords(pr.states), own: true, aside: pr.notAffected ? `${pr.notAffected} not affected` : null, flight: pr.states.includes('checking') ? 'checking' : pr.states.includes('moving') ? 'deploying' : null, ...tierState(placesAll.filter((p) => p.tier === 'prod')) };
+			if (pr.of > 1) return { tier: s.tier, href: pr.href, word: null, squares: pr.states, frac: `${pr.healthy}/${pr.affected}`, label: squaresWords(pr.states, pr.recovered), own: true, aside: pr.notAffected ? `${pr.notAffected} not affected` : null, flight: pr.states.includes('checking') ? 'checking' : pr.states.includes('moving') ? 'deploying' : null, ...tierState(placesAll.filter((p) => p.tier === 'prod')) };
 		}
 		const own = ps.find((p) => MARKED.has(p.state));
 		const href = (own ?? ps[0])?.href ?? null;

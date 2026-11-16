@@ -7,7 +7,7 @@
  * state, so a state change can never add, drop, reorder or move a tile (owner: "environments jumping").
  */
 import { inScope } from '../derivation-scope';
-import { ago, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
+import { ago, failureRecovered, noReleasesAt, placesOf, rowsOf, placeHolds, buildIdentity, changes, type HomeState, type TChange, type TierKey, waveInfoOfHref } from '../data';
 import { approvalWord } from '../state-words';
 import { holdWord, holdWordParts } from '../rollout-view';
 import { causeText, type Cause } from '$lib/view-models/gate-label';
@@ -207,7 +207,9 @@ function drawRelease(app: string, c: AppCtx, scenario: HomeState, release: strin
 	const ran = r == null ? 0 : c.entries.filter((e) => e.counted && e.idx === r).length;
 	const total = c.entries.filter((e) => e.counted).length;
 	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${total} place${total === 1 ? '' : 's'} on ${release}`, short: `${ran} of ${total} on ${release}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
-	if (k('failed')) parts.push({ text: `${k('failed')} failing`, ink: 'danger' });
+	/* a failed place whose checks have all recovered reads `failed`; `failing` is a check failing now (state-words.ts failedWord) */
+	const failedPs = ps.filter((p) => p.state === 'failed');
+	for (const t of failedParts(failedPs.length, failedPs.filter((p) => failureRecovered(p.href)).length)) parts.push({ text: t, ink: 'danger' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
 	if (k('checking')) parts.push({ text: `${k('checking')} checking`, ink: 'progress' });

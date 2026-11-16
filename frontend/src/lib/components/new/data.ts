@@ -434,6 +434,8 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 	const R = rollouts(state);
 	const items = C.items as TChange[];
 	for (const i of items) i.fact = rosterWait(i.fact);
+	/* a change failing in a place whose checks have all recovered reads `Failed in …` (state-words.ts failedWord) */
+	for (const i of items) if (i.group === 'failed' && i.href && failureRecovered(i.href)) i.fact = i.fact.replace(/^Failing\b/, failedWord(true));
 	/* held places by label/app for linking a downstream-held change to the held tab */
 	const heldTab = (apps: string[], where: string): string | null => {
 		const tier: TierKey | null = where.endsWith('prod regions') || where === 'production' ? 'prod' : null;
