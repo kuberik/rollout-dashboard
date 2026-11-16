@@ -139,7 +139,8 @@
 
 	let showRetryConfirm = $state(false);
 
-	function handleRetry() {
+	/** `arrived`: opened by a Retry link (`?action=retry`), not a press here, so it always asks first (a URL never fires a deploy) */
+	function handleRetry(arrived = false) {
 		if (failedStepTests.length > 0) {
 			// The failed-tests path already asks, and asks a BETTER question —
 			// retry the tests or skip them. Two dialogs in a row would be the
@@ -148,7 +149,7 @@
 			showRetryModal = true;
 			return;
 		}
-		if (level === 'none') {
+		if (level === 'none' && !arrived) {
 			onRetry(stalledKruiseRollout?.metadata?.name);
 			return;
 		}
@@ -157,7 +158,7 @@
 
 	$effect(() => {
 		if (!requestRetry || actionsPending) return;
-		if (open && canUpdate) handleRetry();
+		if (open && canUpdate) handleRetry(true);
 		onRequestHandled();
 	});
 
@@ -222,7 +223,7 @@
 	const evMessage = $derived(ev?.message);
 	const failureAgo = $derived(failureSince ? formatTimeAgoCompact(failureSince, $now) : null);
 	const retryFirst = $derived(allRecovered);
-	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: handleRetry });
+	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
 	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback });
 	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
 </script>
