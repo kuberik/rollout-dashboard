@@ -88,3 +88,21 @@ describe('History: the outcome word follows failing vs failed', { timeout: 30_00
 		expect(el.className).toContain('text-danger');
 	});
 });
+
+describe('History: the Summary Failed count follows failing vs failed', { timeout: 30_000 }, () => {
+	const count = async (): Promise<HTMLElement> => {
+		await headOutcome();
+		let el: HTMLElement | null = null;
+		await waitFor(() => { el = document.querySelector('[data-summary-failed]'); expect(el).not.toBeNull(); }, { timeout: 10_000 });
+		await new Promise((r) => setTimeout(r, 1000));
+		return el!;
+	};
+	test('a recovered head deploy: the count is not in danger ink', async () => {
+		open('catalog-api');
+		expect((await count()).className).not.toContain('text-danger');
+	});
+	test('a head deploy failing now: the count is in danger ink', async () => {
+		open('orders-hub');
+		expect((await count()).className).toContain('text-danger');
+	});
+});

@@ -3129,7 +3129,7 @@
 								all: 'all time'
 							}[cadenceRange]}
 							failed={filteredHistory.filter(({ e }) => e.bakeStatus === 'Failed').length}
-							failedOpen={openFailed}
+							failedOpen={openFailed && !headState.recovered}
 							rolledBack={filteredHistory.filter(({ i }) => acts[i]?.kind === 'rollback').length}
 							{medianHealthyMs}
 							{lastFailureAgo}
