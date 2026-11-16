@@ -1614,6 +1614,7 @@ lib/view-models/history-approval.ts	code	Approved by …
 lib/view-models/history-approval.ts	code	Approved by … (…)
 lib/view-models/history-approval.ts	code	Approved by RolloutApproval … (no verified approver)
 lib/view-models/history-current-chip.ts	code	… check… pending
+lib/view-models/history-current-chip.ts	code	… failed
 lib/view-models/history-current-chip.ts	code	Bake paused
 lib/view-models/history-current-chip.ts	code	Checking for
 lib/view-models/history-current-chip.ts	code	Deploying for
@@ -2163,7 +2164,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… deplo
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… deploy details
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	… deploy…
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	… deploying, then … of checks.
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… failed … … …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	… of … deploys failed
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	… of … deploys finished healthy, … of them by rolling back to an older release
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	… over …

@@ -116,3 +116,25 @@ describe('RolloutTabHeader: the phone meta line stays one line (drop rule)', () 
 		expect(container.querySelectorAll('[data-phone-only]').length).toBeGreaterThanOrEqual(2);
 	});
 });
+
+/** One state word on every tab: a failed head whose check fails now reads "failing", a recovered or check-less failure reads "failed". */
+describe('RolloutTabHeader: the failure word follows failingNow', () => {
+	const words = (props: Record<string, unknown>) => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, ...props } });
+		return [...container.querySelectorAll('[data-phone-only], .chip, [class*="chip"]')].map((e) => e.textContent?.trim().toLowerCase()).join(' ');
+	};
+	test('failingNow reads failing, not failed', () => {
+		expect(words({ failingNow: true })).toContain('failing');
+	});
+	test('without failingNow it stays failed', () => {
+		expect(words({})).toContain('failed');
+		expect(words({})).not.toContain('failing');
+	});
+	test('every route that draws the header on a rollout passes failingNow', () => {
+		const base = resolve(__dirname, '../../routes/rollouts/[cluster]/[namespace]/[name]');
+		for (const f of ['logs', 'gates', 'history', 'diff/[version]']) {
+			const src = readFileSync(resolve(base, f, '+page.svelte'), 'utf8');
+			expect(src, f).toMatch(/<RolloutTabHeader[^>]*failingNow|<RolloutTabHeader\s[^<]*?\{failingNow\}|failingNow=\{/s);
+		}
+	});
+});

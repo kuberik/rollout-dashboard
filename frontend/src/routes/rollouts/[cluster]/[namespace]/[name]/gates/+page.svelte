@@ -153,6 +153,7 @@
 	import { fetchRolloutSchedules, scheduleWindowQueryKey } from '$lib/api/schedules';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { headFailingNow } from '$lib/view-models/health-failures';
 	import { compareEnvironmentNames } from '$lib/env-order';
 	import SkipRuleModal from '$lib/components/SkipRuleModal.svelte';
 	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
@@ -1779,6 +1780,7 @@
 				{name}
 				{rollout}
 				quietRollback
+				failingNow={headFailingNow(healthChecks ?? [], rollout?.status?.history?.[0] as never)}
 				subtitleOnPhone={false}
 				titleAfter={reallyHeldHere.length > 0 ? heldTitle : undefined}
 				chip={reallyHeldHere.length > 0 ? null : undefined}

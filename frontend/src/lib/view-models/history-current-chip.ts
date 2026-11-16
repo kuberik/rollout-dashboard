@@ -2,7 +2,7 @@
  * QA2 #9: what the History tab's CURRENT-row position chip says. Currency ("Up to date" / "N builds behind") is only true to print for a HEALTHY row;
  * a failed or in-flight current row says its state, in the shared state vocabulary (`state-words.ts`), never "Up to date".
  */
-import { stateWord } from '$lib/components/new/state-words';
+import { stateWord, failedInkParts } from '$lib/components/new/state-words';
 import { bakePaused } from '$lib/bake-hold';
 import { lagWord } from '$lib/components/new/app/app-model';
 
@@ -28,4 +28,16 @@ export function liveStatusVerb(e: { bakeStatus?: string; bakeHoldStartTime?: str
  */
 export function pausedRollup(pending: number): { text: string; ink: string }[] {
 	return [{ text: 'Bake paused', ink: 'text-held' }, ...(pending > 0 ? [{ text: `${pending} check${pending === 1 ? '' : 's'} pending`, ink: 'text-fg-muted' }] : [])];
+}
+
+/**
+ * the Deploys card's "N failed" rollup (and the page header's count) as inked parts: ONE failing/failed split with the shared ink. The only failure that can be live is the
+ * open one (the newest deploy): a check failing now reads "failing" in danger ink, a recovered failure reads "failed" in neutral ink; an open failure with no health check
+ * involved stays "failed" in danger ink (a failed deploy is not a recovered one); a superseded failure is neutral.
+ */
+export function deploysFailedParts(failed: number, head: { open: boolean; failingNow: boolean; recovered: boolean }): { text: string; ink: string }[] {
+	if (failed <= 0) return [];
+	if (head.open && !head.failingNow && !head.recovered) return [{ text: `${failed} failed`, ink: 'text-danger' }];
+	const now = head.open && head.failingNow ? 1 : 0;
+	return failedInkParts(failed, failed - now).map((p) => ({ text: p.text, ink: p.ink === 'danger' ? 'text-danger' : 'text-fg-muted' }));
 }
