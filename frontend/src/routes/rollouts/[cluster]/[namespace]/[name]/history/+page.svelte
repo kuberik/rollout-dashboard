@@ -21,6 +21,7 @@
 	} from '../../../../../../types';
 	import { Spinner } from 'flowbite-svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import StatusMark from '$lib/components/StatusMark.svelte';
 	import PendingCheckBlock from '$lib/components/PendingCheckBlock.svelte';
 	import {
 		UndoOutline,
@@ -1955,13 +1956,18 @@
 															class="deploy-spine-col flex h-5 shrink-0 items-center justify-center"
 															data-spine-mark
 														>
-															<RestGlyph
-																bakeStatus={entry.bakeStatus}
-																state={isCurrent && entry.bakeStatus === 'InProgress' && bakePaused(entry) ? 'paused' : null}
-																timestamp={entry.timestamp}
-																now={$now.getTime()}
-																class="deploy-glyph-ring"
-															/>
+															{#if isCurrent && entry.bakeStatus === 'Failed' && headState.recovered}
+																<!-- the head deploy failed and its checks are OK again: the recovered ring, like every other surface; the surface fill keeps the spine from showing through the hollow -->
+																<span class="deploy-glyph-ring inline-flex rounded-full bg-surface" data-head-recovered><StatusMark state="failed" recovered /></span>
+															{:else}
+																<RestGlyph
+																	bakeStatus={entry.bakeStatus}
+																	state={isCurrent && entry.bakeStatus === 'InProgress' && bakePaused(entry) ? 'paused' : null}
+																	timestamp={entry.timestamp}
+																	now={$now.getTime()}
+																	class="deploy-glyph-ring"
+																/>
+															{/if}
 														</div>
 
 														<!-- Version -->

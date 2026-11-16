@@ -106,3 +106,17 @@ describe('History: the Summary Failed count follows failing vs failed', { timeou
 		expect((await count()).className).toContain('text-danger');
 	});
 });
+
+describe('History: the head row glyph follows failing vs failed', { timeout: 30_000 }, () => {
+	test('a recovered head deploy draws the ring', async () => {
+		open('catalog-api');
+		await headOutcome();
+		await waitFor(() => expect(document.querySelector('[data-head-recovered] span.rounded-full')!.className).toContain('ring-[1.5px]'), { timeout: 10_000 });
+	});
+	test('a head deploy failing now keeps the solid glyph', async () => {
+		open('orders-hub');
+		await headOutcome();
+		await new Promise((r) => setTimeout(r, 1000));
+		expect(document.querySelector('[data-head-recovered]')).toBeNull();
+	});
+});
