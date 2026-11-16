@@ -43,7 +43,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import ChangeHistory from './ChangeHistory.svelte';
 	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, type TChange, type HomeState, noReleasesApp } from '../data';
-	import { actionHref, rowAction, holdWord } from '../rollout-view';
+	import { actionHref, retryActionHref, rowAction, holdWord } from '../rollout-view';
 	import { isViewer, plural } from '../change-view';
 	import { failedWord } from '../state-words';
 	import { classified, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, changeProd, notReached, summaryInk, type Place } from './detail-model';
@@ -99,7 +99,7 @@
 	/* the one order of a failed place's actions (view-models/failure-actions.ts): Retry leads for a recovered failure, so it is the phone row's one visible action, not an entry behind "⋯" */
 	const failActs = $derived(failureActs<Act>(!!lead?.row?.failure?.recovered, {
 		rollback: backHref ? { label: 'Roll back', href: backHref, icon: UndoOutline, key: 'rollback' } : null,
-		retry: lead ? { label: 'Retry', href: lead.href, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
+		retry: lead ? { label: 'Retry', href: retryActionHref(lead.href), icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
 		rest: lead ? [{ label: 'Open rollout', href: lead.href, quiet: true, key: 'open-rollout' }] : []
 	}));
 	/* change-strip r2 (coordinator: restore the facts "Where it runs" carried): the strip's own count (stages-model rollup, so the two agree) and the builds that carry the change */
@@ -150,7 +150,6 @@
 		{#if st.kind === 'failed' && check}
 			<!-- changedetail-9 CE8: the tab's set and order for a failed deploy: [Retry] [Roll back] + the quiet "Open rollout ›"; r34 S1a: the shared StatementBanner owns the shell and the phone action row -->
 			<StatementBanner severity="failed" title={failTitle} {check} recovered={!!lead?.row?.failure?.recovered}
-				phoneMax={1}
 				primary={failActs.primary?.key === 'rollback' && back ? { ...failActs.primary, title: `Roll back to ${back}` } : failActs.primary}
 				secondary={failActs.secondary.map((a) => (a.key === 'rollback' && back ? { ...a, title: `Roll back to ${back}` } : a))} />
 		{:else if (st.kind === 'waiting' || st.kind === 'held') && lead}

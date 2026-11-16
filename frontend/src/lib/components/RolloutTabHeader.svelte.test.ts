@@ -138,3 +138,17 @@ describe('RolloutTabHeader: the failure word follows failingNow', () => {
 		}
 	});
 });
+
+/** The pair at 390: wherever the lg+ header shows Roll back | Retry (a recovered failure), the phone meta line shows the same two, in the same order; Roll back is never out of reach. */
+describe('RolloutTabHeader: the phone shows the same pair as lg+', () => {
+	const phoneActs = (recovered: boolean) => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered } });
+		return [...container.querySelectorAll('a[data-phone-only]')].map((a) => `${(a as HTMLElement).dataset.action ?? 'rollback'}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
+	};
+	test('recovered: Roll back (secondary) then Retry (primary)', () => {
+		expect(phoneActs(true)).toEqual(['rollback:secondary', 'retry:primary']);
+	});
+	test('failing now: Roll back (primary), as lg+ shows it', () => {
+		expect(phoneActs(false)).toEqual(['rollback:primary']);
+	});
+});

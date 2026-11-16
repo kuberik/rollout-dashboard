@@ -36,6 +36,7 @@
 	import { page } from '$app/state';
 	import { href } from '$lib/paths';
 	import { UndoOutline, PlaySolid } from 'flowbite-svelte-icons';
+	import { retryActionHref } from '$lib/components/new/rollout-view';
 	import { failureRecovered } from '$lib/components/new/data';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { changePathForRollout } from '$lib/version-utils';
@@ -141,7 +142,7 @@
 	 * meta-line action is the lead).
 	 */
 	const recovered = $derived(isFailed && (recoveredIn ?? failureRecovered(rolloutPath(page.params.cluster ?? '', page.params.namespace ?? '', page.params.name ?? name))));
-	const retryLink = $derived(href(`/rollouts/${page.params.cluster}/${page.params.namespace}/${page.params.name ?? name}`));
+	const retryLink = $derived(retryActionHref(href(`/rollouts/${page.params.cluster}/${page.params.namespace}/${page.params.name ?? name}`)));
 	const rollbackDisplay = $derived(
 		rollbackNow ? getDisplayVersion({ tag: rollbackNow.tag, version: rollbackNow.version }) : ''
 	);
@@ -256,7 +257,12 @@
 	{#if metaRender}{@render metaRender()}{/if}
 	{#if inlineRollback && isFailed && rollbackNow}
 		{#if recovered}
-			<a class="btn btn-primary ml-auto h-11 bg-none px-4 lg:hidden" data-phone-only data-action="retry" href={retryLink}>
+			<!-- the pair the lg+ header shows, in its order (Roll back, then the blue Retry): Roll back is never out of reach on a phone -->
+			<a class="btn btn-secondary ml-auto h-11 px-4 lg:hidden" data-phone-only data-action="rollback" href={rollbackLink} title="Roll back to {rollbackDisplay}">
+				<UndoOutline class="h-4 w-4" aria-hidden="true" />
+				Roll back
+			</a>
+			<a class="btn btn-primary h-11 bg-none px-4 lg:hidden" data-phone-only data-action="retry" href={retryLink}>
 				<PlaySolid class="h-4 w-4" aria-hidden="true" />
 				Retry
 			</a>
