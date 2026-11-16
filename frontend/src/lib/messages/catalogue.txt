@@ -139,8 +139,10 @@ lib/components/AttentionCard.svelte	code	Open rollout
 lib/components/AttentionCard.svelte	text	Roll back
 lib/components/Avatar.svelte	code	… (CI)
 lib/components/Avatar.svelte	code	kuberik (automatic)
+lib/components/BlockedRow.svelte	code	: ''}… — …${holdLabel ?
 lib/components/BlockedRow.svelte	code	… failed
 lib/components/BlockedRow.svelte	code	… release… waiting
+lib/components/BlockedRow.svelte	code	…${c.envDisplay ?
 lib/components/BlockedRow.svelte	code	Checking for over an hour
 lib/components/BlockedRow.svelte	code	Deploy failed
 lib/components/BlockedRow.svelte	code	Deploying for over an hour
@@ -672,7 +674,6 @@ lib/components/new/change/ChangeHistory.svelte	label	Rolled back
 lib/components/new/change/ChangeHistory.svelte	text	Show … more
 lib/components/new/change/ChangeHistory.svelte	text	Show fewer
 lib/components/new/change/detail-model.ts	code	: ''} wait… behind this failure
-lib/components/new/change/detail-model.ts	code	… · failed
 lib/components/new/change/detail-model.ts	code	… checking
 lib/components/new/change/detail-model.ts	code	… deployed
 lib/components/new/change/detail-model.ts	code	… deploying
@@ -716,9 +717,6 @@ lib/components/new/change/detail-model.ts	code	Waiting for approval
 lib/components/new/change/detail-model.ts	code	wave …
 lib/components/new/change/detail-model.ts	code	Wave … …
 lib/components/new/change/detail-model.ts	code	Wave … deployed
-lib/components/new/changes-page.ts	code	… failed
-lib/components/new/changes-page.ts	code	… failed in …${placeOf(lead.c) ?
-lib/components/new/changes-page.ts	code	… failing
 lib/components/new/changes-page.ts	code	… to approve
 lib/components/new/changes-page.ts	code	landed …
 lib/components/new/changes-plumb.ts	code	… in …
@@ -817,10 +815,10 @@ lib/components/new/env/env-page.ts	code	… builds
 lib/components/new/env/env-page.ts	code	… failed
 lib/components/new/env/env-page.ts	code	… held
 lib/components/new/env/env-page.ts	code	… not at rest
-lib/components/new/env/env-page.ts	code	… places: …, … waiting, … …, … healthy
 lib/components/new/env/env-page.ts	code	… regions
 lib/components/new/env/env-page.ts	code	… to deploy
 lib/components/new/env/env-page.ts	code	… waiting on a check
+lib/components/new/env/env-page.ts	code	…: …, … waiting, … …, … healthy
 lib/components/new/env/env-page.ts	code	from …
 lib/components/new/env/env-page.ts	code	Newer build … ready${n.from ?
 lib/components/new/env/env-page.ts	code	Newer build …${n.from ?
@@ -1721,8 +1719,6 @@ lib/view-models/regions.ts	code	repeat(auto-fit, minmax(…px, 1fr))
 lib/view-models/release-delta.ts	code	… … (new)
 lib/view-models/release-delta.ts	code	… … (removed)
 lib/view-models/release-delta.ts	code	Same commit as …. What changed: requires ….
-lib/view-models/repo-card.ts	code	… failed
-lib/view-models/repo-card.ts	code	… failing
 lib/view-models/repo-card.ts	code	… moving
 lib/view-models/repo-card.ts	code	… waiting
 lib/view-models/revision-coverage.ts	code	: envs}

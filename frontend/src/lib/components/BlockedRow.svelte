@@ -29,9 +29,9 @@
 	}
 
 	/** The palette option's accessible name: name, place, and (for a failed row) the state in the visible fact's own words, then the action: "checkout-gateway · prod · health check failing — Open logs". */
-	export function blockedOptionLabel(c: RolloutCard, kind: BlockedKind, recovered: boolean, actionLabel: string, gate = ''): string {
+	export function blockedOptionLabel(c: RolloutCard, kind: BlockedKind, recovered: boolean, actionLabel: string, holdLabel = ''): string {
 		const state = kind === 'failed' ? ` · ${blockedFact(c, kind, null, recovered).toLowerCase()}` : '';
-		return `${c.name}${c.envDisplay ? ` · ${c.envDisplay}` : ''}${state} — ${actionLabel}${gate ? ` ${gate}` : ''}`;
+		return `${c.name}${c.envDisplay ? ` · ${c.envDisplay}` : ''}${state} — ${actionLabel}${holdLabel ? ` ${holdLabel}` : ''}`;
 	}
 
 	/** The row's fact, in plain words: why a person is needed. */
