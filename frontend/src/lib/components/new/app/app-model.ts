@@ -733,10 +733,11 @@ export const pinnedPlaces = (holds: string[]): Set<string> =>
  * figures, failures in their own ink). Folds the retained histories of every place of the app over the last `days` days:
  * deploys, failed, rolled back (history-marks' deployActs, the tab's own definition), the median time to healthy (the tab's own formula),
  * the newest failure, and `daysWithData` (distinct days holding a deploy: below 2 the card collapses to a short list of facts).
- * `openFailure` is true while a place's NEWEST deploy is itself failed (a superseded failure is not the page's alarm).
+ * `openFailure` is true while a place's NEWEST deploy is itself failed and not recovered (a superseded or recovered failure is not the page's alarm).
  */
 export type WeekHistory = { timestamp?: string; bakeStatus?: string; bakeEndTime?: string };
-export type WeekRollout = { history: WeekHistory[]; rolledBack: boolean[] };
+/** `recovered`: the place's newest failure has every check OK again; it still counts as a failure, but is not open (not failing now) */
+export type WeekRollout = { history: WeekHistory[]; rolledBack: boolean[]; recovered?: boolean };
 export function weekSummary(
 	rollouts: WeekRollout[],
 	days: number,
@@ -766,7 +767,7 @@ export function weekSummary(
 			if (r.rolledBack[i]) rolledBack++;
 			if (h.bakeStatus === 'Failed') {
 				failed++;
-				if (i === 0) open = true;
+				if (i === 0 && !r.recovered) open = true;
 			}
 			if (h.bakeStatus === 'Succeeded' && h.bakeEndTime) {
 				const e = new Date(h.bakeEndTime).getTime();

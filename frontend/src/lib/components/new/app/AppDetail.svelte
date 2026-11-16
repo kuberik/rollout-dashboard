@@ -83,6 +83,11 @@
 
 	/* ── one row per PLACE: the model's row where the place has one (unfolded per region), else a closed healthy place ── */
 	const places = $derived(placeHolds(name, scenario));
+	/** a rollout's place has a current failure whose checks are all OK again (the recovered ring; its words read neutral) */
+	const rolloutRecovered = (r: Rollout): boolean => {
+		const p = places.find((x) => x.href.endsWith(`/${encodeURIComponent(r.metadata?.namespace ?? '')}/${encodeURIComponent(r.metadata?.name ?? '')}`));
+		return !!p && failureRecovered(p.href);
+	};
 	/* round 2 B4: the held places' gate objects (the Gates tab's own source, same query key) give the pretty names the fleet list lacks */
 	const heldPlaces = $derived(places.filter((p) => p.holdReason === 'approval' || p.holdReason === 'rule'));
 	const gateQueries = createQueries(() => ({
@@ -407,9 +412,9 @@
 				<aside class="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6 lg:self-start" aria-label="{item.app} context">
 					<AppGates rows={gateRows} />
 					{#if deploys7d > 0}
-						<AppPulse deploys={deploys7d} days={SPARK_DAYS} rollouts={live} />
+						<AppPulse deploys={deploys7d} days={SPARK_DAYS} rollouts={live} recoveredOf={rolloutRecovered} />
 					{/if}
-					<AppActivity rollouts={live} {environments} recoveredOf={(r) => { const p = places.find((x) => x.href.endsWith(`/${encodeURIComponent(r.metadata?.namespace ?? '')}/${encodeURIComponent(r.metadata?.name ?? '')}`)); return !!p && failureRecovered(p.href); }} limit={builds.length ? 6 : 4} />
+					<AppActivity rollouts={live} {environments} recoveredOf={rolloutRecovered} limit={builds.length ? 6 : 4} />
 				</aside>
 			</div>
 			{/if}
