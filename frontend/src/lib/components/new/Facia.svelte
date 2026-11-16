@@ -301,7 +301,7 @@
 	/* r2-cleanup: the strand beside the line says the state word (Checking / Deploying / Waiting) in its hue; the line keeps the badge + the reason (what is needed, the check, the build) and does not say the word twice */
 	const stateLine = $derived.by((): { ink: string; lead: string; leadC?: Cause; rest: string; build: string; badge: boolean } => {
 		switch (kind) {
-			case 'failed': return { ink: TONE.failed.ink, lead: (failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), ''), rest: failMsg ?? '', build: '', badge: true };
+			case 'failed': return { ink: stateRow && markRecoveredOf(stateRow) ? TONE.recovered.ink : TONE.failed.ink, lead: (failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), ''), rest: failMsg ?? '', build: '', badge: true };
 			case 'wait': return checkingNow
 				? { ink: TONE.checking.ink, lead: '', rest: waitRow?.state === 'awaiting-approval' ? `Then waits for ${rowAction(waitRow)?.kind === 'approve' ? 'your ' : ''}approval` : '', build: wait?.build ?? '', badge: true }
 				: waitRow?.state === 'awaiting-approval'
