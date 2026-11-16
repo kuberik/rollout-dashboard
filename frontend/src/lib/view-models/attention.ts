@@ -15,6 +15,7 @@
  * are candidates, in array order ("the FIRST observation"); all healthy -> the check fallback.
  */
 import type { HealthObservation } from '$lib/../types';
+import { failedWord } from '$lib/components/new/state-words';
 
 export type AttentionState = 'failed' | 'approval';
 
@@ -83,7 +84,8 @@ export function checkFact(check: { name: string | null; message: string }): { na
 	return { name: check.name, message: check.message };
 }
 
-export const statusWord = (s: AttentionState): string => (s === 'failed' ? 'Failing' : 'Needs your approval');
+/** a failure whose checks all recovered reads `Failed`; `Failing` is a check failing now (state-words.ts failedWord) */
+export const statusWord = (s: AttentionState, recovered = false): string => (s === 'failed' ? failedWord(recovered) : 'Needs your approval');
 
 export type AttentionInput = {
 	state: AttentionState;
@@ -141,7 +143,7 @@ export function attentionModel(i: AttentionInput): AttentionModel {
 		: i.gateSentence ? { name: null, message: i.gateSentence } : null;
 	return {
 		state: i.state,
-		word: failed && i.recovered ? 'Failed' : statusWord(i.state),
+		word: statusWord(i.state, !!i.recovered),
 		forAge: i.age ? `for ${i.age}` : null,
 		tier: i.tier ?? '',
 		place: i.place ?? '',

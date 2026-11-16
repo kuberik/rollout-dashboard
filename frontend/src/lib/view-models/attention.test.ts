@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { attentionModel, failingLead, approvalLead, drawable, num } from './attention';
+import { attentionModel, failingLead, approvalLead, drawable, num, statusWord } from './attention';
 import { regionStates, rollouts } from '$lib/components/new/data';
 import type { HealthObservation } from '../../types';
 
@@ -52,5 +52,17 @@ describe('attention model', () => {
 		expect(approvalLead(ink(['healthy', 'waiting', 'waiting', 'waiting', 'waiting', 'waiting']))).toMatchObject({ value: '5', unit: 'of 6', label: 'prod regions' });
 		expect(approvalLead(ink(['waiting']))).toBeNull();
 		expect(attentionModel({ state: 'approval', age: '15m', regions: ink(['waiting', 'waiting']), gateSentence: 'Releases when someone approves' }).word).toBe('Needs your approval');
+	});
+});
+
+describe('statusWord: failed for a recovered failure, failing while a check fails now', () => {
+	it('words', () => {
+		expect(statusWord('failed')).toBe('Failing');
+		expect(statusWord('failed', true)).toBe('Failed');
+		expect(statusWord('approval', true)).toBe('Needs your approval');
+	});
+	it('the model uses the same helper', () => {
+		expect(attentionModel({ state: 'failed', recovered: true, check }).word).toBe('Failed');
+		expect(attentionModel({ state: 'failed', check }).word).toBe('Failing');
 	});
 });
