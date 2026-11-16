@@ -887,7 +887,6 @@ lib/components/new/envs-model.ts	code	Waiting on check
 lib/components/new/EnvTile.svelte	text	… arriving
 lib/components/new/EnvTile.svelte	text	… healthy
 lib/components/new/EnvTile.svelte	text	… held
-lib/components/new/EnvTile.svelte	text	… places · … apps
 lib/components/new/EnvTile.svelte	text	Last deploy
 lib/components/new/EnvTile.svelte	text	No deploys yet
 lib/components/new/EnvTile.svelte	text	Nothing arriving
@@ -1897,7 +1896,6 @@ routes/+layout.svelte	code	(min-width: 640px)
 routes/+layout.svelte	text	Skip to main content
 routes/activity/+page.svelte	code	, and … more
 routes/activity/+page.svelte	code	… · … ago
-routes/activity/+page.svelte	code	… · … failed
 routes/activity/+page.svelte	code	… · … failed, resolved
 routes/activity/+page.svelte	code	… · … rolled back
 routes/activity/+page.svelte	code	… · … still going
