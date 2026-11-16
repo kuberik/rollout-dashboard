@@ -1179,6 +1179,12 @@ export function gate(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key' | '
 }
 export type HealthCheckRow = { name: string; state: 'failing' | 'passing' | 'pending'; since: string | null; message: string | null };
 type RawHC = { metadata: { name: string; namespace: string }; status?: { status?: string; message?: string; lastChangeTime?: string; lastErrorTime?: string } };
+/** The raw HealthCheck resources the API lists for the place's rollout (what the Overview's Health checks card and a Retry's consequences read). */
+export function liveHealthChecks(href: string): HealthCheck[] {
+	const h = hrefParts(href);
+	if (!h) return [];
+	return ((source().healthChecks ?? []).find((i) => i.metadata.namespace === h.ns && i.metadata.name === h.name)?.healthChecks ?? []) as HealthCheck[];
+}
 /** The Overview's Health checks card for the place: failing checks of the deployed entry (named as the tab, aged from the bake end), the namespace's HealthCheck resources, then "Flux Deployment" (passing since the deploy). */
 export function healthChecks(row: Pick<RolloutRow, 'href'>): HealthCheckRow[] {
 	const h = hrefParts(row.href);

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
+	import { retryConfirm } from '$lib/view-models/retry-confirm';
+	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
 	import { newestFirst } from '$lib/instant';
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 		import { releaseCandidates } from '$lib/releases/registry.svelte';
@@ -61,7 +64,7 @@
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
-	import { failureRecovered, failureSinceAt, apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
+	import { liveHealthChecks, failureRecovered, failureSinceAt, apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme, byFailRank } from '../rollout-view';
 	import FailureDetails from '$lib/components/FailureDetails.svelte';
 	import { bannerEvidence } from '$lib/view-models/health-failures';
@@ -296,7 +299,23 @@
 		});
 	});
 	let retry = $state<'idle' | 'busy' | 'done' | 'error'>('idle');
-	async function retryDeploy(r: TRow) {
+	/* Retry asks exactly as the rollout Overview's failure panel does: the one shared rule (view-models/retry-confirm.ts), `none` fires on click, otherwise RetryConfirmModal */
+	let confirmRetryFor = $state<TRow | null>(null);
+	let showRetryConfirm = $state(false);
+	const retryRollout = $derived.by(() => {
+		const r = confirmRetryFor;
+		if (!r) return null;
+		const k = keyOf(r.href);
+		return live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === k) ?? null;
+	});
+	const retryCluster = $derived(retryRollout ? environments.find((e) => rolloutMatchesEnvironment(retryRollout, e)) : undefined);
+	const retryDecision = $derived(retryConfirm(retryRollout, retryCluster?.spec?.environment ?? null, confirmRetryFor ? liveHealthChecks(confirmRetryFor.href) : [], (retryRollout?.status?.history?.[0]?.failedHealthChecks ?? []) as { name: string; namespace?: string }[]));
+	function retryDeploy(r: TRow) {
+		confirmRetryFor = r;
+		if (retryDecision.level === 'none') { void postRetry(r); return; }
+		showRetryConfirm = true;
+	}
+	async function postRetry(r: TRow) {
 		const p = r.href.split('/').filter(Boolean);
 		retry = 'busy';
 		try {
@@ -428,6 +447,7 @@
 		</div>
 	</div>
 
+	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={() => { if (confirmRetryFor) void postRetry(confirmRetryFor); }} />
 	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} />
 {/if}
 
