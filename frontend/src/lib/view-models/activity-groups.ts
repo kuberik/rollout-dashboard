@@ -15,7 +15,8 @@ import { regionsPhrase, siteCount } from './regions';
 import { failedRollup } from '$lib/components/new/state-words';
 
 /** The unresolved failures as the shared failing / failed split (state-words `failedRollup`): only a check failing now is red, a failure whose checks recovered is neutral `failed`. */
-export function failedRollupParts(unresolved: number, recovered: number, checksKnown = true): (string | { text: string; ink?: 'danger' })[] {
+export type RollupPart = string | { text: string; ink?: 'danger'; fold?: boolean };
+export function failedRollupParts(unresolved: number, recovered: number, checksKnown = true): RollupPart[] {
 	/* until the fleet's health checks have answered, which of the failures recovered is unknown: say nothing yet rather than "failing" and then change it in place */
 	if (!checksKnown) return [];
 	return failedRollup(unresolved, Math.min(recovered, unresolved));
@@ -27,8 +28,9 @@ export const rowIsLive = <T extends { isLive: boolean }>(members: readonly T[], 
 export const rowIsRecovered = <T extends { isLive: boolean }>(members: readonly T[], recovered: (m: T) => boolean): boolean => members.some((m) => m.isLive) && !rowIsLive(members, recovered);
 
 /** The Deploys card's rollup parts: the window's count, then the unresolved failures split failing now from failed. */
-export function deploysRollupParts(deploys: number, unresolved: number, recovered: number, checksKnown = true): (string | { text: string; ink?: 'danger' })[] {
-	return [`${deploys} deploy${deploys === 1 ? '' : 's'}`, ...failedRollupParts(unresolved, recovered, checksKnown)];
+export function deploysRollupParts(deploys: number, unresolved: number, recovered: number, checksKnown = true): RollupPart[] {
+	/* the count folds on a phone when failure counts follow it (the rows are the count), as the env page's Today header does: one line, not "2 failed" alone on a second */
+	return [{ text: `${deploys} deploy${deploys === 1 ? '' : 's'}`, fold: true }, ...failedRollupParts(unresolved, recovered, checksKnown)];
 }
 
 export type GroupableEntry = {
