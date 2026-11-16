@@ -43,6 +43,7 @@
 	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, type TChange, type HomeState, noReleasesApp } from '../data';
 	import { actionHref, rowAction, holdWord } from '../rollout-view';
 	import { isViewer, plural } from '../change-view';
+	import { failedWord } from '../state-words';
 	import { classified, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, changeProd, notReached, type Place } from './detail-model';
 
 	let { change: c, scenario = 'incident', checks = null }: { change: TChange; scenario?: HomeState; checks?: { text: string; href: string | null } | null } = $props();
@@ -111,7 +112,7 @@
 	<PageHeader title={c.title}>
 		{#snippet titleAfter()}
 			<!-- r4: the state beside the title, only when adverse (the strip and the banner say the rest); one coloured chip -->
-			{#if st.kind === 'failed'}<Chip role="issue" label="Failing" />{:else if st.kind === 'waiting' || st.kind === 'held'}<Chip role="held" label={st.kind === 'held' ? 'Held' : 'Waiting'} />{/if}
+			{#if st.kind === 'failed'}<Chip role="issue" label={failedWord(!!lead?.row?.failure?.recovered)} />{:else if st.kind === 'waiting' || st.kind === 'held'}<Chip role="held" label={st.kind === 'held' ? 'Held' : 'Waiting'} />{/if}
 		{/snippet}
 		{#snippet meta()}
 			<!-- the lead row's facts (CF8): merged ago · people with roles · the 20 mono build the change is in · diffstat · commits; below 640 the people are the author only and the header-row links follow -->

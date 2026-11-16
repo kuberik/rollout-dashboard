@@ -17,7 +17,7 @@ import {
 	howFacts
 } from './detail-model';
 import { placesOfChange, ago, waitClock } from '../data';
-import { firstBuildOf, headFacts, foldWindow, carrierRange } from './detail-model';
+import { failedParts, firstBuildOf, headFacts, foldWindow, carrierRange } from './detail-model';
 
 const at = (slug: string, s: 'incident' | 'calm' | 'quiet') => {
 	const c = findChange(slug, s)!;
@@ -302,5 +302,14 @@ describe('change detail model (one model with the Changes list)', () => {
 		ev.forEach((e, i) => {
 			if (e.kind === 'failed') expect(i < w[0] || i >= w[1]).toBe(true);
 		});
+	});
+});
+
+describe('a failed place whose checks recovered is `failed`, not `failing`', () => {
+	it('failedParts splits the count and leaves zero parts out', () => {
+		expect(failedParts(3, 1)).toEqual(['2 failing', '1 failed']);
+		expect(failedParts(2, 2)).toEqual(['2 failed']);
+		expect(failedParts(1, 0)).toEqual(['1 failing']);
+		expect(failedParts(0, 0)).toEqual([]);
 	});
 });

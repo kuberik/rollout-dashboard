@@ -73,7 +73,7 @@ import { approvalRev, bumpApprovals } from './approval-rev.svelte';
 import { scoped } from './derivation-scope';
 /** `homeModel` once per derivation scope (the calm/quiet lenses rebuild the sketch on every call) */
 const homeModel = (state: HomeState): ReturnType<typeof homeModelRaw> => scoped(`hm|${state}`, () => homeModelRaw(state));
-import { stateWord as sharedWord, severity } from './state-words';
+import { stateWord as sharedWord, severity, failedWord } from './state-words';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { buildTopology, deployNameOf, siteNodeOf, upstreamOf, type AppTopology } from '$lib/view-models/sites-waves';
 import type { Environment, HealthObservation, HealthCheck } from '../../../types';
@@ -263,6 +263,8 @@ const enrich = (r: RolloutRow): TRow => {
 	t.place = placeLabel(r);
 	t.deployedAt = rawOf(r.href)?.status.history?.[0]?.timestamp ?? r.since ?? null; /* what the tab header's "9h ago" counts from */
 	if (failure) {
+		/* a failure whose checks have all recovered is `Failed`; `Failing` is a check failing now (state-words.ts failedWord) */
+		if (failure.recovered && t.word === 'Failing') t.word = failedWord(true);
 		t.cause = failure.line;
 		/* the tab ages "Deployment failed … · 20m ago" from the failing bake's END (the failed check's moment), not from the deploy timestamp */
 		const be = rawOf(r.href)?.status.history?.[0]?.bakeEndTime;

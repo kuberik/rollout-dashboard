@@ -14,7 +14,7 @@ import { causeText, type Cause } from '$lib/view-models/gate-label';
 import { ledgerOf, type Stop } from '../app/app-model';
 import type { MarkSiteState } from '$lib/view-models/wave-mark';
 import { changeBySha } from '$lib/components/home/sketch/home-data';
-import { behindWords, classified, countsOf, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
+import { behindWords, classified, countsOf, failedParts, currentAt, notReached, restSteps, type Place } from '../change/detail-model';
 import { TIER_RANK as TIER_RANKS } from '$lib/view-models/sites-waves';
 
 export type StageState = 'deployed' | 'checking' | 'paused' | 'deploying' | 'held' | 'approval' | 'failed' | 'notreached' | 'notaffected' | 'replaced';
@@ -258,7 +258,7 @@ function rollupOf(c: TChange, scenario: HomeState): StageRollup {
 	const total = cl.places.length + unreached;
 	const ran = n.live + n.checking + n.paused + n.deploying;
 	const parts: StageRollup['parts'] = [{ text: `${ran} of ${total} place${total === 1 ? '' : 's'}`, short: `${ran} of ${total}`, ink: 'muted' }];
-	if (n.failing) parts.push({ text: `${n.failing} failing`, ink: 'danger' });
+	for (const t of failedParts(n.failing, n.recovered)) parts.push({ text: t, ink: 'danger' });
 	if (n.waiting) parts.push({ text: `${n.waiting} waiting`, ink: 'held' });
 	if (n.held) parts.push({ text: `${n.held} held`, ink: 'held' });
 	if (n.checking) parts.push({ text: `${n.checking} checking`, ink: 'progress' });

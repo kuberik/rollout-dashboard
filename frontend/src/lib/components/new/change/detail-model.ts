@@ -16,7 +16,7 @@ import {
 	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathReach, reachSentence, buildCommitOf,
 	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock, waveInfoOfHref
 } from '../data';
-import { stateWord, approvalWord } from '../state-words';
+import { stateWord, approvalWord, failedWord } from '../state-words';
 import { holdWord as holdText } from '../rollout-view';
 import { changeBySha, homeModel } from '$lib/components/home/sketch/home-data';
 import { rangeJson, pullJson } from '../github-read.svelte';
@@ -112,15 +112,21 @@ function classifiedRaw(c: TChange, scenario: HomeState): { all: Unit[]; places: 
 const carriesBuild = (c: Pick<TChange, 'mergedAt' | 'repo'>, v: RawV) => { const k = changeBySha(c.repo, shortRevision(v.revision ?? v.tag ?? '')); return !!k && isNotEarlier(k.mergedAt, c.mergedAt); };
 export const runningN = (ps: Place[]) => ps.filter((p) => p.kind === 'running').length;
 /** CE2: THE count of the page, with its unit, read from here by the header, the Places rollup and the tests: "9 places · 3 live · 5 waiting · 1 not affected" */
+/** a failed place whose checks are all OK again (its rollout row's own `failure.recovered`, or the tab row behind a newer-build failure) */
+const recoveredPlace = (p: Place): boolean => !!(p.row ?? p.tabRow)?.failure?.recovered;
+/** "2 failing" and "1 failed" as separate parts, zero parts left out */
+export const failedParts = (failing: number, recovered: number): string[] => [failing - recovered > 0 ? `${failing - recovered} ${failedWord(false).toLowerCase()}` : '', recovered > 0 ? `${recovered} ${failedWord(true).toLowerCase()}` : ''].filter(Boolean);
 export function countsOf(all: Unit[], places: Place[]) {
 	/* the tab's own words for a place that runs the change: Deployed, Checking (clock), Deploying (arc); a count says each once (CF2). A place whose NEWER build fails is FAILING (the tab's red), not deployed (CE3) */
 	const run = places.filter((p) => p.kind === 'running' && !p.newerFails);
 	const checking = run.filter((p) => p.row?.state === 'checking' && !p.row.paused).length, paused = run.filter((p) => p.row?.state === 'checking' && !!p.row.paused).length, deploying = run.filter((p) => p.row?.state === 'deploying').length;
 	const waiting = places.filter((p) => p.kind === 'waiting' && p.group !== 'held').length, held = places.filter((p) => p.kind === 'waiting' && p.group === 'held').length, failing = places.filter((p) => p.kind === 'failed' || p.newerFails).length;
+	/* of the failing places, those whose checks have all recovered read `failed` (state-words.ts failedWord), never `failing` */
+	const recovered = places.filter((p) => (p.kind === 'failed' || p.newerFails) && recoveredPlace(p)).length;
 	/* AD r2 (2): a place held by a rule is "held", one waiting for an approval is "waiting" (the banner's, the chip's and the row's words) */
-	return { places: places.length, live: run.length - checking - paused - deploying, checking, paused, deploying, waiting, held, failing, notAffected: Math.max(0, all.length - places.length) };
+	return { places: places.length, live: run.length - checking - paused - deploying, checking, paused, deploying, waiting, held, failing, recovered, notAffected: Math.max(0, all.length - places.length) };
 }
-const countParts = (n: ReturnType<typeof countsOf>) => [n.live ? `${n.live} deployed` : '', n.checking ? `${n.checking} checking` : '', n.paused ? `${n.paused} paused` : '', n.deploying ? `${n.deploying} deploying` : '', n.waiting ? `${n.waiting} waiting` : '', n.held ? `${n.held} held` : '', n.failing ? `${n.failing} failing` : ''];
+const countParts = (n: ReturnType<typeof countsOf>) => [n.live ? `${n.live} deployed` : '', n.checking ? `${n.checking} checking` : '', n.paused ? `${n.paused} paused` : '', n.deploying ? `${n.deploying} deploying` : '', n.waiting ? `${n.waiting} waiting` : '', n.held ? `${n.held} held` : '', ...failedParts(n.failing, n.recovered)];
 export function countLine(n: ReturnType<typeof countsOf>): string {
 	return [`${n.places} place${n.places === 1 ? '' : 's'}`, ...countParts(n), n.notAffected ? `${n.notAffected} not affected` : ''].filter(Boolean).join(' · ');
 }
@@ -149,11 +155,12 @@ export function changeProd(c: TChange, scenario: HomeState): { squares: Ink[]; /
 	const states = prod.map((u): Ink => { const p = places.find((x) => x.href === u.href); return !p ? 'behind' : p.kind === 'failed' || p.newerFails ? 'failed' : p.kind === 'waiting' ? 'waiting' : p.row?.state === 'checking' ? 'checking' : p.row?.state === 'deploying' ? 'moving' : 'healthy'; });
 	const reached = (u: Unit) => places.some((x) => x.href === u.href);
 	const failing = squares.filter((x) => x === 'failed').length;
+	const recovered = prod.filter((u, i) => squares[i] === 'failed' && recoveredPlace(places.find((x) => x.href === u.href)!)).length;
 	const held = prod.filter((u, i) => squares[i] !== 'healthy' && squares[i] !== 'failed' && states[i] === 'waiting').length;
-	const count = [`${healthy} of ${prod.length} run it`, failing ? `${failing} failing` : '', held ? `${held} held` : ''].filter(Boolean).join(' · ');
+	const count = [`${healthy} of ${prod.length} run it`, ...failedParts(failing, recovered), held ? `${held} held` : ''].filter(Boolean).join(' · ');
 	const affected = prod.filter(reached).length, notAffected = prod.length - affected;
 	const waitN = prod.filter((u, i) => squares[i] === 'waiting').length;
-	const countAffected = [`${healthy} of ${affected} run it`, failing ? `${failing} failing` : '', waitN ? `${waitN} waiting` : ''].filter(Boolean).join(' · ');
+	const countAffected = [`${healthy} of ${affected} run it`, ...failedParts(failing, recovered), waitN ? `${waitN} waiting` : ''].filter(Boolean).join(' · ');
 	const worst = prod.find((u) => ink(u) === 'failed') ?? prod.find((u) => ink(u) === 'waiting') ?? prod[0];
 	return { squares, states, healthy, of: prod.length, frac: `${healthy}/${prod.length}`, count, sentence: `prod · ${count}`, href: worst?.href ?? null, affected, notAffected, countAffected };
 }
@@ -168,7 +175,7 @@ const sqInk = (state: string, onNewest: boolean): Ink =>
 /** the worst state of the change's places in one tier, as the tab's mark and word */
 function tierState(ps: Place[]): { mark: string; state: string } {
 	const f = ps.find((p) => p.kind === 'failed' || p.newerFails);
-	if (f) return { mark: 'failed', state: 'Failing' };
+	if (f) return { mark: 'failed', state: failedWord(ps.filter((p) => p.kind === 'failed' || p.newerFails).every((p) => !!(p.row ?? p.tabRow)?.failure?.recovered)) };
 	const w = ps.find((p) => p.kind === 'waiting');
 	if (w) return w.group === 'held' ? { mark: 'held', state: 'Held' } : { mark: 'held', state: 'Waiting' };
 	const run = ps.filter((p) => p.kind === 'running');

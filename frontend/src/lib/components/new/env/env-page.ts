@@ -198,7 +198,7 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 	const placeOf = (r: TRow) => (region ? '' : (r.regions.length > 1 ? `${r.regions.length} regions` : r.where === r.tier || ['production', 'staging', 'dev', 'test'].includes(r.where) ? '' : r.where));
 	const attention = attRows.map((r) => { const it = askOf(r, hs, { noTier: true }); const pl = placeOf(r); return pl ? { ...it, id: { ...it.id, name: `${r.app} · ${pl}` } } : it; });
 	const nF = attention.filter((a) => a.failed).length, nA = attention.length - nF;
-	const attentionRollup: Rollup = attentionRollupOf({ failing: nF, recovered: attention.filter((a) => a.failed && a.recovered).length, toApprove: nA });
+	const attentionRollup: Rollup = attentionRollupOf({ failing: nF, recovered: attention.filter((a) => a.failed && !!a.row.failure?.recovered).length, toApprove: nA });
 
 	/* apps here: each app's places in this environment, its most severe row, its waves */
 	const byApp = new Map<string, TPlace[]>();

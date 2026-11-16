@@ -397,9 +397,6 @@ lib/components/ErrorState.svelte	title	Where to look
 lib/components/EventsCard.svelte	text	… event …
 lib/components/EventsCard.svelte	text	… Nothing since the deploy started · … … No recent events …
 lib/components/EventsCard.svelte	title	Recent events
-lib/components/FailurePanel.svelte	code	: ' is failing'}
-lib/components/FailurePanel.svelte	code	… health checks failing: ……
-lib/components/FailurePanel.svelte	code	…${first ?
 lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
@@ -632,7 +629,6 @@ lib/components/new/approvals.svelte.ts	code	main h1
 lib/components/new/approvals.svelte.ts	code	Undo failed, the approval stands
 lib/components/new/ApproveButton.svelte	text	… Approve
 lib/components/new/ApproveButton.svelte	code	Approve all
-lib/components/new/apps-page.ts	code	… failing
 lib/components/new/apps-page.ts	code	… yours
 lib/components/new/Apps.svelte	title	At rest
 lib/components/new/Apps.svelte	title	In flight
@@ -681,7 +677,6 @@ lib/components/new/change/detail-model.ts	code	… · failed
 lib/components/new/change/detail-model.ts	code	… checking
 lib/components/new/change/detail-model.ts	code	… deployed
 lib/components/new/change/detail-model.ts	code	… deploying
-lib/components/new/change/detail-model.ts	code	… failing
 lib/components/new/change/detail-model.ts	code	… has waited …
 lib/components/new/change/detail-model.ts	code	… held
 lib/components/new/change/detail-model.ts	code	… in …
@@ -722,6 +717,7 @@ lib/components/new/change/detail-model.ts	code	Waiting for approval
 lib/components/new/change/detail-model.ts	code	wave …
 lib/components/new/change/detail-model.ts	code	Wave … …
 lib/components/new/change/detail-model.ts	code	Wave … deployed
+lib/components/new/changes-page.ts	code	… failed
 lib/components/new/changes-page.ts	code	… failed in …${placeOf(lead.c) ?
 lib/components/new/changes-page.ts	code	… failing
 lib/components/new/changes-page.ts	code	… to approve
@@ -821,12 +817,10 @@ lib/components/new/env/env-page.ts	code	: versions[0] ?? ''}
 lib/components/new/env/env-page.ts	code	… behind
 lib/components/new/env/env-page.ts	code	… builds
 lib/components/new/env/env-page.ts	code	… failed
-lib/components/new/env/env-page.ts	code	… failing
 lib/components/new/env/env-page.ts	code	… held
 lib/components/new/env/env-page.ts	code	… not at rest
 lib/components/new/env/env-page.ts	code	… places: … failing, … waiting, … …, … healthy
 lib/components/new/env/env-page.ts	code	… regions
-lib/components/new/env/env-page.ts	code	… to approve
 lib/components/new/env/env-page.ts	code	… to deploy
 lib/components/new/env/env-page.ts	code	… waiting on a check
 lib/components/new/env/env-page.ts	code	from …
@@ -851,7 +845,6 @@ lib/components/new/env/EnvPage.svelte	text	Show … earlier
 lib/components/new/env/EnvPage.svelte	title	Today in …
 lib/components/new/env/GangwayTile.svelte	text	from …
 lib/components/new/environments-page.ts	code	… failed the bake
-lib/components/new/environments-page.ts	code	… failing
 lib/components/new/environments-page.ts	code	… for you
 lib/components/new/environments-page.ts	code	… healthy
 lib/components/new/environments-page.ts	code	… held · … failed the bake
@@ -1580,13 +1573,16 @@ lib/view-models/gate-fact.ts	code	… of … gates holding
 lib/view-models/gate-fact.ts	code	1 gate failing
 lib/view-models/gate-fact.ts	code	1 of … gates failing
 lib/view-models/gate-label.ts	code	… from …
+lib/view-models/health-failures.ts	code	: ' is failing'}
 lib/view-models/health-failures.ts	code	: ''}, so a retry is reasonable.
 lib/view-models/health-failures.ts	code	… …/…${unit ?
 lib/view-models/health-failures.ts	code	… …${o.window ?
+lib/view-models/health-failures.ts	code	… health checks failing: ……
 lib/view-models/health-failures.ts	code	… of …
 lib/view-models/health-failures.ts	code	… recovered
 lib/view-models/health-failures.ts	code	…${at ?
 lib/view-models/health-failures.ts	code	…${f.note ?
+lib/view-models/health-failures.ts	code	…${first ?
 lib/view-models/health-failures.ts	code	· … ago
 lib/view-models/health-failures.ts	code	+… more
 lib/view-models/health-failures.ts	code	check …
@@ -1733,6 +1729,7 @@ lib/view-models/regions.ts	code	repeat(auto-fit, minmax(…px, 1fr))
 lib/view-models/release-delta.ts	code	… … (new)
 lib/view-models/release-delta.ts	code	… … (removed)
 lib/view-models/release-delta.ts	code	Same commit as …. What changed: requires ….
+lib/view-models/repo-card.ts	code	… failed
 lib/view-models/repo-card.ts	code	… failing
 lib/view-models/repo-card.ts	code	… moving
 lib/view-models/repo-card.ts	code	… waiting
