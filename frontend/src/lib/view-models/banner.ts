@@ -3,8 +3,10 @@ export function failedBannerTitle(app: string, tier: string, place?: string | nu
 	return `${app} ${failingNow ? 'failing' : 'failed'} in ${tier}${place ? ` · ${place}` : ''}`;
 }
 
-/** A banner title as a lead and an unbreakable place: the text after the last " · " (a region such as `eu-west-1`) must not break at its hyphens, so it is its own no-wrap run. No separator, no place. */
+/** A banner title as a lead and an unbreakable tail: the last word before the last " · " through the end ("prod · eu-west-1") is one no-wrap run, so the region never breaks at its hyphens and the separator never ends or starts a line. No separator, no tail. */
 export function titleParts(title: string): { lead: string; place: string | null } {
 	const at = title.lastIndexOf(' · ');
-	return at < 0 ? { lead: title, place: null } : { lead: title.slice(0, at + 3), place: title.slice(at + 3) };
+	if (at < 0) return { lead: title, place: null };
+	const from = title.lastIndexOf(' ', at - 1) + 1;
+	return { lead: title.slice(0, from), place: title.slice(from) };
 }
