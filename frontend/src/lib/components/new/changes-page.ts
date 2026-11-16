@@ -165,7 +165,7 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 		const you = isViewer(p.c.who);
 		const person = personName(p.c.who);
 		const model = attentionModel({
-			state: failed ? 'failed' : 'approval', age: ago(askSince(p)), tier: failed ? p.c.at ?? '' : gateOf(p.c), place: failed ? placeOf(p.c) : '',
+			state: failed ? 'failed' : 'approval', age: ago(failed ? p.c.failure?.since ?? askSince(p) : askSince(p)), ageAt: failed ? (p.c.failure?.since ?? p.ride.since ?? p.c.since ?? null) : null, tier: failed ? p.c.at ?? '' : gateOf(p.c), place: failed ? placeOf(p.c) : '',
 			check: failed ? { name: p.c.failure?.check ?? null, message: p.c.failure?.message ?? p.c.failure?.line ?? '' } : null,
 			observations: failed ? p.c.failure?.observations ?? null : null,
 			cls: failed ? p.c.failure?.cls : undefined,

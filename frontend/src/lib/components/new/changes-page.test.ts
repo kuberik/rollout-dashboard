@@ -1,5 +1,6 @@
 import { it, expect } from 'vitest';
 import { changesPage, refOf, gateOf } from './changes-page';
+import { ago } from './data';
 
 /* r39 build: the Changes page composition. Each change once: banner / Attention / one repo card; section counts are the cards' own counts. */
 for (const hs of ['incident', 'calm'] as const) {
@@ -28,4 +29,11 @@ it('refOf / gateOf: PR number else short sha; prod places gate on prod', () => {
 	expect(refOf({ prNumber: 37, ref: 'x' })).toBe('#37');
 	expect(refOf({ prNumber: null, ref: 'b17b002abcdef' })).toBe('b17b002');
 	expect(gateOf({ where: '5 prod regions', at: 'staging' })).toBe('prod');
+});
+it('incident: a failing Attention card ages from when its check began failing, like the banner', () => {
+	const P = changesPage('incident');
+	const failing = P.attention.filter((a) => a.model.state === 'failed' && a.p.c.failure?.since);
+	expect(failing.length).toBeGreaterThan(0);
+	for (const a of failing) expect(a.model.forAgeAt).toBe(a.p.c.failure!.since);
+	for (const a of failing) expect(a.model.forAge).toBe(`for ${ago(a.p.c.failure!.since!)}`);
 });
