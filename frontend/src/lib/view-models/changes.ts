@@ -1425,6 +1425,15 @@ export type FamilyProgressStep = {
  *  for a mark spanning multiple regions. */
 
 /**
+ * The ink of the verdict words of a FAILED change ("failed in prod"): neutral once every failed family has its checks OK again (and at least one failed),
+ * as the ring beside it is; one failing now keeps the danger ink (`tone-bad`).
+ */
+export const failedVerdictInk = (steps: readonly { tone: string; recovered?: boolean }[] | null): 'text-fg-muted' | 'tone-bad' => {
+	const failed = (steps ?? []).filter((s) => s.tone === 'failed');
+	return failed.length > 0 && failed.every((s) => s.recovered === true) ? 'text-fg-muted' : 'tone-bad';
+};
+
+/**
  * THE PER-FAMILY PROGRESS METER, FRONTIER-AWARE. `familyProgress` used to
  * take the WORST mark per family independently — so a change held in `dev`
  * on one service read `DEV·STG·PRD` all amber the moment ANY service was

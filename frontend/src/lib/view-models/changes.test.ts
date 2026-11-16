@@ -1606,3 +1606,13 @@ describe('familyProgress: the recovered flag of a failed family (the palette cha
 		expect(familyProgress(row(), () => true).find((s) => s.family === 'DEV')!.recovered).toBeUndefined();
 	});
 });
+
+import { failedVerdictInk } from './changes';
+describe('failedVerdictInk (palette change row)', () => {
+	it('neutral only when every failed family has recovered', () => {
+		expect(failedVerdictInk([{ tone: 'failed', recovered: true }, { tone: 'live' }])).toBe('text-fg-muted');
+		expect(failedVerdictInk([{ tone: 'failed', recovered: true }, { tone: 'failed' }])).toBe('tone-bad');
+		expect(failedVerdictInk([{ tone: 'failed' }])).toBe('tone-bad');
+		expect(failedVerdictInk(null)).toBe('tone-bad');
+	});
+});

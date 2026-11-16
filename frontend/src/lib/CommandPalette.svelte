@@ -132,6 +132,7 @@
 		buildChangeRows,
 		myChangesCount,
 		familyProgress,
+		failedVerdictInk,
 		standingWords,
 		familyMeterAriaLabel,
 		type ChangeRowVM
@@ -1887,7 +1888,7 @@
 								: changeMeta.verdictTone === 'held'
 									? 'text-held'
 									: changeMeta.verdictTone === 'failed'
-										? 'tone-bad'
+										? failedVerdictInk(changeSteps)
 										: changeMeta.verdictTone === 'not-built'
 											? 'text-fg-disabled'
 											: 'text-fg-muted'}">{standingWords(changeMeta)}</span
