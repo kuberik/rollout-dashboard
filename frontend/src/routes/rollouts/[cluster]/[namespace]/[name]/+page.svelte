@@ -1714,6 +1714,10 @@
 		if (action === 'change-version') changeVersionPending = true;
 		if (action === 'rollback') rollbackPending = true;
 	});
+	/* a Retry link that lands on a rollout with nothing to retry (no failure panel mounted): drop the param, open nothing */
+	$effect(() => {
+		if (retryPending && rollout && !isFailedNow && !failedLinger) retryHandled();
+	});
 	$effect(() => {
 		if (rollbackPending && rollout) {
 			rollbackPending = false;
