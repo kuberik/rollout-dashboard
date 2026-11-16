@@ -190,7 +190,7 @@
 			{#if compact}{@render actions()}{/if}
 		</div>
 		{#if !compact}
-			<div class="flex flex-col gap-3 border-t border-line px-4 py-3 sm:px-5 sm:py-4">
+			<div class="flex flex-col gap-3 border-t border-line px-4 py-3 sm:px-5 sm:py-5">
 				{@render identity()}
 				<div class="ac-foot flex min-w-0 items-center gap-3">
 					{@render changeLine()}

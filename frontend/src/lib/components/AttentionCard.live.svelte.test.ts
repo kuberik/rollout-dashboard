@@ -87,4 +87,10 @@ describe('AttentionCard actions (one set per state, the same on every list surfa
 		const container = s.slice(s.indexOf('@container'), s.indexOf('.ac-fig {'));
 		expect(container).not.toMatch(/flex:\s*1/);
 	});
+	it('the figure card\'s foot ends at the same bottom padding as the title card, so adjacent cards\' action rows line up', () => {
+		const s = readFileSync(resolve(__dirname, 'AttentionCard.svelte'), 'utf8');
+		expect(s).toMatch(/border-t border-line px-4 py-3 sm:px-5 sm:py-5/);
+		expect(s).toMatch(/gap-3\.5 p-4 sm:p-5/);
+		expect(s).toMatch(/ac-act relative z-\[1\] mt-auto/);
+	});
 });
