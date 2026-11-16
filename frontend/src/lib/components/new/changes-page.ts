@@ -92,7 +92,7 @@ export function groupByRepo(ps: PChange[]): RepoGroup[] {
 		return { repo, changes: fly, landed: xs.filter((x) => x.state === 'landed'), flying: fly.length, worst: Math.min(SEV('none'), ...xs.map((x) => SEV(x.state))), href: xs[xs.length - 1].c.changeHref ?? xs[xs.length - 1].c.href };
 	}).sort((a, b) => a.worst - b.worst || b.flying - a.flying || a.repo.localeCompare(b.repo));
 }
-export const rc = (p: PChange): RepoChange => ({ ref: p.ref, title: p.c.title, state: p.state, col: p.col, href: p.c.changeHref ?? p.c.href, key: p.c.key, noReleases: p.c.apps.length > 0 && p.c.apps.every((a) => !!noReleasesApp(a)) ? noReleasesApp(p.c.apps[0])!.label : undefined });
+export const rc = (p: PChange): RepoChange => ({ ref: p.ref, title: p.c.title, state: p.state, col: p.col, href: p.c.changeHref ?? p.c.href, key: p.c.key, recovered: p.state === 'failed' && !!p.c.failure?.recovered, noReleases: p.c.apps.length > 0 && p.c.apps.every((a) => !!noReleasesApp(a)) ? noReleasesApp(p.c.apps[0])!.label : undefined });
 export function cardOf(g: RepoGroup, tiers: readonly string[], o: { team?: boolean } = {}): RepoCardModel {
 	const apps = [...new Set([...g.changes, ...g.landed].flatMap((p) => p.c.apps))];
 	return { ...repoCardModel({ repo: g.repo, tiers, changes: g.changes.map(rc), landed: g.landed.map((l) => ({ ref: l.ref, title: l.c.title })), team: o.team, compact: true }), apps };
@@ -100,7 +100,7 @@ export function cardOf(g: RepoGroup, tiers: readonly string[], o: { team?: boole
 export const tiersOf = (ps: PChange[]) => TIERS.filter((t) => ps.some((p) => p.c.tiers.includes(t)));
 /** section rollup: failing takes ink, everything else is subtle (rail-d), then the scope word */
 function sectionRollup(ps: PChange[], scope: string): Rollup {
-	return [...rollupParts(ps.map((p) => ({ state: p.state }))).map((x) => (x.ink === 'danger' ? { text: x.text, ink: 'danger' as const } : x.text)), scope];
+	return [...rollupParts(ps.map((p) => ({ state: p.state, recovered: p.state === 'failed' && !!p.c.failure?.recovered }))).map((x) => (x.ink === 'danger' ? { text: x.text, ink: 'danger' as const } : x.text)), scope];
 }
 const plural = (n: number, w: string, many = w + 's') => `${n} ${n === 1 ? w : many}`;
 
@@ -190,11 +190,12 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 	const people = new Set(teamP.filter((p) => p.state !== 'landed').map((p) => p.c.who)).size;
 	const rest: RestRepo[] = restG.map((g) => { const n = g.landed[g.landed.length - 1]; return { key: g.repo, repo: g.repo, href: n.c.changeHref ?? n.c.href, ref: n.ref, title: n.c.title, age: `landed ${ago(n.ride.since ?? n.c.since ?? n.c.mergedAt)}` }; });
 	const failing = attP.filter((p) => p.state === 'failed').length;
+	const recoveredN = attP.filter((p) => p.state === 'failed' && p.c.failure?.recovered).length;
 	const toApprove = attP.length - failing;
 
 	return {
 		banner, attention,
-		attentionRollup: [...(failing ? [{ text: `${failing} failing`, ink: 'danger' as const }] : []), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])],
+		attentionRollup: [...(failing - recoveredN ? [{ text: `${failing - recoveredN} failing`, ink: 'danger' as const }] : []), ...(recoveredN ? [{ text: `${recoveredN} failed`, ink: 'danger' as const }] : []), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])],
 		mine: mineFly.map((g) => ({ repo: g.repo, href: g.href, card: cardOf(g, tiersOf([...g.changes, ...g.landed])) })),
 		mineRollup: sectionRollup(mineP, plural(mineG.length, 'repo')),
 		rest,

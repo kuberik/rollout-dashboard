@@ -9,7 +9,7 @@ import { beadRank } from './severity';
 import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
 export const REPO_TIERS = TIER_LIST;
-export type RepoChange = BeadChange & { /** 'merged' or a tier */ col: string };
+export type RepoChange = BeadChange & { /** 'merged' or a tier */ col: string; /** failed, and every check has recovered */ recovered?: boolean };
 export type RepoCell = { tier: string; label: string; beads: Bead[] };
 export type RollupPart = { text: string; ink: 'danger' | 'held' | 'subtle' };
 export type RepoCardModel = { /** the apps this repo's changes deploy (empty or one = nothing to say); the card names them when there are several */ apps?: string[]; repo: string; cells: RepoCell[]; landed: number; landedTitle: string; rollup: RollupPart[]; worst: number };
@@ -27,11 +27,12 @@ const SEV = (s: string): number => beadRank(s);
  * gate (`approval`, `approval-yours`, `held`) is held, never moving; a change whose app has no releases will not be carried on (`noReleases`), so it
  * is the state word, not "moving". Pinned by repo-card.test.ts ("moving rollup").
  */
-export function rollupParts(changes: readonly { state: string; noReleases?: string }[]): RollupPart[] {
+export function rollupParts(changes: readonly { state: string; noReleases?: string; /** a failed change whose checks have all recovered reads `failed`, not `failing` */ recovered?: boolean }[]): RollupPart[] {
 	const n = (...ks: string[]) => changes.filter((c) => ks.includes(c.state)).length;
-	const failed = n('failed'), wait = n('approval', 'approval-yours', 'held'), mov = changes.filter((c) => !c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length, stuck = changes.filter((c) => c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length;
+	const failedAll = n('failed'), failedRec = changes.filter((c) => c.state === 'failed' && c.recovered).length, failed = failedAll - failedRec, wait = n('approval', 'approval-yours', 'held'), mov = changes.filter((c) => !c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length, stuck = changes.filter((c) => c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length;
 	return [
 		failed ? { text: `${failed} failing`, ink: 'danger' as const } : null,
+		failedRec ? { text: `${failedRec} failed`, ink: 'danger' as const } : null,
 		wait ? { text: `${wait} waiting`, ink: n('approval-yours') ? ('held' as const) : ('subtle' as const) } : null,
 		mov ? { text: `${mov} moving`, ink: 'subtle' as const } : null,
 		/* no releases: nothing will carry it on, so it is not "moving" */
