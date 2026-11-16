@@ -112,6 +112,13 @@ export function foldPinIntoFleet(by: Map<string, FleetTrouble & { since: string 
 export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	return inScope(() => homePageRaw(hs, starred));
 }
+/** the Needs-you rollup: failures live now, failures whose checks recovered (`failed`, the word every page uses), then the approvals */
+export const asksRollupOf = (failing: number, recovered: number, toApprove: number): (string | { text: string; ink: 'danger' | 'held' })[] => [
+	...(failing - recovered ? [{ text: `${failing - recovered} ${failedWord(false).toLowerCase()}`, ink: 'danger' as const }] : []),
+	...(recovered ? [`${recovered} ${failedWord(true).toLowerCase()}`] : []),
+	...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])
+];
+
 /** a live failure, then a recovered one (its checks are OK again), then the approvals; the sort is stable */
 const askRank = (r: TRow) => (r.group !== 'failed' ? 2 : r.failure?.recovered ? 1 : 0);
 function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
@@ -183,7 +190,7 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 
 	return {
 		asks,
-		asksRollup: [...(failing - recovered ? [{ text: `${failing - recovered} failing`, ink: 'danger' as const }] : []), ...(recovered ? [`${recovered} recovered`] : []), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])],
+		asksRollup: asksRollupOf(failing, recovered, toApprove),
 		repos, landedToday,
 		fleet: { trouble, deploys },
 		counts: { failing, toApprove },
