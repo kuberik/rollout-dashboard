@@ -530,8 +530,8 @@ export function retryConsequences(intent: DeployIntent, facts: RetryFacts, tag?:
 
 	out.push(
 		tag
-			? `Redeploys ${tag} to ${where} — the same build whose last deploy here failed.`
-			: `Redeploys the current build to ${where} — the same build whose last deploy here failed.`
+			? `Retries ${tag} in ${where} — the same build whose last deploy here failed.`
+			: `Retries the current build in ${where} — the same build whose last deploy here failed.`
 	);
 
 	out.push(

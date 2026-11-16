@@ -2034,7 +2034,7 @@ describe('deploy-risk: a retry states what it destroys', () => {
 			{ failingChecks: ['latency'], clearsFailureDetail: true },
 			'064b655'
 		);
-		says(lines[0], 'Redeploys 064b655 to prod — the same build whose last deploy here failed.');
+		says(lines[0], 'Retries 064b655 in prod — the same build whose last deploy here failed.');
 		says(
 			lines[1],
 			'A rule here is still holding this build back. It applies immediately and prod starts serving it.'
@@ -2049,7 +2049,7 @@ describe('deploy-risk: a retry states what it destroys', () => {
 	test('with no tag in hand it still names the target, never a bare Retry', () => {
 		says(
 			retryConsequences(prod(), { failingChecks: [], clearsFailureDetail: false })[0],
-			'Redeploys the current build to prod — the same build whose last deploy here failed.'
+			'Retries the current build in prod — the same build whose last deploy here failed.'
 		);
 	});
 
