@@ -11,6 +11,7 @@
 	import { historyPool, failureSince } from '$lib/view-models/health-failures';
 	import { deployWindowStart } from '$lib/view-models/health-witness';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { headFailingNow } from '$lib/view-models/health-failures';
 	import { displayTimeZone } from '$lib/timezone.svelte';
 	import type {
 		Rollout,
@@ -1503,6 +1504,7 @@
 				{name}
 				{rollout}
 				quietRollback
+				failingNow={headFailingNow(liveChecks as never, rollout?.status?.history?.[0] as never)}
 				rollbackHref={href(`/rollouts/${cluster}/${namespace}/${name}/history?action=rollback`)}
 			>
 				<!-- ⭐ ONE ACTION SET ON EVERY TAB (LOGOPEN r11, item 4): History,

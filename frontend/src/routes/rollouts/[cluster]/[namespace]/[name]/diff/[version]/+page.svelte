@@ -38,6 +38,9 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout } from '../../../../../../../types';
 	import { fetchRollout } from '$lib/api/rollouts';
+	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { headFailingNow } from '$lib/view-models/health-failures';
+	import { pollWhenHealthy } from '$lib/api/errors';
 	import { ApiError, RECOVERY_POLL_MS } from '$lib/api/errors';
 	import { fetchManifest } from '$lib/api/manifests';
 	import { commitQueryOptions } from '$lib/api/commit';
@@ -111,6 +114,13 @@
 		located && located.index >= 0 ? (history[located.index + 1] ?? null) : null
 	);
 	const isLive = $derived(located?.index === 0);
+	// The live head's state word reads "failing" while a check fails now, like the Overview (same cache entry as its health-checks query).
+	const healthChecksQuery = createQuery(() => ({
+		...healthChecksQueryOptions(namespace, name, cluster),
+		enabled: Boolean(rollout?.spec?.healthCheckSelector),
+		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
+	}));
+	const failingNow = $derived(headFailingNow(healthChecksQuery.data?.healthChecks ?? [], history[0] as never));
 	const outcome = $derived(
 		entry ? deployOutcome(entry, { live: isLive, now: $now.getTime() }) : null
 	);
@@ -428,6 +438,7 @@
 			{rollout}
 			titleAfter={subject ? diffTitle : undefined}
 			chip={outcome?.chip}
+			{failingNow}
 			inlineRollback={false}
 		>
 			{#snippet meta()}

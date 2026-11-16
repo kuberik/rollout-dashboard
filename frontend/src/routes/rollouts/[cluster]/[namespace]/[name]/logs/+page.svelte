@@ -10,6 +10,8 @@
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
+	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { headFailingNow } from '$lib/view-models/health-failures';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import type { Rollout } from '../../../../../../types';
 	import { pageTitle } from '$lib/page-title';
@@ -35,6 +37,13 @@
 		})
 	);
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
+	// The header's state word reads "failing" while a check fails now, like the Overview (the same cache entry as its health-checks query).
+	const healthChecksQuery = createQuery(() => ({
+		...healthChecksQueryOptions(namespace, name, cluster),
+		enabled: Boolean(rolloutQuery.data?.rollout?.spec?.healthCheckSelector),
+		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
+	}));
+	const failingNow = $derived(headFailingNow(healthChecksQuery.data?.healthChecks ?? [], rollout?.status?.history?.[0] as never));
 
 	/**
 	 * ⭐ NOT FOUND, LIKE THE SIBLING History TAB (squad-rollout coordinator,
@@ -151,7 +160,7 @@
 	<div class="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6">
 		<!-- No env chip after the title: the breadcrumb names the environment
 		     and the Overview / History headers carry none (one fact, once). -->
-		<RolloutTabHeader {name} {rollout} quietRollback class="mb-6 shrink-0">
+		<RolloutTabHeader {name} {rollout} quietRollback {failingNow} class="mb-6 shrink-0">
 			{#snippet meta()}
 				{#if podCount > 0}
 					<span>{podCount} pod{podCount === 1 ? '' : 's'}</span>

@@ -51,6 +51,7 @@
 		chip: chipOverride,
 		inlineRollback = true,
 		quietRollback = false,
+		failingNow = false,
 		below,
 		metaSeparated = true,
 		subtitleOnPhone = true,
@@ -103,6 +104,8 @@
 		 *  "Roll back to <sha>" the calm Overview and History already show,
 		 *  at every width, in the same actions slot they use. */
 		quietRollback?: boolean;
+		/** A health check of the head deploy fails right now (`headFailingNow`, the Overview's own reading): the state pill then says "failing", not "failed", so switching tabs never changes the word. */
+		failingNow?: boolean;
 		below?: Snippet;
 		metaSeparated?: boolean;
 		/** false: the description is dropped below sm, so the tab's own (adverse) fact is never the one the one-line meta row cuts. QA #19-adjacent (Gates tab, 390). */
@@ -113,7 +116,7 @@
 	const latest = $derived(rollout?.status?.history?.[0]);
 	const build = $derived(latest ? getDisplayVersion(latest.version) : null);
 	const chip = $derived(
-		chipOverride !== undefined ? chipOverride : latest ? rolloutStateChip(latest.bakeStatus, latest) : null
+		chipOverride !== undefined ? chipOverride : latest ? rolloutStateChip(latest.bakeStatus, latest, failingNow) : null
 	);
 	const stuck = $derived(detectStuck(rollout, { now: $now }));
 	/**
