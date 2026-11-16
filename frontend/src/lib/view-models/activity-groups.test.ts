@@ -158,3 +158,12 @@ describe('groupActivityEntries', () => {
 		expect(groups[0].envText).toBe('');
 	});
 });
+
+describe('deploysRollupParts', () => {
+	it('splits failing now (danger ink) from failed (neutral), like every other rollup', async () => {
+		const { deploysRollupParts } = await import('./activity-groups');
+		expect(deploysRollupParts(12, 6, 2)).toEqual(['12 deploys', { text: '4 failing', ink: 'danger' }, '2 failed']);
+		expect(deploysRollupParts(1, 2, 2)).toEqual(['1 deploy', '2 failed']);
+		expect(deploysRollupParts(5, 0, 0)).toEqual(['5 deploys']);
+	});
+});

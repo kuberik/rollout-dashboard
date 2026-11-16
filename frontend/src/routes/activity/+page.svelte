@@ -51,8 +51,10 @@
 	import {
 		groupActivityEntries,
 		type GroupableEntry,
-		type ActivityGroup
+		type ActivityGroup,
+		deploysRollupParts
 	} from '$lib/view-models/activity-groups';
+	import { failureRecovered } from '$lib/components/new/data';
 	import { bucketize, type DeployBucket, type DeployMarker } from '$lib/view-models/deploy-bars';
 	import { pickDefaultRange } from '$lib/view-models/activity-range';
 	import { deployReason, deployMark } from '$lib/view-models/activity-note';
@@ -1387,10 +1389,7 @@
 		return changeFailureRatePct !== null ? `${changeFailureRatePct}% of deploys` : undefined;
 	});
 	/** The Deploys section's rollup: the window's count, then the one adverse fact in its ink (only an unresolved failure is red). */
-	const deploysRollup = $derived<(string | { text: string; ink?: 'danger' })[]>([
-		`${windowed.length} deploy${windowed.length === 1 ? '' : 's'}`,
-		...(unresolvedFailedCount > 0 ? [{ text: `${unresolvedFailedCount} failing`, ink: 'danger' as const }] : [])
-	]);
+	const deploysRollup = $derived(deploysRollupParts(windowed.length, unresolvedFailedCount, unresolvedFailures.filter((e) => failureRecovered(e.href)).length));
 	/** Deploys tile subline — a rate, not the range (round 8). */
 	/** ⭐ NOT A TAUTOLOGY AT 1D (round 9 review, 2026-10-10): "103 a day" at
 	 *  the 1d range IS the figure above it restated, since the window and
