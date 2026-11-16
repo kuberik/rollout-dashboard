@@ -747,6 +747,7 @@
 					where: e.envLabel || undefined,
 					when: clock,
 					resolved: !e.isLive,
+					recovered: e.isLive && checksKnown && isHeadRecovered(e),
 					font: 'sans',
 					href: e.href,
 					title: `${e.displayName}${where} failed on ${e.version}`
@@ -1193,7 +1194,10 @@
 	 * that has since gone green is resolved, and the page says nothing
 	 * about it at banner scale.
 	 */
-	const unresolvedFailures = $derived(failures.filter((e) => e.isLive));
+	/* a failure failing now leads the banner and its sentence; a recovered one (every check OK again) follows, each group newest first */
+	const unresolvedFailures = $derived(
+		failures.filter((e) => e.isLive).map((e) => ({ e, over: checksKnown && isHeadRecovered(e) })).sort((a, b) => Number(a.over) - Number(b.over)).map((x) => x.e)
+	);
 	const unresolvedFailedCount = $derived(unresolvedFailures.length);
 	/** The 4th KPI tile (round 7 review, 2026-10-10, AD finding 2: CFR folds
 	 *  into the Failed tile's subline, freeing this slot — matching Home's
