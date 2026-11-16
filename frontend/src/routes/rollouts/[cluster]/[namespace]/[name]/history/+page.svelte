@@ -2149,7 +2149,8 @@
 												     or how far it moved — and split so only the ONE word
 												     that needs colour gets it. -->
 																			<span class="tabular-nums" title={wait.title}>
-																				<span class={wait.outcome === 'Failed' ? 'text-danger' : ''}
+																				<!-- a check failing now reads in danger ink; the head deploy whose checks are all OK again reads neutral (the recovered failure keeps its word, not its alarm) -->
+																				<span data-outcome-word class={wait.outcome === 'Failed' ? (isCurrent && headState.recovered ? 'text-fg-muted' : 'text-danger') : ''}
 																					>{wait.outcome}</span
 																				>
 																				{wait.rest}
