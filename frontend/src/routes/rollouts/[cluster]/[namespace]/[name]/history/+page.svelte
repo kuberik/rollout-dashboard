@@ -3,7 +3,7 @@
 	import { lastFailureAgoOf } from '$lib/view-models/event-age';
 	import { failedAfterRest } from '$lib/view-models/diff-page-title';
 	import NotFound from '$lib/components/NotFound.svelte';
-	import { currentRowChip, liveStatusVerb, pausedRollup } from '$lib/view-models/history-current-chip';
+	import { currentRowChip, liveStatusVerb, pausedRollup, deploysFailedParts } from '$lib/view-models/history-current-chip';
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
@@ -11,7 +11,7 @@
 	import { historyPool, failureSince } from '$lib/view-models/health-failures';
 	import { deployWindowStart } from '$lib/view-models/health-witness';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
-	import { headFailingNow } from '$lib/view-models/health-failures';
+	import { headFailingNow, headRecovered } from '$lib/view-models/health-failures';
 	import { displayTimeZone } from '$lib/timezone.svelte';
 	import type {
 		Rollout,
@@ -798,6 +798,7 @@
 	 *  read from the Card's `rollup` snippet, which is not itself the
 	 *  immediate child of an `{#if}`/`{:else}`/`{#each}` the way `{@const}`
 	 *  requires. */
+	const headState = $derived({ open: openFailed, failingNow: headFailingNow(liveChecks as never, rollout?.status?.history?.[0] as never), recovered: headRecovered(liveChecks as never, rollout?.status?.history?.[0] as never) });
 	const rangeFailed = $derived(filteredHistory.filter(({ e }) => e.bakeStatus === 'Failed').length);
 	const rangeRolledBack = $derived(
 		filteredHistory.filter(({ i }) => acts[i]?.kind === 'rollback').length
@@ -1618,10 +1619,7 @@
 							     Card rollup's ink does); the word was a second copy of
 							     a fact the Card states in full. -->
 							<span title="{headerFailed} of {headerTotal} deploys failed">
-								<span class="tabular-nums {openFailed ? 'text-danger' : 'text-fg'}"
-									>{headerFailed}</span
-								>
-								failed
+								{#each deploysFailedParts(headerFailed, headState) as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class="tabular-nums {part.ink}">{part.text}</span>{/each}
 							</span>
 						{:else if headerRolledBack > 0}
 							<!-- ⛔ "all healthy" DROPPED HERE (AD round 6, nits): "drop
@@ -1799,9 +1797,7 @@
 						<Card icon={ListOutline} title="Deploys" padded={false}>
 							{#snippet rollup()}
 								{#if rangeFailed > 0}
-									<span class="t-ui-sm tabular-nums {openFailed ? 'text-danger' : 'text-fg'}"
-										>{rangeFailed} failed{#if !openFailed}{' · resolved'}{/if}</span
-									>
+									<span class="t-ui-sm tabular-nums">{#each deploysFailedParts(rangeFailed, headState) as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class={part.ink}>{part.text}</span>{/each}{#if !openFailed}<span class="text-fg-muted">{' · resolved'}</span>{/if}</span>
 								{:else if rangeRolledBack > 0}
 									<span class="t-ui-sm text-fg-subtle tabular-nums"
 										>{rangeRolledBack} rolled back</span
