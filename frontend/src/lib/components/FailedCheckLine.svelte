@@ -75,17 +75,11 @@
 >
 	{#if check.cls}<CheckGlyph cls={check.cls} class="check-glyph h-3.5 w-3.5 shrink-0 translate-y-0.5" />{:else}<ExclamationCircleSolid class="check-glyph h-3 w-3 shrink-0 translate-y-0.5" aria-hidden="true" />{/if}
 	{#if parts.length > 1 && !compact}
-		<!--
-			A message made of several facts ("over a 1% budget · service:orders"): each fact is a unit, the separator is a 4px dot that leads every unit after the first.
-			The row is clipped and shifted left by one unit's lead (8px margin + 4px dot + 8px gap = 20px; the first unit carries it as padding), so a unit that wraps to
-			the start of a line has its dot pushed outside the clip and starts clean: no separator ever sits at a line edge.
-		-->
-		<span class="min-w-0 flex-1 overflow-hidden" data-check-facts>
-			<span class="-ml-[20px] flex w-[calc(100%+20px)] flex-wrap">
-				<span class="min-w-0 max-w-full break-words pl-[20px]"><span class={ink ? 'text-fg' : danger ? 'text-danger' : 'text-fg-muted'}>{check.name ?? ''}{check.name ? ':' : ''}</span>{' '}<span class="text-fg-muted">{parts[0]}</span></span>
-				{#each parts.slice(1) as part, i (i)}
-					<span class="ml-2 flex min-w-0 max-w-full items-start gap-2 text-fg-muted"><span class="cl-dot h-1 w-1 shrink-0 rounded-full bg-current opacity-60" aria-hidden="true"></span><span class="min-w-0 break-words">{part}</span></span>
-				{/each}
+		<!-- A message made of several facts ("over a 1% budget · service:orders"): each fact is a unit of the shared dot list, whose dot is clipped when a unit starts a line, so no separator sits at a line edge. -->
+		<span class="dot-list min-w-0 flex-1" data-check-facts>
+			<span class="dot-list-row flex flex-wrap">
+				<span class="min-w-0 max-w-full break-words"><span class={ink ? 'text-fg' : danger ? 'text-danger' : 'text-fg-muted'}>{check.name ?? ''}{check.name ? ':' : ''}</span>{' '}<span class="text-fg-muted">{parts[0]}</span></span>
+				{#each parts.slice(1) as part, i (i)}<span class="min-w-0 max-w-full break-words text-fg-muted">{part}</span>{/each}
 			</span>
 		</span>
 	{:else}
@@ -101,12 +95,6 @@
 </div>
 
 <style>
-	.cl-dot {
-		margin-top: 6px;
-	}
-	.check-body .cl-dot {
-		margin-top: 8px;
-	}
 	.check-body {
 		font-size: 14px;
 		line-height: 20px;
@@ -122,9 +110,6 @@
 		/* build-r4 (AD /needs-you r2 #9, additive): a 12px glyph centred on a 20px line sits 4px down, not 1 (it measured 3px high) */
 		.check-line :global(.check-glyph) {
 			transform: translateY(3px);
-		}
-		.check-line .cl-dot {
-			margin-top: 8px;
 		}
 	}
 </style>

@@ -42,7 +42,7 @@
 				<a class="et-region" href={r.href} data-truth-kind="region" data-truth-region={r.label}>
 					<span class="et-rtop"><StatusMark state={regionMark(r.mark)} /><span class="et-rnm t-meta font-medium truncate">{r.label}</span></span>
 					<span class="et-rst t-meta">
-						{#each regionCellParts(r) as w, i (w.text)}{#if i}{' · '}{/if}{#if w.ink}<span class={hueInk(w.ink)}>{w.text}</span>{:else}{w.text}{/if}{/each}
+						<span class="dot-list block"><span class="dot-list-row flex flex-wrap">{#each regionCellParts(r) as w (w.text)}<span class="whitespace-nowrap {w.ink ? hueInk(w.ink) : ''}">{w.text}</span>{/each}</span></span>
 					</span>
 				</a>
 			{/each}

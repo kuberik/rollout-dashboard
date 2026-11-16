@@ -114,15 +114,15 @@ describe('FailedCheckLine compact (hover card)', () => {
 });
 
 describe('a message of several facts has no separator at a line edge', () => {
-	it('each fact after the first is its own unit led by a clipped dot; no literal middle dot in the text', () => {
+	it('each fact is a unit of the shared dot list; no literal middle dot in the text', () => {
 		const { container } = render(FailedCheckLine, { check: { name: '', message: 'over a 1% budget · service:orders, env:prod' }, danger: true, body: true });
 		const facts = container.querySelector('[data-check-facts]');
 		expect(facts).toBeTruthy();
-		expect(facts!.className).toContain('overflow-hidden');
+		expect(facts!.className).toContain('dot-list');
 		expect(facts!.textContent).not.toContain('·');
 		expect(facts!.textContent).toContain('over a 1% budget');
 		expect(facts!.textContent).toContain('service:orders, env:prod');
-		expect(facts!.querySelectorAll('.cl-dot')).toHaveLength(1);
+		expect(facts!.querySelectorAll('.dot-list-row > *')).toHaveLength(2);
 	});
 	it('a single-fact message keeps the plain line', () => {
 		const { container } = render(FailedCheckLine, { check: { name: 'x', message: 'over a 1% budget' }, danger: true });
