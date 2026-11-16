@@ -47,7 +47,8 @@
 		href = undefined,
 		compact = false,
 		repeatActor = false,
-		live = true
+		live = true,
+		recovered = false
 	}: {
 		actor: Actor;
 		/** What happened. The verb and its ink come from `activityVerb` — the one vocabulary. */
@@ -82,6 +83,8 @@
 		 *  downgrading a live failure to neutral — never flip this to `false`
 		 *  as a guess. */
 		live?: boolean;
+		/** the current failure's checks are all OK again: the status mark is the ring (a live failure only; a superseded one stays resolved) */
+		recovered?: boolean;
 	} = $props();
 
 	const fromKind = $derived(kind ? activityVerb(kind) : null);
@@ -122,7 +125,7 @@
 			{#if !personRow && tone && cornerClass}
 				<!-- An automatic row in a state: the state IS the mark (a dot on
 				     the kuberik logo read as a broken avatar, Home r1). -->
-				<StatusMark state={tone} label="{app ?? actor.name}: {verb}" resolved={resolvedFailure} />
+				<StatusMark state={tone} label="{app ?? actor.name}: {verb}" recovered={live && recovered} resolved={resolvedFailure} />
 			{:else if !personRow}
 				<!-- An automatic row at rest: the list-row resting mark (§3.11), a
 				     6px success dot, never a mascot on every success (/activity AD r1). -->

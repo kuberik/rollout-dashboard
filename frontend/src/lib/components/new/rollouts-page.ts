@@ -13,7 +13,7 @@ import {
 	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
-import { markOf, tabEnv, rowAction, actionHref, runwayRow, byFailRank, type MarkState } from './rollout-view';
+import { markOf, markRecoveredOf, tabEnv, rowAction, actionHref, runwayRow, byFailRank, type MarkState } from './rollout-view';
 import { nodesOfSteps, type MiniNode } from './mini-pipeline';
 import { holdWordParts } from './rollout-view';
 import { approvalWord, failedWord } from './state-words';
@@ -72,7 +72,7 @@ export type RolloutsPage = {
 
 /** a rollout's own steps as strand nodes; a gated rollout gets its GATE as the frontier node (held / approval; to-do while it still checks its own deploy) */
 export function strandOf(r: TRow, hs: HomeState): MiniNode[] {
-	const nodes = nodesOfSteps(r.steps, r.state);
+	const nodes = nodesOfSteps(r.steps, r.state, false, markRecoveredOf(r));
 	if (r.state === 'held-by-rule' || r.state === 'awaiting-approval') {
 		const g = gateName(r, hs);
 		nodes.push({ state: r.stillChecking ? 'pending' : r.state === 'awaiting-approval' ? 'approval' : 'held', step: g ? gateLabelText(g.label) : (r.state === 'awaiting-approval' ? 'Approval' : 'Gate') });

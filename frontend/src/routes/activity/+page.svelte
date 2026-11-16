@@ -54,7 +54,8 @@
 		type ActivityGroup,
 		deploysRollupParts,
 		failedRollupParts,
-	rowIsLive
+	rowIsLive,
+	rowIsRecovered
 	} from '$lib/view-models/activity-groups';
 	import { fleetHealthChecksQuery, rolloutHealthChecks, healthChecksByRollout } from '$lib/api/health-checks';
 	import { healthCheckKey } from '$lib/health-check-key';
@@ -2007,6 +2008,7 @@
 													tone={vb.tone}
 													live={checksKnown && rowIsLive(group.members, isHeadRecovered)}
 													markLive={group.members.some((m) => m.isLive)}
+													markRecovered={checksKnown && rowIsRecovered(group.members, isHeadRecovered)}
 													chip={single ? group.envText || null : null}
 													theme={single ? lead.theme : null}
 													envText={single ? null : group.envText || null}

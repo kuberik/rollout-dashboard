@@ -61,3 +61,21 @@ describe('nodesOfSteps', () => {
 		expect(nodesOfSteps([{ name: 'Check', state: 'active' }], 'deploying')[0].state).toBe('current');
 	});
 });
+
+describe('MiniPipeline: the failed dot of a recovered place is the ring', () => {
+	const steps = [{ name: 'Deploy', state: 'done' }, { name: 'Check', state: 'fail' }] as never;
+	const dots = (recovered: boolean) => {
+		const { container } = render(MiniPipeline, { nodes: nodesOfSteps(steps, 'failed', false, recovered), size: 'xs' });
+		return [...container.querySelectorAll('.mp-dot')].map((d) => d.className);
+	};
+	it('recovered: st-recovered, never st-fail; the word stays failed', () => {
+		const d = dots(true)[1];
+		expect(d).toContain('st-recovered');
+		expect(d).not.toContain('st-fail');
+		expect(nodesOfSteps(steps, 'failed', false, true)[1].state).toBe('failed');
+	});
+	it('failing now (or unknown): the solid st-fail dot', () => {
+		expect(dots(false)[1]).toContain('st-fail');
+		expect(dots(false)[1]).not.toContain('st-recovered');
+	});
+});

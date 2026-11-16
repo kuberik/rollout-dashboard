@@ -23,6 +23,8 @@ export function failedRollupParts(unresolved: number, recovered: number, checksK
 
 /** A failed row is red (live) only while one of its members is the rollout's current state AND its checks fail now; a failure whose checks have recovered reads neutral, like the rollup's `failed` and the resolved row. */
 export const rowIsLive = <T extends { isLive: boolean }>(members: readonly T[], recovered: (m: T) => boolean): boolean => members.some((m) => m.isLive && !recovered(m));
+/** A failed row whose failure is still the rollout's current state, every such member's checks OK again: the recovered mark (the ring). A failing-now or superseded failure is not. */
+export const rowIsRecovered = <T extends { isLive: boolean }>(members: readonly T[], recovered: (m: T) => boolean): boolean => members.some((m) => m.isLive) && !rowIsLive(members, recovered);
 
 /** The Deploys card's rollup parts: the window's count, then the unresolved failures split failing now from failed. */
 export function deploysRollupParts(deploys: number, unresolved: number, recovered: number, checksKnown = true): (string | { text: string; ink?: 'danger' })[] {
