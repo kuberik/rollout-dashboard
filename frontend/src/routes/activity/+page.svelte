@@ -52,11 +52,13 @@
 		groupActivityEntries,
 		type GroupableEntry,
 		type ActivityGroup,
-		deploysRollupParts
+		deploysRollupParts,
+		failedRollupParts
 	} from '$lib/view-models/activity-groups';
 	import { fleetHealthChecksQuery, rolloutHealthChecks, healthChecksByRollout } from '$lib/api/health-checks';
 	import { healthCheckKey } from '$lib/health-check-key';
 	import { headRecovered } from '$lib/view-models/health-failures';
+	import { failedParts } from '$lib/components/new/state-words';
 	import { bucketize, type DeployBucket, type DeployMarker } from '$lib/view-models/deploy-bars';
 	import { pickDefaultRange } from '$lib/view-models/activity-range';
 	import { deployReason, deployMark } from '$lib/view-models/activity-note';
@@ -100,6 +102,8 @@
 	/* the fleet's health checks: which unresolved failures have since recovered (their checks are all OK again) */
 	const hcQuery = createQuery(() => fleetHealthChecksQuery());
 	const checksByRollout = $derived(healthChecksByRollout(rolloutHealthChecks(hcQuery.data)));
+	/** the failed deploy's rollout has recovered its health checks (it reads `failed`, not `failing`) */
+	const isHeadRecovered = (e: ActivityEntry) => headRecovered(checksByRollout.get(healthCheckKey(sourceClusterName(e.rollout), e.rolloutNamespace, e.rolloutName)) ?? [], e.rollout.status?.history?.[0] as never);
 
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
@@ -1107,7 +1111,9 @@
 		// and the banner — this per-day rollup line was the one place left
 		// still painting a calm scenario's resolved-since failure in alarm
 		// ink: "colour only where something needs a person").
-		const unresolvedFailed = failedEntries.filter((e) => e.isLive).length;
+		const unresolvedEntries = failedEntries.filter((e) => e.isLive);
+		const unresolvedFailed = unresolvedEntries.length;
+		const recoveredFailed = unresolvedEntries.filter(isHeadRecovered).length;
 		const flying = entries.filter(isInFlight).length;
 		const rolledBack = entries.filter(isRolledBack).length;
 		const mayBeIncomplete = entries.some((e) => e.retentionCut);
@@ -1125,7 +1131,7 @@
 		// `neutral` ink; only a fact that needs a person spends a hue.
 		let out: { text: string; tone: 'adverse' | 'active' | 'neutral' };
 		if (unresolvedFailed > 0)
-			out = { text: `${noun} · ${unresolvedFailed} failed`, tone: 'adverse' };
+			out = { text: `${noun} · ${failedParts(unresolvedFailed, recoveredFailed).join(' · ')}`, tone: 'adverse' };
 		else if (failed > 0) out = { text: `${noun} · ${failed} failed, resolved`, tone: 'neutral' };
 		else if (flying > 0) out = { text: `${noun} · ${flying} still going`, tone: 'active' };
 		else if (rolledBack > 0) out = { text: `${noun} · ${rolledBack} rolled back`, tone: 'neutral' };
@@ -1141,7 +1147,8 @@
 		// the SectionHeader's rollup parts: the count, then the one adverse fact in its ink (only a live failure is red)
 		const rest = out.text.slice(noun.length).replace(/^ · /, '');
 		const parts: (string | { text: string; ink?: 'danger' })[] = [noun];
-		if (rest) parts.push(out.tone === 'adverse' ? { text: rest, ink: 'danger' } : rest);
+		if (out.tone === 'adverse') parts.push(...failedRollupParts(unresolvedFailed, recoveredFailed));
+		else if (rest) parts.push(rest);
 		return { ...out, parts, mayBeIncomplete };
 	}
 
@@ -1395,7 +1402,7 @@
 		return changeFailureRatePct !== null ? `${changeFailureRatePct}% of deploys` : undefined;
 	});
 	/** The Deploys section's rollup: the window's count, then the one adverse fact in its ink (only an unresolved failure is red). */
-	const deploysRollup = $derived(deploysRollupParts(windowed.length, unresolvedFailedCount, unresolvedFailures.filter((e) => headRecovered(checksByRollout.get(healthCheckKey(sourceClusterName(e.rollout), e.rolloutNamespace, e.rolloutName)) ?? [], e.rollout.status?.history?.[0] as never)).length));
+	const deploysRollup = $derived(deploysRollupParts(windowed.length, unresolvedFailedCount, unresolvedFailures.filter(isHeadRecovered).length));
 	/** Deploys tile subline — a rate, not the range (round 8). */
 	/** ⭐ NOT A TAUTOLOGY AT 1D (round 9 review, 2026-10-10): "103 a day" at
 	 *  the 1d range IS the figure above it restated, since the window and

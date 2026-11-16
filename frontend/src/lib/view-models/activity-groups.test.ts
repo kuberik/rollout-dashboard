@@ -167,3 +167,13 @@ describe('deploysRollupParts', () => {
 		expect(deploysRollupParts(5, 0, 0)).toEqual(['5 deploys']);
 	});
 });
+
+describe('failedRollupParts', () => {
+	it('day-card rollups ink only the failing-now part red; recovered reads neutral failed', async () => {
+		const { failedRollupParts } = await import('./activity-groups');
+		expect(failedRollupParts(3, 1)).toEqual([{ text: '2 failing', ink: 'danger' }, '1 failed']);
+		expect(failedRollupParts(2, 2)).toEqual(['2 failed']);
+		expect(failedRollupParts(2, 0)).toEqual([{ text: '2 failing', ink: 'danger' }]);
+		expect(failedRollupParts(0, 0)).toEqual([]);
+	});
+});

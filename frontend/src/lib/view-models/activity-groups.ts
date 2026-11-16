@@ -14,9 +14,14 @@ import { tierOf, TIER_ORDER, type Tier } from './promotion-lanes';
 import { regionsPhrase, siteCount } from './regions';
 import { failedParts } from '$lib/components/new/state-words';
 
-/** The Deploys card's rollup parts: the window's count, then the unresolved failures as the shared failing / failed split (state-words `failedParts`): only a check failing now is red, a failure whose checks recovered is neutral `failed`. */
+/** The unresolved failures as the shared failing / failed split (state-words `failedParts`): only a check failing now is red, a failure whose checks recovered is neutral `failed`. */
+export function failedRollupParts(unresolved: number, recovered: number): (string | { text: string; ink?: 'danger' })[] {
+	return failedParts(unresolved, Math.min(recovered, unresolved)).map((text) => (text.endsWith(' failing') ? { text, ink: 'danger' as const } : text));
+}
+
+/** The Deploys card's rollup parts: the window's count, then the unresolved failures split failing now from failed. */
 export function deploysRollupParts(deploys: number, unresolved: number, recovered: number): (string | { text: string; ink?: 'danger' })[] {
-	return [`${deploys} deploy${deploys === 1 ? '' : 's'}`, ...failedParts(unresolved, Math.min(recovered, unresolved)).map((text) => (text.endsWith(' failing') ? { text, ink: 'danger' as const } : text))];
+	return [`${deploys} deploy${deploys === 1 ? '' : 's'}`, ...failedRollupParts(unresolved, recovered)];
 }
 
 export type GroupableEntry = {
