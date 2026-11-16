@@ -1081,7 +1081,6 @@ dialog[role='dialog'][aria-modal='true'] {
    hold .bg-held-solid · to do .bg-subtle. */
 .seg-done { background-color: var(--k-fg-subtle); }
 .seg-active { background-color: var(--k-fg); }
-.seg-fail { background-color: var(--k-danger-solid); }
 .seg-todo { background-color: var(--k-line); }
 .seg-hold { background-color: transparent; box-shadow: inset 0 0 0 1px var(--k-line-strong); }
 
@@ -1099,7 +1098,6 @@ dialog[role='dialog'][aria-modal='true'] {
 .seg-hold { background-color: transparent; box-shadow: inset 0 0 0 1px var(--k-fg-subtle); }
 .nd-done { background-color: var(--k-fg-subtle); }
 .nd-active { background-color: var(--k-surface); box-shadow: inset 0 0 0 2px var(--k-fg); }
-.nd-fail { background-color: var(--k-danger-solid); }
 .nd-hold { background-color: var(--k-surface); box-shadow: inset 0 0 0 1.5px var(--k-fg-subtle); }
 .nd-todo { background-color: var(--k-surface); box-shadow: inset 0 0 0 1px var(--k-line-strong); }
 .nd-link { background-color: var(--k-line); }
@@ -1128,6 +1126,8 @@ dialog[role='dialog'][aria-modal='true'] {
 .st-check { box-shadow: inset 0 0 0 1.5px var(--k-progress-solid); background: radial-gradient(circle, var(--k-progress-solid) 0 1.5px, transparent 2px); }
 .st-hold { box-shadow: inset 0 0 0 1.5px var(--k-held-solid); }
 .st-fail { background-color: var(--k-danger-solid); }
+/* recovered: the failed dot with its fill taken out (failed, every check OK again): a 1.5px danger ring, empty centre */
+.st-recovered { background-color: transparent; box-shadow: inset 0 0 0 1.5px var(--k-danger-solid); }
 .st-live { box-shadow: inset 0 0 0 1.5px var(--k-active-solid), var(--k-glow-active); }
 .st-strand { background-color: var(--k-line-strong); }
 @media (prefers-reduced-motion: reduce) { .st-live { box-shadow: inset 0 0 0 1.5px var(--k-active-solid); } }

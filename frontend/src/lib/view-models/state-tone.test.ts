@@ -54,12 +54,29 @@ describe('the strand dots (.st-*) read the table', () => {
 		['st-check', TONE.checking.solid],
 		['st-hold', TONE.held.solid],
 		['st-fail', TONE.failed.solid],
+		['st-recovered', TONE.recovered.solid],
 		// the rollouts-list strand (MiniPipeline) draws done / not-started / approval with its own classes
 		['mp-done', TONE.done.solid],
 		['mp-ring-off', TONE.notreached.solid],
 		['mp-ask', TONE.approval.solid]
 	])('.%s paints with the table colour', (name, solid) => {
 		expect(rule(name)).toContain(solid);
+	});
+});
+
+describe('the recovered tone: the failed disc with its fill taken out', () => {
+	const css = readFileSync(join(ROOT, '../styles/language.css'), 'utf8');
+	it('.st-recovered is a transparent dot with an inset 1.5px ring in the failed solid', () => {
+		const r = new RegExp('\\.st-recovered\\s*\\{([^}]*)\\}').exec(css)?.[1] ?? '';
+		expect(r).toContain('background-color: transparent');
+		expect(r).toContain('inset 0 0 0 1.5px var(--k-danger-solid)');
+	});
+	it('same hue and solid as failed, outline shape, neutral word ink', () => {
+		expect(TONE.recovered.solid).toBe(TONE.failed.solid);
+		expect(TONE.recovered.shape).toBe('outline');
+		expect(TONE.recovered.ink).toBe('text-fg-muted');
+		expect(toneOf('recovered')).toBe('recovered');
+		expect(toneOf('failing')).toBe('failed');
 	});
 });
 

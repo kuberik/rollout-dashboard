@@ -29,6 +29,7 @@
 		resolved = false,
 		tone = undefined,
 		yours = false,
+		recovered = false,
 		progress = null
 	}: {
 		/**
@@ -57,6 +58,9 @@
 		 *  verb uses (coordinator ruling 2026-10-10: red only while a failure
 		 *  is the current state). Only meaningful for `state: 'failed'`. */
 		resolved?: boolean;
+		/** A failure that is still the current state but whose checks are all OK again: the failed mark with its fill taken out
+		 *  (a 1.5px danger ring, the "!" in danger ink). Only meaningful for `state: 'failed'`; `resolved` wins when both are set. */
+		recovered?: boolean;
 	} = $props();
 
 	// the chip colours come from the ONE state-tone table (view-models/state-tone.ts), never a local map
@@ -73,6 +77,7 @@
 		none: null
 	};
 	const RESOLVED_RING = 'bg-subtle ring-line text-fg-subtle';
+	const RECOVERED_RING = TONE.recovered.chip;
 	const pie = $derived(progress != null && (state === 'checking' || state === 'deploying') ? Math.max(0, Math.min(1, progress)) : null);
 	/** the pie's path in a 16-unit box: centre (8,8), r 4.25, clockwise from 12 o'clock */
 	const piePath = $derived.by(() => {
@@ -82,7 +87,8 @@
 		const x = 8 + r * Math.sin(a), y = 8 - r * Math.cos(a);
 		return `M8 8V3.75A${r} ${r} 0 ${pie > 0.5 ? 1 : 0} 1 ${x.toFixed(3)} ${y.toFixed(3)}Z`;
 	});
-	const ring = $derived(state === 'approval' ? undefined : resolved ? RESOLVED_RING : RING[state] ?? undefined);
+	const recoveredMark = $derived(state === 'failed' && recovered && !resolved);
+	const ring = $derived(state === 'approval' ? undefined : resolved ? RESOLVED_RING : recoveredMark ? RECOVERED_RING : RING[state] ?? undefined);
 </script>
 
 <span class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center" title={label}>
@@ -97,7 +103,7 @@
 			<path d={piePath} class="sm-pm-pie" />
 		</svg>
 	{:else if ring}
-		<span class="inline-flex h-4 w-4 items-center justify-center rounded-full ring-1 ring-inset {ring}">
+		<span class="inline-flex h-4 w-4 items-center justify-center rounded-full {recoveredMark ? 'ring-[1.5px]' : 'ring-1'} ring-inset {ring}">
 			{#if state === 'held' || state === 'paused'}
 				<!-- Held and paused, a thin pause at the "!"'s optical weight (AD held v3): bars
 				     ~8px of the 16px circle, 3px apart, 1.5px stroke. -->
