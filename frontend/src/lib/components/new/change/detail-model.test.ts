@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
 import {
@@ -14,7 +16,8 @@ import {
 	changeProd,
 	commitsOf,
 	openedOf,
-	howFacts
+	howFacts,
+	summaryInk
 } from './detail-model';
 import { placesOfChange, ago, waitClock } from '../data';
 import { failedParts, firstBuildOf, headFacts, foldWindow, carrierRange } from './detail-model';
@@ -331,5 +334,27 @@ describe('howFacts: Merge to production carries the state when a prod place fail
 		const running = { kind: 'running', tier: 'prod', since: '2026-11-16T09:30:00Z' } as never;
 		expect(mk([running])).toEqual([{ text: '1h 30m', ink: 'fg' }]);
 		expect(mk([])).toBeNull();
+	});
+});
+
+describe('the Summary card inks one recovered failure in one ink', () => {
+	const c = { mergedAt: '2026-11-16T08:00:00Z' } as never;
+	const failed = (recovered: boolean) => ({ kind: 'failed', tier: 'prod', since: '2026-11-16T09:00:00Z', row: { failure: { recovered } } }) as never;
+	it('summaryInk: a recovered part is the card\'s text ink, a failing one stays danger', () => {
+		expect(summaryInk('muted')).toBe('fg');
+		expect(summaryInk('danger')).toBe('danger');
+		expect(summaryInk('fg')).toBe('fg');
+	});
+	it('failedNow: Failed deploys is danger only while a check fails now', () => {
+		expect(howFacts(c, [failed(false)], []).failedNow).toBe(true);
+		expect(howFacts(c, [failed(true)], []).failedNow).toBe(false);
+		expect(howFacts(c, [failed(true), failed(false)], []).failedNow).toBe(true);
+		expect(howFacts(c, [], []).failedNow).toBe(false);
+	});
+	it('ChangeDetail draws the rows with them', () => {
+		const src = readFileSync(resolve(__dirname, 'ChangeDetail.svelte'), 'utf8');
+		expect(src).toContain("row.k === 'Failed deploys' && how.failedNow ? 'text-danger' : 'text-fg'");
+		expect(src).toContain('hueInk(summaryInk(part.ink))');
+		expect(src).not.toContain("how.failed ? 'text-danger'");
 	});
 });

@@ -512,6 +512,9 @@ export function toProdParts(time: string | null, adverse: Place[]): { text: stri
 	return [...(time ? [{ text: time, ink: 'fg' as const }] : []), ...(state ? [state] : [])];
 }
 
+/** The Summary card's ink for a part: a failure that recovered reads in the card's own text ink like every other value there (the word carries it); only a failure live now is danger. */
+export const summaryInk = <T extends string>(ink: T): Exclude<T, 'muted'> | 'fg' => (ink === 'muted' ? 'fg' : (ink as Exclude<T, 'muted'>));
+
 /* ═══ How it's going ═══ */
 export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] | null = null) {
 	const run = places.filter((p) => p.kind === 'running');
@@ -530,7 +533,7 @@ export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] 
 	};
 	/* every prod place of this change that failed (its checks failing now, or all recovered): the Merge-to-production line carries the same word the Places row prints, whatever else reached prod */
 	const prodAdverse = places.filter((p) => p.tier === 'prod' && (p.kind === 'failed' || p.newerFails));
-	return { running: run.length, of: all.length, /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: toProdParts(prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? gap(prodFailed.since) : null, prodAdverse) };
+	return { running: run.length, of: all.length, /* a failure live now (not every failed place has recovered): the one case the Failed deploys value is danger */ failedNow: places.some((p) => (p.kind === 'failed' || p.newerFails) && !recoveredPlace(p)), /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: toProdParts(prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? gap(prodFailed.since) : null, prodAdverse) };
 }
 export { candidateBuilds, isViewer };
 

@@ -46,7 +46,7 @@
 	import { actionHref, rowAction, holdWord } from '../rollout-view';
 	import { isViewer, plural } from '../change-view';
 	import { failedWord } from '../state-words';
-	import { classified, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, changeProd, notReached, type Place } from './detail-model';
+	import { classified, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, changeProd, notReached, summaryInk, type Place } from './detail-model';
 
 	let { change: c, scenario = 'incident', checks = null }: { change: TChange; scenario?: HomeState; checks?: { text: string; href: string | null } | null } = $props();
 	/** the change's apps have no releases (no source, or an empty catalogue): nothing will carry it to production */
@@ -179,11 +179,11 @@
 			{#if holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href)}<HoldingCard {holds} class="cd-hold" />{/if}
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
-					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-places><dt class="t-meta text-fg-subtle">Places running it</dt><dd class="t-ui tabular-nums">{#each reach.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={hueInk(part.ink === 'muted' ? 'fg' : part.ink)}>{i === 0 ? (part.short ?? part.text) : part.text}</span>{/each}</dd></div>
+					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-places><dt class="t-meta text-fg-subtle">Places running it</dt><dd class="t-ui tabular-nums">{#each reach.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={hueInk(summaryInk(part.ink))}>{i === 0 ? (part.short ?? part.text) : part.text}</span>{/each}</dd></div>
 					{#if prodPl.length > 1}<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-prod><dt class="t-meta text-fg-subtle">{multiApp ? 'Production places deployed' : 'Production regions deployed'}</dt><dd class="t-ui tabular-nums text-fg">{prodDone} of {prodPl.length}</dd></div>{/if}
 					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-builds><dt class="t-meta text-fg-subtle">Builds carrying it</dt><dd class="t-ui tabular-nums text-fg">{#if carrying}{carrying}{:else}<span class="t-meta text-fg-subtle" data-pending>none running yet</span>{/if}</dd></div>
 					{#each [{ k: `${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, v: how.toFirst ?? 'not deployed yet', parts: null }, { k: `${c.prNumber != null ? 'Merge' : 'Commit'} to production`, v: noReleases && !how.toProd ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet', parts: how.toProd }, ...(how.failed ? [{ k: 'Failed deploys', v: String(how.failed), parts: null }] : [])] as row (row.k)}
-						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{row.k}</dt><dd class="t-ui tabular-nums {row.k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{#if row.parts}{#each row.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={hueInk(part.ink)} data-failing={part.ink === 'danger' ? '' : undefined}>{part.text}</span>{/each}{:else if /^(not |won't )/.test(row.v)}<span class="t-meta text-fg-subtle" data-pending>{row.v}</span>{:else}{row.v}{/if}</dd></div>
+						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{row.k}</dt><dd class="t-ui tabular-nums {row.k === 'Failed deploys' && how.failedNow ? 'text-danger' : 'text-fg'}">{#if row.parts}{#each row.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={hueInk(summaryInk(part.ink))} data-failing={part.ink === 'danger' ? '' : undefined}>{part.text}</span>{/each}{:else if /^(not |won't )/.test(row.v)}<span class="t-meta text-fg-subtle" data-pending>{row.v}</span>{:else}{row.v}{/if}</dd></div>
 					{/each}
 				</dl>
 			</Card>
