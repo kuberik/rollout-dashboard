@@ -45,5 +45,5 @@ it('attention order: failures sort by when their check began failing, the age th
 });
 
 it('Attention rollup: only the failing-now part is danger ink, a recovered failed is a plain part', () => {
-	expect(attentionRollupParts(3, 1, 1)).toEqual([{ text: '2 failing', ink: 'danger' }, '1 failed', { text: '1 to approve', ink: 'held' }]);
+	expect(attentionRollupParts(3, 1, 1)).toEqual([{ text: '2 failing', ink: 'danger' }, { text: '1 to approve', ink: 'held' }, '1 failed']);
 });

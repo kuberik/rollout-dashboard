@@ -8,6 +8,7 @@
  * Honest fallbacks: no `observations[]` API on the list payload yet, so a failing card leads with the check's NAME and message
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
+import { attentionRank } from '$lib/view-models/failure-actions';
 import { newestFirst } from '$lib/instant';
 import {
 	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
@@ -16,7 +17,7 @@ import {
 import { markOf, markRecoveredOf, tabEnv, rowAction, actionHref, runwayRow, byFailRank, type MarkState } from './rollout-view';
 import { nodesOfSteps, type MiniNode } from './mini-pipeline';
 import { holdWordParts } from './rollout-view';
-import { approvalWord, failedRollup } from './state-words';
+import { approvalWord, attentionRollupOf } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
 import { bannerEvidence, failureSince as checksFailingSince, type BannerEvidence } from '$lib/view-models/health-failures';
@@ -204,7 +205,7 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 	const lead = runwayRow(failedRows);
 	const banner = lead ? bannerOf(lead) : null;
 	const yours = rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking);
-	const attentionRows = [...failedRows, ...yours].filter((r) => r !== lead);
+	const attentionRows = [...failedRows, ...yours].filter((r) => r !== lead).sort((a, b) => attentionRank(a.group === 'failed' ? 'failed' : 'approval', !!a.failure?.recovered) - attentionRank(b.group === 'failed' ? 'failed' : 'approval', !!b.failure?.recovered));
 	const inAttention = new Set([...failedRows, ...yours].map((r) => r.key));
 	const strand = (g: (r: TRow) => boolean) => rows.filter((r) => !inAttention.has(r.key) && g(r)).sort(sinceDesc).map((r) => strandRow(r, hs));
 	const moving = strand((r) => r.group === 'moving');
@@ -229,8 +230,5 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 
 /** The Attention header's rollup. Its words are the cards' own: a failure whose checks recovered reads `Failed` on its card, so the rollup counts it as `failed`; `failing` is a check failing right now. */
 export function attentionRollup(P: { failing: number; recovered: number; toApprove: number }): (string | { text: string; ink: 'danger' | 'held' })[] {
-	return [
-		...failedRollup(P.failing, P.recovered),
-		...(P.toApprove ? [{ text: `${P.toApprove} to approve`, ink: 'held' as const }] : [])
-	];
+	return attentionRollupOf(P.failing, P.recovered, P.toApprove ? { text: `${P.toApprove} to approve`, ink: 'held' as const } : null);
 }

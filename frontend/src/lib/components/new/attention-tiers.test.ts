@@ -27,6 +27,17 @@ describe('attention tiers', () => {
 		expect(flags).toEqual([...flags].sort((a, b) => Number(a) - Number(b)));
 		expect(flags).toContain(true);
 	});
+	it('the Attention cards read failing now, then to approve, then recovered (the rollup order), on Home and /envs/<env>', () => {
+		load('calm');
+		const rank = (a: { failed: boolean; row: { failure?: { recovered?: boolean } | null } }) => (a.failed ? (a.row.failure?.recovered ? 2 : 0) : 1);
+		const asks = homePage('calm').asks;
+		const envAtt = envPage('calm', 'prod')!.attention;
+		for (const list of [asks, envAtt]) {
+			const r = list.map(rank);
+			expect(r).toEqual([...r].sort((a, b) => a - b));
+		}
+		expect(asks.map(rank)).toEqual(expect.arrayContaining([1, 2]));
+	});
 	it('Home Fleet: a failing row ranks above a recovered one', () => {
 		load('incident');
 		const f = homePage('incident').fleet.trouble.filter((t) => t.mark === 'failed').map((t) => !!t.recovered);
@@ -34,10 +45,11 @@ describe('attention tiers', () => {
 		expect(f).toEqual([...f].sort((a, b) => Number(a) - Number(b)));
 	});
 });
-it('apps: live failure, recovered failure, approval, rest', () => {
+it('apps: live failure, approval, recovered failure, rest', () => {
 	expect(attentionTier('failed', false)).toBeLessThan(attentionTier('failed', true));
-	expect(attentionTier('failed', true)).toBeLessThan(attentionTier('approval', false));
-	expect(attentionTier('approval', false)).toBeLessThan(attentionTier('checking', false));
+	expect(attentionTier('failed', false)).toBeLessThan(attentionTier('approval', false));
+	expect(attentionTier('approval', false)).toBeLessThan(attentionTier('failed', true));
+	expect(attentionTier('failed', true)).toBeLessThan(attentionTier('checking', false));
 });
 it('changes: a recovered failure sorts after a live one even when it is older', () => {
 	const mk = (k: string, recovered: boolean) => ({ k, state: 'failed', c: { failure: { recovered } } });

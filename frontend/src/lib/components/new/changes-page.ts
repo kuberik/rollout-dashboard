@@ -10,6 +10,7 @@
  * Honest fallbacks: no `observations[]` on the list payload, so a failing card leads with the check NAME + message (attention.ts), never a figure;
  * a prod approval card counts its regions (the region meter, as on Home); other approvals stay title-led.
  */
+import { attentionRank } from '$lib/view-models/failure-actions';
 import { shortRevision } from '$lib/version-utils';
 import { oldestFirst } from '$lib/instant';
 import { beadRank } from '$lib/view-models/severity';
@@ -24,7 +25,7 @@ import { rowAction, actionHref } from './rollout-view';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import { repoCardModel, rollupParts, type RepoCardModel, type RepoChange, type RollupPart } from '$lib/view-models/repo-card';
 import type { BeadState } from '$lib/view-models/bead';
-import { failedRollup } from './state-words';
+import { attentionRollupOf } from './state-words';
 import { failedBannerTitle } from '$lib/view-models/banner';
 import { failingNowOf, bannerMeta, type BannerMeta, type ChangeLine } from './rollouts-page';
 import { servicesOf, spreadOf, type Svc } from './change/service-spread';
@@ -131,10 +132,10 @@ function classifyChangesRaw(hs: HomeState): { mineP: PChange[]; teamP: PChange[]
 	return { mineP: classify(mineAll, leadKey, true), teamP: classify(teamAll, null, false), leadKey };
 }
 
-/** Attention order: failing now first, then recovered failures, then the OLDEST ask first (compared as instants; a change with no clock goes last). */
+/** Attention order: failing now first, then the approvals, then recovered failures, the OLDEST ask first inside a tier (compared as instants; a change with no clock goes last). */
 export function attentionOrder<T extends { state: string }>(ps: T[], askSince: (p: T) => string | null): T[] {
-	/* tiers: a failure live now, a recovered one (its checks are OK again), then the rest; the oldest ask first only inside a tier */
-	const tier = (p: T) => (p.state !== 'failed' ? 2 : (p as { c?: { failure?: { recovered?: boolean } | null } }).c?.failure?.recovered ? 1 : 0);
+	/* tiers: a failure live now, an approval, then a recovered one (its checks are OK again); the oldest ask first only inside a tier */
+	const tier = (p: T) => attentionRank(p.state === 'failed' ? 'failed' : 'approval', !!(p as { c?: { failure?: { recovered?: boolean } | null } }).c?.failure?.recovered);
 	return [...ps].sort((a, b) => tier(a) - tier(b) || oldestFirst(askSince(a), askSince(b)));
 }
 /** When an Attention item began asking: an approval from its wait clock, a failure from when its check began failing
@@ -149,7 +150,7 @@ export function attentionSince(
 }
 /** the Attention rollup: only a check failing now is danger ink, a recovered `failed` and the rest follow (the shared failing/failed split, state-words `failedRollup`) */
 export function attentionRollupParts(failing: number, recovered: number, toApprove: number): Rollup {
-	return [...failedRollup(failing, recovered), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])];
+	return attentionRollupOf(failing, recovered, toApprove ? { text: `${toApprove} to approve`, ink: 'held' as const } : null);
 }
 export function changesPage(hs: HomeState): ChangesPage {
 	return inScope(() => changesPageRaw(hs));

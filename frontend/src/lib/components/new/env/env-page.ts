@@ -15,6 +15,7 @@
  *
  * Headline rule (coordinator a): an app's headline state here is the MOST SEVERE state among its places (state-words `mostSevere`).
  */
+import { attentionRank } from '$lib/view-models/failure-actions';
 import { inScope } from '../derivation-scope';
 import { toneInk } from '$lib/view-models/state-tone';
 import { newestFirst, latest } from '$lib/instant';
@@ -207,7 +208,7 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 	const failed = byFailRank(rows.filter((r) => r.group === 'failed'));
 	const lead = runwayRow(failed);
 	const yours = rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking);
-	const attRows = [...failed.filter((r) => r !== lead), ...yours];
+	const attRows = [...failed.filter((r) => r !== lead), ...yours].sort((a, b) => attentionRank(a.group === 'failed' ? 'failed' : 'approval', !!a.failure?.recovered) - attentionRank(b.group === 'failed' ? 'failed' : 'approval', !!b.failure?.recovered));
 	const placeOf = (r: TRow) => (region ? '' : (r.regions.length > 1 ? `${r.regions.length} regions` : r.where === r.tier || ['production', 'staging', 'dev', 'test'].includes(r.where) ? '' : r.where));
 	const attention = attRows.map((r) => { const it = askOf(r, hs, { noTier: true }); const pl = placeOf(r); return pl ? { ...it, id: { ...it.id, name: `${r.app} · ${pl}` } } : it; });
 	const nF = attention.filter((a) => a.failed).length, nA = attention.length - nF;

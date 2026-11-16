@@ -25,7 +25,7 @@ describe('one failure vocabulary', () => {
 	});
 	it('the Attention rollup uses the cards\' words', async () => {
 		const { attentionRollup } = await import('./rollouts-page');
-		expect(attentionRollup({ failing: 6, recovered: 2, toApprove: 1 })).toEqual([{ text: '4 failing', ink: 'danger' }, '2 failed', { text: '1 to approve', ink: 'held' }]);
+		expect(attentionRollup({ failing: 6, recovered: 2, toApprove: 1 })).toEqual([{ text: '4 failing', ink: 'danger' }, { text: '1 to approve', ink: 'held' }, '2 failed']);
 		expect(attentionRollup({ failing: 0, recovered: 0, toApprove: 0 })).toEqual([]);
 	}, 30000);
 });

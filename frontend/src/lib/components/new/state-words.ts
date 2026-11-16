@@ -84,3 +84,9 @@ export function askView(ask: AskState, headline: string | null, place: string | 
 	if (ask === ASK_LOADING) return { headline: approvalIn(false, place), slot: 'reserved' };
 	return ask ? { headline: approvalIn(true, place), slot: 'approve' } : { headline, slot: 'none' };
 }
+
+/** An Attention rollup in the cards' own order (view-models/failure-actions.ts `attentionRank`): failing now, then the approvals, then the recovered `failed`. `recovered` of the `failing` places have all their checks OK again. */
+export function attentionRollupOf<A>(failing: number, recovered: number, approval: A | null): (string | { text: string; ink: 'danger' } | A)[] {
+	const rec = Math.min(recovered, failing);
+	return [...failedRollup(failing - rec, 0), ...(approval ? [approval] : []), ...failedRollup(rec, rec)];
+}

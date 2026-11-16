@@ -10,6 +10,7 @@
  * figure; an approval ask leads with "N of M prod regions" only when `regionStates` says several prod regions wait (the count the change's own
  * line prints), else it is title-led. The viewer is 'you', never their own avatar; the lane drawing is built by the component (Footprint `laneOf`).
  */
+import { attentionRank } from '$lib/view-models/failure-actions';
 import { inScope } from './derivation-scope';
 import { oldestFirst, newestFirst, earliest, latest as latestInstant } from '$lib/instant';
 import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
@@ -20,7 +21,7 @@ import { rowAction, actionHref } from './rollout-view';
 import { chipPlace, changeLineOf } from './rollouts-page';
 import { classifyChanges, groupByRepo, cardOf, tiersOf, type RepoGroup, type Rollup } from './changes-page';
 import { TIERS } from './change-view';
-import { severity, approvalWord, failedWord, failedRollup } from './state-words';
+import { severity, approvalWord, failedWord, attentionRollupOf } from './state-words';
 import { siteCount, siteKey, regionsPhrase } from '$lib/view-models/regions';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import type { RepoCardModel } from '$lib/view-models/repo-card';
@@ -114,13 +115,10 @@ export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage
 	return inScope(() => homePageRaw(hs, starred));
 }
 /** the Needs-you rollup: failures live now, failures whose checks recovered (`failed`, the word every page uses), then the approvals */
-export const asksRollupOf = (failing: number, recovered: number, toApprove: number): (string | { text: string; ink: 'danger' | 'held' })[] => [
-	...failedRollup(failing, recovered),
-	...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])
-];
+export const asksRollupOf = (failing: number, recovered: number, toApprove: number): (string | { text: string; ink: 'danger' | 'held' })[] => attentionRollupOf(failing, recovered, toApprove ? { text: `${toApprove} to approve`, ink: 'held' as const } : null);
 
-/** a live failure, then a recovered one (its checks are OK again), then the approvals; the sort is stable */
-const askRank = (r: TRow) => (r.group !== 'failed' ? 2 : r.failure?.recovered ? 1 : 0);
+/** a live failure, then the approvals, then a recovered one (its checks are OK again); the sort is stable */
+const askRank = (r: TRow) => attentionRank(r.group === 'failed' ? 'failed' : 'approval', !!r.failure?.recovered);
 function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	const R = rollouts(hs, starred);
 	/* failures first (prod before the rest: the roster's urgency order already does it), then approvals; the sort is stable */
