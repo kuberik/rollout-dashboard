@@ -308,7 +308,7 @@
 		const k = keyOf(r.href);
 		return live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === k) ?? null;
 	});
-	const retryCluster = $derived(retryRollout ? environments.find((e) => rolloutMatchesEnvironment(retryRollout, e)) : undefined);
+	const retryCluster = $derived(retryRollout ? (query.data?.environments?.items ?? []).find((e) => rolloutMatchesEnvironment(retryRollout, e)) : undefined);
 	const retryDecision = $derived(retryConfirm(retryRollout, retryCluster?.spec?.environment ?? null, confirmRetryFor ? liveHealthChecks(confirmRetryFor.href) : [], (retryRollout?.status?.history?.[0]?.failedHealthChecks ?? []) as { name: string; namespace?: string }[]));
 	function retryDeploy(r: TRow) {
 		confirmRetryFor = r;
