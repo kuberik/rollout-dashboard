@@ -70,9 +70,9 @@ describe('todayRollupOf (Today in <env> header)', () => {
 	const failedHref = (app: string) => placesOf('calm', app).find((p) => p.state === 'failed')!.href;
 	it('a failed deploy whose checks recovered is neutral `failed`; one failing now is danger `failing`', () => {
 		load();
-		expect(todayRollupOf(4, [failedHref('catalog-api')])).toEqual(['4 deploys', '1 failed']);
-		expect(todayRollupOf(4, [failedHref('checkout-gateway')])).toEqual(['4 deploys', { text: '1 failing', ink: 'danger' }]);
-		expect(todayRollupOf(4, [failedHref('checkout-gateway'), failedHref('catalog-api')])).toEqual(['4 deploys', { text: '1 failing', ink: 'danger' }, '1 failed']);
-		expect(todayRollupOf(1, [])).toEqual(['1 deploy']);
+		expect(todayRollupOf(4, [failedHref('catalog-api')])).toEqual([{ text: '4 deploys', fold: true }, '1 failed']);
+		expect(todayRollupOf(4, [failedHref('checkout-gateway')])).toEqual([{ text: '4 deploys', fold: true }, { text: '1 failing', ink: 'danger' }]);
+		expect(todayRollupOf(4, [failedHref('checkout-gateway'), failedHref('catalog-api')])).toEqual([{ text: '4 deploys', fold: true }, { text: '1 failing', ink: 'danger' }, '1 failed']);
+		expect(todayRollupOf(1, [])).toEqual([{ text: '1 deploy', fold: true }]);
 	});
 });

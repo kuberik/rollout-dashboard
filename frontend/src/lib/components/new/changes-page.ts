@@ -55,7 +55,8 @@ export type AttentionItem = { key: string; p: PChange; model: AttentionModel; hr
 export type RepoGroup = { repo: string; changes: PChange[]; landed: PChange[]; flying: number; worst: number; href: string };
 export type RestRepo = { key: string; repo: string; href: string; ref: string; title: string; age: string };
 export type Banner = { p: PChange; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine; openHref: string; rollbackHref: string | null; meta: BannerMeta };
-export type Rollup = (string | { text: string; ink: 'danger' | 'held' })[];
+/** `fold`: the part is dropped on a phone when it is not the last (a count the header can do without there) */
+export type Rollup = (string | { text: string; ink?: 'danger' | 'held'; fold?: boolean })[];
 
 export type ChangesPage = {
 	banner: Banner | null;

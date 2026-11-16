@@ -37,6 +37,10 @@ describe('SectionHeader rollup', () => {
 		const block = css.slice(css.indexOf('.section-header.section-header-rolled {'));
 		expect(block.slice(0, block.indexOf('}'))).toContain('align-items: flex-start');
 	});
+	it('a part marked `fold` is hidden on a phone unless it is the last', () => {
+		const spans = (r: unknown[]) => [...render(SectionHeader, { title: 'Today', rollup: r } as never).container.querySelectorAll('[data-rollup] > span')].map((e) => [e.textContent, e.className.includes('hidden sm:block')]);
+		expect(spans([{ text: '84 deploys', fold: true }, { text: '4 failing', ink: 'danger' }])).toEqual([['84 deploys', true], ['4 failing', false]]);
+	});
 	it('a header without a rollup stays centred', () => {
 		const { container } = render(SectionHeader, { title: 'Team' } as never);
 		expect(container.querySelector('.section-header')!.classList.contains('section-header-rolled')).toBe(false);

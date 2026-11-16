@@ -165,7 +165,8 @@ export const tileAriaLabel = (places: number, c: { failing: number; waiting: num
  */
 export function todayRollupOf(deploys: number, failedHrefs: readonly string[]): Rollup {
 	const liveNow = new Set(failedHrefs.filter((h) => failingNowAt(h))).size;
-	return [plural(deploys, 'deploy'), ...failedRollup(failedHrefs.length, Math.max(0, failedHrefs.length - liveNow))];
+	/* the deploy count folds on a phone (its rows below are the count); only the failures stay on the title's line */
+	return [{ text: plural(deploys, 'deploy'), fold: true }, ...failedRollup(failedHrefs.length, Math.max(0, failedHrefs.length - liveNow))];
 }
 export function envPage(hs: HomeState, name: string): EnvPage | null {
 	return inScope(() => envPageRaw(hs, name));

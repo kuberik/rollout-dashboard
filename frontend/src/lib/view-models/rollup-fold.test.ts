@@ -8,5 +8,8 @@ describe('rollup phone fold (QA2 #7)', () => {
 		expect(foldsOnPhone('20 at rest')).toBe(false);
 		expect(foldsOnPhone({ text: '2 failing', ink: 'danger' })).toBe(false);
 		expect(foldsOnPhone('5h ago')).toBe(true);
+		expect(foldsOnPhone({ text: '84 deploys', fold: true })).toBe(true);
+		expect(foldsOnPhone({ text: '84 deploys' })).toBe(false);
+		expect(foldsOnPhone({ text: '2 failing', ink: 'danger', fold: true })).toBe(false);
 	});
 });
