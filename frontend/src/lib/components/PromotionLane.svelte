@@ -70,6 +70,8 @@
 		reserve?: boolean;
 		/** a failed place whose checks are all OK again: the box says "Failed", not "Failing" (state-words `failedWord`). Unknown reads as Failing. */
 		recovered?: (n: LaneNode) => boolean;
+		/** when a failed place's failure began (ISO), the age its box prints instead of the deploy's; null/unknown falls back to the deploy's */
+		failedSince?: (n: LaneNode) => string | null;
 	} = $props();
 	const size = $derived<'L' | 'M'>(fill ?? 'L');
 	const linked = $derived(!fill);
@@ -95,7 +97,7 @@
 	const stripInk = (n: LaneNode) => (WORD[n.state] ? toneInk(n.state) : 'text-fg-subtle');
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking', 'paused']);
 	const markOf = (n: LaneNode): EnvCell['mark'] =>
-		n.state === 'held' && n.card.heldCause === 'person' && mine(n) ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: (n.state === 'paused' ? 'held' : n.state) as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined;
+		n.state === 'held' && n.card.heldCause === 'person' && mine(n) ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: (n.state === 'paused' ? 'held' : n.state) as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking', recovered: n.state === 'failed' && !!recovered?.(n) } : undefined;
 	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || severityRank(n.state) < severityRank(b.state) ? n : b), null));
 
 	const STATE_NOUN: Record<NodeState, string> = { failed: 'failing', stuck: 'stuck', deploying: 'deploying', checking: 'checking', paused: 'paused', held: 'held', behind: '', newest: '', none: '' };
@@ -175,11 +177,12 @@
 				name: siteName(n),
 				wave: multiWave ? (n.card.wave ?? 1) : null,
 				state: n.state === 'held' && n.card.heldCause === 'person' ? (mine(n) ? 'approval-yours' : 'approval') : SITE_STATE[n.state],
+				recovered: n.state === 'failed' && !!recovered?.(n),
 				word: siteWord(n),
 				detail: siteDetail(n),
 				wordInk: toneInk(n.state),
 				build: n.card.version ? shortenVersion(n.card.version) : undefined,
-				aside: n.card.timestamp ? formatTimeAgoCompact(n.card.timestamp) : undefined,
+				aside: (n.state === 'failed' ? (failedSince?.(n) ?? n.card.timestamp) : n.card.timestamp) ? formatTimeAgoCompact((n.state === 'failed' ? (failedSince?.(n) ?? n.card.timestamp) : n.card.timestamp) as string) : undefined,
 				href: hrefFor(n),
 				here: youAreHere && isCurrent(n)
 			}));

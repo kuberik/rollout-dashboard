@@ -248,6 +248,8 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 
 /** A failed place whose checks are all OK again (what its Attention card, Fleet row and strip box read as "Failed", not "Failing"): the failure reason's own `recovered`, by href. */
 export const failureRecovered = (href: string): boolean => !!failureReason({ group: 'failed', href })?.recovered;
+/** THE ONE age of a failed place: when its failure began (the instant the banners and the Health checks card print), null when no health evidence was kept */
+export const failureSinceAt = (href: string): string | null => failureReason({ group: 'failed', href })?.since ?? null;
 
 /* ═══ places (defect 5) ═══ */
 /* the one place word lives in view-models/regions.ts (Home reads it too); re-exported for every surface that imported it from here */
