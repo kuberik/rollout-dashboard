@@ -2,7 +2,7 @@
 
 <script lang="ts">
 	/**
-	 * The failure statement of the LIST pages (/rollouts, /changes, /envs/<name>): "<app> failed in <place>", the failed check, the meta line (Since · build; the place is the title's),
+	 * The failure statement of the LIST pages (/rollouts, /changes, /envs/<name>): "<app> failed in <place>", the failed check, the meta line (the place is the title's),
 	 * the change that failed, and Open rollout / Roll back. Role: the page's one blocking statement, the same as /apps and the app page print.
 	 * No existing component was missing: this IS `StatementBanner` (shell, meta line, phone action row, the ⋯ menu), given the list pages'
 	 * banner model once so the three pages stop hand-building a raw `AlertPanel` + `.btn` links (which had no meta line and no phone row).
@@ -28,8 +28,8 @@
 
 {#snippet details()}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
 <StatementBanner severity="failed" title={b.title} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
-	message={sentence} change={b.change ?? undefined}
-	build={b.meta.build ?? undefined} body={extra} class=""
+	message={sentence} change={b.change ? { ...b.change, build: b.meta.build ?? undefined } : undefined}
+	build={b.change ? undefined : b.meta.build ?? undefined} body={extra} class=""
 	footnoteLabel={b.evidence ? 'Details' : undefined}
 	primary={b.rollbackHref ? { label: 'Roll back', href: b.rollbackHref, icon: UndoOutline, key: 'rollback' } : undefined}
 	secondary={[{ label: 'Open rollout', href: b.openHref, after: true, key: 'open' }]} footnoteBody={b.evidence ? details : undefined} />

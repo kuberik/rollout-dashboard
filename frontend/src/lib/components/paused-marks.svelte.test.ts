@@ -77,6 +77,16 @@ describe('the list-page banner prints the age on the health line, as the rollout
 		const meta = container.querySelector('[data-statement-meta]')!.textContent!;
 		expect(meta).toContain('1.4.0');
 		expect(meta).not.toMatch(/ago|\bfor\b/);
-		expect(container.querySelector('[data-statement-body]')!.textContent).toMatch(/2 health checks failing\s*· 12m ago/);
+		expect(container.querySelector('[data-statement-body]')!.textContent).toMatch(/2 health checks failing\s*·\s*12m\s*ago/);
+	});
+
+	it('the build leads the change line in mono; no bare build row, no build on the meta line', () => {
+		const b = { title: 'orders-hub failing in prod', check: null, line: '2 health checks failing', change: { title: 'Fix flaky readiness handler', ref: '#54', person: 'mark-collins' }, openHref: '/x', rollbackHref: null, meta: { since: '11m', sinceAt: '2026-11-15T18:38:00Z', build: '1.4.0' } };
+		const { container } = render(FailureBanner, { b });
+		const line = container.querySelector('[data-ap-change]')!;
+		expect(line.querySelector('[data-ap-build]')!.textContent).toBe('1.4.0');
+		expect(line.querySelector('[data-ap-build]')!.className).toContain('t-code');
+		expect(line.textContent).toMatch(/^\s*1\.4\.0\s*\u00b7\s*Fix flaky readiness handler\s*#54\s*M?mark-collins/);
+		expect(container.querySelector('[data-statement-meta]')).toBeNull();
 	});
 });
