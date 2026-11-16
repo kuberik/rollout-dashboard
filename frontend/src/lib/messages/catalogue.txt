@@ -589,11 +589,9 @@ lib/components/new/app/app-model.ts	code	wave …
 lib/components/new/app/AppActivity.svelte	code	… of …
 lib/components/new/app/AppActivity.svelte	code	… of … …
 lib/components/new/app/AppActivity.svelte	text	All activity
-lib/components/new/app/AppActivity.svelte	code	Check failed
 lib/components/new/app/AppActivity.svelte	text	Deploys and promotions of this app appear here.
 lib/components/new/app/AppActivity.svelte	text	No activity yet
 lib/components/new/app/AppActivity.svelte	title	Recent activity
-lib/components/new/app/AppActivity.svelte	code	Rolled back
 lib/components/new/app/AppBuilds.svelte	text	… builds not running anywhere
 lib/components/new/app/AppBuilds.svelte	aria-label	…{noReleases ? '' : `, $…`}{s.title ? `, $…` : ''}
 lib/components/new/app/AppBuilds.svelte	text	Builds appear once a rollout deploys it.
@@ -1251,6 +1249,7 @@ lib/view-models/activity-verb.ts	code	is deploying
 lib/view-models/activity-verb.ts	code	is held
 lib/view-models/activity-verb.ts	code	is paused
 lib/view-models/activity-verb.ts	code	rolled back
+lib/view-models/activity-verb.ts	code	Rolled back
 lib/view-models/activity-verb.ts	code	was approved
 lib/view-models/activity-verb.ts	code	was pinned
 lib/view-models/activity-verb.ts	code	was promoted

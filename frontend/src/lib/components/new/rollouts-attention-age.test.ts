@@ -26,7 +26,7 @@ describe('rolloutsPage attention age', () => {
 			const since = a.row.failure?.since;
 			expect(since).toBeTruthy();
 			expect(a.model.forAgeAt).toBe(since);
-			expect(a.model.forAge).toBe(`for ${ago(since!)}`);
+			expect(a.model.forAge).toBe(a.model.recovered ? `${ago(since!)} ago` : `for ${ago(since!)}`);
 		}
 	});
 	it('a deploy older than the failure does not set the age', () => {

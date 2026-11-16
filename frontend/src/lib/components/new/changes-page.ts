@@ -132,9 +132,9 @@ function classifyChangesRaw(hs: HomeState): { mineP: PChange[]; teamP: PChange[]
 }
 
 /** Attention order: failing now first, then recovered failures, then the OLDEST ask first (compared as instants; a change with no clock goes last). */
-export function attentionOrder<T extends { state: string; c?: { failure?: { recovered?: boolean } | null } }>(ps: T[], askSince: (p: T) => string | null): T[] {
+export function attentionOrder<T extends { state: string }>(ps: T[], askSince: (p: T) => string | null): T[] {
 	/* tiers: a failure live now, a recovered one (its checks are OK again), then the rest; the oldest ask first only inside a tier */
-	const tier = (p: T) => (p.state !== 'failed' ? 2 : p.c?.failure?.recovered ? 1 : 0);
+	const tier = (p: T) => (p.state !== 'failed' ? 2 : (p as { c?: { failure?: { recovered?: boolean } | null } }).c?.failure?.recovered ? 1 : 0);
 	return [...ps].sort((a, b) => tier(a) - tier(b) || oldestFirst(askSince(a), askSince(b)));
 }
 /** When an Attention item began asking: an approval from its wait clock, a failure from when its check began failing
