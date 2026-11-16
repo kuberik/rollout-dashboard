@@ -12,13 +12,13 @@
  */
 import { tierOf, TIER_ORDER, type Tier } from './promotion-lanes';
 import { regionsPhrase, siteCount } from './regions';
-import { failedParts } from '$lib/components/new/state-words';
+import { failedRollup } from '$lib/components/new/state-words';
 
-/** The unresolved failures as the shared failing / failed split (state-words `failedParts`): only a check failing now is red, a failure whose checks recovered is neutral `failed`. */
+/** The unresolved failures as the shared failing / failed split (state-words `failedRollup`): only a check failing now is red, a failure whose checks recovered is neutral `failed`. */
 export function failedRollupParts(unresolved: number, recovered: number, checksKnown = true): (string | { text: string; ink?: 'danger' })[] {
 	/* until the fleet's health checks have answered, which of the failures recovered is unknown: say nothing yet rather than "failing" and then change it in place */
 	if (!checksKnown) return [];
-	return failedParts(unresolved, Math.min(recovered, unresolved)).map((text) => (text.endsWith(' failing') ? { text, ink: 'danger' as const } : text));
+	return failedRollup(unresolved, Math.min(recovered, unresolved));
 }
 
 /** A failed row is red (live) only while one of its members is the rollout's current state AND its checks fail now; a failure whose checks have recovered reads neutral, like the rollup's `failed` and the resolved row. */

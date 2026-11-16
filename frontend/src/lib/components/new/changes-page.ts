@@ -24,7 +24,7 @@ import { rowAction, actionHref } from './rollout-view';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import { repoCardModel, rollupParts, type RepoCardModel, type RepoChange, type RollupPart } from '$lib/view-models/repo-card';
 import type { BeadState } from '$lib/view-models/bead';
-import { failedParts } from './state-words';
+import { failedRollup } from './state-words';
 import { failedBannerTitle } from '$lib/view-models/banner';
 import { failingNowOf, bannerMeta, type BannerMeta, type ChangeLine } from './rollouts-page';
 import { servicesOf, spreadOf, type Svc } from './change/service-spread';
@@ -144,9 +144,9 @@ export function attentionSince(
 	if (p.state === 'failed') return p.c.failure?.since ?? p.ride.since ?? p.c.since ?? null;
 	return p.ride.since ?? p.c.since ?? null;
 }
-/** the Attention rollup: only a check failing now is danger ink, a recovered `failed` and the rest follow (the shared failing/failed split, state-words `failedParts`) */
+/** the Attention rollup: only a check failing now is danger ink, a recovered `failed` and the rest follow (the shared failing/failed split, state-words `failedRollup`) */
 export function attentionRollupParts(failing: number, recovered: number, toApprove: number): Rollup {
-	return [...failedParts(failing, recovered).map((text) => (text.endsWith(' failing') ? { text, ink: 'danger' as const } : text)), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])];
+	return [...failedRollup(failing, recovered), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])];
 }
 export function changesPage(hs: HomeState): ChangesPage {
 	return inScope(() => changesPageRaw(hs));
