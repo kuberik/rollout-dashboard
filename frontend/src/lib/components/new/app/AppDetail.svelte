@@ -299,22 +299,6 @@
 		});
 	});
 	let retry = $state<'idle' | 'busy' | 'done' | 'error'>('idle');
-	/* Retry asks exactly as the rollout Overview's failure panel does: the one shared rule (view-models/retry-confirm.ts), `none` fires on click, otherwise RetryConfirmModal */
-	let confirmRetryFor = $state<TRow | null>(null);
-	let showRetryConfirm = $state(false);
-	const retryRollout = $derived.by(() => {
-		const r = confirmRetryFor;
-		if (!r) return null;
-		const k = keyOf(r.href);
-		return live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === k) ?? null;
-	});
-	const retryCluster = $derived(retryRollout ? (query.data?.environments?.items ?? []).find((e) => rolloutMatchesEnvironment(retryRollout, e)) : undefined);
-	const retryDecision = $derived(retryConfirm(retryRollout, retryCluster?.spec?.environment ?? null, confirmRetryFor ? liveHealthChecks(confirmRetryFor.href) : [], (retryRollout?.status?.history?.[0]?.failedHealthChecks ?? []) as { name: string; namespace?: string }[]));
-	function retryDeploy(r: TRow) {
-		confirmRetryFor = r;
-		if (retryDecision.level === 'none') { void postRetry(r); return; }
-		showRetryConfirm = true;
-	}
 	async function postRetry(r: TRow) {
 		const p = r.href.split('/').filter(Boolean);
 		retry = 'busy';
@@ -335,6 +319,22 @@
 		return (query.data?.rollouts?.items ?? []).filter((r) => keys.has(`${r.metadata?.namespace}/${r.metadata?.name}`));
 	});
 	const environments = $derived(query.data?.environments?.items ?? []);
+	/* Retry asks exactly as the rollout Overview's failure panel does: the one shared rule (view-models/retry-confirm.ts), `none` fires on click, otherwise RetryConfirmModal */
+	let confirmRetryFor = $state<TRow | null>(null);
+	let showRetryConfirm = $state(false);
+	const retryRollout = $derived.by(() => {
+		const r = confirmRetryFor;
+		if (!r) return null;
+		const k = keyOf(r.href);
+		return live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === k) ?? null;
+	});
+	const retryCluster = $derived(retryRollout ? environments.find((e) => rolloutMatchesEnvironment(retryRollout, e)) : undefined);
+	const retryDecision = $derived(retryConfirm(retryRollout, retryCluster?.spec?.environment ?? null, confirmRetryFor ? liveHealthChecks(confirmRetryFor.href) : [], (retryRollout?.status?.history?.[0]?.failedHealthChecks ?? []) as { name: string; namespace?: string }[]));
+	function retryDeploy(r: TRow) {
+		confirmRetryFor = r;
+		if (retryDecision.level === 'none') { void postRetry(r); return; }
+		showRetryConfirm = true;
+	}
 	const SPARK_DAYS = 7;
 	const deploys7d = $derived.by(() => {
 		const end = $now.getTime(), start = end - SPARK_DAYS * 86_400_000;
