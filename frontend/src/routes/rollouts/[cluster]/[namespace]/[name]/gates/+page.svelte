@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { failureRecovered } from '$lib/components/new/data';
 	import { checkHoldSentence } from '$lib/view-models/check-hold-sentence';
 	import { availableReleases } from '$lib/releases/registry.svelte';
@@ -1814,11 +1815,12 @@
 					{/if}
 					<!-- The age: always at lg+; on the phone only when it is the line's
 					     only fact (r11, item 5). -->
-					{#if rollout?.status?.history?.[0]?.timestamp}
+					{@const headAt = headDeployedAt(rollout)}
+					{#if headAt}
 						<span
 							class="text-fg-muted tabular-nums {gateFactNow || focusWaitsFor
 								? 'max-lg:hidden'
-								: ''}">{formatTimeAgoCompact(rollout.status.history[0].timestamp, $now)} ago</span
+								: ''}">{formatTimeAgoCompact(headAt, $now)} ago</span
 						>
 					{/if}
 				{/snippet}

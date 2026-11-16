@@ -18,4 +18,9 @@ describe('the rollout header age', () => {
 		expect(logs).toMatch(/headDeployedAt\(rollout\)/);
 		expect(logs).not.toMatch(/bakeStartTime/);
 	});
+	it.each(['+page.svelte', 'history/+page.svelte', 'gates/+page.svelte'])('the %s header age reads the same source', (f) => {
+		const src = readFileSync(resolve(__dirname, '../../routes/rollouts/[cluster]/[namespace]/[name]/' + f), 'utf8');
+		expect(src).toContain("import { headDeployedAt } from '$lib/view-models/head-age'");
+		expect(src).toMatch(/formatTimeAgoCompact\((headDeployedAt\(rollout\)|headAt\b)/);
+	});
 });

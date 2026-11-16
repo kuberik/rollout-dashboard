@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { toneInk } from '$lib/view-models/state-tone';
 	import { lastFailureAgoOf } from '$lib/view-models/event-age';
 	import { failedAfterRest } from '$lib/view-models/diff-page-title';
@@ -1646,9 +1647,10 @@
 					<!-- D5: chip · fact · age. The newest deploy's age, last; sm+ only
 					     (r11, item 5: no age on a phone meta line that has another
 					     fact). -->
-					{#if allHistory[0]?.timestamp && totalDeploys !== 1}
-						<span class="tabular-nums max-lg:hidden" title={formatDate(allHistory[0].timestamp)}
-							>{formatTimeAgoCompact(allHistory[0].timestamp, $now)} ago</span
+					{@const headAt = headDeployedAt(rollout)}
+					{#if headAt && totalDeploys !== 1}
+						<span class="tabular-nums max-lg:hidden" title={formatDate(headAt)}
+							>{formatTimeAgoCompact(headAt, $now)} ago</span
 						>
 					{/if}
 				{/snippet}

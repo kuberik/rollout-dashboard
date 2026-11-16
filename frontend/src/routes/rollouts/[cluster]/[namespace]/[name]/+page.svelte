@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
 	import { isDeployInFlight, showNewerBuildsCard } from '$lib/view-models/pipeline-card';
@@ -2915,8 +2916,8 @@
 					<!-- r11, item 5: no age on the phone meta line (it has other facts). -->
 					<span
 						class="t-meta text-fg-subtle tabular-nums max-lg:hidden"
-						title={formatDate(latestEntry.timestamp)}
-						>{formatTimeAgoCompact(latestEntry.timestamp, $now)} ago</span
+						title={formatDate(headDeployedAt(rollout) ?? latestEntry.timestamp)}
+						>{formatTimeAgoCompact(headDeployedAt(rollout) ?? latestEntry.timestamp, $now)} ago</span
 					>
 					<span class="t-meta contents"
 						>{#if isCurrentVersionCustom || headerNewer > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)) || scheduleMetaText}
