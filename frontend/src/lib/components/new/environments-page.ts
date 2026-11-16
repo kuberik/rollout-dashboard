@@ -52,10 +52,19 @@ export function barSegments(t: { failing: number; waiting: number; moving: numbe
 }
 
 /** the Production band's cells: the places with something to say (base "production" first among equals), the rest fold to one count */
+/** A region cell's state line as parts, the tier line's rule: only the failing-now part takes danger ink, a recovered "failed" is neutral; the moving part carries its count and the tier's word ("1 checking") in the mark's own hue. */
+export function regionCellParts(r: Pick<RegionCell, 'failing' | 'recovered' | 'waiting' | 'moving' | 'movingWord'>): { text: string; ink: Ink | null }[] {
+	const recovered = Math.min(r.recovered, r.failing), live = r.failing - recovered;
+	const out: { text: string; ink: Ink | null }[] = [];
+	if (live) out.push({ text: `${live} ${failedWord(false).toLowerCase()}`, ink: 'danger' });
+	if (recovered) out.push({ text: `${recovered} ${failedWord(true).toLowerCase()}`, ink: null });
+	if (r.waiting) out.push({ text: `${r.waiting} waiting`, ink: 'held' });
+	if (r.moving) out.push({ text: `${r.moving} ${r.movingWord}`, ink: r.movingWord === 'checking' ? 'progress' : 'active' });
+	return out;
+}
 export function regionCells(m: ReturnType<typeof envsModel>): { cells: RegionCell[]; healthy: number } {
-	const word = (mk: Mark) => (mk === 'checking' ? 'checking' : 'deploying');
 	const all = [...(m.base ? [m.base] : []), ...m.busy, ...m.rest];
-	const cell = (r: (typeof all)[number]): RegionCell => ({ key: r.label + (r.regionless ? '*' : ''), label: r.label, mark: r.mark, failing: r.failing, recovered: r.recovered, waiting: r.waiting, moving: r.moving, movingWord: word(r.mark), href: r.envHref });
+	const cell = (r: (typeof all)[number]): RegionCell => ({ key: r.label + (r.regionless ? '*' : ''), label: r.label, mark: r.mark, failing: r.failing, recovered: r.recovered, waiting: r.waiting, moving: r.moving, movingWord: r.movingWord, href: r.envHref });
 	/* QA #10: cells are SITES. One site (the default one, or places that share a label) has no region cells and no region wording: the tile's state bar already says it */
 	if (siteCount(all.map((r) => (r.regionless ? '' : r.label))) <= 1) return { cells: [], healthy: 0 };
 	const adverse = all.filter((r) => r.mark !== 'newest').map(cell);
@@ -118,7 +127,7 @@ export function environmentsPage(hs: HomeState): EnvironmentsPage {
 			key: t.key, name: TIER_NAME[t.key] ?? t.key, href: `/envs/${t.key}`, places: t.places, apps: t.apps,
 			failing: c.failing, waiting: c.waiting, yours, moving: c.moving, rest: c.rest,
 			mark: s.mark, lead: s.lead, parts: s.parts, calm: !c.failing && !c.waiting && !c.moving,
-			label: `${t.places} places: ${failedParts(c.failing, c.recovered).join(', ') || '0 failing'}, ${c.waiting} waiting, ${c.moving} ${movingWord}, ${c.rest} healthy`,
+			label: `${plural(t.places, 'place')}: ${failedParts(c.failing, c.recovered).join(', ') || '0 failing'}, ${c.waiting} waiting, ${c.moving} ${c.moving ? movingWord : 'in progress'}, ${c.rest} healthy`,
 			arriving: { builds: inb.length, apps: [...new Set(inb.map((x) => x.app))] },
 			last,
 			regions: t.key === 'prod' ? withWaveHold(regionCells(m), hs, m) : null

@@ -120,3 +120,29 @@ describe('the tile text, region cells and aria label use the same two failure wo
 		expect(regionCells(m).cells.map((c) => [c.label, c.failing, c.recovered])).toEqual([['us-east-1', 6, 2], ['eu-west', 1, 0]]);
 	});
 });
+
+describe('region cell parts follow the tier line', () => {
+	it('only the failing-now part is danger ink; failed is neutral', async () => {
+		const { regionCellParts } = await import('./environments-page');
+		expect(regionCellParts({ failing: 6, recovered: 2, waiting: 0, moving: 0, movingWord: 'checking' })).toEqual([{ text: '4 failing', ink: 'danger' }, { text: '2 failed', ink: null }]);
+		expect(regionCellParts({ failing: 2, recovered: 2, waiting: 0, moving: 0, movingWord: 'checking' })).toEqual([{ text: '2 failed', ink: null }]);
+	});
+	it('the moving part carries the count and the tier word', async () => {
+		const { regionCellParts } = await import('./environments-page');
+		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 3, moving: 1, movingWord: 'checking' }).map((p) => p.text)).toEqual(['3 waiting', '1 checking']);
+		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 0, moving: 2, movingWord: 'in progress' })[0].text).toBe('2 in progress');
+	});
+	it('movingWordOf: checking / deploying / in progress when both or none', async () => {
+		const { movingWordOf } = await import('./envs-model');
+		const p = (...s: string[]) => s.map((state) => ({ state }));
+		expect(movingWordOf(p('checking', 'checking'))).toBe('checking');
+		expect(movingWordOf(p('deploying'))).toBe('deploying');
+		expect(movingWordOf(p('deploying', 'checking'))).toBe('in progress');
+		expect(movingWordOf(p('rest'))).toBe('in progress');
+	});
+	it('the aria label pluralises one place and says in progress for a zero count', async () => {
+		const { environmentsPage } = await import('./environments-page');
+		const labels = environmentsPage('calm' as never).tiles.map((t) => t.label);
+		for (const l of labels) { expect(l).not.toMatch(/^1 places/); expect(l).not.toMatch(/ 0 (deploying|checking)/); }
+	});
+});

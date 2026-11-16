@@ -84,7 +84,7 @@ export function dotCols(n: number, avail: number, dot: number, gap: number, cap 
 }
 export const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
-export type RegionTile = { label: string; regionless: boolean; places: number; failing: number; /** of the failing places, those whose checks all recovered (they read `failed`) */ recovered: number; waiting: number; holds: number; approvals: number; moving: number; worst: string; mark: Mark; href: string; envHref: string };
+export type RegionTile = { label: string; regionless: boolean; places: number; failing: number; /** of the failing places, those whose checks all recovered (they read `failed`) */ recovered: number; waiting: number; holds: number; approvals: number; moving: number; /** the tier line's word for the moving places: checking / deploying / in progress when both */ movingWord: string; worst: string; mark: Mark; href: string; envHref: string };
 export type PlaceLike = { state: string };
 /** F1: a rule hold (held-by-rule) is the amber mark; an approval wait is the neutral ring. The tile's mark is its MOST SEVERE place in
  *  `severity.ts`'s one order (failing, approval, hold, deploying, checking, rest), the same word every other surface headlines. */
@@ -92,6 +92,11 @@ export function markOfPlaces(ps: PlaceLike[]): Mark {
 	const k = severityOf(mostSevere(ps, (p) => p.state)?.state);
 	return k === 'failed' || k === 'held' || k === 'deploying' || k === 'checking' || k === 'approval' ? k : 'newest';
 }
+/** THE ONE MOVING WORD: what the moving places are doing, the tier line's rule (all checking / all deploying / both = "in progress"; none = "in progress", the neutral word for a zero count) */
+export const movingWordOf = (ps: PlaceLike[]): string => {
+	const c = ps.some((p) => p.state === 'checking'), d = ps.some((p) => p.state === 'deploying');
+	return c && d ? 'in progress' : c ? 'checking' : d ? 'deploying' : 'in progress';
+};
 const MSEV = (m: Mark): number => severityRank(m);
 
 /** r34 truth-5 (lead ruling 2026-11-01): the unflip changes only what these pages DRAW (marks, dots, the in-progress partition); every COUNT of approvals is fleetCounts().places.approval (the tab's gate word), so a place that is checking AND gated counts under both facts.
@@ -152,7 +157,7 @@ export function envsModel(state: HomeState) {
 	});
 	/* region tiles: the regions with something to say (failing, waiting, moving), regionless prod among them by severity; the rest fold */
 	const tile = (r: { label: string; apps: number; failing: number; waiting: number; moving: number; worst: string; href: string; places: PlaceLike[] }, regionless: boolean): RegionTile => ({
-		label: r.label, regionless, places: r.apps, failing: r.failing, recovered: r.places.filter((p) => p.state === 'failed' && failureRecovered((p as unknown as { href: string }).href)).length, waiting: r.waiting, moving: r.moving, worst: r.worst, href: r.href,
+		label: r.label, regionless, places: r.apps, failing: r.failing, recovered: r.places.filter((p) => p.state === 'failed' && failureRecovered((p as unknown as { href: string }).href)).length, waiting: r.waiting, moving: r.moving, movingWord: movingWordOf(r.places), worst: r.worst, href: r.href,
 		holds: r.places.filter((p) => p.state === 'held-by-rule').length, approvals: r.places.filter((p) => p.state === 'awaiting-approval' || U.hrefs.has((p as unknown as { href: string }).href)).length, mark: markOfPlaces(r.places),
 		envHref: regionless ? '/envs/prod' : `/envs/prod-${r.label}`
 	});
