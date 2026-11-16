@@ -63,7 +63,7 @@
 	import { bucketize, type DeployBucket, type DeployMarker } from '$lib/view-models/deploy-bars';
 	import { pickDefaultRange } from '$lib/view-models/activity-range';
 	import { deployReason, deployMark } from '$lib/view-models/activity-note';
-	import { inFlightRollouts, deployRateSub, isInFlightEntry } from '$lib/view-models/activity-figures';
+	import { inFlightFacts, inFlightRollouts, deployRateSub, isInFlightEntry } from '$lib/view-models/activity-figures';
 	import { medianTimeToProdMs as medianTimeToProdMsOf } from '$lib/view-models/activity-time-to-prod';
 	import { reachedProdTimestamps } from '$lib/view-models/reached-prod';
 
@@ -1221,17 +1221,7 @@
 	/** The In flight tile's own subline — the SAME split the feed's own rows
 	 *  already name ("is checking" / "is deploying"), round 9 review,
 	 *  2026-10-10: "give In flight a subline". */
-	const inFlightSub = $derived.by(() => {
-		if (flyingCount === 0) return undefined;
-		const checking = inFlight.checking;
-		const deploying = inFlight.deploying;
-		const parts: string[] = [];
-		if (checking > 0) parts.push(`${checking} checking`);
-		/* the app feed words a paused bake as its own state (`paused in prod`), never as checking */
-		if (inFlight.paused > 0) parts.push(`${inFlight.paused} paused`);
-		if (deploying > 0) parts.push(`${deploying} deploying`);
-		return parts.length ? parts.join(' · ') : undefined;
-	});
+	const inFlightParts = $derived(flyingCount === 0 ? [] : inFlightFacts(inFlight));
 	// ⛔ COUNTS THE WINDOW, NOT THE 60-ROW CAP. (operator walk, 2026-09-07) The
 	// band said "60 deploys · 16 rollouts" over a chart saying 69 and a home
 	// rail saying 69: `feed` is `windowed.slice(0, 60)`.
@@ -1628,6 +1618,11 @@
 </svelte:head>
 
 <!-- THE BANNER'S FAILURE LIST, DISCLOSED NOT PRINTED (kept from round 4): only reachable under `Details`; the AlertPanel's own ink, no colour spelled here. -->
+{#snippet inFlightSub()}
+	<!-- one fact per "count noun" (no-break space inside), joined by the shared dot list: a wrap never splits a fact or leaves a separator at a line edge -->
+	<span class="dot-list block"><span class="dot-list-row flex flex-wrap">{#each inFlightParts as f (f)}<span>{f}</span>{/each}</span></span>
+{/snippet}
+
 {#snippet failureFootnote()}
 	<ul class="list-disc space-y-0.5 pl-4">
 		{#each blocker?.list ?? [] as f (f.key)}
@@ -1768,7 +1763,7 @@
 									{#if rolledBackCount > 0}
 										<KpiTile icon={UndoOutline} label="Rolled back" value={rolledBackCount} valueClass="text-fg" />
 									{:else}
-										<KpiTile icon={ArrowsRepeatOutline} label="In flight" value={flyingCount} sub={inFlightSub} />
+										<KpiTile icon={ArrowsRepeatOutline} label="In flight" value={flyingCount} sub={inFlightParts.length ? inFlightSub : undefined} />
 									{/if}
 								</div>
 							</div>
@@ -1805,13 +1800,13 @@
 						data-activity-strip
 					>
 						<div class="flex min-w-0 flex-wrap items-center gap-1.5">
-							<div class="flex shrink-0 items-center gap-1.5">
+							<div class="flex min-w-0 flex-wrap items-center gap-1.5">
 								{#each KIND_FILTERS.filter((f) => kindCounts[f.key] > 0 || kindFilter === f.key) as f (f.key)}
 									<!-- the failed dot is danger only while a failure is unresolved: colour only where something needs a person -->
 									<FilterChip selected={kindFilter === f.key} title={f.title} onclick={() => setKindFilter(f.key)} dot={f.key === 'failed' && unresolvedFailedCount === 0 ? 'bg-fg-subtle' : f.dot} label={f.label} count={kindCounts[f.key]} />
 								{/each}
 							</div>
-							<div class="flex shrink-0 items-center gap-1.5">
+							<div class="flex min-w-0 flex-wrap items-center gap-1.5">
 								{#each TIER_FILTERS.filter((t) => tierCounts[t.key] > 0 || tierFilter === t.key) as t (t.key)}
 									<FilterChip selected={tierFilter === t.key} title={tierFilter === t.key ? `Stop showing only ${t.label}` : `Show only ${t.label}`} onclick={() => setTierFilter(t.key)} label={t.label} count={tierCounts[t.key]} />
 								{/each}
