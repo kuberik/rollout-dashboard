@@ -50,4 +50,19 @@ describe('rollout detail failure banner', () => {
 		expect(head).not.toContain('latency');
 		expect(head).toContain('error-rate: 4.2% of requests failed');
 	});
+	/* the pair reads Roll back, then Retry in every state; only the blue one follows the state */
+	const pair = (live: unknown[]) => {
+		const r = { ...rollout, status: { history: [{ version: { tag: '1.0.1' }, timestamp: '2026-11-10T10:00:00Z', bakeStatus: 'Failed' }, { version: { tag: '1.0.0' }, timestamp: '2026-11-09T10:00:00Z', bakeStatus: 'Succeeded' }] } };
+		const p = { ...(props([]) as object), rollout: r, canUpdate: true, canModify: true, healthChecks: live, failedHCList: [{ name: 'error-rate', message: 'error-rate: 4.2% of requests failed' }] } as never;
+		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: p } });
+		return [...container.querySelectorAll('[data-act-row] [data-action]')].filter((e) => ['rollback', 'retry'].includes((e as HTMLElement).dataset.action ?? '')).map((e) => `${(e as HTMLElement).dataset.action}:${/btn-primary/.test(e.className) ? 'primary' : 'secondary'}`);
+	};
+	test('failing now: Roll back (blue) first, then Retry', () => {
+		const live = [{ metadata: { name: 'error-rate' }, spec: { class: 'datadog' }, status: { status: 'Unhealthy', lastChangeTime: '2026-11-10T10:05:00Z' } }];
+		expect(pair(live)).toEqual(['rollback:primary', 'retry:secondary']);
+	});
+	test('recovered: Roll back first, then Retry (blue)', () => {
+		const live = [{ metadata: { name: 'error-rate' }, spec: { class: 'datadog' }, status: { status: 'Healthy', lastErrorTime: '2026-11-10T10:03:00Z', lastChangeTime: '2026-11-10T10:06:00Z' } }];
+		expect(pair(live)).toEqual(['rollback:secondary', 'retry:primary']);
+	});
 });
