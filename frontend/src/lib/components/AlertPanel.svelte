@@ -825,9 +825,10 @@
 								<span class="max-w-full min-w-0 truncate">{change.title}</span>
 								{#if change.ref}<span class="t-code-sm shrink-0">{change.ref}</span>{/if}
 								{#if change.person}
-									<span class="h-3 w-px shrink-0 bg-line-strong" aria-hidden="true"></span>
-									<span class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-										{#if !change.you}<Avatar name={change.person} src={change.src ?? null} size={16} />{/if}{change.you ? 'you' : change.person}
+									<!-- the separator and the author are ONE no-wrap unit: when the line wraps, the "|" travels with the name, never dangling at a line end -->
+									<span class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap">
+										<span class="h-3 w-px shrink-0 bg-line-strong" aria-hidden="true"></span>
+										<span class="inline-flex items-center gap-1.5">{#if !change.you}<Avatar name={change.person} src={change.src ?? null} size={16} />{/if}{change.you ? 'you' : change.person}</span>
 									</span>
 								{/if}
 							</p>
@@ -1228,6 +1229,13 @@
 		grid-column-start: 1;
 		margin-top: 0.75rem;
 		align-self: stretch;
+	}
+	/* below the two-column shape the rows under the headline span under the icon column too: the 3rem column is empty below the disc's own row, so the text gets the full inner width */
+	@container (max-width: 639.98px) {
+		.ap-bar .ap-message-row,
+		.ap-bar .ap-disclosure-cell {
+			grid-column-start: 1;
+		}
 	}
 	@container (min-width: 640px) {
 		.ap-bar .ap-grid {
