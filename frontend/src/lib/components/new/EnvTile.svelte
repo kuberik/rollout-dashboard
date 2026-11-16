@@ -31,7 +31,7 @@
 	<header class="et-id">
 		<Chip role="env" theme={envTheme(tile.key)} label={tile.key} wide />
 		<h3 class="et-nm t-ui"><a href={tile.href} class="tap-link">{tile.name}</a></h3>
-		<span class="et-cnt t-meta tabular-nums">{tile.places} places · {tile.apps} apps</span>
+		<span class="et-cnt t-meta tabular-nums">{plural(tile.places, 'place')} · {plural(tile.apps, 'app')}</span>
 	</header>
 
 	<EnvStateBar {tile} />
