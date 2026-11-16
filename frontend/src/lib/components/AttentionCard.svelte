@@ -89,7 +89,7 @@
 
 {#snippet status()}
 	<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-		<span class="inline-grid shrink-0"><StatusMark state={failed ? 'failed' : 'approval'} /></span>
+		<span class="inline-grid shrink-0"><StatusMark state={failed ? 'failed' : 'approval'} recovered={failed && model.recovered} /></span>
 		<span class="t-meta font-semibold {failed ? 'text-danger' : 'text-held'}" data-word>{model.word}</span>
 		{#if forAge}<span class="t-meta tabular-nums text-fg-subtle">· {forAge}</span>{/if}
 		{#if model.tier}<span class="ml-auto shrink-0"><Chip role="env" theme={envTheme(model.tier)} label={tierLabel} wide /></span>{/if}

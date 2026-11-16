@@ -31,7 +31,7 @@
 			<ul class="m-0 list-none p-0" data-fleet-trouble>
 				{#each trouble as t (t.key)}
 					<li class="fl tap-zone relative flex min-h-10 min-w-0 items-center gap-2 px-4 py-1 hover:bg-hover" data-fleet-row="trouble" data-truth-app={t.app}>
-						<span class="inline-grid h-4 w-4 shrink-0 place-items-center">{#if t.mark === 'held'}<!-- the /rollouts held mark (held ink on the held tint), for Held and Paused alike: not a second, neutral pause --><StatusMark state="held" label={t.word} />{:else}<StatusMark state={t.mark} tone="neutral" />{/if}</span>
+						<span class="inline-grid h-4 w-4 shrink-0 place-items-center">{#if t.mark === 'held'}<!-- the /rollouts held mark (held ink on the held tint), for Held and Paused alike: not a second, neutral pause --><StatusMark state="held" label={t.word} />{:else}<StatusMark state={t.mark} tone="neutral" recovered={t.mark === 'failed' && t.recovered} />{/if}</span>
 						<div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
 							<a href={t.href} class="tap-link t-body min-w-0 max-w-full shrink-0 truncate text-fg">{t.app}</a>
 							<span class="flex shrink-0 items-center gap-1">{#each t.places as p (p.tier + p.place)}<Chip role="env" theme={envTheme(p.tier)} label={label(p.tier, p.place)} wide />{/each}</span>
@@ -46,7 +46,7 @@
 			<ul class="m-0 list-none p-0" data-fleet-deploys>
 				{#each deploys as d (d.key)}
 					<li class="fl tap-zone relative flex min-h-10 min-w-0 items-center gap-2 px-4 hover:bg-hover" data-fleet-row="deploy" data-truth-app={d.app}>
-						<span class="inline-grid h-4 w-4 shrink-0 place-items-center">{#if d.failing}<StatusMark state="failed" />{:else}<span class="h-1.5 w-1.5 rounded-full bg-fg-disabled"></span>{/if}</span>
+						<span class="inline-grid h-4 w-4 shrink-0 place-items-center">{#if d.failing}<StatusMark state="failed" recovered={d.recovered} />{:else}<span class="h-1.5 w-1.5 rounded-full bg-fg-disabled"></span>{/if}</span>
 						<a href={d.href} class="tap-link t-body min-w-0 truncate text-fg">{d.app}</a>
 						<span class="flex shrink-0 items-center"><Chip role="env" theme={envTheme(d.tier)} label={label(d.tier, d.place)} wide /></span>
 						<span class="t-meta ml-auto shrink-0 tabular-nums text-fg-subtle">{d.age}</span>

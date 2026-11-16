@@ -16,6 +16,7 @@ import {
 	bakeFailedOn,
 	streamBuilds,
 	newestBuild,
+	failureRecovered,
 	behindOfPlace,
 	noReleasesAt,
 	deployedBuild,
@@ -226,6 +227,7 @@ export type HoldRow = {
 	sentence: string;
 	href: string;
 	/** the held-HERE count is still unknown: the card shows a pending bar, never a guessed number */ pending?: boolean;
+	/** the health hold, and every place it names has its checks OK again (the failed rollout still holds the builds): the ring, not the solid disc */ recovered?: boolean;
 };
 /** the gate's name without the app it sits in (the page already says the app): "Invoice api manual approval" -> "Manual approval" */
 export const shortGate = (name: string, app: string): string => {
@@ -240,7 +242,8 @@ export function holdRows(
 	only: Set<string> | null = null,
 	app = '',
 	pins: ReadonlySet<string> = new Set(),
-	pinVersion: string | null = null
+	pinVersion: string | null = null,
+	recoveredAt: (href: string) => boolean = failureRecovered
 ): HoldRow[] {
 	const hrefOf = (label: string) => `${places.find((p) => p.place === label)?.href ?? ''}/gates`;
 	const rows: HoldRow[] = gates.map((g) => ({
@@ -257,6 +260,7 @@ export function holdRows(
 	}));
 	const hp = places.filter((p) => p.holdReason === 'failed' || p.holdReason === 'health');
 	if (hp.length) {
+		const recovered = hp.every((p) => recoveredAt(p.href));
 		const held: string[] = [];
 		for (const p of hp)
 			for (const h of p.heldBuilds)
@@ -268,7 +272,9 @@ export function holdRows(
 			holding: true,
 			places: hp.map((p) => p.place),
 			held,
-			sentence: 'Releases when the check starts passing',
+			/* every place recovered: the check passes again, but the failed rollout is what still holds the builds, so it needs a retry or a new build */
+			sentence: recovered ? 'The check passes again; a retry or a new build releases it' : 'Releases when the check starts passing',
+			...(recovered ? { recovered: true } : {}),
 			href: `${hp[0].href}/gates`
 		});
 	}

@@ -20,6 +20,9 @@ export function markOf(row: TRow): MarkState {
 	return row.group === 'failed' ? 'failed' : row.group === 'approval' ? (row.stillChecking ? 'checking' : 'approval') : row.group === 'held' ? 'held' : row.state === 'checking' ? (row.paused ? 'held' : 'checking') : 'deploying';
 }
 
+/** the row is a failed place whose checks are all OK again: its mark is the ring (a positive flag only; "not known yet" stays the solid disc) */
+export const markRecoveredOf = (row: TRow): boolean => row.group === 'failed' && !!row.failure?.recovered;
+
 /** failing rows in the order a person should look: a LIVE failure first, a recovered one (its checks are OK again, a retry is reasonable) after every live one; within each, the `lead` row, then the longest-failing. Never reorders anything else. */
 export function byFailRank<T extends TRow>(rows: T[]): T[] {
 	const t = (r: TRow) => Date.parse(r.since ?? '') || Infinity;
