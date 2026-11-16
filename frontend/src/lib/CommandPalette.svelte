@@ -456,6 +456,8 @@
 		 * a 0: a count of the norm is not a mark.
 		 */
 		needsYou?: number;
+		/** how many of them are not a recovered failure (a live failure or a stall): the count reads in danger ink only when this is above 0 */
+		needsYouLive?: number;
 		/** Worst-first ordering key for the default screen. Higher is worse. */
 		severity?: number;
 		// For `app` rows: per-env mini-strip data (env theme + bake status)
@@ -524,6 +526,8 @@
 	 * palette) — re-deriving it here is exactly how that drifted.
 	 */
 	const cardNeedsYou = isNeedsYou;
+	/** a failure whose checks are all OK again is neutral everywhere (the rollups' "N failed"); only a live failure or a stall is danger */
+	const cardLive = (c: RolloutCard) => isNeedsYou(c) && !(c.stuck == null && failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)));
 	/** Worst first. Failure outranks a stall; a stall outranks a lag. */
 	function cardSeverity(c: RolloutCard): number {
 		if (c.statusKey === 'failed') return 3;
@@ -571,6 +575,7 @@
 				stateWord: mark?.word ?? '',
 				stateTitle: mark?.title ?? '',
 				needsYou: cardNeedsYou(c) ? 1 : 0,
+				needsYouLive: cardLive(c) ? 1 : 0,
 				severity: cardSeverity(c),
 				isCurrent: c.name === currentName && c.ns === currentNamespace,
 				nodeState: cardNodeState(c)
@@ -635,6 +640,7 @@
 							}
 						: undefined,
 				needsYou: own.filter(cardNeedsYou).length,
+				needsYouLive: own.filter(cardLive).length,
 				severity: own.reduce((m, c) => Math.max(m, cardSeverity(c)), 0)
 			});
 		}
@@ -664,6 +670,7 @@
 				href: href(`/envs/${encodeURIComponent(name)}`),
 				envTheme: theme,
 				needsYou: own.filter(cardNeedsYou).length,
+				needsYouLive: own.filter(cardLive).length,
 				severity: own.reduce((m, c) => Math.max(m, cardSeverity(c)), 0)
 			});
 		}
@@ -682,6 +689,7 @@
 				subtitle: `${own.length} rollout${own.length === 1 ? '' : 's'}`,
 				href: href(`/namespaces/${encodeURIComponent(ns)}`),
 				needsYou: own.filter(cardNeedsYou).length,
+				needsYouLive: own.filter(cardLive).length,
 				severity: own.reduce((m, c) => Math.max(m, cardSeverity(c)), 0)
 			});
 		}
@@ -919,6 +927,12 @@
 	}
 	/** a failed row whose checks have recovered sorts below one failing now */
 	const recoveredRank = (c: RolloutCard) => blockedRecoveredRank(rowKind(c), failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)));
+	/** the Attention lists' order (`attentionRank`): a failure live now (or a stall), then the approvals, then the recovered failures; within a group the longest-failing first */
+	const attentionRankOf = (c: RolloutCard) => (rowKind(c) === 'held' ? 1 : recoveredRank(c) > 0 ? 2 : 0);
+	const failedAtOf = (c: RolloutCard) => {
+		const t = Date.parse(failureSinceAt(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)) ?? '');
+		return Number.isFinite(t) ? t : Infinity;
+	};
 	/** Failures, then stalls, then approvals (coordinator, 2026-10-11). */
 	const KIND_ORDER = { failed: 0, stuck: 1, held: 2 } as const;
 	const needsYouLeads = $derived(
@@ -933,8 +947,9 @@
 			.sort(
 				(a, b) =>
 					Number(b === currentRolloutCard) - Number(a === currentRolloutCard) ||
+					attentionRankOf(a) - attentionRankOf(b) ||
 					KIND_ORDER[rowKind(a)] - KIND_ORDER[rowKind(b)] ||
-					recoveredRank(a) - recoveredRank(b) ||
+					failedAtOf(a) - failedAtOf(b) ||
 					cardSeverity(b) - cardSeverity(a) ||
 					a.name.localeCompare(b.name)
 			)
@@ -1771,7 +1786,11 @@
 {#snippet blockedOption(c: RolloutCard, idx: number)}
 	{@const isActive = idx === selectedIndex}
 	{@const actionLabel = blockedAction(c).label}
-	{@const rowHref = blockedHref(c)}
+	{@const actionHref = blockedHref(c)}
+	{@const plainHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
+	<!-- only an action that OPENS A DIALOG (a query: Roll back, Retry) is kept off the row's own link; a destination (Gates, Logs) stays the row's -->
+	{@const rowHref = /[?&]action=/.test(actionHref) ? plainHref : actionHref}
+	{@const actionKey = /action=retry/.test(actionHref) ? 'retry' : /action=rollback/.test(actionHref) ? 'rollback' : 'open'}
 	<!-- ⭐ ROUND 6 (AD review 4): the incident row's destination (Logs, or
 	     Overview if already there) is not what its own link text says (the
 	     rollout's name), so `aria-label` on THIS wrapper (the thing
@@ -1794,12 +1813,19 @@
 		class="rounded-sm {isActive ? 'bg-selected' : ''}"
 	>
 		{#snippet incidentAction()}
+			<!-- ONE ROW, TWO TARGETS: a tap or click on the row (its name) opens the rollout, never an action; the row's action is its own button, so on a
+			     phone (no Enter, no hover) a tap on a name cannot start a rollback. ↵ stays the keyboard's way to run it, and the keycap sits next to the
+			     action it fires, before it; the secondary link follows. -->
 			<span class="flex items-center gap-3" data-meta="action">
-				{#if rowKind(c) === 'failed' && !approvalCards.has(c) && actionLabel !== FAILED_ROW_SECONDARY.label}
-					<a href={rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name, FAILED_ROW_SECONDARY.sub)} class="t-ui-sm relative z-[1] whitespace-nowrap text-fg-muted hover:text-fg" data-secondary="logs" onclick={() => (open = false)}>{FAILED_ROW_SECONDARY.label}</a>
-				{/if}
 				{@render runKey(isActive)}
-				<span class="t-ui-sm whitespace-nowrap text-fg">{actionLabel}</span>
+				{#if actionHref !== rowHref}
+					<a href={actionHref} class="btn btn-secondary btn-sm relative z-[1] whitespace-nowrap max-sm:min-h-11" data-action={actionKey} onclick={() => (open = false)}>{actionLabel}</a>
+				{:else}
+					<span class="t-ui-sm whitespace-nowrap text-fg">{actionLabel}</span>
+				{/if}
+				{#if rowKind(c) === 'failed' && !approvalCards.has(c) && actionLabel !== FAILED_ROW_SECONDARY.label}
+					<a href={rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name, FAILED_ROW_SECONDARY.sub)} class="t-ui-sm relative z-[1] whitespace-nowrap text-fg-muted hover:text-fg max-sm:inline-flex max-sm:min-h-11 max-sm:items-center" data-secondary="logs" onclick={() => (open = false)}>{FAILED_ROW_SECONDARY.label}</a>
+				{/if}
 			</span>
 		{/snippet}
 		<BlockedRow
@@ -2096,7 +2122,7 @@
 				     app's deepest lag², then the set's size, last. -->
 				{#if (r.needsYou ?? 0) > 0}
 					<span
-						class="t-meta text-danger"
+						class="t-meta {(r.needsYouLive ?? 0) > 0 ? 'text-danger' : 'text-fg-muted'}"
 						data-meta="needs"
 						title="{r.needsYou} rollout{r.needsYou === 1 ? '' : 's'} here failed or stopped moving"
 						>{r.needsYou} need{r.needsYou === 1 ? 's' : ''} you</span

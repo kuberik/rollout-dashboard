@@ -95,7 +95,15 @@ function needsYouRows(): HTMLElement[] {
 	return group ? [...group.querySelectorAll<HTMLElement>('[role="option"]')] : [];
 }
 
+/* one switch: when set, every failure's checks read as recovered (the module's own answer otherwise) */
+const recov = vi.hoisted(() => ({ on: false }));
+vi.mock('$lib/components/new/data', async (orig) => {
+	const m = await orig<typeof import('$lib/components/new/data')>();
+	return { ...m, failureRecovered: (href: string) => (recov.on ? true : m.failureRecovered(href)) };
+});
+
 beforeEach(() => {
+	recov.on = false;
 	// Any fetch the confirm makes (commits, permissions) answers empty.
 	vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}', { status: 200 }))));
 	vi.mocked(goto).mockClear();
@@ -117,6 +125,13 @@ describe('Needs you lists builds held by approval', { timeout: 20_000 }, () => {
 		expect(rows[1].getAttribute('aria-label')).toContain(`— ${label}`);
 		// The approval mark, never the orange rule-hold pause.
 		expect(rows[1].querySelector('[data-blocked-kind="held"]')).not.toBeNull();
+	});
+
+	test('a recovered failure comes after the approval: failing, approvals, recovered (the Attention order)', () => {
+		recov.on = true;
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const kinds = needsYouRows().map((r) => r.querySelector('[data-blocked-kind]')?.getAttribute('data-blocked-kind'));
+		expect(kinds).toEqual(['held', 'failed']);
 	});
 
 	test('an approval hold alone makes Needs you the first section', () => {

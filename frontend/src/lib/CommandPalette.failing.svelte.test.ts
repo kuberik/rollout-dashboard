@@ -4,7 +4,7 @@
  *   - failing-now rows sort above recovered ones.
  */
 import { describe, test, expect, vi, afterEach, beforeAll } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { render, fireEvent } from '@testing-library/svelte';
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 
 // jsdom has no `<dialog>` showModal/close and no Web Animations API. Polyfilled
@@ -98,5 +98,66 @@ describe('palette Needs-you rows follow the failing / failed rule', { timeout: 3
 			expect(r.querySelector('[data-blocked-kind="failed"]')!.textContent).not.toContain('failing');
 			expect(r.textContent).toContain('Failed its health check');
 		}
+	});
+});
+
+describe('palette Needs-you rows: one tap target per row, actions as their own buttons, the key beside its action', { timeout: 30_000 }, () => {
+	const draw = () => {
+		vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}', { status: 200 }))));
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		return needsYouRows();
+	};
+	test('the row\'s own link opens the rollout, never an action dialog (a touch tap on the name)', () => {
+		rec.live = alphabetical[0];
+		const rows = draw();
+		expect(rows.length).toBeGreaterThan(1);
+		for (const r of rows) {
+			const link = r.querySelector<HTMLAnchorElement>('a.tap-link')!;
+			expect(link.getAttribute('href')).not.toMatch(/[?&]action=/);
+			expect(link.getAttribute('href')).toMatch(/\/rollouts\/[^/]+\/[^/]+\/[^/]+$/);
+		}
+	});
+	test('Roll back (live) and Retry (recovered) are their own links, with their own params', () => {
+		rec.live = alphabetical[0];
+		const rows = draw();
+		const live = rows.find((r) => r.getAttribute('aria-label')!.startsWith(`${alphabetical[0]} `))!;
+		expect(live.querySelector('a[data-action="rollback"]')!.getAttribute('href')).toContain('action=rollback');
+		const rec1 = rows.find((r) => !r.getAttribute('aria-label')!.startsWith(`${alphabetical[0]} `))!;
+		expect(rec1.querySelector('a[data-action="retry"]')!.getAttribute('href')).toContain('action=retry');
+	});
+	test('the ↵ key sits immediately before the action it fires, not between the action and Open logs', () => {
+		rec.live = alphabetical[0];
+		const rows = draw();
+		const sel = rows.find((r) => r.getAttribute('aria-selected') === 'true')!;
+		const kbd = sel.querySelector('kbd')!;
+		expect(kbd.nextElementSibling?.getAttribute('data-action')).toMatch(/rollback|retry/);
+	});
+	test('a failure live now leads, recovered rows come last', () => {
+		rec.live = alphabetical[1];
+		const rows = draw();
+		expect(names(rows)[0]).toBe(alphabetical[1]);
+		const kinds = rows.map((r) => /failed its health check/.test(r.getAttribute('aria-label')!));
+		expect(kinds).toEqual([...kinds].sort((a, b) => Number(a) - Number(b)));
+	});
+});
+
+describe('palette counts of a recovered-only failure read in neutral ink (D-05)', { timeout: 30_000 }, () => {
+	const search = async (q: string) => {
+		vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}', { status: 200 }))));
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const input = document.body.querySelector<HTMLInputElement>('input')!;
+		await fireEvent.input(input, { target: { value: q } });
+		return [...document.body.querySelectorAll<HTMLElement>('[data-meta="needs"]')];
+	};
+	test('every check recovered: no count is danger ink', async () => {
+		rec.live = 'none-of-them';
+		const counts = await search('catalog');
+		expect(counts.length).toBeGreaterThan(0);
+		for (const c of counts) expect(c.className).not.toContain('text-danger');
+	});
+	test('a check failing now keeps the danger ink on its own counts', async () => {
+		rec.live = 'catalog-api';
+		const counts = await search('catalog');
+		expect(counts.some((c) => c.className.includes('text-danger'))).toBe(true);
 	});
 });
