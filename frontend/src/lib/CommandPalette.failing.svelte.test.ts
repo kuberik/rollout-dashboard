@@ -141,7 +141,7 @@ describe('palette Needs-you rows: one tap target per row, actions as their own b
 	});
 });
 
-describe('palette counts of a recovered-only failure read in neutral ink (D-05)', { timeout: 30_000 }, () => {
+describe('palette counts of a recovered-only failure read in neutral ink', { timeout: 30_000 }, () => {
 	const search = async (q: string) => {
 		vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}', { status: 200 }))));
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });

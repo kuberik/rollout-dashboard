@@ -159,6 +159,12 @@ describe('RolloutTabHeader: the phone shows the same pair as lg+', () => {
 		expect(cell.className).toMatch(/\bgap-2\b/);
 		expect(container.querySelector('[data-ph-below]')?.contains(cell)).toBe(true);
 	});
+	test('Retry on every size links to the rollout with ?action=retry', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: true } });
+		const links = [...container.querySelectorAll('a[data-action="retry"]')];
+		expect(links.length).toBeGreaterThan(1);
+		for (const a of links) expect(a.getAttribute('href')).toContain('action=retry');
+	});
 	test('lg+ draws the same pair in the actions slot on a failing-now rollout (every tab shares this header)', () => {
 		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false } });
 		const d = [...container.querySelectorAll('a[data-desktop-only]')].map((a) => `${a.textContent?.trim()}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
