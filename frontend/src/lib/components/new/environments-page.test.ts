@@ -133,6 +133,11 @@ describe('region cell parts follow the tier line', () => {
 		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 3, moving: 1, movingWord: 'checking' }).map((p) => p.text)).toEqual(['3 waiting', '1 checking']);
 		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 0, moving: 2, movingWord: 'in progress' })[0].text).toBe('2 in progress');
 	});
+	it('waiting and moving parts are neutral: only a check failing now spends a hue', async () => {
+		const { regionCellParts } = await import('./environments-page');
+		expect(regionCellParts({ failing: 1, recovered: 0, waiting: 3, moving: 1, movingWord: 'checking' }).map((p) => p.ink)).toEqual(['danger', null, null]);
+		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 3, moving: 1, movingWord: 'deploying' }).map((p) => p.ink)).toEqual([null, null]);
+	});
 	it('movingWordOf: checking / deploying / in progress when both or none', async () => {
 		const { movingWordOf } = await import('./envs-model');
 		const p = (...s: string[]) => s.map((state) => ({ state }));

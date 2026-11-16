@@ -52,13 +52,13 @@ export function barSegments(t: { failing: number; waiting: number; moving: numbe
 }
 
 /** the Production band's cells: the places with something to say (base "production" first among equals), the rest fold to one count */
-/** A region cell's state line as parts, the tier line's rule: only the failing-now part takes danger ink, a recovered "failed" is neutral; the moving part carries its count and the tier's word ("1 checking") in the mark's own hue. */
+/** A region cell's state line as parts, the tier line's rule: only the failing-now part takes danger ink, a recovered "failed" is neutral; waiting and moving parts ("1 waiting", "1 checking") are neutral, as the rest of that line is: a cell has no second ink rule. */
 export function regionCellParts(r: Pick<RegionCell, 'failing' | 'recovered' | 'waiting' | 'moving' | 'movingWord'>): { text: string; ink: Ink | null }[] {
 	const recovered = Math.min(r.recovered, r.failing), live = r.failing - recovered;
 	const out: { text: string; ink: Ink | null }[] = [];
 	for (const p of failedInkParts(r.failing, recovered)) out.push({ text: p.text, ink: p.ink === 'danger' ? 'danger' : null });
-	if (r.waiting) out.push({ text: `${r.waiting} waiting`, ink: 'held' });
-	if (r.moving) out.push({ text: `${r.moving} ${r.movingWord}`, ink: r.movingWord === 'checking' ? 'progress' : 'active' });
+	if (r.waiting) out.push({ text: `${r.waiting} waiting`, ink: null });
+	if (r.moving) out.push({ text: `${r.moving} ${r.movingWord}`, ink: null });
 	return out;
 }
 export function regionCells(m: ReturnType<typeof envsModel>): { cells: RegionCell[]; healthy: number } {
