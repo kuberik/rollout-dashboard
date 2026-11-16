@@ -8,6 +8,7 @@
 import { describe, test, expect, vi, afterEach, beforeAll } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/svelte';
 import { tick } from 'svelte';
+import { goto } from '$app/navigation';
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('$app/state', async () => ({ page: (await import('$lib/testing/reactive-page.svelte')).reactivePage }));
 import { reactivePage } from '$lib/testing/reactive-page.svelte';
@@ -106,5 +107,25 @@ describe('the palette and navigation', { timeout: 30_000 }, () => {
 		const open = p.rollouts.find((r) => r.metadata?.name === first[0] && /prod/.test(r.metadata?.namespace ?? ''))!;
 		draw({ currentNamespace: open.metadata?.namespace, currentName: first[0] });
 		expect(names(needsYouRows())[0]).toBe(first[2]);
+	});
+	test('the highlight follows its item when the list re-sorts: Enter acts on the highlighted rollout, not on its old position', async () => {
+		const order = () => names(needsYouRows());
+		rec.live = '';
+		reactivePage.url = new URL('http://localhost/');
+		const view = draw();
+		const before = order();
+		const input = document.body.querySelector<HTMLInputElement>('input')!;
+		await fireEvent.keyDown(input, { key: 'ArrowDown' });
+		await fireEvent.keyDown(input, { key: 'ArrowDown' });
+		const target = before[2];
+		expect(document.body.querySelector('[aria-selected="true"]')!.getAttribute('aria-label')).toMatch(new RegExp(`^${target} `));
+		// the fleet moves: the highlighted rollout is now the one failing live, so it sorts first
+		rec.live = target;
+		await view.rerender({ component: CommandPalette as never, props: props() });
+		await tick();
+		expect(order()[0]).toBe(target);
+		vi.mocked(goto).mockClear();
+		await fireEvent.keyDown(input, { key: 'Enter' });
+		expect(vi.mocked(goto).mock.calls[0]?.[0]).toContain(`/${target}`);
 	});
 });

@@ -1602,6 +1602,31 @@
 	const inPicker = $derived(!scope && !query);
 
 	/**
+	 * The highlight follows the ITEM, not its position. `selectedIndex` is a position in the flat list; when the list re-sorts or
+	 * re-fills under an open palette (a rollout's state changes, the fleet refreshes) the same position is a different item, and
+	 * Enter would run that item's action. `rowKeys` names the item at every position; when the keys change, the highlight moves to
+	 * where the highlighted item went (and stays put if it is gone).
+	 */
+	const rowKeys = $derived.by<string[]>(() => {
+		if (!inPicker) return filtered.map((r) => `r:${r.kind}:${r.href ?? r.title}`);
+		const attn = attentionShown.map((c) => `a:${c.sourceCluster || localClusterName}/${c.ns}/${c.name}`);
+		const here = [...(incidentCard ? ['i'] : []), ...thisRolloutActions.map((a) => `t:${a.id}`)];
+		const keys: string[] = needsYouLeads ? [...attn, ...here] : [...here, ...attn];
+		return keys;
+	});
+	let prevRowKeys: string[] = [];
+	$effect.pre(() => {
+		const next = rowKeys;
+		const at = untrack(() => selectedIndex);
+		const was = prevRowKeys[at];
+		prevRowKeys = next;
+		if (!was || next[at] === was) return;
+		const moved = next.indexOf(was);
+		if (moved >= 0) selectedIndex = moved;
+	});
+
+
+	/**
 	 * ⭐ LANE P, §5: THE OPENING SCREEN'S FLAT INDEX SPACE NOW HAS THREE
 	 * SECTIONS, NOT TWO, in the order the template renders them —
 	 * `thisRolloutActions` ("This rollout", rollout pages only), then
