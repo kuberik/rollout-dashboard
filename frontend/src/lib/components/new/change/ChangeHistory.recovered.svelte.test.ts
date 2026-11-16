@@ -26,4 +26,12 @@ describe('ChangeHistory: the failed mark', () => {
 		rec.ok = new Set();
 		expect(chips([ev('only', 5, '/p')]).get('only')).toContain('bg-danger-solid');
 	});
+	it('the verb follows the mark: a recovered failure reads neutral, failing now and an older failure keep danger ink', () => {
+		rec.ok = new Set(['/p']);
+		const { container } = render(ChangeHistory, { props: { events: [ev('new', 5, '/p'), ev('old', 50, '/p')] } });
+		const [nw, old] = [...container.querySelectorAll('[data-ev="failed"] [data-ev-verb]')].map((v) => v.className);
+		expect(nw).toContain('text-fg-muted');
+		expect(nw).not.toContain('text-danger');
+		expect(old).toContain('text-danger');
+	});
 });
