@@ -308,6 +308,9 @@ export function failingSummary(list: SnapCheck[], nameOf: (c: SnapCheck) => stri
 /** the compact age of a check's fact line ("6m") */
 export const agoOf = (iso: string | null | undefined, now: Date): string | null => (iso ? formatAgoCompact(iso, now) : null);
 
+/** a banner's health line with the failure's age at its end ("2 health checks failing, 1 pending · 12m ago"); `age` already carries its "ago" (agoOf) */
+export const withAge = (message: string, age: string | null | undefined): string => (age ? `${message}\u00a0· ${age}` : message);
+
 /** `HH:MM`, 24h, the way the recovered strip and the fact line print a moment */
 export const clock = (iso: string, secs = false): string =>
 	new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', ...(secs ? { second: '2-digit' } : {}), hour12: false, timeZone: displayTimeZone() });

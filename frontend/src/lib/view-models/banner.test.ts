@@ -8,3 +8,10 @@ describe('failedBannerTitle', () => {
 		expect(failedBannerTitle('checkout-api', 'staging', '')).toBe('checkout-api failed in staging');
 	});
 });
+
+describe('failedBannerTitle, failing now', () => {
+	it('says failing while a check is failing now, failed otherwise', () => {
+		expect(failedBannerTitle('orders-hub', 'prod', null, true)).toBe('orders-hub failing in prod');
+		expect(failedBannerTitle('orders-hub', 'prod', null, false)).toBe('orders-hub failed in prod');
+	});
+});

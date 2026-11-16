@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { HealthCheck } from '../../types';
-import { checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary } from './health-failures';
+import { checkView, poolOf, snapView, worstOf, shortCause, evidenceLine, snapshotCause, figureOf, classOf, windowStrip, failingRowCount, bannerEvidence, historyPool, failureSince, failingNowList, failingSummary, withAge } from './health-failures';
 
 const mk = (cls: string, status: Record<string, unknown>, name = 'x'): HealthCheck => ({ metadata: { name }, spec: { class: cls }, status } as unknown as HealthCheck);
 const win = new Date('2026-11-15T09:00:00Z');
@@ -233,5 +233,12 @@ describe('the banner sentence counts only the checks failing now', () => {
 		expect(lead.message).toBe('c is down');
 		expect(lead.observations?.[0].name).toBe('q');
 		expect(failingNowList(rec, [only[0]])[0].name).toBe('a');
+	});
+});
+
+describe('withAge', () => {
+	it('puts the age on the health line, never on a meta line', () => {
+		expect(withAge('2 health checks failing, 1 pending', '12m ago')).toBe('2 health checks failing, 1 pending · 12m ago');
+		expect(withAge('2 health checks failing', null)).toBe('2 health checks failing');
 	});
 });
