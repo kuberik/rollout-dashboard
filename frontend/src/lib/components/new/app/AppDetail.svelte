@@ -419,7 +419,7 @@
 			{#if failRow}
 				<div data-ad-statement>
 					{#snippet failDetails()}{#if failEv}<FailureDetails pool={failEv.pool} />{/if}{/snippet}
-					<StatementBanner severity="failed" title="Deployment failed" check={failEv ? failEv.check : failCheck ?? undefined} observations={failEv ? failEv.observations : failRow.failure?.observations} message={failEv?.message} footnoteLabel={failEv ? 'Details' : undefined} footnoteBody={failEv ? failDetails : undefined}
+					<StatementBanner severity="failed" title="Deployment failed" recovered={!!failRow.failure?.recovered} check={failEv ? failEv.check : failCheck ?? undefined} observations={failEv ? failEv.observations : failRow.failure?.observations} message={failEv?.message} footnoteLabel={failEv ? 'Details' : undefined} footnoteBody={failEv ? failDetails : undefined}
 						primary={failActs.primary} secondary={failActs.secondary} />
 				</div>
 			{/if}

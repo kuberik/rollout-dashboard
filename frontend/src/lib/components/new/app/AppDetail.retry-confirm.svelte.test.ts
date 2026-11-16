@@ -45,7 +45,7 @@ describe('AppDetail Retry confirmation', () => {
 		expect(posts).toEqual([]);
 		expect(await findByRole('dialog')).toBeTruthy();
 		const input = (await findByLabelText(/to confirm/)) as HTMLInputElement;
-		const confirm = getByRole('dialog').querySelector('.btn-danger') as HTMLButtonElement;
+		const confirm = [...getByRole('dialog').querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Retry') as HTMLButtonElement;
 		expect(confirm.disabled).toBe(true);
 		await fireEvent.input(input, { target: { value: input.labels?.[0]?.querySelector('span')?.textContent ?? '' } });
 		await fireEvent.click(confirm);

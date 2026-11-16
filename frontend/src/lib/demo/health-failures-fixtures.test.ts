@@ -42,4 +42,9 @@ describe('health-failures fixtures: the recovered surfaces', () => {
 		expect(flaky.length).toBeLessThanOrEqual(1);
 		for (const [title, repos] of byTitle) if (/readiness|Fix flaky/.test(title)) expect(repos.size).toBeLessThanOrEqual(1);
 	});
+	it('the build newer than the failed head carries a real change title, not "Deploy <tag>"', () => {
+		const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!) as { changes: { repo?: string; number?: number; title?: string }[] };
+		const newer = gh.changes.find((c) => c.repo === 'search-indexer' && c.number === 65);
+		expect(newer?.title).toBe('Raise the shard rebalance threshold');
+	});
 });

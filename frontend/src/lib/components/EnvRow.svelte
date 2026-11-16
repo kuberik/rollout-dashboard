@@ -415,11 +415,9 @@
 	.env-site--here {
 		box-shadow: 0 0 0 1px var(--k-fg-muted);
 	}
-	/* "here" round a mark that is itself a ring (recovered): two touching concentric rings read as a radio button, so the cue steps out to a hairline with a clear gap and the two read as two objects */
+	/* "here" round a mark that is itself a ring (recovered): any second ring reads as a target or a radio button, so the mark stands alone and the current box's own border (.env-box--current) carries "here" */
 	.env-site--here.env-site--here-ring {
 		box-shadow: none;
-		outline: 1px solid var(--k-fg-subtle);
-		outline-offset: 2px;
 	}
 	button.env-box {
 		font: inherit;

@@ -140,7 +140,7 @@
 	{#if fig}
 		<div class="min-w-0">
 			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2.5" data-lead={fig.kind}>
-				<span class="ac-fig whitespace-nowrap font-semibold tabular-nums tracking-[-0.025em] {model.recovered ? 'text-fg-muted' : 'text-fg'} {lead ? 'ac-fig--lead' : ''}" data-recovered={model.recovered || undefined}>{fig.value}{#if fig.unit}<small class="ml-0.5 whitespace-pre font-normal tracking-normal text-fg-muted {lead ? 'text-lg' : 'text-base'}">{fig.unit.startsWith('of ') ? ' ' : ''}{fig.unit}</small>{/if}</span>
+				<span class="ac-fig whitespace-nowrap font-semibold tabular-nums tracking-[-0.025em] {model.recovered ? 'text-fg-muted' : 'text-fg'} {lead ? 'ac-fig--lead' : ''}" data-recovered={model.recovered || undefined}>{fig.value}{#if fig.unit}<small class="ml-0.5 whitespace-pre font-normal tracking-normal text-fg-muted {lead ? 'text-lg' : 'text-base'}">{fig.unit.startsWith('of ') ? ' ' : ''}{fig.unit}</small>{/if}{#if model.recovered && !ratio}<small class="ml-1.5 whitespace-pre font-normal tracking-normal text-fg-muted {lead ? 'text-lg' : 'text-base'}" data-at-failure>at failure</small>{/if}</span>
 				<span class="t-body min-w-0 text-fg-muted [overflow-wrap:anywhere]">{fig.label}</span>
 			</div>
 			{#if meter}

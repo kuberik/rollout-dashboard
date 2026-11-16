@@ -1155,7 +1155,8 @@
 		else out = { text: noun, tone: 'neutral' };
 		// the SectionHeader's rollup parts: the count, then the one adverse fact in its ink (only a live failure is red)
 		const rest = out.text.slice(noun.length).replace(/^ · /, '');
-		const parts: (string | { text: string; ink?: 'danger' })[] = [noun];
+		/* the day card's count folds on a phone when the failure counts follow it, like the Deploys header's (activity-groups.ts) */
+		const parts: (string | { text: string; ink?: 'danger'; fold?: boolean })[] = [out.tone === 'adverse' ? { text: noun, fold: true } : noun];
 		if (out.tone === 'adverse') parts.push(...failedRollupParts(unresolvedFailed, recoveredFailed, checksKnown));
 		else if (rest) parts.push(rest);
 		return { ...out, parts, mayBeIncomplete };

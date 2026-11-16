@@ -251,6 +251,7 @@
 	{open}
 	class="mb-4"
 	severity="failed"
+	recovered={allRecovered}
 	title="Deployment failed"
 	observations={evidence ? evObservations : observations}
 	check={evidence ? evCheck : undefined}

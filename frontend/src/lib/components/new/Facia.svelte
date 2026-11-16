@@ -462,7 +462,7 @@
 		{/if}
 		{@render envRow('')}
 		{#if failCheck}
-			<StatementBanner severity="failed" title="Deployment failed" check={failCheck}
+			<StatementBanner severity="failed" title="Deployment failed" check={failCheck} recovered={recoveredFail}
 				primary={failActs.primary} secondary={failActs.secondary} />
 		{:else if waitRow}
 			<!-- apps-7 Q2: the tab's own held banner (the shared StatementBanner: tint, 40px pause disc, the tab's sentence) -->

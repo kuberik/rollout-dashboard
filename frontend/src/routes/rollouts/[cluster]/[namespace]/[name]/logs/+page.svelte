@@ -5,6 +5,7 @@
 	import { outageEscalation } from '$lib/view-models/outage-escalation.svelte';
 	import LogsViewer from '$lib/components/LogsViewer.svelte';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
+	import { headDeployedAt } from '$lib/view-models/head-age';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
@@ -102,8 +103,7 @@
 	 */
 	let podCount = $state(0);
 	const sinceLabel = $derived.by((): string | null => {
-		const latest = rollout?.status?.history?.[0];
-		const since = latest?.bakeStartTime || latest?.timestamp;
+		const since = headDeployedAt(rollout);
 		return since ? `${formatTimeAgoCompact(since, $now)} ago` : null;
 	});
 </script>

@@ -43,6 +43,7 @@
 	 */
 	import { ExclamationCircleSolid } from 'flowbite-svelte-icons';
 	import CheckGlyph from './CheckGlyph.svelte';
+	import StatusMark from './StatusMark.svelte';
 
 	/** a message's facts: the text between its ' · ' joints, empty ones dropped */
 	const factsOf = (message: string | undefined): string[] => (message ?? '').split(' \u00b7 ').map((x) => x.trim()).filter(Boolean);
@@ -61,9 +62,11 @@
 		ink?: boolean;
 		/** the line is never smaller than the message under it: 14px at every width (the banner) */
 		body?: boolean;
+		/** every check of this failure is OK again: the generic glyph is the recovered ring (StatusMark), never the solid "!" disc beside a neutral "recovered" word. A check class's own glyph is unchanged. */
+		recovered?: boolean;
 	}
 
-	let { check, danger, compact = false, ink = false, body = false }: Props = $props();
+	let { check, danger, compact = false, ink = false, body = false, recovered = false }: Props = $props();
 	/** the message's facts, split where it joins them with a middle dot */
 	const parts = $derived(factsOf(check.message));
 </script>
@@ -73,7 +76,7 @@
 		? 'text-danger'
 		: 'text-fg-muted'}"
 >
-	{#if check.cls}<CheckGlyph cls={check.cls} class="check-glyph h-3.5 w-3.5 shrink-0 translate-y-0.5" />{:else}<ExclamationCircleSolid class="check-glyph h-3 w-3 shrink-0 translate-y-0.5" aria-hidden="true" />{/if}
+	{#if check.cls}<CheckGlyph cls={check.cls} class="check-glyph h-3.5 w-3.5 shrink-0 translate-y-0.5" />{:else if recovered}<span class="check-ring shrink-0" data-recovered-glyph><StatusMark state="failed" recovered /></span>{:else}<ExclamationCircleSolid class="check-glyph h-3 w-3 shrink-0 translate-y-0.5" aria-hidden="true" />{/if}
 	{#if parts.length > 1 && !compact}
 		<!-- A message made of several facts ("over a 1% budget · service:orders"): each fact is a unit of the shared dot list, whose dot is clipped when a unit starts a line, so no separator sits at a line edge. -->
 		<span class="dot-list min-w-0 flex-1" data-check-facts>
@@ -95,6 +98,11 @@
 </div>
 
 <style>
+	/* the 16px ring on the line's first row: a 14px/20px body line leaves 2px above it, the 12px line 0 */
+	.check-ring {
+		display: inline-flex;
+		transform: translateY(2px);
+	}
 	.check-body {
 		font-size: 14px;
 		line-height: 20px;

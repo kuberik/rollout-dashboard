@@ -135,6 +135,7 @@ lib/components/atoms/LeadBar.svelte	aria-label	reached prod in …
 lib/components/atoms/LeadBar.svelte	code	waited … before …
 lib/components/AttentionCard.svelte	label	… of … …
 lib/components/AttentionCard.svelte	aria-label	…… against the limit
+lib/components/AttentionCard.svelte	text	at failure
 lib/components/AttentionCard.svelte	code	Open rollout
 lib/components/AttentionCard.svelte	text	Roll back
 lib/components/Avatar.svelte	code	… (CI)
@@ -407,6 +408,7 @@ lib/components/FailurePanel.svelte	text	Automated deployments are held until thi
 lib/components/FailurePanel.svelte	title	Deployment failed
 lib/components/FailurePanel.svelte	code	Roll back
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
+lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
 lib/components/FleetCard.svelte	text	all apps
 lib/components/FleetCard.svelte	text	All healthy elsewhere
 lib/components/FleetCard.svelte	text	No deploys in the last 24 h
@@ -1506,7 +1508,6 @@ lib/view-models/deploy-risk.ts	code	Goes back… to a version … has already ru
 lib/view-models/deploy-risk.ts	code	It also pins … to this version, so nothing newer promotes until the pin is cleared.
 lib/view-models/deploy-risk.ts	code	Nothing has vouched for this build in …. Type
 lib/view-models/deploy-risk.ts	code	Prod is selected. Type
-lib/view-models/deploy-risk.ts	code	Redeploy to …
 lib/view-models/deploy-risk.ts	code	Redeploys … to … — the same build whose last deploy here failed.
 lib/view-models/deploy-risk.ts	code	Redeploys the current build to … — the same build whose last deploy here failed.
 lib/view-models/deploy-risk.ts	code	Retrying resets that check to “Pending — reset due to new deployment”, which clears the failure detail shown above.
@@ -1518,6 +1519,7 @@ lib/view-models/deploy-risk.ts	code	This build already failed here. Type
 lib/view-models/deploy-risk.ts	code	This changes …. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.…
 lib/view-models/deploy-risk.ts	code	This changes …. Type
 lib/view-models/deploy-risk.ts	code	This deploys to … a build that …. It applies immediately and … starts serving it; nothing checks it first.…
+lib/view-models/deploy-risk.ts	code	This deploys to … again, so it asks you to confirm. Type
 lib/view-models/deploy-risk.ts	code	this environment
 lib/view-models/deploy-risk.ts	code	This overrides the rules holding …, which do not currently allow this build. It applies immediately. It does not deploy to prod — but a build that deploys and passes its checks here can become allowed in whatever environment promotes after ….…
 lib/view-models/deploy-risk.ts	code	This tag is not in …'s release list, so no rule here has vouched for it and the commit list above may be incomplete. It applies immediately.…

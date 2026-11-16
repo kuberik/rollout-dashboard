@@ -144,6 +144,26 @@ function changeOf(app: string) {
 	for (const [repo, ch] of index().newest) if (app === repo || app.startsWith(repo)) return ch;
 	return null;
 }
+/**
+ * The change a FAILING place carries: the one its head build holds, not the repo's newest. A place can fail on 1.4.0 while dev and staging
+ * already run 1.5.0 (prod holds that newer build behind the failure), and the newest change is then the held one, not the one that failed.
+ * Falls back to the newest change when the head's revision names no change.
+ */
+function failedChangeOf(app: string, href: string) {
+	const [, , , ns, name] = href.split('/');
+	const rollouts = (liveSource()?.rollouts ?? (fixture as unknown as { rollouts: { metadata: { name: string; namespace: string }; status?: { history?: { version?: { revision?: string; tag?: string } }[] } }[] }).rollouts) as { metadata: { name: string; namespace: string }; status?: { history?: { version?: { revision?: string; tag?: string } }[] } }[];
+	const v = rollouts.find((r) => r.metadata.namespace === ns && r.metadata.name === name)?.status?.history?.[0]?.version;
+	const rev = (v?.revision ?? v?.tag ?? '').toLowerCase();
+	if (rev.length >= 7) {
+		const list = (liveSource()?.changes ?? (fixture as { changes: unknown[] }).changes) as unknown as (ChLite & { mergeCommitSha?: string })[];
+		const hit = list.find((c) => (app === c.repo || app.startsWith(c.repo)) && !!c.mergeCommitSha && c.mergeCommitSha.toLowerCase().startsWith(rev.slice(0, 7)));
+		if (hit) {
+			const last = hit.htmlUrl.split('/').pop() ?? '';
+			return { ref: /^\d+$/.test(last) ? `#${last}` : shortRevision(last), title: hit.title };
+		}
+	}
+	return changeOf(app);
+}
 export function ownerOf(app: string, me: string): string {
 	const { owners } = index();
 	for (const [repo, who] of owners) if (app === repo || app.startsWith(repo)) return who === me ? 'you' : who;
@@ -316,7 +336,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 					canAct: kind === 'approval',
 					ask: ask ? alsoApprovalAsk(ask, need?.facts.window?.opensAt ?? null) : null,
 					action: kind === 'approval' ? { label: 'Review', href: e.href } : null,
-					change: changeOf(a.app)
+					change: kind === 'failing' ? failedChangeOf(a.app, e.href) : changeOf(a.app)
 				});
 			}
 			}

@@ -357,7 +357,9 @@ const NEWEST_TITLE: Record<string, string> = {
 	'catalog-api': 'Fix flaky readiness handler',
 	'inventory-api': 'Read stock levels from the replica'
 };
-const headlinesOf = (app: string): string[] => ['Tune connection pool sizes', 'Add retry budget to outbound calls', NEWEST_TITLE[app] ?? 'Fix flaky readiness handler'];
+/** the change of a build NEWER than the failed head (an app with `newer` builds held behind its failed place): a real title, never the generic "Deploy <tag>" */
+const NEWER_TITLE: Record<string, string> = { 'search-indexer': 'Raise the shard rebalance threshold' };
+const headlinesOf = (app: string): string[] => ['Tune connection pool sizes', 'Add retry budget to outbound calls', NEWEST_TITLE[app] ?? 'Fix flaky readiness handler', ...(NEWER_TITLE[app] ? [NEWER_TITLE[app]] : [])];
 const ghOf = (fs: Fixture[]): Record<string, AppFixture> =>
 	Object.fromEntries(fs.map((f) => [f.app, curated(OWNER, f.app, f.releases.map((r) => r.tag), headlinesOf(f.app), undefined, `Initial ${f.app} release`)]));
 const mergeOf = (fs: Fixture[]): Record<string, number> =>

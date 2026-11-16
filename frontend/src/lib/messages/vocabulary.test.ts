@@ -355,8 +355,6 @@ const DENY: Array<{
 			'lib/components/SkipRuleModal.svelte\tcode\tSkip for ${toSend.length === 1 ? \'1 rollout\' :',
 			// dialog confirm button per (e)
 			'lib/view-models/deploy-risk.ts\tcode\tDeploy to …',
-			// dialog confirm button per (e)
-			'lib/view-models/deploy-risk.ts\tcode\tRedeploy to …',
 			// accessibility skip-link, not a trigger
 			'routes/+layout.svelte\ttext\tSkip to main content'
 		]
