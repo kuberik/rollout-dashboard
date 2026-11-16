@@ -208,7 +208,7 @@ function drawRelease(app: string, c: AppCtx, scenario: HomeState, release: strin
 	const total = c.entries.filter((e) => e.counted).length;
 	const parts: StageRollup['parts'] = release ? [{ text: `${ran} of ${total} place${total === 1 ? '' : 's'} on ${release}`, short: `${ran} of ${total} on ${release}`, ink: 'muted' }] : [{ text: 'No releases yet', ink: 'muted' }];
 	/* a failed place whose checks have all recovered reads `failed`; `failing` is a check failing now (state-words.ts failedWord) */
-	for (const t of failedPartsOfHrefs(ps.filter((p) => p.state === 'failed').map((p) => p.href))) parts.push({ text: t, ink: 'danger' });
+	for (const t of failedPartsOfHrefs(ps.filter((p) => p.state === 'failed').map((p) => p.href))) parts.push({ text: t, ink: t.endsWith(' failing') ? 'danger' : 'muted' });
 	if (k('approval')) parts.push({ text: `${k('approval')} waiting`, ink: 'held' });
 	if (k('held')) parts.push({ text: `${k('held')} held`, ink: 'held' });
 	if (k('checking')) parts.push({ text: `${k('checking')} checking`, ink: 'progress' });

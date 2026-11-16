@@ -24,10 +24,12 @@ describe('app-scope stage rollup: failed vs failing', () => {
 		const t = stagesOf({ kind: 'app', app: 'catalog-api' }, 'calm').rollup.text;
 		expect(t).toMatch(/1 failed/);
 		expect(t).not.toMatch(/failing/);
+		expect(stagesOf({ kind: 'app', app: 'catalog-api' }, 'calm').rollup.parts.find((p) => /failed/.test(p.text))?.ink).toBe('muted');
 	});
 	it('a check failing now (checkout-gateway) reads `1 failing`', () => {
 		load();
 		expect(stagesOf({ kind: 'app', app: 'checkout-gateway' }, 'calm').rollup.text).toMatch(/1 failing/);
+		expect(stagesOf({ kind: 'app', app: 'checkout-gateway' }, 'calm').rollup.parts.find((p) => /failing/.test(p.text))?.ink).toBe('danger');
 	});
 });
 

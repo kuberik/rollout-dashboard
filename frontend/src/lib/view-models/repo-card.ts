@@ -6,6 +6,7 @@
  */
 import { beadsFor, type Bead, type BeadChange } from './bead';
 import { beadRank } from './severity';
+import { failedParts } from '$lib/components/new/state-words';
 import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
 export const REPO_TIERS = TIER_LIST;
@@ -18,7 +19,7 @@ export type RepoCardModel = { /** the apps this repo's changes deploy (empty or 
 const SEV = (s: string): number => beadRank(s);
 
 /**
- * adverse first; landed is excluded (the row's end says it). Only failing takes ink, and "waiting" takes held ink when one is yours.
+ * adverse first; landed is excluded (the row's end says it). Only a check failing now takes ink (a recovered `failed` is neutral, like every other page), and "waiting" takes held ink when one is yours.
  *
  * WHAT "N MOVING" COUNTS (dedup pass 4, decided 2026-11-13): a change still going through its environments is moving, whether its build is being
  * rolled out or checked right now (`deploying`, `checking`) OR it is deployed and healthy at the tier it has reached but is not at rest at its final
@@ -29,10 +30,9 @@ const SEV = (s: string): number => beadRank(s);
  */
 export function rollupParts(changes: readonly { state: string; noReleases?: string; /** a failed change whose checks have all recovered reads `failed`, not `failing` */ recovered?: boolean }[]): RollupPart[] {
 	const n = (...ks: string[]) => changes.filter((c) => ks.includes(c.state)).length;
-	const failedAll = n('failed'), failedRec = changes.filter((c) => c.state === 'failed' && c.recovered).length, failed = failedAll - failedRec, wait = n('approval', 'approval-yours', 'held'), mov = changes.filter((c) => !c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length, stuck = changes.filter((c) => c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length;
+	const failedAll = n('failed'), failedRec = changes.filter((c) => c.state === 'failed' && c.recovered).length, wait = n('approval', 'approval-yours', 'held'), mov = changes.filter((c) => !c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length, stuck = changes.filter((c) => c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length;
 	return [
-		failed ? { text: `${failed} failing`, ink: 'danger' as const } : null,
-		failedRec ? { text: `${failedRec} failed`, ink: 'danger' as const } : null,
+		...failedParts(failedAll, failedRec).map((text) => ({ text, ink: text.endsWith(' failing') ? ('danger' as const) : ('subtle' as const) })),
 		wait ? { text: `${wait} waiting`, ink: n('approval-yours') ? ('held' as const) : ('subtle' as const) } : null,
 		mov ? { text: `${mov} moving`, ink: 'subtle' as const } : null,
 		/* no releases: nothing will carry it on, so it is not "moving" */

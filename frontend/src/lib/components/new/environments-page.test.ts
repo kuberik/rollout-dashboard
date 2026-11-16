@@ -99,6 +99,7 @@ describe('a failure whose checks recovered is `failed`, not `failing`', () => {
 	it('every failure recovered: the lead says `failed`, never `failing`', () => {
 		const s = stateLine({ ...t, failing: 2, recovered: 2 }, 'deploying');
 		expect(s.lead.text).toBe('2 failed');
+		expect(s.lead.ink).toBe('muted');
 		expect(s.parts.map((p) => p.text).join(' ')).not.toContain('failing');
 	});
 	it('no recovered count (older callers): unchanged', () => {

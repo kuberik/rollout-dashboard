@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { changesPage, refOf, gateOf, attentionOrder, attentionSince } from './changes-page';
+import { changesPage, attentionRollupParts, refOf, gateOf, attentionOrder, attentionSince } from './changes-page';
 import { ago } from './data';
 
 /* r39 build: the Changes page composition. Each change once: banner / Attention / one repo card; section counts are the cards' own counts. */
@@ -42,4 +42,8 @@ it('attention order: failures sort by when their check began failing, the age th
 	/* a deployed first but began failing last; b deployed later but has failed longer */
 	const ps = [mk('a', '2026-11-14T10:00:00Z', '2026-11-14T11:50:00Z'), mk('b', '2026-11-14T11:00:00Z', '2026-11-14T11:10:00Z')];
 	expect(attentionOrder(ps, (p) => attentionSince(p, () => null)).map((p) => p.k)).toEqual(['b', 'a']);
+});
+
+it('Attention rollup: only the failing-now part is danger ink, a recovered failed is a plain part', () => {
+	expect(attentionRollupParts(3, 1, 1)).toEqual([{ text: '2 failing', ink: 'danger' }, '1 failed', { text: '1 to approve', ink: 'held' }]);
 });

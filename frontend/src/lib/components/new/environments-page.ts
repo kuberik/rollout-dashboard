@@ -40,7 +40,7 @@ export function stateLine(t: { places: number; failing: number; /** of the faile
 	if (t.moving) parts.push({ text: `${t.moving} ${movingWord}` });
 	if (t.rest) parts.push({ text: `${t.rest} healthy` });
 	const mv: TileMark = movingWord === 'checking' ? 'checking' : 'deploying';
-	if (t.failing) return { lead: { text: `${live || recovered} ${failedWord(!live).toLowerCase()}`, ink: TONE.failed.hue as Ink }, parts, mark: 'failed' };
+	if (t.failing) return { lead: { text: `${live || recovered} ${failedWord(!live).toLowerCase()}`, ink: live ? (TONE.failed.hue as Ink) : 'muted' }, parts, mark: 'failed' };
 	if (t.waiting) return { lead: { ...parts.shift()!, ink: TONE.held.hue as Ink }, parts, mark: t.yours ? 'approval-yours' : 'approval' };
 	if (t.moving) return { lead: { ...parts.shift()!, ink: TONE[mv].hue as Ink }, parts, mark: mv }; /* the word's ink is the mark's tone: "2 checking" is progress yellow beside the yellow clock, "2 deploying" active blue */
 	return { lead: { text: `All ${t.places} healthy`, ink: 'muted' }, parts: [], mark: 'rest' };

@@ -14,7 +14,7 @@ export function attentionRollup(c: { failing: number; /** of `failing`, the apps
 	const rec = Math.min(c.recovered ?? 0, c.failing), live = c.failing - rec;
 	return [
 		live ? { text: `${live} ${failedWord(false).toLowerCase()}`, ink: 'danger' as const } : null,
-		rec ? { text: `${rec} ${failedWord(true).toLowerCase()}`, ink: 'danger' as const } : null,
+		rec ? { text: `${rec} ${failedWord(true).toLowerCase()}` } : null,
 		c.approval ? { text: needApprovalCount(c.approval), ink: 'held' as const } : null,
 		c.yours ? { text: `${c.yours} yours` } : null
 	].filter((x): x is { text: string; ink?: 'danger' | 'held' } => !!x);
