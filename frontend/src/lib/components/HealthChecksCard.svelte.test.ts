@@ -271,3 +271,28 @@ describe('HealthChecksCard — row height does not depend on state', () => {
 		expect(screen.getByTestId('hc-sub').textContent).toMatch(/^\s*passing/);
 	});
 });
+
+describe('state words and rollup ink', () => {
+	test('a waiting pending check says "pending" under its name, the same word as the chip, and the chip follows the name', () => {
+		render(HealthChecksCard, {
+			props: { healthChecks: [hc('probe', 'Pending', { message: 'evaluating', lastChangeTime: '2026-09-13T09:30:00Z' })] }
+		});
+		const sub = document.querySelector('[data-testid="hc-sub"]');
+		expect(sub?.textContent?.trim()).toMatch(/^pending\s*\u00b7/);
+		expect(sub?.textContent).not.toMatch(/waiting/);
+		const nameLine = document.querySelector('[data-testid="hc-row"] .flex.min-w-0.items-center');
+		expect(nameLine?.textContent).toMatch(/probe\s*pending/i);
+	});
+
+	test('only the failing part of the rollup is in danger ink', () => {
+		render(HealthChecksCard, {
+			props: { healthChecks: [hc('a', 'Failed', { message: 'x' }), hc('b', 'Pending', { message: 'y' }), hc('c', 'Healthy')] }
+		});
+		const parts = Array.from(document.querySelectorAll('span')).filter((s) => /^\d+ (failing|pending|passing)$/.test(s.textContent ?? '') && s.children.length === 0);
+		const ink = Object.fromEntries(parts.map((s) => [s.textContent!.split(' ')[1], s.className]));
+		expect(ink.failing).toContain('text-danger');
+		expect(ink.pending).not.toContain('text-danger');
+		expect(ink.pending).not.toContain('text-progress');
+		expect(ink.passing).not.toContain('text-danger');
+	});
+});

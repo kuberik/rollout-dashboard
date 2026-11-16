@@ -99,15 +99,20 @@
 	const healthyChecks = $derived(
 		healthChecks.filter((hc) => classifyCheck(hc, windowStart) === 'passing')
 	);
-	const rollupText = $derived(
-		[
-			failedChecks.length > 0 ? `${failedChecks.length} failing` : '',
-			pendingChecks.length > 0 ? `${pendingChecks.length} pending` : '',
-			recovered.length > 0 ? `${recovered.length} recovered` : '',
-			healthyChecks.length > 0 ? (failedChecks.length + pendingChecks.length + recovered.length === 0 ? `${healthChecks.length}/${healthChecks.length} healthy` : `${healthyChecks.length} passing`) : ''
-		]
-			.filter(Boolean)
-			.join(' \u00b7 ')
+	/* state-only colour: only the failing part is in danger ink; pending, recovered and passing read in the neutral meta ink (the all-healthy sentence stays success). Same parts, same order as before. */
+	const rollupParts = $derived(
+		(
+			[
+				failedChecks.length > 0 ? { text: `${failedChecks.length} failing`, ink: 'text-danger' } : null,
+				pendingChecks.length > 0 ? { text: `${pendingChecks.length} pending`, ink: 'text-fg-muted' } : null,
+				recovered.length > 0 ? { text: `${recovered.length} recovered`, ink: 'text-fg-muted' } : null,
+				healthyChecks.length > 0
+					? failedChecks.length + pendingChecks.length + recovered.length === 0
+						? { text: `${healthChecks.length}/${healthChecks.length} healthy`, ink: 'text-success' }
+						: { text: `${healthyChecks.length} passing`, ink: 'text-fg-muted' }
+					: null
+			] as ({ text: string; ink: string } | null)[]
+		).filter((x): x is { text: string; ink: string } => x !== null)
 	);
 	function errorAgo(hc: HealthCheck): string {
 		return hc.status?.lastErrorTime ? formatAgoCompact(hc.status.lastErrorTime, $now) : 'earlier';
@@ -280,10 +285,8 @@
 		dataTour="health-checks"
 	>
 		{#snippet rollup()}
-			<!-- never print a zero count; the leading verdict sets the ink (recovered is not a yellow: green) -->
-			<span class="t-ui-sm {failedChecks.length > 0 ? 'text-danger' : pendingChecks.length > 0 ? 'text-progress' : 'text-success'}"
-				>{rollupText}</span
-			>
+			<!-- never print a zero count; each part in its own ink (Group.svelte's rollup draws its counts the same way) -->
+			<span class="t-ui-sm">{#each rollupParts as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class={part.ink}>{part.text}</span>{/each}</span>
 		{/snippet}
 		<!--
 			⭐ ONE ROW, ONE POSITION, FOUR LOOKS. (2026-09-21, film critic finding
@@ -323,9 +326,13 @@
 				<div class="flex items-start gap-3">
 					<CheckStateMark verdict={state} class="mt-0.5" />
 					<div class="min-w-0 flex-1">
-						<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
-							{displayName(hc)}
-						</span>
+						<!-- the state chip sits right after the name (the RolloutGrid row's name · chip), not at the card's far edge: at 2560 the card is 900px wide and a chip at the end sat ~770px from the name it labels -->
+						<div class="flex min-w-0 items-center gap-2">
+							<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
+								{displayName(hc)}
+							</span>
+							{#if pending}{@render stateChip(state, hc.status?.status || undefined)}{/if}
+						</div>
 						<!--
 							EVERY STATE DRAWS THE NAME AND ONE FACT LINE (2026-11-12, owner rule: nothing moves as state changes).
 							The fact line is a single truncated line in every state; evidence (observation rows, the provider's
@@ -349,7 +356,7 @@
 						{:else if pending}
 							{#if v.since}
 								<!-- a pending check says how long it has waited; what it is waiting on is the evidence under it -->
-								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate"><span class="text-progress">waiting</span>{' · '}<span class="whitespace-nowrap tabular-nums">{formatTimeAgoCompact(v.since, $now)}</span></p>
+								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate"><span class="text-progress">pending</span>{' · '}<span class="whitespace-nowrap tabular-nums">{formatTimeAgoCompact(v.since, $now)}</span></p>
 							{:else}
 								{@const text = pendingRowText(hc, $now)}
 								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={text}>{text}</p>
@@ -366,16 +373,6 @@
 							<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate">
 								<span class="text-fg-subtle">passing</span>{#if hc.status?.lastChangeTime}{' · '}<span class="tabular-nums">{formatTimeAgoCompact(hc.status.lastChangeTime, $now)}</span>{/if}
 							</p>
-						{/if}
-					</div>
-					<!-- the chip budget: a failing row's red glyph + red fact is its one mark; passing draws none -->
-					<div class="flex shrink-0 items-center gap-2">
-						{#if failing}
-							<!-- stated under the name -->
-						{:else if passingRow}
-							<!-- the age lives in the fact line -->
-						{:else if pending}
-							{@render stateChip(state, hc.status?.status || undefined)}
 						{/if}
 					</div>
 				</div>
