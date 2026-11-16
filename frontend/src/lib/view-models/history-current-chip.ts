@@ -22,7 +22,10 @@ export function liveStatusVerb(e: { bakeStatus?: string; bakeHoldStartTime?: str
 	return null;
 }
 
-/** the Deploys card's rollup for a current row whose bake is paused: never "All healthy" while a check is pending */
-export function pausedRollup(pending: number): string {
-	return pending > 0 ? `Bake paused · ${pending} check${pending === 1 ? '' : 's'} pending` : 'Bake paused';
+/**
+ * the Deploys card's rollup for a current row whose bake is paused, never "All healthy" while a check is pending. As parts, each in its own ink like the Health checks
+ * header: only the state ("Bake paused") is in held ink, the pending count is the neutral meta ink.
+ */
+export function pausedRollup(pending: number): { text: string; ink: string }[] {
+	return [{ text: 'Bake paused', ink: 'text-held' }, ...(pending > 0 ? [{ text: `${pending} check${pending === 1 ? '' : 's'} pending`, ink: 'text-fg-muted' }] : [])];
 }

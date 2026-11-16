@@ -1805,7 +1805,7 @@
 										>{rangeRolledBack} rolled back</span
 									>
 								{:else if currentHeld}
-									<span class="t-ui-sm text-held">{pausedRollup(heldCheckSnaps(liveChecks).length)}</span>
+									<span class="t-ui-sm">{#each pausedRollup(heldCheckSnaps(liveChecks).length) as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class={part.ink}>{part.text}</span>{/each}</span>
 								{:else if filteredHistory.length > 0}
 									<span class="t-ui-sm text-fg-subtle">All healthy</span>
 								{/if}
