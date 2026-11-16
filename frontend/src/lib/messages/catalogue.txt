@@ -812,7 +812,6 @@ lib/components/new/env/DayRow.svelte	text	Rolled back
 lib/components/new/env/env-page.ts	code	: versions[0] ?? ''}
 lib/components/new/env/env-page.ts	code	… behind
 lib/components/new/env/env-page.ts	code	… builds
-lib/components/new/env/env-page.ts	code	… failed
 lib/components/new/env/env-page.ts	code	… held
 lib/components/new/env/env-page.ts	code	… not at rest
 lib/components/new/env/env-page.ts	code	… regions
@@ -1614,8 +1613,8 @@ lib/view-models/history-approval.ts	code	approved by …
 lib/view-models/history-approval.ts	code	Approved by …
 lib/view-models/history-approval.ts	code	Approved by … (…)
 lib/view-models/history-approval.ts	code	Approved by RolloutApproval … (no verified approver)
+lib/view-models/history-current-chip.ts	code	… check… pending
 lib/view-models/history-current-chip.ts	code	Bake paused
-lib/view-models/history-current-chip.ts	code	Bake paused · … check… pending
 lib/view-models/history-current-chip.ts	code	Checking for
 lib/view-models/history-current-chip.ts	code	Deploying for
 lib/view-models/history-current-chip.ts	code	Paused for
