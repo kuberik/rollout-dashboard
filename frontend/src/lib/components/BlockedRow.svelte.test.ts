@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/svelte';
-import BlockedRow, { blockedBuild, blockedFact } from './BlockedRow.svelte';
+import BlockedRow, { blockedBuild, blockedFact, blockedStateLabel, blockedOptionLabel } from './BlockedRow.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 
 /** A held rollout: 7b3c9f1 RUNS; 4a8d2e6 is the candidate an approval gate refuses. */
@@ -136,5 +136,21 @@ describe('BlockedRow: an approval hold wears the approval mark (home-map, 2026-1
 		const { container } = render(BlockedRow, { card: heldCard, kind: 'held', href: '#' });
 		expect(container.querySelector('.sm-ask')).toBeNull();
 		expect(container.querySelector('.ring-held-line')).not.toBeNull();
+	});
+});
+
+describe('the glyph and option say failing while a check fails now, failed once recovered', () => {
+	const failedCard = { ...(heldCard as object), name: 'checkout-gateway', envDisplay: 'prod', statusKey: 'failed', failureCategory: 'healthcheck' } as unknown as RolloutCard;
+	it('the glyph hidden text', () => {
+		expect(blockedStateLabel('failed', false)).toBe('failing');
+		expect(blockedStateLabel('failed', true)).toBe('failed');
+		expect(blockedStateLabel('held')).toBe('held');
+		const { container } = render(BlockedRow, { card: failedCard, kind: 'failed', href: '/r', recovered: false });
+		expect(container.textContent).toContain('failing');
+	});
+	it('the option aria-label carries the state in the visible fact words', () => {
+		expect(blockedOptionLabel(failedCard, 'failed', false, 'Open logs')).toBe('checkout-gateway · prod · health check failing — Open logs');
+		expect(blockedOptionLabel(failedCard, 'failed', true, 'Open logs')).toBe('checkout-gateway · prod · failed its health check — Open logs');
+		expect(blockedOptionLabel(heldCard, 'held', false, 'Approve', 'approval')).toBe('telemetry-indexer · prod — Approve approval');
 	});
 });

@@ -71,7 +71,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import RestGlyph from '$lib/components/RestGlyph.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import BlockedRow, { blockedKindOf } from '$lib/components/BlockedRow.svelte';
+	import BlockedRow, { blockedKindOf, blockedOptionLabel } from '$lib/components/BlockedRow.svelte';
 	import { isHeldByApproval } from '$lib/view-models/held';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import Toast from '$lib/components/Toast.svelte';
@@ -1777,7 +1777,7 @@
 		role="option"
 		id={`cp-opt-${idx}`}
 		aria-selected={isActive}
-		aria-label={`${c.name}${c.envDisplay ? ` · ${c.envDisplay}` : ''} — ${actionLabel}${approvalGateLabel(c) ? ` ${approvalGateLabel(c)}` : ''}`}
+		aria-label={blockedOptionLabel(c, rowKind(c), failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)), actionLabel, approvalGateLabel(c) ?? '')}
 		data-idx={idx}
 		tabindex="-1"
 		onmouseenter={() => (selectedIndex = idx)}

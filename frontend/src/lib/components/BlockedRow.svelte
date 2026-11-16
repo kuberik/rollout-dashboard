@@ -5,6 +5,7 @@
 	import { holdCausePhrase, type BlockingStory } from '$lib/view-models/blocking-story';
 	import { approvalCellText } from '$lib/view-models/held';
 	import { shortenVersion } from '$lib/utils';
+	import { failedWord } from '$lib/components/new/state-words';
 
 	export type BlockedKind = 'failed' | 'stuck' | 'held';
 	/**
@@ -17,6 +18,17 @@
 	export function blockedKindOf(c: RolloutCard, held = false): BlockedKind {
 		if (held) return 'held';
 		return c.statusKey === 'failed' || c.checkFailure != null ? 'failed' : 'stuck';
+	}
+
+	/** The word the row's state glyph speaks (its hidden text): a failed row says "failing" while a check fails now and "failed" once its checks recovered (state-words `failedWord`); other kinds say their kind. */
+	export function blockedStateLabel(kind: BlockedKind, recovered = false): string {
+		return kind === 'failed' ? failedWord(recovered).toLowerCase() : kind;
+	}
+
+	/** The palette option's accessible name: name, place, and (for a failed row) the state in the visible fact's own words, then the action: "checkout-gateway · prod · health check failing — Open logs". */
+	export function blockedOptionLabel(c: RolloutCard, kind: BlockedKind, recovered: boolean, actionLabel: string, gate = ''): string {
+		const state = kind === 'failed' ? ` · ${blockedFact(c, kind, null, recovered).toLowerCase()}` : '';
+		return `${c.name}${c.envDisplay ? ` · ${c.envDisplay}` : ''}${state} — ${actionLabel}${gate ? ` ${gate}` : ''}`;
 	}
 
 	/** The row's fact, in plain words: why a person is needed. */
@@ -175,7 +187,7 @@
 		: 'flex-wrap gap-y-0.5 px-4 py-3'} {className}"
 	data-blocked-kind={kind}
 >
-	<StatusMark state={approval && kind === 'held' ? 'approval' : kind} label={approval && kind === 'held' ? 'waits for your approval' : kind} />
+	<StatusMark state={approval && kind === 'held' ? 'approval' : kind} label={approval && kind === 'held' ? 'waits for your approval' : blockedStateLabel(kind, recovered)} />
 	{#if glyph && !palette}<AppGlyph name={card.name} size={20} />{/if}
 	<a {href} class="tap-link t-card-title min-w-0 {palette ? 'shrink' : ''} truncate text-fg">{card.name}</a>
 	<!-- Palette squeeze order: the env chip gives way first (its label
