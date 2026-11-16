@@ -186,8 +186,6 @@
 
 	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
-	/** the failed head's checks are all OK again (the page's own live checks, the reading History and the Overview's banner use); the fleet reading when they have not arrived */
-	const headRecovered = $derived(headRecoveredLive(healthChecks ?? [], rollout?.status?.history?.[0] as never) || failureRecovered(rolloutPath(cluster, namespace, page.params.name as string)));
 	const name = $derived(page.params.name as string);
 
 	// ⭐ PERF-2026-09-04 §C.7 SLICE 4 — STREAM-AWARE (see Navbar.svelte).
@@ -287,6 +285,8 @@
 	const fleetFailed = $derived(fleetLatch.failed && listQuery.data === undefined);
 
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
+	/** the failed head's checks are all OK again (the page's own live checks, the reading History and the Overview's banner use); the fleet reading when they have not arrived */
+	const headRecovered = $derived(headRecoveredLive(healthChecks ?? [], rollout?.status?.history?.[0] as never) || failureRecovered(rolloutPath(cluster, namespace, page.params.name as string)));
 
 	// Clear pin, the Overview's own action: the same permission read, the same dialog.
 	const permissionsQuery = createQuery(() => ({
