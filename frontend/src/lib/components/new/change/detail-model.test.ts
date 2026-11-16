@@ -314,14 +314,22 @@ describe('a failed place whose checks recovered is `failed`, not `failing`', () 
 	});
 });
 
-describe('howFacts: Merge to production when the only prod deploy failed', () => {
-	const mk = (recovered: boolean) => {
-		const c = { mergedAt: '2026-11-16T08:00:00Z' } as never;
-		const place = { kind: 'failed', tier: 'prod', since: '2026-11-16T09:00:00Z', row: { failure: { recovered } } } as never;
-		return howFacts(c, [place], [], null).toProd;
-	};
-	it('reads failing while a check fails now, failed once recovered', () => {
-		expect(mk(false)).toBe('1h · failing');
-		expect(mk(true)).toBe('1h · failed');
+describe('howFacts: Merge to production carries the state when a prod place failed', () => {
+	const c = { mergedAt: '2026-11-16T08:00:00Z' } as never;
+	const failed = (recovered: boolean) => ({ kind: 'failed', tier: 'prod', since: '2026-11-16T09:00:00Z', row: { failure: { recovered } } }) as never;
+	const mk = (places: never[], events: never[] | null = null) => howFacts(c, places, [], events).toProd;
+	it('reads failing while a check fails now, failed once recovered: time primary, state in its own ink', () => {
+		expect(mk([failed(false)])).toEqual([{ text: '1h', ink: 'fg' }, { text: 'failing', ink: 'danger' }]);
+		expect(mk([failed(true)])).toEqual([{ text: '1h', ink: 'fg' }, { text: 'failed', ink: 'muted' }]);
+	});
+	it('carries the state when another prod place reached production (a reached-prod event), as the Places row does', () => {
+		const ev = [{ kind: 'deployed', reachedProd: '2026-11-16T09:30:00Z' }] as never[];
+		const running = { kind: 'running', tier: 'prod', since: '2026-11-16T09:30:00Z' } as never;
+		expect(mk([running, failed(false)], ev)).toEqual([{ text: '1h 30m', ink: 'fg' }, { text: 'failing', ink: 'danger' }]);
+	});
+	it('says nothing extra when no prod place failed, and null with nothing at all', () => {
+		const running = { kind: 'running', tier: 'prod', since: '2026-11-16T09:30:00Z' } as never;
+		expect(mk([running])).toEqual([{ text: '1h 30m', ink: 'fg' }]);
+		expect(mk([])).toBeNull();
 	});
 });

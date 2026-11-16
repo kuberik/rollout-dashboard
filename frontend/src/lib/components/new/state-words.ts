@@ -16,6 +16,11 @@ export const failedWord = (recovered: boolean): 'Failing' | 'Failed' => (recover
 /** "2 failing" and "1 failed" as separate parts, zero parts left out: the one counting rule for failed places, `recovered` of the `failing` ones having all their checks OK again */
 export const failedParts = (failing: number, recovered: number): string[] => [failing - recovered > 0 ? `${failing - recovered} ${failedWord(false).toLowerCase()}` : '', recovered > 0 ? `${recovered} ${failedWord(true).toLowerCase()}` : ''].filter(Boolean);
 
+/** A part of a rollup or a dot list with its ink: the word of a check failing now is danger, every other part (the recovered `failed`, a time) is neutral. */
+export type FailedPart = { text: string; ink: 'danger' | 'muted' };
+/** `failedParts` as ink parts: THE ONE INK RULE for the failure words (failing danger, failed neutral). Surfaces that print the count as `{ text, ink }` call this instead of colouring by hand. */
+export const failedInkParts = (failing: number, recovered: number): FailedPart[] => failedParts(failing, recovered).map((text) => ({ text, ink: text.endsWith(` ${failedWord(false).toLowerCase()}`) ? 'danger' : 'muted' }));
+
 export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking' | 'paused';
 
 /** accepts the product's other spellings of the same five states */
