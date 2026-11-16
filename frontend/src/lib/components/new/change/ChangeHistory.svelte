@@ -91,7 +91,7 @@
 						{:else}<StatusMark state="failed" recovered={recoveredEv(e)} />{/if}
 					</span>
 					<span class="cdh-l1 flex min-h-5 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-						<span class="t-ui whitespace-nowrap {verbInk(e)}" data-ev-verb>{e.words}</span>
+						<span class="t-ui whitespace-nowrap {recoveredEv(e) ? 'text-fg-muted' : verbInk(e)}" data-ev-verb>{e.words}</span>
 						{#if e.tier && (e.kind === 'deployed' || e.kind === 'moving' || e.kind === 'redeploy')}<Chip role="env" theme={envTheme(e.tier)} label={e.tier} />{/if}
 						{#if sites}<span class="t-meta min-w-0 truncate text-fg-muted" data-ev-sites title={sites}>{sites}</span>{/if}
 						{#if multiApp && e.app}<span class="t-meta inline-flex shrink-0 items-center gap-1 text-fg-muted" data-ev-app><AppGlyph name={e.app} size={16} class="shrink-0" />{e.app}</span>{/if}
