@@ -16,7 +16,7 @@ import {
 	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathReach, reachSentence, buildCommitOf, failureRecovered,
 	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock, waveInfoOfHref
 } from '../data';
-import { stateWord, approvalWord, failedWord } from '../state-words';
+import { stateWord, approvalWord, failedWord, failedParts } from '../state-words';
 import { holdWord as holdText } from '../rollout-view';
 import { changeBySha, homeModel } from '$lib/components/home/sketch/home-data';
 import { rangeJson, pullJson } from '../github-read.svelte';
@@ -114,8 +114,7 @@ export const runningN = (ps: Place[]) => ps.filter((p) => p.kind === 'running').
 /** CE2: THE count of the page, with its unit, read from here by the header, the Places rollup and the tests: "9 places · 3 live · 5 waiting · 1 not affected" */
 /** a failed place whose checks are all OK again (its rollout row's own `failure.recovered`, or the tab row behind a newer-build failure) */
 const recoveredPlace = (p: Place): boolean => !!(p.row ?? p.tabRow)?.failure?.recovered;
-/** "2 failing" and "1 failed" as separate parts, zero parts left out */
-export const failedParts = (failing: number, recovered: number): string[] => [failing - recovered > 0 ? `${failing - recovered} ${failedWord(false).toLowerCase()}` : '', recovered > 0 ? `${recovered} ${failedWord(true).toLowerCase()}` : ''].filter(Boolean);
+export { failedParts };
 /** the failed places' rollup parts by rollout href: a place whose checks have all recovered reads `failed`, one with a check failing now `failing` */
 export const failedPartsOfHrefs = (hrefs: readonly string[]): string[] => failedParts(hrefs.length, hrefs.filter((h) => failureRecovered(h)).length);
 export function countsOf(all: Unit[], places: Place[]) {

@@ -10,7 +10,7 @@
  */
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { TONE } from '$lib/view-models/state-tone';
-import { failedWord } from './state-words';
+import { failedWord, failedParts } from './state-words';
 import { envsModel, plural, type Mark } from './envs-model';
 import { waveHold } from './app/app-model';
 import { apps, placeHolds, type PlaceHold, inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
@@ -19,7 +19,7 @@ export type Ink = 'danger' | 'held' | 'active' | 'progress' | 'muted';
 export type StatePart = { text: string; you?: string };
 export type TileMark = 'failed' | 'approval-yours' | 'approval' | 'deploying' | 'checking' | 'rest';
 export type TileLast = { app: string; build: string; age: string; word: string | null; you: boolean; author: string | null; href: string };
-export type RegionCell = { key: string; label: string; mark: Mark; failing: number; waiting: number; moving: number; movingWord: string; href: string };
+export type RegionCell = { key: string; label: string; mark: Mark; failing: number; recovered: number; waiting: number; moving: number; movingWord: string; href: string };
 export type EnvTile = {
 	key: TierKey; name: string; href: string; places: number; apps: number;
 	failing: number; waiting: number; yours: number; moving: number; rest: number;
@@ -55,7 +55,7 @@ export function barSegments(t: { failing: number; waiting: number; moving: numbe
 export function regionCells(m: ReturnType<typeof envsModel>): { cells: RegionCell[]; healthy: number } {
 	const word = (mk: Mark) => (mk === 'checking' ? 'checking' : 'deploying');
 	const all = [...(m.base ? [m.base] : []), ...m.busy, ...m.rest];
-	const cell = (r: (typeof all)[number]): RegionCell => ({ key: r.label + (r.regionless ? '*' : ''), label: r.label, mark: r.mark, failing: r.failing, waiting: r.waiting, moving: r.moving, movingWord: word(r.mark), href: r.envHref });
+	const cell = (r: (typeof all)[number]): RegionCell => ({ key: r.label + (r.regionless ? '*' : ''), label: r.label, mark: r.mark, failing: r.failing, recovered: r.recovered, waiting: r.waiting, moving: r.moving, movingWord: word(r.mark), href: r.envHref });
 	/* QA #10: cells are SITES. One site (the default one, or places that share a label) has no region cells and no region wording: the tile's state bar already says it */
 	if (siteCount(all.map((r) => (r.regionless ? '' : r.label))) <= 1) return { cells: [], healthy: 0 };
 	const adverse = all.filter((r) => r.mark !== 'newest').map(cell);
@@ -118,7 +118,7 @@ export function environmentsPage(hs: HomeState): EnvironmentsPage {
 			key: t.key, name: TIER_NAME[t.key] ?? t.key, href: `/envs/${t.key}`, places: t.places, apps: t.apps,
 			failing: c.failing, waiting: c.waiting, yours, moving: c.moving, rest: c.rest,
 			mark: s.mark, lead: s.lead, parts: s.parts, calm: !c.failing && !c.waiting && !c.moving,
-			label: `${t.places} places: ${c.failing} failing, ${c.waiting} waiting, ${c.moving} ${movingWord}, ${c.rest} healthy`,
+			label: `${t.places} places: ${failedParts(c.failing, c.recovered).join(', ') || '0 failing'}, ${c.waiting} waiting, ${c.moving} ${movingWord}, ${c.rest} healthy`,
 			arriving: { builds: inb.length, apps: [...new Set(inb.map((x) => x.app))] },
 			last,
 			regions: t.key === 'prod' ? withWaveHold(regionCells(m), hs, m) : null

@@ -5,7 +5,7 @@
  * when they land. Pure, so it is unit-testable.
  */
 import { oldestFirst, newestFirst } from '$lib/instant';
-import { environments, rollouts, inbound as inboundOf, lastDeploy as lastDeployOf, lead as leadOf, fleetCounts, arrivals as arrivalsOf, heldCauses, failureReason, checkClock, buildInQuestionFacts, ago, ARRIVALS_WINDOW, TIERS, TIER_NAME, type HomeState, type TierKey, type HeldCause, type TRow } from './data';
+import { environments, rollouts, inbound as inboundOf, lastDeploy as lastDeployOf, lead as leadOf, fleetCounts, arrivals as arrivalsOf, heldCauses, failureReason, failureRecovered, checkClock, buildInQuestionFacts, ago, ARRIVALS_WINDOW, TIERS, TIER_NAME, type HomeState, type TierKey, type HeldCause, type TRow } from './data';
 
 import type { EnvState } from '$lib/view-models/home-model';
 import { stateWord } from './state-words';
@@ -84,7 +84,7 @@ export function dotCols(n: number, avail: number, dot: number, gap: number, cap 
 }
 export const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
-export type RegionTile = { label: string; regionless: boolean; places: number; failing: number; waiting: number; holds: number; approvals: number; moving: number; worst: string; mark: Mark; href: string; envHref: string };
+export type RegionTile = { label: string; regionless: boolean; places: number; failing: number; /** of the failing places, those whose checks all recovered (they read `failed`) */ recovered: number; waiting: number; holds: number; approvals: number; moving: number; worst: string; mark: Mark; href: string; envHref: string };
 export type PlaceLike = { state: string };
 /** F1: a rule hold (held-by-rule) is the amber mark; an approval wait is the neutral ring. The tile's mark is its MOST SEVERE place in
  *  `severity.ts`'s one order (failing, approval, hold, deploying, checking, rest), the same word every other surface headlines. */
@@ -150,7 +150,7 @@ export function envsModel(state: HomeState) {
 	});
 	/* region tiles: the regions with something to say (failing, waiting, moving), regionless prod among them by severity; the rest fold */
 	const tile = (r: { label: string; apps: number; failing: number; waiting: number; moving: number; worst: string; href: string; places: PlaceLike[] }, regionless: boolean): RegionTile => ({
-		label: r.label, regionless, places: r.apps, failing: r.failing, waiting: r.waiting, moving: r.moving, worst: r.worst, href: r.href,
+		label: r.label, regionless, places: r.apps, failing: r.failing, recovered: r.places.filter((p) => p.state === 'failed' && failureRecovered((p as unknown as { href: string }).href)).length, waiting: r.waiting, moving: r.moving, worst: r.worst, href: r.href,
 		holds: r.places.filter((p) => p.state === 'held-by-rule').length, approvals: r.places.filter((p) => p.state === 'awaiting-approval' || U.hrefs.has((p as unknown as { href: string }).href)).length, mark: markOfPlaces(r.places),
 		envHref: regionless ? '/envs/prod' : `/envs/prod-${r.label}`
 	});

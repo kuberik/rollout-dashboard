@@ -105,3 +105,18 @@ describe('a failure whose checks recovered is `failed`, not `failing`', () => {
 		expect(stateLine({ ...t, failing: 2 }, 'deploying').lead.text).toBe('2 failing');
 	});
 });
+
+describe('the tile text, region cells and aria label use the same two failure words', () => {
+	it('failedParts: live first, recovered as `failed`', async () => {
+		const { failedParts } = await import('./state-words');
+		expect(failedParts(6, 2)).toEqual(['4 failing', '2 failed']);
+		expect(failedParts(2, 2)).toEqual(['2 failed']);
+		expect(failedParts(3, 0)).toEqual(['3 failing']);
+	});
+	it('a region cell carries its recovered count from the model', async () => {
+		const { regionCells } = await import('./environments-page');
+		const r = (label: string, mark: string, failing: number, recovered: number) => ({ label, regionless: false, mark, failing, recovered, waiting: 0, moving: 0, envHref: '/envs/x' });
+		const m = { base: null, busy: [r('us-east-1', 'failed', 6, 2), r('eu-west', 'failed', 1, 0)], rest: [] } as never;
+		expect(regionCells(m).cells.map((c) => [c.label, c.failing, c.recovered])).toEqual([['us-east-1', 6, 2], ['eu-west', 1, 0]]);
+	});
+});

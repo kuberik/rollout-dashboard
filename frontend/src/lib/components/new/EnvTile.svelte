@@ -19,6 +19,7 @@
 	import { ArrowRightOutline } from 'flowbite-svelte-icons';
 	import { envTheme } from './rollout-view';
 	import { avatarSrc } from './data';
+	import { failedParts } from './state-words';
 	import type { EnvTile } from './environments-page';
 	import { plural } from './envs-model';
 
@@ -42,7 +43,7 @@
 				<a class="et-region" href={r.href} data-truth-kind="region" data-truth-region={r.label}>
 					<span class="et-rtop"><StatusMark state={regionMark(r.mark)} /><span class="et-rnm t-meta font-medium truncate">{r.label}</span></span>
 					<span class="et-rst t-meta">
-						{#if r.failing}<span class={hueInk('danger')}>{r.failing} failing</span>{/if}{#if r.failing && (r.waiting || r.moving)}{' · '}{/if}{#if r.waiting}<span class={hueInk('held')}>{r.waiting} waiting</span>{/if}{#if r.waiting && r.moving}{' · '}{/if}{#if r.moving}<span class={hueInk('active')}>{r.movingWord}</span>{/if}
+						{#each failedParts(r.failing, r.recovered) as w, i (w)}{#if i}{' · '}{/if}<span class={hueInk('danger')}>{w}</span>{/each}{#if r.failing && (r.waiting || r.moving)}{' · '}{/if}{#if r.waiting}<span class={hueInk('held')}>{r.waiting} waiting</span>{/if}{#if r.waiting && r.moving}{' · '}{/if}{#if r.moving}<span class={hueInk('active')}>{r.movingWord}</span>{/if}
 					</span>
 				</a>
 			{/each}

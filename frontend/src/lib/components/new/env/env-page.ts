@@ -27,7 +27,7 @@ import {
 import { environmentsPage, stateLine, barSegments, type EnvTile } from '../environments-page';
 import { askOf, type AskItem } from '../home-page';
 import { bannerOf, attentionRollup as attentionRollupOf, type BannerModel, type RestRow } from '../rollouts-page';
-import { needApprovalCount, approvalWord, mostSevere, severity, stateWord } from '../state-words';
+import { failedParts, needApprovalCount, approvalWord, mostSevere, severity, stateWord } from '../state-words';
 import { runwayRow, rowAction } from '../rollout-view';
 import { plural } from '../envs-model';
 import { classifyChanges, rc, type Rollup } from '../changes-page';
@@ -187,7 +187,7 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 	const recoveredN = rows.filter((r) => r.group === 'failed' && r.failure?.recovered).reduce((n, r) => n + Math.max(1, r.regions.length), 0);
 	const s = region ? stateLine({ places: allPlaces.length, ...counts, recovered: recoveredN, yours: Math.min(counts.waiting, yoursN) }, movingWord) : null;
 	const tile: EnvPage['tile'] = region
-		? { ...counts, mark: s!.mark, lead: s!.lead, parts: s!.parts, calm: !counts.failing && !counts.waiting && !counts.moving, label: `${allPlaces.length} places: ${counts.failing} failing, ${counts.waiting} waiting, ${counts.moving} ${movingWord}, ${counts.rest} healthy` }
+		? { ...counts, mark: s!.mark, lead: s!.lead, parts: s!.parts, calm: !counts.failing && !counts.waiting && !counts.moving, label: `${allPlaces.length} places: ${failedParts(counts.failing, recoveredN).join(', ') || '0 failing'}, ${counts.waiting} waiting, ${counts.moving} ${movingWord}, ${counts.rest} healthy` }
 		: { failing: counts.failing, waiting: counts.waiting, moving: counts.moving, rest: counts.rest, mark: listTile!.mark, lead: listTile!.lead, parts: listTile!.parts, calm: listTile!.calm, label: listTile!.label };
 
 	/* banner + Attention: the lead failure here, then the other failures and the approvals the viewer can give */
