@@ -374,6 +374,12 @@ export function detectRollback(r: Rollout | null | undefined): RollbackMark | nu
 	};
 }
 
+/** a Failed head that recorded failed health checks (`failedHealthChecks[]`) is a health-check failure whatever its message says; else the message decides */
+export function failureCategoryOf(latest: { bakeStatusMessage?: string; failedHealthChecks?: readonly unknown[] } | null | undefined): string | null {
+	if (latest?.failedHealthChecks?.length) return 'healthcheck';
+	return categorizeFailure(latest?.bakeStatusMessage);
+}
+
 export type RolloutCard = {
 	ns: string;
 	name: string;
@@ -692,7 +698,7 @@ export function buildRolloutCards(
 			isRunning,
 			bakeStatusMessage: latest?.bakeStatusMessage || null,
 			failureCategory:
-				bakeStatus === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null,
+				bakeStatus === 'Failed' ? failureCategoryOf(latest) : null,
 			previousSucceededVersion,
 			pinnedVersion: r.spec?.wantedVersion || null,
 			rolledBack: detectRollback(r),
