@@ -155,6 +155,9 @@ export function stepSplit<A extends { app: string; href: string }>(apps: readonl
 	};
 }
 
+/** the region tile's accessible summary: "1 place: 0 failing, 0 waiting, 0 checking, 1 healthy" (the count pluralises, failing and failed split as everywhere) */
+export const tileAriaLabel = (places: number, c: { failing: number; waiting: number; moving: number; rest: number }, recovered: number, movingWord: string): string =>
+	`${plural(places, 'place')}: ${failedParts(c.failing, recovered).join(', ') || '0 failing'}, ${c.waiting} waiting, ${c.moving} ${movingWord}, ${c.rest} healthy`;
 export function envPage(hs: HomeState, name: string): EnvPage | null {
 	return inScope(() => envPageRaw(hs, name));
 }
@@ -187,7 +190,7 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 	const recoveredN = rows.filter((r) => r.group === 'failed' && r.failure?.recovered).reduce((n, r) => n + Math.max(1, r.regions.length), 0);
 	const s = region ? stateLine({ places: allPlaces.length, ...counts, recovered: recoveredN, yours: Math.min(counts.waiting, yoursN) }, movingWord) : null;
 	const tile: EnvPage['tile'] = region
-		? { ...counts, mark: s!.mark, lead: s!.lead, parts: s!.parts, calm: !counts.failing && !counts.waiting && !counts.moving, label: `${allPlaces.length} places: ${failedParts(counts.failing, recoveredN).join(', ') || '0 failing'}, ${counts.waiting} waiting, ${counts.moving} ${movingWord}, ${counts.rest} healthy` }
+		? { ...counts, mark: s!.mark, lead: s!.lead, parts: s!.parts, calm: !counts.failing && !counts.waiting && !counts.moving, label: tileAriaLabel(allPlaces.length, counts, recoveredN, movingWord) }
 		: { failing: counts.failing, waiting: counts.waiting, moving: counts.moving, rest: counts.rest, mark: listTile!.mark, lead: listTile!.lead, parts: listTile!.parts, calm: listTile!.calm, label: listTile!.label };
 
 	/* banner + Attention: the lead failure here, then the other failures and the approvals the viewer can give */
