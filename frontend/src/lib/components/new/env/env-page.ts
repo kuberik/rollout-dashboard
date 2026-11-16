@@ -18,7 +18,7 @@
 import { inScope } from '../derivation-scope';
 import { toneInk } from '$lib/view-models/state-tone';
 import { newestFirst, latest } from '$lib/instant';
-import { heldHere } from '../data';
+import { heldHere, failingNowAt } from '../data';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import {
 	rollouts, environments, placeHolds, inbound, rowsOf, ago, buildInQuestionFacts, deployedBuild, holdSince, commitHeadline, buildIdentity, isViewer, TIER_NAME, TIERS, apps as appsOf, fleet24hEvents,
@@ -27,7 +27,7 @@ import {
 import { environmentsPage, stateLine, barSegments, type EnvTile } from '../environments-page';
 import { askOf, type AskItem } from '../home-page';
 import { bannerOf, attentionRollup as attentionRollupOf, type BannerModel, type RestRow } from '../rollouts-page';
-import { failedParts, needApprovalCount, approvalWord, mostSevere, severity, stateWord } from '../state-words';
+import { failedParts, failedRollup, needApprovalCount, approvalWord, mostSevere, severity, stateWord } from '../state-words';
 import { runwayRow, rowAction } from '../rollout-view';
 import { plural } from '../envs-model';
 import { classifyChanges, rc, type Rollup } from '../changes-page';
@@ -158,6 +158,14 @@ export function stepSplit<A extends { app: string; href: string }>(apps: readonl
 /** the region tile's accessible summary: "1 place: 0 failing, 0 waiting, 0 checking, 1 healthy" (the count pluralises, failing and failed split as everywhere) */
 export const tileAriaLabel = (places: number, c: { failing: number; waiting: number; moving: number; rest: number }, recovered: number, movingWord: string): string =>
 	`${plural(places, 'place')}: ${failedParts(c.failing, recovered).join(', ') || '0 failing'}, ${c.waiting} waiting, ${c.moving} ${movingWord}, ${c.rest} healthy`;
+/**
+ * "Today in prod": the deploy count, then the failed deploys as the shared failing / failed split. Only a place whose check fails right now is `failing` in danger ink
+ * (state-words `failedInkParts`, the rule the /activity day cards print); a failed deploy whose checks recovered, or that a later deploy replaced, reads `failed` in neutral ink.
+ */
+export function todayRollupOf(deploys: number, failedHrefs: readonly string[]): Rollup {
+	const liveNow = new Set(failedHrefs.filter((h) => failingNowAt(h))).size;
+	return [plural(deploys, 'deploy'), ...failedRollup(failedHrefs.length, Math.max(0, failedHrefs.length - liveNow))];
+}
 export function envPage(hs: HomeState, name: string): EnvPage | null {
 	return inScope(() => envPageRaw(hs, name));
 }
@@ -320,8 +328,7 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 		const title = raw && !/^(Initial commit|Release commit for build )/.test(raw) ? raw : null;
 		return { key: `${e.app}-${e.place}-${e.at}-${i}`, kind: e.kind, app: e.app, href: e.href, place: ['prod', 'production', 'staging', 'dev', 'test'].includes(pl) ? '' : pl, title, build: e.build, who: isViewer(e.trigger) ? 'you' : e.who, age: ago(e.at), mark: e.mark, reason: e.reason };
 	});
-	const nFailed = today.filter((d) => d.kind === 'failed').length;
-	const todayRollup: Rollup = [plural(today.length, 'deploy'), ...(nFailed ? [{ text: `${nFailed} failed`, ink: 'danger' as const }] : [])];
+	const todayRollup = todayRollupOf(today.length, today.filter((d) => d.kind === 'failed').map((d) => d.href));
 	const gangway: Gangway = { held, ready, heldRollup, inStep, behind, today, todayRollup };
 
 	void fleet24hEvents; void TIER_NAME; void stateWord; void barSegments;

@@ -6,6 +6,7 @@ import { install } from '../../demo/health-failures-fixtures';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { changes, placesOf, tabPill } from './data';
 import { serviceWord } from './changes-plumb';
+import { todayRollupOf } from './env/env-page';
 import { squaresWords, failedPartsOfHrefs } from './change/detail-model';
 
 describe('squaresWords', () => {
@@ -59,5 +60,18 @@ describe('tabPill (app header, tile and rollout tab pill)', () => {
 		load();
 		expect(tabPill({ href: failedHref('checkout-gateway') }).word).toBe('FAILING');
 		expect(tabPill({ href: failedHref('catalog-api') }).word).toBe('FAILED');
+	});
+});
+
+describe('todayRollupOf (Today in <env> header)', () => {
+	beforeAll(() => install(true));
+	afterEach(() => installLiveSource(null));
+	const failedHref = (app: string) => placesOf('calm', app).find((p) => p.state === 'failed')!.href;
+	it('a failed deploy whose checks recovered is neutral `failed`; one failing now is danger `failing`', () => {
+		load();
+		expect(todayRollupOf(4, [failedHref('catalog-api')])).toEqual(['4 deploys', '1 failed']);
+		expect(todayRollupOf(4, [failedHref('checkout-gateway')])).toEqual(['4 deploys', { text: '1 failing', ink: 'danger' }]);
+		expect(todayRollupOf(4, [failedHref('checkout-gateway'), failedHref('catalog-api')])).toEqual(['4 deploys', { text: '1 failing', ink: 'danger' }, '1 failed']);
+		expect(todayRollupOf(1, [])).toEqual(['1 deploy']);
 	});
 });
