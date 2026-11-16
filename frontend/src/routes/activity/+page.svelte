@@ -102,7 +102,11 @@
 
 	/* the fleet's health checks: which unresolved failures have since recovered (their checks are all OK again) */
 	const hcQuery = createQuery(() => fleetHealthChecksQuery());
-	/** the fleet's health checks have answered (until then a failure's failing / failed split is unknown, so the rollups show only the count) */
+	/**
+	 * The fleet's health checks have settled (until then a failure's failing / failed split is unknown, so the rollups show only the count and the
+	 * rows stay neutral rather than turning red and back). A failed query counts as settled: with no live checks the history snapshot answers,
+	 * which reads the failure as failing, the rule the banners' `failingNowList` follows.
+	 */
 	const checksKnown = $derived(!hcQuery.isPending);
 	const checksByRollout = $derived(healthChecksByRollout(rolloutHealthChecks(hcQuery.data)));
 	/** the failed deploy's rollout has recovered its health checks (it reads `failed`, not `failing`) */
@@ -2001,7 +2005,7 @@
 													href={group.href}
 													verb={vb.appVerb}
 													tone={vb.tone}
-													live={rowIsLive(group.members, isHeadRecovered)}
+													live={checksKnown && rowIsLive(group.members, isHeadRecovered)}
 													chip={single ? group.envText || null : null}
 													theme={single ? lead.theme : null}
 													envText={single ? null : group.envText || null}
