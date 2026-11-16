@@ -81,7 +81,7 @@ describe('HealthChecksCard — one status grammar', () => {
 		expect(word!.textContent).toContain('failing');
 	});
 
-	test('pending rows draw the chip atom; passing and failing rows draw none', () => {
+	test('no row draws a state chip: every state is glyph + name + "state · age"', () => {
 		render(HealthChecksCard, {
 			props: {
 				healthChecks: [
@@ -92,16 +92,18 @@ describe('HealthChecksCard — one status grammar', () => {
 				]
 			}
 		});
-		const marks = stateMarks();
-		expect(marks.map((m) => m.textContent?.trim())).toEqual(['pending']);
-		// ⛔ THE ASSERTION THE OLD CARD WOULD HAVE FAILED: the pending row was a
-		// `rounded-full bg-yellow-100 px-2 py-0.5` capsule.
-		for (const m of marks) {
-			expect(m.className).toContain('chip');
-			expect(m.className).toContain('t-label');
-			expect(m.className).not.toMatch(/rounded-full/);
-			expect(m.className).not.toMatch(/\bbg-/);
-		}
+		expect(stateMarks()).toEqual([]);
+		expect(document.querySelectorAll('[data-testid="hc-row"]').length).toBe(4);
+		expect(document.querySelectorAll('[data-testid="hc-sub"]').length).toBe(4);
+	});
+
+	test("a pending row's raw provider status is the title of its fact line", () => {
+		render(HealthChecksCard, {
+			props: { healthChecks: [hc('probe', 'Pending', { lastErrorTime: '2026-09-13T09:30:00Z' })], windowStart: WINDOW_START }
+		});
+		const sub = document.querySelector('[data-testid="hc-sub"]')!;
+		expect(sub.textContent).toContain('pending');
+		expect(sub.getAttribute('title')).toBe('Pending');
 	});
 
 	test('a pending row never prints the controller message as a verdict (batch4 #6)', () => {
@@ -130,13 +132,13 @@ describe('HealthChecksCard — one status grammar', () => {
 		);
 	});
 
-	test('colour, and only colour, carries the state', () => {
+	test('the pending word reads in progress ink', () => {
 		render(HealthChecksCard, {
 			props: { healthChecks: [hc('probe', 'Pending')] }
 		});
-		const [pending] = stateMarks();
-		expect(pending.className).toContain('text-progress');
-		expect(pending.className).toContain('border-progress-line');
+		const sub = document.querySelector('[data-testid="hc-sub"]')!;
+		expect(sub.textContent).not.toBe('');
+		expect(document.querySelector('.chip')).toBeNull();
 	});
 
 	test('a recovered check draws no chip (the rollup and fact line say it); neither does the passing one', () => {
@@ -190,7 +192,7 @@ describe('HealthChecksCard — row order holds through a status change', () => {
 			hc('down', 'Healthy')
 		];
 		const { rerender } = render(HealthChecksCard, { props: { healthChecks: before } });
-		expect(stateMarks().map((m) => m.textContent?.trim())).toEqual(['pending']);
+		expect(stateMarks()).toEqual([]);
 		expect(rowNames()).toEqual(['latency', 'probe', 'flux', 'down']);
 
 		// `probe` passes. If the card re-sorted, it would fall to wherever a
@@ -273,7 +275,7 @@ describe('HealthChecksCard — row height does not depend on state', () => {
 });
 
 describe('state words and rollup ink', () => {
-	test('a waiting pending check says "pending" under its name, the same word as the chip, and the chip follows the name', () => {
+	test('a waiting pending check says "pending" under its name, and no chip follows the name', () => {
 		render(HealthChecksCard, {
 			props: { healthChecks: [hc('probe', 'Pending', { message: 'evaluating', lastChangeTime: '2026-09-13T09:30:00Z' })] }
 		});
@@ -281,7 +283,7 @@ describe('state words and rollup ink', () => {
 		expect(sub?.textContent?.trim()).toMatch(/^pending\s*\u00b7/);
 		expect(sub?.textContent).not.toMatch(/waiting/);
 		const nameLine = document.querySelector('[data-testid="hc-row"] .flex.min-w-0.items-center');
-		expect(nameLine?.textContent).toMatch(/probe\s*pending/i);
+		expect(nameLine?.textContent?.trim()).toBe('probe');
 	});
 
 	test('only the failing part of the rollup is in danger ink', () => {
