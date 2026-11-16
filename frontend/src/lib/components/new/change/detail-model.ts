@@ -521,7 +521,7 @@ export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] 
 		/* one clock read: whole minutes between the two instants (History prints the same instants), days past a day */
 		return ms >= 86_400_000 ? `${Math.floor(ms / 86_400_000)}d` : span(Math.round(ms / 60_000) * 60_000);
 	};
-	return { running: run.length, of: all.length, /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? `${gap(prodFailed.since)} · failed` : null };
+	return { running: run.length, of: all.length, /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? `${gap(prodFailed.since)} · ${failedWord(places.filter((p) => p.tier === 'prod' && p.kind === 'failed').every(recoveredPlace)).toLowerCase()}` : null };
 }
 export { candidateBuilds, isViewer };
 

@@ -313,3 +313,15 @@ describe('a failed place whose checks recovered is `failed`, not `failing`', () 
 		expect(failedParts(0, 0)).toEqual([]);
 	});
 });
+
+describe('howFacts: Merge to production when the only prod deploy failed', () => {
+	const mk = (recovered: boolean) => {
+		const c = { mergedAt: '2026-11-16T08:00:00Z' } as never;
+		const place = { kind: 'failed', tier: 'prod', since: '2026-11-16T09:00:00Z', row: { failure: { recovered } } } as never;
+		return howFacts(c, [place], [], null).toProd;
+	};
+	it('reads failing while a check fails now, failed once recovered', () => {
+		expect(mk(false)).toBe('1h · failing');
+		expect(mk(true)).toBe('1h · failed');
+	});
+});
