@@ -141,7 +141,7 @@
 					<ul class="divide-y divide-line overflow-hidden rounded-md border border-line" data-slipway-inset>
 							{#each subs as c (c.title)}
 								<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
-									<span aria-hidden="true" class="h-3 w-3 shrink-0 rounded-full {c.tone === 'bad' && row.failure?.recovered ? 'st-recovered' : DOT[c.tone]}"></span>
+									<span aria-hidden="true" class="h-3 w-3 shrink-0 rounded-full {DOT[c.tone]}"></span>
 									<span class="t-card-title min-w-0 flex-1 text-fg">{c.title}</span>
 									<!-- the tab's sub-row: a pending state is its neutral chip (DeploymentPipelineCard pillClasses.pending), every other state a plain word -->
 									{#if c.tone === 'pending'}<span class="chip t-label chip-wide shrink-0 border-line text-fg-subtle">{c.label}</span>{:else}<span class="t-meta shrink-0 text-fg-subtle">{c.label}</span>{/if}
