@@ -2006,6 +2006,7 @@
 													verb={vb.appVerb}
 													tone={vb.tone}
 													live={checksKnown && rowIsLive(group.members, isHeadRecovered)}
+													markLive={group.members.some((m) => m.isLive)}
 													chip={single ? group.envText || null : null}
 													theme={single ? lead.theme : null}
 													envText={single ? null : group.envText || null}

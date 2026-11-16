@@ -78,4 +78,18 @@ describe('Activity: the failing / failed split', { timeout: 30_000 }, () => {
 		expect(rows.length).toBeGreaterThan(0);
 		for (const v of rows) expect(v.className).toContain('text-danger');
 	});
+	test('a recovered failure keeps the failed mark of a failing one; only its words go neutral', async () => {
+		stub();
+		render(WithQueryClient, { props: { component: Activity as any } });
+		await loaded();
+		await waitFor(() => expect(rollups()[0]).toContain('failed'), { timeout: 10_000 });
+		const markOf = (app: string) => {
+			const row = [...document.querySelectorAll('.fr-in')].find((r) => r.querySelector('.fr-nm')?.textContent === app && r.querySelector('.fr-v')?.textContent === 'failed its health check')!;
+			const m = row.querySelector('.fr-mk')!.cloneNode(true) as HTMLElement;
+			m.querySelectorAll('.sr-only').forEach((e) => e.remove());
+			m.querySelectorAll('[title]').forEach((e) => e.removeAttribute('title'));
+			return m.innerHTML;
+		};
+		expect(markOf('catalog-api')).toBe(markOf('orders-hub'));
+	});
 });
