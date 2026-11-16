@@ -36,13 +36,18 @@
 	 * risk dialog recognises the next. The consequence list drops its tint:
 	 * hue lives in the header disc only, never as a body-wide band (same
 	 * rule `RecoveryModeWarningModal` now follows).
+	 *
+	 * ⭐ ONE VERB, NEUTRAL INK (follow-up): the title is `Retry <build> in <env>?` and the confirm is `Retry`, the word of the button that opened
+	 * it. A retry resends a build the place already ran, so the header disc is neutral and the confirm is the product's primary, not a danger
+	 * tint; how careful to be stays in the confirm LEVEL (typed in prod), not in the colour.
 	 */
 	import { Modal } from 'flowbite-svelte';
-	import { ExclamationCircleSolid, RefreshOutline } from 'flowbite-svelte-icons';
+	import { RefreshOutline } from 'flowbite-svelte-icons';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import {
 		confirmLevel,
 		deployActionLabel,
+		retryTitle,
 		typedPrompt,
 		type DeployIntent
 	} from '$lib/view-models/deploy-risk';
@@ -64,6 +69,7 @@
 
 	const level = $derived(confirmLevel(intent));
 	const label = $derived(deployActionLabel(intent));
+	const title = $derived(retryTitle(intent, tag));
 
 	let typed = $state('');
 	// Re-arm on every open. A dialog that remembers the sha you typed last time
@@ -93,16 +99,12 @@
 >
 	<div class="border-b border-line px-5 py-4">
 		<div class="flex items-start gap-3">
-			<div
-				class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full ring-1 {level ===
-				'typed'
-					? 'bg-danger-tint ring-danger-line'
-					: 'bg-held-tint ring-held-line'}"
-			>
-				<ExclamationCircleSolid class="h-5 w-5 {level === 'typed' ? 'text-danger' : 'text-held'}" />
+			<!-- a neutral disc: Retry resends a build this place already ran, which is not the dangerous act a solid danger disc says; the typed version is the care -->
+			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-subtle ring-1 ring-line" data-retry-icon>
+				<RefreshOutline class="h-5 w-5 text-fg-muted" />
 			</div>
 			<div class="min-w-0">
-				<h2 id="rcm-title" class="t-heading text-fg">{label}?</h2>
+				<h2 id="rcm-title" class="t-heading text-fg">{title}?</h2>
 				<p id="rcm-sub" class="t-meta text-fg-subtle">This starts a new deployment attempt.</p>
 			</div>
 		</div>
@@ -132,7 +134,7 @@
 			<div>
 				<label for="rcm-confirm" class="mb-1 block t-meta text-fg-subtle">
 					{typedPrompt(intent)}
-					<span class="text-danger">{tag}</span> to confirm
+					<span class="font-mono text-fg">{tag}</span> to confirm
 				</label>
 				<input
 					id="rcm-confirm"
@@ -151,7 +153,7 @@
 		>
 		<button
 			type="button"
-			class="btn btn-sm {level === 'typed' ? 'btn-danger' : 'btn-primary'}"
+			class="btn btn-primary btn-sm"
 			disabled={blocked}
 			onclick={() => {
 				open = false;

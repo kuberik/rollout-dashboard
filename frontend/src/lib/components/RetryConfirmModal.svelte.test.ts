@@ -66,3 +66,30 @@ describe('the dialog has role="dialog" and aria-modal', () => {
 		expect(dialog?.getAttribute('aria-describedby')).toBe('rcm-sub');
 	});
 });
+
+/** One verb, neutral ink: `Retry <build> in <env>?` over a `Retry` button, no danger disc, no danger-tinted confirm, plain copy for the typed version. */
+describe('the Retry dialog says one verb in neutral ink', () => {
+	const open = () => {
+		render(RetryConfirmModal, { open: true, intent: intent({ direction: 'retry' }), consequences: ['Redeploys 1.4.0 to prod.'], tag: '1.4.0', onConfirm: () => {} });
+		return document.querySelector('dialog')!;
+	};
+	test('title and button share the verb; the title names the build and the place', () => {
+		const d = open();
+		expect(d.querySelector('#rcm-title')!.textContent).toBe('Retry 1.4.0 in prod?');
+		const confirm = [...d.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Retry');
+		expect(confirm, 'a confirm button that reads exactly Retry').toBeTruthy();
+		expect(d.textContent).not.toMatch(/Redeploy to/);
+	});
+	test('no danger disc and no danger-tinted confirm', () => {
+		const d = open();
+		expect(d.querySelector('[data-retry-icon]')!.className).not.toMatch(/danger|held/);
+		expect(d.querySelector('.btn-danger')).toBeNull();
+		expect(d.innerHTML).not.toContain('bg-danger-tint');
+	});
+	test('the typed prompt says plainly why, without the vouching claim', () => {
+		const d = open();
+		const label = d.querySelector('label[for="rcm-confirm"]')!.textContent!.replace(/\s+/g, ' ');
+		expect(label).toContain('This deploys to prod again, so it asks you to confirm. Type 1.4.0 to confirm');
+		expect(d.textContent).not.toMatch(/vouched/);
+	});
+});

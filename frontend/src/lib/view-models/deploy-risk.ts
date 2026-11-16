@@ -709,6 +709,9 @@ export function typedPrompt(intent: DeployIntent): string {
 	if (intent.direction === 'rollback') {
 		return `This changes ${targetPhrase(intent)}. Type`;
 	}
+	// A retry resends the build already at the head. Say plainly why the version is asked for: not a claim about vouching, just that it lands in
+	// the environment again and the typed version makes sure that is on purpose.
+	if (intent.direction === 'retry') return `This deploys to ${targetPhrase(intent)} again, so it asks you to confirm. Type`;
 	return `Nothing has vouched for this build in ${targetPhrase(intent)}. Type`;
 }
 
@@ -742,10 +745,15 @@ export function deployActionLabel(intent: DeployIntent): string {
 	// grades it. Checked before the retry/forward branches below so it wins
 	// over both.
 	if (intent.knownFailedHere) return 'Deploy anyway';
-	// THE RETRY BUTTON SAYS WHERE IT LANDS TOO. `Retry` named the act and hid
-	// the target, which is how a production redeploy read as a page refresh.
-	if (intent.direction === 'retry') return where ? `Redeploy to ${where}` : 'Redeploy';
+	// ONE VERB FROM BUTTON TO CONFIRM: the page's button says `Retry`, so the dialog's confirm does too. The target and the build are the
+	// title's (`retryTitle`), exactly as a rollback's are.
+	if (intent.direction === 'retry') return 'Retry';
 	return where ? `Deploy to ${where}` : 'Deploy Now';
+}
+
+/** The Retry dialog's title (without its question mark): the build and where it lands, `Retry 1.4.0 in prod`. The same verb as the button. */
+export function retryTitle(intent: DeployIntent, tag?: string | null): string {
+	return ['Retry', tag, 'in', targetPhrase(intent)].filter(Boolean).join(' ');
 }
 
 /**

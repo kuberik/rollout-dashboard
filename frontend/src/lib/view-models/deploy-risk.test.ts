@@ -16,7 +16,8 @@ import {
 	retryTag,
 	splitLeadSentence,
 	targetPhrase,
-	typedPrompt
+	typedPrompt,
+	retryTitle
 } from './deploy-risk';
 import { blockingGateNames } from './promotion';
 import type { Rollout } from '../../types';
@@ -415,8 +416,11 @@ describe('⚠️ retry risk — the rule decides, and it is the SAME rule', () =
 		expect(intent.production).toBe(true);
 		expect(intent.vouched).toBe(false);
 		expect(confirmLevel(intent)).toBe('typed');
-		expect(deployActionLabel(intent)).toBe('Redeploy to prod');
-		expect(typedPrompt(intent)).toBe('Nothing has vouched for this build in prod. Type');
+		expect(deployActionLabel(intent)).toBe('Retry');
+		expect(retryTitle(intent, '1.4.0')).toBe('Retry 1.4.0 in prod');
+		expect(retryTitle(intent)).toBe('Retry in prod');
+		expect(typedPrompt(intent)).toBe('This deploys to prod again, so it asks you to confirm. Type');
+		expect(typedPrompt(intent)).not.toMatch(/vouched/);
 	});
 
 	it('⛔ SUPERSEDED 2026-09-03 (B3): a vouched retry in production is `typed` too now', () => {

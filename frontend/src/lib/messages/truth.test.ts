@@ -22,6 +22,7 @@ import {
 	confirmLevel,
 	confirmNotice,
 	typedPrompt,
+	retryTitle,
 	deployActionLabel,
 	deployDirection,
 	deployIntent,
@@ -1972,11 +1973,15 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 		says(deployActionLabel(intent({ direction: 'rollback', production: true })), 'Roll back');
 		says(deployActionLabel(intent({ direction: 'rollback', environment: 'dev' })), 'Roll back');
 		says(deployActionLabel(intent({ direction: 'rollback', environment: '' })), 'Roll back');
+		// one verb from the page's button to the dialog's confirm; the title carries the build and the place (`retryTitle`)
+		says(deployActionLabel(intent({ direction: 'retry', production: true, environment: 'prod' })), 'Retry');
+		says(deployActionLabel(intent({ direction: 'retry', environment: '' })), 'Retry');
+		says(retryTitle(intent({ direction: 'retry', production: true, environment: 'prod' }), '1.4.0'), 'Retry 1.4.0 in prod');
+		says(retryTitle(intent({ direction: 'retry', environment: 'staging' })), 'Retry in staging');
 		says(
-			deployActionLabel(intent({ direction: 'retry', production: true, environment: 'prod' })),
-			'Redeploy to prod'
+			typedPrompt(intent({ direction: 'retry', production: true, environment: 'prod' })),
+			'This deploys to prod again, so it asks you to confirm. Type'
 		);
-		says(deployActionLabel(intent({ direction: 'retry', environment: '' })), 'Redeploy');
 		says(deployActionLabel(intent({ environment: 'staging' })), 'Deploy to staging');
 		says(deployActionLabel(intent({ environment: '' })), 'Deploy Now');
 	});
