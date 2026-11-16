@@ -15,3 +15,16 @@ describe('Home fleet draws a held / paused row with the /rollouts held mark', ()
 		expect(document.querySelector('[data-fleet-row="trouble"] svg.text-fg-muted')).toBeNull();
 	});
 });
+
+describe('Home fleet draws a recovered failure as the ring', () => {
+	const cls = (sel: string) => document.querySelector(`${sel} span.rounded-full`)!.className;
+	test('trouble row and recent deploy: recovered = ring, failing now = solid disc', () => {
+		const trouble = (key: string, recovered: boolean) => ({ key, app: key, failing: true, mark: 'failed' as const, word: recovered ? ('Failed' as const) : ('Failing' as const), href: '/x', places: [{ tier: 'prod', place: '' }], recovered });
+		const deploy = (key: string, recovered: boolean) => ({ key, app: key, tier: 'prod', place: '', at: '', age: '1h', failing: true, href: '/x', recovered });
+		render(FleetCard, { props: { trouble: [trouble('a', true), trouble('b', false)], deploys: [deploy('c', true), deploy('d', false)] } });
+		expect(cls('[data-truth-app="a"]')).toContain('ring-[1.5px]');
+		expect(cls('[data-truth-app="b"]')).toContain('bg-danger-solid');
+		expect(cls('[data-truth-app="c"]')).toContain('ring-[1.5px]');
+		expect(cls('[data-truth-app="d"]')).toContain('bg-danger-solid');
+	});
+});

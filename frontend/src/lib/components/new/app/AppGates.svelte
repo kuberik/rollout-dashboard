@@ -36,13 +36,13 @@
 					<!-- owner §5: ONE entry = cause · where · what it holds (2 lines); the sentence and the way to approve are behind the chevron -->
 					<div class="flex items-start gap-3">
 						<span class="flex h-5 w-4 shrink-0 items-center justify-center">
-							{#if r.kind === 'approval'}<StatusMark state="approval" />{:else if r.kind === 'health'}<StatusMark state="failed" />{:else if r.kind === 'paused'}<StatusMark state="paused" />{:else}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{/if}
+							{#if r.kind === 'approval'}<StatusMark state="approval" />{:else if r.kind === 'health'}<StatusMark state="failed" recovered={r.recovered} />{:else if r.kind === 'paused'}<StatusMark state="paused" />{:else}<HeldGlyph size={16} class="text-fg-muted" title="Held" />{/if}
 						</span>
 						<div class="min-w-0 flex-1">
 							<a href={r.href} class="tap-link t-ui break-words text-fg hover:underline">{#if r.label}Held by <GateLabel label={r.label} />{:else}{r.name}{/if}</a>
 							<!-- apps-9 AQ9: places are a dot strip (one dot per place, state-tinted: P8 anchor), the builds it holds the figure at the right; names wait behind the chevron -->
 							<p class="t-meta flex items-center gap-2 text-fg-subtle">
-								<span class="h-1.5 w-1.5 shrink-0 rounded-full {r.kind === 'approval' || r.kind === 'paused' ? 'bg-held-solid' : r.kind === 'health' ? 'bg-danger-solid' : 'bg-fg-subtle'}" aria-hidden="true"></span>
+								<span class="h-1.5 w-1.5 shrink-0 rounded-full {r.kind === 'approval' || r.kind === 'paused' ? 'bg-held-solid' : r.kind === 'health' ? (r.recovered ? 'st-recovered' : 'bg-danger-solid') : 'bg-fg-subtle'}" aria-hidden="true"></span>
 								<span class="whitespace-nowrap">{plural(r.places.length, 'place')}</span>
 								{#if r.pending}<span class="ml-auto shrink-0" data-held-pending aria-hidden="true"><SkeletonBar width="w-14" height="h-3.5" /></span>{:else if r.held.length}<span class="ml-auto shrink-0 whitespace-nowrap tabular-nums text-fg-muted">{plural(r.held.length, 'build')}</span>{/if}
 							</p>

@@ -115,7 +115,7 @@
 	const openAct = $derived<Act>({ label: 'Open rollout', href: row.href, desktopOnly: true, key: 'slipway-open' });
 </script>
 
-<PipelineCard shell={nested ? 'card' : 'hung'} at={compact ? 640 : 560} railWidth="min(300px, 40%)" class="sw {nested ? 'sw-nested' : ''} {compact ? 'sw-compact' : ''} {className}" state={failing ? 'failed' : !running ? 'done' : row.state === 'checking' ? 'checking' : 'deploying'} rollup="{done}/{row.steps.length} steps" label="Deployment pipeline of {row.app}" data-more={more ? 'open' : 'closed'} data-slipway="" data-state={failing ? 'failed' : 'moving'}>
+<PipelineCard shell={nested ? 'card' : 'hung'} at={compact ? 640 : 560} railWidth="min(300px, 40%)" class="sw {nested ? 'sw-nested' : ''} {compact ? 'sw-compact' : ''} {className}" recovered={failing && !!fr?.recovered} state={failing ? 'failed' : !running ? 'done' : row.state === 'checking' ? 'checking' : 'deploying'} rollup="{done}/{row.steps.length} steps" label="Deployment pipeline of {row.app}" data-more={more ? 'open' : 'closed'} data-slipway="" data-state={failing ? 'failed' : 'moving'}>
 	{#snippet rail()}<TraySteps steps={row.steps} selected={sel} noActiveChip={checkingGate} checkWord={row.state === 'deploying' ? 'Deploying' : 'Checking'} />{/snippet}
 		<div class="sw-pane min-w-0 p-4 sm:p-6">
 				<div class="sw-info min-w-0 space-y-3">
@@ -141,7 +141,7 @@
 					<ul class="divide-y divide-line overflow-hidden rounded-md border border-line" data-slipway-inset>
 							{#each subs as c (c.title)}
 								<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
-									<span aria-hidden="true" class="h-3 w-3 shrink-0 rounded-full {DOT[c.tone]}"></span>
+									<span aria-hidden="true" class="h-3 w-3 shrink-0 rounded-full {c.tone === 'bad' && row.failure?.recovered ? 'st-recovered' : DOT[c.tone]}"></span>
 									<span class="t-card-title min-w-0 flex-1 text-fg">{c.title}</span>
 									<!-- the tab's sub-row: a pending state is its neutral chip (DeploymentPipelineCard pillClasses.pending), every other state a plain word -->
 									{#if c.tone === 'pending'}<span class="chip t-label chip-wide shrink-0 border-line text-fg-subtle">{c.label}</span>{:else}<span class="t-meta shrink-0 text-fg-subtle">{c.label}</span>{/if}

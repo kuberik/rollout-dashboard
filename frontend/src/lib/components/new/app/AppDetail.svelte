@@ -409,7 +409,7 @@
 					{#if deploys7d > 0}
 						<AppPulse deploys={deploys7d} days={SPARK_DAYS} rollouts={live} />
 					{/if}
-					<AppActivity rollouts={live} {environments} limit={builds.length ? 6 : 4} />
+					<AppActivity rollouts={live} {environments} recoveredOf={(r) => { const p = places.find((x) => x.href.endsWith(`/${encodeURIComponent(r.metadata?.namespace ?? '')}/${encodeURIComponent(r.metadata?.name ?? '')}`)); return !!p && failureRecovered(p.href); }} limit={builds.length ? 6 : 4} />
 				</aside>
 			</div>
 			{/if}

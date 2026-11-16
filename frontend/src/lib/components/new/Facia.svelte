@@ -43,7 +43,7 @@
 	import { holdLeadCause, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
 	import { canApproveAt, failureRecovered } from './data';
-	import { plural, rowAction, actionLabel, actionHref, markOf, VIEWER } from './rollout-view';
+	import { plural, rowAction, actionLabel, actionHref, markOf, markRecoveredOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
@@ -388,7 +388,7 @@
 
 {#snippet stateMark()}
 	<!-- apps-7 Q2: a wait is the tab's pause mark, never the person icon (StatusMark's approval) -->
-	{#if stateRow}<span class="flex h-5 shrink-0 items-center">{#if markOf(stateRow) === 'held' || markOf(stateRow) === 'approval'}<HeldGlyph size={16} class="text-held" title="Held" />{:else}<StatusMark state={markOf(stateRow)} />{/if}</span>{/if}
+	{#if stateRow}<span class="flex h-5 shrink-0 items-center">{#if markOf(stateRow) === 'held' || markOf(stateRow) === 'approval'}<HeldGlyph size={16} class="text-held" title="Held" />{:else}<StatusMark state={markOf(stateRow)} recovered={markRecoveredOf(stateRow)} />{/if}</span>{/if}
 {/snippet}
 
 {#snippet code(b: string)}<span class="t-code font-medium text-fg">{b}</span>{/snippet}
@@ -468,7 +468,7 @@
 			<StarToggle app={item.app} class="max-sm:!h-11 max-sm:!w-11 max-sm:-mr-3" />
 		</div>
 			<div style:display={!noTier && !act && (kind === 'deploying' || kind === 'checking') ? 'none' : undefined} class="fp-state flex min-w-0 items-start gap-x-2 max-sm:flex-wrap max-sm:gap-y-2" data-fp-line2 data-state-line={kind}>
-			<span class="flex h-5 w-4 shrink-0 items-center justify-center">{#if lineMark === 'held' || lineMark === 'approval'}<HeldGlyph size={16} class="text-held" title="Held" />{:else if lineMark}<StatusMark state={lineMark as never} />{/if}</span>
+			<span class="flex h-5 w-4 shrink-0 items-center justify-center">{#if lineMark === 'held' || lineMark === 'approval'}<HeldGlyph size={16} class="text-held" title="Held" />{:else if lineMark}<StatusMark state={lineMark as never} recovered={!!stateRow && markRecoveredOf(stateRow)} />{/if}</span>
 			<!-- two tracks: the env badge, then the message; a wrapped message hangs on the MESSAGE's own x, never under the badge -->
 				<div class="t-ui-sm m-0 flex min-w-0 flex-1 items-start gap-x-2 leading-5 text-fg-muted max-sm:basis-[calc(100%-1.5rem)] max-sm:flex-wrap max-sm:gap-y-1" title={[stateLine.lead, stateLine.rest, stateLine.build].filter(Boolean).join(' · ')}>
 					{#if stateLine.badge && envOf && noTier}{#if noTier}{#if noTierPlace}<span class="t-meta inline-flex h-5 shrink-0 items-center text-fg-subtle" data-place>{noTierPlace}</span>{/if}{:else}<span class="inline-flex h-5 shrink-0 items-center"><Chip role="env" theme={envOf.theme} label={envOf.label} /></span>{/if}{/if}

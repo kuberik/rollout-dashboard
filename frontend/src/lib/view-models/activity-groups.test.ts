@@ -190,6 +190,18 @@ describe('rowIsLive', () => {
 	});
 });
 
+describe('rowIsRecovered', () => {
+	it('a current failure with every check OK again; failing now, mixed, or superseded is not', async () => {
+		const { rowIsRecovered } = await import('./activity-groups');
+		const m = (isLive: boolean, recovered: boolean) => ({ isLive, recovered });
+		const rec = (x: { recovered: boolean }) => x.recovered;
+		expect(rowIsRecovered([m(true, true)], rec)).toBe(true);
+		expect(rowIsRecovered([m(true, false)], rec)).toBe(false);
+		expect(rowIsRecovered([m(true, true), m(true, false)], rec)).toBe(false);
+		expect(rowIsRecovered([m(false, true)], rec)).toBe(false);
+	});
+});
+
 describe('before the fleet health checks answer', () => {
 	it('the rollups show only the count, then add the failing / failed split in place', async () => {
 		const { deploysRollupParts, failedRollupParts } = await import('./activity-groups');

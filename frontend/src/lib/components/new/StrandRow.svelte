@@ -16,7 +16,7 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import MiniPipeline from './MiniPipeline.svelte';
 	import { truthAttrs } from './data';
-	import { envTheme } from './rollout-view';
+	import { envTheme, markRecoveredOf } from './rollout-view';
 	import type { StrandRow, RestRow } from './rollouts-page';
 	import { atoms } from '$lib/components/atoms/atoms-context';
 	import CauseText from '$lib/components/CauseText.svelte';
@@ -34,7 +34,7 @@
 
 <li class="lr tap-zone" class:q={!!rest} class:dn={dense} class:hl={!!rest && rest.lead !== undefined} data-key={row?.key ?? rest?.key} {...dense ? {} : { "data-truth-kind": row ? "rollout" : "rest", "data-truth-app": name, "data-truth-href": href, "data-truth-group": row?.row.group ?? "rest", ...(row ? truthAttrs(row.row) : { "data-truth-state": "healthy" }) }}>
 	<div class="lr-in">
-		<span class="lr-mk">{#if row}<StatusMark state={row.mark} progress={pg?.fraction ?? null} />{/if}</span>
+		<span class="lr-mk">{#if row}<StatusMark state={row.mark} recovered={markRecoveredOf(row.row)} progress={pg?.fraction ?? null} />{/if}</span>
 		<div class="lr-id">
 			<a {href} class="tap-link lr-nm" class:rep={rest?.rep} aria-label={row ? `${name} in ${row.place ?? row.tier}` : `${name} ${rest?.place}`}>{name}</a>
 			{#if row}<Chip role="env" theme={envTheme(row.tier)} label={chip} wide />

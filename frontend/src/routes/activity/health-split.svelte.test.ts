@@ -56,7 +56,8 @@ describe('Activity: the failing / failed split', { timeout: 30_000 }, () => {
 		render(WithQueryClient, { props: { component: Activity as any } });
 		await loaded();
 		await new Promise((r) => setTimeout(r, 1000));
-		expect(rollups()[0]).toBe('212 deploys');
+		/* 214: search-indexer carries one build newer than its failed prod head (live in dev and staging), two more deploys in the window */
+		expect(rollups()[0]).toBe('214 deploys');
 		expect(rollups()[1]).toBe('47 deploys');
 	});
 	test('before the fleet health checks answer, failed rows stay neutral instead of turning red and back', async () => {
@@ -78,18 +79,17 @@ describe('Activity: the failing / failed split', { timeout: 30_000 }, () => {
 		expect(rows.length).toBeGreaterThan(0);
 		for (const v of rows) expect(v.className).toContain('text-danger');
 	});
-	test('a recovered failure keeps the failed mark of a failing one; only its words go neutral', async () => {
+	test('a recovered current failure draws the ring, a failing one the solid disc; the recovered words go neutral', async () => {
 		stub();
 		render(WithQueryClient, { props: { component: Activity as any } });
 		await loaded();
 		await waitFor(() => expect(rollups()[0]).toContain('failed'), { timeout: 10_000 });
-		const markOf = (app: string) => {
+		const chipOf = (app: string) => {
 			const row = [...document.querySelectorAll('.fr-in')].find((r) => r.querySelector('.fr-nm')?.textContent === app && r.querySelector('.fr-v')?.textContent === 'failed its health check')!;
-			const m = row.querySelector('.fr-mk')!.cloneNode(true) as HTMLElement;
-			m.querySelectorAll('.sr-only').forEach((e) => e.remove());
-			m.querySelectorAll('[title]').forEach((e) => e.removeAttribute('title'));
-			return m.innerHTML;
+			return row.querySelector('.fr-mk span.rounded-full')!.className;
 		};
-		expect(markOf('catalog-api')).toBe(markOf('orders-hub'));
+		expect(chipOf('catalog-api')).toContain('ring-[1.5px]');
+		expect(chipOf('catalog-api')).not.toContain('bg-danger-solid');
+		expect(chipOf('orders-hub')).toContain('bg-danger-solid');
 	});
 });

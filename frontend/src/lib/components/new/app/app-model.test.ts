@@ -23,6 +23,15 @@ describe('app-model on the demo apps', () => {
 		expect(r[0].places).toEqual(['us-east', 'us-west']);
 		expect(r[0].held.length).toBe(5);
 	});
+	it('the health hold of a recovered place says what still blocks: the failed rollout needs a retry or a new build', () => {
+		const health = (recoveredAt: (h: string) => boolean) => holdRows(gatesOf('invoice-api', 'incident'), P, null, '', new Set(), null, recoveredAt).find((x) => x.kind === 'health')!;
+		const rec = health(() => true);
+		expect(rec.recovered).toBe(true);
+		expect(rec.sentence).toBe('The check passes again; a retry or a new build releases it');
+		const live = health(() => false);
+		expect(live.recovered).toBeUndefined();
+		expect(live.sentence).toBe('Releases when the check starts passing');
+	});
 	it('next arrival and why', () => {
 		const eu = P.find((p) => p.place === 'eu-west')!;
 		expect(nextOf(P, eu.href)).toBe('7 builds behind');

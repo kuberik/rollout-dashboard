@@ -18,7 +18,7 @@
 
 <li class="dr tap-zone" data-day-row data-kind={row.kind}>
 	<div class="dr-in">
-		<span class="dr-mk">{#if row.kind === 'failed'}<StatusMark state="failed" />{:else}<span class="dr-dot" aria-hidden="true"></span>{/if}</span>
+		<span class="dr-mk">{#if row.kind === 'failed'}<StatusMark state="failed" recovered={row.recovered} />{:else}<span class="dr-dot" aria-hidden="true"></span>{/if}</span>
 		<div class="dr-id">
 			<AppGlyph name={row.app} size={20} />
 			<a href={row.href} class="tap-link dr-nm">{row.app}</a>

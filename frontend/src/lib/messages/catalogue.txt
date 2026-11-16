@@ -580,7 +580,6 @@ lib/components/new/app/app-model.ts	code	next … · ready to deploy
 lib/components/new/app/app-model.ts	code	Nothing to deploy
 lib/components/new/app/app-model.ts	code	On the newest build
 lib/components/new/app/app-model.ts	code	Pinned to …
-lib/components/new/app/app-model.ts	code	Releases when the check starts passing
 lib/components/new/app/app-model.ts	code	Releases when the pin is cleared
 lib/components/new/app/app-model.ts	code	Rolled back
 lib/components/new/app/app-model.ts	code	The bake clock restarts when the check is Healthy again
@@ -788,7 +787,6 @@ lib/components/new/data.ts	code	Releases when …
 lib/components/new/data.ts	code	Releases when … ships a newer version
 lib/components/new/data.ts	code	Releases when its dependency ships a newer version
 lib/components/new/data.ts	code	Releases when someone approves
-lib/components/new/data.ts	code	Releases when the check starts passing
 lib/components/new/data.ts	code	Releases when the deploy window opens
 lib/components/new/data.ts	code	Releases when the rule allows this build
 lib/components/new/data.ts	code	Rolled back from … to …
@@ -1425,6 +1423,8 @@ lib/view-models/changes.ts	code	rolled back in …
 lib/view-models/changes.ts	code	rolled back in … … regions
 lib/view-models/changes.ts	code	waits for you · …
 lib/view-models/changes.ts	code	waits for you in …
+lib/view-models/check-hold-sentence.ts	code	Releases when the check starts passing
+lib/view-models/check-hold-sentence.ts	code	The check passes again; a retry or a new build releases it
 lib/view-models/cluster-errors.ts	code	: ''}. What you see for … is the last known state the hub holds.
 lib/view-models/cluster-errors.ts	code	: 'the clusters answer'}.
 lib/view-models/cluster-errors.ts	code	… answered with JSON that is not a dashboard response.

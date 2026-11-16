@@ -1,4 +1,3 @@
-import { failedParts } from '$lib/components/new/state-words';
 import type { FamilyProgressStep } from './changes';
 /**
  * WAVE MARK aggregation (strip-dots, owner 2026-11-12: "just dots ... waves get an icon (it can be even mixed pie per sites)").
@@ -9,16 +8,18 @@ import type { FamilyProgressStep } from './changes';
 export type MarkSiteState = 'done' | 'checking' | 'deploying' | 'held' | 'approval' | 'approval-yours' | 'failed' | 'stuck' | 'notreached' | 'notaffected';
 /** `approval-yours` is an approval the VIEWER can give: the same orange as `approval`, drawn with a ring (state-tone.ts `ring`). */
 /** the kinds that get their own colour: approval folds into held (both are the held orange) */
-export type MarkKind = 'done' | 'checking' | 'deploying' | 'held' | 'stuck' | 'failed' | 'notreached' | 'notaffected';
+export type MarkKind = 'done' | 'checking' | 'deploying' | 'held' | 'stuck' | 'failed' | 'recovered' | 'notreached' | 'notaffected';
 
-export const KIND_ORDER: MarkKind[] = ['done', 'checking', 'deploying', 'held', 'stuck', 'failed', 'notreached', 'notaffected'];
+/** `recovered` sits right after `failed`: a wave with both draws one contiguous red half, solid then rim */
+export const KIND_ORDER: MarkKind[] = ['done', 'checking', 'deploying', 'held', 'stuck', 'failed', 'recovered', 'notreached', 'notaffected'];
 const NOUN: Record<MarkKind, string> = {
 	done: 'deployed',
 	checking: 'checking',
 	deploying: 'deploying',
 	held: 'held',
 	stuck: 'stuck',
-	failed: 'failed',
+	failed: 'failing',
+	recovered: 'failed',
 	notreached: 'not reached',
 	notaffected: 'not affected'
 };
@@ -28,13 +29,17 @@ export const ANIMATED: ReadonlySet<MarkKind> = new Set<MarkKind>(['checking', 'd
 export type WaveSlice = { kind: MarkKind; count: number; share: number; from: number; to: number };
 export type WaveMark = { slices: WaveSlice[]; mixed: boolean; label: string; /** some site is an approval the viewer can give: the mark carries the viewer's ring */ yours: boolean };
 
-export const kindOf = (s: MarkSiteState): MarkKind => (s === 'approval' || s === 'approval-yours' ? 'held' : s);
+/** `recovered`: a failed site whose checks are all OK again folds to its own kind (the failed disc with its fill taken out); only a positive flag does, "not known yet" stays `failed` */
+export const kindOf = (s: MarkSiteState, recovered = false): MarkKind => (s === 'approval' || s === 'approval-yours' ? 'held' : s === 'failed' && recovered ? 'recovered' : s);
 
 /** `prefix`: "Wave 1" or the tier name. The label sums the sites: "Wave 1: 1 deployed, 1 checking". */
 export function waveMark(sites: { state: MarkSiteState; /** a failed site whose checks are all OK again: it reads `failed`, one with a check failing now `failing` */ recovered?: boolean }[], prefix = ''): WaveMark {
 	const n = sites.length;
 	const counts = new Map<MarkKind, number>();
-	for (const s of sites) counts.set(kindOf(s.state), (counts.get(kindOf(s.state)) ?? 0) + 1);
+	for (const s of sites) {
+		const k = kindOf(s.state, s.recovered === true);
+		counts.set(k, (counts.get(k) ?? 0) + 1);
+	}
 	let at = 0;
 	const slices: WaveSlice[] = [];
 	for (const kind of KIND_ORDER) {
@@ -44,8 +49,7 @@ export function waveMark(sites: { state: MarkSiteState; /** a failed site whose 
 		slices.push({ kind, count, share, from: at, to: at + share });
 		at += share;
 	}
-	const failedSites = sites.filter((x) => x.state === 'failed');
-	const sum = slices.map((s) => (s.kind === 'failed' ? failedParts(failedSites.length, failedSites.filter((x) => x.recovered).length).join(', ') : `${s.count} ${NOUN[s.kind]}`)).join(', ');
+	const sum = slices.map((s) => `${s.count} ${NOUN[s.kind]}`).join(', ');
 	const yours = sites.some((x) => x.state === 'approval-yours');
 	return { slices, mixed: slices.length > 1, label: (prefix ? prefix + ': ' : '') + (sum || 'no sites') + (yours ? ' (you can approve)' : ''), yours };
 }
@@ -63,7 +67,7 @@ export function slicePath(from: number, to: number, r: number, cx = 8, cy = 8): 
  * dot; partly live = a pie of live and not-reached; resolved (rolled back) and queued = the not-reached ring; stuck = held;
  * active = checking for baking / retrying, else deploying.
  */
-export function familySites(step: Pick<FamilyProgressStep, 'tone' | 'state' | 'resolved' | 'builtCount' | 'liveCount'>): { state: MarkSiteState }[] {
+export function familySites(step: Pick<FamilyProgressStep, 'tone' | 'state' | 'resolved' | 'builtCount' | 'liveCount'> & { recovered?: boolean }): { state: MarkSiteState; recovered?: boolean }[] {
 	if (step.resolved) return [{ state: 'notreached' }];
 	switch (step.tone) {
 		case 'live':
@@ -71,7 +75,7 @@ export function familySites(step: Pick<FamilyProgressStep, 'tone' | 'state' | 'r
 				? [...Array(step.liveCount).fill({ state: 'done' as const }), ...Array(step.builtCount - step.liveCount).fill({ state: 'notreached' as const })]
 				: [{ state: 'done' }];
 		case 'failed':
-			return [{ state: 'failed' }];
+			return [{ state: 'failed', recovered: step.recovered === true }];
 		case 'stuck':
 			return [{ state: 'held' }];
 		case 'queued':

@@ -18,7 +18,7 @@ export type Bead = {
 	count: number | null;
 	href?: string;
 	title: string;
-	/** kit class: `failed` | `yours` | '' (team views show no personal emphasis) */
+	/** kit class: `failed` | `yours` | '' (team views show no personal emphasis). A recovered failure is plain: its ring carries it, the tinted pill is the alarm treatment */
 	emphasis: '' | 'failed' | 'yours';
 	changes: BeadChange[];
 	/** a failed bead whose every change has its checks OK again (the shared `failed` mark); one failing now keeps `failing` */
@@ -32,6 +32,7 @@ export function beadOf(changes: BeadChange[], { team = false, compact = false } 
 	const s = changes[0].state;
 	const show = compact || changes.length > 2 ? 1 : 2;
 	const grouped = compact && changes.length > 1;
+	const recovered = s === 'failed' && changes.every((c) => !!c.recovered);
 	return {
 		state: s,
 		refs: grouped ? [] : changes.slice(0, show).map((c) => c.ref),
@@ -39,9 +40,9 @@ export function beadOf(changes: BeadChange[], { team = false, compact = false } 
 		count: grouped ? changes.length : null,
 		href: changes[0].href,
 		title: changes.map((c) => `${c.ref} ${c.title ?? ''}`.trim()).join('\n\n'),
-		emphasis: !team && s === 'failed' ? 'failed' : !team && s === 'approval-yours' ? 'yours' : '',
+		emphasis: !team && s === 'failed' && !recovered ? 'failed' : !team && s === 'approval-yours' ? 'yours' : '',
 		changes,
-		recovered: s === 'failed' && changes.every((c) => !!c.recovered)
+		recovered
 	};
 }
 

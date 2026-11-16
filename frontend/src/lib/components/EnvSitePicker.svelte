@@ -81,7 +81,7 @@
 			{#if multiWave}<div class="sp-wave t-meta text-fg-subtle">Wave {w}</div>{/if}
 			{#each sites.filter((s) => (s.wave ?? 0) === w) as s (s.key)}
 				<a href={s.href} class="sp-row" class:sp-row--here={s.here} aria-current={s.here ? 'location' : undefined} onclick={() => close()} data-site-row={s.key}>
-					<span class="sp-mk"><SiteMark state={s.state} /></span>
+					<span class="sp-mk"><SiteMark state={s.state} recovered={s.recovered} /></span>
 					<span class="sp-name t-ui-sm text-fg">{s.name}{#if s.here}<span class="t-meta ml-2 text-fg-muted">This rollout</span>{/if}</span>
 					{#if s.build}<span class="sp-build t-code-sm text-fg-subtle">{s.build}</span>{/if}
 					<span class="sp-state t-meta"><span class={s.wordInk ?? 'text-fg-muted'}>{s.word}</span>{#if s.detail}<span class="text-fg-muted">{" · " + s.detail}</span>{/if}</span>

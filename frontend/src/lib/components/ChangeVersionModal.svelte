@@ -30,6 +30,8 @@
 	import EmptyGlyph from './EmptyGlyph.svelte';
 	import type { NodeState } from '$lib/view-models/promotion-lanes';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+	import { failureRecovered } from '$lib/components/new/data';
+	import { rolloutPath } from '$lib/source-dashboard';
 	import {
 		manualDeployNote,
 		autoDeployWhy,
@@ -2926,6 +2928,7 @@
 													: currentRowRole === 'deploying'
 														? 'deploying'
 														: 'behind'}
+											recovered={currentRowRole === 'failing' && failureRecovered(rolloutPath(cluster ?? '', rollout?.metadata?.namespace ?? '', rollout?.metadata?.name ?? ''))}
 											label="running"
 										/>
 									{:else if isNewestOfAll}

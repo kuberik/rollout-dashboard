@@ -869,7 +869,9 @@ const VIEWER_AUTHORED: ReadonlySet<string> = new Set([
 	'ce-05',
 	'ce-08',
 	'ce-12',
-	'ce-17'
+	'ce-17',
+	/* health-failures fixtures (opt-in apps): catalog-api's build is the viewer's own, so the Changes page's Your-changes line carries a failed change whose checks recovered */
+	'hf6-04'
 ]);
 
 /** The one place "is this sha the viewer's" is decided — see

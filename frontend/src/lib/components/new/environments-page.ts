@@ -19,11 +19,13 @@ export type Ink = 'danger' | 'held' | 'active' | 'progress' | 'muted';
 export type StatePart = { text: string; you?: string };
 export type TileMark = 'failed' | 'approval-yours' | 'approval' | 'deploying' | 'checking' | 'rest';
 export type TileLast = { app: string; build: string; age: string; word: string | null; you: boolean; author: string | null; href: string };
+/** the cell's failed places all have their checks OK again: the region mark is the ring (a mixed cell keeps the solid disc) */
+export const regionRecovered = (r: Pick<RegionCell, 'mark' | 'failing' | 'recovered'>): boolean => r.mark === 'failed' && r.failing > 0 && r.recovered >= r.failing;
 export type RegionCell = { key: string; label: string; mark: Mark; failing: number; recovered: number; waiting: number; moving: number; movingWord: string; href: string };
 export type EnvTile = {
 	key: TierKey; name: string; href: string; places: number; apps: number;
 	failing: number; waiting: number; yours: number; moving: number; rest: number;
-	mark: TileMark; lead: StatePart & { ink: Ink }; parts: StatePart[]; calm: boolean; label: string;
+	mark: TileMark; /** the lead mark is the recovered ring (every failed place's checks are OK again) */ markRecovered?: boolean; lead: StatePart & { ink: Ink }; parts: StatePart[]; calm: boolean; label: string;
 	arriving: { builds: number; apps: string[] };
 	last: TileLast | null;
 	regions: { cells: RegionCell[]; healthy: number; /** regions healthy on the old build that a wave holds (batch4 #3), with the cause in words; `healthy` excludes them */ held?: { regions: number; because: string } | null; /** regions only waiting their wave's turn (plain order, nothing failed): neutral ink */ waiting?: { regions: number; because: string } | null } | null;
@@ -32,7 +34,7 @@ export type Arrival = { key: string; app: string; build: string | null; place: s
 export type EnvironmentsPage = { tiles: EnvTile[]; prod: EnvTile | null; arrivals: Arrival[]; window: string; empty: boolean };
 
 /** the state line (kit `envStateLine`): the worst fact leads in its ink, the rest follow muted; nothing adverse = "All N healthy" */
-export function stateLine(t: { places: number; failing: number; /** of the failed places, those whose checks have all recovered: they read `failed`, never `failing` (state-words.ts failedWord) */ recovered?: number; waiting: number; yours: number; moving: number; rest: number }, movingWord: string): { lead: StatePart & { ink: Ink }; parts: StatePart[]; mark: TileMark } {
+export function stateLine(t: { places: number; failing: number; /** of the failed places, those whose checks have all recovered: they read `failed`, never `failing` (state-words.ts failedWord) */ recovered?: number; waiting: number; yours: number; moving: number; rest: number }, movingWord: string): { lead: StatePart & { ink: Ink }; parts: StatePart[]; mark: TileMark; /** every failed place has its checks OK again (none fails now): the lead mark is the ring; a mixed tile keeps the solid disc, the lead mark speaks for the worst */ recovered?: boolean } {
 	const parts: StatePart[] = [];
 	const recovered = Math.min(t.recovered ?? 0, t.failing), live = t.failing - recovered;
 	if (live && recovered) parts.push({ text: failedInkParts(t.failing, recovered)[1].text });
@@ -40,7 +42,7 @@ export function stateLine(t: { places: number; failing: number; /** of the faile
 	if (t.moving) parts.push({ text: `${t.moving} ${movingWord}` });
 	if (t.rest) parts.push({ text: `${t.rest} healthy` });
 	const mv: TileMark = movingWord === 'checking' ? 'checking' : 'deploying';
-	if (t.failing) return { lead: { text: failedInkParts(t.failing, recovered)[0].text, ink: live ? (TONE.failed.hue as Ink) : 'muted' }, parts, mark: 'failed' };
+	if (t.failing) return { lead: { text: failedInkParts(t.failing, recovered)[0].text, ink: live ? (TONE.failed.hue as Ink) : 'muted' }, parts, mark: 'failed', ...(live ? {} : { recovered: true }) };
 	if (t.waiting) return { lead: { ...parts.shift()!, ink: TONE.held.hue as Ink }, parts, mark: t.yours ? 'approval-yours' : 'approval' };
 	if (t.moving) return { lead: { ...parts.shift()!, ink: TONE[mv].hue as Ink }, parts, mark: mv }; /* the word's ink is the mark's tone: "2 checking" is progress yellow beside the yellow clock, "2 deploying" active blue */
 	return { lead: { text: `All ${t.places} healthy`, ink: 'muted' }, parts: [], mark: 'rest' };
@@ -125,7 +127,7 @@ export function environmentsPage(hs: HomeState): EnvironmentsPage {
 		return {
 			key: t.key, name: TIER_NAME[t.key] ?? t.key, href: `/envs/${t.key}`, places: t.places, apps: t.apps,
 			failing: c.failing, waiting: c.waiting, yours, moving: c.moving, rest: c.rest,
-			mark: s.mark, lead: s.lead, parts: s.parts, calm: !c.failing && !c.waiting && !c.moving,
+			mark: s.mark, ...(s.recovered ? { markRecovered: true } : {}), lead: s.lead, parts: s.parts, calm: !c.failing && !c.waiting && !c.moving,
 			label: `${plural(t.places, 'place')}: ${failedParts(c.failing, c.recovered).join(', ') || '0 failing'}, ${c.waiting} waiting, ${c.moving} ${c.moving ? movingWord : 'in progress'}, ${c.rest} healthy`,
 			arriving: { builds: inb.length, apps: [...new Set(inb.map((x) => x.app))] },
 			last,

@@ -10,7 +10,7 @@
 	import { waveMark, type MarkSiteState } from '$lib/view-models/wave-mark';
 
 	export type SiteState = MarkSiteState;
-	let { state }: { state: SiteState } = $props();
+	let { state, recovered = false }: { state: SiteState; /** a failed site whose checks are all OK again: the ring, not the solid disc */ recovered?: boolean } = $props();
 </script>
 
-<span class="inline-flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true"><WaveMark mark={waveMark([{ state }])} /></span>
+<span class="inline-flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true"><WaveMark mark={waveMark([{ state, recovered }])} /></span>

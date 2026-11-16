@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from 'vitest';
-import { familySites, slicePath, waveMark } from './wave-mark';
+import { KIND_ORDER, familySites, slicePath, waveMark } from './wave-mark';
 
 describe('waveMark', () => {
 	it('one state is one slice, not mixed', () => {
@@ -33,6 +33,28 @@ describe('waveMark', () => {
 	it('a full turn is a circle path, a slice is a wedge from the centre', () => {
 		expect(slicePath(0, 1, 5)).toContain('a5 5');
 		expect(slicePath(0, 0.5, 5)).toMatch(/^M8 8L8\.000 3\.000A5 5 0 0 1 8\.000 13\.000Z$/);
+	});
+});
+
+describe('waveMark: the recovered kind (failed, every check OK again)', () => {
+	it('two failed sites, one recovered: a solid slice then a recovered slice, label unchanged', () => {
+		const m = waveMark([{ state: 'failed' }, { state: 'failed', recovered: true }], 'prod');
+		expect(m.slices.map((s) => [s.kind, s.share])).toEqual([['failed', 0.5], ['recovered', 0.5]]);
+		expect(m.label).toBe('prod: 1 failing, 1 failed');
+	});
+	it('one recovered site alone is one recovered slice; "not known yet" (no flag) stays failed', () => {
+		expect(waveMark([{ state: 'failed', recovered: true }]).slices.map((s) => s.kind)).toEqual(['recovered']);
+		expect(waveMark([{ state: 'failed', recovered: false }]).slices.map((s) => s.kind)).toEqual(['failed']);
+		expect(waveMark([{ state: 'failed' }]).slices.map((s) => s.kind)).toEqual(['failed']);
+		expect(waveMark([{ state: 'failed', recovered: true }], 'prod').label).toBe('prod: 1 failed');
+	});
+	it('recovered sits right after failed in the fixed order', () => {
+		expect(KIND_ORDER.indexOf('recovered')).toBe(KIND_ORDER.indexOf('failed') + 1);
+	});
+	it('familySites carries the flag of a failed step; any other tone ignores it', () => {
+		const st = { tone: 'failed' as const, state: null, resolved: false, builtCount: 1, liveCount: 0 };
+		expect(waveMark(familySites({ ...st, recovered: true })).slices.map((s) => s.kind)).toEqual(['recovered']);
+		expect(waveMark(familySites(st)).slices.map((s) => s.kind)).toEqual(['failed']);
 	});
 });
 

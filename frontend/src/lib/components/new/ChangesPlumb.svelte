@@ -53,9 +53,9 @@
 		const w = stateWord(r.state === 'approval-yours' ? 'approval' : r.state, { yours: r.state === 'approval-yours' });
 		return [w ?? 'In ' + r.col, toneInk(r.state)];
 	};
-	const mark = (state: string, col?: string): { state: 'failed' | 'held' | 'deploying' | 'checking' | 'approval' | 'none'; tone?: 'held' | 'neutral' } =>
-		col === 'merged' && state !== 'failed' ? { state: 'none' } : state === 'approval-yours' ? { state: 'approval', tone: 'held' } : state === 'approval' ? { state: 'approval', tone: 'neutral' } : { state: (['failed', 'held', 'deploying', 'checking'].includes(state) ? state : 'checking') as 'failed' };
-	const svcMark = (s: Svc) => (s.done ? { state: 'newest' as const } : mark(s.state, s.tier));
+	const mark = (state: string, col?: string, recovered = false): { state: 'failed' | 'held' | 'deploying' | 'checking' | 'approval' | 'none'; tone?: 'held' | 'neutral'; recovered?: boolean } =>
+		col === 'merged' && state !== 'failed' ? { state: 'none' } : state === 'failed' ? { state: 'failed', recovered } : state === 'approval-yours' ? { state: 'approval', tone: 'held' } : state === 'approval' ? { state: 'approval', tone: 'neutral' } : { state: (['failed', 'held', 'deploying', 'checking'].includes(state) ? state : 'checking') as 'failed' };
+	const svcMark = (s: Svc) => (s.done ? { state: 'newest' as const } : mark(s.state, s.tier, !!s.recovered));
 	const sage = (t: number | null) => (t ? ago(new Date(t).toISOString()) : '');
 </script>
 
@@ -89,7 +89,7 @@
 									{@const w = word(it)}
 									{@const sv = it.services}
 									<div class="plb-row tap-zone" data-state={it.state} data-key={it.key}>
-										<span class="plb-mark"><StatusMark {...mark(it.state, it.col)} /></span>
+										<span class="plb-mark"><StatusMark {...mark(it.state, it.col, !!it.recovered)} /></span>
 										<span class="plb-glyph"><AppGlyph name={it.repo} size={20} /></span>
 										<a href={it.href} class="plb-title tap-link t-ui text-fg" title={it.title}>{it.title}</a>
 										<span class="plb-age t-meta tabular-nums text-fg-subtle" title="at this stop">{it.age}</span>

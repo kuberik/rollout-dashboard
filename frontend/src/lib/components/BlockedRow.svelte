@@ -190,7 +190,7 @@
 		: 'flex-wrap gap-y-0.5 px-4 py-3'} {className}"
 	data-blocked-kind={kind}
 >
-	<StatusMark state={approval && kind === 'held' ? 'approval' : kind} label={approval && kind === 'held' ? 'waits for your approval' : blockedStateLabel(kind, recovered)} />
+	<StatusMark state={approval && kind === 'held' ? 'approval' : kind} recovered={kind === 'failed' && recovered} label={approval && kind === 'held' ? 'waits for your approval' : blockedStateLabel(kind, recovered)} />
 	{#if glyph && !palette}<AppGlyph name={card.name} size={20} />{/if}
 	<a {href} class="tap-link t-card-title min-w-0 {palette ? 'shrink' : ''} truncate text-fg">{card.name}</a>
 	<!-- Palette squeeze order: the env chip gives way first (its label

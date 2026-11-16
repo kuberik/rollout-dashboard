@@ -64,6 +64,7 @@ import { avatarForLogin } from '$lib/github-avatar';
 import { respondGithub } from '$lib/demo/github-data';
 import { githubJson, rangeUrl } from './github-read.svelte';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+import { checkHoldSentence } from '$lib/view-models/check-hold-sentence';
 import { deployActs } from '$lib/history-marks';
 import { upToDateHeadline } from '$lib/view-models/up-to-date';
 import * as RD from '$lib/components/home/roster/roster-data';
@@ -251,6 +252,8 @@ export const failureRecovered = (href: string): boolean => !!failureReason({ gro
 /** A failed place with a health check failing right now (its pill reads "FAILING"); false for a deploy failure with no check involved and for all-recovered checks. The `failingNowOf` rule, by href. */
 export const failingNowAt = (href: string): boolean => !!failureReason({ group: 'failed', href })?.pool?.some((c) => c.verdict === 'failing');
 /** THE ONE age of a failed place: when its failure began (the instant the banners and the Health checks card print), null when no health evidence was kept */
+/** the recovered flag of a place that is STILL failed (its newest deploy failed): history of an earlier failure is never "recovered" by the place's later health */
+export const failureRecoveredNow = (href: string): boolean => rawOf(href)?.status.history?.[0]?.bakeStatus === 'Failed' && failureRecovered(href);
 export const failureSinceAt = (href: string): string | null => failureReason({ group: 'failed', href })?.since ?? null;
 
 /* ═══ places (defect 5) ═══ */
@@ -1056,7 +1059,7 @@ export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'
 	const sentence = row.state === 'awaiting-approval' ? 'Releases when someone approves'
 		: kind === 'dependency' ? 'Releases when its dependency ships a newer version'
 		: kind === 'schedule' ? 'Releases when the deploy window opens'
-		: homeModel(state).fleet.needsYou.find((n) => `${n.app}@${n.env}` === row.key)?.facts?.reason === 'check' ? 'Releases when the check starts passing' : 'Releases when the rule allows this build';
+		: homeModel(state).fleet.needsYou.find((n) => `${n.app}@${n.env}` === row.key)?.facts?.reason === 'check' ? checkHoldSentence(failureRecoveredNow(row.href)) : 'Releases when the rule allows this build';
 	return { name: title, sentence, label };
 }
 /* ═══ ONE commit identity per build (AD v2 m) ═══ */
@@ -1391,7 +1394,7 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : pv?.state === 'running' ? null : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
 		const g0 = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
 		/* a rule hold no gate object names (the dependency is a RolloutDependency join): the cause the banner and the Holding card both read is `heldCauses`' own; the sentence is the Gates tab's wording per kind */
-		const g = g0 ?? (rule && !approval ? (() => { const h = heldCauses(state).find((x) => x.rows.some((r) => r.href === p.href || r.hrefs?.includes(p.href))); const c = h?.cause.replace(/^Waiting on /, ''); return c && c !== 'Held by a rule' ? { name: c, label: { kind: 'named', text: c } as GateLabel, sentence: h?.reason === 'check' ? 'Releases when the check starts passing' : `Releases when ${c} ships a newer version` } : null; })() : null);
+		const g = g0 ?? (rule && !approval ? (() => { const h = heldCauses(state).find((x) => x.rows.some((r) => r.href === p.href || r.hrefs?.includes(p.href))); const c = h?.cause.replace(/^Waiting on /, ''); return c && c !== 'Held by a rule' ? { name: c, label: { kind: 'named', text: c } as GateLabel, sentence: h?.reason === 'check' ? checkHoldSentence(failureRecoveredNow(p.href)) : `Releases when ${c} ships a newer version` } : null; })() : null);
 		const cat = appOrder(app, state);
 		const failedBuilds = (p.version ? cat.slice(cat.lastIndexOf(buildName(app, p.version) ?? p.version) + 1) : []).filter((b) => failedHere(rawOf(p.href)?.status as never, { tag: b, version: b, revision: b }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())));
 		return { bakePaused: p.bakePaused, wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, failedHere: failedBuilds, heldBuilds: held, newerShown: newerBuildsShown(rawOf(p.href) as never, envsOfSource(), true).map((c) => { const b = (c as { version?: string; tag?: string }).version ?? (c as { tag?: string }).tag ?? ''; return shortBuild(b) ?? b; }), runs: p.version };

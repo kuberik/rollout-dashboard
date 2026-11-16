@@ -46,6 +46,8 @@ type Case = {
 	/** the failing checks' names, snapshotted onto the head's failedHealthChecks; `snapObs` overrides the snapshot's observations (a recovered check's live ones are healthy) */
 	snapshot: string[];
 	snapObs?: Record<string, Obj[]>;
+	/** builds newer than the failed prod head, already live in dev and staging: the failed place holds them (the app page's Holding card lists the health hold) */
+	newer?: number;
 };
 
 const NS = (app: string) => `${app}-prod-default`;
@@ -189,6 +191,7 @@ function cases(): Case[] {
 		bake: 'Failed',
 		bakeEnd: 10,
 		bakeMessage: 'HighLatency fired during the bake',
+		newer: 1,
 		snapshot: ['search-indexer-prometheus-alerts'],
 		snapObs: { 'search-indexer-prometheus-alerts': [obs({ name: 'HighLatency', kind: 'Threshold', value: '1.9', limit: '1', direction: 'Above', unit: 's', window: '5m', healthy: false, message: 'severity=warning' }, 14)] },
 		checks: [
@@ -283,9 +286,10 @@ function fixtureOf(c: Case, index: number): Fixture {
 					bakeHeldDuration: '1m30s'
 				})
 	};
-	return build(c.app, `hf${index + 1}`, (n) => `1.${n}.0`, 1, 4, [
-		{ tier: 'dev', site: 'default', wave: 1, cluster: 'dev', at: 4, bake: 'Succeeded' },
-		{ tier: 'staging', site: 'default', wave: 1, cluster: 'dev', at: 4, bake: 'Succeeded' },
+	const top = 4 + (c.newer ?? 0);
+	return build(c.app, `hf${index + 1}`, (n) => `1.${n}.0`, 1, top, [
+		{ tier: 'dev', site: 'default', wave: 1, cluster: 'dev', at: top, bake: 'Succeeded' },
+		{ tier: 'staging', site: 'default', wave: 1, cluster: 'dev', at: top, bake: 'Succeeded' },
 		{ tier: 'prod', site: 'default', wave: 1, cluster: 'prod', at: 4, bake: c.bake, head, spec: { healthCheckSelector: { matchLabels: { app: c.app } }, ...(failed ? {} : { bakeTime: '15m' }) } }
 	]);
 }

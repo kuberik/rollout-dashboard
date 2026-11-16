@@ -1373,6 +1373,8 @@ export type FamilyProgressStep = {
 	builtCount: number;
 	/** Of `builtCount`, how many are `live`. */
 	liveCount: number;
+	/** `tone: 'failed'` and every failed cell's checks are all OK again (the caller's `recoveredOf` said so): the strip draws the recovered ring, not the solid disc. False when unknown. */
+	recovered?: boolean;
 	/** Every contributing mark's own sentence, joined — for the step's
 	 *  `title`/tooltip. */
 	sentence: string;
@@ -1473,7 +1475,7 @@ export type FamilyProgressStep = {
  * OLD mark-only reading — this is additive, never a behaviour change for
  * marks alone.
  */
-export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): FamilyProgressStep[] {
+export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>, recoveredOf?: (cell: PrCell) => boolean): FamilyProgressStep[] {
 	const byFamily = new Map<string, LandingMarkVM[]>();
 	for (const service of row.grid.services) {
 		for (const mark of service.marks) {
@@ -1601,6 +1603,7 @@ export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): Fam
 		let state: PrState | null;
 		let approvalWait = false;
 		let anyResolved = false;
+		let recovered = false;
 
 		if (rawCells && rawCells.length > 0) {
 			const builtCells = rawCells.filter((c) => c.state !== 'not-built');
@@ -1625,6 +1628,8 @@ export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): Fam
 				if (failedCell) {
 					tone = 'failed';
 					state = failedCell.state;
+					// recovered only when EVERY failed cell's checks are OK again and the caller can say so (no evidence = not known = solid)
+					recovered = !!recoveredOf && builtCells.filter((c) => toneOf(c.state) === 'failed').every((c) => recoveredOf(c));
 				} else if (heldCell) {
 					tone = 'stuck';
 					state = heldCell.state;
@@ -1760,7 +1765,8 @@ export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): Fam
 			sentence,
 			approvalWait,
 			resolved,
-			anyResolved
+			anyResolved,
+			...(tone === 'failed' && recovered ? { recovered: true } : {})
 		});
 		if (tone === 'stuck' || tone === 'failed') frozen = true;
 	}
