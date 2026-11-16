@@ -77,7 +77,7 @@ import { stateWord as sharedWord, severity } from './state-words';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { buildTopology, deployNameOf, siteNodeOf, upstreamOf, type AppTopology } from '$lib/view-models/sites-waves';
 import type { Environment, HealthObservation, HealthCheck } from '../../../types';
-import { evidenceLine, worstOf, failureSince, poolOf, checkView, clock, type SnapCheck, type CheckView } from '../../view-models/health-failures';
+import { evidenceLine, failingNowList, worstOf, failureSince, poolOf, checkView, clock, type SnapCheck, type CheckView } from '../../view-models/health-failures';
 import type { Rollout } from '$lib/../types';
 import { placeStateWithPin } from '$lib/view-models/pin-hold';
 import type { TierKey, RolloutRow, ChangeItem, ChangeGroupKey, Region as RDRegion, AppItem, ArrivalRow } from '$lib/components/home/roster/roster-data';
@@ -220,9 +220,9 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 	/* the check the line names is one failing now when there is one (a recovered check never fronts a failing rollout), else the first */
 	const hpEarly = hrefParts(row.href);
 	const liveEarly = hpEarly ? ((source().healthChecks ?? []).find((i) => i.metadata.namespace === hpEarly.ns && i.metadata.name === hpEarly.name)?.healthChecks ?? []) : [];
-	const failingNow = (liveEarly as HealthCheck[]).find((x) => (x.status as { status?: string } | undefined)?.status === 'Unhealthy')?.metadata?.name;
 	const snaps = (h.failedHealthChecks ?? []) as Snap[];
-	const fc = (failingNow ? snaps.find((s) => s.name === failingNow) : undefined) ?? snaps[0];
+	/* the check failing now, even when the history record never named it; the record's first only when nothing is failing now */
+	const fc = failingNowList(snaps as SnapCheck[], liveEarly as HealthCheck[])[0] as Snap | undefined;
 	const generic = /^A HealthCheck reported an error/.test(h.bakeStatusMessage ?? '');
 	const phrase = h.bakeStatusMessage && !generic ? h.bakeStatusMessage : null;
 	const check = fc?.name ?? null, message = fc?.message ?? null;

@@ -225,4 +225,13 @@ describe('the banner sentence counts only the checks failing now', () => {
 		const only = [mk('datadog', { status: 'Unhealthy', message: 'late failure' }, 'c')];
 		expect(failingSummary(failingNowList(snaps, only), nameOf)).toBe('c: late failure');
 	});
+	it('the lead check is the one failing now, even when the record never named it (not the record\'s first, which may have recovered)', () => {
+		const rec = [{ name: 'a', message: 'a recovered earlier' }];
+		const only = [mk('datadog', { status: 'Healthy', lastErrorTime: T(3), lastChangeTime: T(5) }, 'a'), mk('datadog', { status: 'Unhealthy', message: 'c is down', observations: [{ name: 'q', healthy: false }] }, 'c')];
+		const lead = failingNowList(rec, only)[0];
+		expect(lead.name).toBe('c');
+		expect(lead.message).toBe('c is down');
+		expect(lead.observations?.[0].name).toBe('q');
+		expect(failingNowList(rec, [only[0]])[0].name).toBe('a');
+	});
 });

@@ -291,7 +291,7 @@ export function failingNowList(snaps: SnapCheck[], live: HealthCheck[]): SnapChe
 	return now.map((h) => {
 		const name = h.metadata?.name ?? '';
 		const snap = snaps.find((s) => s.name === name);
-		return { ...(snap ?? {}), name, namespace: h.metadata?.namespace, message: snap?.message ?? h.status?.message };
+		return { ...(snap ?? {}), name, namespace: h.metadata?.namespace, message: snap?.message ?? h.status?.message, observations: snap?.observations ?? h.status?.observations };
 	});
 }
 
