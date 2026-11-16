@@ -53,7 +53,8 @@
 		type GroupableEntry,
 		type ActivityGroup,
 		deploysRollupParts,
-		failedRollupParts
+		failedRollupParts,
+	rowIsLive
 	} from '$lib/view-models/activity-groups';
 	import { fleetHealthChecksQuery, rolloutHealthChecks, healthChecksByRollout } from '$lib/api/health-checks';
 	import { healthCheckKey } from '$lib/health-check-key';
@@ -1998,7 +1999,7 @@
 													href={group.href}
 													verb={vb.appVerb}
 													tone={vb.tone}
-													live={group.members.some((m) => m.isLive)}
+													live={rowIsLive(group.members, isHeadRecovered)}
 													chip={single ? group.envText || null : null}
 													theme={single ? lead.theme : null}
 													envText={single ? null : group.envText || null}

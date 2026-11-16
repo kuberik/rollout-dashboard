@@ -177,3 +177,15 @@ describe('failedRollupParts', () => {
 		expect(failedRollupParts(0, 0)).toEqual([]);
 	});
 });
+
+describe('rowIsLive', () => {
+	it('a recovered failure reads neutral; one failing now, or a mixed group, stays live; a superseded one is not live', async () => {
+		const { rowIsLive } = await import('./activity-groups');
+		const m = (isLive: boolean, recovered: boolean) => ({ isLive, recovered });
+		const rec = (x: { recovered: boolean }) => x.recovered;
+		expect(rowIsLive([m(true, true)], rec)).toBe(false);
+		expect(rowIsLive([m(true, false)], rec)).toBe(true);
+		expect(rowIsLive([m(true, true), m(true, false)], rec)).toBe(true);
+		expect(rowIsLive([m(false, false)], rec)).toBe(false);
+	});
+});
