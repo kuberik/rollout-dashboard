@@ -20,6 +20,13 @@ describe('KpiTile', () => {
 		expect(container.querySelectorAll('.kpi-unit')).toHaveLength(2);
 		expect(container.querySelector('.text-danger')?.textContent).toContain('+12%');
 	});
+	it('lets the delta wrap under the figure as one unbroken unit instead of clipping in a narrow tile', () => {
+		const { container } = render(KpiTile, { label: 'Deploys', value: 212, delta: { text: '10.1×', tone: 'neutral', dir: 'up' } });
+		const row = container.querySelector('.kpi-figure');
+		expect(row?.classList.contains('flex-wrap')).toBe(true);
+		const delta = [...(row?.children ?? [])].find((el) => el.textContent?.includes('10.1×'));
+		expect(delta?.classList.contains('whitespace-nowrap')).toBe(true);
+	});
 	it('is a door when given an href', () => {
 		const { container } = render(KpiTile, { label: 'Failed', value: 1, href: '/activity?outcome=failed' });
 		expect(container.querySelector('a.tile-link')?.getAttribute('href')).toBe('/activity?outcome=failed');

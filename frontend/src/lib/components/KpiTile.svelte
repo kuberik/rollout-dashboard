@@ -74,7 +74,8 @@
 		{#if glyph}{@render glyph()}{:else if icon}{@const I = icon}<I class="h-4 w-4 {iconClass}" aria-hidden="true" />{/if}
 		{label}
 	</span>
-	<span class="mt-2 flex items-baseline gap-2">
+	<!-- The delta wraps under the figure when the tile is too narrow for both (a phone 2×2 grid at 320); it never clips. -->
+	<span class="kpi-figure mt-2 flex flex-wrap items-baseline gap-x-2">
 		<span class="t-stat whitespace-nowrap {figureInk}">
 			{#if parts && parts.length}
 				{#each parts as p, i (i)}{#if i > 0}{' '}{/if}{p.v}<span class="kpi-unit">{p.u}</span>{/each}
@@ -85,7 +86,7 @@
 		{#if resolved}
 			<span class="t-ui-sm text-fg-subtle">resolved</span>
 		{:else if delta}
-			<span class="t-ui-sm inline-flex items-center gap-0.5 tabular-nums {deltaInk}" title={delta.title}>
+			<span class="t-ui-sm inline-flex items-center gap-0.5 whitespace-nowrap tabular-nums {deltaInk}" title={delta.title}>
 				{#if delta.dir === 'up'}<ArrowUpOutline class="h-3 w-3" aria-hidden="true" />{:else if delta.dir === 'down'}<ArrowDownOutline class="h-3 w-3" aria-hidden="true" />{/if}{delta.text}
 			</span>
 		{/if}
