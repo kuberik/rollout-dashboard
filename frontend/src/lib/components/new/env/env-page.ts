@@ -26,7 +26,7 @@ import {
 } from '../data';
 import { environmentsPage, stateLine, barSegments, type EnvTile } from '../environments-page';
 import { askOf, type AskItem } from '../home-page';
-import { bannerOf, type BannerModel, type RestRow } from '../rollouts-page';
+import { bannerOf, attentionRollup as attentionRollupOf, type BannerModel, type RestRow } from '../rollouts-page';
 import { needApprovalCount, approvalWord, mostSevere, severity, stateWord } from '../state-words';
 import { runwayRow, rowAction } from '../rollout-view';
 import { plural } from '../envs-model';
@@ -184,7 +184,8 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 		: { failing: listTile?.failing ?? 0, waiting: listTile?.waiting ?? 0, moving: listTile?.moving ?? 0, rest: listTile?.rest ?? 0 };
 	const yoursN = rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking).reduce((n, r) => n + Math.max(1, r.regions.length), 0);
 	const movingWord = rows.some((r) => r.stillChecking || r.state === 'checking') && !rows.some((r) => r.state === 'deploying') ? 'checking' : 'deploying';
-	const s = region ? stateLine({ places: allPlaces.length, ...counts, yours: Math.min(counts.waiting, yoursN) }, movingWord) : null;
+	const recoveredN = rows.filter((r) => r.group === 'failed' && r.failure?.recovered).reduce((n, r) => n + Math.max(1, r.regions.length), 0);
+	const s = region ? stateLine({ places: allPlaces.length, ...counts, recovered: recoveredN, yours: Math.min(counts.waiting, yoursN) }, movingWord) : null;
 	const tile: EnvPage['tile'] = region
 		? { ...counts, mark: s!.mark, lead: s!.lead, parts: s!.parts, calm: !counts.failing && !counts.waiting && !counts.moving, label: `${allPlaces.length} places: ${counts.failing} failing, ${counts.waiting} waiting, ${counts.moving} ${movingWord}, ${counts.rest} healthy` }
 		: { failing: counts.failing, waiting: counts.waiting, moving: counts.moving, rest: counts.rest, mark: listTile!.mark, lead: listTile!.lead, parts: listTile!.parts, calm: listTile!.calm, label: listTile!.label };
@@ -197,7 +198,7 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 	const placeOf = (r: TRow) => (region ? '' : (r.regions.length > 1 ? `${r.regions.length} regions` : r.where === r.tier || ['production', 'staging', 'dev', 'test'].includes(r.where) ? '' : r.where));
 	const attention = attRows.map((r) => { const it = askOf(r, hs, { noTier: true }); const pl = placeOf(r); return pl ? { ...it, id: { ...it.id, name: `${r.app} · ${pl}` } } : it; });
 	const nF = attention.filter((a) => a.failed).length, nA = attention.length - nF;
-	const attentionRollup: Rollup = [...(nF ? [{ text: `${nF} failing`, ink: 'danger' as const }] : []), ...(nA ? [{ text: `${nA} to approve`, ink: 'held' as const }] : [])];
+	const attentionRollup: Rollup = attentionRollupOf({ failing: nF, recovered: attention.filter((a) => a.failed && a.recovered).length, toApprove: nA });
 
 	/* apps here: each app's places in this environment, its most severe row, its waves */
 	const byApp = new Map<string, TPlace[]>();

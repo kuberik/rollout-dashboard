@@ -87,3 +87,21 @@ describe('batch4 #3: regions a wave holds are not plain "healthy"', () => {
 		expect(waveHeldPhrase(1, '3 prod regions', null)).toBe('1 region waiting for 3 prod regions');
 	});
 });
+
+describe('a failure whose checks recovered is `failed`, not `failing`', () => {
+	const t = { places: 8, waiting: 1, yours: 0, moving: 0, rest: 4 };
+	it('some failing now, some recovered: the lead counts the live ones, the recovered ones follow as `failed`', () => {
+		const s = stateLine({ ...t, failing: 3, recovered: 1 }, 'deploying');
+		expect(s.lead).toMatchObject({ text: '2 failing', ink: 'danger' });
+		expect(s.parts[0].text).toBe('1 failed');
+		expect(s.mark).toBe('failed');
+	});
+	it('every failure recovered: the lead says `failed`, never `failing`', () => {
+		const s = stateLine({ ...t, failing: 2, recovered: 2 }, 'deploying');
+		expect(s.lead.text).toBe('2 failed');
+		expect(s.parts.map((p) => p.text).join(' ')).not.toContain('failing');
+	});
+	it('no recovered count (older callers): unchanged', () => {
+		expect(stateLine({ ...t, failing: 2 }, 'deploying').lead.text).toBe('2 failing');
+	});
+});

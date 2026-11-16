@@ -10,6 +10,7 @@
  */
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import { TONE } from '$lib/view-models/state-tone';
+import { failedWord } from './state-words';
 import { envsModel, plural, type Mark } from './envs-model';
 import { waveHold } from './app/app-model';
 import { apps, placeHolds, type PlaceHold, inbound, isArriving, lastDeploy, ago, ARRIVALS_WINDOW, TIER_NAME, type HomeState, type TierKey } from './data';
@@ -31,13 +32,15 @@ export type Arrival = { key: string; app: string; build: string | null; place: s
 export type EnvironmentsPage = { tiles: EnvTile[]; prod: EnvTile | null; arrivals: Arrival[]; window: string; empty: boolean };
 
 /** the state line (kit `envStateLine`): the worst fact leads in its ink, the rest follow muted; nothing adverse = "All N healthy" */
-export function stateLine(t: { places: number; failing: number; waiting: number; yours: number; moving: number; rest: number }, movingWord: string): { lead: StatePart & { ink: Ink }; parts: StatePart[]; mark: TileMark } {
+export function stateLine(t: { places: number; failing: number; /** of the failed places, those whose checks have all recovered: they read `failed`, never `failing` (state-words.ts failedWord) */ recovered?: number; waiting: number; yours: number; moving: number; rest: number }, movingWord: string): { lead: StatePart & { ink: Ink }; parts: StatePart[]; mark: TileMark } {
 	const parts: StatePart[] = [];
+	const recovered = Math.min(t.recovered ?? 0, t.failing), live = t.failing - recovered;
+	if (live && recovered) parts.push({ text: `${recovered} ${failedWord(true).toLowerCase()}` });
 	if (t.waiting) parts.push({ text: `${t.waiting} waiting`, you: t.yours ? `${t.yours} for you` : undefined });
 	if (t.moving) parts.push({ text: `${t.moving} ${movingWord}` });
 	if (t.rest) parts.push({ text: `${t.rest} healthy` });
 	const mv: TileMark = movingWord === 'checking' ? 'checking' : 'deploying';
-	if (t.failing) return { lead: { text: `${t.failing} failing`, ink: TONE.failed.hue as Ink }, parts, mark: 'failed' };
+	if (t.failing) return { lead: { text: `${live || recovered} ${failedWord(!live).toLowerCase()}`, ink: TONE.failed.hue as Ink }, parts, mark: 'failed' };
 	if (t.waiting) return { lead: { ...parts.shift()!, ink: TONE.held.hue as Ink }, parts, mark: t.yours ? 'approval-yours' : 'approval' };
 	if (t.moving) return { lead: { ...parts.shift()!, ink: TONE[mv].hue as Ink }, parts, mark: mv }; /* the word's ink is the mark's tone: "2 checking" is progress yellow beside the yellow clock, "2 deploying" active blue */
 	return { lead: { text: `All ${t.places} healthy`, ink: 'muted' }, parts: [], mark: 'rest' };
@@ -104,7 +107,9 @@ export function environmentsPage(hs: HomeState): EnvironmentsPage {
 		const yours = Math.min(t.waiting, placesOf(rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking)));
 		const kinds = new Set(rows.filter((r) => r.group === 'moving' || r.stillChecking).map((r) => (r.state === 'deploying' ? 'deploying' : 'checking')));
 		const movingWord = kinds.size > 1 ? 'in progress' : kinds.has('checking') ? 'checking' : 'deploying';
-		const c = { places: t.counts.places, failing: t.failing, waiting: t.waiting, yours, moving: t.moving, rest: t.places - t.failing - t.waiting - t.moving };
+		/* places whose failure has recovered: counted as failed, not failing (the row's own `failure.recovered`, the rollout page's word) */
+		const recovered = placesOf(rows.filter((r) => r.group === 'failed' && r.failure?.recovered));
+		const c = { places: t.counts.places, failing: t.failing, recovered, waiting: t.waiting, yours, moving: t.moving, rest: t.places - t.failing - t.waiting - t.moving };
 		const s = stateLine(c, movingWord);
 		const inb = inbound(hs, t.key).filter(isArriving);
 		const ld = lastDeploy(hs, t.key);
