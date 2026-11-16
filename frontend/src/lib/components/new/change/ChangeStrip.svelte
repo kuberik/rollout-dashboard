@@ -23,7 +23,7 @@
 	import EnvRow, { type EnvCell, type EnvLane, type EnvSite } from '$lib/components/EnvRow.svelte';
 	import type { SiteState } from '$lib/components/SiteMark.svelte';
 	import type { TChange, HomeState } from '../data';
-	import { stagesOf, type StagePlace } from '../stages/stages-model';
+	import { stagesOf } from '../stages/stages-model';
 
 	let { change: c, scenario = 'incident', class: className = '' }: { change: TChange; scenario?: HomeState; class?: string } = $props();
 
