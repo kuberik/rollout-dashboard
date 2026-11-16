@@ -861,11 +861,8 @@ lib/components/new/envs-model.ts	code	… · … regions
 lib/components/new/envs-model.ts	code	… apps
 lib/components/new/envs-model.ts	code	… arriving: …
 lib/components/new/envs-model.ts	code	… arriving…
-lib/components/new/envs-model.ts	code	… failing
 lib/components/new/envs-model.ts	code	… held
-lib/components/new/envs-model.ts	code	… in progress
 lib/components/new/envs-model.ts	code	… next…
-lib/components/new/envs-model.ts	code	… to approve
 lib/components/new/envs-model.ts	code	· … … held
 lib/components/new/envs-model.ts	code	At rest
 lib/components/new/envs-model.ts	code	in progress

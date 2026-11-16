@@ -68,11 +68,6 @@ export function edgeTitle(moving: string[], next: string[], held: string[]): str
 	const m = take(moving), n = take(next), h = take(held);
 	return [m.length && `${m.length} arriving: ${m.join(', ')}`, n.length && `${n.length} ${app(n.length)} next: ${n.join(', ')}`, h.length && `${h.length} ${app(h.length)} held: ${h.join(', ')}`].filter(Boolean).join(' · ');
 }
-/** r34 v2-r6: a tier tile's state line, shared by the canvas tile and /envs/<name>'s neighbour tiles: size in places + the worst ADVERSE fact only. */
-export function tileWords(t: { places: number; failing: number }, k: { holds: number; approvals: number }): string {
-	const adv = [t.failing && `${t.failing} failing`, k.holds && `${k.holds} held`, k.approvals && `${k.approvals} to approve`].filter(Boolean) as string[];
-	return [`${t.places} ${t.places === 1 ? 'place' : 'places'}`, ...adv.slice(0, 1)].join(' · ');
-}
 /** envdetail-10 EX1: THE one place name = the rollout tab's environment label (rollout-view tabEnv): a production region is `prod-<region>`, the un-regioned base place `production`. Every chip, banner line, band cell and tooltip on both Environments pages says this. */
 export const placeName = (region: string | null | undefined) => (!region || region === 'prod' || region === 'production' ? 'production' : region.startsWith('prod-') ? region : `prod-${region}`);
 /** EX2: columns of the places' square grid: rows are EVEN and at most `cap` (19) wide. `avail` = the width the squares may use; pitch = dot + gap. */
@@ -238,17 +233,6 @@ export function envsModel(state: HomeState) {
 	return { stOf, present, failedApps, failedAll, tierDots, tierFacts, focus, lastDeploy, tiers, prod, base, regionsAll: e.regions, regionless: e.regionless, causeByRow, busy, rest, restRegions, worstProd, worstFact, tierKinds, causes, holdLines, edges, arrivals, totals, window: ARRIVALS_WINDOW, TIER_NAME };
 }
 export type EnvsModel = ReturnType<typeof envsModel>;
-
-/** The header facts, in PLACES: adverse first, zero facts omitted. */
-export function metaFacts(m: EnvsModel): { text: string; adverse: boolean }[] {
-	const f: { text: string; adverse: boolean }[] = [];
-	/* EX4: ONE order everywhere (failing · in progress · held · to approve), the same as the Production rollup */
-	if (m.totals.failing) f.push({ text: `${m.totals.failing} failing`, adverse: true });
-	if (m.totals.moving) f.push({ text: `${m.totals.moving} in progress`, adverse: false });
-	if (m.totals.holds) f.push({ text: `${m.totals.holds} held`, adverse: false });
-	if (m.totals.approvals) f.push({ text: `${m.totals.approvals} to approve`, adverse: false });
-	return f;
-}
 
 /** G5: columns of the Production band from 600px of canvas: cells are >= ~190px (a chip, a mark and "N places" never truncate); among 2..max columns the one that fills whole rows best (cost = empty slots in the last row + steps below max). The fold is ONE cell, spanning the empty slots of its row (at most 3 wide). */
 export function bandCols(cells: number, hasFold: boolean, width: number): { cols: number; span: number } {
