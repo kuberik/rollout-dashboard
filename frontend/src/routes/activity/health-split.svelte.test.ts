@@ -56,7 +56,8 @@ describe('Activity: the failing / failed split', { timeout: 30_000 }, () => {
 		render(WithQueryClient, { props: { component: Activity as any } });
 		await loaded();
 		await new Promise((r) => setTimeout(r, 1000));
-		expect(rollups()[0]).toBe('212 deploys');
+		/* 214: search-indexer carries one build newer than its failed prod head (live in dev and staging), two more deploys in the window */
+		expect(rollups()[0]).toBe('214 deploys');
 		expect(rollups()[1]).toBe('47 deploys');
 	});
 	test('before the fleet health checks answer, failed rows stay neutral instead of turning red and back', async () => {
