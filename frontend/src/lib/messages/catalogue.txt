@@ -584,6 +584,7 @@ lib/components/new/app/app-model.ts	code	Releases when the check starts passing
 lib/components/new/app/app-model.ts	code	Releases when the pin is cleared
 lib/components/new/app/app-model.ts	code	Rolled back
 lib/components/new/app/app-model.ts	code	The bake clock restarts when the check is Healthy again
+lib/components/new/app/app-model.ts	code	The check passes again; a retry or a new build releases it
 lib/components/new/app/app-model.ts	code	Then … more … follow….
 lib/components/new/app/app-model.ts	code	Up to date
 lib/components/new/app/app-model.ts	code	wave …
