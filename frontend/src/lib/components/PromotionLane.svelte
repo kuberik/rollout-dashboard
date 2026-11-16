@@ -39,7 +39,8 @@
 		quietNoReleases = false,
 		sites = false,
 		reserve = false,
-		recovered
+		recovered,
+		failedSince
 	}: {
 		lane: Lane;
 		/** Restrict / order the boxes; defaults to this lane's own tiers. */
@@ -168,6 +169,11 @@
 	/* the picker row speaks as the Change page's does: the state word, then the currency ("Deployed · 2 builds behind") */
 	const siteWord = (n: LaneNode) => wordOf(n) || (noRel(n) ? 'No releases' : 'Deployed');
 	const siteDetail = (n: LaneNode) => (noRel(n) || n.state === 'deploying' || n.state === 'checking' || n.state === 'paused' ? undefined : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
+	/** the age a box prints: a failed place's is when its failure began, every other state's the deploy's */
+	const asideOf = (n: LaneNode): string | undefined => {
+		const at = (n.state === 'failed' ? failedSince?.(n) : null) ?? n.card.timestamp;
+		return at ? formatTimeAgoCompact(at) : undefined;
+	};
 	function sitesOf(ns: LaneNode[]): EnvSite[] {
 		const multiWave = new Set(ns.map((n) => n.card.wave ?? 1)).size > 1;
 		return [...ns]
@@ -182,7 +188,7 @@
 				detail: siteDetail(n),
 				wordInk: toneInk(n.state),
 				build: n.card.version ? shortenVersion(n.card.version) : undefined,
-				aside: (n.state === 'failed' ? (failedSince?.(n) ?? n.card.timestamp) : n.card.timestamp) ? formatTimeAgoCompact((n.state === 'failed' ? (failedSince?.(n) ?? n.card.timestamp) : n.card.timestamp) as string) : undefined,
+				aside: asideOf(n),
 				href: hrefFor(n),
 				here: youAreHere && isCurrent(n)
 			}));

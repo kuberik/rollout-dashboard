@@ -34,7 +34,7 @@ describe('app-scope stage rollup: failed vs failing', () => {
 describe('a failed stage row follows the same failed/failing rule as the rollup', () => {
 	beforeAll(() => install(true));
 	afterEach(() => installLiveSource(null));
-	const failedPlaces = (app: string) => stagesOf({ kind: 'app', app }, 'calm').lanes.flatMap((l) => l.cells.flatMap((c) => c.places)).filter((p) => p.state === 'failed');
+	const failedPlaces = (app: string) => stagesOf({ kind: 'app', app }, 'calm').lanes.flatMap((l) => l.cells.flatMap((c) => c?.places ?? [])).filter((p) => p.state === 'failed');
 	it('the word, the recovered flag and the mark label for a check failing now', () => {
 		load();
 		const [p] = failedPlaces('checkout-gateway');
