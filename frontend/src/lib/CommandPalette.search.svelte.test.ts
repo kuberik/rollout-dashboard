@@ -100,9 +100,18 @@ describe('the palette search highlight', { timeout: 60_000 }, () => {
 			draw();
 			await type(document.body.querySelector<HTMLInputElement>('input')!, q);
 			fresh[q] = selectedText();
+			// the highlight is the first result drawn (the flat index is the on-screen order)
+			expect(options()[0].getAttribute('aria-selected'), `first row for "${q}"`).toBe('true');
 			expect(fresh[q], q).not.toBe('');
 			cleanup();
 		}
+	});
+	test('with nothing typed, the highlight is the first row drawn', () => {
+		rec.live = '';
+		reactivePage.url = new URL('http://localhost/');
+		draw();
+		expect(options()[0].getAttribute('aria-selected')).toBe('true');
+		cleanup();
 	});
 	test('typing letter by letter after arrowing down leaves the highlight on the same first result, and Enter opens it', async () => {
 		rec.live = '';
@@ -114,6 +123,7 @@ describe('the palette search highlight', { timeout: 60_000 }, () => {
 		for (const q of PREFIXES) {
 			await type(input, q);
 			expect(selectedText(), `query "${q}"`).toBe(fresh[q]);
+			expect(options()[0].getAttribute('aria-selected'), `first row for "${q}"`).toBe('true');
 		}
 		// Enter acts on that result (a failing rollout's primary action opens its page with the action)
 		vi.mocked(goto).mockClear();

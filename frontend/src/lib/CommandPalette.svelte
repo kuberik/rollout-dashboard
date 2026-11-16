@@ -1436,7 +1436,9 @@
 			if (sev !== 0) return sev;
 			return a.r.title.localeCompare(b.r.title);
 		});
-		const ranked = capKind(scored.slice(0, 200).map((x) => x.r), 'change', CHANGE_TITLE_CAP);
+		// The flat index is the order on screen: kinds sit in `KIND_PRIORITY` groups, each in score order, so the first row drawn is
+		// index 0 (the highlight and Enter start on it). `sort` is stable, so within a kind the score order stays.
+		const ranked = capKind(scored.slice(0, 200).map((x) => x.r), 'change', CHANGE_TITLE_CAP).sort((a, b) => KIND_PRIORITY[b.kind] - KIND_PRIORITY[a.kind]);
 		// Reference rows ride ABOVE everything else, ungrouped, and only in
 		// the unscoped default search — there is no `change` picker tile to
 		// scope INTO (the fifth Browse tile navigates instead, see
