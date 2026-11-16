@@ -215,7 +215,7 @@ function cases(): Case[] {
 		app: 'catalog-api',
 		deployed: 24,
 		bake: 'Failed',
-		bakeEnd: 1,
+		bakeEnd: 10,
 		bakeMessage: 'catalog cache hit ratio fell below its floor during the bake',
 		snapshot: ['catalog-api-datadog'],
 		snapObs: { 'catalog-api-datadog': [obs({ name: 'catalog cache hit ratio', kind: 'Threshold', value: '72', limit: '80', direction: 'Below', unit: '%', window: '5m', healthy: false, message: 'service:catalog, env:prod' }, 10)] },

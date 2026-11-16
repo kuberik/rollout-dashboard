@@ -28,4 +28,10 @@ describe('health-failures fixtures: the recovered surfaces', () => {
 		const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!) as { changes: { author: string; repo?: string; title?: string; sha?: string }[] };
 		expect(gh.changes.some((c) => c.author === 'danielreed' && JSON.stringify(c).includes('catalog-api'))).toBe(true);
 	});
+	it("catalog-api's deploy-failed time is when its check first failed, so the feed event reads the same age as every other page", () => {
+		const r = rollouts().find((x) => x.metadata.name === 'catalog-api' && x.metadata.namespace === 'catalog-api-prod-default') as unknown as { status: { history: { bakeEndTime: string; failedHealthChecks: { observations: { observedTime: string }[] }[] }[] } };
+		const head = r.status.history[0];
+		const firstFailing = Math.min(...head.failedHealthChecks.flatMap((f) => f.observations.map((o) => Date.parse(o.observedTime))));
+		expect(Math.abs(Date.parse(head.bakeEndTime) - firstFailing)).toBeLessThan(60_000);
+	});
 });
