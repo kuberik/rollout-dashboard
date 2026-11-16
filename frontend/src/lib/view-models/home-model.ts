@@ -94,7 +94,7 @@ import type { CheckFailure } from './health-witness';
 import { failureKind, formatTimeAgoCompact } from '../utils';
 import * as msg from '$lib/paraglide/messages';
 import { pinHoldsBuilds } from './pin-hold';
-import { eventAge, historyEntrySince, type EventAgeKind } from './event-age';
+import { eventAge, healthFailureSince, historyEntrySince, type EventAgeKind } from './event-age';
 
 // ── THE PER-ENVIRONMENT STATE WORD, ONE ENUM FOR BOTH THE APP'S CURRENT
 //    STANDING AND ONE VIEWER CHANGE'S OWN POSITION THERE. ──────────────────
@@ -428,7 +428,7 @@ function withHealthWitness(cards: readonly RolloutCard[]): RolloutCard[] {
 			// the rule `eventAge('failed')` and the failed `PrCell.since` read).
 			// `head.timestamp` alone dated the failure from the deploy, so Needs
 			// you and Your changes printed two ages for one failure.
-			since: historyEntrySince(head)
+			since: healthFailureSince(head) ?? historyEntrySince(head)
 		};
 		return { ...c, checkFailure: witness };
 	});

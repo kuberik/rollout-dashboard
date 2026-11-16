@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Rollout } from '../../types';
 import { buildRolloutCards } from '$lib/rollout-cards';
-import { eventAge, historyEntrySince, lastFailureMs, lastFailureAgoOf } from './event-age';
+import { eventAge, healthFailureSince, historyEntrySince, lastFailureMs, lastFailureAgoOf } from './event-age';
 import { weekSummary } from '../components/new/app/app-model';
 
 const NOW = new Date('2026-10-12T12:00:00Z');
@@ -71,6 +71,27 @@ describe('eventAge', () => {
 		});
 		const card = cardFor(rollout);
 		expect(eventAge(card, 'failed')).toBe('2026-10-12T11:39:00Z');
+	});
+
+	it('failed: a bake failed on a health check dates from when the check began failing, not from the bake end (the age the banners print)', () => {
+		const rollout = mkRollout({
+			status: {
+				history: [
+					{
+						version: { tag: 'bad', version: '1.0.0' },
+						bakeStatus: 'Failed',
+						timestamp: '2026-10-12T11:00:00Z',
+						bakeEndTime: '2026-10-12T11:56:00Z',
+						failedHealthChecks: [
+							{ name: 'a', observations: [{ name: 'x', healthy: false, observedTime: '2026-10-12T11:48:00Z' }] },
+							{ name: 'b', observations: [{ name: 'y', healthy: false, observedTime: '2026-10-12T11:44:00Z' }, { name: 'z', healthy: true, observedTime: '2026-10-12T11:30:00Z' }] }
+						]
+					}
+				]
+			}
+		});
+		expect(healthFailureSince(rollout.status!.history![0] as never)).toBe('2026-10-12T11:44:00.000Z');
+		expect(new Date(eventAge(cardFor(rollout), 'failed')!).getTime()).toBe(Date.parse('2026-10-12T11:44:00Z'));
 	});
 
 	it('deploying/checking/stuck: the head entry start', () => {
