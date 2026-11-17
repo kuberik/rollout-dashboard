@@ -8,11 +8,13 @@ import { installLiveSource, type FleetSource } from '$lib/components/home/sketch
 
 /** Retry on the app page asks exactly as the rollout Overview's failure panel does (view-models/retry-confirm.ts). */
 const posts: string[] = [];
+let siteOfProd: string | null = null;
 const load = () => {
 	resetDemoState('calm');
 	const l = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}');
 	const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!);
 	const hc = JSON.parse(respond('GET', '/api/health-checks').body ?? 'null');
+	if (siteOfProd) for (const e of l.environments.items) if (e.spec?.environment === 'prod') e.spec.site = siteOfProd;
 	installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: hc?.rolloutHealthChecks?.items ?? null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
 };
 const mountApp = (app: string) => {
@@ -21,6 +23,11 @@ const mountApp = (app: string) => {
 		const method = init?.method ?? 'GET';
 		if (method === 'POST' && /\/retry$/.test(String(url))) { posts.push(String(url)); return new Response('{}', { status: 200 }); }
 		const r = respond(method, String(url));
+		if (siteOfProd && r.body?.includes('"environments"')) {
+			const j = JSON.parse(r.body);
+			for (const e of j.environments?.items ?? []) if (e.spec?.environment === 'prod') e.spec.site = siteOfProd;
+			r.body = JSON.stringify(j);
+		}
 		return new Response(r.body ?? '{}', { status: r.status ?? 200, headers: { 'Content-Type': 'application/json' } });
 	});
 	return render(Harness, { props: { name: app } });
@@ -37,7 +44,7 @@ describe('AppDetail Retry confirmation', () => {
 		install(true);
 		if (!Element.prototype.animate) Element.prototype.animate = (() => ({ finished: Promise.resolve(), cancel() {}, onfinish: null, play() {}, pause() {}, addEventListener() {} })) as never;
 	});
-	afterEach(() => { installLiveSource(null); posts.length = 0; vi.unstubAllGlobals(); });
+	afterEach(() => { siteOfProd = null; installLiveSource(null); posts.length = 0; vi.unstubAllGlobals(); });
 	it('a production failed place: Retry opens the confirm; the POST follows the confirm', async () => {
 		const { findByRole, findByLabelText, getByRole } = mountApp('search-indexer');
 		await fireEvent.click(await findByRole('button', { name: /^Retry$/ }));
@@ -58,5 +65,12 @@ describe('AppDetail Retry confirmation', () => {
 		await fireEvent.click(btn);
 		expect(await findByRole('dialog', {}, { timeout: 5000 })).toBeTruthy();
 		expect(location.pathname).not.toMatch(/\/rollouts\//);
+	});
+	it('the confirm names the Environment\'s site when the rollout label says only prod', async () => {
+		siteOfProd = 'eu-west';
+		const { findByRole } = mountApp('search-indexer');
+		await fireEvent.click(await findByRole('button', { name: /^Retry$/ }));
+		await findByRole('dialog');
+		expect(document.querySelector('#rcm-title')!.textContent).toMatch(/ in prod · eu-west\?$/);
 	});
 });
