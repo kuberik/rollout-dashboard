@@ -41,8 +41,8 @@ describe('a paused bake is the held pause glyph, never the checking rings', () =
 
 describe('one failure word per History row', () => {
 	it('a bake that ended Failed says Failed; Failing is a check failing right now', () => {
-		expect(currentRowChip('Failed', null)).toBe('Failed');
-		expect(currentRowChip('Failed', null)).not.toMatch(/failing/i);
+		expect(currentRowChip('Failed', null)?.label).toBe('failed');
+		expect(currentRowChip('Failed', null)?.label).not.toMatch(/failing/i);
 	});
 });
 
