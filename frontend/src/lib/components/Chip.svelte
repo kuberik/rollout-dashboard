@@ -1414,7 +1414,7 @@
 			bind:this={el}
 		>
 			<span class="chip chip-env-name chip-env-tier t-chip">{envBadge.tier}</span>
-			<span class="chip chip-env-name chip-env-place t-ui-sm {wide ? 'chip-wide' : ''} {/^\d+ regions?$/.test(envBadge.place) ? 'chip-env-place--count' : ''}"><span class="min-w-0 truncate">{envBadge.place}</span></span>
+			<span class="chip chip-env-name chip-env-place t-ui-sm {wide ? 'chip-wide' : ''} {/^\d+( of \d+)? regions?$/.test(envBadge.place) ? 'chip-env-place--count' : ''}"><span class="min-w-0 truncate">{envBadge.place}</span></span>
 		</span>
 	{:else}
 		<span
