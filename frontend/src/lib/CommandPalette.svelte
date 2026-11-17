@@ -1204,11 +1204,6 @@
 		const c = cardsByResultKey.get(r.key);
 		return c && needsPerson(c) ? c : null;
 	}
-	/** THE ONE THING A BLOCKED ROW DOES, for ↵ and a search pick: go to its
-	 *  action's tab (a click follows the row's own link, same href). */
-	function runBlocked(c: RolloutCard) {
-		goRolloutSub(c, blockedAction(c).sub, blockedAction(c).query);
-	}
 	/**
 	 * ⭐ PALROW r7 (AD r6 nit): ONE IDENTITY PER ENV NAME. A rollout with no
 	 * Environment record (payments-svc) labels its chip with its cluster
@@ -1548,11 +1543,7 @@
 
 	function pick(r: Result) {
 		open = false;
-		const bc = blockedCardFor(r);
-		if (bc) {
-			runBlocked(bc);
-			return;
-		}
+		// A rollout that needs a person is a result like any other: Enter opens it; its action is a click or a Tab away.
 		if (r.onSelect) {
 			r.onSelect();
 			return;
@@ -1701,7 +1692,7 @@
 				const thisIdx = selectedIndex - thisStart;
 				if (thisIdx >= 0 && thisIdx < thisRolloutCount) {
 					if (incidentCard && thisIdx === 0) {
-						runBlocked(incidentCard);
+						goRolloutSub(incidentCard);
 						return;
 					}
 					thisRolloutActions[incidentCard ? thisIdx - 1 : thisIdx]?.onSelect();
@@ -1710,7 +1701,7 @@
 				const attnIdx = selectedIndex - attnStart;
 				if (attnIdx >= 0 && attnIdx < attentionShown.length) {
 					const c = attentionShown[attnIdx];
-					if (c) runBlocked(c);
+					if (c) goRolloutSub(c);
 					return;
 				}
 				const jumpIdx = jumpToIndex(selectedIndex);
@@ -1859,10 +1850,9 @@
 	>
 		{#snippet incidentAction()}
 			<!-- ONE ROW, TWO TARGETS: a tap or click on the row (its name) opens the rollout, never an action; the row's action is its own button, so on a
-			     phone (no Enter, no hover) a tap on a name cannot start a rollback. ↵ stays the keyboard's way to run it, and the keycap sits next to the
-			     action it fires, before it; the secondary link follows. -->
+			     phone (no Enter, no hover) a tap on a name cannot start a rollback. Enter opens the rollout (the footer's "↵ open"), never the action.
+			     the secondary link follows. -->
 			<span class="flex items-center gap-3" data-meta="action">
-				{@render runKey(isActive)}
 				{#if actionHref !== rowHref}
 					<a href={actionHref} class="btn btn-secondary btn-sm relative z-[1] whitespace-nowrap max-sm:min-h-11" data-action={actionKey} onclick={() => (open = false)}>{actionLabel}</a>
 				{:else}

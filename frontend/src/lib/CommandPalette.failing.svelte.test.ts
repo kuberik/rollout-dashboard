@@ -125,12 +125,10 @@ describe('palette Needs-you rows: one tap target per row, actions as their own b
 		const rec1 = rows.find((r) => !r.getAttribute('aria-label')!.startsWith(`${alphabetical[0]} `))!;
 		expect(rec1.querySelector('a[data-action="retry"]')!.getAttribute('href')).toContain('action=retry');
 	});
-	test('the ↵ key sits immediately before the action it fires, not between the action and Open logs', () => {
+	test('no row carries a ↵ run-key chip: Enter opens, so the footer says it once', () => {
 		rec.live = alphabetical[0];
 		const rows = draw();
-		const sel = rows.find((r) => r.getAttribute('aria-selected') === 'true')!;
-		const kbd = sel.querySelector('kbd')!;
-		expect(kbd.nextElementSibling?.getAttribute('data-action')).toMatch(/rollback|retry/);
+		expect(rows.some((r) => r.querySelector('kbd'))).toBe(false);
 	});
 	test('a failure live now leads, recovered rows come last', () => {
 		rec.live = alphabetical[1];

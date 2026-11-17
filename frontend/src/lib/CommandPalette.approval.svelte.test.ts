@@ -143,12 +143,12 @@ describe('Needs you lists builds held by approval', { timeout: 20_000 }, () => {
 		expect(rows[0].querySelector('[data-blocked-kind]')?.getAttribute('data-blocked-kind')).toBe('held');
 	});
 
-	test('Enter on the approval row goes to its Gates tab and opens no dialog', async () => {
+	test('Enter on the approval row opens the rollout and no dialog; its link and action still point at Gates', async () => {
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
 		await fireEvent.mouseEnter(needsYouRows()[1]);
 		await fireEvent.keyDown(window, { key: 'Enter' });
 		expect(goto).toHaveBeenCalledTimes(1);
-		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/telemetry-indexer.*\/gates$/);
+		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/telemetry-indexer[^/]*$/);
 		await new Promise((r) => setTimeout(r, 50));
 		expect(screen.queryByPlaceholderText(/Search builds/i)).toBeNull();
 		expect(document.querySelector('dialog[open]')).toBeNull();
@@ -164,7 +164,7 @@ describe('Needs you lists builds held by approval', { timeout: 20_000 }, () => {
 		expect(document.querySelector('dialog[open]')).toBeNull();
 	});
 
-	test('a failing row: Enter runs Roll back, as the cards do; Open logs stays a link on the row', async () => {
+	test('a failing row: Enter opens the rollout, never Roll back; Roll back and Open logs stay links on the row', async () => {
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
 		const row = needsYouRows()[0];
 		expect(row.querySelector('[data-meta="action"]')?.textContent).toContain('Roll back');
@@ -172,7 +172,8 @@ describe('Needs you lists builds held by approval', { timeout: 20_000 }, () => {
 		await fireEvent.mouseEnter(row);
 		await fireEvent.keyDown(window, { key: 'Enter' });
 		expect(goto).toHaveBeenCalledTimes(1);
-		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/checkout-worker[^/]*\?action=rollback$/);
+		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/checkout-worker[^/?]*$/);
+		expect(row.querySelector('a[data-action="rollback"]')?.getAttribute('href')).toContain('action=rollback');
 	});
 
 	test('a failing row says "failing" in danger ink and "for <age>", like the card', () => {

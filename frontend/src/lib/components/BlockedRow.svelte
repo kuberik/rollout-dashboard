@@ -199,6 +199,21 @@
 	const age = $derived(blockedAgeText(kind, recovered, failedSince, ageInstant, $now));
 	const factRuns = $derived(kind === 'failed' ? blockedFactRuns(factText, recovered) : [{ t: factText, danger: false }]);
 	const palette = $derived(size === 'palette');
+
+	/** Marks the palette's meta span `data-stacked="true"` when flex-wrap has put it on a line below the name (so it is indented under the
+	 *  name, as on a phone). Measured, because CSS cannot tell a wrapped item from a first-line one. */
+	function stackedWhenWrapped(node: HTMLElement) {
+		const row = node.parentElement;
+		const measure = () => {
+			const first = row?.querySelector<HTMLElement>('a.tap-link');
+			if (first) node.dataset.stacked = String(node.offsetTop - first.offsetTop > 4);
+		};
+		measure();
+		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+		if (row) ro?.observe(row);
+		ro?.observe(node);
+		return { destroy: () => ro?.disconnect() };
+	}
 </script>
 
 {#snippet fact()}{#each factRuns as r}{#if r.danger}<span class="{TONE.failed.ink}" data-failing-word>{r.t}</span>{:else}{r.t}{/if}{/each}{/snippet}
@@ -207,7 +222,7 @@
 	this={as}
 	class="br tap-zone flex items-center gap-x-3 transition-colors hover:bg-hover {palette
 		? wrap
-			? 'min-h-10 flex-wrap gap-y-0.5 px-3 py-1.5 sm:h-10 sm:flex-nowrap sm:py-0'
+			? 'min-h-10 flex-wrap gap-y-0.5 px-3 py-1.5'
 			: 'h-10 flex-nowrap px-3'
 		: 'flex-wrap gap-y-0.5 px-4 py-3'} {className}"
 	data-blocked-kind={kind}
@@ -219,9 +234,10 @@
 	     truncates inside the pill, down to 3rem), then the name. -->
 	{#if card.envDisplay}<Chip role="env" theme={card.theme} label={card.envDisplay} wide class={palette ? 'min-w-12 shrink-[1000]' : 'shrink-0'} />{/if}
 	{#if palette && wrap}
-		<!-- Below sm the fact gets its own line (.dot-list, so no orphaned "·");
-		     from sm it is the palette's one truncated line. -->
-		<span class="t-meta flex min-w-0 basis-full items-baseline gap-x-3 pl-7 text-fg-muted sm:basis-auto sm:flex-1 sm:pl-0">
+		<!-- Below sm the fact gets its own line (.dot-list, so no orphaned "·"). From sm it shares the name's line when the whole row fits there;
+		     when it does not (a long name, a long fact, the action pair), the fact and the action drop to the phone's second line, indented
+		     under the name (`stackedWhenWrapped` sets data-stacked), so the name, the env chip and the state word are never cut. -->
+		<span use:stackedWhenWrapped class="t-meta flex min-w-0 basis-full items-baseline gap-x-3 pl-7 text-fg-muted sm:basis-auto sm:flex-1 sm:pl-0 sm:data-[stacked=true]:pl-7">
 			<span class="dot-list block min-w-0 flex-1">
 				<span class="dot-list-row flex min-w-0 flex-wrap items-baseline sm:flex-nowrap">
 					<span class="min-w-0 sm:truncate">{@render fact()}</span>

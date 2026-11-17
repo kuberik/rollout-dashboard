@@ -80,8 +80,10 @@ describe('BlockedRow palette wrap', () => {
 	it('gives the fact its own line below sm without leaving the palette density', () => {
 		const { container } = render(BlockedRow, { card: heldCard, kind: 'held', href: '/r', size: 'palette', wrap: true });
 		const row = container.querySelector('.br')!;
-		expect(row.className).toContain('sm:h-10');
+		// the row wraps at every width, so a line that does not fit drops the fact and action to a second line instead of cutting the name
 		expect(row.className).toContain('flex-wrap');
+		expect(row.className).not.toContain('sm:flex-nowrap');
+		expect(container.querySelector('[data-stacked]')).not.toBeNull();
 		expect(container.querySelector('.basis-full .dot-list')).not.toBeNull();
 		expect(container.querySelector('button')).toBeNull();
 	});
