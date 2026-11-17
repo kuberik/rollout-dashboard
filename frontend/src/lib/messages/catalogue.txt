@@ -406,6 +406,7 @@ lib/components/FailurePanel.svelte	code	An error occurred during deployment.
 lib/components/FailurePanel.svelte	text	Automated deployments are held until this is resolved.
 lib/components/FailurePanel.svelte	title	Deployment failed
 lib/components/FailurePanel.svelte	code	Roll back
+lib/components/FailureToasts.svelte	text	+ … more failure …
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
 lib/components/FleetCard.svelte	text	all apps
