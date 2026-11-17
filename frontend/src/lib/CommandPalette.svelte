@@ -1687,7 +1687,7 @@
 			return;
 		}
 		if (e.key === 'Tab' && !e.shiftKey && e.target instanceof HTMLInputElement) {
-			const act = highlightedAction();
+			const act = highlightScopes ? null : highlightedAction();
 			if (act) {
 				e.preventDefault();
 				act.focus();

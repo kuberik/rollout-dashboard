@@ -89,6 +89,7 @@ lib/CommandPalette.svelte	text	… No … match " … " … No matches for " …
 lib/CommandPalette.svelte	text	… result …
 lib/CommandPalette.svelte	code	… rollout…
 lib/CommandPalette.svelte	title	… rollout… here failed or stopped moving
+lib/CommandPalette.svelte	code	a[href], button:not(:disabled)
 lib/CommandPalette.svelte	text	and … more — type to find one, or open
 lib/CommandPalette.svelte	code	approval approve waits for approval waiting
 lib/CommandPalette.svelte	code	Apps across environments
@@ -244,6 +245,7 @@ lib/components/ChangeVersionModal.svelte	code	Deploy requested for ….
 lib/components/ChangeVersionModal.svelte	code	deployed …
 lib/components/ChangeVersionModal.svelte	code	Deployed …
 lib/components/ChangeVersionModal.svelte	code	Failed to change version
+lib/components/ChangeVersionModal.svelte	code	Failed to change version: …
 lib/components/ChangeVersionModal.svelte	code	Failed to deploy version
 lib/components/ChangeVersionModal.svelte	code	Held — …
 lib/components/ChangeVersionModal.svelte	code	Held — …, has …
@@ -600,18 +602,23 @@ lib/components/new/app/AppBuilds.svelte	text	Builds from deploy history
 lib/components/new/app/AppBuilds.svelte	aria-label	Deploy … to …
 lib/components/new/app/AppBuilds.svelte	text	No details recorded for this build
 lib/components/new/app/AppBuilds.svelte	text	No place runs this app yet
+lib/components/new/app/AppDetail.svelte	code	… · Check restarted
 lib/components/new/app/AppDetail.svelte	aria-label	… context
 lib/components/new/app/AppDetail.svelte	code	(max-width: 639px)
 lib/components/new/app/AppDetail.svelte	text	All environments
 lib/components/new/app/AppDetail.svelte	code	Deploy … to ….
 lib/components/new/app/AppDetail.svelte	text	deployed … ago
 lib/components/new/app/AppDetail.svelte	title	Deployment failed
+lib/components/new/app/AppDetail.svelte	code	Failed to retry deployment
+lib/components/new/app/AppDetail.svelte	code	Failed to retry: …
 lib/components/new/app/AppDetail.svelte	code	Open rollout
 lib/components/new/app/AppDetail.svelte	code	Retry failed
 lib/components/new/app/AppDetail.svelte	code	Retry started
 lib/components/new/app/AppDetail.svelte	code	Roll back
 lib/components/new/app/AppDetail.svelte	code	The health checks are running.
 lib/components/new/app/AppDetail.svelte	headline	This app does not exist
+lib/components/new/app/AppDetail.svelte	code	Unknown error
+lib/components/new/app/AppDetail.svelte	text	View logs
 lib/components/new/app/AppGates.svelte	aria-label	… details of …
 lib/components/new/app/AppGates.svelte	text	… Held by
 lib/components/new/app/AppGates.svelte	text	How to approve
@@ -1074,6 +1081,7 @@ lib/components/ResourcesCard.svelte	text	Flux reports issues
 lib/components/ResourcesCard.svelte	code	Not found
 lib/components/RestGlyph.svelte	code	behind the newest build
 lib/components/RestGlyph.svelte	text	deploy succeeded
+lib/components/RetryConfirmModal.svelte	code	Failed to retry
 lib/components/RetryConfirmModal.svelte	text	This starts a new deployment attempt.
 lib/components/RetryConfirmModal.svelte	text	to confirm
 lib/components/RetryTestsModal.svelte	text	… × retried
@@ -1085,8 +1093,7 @@ lib/components/RetryTestsModal.svelte	text	Retry tests
 lib/components/RetryTestsModal.svelte	text	Skip tests
 lib/components/RetryTestsModal.svelte	code	Unknown test
 lib/components/RolloutHeaderFlows.svelte	code	… · Check restarted
-lib/components/RolloutHeaderFlows.svelte	code	Failed to retry deployment
-lib/components/RolloutHeaderFlows.svelte	code	Failed to retry: …
+lib/components/RolloutHeaderFlows.svelte	code	Failed to retry
 lib/components/RolloutHeaderFlows.svelte	code	Retry started
 lib/components/RolloutHeaderFlows.svelte	text	View logs
 lib/components/RolloutNeighbourhood.svelte	text	… … … … … Approved …
@@ -2044,7 +2051,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a new version
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a rule we cannot attribute
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	All environments
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	an approval
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Another controller owns this rollout's wanted version, so the dashboard cannot pin it.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	another deploy
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	another service
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	APM service
@@ -2203,7 +2209,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	pinned to
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Recorded note
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Roll back
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	aria-label	Roll back to this build
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Roll back to this build
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	rolled back
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Rolled back from
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Same build as …

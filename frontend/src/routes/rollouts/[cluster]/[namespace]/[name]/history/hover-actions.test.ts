@@ -18,7 +18,7 @@ describe('History deploy row: the actions have their own column, nothing slides 
 		expect(timeAt).toBeGreaterThan(slotAt);
 		const open = src.slice(src.lastIndexOf('<div', slotAt), slotAt);
 		expect(open).toMatch(/\bhidden\b/);
-		expect(open).toMatch(/\bw-\[8\.5rem\]/);
+		expect(open).toMatch(/\bw-\[8\.25rem\]/);
 		expect(open).not.toMatch(/\bw-(52|48|44|40|36)\b/);
 		expect(open).toMatch(/\bshrink-0\b/);
 		expect(open).toMatch(/\blg:flex\b/);
@@ -37,7 +37,8 @@ describe('History deploy row: the actions have their own column, nothing slides 
 	test('the column fits the pair: Roll back (92px) and an icon-only View diff (34px) with their gap, no wider', () => {
 		const open = src.slice(src.lastIndexOf('<div', slotAt), slotAt);
 		const rem = Number(/w-\[([\d.]+)rem\]/.exec(open)?.[1]);
-		expect(rem * 16).toBeGreaterThanOrEqual(92 + 8 + 34);
+		expect(rem * 16).toBeGreaterThanOrEqual(92 + 6 + 34);
+		expect(open + src.slice(slotAt, slotAt + 400)).toMatch(/justify-end gap-1\.5 /);
 		expect(rem).toBeLessThanOrEqual(9);
 		expect(slot).toContain('<DiffLink');
 		expect(slot.slice(slot.indexOf('<DiffLink'))).toMatch(/\bcompact\b/);

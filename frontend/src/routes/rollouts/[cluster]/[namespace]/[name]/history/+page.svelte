@@ -1255,7 +1255,6 @@
 	}
 	/** Another controller owning `spec.wantedVersion` refuses every Roll back here, as the header and the Overview do. */
 	const managesPin = $derived(dashboardManagesWantedVersion(rollout));
-	const rollbackRowTitle = $derived(managesPin ? 'Roll back to this build' : WANTED_VERSION_OWNED_REASON);
 	function openRollbackModalFor(index: number) {
 		if (!managesPin) return;
 		const history = rollout?.status?.history ?? [];
@@ -2318,7 +2317,7 @@
 																	>
 																		{#if entry.bakeStatus === 'Succeeded'}
 																			<button
-																				title={rollbackRowTitle}
+																				title={managesPin ? 'Roll back to this build' : WANTED_VERSION_OWNED_REASON}
 																				aria-label="Roll back to this build"
 																				type="button"
 																				class="btn btn-secondary btn-xs"
@@ -2967,7 +2966,7 @@
 											     not a button that would redeploy the same break. -->
 																{#if entry.version.tag !== rollout?.status?.history?.[0]?.version?.tag && entry.bakeStatus === 'Succeeded'}
 																	<button
-																		title={rollbackRowTitle}
+																		title={managesPin ? 'Roll back to this build' : WANTED_VERSION_OWNED_REASON}
 																		aria-label="Roll back to this build"
 																		type="button"
 																		class="btn btn-secondary btn-xs"
