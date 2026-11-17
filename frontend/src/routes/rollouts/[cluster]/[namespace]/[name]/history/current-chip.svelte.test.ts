@@ -83,7 +83,7 @@ import { toastVisibility, resetToastVisibility } from '$lib/stores/toast-visibil
 beforeAll(() => install(true));
 afterEach(() => vi.unstubAllGlobals());
 
-function openHistory(onPost?: (url: string) => Response | Promise<Response> | null) {
+function openHistory(onPost?: (url: string) => Promise<Response | null>) {
 	resetDemoState('calm');
 	vi.stubGlobal(
 		'fetch',
