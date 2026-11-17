@@ -274,8 +274,8 @@
      sentence plus a `FactList` needs. -->
 <Modal bind:open size="sm" role="dialog" aria-modal="true" aria-label={clearPinTitle} class="rounded-lg bg-overlay" classes={{ body: 'p-0 space-y-0' }}>
 	<div class="border-b border-line px-5 py-4">
-		<!-- pe-10: the dialog's own close X sits over this row's right edge; the title wraps before it, never under it -->
-		<div class="flex items-start gap-3 pe-10">
+		<!-- max-sm:pe-10: on a phone the dialog's own close X sits over this row's right edge; the title wraps before it, never under it (the 512px desktop dialog clears it) -->
+		<div class="flex items-start gap-3 max-sm:pe-10">
 			<!-- Neutral disc, same reasoning as `RecoveryModeWarningModal`'s own:
 			     clearing a pin is a reversible, ordinary control action, not a
 			     hold (orange) or a destructive one (red) — the hue stays out of
