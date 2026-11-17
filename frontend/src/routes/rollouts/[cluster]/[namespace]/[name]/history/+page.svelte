@@ -2297,14 +2297,13 @@
 										is unchanged and demoted to the second line, because seventeen
 										other callers depend on exactly what it does today.
 									-->
-														<!-- ⭐ THE ACTION COLUMN, RESERVED (hover-capable widths only; revealed on hover or focus-within, never on the running row or an expanded one). Roll back lives in its own
-										     column BEFORE the time, so the summary truncates before it and nothing slides over text or over the date.
-										     It is exactly as wide as its one button (6.5rem), on every row, so the dates align and the summary keeps
-										     every pixel the button does not need. It is empty (and invisible) at rest, on the running row and on an
-										     expanded one, and does not exist below lg, where Roll back and View diff
-										     stay in the expanded panel. -->
-														<div class="hidden w-[6.5rem] shrink-0 items-center justify-end lg:flex" data-row-actions>
-															{#if !isCurrent && !isExpanded}
+														<!-- ⭐ THE ACTION COLUMN, RESERVED (hover-capable widths only; revealed on hover or focus-within). Roll back and an icon-only View diff live in their own column
+										     BEFORE the time, so the summary truncates before it and nothing slides over text or over the date.
+										     The column is as wide as its pair (8.5rem) on every row that can show actions, so the summaries share one measure.
+										     The running row and an expanded one have no actions, so they draw no column and their summary takes the room (the
+										     time column is right-aligned and fixed-width, so the dates still line up). Below lg the same two actions stay in the expanded panel. -->
+																								{#if !isCurrent && !isExpanded}
+														<div class="hidden w-[8.5rem] shrink-0 items-center justify-end lg:flex" data-row-actions>
 																	<div
 																		class="pointer-events-none flex items-center justify-end gap-2 opacity-0 transition-opacity lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
 																	>
@@ -2325,9 +2324,19 @@
 																				Roll back
 																			</button>
 																		{/if}
+																		<DiffLink
+																			{cluster}
+																			namespace={rollout?.metadata?.namespace ?? ''}
+																			name={rollout?.metadata?.name ?? ''}
+																			history={rollout?.status?.history ?? []}
+																			index={i}
+																			{atLimit}
+																			compact
+																		/>
 																	</div>
-															{/if}
+															
 														</div>
+																	{/if}
 
 														<div class="hidden shrink-0 text-right sm:block">
 															<div

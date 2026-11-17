@@ -28,7 +28,8 @@
 		name,
 		history,
 		index,
-		atLimit = false
+		atLimit = false,
+		compact = false
 	}: {
 		cluster: string | undefined;
 		namespace: string;
@@ -36,6 +37,8 @@
 		history: EntryLike[];
 		index: number;
 		atLimit?: boolean;
+		/** icon only (name and tooltip carry the words): a hover column too narrow for a second labelled button */
+		compact?: boolean;
 	} = $props();
 
 	const needs = $derived(diffLinkNeeds({ history, index, atLimit }));
@@ -64,8 +67,10 @@
 	<a
 		href={href(`/rollouts/${cluster}/${namespace}/${name}/diff/${encodeURIComponent(tag)}`)}
 		class="btn btn-secondary btn-xs"
+		title={compact ? 'View diff' : undefined}
+		aria-label={compact ? 'View diff' : undefined}
 	>
 		<CodePullRequestSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
-		View diff
+		{#if !compact}View diff{/if}
 	</a>
 {/if}

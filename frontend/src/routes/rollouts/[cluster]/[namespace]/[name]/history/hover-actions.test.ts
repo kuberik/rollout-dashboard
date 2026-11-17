@@ -18,7 +18,7 @@ describe('History deploy row: the actions have their own column, nothing slides 
 		expect(timeAt).toBeGreaterThan(slotAt);
 		const open = src.slice(src.lastIndexOf('<div', slotAt), slotAt);
 		expect(open).toMatch(/\bhidden\b/);
-		expect(open).toMatch(/\bw-\[6\.5rem\]/);
+		expect(open).toMatch(/\bw-\[8\.5rem\]/);
 		expect(open).not.toMatch(/\bw-(52|48|44|40|36)\b/);
 		expect(open).toMatch(/\bshrink-0\b/);
 		expect(open).toMatch(/\blg:flex\b/);
@@ -34,17 +34,16 @@ describe('History deploy row: the actions have their own column, nothing slides 
 		expect(time).toContain('clockTime(entry.timestamp)');
 		expect(time).not.toContain('btn');
 	});
-	test('the column is as wide as its one button, so a summary keeps every pixel the button does not need', () => {
+	test('the column fits the pair: Roll back (92px) and an icon-only View diff (34px) with their gap, no wider', () => {
 		const open = src.slice(src.lastIndexOf('<div', slotAt), slotAt);
 		const rem = Number(/w-\[([\d.]+)rem\]/.exec(open)?.[1]);
-		// the Roll back button measures 92px (5.75rem): the column adds only a small gap
-		expect(rem).toBeGreaterThanOrEqual(5.75);
-		expect(rem).toBeLessThanOrEqual(7);
-		expect(slot).not.toContain('<DiffLink');
+		expect(rem * 16).toBeGreaterThanOrEqual(92 + 8 + 34);
+		expect(rem).toBeLessThanOrEqual(9);
+		expect(slot).toContain('<DiffLink');
+		expect(slot.slice(slot.indexOf('<DiffLink'))).toMatch(/\bcompact\b/);
 	});
-	test('the running row and an expanded row draw no actions, but keep the column so the dates align', () => {
-		const open = src.lastIndexOf('<div', slotAt);
-		expect(src.slice(slotAt, slotAt + 200)).toMatch(/\{#if !isCurrent && !isExpanded\}/);
-		expect(slotAt).toBeGreaterThan(open);
+	test('the running row and an expanded row draw no column at all, so their summary takes the room', () => {
+		const before = src.slice(src.lastIndexOf('{#if', slotAt) - 5, slotAt);
+		expect(before).toMatch(/\{#if !isCurrent && !isExpanded\}\s*<div[^>]*$/);
 	});
 });
