@@ -1654,7 +1654,7 @@
 	 * (`envLabel`, the cluster's own spelling) never is. `intent.environment`
 	 * is that same spelling — unconditional, tier or not.
 	 */
-	const dialogTitleTarget = $derived(intent.environment || 'this environment');
+	const dialogTitleTarget = $derived(targetPhrase(intent)); // `prod · eu-west`: the one place name every Roll back / Retry confirm uses
 	const dialogTitle = $derived.by(() => {
 		if (!selectedVersion) return 'Change version';
 		const build = getDisplaySelectedVersion();

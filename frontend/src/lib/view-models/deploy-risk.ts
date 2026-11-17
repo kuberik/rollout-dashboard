@@ -83,6 +83,7 @@ import { availableReleases } from '$lib/releases/registry.svelte';
 import { gateAllows } from './promotion';
 import type { Rollout } from '../../types';
 import { getEnvironmentRank } from '$lib/env-order';
+import { siteKey } from './regions';
 import {
 	ENVIRONMENT_THEME_ANNOTATION,
 	ENVIRONMENT_THEME_LABEL_ANNOTATION
@@ -106,6 +107,11 @@ export type DeployIntent = {
 	custom: boolean;
 	/** The environment's own name, as the cluster spells it (`prod`, `staging`). */
 	environment: string;
+	/**
+	 * The place as a person reads it: the environment, then its site when it has one (`prod · eu-west`). Every confirm title and notice
+	 * says THIS, so a rollout in one of several prod regions never reads as all of prod. Absent (hand-built intents): `environment`.
+	 */
+	target?: string;
 	/**
 	 * This exact tag's OWN last attempt, on THIS rollout, failed — see
 	 * `failedHereVerdict`. Decided by the TL (U-4, ledger, 2026-10-08):
@@ -316,6 +322,30 @@ export function deployDirection(
 	return selectedIdx < currentIdx ? 'rollback' : 'forward';
 }
 
+/**
+ * ONE NAME FOR WHERE A DEPLOY LANDS. A rollout in one site of a tier is named by both: `prod · eu-west`, never `prod` (which reads as every
+ * prod region) and never `prod-eu-west` (a second spelling of the same place). The tier and the site come from the environment's own name
+ * (`prod-eu-west`, or `prod` when the rollout's label carries the site: `prod-eu-west`); a site that is only a tier word is the default
+ * site and is not printed. Everything that titles a Roll back / Retry / Deploy confirm reads this, via `targetPhrase`.
+ */
+const TIER_THEN_SITE = /^(dev|development|test|testing|qa|staging|stage|preprod|prod|production)[-_/. ]+(.+)$/i;
+export function placeTarget(rollout: Rollout | null | undefined, explicit?: string | null): string {
+	const env = rolloutEnvironmentName(rollout, explicit);
+	const own = rolloutEnvironmentName(rollout, null);
+	let tier = env;
+	let site: string | null = null;
+	const named = TIER_THEN_SITE.exec(env);
+	if (named) {
+		tier = named[1];
+		site = named[2];
+	} else if (own !== env) {
+		// the page named the tier ("prod"), the rollout's own label names the place ("prod-eu-west")
+		const fromOwn = TIER_THEN_SITE.exec(own);
+		if (fromOwn && fromOwn[1].toLowerCase() === env.toLowerCase()) site = fromOwn[2];
+	}
+	return site && siteKey(site) !== 'default' ? `${tier} · ${site}` : env;
+}
+
 export function deployIntent(
 	rollout: Rollout | null | undefined,
 	tag: string | null,
@@ -329,6 +359,7 @@ export function deployIntent(
 		vouched: gatesAllow(rollout, tag),
 		custom: !!tag && releases.length > 0 && releaseIndex(rollout, tag) === -1,
 		environment,
+		target: placeTarget(rollout, environmentName),
 		knownFailedHere: failedHereVerdict(rollout, tag).kind === 'failed'
 	};
 }
@@ -364,6 +395,7 @@ export function retryIntent(
 		// A retry cannot be a custom tag: it re-sends what is already deployed.
 		custom: false,
 		environment,
+		target: placeTarget(rollout, environmentName),
 		// ⛔ DELIBERATELY `false`, NEVER DERIVED. (U-4, ledger, 2026-10-08) A
 		// retry's own target (`retryTag`) is `history[0]` — which is
 		// `bakeStatus: 'Failed'` on EVERY ordinary retry (that is the whole
@@ -591,7 +623,7 @@ export function holdersPhrase(names: readonly string[]): string {
  * rule `/envs/<name>`'s own header and `/apps/<name>`'s map already follow.
  */
 export function targetPhrase(intent: DeployIntent): string {
-	return intent.environment || 'this environment';
+	return intent.target || intent.environment || 'this environment';
 }
 
 /**

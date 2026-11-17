@@ -34,7 +34,7 @@
 	import { CloseOutline } from 'flowbite-svelte-icons';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import type { Rollout } from '../../types';
-	import { deployIntent } from '$lib/view-models/deploy-risk';
+import { deployIntent, targetPhrase } from '$lib/view-models/deploy-risk';
 
 	type Reason = import('$lib/view-models/change-version-entry').RecoveryReason;
 
@@ -103,7 +103,7 @@
 	});
 
 	const intent = $derived(selectedTag ? deployIntent(rollout, selectedTag, environmentName) : null);
-	const where = $derived(intent?.environment || environmentName || 'this environment');
+	const where = $derived(intent ? targetPhrase(intent) : environmentName || 'this environment');
 	const isRollback = $derived(intent?.direction === 'rollback');
 	const act = $derived(isRollback ? 'rollback' : 'deploy');
 
