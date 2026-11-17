@@ -388,7 +388,7 @@ lib/components/DeployVolumeSparkline.svelte	code	…d ago
 lib/components/DeployVolumeSparkline.svelte	code	…h ago
 lib/components/DeployVolumeSparkline.svelte	code	1h ago
 lib/components/DeployVolumeSparkline.svelte	code	this hour
-lib/components/DiffLink.svelte	text	View diff
+lib/components/DiffLink.svelte	text	… View diff …
 lib/components/EnvSitePicker.svelte	text	This rollout
 lib/components/EnvSitePicker.svelte	text	Wave …
 lib/components/ErrorState.svelte	code	Back to all rollouts
