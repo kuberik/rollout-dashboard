@@ -1509,15 +1509,14 @@
 				quietRollback
 				failingNow={headFailingNow(liveChecks as never, rollout?.status?.history?.[0] as never)}
 				recovered={headRecovered(liveChecks as never, rollout?.status?.history?.[0] as never)}
-				rollbackHref={href(`/rollouts/${cluster}/${namespace}/${name}/history?action=rollback`)}
 			>
 				<!-- ⭐ ONE ACTION SET ON EVERY TAB (LOGOPEN r11, item 4): History,
 				     Gates and Logs carry the same header move, Roll back, rightmost
 				     (failed: the primary; calm: the secondary "Roll back to <sha>",
 				     `quietRollback`). View on GitHub and Change version live on the
 				     Overview, one tab away; a second copy here made History's header
-				     a different object from its siblings'. `rollbackHref` keeps the
-				     modal in this page (`?action=rollback` handler below). -->
+				     a different object from its siblings'. The header opens its own
+				     Roll back / Retry confirm in place on every tab. -->
 				{#snippet meta()}
 					<!--
 						⭐ `metaSeparated` NOW, NOT HAND-WRITTEN "·" SPANS. (2026-10-09,

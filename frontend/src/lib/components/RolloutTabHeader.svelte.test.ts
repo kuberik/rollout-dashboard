@@ -59,17 +59,18 @@ describe('RolloutTabHeader: the phone meta line (LOGOPEN r8)', () => {
 		const { container } = render(RolloutTabHeader, {
 			props: { name: 'checkout-worker', rollout: failed }
 		});
-		const phone = container.querySelector('a[data-phone-only]') as HTMLAnchorElement;
+		const phone = container.querySelector('button[data-phone-only]') as HTMLButtonElement;
 		expect(phone).not.toBeNull();
 		expect(phone.textContent?.trim()).toBe('Roll back');
 		expect(phone.closest('[data-phone-actions]')!.className).toMatch(/\blg:hidden\b/);
 		expect(phone.className).toMatch(/\bh-11\b/);
 
-		const desktop = container.querySelector('a[data-desktop-only]') as HTMLAnchorElement;
+		const desktop = container.querySelector('button[data-desktop-only]') as HTMLButtonElement;
 		expect(desktop.textContent?.trim()).toBe('Roll back');
 		expect(desktop.className).toMatch(/\bmax-lg:hidden\b/);
-		// Same destination: the rollback dialog names the sha.
-		expect(phone.getAttribute('href')).toBe(desktop.getAttribute('href'));
+		// buttons, not links: the confirm opens in place
+		expect(phone.getAttribute('href')).toBeNull();
+		expect(desktop.getAttribute('href')).toBeNull();
 
 		const row = container.querySelector('.dot-list-row')!;
 		expect(row.querySelector('[data-phone-only]')?.textContent).toMatch(/failed/i);
@@ -81,8 +82,8 @@ describe('RolloutTabHeader: the phone meta line (LOGOPEN r8)', () => {
 		const { container } = render(RolloutTabHeader, {
 			props: { name: 'checkout-worker', rollout: failed, inlineRollback: false }
 		});
-		expect(container.querySelector('a[data-phone-only]')).toBeNull();
-		expect(container.querySelector('a[data-desktop-only]')).toBeNull();
+		expect(container.querySelector('button[data-phone-only]')).toBeNull();
+		expect(container.querySelector('button[data-desktop-only]')).toBeNull();
 	});
 });
 
@@ -144,7 +145,7 @@ describe('RolloutTabHeader: the failure word follows failingNow', () => {
 describe('RolloutTabHeader: the phone shows the same pair as lg+', () => {
 	const phoneActs = (recovered: boolean) => {
 		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered } });
-		return [...container.querySelectorAll('a[data-phone-only]')].map((a) => `${(a as HTMLElement).dataset.action ?? 'rollback'}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
+		return [...container.querySelectorAll('button[data-phone-only]')].map((a) => `${(a as HTMLElement).dataset.action ?? 'rollback'}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
 	};
 	test('recovered: Roll back (secondary) then Retry (primary)', () => {
 		expect(phoneActs(true)).toEqual(['rollback:secondary', 'retry:primary']);
@@ -159,15 +160,19 @@ describe('RolloutTabHeader: the phone shows the same pair as lg+', () => {
 		expect(cell.className).toMatch(/\bgap-2\b/);
 		expect(container.querySelector('[data-ph-below]')?.contains(cell)).toBe(true);
 	});
-	test('Retry on every size links to the rollout with ?action=retry', () => {
+	test('Retry and Roll back on every size are buttons that act in place, never links to the Overview', () => {
 		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: true } });
-		const links = [...container.querySelectorAll('a[data-action="retry"]')];
-		expect(links.length).toBeGreaterThan(1);
-		for (const a of links) expect(a.getAttribute('href')).toContain('action=retry');
+		const acts = [...container.querySelectorAll('[data-action="retry"], [data-action="rollback"], [data-desktop-only]')];
+		expect(acts.length).toBeGreaterThan(3);
+		for (const a of acts) {
+			expect(a.tagName).toBe('BUTTON');
+			expect(a.getAttribute('href')).toBeNull();
+		}
+		expect(container.querySelector('a[href*="action="]')).toBeNull();
 	});
 	test('lg+ draws the same pair in the actions slot on a failing-now rollout (every tab shares this header)', () => {
 		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false } });
-		const d = [...container.querySelectorAll('a[data-desktop-only]')].map((a) => `${a.textContent?.trim()}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
+		const d = [...container.querySelectorAll('button[data-desktop-only]')].map((a) => `${a.textContent?.trim()}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
 		expect(d).toEqual(['Roll back:primary', 'Retry:secondary']);
 	});
 });
