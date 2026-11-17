@@ -3,6 +3,7 @@
 	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import { failureText, retryOutcome, RETRY_FAILED } from '$lib/view-models/failure-text';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	import RolloutHeaderFlows from '$lib/components/RolloutHeaderFlows.svelte';
 	import { retryConfirm } from '$lib/view-models/retry-confirm';
 	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
@@ -315,12 +316,11 @@
 	/* the rollout tabs' own toasts: "Retry started · <build> · Check restarted" with View logs, or "Failed to retry: <reason>" */
 	let retryToast = $state<{ tone: 'success' | 'danger'; message: string; description: string; logsHref: string } | null>(null);
 	let retryToastOpen = $state(false);
-	let retryToastTimer: ReturnType<typeof setTimeout> | undefined;
+	const hideRetryToast = toastHideTimer(() => (retryToastOpen = false));
 	function announceRetry(t: NonNullable<typeof retryToast>) {
 		retryToast = t;
 		retryToastOpen = true;
-		clearTimeout(retryToastTimer);
-		retryToastTimer = setTimeout(() => (retryToastOpen = false), 3000);
+		hideRetryToast();
 	}
 	/** Posts the retry. Rejects with the reason (the typed confirm prints it inside itself); the toast follows either way once the dialog is gone. */
 	async function postRetry(r: TRow, rethrow = false) {

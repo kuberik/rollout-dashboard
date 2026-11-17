@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { failureText, retryOutcome, RETRY_FAILED } from '$lib/view-models/failure-text';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
@@ -1497,11 +1498,7 @@
 
 	let showToast = $state(false);
 	/** One hide timer for the page's toast: a newer toast cancels the older one's timer, so it is never cut short by it. */
-	let toastTimer: ReturnType<typeof setTimeout> | undefined;
-	function hideToastSoon() {
-		clearTimeout(toastTimer);
-		toastTimer = setTimeout(() => (showToast = false), 3000);
-	}
+	const hideToastSoon = toastHideTimer(() => (showToast = false));
 	let toastMessage = $state('');
 	/**
 	 * ⭐ LANE P, §5 (2026-10-09): `Toast.svelte`'s new, additive `description`

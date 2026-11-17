@@ -32,6 +32,7 @@
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { stalledKruiseName, hasFailedStepTests } from '$lib/view-models/retry-context';
 	import { failureText, RETRY_FAILED } from '$lib/view-models/failure-text';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	import { retryActionHref } from '$lib/components/new/rollout-view';
 	import type { ManagedResourceStatus } from '../../types';
 
@@ -110,12 +111,11 @@
 	let toast = $state<{ tone: 'success' | 'danger'; message: string; description: string; logs?: boolean } | null>(null);
 	let toastOpen = $state(false);
 	/** One toast for every result this host reports (the picker's own text for Roll back, the Overview's wording). */
-	let toastTimer: ReturnType<typeof setTimeout> | undefined;
+	const hideToast = toastHideTimer(() => (toastOpen = false));
 	function announce(next: NonNullable<typeof toast>) {
 		toast = next;
 		toastOpen = true;
-		clearTimeout(toastTimer);
-		toastTimer = setTimeout(() => (toastOpen = false), 3000);
+		hideToast();
 	}
 	/** Rejects with the reason so the confirm prints it inside the open dialog; resolving closes the dialog and the success toast follows. */
 	async function retry() {

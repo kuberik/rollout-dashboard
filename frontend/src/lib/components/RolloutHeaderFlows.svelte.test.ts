@@ -46,6 +46,7 @@ type Calls = { url: string; body: unknown }[];
 let calls: Calls;
 let changeStatus = 200;
 let retryStatus = 200;
+let delayMs = 0;
 let managed: unknown[] = [];
 let rolloutBody: unknown;
 
@@ -56,6 +57,7 @@ function stubFetch() {
 		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = String(input);
 			if (init?.method === 'POST') calls.push({ url, body: init.body ? JSON.parse(String(init.body)) : null });
+			if (delayMs && (url.includes('/change-version') || url.includes('/retry'))) await new Promise((r) => setTimeout(r, delayMs));
 			if (url.includes('/change-version')) return new Response(JSON.stringify(changeStatus === 200 ? {} : { details: 'boom' }), { status: changeStatus });
 			if (url.includes('/retry')) return new Response(retryStatus === 200 ? '{}' : JSON.stringify({ error: 'nope' }), { status: retryStatus });
 			if (url.includes('/managed-resources')) return new Response(JSON.stringify({ managedResources: managed }), { status: 200 });
@@ -69,6 +71,7 @@ beforeEach(() => {
 	goto.mockClear();
 	changeStatus = 200;
 	retryStatus = 200;
+	delayMs = 0;
 	managed = [];
 	stubFetch();
 });
@@ -183,5 +186,78 @@ describe('header Retry decisions', () => {
 		await waitFor(() => expect(goto).toHaveBeenCalled());
 		expect(String(goto.mock.calls[0][0])).toContain('action=retry');
 		expect(calls.find((c) => c.url.endsWith('/retry'))).toBeUndefined();
+	});
+});
+
+/** A request still in flight when the dialog is closed: the failure goes to a toast with the same sentence; while the dialog is open it stays inline only. */
+describe('a failure after the dialog was closed is still reported', () => {
+	const cancelBtn = () => [...document.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === 'Cancel')!;
+	const sentences = (re: RegExp) => (document.body.textContent ?? '').match(new RegExp(re, 'g'))?.length ?? 0;
+
+	test('Roll back: closed, then fails -> one toast with the dialog\'s sentence', async () => {
+		changeStatus = 500;
+		delayMs = 400;
+		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
+		await confirmRollback();
+		await fireEvent.click(cancelBtn());
+		expect(await screen.findByText('Failed to change version: boom', {}, { timeout: 3000 })).toBeInTheDocument();
+		expect(document.querySelector('[data-deploy-error]')).toBeNull();
+	});
+	test('Roll back: still open when it fails -> inline only, no toast', async () => {
+		changeStatus = 500;
+		delayMs = 100;
+		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
+		await confirmRollback();
+		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull(), { timeout: 3000 });
+		await new Promise((r) => setTimeout(r, 300));
+		expect(sentences(/Failed to change version: boom/)).toBe(1);
+	});
+	test('Retry: closed, then fails -> one toast with the dialog\'s sentence', async () => {
+		retryStatus = 500;
+		delayMs = 400;
+		mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
+		await waitFor(() => expect(document.querySelector('#rcm-title')).not.toBeNull());
+		await fireEvent.input(document.querySelector('#rcm-confirm')!, { target: { value: '064b655' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Retry$/ }));
+		await fireEvent.click(cancelBtn());
+		expect(await screen.findByText('Failed to retry: nope', {}, { timeout: 3000 })).toBeInTheDocument();
+		expect(document.querySelector('[data-retry-error]')).toBeNull();
+	});
+	test('Retry: still open when it fails -> inline only, no toast', async () => {
+		retryStatus = 500;
+		delayMs = 100;
+		mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
+		await waitFor(() => expect(document.querySelector('#rcm-title')).not.toBeNull());
+		await fireEvent.input(document.querySelector('#rcm-confirm')!, { target: { value: '064b655' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Retry$/ }));
+		await waitFor(() => expect(document.querySelector('[data-retry-error]')).not.toBeNull(), { timeout: 3000 });
+		await new Promise((r) => setTimeout(r, 300));
+		expect(sentences(/Failed to retry: nope/)).toBe(1);
+	});
+});
+
+describe('pressing again after a failure', () => {
+	test('Roll back: a second press after an error sends the request again and succeeds', async () => {
+		changeStatus = 500;
+		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
+		await confirmRollback();
+		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull());
+		changeStatus = 200;
+		await fireEvent.click(screen.getByRole('button', { name: /^Roll back$/i }));
+		expect(await screen.findByText('Successfully pinned and deployed version')).toBeInTheDocument();
+		expect(calls.filter((c) => c.url.includes('/change-version'))).toHaveLength(2);
+	});
+	test('Retry: a second press after an error sends the request again, clears the error and succeeds', async () => {
+		retryStatus = 500;
+		mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
+		await waitFor(() => expect(document.querySelector('#rcm-title')).not.toBeNull());
+		await fireEvent.input(document.querySelector('#rcm-confirm')!, { target: { value: '064b655' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Retry$/ }));
+		await waitFor(() => expect(document.querySelector('[data-retry-error]')).not.toBeNull());
+		retryStatus = 200;
+		await fireEvent.click(screen.getByRole('button', { name: /^Retry$/ }));
+		expect(await screen.findByText(/Retry started/)).toBeInTheDocument();
+		expect(calls.filter((c) => c.url.includes('/retry'))).toHaveLength(2);
+		expect(document.querySelector('[data-retry-error]')).toBeNull();
 	});
 });

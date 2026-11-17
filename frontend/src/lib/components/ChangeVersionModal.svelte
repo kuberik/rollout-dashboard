@@ -3828,7 +3828,6 @@
 				<button
 					type="button"
 					class="btn btn-sm btn-secondary max-sm:min-h-11 max-sm:flex-1 max-sm:basis-0"
-					disabled={deploying}
 					onclick={() => (open = false)}>Cancel</button
 				>
 				{#if selectedVersion}

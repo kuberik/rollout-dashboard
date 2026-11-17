@@ -10,6 +10,7 @@ import { installLiveSource, type FleetSource } from '$lib/components/home/sketch
 const posts: string[] = [];
 let siteOfProd: string | null = null;
 let retryStatus = 200;
+let retryDelay = 0;
 let owner: string | null = null;
 const load = () => {
 	resetDemoState('calm');
@@ -24,7 +25,7 @@ const mountApp = (app: string) => {
 	load();
 	vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
 		const method = init?.method ?? 'GET';
-		if (method === 'POST' && /\/retry$/.test(String(url))) { posts.push(String(url)); return new Response(retryStatus === 200 ? '{}' : JSON.stringify({ error: 'nope' }), { status: retryStatus }); }
+		if (method === 'POST' && /\/retry$/.test(String(url))) { posts.push(String(url)); if (retryDelay) await new Promise((r) => setTimeout(r, retryDelay)); return new Response(retryStatus === 200 ? '{}' : JSON.stringify({ error: 'nope' }), { status: retryStatus }); }
 		const r = respond(method, String(url));
 		if (siteOfProd && r.body?.includes('"environments"')) {
 			const j = JSON.parse(r.body);
@@ -47,7 +48,7 @@ describe('AppDetail Retry confirmation', () => {
 		install(true);
 		if (!Element.prototype.animate) Element.prototype.animate = (() => ({ finished: Promise.resolve(), cancel() {}, onfinish: null, play() {}, pause() {}, addEventListener() {} })) as never;
 	});
-	afterEach(() => { siteOfProd = null; retryStatus = 200; owner = null; installLiveSource(null); posts.length = 0; vi.unstubAllGlobals(); });
+	afterEach(() => { siteOfProd = null; retryStatus = 200; retryDelay = 0; owner = null; installLiveSource(null); posts.length = 0; vi.unstubAllGlobals(); });
 	it('a production failed place: Retry opens the confirm; the POST follows the confirm', async () => {
 		const { findByRole, findByLabelText, getByRole } = mountApp('search-indexer');
 		await fireEvent.click(await findByRole('button', { name: /^Retry$/ }));
@@ -87,6 +88,16 @@ describe('AppDetail Retry confirmation', () => {
 		await typedRetry(mountApp('search-indexer'));
 		await waitFor(() => expect(document.querySelector('[data-retry-error]')?.textContent).toBe('Failed to retry: nope'));
 		expect(document.querySelector('#rcm-title')).not.toBeNull();
+	});
+	it('closing the confirm while the request is in flight: a failure then is a toast, not lost', async () => {
+		retryStatus = 500;
+		retryDelay = 400;
+		const m = mountApp('search-indexer');
+		await typedRetry(m);
+		await waitFor(() => expect(posts.length).toBe(1));
+		await fireEvent.click([...m.getByRole('dialog').querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Cancel') as HTMLButtonElement);
+		await waitFor(() => expect(document.body.textContent).toContain('Failed to retry: nope'), { timeout: 3000 });
+		expect(document.querySelector('[data-retry-error]')).toBeNull();
 	});
 	it('an accepted Retry closes the confirm and says "Retry started"', async () => {
 		await typedRetry(mountApp('search-indexer'));
