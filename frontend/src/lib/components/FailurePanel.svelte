@@ -4,6 +4,7 @@
 	import { canHover } from '$lib/can-hover.svelte';
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
 	import { PlaySolid, UndoOutline } from 'flowbite-svelte-icons';
+	import { WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 	import StatementBanner from './StatementBanner.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
@@ -227,7 +228,7 @@
 	const failureAgo = $derived(failureSince ? formatTimeAgoCompact(failureSince, $now) : null);
 	const retryFirst = $derived(allRecovered);
 	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
-	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback });
+	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback, ...(isDashboardManagingWantedVersion ? {} : { title: WANTED_VERSION_OWNED_REASON, describedBy: 'failure-owned-reason' }) });
 	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
 </script>
 
@@ -303,12 +304,17 @@
 	{/snippet}
 </StatementBanner>
 
+{#if rollbackShown && !isDashboardManagingWantedVersion}
+	<span id="failure-owned-reason" class="sr-only">{WANTED_VERSION_OWNED_REASON}</span>
+{/if}
+
 <RetryConfirmModal
 	bind:open={showRetryConfirm}
 	{intent}
 	{consequences}
 	tag={displayTag}
 	onConfirm={() => onRetry(stalledKruiseRollout?.metadata?.name, '', true)}
+	onClosedFailure={(m) => onError(m)}
 />
 
 <RetryTestsModal

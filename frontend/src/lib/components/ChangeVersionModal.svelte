@@ -161,7 +161,7 @@
 		environmentName?: string | null;
 		site?: string | null;
 		onSuccess?: (message: string) => void;
-		/** Kept for callers; a failed confirm prints its reason inside the open dialog (`data-deploy-error`) and is not reported here. */
+		/** A failed confirm prints its reason inside the open dialog (`data-deploy-error`) and is not reported here; if the dialog was closed while the request was in flight, this is called with the same sentence instead. */
 		onError?: (message: string) => void;
 		/**
 		 * ⭐ THE MUTATION'S PENDING STATUS, FOR THE PAGE BEHIND THIS DIALOG.
@@ -200,7 +200,7 @@
 		site = null,
 		contractHeldVersions,
 		onSuccess = () => {},
-		onError: _onError = () => {},
+		onError = () => {},
 		onDeployStart = () => {},
 		recoveryMode = undefined
 	}: Props = $props();
@@ -2361,7 +2361,8 @@
 			open = false;
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Failed to deploy version';
-			deployError = message;
+			if (open) deployError = message;
+			else onError(message);
 			announce(message, 'assertive');
 		} finally {
 			// On success `open = false` already unmounts this dialog, so this is

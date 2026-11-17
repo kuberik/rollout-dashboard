@@ -110,10 +110,12 @@
 	let toast = $state<{ tone: 'success' | 'danger'; message: string; description: string; logs?: boolean } | null>(null);
 	let toastOpen = $state(false);
 	/** One toast for every result this host reports (the picker's own text for Roll back, the Overview's wording). */
+	let toastTimer: ReturnType<typeof setTimeout> | undefined;
 	function announce(next: NonNullable<typeof toast>) {
 		toast = next;
 		toastOpen = true;
-		setTimeout(() => (toastOpen = false), 3000);
+		clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => (toastOpen = false), 3000);
 	}
 	/** Rejects with the reason so the confirm prints it inside the open dialog; resolving closes the dialog and the success toast follows. */
 	async function retry() {
@@ -128,7 +130,7 @@
 	}
 </script>
 
-<RetryConfirmModal bind:open intent={confirm.intent} consequences={confirm.consequences} tag={confirm.displayTag} onConfirm={retry} />
+<RetryConfirmModal bind:open intent={confirm.intent} consequences={confirm.consequences} tag={confirm.displayTag} onConfirm={retry} onClosedFailure={(m) => announce({ tone: 'danger', message: m, description: '' })} />
 
 {#if rollout}
 	<ChangeVersionFlow

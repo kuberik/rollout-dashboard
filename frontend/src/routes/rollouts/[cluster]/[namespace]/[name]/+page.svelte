@@ -1496,6 +1496,12 @@
 	let selectedVersion = $state<string | null>(null);
 
 	let showToast = $state(false);
+	/** One hide timer for the page's toast: a newer toast cancels the older one's timer, so it is never cut short by it. */
+	let toastTimer: ReturnType<typeof setTimeout> | undefined;
+	function hideToastSoon() {
+		clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => (showToast = false), 3000);
+	}
 	let toastMessage = $state('');
 	/**
 	 * ⭐ LANE P, §5 (2026-10-09): `Toast.svelte`'s new, additive `description`
@@ -2357,9 +2363,7 @@
 			}
 
 			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon();
 		} catch (e) {
 			console.error('Failed to check for new versions:', e);
 			toastLoading = false;
@@ -2370,9 +2374,7 @@
 			toastType = 'error';
 
 			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon();
 		} finally {
 			isReconciling = false;
 		}
@@ -2451,9 +2453,7 @@
 			toastType = 'success';
 
 			// Auto-hide toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon();
 
 			// Refresh the rollout data
 			await rolloutQuery.refetch();
@@ -2466,9 +2466,7 @@
 			toastType = 'error';
 
 			// Auto-hide toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon();
 		}
 	}
 
@@ -2505,9 +2503,7 @@
 			}
 			toastShowLogsAction = true;
 			toastType = 'success';
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon();
 			await rolloutQuery.refetch();
 		} catch (error) {
 			console.error('Retry deployment error:', error);
@@ -2519,9 +2515,7 @@
 			toastDescription = '';
 			toastShowLogsAction = false;
 			toastType = 'error';
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon();
 		}
 	}
 </script>
@@ -3480,7 +3474,7 @@
 							toastDescription = '';
 							toastShowLogsAction = false;
 							showToast = true;
-							setTimeout(() => (showToast = false), 3000);
+							hideToastSoon();
 						}}
 						onError={(m) => {
 							toastType = 'error';
@@ -3488,7 +3482,7 @@
 							toastDescription = '';
 							toastShowLogsAction = false;
 							showToast = true;
-							setTimeout(() => (showToast = false), 3000);
+							hideToastSoon();
 						}}
 					/>
 				{/if}
@@ -4950,7 +4944,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
+		hideToastSoon();
 		rolloutQuery.refetch();
 		justClearedPin = true;
 		setTimeout(() => (justClearedPin = false), 8000);
@@ -4961,7 +4955,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
+		hideToastSoon();
 	}}
 />
 
@@ -4986,7 +4980,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
+		hideToastSoon();
 		// The mutation is DONE now (unlike `onDeployStart`, which fires
 		// before it) — an explicit refetch here is what actually shrinks
 		// the poll gap `pendingAction` is bridging, rather than waiting for
@@ -4999,7 +4993,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
+		hideToastSoon();
 	}}
 />
 

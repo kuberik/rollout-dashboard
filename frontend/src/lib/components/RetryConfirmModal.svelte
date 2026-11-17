@@ -62,9 +62,11 @@
 		tag: string | null;
 		/** Runs the retry. The dialog stays open while a returned promise is pending; if it rejects, the reason prints inside the dialog (a toast would sit under the backdrop). */
 		onConfirm: () => void | Promise<void>;
+		/** The dialog was closed (Cancel, Esc) while the request was in flight and it then failed: there is no dialog left to print the reason in, so the host reports it (a toast). */
+		onClosedFailure?: (message: string) => void;
 	}
 
-	let { open = $bindable(), intent, consequences, tag, onConfirm }: Props = $props();
+	let { open = $bindable(), intent, consequences, tag, onConfirm, onClosedFailure }: Props = $props();
 
 	// See `a11y.svelte.ts`: the dialog traps focus natively but cannot return it.
 	modalFocusReturn(() => open);
@@ -83,7 +85,9 @@
 			await onConfirm();
 			open = false;
 		} catch (e) {
-			failure = retryFailureText(e);
+			const message = retryFailureText(e);
+			if (open) failure = message;
+			else onClosedFailure?.(message);
 		} finally {
 			pending = false;
 		}

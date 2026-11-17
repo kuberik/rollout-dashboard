@@ -315,10 +315,12 @@
 	/* the rollout tabs' own toasts: "Retry started · <build> · Check restarted" with View logs, or "Failed to retry: <reason>" */
 	let retryToast = $state<{ tone: 'success' | 'danger'; message: string; description: string; logsHref: string } | null>(null);
 	let retryToastOpen = $state(false);
+	let retryToastTimer: ReturnType<typeof setTimeout> | undefined;
 	function announceRetry(t: NonNullable<typeof retryToast>) {
 		retryToast = t;
 		retryToastOpen = true;
-		setTimeout(() => (retryToastOpen = false), 3000);
+		clearTimeout(retryToastTimer);
+		retryToastTimer = setTimeout(() => (retryToastOpen = false), 3000);
 	}
 	/** Posts the retry. Rejects with the reason (the typed confirm prints it inside itself); the toast follows either way once the dialog is gone. */
 	async function postRetry(r: TRow, rethrow = false) {
@@ -476,7 +478,7 @@
 		</div>
 	</div>
 
-	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={async () => { if (confirmRetryFor) await postRetry(confirmRetryFor, true); }} />
+	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={async () => { if (confirmRetryFor) await postRetry(confirmRetryFor, true); }} onClosedFailure={(m) => announceRetry({ tone: 'danger', message: m, description: '', logsHref: '' })} />
 	{#snippet retryLogs()}<a href={retryToast?.logsHref} class="nav-link shrink-0">View logs</a>{/snippet}
 	<Toast bind:open={retryToastOpen} tone={retryToast?.tone ?? 'info'} message={retryToast?.message ?? ''} description={retryToast?.description ?? ''} action={retryToast?.tone === 'success' ? retryLogs : undefined} />
 	{#if rollbackRequest > 0}
@@ -484,7 +486,7 @@
 			<RolloutHeaderFlows cluster={rollbackPath[1] ?? ''} namespace={rollbackPath[2] ?? ''} name={rollbackPath[3] ?? ''} request={0} {rollbackRequest} />
 		{/key}
 	{/if}
-	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} />
+	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} onError={(m) => announceRetry({ tone: 'danger', message: m, description: '', logsHref: '' })} />
 {/if}
 
 <style>

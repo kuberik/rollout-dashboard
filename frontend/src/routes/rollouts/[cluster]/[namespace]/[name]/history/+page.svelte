@@ -48,6 +48,7 @@
 	import { changePathForRollout, displayVersionForTag, githubOwnerRepo, repoKeyFor, shortRevision } from '$lib/version-utils';
 	import { rolloutEnvironmentName, rollbackTarget } from '$lib/view-models/deploy-risk';
 	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import Toast from '$lib/components/Toast.svelte';
 	import { stripEmphasisMarkers } from '$lib/view-models/plain-text-note';
 	import { isHistoryCurrentlyFailed } from '$lib/view-models/deploy-history';
 	import { bakePaused } from '$lib/bake-hold';
@@ -1099,6 +1100,10 @@
 	}
 
 	// Rollback modal
+	/* a Roll back that failed after its dialog was closed: the reason has no dialog to print in */
+	let flowErrorOpen = $state(false);
+	let flowErrorMessage = $state('');
+	let flowErrorTimer: ReturnType<typeof setTimeout> | undefined;
 	let showChangeVersionModal = $state(false);
 	let selectedVersionTag = $state<string | null>(null);
 	let deployExplanation = $state('');
@@ -3142,7 +3147,14 @@
 			{cluster}
 			environmentName={environment?.spec?.environment ?? null}
 			site={environment ? siteOf(environment) : null}
+			onError={(m) => {
+				flowErrorMessage = m;
+				flowErrorOpen = true;
+				clearTimeout(flowErrorTimer);
+				flowErrorTimer = setTimeout(() => (flowErrorOpen = false), 3000);
+			}}
 		/>
+		<Toast bind:open={flowErrorOpen} tone="danger" message={flowErrorMessage} />
 	{/if}
 </div>
 

@@ -79,6 +79,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import GitHubViewButton from '$lib/components/GitHubViewButton.svelte';
 	import ManifestDiff from '$lib/components/ManifestDiff.svelte';
+	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 
 	const cluster = $derived(page.params.cluster as string);
 	const namespace = $derived(page.params.namespace as string);
@@ -300,6 +301,8 @@
 		}
 		return null;
 	});
+	/** another controller owns the wanted version: Roll back is drawn disabled with the reason, as on every other entry point */
+	const ownedElsewhere = $derived(!!rollout && !dashboardManagesWantedVersion(rollout));
 	const source = $derived(rollout?.status?.source ?? null);
 
 	const empty = $derived.by<{ headline: string; next: string } | null>(() => {
@@ -472,17 +475,20 @@
 				{#if action?.primary}
 					<!-- Phone only: 44px, right-aligned, "Roll back" alone (the
 					     dialog names the build), as RolloutTabHeader draws it. -->
-					<a
-						href={action.href}
+					<svelte:element
+						this={ownedElsewhere ? 'button' : 'a'}
+						href={ownedElsewhere ? undefined : action.href}
+						disabled={ownedElsewhere ? true : undefined}
+						aria-describedby={ownedElsewhere ? 'owned-reason' : undefined}
 						class="btn ml-auto h-11 bg-none px-4 lg:hidden {action.primary
 							? 'btn-primary'
 							: 'btn-secondary'}"
-						title={action.label}
+						title={ownedElsewhere ? WANTED_VERSION_OWNED_REASON : action.label}
 						data-phone-only
 					>
 						<UndoOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
 						{action.label.startsWith('Roll back') ? 'Roll back' : action.label}
-					</a>
+					</svelte:element>
 				{/if}
 			{/snippet}
 			{#snippet actions()}
@@ -492,16 +498,19 @@
 					<!-- A failed build's primary Roll back moves to the phone meta
 					     line (as on every tab); a calm build's secondary one stays in
 					     the actions slot at every width, as on Overview and History. -->
-					<a
-						href={action.href}
+					<svelte:element
+						this={ownedElsewhere ? 'button' : 'a'}
+						href={ownedElsewhere ? undefined : action.href}
+						disabled={ownedElsewhere ? true : undefined}
+						aria-describedby={ownedElsewhere ? 'owned-reason' : undefined}
 						class="btn {action.primary ? 'btn-primary max-lg:hidden' : 'btn-secondary max-lg:h-11'}"
-						title={action.label}
+						title={ownedElsewhere ? WANTED_VERSION_OWNED_REASON : action.label}
 						data-desktop-only={action.primary ? '' : undefined}
 						data-phone-end={action.primary ? undefined : ''}
 					>
 						<UndoOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
 						{action.label}
-					</a>
+					</svelte:element>
 				{/if}
 			{/snippet}
 		</RolloutTabHeader>

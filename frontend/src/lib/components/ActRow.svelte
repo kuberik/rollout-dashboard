@@ -18,6 +18,8 @@
 		/** native title + aria-label for rows that repeat the same label (per-app Roll back) */
 		title?: string;
 		ariaLabel?: string;
+		/** id of the element that says why this action is disabled (aria-describedby) */
+		describedBy?: string;
 		/** stable hook for tests and truth scripts: data-action */
 		key?: string;
 		id?: string;
@@ -120,7 +122,7 @@
 		{#if act.href}
 			<a href={act.href} class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} target={act.external ? '_blank' : undefined} rel={act.external ? 'noopener noreferrer' : undefined}>{@render face(act, variant)}</a>
 		{:else}
-			<button type="button" class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} disabled={act.busy || act.disabled} onclick={act.onclick}>{@render face(act, variant)}</button>
+			<button type="button" class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} aria-describedby={act.describedBy} disabled={act.busy || act.disabled} onclick={act.onclick}>{@render face(act, variant)}</button>
 		{/if}
 	{/each}
 	{#if menu.length}
