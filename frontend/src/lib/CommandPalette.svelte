@@ -1643,11 +1643,11 @@
 	 * does and Space does the same (a link ignores Space by itself). The palette's own Enter (open the highlighted row) and Tab (scope or
 	 * walk to the highlighted row's action) belong to the search box; they never take a key from a control that has focus.
 	 */
-	const rowControl = (t: EventTarget | null): HTMLElement | null => (t instanceof HTMLElement ? t.closest<HTMLElement>('a[href], button') : null);
+	const rowControl = (t: EventTarget | null): HTMLElement | null => (t instanceof HTMLElement ? (t.closest<HTMLElement>('a') ?? t.closest<HTMLElement>('button')) : null);
 	/** The first action of the highlighted row, so Tab from the search box lands on what the row offers and not on row one's link. */
 	function highlightedAction(): HTMLElement | null {
 		const row = document.getElementById(`cp-opt-${selectedIndex}`);
-		return row?.querySelector<HTMLElement>('[data-meta="action"] a[href], [data-meta="action"] button') ?? row?.querySelector<HTMLElement>('[data-blocked-kind] a.tap-link') ?? null;
+		return row?.querySelector<HTMLElement>('[data-meta="action"] a[href], [data-meta="action"] button') ?? row?.querySelector<HTMLElement>('.br')?.querySelector<HTMLElement>('a.tap-link') ?? null;
 	}
 	/** The highlighted row is a Jump to tile that scopes (Tab narrows into it); "Your changes" navigates and takes no Tab. */
 	const highlightScopes = $derived(inPicker && jumpToIndex(selectedIndex) >= 0 && jumpToIndex(selectedIndex) < PICKER_KINDS.length);
@@ -1816,7 +1816,9 @@
 		const measure = () => {
 			node.removeAttribute('data-stack-all');
 			let any = false;
-			for (const meta of node.querySelectorAll<HTMLElement>('[data-blocked-kind] [data-meta-line]')) {
+			for (const rowEl of node.querySelectorAll<HTMLElement>('.br')) {
+				const meta = rowEl.querySelector<HTMLElement>('[data-meta-line]');
+				if (!meta) continue;
 				const first = meta.parentElement?.querySelector<HTMLElement>('a.tap-link');
 				if (first && meta.offsetTop - first.offsetTop > 4) any = true;
 			}
