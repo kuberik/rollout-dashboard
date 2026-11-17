@@ -608,15 +608,12 @@ lib/components/new/app/AppDetail.svelte	text	All environments
 lib/components/new/app/AppDetail.svelte	code	Deploy … to ….
 lib/components/new/app/AppDetail.svelte	text	deployed … ago
 lib/components/new/app/AppDetail.svelte	title	Deployment failed
-lib/components/new/app/AppDetail.svelte	code	Failed to retry deployment
-lib/components/new/app/AppDetail.svelte	code	Failed to retry: …
 lib/components/new/app/AppDetail.svelte	code	Open rollout
 lib/components/new/app/AppDetail.svelte	code	Retry failed
 lib/components/new/app/AppDetail.svelte	code	Retry started
 lib/components/new/app/AppDetail.svelte	code	Roll back
 lib/components/new/app/AppDetail.svelte	code	The health checks are running.
 lib/components/new/app/AppDetail.svelte	headline	This app does not exist
-lib/components/new/app/AppDetail.svelte	code	Unknown error
 lib/components/new/app/AppDetail.svelte	text	View logs
 lib/components/new/app/AppGates.svelte	aria-label	… details of …
 lib/components/new/app/AppGates.svelte	text	… Held by
@@ -1080,7 +1077,6 @@ lib/components/ResourcesCard.svelte	text	Flux reports issues
 lib/components/ResourcesCard.svelte	code	Not found
 lib/components/RestGlyph.svelte	code	behind the newest build
 lib/components/RestGlyph.svelte	text	deploy succeeded
-lib/components/RetryConfirmModal.svelte	code	Failed to retry
 lib/components/RetryConfirmModal.svelte	text	This starts a new deployment attempt.
 lib/components/RetryConfirmModal.svelte	text	to confirm
 lib/components/RetryTestsModal.svelte	text	… × retried
@@ -1556,6 +1552,7 @@ lib/view-models/env-rank.ts	code	… of … region… on the newest
 lib/view-models/env-rank.ts	code	…'s distance from the newest build cannot be resolved — the build it is running is not in its own release list
 lib/view-models/failure-actions.ts	code	Open logs
 lib/view-models/failure-actions.ts	code	Roll back
+lib/view-models/failure-text.ts	code	Failed to retry
 lib/view-models/fleet-facts.ts	code	, incl. …
 lib/view-models/fleet-facts.ts	code	… · … in environments · … without
 lib/view-models/fleet-facts.ts	code	… app…
@@ -2073,8 +2070,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	failed here
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to check for new versions
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout: …
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to retry deployment
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to retry: …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Held by rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Holding … rollout … — … … … .
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Loading releases…
