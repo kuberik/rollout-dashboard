@@ -160,6 +160,15 @@ describe('CadenceStrip', () => {
 		expect(container.querySelector('.cadence-marker-rollback')).not.toBeNull();
 	});
 
+	test('another controller owns the wanted version: the card\'s Roll back is drawn disabled with the reason', async () => {
+		const onRollback = vi.fn();
+		const { container } = render(CadenceStrip, { history, now: NOW, onRollback, rollbackDisabledReason: 'Owned elsewhere.' });
+		await fireEvent.mouseEnter(container.querySelector<HTMLElement>('.cadence-segment[data-state="healthy"]')!);
+		const b = screen.getByRole('button', { name: /Roll back to this/ }) as HTMLButtonElement;
+		expect(b.disabled).toBe(true);
+		expect(b.getAttribute('title')).toBe('Owned elsewhere.');
+	});
+
 	test('one hover-card template: Roll back only on a previous healthy build, failure named on a failed one', async () => {
 		const onRollback = vi.fn();
 		const { container } = render(CadenceStrip, {

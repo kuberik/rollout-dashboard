@@ -1684,7 +1684,8 @@
 							{rollbackIndices}
 							now={$now.getTime()}
 							diffHref={diffHrefForIndex}
-							onRollback={managesPin ? openRollbackModalFor : undefined}
+							onRollback={openRollbackModalFor}
+							rollbackDisabledReason={managesPin ? null : WANTED_VERSION_OWNED_REASON}
 						/>
 					{/if}
 				{/snippet}

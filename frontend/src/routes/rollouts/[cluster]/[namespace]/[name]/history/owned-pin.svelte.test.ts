@@ -120,6 +120,8 @@ describe('History Roll back obeys the wanted-version ownership rule', () => {
 		await waitFor(() => expect(rowButtons().length).toBeGreaterThan(0), { timeout: 8000 });
 		await new Promise((r) => setTimeout(r, 400));
 		expect(document.querySelector('dialog[open]')).toBeNull();
+		expect(document.querySelector('[data-owned-reason]')?.textContent).toBe(WANTED_VERSION_OWNED_REASON);
+		expect(new URL(String(window.location.href)).searchParams.get('action')).toBeNull();
 	});
 	test('owned elsewhere: the expanded panel\'s Roll back is disabled too', async () => {
 		vi.stubGlobal('fetch', vi.fn(detailFetch('flux-controller')));
