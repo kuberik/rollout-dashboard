@@ -42,6 +42,7 @@
 	import { shortRevisionOrNull } from '$lib/version-utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
+	import { placeTarget } from '$lib/view-models/deploy-risk';
 	import { failureText } from '$lib/view-models/failure-text';
 	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
@@ -113,9 +114,11 @@
 	const clusterSuffix = $derived(
 		cluster && cluster.toLowerCase() !== envLabel.toLowerCase() ? ` on the ${cluster} cluster` : ''
 	);
+	/** the place as every confirm and failure toast spells it: "prod · af-south-1" when the app has a site there, else "prod" */
+	const place = $derived(rollout ? placeTarget(rollout, environmentName, site) : envLabel);
 	const clearPinTitle = $derived(
-		rollout?.metadata?.name && envLabel
-			? clearPinDialogTitle(rollout.metadata.name, envLabel)
+		rollout?.metadata?.name && place
+			? clearPinDialogTitle(rollout.metadata.name, place)
 			: CLEAR_PIN_LABEL
 	);
 
@@ -196,7 +199,7 @@
 		// (principle 11 bans shouting an environment's name, not an ordinary
 		// capital letter at a sentence's start) — `envLabel` itself stays
 		// exactly as written everywhere else in this dialog.
-		const sentenceLead = envLabel.charAt(0).toUpperCase() + envLabel.slice(1);
+		const sentenceLead = place.charAt(0).toUpperCase() + place.slice(1);
 		return `${sentenceLead} moves ${current} → ${target}${count > 1 ? ` (${count} newer builds allowed)` : ''}.`;
 	});
 
@@ -293,7 +296,7 @@
 			<!-- Emphasis inside a sentence is colour, never weight
 			     (DESIGN-LANGUAGE.md §4's do/don't table): `text-fg`, not
 			     `<strong>`. -->
-			This clears the pin currently held in <span class="text-fg">{envLabel}</span>{clusterSuffix}.
+			This clears the pin currently held in <span class="text-fg">{place}</span>{clusterSuffix}.
 			<!-- ⭐ THE ROLLOUT RIDES ALONG NOW. (2026-09-03, UX-walk iteration 2,
 			     finding 5) The dialog used to promise "moves to the newest
 			     allowed version" with no version anywhere in the sentence — an

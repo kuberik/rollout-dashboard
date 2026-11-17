@@ -4969,6 +4969,8 @@
 	{rollout}
 	{cluster}
 	{autoDeploy}
+	environmentName={environment?.spec?.environment ?? null}
+	site={environment ? siteOf(environment) : null}
 	toast={false}
 	onSuccess={(m) => {
 		toastType = 'success';

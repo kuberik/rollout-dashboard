@@ -74,6 +74,9 @@ describe('Gates tab: a failed Clear pin names the place like the Overview', () =
 		await fireEvent.click([...document.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Clear pin')!);
 		await waitFor(() => expect(document.querySelector('dialog[open]')).not.toBeNull());
 		const dlg = document.querySelector('dialog[open]')!;
+		// the confirm itself names the site, in its title and its body
+		expect(dlg.getAttribute('aria-label')).toBe('Clear the pin on search-indexer in prod · eu-west?');
+		expect(dlg.textContent).toContain('currently held in prod · eu-west');
 		const confirm = [...dlg.querySelectorAll('button')].filter((b) => b.textContent!.trim() === 'Clear pin').pop()!;
 		await fireEvent.click(confirm);
 		await waitFor(() => expect(failureToasts.items.length).toBe(1), { timeout: 8000 });
