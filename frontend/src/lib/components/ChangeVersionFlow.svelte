@@ -25,6 +25,7 @@
 	 * the rollout's checks from the SAME query key and fetch the Overview
 	 * uses, so a tab switch is a cache hit, filtered by the same cutoff.
 	 */
+	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import ChangeVersionModal from './ChangeVersionModal.svelte';
 	import RecoveryModeWarningModal from './RecoveryModeWarningModal.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -73,6 +74,10 @@
 		onError?: (message: string) => void;
 		onDeployStart?: () => void;
 	} = $props();
+
+	// The warning's Continue closes one dialog and opens the other, so neither alone remembers the button that started the flow (the picker
+	// would open with focus on <body> and hand it back there). The flow remembers it for both.
+	modalFocusReturn(() => open);
 
 	const namespace = $derived(rollout?.metadata?.namespace ?? '');
 	const name = $derived(rollout?.metadata?.name ?? '');
