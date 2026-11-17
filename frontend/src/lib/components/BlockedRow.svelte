@@ -236,8 +236,10 @@
 	{#if palette && wrap}
 		<!-- Below sm the fact gets its own line (.dot-list, so no orphaned "·"). From sm it shares the name's line when the whole row fits there;
 		     when it does not (a long name, a long fact, the action pair), the fact and the action drop to the phone's second line, indented
-		     under the name (`stackedWhenWrapped` sets data-stacked), so the name, the env chip and the state word are never cut. -->
-		<span use:stackedWhenWrapped class="group/m t-meta flex min-w-0 basis-full items-baseline gap-x-3 pl-7 text-fg-muted sm:basis-auto sm:flex-1 sm:pl-0 sm:data-[stacked=true]:flex-wrap sm:data-[stacked=true]:pl-7">
+		     under the name (`stackedWhenWrapped` sets data-stacked), so the name, the env chip and the state word are never cut. A list of these rows is
+		     ONE arrangement: when its container carries `group/gl` and `data-stack-all="true"` (the palette decides, by measuring the rows' natural fit)
+		     every row takes the two-line form, so no group mixes one-line and two-line rows. -->
+		<span use:stackedWhenWrapped data-meta-line class="group/m t-meta flex min-w-0 basis-full items-baseline gap-x-3 pl-7 text-fg-muted sm:basis-auto sm:flex-1 sm:pl-0 sm:data-[stacked=true]:flex-wrap sm:data-[stacked=true]:pl-7 sm:group-data-[stack-all=true]/gl:basis-full sm:group-data-[stack-all=true]/gl:pl-7">
 			<span class="dot-list block min-w-0 flex-1 sm:group-data-[stacked=true]/m:flex-none">
 				<span class="dot-list-row flex min-w-0 flex-wrap items-baseline sm:flex-nowrap">
 					<span class="min-w-0 sm:truncate">{@render fact()}</span>

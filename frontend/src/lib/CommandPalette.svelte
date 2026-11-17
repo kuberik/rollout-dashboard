@@ -1147,8 +1147,6 @@
 		goto((sub ? rolloutPath(cluster, c.ns, c.name, sub) : rolloutPath(cluster, c.ns, c.name)) + (query ? `?${query}` : ''));
 	}
 
-	/** The one rollout `goRolloutSub`'s "Logs, or Overview if already there"
-	 *  rule points the incident row at. */
 	/**
 	 * ⭐ PALROW r7 (AD r6, item 3): ONE BLOCKED ROW, ONE ACTION, EVERYWHERE.
 	 * A rollout that needs a person draws the same `blockedOption` row in
@@ -1640,8 +1638,49 @@
 		return idx - attentionShown.length - thisRolloutCount;
 	}
 
+	/**
+	 * A row's own controls (Roll back, Retry, Open logs, the secondary link) are real links: when one has focus, Enter does what a link
+	 * does and Space does the same (a link ignores Space by itself). The palette's own Enter (open the highlighted row) and Tab (scope or
+	 * walk to the highlighted row's action) belong to the search box; they never take a key from a control that has focus.
+	 */
+	const rowControl = (t: EventTarget | null): HTMLElement | null => (t instanceof HTMLElement ? t.closest<HTMLElement>('a[href], button') : null);
+	/** The first action of the highlighted row, so Tab from the search box lands on what the row offers and not on row one's link. */
+	function highlightedAction(): HTMLElement | null {
+		const row = document.getElementById(`cp-opt-${selectedIndex}`);
+		return row?.querySelector<HTMLElement>('[data-meta="action"] a[href], [data-meta="action"] button') ?? row?.querySelector<HTMLElement>('[data-blocked-kind] a.tap-link') ?? null;
+	}
+	/** The highlighted row is a Jump to tile that scopes (Tab narrows into it); "Your changes" navigates and takes no Tab. */
+	const highlightScopes = $derived(inPicker && jumpToIndex(selectedIndex) >= 0 && jumpToIndex(selectedIndex) < PICKER_KINDS.length);
+	/** The highlighted row is a rollout that needs a person: it carries an action Tab reaches. */
+	const highlightHasAction = $derived.by(() => {
+		if (inPicker) {
+			const thisIdx = selectedIndex - thisStart;
+			if (thisIdx >= 0 && thisIdx < thisRolloutCount) return Boolean(incidentCard) && thisIdx === 0;
+			const a = selectedIndex - attnStart;
+			return a >= 0 && a < attentionShown.length;
+		}
+		const r = filtered[selectedIndex];
+		return !!r && blockedCardFor(r) !== null;
+	});
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (!open) return;
+		const control = rowControl(e.target);
+		if (control && !(e.target instanceof HTMLInputElement) && (e.key === 'Enter' || e.key === ' ')) {
+			if (e.key === ' ') {
+				e.preventDefault();
+				control.click();
+			}
+			return;
+		}
+		if (e.key === 'Tab' && !e.shiftKey && e.target instanceof HTMLInputElement) {
+			const act = highlightedAction();
+			if (act) {
+				e.preventDefault();
+				act.focus();
+				return;
+			}
+		}
 		const maxIdx = inPicker
 			? attentionShown.length + thisRolloutCount + BROWSE_TILE_COUNT - 1
 			: filtered.length - 1;
@@ -1762,6 +1801,41 @@
 			destroy() {
 				cancelAnimationFrame(frame);
 				window.removeEventListener('resize', measure);
+			}
+		};
+	}
+
+	/**
+	 * ONE ARRANGEMENT PER GROUP. A blocked row drops its fact and action to a second line when they do not fit beside the name (BlockedRow,
+	 * `stackedWhenWrapped`); a group where some rows did and some did not read as two different kinds of row. The group's container measures
+	 * every blocked row's NATURAL fit (with the group-wide setting removed, read in the same frame so nothing paints in between) and, when
+	 * any row needs two lines, sets `data-stack-all` so every row in the group uses two. Below `sm` every row is already two lines.
+	 */
+	function uniformStack(node: HTMLElement, _key: string) {
+		let frame = 0;
+		const measure = () => {
+			node.removeAttribute('data-stack-all');
+			let any = false;
+			for (const meta of node.querySelectorAll<HTMLElement>('[data-blocked-kind] [data-meta-line]')) {
+				const first = meta.parentElement?.querySelector<HTMLElement>('a.tap-link');
+				if (first && meta.offsetTop - first.offsetTop > 4) any = true;
+			}
+			if (any) node.setAttribute('data-stack-all', 'true');
+		};
+		const later = () => {
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(measure);
+		};
+		measure();
+		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(later);
+		ro?.observe(node);
+		return {
+			update(_k: string) {
+				measure();
+			},
+			destroy() {
+				cancelAnimationFrame(frame);
+				ro?.disconnect();
 			}
 		};
 	}
@@ -2396,7 +2470,7 @@
 					{/snippet}
 					{#snippet needsYouSection()}
 					{#if attentionShown.length > 0}
-						<div class="relative">
+						<div class="group/gl relative" use:uniformStack={attentionShown.map((c) => c.name).join('|')}>
 						{@render groupHeader('Needs you', attention.length)}
 						{#each attentionShown as c, i (c.sourceCluster + '|' + c.ns + '/' + c.name)}
 							{@const idx = attnStart + i}
@@ -2536,7 +2610,7 @@
 						{/each}
 					{/if}
 					{#each grouped as group (group.kind)}
-						<div class="relative">
+						<div class="group/gl relative" use:uniformStack={group.items.map((i) => i.result.key).join('|')}>
 						{@render groupHeader(group.label, group.items.length)}
 						{#each group.items as item (item.result.key)}
 							{@const bc = blockedCardFor(item.result)}
@@ -2589,10 +2663,10 @@
 							<span>open</span>
 						</span>
 					{/if}
-					{#if inPicker}
+					{#if highlightScopes || highlightHasAction}
 						<span class="flex items-center gap-1">
 							<kbd class="kbd">Tab</kbd>
-							<span>scope</span>
+							<span>{highlightScopes ? 'scope' : 'action'}</span>
 						</span>
 					{/if}
 					<span class="flex items-center gap-1">
