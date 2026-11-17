@@ -39,7 +39,7 @@ import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/release
 import { catalogueOrder, newestOf, behindIn, catalogueBehind } from '$lib/releases/order';
 import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact, buildAge } from '$lib/utils';
-import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
+import { HELD_BY_PIN, newerBuildsShown, pinSince, dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus } from '$lib/view-models/behind';
 import { newerReleaseCountLive } from '$lib/view-models/failed-builds';
@@ -121,6 +121,12 @@ export const legacyPolicyAt = (href: string): string | null => {
 /** an app none of whose rollouts has releases (by rollout name): its changes cannot be promoted */
 export const noReleasesApp = (app: string): NoReleases | undefined => { const rs = raws().filter((r) => r.metadata.name === app); const ns = rs.map((r) => noReleasesOf(r as unknown as Rollout)); return rs.length > 0 && ns.every(Boolean) ? ns[0]! : undefined; };
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
+
+/** Why Roll back is refused on the rollout behind `href` (a rollout path, a query allowed): another controller owns its wanted version. The ONE reason every Roll back entry point (cards, banners, tiles, the palette) disables with; null when the dashboard may pin. */
+export const rollbackOwnedReason = (href: string | null | undefined): string | null => {
+	const raw = href ? rawOf(href.split(/[?#]/)[0]!) : null;
+	return raw && !dashboardManagesWantedVersion(raw as unknown as Rollout) ? WANTED_VERSION_OWNED_REASON : null;
+};
 
 /* ═══ steps (defects 7, 8) ═══ */
 export type StepState = 'done' | 'active' | 'fail' | 'todo' | 'hold';

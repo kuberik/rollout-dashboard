@@ -43,7 +43,7 @@
 	import { TIERS_WITH_OTHER } from '$lib/view-models/sites-waves';
 	import { holdLeadCause, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
-	import { canApproveAt, failureRecovered } from './data';
+	import { canApproveAt, failureRecovered, rollbackOwnedReason } from './data';
 	import { plural, rowAction, actionLabel, actionHref, retryActionHref, markOf, markRecoveredOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -358,10 +358,13 @@
 		retry: recoveredFail ? { label: 'Retry', href: retryHrefOf, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
 		rest: place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : []
 	}));
+	/** another controller owns the failing place's wanted version: its Roll back is drawn disabled with the header's reason */
+	const ownedReason = $derived(act?.kind === 'rollback' ? rollbackOwnedReason(actHref) : null);
 	/** the Facia's one action as a banner Act (label, href and icon per kind) */
 	function actAsAct(): Act | undefined {
 		if (!act) return undefined;
 		if (act.kind === 'approve') return approveAct(apTarget, { icon: CheckOutline }) ?? { label, href: actHref, icon: CheckOutline, key: act.kind };
+		if (act.kind === 'rollback' && ownedReason) return { label, icon: UndoOutline, key: act.kind, disabled: true, title: ownedReason };
 		return { label, href: actHref, icon: act.kind === 'rollback' ? UndoOutline : undefined, key: act.kind };
 	}
 </script>
@@ -393,9 +396,11 @@
 		<ApproveButton target={apTarget} fallbackHref={actHref} icon class="btn btn-sm {primary || act?.kind === 'approve' ? 'btn-primary' : 'btn-secondary'} shrink-0 gap-2 max-sm:min-h-11" />
 	{:else if act && recoveredFail}
 		<span class="inline-flex shrink-0 flex-wrap items-center gap-2" data-fp-acts>
-			<a href={actHref} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</a>
+			{#if ownedReason}<button type="button" disabled title={ownedReason} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</button>{:else}<a href={actHref} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</a>{/if}
 			<a href={retryHrefOf} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
 		</span>
+	{:else if act && ownedReason}
+		<button type="button" disabled title={ownedReason} class="btn btn-sm btn-primary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</button>
 	{:else if act}
 		<a href={actHref} class="btn btn-sm {primary || act.kind === 'rollback' ? 'btn-primary' : 'btn-secondary'} relative z-[1] shrink-0 gap-2 max-sm:min-h-11">
 			{#if act.kind === 'rollback'}<UndoOutline class="h-4 w-4" aria-hidden="true" />{:else}<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />{/if}{label}

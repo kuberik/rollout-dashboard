@@ -13,6 +13,7 @@
 	import { UndoOutline, PlaySolid } from 'flowbite-svelte-icons';
 	import { retryActionHref } from './rollout-view';
 	import { failureActs } from '$lib/view-models/failure-actions';
+	import { rollbackOwnedReason } from './data';
 	import type { Snippet } from 'svelte';
 	import FailureDetails from '$lib/components/FailureDetails.svelte';
 	import { agoOf, withAge, type BannerEvidence } from '$lib/view-models/health-failures';
@@ -27,8 +28,10 @@
 	/* the age rides on the health line ("2 health checks failing, 1 pending · 12m ago"), as on the rollout Overview's banner; the meta line keeps only the build */
 	const age = $derived(b.meta.sinceAt ? agoOf(b.meta.sinceAt, $now) : b.meta.since);
 	const sentence = $derived(b.evidence ? (b.evidence.recovered ? b.evidence.message : withAge(b.evidence.message, age)) : b.check ? undefined : b.line ? withAge(b.line, age) : undefined);
+	/* another controller owns the wanted version: Roll back stays drawn, disabled, with the reason the header and the Overview give */
+	const ownedReason = $derived(rollbackOwnedReason(b.rollbackHref));
 	const acts = $derived(failureActs<Act>(!!b.recovered, {
-		rollback: b.rollbackHref ? { label: 'Roll back', href: b.rollbackHref, icon: UndoOutline, key: 'rollback' } : null,
+		rollback: b.rollbackHref ? (ownedReason ? { label: 'Roll back', icon: UndoOutline, key: 'rollback', disabled: true, title: ownedReason } : { label: 'Roll back', href: b.rollbackHref, icon: UndoOutline, key: 'rollback' }) : null,
 		/* a failure still failing keeps its order and its buttons: Retry is offered here only once its checks are OK again */
 		retry: b.recovered ? { label: 'Retry', href: retryActionHref(b.retryHref ?? b.openHref), icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
 		rest: [{ label: 'Open rollout', href: b.openHref, after: true, key: 'open' }]

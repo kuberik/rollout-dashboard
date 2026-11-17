@@ -150,6 +150,7 @@
 		as = 'div',
 		wrap = false,
 		trailing = undefined,
+		trailingUp = false,
 		approval = false,
 		recovered = false,
 		failedSince = null,
@@ -184,6 +185,9 @@
 		 *  key while the row is selected), rendered last. With `wrap` it ends
 		 *  line 2 below `sm` and line 1 from `sm`; otherwise it ends the line. */
 		trailing?: Snippet;
+		/** A trailing that is plain text (an approval's "Review approval in …"), not a button: from sm it takes the free right side of the NAME line, so
+		 *  the meta line keeps its one line and every row of a group stays two lines. On a phone it stays at the end of line 2. */
+		trailingUp?: boolean;
 		class?: string;
 	} = $props();
 
@@ -233,6 +237,7 @@
 	<!-- Palette squeeze order: the env chip gives way first (its label
 	     truncates inside the pill, down to 3rem), then the name. -->
 	{#if card.envDisplay}<Chip role="env" theme={card.theme} label={card.envDisplay} wide class={palette ? 'min-w-12 shrink-[1000]' : 'shrink-0'} />{/if}
+	{#if palette && wrap && trailing && trailingUp}<span class="ms-auto hidden shrink-0 sm:inline" data-trailing-up>{@render trailing()}</span>{/if}
 	{#if palette && wrap}
 		<!-- Below sm the fact gets its own line (.dot-list, so no orphaned "·"). From sm it shares the name's line when the whole row fits there;
 		     when it does not (a long name, a long fact, the action pair), the fact and the action drop to the phone's second line, indented
@@ -247,7 +252,7 @@
 					{#if buildText || age}<span class="shrink-0 whitespace-nowrap" data-build-age>{#if buildText}<span class="t-code-sm">{buildText}</span>{/if}{#if buildText && age}{' · '}{/if}{#if age}<span class="tabular-nums">{age}</span>{/if}</span>{/if}
 				</span>
 			</span>
-			{#if trailing}<span class="ms-auto shrink-0">{@render trailing()}</span>{/if}
+			{#if trailing}<span class="ms-auto shrink-0 {trailingUp ? 'sm:hidden' : ''}">{@render trailing()}</span>{/if}
 		</span>
 	{:else if palette}
 		<!-- One truncated line that never wraps: text separators cannot orphan. -->

@@ -47,6 +47,7 @@
 	} from '$lib/utils';
 	import { changePathForRollout, displayVersionForTag, githubOwnerRepo, repoKeyFor, shortRevision } from '$lib/version-utils';
 	import { rolloutEnvironmentName, rollbackTarget } from '$lib/view-models/deploy-risk';
+	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 	import { stripEmphasisMarkers } from '$lib/view-models/plain-text-note';
 	import { isHistoryCurrentlyFailed } from '$lib/view-models/deploy-history';
 	import { bakePaused } from '$lib/bake-hold';
@@ -1252,7 +1253,11 @@
 			`/rollouts/${cluster}/${rollout?.metadata?.namespace}/${rollout?.metadata?.name}/diff/${entry.version.tag}`
 		);
 	}
+	/** Another controller owning `spec.wantedVersion` refuses every Roll back here, as the header and the Overview do. */
+	const managesPin = $derived(dashboardManagesWantedVersion(rollout));
+	const rollbackRowTitle = $derived(managesPin ? 'Roll back to this build' : WANTED_VERSION_OWNED_REASON);
 	function openRollbackModalFor(index: number) {
+		if (!managesPin) return;
 		const history = rollout?.status?.history ?? [];
 		const entry = history[index];
 		if (!entry) return;
@@ -1406,6 +1411,10 @@
 		}
 		if (rollbackPending && rollout && rollbackNow) {
 			rollbackPending = false;
+			if (!managesPin) {
+				clearActionParam();
+				return;
+			}
 			selectedVersionTag = rollbackNow.tag;
 			deployExplanation = '';
 			isPinVersionMode = false;
@@ -1676,7 +1685,7 @@
 							{rollbackIndices}
 							now={$now.getTime()}
 							diffHref={diffHrefForIndex}
-							onRollback={openRollbackModalFor}
+							onRollback={managesPin ? openRollbackModalFor : undefined}
 						/>
 					{/if}
 				{/snippet}
@@ -2299,20 +2308,22 @@
 									-->
 														<!-- ⭐ THE ACTION COLUMN, RESERVED (hover-capable widths only; revealed on hover or focus-within). Roll back and an icon-only View diff live in their own column
 										     BEFORE the time, so the summary truncates before it and nothing slides over text or over the date.
-										     The column is as wide as its pair (8.5rem) on every row that can show actions, so the summaries share one measure.
+										     The column is as wide as its pair (8.25rem: 92px Roll back, a 6px gap, the 34px icon) on every row that can show actions, so the summaries share one measure.
 										     The running row and an expanded one have no actions, so they draw no column and their summary takes the room (the
 										     time column is right-aligned and fixed-width, so the dates still line up). Below lg the same two actions stay in the expanded panel. -->
 																								{#if !isCurrent && !isExpanded}
-														<div class="hidden w-[8.5rem] shrink-0 items-center justify-end lg:flex" data-row-actions>
+														<div class="hidden w-[8.25rem] shrink-0 items-center justify-end lg:flex" data-row-actions>
 																	<div
-																		class="pointer-events-none flex items-center justify-end gap-2 opacity-0 transition-opacity lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
+																		class="pointer-events-none flex items-center justify-end gap-1.5 opacity-0 transition-opacity lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
 																	>
 																		{#if entry.bakeStatus === 'Succeeded'}
 																			<button
-																				title="Roll back to this build"
+																				title={rollbackRowTitle}
 																				aria-label="Roll back to this build"
 																				type="button"
 																				class="btn btn-secondary btn-xs"
+																				disabled={!managesPin}
+																				data-action="rollback"
 																				onclick={(ev) => {
 																					ev.stopPropagation();
 																					selectedVersionTag = entry.version.tag;
@@ -2956,10 +2967,12 @@
 											     not a button that would redeploy the same break. -->
 																{#if entry.version.tag !== rollout?.status?.history?.[0]?.version?.tag && entry.bakeStatus === 'Succeeded'}
 																	<button
-																		title="Roll back to this build"
+																		title={rollbackRowTitle}
 																		aria-label="Roll back to this build"
 																		type="button"
 																		class="btn btn-secondary btn-xs"
+																		disabled={!managesPin}
+																		data-action="rollback"
 																		onclick={() => {
 																			selectedVersionTag = entry.version.tag;
 																			if (

@@ -27,7 +27,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
 	import { envTheme } from '$lib/components/new/rollout-view';
-	import type { ApprovalTarget } from '$lib/components/new/data';
+	import { rollbackOwnedReason, type ApprovalTarget } from '$lib/components/new/data';
 	import type { AttentionModel } from '$lib/view-models/attention';
 	import { TONE } from '$lib/view-models/state-tone';
 	import { cardActs } from '$lib/view-models/failure-actions';
@@ -90,6 +90,8 @@
 	const fig = $derived(model.figure);
 	const retryLead = $derived(failed && model.recovered && !!retryHref);
 	/* the actions of this state, in print order (view-models/failure-actions.ts `cardActs`) */
+	/* another controller owns the failing rollout's wanted version: Roll back is drawn disabled with the header's reason */
+	const ownedReason = $derived(rollbackOwnedReason(rollbackHref));
 	const acts = $derived(cardActs({ state: failed ? 'failed' : 'approval', recovered: !!model.recovered, rollback: !!rollbackHref, retry: retryLead, open: !!openHref && !(retryLead && openHref === retryHref), approve: !!approve || !!approveFallbackHref }));
 	const hasActions = $derived(acts.length > 0);
 	const label = $derived(id.title || id.name);
@@ -126,7 +128,11 @@
 				{#if a.key === 'approve'}
 					<ApproveButton target={approve} fallbackHref={approveFallbackHref} class="btn btn-primary" icon />
 				{:else if a.key === 'rollback'}
-					<a href={rollbackHref} class="btn {a.primary ? 'btn-primary' : 'btn-secondary'}" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>
+					{#if ownedReason}
+						<button type="button" disabled title={ownedReason} class="btn {a.primary ? 'btn-primary' : 'btn-secondary'}" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</button>
+					{:else}
+						<a href={rollbackHref} class="btn {a.primary ? 'btn-primary' : 'btn-secondary'}" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>
+					{/if}
 				{:else if a.key === 'retry'}
 					<a href={retryActionHref(retryHref ?? href)} class="btn btn-secondary" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
 				{:else}

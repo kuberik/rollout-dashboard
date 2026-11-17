@@ -21,6 +21,7 @@
 	import RetryConfirmModal from './RetryConfirmModal.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
+	import { dashboardManagesWantedVersion } from '$lib/view-models/pin-hold';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import Toast from './Toast.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
@@ -100,10 +101,11 @@
 	$effect(() => {
 		if (rollbackRequest <= rollbackHandled || !rollout) return;
 		rollbackHandled = rollbackRequest;
+		if (!dashboardManagesWantedVersion(rollout)) return;
 		rollbackOpen = true;
 	});
 
-	let toast = $state<{ tone: 'success' | 'danger'; message: string; description: string } | null>(null);
+	let toast = $state<{ tone: 'success' | 'danger'; message: string; description: string; logs?: boolean } | null>(null);
 	let toastOpen = $state(false);
 	/** One toast for every result this host reports (the picker's own text for Roll back, the Overview's wording). */
 	function announce(next: NonNullable<typeof toast>) {
@@ -119,7 +121,7 @@
 				body: JSON.stringify({ kruiseRolloutName: stalledKruiseName(managed) || '', testAction: '' })
 			});
 			if (!res.ok) throw new Error('Failed to retry deployment');
-			toast = { tone: 'success', message: 'Retry started', description: `${confirm.displayTag ?? name} · Check restarted` };
+			toast = { tone: 'success', message: 'Retry started', description: `${confirm.displayTag ?? name} · Check restarted`, logs: true };
 			await client.invalidateQueries({ queryKey: rolloutQueryOptions({ namespace, name, cluster }).queryKey });
 		} catch (e) {
 			toast = { tone: 'danger', message: `Failed to retry: ${e instanceof Error ? e.message : 'Unknown error'}`, description: '' };
@@ -156,5 +158,5 @@
 	tone={toast?.tone ?? 'info'}
 	message={toast?.message ?? ''}
 	description={toast?.description ?? ''}
-	action={toast?.tone === 'success' ? viewLogs : undefined}
+	action={toast?.tone === 'success' && toast.logs ? viewLogs : undefined}
 />

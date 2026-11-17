@@ -66,7 +66,7 @@
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
-	import { liveHealthChecks, failureRecovered, failureSinceAt, apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
+	import { rollbackOwnedReason, liveHealthChecks, failureRecovered, failureSinceAt, apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme, byFailRank } from '../rollout-view';
 	import FailureDetails from '$lib/components/FailureDetails.svelte';
 	import { bannerEvidence } from '$lib/view-models/health-failures';
@@ -295,7 +295,7 @@
 	const failActs = $derived.by(() => {
 		if (!failRow) return { primary: undefined, secondary: [] as Act[] };
 		return failureActs<Act>(failureRecovered(failRow.href), {
-			rollback: failAct ? { label: 'Roll back', onclick: () => pressRollback(failRow), icon: UndoOutline, key: 'rollback' } : null,
+			rollback: failAct ? { label: 'Roll back', onclick: () => pressRollback(failRow), icon: UndoOutline, key: 'rollback', ...(rollbackOwnedReason(failRow.href) ? { disabled: true, title: rollbackOwnedReason(failRow.href)! } : {}) } : null,
 			retry: { label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },
 			rest: [{ label: 'Open rollout', href: failRow.href, after: true, key: 'open-rollout' }]
 		});

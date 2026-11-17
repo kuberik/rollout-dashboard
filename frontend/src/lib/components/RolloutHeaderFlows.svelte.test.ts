@@ -39,6 +39,9 @@ function rolloutOf(env: string, failed: boolean) {
 	};
 }
 
+/** another manager owns `spec.wantedVersion` */
+const withOwner = (r: ReturnType<typeof rolloutOf>, owner: string) => ({ ...r, metadata: { ...r.metadata, managedFields: [{ manager: owner, operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }] }, spec: { wantedVersion: 'old' } });
+
 type Calls = { url: string; body: unknown }[];
 let calls: Calls;
 let changeStatus = 200;
@@ -69,9 +72,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function mount(over: { env: string; failed: boolean; site?: string; kustomized?: boolean; request?: number; rollbackRequest?: number }) {
+function mount(over: { env: string; failed: boolean; owner?: string; site?: string; kustomized?: boolean; request?: number; rollbackRequest?: number }) {
 	rolloutBody = {
-		rollout: rolloutOf(over.env, over.failed),
+		rollout: over.owner ? withOwner(rolloutOf(over.env, over.failed), over.owner) : rolloutOf(over.env, over.failed),
 		environment: { metadata: { name: 'invoice-api', namespace: 'invoice-api-prod-eu-west' }, spec: { environment: over.env, ...(over.site ? { site: over.site } : {}) } },
 		kustomizations: { items: over.kustomized ? [{ metadata: { name: 'app', namespace: 'invoice-api-prod-eu-west' } }] : [] }
 	};
@@ -101,6 +104,17 @@ describe('header Roll back reports its result where the operator is', () => {
 		await confirmRollback();
 		expect(await screen.findByText('Successfully pinned and deployed version')).toBeInTheDocument();
 		expect(calls.some((c) => c.url.includes('/change-version'))).toBe(true);
+	});
+	test('the success toast is the Overview\'s: one line, no "View logs" action', async () => {
+		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
+		await confirmRollback();
+		await screen.findByText('Successfully pinned and deployed version');
+		expect(screen.queryByText('View logs')).toBeNull();
+	});
+	test('another controller owning the wanted version: Roll back opens nothing', async () => {
+		mount({ env: 'dev', failed: false, rollbackRequest: 1, owner: 'flux-controller' });
+		await new Promise((r) => setTimeout(r, 300));
+		expect(screen.queryByPlaceholderText('Why are you rolling back?')).toBeNull();
 	});
 });
 

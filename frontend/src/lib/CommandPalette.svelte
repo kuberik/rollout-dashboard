@@ -123,6 +123,7 @@
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
 	import { failureRecovered, failureSinceAt } from '$lib/components/new/data';
+	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 	import { failedRowAction, FAILED_ROW_SECONDARY } from '$lib/view-models/failure-actions';
 	import { href, appPath } from '$lib/paths';
 	import { now } from '$lib/stores/time';
@@ -1929,7 +1930,9 @@
 			     phone (no Enter, no hover) a tap on a name cannot start a rollback. Enter opens the rollout (the footer's "↵ open"), never the action.
 			     the secondary link follows. -->
 			<span class="flex items-center gap-3" data-meta="action">
-				{#if actionHref !== rowHref}
+				{#if actionHref !== rowHref && actionKey === 'rollback' && c.rollout && !dashboardManagesWantedVersion(c.rollout)}
+					<button type="button" disabled title={WANTED_VERSION_OWNED_REASON} class="btn btn-secondary btn-sm relative z-[1] whitespace-nowrap max-sm:min-h-11" data-action="rollback">{actionLabel}</button>
+				{:else if actionHref !== rowHref}
 					<a href={actionHref} class="btn btn-secondary btn-sm relative z-[1] whitespace-nowrap max-sm:min-h-11" data-action={actionKey} onclick={() => (open = false)}>{actionLabel}</a>
 				{:else}
 					<span class="t-ui-sm whitespace-nowrap text-fg">{actionLabel}</span>
@@ -1950,6 +1953,7 @@
 			size="palette"
 			wrap
 			trailing={incidentAction}
+			trailingUp={approvalCards.has(c) && actionHref === rowHref}
 		/>
 	</div>
 {/snippet}

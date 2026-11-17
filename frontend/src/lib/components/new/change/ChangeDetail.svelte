@@ -42,7 +42,7 @@
 	import ChangeCard from './ChangeCard.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ChangeHistory from './ChangeHistory.svelte';
-	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, type TChange, type HomeState, noReleasesApp } from '../data';
+	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, rollbackOwnedReason, type TChange, type HomeState, noReleasesApp } from '../data';
 	import { actionHref, retryActionHref, rowAction, holdWord } from '../rollout-view';
 	import { isViewer, plural } from '../change-view';
 	import { failedWord } from '../state-words';
@@ -98,7 +98,7 @@
 	const prod = $derived(changeProd(c, scenario));
 	/* the one order of a failed place's actions (view-models/failure-actions.ts): Retry leads for a recovered failure, so it is the phone row's one visible action, not an entry behind "⋯" */
 	const failActs = $derived(failureActs<Act>(!!lead?.row?.failure?.recovered, {
-		rollback: backHref ? { label: 'Roll back', href: backHref, icon: UndoOutline, key: 'rollback' } : null,
+		rollback: backHref ? (rollbackOwnedReason(backHref) ? { label: 'Roll back', icon: UndoOutline, key: 'rollback', disabled: true, title: rollbackOwnedReason(backHref)! } : { label: 'Roll back', href: backHref, icon: UndoOutline, key: 'rollback' }) : null,
 		retry: lead ? { label: 'Retry', href: retryActionHref(lead.href), icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
 		rest: lead ? [{ label: 'Open rollout', href: lead.href, quiet: true, key: 'open-rollout' }] : []
 	}));
