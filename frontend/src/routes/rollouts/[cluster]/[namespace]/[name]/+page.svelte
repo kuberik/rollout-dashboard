@@ -3070,6 +3070,7 @@
 								type="button"
 								class="btn btn-secondary max-lg:h-11"
 								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_REASON}
 								aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
 								onclick={() => {
 									showClearPinModal = true;
@@ -3082,11 +3083,13 @@
 							type="button"
 							id="status-change-version-btn"
 							data-tour="change-version"
-							class="btn btn-secondary max-lg:h-11"
-							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
+							class="btn btn-secondary max-lg:h-11 {pendingAction ? 'opacity-60 cursor-progress' : ''}"
+							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!noReleases}
+							aria-disabled={pendingAction ? 'true' : undefined}
 							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
 							aria-describedby={noReleases ? "change-version-reason-1" : isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
 							onclick={() => {
+								if (pendingAction) return;
 								if (isDashboardManagingWantedVersion) {
 									isPinVersionMode = false;
 									selectedVersion = null;
@@ -3370,6 +3373,8 @@
 									type="button"
 									class="btn btn-secondary"
 									disabled={!isDashboardManagingWantedVersion || !!pendingAction}
+									title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_REASON}
+									aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
 									onclick={() => {
 										showClearPinModal = true;
 									}}
@@ -3959,6 +3964,8 @@
 													type="button"
 													class="btn btn-secondary btn-xs shrink-0"
 													disabled={!isDashboardManagingWantedVersion || !!pendingAction}
+													title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_REASON}
+													aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
 													onclick={() => {
 														showClearPinModal = true;
 													}}
@@ -4828,11 +4835,13 @@
 							<button
 								type="button"
 								data-tour="change-version"
-								class="btn btn-primary"
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
+								class="btn btn-primary {pendingAction ? 'opacity-60 cursor-progress' : ''}"
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!noReleases}
+								aria-disabled={pendingAction ? 'true' : undefined}
 							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
 							aria-describedby={noReleases ? "change-version-reason-2" : undefined}
 								onclick={() => {
+									if (pendingAction) return;
 									if (isDashboardManagingWantedVersion) {
 										isPinVersionMode = false;
 										selectedVersion = null;
@@ -4971,6 +4980,7 @@
 	site={environment ? siteOf(environment) : null}
 	{contractHeldVersions}
 	onDeployStart={beginPendingAction}
+	onDeployFail={() => (pendingAction = null)}
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;

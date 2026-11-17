@@ -43,11 +43,11 @@ afterEach(() => vi.unstubAllGlobals());
 afterEach(() => resetToastVisibility());
 
 let changeStatus = 500;
-function openOverview() {
+function openOverview(app = 'orders-hub', query = '?action=change-version') {
 	resetDemoState('calm');
-	const ns = 'orders-hub-prod-default';
-	state.page.params = { cluster: 'prod', namespace: ns, name: 'orders-hub' };
-	state.page.url = new URL(`http://localhost/rollouts/prod/${ns}/orders-hub?action=change-version`);
+	const ns = `${app}-prod-default`;
+	state.page.params = { cluster: 'prod', namespace: ns, name: app };
+	state.page.url = new URL(`http://localhost/rollouts/prod/${ns}/${app}${query}`);
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (input: any, init?: any) => {
@@ -67,8 +67,14 @@ const dlgs = () => [...document.querySelectorAll<HTMLElement>('dialog[open]')];
 const press = (root: ParentNode, re: RegExp) => [...root.querySelectorAll('button')].find((b) => re.test(b.textContent!.trim())) as HTMLButtonElement | undefined;
 
 /** The Overview's own Change version flow, confirmed, then (optionally) closed while the request runs. */
-async function deploy(closeWhileRunning: boolean) {
-	openOverview();
+async function deploy(closeWhileRunning: boolean, viaButton = false) {
+	if (viaButton) {
+		openOverview('orders-hub', '');
+		await waitFor(() => expect(document.querySelector('#status-change-version-btn:not([disabled])')).not.toBeNull(), { timeout: 15_000 });
+		const opener = document.querySelector<HTMLButtonElement>('#status-change-version-btn')!;
+		opener.focus();
+		await fireEvent.click(opener);
+	} else openOverview();
 	await waitFor(() => expect(dlgs().length).toBeGreaterThan(0), { timeout: 15_000 });
 	const warn = dlgs().map((d) => press(d, /^Continue$/)).find(Boolean);
 	if (warn) await fireEvent.click(warn);
@@ -102,4 +108,39 @@ describe('rollout page: the Change version flow reports where the operator is', 
 		await waitFor(() => expect(toastVisibility.count).toBe(1), { timeout: 8000 });
 		await waitFor(() => expect(toastVisibility.count, 'closed itself').toBe(0), { timeout: 6000 });
 	});
+});
+
+describe('rollout page: the header after a Change version submit', () => {
+	const opener = () => document.querySelector<HTMLButtonElement>('#status-change-version-btn')!;
+	test('a refused request clears "Deploy requested — starting" and re-enables Change version at once', async () => {
+		changeStatus = 500;
+		await deploy(false, true);
+		await waitFor(() => expect(document.body.textContent).toContain('Deploy requested — starting'), { timeout: 3000 });
+		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull(), { timeout: 8000 });
+		expect(document.body.textContent).not.toContain('Deploy requested — starting');
+		expect(opener().getAttribute('aria-disabled')).toBeNull();
+		// closing after the inline failure returns focus to the button as well
+		await fireEvent.click(press(dlgs().find((d) => d.querySelector('[data-deploy-error]'))!, /^Cancel$/)!);
+		await waitFor(() => expect(document.activeElement).toBe(opener()), { timeout: 2000 });
+	}, 40_000);
+	test('closing the dialog in flight hands focus back to Change version, which stays focusable', async () => {
+		changeStatus = 500;
+		await deploy(true, true);
+		await new Promise((r) => setTimeout(r, 100));
+		expect(document.activeElement, 'focus is on the opener while the request still runs').toBe(opener());
+		expect(opener().disabled).toBe(false);
+	}, 40_000);
+});
+
+describe('rollout page: a pin another controller owns', () => {
+	test('every disabled Clear pin gives the same reason as Roll back (title and aria-describedby)', async () => {
+		openOverview('inventory-api', '');
+		const pins = () => [...document.querySelectorAll<HTMLButtonElement>('button')].filter((b) => b.textContent!.trim() === 'Clear pin');
+		await waitFor(() => expect(pins().length).toBeGreaterThan(0), { timeout: 15_000 });
+		for (const b of pins()) {
+			expect(b.disabled).toBe(true);
+			expect(b.getAttribute('title')).toBe("Another controller owns this rollout's wanted version, so the dashboard cannot pin it.");
+			expect(b.getAttribute('aria-describedby')).toBe('owned-reason');
+		}
+	}, 40_000);
 });

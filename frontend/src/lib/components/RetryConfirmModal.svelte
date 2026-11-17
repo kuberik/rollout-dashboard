@@ -44,7 +44,7 @@
 	import { Modal } from 'flowbite-svelte';
 	import { tick } from 'svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
-	import { ExclamationCircleSolid, PlaySolid } from 'flowbite-svelte-icons';
+	import { CloseOutline, ExclamationCircleSolid, PlaySolid } from 'flowbite-svelte-icons';
 	import { DIALOG_ERROR_CLASS, retryFailureText } from '$lib/view-models/failure-text';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import {
@@ -123,6 +123,7 @@
 	bind:open
 	title=""
 	size="sm"
+	dismissable={false}
 	role="dialog"
 	aria-modal="true"
 	tabindex={-1}
@@ -138,10 +139,14 @@
 			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-subtle ring-1 ring-line" data-retry-icon>
 				<PlaySolid class="h-5 w-5 text-fg-muted" />
 			</div>
-			<div class="min-w-0">
+			<div class="min-w-0 flex-1">
 				<h2 id="rcm-title" class="t-heading text-fg">{title}?</h2>
 				<p id="rcm-sub" class="t-meta text-fg-subtle">This starts a new deployment attempt.</p>
 			</div>
+			<!-- the close X sits in the header, ahead of Cancel and the confirm, so it is first in tab order, as in the Roll back dialog -->
+			<button type="button" class="btn btn-ghost btn-sm btn-icon hit-44 -my-1 -mr-2 shrink-0" aria-label="Close" onclick={() => (open = false)}>
+				<CloseOutline class="h-4 w-4" aria-hidden="true" />
+			</button>
 		</div>
 	</div>
 

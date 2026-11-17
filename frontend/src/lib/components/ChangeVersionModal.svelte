@@ -178,6 +178,8 @@
 		 * not 5-8s later when the response finally lands.
 		 */
 		onDeployStart?: () => void;
+		/** the request was refused or failed, whether the dialog is still open or not: clears what `onDeployStart` raised */
+		onDeployFail?: () => void;
 		/**
 		 * ⭐ RECOVERY MODE CARRIES INTO THE CONFIRM. (squad-rollout, Lane D,
 		 * round 6 — AD round 4, item 2.) `RecoveryModeWarningModal` asks for
@@ -205,6 +207,7 @@
 		onSuccess = () => {},
 		onError = () => {},
 		onDeployStart = () => {},
+		onDeployFail = () => {},
 		recoveryMode = undefined
 	}: Props = $props();
 
@@ -2366,6 +2369,7 @@
 			open = false;
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Failed to deploy version';
+			onDeployFail();
 			if (open) {
 				deployError = message;
 				deploying = false;

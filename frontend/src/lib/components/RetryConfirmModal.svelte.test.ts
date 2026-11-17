@@ -160,3 +160,13 @@ describe('Retry in flight and after a failure', () => {
 		expect(primary().textContent!.trim()).toBe('Retry');
 	});
 });
+
+describe('the close X', () => {
+	test('is the first control of the dialog in tab order, ahead of Cancel and the confirm', () => {
+		render(RetryConfirmModal, { open: true, intent: intent({ direction: 'retry', production: false }), consequences: [], tag: '1.4.0', onConfirm: async () => {} });
+		const d = document.querySelector('dialog')!;
+		const buttons = [...d.querySelectorAll('button')];
+		expect(buttons[0].getAttribute('aria-label')).toBe('Close');
+		expect(buttons.filter((b) => b.getAttribute('aria-label') === 'Close').length).toBe(1);
+	});
+});

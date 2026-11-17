@@ -70,11 +70,11 @@ afterEach(() => vi.unstubAllGlobals());
 const ROLLOUT_DETAIL_URL = /\/api\/(?:clusters\/[^/]+\/)?rollouts\/[^/]+\/[^/]+(\?|$)/;
 
 /** Same shape `subject-detail.svelte.test.ts`'s own `detailFetch` uses. */
-function detailFetch(owned = true) {
+function detailFetch(owned = true, pinTo?: (r: any) => string) {
 	const payload = fleet(() => ({ at: 2, cameFrom: 1, hold: 'none' }));
 	const one = JSON.parse(JSON.stringify(payload.rollouts.items[0]));
 	if (owned) one.metadata.managedFields = [{ manager: 'flux-controller', operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }];
-	if (owned) one.spec = { ...(one.spec ?? {}), wantedVersion: one.status?.history?.[0]?.version?.tag ?? 'pinned' };
+	if (owned) one.spec = { ...(one.spec ?? {}), wantedVersion: pinTo ? pinTo(one) : (one.status?.history?.[0]?.version?.tag ?? 'pinned') };
 	const env = payload.environments.items[0];
 	const list = respond(payload) as any;
 	return async (input: any) => {

@@ -56,7 +56,8 @@
 		contractHeldVersions = undefined,
 		onSuccess = () => {},
 		onError = () => {},
-		onDeployStart = () => {}
+		onDeployStart = () => {},
+		onDeployFail = () => {}
 	}: {
 		open?: boolean;
 		rollout: Rollout | null | undefined;
@@ -73,6 +74,8 @@
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
 		onDeployStart?: () => void;
+		/** the request was refused or failed (open or closed): the host clears whatever `onDeployStart` raised */
+		onDeployFail?: () => void;
 	} = $props();
 
 	// The warning's Continue closes one dialog and opens the other, so neither alone remembers the button that started the flow (the picker
@@ -186,6 +189,7 @@
 	{site}
 	{contractHeldVersions}
 	{onDeployStart}
+	{onDeployFail}
 	{onSuccess}
 	{onError}
 />
