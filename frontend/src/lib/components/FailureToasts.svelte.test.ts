@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import Toast from './Toast.svelte';
+import ActRow from './ActRow.svelte';
 import FailureToasts from './FailureToasts.svelte';
 import { failureToasts, reportFailure, resetFailureToasts } from '$lib/stores/failure-toasts.svelte';
 
@@ -89,6 +90,23 @@ describe('FailureToasts', () => {
 			await esc();
 			expect(failureToasts.items.length).toBe(1);
 			d.remove();
+		});
+		it('with a row menu open, Esc closes the menu and leaves the failure alone', async () => {
+			render(FailureToasts);
+			reportFailure('a in prod', 'Failed to retry: one');
+			const row = render(ActRow, { primary: { label: 'Roll back', key: 'rb', onclick: () => {} }, secondary: [{ label: 'Retry', key: 'r', onclick: () => {} }, { label: 'Open rollout', key: 'o', href: '/x' }] } as never);
+			await fireEvent.click(row.getByRole('button', { name: 'More actions' }));
+			expect(document.querySelector('[role="menu"]')).not.toBeNull();
+			await esc();
+			expect(document.querySelector('[role="menu"]')).toBeNull();
+			expect(failureToasts.items.length).toBe(1);
+		});
+		it('the row menu claims its Esc (defaultPrevented), so nothing else reacts to it', async () => {
+			const row = render(ActRow, { primary: { label: 'Roll back', key: 'rb', onclick: () => {} }, secondary: [{ label: 'Retry', key: 'r', onclick: () => {} }, { label: 'Open rollout', key: 'o', href: '/x' }] } as never);
+			await fireEvent.click(row.getByRole('button', { name: 'More actions' }));
+			const ev = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+			window.dispatchEvent(ev);
+			expect(ev.defaultPrevented).toBe(true);
 		});
 		it('does nothing while focus is in a text field', async () => {
 			render(FailureToasts);

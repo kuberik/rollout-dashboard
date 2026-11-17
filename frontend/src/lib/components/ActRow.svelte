@@ -110,7 +110,16 @@
 	}
 </script>
 
-<svelte:window onclick={away} onkeydown={(e) => e.key === 'Escape' && (menuOpen = false)} />
+<svelte:window
+	onclick={away}
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && menuOpen) {
+			// Esc closes the menu and nothing else (a failure toast must not go with it)
+			e.preventDefault();
+			menuOpen = false;
+		}
+	}}
+/>
 
 {#snippet face(a: Act, variant: Item['variant'])}
 	{#if a.icon && !a.iconAfter}{@const I = a.icon}<I class={a.iconClass ?? 'h-4 w-4'} aria-hidden="true" />{/if}<span>{a.label}</span>{#if a.icon && a.iconAfter}{@const I = a.icon}<I class="{a.iconClass ?? 'h-4 w-4'} transition-transform {a.iconTurn ? 'rotate-180' : ''}" aria-hidden="true" />{/if}{#if a.href && !a.icon}<span aria-hidden="true" class="shrink-0">{a.external ? '↗' : '›'}</span>{/if}

@@ -27,7 +27,7 @@
 	 */
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key !== 'Escape' || e.defaultPrevented || failureToasts.items.length === 0) return;
-		if (document.querySelector('dialog[open], [role="dialog"], [aria-modal="true"]')) return;
+		if (document.querySelector('dialog[open], [role="dialog"], [aria-modal="true"], [role="menu"]')) return;
 		const a = document.activeElement as HTMLElement | null;
 		if (a && (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement || a.isContentEditable)) return;
 		dismissFailure(failureToasts.items[failureToasts.items.length - 1].id);
