@@ -878,7 +878,8 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		// detail's Overview) can show its own banner immediately.
 		expect(startedCount).toBe(1);
 		await waitFor(() => expect(screen.getByText('Rolling back…')).toBeInTheDocument());
-		expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+		// Cancel stays available while in flight: a failure after the dialog is closed is reported as a toast
+		expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
 		expect(document.querySelector('.animate-spin')).not.toBeNull();
 
 		// A second click while pending must not fire a second request -- both
