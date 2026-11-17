@@ -3,7 +3,7 @@ import { describe, test, expect, vi } from 'vitest';
 // a pointer device: the banner draws its own tooltip
 vi.mock('$lib/can-hover.svelte', () => ({ canHover: { current: true } }));
 import '@testing-library/jest-dom/vitest';
-import { render } from '@testing-library/svelte';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import FailurePanel from './FailurePanel.svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import { WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
@@ -47,5 +47,12 @@ describe('the owned Roll back with a hover device', () => {
 		expect(btn.getAttribute('title')).toBeNull();
 		const id = btn.getAttribute('aria-describedby');
 		expect(document.getElementById(id!)?.textContent).toBe(WANTED_VERSION_OWNED_REASON);
+	});
+	test('the hover tooltip says the same reason, not the field name', async () => {
+		const { container } = draw(false);
+		const btn = container.querySelector<HTMLButtonElement>('#failure-rollback-btn')!;
+		await fireEvent.mouseEnter(btn);
+		await fireEvent.focusIn(btn);
+		await waitFor(() => expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(WANTED_VERSION_OWNED_REASON), { timeout: 3000 });
 	});
 });

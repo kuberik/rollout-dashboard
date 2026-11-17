@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
+	import { reportFailure, failureTarget } from '$lib/stores/failure-toasts.svelte';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
 	import Toast from '$lib/components/Toast.svelte';
@@ -317,8 +318,18 @@
 	/* the rollout tabs' own toasts: "Retry started · <build> · Check restarted" with View logs, or "Failed to retry: <reason>" */
 	let retryToast = $state<{ tone: 'success' | 'danger'; message: string; description: string; logsHref: string } | null>(null);
 	let retryToastOpen = $state(false);
+	// a success toast belongs to the app it was about
+	$effect(() => {
+		void name;
+		untrack(() => (retryToastOpen = false));
+	});
 	const hideRetryToast = toastHideTimer(() => (retryToastOpen = false));
 	function announceRetry(t: NonNullable<typeof retryToast>) {
+		// a failure is reported app-wide, naming this app and place, and waits to be dismissed; only successes are page-local
+		if (t.tone === 'danger') {
+			reportFailure(failureTarget(name, failRow ? rowPlaceName(failRow) : null), t.message);
+			return;
+		}
 		retryToast = t;
 		retryToastOpen = true;
 		hideRetryToast(t.tone);

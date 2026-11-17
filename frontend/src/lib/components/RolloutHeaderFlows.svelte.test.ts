@@ -4,6 +4,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import RolloutHeaderFlows from './RolloutHeaderFlows.svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import { toastVisibility, resetToastVisibility } from '$lib/stores/toast-visibility.svelte';
+import { failureToasts, resetFailureToasts } from '$lib/stores/failure-toasts.svelte';
+import FailureToasts from './FailureToasts.svelte';
 
 const goto = vi.fn();
 vi.mock('$app/navigation', async (orig) => ({ ...(await orig<Record<string, unknown>>()), goto: (...a: unknown[]) => goto(...a) }));
@@ -69,6 +71,8 @@ function stubFetch() {
 }
 
 beforeEach(() => {
+	resetFailureToasts();
+	render(FailureToasts);
 	goto.mockClear();
 	changeStatus = 200;
 	retryStatus = 200;
@@ -161,7 +165,7 @@ describe('header Retry failures', () => {
 	test('dev: no confirm is open, so the failure is a toast', async () => {
 		retryStatus = 500;
 		mount({ env: 'dev', failed: true, request: 1 });
-		expect(await screen.findByText('Failed to retry: nope')).toBeInTheDocument();
+		expect(await screen.findByText(/Failed to retry: nope/)).toBeInTheDocument();
 	});
 });
 
@@ -201,7 +205,7 @@ describe('a failure after the dialog was closed is still reported', () => {
 		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
 		await confirmRollback();
 		await fireEvent.click(cancelBtn());
-		expect(await screen.findByText('Failed to roll back: boom', {}, { timeout: 3000 })).toBeInTheDocument();
+		expect(await screen.findByText(/invoice-api in dev: Failed to roll back: boom/, {}, { timeout: 3000 })).toBeInTheDocument();
 		expect(document.querySelector('[data-deploy-error]')).toBeNull();
 	});
 	test('Roll back: still open when it fails -> inline only, no toast', async () => {
@@ -221,7 +225,7 @@ describe('a failure after the dialog was closed is still reported', () => {
 		await fireEvent.input(document.querySelector('#rcm-confirm')!, { target: { value: '064b655' } });
 		await fireEvent.click(screen.getByRole('button', { name: /^Retry$/ }));
 		await fireEvent.click(cancelBtn());
-		expect(await screen.findByText('Failed to retry: nope', {}, { timeout: 3000 })).toBeInTheDocument();
+		expect(await screen.findByText(/Failed to retry: nope/, {}, { timeout: 3000 })).toBeInTheDocument();
 		expect(document.querySelector('[data-retry-error]')).toBeNull();
 	});
 	test('Retry: still open when it fails -> inline only, no toast', async () => {
@@ -252,9 +256,9 @@ describe('the toast lifetime, per tone', () => {
 		mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
 		await typedRetry();
 		await fireEvent.click(cancelBtn());
-		expect(await screen.findByText('Failed to retry: nope', {}, { timeout: 3000 })).toBeInTheDocument();
+		expect(await screen.findByText(/Failed to retry: nope/, {}, { timeout: 3000 })).toBeInTheDocument();
 		await new Promise((r) => setTimeout(r, 3600));
-		expect(toastVisibility.count, 'the toast is still open').toBe(1);
+		expect(failureToasts.items.length, 'the toast is still open').toBe(1);
 	});
 	test('a success toast hides by itself', { timeout: 15_000 }, async () => {
 		mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
@@ -262,6 +266,39 @@ describe('the toast lifetime, per tone', () => {
 		expect(await screen.findByText('Retry started', {}, { timeout: 3000 })).toBeInTheDocument();
 		expect(toastVisibility.count).toBe(1);
 		await waitFor(() => expect(toastVisibility.count, 'the toast closed itself').toBe(0), { timeout: 5000 });
+	});
+});
+
+/** Navigating to another rollout: a success toast was about the old one and goes; a failure the operator walked away from stays, naming the old one. */
+describe('the toasts across navigation', () => {
+	const cancelBtn = () => [...document.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === 'Cancel')!;
+	const typedRetry = async () => {
+		await waitFor(() => expect(document.querySelector('#rcm-title')).not.toBeNull());
+		await fireEvent.input(document.querySelector('#rcm-confirm')!, { target: { value: '064b655' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Retry$/ }));
+	};
+	const gotoOther = (r: ReturnType<typeof mount>) =>
+		r.rerender({ props: { props: { cluster: 'prod', namespace: 'catalog-api-prod-default', name: 'catalog-api', request: 0, rollbackRequest: 0 } } } as never);
+	beforeEach(() => resetToastVisibility());
+
+	test('a success toast does not carry over to the next rollout', { timeout: 15_000 }, async () => {
+		const r = mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
+		await typedRetry();
+		expect(await screen.findByText('Retry started', {}, { timeout: 3000 })).toBeInTheDocument();
+		expect(toastVisibility.count).toBe(1);
+		await gotoOther(r);
+		await waitFor(() => expect(toastVisibility.count, 'the success toast is gone').toBe(0));
+	});
+	test('a failure from the old rollout stays and names it', { timeout: 15_000 }, async () => {
+		retryStatus = 500;
+		delayMs = 300;
+		const r = mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
+		await typedRetry();
+		await fireEvent.click(cancelBtn());
+		await waitFor(() => expect(failureToasts.items.length).toBe(1), { timeout: 3000 });
+		await gotoOther(r);
+		await new Promise((res) => setTimeout(res, 300));
+		expect(failureToasts.items.map((t) => t.message)).toEqual(['invoice-api in prod: Failed to retry: nope']);
 	});
 });
 

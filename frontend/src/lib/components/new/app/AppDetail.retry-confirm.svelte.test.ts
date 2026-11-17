@@ -4,6 +4,8 @@ import Harness from './AppDetail.retry-harness.svelte';
 import { respond } from '../../../demo/respond';
 import { resetDemoState } from '../../../demo/state';
 import { install } from '../../../demo/health-failures-fixtures';
+import { failureToasts, resetFailureToasts } from '$lib/stores/failure-toasts.svelte';
+import FailureToasts from '../../FailureToasts.svelte';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
 
 /** Retry on the app page asks exactly as the rollout Overview's failure panel does (view-models/retry-confirm.ts). */
@@ -34,6 +36,8 @@ const mountApp = (app: string) => {
 		}
 		return new Response(r.body ?? '{}', { status: r.status ?? 200, headers: { 'Content-Type': 'application/json' } });
 	});
+	resetFailureToasts();
+	render(FailureToasts);
 	return render(Harness, { props: { name: app } });
 };
 

@@ -61,6 +61,7 @@
 		tone = 'info',
 		message = '',
 		dismissable = true,
+		onclose,
 		floating = true,
 		description = '',
 		children,
@@ -70,6 +71,8 @@
 		tone?: Tone;
 		message?: string;
 		dismissable?: boolean;
+		/** the dismiss X was pressed (for a toast whose lifetime a store owns) */
+		onclose?: () => void;
 		/** `false` renders in flow (the design specimen); never false in product. */
 		floating?: boolean;
 		/**
@@ -151,7 +154,10 @@
 				type="button"
 				class="btn btn-ghost btn-icon btn-xs -my-1 -mr-2"
 				aria-label="Dismiss"
-				onclick={() => (open = false)}
+				onclick={() => {
+					open = false;
+					onclose?.();
+				}}
 			>
 				<CloseOutline class="h-3 w-3" />
 			</button>

@@ -3,6 +3,7 @@
 	import Navbar from '../lib/Navbar.svelte';
 	import Sidebar from '../lib/Sidebar.svelte';
 	import MobileTabBar from '../lib/MobileTabBar.svelte';
+	import FailureToasts from '../lib/components/FailureToasts.svelte';
 	import LiveRegion from '$lib/components/LiveRegion.svelte';
 	import FleetAppNames from '$lib/components/FleetAppNames.svelte';
 	import FleetGate from '$lib/components/new/FleetGate.svelte';
@@ -430,5 +431,6 @@
 		<MobileTabBar />
 		<LiveRegion />
 		<ApprovalLayer />
+		<FailureToasts />
 	</div>
 </QueryClientProvider>

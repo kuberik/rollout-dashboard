@@ -78,7 +78,7 @@ import { respond } from '$lib/demo/respond';
 import { resetDemoState } from '$lib/demo/state';
 import { install } from '$lib/demo/health-failures-fixtures';
 import { beforeAll } from 'vitest';
-import { toastVisibility, resetToastVisibility } from '$lib/stores/toast-visibility.svelte';
+import { failureToasts, resetFailureToasts } from '$lib/stores/failure-toasts.svelte';
 
 beforeAll(() => install(true));
 afterEach(() => vi.unstubAllGlobals());
@@ -112,7 +112,7 @@ describe('History: the current row chip takes the header pill\'s input', () => {
 });
 
 describe('History: a Roll back closed while in flight, then failing', () => {
-	afterEach(() => resetToastVisibility());
+	afterEach(() => resetFailureToasts());
 	const dlgs = () => [...document.querySelectorAll<HTMLElement>('dialog[open]')];
 	const press = (root: ParentNode, re: RegExp) => [...root.querySelectorAll('button')].find((b) => re.test(b.textContent!.trim())) as HTMLButtonElement | undefined;
 
@@ -137,9 +137,9 @@ describe('History: a Roll back closed while in flight, then failing', () => {
 		if (typed) { const label = typed.closest('div')?.parentElement?.textContent?.match(/Type (\S+) to confirm/)?.[1]; if (label) await fireEvent.input(typed, { target: { value: label } }); }
 		await fireEvent.click(press(dlg, /^Roll back/)!);
 		await fireEvent.click(press(dlg, /^Cancel$/)!);
-		await waitFor(() => expect(document.body.textContent).toMatch(/Failed to roll back: boom/), { timeout: 5000 });
-		expect(toastVisibility.count).toBe(1);
+		await waitFor(() => expect(failureToasts.items.map((t) => t.message).join('|')).toMatch(/orders-hub in prod: Failed to roll back: boom/), { timeout: 5000 });
+		expect(failureToasts.items.length).toBe(1);
 		await new Promise((r) => setTimeout(r, 3600));
-		expect(toastVisibility.count, 'an error toast waits to be dismissed').toBe(1);
+		expect(failureToasts.items.length, 'an error toast waits to be dismissed').toBe(1);
 	}, 40_000);
 });

@@ -36,11 +36,12 @@ import { respond } from '$lib/demo/respond';
 import { resetDemoState } from '$lib/demo/state';
 import { install } from '$lib/demo/health-failures-fixtures';
 import { toastVisibility, resetToastVisibility } from '$lib/stores/toast-visibility.svelte';
+import { failureToasts, resetFailureToasts } from '$lib/stores/failure-toasts.svelte';
 
 beforeAll(() => install(true));
 afterEach(() => vi.unstubAllGlobals());
 
-afterEach(() => resetToastVisibility());
+afterEach(() => { resetToastVisibility(); resetFailureToasts(); });
 
 let changeStatus = 500;
 function openOverview(app = 'orders-hub', query = '?action=change-version') {
@@ -98,9 +99,10 @@ describe('rollout page: the Change version flow reports where the operator is', 
 		changeStatus = 500;
 		await deploy(true);
 		await waitFor(() => expect(document.body.textContent).toMatch(/Failed to (change version|roll back): boom/), { timeout: 8000 });
-		expect(toastVisibility.count).toBe(1);
+		expect(failureToasts.items.length).toBe(1);
+		expect(failureToasts.items[0].message).toMatch(/^orders-hub in prod: Failed to (change version|roll back): boom$/);
 		await new Promise((r) => setTimeout(r, 3600));
-		expect(toastVisibility.count, 'an error toast waits to be dismissed').toBe(1);
+		expect(failureToasts.items.length, 'an error toast waits to be dismissed').toBe(1);
 	});
 	test('a success toast hides by itself', async () => {
 		changeStatus = 200;

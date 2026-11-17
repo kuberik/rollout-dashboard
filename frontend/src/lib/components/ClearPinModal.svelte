@@ -42,6 +42,8 @@
 	import { shortRevisionOrNull } from '$lib/version-utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
+	import { reportFailure, failureTarget } from '$lib/stores/failure-toasts.svelte';
 	import { apiPath } from '$lib/api/urls';
 
 	interface Props {
@@ -113,6 +115,7 @@
 	);
 
 	let showLocalToast = $state(false);
+	const hideLocalToast = toastHideTimer(() => (showLocalToast = false));
 	let localToastMessage = $state('');
 	let localToastType = $state<'success' | 'error'>('success');
 
@@ -122,10 +125,15 @@
 		announce(message, kind === 'error' ? 'assertive' : 'polite');
 		(kind === 'success' ? onSuccess : onError)?.(message);
 		if (!toast) return;
+		// a failure is reported app-wide (the dialog is already closed, so this is the only record) and waits to be dismissed
+		if (kind === 'error') {
+			reportFailure(failureTarget(rollout?.metadata?.name, envLabel), message);
+			return;
+		}
 		localToastType = kind;
 		localToastMessage = message;
 		showLocalToast = true;
-		setTimeout(() => (showLocalToast = false), 3000);
+		hideLocalToast(kind);
 	}
 
 	const gateState = $derived(autoDeploy ?? autoDeployState(rollout));

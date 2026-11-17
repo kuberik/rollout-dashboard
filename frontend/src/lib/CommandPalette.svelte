@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	/**
 	 * ⛔ THE FASTEST SURFACE IN THE PRODUCT WAS THE ONE THAT TOLD YOU LEAST.
 	 * (2026-08-30)
@@ -400,6 +401,7 @@
 	 * it fires the copy.
 	 */
 	let copyToastOpen = $state(false);
+	const hideCopyToast = toastHideTimer(() => (copyToastOpen = false));
 	let copyToastMessage = $state('');
 	type Result = {
 		kind: ResultKind;
@@ -1094,7 +1096,7 @@
 		if (ok) {
 			copyToastMessage = `Copied ${sha}`;
 			copyToastOpen = true;
-			setTimeout(() => (copyToastOpen = false), 3000);
+			hideCopyToast('success');
 		}
 	}
 

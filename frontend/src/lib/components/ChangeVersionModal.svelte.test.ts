@@ -926,6 +926,21 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		expect(scrolledField).toEqual([]);
 	});
 
+	test('a pin refused because another controller owns the version says so, in the shared sentence', async () => {
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) return new Response(JSON.stringify(NAMESPACE_LIST_RESPONSE), { status: 200 });
+			if (url.includes('/change-version')) return new Response(JSON.stringify({ details: 'dashboard is not managing the wantedVersion field' }), { status: 500 });
+			return new Response(JSON.stringify({}), { status: 200 });
+		});
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /^Roll back$/i });
+		await fireEvent.input(screen.getByPlaceholderText(NOTE_PLACEHOLDER), { target: { value: 'why' } });
+		await fireEvent.click(confirmBtn);
+		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull());
+		expect(document.querySelector('[data-deploy-error]')!.textContent).toBe("Another controller owns this rollout's wanted version, so the dashboard cannot pin it.");
+	});
+
 	test('a failed Roll back that leaves the field out of view scrolls the pane, not the field', async () => {
 		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
 			const url = typeof input === 'string' ? input : input.toString();

@@ -6,6 +6,8 @@ import { resetDemoState } from '../../../demo/state';
 import { install } from '../../../demo/health-failures-fixtures';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { toastVisibility, resetToastVisibility } from '$lib/stores/toast-visibility.svelte';
+import { failureToasts, resetFailureToasts } from '$lib/stores/failure-toasts.svelte';
+import FailureToasts from '../../FailureToasts.svelte';
 
 /** The app page's toasts: a late failure of a closed dialog is reported, an error waits to be dismissed, a success hides by itself. */
 let retryStatus = 200;
@@ -25,6 +27,8 @@ const mountApp = (app: string) => {
 		return new Response(r.body ?? '{}', { status: r.status ?? 200, headers: { 'Content-Type': 'application/json' } });
 	});
 	document.body.innerHTML = '';
+	resetFailureToasts();
+	render(FailureToasts);
 	return render(Harness, { props: { name: app } });
 };
 if (!HTMLDialogElement.prototype.showModal) {
@@ -65,7 +69,7 @@ describe('AppDetail toasts', { timeout: 20_000 }, () => {
 		const go = [...dlg.querySelectorAll('button')].filter((b) => /Deploy/.test(b.textContent!)).pop() as HTMLButtonElement;
 		await fireEvent.click(go);
 		await fireEvent.click([...dlg.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Cancel') as HTMLButtonElement);
-		await waitFor(() => expect(document.body.textContent).toContain('Failed to change version: boom'), { timeout: 4000 });
+		await waitFor(() => expect(document.body.textContent).toContain('search-indexer in prod: Failed to change version: boom'), { timeout: 4000 });
 		// reported as a toast: the closed dialog prints nothing inline
 		expect(document.querySelector('[data-deploy-error]')).toBeNull();
 	});
@@ -79,9 +83,29 @@ describe('AppDetail toasts', { timeout: 20_000 }, () => {
 		await new Promise((r) => setTimeout(r, 60));
 		expect(retryStatus).toBe(500);
 		expect((document.activeElement as HTMLElement | null)?.getAttribute('data-action'), 'focus is on Retry while the request still runs').toBe('retry');
-		await waitFor(() => expect(toastVisibility.count).toBe(1), { timeout: 4000 });
+		await waitFor(() => expect(failureToasts.items.length).toBe(1), { timeout: 4000 });
 		await new Promise((r) => setTimeout(r, 3600));
-		expect(toastVisibility.count, 'still open past the success lifetime').toBe(1);
+		expect(failureToasts.items.length, 'still open past the success lifetime').toBe(1);
+	});
+
+	it('closing the confirm in flight with nothing focused, then a success: focus ends on Retry, not <body>', async () => {
+		const m = mountApp('search-indexer');
+		await fireEvent.click(await m.findByRole('button', { name: /^Retry$/ }));
+		const input = (await m.findByLabelText(/to confirm/)) as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: input.labels?.[0]?.querySelector('span')?.textContent ?? '' } });
+		await fireEvent.click([...m.getByRole('dialog').querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Retry') as HTMLButtonElement);
+		await cancel(m);
+		(document.activeElement as HTMLElement | null)?.blur();
+		await waitFor(() => expect(toastVisibility.count).toBe(1), { timeout: 4000 });
+		await waitFor(() => expect((document.activeElement as HTMLElement | null)?.getAttribute('data-action')).toBe('retry'), { timeout: 2000 });
+	});
+
+	it('a success toast does not follow the reader to another app', async () => {
+		const m = mountApp('search-indexer');
+		await typedRetry(m);
+		await waitFor(() => expect(toastVisibility.count).toBe(1), { timeout: 4000 });
+		await m.rerender({ name: 'orders-hub' } as never);
+		await waitFor(() => expect(toastVisibility.count, 'the success toast is gone').toBe(0), { timeout: 2000 });
 	});
 
 	it('a success toast hides by itself', async () => {

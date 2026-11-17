@@ -3,6 +3,8 @@
 <script lang="ts">
 	import { failureText, retryOutcome, RETRY_FAILED } from '$lib/view-models/failure-text';
 	import { toastHideTimer } from '$lib/view-models/toast-timer';
+	import { untrack } from 'svelte';
+	import { reportFailure, failureTarget } from '$lib/stores/failure-toasts.svelte';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
@@ -1509,6 +1511,21 @@
 	 */
 	let toastDescription = $state('');
 	let toastType = $state<'success' | 'error' | 'info'>('success');
+	// An error is reported app-wide, naming this rollout, and waits to be dismissed (it follows the operator across navigation on purpose);
+	// the page's own toast is for successes, which belong to this rollout and are dropped when the route changes.
+	$effect(() => {
+		if (showToast && toastType === 'error') {
+			const message = toastMessage;
+			untrack(() => {
+				reportFailure(failureTarget(name, environment?.spec?.environment), message);
+				showToast = false;
+			});
+		}
+	});
+	$effect(() => {
+		void `${cluster}/${namespace}/${name}`;
+		untrack(() => (showToast = false));
+	});
 	let toastLoading = $state(false);
 	/**
 	 * ⭐ ROUND 3, ITEM 13 (AD, 2026-10-09): "Add an action `.nav-link` 'View

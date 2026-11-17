@@ -82,6 +82,7 @@
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import { WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	import { paneScrollDelta, scrollPaneOf } from '$lib/view-models/scroll-into-pane';
 	import { tick } from 'svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
@@ -604,6 +605,7 @@
 	 */
 	let deploying = $state(false);
 	let confirmBtnEl = $state<HTMLButtonElement | null>(null);
+	const hideLocalToast = toastHideTimer(() => (showLocalToast = false));
 	/** A failed confirm prints its reason INSIDE the open dialog (a toast hides behind the sheet and its backdrop); cleared when the dialog opens or the request is sent again. */
 	let deployError = $state('');
 
@@ -2400,7 +2402,7 @@
 			localToastType = 'success';
 			localToastMessage = message;
 			showLocalToast = true;
-			setTimeout(() => (showLocalToast = false), 3000);
+			hideLocalToast('success');
 		}
 	}
 </script>
