@@ -19,6 +19,11 @@ if (!HTMLDialogElement.prototype.showModal) {
 	HTMLDialogElement.prototype.close = function () { this.open = false; };
 }
 
+// jsdom has no Popover API; the tooltip's popper calls it on pointer events that can land after the test ends
+if (!(HTMLElement.prototype as unknown as { showPopover?: unknown }).showPopover) {
+	Object.assign(HTMLElement.prototype, { showPopover() {}, hidePopover() {}, togglePopover() { return false; } });
+}
+
 const rollout = {
 	metadata: { name: 'orders-api', namespace: 'orders' },
 	spec: {},
