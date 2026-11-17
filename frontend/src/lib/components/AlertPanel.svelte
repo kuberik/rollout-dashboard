@@ -1345,6 +1345,14 @@
 			flex: 0 1 auto;
 			min-width: 0;
 		}
+		/* the author keeps its own width up to a third of the line and truncates past that, so build · title · #PR always has two thirds and the title (never "#54") gives way */
+		.ap-change [data-ap-author] {
+			display: block;
+			flex: 0 0 auto;
+			max-width: 33%;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
 		/* a wrapped body line never ends on a one-word orphan ("approval" alone at 320) */
 		.ap-message-row {
 			text-wrap: pretty;
